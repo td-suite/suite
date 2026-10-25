@@ -55,5 +55,5 @@ export async function completeLogin({ code, verifier, nonce }) {
   }
   const email = String(payload.email || payload.preferred_username || '').toLowerCase();
   if (!email || !email.includes('@')) throw new Error('email non presente nel token');
-  return { email, name: payload.name || email, oid: payload.oid, tid: payload.tid };
+  return { email, name: payload.name || email, given_name: payload.given_name || null, family_name: payload.family_name || null, oid: payload.oid, tid: payload.tid };
 }

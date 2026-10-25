@@ -80,7 +80,7 @@ export function CalendarCard({ rows, loading, unavailable }) {
 export function WeatherCard({ data, loading, unavailable, siteName }) {
   const now = data?.now;
   return (
-    <Card title={`Meteo${data?.city ? ` · ${data.city}` : siteName ? ` · ${siteName}` : ''}`} icon="cloud-sun">
+    <Card title={`Meteo${data?.site?.name ? ` · ${data.site.name}` : data?.city ? ` · ${data.city}` : siteName ? ` · ${siteName}` : ''}`} icon="cloud-sun">
       <Body loading={loading} unavailable={unavailable} what="Il meteo per sede" empty={!now} emptyIcon="cloud" emptyTitle="Meteo non disponibile al momento" emptyText="Il servizio meteo non risponde: riprova più tardi.">
         {now && (
           <>
@@ -103,11 +103,11 @@ export function WeatherCard({ data, loading, unavailable, siteName }) {
 }
 
 export function QuoteCard({ quote, loading, unavailable }) {
-  if (loading) return <Card className="silk"><Skeleton lines={2} /></Card>;
+  if (loading) return <Card title="Frase del giorno" icon="quote"><Skeleton lines={2} /></Card>;
   if (unavailable || !quote?.text) return null;
   return (
-    <Card className="silk">
-      <blockquote className="quote" style={{ margin: 0 }}><Icon name="quote" />{quote.text}</blockquote>
+    <Card title="Frase del giorno" icon="quote" className="silk">
+      <blockquote className="quote" style={{ margin: 0 }}>{quote.text}</blockquote>
       {quote.author_label && <div className="quote-author">{quote.author_label}</div>}
     </Card>
   );
@@ -155,7 +155,7 @@ export function BirthdaysCard({ rows }) {
   if (!rows?.length) return null;
   return (
     <Card title="Compleanni" icon="birthday" flush>
-      <div className="list">{rows.map((b, i) => <div key={i} className="it"><div><div className="t">{b.full_name || `${b.first_name} ${b.last_name}`}</div><div className="m">{b.date ? fmtDate(b.date, { day: 'numeric', month: 'long' }) : 'oggi'}</div></div></div>)}</div>
+      <div className="list">{rows.map((b, i) => <div key={i} className="it"><div><div className="t">{b.full_name || `${b.last_name} ${b.first_name}`}</div><div className="m">{b.date ? fmtDate(b.date, { day: 'numeric', month: 'long' }) : 'oggi'}</div></div></div>)}</div>
     </Card>
   );
 }

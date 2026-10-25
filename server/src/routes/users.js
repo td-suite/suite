@@ -1,3 +1,4 @@
+import { displayName, splitName } from '../lib/util.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -13,7 +14,9 @@ const r = Router();
 
 const userSchema = z.object({
   email: z.string().email(),
-  full_name: z.string().min(2).max(120),
+  full_name: z.string().min(2).max(120).optional(),
+  first_name: z.string().max(60).optional(),
+  last_name: z.string().max(60).optional(),
   title: z.string().max(20).nullable().optional(),
   phone: z.string().max(40).nullable().optional(),
   level: z.enum(['OWNER', 'ADMIN', 'USER']).optional(),
@@ -33,6 +36,12 @@ const grantSchema = z.object({
   scopes: z.array(z.object({ type: z.enum(['SITE', 'ORG']), id: z.number().int() })).optional(),
 });
 
+// Nomi: la forma visualizzata è sempre "Cognome Nome"; un full_name senza cognome/nome separati viene spezzato (ipotesi: cognome = ultima parola)
+function namesFrom(b) {
+  let first = (b.first_name || '').trim(), last = (b.last_name || '').trim();
+  if (!first && !last && b.full_name) ({ first_name: first, last_name: last } = splitName(b.full_name));
+  return { first_name: first, last_name: last, full_name: displayName(last, first) };
+}
 function assertCanGrant(req, module) {
   if (!module) throw notFound('Modulo inesistente');
   if (module.restricted && !isOwner(req.user)) throw forbidden(`Il modulo "${module.name}" è riservato: solo il titolare della Suite può assegnarlo`);
@@ -94,13 +103,15 @@ r.post('/users', requireAdmin, ah(async (req, res) => {
   const modules = await many('SELECT * FROM modules');
   const byKey = Object.fromEntries(modules.map((m) => [m.key, m]));
   for (const g of b.grants || []) assertCanGrant(req, byKey[g.module_key]);
+  const nm = namesFrom(b);
+  if (!nm.full_name) throw bad('Cognome e nome obbligatori');
 
   const u = await tx(async (c) => {
     const { rows: [u] } = await c.query(
-      `INSERT INTO users (email, full_name, title, phone, level, status, auth_provider, organization_id, site_id, person_id, lang, password_hash, must_change_password, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [email, b.full_name, b.title || null, b.phone || null, b.level || 'USER', b.status || 'ACTIVE', provider, b.organization_id ?? null, b.site_id ?? null, b.person_id ?? null, b.lang || 'it',
-        plain ? await bcrypt.hash(plain, 12) : null, Boolean(plain), req.user.id]);
+      `INSERT INTO users (email, full_name, first_name, last_name, title, phone, level, status, auth_provider, organization_id, site_id, person_id, lang, password_hash, must_change_password, created_by)
+       VALUES ($1,$2,$15,$16,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [email, nm.full_name, b.title || null, b.phone || null, b.level || 'USER', b.status || 'ACTIVE', provider, b.organization_id ?? null, b.site_id ?? null, b.person_id ?? null, b.lang || 'it',
+        plain ? await bcrypt.hash(plain, 12) : null, Boolean(plain), req.user.id, nm.first_name, nm.last_name]);
     for (const g of b.grants || []) {
       const { rows: [gr] } = await c.query(`INSERT INTO grants (user_id, module_key, profile, created_by) VALUES ($1,$2,$3,$4) RETURNING id`, [u.id, g.module_key, g.profile, req.user.id]);
       for (const s of g.scopes || []) await c.query('INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [gr.id, s.type, s.id]);
@@ -129,7 +140,8 @@ r.put('/users/:id', requireAdmin, ah(async (req, res) => {
     if (b.level === 'OWNER' || target.level === 'OWNER') throw forbidden('Il livello titolare non si assegna né si rimuove');
   }
   if (b.email && b.email.toLowerCase() !== target.email && await one('SELECT 1 FROM users WHERE lower(email)=$1 AND id<>$2', [b.email.toLowerCase(), id])) throw bad('Email già in uso');
-  const fields = ['email', 'full_name', 'title', 'phone', 'level', 'status', 'auth_provider', 'organization_id', 'site_id', 'person_id', 'lang'];
+  const fields = ['email', 'first_name', 'last_name', 'full_name', 'title', 'phone', 'level', 'status', 'auth_provider', 'organization_id', 'site_id', 'person_id', 'lang'];
+  if (b.first_name !== undefined || b.last_name !== undefined) { const nm = namesFrom({ first_name: b.first_name ?? target.first_name, last_name: b.last_name ?? target.last_name }); b.first_name = nm.first_name; b.last_name = nm.last_name; b.full_name = nm.full_name; }
   const sets = []; const params = [id];
   for (const f of fields) if (b[f] !== undefined) { params.push(f === 'email' ? b[f].toLowerCase() : b[f]); sets.push(`${f}=$${params.length}`); }
   if (sets.length) await q(`UPDATE users SET ${sets.join(', ')}, updated_at=now() WHERE id=$1`, params);

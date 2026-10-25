@@ -579,8 +579,18 @@ async function weatherFor(user, siteId) {
   if (hq) return weatherForSite(hq);
   return { site: null, city: null, unavailable: true, reason: 'Nessuna sede configurata' };
 }
+// Meteo della sede da cui si apre la Suite: con la posizione del browser (lat/lng) si prende la sede attiva più vicina
+// entro 25 km; altrimenti il punto stesso; senza posizione, la sede dell'utente (o la sede principale).
+const distKm = (a, b) => { const R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180; const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
 r.get('/community/weather', ah(async (req, res) => {
-  const { site_id } = parse(z.object({ site_id: z.coerce.number().int().optional() }), req.query);
+  const { site_id, lat, lng } = parse(z.object({ site_id: z.coerce.number().int().optional(), lat: z.coerce.number().min(-90).max(90).optional(), lng: z.coerce.number().min(-180).max(180).optional() }), req.query);
+  if (lat != null && lng != null && !site_id) {
+    const sites = await many('SELECT id, code, name, city, lat, lng FROM sites WHERE active AND lat IS NOT NULL AND lng IS NOT NULL');
+    const here = { lat, lng };
+    const near = sites.map((s) => ({ s, d: distKm(here, { lat: Number(s.lat), lng: Number(s.lng) }) })).sort((a, b) => a.d - b.d)[0];
+    if (near && near.d <= 25) return res.json({ ...(await weatherForSite(near.s)), located: true, distance_km: Math.round(near.d) });
+    return res.json({ ...(await weatherForPoint({ lat, lng, city: 'La tua posizione' })), located: true });
+  }
   res.json(await weatherFor(req.user, site_id));
 }));
 

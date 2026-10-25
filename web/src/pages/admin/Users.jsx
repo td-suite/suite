@@ -89,7 +89,7 @@ function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
 }
 
 // ---------- Dettaglio / nuovo ----------
-const EMPTY_USER = { email: '', full_name: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', person_id: '', lang: 'it', password: '', send_invite: true };
+const EMPTY_USER = { email: '', full_name: '', first_name: '', last_name: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', person_id: '', lang: 'it', password: '', send_invite: true };
 
 export function UserDetail() {
   const { id } = useParams();
@@ -126,7 +126,7 @@ export function UserDetail() {
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const payload = () => ({
-    email: f.email.trim(), full_name: f.full_name.trim(), title: f.title || null, phone: f.phone || null, level: f.level, status: f.status, auth_provider: f.auth_provider,
+    email: f.email.trim(), first_name: f.first_name.trim(), last_name: f.last_name.trim(), full_name: `${f.last_name.trim()} ${f.first_name.trim()}`.trim(), title: f.title || null, phone: f.phone || null, level: f.level, status: f.status, auth_provider: f.auth_provider,
     organization_id: f.organization_id ? Number(f.organization_id) : null, site_id: f.site_id ? Number(f.site_id) : null, person_id: f.person_id ? Number(f.person_id) : null, lang: f.lang,
   });
 
@@ -186,7 +186,10 @@ export function UserDetail() {
           <Card title="Anagrafica" icon="user">
             <form onSubmit={saveUser} className="col" id="uform">
               <Field label="Email" required><input type="email" value={f.email} onChange={set('email')} required disabled={!isNew && !owner} /></Field>
-              <Field label="Nome e cognome" required><input value={f.full_name} onChange={set('full_name')} required /></Field>
+              <div className="form-grid">
+                <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required /></Field>
+                <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required /></Field>
+              </div>
               <div className="form-grid">
                 <Field label="Titolo"><input value={f.title} onChange={set('title')} maxLength={20} placeholder="Dott.ssa" /></Field>
                 <Field label="Telefono"><input value={f.phone} onChange={set('phone')} /></Field>

@@ -107,7 +107,7 @@ export function Composer({ onPosted, siteId }) {
     <div className="composer">
       <Avatar name={user.full_name} fileId={user.avatar_file_id} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} onFocus={() => setFocus(true)} placeholder={`Condividi qualcosa con i colleghi, ${user.full_name.split(' ')[0]}`} aria-label="Nuovo post" rows={focus || body ? 3 : 1} />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} onFocus={() => setFocus(true)} placeholder={`Condividi qualcosa con i colleghi, ${user.first_name || user.full_name.split(' ')[0]}`} aria-label="Nuovo post" rows={focus || body ? 3 : 1} />
         {files.length > 0 && <div className="row tight mt">{files.map((f) => <span key={f.id} className="chip"><Icon name="image" />{f.filename}<button type="button" aria-label="Rimuovi allegato" onClick={() => setFiles((x) => x.filter((y) => y.id !== f.id))}><Icon name="x" /></button></span>)}</div>}
         {(focus || body) && (
           <div className="acts">

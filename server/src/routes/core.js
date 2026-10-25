@@ -1,4 +1,5 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
+import { getSetting } from '../lib/util.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
@@ -135,11 +136,11 @@ r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
 const personSchema = z.object({
   kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
   last_name: z.string().min(1), first_name: z.string().min(1), title: z.string().max(20).nullable().optional(), sex: z.enum(['F', 'M']).nullable().optional(),
-  email: z.string().email().nullable().optional(), phone: z.string().nullable().optional(), phone_office: z.string().nullable().optional(), area: z.string().nullable().optional(),
+  email: z.string().email().nullable().optional(), phone: z.string().nullable().optional(), phone_office: z.string().nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().nullable().optional(),
   job_title: z.string().nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
 });
-const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.area, p.job_title, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
+const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, m.last_name || ' ' || m.first_name AS manager_name,
   (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id`;
 r.get('/people', ah(async (req, res) => {
@@ -156,6 +157,7 @@ r.get('/people', ah(async (req, res) => {
   // Dati personali minimi per chi non è amministratore: niente codice fiscale, niente date; telefoni visibili (rubrica aziendale)
   res.json(rows);
 }));
+r.get('/people/switchboard', ah(async (_req, res) => { res.json(await getSetting('community.switchboard', null)); }));
 r.get('/people/areas', ah(async (_req, res) => {
   res.json(await many(`SELECT area, count(*)::int AS n FROM people WHERE area IS NOT NULL AND status='ATTIVO' GROUP BY area ORDER BY area`));
 }));

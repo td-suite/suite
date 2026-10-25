@@ -10,6 +10,9 @@ import { one, many, q } from '../db.js';
 import { normName } from './util.js';
 import { MODULES, LEGACY_ROLE_MAP, AREA_GRANT_PROPOSALS } from '../seed/modules.js';
 
+// Una descrizione del ruolo diventa titolo solo se è corta come un titolo (es. "Site Manager"), non se è una frase
+const shortRole = (v) => { const t = (v || '').trim(); return t && t.length <= 48 && !/[.;:]/.test(t) ? t : null; };
+
 export const SOURCE_LABELS = {
   cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità',
   retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)',
@@ -204,18 +207,19 @@ async function upsertUser(key, lu, stats) {
   const ex = await one('SELECT id, level, status, password_hash, auth_provider, legacy_refs, full_name, phone, title, created_by FROM users WHERE lower(email)=$1', [email]);
   if (!ex) {
     const u = await one(
-      `INSERT INTO users (email, full_name, title, phone, level, status, auth_provider, password_hash, must_change_password, totp_secret, totp_enabled, entra_oid, legacy_refs)
-       VALUES ($1,$2,$3,$4,'USER',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-      [email, clean(lu.full_name) || email, clean(lu.title), clean(lu.phone || lu.telefono), statusOrigin, provider,
+      `INSERT INTO users (email, full_name, first_name, last_name, title, phone, level, status, auth_provider, password_hash, must_change_password, totp_secret, totp_enabled, entra_oid, legacy_refs)
+       VALUES ($1,$2,$13,$14,$3,$4,'USER',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [email, displayName(splitName(clean(lu.full_name)).last_name, splitName(clean(lu.full_name)).first_name) || email, clean(lu.title), clean(lu.phone || lu.telefono), statusOrigin, provider,
         lu.password_hash || null, hasPwd ? Boolean(lu.must_change_password) : false, hasPwd ? lu.totp_secret || null : null, hasPwd ? Boolean(lu.totp_enabled && lu.totp_secret) : false,
-        lu.entra_oid || null, JSON.stringify(pwdMeta ? { ...refs, _password_from: pwdMeta } : refs)]);
+        lu.entra_oid || null, JSON.stringify(pwdMeta ? { ...refs, _password_from: pwdMeta } : refs), splitName(clean(lu.full_name)).first_name, splitName(clean(lu.full_name)).last_name]);
     stats.inc('utenti', 'creati');
     return { id: u.id, created: true };
   }
   // Identità esistente: mai toccare il livello (OWNER/ADMIN restano tali), completare i campi vuoti, aggiornare i riferimenti
   const refsObj = { ...refs };
-  const sets = ['legacy_refs = legacy_refs || $2::jsonb', 'updated_at = now()', 'full_name = CASE WHEN full_name = email THEN coalesce($3, full_name) ELSE full_name END', 'phone = coalesce(phone, $4)', 'title = coalesce(title, $5)'];
-  const params = [ex.id, null, clean(lu.full_name), clean(lu.phone || lu.telefono), clean(lu.title)];
+  const sets = ['legacy_refs = legacy_refs || $2::jsonb', 'updated_at = now()', 'full_name = CASE WHEN full_name = email THEN coalesce($3, full_name) ELSE full_name END', 'first_name = CASE WHEN coalesce(first_name,\'\')=\'\' AND coalesce(last_name,\'\')=\'\' THEN $6 ELSE first_name END', 'last_name = CASE WHEN coalesce(first_name,\'\')=\'\' AND coalesce(last_name,\'\')=\'\' THEN $7 ELSE last_name END', 'phone = coalesce(phone, $4)', 'title = coalesce(title, $5)'];
+  const nm = splitName(clean(lu.full_name));
+  const params = [ex.id, null, displayName(nm.last_name, nm.first_name) || null, clean(lu.phone || lu.telefono), clean(lu.title), nm.first_name, nm.last_name];
   // Password: la copiamo se la Suite non ne ha una, oppure se quella attuale è ancora una copia da un'app e questa app ha un accesso più recente.
   // Una password scelta dall'utente in Suite (hash diverso da quello copiato) non viene mai sovrascritta.
   const prev = ex.legacy_refs?._password_from;
@@ -453,7 +457,7 @@ async function syncContractsPeople(stats) {
     const id = await pm.upsert(r.id, {
       kind, status, last_name: clean(r.last_name), first_name: clean(r.first_name), title: clean(r.title), sex: r.sex || null, birth_date: r.birth_date || null,
       tax_code: normCf(r.tax_code), email: validEmail(lower(r.email)) ? lower(r.email) : null, phone: clean(r.mobile_company || r.phone), phone_office: clean(r.phone_office),
-      area: clean(r.area), job_title: clean(r.job_title || r.qualification || r.role_description), discipline: clean(r.discipline), site_id: r.work_site ? siteByName(r.work_site) : null,
+      area: clean(r.area), job_title: clean(r.job_title || r.qualification || shortRole(r.role_description)),   // la descrizione lunga del ruolo non è un titolo discipline: clean(r.discipline), site_id: r.work_site ? siteByName(r.work_site) : null,
       hired_at: r.hired_at || null, terminated_at: r.terminated_at || null,
     });
     if (id) legacyToSuite[r.id] = id;
@@ -474,12 +478,13 @@ async function syncContractsPeople(stats) {
     const internal = isInternalEmail(email);
     if (!u) {
       u = await one(
-        `INSERT INTO users (email, full_name, title, phone, level, status, auth_provider, must_change_password, person_id, legacy_refs)
-         VALUES ($1,$2,$3,$4,'USER','ACTIVE',$5,$6,$7,'{"contracts_person":true}'::jsonb) RETURNING id, status`,
-        [email, `${clean(r.first_name)} ${clean(r.last_name)}`, clean(r.title), clean(r.mobile_company || r.phone), internal ? 'ENTRA' : 'LOCAL', !internal, pid]);
+        `INSERT INTO users (email, full_name, first_name, last_name, title, phone, level, status, auth_provider, must_change_password, person_id, legacy_refs)
+         VALUES ($1,$2,$8,$9,$3,$4,'USER','ACTIVE',$5,$6,$7,'{"contracts_person":true}'::jsonb) RETURNING id, status`,
+        [email, displayName(clean(r.last_name), clean(r.first_name)), clean(r.title), clean(r.mobile_company || r.phone), internal ? 'ENTRA' : 'LOCAL', !internal, pid]);
       stats.inc('utenti', 'creati');
     } else {
-      await q('UPDATE users SET person_id = coalesce(person_id, $2) WHERE id=$1', [u.id, pid]);
+      // persona collegata e nomi allineati all'anagrafica (forma Cognome Nome)
+      await q('UPDATE users SET person_id = coalesce(person_id, $2), first_name=$3, last_name=$4, full_name=$5 WHERE id=$1', [u.id, pid, clean(r.first_name), clean(r.last_name), displayName(clean(r.last_name), clean(r.first_name))]);
     }
     const areas = [r.area, ...extraAreas.filter((x) => x.resource_id === r.id).map((x) => x.name)].filter(Boolean).map((a) => normName(a));
     const proposals = new Map();

@@ -1,3 +1,5 @@
+import { PERSONAL_EXT, DEPARTMENT_EXT, SWITCHBOARD, IVR } from './seed/centralino.js';
+import { displayName, splitName } from './lib/util.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,9 +59,9 @@ async function seed() {
     if (!ex) {
       const pwd = config.seed.ownerPassword.length >= 12 ? await bcrypt.hash(config.seed.ownerPassword, 12) : null;
       const u = await one(
-        `INSERT INTO users (email, full_name, title, level, status, auth_provider, organization_id, password_hash, must_change_password)
-         VALUES ($1,$2,'Dott.','OWNER','ACTIVE',$3,$4,$5,$6) RETURNING id`,
-        [config.seed.ownerEmail, config.seed.ownerName, pwd ? 'BOTH' : 'ENTRA', td.id, pwd, Boolean(pwd)]);
+        `INSERT INTO users (email, full_name, first_name, last_name, title, level, status, auth_provider, organization_id, password_hash, must_change_password)
+         VALUES ($1,$2,$7,$8,'Dott.','OWNER','ACTIVE',$3,$4,$5,$6) RETURNING id`,
+        [config.seed.ownerEmail, displayName(splitName(config.seed.ownerName).last_name, splitName(config.seed.ownerName).first_name), pwd ? 'BOTH' : 'ENTRA', td.id, pwd, Boolean(pwd), splitName(config.seed.ownerName).first_name, splitName(config.seed.ownerName).last_name]);
       for (const m of MODULES) {
         const profile = (m.profiles.find((p) => ['OWNER', 'SUPERADMIN', 'ADMIN', 'CEO', 'DIREZIONE', 'PUBLISHER', 'EDITOR'].includes(p.key)) || m.profiles[0]).key;
         await q(`INSERT INTO grants (user_id, module_key, profile, source) VALUES ($1,$2,$3,'SEED') ON CONFLICT DO NOTHING`, [u.id, m.key, profile]);
@@ -108,8 +110,17 @@ async function seed() {
     'sso.bar': { showHome: true },
   };
   for (const [k, v] of Object.entries(defaults)) await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(v)]);
+  await seedCentralino();
 }
 
 if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {
   migrate().then(() => pool.end()).catch((e) => { console.error(e); process.exit(1); });
+}
+
+// Centralino: interni personali sulle schede persona (per cognome e nome, solo se vuoti) e numeri di reparto in settings
+export async function seedCentralino() {
+  for (const [last, first, ext] of PERSONAL_EXT) {
+    await q(`UPDATE people SET phone_ext=$3, updated_at=now() WHERE phone_ext IS NULL AND lower(unaccent(last_name))=lower(unaccent($1)) AND lower(unaccent(first_name))=lower(unaccent($2))`, [last, first, ext]).catch(() => {});
+  }
+  await q(`INSERT INTO app_settings (key, value) VALUES ('community.switchboard', $1::jsonb) ON CONFLICT (key) DO NOTHING`, [JSON.stringify({ ...SWITCHBOARD, departments: DEPARTMENT_EXT, ivr: IVR })]).catch(() => {});
 }

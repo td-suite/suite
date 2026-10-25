@@ -57,3 +57,8 @@ export async function setSetting(key, value, userId) {
   await q(`INSERT INTO app_settings (key, value, updated_by) VALUES ($1,$2,$3)
            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now(), updated_by=EXCLUDED.updated_by`, [key, JSON.stringify(value), userId || null]);
 }
+
+// Forma visualizzata dei nomi in tutta la Suite: "Cognome Nome"
+export const displayName = (last, first) => [last, first].map((x) => (x || '').trim()).filter(Boolean).join(' ');
+// Spezza un "Nome Cognome" (es. da Entra o da un'app di origine): ipotesi cognome = ultima parola
+export const splitName = (full) => { const t = (full || '').trim().split(/\s+/).filter(Boolean); if (t.length < 2) return { first_name: t[0] || '', last_name: '' }; return { first_name: t.slice(0, -1).join(' '), last_name: t[t.length - 1] }; };

@@ -8,7 +8,7 @@ import { PERSON_KIND, fmtDate } from '../format.js';
 import { api } from '../api.js';
 import { NotFound } from './Misc.jsx';
 
-const fullName = (p) => [p.title, p.first_name, p.last_name].filter(Boolean).join(' ');
+const fullName = (p) => [p.last_name, p.first_name].filter(Boolean).join(' ');   // Cognome Nome, ovunque nella Suite
 const teamsUrl = (email) => `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
 
 function PersonCard({ p }) {
@@ -21,11 +21,26 @@ function PersonCard({ p }) {
         <div className="s">{p.area && <Badge tone="mauve">{p.area}</Badge>}{p.site_name && <span><Icon name="pin" style={{ width: 12, height: 12, marginRight: 3 }} />{p.site_name}</span>}</div>
         <div className="c">
           {p.email && <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()}><Icon name="mail" />Email</a>}
+          {p.phone_ext && <a href={`tel:055776511`} title={`Centralino 055 776511, interno ${p.phone_ext}`} onClick={(e) => e.stopPropagation()}><Icon name="phone" />Int. {p.phone_ext}</a>}
           {(p.phone_office || p.phone) && <a href={`tel:${p.phone_office || p.phone}`} onClick={(e) => e.stopPropagation()}><Icon name="phone" />{p.phone_office || p.phone}</a>}
           {p.email && <a href={teamsUrl(p.email)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}><Icon name="teams" />Teams</a>}
         </div>
       </div>
     </Link>
+  );
+}
+
+// Numeri interni del centralino (configurazione Rev01 del 06/10/2026), in fondo all'elenco
+function Switchboard() {
+  const { data } = useApi('/people/switchboard', []);
+  if (!data?.number) return null;
+  return (
+    <Card title={`Numeri interni · centralino ${data.number}`} icon="phone" className="mt2">
+      <div className="switchboard">
+        {(data.departments || []).map((d) => <div key={d.ext} className="it"><span className="ext">{d.ext}</span><span>{d.name}</span></div>)}
+      </div>
+      {data.second?.number && <div className="small muted" style={{ marginTop: 10 }}>{data.second.label}: {data.second.number}. Dall'esterno: {data.number}, poi il tasto del reparto; dall'interno: il numero breve.</div>}
+    </Card>
   );
 }
 
@@ -53,13 +68,14 @@ function List() {
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="users" title="Nessuna persona trovata">{qtext ? 'Prova con un nome o un ruolo diverso.' : 'La rubrica si popola dalle anagrafiche e dalle importazioni.'}</Empty>}
       {data?.length > 0 && <><div className="small muted mb">{data.length} person{data.length === 1 ? 'a' : 'e'}</div><div className="people">{data.map((p) => <PersonCard key={p.id} p={p} />)}</div></>}
+      {!qtext && !area && !kind && !site_id && <Switchboard />}
     </div>
   );
 }
 
 function EditPersonModal({ p, onClose, onSaved }) {
   const toast = useToast();
-  const [f, setF] = useState({ job_title: p.job_title || '', area: p.area || '', phone: p.phone || '', phone_office: p.phone_office || '', email: p.email || '', discipline: p.discipline || '' });
+  const [f, setF] = useState({ job_title: p.job_title || '', area: p.area || '', phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async (e) => { e.preventDefault(); try { await api.put(`/people/${p.id}`, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v || null]))); toast('Scheda aggiornata'); onSaved(); onClose(); } catch (e2) { toast(e2, 'err'); } };
   return (
@@ -70,6 +86,7 @@ function EditPersonModal({ p, onClose, onSaved }) {
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
         <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} /></Field>
+        <Field label="Interno centralino"><input value={f.phone_ext} onChange={set('phone_ext')} maxLength={10} placeholder="101" /></Field>
         <Field label="Cellulare"><input value={f.phone} onChange={set('phone')} /></Field>
       </form>
     </Modal>
@@ -119,7 +136,7 @@ function Detail() {
               {p.manager_person_id ? <Link to={`/people/${p.manager_person_id}`} className="row tight mt" style={{ color: 'inherit' }}><Avatar name={p.manager_name} size="sm" /><span className="strong">{p.manager_name}</span></Link> : <div className="small muted mt">Nessun responsabile indicato</div>}</div>
             <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Collaboratori ({p.reports?.length || 0})</div>
               {!p.reports?.length && <div className="small muted mt">Nessun collaboratore diretto</div>}
-              <div className="col mt" style={{ gap: 6 }}>{(p.reports || []).map((r) => <Link key={r.id} to={`/people/${r.id}`} className="row tight" style={{ color: 'inherit' }}><Avatar name={`${r.first_name} ${r.last_name}`} size="sm" /><span><span className="strong">{r.first_name} {r.last_name}</span>{r.job_title && <span className="muted small"> · {r.job_title}</span>}</span></Link>)}</div></div>
+              <div className="col mt" style={{ gap: 6 }}>{(p.reports || []).map((r) => <Link key={r.id} to={`/people/${r.id}`} className="row tight" style={{ color: 'inherit' }}><Avatar name={`${r.first_name} ${r.last_name}`} size="sm" /><span><span className="strong">{r.last_name} {r.first_name}</span>{r.job_title && <span className="muted small"> · {r.job_title}</span>}</span></Link>)}</div></div>
             <div><Link to={`/people/org-chart?focus=${p.id}`} className="small">Vedi nell'organigramma</Link></div>
           </div>
         </Card>
@@ -133,7 +150,7 @@ function Detail() {
 function Node({ p, children }) {
   return (
     <li>
-      <Link to={`/people/${p.id}`} className="node"><Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{p.first_name} {p.last_name}</div><div className="r ellipsis">{p.job_title || p.area || ''}</div></div></Link>
+      <Link to={`/people/${p.id}`} className="node"><Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{p.last_name} {p.first_name}</div><div className="r ellipsis">{p.job_title || p.area || ''}</div></div></Link>
       {children?.length > 0 && <ul>{children.map((c) => <Node key={c.p.id} p={c.p}>{c.children}</Node>)}</ul>}
     </li>
   );

@@ -60,7 +60,19 @@ export default function Home() {
   }, []);
 
   const h = home.data || {};
-  const weather = h.weather;
+  // Meteo della sede da cui si apre la Suite: posizione del browser (se concessa) → sede più vicina; altrimenti la sede del profilo
+  const [geoWeather, setGeoWeather] = useState(null);
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    let alive = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => api.get(`/community/weather?lat=${pos.coords.latitude.toFixed(4)}&lng=${pos.coords.longitude.toFixed(4)}`, { silent: true }).then((w) => alive && w?.now && setGeoWeather(w)).catch(() => {}),
+      () => {}, { timeout: 8000, maximumAge: 30 * 60_000 },
+    );
+    return () => { alive = false; };
+  }, []);
+  const weather = geoWeather || h.weather;
+  const weatherSite = weather?.site?.name || weather?.city || user.site_name;
   const now = useClock();
   const todayKey = now.toLocaleDateString('sv-SE');
   const eventsToday = (h.events || []).filter((e) => String(e.starts_at || '').slice(0, 10) === todayKey).length;
@@ -74,14 +86,14 @@ export default function Home() {
         <div className="hero-inner">
           <div className="hero-top">
             <div className="hello">
-              <h1>{greeting(now)}, {firstName(user.full_name)}</h1>
+              <h1>{greeting(now)}, {user.first_name || firstName(user.full_name)}</h1>
               <div className="date">{capitalize(fmtDateLong(now))} · {now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <Link to={user.site_name ? '/community/calendar' : '/profile'} className="where" aria-label="Meteo e sede">
               {weather?.now ? <Icon name={weatherIcon(weather.now.code)} title={weather.now.label} /> : <Icon name="pin" />}
               <div>
                 {weather?.now ? <div className="temp">{Math.round(weather.now.temp)}°<span>{weather.now.label}</span></div> : <div className="temp"><span>{user.site_name ? 'Meteo in arrivo' : 'Sede non impostata'}</span></div>}
-                <div className="site">{user.site_name || weather?.city || 'Imposta la tua sede dal profilo'}{weather?.today ? ` · min ${Math.round(weather.today.min)}° max ${Math.round(weather.today.max)}°` : ''}</div>
+                <div className="site">{weatherSite || 'Imposta la tua sede dal profilo'}{weather?.today ? ` · min ${Math.round(weather.today.min)}° max ${Math.round(weather.today.max)}°` : ''}</div>
               </div>
             </Link>
           </div>
@@ -106,37 +118,37 @@ export default function Home() {
       <div className="page home-body">
         {h.notices?.length > 0 && <div className="notices">{h.notices.map((n) => <NoticeBanner key={n.id} n={n} />)}</div>}
 
-        {/* Widget per area, centrati */}
+        {/* Sezioni per area su una griglia a 5 colonne: un'area occupa tante colonne quante le sue tessere, così due aree piccole stanno sulla stessa riga */}
         <section className="dash" aria-label="I tuoi strumenti">
-          {modules.loading && <div className="widgets" aria-busy="true">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="widget" style={{ cursor: 'default' }}><Skeleton block /></div>)}</div>}
+          {modules.loading && <div className="tiles" aria-busy="true">{Array.from({ length: 10 }).map((_, i) => <div key={i} className="widget" style={{ cursor: 'default' }}><Skeleton block /></div>)}</div>}
           {modules.error && <Empty icon="alert" title="Impossibile caricare i moduli">{modules.error.message}</Empty>}
-          {modules.data?.areas?.map((a) => (
-            <section key={a.key} className="area" style={{ '--area': areaColor(a.key, a.color) }} aria-label={a.name}>
-              <div className="area-title"><i /><h2>{a.name}</h2><i /></div>
-              <div className="widgets">
-                {a.modules.map((m) => <Widget key={m.key} module={m} areaColor={areaColor(a.key, a.color)} areaKey={a.key} counter={counters?.[m.key]} countersLoading={countersLoading} profileLabel={profileLabels[`${m.key}:${m.profile}`]} />)}
-              </div>
-            </section>
-          ))}
+          {modules.data?.areas?.map((a) => {
+            const color = areaColor(a.key, a.color);
+            const live = a.modules.reduce((n, m) => n + (Number(counters?.[m.key]?.value) > 0 ? 1 : 0), 0);
+            return (
+              <section key={a.key} className="area" style={{ '--area': color, '--n': Math.min(a.modules.length, 5) }} aria-label={a.name}>
+                <div className="area-head"><i /><h2>{a.name}</h2><span className="meta">{a.modules.length} {a.modules.length === 1 ? 'strumento' : 'strumenti'}{live ? ` · ${live} con novità` : ''}</span></div>
+                <div className="tiles">
+                  {a.modules.map((m) => <Widget key={m.key} module={m} areaColor={color} areaKey={a.key} counter={counters?.[m.key]} countersLoading={countersLoading} profileLabel={profileLabels[`${m.key}:${m.profile}`]} />)}
+                </div>
+              </section>
+            );
+          })}
           {modules.data && !modules.data.areas?.length && <Empty icon="grid" title="Nessun modulo assegnato">Il tuo profilo non ha ancora widget attivi. L'amministrazione può abilitarli dalla sezione Utenti.</Empty>}
         </section>
 
-        {/* Community: tre colonne */}
-        <div className="section-title center"><Icon name="comment" /><h2>Community</h2><span className="sub">La vita della rete, oggi</span></div>
-        <div className="community3">
-          <div className="col">
-            <Board limit={6} initialPosts={home.data && Array.isArray(h.posts) ? h.posts : undefined} />
-            <div className="row end"><Link to="/community" className="btn ghost">Apri la bacheca completa<Icon name="arrowRight" /></Link></div>
-          </div>
-          <div className="col">
-            <CircolariCard rows={h.circolari_da_leggere} loading={home.loading} unavailable={home.unavailable} />
-            <NewsCard rows={h.news} loading={home.loading} unavailable={home.unavailable} />
-            <CalendarCard rows={h.events} loading={home.loading} unavailable={home.unavailable} />
-            <PeopleQuick />
-          </div>
-          <div className="col">
+        {/* Community: griglia ordinata a 12 colonne. Bacheca a sinistra su due righe; a destra Circolari, Calendario, News, Meteo;
+            terza riga Frase del giorno, Rubrica, Compleanni, Cartella personale */}
+        <div className="section-title"><Icon name="comment" /><h2>Community</h2><span className="sub">La vita della rete, oggi</span><div className="spacer" /><Link to="/community" className="btn ghost sm">Apri la bacheca<Icon name="arrowRight" /></Link></div>
+        <div className="community-grid">
+          <div className="cg cg-3"><CircolariCard rows={h.circolari_da_leggere} loading={home.loading} unavailable={home.unavailable} /></div>
+          <div className="cg cg-3"><CalendarCard rows={h.events} loading={home.loading} unavailable={home.unavailable} /></div>
+          <div className="cg cg-3"><NewsCard rows={h.news} loading={home.loading} unavailable={home.unavailable} /></div>
+          <div className="cg cg-3"><WeatherCard data={weather} loading={home.loading} unavailable={home.unavailable} siteName={weatherSite} /></div>
+          <div className="cg cg-8"><Board limit={5} initialPosts={home.data && Array.isArray(h.posts) ? h.posts : undefined} /></div>
+          <div className="cg cg-4 cg-stack">
             <QuoteCard quote={h.quote} loading={home.loading} unavailable={home.unavailable} />
-            <WeatherCard data={weather} loading={home.loading} unavailable={home.unavailable} siteName={user.site_name} />
+            <PeopleQuick />
             <BirthdaysCard rows={h.birthdays} />
             <FilesCard />
           </div>

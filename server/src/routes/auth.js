@@ -1,3 +1,4 @@
+import { displayName, splitName } from '../lib/util.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
@@ -17,7 +18,7 @@ const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
 const regenerate = (req) => new Promise((res, rej) => req.session.regenerate((e) => (e ? rej(e) : res())));
 
 export const publicUser = (u) => u && ({
-  id: u.id, email: u.email, full_name: u.full_name, title: u.title, phone: u.phone, level: u.level, status: u.status,
+  id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name, last_name: u.last_name, title: u.title, phone: u.phone, level: u.level, status: u.status,
   auth_provider: u.auth_provider, must_change_password: u.must_change_password, totp_enabled: u.totp_enabled, lang: u.lang,
   organization_id: u.organization_id, organization_name: u.organization_name, site_id: u.site_id, site_name: u.site_name, site_code: u.site_code,
   person_id: u.person_id, person_area: u.person_area, person_job_title: u.person_job_title, avatar_file_id: u.avatar_file_id, bio: u.bio,
@@ -185,17 +186,24 @@ r.get('/entra/callback', ah(async (req, res) => {
     const domain = claims.email.split('@')[1];
     const internal = config.autoInternalDomains.includes(domain);
     const td = internal ? await one(`SELECT id FROM organizations WHERE code='TD'`) : null;
-    const person = await one('SELECT id, site_id FROM people WHERE lower(email)=$1 ORDER BY status=\'ATTIVO\' DESC LIMIT 1', [claims.email]);
+    const person = await one('SELECT id, site_id, first_name, last_name FROM people WHERE lower(email)=$1 ORDER BY status=\'ATTIVO\' DESC LIMIT 1', [claims.email]);
+    const nm = person ? { first_name: person.first_name, last_name: person.last_name } : claims.family_name ? { first_name: claims.given_name || '', last_name: claims.family_name } : splitName(claims.name);
     u = await one(
-      `INSERT INTO users (email, full_name, level, status, auth_provider, organization_id, person_id, site_id, entra_tid, entra_oid)
-       VALUES ($1,$2,'USER',$3,'ENTRA',$4,$5,$6,$7,$8) RETURNING *`,
-      [claims.email, claims.name, internal ? 'ACTIVE' : 'PENDING', td?.id || null, person?.id || null, person?.site_id || null, claims.tid, claims.oid]);
+      `INSERT INTO users (email, full_name, first_name, last_name, level, status, auth_provider, organization_id, person_id, site_id, entra_tid, entra_oid)
+       VALUES ($1,$2,$3,$4,'USER',$5,'ENTRA',$6,$7,$8,$9,$10) RETURNING *`,
+      [claims.email, displayName(nm.last_name, nm.first_name) || claims.name, nm.first_name, nm.last_name, internal ? 'ACTIVE' : 'PENDING', td?.id || null, person?.id || null, person?.site_id || null, claims.tid, claims.oid]);
     await audit({ user: u, ip: req.ip }, 'USER_SELF_REGISTERED', { entity: 'user', entityId: u.id, label: `${u.email} (${u.status})` });
   } else {
     if (u.status === 'DISABLED') return fail(`Account ${claims.email} disabilitato. Contatta l'amministratore.`);
     if (u.auth_provider === 'LOCAL') await q(`UPDATE users SET auth_provider='BOTH' WHERE id=$1`, [u.id]);
     if (config.seed.ownerEmail && claims.email === config.seed.ownerEmail && u.level !== 'OWNER') await q(`UPDATE users SET level='OWNER', status='ACTIVE' WHERE id=$1`, [u.id]);
-    await q('UPDATE users SET entra_oid=coalesce(entra_oid,$2), entra_tid=coalesce(entra_tid,$3), full_name = CASE WHEN full_name = email THEN $4 ELSE full_name END WHERE id=$1', [u.id, claims.oid, claims.tid, claims.name]);
+    // nomi mancanti (utente creato dall'email): dai claim Entra, in forma Cognome Nome
+    const nm = claims.family_name ? { first_name: claims.given_name || '', last_name: claims.family_name } : splitName(claims.name);
+    await q(`UPDATE users SET entra_oid=coalesce(entra_oid,$2), entra_tid=coalesce(entra_tid,$3),
+             first_name = CASE WHEN coalesce(first_name,'')='' AND coalesce(last_name,'')='' THEN $4 ELSE first_name END,
+             last_name  = CASE WHEN coalesce(first_name,'')='' AND coalesce(last_name,'')='' THEN $5 ELSE last_name END,
+             full_name  = CASE WHEN coalesce(first_name,'')='' AND coalesce(last_name,'')='' THEN coalesce(nullif($6,''), full_name) ELSE full_name END WHERE id=$1`,
+      [u.id, claims.oid, claims.tid, nm.first_name, nm.last_name, displayName(nm.last_name, nm.first_name)]);
   }
   await finishLogin(req, u, 'ENTRA');
   res.redirect(o.next || '/');
