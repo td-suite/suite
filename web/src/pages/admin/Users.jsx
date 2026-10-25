@@ -220,7 +220,8 @@ export function UserDetail() {
                   <Field label="Email" required><input type="email" value={f.email} onChange={set('email')} required disabled={!owner} /></Field>
                   {u?.person_id ? (
                     <div className="person-facts">
-                      <div className="row tight" style={{ justifyContent: 'space-between' }}><span className="small strong">Dalla scheda persona</span><Link to={`/people/${u.person_id}`} className="small">Apri in Rubrica</Link></div>
+                      <div className="row tight" style={{ justifyContent: 'space-between' }}><span className="small strong">Dalla scheda persona n. {u.person_id}</span><Link to={`/people/${u.person_id}`} className="small">Apri in Rubrica</Link></div>
+                      {u.person_suggested && <div className="alert warn small"><Icon name="alert" /><span>Esiste un'altra scheda con questa email ({u.person_suggested.last_name} {u.person_suggested.first_name}, n. {u.person_suggested.id}). <button className="linklike" onClick={async () => { await api.put(`/users/${u.id}`, { person_id: u.person_suggested.id }); toast('Collegato'); detail.reload(); }}>Collega a quella</button></span></div>}
                       <dl className="facts">
                         <dt>Cognome e nome</dt><dd>{u.last_name} {u.first_name}{u.person_title ? ` (${u.person_title})` : ''}</dd>
                         <dt>Sede</dt><dd>{u.site_code ? `${u.site_code} · ${u.site_name}` : <span className="muted">Nessuna</span>}</dd>

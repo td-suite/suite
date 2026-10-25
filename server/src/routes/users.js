@@ -88,7 +88,12 @@ r.get('/users/:id', requireAdmin, ah(async (req, res) => {
       coalesce(json_agg(json_build_object('type', gs.scope_type, 'id', gs.scope_id)) FILTER (WHERE gs.grant_id IS NOT NULL), '[]') AS scopes
     FROM grants g JOIN modules m ON m.key=g.module_key LEFT JOIN grant_scopes gs ON gs.grant_id=g.id WHERE g.user_id=$1 GROUP BY g.id, m.name, m.area, m.restricted, m.scope_type, m.sort_order ORDER BY m.area, m.sort_order`, [u.id]);
   const audit_ = await many(`SELECT at, action, label, data FROM audit_log WHERE (entity='user' AND entity_id=$1) OR user_id=$2 ORDER BY at DESC LIMIT 30`, [String(u.id), u.id]);
-  res.json({ user: { ...publicUser(u), legacy_refs: u.legacy_refs, entra_oid: u.entra_oid, last_login_at: u.last_login_at, created_at: u.created_at }, grants, audit: audit_ });
+  // dati della persona collegata (anagrafica unica): publicUser li filtra per la sessione, qui servono tutti
+  const person = { person_kind: u.person_kind, person_title: u.person_title, person_phone: u.person_phone, person_phone_office: u.person_phone_office, person_phone_ext: u.person_phone_ext, person_role: u.person_role, person_unit: u.person_unit, person_unit_path: u.person_unit_path };
+  // controllo del collegamento: esiste una persona con la stessa email diversa da quella collegata?
+  const byEmail = await one('SELECT id, last_name, first_name FROM people WHERE lower(email)=lower($1) ORDER BY id LIMIT 1', [u.email]);
+  const person_suggested = byEmail && byEmail.id !== u.person_id ? byEmail : null;
+  res.json({ user: { ...publicUser(u), ...person, person_suggested, legacy_refs: u.legacy_refs, entra_oid: u.entra_oid, last_login_at: u.last_login_at, created_at: u.created_at }, grants, audit: audit_ });
 }));
 
 // ---- creazione: l'amministratore crea l'utente e, nello stesso passaggio, i grant per widget
