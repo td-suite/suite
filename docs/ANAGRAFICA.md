@@ -69,3 +69,10 @@ Ogni utente è una persona dell'anagrafica. Catena: proposta in Contratti del pe
 altri), con proposte di grant dall'area organizzativa da confermare in Amministrazione > Utenti. "Nuovo utente" sceglie una persona;
 il file Utenti accetta solo email presenti in Persone; `POST /api/people/:id/account` crea l'accesso a mano. Gli esterni che
 entrano nella Suite (referenti dei clienti service, investitori) sono persone di tipo ESTERNO collegate alla loro organizzazione.
+
+## Organizzazione delle persone (25/10/2026)
+Niente "area" libera. Una persona ha: Sede (public.sites), Reparto (public.org_units, dipende dalla sede: Preanalitica, Core Lab, Accettazione...),
+Ruolo (public.job_roles, catalogo), Responsabile (manager_person_id). L'organigramma si compone da questi. Ruolo e reparto si scelgono
+da tendine; i file XLSX creano nel catalogo i ruoli e i reparti nuovi. Amministrazione > Organizzazione governa ruoli e reparti.
+Orari delle sedi strutturati per giorno (`sites.opening_hours_json`, due fasce, copia agli altri giorni) con testo riassuntivo in `opening_hours`.
+Elenchi di sedi, organizzazioni, persone e utenti sempre in ordine alfabetico.

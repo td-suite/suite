@@ -92,22 +92,23 @@ function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
   const locked = !canAssign;
   const toggle = (v) => { if (locked) return; onChange(v ? { profile: m.profiles?.[0]?.key || 'VIEWER', scopes: [] } : null); };
   return (
-    <div className={`grant-row ${on ? '' : 'off'} ${grant?.proposed ? 'proposed' : ''} ${locked ? 'tip' : ''}`} data-tip={locked ? 'Assegnabile solo dal titolare' : undefined}>
+    <div className={`grant-row ${on ? '' : 'off'} ${grant?.proposed ? 'proposed' : ''} ${locked ? 'tip' : ''}`} data-tip={locked ? 'Assegnabile solo dal titolare' : undefined} role="row">
       <div className="wi" style={{ color: AREA_COLORS[m.area] || 'var(--teal)' }}><Icon name={m.icon} /></div>
-      <div style={{ minWidth: 0 }}>
-        <div className="nm">{m.restricted && <Icon name="lock" title="Modulo riservato" />}{m.name}{grant?.proposed && <Badge tone="mauve">Proposta</Badge>}{grant?.source && grant.source !== 'MANUAL' && <span className="tiny faint">da {grant.source}</span>}</div>
+      <div className="mod" style={{ minWidth: 0 }}>
+        <div className="nm">{m.restricted && <Icon name="lock" title="Modulo riservato" />}{m.name}{grant?.proposed && <Badge tone="mauve">Proposta</Badge>}</div>
         <div className="tg">{m.tagline}</div>
       </div>
-      <div className="row tight prof-sel" style={{ flexWrap: 'nowrap' }}>
-        <Switch checked={on} onChange={toggle} disabled={locked} label={`Abilita ${m.name}`} />
-        {on && <select value={grant.profile} disabled={locked} onChange={(e) => onChange({ ...grant, profile: e.target.value, scopes: m.profiles?.find((p) => p.key === e.target.value)?.scoped ? grant.scopes : [] })} aria-label={`Profilo ${m.name}`} style={{ minHeight: 34, padding: '4px 8px', fontSize: 13 }}>
+      <div className="sw"><Switch checked={on} onChange={toggle} disabled={locked} label={`Abilita ${m.name}`} /></div>
+      <div className="pr">
+        {on ? <select value={grant.profile} disabled={locked} onChange={(e) => onChange({ ...grant, profile: e.target.value, scopes: m.profiles?.find((p) => p.key === e.target.value)?.scoped ? grant.scopes : [] })} aria-label={`Profilo ${m.name}`}>
           {(m.profiles || []).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </select>}
+        </select> : <span className="faint small">Nessun accesso</span>}
       </div>
       <div className="sc">
-        {on && scoped && <div style={{ flex: 1, minWidth: 180 }}><MultiSelect value={ids} onChange={(nids) => onChange({ ...grant, scopes: nids.map((id) => ({ type: scopeType, id })) })} options={options || []} placeholder={scopeType === 'ORG' ? 'Aggiungi organizzazione' : 'Aggiungi sede'} labelOf={(o) => (o.code ? `${o.code} · ${o.name}` : o.name)} />{!ids.length && <div className="tiny amber mt" style={{ marginTop: 4 }}>Questo profilo richiede almeno un ambito.</div>}</div>}
-        {on && !scoped && <span className="tiny faint">{m.kind === 'LEGACY' ? 'Accesso a tutta l\'app' : 'Accesso completo'}</span>}
-        {grant?.proposed && !locked && <><button className="btn sm mauve" onClick={() => onChange({ ...grant, confirm: true })}><Icon name="check" />Conferma</button><button className="btn sm ghost" onClick={() => onChange(null)}>Rimuovi</button></>}
+        {on && scoped && <MultiSelect value={ids} onChange={(nids) => onChange({ ...grant, scopes: nids.map((id) => ({ type: scopeType, id })) })} options={options || []} placeholder={scopeType === 'ORG' ? 'Aggiungi organizzazione' : 'Aggiungi sede'} labelOf={(o) => (o.code ? `${o.code} · ${o.name}` : o.name)} />}
+        {on && scoped && !ids.length && <div className="tiny amber" style={{ marginTop: 4 }}>Questo profilo richiede almeno una sede.</div>}
+        {on && !scoped && <span className="small muted">Tutte le sedi</span>}
+        {grant?.proposed && !locked && <div className="row tight" style={{ marginTop: 6 }}><button className="btn sm mauve" onClick={() => onChange({ ...grant, confirm: true })}><Icon name="check" />Conferma</button><button className="btn sm ghost" onClick={() => onChange(null)}>Rimuovi</button></div>}
       </div>
     </div>
   );
@@ -252,9 +253,10 @@ export function UserDetail() {
         <div className="col">
           <Card title="Accesso ai widget" icon="grid" flush actions={<>{proposedCount > 0 && !isNew && <button className="btn sm mauve" onClick={confirmAll}><Icon name="check" />Conferma tutte le proposte ({proposedCount})</button>}{isNew && <span className="small muted">I moduli verranno assegnati alla creazione</span>}</>}>
             {mods.loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
+            {!mods.loading && <div className="grant-row head" role="row"><div /><div className="small muted">Modulo</div><div className="small muted">Attivo</div><div className="small muted">Profilo</div><div className="small muted">Sedi</div></div>}
             {byArea.map(([area, list]) => (
               <div key={area}>
-                <div className="area-title" style={{ '--area': AREA_COLORS[area], padding: '12px 14px 4px' }}><i /><h2>{AREA_NAMES[area] || area}</h2></div>
+                <div className="grant-area" style={{ '--area': AREA_COLORS[area] }}><i /><h2>{AREA_NAMES[area] || area}</h2></div>
                 {list.map((m) => <GrantRow key={m.key} module={m} grant={grants[m.key]} sites={sites.data} orgs={orgs.data} canAssign={!m.restricted || owner} onChange={(g) => changeGrant(m, g)} />)}
               </div>
             ))}

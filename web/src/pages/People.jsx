@@ -18,7 +18,7 @@ function PersonCard({ p }) {
       <div style={{ minWidth: 0, flex: 1 }}>
         <div className="n">{fullName(p)}</div>
         <div className="r">{[p.job_title, p.discipline].filter(Boolean).join(' · ') || PERSON_KIND[p.kind] || ''}</div>
-        <div className="s">{p.area && <Badge tone="mauve">{p.area}</Badge>}{p.site_name && <span><Icon name="pin" style={{ width: 12, height: 12, marginRight: 3 }} />{p.site_name}</span>}</div>
+        <div className="s">{p.unit_name && <Badge tone="mauve">{p.unit_name}</Badge>}{p.site_name && <span><Icon name="pin" style={{ width: 12, height: 12, marginRight: 3 }} />{p.site_name}</span>}</div>
         <div className="c">
           {p.email && <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()}><Icon name="mail" />Email</a>}
           {p.phone_ext && <a href={`tel:055776511`} title={`Centralino 055 776511, interno ${p.phone_ext}`} onClick={(e) => e.stopPropagation()}><Icon name="phone" />Int. {p.phone_ext}</a>}
@@ -48,19 +48,19 @@ function List() {
   const [sp, setSp] = useSearchParams();
   const qtext = sp.get('qtext') || '';
   const [q, setQ] = useState(qtext);
-  const area = sp.get('area') || '', kind = sp.get('kind') || '', site_id = sp.get('site_id') || '';
+  const role_id = sp.get('role_id') || '', kind = sp.get('kind') || '', site_id = sp.get('site_id') || '';
   useEffect(() => setQ(qtext), [qtext]);
   useEffect(() => { const t = setTimeout(() => { if (q !== qtext) setSp((s) => { const n = new URLSearchParams(s); if (q) n.set('qtext', q); else n.delete('qtext'); return n; }, { replace: true }); }, 300); return () => clearTimeout(t); }, [q, qtext, setSp]);
   const setF = (k, v) => setSp((s) => { const n = new URLSearchParams(s); if (v) n.set(k, v); else n.delete(k); return n; });
-  const { data, loading, error } = useApi(`/people${qs({ qtext, area, kind, site_id })}`, [qtext, area, kind, site_id]);
-  const areas = useApi('/people/areas');
+  const { data, loading, error } = useApi(`/people${qs({ qtext, role_id, kind, site_id })}`, [qtext, role_id, kind, site_id]);
+  const roles = useApi('/job-roles');
   const sites = useApi('/sites');
   return (
     <div className="page">
       <PageHead title="Rubrica" icon="rubrica" sub="Chi fa cosa nella rete Toscana Diagnostica" />
       <div className="filters">
-        <SearchInput value={q} onChange={setQ} placeholder="Cerca per nome, ruolo, area o email" autoFocus />
-        <Field label="Area"><select value={area} onChange={(e) => setF('area', e.target.value)}><option value="">Tutte</option>{(areas.data || []).map((a) => <option key={a.area} value={a.area}>{a.area} ({a.n})</option>)}</select></Field>
+        <SearchInput value={q} onChange={setQ} placeholder="Cerca per nome, ruolo o email" autoFocus />
+        <Field label="Ruolo"><select value={role_id} onChange={(e) => setF('role_id', e.target.value)}><option value="">Tutti</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}{r.people_count ? ` (${r.people_count})` : ''}</option>)}</select></Field>
         <Field label="Sede"><select value={site_id} onChange={(e) => setF('site_id', e.target.value)}><option value="">Tutte</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <Field label="Tipo"><select value={kind} onChange={(e) => setF('kind', e.target.value)}><option value="">Tutti</option>{Object.entries(PERSON_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
       </div>
@@ -75,14 +75,16 @@ function List() {
 
 function EditPersonModal({ p, onClose, onSaved }) {
   const toast = useToast();
-  const [f, setF] = useState({ job_title: p.job_title || '', area: p.area || '', phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
+  const roles = useApi('/job-roles');
+  const units = useApi(p.site_id ? `/org-units?site_id=${p.site_id}` : null, [p.site_id]);
+  const [f, setF] = useState({ role_id: p.role_id || '', unit_id: p.unit_id || '', phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const save = async (e) => { e.preventDefault(); try { await api.put(`/people/${p.id}`, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v || null]))); toast('Scheda aggiornata'); onSaved(); onClose(); } catch (e2) { toast(e2, 'err'); } };
+  const save = async (e) => { e.preventDefault(); try { await api.put(`/people/${p.id}`, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (k === 'role_id' || k === 'unit_id') ? (v ? Number(v) : null) : (v || null)]))); toast('Scheda aggiornata'); onSaved(); onClose(); } catch (e2) { toast(e2, 'err'); } };
   return (
     <Modal title="Aggiorna la scheda" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="pform">Salva</button></>}>
       <form id="pform" onSubmit={save} className="form-grid">
-        <Field label="Ruolo"><input value={f.job_title} onChange={set('job_title')} /></Field>
-        <Field label="Area"><input value={f.area} onChange={set('area')} /></Field>
+        <Field label="Ruolo"><select value={f.role_id || ''} onChange={set('role_id')}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+        <Field label="Reparto" help={p.site_id ? undefined : 'Imposta prima la sede in Amministrazione'}><select value={f.unit_id || ''} onChange={set('unit_id')} disabled={!p.site_id}><option value="">Nessuno</option>{(units.data || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
         <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} /></Field>
@@ -111,7 +113,7 @@ function Detail() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1>{fullName(p)}</h1>
             <div className="role">{[p.job_title, p.discipline].filter(Boolean).join(' · ') || PERSON_KIND[p.kind]}</div>
-            <div className="row tight mt">{p.area && <Badge tone="mauve">{p.area}</Badge>}{p.kind && <Badge tone="grey">{PERSON_KIND[p.kind]}</Badge>}{p.site_name && <Badge tone="blue">{p.site_name}{p.site_city && !p.site_name.includes(p.site_city) ? ` · ${p.site_city}` : ''}</Badge>}{p.organization_name && <Badge tone="grey">{p.organization_name}</Badge>}</div>
+            <div className="row tight mt">{p.kind && <Badge tone="grey">{PERSON_KIND[p.kind]}</Badge>}{p.site_name && <Badge tone="blue">{p.site_name}{p.site_city && !p.site_name.includes(p.site_city) ? ` · ${p.site_city}` : ''}</Badge>}{p.organization_name && <Badge tone="grey">{p.organization_name}</Badge>}</div>
           </div>
           <div className="row tight">
             {p.email && <a className="btn" href={teamsUrl(p.email)} target="_blank" rel="noopener noreferrer"><Icon name="teams" />Scrivi su Teams</a>}
@@ -151,7 +153,7 @@ function Detail() {
 function Node({ p, children }) {
   return (
     <li>
-      <Link to={`/people/${p.id}`} className="node"><Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{p.last_name} {p.first_name}</div><div className="r ellipsis">{p.job_title || p.area || ''}</div></div></Link>
+      <Link to={`/people/${p.id}`} className="node"><Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{p.last_name} {p.first_name}</div><div className="r ellipsis">{p.job_title || ''}</div></div></Link>
       {children?.length > 0 && <ul>{children.map((c) => <Node key={c.p.id} p={c.p}>{c.children}</Node>)}</ul>}
     </li>
   );
@@ -165,6 +167,7 @@ function OrgChart() {
     const ids = new Set(rows.map((r) => r.id));
     const byMgr = {};
     for (const r of rows) { const k = r.manager_person_id && ids.has(r.manager_person_id) ? r.manager_person_id : 'root'; (byMgr[k] ||= []).push(r); }
+    const coll = new Intl.Collator('it'); for (const k of Object.keys(byMgr)) byMgr[k].sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`));
     const build = (p, depth = 0) => ({ p, children: depth > 8 ? [] : (byMgr[p.id] || []).map((c) => build(c, depth + 1)) });
     return (byMgr.root || []).map((r) => build(r));
   }, [data]);
@@ -181,18 +184,18 @@ function OrgChart() {
   );
 }
 
-function Areas() {
-  const { data, loading, error } = useApi('/people/areas');
+function Roles() {
+  const { data, loading, error } = useApi('/job-roles');
   const navigate = useNavigate();
   return (
     <div className="page">
-      <PageHead title="Aree" icon="grid" sub="Le aree organizzative e quante persone ne fanno parte" />
+      <PageHead title="Ruoli" icon="grid" sub="I ruoli della rete e quante persone li ricoprono" />
       <ErrorBox error={error} />
       {loading && <Skeleton lines={3} />}
-      {data && !data.length && <Empty icon="grid" title="Nessuna area definita" />}
-      <div className="grid g4">{(data || []).map((a) => (
-        <button key={a.area} type="button" className="card kpi" style={{ textAlign: 'left', cursor: 'pointer', border: '1px solid var(--line)' }} onClick={() => navigate(`/people?area=${encodeURIComponent(a.area)}`)}>
-          <div className="lbl">{a.area}</div><div className="val">{a.n}<small>person{a.n === 1 ? 'a' : 'e'}</small></div>
+      {data && !data.length && <Empty icon="grid" title="Nessun ruolo definito" />}
+      <div className="grid g4">{(data || []).filter((r) => r.people_count).map((r) => (
+        <button key={r.id} type="button" className="card kpi" style={{ textAlign: 'left', cursor: 'pointer', border: '1px solid var(--line)' }} onClick={() => navigate(`/people?role_id=${r.id}`)}>
+          <div className="lbl">{r.name}</div><div className="val">{r.people_count}<small>person{r.people_count === 1 ? 'a' : 'e'}</small></div>
         </button>
       ))}</div>
     </div>
@@ -204,7 +207,7 @@ export default function People() {
     <Routes>
       <Route index element={<List />} />
       <Route path="org-chart" element={<OrgChart />} />
-      <Route path="areas" element={<Areas />} />
+      <Route path="ruoli" element={<Roles />} />
       <Route path=":id" element={<Detail />} />
     </Routes>
   );

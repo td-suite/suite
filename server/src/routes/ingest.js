@@ -64,7 +64,7 @@ export const ROW_SCHEMAS = {
   people: z.object({
     last_name: str(80).min(1), first_name: str(80).min(1), email, tax_code: opt(str(16)), kind: opt(z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'])),
     status: opt(z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'])), area: opt(str(160)), job_title: opt(str(200)), discipline: opt(str(160)), title: opt(str(20)),
-    site_code: opt(str(40)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
+    site_code: opt(str(40)), unit: opt(str(160)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
   }),
   sites: z.object({
     code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
@@ -109,18 +109,24 @@ export const APPLIERS = {
     if (!ex && row.external_id) ex = (await c.query(`SELECT id FROM people WHERE legacy_refs->>$1 = $2`, [`ingest:${k.source}`, row.external_id])).rows[0];
     // senza email né codice fiscale: stessa persona = stesso cognome e nome (accenti e maiuscole ignorati); gli omonimi vanno distinti con email o CF
     if (!ex) ex = (await c.query(`SELECT id FROM people WHERE lower(unaccent(last_name))=lower(unaccent($1)) AND lower(unaccent(first_name))=lower(unaccent($2)) AND ($3::text IS NULL OR email IS NULL OR lower(email)=$3) AND ($4::text IS NULL OR tax_code IS NULL OR upper(tax_code)=$4) ORDER BY id LIMIT 1`, [row.last_name, row.first_name, row.email || null, cf])).rows[0];
+    // ruolo dal catalogo (creato se manca: il caricamento iniziale popola il catalogo, poi si governa da Amministrazione)
+    let roleId = null;
+    if (row.job_title) { const ex0 = (await c.query('SELECT id, name FROM job_roles WHERE lower(name)=lower($1)', [row.job_title.trim()])).rows[0]; const r0 = ex0 || (await c.query('INSERT INTO job_roles (name) VALUES ($1) RETURNING id, name', [row.job_title.trim()])).rows[0]; roleId = r0.id; row.job_title = r0.name; }
+    // reparto: dipende dalla sede; creato se manca
+    let unitId = null;
+    if (row.unit) { const sid = site?.id || k.site_id; if (!sid) throw new Error(`reparto "${row.unit}" indicato senza sede`); const exu = (await c.query('SELECT id FROM org_units WHERE site_id=$1 AND lower(name)=lower($2)', [sid, row.unit.trim()])).rows[0]; unitId = (exu || (await c.query('INSERT INTO org_units (site_id, name) VALUES ($1,$2) RETURNING id', [sid, row.unit.trim()])).rows[0]).id; }
     const manager = row.manager_email ? (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.manager_email])).rows[0] : null;
     if (row.manager_email && !manager) throw new Error(`responsabile ${row.manager_email} non trovato: caricalo prima (o nella stessa lista, più in alto)`);
     const vals = [row.last_name, row.first_name, row.email || null, cf, row.kind || null, row.status || null, row.area || null, row.job_title || null, row.discipline || null, row.title || null,
-      site?.id || k.site_id || null, row.phone || null, row.phone_office || null, row.hired_at || null, row.terminated_at || null, refs(k, row), row.phone_ext || null, manager?.id || null];
+      site?.id || k.site_id || null, row.phone || null, row.phone_office || null, row.hired_at || null, row.terminated_at || null, refs(k, row), row.phone_ext || null, manager?.id || null, roleId, unitId];
     if (ex) {
       await c.query(`UPDATE people SET last_name=$2, first_name=$3, email=coalesce($4,email), tax_code=coalesce($5,tax_code), kind=coalesce($6,kind), status=coalesce($7,status), area=coalesce($8,area),
         job_title=coalesce($9,job_title), discipline=coalesce($10,discipline), title=coalesce($11,title), site_id=coalesce($12,site_id), phone=coalesce($13,phone), phone_office=coalesce($14,phone_office),
-        hired_at=coalesce($15,hired_at), terminated_at=coalesce($16,terminated_at), legacy_refs=legacy_refs || $17::jsonb, phone_ext=coalesce($18,phone_ext), manager_person_id=coalesce($19,manager_person_id), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
+        hired_at=coalesce($15,hired_at), terminated_at=coalesce($16,terminated_at), legacy_refs=legacy_refs || $17::jsonb, phone_ext=coalesce($18,phone_ext), manager_person_id=coalesce($19,manager_person_id), role_id=coalesce($20,role_id), unit_id=coalesce($21,unit_id), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       return { id: ex.id, action: 'aggiornata' };
     }
-    const ins = await c.query(`INSERT INTO people (last_name, first_name, email, tax_code, kind, status, area, job_title, discipline, title, site_id, phone, phone_office, hired_at, terminated_at, legacy_refs, phone_ext, manager_person_id)
-      VALUES ($1,$2,$3,$4,coalesce($5,'DIPENDENTE'),coalesce($6,'ATTIVO'),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`, vals);
+    const ins = await c.query(`INSERT INTO people (last_name, first_name, email, tax_code, kind, status, area, job_title, discipline, title, site_id, phone, phone_office, hired_at, terminated_at, legacy_refs, phone_ext, manager_person_id, role_id, unit_id)
+      VALUES ($1,$2,$3,$4,coalesce($5,'DIPENDENTE'),coalesce($6,'ATTIVO'),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`, vals);
     // l'utente con la stessa email (se già esiste, es. il titolare) viene agganciato alla persona
     if (row.email) await c.query(`UPDATE users SET person_id=$1, site_id=coalesce(site_id,$3), first_name=$4, last_name=$5, full_name=$6, updated_at=now() WHERE lower(email)=$2 AND person_id IS NULL`, [ins.rows[0].id, row.email, site?.id || null, row.first_name, row.last_name, `${row.last_name} ${row.first_name}`]);
     return { id: ins.rows[0].id, action: 'creata' };

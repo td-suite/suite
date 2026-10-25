@@ -62,15 +62,15 @@ const DATASETS = {
       ['tax_code', 'Codice fiscale', 'Usato per riconoscere la persona se già presente.'],
       ['kind', 'Tipo', `Uno tra: ${PERSON_KINDS.join(', ')}. Predefinito DIPENDENTE. MEDICO e SANITARIO sono i professionisti di Room Planning.`],
       ['status', 'Stato', `Uno tra: ${PERSON_STATUS.join(', ')}. Predefinito ATTIVO.`],
-      ['area', 'Area organizzativa', 'Es. Direzione Generale, Lab Operations Management, Retail. Compare nella Rubrica e nell\'organigramma.'],
-      ['job_title', 'Ruolo', 'Mansione o incarico, breve (es. Site Manager, Tecnico di laboratorio biomedico).'],
+      ['job_title', 'Ruolo', 'Dal catalogo Ruoli (Amministrazione > Organizzazione): un ruolo nuovo nel file viene aggiunto al catalogo. Breve: Site Manager, Tecnico di laboratorio biomedico.'],
       ['discipline', 'Disciplina', 'Per medici e professionisti: Ginecologia, Cardiologia...'],
       ['site_code', 'Codice sede', 'Sede di lavoro principale (foglio Sedi).'],
+      ['unit', 'Reparto', 'Reparto della sede (es. Preanalitica, Core Lab, Accettazione): un reparto nuovo viene creato nella sede. Richiede il codice sede.'],
       ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: basta che sia nel file (in qualsiasi riga) o già caricata.'],
       ['phone', 'Cellulare', ''], ['phone_office', 'Telefono ufficio', ''], ['phone_ext', 'Interno centralino', 'Es. 101.'],
       ['hired_at', 'Data di assunzione', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
     ],
-    example: ['Esempio', 'Mario', 'Dott.', 'mario.esempio@esempio.it', '', 'DIPENDENTE', 'ATTIVO', 'Area di esempio', 'Ruolo di esempio', '', 'ES-01', '', '000 0000000', '000 0000000', '100', '2026-01-01', ''],
+    example: ['Esempio', 'Mario', 'Dott.', 'mario.esempio@esempio.it', '', 'DIPENDENTE', 'ATTIVO', 'Ruolo di esempio', '', 'ES-01', 'Reparto di esempio', '', '000 0000000', '000 0000000', '100', '2026-01-01', ''],
   },
   users: {
     title: 'Utenti e profili', sheet: 'Utenti', order: 4,
@@ -209,14 +209,15 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   if (!ws) throw bad('Foglio dati assente');
   const headers = []; ws.getRow(1).eachCell((c, i) => { headers[i] = String(cellText(c.value) || '').trim(); });
   const known = new Set(d.columns.map(([k]) => k));
-  const unknown = headers.filter(Boolean).filter((h) => !known.has(h));
+  const IGNORED = new Set(['area', 'last_name_user', 'first_name_user']);   // colonne di modelli precedenti: ignorate
+  const unknown = headers.filter(Boolean).filter((h) => !known.has(h) && !IGNORED.has(h));
   if (unknown.length) throw bad(`Colonne non riconosciute: ${unknown.join(', ')}. Usa le intestazioni del modello.`);
   const rows = [];
   ws.eachRow((row, n) => {
     if (n === 1) return;
     const obj = {}; let empty = true;
     row.eachCell({ includeEmpty: false }, (c, i) => {
-      const k = headers[i]; if (!k) return;
+      const k = headers[i]; if (!k || !known.has(k)) return;
       let v = cellText(c.value); if (v != null) v = v.trim();
       if (v === '' || v == null) return;
       empty = false;

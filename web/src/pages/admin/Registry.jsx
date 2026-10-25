@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../../api.js';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs, ConfirmModal } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
-import { SITE_KIND, ORG_KIND, PERSON_KIND } from '../../format.js';
+import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
 
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
 export function LegacyRefs({ refs }) {
@@ -14,14 +14,42 @@ export function LegacyRefs({ refs }) {
 }
 
 // Modale generica di modifica (campi: {key,label,type,options,help})
+// Orari di apertura per giorno: fino a due fasce (mattina, pomeriggio); "copia agli altri giorni" dal lunedì
+const DAYS = [['mon', 'Lunedì'], ['tue', 'Martedì'], ['wed', 'Mercoledì'], ['thu', 'Giovedì'], ['fri', 'Venerdì'], ['sat', 'Sabato'], ['sun', 'Domenica']];
+function HoursEditor({ value, onChange }) {
+  const v = value || {};
+  const ranges = (d) => { const r = v[d] || []; return [r[0] || null, r[1] || null]; };
+  const setRange = (d, i, field, val) => {
+    const cur = ranges(d); const r = { ...(cur[i] || { from: '', to: '' }), [field]: val }; cur[i] = r;
+    const clean = cur.filter((x) => x && (x.from || x.to));
+    onChange({ ...v, [d]: clean });
+  };
+  const clearDay = (d) => { const n = { ...v }; delete n[d]; onChange(n); };
+  const copyToAll = (d) => { const src = v[d] || []; const n = { ...v }; for (const [k] of DAYS) if (k !== d && k !== 'sun') n[k] = src.map((x) => ({ ...x })); onChange(n); };
+  return (
+    <div className="hours-editor">
+      <div className="hd"><span>Giorno</span><span>Mattina</span><span>Pomeriggio</span><span /></div>
+      {DAYS.map(([d, label]) => { const [a, b] = ranges(d); const closed = !a && !b; return (
+        <div key={d} className={`row-day ${closed ? 'closed' : ''}`}>
+          <span className="dl">{label}</span>
+          <span className="rg"><input type="time" value={a?.from || ''} onChange={(e) => setRange(d, 0, 'from', e.target.value)} /><i>–</i><input type="time" value={a?.to || ''} onChange={(e) => setRange(d, 0, 'to', e.target.value)} /></span>
+          <span className="rg"><input type="time" value={b?.from || ''} onChange={(e) => setRange(d, 1, 'from', e.target.value)} /><i>–</i><input type="time" value={b?.to || ''} onChange={(e) => setRange(d, 1, 'to', e.target.value)} /></span>
+          <span className="ac">{closed ? <span className="tiny faint">Chiuso</span> : <><button type="button" className="link tiny" onClick={() => copyToAll(d)}>Copia agli altri giorni</button><button type="button" className="link tiny" onClick={() => clearDay(d)}>Chiuso</button></>}</span>
+        </div>
+      ); })}
+      <div className="tiny muted" style={{ marginTop: 6 }}>La domenica non riceve la copia automatica. Il testo riassuntivo per Rubrica e meteo viene composto da solo.</div>
+    </div>
+  );
+}
+
 function EditModal({ title, fields, item, onSave, onClose }) {
   const toast = useToast();
-  const [f, setF] = useState(() => Object.fromEntries(fields.map((x) => [x.key, item?.[x.key] ?? (x.type === 'bool' ? (x.default ?? true) : '')])));
+  const [f, setF] = useState(() => Object.fromEntries(fields.map((x) => [x.key, item?.[x.key] ?? (x.type === 'bool' ? (x.default ?? true) : x.type === 'hours' ? null : '')])));
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
     const body = {};
-    for (const x of fields) { const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : v === '' ? null : v; }
+    for (const x of fields) { const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : x.type === 'hours' ? (v && Object.values(v).some((r) => r?.length) ? Object.fromEntries(Object.entries(v).filter(([, r]) => r?.length).map(([d, r]) => [d, r.filter((x) => x.from && x.to)])) : null) : v === '' ? null : v; }
     try { await onSave(body); onClose(); } catch (e2) { toast(e2, 'err'); }
     setBusy(false);
   };
@@ -29,8 +57,9 @@ function EditModal({ title, fields, item, onSave, onClose }) {
     <Modal title={title} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="eform" disabled={busy}>Salva</button></>}>
       <form id="eform" onSubmit={save} className="form-grid">
         {fields.map((x) => (
-          <Field key={x.key} label={x.label} help={x.help} required={x.required} className={x.wide ? 'span2' : ''}>
-            {x.type === 'select' ? <select value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })}>{!x.required && <option value="">Nessuno</option>}{x.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+          <Field key={x.key} label={x.label} help={x.help} required={x.required} className={x.full ? 'span-all' : x.wide ? 'span2' : ''}>
+            {x.type === 'hours' ? <HoursEditor value={f[x.key]} onChange={(val) => setF({ ...f, [x.key]: val })} />
+              : x.type === 'select' ? <select value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value, ...(x.resets ? Object.fromEntries(x.resets.map((k) => [k, ''])) : {}) })}>{!x.required && <option value="">Nessuno</option>}{(x.optionsFor ? x.optionsFor(f) : x.options).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
               : x.type === 'bool' ? <div style={{ paddingTop: 6 }}><Switch checked={f[x.key]} onChange={(v) => setF({ ...f, [x.key]: v })} label={x.label} /></div>
                 : x.type === 'textarea' ? <textarea value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} style={{ minHeight: 60 }} />
                   : <input type={x.type === 'number' ? 'number' : x.type || 'text'} step={x.step} value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} required={x.required} maxLength={x.max} />}
@@ -98,7 +127,7 @@ export function Sites() {
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
-    { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: 'manager_name', label: 'Responsabile' }, { key: 'opening_hours', label: 'Orari' },
+    { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: 'manager_name', label: 'Responsabile' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' }, { key: 'sort_order', label: 'Ordine', type: 'number' },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
@@ -171,19 +200,22 @@ export function PeopleAdmin() {
   const { data, loading, error, reload } = useApi(`/people${qs({ qtext: q, status, all: status ? '' : '1' })}`, [q, status]);
   const sites = useApi('/sites?all=1');
   const orgs = useApi('/organizations');
+  const roles = useApi('/job-roles');
+  const units = useApi('/org-units');
   const toast = useToast();
   const [modal, setModal] = useState(null);
   const people = useMemo(() => (data || []).map((p) => ({ value: p.id, label: `${p.last_name} ${p.first_name}` })), [data]);
   const fields = [
     { key: 'last_name', label: 'Cognome', required: true }, { key: 'first_name', label: 'Nome', required: true }, { key: 'title', label: 'Titolo', max: 20 },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
-    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'area', label: 'Area' }, { key: 'job_title', label: 'Ruolo' }, { key: 'discipline', label: 'Disciplina' },
-    { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people }, { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) },
+    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' },
+    { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => String(u.site_id) === String(f.site_id)).map((u) => ({ value: u.id, label: u.name })), help: 'Dipende dalla sede scelta' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },
     { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
    
   ];
   const save = async (body) => {
-    const b = { ...body, manager_person_id: body.manager_person_id ? Number(body.manager_person_id) : null, site_id: body.site_id ? Number(body.site_id) : null, organization_id: body.organization_id ? Number(body.organization_id) : null };
+    const b = { ...body, manager_person_id: body.manager_person_id ? Number(body.manager_person_id) : null, site_id: body.site_id ? Number(body.site_id) : null, organization_id: body.organization_id ? Number(body.organization_id) : null, role_id: body.role_id ? Number(body.role_id) : null, unit_id: body.unit_id ? Number(body.unit_id) : null };
+    delete b.job_title; delete b.area;
     if (modal?.id) await api.put(`/people/${modal.id}`, b); else await api.post('/people', b); toast('Persona salvata'); reload();
   };
   return (
@@ -197,17 +229,96 @@ export function PeopleAdmin() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !data.length && <Empty icon="user" title="Nessuna persona">Le persone arrivano dalle importazioni (Contracts) o si inseriscono a mano.</Empty>}
-        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Area / ruolo</th><th>Sede</th><th>Responsabile</th><th>Contatti</th><th>Account</th><th></th></tr></thead><tbody>
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Ruolo</th><th>Sede / reparto</th><th>Responsabile</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
           {data.map((p) => <tr key={p.id}>
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
-            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.area}{p.job_title && <div className="muted">{p.job_title}</div>}</td><td className="small">{p.site_name}</td><td className="small">{p.manager_name}</td>
+            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.job_title}</td><td className="small">{p.unit_name && <div className="strong">{p.unit_name}</div>}{p.site_name}</td><td className="small">{p.manager_name}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
-            <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`} className="small">Utente</Link> : <span className="faint small">nessuno</span>}</td>
+            <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link> : <span className="faint small">nessun accesso</span>}</td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
       {modal && <EditModal title={modal.id ? `Modifica ${modal.last_name} ${modal.first_name}` : 'Nuova persona'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+// ---------- Ruoli (catalogo) ----------
+export function Organization() {
+  const [tab, setTab] = useState('roles');
+  return (
+    <div className="page">
+      <PageHead title="Organizzazione" icon="grid" sub="Ruoli e reparti: con la sede e il responsabile compongono l'organigramma. Il ruolo si sceglie dal catalogo; il reparto dipende dalla sede." />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'roles', label: 'Ruoli' }, { value: 'units', label: 'Reparti per sede' }]} />
+      {tab === 'roles' ? <Roles embedded /> : <Units />}
+    </div>
+  );
+}
+
+function Units() {
+  const { data, loading, error, reload } = useApi('/org-units?all=1');
+  const sites = useApi('/sites?all=1');
+  const people = useApi('/people?all=1');
+  const toast = useToast();
+  const [q, setQ] = useState('');
+  const [modal, setModal] = useState(null);
+  const rows = (data || []).filter((u) => !q || `${u.name} ${u.site_name}`.toLowerCase().includes(q.toLowerCase()));
+  const fields = [
+    { key: 'site_id', label: 'Sede', type: 'select', required: true, options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) },
+    { key: 'name', label: 'Reparto', required: true, max: 160 },
+    { key: 'head_person_id', label: 'Responsabile del reparto', type: 'select', options: (people.data || []).map((p) => ({ value: p.id, label: `${p.last_name} ${p.first_name}` })) },
+    { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attivo', type: 'bool' }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
+  ];
+  const save = async (body) => { const b = { ...body, site_id: Number(body.site_id), head_person_id: body.head_person_id ? Number(body.head_person_id) : null }; if (modal?.id) await api.put(`/org-units/${modal.id}`, b); else await api.post('/org-units', b); toast('Reparto salvato'); reload(); };
+  return (
+    <>
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Reparto o sede" /><div className="spacer" /><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuovo reparto</button></div>
+      <Card flush>
+        {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
+        {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
+        {data && !rows.length && <Empty icon="grid" title="Nessun reparto" />}
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Sede</th><th>Reparto</th><th>Responsabile</th><th>Interno</th><th>Persone</th><th></th></tr></thead><tbody>
+          {rows.map((u) => <tr key={u.id}>
+            <td className="small">{u.site_name}</td>
+            <td><div className="strong">{u.name}</div>{!u.active && <Badge tone="grey">Non attivo</Badge>}</td>
+            <td className="small">{u.head_name}</td><td className="mono small">{u.phone_ext}</td>
+            <td className="num">{u.people_count}</td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(u)}><Icon name="edit" /></button><DeleteButton label={`il reparto ${u.name}`} text="Possibile solo se nessuna persona vi appartiene; altrimenti disattivalo." onDelete={async () => { await api.del(`/org-units/${u.id}`); toast('Reparto eliminato'); reload(); }} /></td>
+          </tr>)}
+        </tbody></table></div>}
+      </Card>
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuovo reparto'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+    </>
+  );
+}
+
+export function Roles({ embedded }) {
+  const { data, loading, error, reload } = useApi('/job-roles?all=1');
+  const toast = useToast();
+  const [q, setQ] = useState('');
+  const [modal, setModal] = useState(null);
+  const rows = (data || []).filter((r) => !q || r.name.toLowerCase().includes(q.toLowerCase()));
+  const fields = [{ key: 'name', label: 'Ruolo', required: true, max: 200 }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attivo', type: 'bool' }];
+  const save = async (body) => { if (modal?.id) await api.put(`/job-roles/${modal.id}`, body); else await api.post('/job-roles', body); toast('Ruolo salvato'); reload(); };
+  return (
+    <div className={embedded ? '' : 'page'}>
+      {!embedded && <PageHead title="Ruoli" icon="grid" sub="Catalogo dei ruoli" />}
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Cerca un ruolo" /><div className="spacer" /><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuovo ruolo</button></div>
+      <Card flush>
+        {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
+        {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
+        {data && !rows.length && <Empty icon="grid" title="Nessun ruolo" />}
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Ruolo</th><th>Descrizione</th><th>Persone</th><th></th></tr></thead><tbody>
+          {rows.map((r) => <tr key={r.id}>
+            <td><div className="strong">{r.name}</div>{!r.active && <Badge tone="grey">Non attivo</Badge>}</td>
+            <td className="small muted">{r.description}</td>
+            <td className="num">{r.people_count ? <Link to={`/people?role_id=${r.id}`}>{r.people_count}</Link> : 0}</td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(r)}><Icon name="edit" /></button><DeleteButton label={`il ruolo ${r.name}`} text="Possibile solo se nessuna persona lo ricopre; altrimenti disattivalo." onDelete={async () => { await api.del(`/job-roles/${r.id}`); toast('Ruolo eliminato'); reload(); }} /></td>
+          </tr>)}
+        </tbody></table></div>}
+      </Card>
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuovo ruolo'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
+import { resolveCatalog } from './orgcat.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
@@ -56,17 +57,29 @@ const siteSchema = z.object({
   kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
   organization_id: z.number().int().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional(), manager_name: z.string().nullable().optional(), opening_hours: z.string().nullable().optional(), legacy_brand: z.string().nullable().optional(),
+  email: z.string().email().nullable().optional(), manager_name: z.string().nullable().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
 });
+
+// Orari strutturati → testo riassuntivo (es. "Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00"), giorni consecutivi uguali raggruppati
+const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']; const DAY_LABEL = { mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Gio', fri: 'Ven', sat: 'Sab', sun: 'Dom' };
+export function hoursText(j) {
+  if (!j) return null;
+  const fmt = (d) => (j[d] || []).map((r) => `${r.from.replace(/^0/, '')}-${r.to.replace(/^0/, '')}`).join(', ');
+  const groups = [];
+  for (const d of DAYS) { const t = fmt(d); if (!t) continue; const last = groups[groups.length - 1]; if (last && last.t === t && DAYS.indexOf(last.to) === DAYS.indexOf(d) - 1) last.to = d; else groups.push({ from: d, to: d, t }); }
+  return groups.map((g) => `${DAY_LABEL[g.from]}${g.from !== g.to ? `-${DAY_LABEL[g.to]}` : ''} ${g.t}`).join('; ') || null;
+}
+const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_hours_json = b.opening_hours_json ? JSON.stringify(b.opening_hours_json) : null; if (b.opening_hours_json) b.opening_hours = hoursText(JSON.parse(b.opening_hours_json)); } return b; };
+
 r.get('/sites', ah(async (req, res) => {
   const all = isAdmin(req.user) || req.query.all === '1';
   const rows = await many(`SELECT s.*, o.name AS organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count
-    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id ${all ? '' : 'WHERE s.active'} ORDER BY s.sort_order, s.name`);
+    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
 }));
 r.post('/sites', requireAdmin, ah(async (req, res) => {
-  const b = parse(siteSchema, req.body);
+  const b = withHours(parse(siteSchema, req.body));
   const cols = Object.keys(b); const vals = Object.values(b);
   const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
   await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}` });
@@ -74,7 +87,7 @@ r.post('/sites', requireAdmin, ah(async (req, res) => {
   res.status(201).json(s);
 }));
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
-  const b = parse(siteSchema.partial(), req.body);
+  const b = withHours(parse(siteSchema.partial(), req.body));
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });
@@ -94,7 +107,7 @@ const orgSchema = z.object({
   province: z.string().max(4).nullable().optional(), website: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), notes: z.string().nullable().optional(),
 });
 r.get('/organizations', ah(async (req, res) => {
-  const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count FROM organizations o ORDER BY o.kind, o.name`);
+  const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count FROM organizations o ORDER BY lower(o.name)`);
   res.json(isAdmin(req.user) ? rows : rows.map((o) => ({ id: o.id, kind: o.kind, code: o.code, name: o.name, city: o.city, province: o.province })));
 }));
 r.post('/organizations', requireAdmin, ah(async (req, res) => {
@@ -122,18 +135,19 @@ const personSchema = z.object({
   kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
   last_name: z.string().min(1), first_name: z.string().min(1), title: z.string().max(20).nullable().optional(), sex: z.enum(['F', 'M']).nullable().optional(),
   email: z.string().email().nullable().optional(), phone: z.string().nullable().optional(), phone_office: z.string().nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().nullable().optional(),
-  job_title: z.string().nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(),
+  job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
 });
-const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
+const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, m.last_name || ' ' || m.first_name AS manager_name,
-  (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id`;
+  (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id`;
 r.get('/people', ah(async (req, res) => {
-  const { qtext = '', area = '', kind = '', site_id = '', status = 'ATTIVO', all = '' } = req.query;
+  const { qtext = '', area = '', role_id = '', kind = '', site_id = '', status = 'ATTIVO', all = '' } = req.query;
   const params = []; const where = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
   if (qtext) where.push(`lower(unaccent(p.last_name || ' ' || p.first_name || ' ' || coalesce(p.email,'') || ' ' || coalesce(p.job_title,'') || ' ' || coalesce(p.area,''))) LIKE lower(unaccent(${p(`%${qtext}%`)}))`);
   if (area) where.push(`p.area = ${p(area)}`);
+  if (role_id) where.push(`p.role_id = ${p(Number(role_id))}`);
   if (kind) where.push(`p.kind = ${p(kind)}`);
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
   if (status && !all) where.push(`p.status = ${p(status)}`);
@@ -256,7 +270,7 @@ r.get('/people/:id', ah(async (req, res) => {
   res.json({ ...row, reports, bio });
 }));
 r.post('/people', requireAdmin, ah(async (req, res) => {
-  const b = parse(personSchema, req.body);
+  const b = await resolveCatalog(parse(personSchema, req.body));
   const cols = Object.keys(b); const vals = Object.values(b);
   const row = await one(`INSERT INTO people (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
   await audit(req, 'PERSON_CREATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}` });
@@ -266,7 +280,7 @@ r.post('/people', requireAdmin, ah(async (req, res) => {
 }));
 r.put('/people/:id', ah(async (req, res) => {
   if (!isAdmin(req.user) && !hasModule(req.user, 'rubrica', 'EDITOR')) throw bad('Operazione riservata');
-  const b = parse(personSchema.partial(), req.body);
+  const b = await resolveCatalog(parse(personSchema.partial(), req.body));
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });

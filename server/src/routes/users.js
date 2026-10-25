@@ -69,7 +69,7 @@ r.get('/users', requireAdmin, ah(async (req, res) => {
             o.name AS organization_name, s.name AS site_name, p.area AS person_area, p.job_title AS person_job_title, p.kind AS person_kind,
             (SELECT json_agg(json_build_object('module_key', g.module_key, 'profile', g.profile, 'proposed', g.proposed) ORDER BY g.module_key) FROM grants g WHERE g.user_id=u.id) AS grants
        FROM users u LEFT JOIN organizations o ON o.id=u.organization_id LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN people p ON p.id=u.person_id
-       ${w} ORDER BY u.status='PENDING' DESC, lower(u.full_name) LIMIT ${p(Math.min(Number(pageSize), 200))} OFFSET ${p((Math.max(1, Number(page)) - 1) * Math.min(Number(pageSize), 200))}`, params);
+       ${w} ORDER BY lower(u.full_name) LIMIT ${p(Math.min(Number(pageSize), 200))} OFFSET ${p((Math.max(1, Number(page)) - 1) * Math.min(Number(pageSize), 200))}`, params);
   res.json({ total, rows });
 }));
 

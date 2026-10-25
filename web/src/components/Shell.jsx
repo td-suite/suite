@@ -39,7 +39,7 @@ function sectionFor(pathname, user) {
       items: [
         { to: '/people', icon: 'users', label: 'Elenco', end: true },
         { to: '/people/org-chart', icon: 'tree', label: 'Organigramma' },
-        { to: '/people/areas', icon: 'grid', label: 'Aree' },
+        { to: '/people/ruoli', icon: 'grid', label: 'Ruoli' },
       ],
     };
   }
@@ -67,6 +67,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/sites', icon: 'building', label: 'Sedi' },
         { to: '/admin/organizations', icon: 'folder', label: 'Organizzazioni' },
         { to: '/admin/people', icon: 'user', label: 'Persone' },
+        { to: '/admin/organization', icon: 'grid', label: 'Organizzazione' },
         { group: 'Dati' },
         { to: '/admin/legacy', icon: 'refresh', label: 'Sorgenti legacy' },
         { to: '/admin/travaso', icon: 'import', label: 'Travaso moduli' },
