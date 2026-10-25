@@ -1,5 +1,6 @@
 import { PERSONAL_EXT, DEPARTMENT_EXT, SWITCHBOARD, IVR } from './seed/centralino.js';
 import { applyCentralino } from './lib/centralino.js';
+import { seedGrantRules } from './lib/grantRules.js';
 import { displayName, splitName } from './lib/util.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -103,6 +104,7 @@ async function seed() {
   };
   for (const [k, v] of Object.entries(defaults)) await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(v)]);
   await seedCentralino();
+  await seedGrantRules().then((n) => { if (n) console.log(`[seed] regole di accesso: ${n}`); }).catch((e) => console.warn('[seed] regole', e.message));
 }
 
 if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {

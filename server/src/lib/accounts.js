@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { displayName, normName, audit } from './util.js';
 import { sendMail, layout } from './mailer.js';
 import { AREA_GRANT_PROPOSALS } from '../seed/modules.js';
+import { proposeGrantsForPerson } from './grantRules.js';
 
 const genPassword = () => `${crypto.randomBytes(9).toString('base64url')}A1!`;
 
@@ -55,7 +56,7 @@ export async function ensureUserForPerson(personId, opts = {}) {
      VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$8,$9,$10,$11) RETURNING *`,
     [email, full, p.first_name, p.last_name, level, provider, p.site_id, p.id, plain ? await bcrypt.hash(plain, 12) : null, Boolean(plain), actor?.id || null]);
   await syncUserFromPerson(p.id);
-  const proposals = await proposeGrantsFromArea(u.id, p.area, actor?.id);
+  const proposals = await proposeGrantsForPerson(p.id, actor?.id);
   await audit({ user: actor, ip: null }, 'USER_CREATED_FROM_PERSON', { entity: 'user', entityId: u.id, label: `${email} (${provider}) da persona ${p.id}`, data: { person_id: p.id, proposals } });
   if (sendInvite) {
     const hint = provider === 'ENTRA'
@@ -77,6 +78,7 @@ export async function syncUserFromPerson(personId) {
 /** Da chiamare quando una persona cambia: se è attiva con email e non ha accesso, l'accesso nasce da solo (senza bloccare il chiamante). */
 export function autoAccountForPerson(personId, actor) {
   syncUserFromPerson(personId).catch((e) => console.warn('[accounts] sync', e.message));
+  proposeGrantsForPerson(personId, actor?.id).catch((e) => console.warn('[accounts] regole', e.message));
   ensureUserForPerson(personId, { actor, onlyIfActive: true }).catch((e) => { if (!/email|stato/.test(e.message)) console.warn('[accounts]', e.message); });
 }
 

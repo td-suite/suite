@@ -174,3 +174,11 @@ Ogni utente è una persona (anche gli esterni: tipo ESTERNO con la loro legal en
 nasce al salvataggio, dopo il file Persone (`createMissingAccounts`, senza inviti automatici) e dal pulsante "Crea gli accessi mancanti" in
 Persone (`POST /api/people/accounts/missing`). Microsoft 365 per i domini aziendali, credenziali locali per gli altri (invito con il
 Reset password dalla scheda utente). Chi non ha email o non è attivo compare "Senza accesso" con il motivo; filtro Accesso in Persone.
+
+## Regole di accesso (26/10/2026)
+`grant_rules` (migrazione 022, lib/grantRules.js): condizione = afferenza a un'unità (o sotto) e/o ruolo e/o tipo di sede di lavoro
+e/o solo responsabili; effetto = modulo + profilo, ambito sede della persona o tutte. Producono proposte (grants.proposed, source ORG,
+scope sulla sede) mai grant confermati; le proposte non più coperte spariscono, quelle confermate restano. Si applicano alla nascita
+dell'accesso, al salvataggio della persona, a ogni incarico, dopo le importazioni e da "Rigenera le proposte". 37 regole iniziali
+seminate quando esistono le unità (Finance, Operations, Flow & Back Office, Retail & Communications, HSQ, Legal, Laboratorio, B2B,
+tipi di sede, responsabili, Direttore Sanitario, Site Manager). Il vecchio AREA_GRANT_PROPOSALS sul campo libero "area" non è più usato.

@@ -6,6 +6,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, notFound } from '../lib/util.js';
 import { requireAdmin } from '../lib/access.js';
 import { orgchartXlsx, orgchartPptx, orgchartPdf } from '../lib/orgchartExport.js';
+import { proposeGrantsForPerson, proposeGrantsForAll } from '../lib/grantRules.js';
 
 const r = Router();
 const roleSchema = z.object({ name: z.string().trim().min(2).max(200), description: z.string().max(600).nullable().optional(), sort_order: z.number().int().optional(), active: z.boolean().optional() });
@@ -106,6 +107,7 @@ r.post('/org-positions', requireAdmin, ah(async (req, res) => {
   const row = await upsertPosition({ query: q }, b);
   if (b.is_head) await q('UPDATE org_units SET head_person_id=$2 WHERE id=$1', [b.unit_id, b.person_id]);
   await syncPersonFromPosition(b.person_id);
+  proposeGrantsForPerson(b.person_id, req.user.id).catch(() => {});
   await audit(req, 'ORG_POSITION_SET', { entity: 'org_position', entityId: row.id, data: b });
   res.status(201).json(row);
 }));
@@ -157,6 +159,35 @@ export async function syncPositionFromPerson(p, c = { query: q }) {
   const row = await upsertPosition(c, { unit_id: p.unit_id, person_id: p.id, role_id: p.role_id ?? null, is_head: false });
   if (row?.id) await c.query(`UPDATE org_positions SET source='AFFERENZA' WHERE id=$1`, [row.id]);
 }
+
+// ---- Regole di accesso (organizzazione → moduli proposti)
+const ruleSchema = z.object({ name: z.string().trim().min(2).max(160), unit_id: z.number().int().nullable().optional(), role_id: z.number().int().nullable().optional(), site_kind: z.string().max(40).nullable().optional(),
+  only_heads: z.boolean().optional(), module_key: z.string().min(1), profile: z.string().min(1).max(40), scope: z.enum(['SITE', 'ALL']).optional(), active: z.boolean().optional(), sort_order: z.number().int().optional() });
+const RULE_COLS = `r.*, u.name AS unit_name, jr.name AS role_name, m.name AS module_name, m.profiles AS module_profiles,
+  (SELECT count(*)::int FROM grants g WHERE g.module_key=r.module_key AND g.proposed AND g.source='ORG') AS pending`;
+r.get('/grant-rules', requireAdmin, ah(async (_req, res) => {
+  res.json(await many(`SELECT ${RULE_COLS} FROM grant_rules r LEFT JOIN org_units u ON u.id=r.unit_id LEFT JOIN job_roles jr ON jr.id=r.role_id JOIN modules m ON m.key=r.module_key ORDER BY r.sort_order, r.id`));
+}));
+r.post('/grant-rules', requireAdmin, ah(async (req, res) => {
+  const b = parse(ruleSchema, req.body); const cols = Object.keys(b);
+  const row = await one(`INSERT INTO grant_rules (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, Object.values(b));
+  await audit(req, 'GRANT_RULE_CREATED', { entity: 'grant_rule', entityId: row.id, label: row.name }); res.status(201).json(row);
+}));
+r.put('/grant-rules/:id', requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id); const b = parse(ruleSchema.partial(), req.body);
+  const sets = []; const params = [id]; for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
+  if (!sets.length) return res.json({ ok: true });
+  const row = await one(`UPDATE grant_rules SET ${sets.join(', ')} WHERE id=$1 RETURNING *`, params); if (!row) throw notFound();
+  await audit(req, 'GRANT_RULE_UPDATED', { entity: 'grant_rule', entityId: id, label: row.name, data: b }); res.json(row);
+}));
+r.delete('/grant-rules/:id', requireAdmin, ah(async (req, res) => {
+  const row = await one('DELETE FROM grant_rules WHERE id=$1 RETURNING name', [Number(req.params.id)]); if (!row) throw notFound();
+  await audit(req, 'GRANT_RULE_DELETED', { entity: 'grant_rule', entityId: Number(req.params.id), label: row.name }); res.json({ ok: true });
+}));
+r.post('/grant-rules/apply', requireAdmin, ah(async (req, res) => {
+  const out = await proposeGrantsForAll(req.user.id);
+  await audit(req, 'GRANT_RULES_APPLIED', { entity: 'grant_rule', label: `${out.proposals} proposte su ${out.users} utenti` }); res.json(out);
+}));
 
 // ---- Esportazioni dell'organigramma
 r.get('/org-chart/export.:fmt', ah(async (req, res) => {

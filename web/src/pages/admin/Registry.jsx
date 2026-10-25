@@ -369,8 +369,8 @@ export function Organization() {
   return (
     <div className="page">
       <PageHead title="Organizzazione" icon="grid" sub="L'albero delle unità (direzione, aree, sedi, reparti) con gli incarichi di ciascuna: è l'organigramma. Una persona può avere più incarichi." />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'units', label: 'Unità e incarichi' }, { value: 'roles', label: 'Ruoli' }]} />
-      {tab === 'roles' ? <Roles embedded /> : <Units />}
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'units', label: 'Unità e incarichi' }, { value: 'roles', label: 'Ruoli' }, { value: 'rules', label: 'Regole di accesso' }]} />
+      {tab === 'roles' ? <Roles embedded /> : tab === 'rules' ? <GrantRules /> : <Units />}
     </div>
   );
 }
@@ -462,6 +462,54 @@ function PositionsModal({ unit, people, roles, onClose, onChange }) {
         <div className="span-all"><button className="btn" disabled={busy || !f.person_id}><Icon name="plus" />Aggiungi incarico</button></div>
       </form>
     </Modal>
+  );
+}
+
+// Regole di accesso: chi afferisce a X / ha ruolo Y / lavora in una sede di tipo Z / è responsabile → modulo + profilo proposti
+function GrantRules() {
+  const { data, loading, error, reload } = useApi('/grant-rules');
+  const units = useApi('/org-units?all=1');
+  const roles = useApi('/job-roles?all=1');
+  const mods = useApi('/modules');
+  const toast = useToast();
+  const [modal, setModal] = useState(null);
+  const coll = new Intl.Collator('it');
+  const unitOpts = [...(units.data || [])].sort((a, b) => coll.compare(a.name, b.name)).map((u) => ({ value: u.id, label: `${u.name}${u.parent_name ? ` (${u.parent_name})` : ''}` }));
+  const modList = (mods.data || []).filter((m) => !m.restricted);
+  const fields = [
+    { key: 'name', label: 'Nome della regola', required: true, max: 160 },
+    { key: 'unit_id', label: 'Se afferisce a (o sotto)', type: 'select', options: unitOpts },
+    { key: 'role_id', label: 'Se ha il ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })) },
+    { key: 'site_kind', label: 'Se la sede di lavoro è di tipo', type: 'select', options: opts(SITE_KIND) },
+    { key: 'only_heads', label: 'Solo responsabili di unità', type: 'bool', default: false },
+    { key: 'module_key', label: 'Propone il modulo', type: 'select', required: true, options: modList.map((m) => ({ value: m.key, label: m.name })), resets: ['profile'] },
+    { key: 'profile', label: 'Con profilo', type: 'select', required: true, options: [], optionsFor: (f) => ((modList.find((m) => m.key === f.module_key)?.profiles) || []).map((p) => ({ value: p.code || p.key || p, label: p.label || p.name || p })) },
+    { key: 'scope', label: 'Ambito', type: 'select', required: true, options: [{ value: 'SITE', label: 'Solo la sede della persona' }, { value: 'ALL', label: 'Tutte le sedi' }] },
+    { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'sort_order', label: 'Ordine', type: 'number' },
+  ];
+  const save = async (body) => { const b = { ...body, unit_id: body.unit_id ? Number(body.unit_id) : null, role_id: body.role_id ? Number(body.role_id) : null, site_kind: body.site_kind || null }; if (modal?.id) await api.put(`/grant-rules/${modal.id}`, b); else await api.post('/grant-rules', b); toast('Regola salvata'); reload(); };
+  const cond = (r) => [r.unit_name ? `afferisce a ${r.unit_name}` : null, r.role_name ? `ruolo ${r.role_name}` : null, r.site_kind ? `sede ${SITE_KIND[r.site_kind] || r.site_kind}` : null, r.only_heads ? 'responsabile di unità' : null].filter(Boolean).join(' e ') || 'tutti';
+  return (
+    <>
+      <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Le regole producono proposte di accesso ai widget (in viola nella scheda utente), da confermare in Utenti. Si riapplicano da sole quando cambia la collocazione di una persona o dopo un'importazione.</span></div>
+      <div className="filters"><div className="spacer" /><button className="btn ghost" onClick={async () => { try { const r = await api.post('/grant-rules/apply', {}); toast(`${r.proposals} proposte su ${r.users} utenti`); reload(); } catch (e) { toast(e, 'err'); } }}><Icon name="refresh" />Rigenera le proposte</button><button className="btn" onClick={() => setModal({ scope: 'SITE', active: true })}><Icon name="plus" />Nuova regola</button></div>
+      <Card flush>
+        {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
+        {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
+        {data && !data.length && <Empty icon="grid" title="Nessuna regola">Le regole iniziali nascono dopo il caricamento dell'Organigramma (si agganciano alle unità per nome).</Empty>}
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Regola</th><th>Condizione</th><th>Modulo e profilo</th><th>Ambito</th><th>In attesa</th><th></th></tr></thead><tbody>
+          {data.map((r) => <tr key={r.id}>
+            <td><div className="strong">{r.name}</div>{!r.active && <Badge tone="grey">Non attiva</Badge>}</td>
+            <td className="small">{cond(r)}</td>
+            <td className="small"><b>{r.module_name}</b> · {r.profile}</td>
+            <td className="small">{r.scope === 'ALL' ? 'Tutte le sedi' : 'Sede della persona'}</td>
+            <td className="num">{r.pending}</td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(r)}><Icon name="edit" /></button><DeleteButton label={`la regola ${r.name}`} text="Le proposte già fatte restano; non ne nascono di nuove." onDelete={async () => { await api.del(`/grant-rules/${r.id}`); toast('Regola eliminata'); reload(); }} /></td>
+          </tr>)}
+        </tbody></table></div>}
+      </Card>
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova regola'} fields={fields} item={modal} onSave={save} onClose={() => setModal(null)} />}
+    </>
   );
 }
 

@@ -17,6 +17,7 @@ import { upsertPosition, syncPersonFromPosition, ensureSiteNodes } from './orgca
 import { geocodeAddress } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
 import { createMissingAccounts } from '../lib/accounts.js';
+import { seedGrantRules, proposeGrantsForAll } from '../lib/grantRules.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -341,6 +342,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   if (dataset === 'people' || dataset === 'orgchart') await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
   let accounts = null;
   if (dataset === 'people') accounts = await createMissingAccounts({ actor: req.user, sendInvite: false }).catch((e) => { console.warn('[accounts]', e.message); return null; });
+  if (dataset === 'people' || dataset === 'orgchart' || dataset === 'users') { await seedGrantRules().catch(() => {}); await proposeGrantsForAll(req.user.id).catch((e) => console.warn('[regole]', e.message)); }
   if (dataset === 'sites') await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
     many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
