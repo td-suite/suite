@@ -2,6 +2,7 @@
 import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
 import { syncPositionFromPerson } from './orgcat.js';
+import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
 import { resolveCatalog } from './orgcat.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
@@ -79,12 +80,27 @@ r.get('/sites', ah(async (req, res) => {
     FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
 }));
+const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
+// Coordinate dall'indirizzo (pulsante nel form Sedi). Non salva: restituisce lat/lng da confermare nel form.
+r.post('/geocode', requireAdmin, ah(async (req, res) => {
+  const b = parse(z.object({ address: z.string().max(250).nullable().optional(), zip: z.string().max(10).nullable().optional(), city: z.string().max(120).nullable().optional(), province: z.string().max(4).nullable().optional() }), req.body);
+  const g = await geocodeAddress(b);
+  if (!g) throw bad('Indirizzo non trovato: controlla via, civico e città');
+  res.json(g);
+}));
+// Completa le coordinate mancanti di tutte le sedi (una al secondo, in coda)
+r.post('/sites/geocode-missing', requireAdmin, ah(async (req, res) => {
+  const rows = await many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL) ORDER BY id`);
+  (async () => { for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await saveCoords(s.id, g); } catch (e) { console.warn('[geocode]', s.id, e.message); } } })();
+  res.json({ queued: rows.length });
+}));
 r.post('/sites', requireAdmin, ah(async (req, res) => {
   const b = withHours(parse(siteSchema, req.body));
   const cols = Object.keys(b); const vals = Object.values(b);
   const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
   await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}` });
   indexSite(s).catch(() => {});
+  autoGeocodeSite(s, saveCoords);
   res.status(201).json(s);
 }));
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
@@ -96,6 +112,7 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   if (!s) throw notFound();
   await audit(req, 'SITE_UPDATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: b });
   indexSite(s).catch(() => {});
+  autoGeocodeSite(s, saveCoords);
   res.json(s);
 }));
 // Unione di due sedi duplicate: la sorgente confluisce nella destinazione (riferimenti legacy, utenti, persone)
@@ -139,8 +156,8 @@ const personSchema = z.object({
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
 });
-const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
-  s.name AS site_name, s.city AS site_city, o.name AS organization_name, m.last_name || ' ' || m.first_name AS manager_name,
+const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, p.discipline, people_manager(p.id) AS manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
+  s.name AS site_name, s.city AS site_city, o.name AS organization_name, (SELECT mm.last_name || ' ' || mm.first_name FROM people mm WHERE mm.id = people_manager(p.id)) AS manager_name,
   (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id,
   (SELECT coalesce(json_agg(json_build_object('id', op.id, 'unit_id', op.unit_id, 'unit_name', ou.name, 'unit_kind', ou.kind, 'parent_name', pu.name, 'role_id', op.role_id, 'role_name', jr.name, 'is_head', op.is_head) ORDER BY op.is_head DESC, ou.kind, ou.name), '[]')
      FROM org_positions op JOIN org_units ou ON ou.id=op.unit_id LEFT JOIN org_units pu ON pu.id=ou.parent_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.person_id=p.id) AS positions`;
@@ -266,7 +283,7 @@ r.get('/people/:id', ah(async (req, res) => {
   const row = await one(`SELECT ${RUBRICA_COLS}, p.hired_at, p.legacy_refs, p.needs_review FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.id=$1`, [Number(req.params.id)]);
   if (!row) throw notFound();
   if (!isAdmin(req.user)) { delete row.legacy_refs; delete row.hired_at; }
-  const reports = await many(`SELECT id, last_name, first_name, job_title FROM people WHERE manager_person_id=$1 AND status='ATTIVO' ORDER BY last_name`, [row.id]);
+  const reports = await many(`SELECT id, last_name, first_name, job_title FROM people WHERE people_manager(id)=$1 AND status='ATTIVO' ORDER BY last_name`, [row.id]);
   // Presentazione scritta dalla persona stessa nel proprio profilo Suite
   const bio = row.user_id ? (await one('SELECT bio FROM users WHERE id=$1', [row.user_id]))?.bio || null : null;
   await readLog(req, { module: 'rubrica', entity: 'person', entityId: row.id });

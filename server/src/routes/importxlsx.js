@@ -14,6 +14,7 @@ import { requireAdmin, requireOwner } from '../lib/access.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
 import { upsertPosition } from './orgcat.js';
+import { geocodeAddress } from '../lib/geocode.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -63,10 +64,10 @@ const DATASETS = {
       ['tax_code', 'Codice fiscale', 'Usato per riconoscere la persona se già presente.'],
       ['kind', 'Tipo', `Uno tra: ${PERSON_KINDS.join(', ')}. Predefinito DIPENDENTE. MEDICO e SANITARIO sono i professionisti di Room Planning.`],
       ['status', 'Stato', `Uno tra: ${PERSON_STATUS.join(', ')}. Predefinito ATTIVO.`],
-      ['job_title', 'Ruolo', 'Dal catalogo Ruoli (Amministrazione > Organizzazione): un ruolo nuovo nel file viene aggiunto al catalogo. Breve: Site Manager, Tecnico di laboratorio biomedico.'],
+      ['job_title', 'Ruolo principale', 'Facoltativo: con il reparto diventa il primo incarico nell\'organigramma (dal catalogo Ruoli; un ruolo nuovo viene aggiunto). Gli altri incarichi si caricano con il file Organigramma.'],
       ['discipline', 'Disciplina', 'Per medici e professionisti: Ginecologia, Cardiologia...'],
       ['site_code', 'Codice sede', 'Sede di lavoro principale (foglio Sedi).'],
-      ['unit', 'Reparto', 'Reparto della sede (es. Preanalitica, Core Lab, Accettazione): un reparto nuovo viene creato nella sede. Richiede il codice sede.'],
+      ['unit', 'Reparto principale', 'Facoltativo: reparto della sede (es. Preanalitica, Core Lab, Accettazione), creato se manca. Richiede il codice sede. Con il ruolo diventa il primo incarico.'],
       ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: basta che sia nel file (in qualsiasi riga) o già caricata.'],
       ['phone', 'Cellulare', ''], ['phone_office', 'Telefono ufficio', ''], ['phone_ext', 'Interno centralino', 'Es. 101.'],
       ['hired_at', 'Data di assunzione', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
@@ -315,6 +316,11 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   // numeri di riga del foglio (la riga 1 è l'intestazione) al posto degli indici
   const errors = out.errors.map((e) => ({ ...e, row: data[e.row]?.__row ?? e.row + 2 }));
   await audit(req, 'IMPORT_XLSX', { entity: 'ingest_batch', entityId: batch.id, label: `${d.title}: ${out.rows_ok} ok, ${out.rows_rejected} scartate`, data: { dataset, filename: req.file.originalname } });
+  if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
+    many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
+      for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await q('UPDATE sites SET lat=$2, lng=$3 WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [s.id, g.lat, g.lng]); } catch (e) { console.warn('[geocode]', s.id, e.message); } }
+    }).catch(() => {});
+  }
   res.status(201).json({ batch_id: batch.id, status: out.status, rows_total: data.length, rows_ok: out.rows_ok, rows_rejected: out.rows_rejected, errors });
 }));
 

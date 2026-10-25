@@ -107,6 +107,9 @@ r.post('/org-positions', requireAdmin, ah(async (req, res) => {
 r.delete('/org-positions/:id', requireAdmin, ah(async (req, res) => {
   const row = await one('DELETE FROM org_positions WHERE id=$1 RETURNING *', [Number(req.params.id)]); if (!row) throw notFound();
   if (row.is_head) await q('UPDATE org_units SET head_person_id=NULL WHERE id=$1 AND head_person_id=$2', [row.unit_id, row.person_id]);
+  // la scheda persona segue gli incarichi rimasti
+  await q('UPDATE people SET unit_id = CASE WHEN unit_id=$2 THEN NULL ELSE unit_id END, role_id = CASE WHEN role_id IS NOT DISTINCT FROM $3 THEN NULL ELSE role_id END WHERE id=$1', [row.person_id, row.unit_id, row.role_id]);
+  await syncPersonFromPosition(row.person_id);
   await audit(req, 'ORG_POSITION_REMOVED', { entity: 'org_position', entityId: row.id });
   res.json({ ok: true });
 }));
@@ -166,7 +169,8 @@ export async function ensureSiteNode(c, siteId) {
   return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'SEDE',$2,$3) RETURNING id`, [site?.name || `Sede ${siteId}`, siteId, root.id])).rows[0].id;
 }
 export async function ensureUnit(c, siteId, name, { create = true } = {}) {
-  const ex = (await c.query(`SELECT id FROM org_units WHERE kind='REPARTO' AND site_id=$1 AND lower(name)=lower($2)`, [siteId, name.trim()])).rows[0];
+  // prima il reparto della sede, poi un reparto di area con lo stesso nome (es. Core Lab sotto Laboratorio di Analisi), infine se ne crea uno nella sede
+  const ex = (await c.query(`SELECT id FROM org_units WHERE kind='REPARTO' AND lower(name)=lower($2) AND (site_id=$1 OR site_id IS NULL) ORDER BY (site_id=$1) DESC NULLS LAST, id LIMIT 1`, [siteId, name.trim()])).rows[0];
   if (ex || !create) return ex?.id || null;
   const parent = await ensureSiteNode(c, siteId);
   return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'REPARTO',$2,$3) RETURNING id`, [name.trim(), siteId, parent])).rows[0].id;

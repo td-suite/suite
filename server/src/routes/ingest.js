@@ -13,7 +13,7 @@ import { ah, HttpError, audit, slugify } from '../lib/util.js';
 export const SYNC_USER_SQL = `UPDATE users u SET first_name=p.first_name, last_name=p.last_name, full_name=p.last_name || ' ' || p.first_name, title=p.title, phone=p.phone,
   site_id=p.site_id, organization_id=coalesce(p.organization_id, s.organization_id), updated_at=now()
   FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`;
-import { ensureUnit } from './orgcat.js';
+import { ensureUnit, upsertPosition } from './orgcat.js';
 
 const r = Router();
 const MAX_ROWS = 1000;
@@ -130,6 +130,7 @@ export const APPLIERS = {
         job_title=coalesce($9,job_title), discipline=coalesce($10,discipline), title=coalesce($11,title), site_id=coalesce($12,site_id), phone=coalesce($13,phone), phone_office=coalesce($14,phone_office),
         hired_at=coalesce($15,hired_at), terminated_at=coalesce($16,terminated_at), legacy_refs=legacy_refs || $17::jsonb, phone_ext=coalesce($18,phone_ext), manager_person_id=coalesce($19,manager_person_id), role_id=coalesce($20,role_id), unit_id=coalesce($21,unit_id), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       await c.query(SYNC_USER_SQL, [ex.id]);
+      if (unitId) await upsertPosition(c, { unit_id: unitId, person_id: ex.id, role_id: roleId || null, is_head: false });
       return { id: ex.id, action: 'aggiornata' };
     }
     const ins = await c.query(`INSERT INTO people (last_name, first_name, email, tax_code, kind, status, area, job_title, discipline, title, site_id, phone, phone_office, hired_at, terminated_at, legacy_refs, phone_ext, manager_person_id, role_id, unit_id)
@@ -137,6 +138,7 @@ export const APPLIERS = {
     // l'utente con la stessa email (se già esiste, es. il titolare) viene agganciato alla persona
     if (row.email) await c.query(`UPDATE users SET person_id=$1, site_id=coalesce(site_id,$3), first_name=$4, last_name=$5, full_name=$6, updated_at=now() WHERE lower(email)=$2 AND person_id IS NULL`, [ins.rows[0].id, row.email, site?.id || null, row.first_name, row.last_name, `${row.last_name} ${row.first_name}`]);
     await c.query(SYNC_USER_SQL, [ins.rows[0].id]);
+    if (unitId) await upsertPosition(c, { unit_id: unitId, person_id: ins.rows[0].id, role_id: roleId || null, is_head: false });
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async sites(c, row, k) {

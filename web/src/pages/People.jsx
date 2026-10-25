@@ -76,17 +76,14 @@ function List() {
 
 function EditPersonModal({ p, onClose, onSaved }) {
   const toast = useToast();
-  const roles = useApi('/job-roles');
-  const units = useApi(p.site_id ? `/org-units?site_id=${p.site_id}` : null, [p.site_id]);
-  const [f, setF] = useState({ role_id: p.role_id || '', unit_id: p.unit_id || '', phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
+  const [f, setF] = useState({ phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async (e) => { e.preventDefault(); try { await api.put(`/people/${p.id}`, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (k === 'role_id' || k === 'unit_id') ? (v ? Number(v) : null) : (v || null)]))); toast('Scheda aggiornata'); onSaved(); onClose(); } catch (e2) { toast(e2, 'err'); } };
   return (
     <Modal title="Aggiorna la scheda" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="pform">Salva</button></>}>
       <form id="pform" onSubmit={save} className="form-grid">
         <Field label="Sede"><input value={p.site_name || ''} disabled title="La sede si cambia in Amministrazione" /></Field>
-        <Field label="Reparto" help={p.site_id ? undefined : 'Imposta prima la sede in Amministrazione'}><select value={f.unit_id || ''} onChange={set('unit_id')} disabled={!p.site_id}><option value="">Nessuno</option>{(units.data || []).filter((u) => u.kind === 'REPARTO').map((u) => <option key={u.id} value={u.id}>{u.name}{!u.site_id && u.parent_name ? ` (${u.parent_name})` : ''}</option>)}</select></Field>
-        <Field label="Ruolo"><select value={f.role_id || ''} onChange={set('role_id')}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+        <div className="span-all small muted">Incarichi, reparto e ruolo si gestiscono con il pulsante Incarichi della card Organizzazione.</div>
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
         <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} /></Field>

@@ -103,3 +103,21 @@ vuoti (`syncPersonFromPosition`). `upsertPosition` evita gli sdoppiamenti (un in
 Le API persone espongono `positions` (unità, tipo, padre, ruolo, responsabile). Esportazioni dell'organigramma da Rubrica >
 Organigramma: `GET /api/org-chart/export.xlsx` (stesse colonne del modello di importazione: si modifica e si ricarica), `.pptx` e `.pdf`
 (una pagina per ogni unità con dipendenti, come l'Allegato 1), in lib/orgchartExport.js.
+
+## Scheda persona = anagrafica + incarichi (25/10/2026, sera)
+Il modulo Persone (Amministrazione) ha solo gli estremi anagrafici (nomi, tipo, stato, contatti, sede di lavoro, legal entity, codice
+fiscale, disciplina) e sotto la sezione Incarichi nell'organigramma: la stessa tabella `org_positions` dell'Organizzazione, quanti
+incarichi servono (unità di qualunque tipo + ruolo + responsabile). Niente più campi Reparto, Ruolo e Responsabile sulla scheda:
+`people.unit_id` e `people.role_id` restano come "incarico principale" derivato (`syncPersonFromPosition`) e il responsabile di una
+persona è calcolato dall'albero (`people_manager(id)`, migrazione 013: chi è responsabile dell'unità del suo incarico, o dell'unità
+superiore se è lei la responsabile; `manager_person_id` resta come forzatura manuale). Nel file Persone, Reparto principale + Ruolo
+principale creano il primo incarico; `ensureUnit` aggancia prima il reparto della sede, poi un reparto di area omonimo (Core Lab sotto
+il Laboratorio), e solo in mancanza ne crea uno nella sede.
+
+## Coordinate dall'indirizzo (25/10/2026, sera)
+`lib/geocode.js`: Nominatim di OpenStreetMap (ricerca strutturata via + città + CAP, poi riga libera; precisione civico/via/città),
+con Open-Meteo per la sola città come riserva. Niente chiavi; una richiesta al secondo e User-Agent dichiarato come chiede OSM. Usato
+da: pulsante "Trova dall'indirizzo" nel form Sedi (`POST /api/geocode`, da confermare con Salva), completamento automatico al
+salvataggio di una sede senza coordinate, "Completa coordinate" nella pagina Sedi (`POST /api/sites/geocode-missing`, in coda) e dopo
+ogni importazione del file Sedi. Dal sandbox di sviluppo gli host non sono raggiungibili: collaudato con risposte simulate, da verificare
+in produzione su Render.
