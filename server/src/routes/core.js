@@ -156,13 +156,13 @@ const personSchema = z.object({
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
 });
-const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, p.discipline, people_manager(p.id) AS manager_person_id, p.manager_person_id AS manager_override_id, people_manager_auto(p.id) AS manager_auto_id, (SELECT ma.last_name || ' ' || ma.first_name FROM people ma WHERE ma.id = people_manager_auto(p.id)) AS manager_auto_name, p.site_id, p.organization_id, p.photo_file_id,
+const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, org_unit_path(p.unit_id) AS unit_path, p.discipline, people_manager(p.id) AS manager_person_id, p.manager_person_id AS manager_override_id, people_manager_auto(p.id) AS manager_auto_id, (SELECT ma.last_name || ' ' || ma.first_name FROM people ma WHERE ma.id = people_manager_auto(p.id)) AS manager_auto_name, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, (SELECT mm.last_name || ' ' || mm.first_name FROM people mm WHERE mm.id = people_manager(p.id)) AS manager_name,
   (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id,
   (SELECT coalesce(json_agg(json_build_object('id', op.id, 'unit_id', op.unit_id, 'unit_name', ou.name, 'unit_kind', ou.kind, 'parent_name', pu.name, 'role_id', op.role_id, 'role_name', jr.name, 'is_head', op.is_head) ORDER BY op.is_head DESC, ou.kind, ou.name), '[]')
      FROM org_positions op JOIN org_units ou ON ou.id=op.unit_id LEFT JOIN org_units pu ON pu.id=ou.parent_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.person_id=p.id) AS positions`;
 r.get('/people', ah(async (req, res) => {
-  const { qtext = '', area = '', role_id = '', kind = '', site_id = '', status = 'ATTIVO', all = '' } = req.query;
+  const { qtext = '', area = '', role_id = '', kind = '', site_id = '', unit_id = '', status = 'ATTIVO', all = '' } = req.query;
   const params = []; const where = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
   if (qtext) where.push(`lower(unaccent(p.last_name || ' ' || p.first_name || ' ' || coalesce(p.email,'') || ' ' || coalesce(p.job_title,'') || ' ' || coalesce(p.area,''))) LIKE lower(unaccent(${p(`%${qtext}%`)}))`);
@@ -170,6 +170,7 @@ r.get('/people', ah(async (req, res) => {
   if (role_id) where.push(`p.role_id = ${p(Number(role_id))}`);
   if (kind) where.push(`p.kind = ${p(kind)}`);
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
+  if (unit_id) where.push(`(p.unit_id = ${p(Number(unit_id))} OR EXISTS (SELECT 1 FROM org_positions op WHERE op.person_id=p.id AND op.unit_id = ${p(Number(unit_id))}))`);
   if (status && !all) where.push(`p.status = ${p(status)}`);
   const rows = await many(`SELECT ${RUBRICA_COLS} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY lower(p.last_name), lower(p.first_name) LIMIT 1000`, params);

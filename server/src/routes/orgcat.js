@@ -136,10 +136,10 @@ export async function upsertPosition(c, b) {
 
 // ---- Le schede si parlano: Organizzazione ↔ Persone
 // Dagli incarichi alla scheda persona: reparto e ruolo "principali" (il primo incarico da responsabile, altrimenti il primo) se la scheda non li ha
-export async function syncPersonFromPosition(personId) {
-  const pos = await one(`SELECT op.unit_id, op.role_id, u.kind, u.site_id FROM org_positions op JOIN org_units u ON u.id=op.unit_id WHERE op.person_id=$1 ORDER BY op.is_head DESC, (u.kind='REPARTO') DESC, op.sort_order, op.id LIMIT 1`, [personId]);
+export async function syncPersonFromPosition(personId, c = { query: q }) {
+  const pos = (await c.query(`SELECT op.unit_id, op.role_id, org_unit_site(u.id) AS site_id FROM org_positions op JOIN org_units u ON u.id=op.unit_id WHERE op.person_id=$1 ORDER BY (u.kind IN ('REPARTO','FUNZIONE')) DESC, op.is_head DESC, op.sort_order, op.id LIMIT 1`, [personId])).rows[0];
   if (!pos) return;
-  await q(`UPDATE people SET unit_id = CASE WHEN unit_id IS NULL AND $2 = 'REPARTO' THEN $3 ELSE unit_id END, role_id = coalesce(role_id, $4), site_id = coalesce(site_id, $5), updated_at=now() WHERE id=$1`, [personId, pos.kind, pos.unit_id, pos.role_id, pos.site_id]);
+  await c.query(`UPDATE people SET unit_id = coalesce(unit_id, $2), role_id = coalesce(role_id, $3), site_id = coalesce(site_id, $4), updated_at=now() WHERE id=$1`, [personId, pos.unit_id, pos.role_id, pos.site_id]);
 }
 // Dalla scheda persona agli incarichi: reparto + ruolo scelti in Persone diventano (o aggiornano) l'incarico non da responsabile in quel reparto
 export async function syncPositionFromPerson(p) {
@@ -170,22 +170,28 @@ export async function ensureSiteNode(c, siteId) {
 }
 export async function ensureUnit(c, siteId, name, { create = true } = {}) {
   // prima il reparto della sede, poi un reparto di area con lo stesso nome (es. Core Lab sotto Laboratorio di Analisi), infine se ne crea uno nella sede
-  const ex = (await c.query(`SELECT id FROM org_units WHERE kind='REPARTO' AND lower(name)=lower($2) AND (site_id=$1 OR site_id IS NULL) ORDER BY (site_id=$1) DESC NULLS LAST, id LIMIT 1`, [siteId, name.trim()])).rows[0];
+  // accetta anche il percorso "B2B › Service di Laboratorio" (o con / o >): si usa l'ultimo nome, il padre per disambiguare
+  const parts = String(name).split(/\s*(?:›|>|\/)\s*/).map((x) => x.trim()).filter(Boolean);
+  const leaf = parts[parts.length - 1] || name.trim(); const parentName = parts.length > 1 ? parts[parts.length - 2] : null;
+  const cands = (await c.query(`SELECT u.id, u.kind, u.site_id, org_unit_site(u.id) AS any_site, pu.name AS parent_name FROM org_units u LEFT JOIN org_units pu ON pu.id=u.parent_id WHERE lower(u.name)=lower($1) AND u.active ORDER BY (u.kind='REPARTO') DESC, u.id`, [leaf])).rows
+    .filter((u) => !parentName || (u.parent_name || '').toLowerCase() === parentName.toLowerCase());
+  const ex = cands.find((u) => siteId && u.site_id === siteId) || cands.find((u) => siteId && u.any_site === siteId) || cands.find((u) => !u.site_id) || (cands.length === 1 ? cands[0] : null);
   if (ex || !create) return ex?.id || null;
+  if (!siteId) return null;
   const parent = await ensureSiteNode(c, siteId);
   return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'REPARTO',$2,$3) RETURNING id`, [name.trim(), siteId, parent])).rows[0].id;
 }
 
 // Riferimento ai cataloghi quando una persona viene scritta: area_id/role_id ← testo, oppure testo ← id
 export async function resolveCatalog(b, { createMissing = false } = {}) {
-  if (b.unit_id != null) { const u = await one('SELECT site_id FROM org_units WHERE id=$1', [b.unit_id]); if (!u) throw bad('Reparto inesistente'); if (b.site_id != null && u.site_id !== b.site_id) throw bad('Il reparto appartiene a un\'altra sede'); }
+  // Afferenza: l'unità può essere di qualunque tipo; la sede di lavoro, se non indicata, è quella dell'unità (o del primo antenato con sede)
+  if (b.unit_id != null) { const u = await one('SELECT id, org_unit_site(id) AS site_id FROM org_units WHERE id=$1', [b.unit_id]); if (!u) throw bad('Unità inesistente'); if (b.site_id == null && u.site_id) b.site_id = u.site_id; }
   if (b.unit !== undefined) {
     if (!b.unit) b.unit_id = null;
     else {
-      if (b.site_id == null) throw bad('Per indicare il reparto serve la sede');
       const { pool } = await import('../db.js');
-      const uid = await ensureUnit(pool, b.site_id, b.unit, { create: createMissing });
-      if (!uid) throw bad(`Reparto "${b.unit}" non presente nella sede: crealo in Amministrazione, Organizzazione`);
+      const uid = await ensureUnit(pool, b.site_id ?? null, b.unit, { create: createMissing });
+      if (!uid) throw bad(`Unità "${b.unit}" non presente nell'organigramma: creala in Amministrazione, Organizzazione`);
       b.unit_id = uid;
     }
     delete b.unit;

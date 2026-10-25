@@ -897,3 +897,7 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 
 .dep-row { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.2fr); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); margin-bottom: 12px; }
 @media (max-width: 640px) { .dep-row { grid-template-columns: 1fr; } }
+
+.tree-picker { display: grid; gap: 6px; }
+.tree-picker select { width: 100%; }
+.linklike { background: none; border: 0; padding: 0; color: var(--blue); cursor: pointer; font: inherit; text-decoration: underline; }

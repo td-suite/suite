@@ -120,7 +120,7 @@ export const APPLIERS = {
     if (row.job_title) { const ex0 = (await c.query('SELECT id, name FROM job_roles WHERE lower(name)=lower($1)', [row.job_title.trim()])).rows[0]; const r0 = ex0 || (await c.query('INSERT INTO job_roles (name) VALUES ($1) RETURNING id, name', [row.job_title.trim()])).rows[0]; roleId = r0.id; row.job_title = r0.name; }
     // reparto: dipende dalla sede; creato se manca
     let unitId = null;
-    if (row.unit) { const sid = site?.id || k.site_id; if (!sid) throw new Error(`reparto "${row.unit}" indicato senza sede`); unitId = await ensureUnit(c, sid, row.unit); }
+    if (row.unit) { const sid = site?.id || k.site_id || null; unitId = await ensureUnit(c, sid, row.unit); if (!unitId) throw new Error(`unità "${row.unit}" non trovata nell'organigramma e senza sede in cui crearla`); }
     const manager = row.manager_email ? (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.manager_email])).rows[0] : null;
     if (row.manager_email && !manager) throw new Error(`responsabile ${row.manager_email} non trovato: caricalo prima (o nella stessa lista, più in alto)`);
     const vals = [row.last_name, row.first_name, row.email || null, cf, row.kind || null, row.status || null, row.area || null, row.job_title || null, row.discipline || null, row.title || null,

@@ -13,7 +13,7 @@ import { ah, HttpError, audit, displayName } from '../lib/util.js';
 import { requireAdmin, requireOwner } from '../lib/access.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
-import { upsertPosition } from './orgcat.js';
+import { upsertPosition, syncPersonFromPosition } from './orgcat.js';
 import { geocodeAddress } from '../lib/geocode.js';
 
 const r = Router();
@@ -64,10 +64,10 @@ const DATASETS = {
       ['tax_code', 'Codice fiscale', 'Usato per riconoscere la persona se già presente.'],
       ['kind', 'Tipo', `Uno tra: ${PERSON_KINDS.join(', ')}. Predefinito DIPENDENTE. MEDICO e SANITARIO sono i professionisti di Room Planning.`],
       ['status', 'Stato', `Uno tra: ${PERSON_STATUS.join(', ')}. Predefinito ATTIVO.`],
-      ['job_title', 'Ruolo principale', 'Facoltativo: con il reparto diventa il primo incarico nell\'organigramma (dal catalogo Ruoli; un ruolo nuovo viene aggiunto). Gli altri incarichi si caricano con il file Organigramma.'],
+      ['job_title', 'Ruolo', 'Facoltativo: con il reparto diventa il primo incarico nell\'organigramma (dal catalogo Ruoli; un ruolo nuovo viene aggiunto). Gli altri incarichi si caricano con il file Organigramma.'],
       ['discipline', 'Disciplina', 'Per medici e professionisti: Ginecologia, Cardiologia...'],
       ['site_code', 'Codice sede', 'Sede di lavoro principale (foglio Sedi).'],
-      ['unit', 'Reparto principale', 'Facoltativo: reparto della sede (es. Preanalitica, Core Lab, Accettazione), creato se manca. Richiede il codice sede. Con il ruolo diventa il primo incarico.'],
+      ['unit', 'Afferenza (unità)', 'Unità dell\'organigramma a cui la persona appartiene: reparto, funzione, sede o area, es. Anatomia Patologica, oppure il percorso B2B › Service di Laboratorio per distinguere omonimi. Deve esistere in Organizzazione (o nel file Organigramma); un reparto nuovo si crea nella sede indicata.'],
       ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: basta che sia nel file (in qualsiasi riga) o già caricata.'],
       ['phone', 'Cellulare', ''], ['phone_office', 'Telefono ufficio', ''], ['phone_ext', 'Interno centralino', 'Es. 101.'],
       ['hired_at', 'Data di assunzione', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
@@ -287,6 +287,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
         let roleId = null;
         if (row.role) { const ex0 = (await c.query('SELECT id FROM job_roles WHERE lower(name)=lower($1)', [row.role])).rows[0]; roleId = (ex0 || (await c.query('INSERT INTO job_roles (name) VALUES ($1) RETURNING id', [row.role])).rows[0]).id; }
         await upsertPosition(c, { unit_id: unit.id, person_id: person.id, role_id: roleId, is_head: Boolean(row.is_head) });
+        await syncPersonFromPosition(person.id, c);
         if (row.is_head) await c.query('UPDATE org_units SET head_person_id=$2 WHERE id=$1', [unit.id, person.id]);
         action = 'incarico';
       }

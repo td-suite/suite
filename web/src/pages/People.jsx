@@ -49,11 +49,11 @@ function List() {
   const [sp, setSp] = useSearchParams();
   const qtext = sp.get('qtext') || '';
   const [q, setQ] = useState(qtext);
-  const role_id = sp.get('role_id') || '', kind = sp.get('kind') || '', site_id = sp.get('site_id') || '';
+  const role_id = sp.get('role_id') || '', kind = sp.get('kind') || '', site_id = sp.get('site_id') || '', unit_id = sp.get('unit_id') || '';
   useEffect(() => setQ(qtext), [qtext]);
   useEffect(() => { const t = setTimeout(() => { if (q !== qtext) setSp((s) => { const n = new URLSearchParams(s); if (q) n.set('qtext', q); else n.delete('qtext'); return n; }, { replace: true }); }, 300); return () => clearTimeout(t); }, [q, qtext, setSp]);
   const setF = (k, v) => setSp((s) => { const n = new URLSearchParams(s); if (v) n.set(k, v); else n.delete(k); return n; });
-  const { data, loading, error } = useApi(`/people${qs({ qtext, role_id, kind, site_id })}`, [qtext, role_id, kind, site_id]);
+  const { data, loading, error } = useApi(`/people${qs({ qtext, role_id, kind, site_id, unit_id })}`, [qtext, role_id, kind, site_id, unit_id]);
   const roles = useApi('/job-roles');
   const sites = useApi('/sites');
   return (
@@ -69,7 +69,8 @@ function List() {
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="users" title="Nessuna persona trovata">{qtext ? 'Prova con un nome o un ruolo diverso.' : 'La rubrica si popola dalle anagrafiche e dalle importazioni.'}</Empty>}
       {data?.length > 0 && <><div className="small muted mb">{data.length} person{data.length === 1 ? 'a' : 'e'}</div><div className="people">{data.map((p) => <PersonCard key={p.id} p={p} />)}</div></>}
-      {!qtext && !role_id && !kind && !site_id && <Switchboard />}
+      {!qtext && !role_id && !kind && !site_id && !unit_id && <Switchboard />}
+      {unit_id && data?.[0]?.unit_path && <div className="small muted" style={{ marginBottom: 8 }}>Persone di {data[0].unit_path}. <button className="linklike" onClick={() => setF('unit_id', '')}>Tutte</button></div>}
     </div>
   );
 }
@@ -135,6 +136,7 @@ function Detail() {
         </Card>
         <Card title="Organizzazione" icon="tree" actions={isAdmin(user) && <button className="btn ghost sm" onClick={() => setPos(true)}><Icon name="edit" />Incarichi</button>}>
           <div className="col">
+            {p.unit_path && <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Afferisce a</div><div className="small mt">{p.unit_path}</div></div>}
             <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Incarichi nell'organigramma ({p.positions?.length || 0})</div>
               {!p.positions?.length && <div className="small muted mt">Nessun incarico: si assegnano in Amministrazione, Persone o Organizzazione.</div>}
               <div className="col mt" style={{ gap: 6 }}>{(p.positions || []).map((x) => <Link key={x.id} to={`/people/org-chart?focus=${p.id}`} className="small" style={{ color: 'inherit' }}><span className={x.is_head ? 'strong' : ''}>{x.unit_name}</span>{x.parent_name ? <span className="muted"> ({x.parent_name})</span> : ''}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}{x.is_head && <> <Badge tone="blue">Responsabile</Badge></>}</Link>)}</div></div>
@@ -194,7 +196,8 @@ function OrgChart() {
 const KIND_LABEL = { DIREZIONE: 'Direzione', AREA: 'Area', SEDE: 'Sede', REPARTO: 'Reparto', FUNZIONE: 'Funzione' };
 function UnitNode({ u, children, focus }) {
   const heads = (u.positions || []).filter((x) => x.is_head);
-  const others = (u.positions || []).filter((x) => !x.is_head);
+  const others = (u.positions || []).filter((x) => !x.is_head && x.role_name);
+  const members = (u.positions || []).filter((x) => !x.is_head && !x.role_name);
   const hit = (u.positions || []).some((x) => x.person_id === focus);
   return (
     <li>
@@ -203,6 +206,7 @@ function UnitNode({ u, children, focus }) {
         {heads.map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className="pos head"><Avatar name={x.person_name} fileId={x.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{x.person_name}</div><div className="r ellipsis">{x.role_name || 'Responsabile'}</div></div></Link>)}
         {!heads.length && <div className="pos head tbd"><div className="n muted">Da assegnare</div></div>}
         {others.map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className="pos"><div style={{ minWidth: 0 }}><div className="r">{x.role_name || 'Incarico'}</div><div className="n">{x.person_name}</div></div></Link>)}
+        {members.length > 0 && <Link to={`/people?unit_id=${u.id}`} className="pos"><div className="r">{members.length} person{members.length === 1 ? 'a afferente' : 'e afferenti'}</div></Link>}
       </div>
       {children?.length > 0 && <ul className={children.length > 3 && children.every((c) => !c.children?.length) ? 'stack' : ''}>{children.map((c) => <UnitNode key={c.u.id} u={c.u} focus={focus}>{c.children}</UnitNode>)}</ul>}
     </li>

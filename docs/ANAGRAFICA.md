@@ -128,3 +128,13 @@ dall'Organizzazione (`people_manager_auto`, migrazione 014: il responsabile dell
 lei la responsabile); per tutti gli altri (medici, infermieri, collaboratori senza casella nell'organigramma) e per le eccezioni si
 sceglie a mano una persona (`manager_person_id`), che prevale. La colonna "Dipende da" in Persone segnala "dall'organigramma" quando
 il valore è derivato. Il file Persone continua ad accettare `manager_email` come dipendenza manuale.
+
+## Afferenza (25/10/2026, notte)
+Ogni persona afferisce a un'unità qualunque dell'albero (`people.unit_id`, non più solo reparto): nella scheda, "Afferisce a" con
+tendine a cascata Direzione › Area › Sede › Reparto/Funzione, fermandosi dove serve; il percorso completo è `org_unit_path(unit_id)`
+(migrazione 015) ed è mostrato in Persone, in Rubrica e nel filtro `unit_id`. La sede di lavoro, se non indicata, è quella dell'unità o
+del primo antenato con sede (`org_unit_site`). L'afferenza crea un incarico senza ruolo nell'unità (così la persona sta "lì sotto"
+nell'organigramma, dove le persone afferenti senza ruolo sono raggruppate come conteggio); "Dipende da" deriva prima dall'afferenza
+(responsabile dell'unità, o dell'unità superiore se è lei la responsabile), poi dagli incarichi (migrazione 016). Nel file Persone la
+colonna Afferenza accetta il nome dell'unità o il percorso "B2B › Service di Laboratorio". Il file Organigramma precompilato ha ora il
+nodo Sede "Laboratorio Sesto Fiorentino" sotto l'area Laboratorio di Analisi, con i reparti sotto la sede.

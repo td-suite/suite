@@ -234,10 +234,10 @@ export function PeopleAdmin() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !data.length && <Empty icon="user" title="Nessuna persona">Le persone arrivano dalle importazioni (Contracts) o si inseriscono a mano.</Empty>}
-        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Sede</th><th>Incarichi</th><th>Dipende da</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Afferenza / sede</th><th>Incarichi</th><th>Dipende da</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
           {data.map((p) => <tr key={p.id}>
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
-            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.site_name}</td>
+            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.unit_path && <div className="strong">{p.unit_path.replace(/^[^›]+› /, '')}</div>}{p.site_name}</td>
             <td className="small">{(p.positions || []).length ? (p.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.unit_name}</b> : x.unit_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>) : <span className="faint">nessuno</span>}</td>
             <td className="small">{p.manager_name || <span className="faint">nessuno</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
@@ -255,11 +255,29 @@ export function PeopleAdmin() {
 }
 
 // Incarichi di una persona: più unità e ruoli (es. Direzione + responsabile di area + funzione). Stessa tabella org_positions dell'Organizzazione.
+// Afferenza: tendine a cascata lungo l'albero (Direzione › Area › Sede › Reparto...), fino alla foglia che si vuole
+export function UnitTreePicker({ units, value, onChange }) {
+  const coll = new Intl.Collator('it');
+  const byParent = useMemo(() => { const m = {}; for (const u of units) (m[u.parent_id || 'root'] ||= []).push(u); for (const k of Object.keys(m)) m[k].sort((a, b) => (a.sort_order - b.sort_order) || coll.compare(a.name, b.name)); return m; }, [units]);
+  const byId = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
+  const chain = []; let cur = value ? byId.get(Number(value)) : null; while (cur) { chain.unshift(cur); cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
+  const levels = []; let parentKey = 'root';
+  for (let i = 0; ; i++) { const opts0 = byParent[parentKey] || []; if (!opts0.length) break; levels.push({ options: opts0, selected: chain[i]?.id || '' }); if (!chain[i]) break; parentKey = chain[i].id; }
+  return (
+    <div className="tree-picker">
+      {levels.map((lv, i) => <select key={i} value={lv.selected} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : (i > 0 ? chain[i - 1].id : null))}>
+        <option value="">{i === 0 ? 'Scegli' : 'Fermati qui'}</option>{lv.options.map((u) => <option key={u.id} value={u.id}>{u.name} · {KINDS[u.kind]}</option>)}</select>)}
+      {chain.length > 0 && <div className="small muted span-all">{chain.map((u) => u.name).join(' › ')}</div>}
+    </div>
+  );
+}
+
 export function PositionsEditor({ person, onChange }) {
   const toast = useToast();
   const units = useApi('/org-units');
   const roles = useApi('/job-roles');
   const people = useApi('/people?all=1');
+  const setUnit = async (v) => { try { await api.put(`/people/${person.id}`, { unit_id: v }); toast(v ? 'Afferenza salvata' : 'Afferenza rimossa'); onChange(); } catch (e2) { toast(e2, 'err'); } };
   const setManager = async (v) => { try { await api.put(`/people/${person.id}`, { manager_person_id: v ? Number(v) : null }); toast(v ? 'Responsabile impostato' : 'Responsabile dall\'organigramma'); onChange(); } catch (e2) { toast(e2, 'err'); } };
   const [f, setF] = useState({ unit_id: '', role_id: '', is_head: false });
   const [busy, setBusy] = useState(false);
@@ -274,6 +292,10 @@ export function PositionsEditor({ person, onChange }) {
   const list = person.positions || [];
   return (
     <>
+      <div className="dep-row">
+        <div><div className="small strong">Afferisce a</div><div className="small muted">L'unità dell'organigramma a cui appartiene: scendi nell'albero fino a dove serve (area, sede, reparto o funzione)</div></div>
+        <UnitTreePicker units={units.data || []} value={person.unit_id} onChange={setUnit} />
+      </div>
       <div className="dep-row">
         <div><div className="small strong">Dipende da</div><div className="small muted">{person.manager_override_id ? 'Responsabile indicato a mano' : person.manager_auto_id ? 'Dall\'organigramma: il responsabile dell\'unità del suo incarico' : 'Nessuno: aggiungi un incarico o indicalo qui'}</div></div>
         <select value={person.manager_override_id || ''} onChange={(e) => setManager(e.target.value)}>
