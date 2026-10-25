@@ -12,7 +12,8 @@ export default function SitesMap({ sites, kinds, onSelect, focusId, height = 420
   useEffect(() => {
     if (!el.current || map.current) return;
     map.current = L.map(el.current, { scrollWheelZoom: false, zoomControl: true }).setView([43.5, 11.0], 8);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map.current);
+    // Tile CARTO (uso gratuito per applicazioni come questa): i server volontari di OpenStreetMap rifiutano le app (403)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' }).addTo(map.current);
     layer.current = L.layerGroup().addTo(map.current);
     return () => { map.current?.remove(); map.current = null; };
   }, []);

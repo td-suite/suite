@@ -1,7 +1,7 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
-import { syncPositionFromPerson } from './orgcat.js';
+import { syncPositionFromPerson, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
 import { resolveCatalog } from './orgcat.js';
@@ -107,6 +107,7 @@ r.post('/sites', requireAdmin, ah(async (req, res) => {
   await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}` });
   indexSite(s).catch(() => {});
   autoGeocodeSite(s, saveCoords);
+  await ensureSiteNodes().catch(() => {});
   res.status(201).json(s);
 }));
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
@@ -161,7 +162,11 @@ const personSchema = z.object({
   email: z.string().email().nullable().optional(), phone: z.string().nullable().optional(), phone_office: z.string().nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().nullable().optional(),
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), no_manager: z.boolean().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), birth_place: z.string().max(120).nullable().optional(), vat_number: z.string().max(20).nullable().optional(),
+  address: z.string().max(250).nullable().optional(), zip: z.string().max(10).nullable().optional(), city: z.string().max(120).nullable().optional(), province: z.string().max(4).nullable().optional(),
+  hired_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), terminated_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
+const PERSONAL_COLS = 'p.sex, p.birth_date, p.birth_place, p.tax_code, p.vat_number, p.address, p.zip, p.city, p.province, p.hired_at, p.terminated_at';
 const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, org_unit_path(p.unit_id) AS unit_path, p.discipline, people_manager(p.id) AS manager_person_id, p.manager_person_id AS manager_override_id, p.no_manager, people_manager_auto(p.id) AS manager_auto_id, (SELECT ma.last_name || ' ' || ma.first_name FROM people ma WHERE ma.id = people_manager_auto(p.id)) AS manager_auto_name, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, (SELECT mm.last_name || ' ' || mm.first_name FROM people mm WHERE mm.id = people_manager(p.id)) AS manager_name,
   (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id,
@@ -178,7 +183,7 @@ r.get('/people', ah(async (req, res) => {
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
   if (unit_id) where.push(`(p.unit_id = ${p(Number(unit_id))} OR EXISTS (SELECT 1 FROM org_positions op WHERE op.person_id=p.id AND op.unit_id = ${p(Number(unit_id))}))`);
   if (status && !all) where.push(`p.status = ${p(status)}`);
-  const rows = await many(`SELECT ${RUBRICA_COLS} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id
+  const rows = await many(`SELECT ${RUBRICA_COLS}${isAdmin(req.user) ? `, ${PERSONAL_COLS}` : ''} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY lower(p.last_name), lower(p.first_name) LIMIT 1000`, params);
   // Dati personali minimi per chi non è amministratore: niente codice fiscale, niente date; telefoni visibili (rubrica aziendale)
   res.json(rows);
@@ -287,9 +292,9 @@ r.get('/people/org-chart', ah(async (_req, res) => {
   res.json(rows);
 }));
 r.get('/people/:id', ah(async (req, res) => {
-  const row = await one(`SELECT ${RUBRICA_COLS}, p.hired_at, p.legacy_refs, p.needs_review FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.id=$1`, [Number(req.params.id)]);
+  const row = await one(`SELECT ${RUBRICA_COLS}, ${PERSONAL_COLS}, p.legacy_refs, p.needs_review FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.id=$1`, [Number(req.params.id)]);
   if (!row) throw notFound();
-  if (!isAdmin(req.user)) { delete row.legacy_refs; delete row.hired_at; }
+  if (!isAdmin(req.user)) { for (const k of ['legacy_refs', 'hired_at', 'terminated_at', 'sex', 'birth_date', 'birth_place', 'tax_code', 'vat_number', 'address', 'zip', 'city', 'province']) delete row[k]; }
   const reports = await many(`SELECT id, last_name, first_name, job_title FROM people WHERE people_manager(id)=$1 AND status='ATTIVO' ORDER BY last_name`, [row.id]);
   // Presentazione scritta dalla persona stessa nel proprio profilo Suite
   const bio = row.user_id ? (await one('SELECT bio FROM users WHERE id=$1', [row.user_id]))?.bio || null : null;

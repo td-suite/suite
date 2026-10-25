@@ -10,6 +10,9 @@ import { config } from '../config.js';
 import { ah, HttpError, audit, slugify } from '../lib/util.js';
 
 // Anagrafica unica: l'utente collegato prende dalla persona nomi, titolo, telefono, sede e legal entity (quella della sede, se la persona non ne ha una propria)
+// Dati personali dal file (solo se presenti nella riga)
+const PERSONAL_SQL = `UPDATE people SET sex=coalesce($2,sex), birth_date=coalesce($3::date,birth_date), birth_place=coalesce($4,birth_place), vat_number=coalesce($5,vat_number),
+  address=coalesce($6,address), zip=coalesce($7,zip), city=coalesce($8,city), province=coalesce($9,province), updated_at=now() WHERE id=$1`;
 export const SYNC_USER_SQL = `UPDATE users u SET first_name=p.first_name, last_name=p.last_name, full_name=p.last_name || ' ' || p.first_name, title=p.title, phone=p.phone,
   site_id=p.site_id, organization_id=coalesce(p.organization_id, s.organization_id), updated_at=now()
   FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`;
@@ -71,6 +74,7 @@ export const ROW_SCHEMAS = {
     last_name: str(80).min(1), first_name: str(80).min(1), email, tax_code: opt(str(16)), kind: opt(z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'])),
     status: opt(z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'])), area: opt(str(160)), job_title: opt(str(200)), discipline: opt(str(160)), title: opt(str(20)),
     site_code: opt(str(40)), unit: opt(str(160)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
+    sex: opt(z.enum(['F', 'M'])), birth_date: dateStr, birth_place: opt(str(120)), vat_number: opt(str(20)), address: opt(str(250)), zip: opt(str(10)), city: opt(str(120)), province: opt(str(4)),
   }),
   sites: z.object({
     code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
@@ -131,6 +135,7 @@ export const APPLIERS = {
         hired_at=coalesce($15,hired_at), terminated_at=coalesce($16,terminated_at), legacy_refs=legacy_refs || $17::jsonb, phone_ext=coalesce($18,phone_ext), manager_person_id=coalesce($19,manager_person_id), role_id=coalesce($20,role_id), unit_id=coalesce($21,unit_id), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       await c.query(SYNC_USER_SQL, [ex.id]);
       if (unitId) await upsertPosition(c, { unit_id: unitId, person_id: ex.id, role_id: roleId || null, is_head: false });
+      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
       return { id: ex.id, action: 'aggiornata' };
     }
     const ins = await c.query(`INSERT INTO people (last_name, first_name, email, tax_code, kind, status, area, job_title, discipline, title, site_id, phone, phone_office, hired_at, terminated_at, legacy_refs, phone_ext, manager_person_id, role_id, unit_id)
@@ -138,6 +143,7 @@ export const APPLIERS = {
     // l'utente con la stessa email (se già esiste, es. il titolare) viene agganciato alla persona
     if (row.email) await c.query(`UPDATE users SET person_id=$1, site_id=coalesce(site_id,$3), first_name=$4, last_name=$5, full_name=$6, updated_at=now() WHERE lower(email)=$2 AND person_id IS NULL`, [ins.rows[0].id, row.email, site?.id || null, row.first_name, row.last_name, `${row.last_name} ${row.first_name}`]);
     await c.query(SYNC_USER_SQL, [ins.rows[0].id]);
+    await c.query(PERSONAL_SQL, [ins.rows[0].id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
     if (unitId) await upsertPosition(c, { unit_id: unitId, person_id: ins.rows[0].id, role_id: roleId || null, is_head: false });
     return { id: ins.rows[0].id, action: 'creata' };
   },
@@ -151,6 +157,7 @@ export const APPLIERS = {
       await c.query(`UPDATE sites SET name=$2, short_name=coalesce($3,short_name), kind=coalesce($4,kind), organization_id=coalesce($5,organization_id), address=coalesce($6,address), zip=coalesce($7,zip), city=coalesce($8,city),
         province=coalesce($9,province), lat=coalesce($10,lat), lng=coalesce($11,lng), phone=coalesce($12,phone), email=coalesce($13,email), manager_name=coalesce($14,manager_name), opening_hours=coalesce($15,opening_hours),
         studiolab_code=coalesce($16,studiolab_code), legacy_brand=coalesce($17,legacy_brand), active=coalesce($18,active), legacy_refs=legacy_refs || $19::jsonb, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
+      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
       return { id: ex.id, action: 'aggiornata' };
     }
     const ins = await c.query(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, zip, city, province, lat, lng, phone, email, manager_name, opening_hours, studiolab_code, legacy_brand, active, legacy_refs)
@@ -169,6 +176,7 @@ export const APPLIERS = {
     if (ex) {
       await c.query(`UPDATE organizations SET name=$2, kind=coalesce($3,kind), code=coalesce(code,$4), vat_number=coalesce($5,vat_number), tax_code=coalesce($6,tax_code), sdi=coalesce($7,sdi), pec=coalesce($8,pec), email=coalesce($9,email),
         phone=coalesce($10,phone), address=coalesce($11,address), zip=coalesce($12,zip), city=coalesce($13,city), province=coalesce($14,province), website=coalesce($15,website), active=coalesce($16,active), legacy_refs=legacy_refs || $17::jsonb, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
+      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
       return { id: ex.id, action: 'aggiornata' };
     }
     const ins = await c.query(`INSERT INTO organizations (name, kind, code, vat_number, tax_code, sdi, pec, email, phone, address, zip, city, province, website, active, legacy_refs)
@@ -196,6 +204,7 @@ export const APPLIERS = {
     if (ex) {
       await c.query(`UPDATE news SET title=$2, kind=coalesce($3,kind), summary=$4, body=$5, tags=$6, requires_ack=coalesce($7,requires_ack), is_public=coalesce($8,is_public), audience=coalesce($9,audience), updated_at=now() WHERE id=$1`,
         [ex.id, row.title, row.kind || null, row.summary || null, row.body, tags, row.requires_ack ?? null, row.is_public ?? null, row.audience ? JSON.stringify(row.audience) : null]);
+      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
       return { id: ex.id, action: 'aggiornata' };
     }
     let slug = slugify(row.title); const base = slug; let i = 1;

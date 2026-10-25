@@ -58,6 +58,7 @@ async function unitRows(where = '', params = []) {
   return many(`SELECT ${UNIT_COLS} FROM org_units u LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN org_units pu ON pu.id=u.parent_id ${where} ORDER BY u.sort_order, lower(u.name)`, params);
 }
 r.get('/org-units', ah(async (req, res) => {
+  await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   const all = req.query.all === '1'; const siteId = req.query.site_id ? Number(req.query.site_id) : null; const kind = req.query.kind || null;
   // con site_id: i reparti della sede più quelli senza sede (reparti di area, es. il Laboratorio), così la tendina "Reparto" li offre entrambi
   const w = [all ? null : 'u.active', siteId ? `(u.site_id=$1 OR (u.kind='REPARTO' AND u.site_id IS NULL))` : null, kind ? `u.kind='${kind.replace(/[^A-Z_]/g, '')}'` : null].filter(Boolean);
@@ -116,6 +117,7 @@ r.delete('/org-positions/:id', requireAdmin, ah(async (req, res) => {
 
 // Organigramma: persone attive con sede, ruolo e responsabile (l'albero si costruisce sul responsabile; il raggruppamento per sede è della pagina)
 r.get('/org-chart', ah(async (_req, res) => {
+  await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   const units = await unitRows('WHERE u.active');
   const people = await many(`SELECT p.id, p.last_name, p.first_name, p.title, p.email, p.role_id, p.job_title, p.site_id, p.unit_id, u.name AS unit_name, p.manager_person_id, s.short_name AS site_name, s.name AS site_full_name,
     (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN org_units u ON u.id=p.unit_id WHERE p.status='ATTIVO' ORDER BY p.last_name, p.first_name`);
@@ -165,8 +167,20 @@ export async function ensureSiteNode(c, siteId) {
   if (ex) return ex.id;
   const root = (await c.query(`SELECT id FROM org_units WHERE kind='DIREZIONE' ORDER BY id LIMIT 1`)).rows[0]
     || (await c.query(`INSERT INTO org_units (name, kind, sort_order) VALUES ('Toscana Diagnostica','DIREZIONE',0) RETURNING id`)).rows[0];
-  const site = (await c.query('SELECT name FROM sites WHERE id=$1', [siteId])).rows[0];
-  return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'SEDE',$2,$3) RETURNING id`, [site?.name || `Sede ${siteId}`, siteId, root.id])).rows[0].id;
+  const site = (await c.query('SELECT name, code FROM sites WHERE id=$1', [siteId])).rows[0];
+  let name = site?.name || `Sede ${siteId}`;
+  if ((await c.query('SELECT 1 FROM org_units WHERE coalesce(parent_id,0)=$1 AND lower(name)=lower($2)', [root.id, name])).rows[0]) name = `${name} (${site?.code || siteId})`;
+  return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'SEDE',$2,$3) RETURNING id`, [name, siteId, root.id])).rows[0].id;
+}
+// Ogni sede TD attiva (non i punti dei clienti service) ha il suo nodo Sede nell'albero: se manca nasce sotto la Direzione,
+// poi si sposta sotto l'area giusta in Organizzazione (o lo fa il file Organigramma con il codice sede).
+export async function ensureSiteNodes(c = { query: q }) {
+  const missing = (await c.query(`SELECT s.id FROM sites s WHERE s.active AND s.kind <> 'SERVICE' AND NOT EXISTS (SELECT 1 FROM org_units u WHERE u.kind='SEDE' AND u.site_id=s.id) ORDER BY s.sort_order, s.name`)).rows;
+  for (const s of missing) await ensureSiteNode(c, s.id);
+  // il nodo sede segue il nome della sede
+  await c.query(`UPDATE org_units u SET name = s.name, updated_at=now() FROM sites s WHERE u.kind='SEDE' AND u.site_id = s.id AND u.name <> s.name
+    AND NOT EXISTS (SELECT 1 FROM org_units x WHERE x.id <> u.id AND coalesce(x.parent_id,0)=coalesce(u.parent_id,0) AND lower(x.name)=lower(s.name))`);
+  return missing.length;
 }
 export async function ensureUnit(c, siteId, name, { create = true } = {}) {
   // prima il reparto della sede, poi un reparto di area con lo stesso nome (es. Core Lab sotto Laboratorio di Analisi), infine se ne crea uno nella sede

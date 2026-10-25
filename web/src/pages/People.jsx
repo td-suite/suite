@@ -149,7 +149,14 @@ function Detail() {
           </div>
         </Card>
       </div>
-      {isAdmin(user) && (p.hired_at || p.needs_review) && <div className="small muted mt2">{p.hired_at && <>In servizio dal {fmtDate(p.hired_at)}. </>}{p.needs_review && <Badge tone="amber">Da verificare</Badge>}</div>}
+      {isAdmin(user) && (p.hired_at || p.birth_date || p.tax_code || p.address || p.needs_review) && <Card title="Dati personali (solo amministratori)" icon="lock" className="mt2"><dl className="facts">
+        {p.hired_at && <><dt>In servizio dal</dt><dd>{fmtDate(p.hired_at)}{p.terminated_at ? ` al ${fmtDate(p.terminated_at)}` : ''}</dd></>}
+        {p.birth_date && <><dt>Nascita</dt><dd>{fmtDate(p.birth_date)}{p.birth_place ? `, ${p.birth_place}` : ''}{p.sex ? ` (${p.sex})` : ''}</dd></>}
+        {p.tax_code && <><dt>Codice fiscale</dt><dd className="mono">{p.tax_code}</dd></>}
+        {p.vat_number && <><dt>Partita IVA</dt><dd className="mono">{p.vat_number}</dd></>}
+        {p.address && <><dt>Residenza</dt><dd>{p.address}{p.zip || p.city ? `, ${[p.zip, p.city].filter(Boolean).join(' ')}` : ''}{p.province ? ` (${p.province})` : ''}</dd></>}
+        {p.needs_review && <><dt>Stato</dt><dd><Badge tone="amber">Da verificare</Badge></dd></>}
+      </dl></Card>}
       {edit && <EditPersonModal p={p} onClose={() => setEdit(false)} onSaved={reload} />}
       {pos && <PersonPositionsModal person={p} onClose={() => setPos(false)} onChange={reload} />}
     </div>

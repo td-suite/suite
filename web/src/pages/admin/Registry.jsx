@@ -229,6 +229,9 @@ export function PeopleAdmin() {
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
     { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'phone_ext', label: 'Interno centralino', max: 10 },
     { key: 'site_id', label: 'Sede di lavoro', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) }, { key: 'discipline', label: 'Disciplina' },
+    { key: 'hired_at', label: 'Data di ingresso', type: 'date' }, { key: 'terminated_at', label: 'Data di cessazione', type: 'date' },
+    { key: 'sex', label: 'Sesso', type: 'select', options: [{ value: 'F', label: 'F' }, { value: 'M', label: 'M' }] }, { key: 'birth_date', label: 'Data di nascita', type: 'date' }, { key: 'birth_place', label: 'Luogo di nascita', max: 120 }, { key: 'vat_number', label: 'Partita IVA', max: 20 },
+    { key: 'address', label: 'Indirizzo di residenza', max: 250 }, { key: 'zip', label: 'CAP', max: 10 }, { key: 'city', label: 'Città', max: 120 }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
    
   ];

@@ -149,3 +149,15 @@ applicati dopo ogni importazione di Persone/Organigramma e al salvataggio della 
 seed: le sedi (LAB, HQ...) le codifica Francesco nel file Sedi.
 Vertice (migrazione 017): `people.no_manager` = la persona non dipende da nessuno anche se l'organigramma suggerirebbe un responsabile;
 opzione "Nessuno (vertice)" nella tendina Dipende da; `people_manager` restituisce NULL.
+
+## Dati personali (25/10/2026, notte)
+`people` ha anche luogo di nascita, partita IVA e residenza (migrazione 018), oltre a sesso, data di nascita, codice fiscale, ingresso e
+cessazione. Si caricano dal file Persone (colonne in coda), si modificano nel form di Amministrazione e si vedono solo agli
+amministratori (card "Dati personali" nella scheda Rubrica; le API li omettono agli altri). File precompilato dal file risorse di
+Francesco: modelli\SuiteTD_persone_TD.xlsx (43 persone; chi ha partita IVA è stato messo come LP, da verificare).
+
+## Sedi e organigramma allineati (26/10/2026)
+Ogni sede TD attiva (non SERVICE) ha sempre il suo nodo Sede nell'albero (`ensureSiteNodes`: creato sotto la Direzione se manca,
+nome che segue l'anagrafica sedi; chiamato alla creazione di una sede, dopo il file Sedi e a ogni lettura di Organizzazione). Il file
+Organigramma, per una riga Sede, aggancia il nodo esistente per codice sede o per nome/nome breve e lo sposta sotto l'area indicata,
+senza duplicarlo. Mappa con tile CARTO (Voyager): i server volontari di OpenStreetMap rifiutano le applicazioni con 403.

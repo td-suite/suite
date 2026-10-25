@@ -13,7 +13,7 @@ import { ah, HttpError, audit, displayName } from '../lib/util.js';
 import { requireAdmin, requireOwner } from '../lib/access.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
-import { upsertPosition, syncPersonFromPosition } from './orgcat.js';
+import { upsertPosition, syncPersonFromPosition, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
 
@@ -71,9 +71,11 @@ const DATASETS = {
       ['unit', 'Afferenza (unità)', 'Unità dell\'organigramma a cui la persona appartiene: reparto, funzione, sede o area, es. Anatomia Patologica, oppure il percorso B2B › Service di Laboratorio per distinguere omonimi. Deve esistere in Organizzazione (o nel file Organigramma); un reparto nuovo si crea nella sede indicata.'],
       ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: basta che sia nel file (in qualsiasi riga) o già caricata.'],
       ['phone', 'Cellulare', ''], ['phone_office', 'Telefono ufficio', ''], ['phone_ext', 'Interno centralino', 'Es. 101.'],
-      ['hired_at', 'Data di assunzione', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
+      ['hired_at', 'Data di ingresso', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
+      ['sex', 'Sesso', 'F o M.'], ['birth_date', 'Data di nascita', 'AAAA-MM-GG.'], ['birth_place', 'Luogo di nascita', 'Es. Firenze (FI).'], ['vat_number', 'Partita IVA', 'Per liberi professionisti.'],
+      ['address', 'Indirizzo di residenza', ''], ['zip', 'CAP', ''], ['city', 'Città', ''], ['province', 'Provincia', 'Sigla.'],
     ],
-    example: ['Esempio', 'Mario', 'Dott.', 'mario.esempio@esempio.it', '', 'DIPENDENTE', 'ATTIVO', 'Ruolo di esempio', '', 'ES-01', 'Reparto di esempio', '', '000 0000000', '000 0000000', '100', '2026-01-01', ''],
+    example: ['Esempio', 'Mario', 'Dott.', 'mario.esempio@esempio.it', '', 'DIPENDENTE', 'ATTIVO', 'Ruolo di esempio', '', 'ES-01', 'Reparto di esempio', '', '000 0000000', '000 0000000', '100', '2026-01-01', '', 'M', '1980-01-01', 'Firenze (FI)', '', 'Via di esempio 1', '50100', 'Firenze', 'FI'],
   },
   orgchart: {
     title: 'Organigramma', sheet: 'Organigramma', order: 5,
@@ -268,11 +270,20 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
     APPLIERS.orgchart = async (c, row) => {
       const parent = row.parent ? (await c.query('SELECT id, kind, site_id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [row.parent])).rows[0] : null;
       if (row.parent && !parent) throw new Error(`unità superiore "${row.parent}" non trovata: mettila in una riga più in alto`);
-      const site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;
+      let site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;
       if (row.site_code && !site) throw new Error(`sede ${row.site_code} inesistente`);
+      // riga Sede senza codice: si aggancia alla sede dell'anagrafica con lo stesso nome (o nome breve), se univoca
+      if (!site && (row.kind === 'SEDE' || (!row.kind && parent?.kind === 'AREA'))) {
+        const cands = (await c.query(`SELECT id FROM sites WHERE kind <> 'SERVICE' AND (lower(unaccent(name))=lower(unaccent($1)) OR lower(unaccent(coalesce(short_name,'')))=lower(unaccent($1)))`, [row.unit])).rows;
+        if (cands.length === 1) site = cands[0];
+      }
       const kind = row.kind || (site ? 'SEDE' : parent?.kind === 'SEDE' ? 'REPARTO' : parent ? 'AREA' : 'DIREZIONE');
       const siteId = site?.id || (kind === 'REPARTO' ? parent?.site_id || null : null);
       let unit = (await c.query('SELECT id FROM org_units WHERE lower(name)=lower($1) AND coalesce(parent_id,0)=coalesce($2,0)', [row.unit, parent?.id || null])).rows[0];
+      if (!unit && site && kind === 'SEDE') {   // il nodo della sede esiste già (creato dall'anagrafica): lo si rinomina e sposta, non si duplica
+        unit = (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id=$1`, [site.id])).rows[0];
+        if (unit) await c.query('UPDATE org_units SET parent_id=$2 WHERE id=$1', [unit.id, parent?.id || null]);   // il nome resta quello dell'anagrafica sedi
+      }
       if (!unit) unit = (await c.query('INSERT INTO org_units (name, kind, parent_id, site_id, sort_order) VALUES ($1,$2,$3,$4,coalesce($5,100)) RETURNING id', [row.unit, kind, parent?.id || null, siteId, row.sort_order ?? null])).rows[0];
       else await c.query('UPDATE org_units SET kind=$2, site_id=coalesce($3, site_id), sort_order=coalesce($4, sort_order), active=TRUE WHERE id=$1', [unit.id, kind, siteId, row.sort_order ?? null]);
       let action = 'unità';
@@ -319,6 +330,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   const errors = out.errors.map((e) => ({ ...e, row: data[e.row]?.__row ?? e.row + 2 }));
   await audit(req, 'IMPORT_XLSX', { entity: 'ingest_batch', entityId: batch.id, label: `${d.title}: ${out.rows_ok} ok, ${out.rows_rejected} scartate`, data: { dataset, filename: req.file.originalname } });
   if (dataset === 'people' || dataset === 'orgchart') await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
+  if (dataset === 'sites') await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
     many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
       for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await q('UPDATE sites SET lat=$2, lng=$3 WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [s.id, g.lat, g.lng]); } catch (e) { console.warn('[geocode]', s.id, e.message); } }
