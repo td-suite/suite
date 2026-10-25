@@ -34,6 +34,14 @@ export default function mount(app) {
     req.user = { ...req.moduleUser, struttura_ids: req.moduleUser.legacy_site_ids || [] };
     next();
   });
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const r = await one(`SELECT count(*)::int AS n FROM turni WHERE prof_id IS NULL AND mese = to_char(CURRENT_DATE, 'YYYY-MM')`);
+      res.json({ scoperti: r.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try { const st = await getModuleState(KEY); res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user) }); } catch (e) { next(e); }
   });

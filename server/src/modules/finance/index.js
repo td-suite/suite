@@ -54,6 +54,16 @@ export default function mount(app) {
   r.use(requireAuth, ready);
   // l'app ragiona con il "suo" utente: la riga della sua tabella users (schema finance) con role = profilo del grant Suite
   r.use((req, _res, next) => { req.suiteUser = req.user; req.user = req.moduleUser; next(); });
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const r = await one(`SELECT count(*) FILTER (WHERE status='IN_FIRMA')::int AS in_firma, count(*) FILTER (WHERE status='FIRMATA')::int AS da_eseguire FROM payment_requests`);
+      const role = req.user.role;
+      const mine = ['CEO','CFO'].includes(role) ? (await one(`SELECT count(*)::int AS n FROM payment_requests r WHERE r.status='IN_FIRMA' AND (r.tier <> 'SINGOLA' OR r.single_signer=$1) AND NOT EXISTS (SELECT 1 FROM signatures s WHERE s.request_id=r.id AND s.valid AND s.role=$1)`, [role])).n : 0;
+      res.json({ in_firma: r.in_firma, da_eseguire: r.da_eseguire, da_firmare: mine });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try {
       const st = await getModuleState(KEY);

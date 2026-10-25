@@ -151,6 +151,16 @@ export default function Shell() {
   const [open, setOpen] = useState(false);
   const section = sectionFor(loc.pathname, user);
   useEffect(() => setOpen(false), [loc.pathname]);
+  // Contatori accanto alle voci di menu dei moduli (GET /api/<modulo>/badges → { chiave: numero }), aggiornati ogni minuto
+  const [badges, setBadges] = useState({});
+  const badgeKey = section?.items?.some((i) => i.badge) ? section.key : null;
+  useEffect(() => {
+    if (!badgeKey) { setBadges({}); return; }
+    let alive = true;
+    const load = () => api.get(`/${badgeKey}/badges`, { silent: true }).then((b) => alive && setBadges(b || {})).catch(() => {});
+    load(); const t = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [badgeKey, loc.pathname]);
   // Scorciatoia: "/" apre la ricerca
   const navigate = useNavigate();
   useEffect(() => {
@@ -169,7 +179,7 @@ export default function Shell() {
             <nav>
               {section.items.map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
                 : it.href ? <a key={it.href} href={it.href}><Icon name={it.icon} />{it.label}</a>
-                : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}</NavLink>)}
+                : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link></div>
           </aside>

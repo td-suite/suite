@@ -401,7 +401,7 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .sk-inline { display: inline-block; width: 28px; height: 20px; border-radius: 6px; background: rgba(255,255,255,.18); animation: pulse 1.4s ease-in-out infinite; }
 .home-body { padding-top: 18px; max-width: 1240px; }
 .home-body .notices { margin-bottom: 22px; }
-.dash { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 14px; margin-bottom: 36px; align-items: start; }
+.dash { display: grid; grid-template-columns: repeat(5, 206px); justify-content: center; gap: 14px 14px; margin-bottom: 36px; align-items: start; }   /* tessere sempre 206 px, come le app */
 .dash > .empty, .dash > .tiles { grid-column: 1 / -1; }
 .area { grid-column: span var(--n, 5); margin: 0 0 10px; min-width: 0; }
 .area .tiles { grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); }
@@ -416,7 +416,7 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .widgets { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; }
 /* Tassellatura della home: 5 colonne, tessere quadrate, le aree come tessere colorate nel flusso */
 .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
-.tiles .widget { width: auto; padding: 18px 12px 12px; border-radius: 20px; }
+.tiles .widget { width: auto; padding: 20px 14px 14px; border-radius: 22px; }
 .tiles .widget .wi { width: 64px; height: 64px; border-radius: 18px; margin-bottom: 10px; }
 .tiles .widget .wi .ico { width: 44px; height: 44px; }
 .tiles .widget .name { font-size: 14px; }
@@ -426,7 +426,7 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .area-tile .t { font-size: 18px; font-weight: 820; line-height: 1.15; letter-spacing: -.01em; }
 .area-tile .m { font-size: 11.5px; opacity: .85; }
 .area-tile.DIREZIONE { color: var(--silk); }
-@media (max-width: 1180px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } .dash { grid-template-columns: repeat(4, minmax(0, 1fr)); } .area { grid-column: span min(var(--n, 4), 4); } .area .tiles { grid-template-columns: repeat(min(var(--n, 4), 4), minmax(0, 1fr)); } }
+@media (max-width: 1180px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } .dash { grid-template-columns: repeat(4, minmax(0, 1fr)); justify-content: stretch; } .area { grid-column: span min(var(--n, 4), 4); } .area .tiles { grid-template-columns: repeat(min(var(--n, 4), 4), minmax(0, 1fr)); } }
 @media (max-width: 900px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .dash { grid-template-columns: 1fr; } .area { grid-column: 1 / -1; } .area .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .tiles, .area .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .tiles .widget { width: auto; } .area-tile { padding: 12px; } .area-tile .t { font-size: 15px; } }
 .widget { position: relative; width: 206px; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px 16px 16px; cursor: pointer; color: var(--ink); box-shadow: var(--shadow); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; overflow: hidden; font: inherit; }

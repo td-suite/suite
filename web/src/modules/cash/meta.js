@@ -18,7 +18,7 @@ export default {
     { to: 'rendiconti/nuovo', icon: 'plus', label: 'Nuovo rendiconto', profiles: COUNT },
     { to: 'rendiconti', icon: 'cash', label: 'Rendiconti', end: true, profiles: ALL },
     { group: 'Revisione e approvazione' },
-    { to: 'revisione', icon: 'check', label: 'Revisione e approvazione', profiles: REVIEW },
+    { to: 'revisione', icon: 'check', label: 'Revisione e approvazione', badge: 'revisione', profiles: REVIEW },
     { to: 'nc', icon: 'alert', label: 'Errori e NC', profiles: ALL },
     { to: 'controllo', icon: 'list', label: 'Controllo giornaliero', profiles: ADMINS },
     { group: 'Finance' },

@@ -78,6 +78,15 @@ export default function mount(app) {
   const r = Router();
   r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'SUPERADMIN' } }));
   r.use(resolveStruttura);
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const r = await one(`SELECT count(*) FILTER (WHERE status='INVIATO')::int AS verifica FROM orders`);
+      const d = await one(`SELECT count(*)::int AS n FROM issues WHERE status='APERTA'`).catch(() => ({ n: 0 }));
+      res.json({ verifica: r.verifica, difformita: d.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', ah(async (req, res) => {
     const st = await getModuleState(KEY);
     res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user) });

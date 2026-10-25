@@ -114,6 +114,14 @@ async function buildAppUser(req, _res, next) {
 export default function mount(app) {
   const r = Router();
   r.use(requireAuth, ensureCashUser, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'SUPERADMIN' } }), buildAppUser);
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const r = await one(`SELECT count(*)::int AS n FROM cash_reports WHERE status='CLOSED'`);
+      res.json({ revisione: r.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res) => {
     const st = await getModuleState(KEY);
     res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user) });

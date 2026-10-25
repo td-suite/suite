@@ -66,6 +66,14 @@ export default function mount(app) {
     req.user = { ...u, sedi };
     next();
   }));
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const r = await one(`SELECT count(*) FILTER (WHERE stato='INVIATA_SEDE' AND sla_due_at < now())::int AS oltre_sla, count(*) FILTER (WHERE stato='CHIUSA' AND (rca_richiesta OR EXISTS (SELECT 1 FROM nc_azioni z WHERE z.nc_id=nc.id)))::int AS da_verificare FROM nc`);
+      res.json(r);
+    } catch (e) { next(e); }
+  });
   r.get('/state', ah(async (req, res) => {
     const st = await getModuleState(KEY);
     res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user) });

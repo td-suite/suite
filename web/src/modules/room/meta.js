@@ -23,7 +23,7 @@ export default {
     { to: 'turni', icon: 'clock', label: 'Turni' },
     { to: 'presenze', icon: 'check', label: 'Presenze', profiles: INTERNI },
     { to: 'rendiconti', icon: 'cash', label: 'Rendiconti', profiles: ['ADMIN', 'RESP_SAN', 'PROF'] },
-    { to: 'fabbisogno', icon: 'alert', label: 'Fabbisogno', profiles: INTERNI },
+    { to: 'fabbisogno', icon: 'alert', label: 'Fabbisogno', badge: 'scoperti', profiles: INTERNI },
     { to: 'bacheca', icon: 'megaphone', label: 'Bacheca' },
     { to: 'statistiche', icon: 'stats', label: 'Statistiche', profiles: GESTIONE },
     { group: 'Amministrazione', profiles: ['ADMIN'] },

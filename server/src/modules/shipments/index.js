@@ -36,6 +36,14 @@ export default function mount(app) {
     req.lang = req.suiteUser.lang === 'en' ? 'en' : 'it';
     next();
   });
+  // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
+  r.get('/badges', async (req, res, next) => {
+    try {
+      const { many } = await import('./db.js');
+      const rows = await many(`SELECT project, count(*)::int AS n FROM orders WHERE status='NEW' GROUP BY project`);
+      res.json(Object.fromEntries(rows.map((x) => [`${String(x.project).toLowerCase()}_new`, x.n])));
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res) => {
     const st = await getModuleState(KEY);
     res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user, req.suiteUser) });
