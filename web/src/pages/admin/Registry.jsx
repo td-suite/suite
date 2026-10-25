@@ -208,8 +208,8 @@ export function PeopleAdmin() {
   const fields = [
     { key: 'last_name', label: 'Cognome', required: true }, { key: 'first_name', label: 'Nome', required: true }, { key: 'title', label: 'Titolo', max: 20 },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
-    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' },
-    { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => String(u.site_id) === String(f.site_id)).map((u) => ({ value: u.id, label: u.name })), help: 'Dipende dalla sede scelta' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },
+    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => String(u.site_id) === String(f.site_id)).map((u) => ({ value: u.id, label: u.name })), help: 'Dipende dalla sede scelta' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },  
+      
     { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
    
   ];
@@ -229,10 +229,10 @@ export function PeopleAdmin() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !data.length && <Empty icon="user" title="Nessuna persona">Le persone arrivano dalle importazioni (Contracts) o si inseriscono a mano.</Empty>}
-        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Ruolo</th><th>Sede / reparto</th><th>Responsabile</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Sede / reparto</th><th>Ruolo</th><th>Responsabile</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
           {data.map((p) => <tr key={p.id}>
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
-            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.job_title}</td><td className="small">{p.unit_name && <div className="strong">{p.unit_name}</div>}{p.site_name}</td><td className="small">{p.manager_name}</td>
+            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.unit_name && <div className="strong">{p.unit_name}</div>}{p.site_name}</td><td className="small">{p.job_title}</td><td className="small">{p.manager_name}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
             <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link> : <span className="faint small">nessun accesso</span>}</td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
@@ -246,11 +246,11 @@ export function PeopleAdmin() {
 
 // ---------- Ruoli (catalogo) ----------
 export function Organization() {
-  const [tab, setTab] = useState('roles');
+  const [tab, setTab] = useState('units');
   return (
     <div className="page">
-      <PageHead title="Organizzazione" icon="grid" sub="Ruoli e reparti: con la sede e il responsabile compongono l'organigramma. Il ruolo si sceglie dal catalogo; il reparto dipende dalla sede." />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'roles', label: 'Ruoli' }, { value: 'units', label: 'Reparti per sede' }]} />
+      <PageHead title="Organizzazione" icon="grid" sub="Reparti per sede e ruoli: con il responsabile compongono l'organigramma. Il reparto dipende dalla sede; il ruolo si sceglie dal catalogo." />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'units', label: 'Reparti per sede' }, { value: 'roles', label: 'Ruoli' }]} />
       {tab === 'roles' ? <Roles embedded /> : <Units />}
     </div>
   );

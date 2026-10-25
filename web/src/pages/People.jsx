@@ -83,8 +83,9 @@ function EditPersonModal({ p, onClose, onSaved }) {
   return (
     <Modal title="Aggiorna la scheda" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="pform">Salva</button></>}>
       <form id="pform" onSubmit={save} className="form-grid">
-        <Field label="Ruolo"><select value={f.role_id || ''} onChange={set('role_id')}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+        <Field label="Sede"><input value={p.site_name || ''} disabled title="La sede si cambia in Amministrazione" /></Field>
         <Field label="Reparto" help={p.site_id ? undefined : 'Imposta prima la sede in Amministrazione'}><select value={f.unit_id || ''} onChange={set('unit_id')} disabled={!p.site_id}><option value="">Nessuno</option>{(units.data || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+        <Field label="Ruolo"><select value={f.role_id || ''} onChange={set('role_id')}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
         <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} /></Field>
