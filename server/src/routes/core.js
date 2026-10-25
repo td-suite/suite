@@ -1,5 +1,6 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting } from '../lib/util.js';
+import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
@@ -90,7 +91,6 @@ const orgSchema = z.object({
   kind: z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO']).optional(), code: z.string().max(24).nullable().optional(), name: z.string().min(2),
   vat_number: z.string().max(20).nullable().optional(), tax_code: z.string().max(20).nullable().optional(), sdi: z.string().max(10).nullable().optional(), pec: z.string().nullable().optional(),
   email: z.string().nullable().optional(), phone: z.string().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
-  studiolab_code: z.string().max(40).nullable().optional(),
   province: z.string().max(4).nullable().optional(), website: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), notes: z.string().nullable().optional(),
 });
 r.get('/organizations', ah(async (req, res) => {
@@ -142,6 +142,13 @@ r.get('/people', ah(async (req, res) => {
   // Dati personali minimi per chi non è amministratore: niente codice fiscale, niente date; telefoni visibili (rubrica aziendale)
   res.json(rows);
 }));
+// Accesso dalla persona (amministratori): crea o aggancia l'utente, con password provvisoria per gli esterni
+r.post('/people/:id/account', requireAdmin, ah(async (req, res) => {
+  try {
+    const out = await ensureUserForPerson(Number(req.params.id), { actor: req.user, onlyIfActive: false, sendInvite: req.body?.send_invite !== false });
+    res.status(out.created ? 201 : 200).json({ user_id: out.user.id, created: out.created, provider: out.provider, temporaryPassword: out.temporaryPassword });
+  } catch (e) { throw bad(e.message); }
+}));
 r.get('/people/switchboard', ah(async (_req, res) => { res.json(await getSetting('community.switchboard', null)); }));
 r.get('/people/areas', ah(async (_req, res) => {
   res.json(await many(`SELECT area, count(*)::int AS n FROM people WHERE area IS NOT NULL AND status='ATTIVO' GROUP BY area ORDER BY area`));
@@ -166,6 +173,7 @@ r.post('/people', requireAdmin, ah(async (req, res) => {
   const row = await one(`INSERT INTO people (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
   await audit(req, 'PERSON_CREATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}` });
   indexPersonById(row.id).catch(() => {});
+  autoAccountForPerson(row.id, req.user);   // ogni utente è una persona: l'accesso nasce dalla persona attiva con email
   res.status(201).json(row);
 }));
 r.put('/people/:id', ah(async (req, res) => {
@@ -178,6 +186,7 @@ r.put('/people/:id', ah(async (req, res) => {
   if (!row) throw notFound();
   await audit(req, 'PERSON_UPDATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}`, data: b });
   indexPersonById(row.id).catch(() => {});
+  if (isAdmin(req.user)) autoAccountForPerson(row.id, req.user);
   res.json(row);
 }));
 

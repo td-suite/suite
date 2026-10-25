@@ -28,15 +28,15 @@ const DATASETS = {
   sites: {
     title: 'Sedi', sheet: 'Sedi', order: 2,
     columns: [
-      ['code', 'Codice', 'Codice breve univoco della sede (es. FI-CEC). Obbligatorio. È la chiave con cui le persone e gli utenti vengono collegati alla sede.'],
+      ['code', 'Codice', 'Codice breve univoco della sede (es. FI-CEC). Obbligatorio. È la chiave con cui le persone e gli utenti vengono collegati alla sede. Per i punti dei clienti service usa il codice cliente StudioLAB.'],
       ['name', 'Denominazione', 'Nome completo della sede. Obbligatorio.'],
       ['short_name', 'Nome breve', 'Nome corto per i menu e i widget.'],
-      ['kind', 'Tipo', `Uno tra: ${SITE_KINDS.join(', ')}. Predefinito PUNTO_PRELIEVI. Le strutture dei clienti service hanno tipo SERVICE.`],
-      ['organization_code', 'Codice organizzazione', 'Codice dell\'organizzazione proprietaria (foglio Organizzazioni), per le strutture dei clienti service o delle società del gruppo.'],
+      ['kind', 'Tipo', `Uno tra: ${SITE_KINDS.join(', ')}. Predefinito PUNTO_PRELIEVI. I punti dei clienti service hanno tipo SERVICE.`],
+      ['organization_code', 'Codice organizzazione', 'Legal entity proprietaria (foglio Organizzazioni): TD per le sedi Toscana Diagnostica, il codice del cliente per i suoi punti service. Un cliente con tre codici StudioLAB ha una riga in Organizzazioni e tre righe qui.'],
       ['address', 'Indirizzo', 'Via e numero civico.'], ['zip', 'CAP', ''], ['city', 'Città', 'Usata anche per il meteo.'], ['province', 'Provincia', 'Sigla (FI, PO, PT...).'],
       ['phone', 'Telefono', ''], ['email', 'Email', ''], ['manager_name', 'Responsabile di sede', 'Nome e cognome del site manager.'],
       ['opening_hours', 'Orari di apertura', 'Testo libero, es. "Lun-Ven 7:30-12:30, Sab 7:30-11:00".'],
-      ['studiolab_code', 'Codice StudioLAB', 'Codice della sede nel LIS StudioLAB (riconoscimento HL7, ordini, NC).'],
+      ['studiolab_code', 'Codice StudioLAB', 'Codice cliente della sede nel LIS StudioLAB (riconoscimento HL7, ordini, NC). Il connettore StudioLAB aggiorna le sedi con questo codice.'],
       ['active', 'Attiva', 'SI oppure NO. Predefinito SI.'],
     ],
     example: ['ES-01', 'Esempio · Punto prelievi Esempiopoli', 'Esempiopoli', 'PUNTO_PRELIEVI', '', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', '000 0000000', 'esempio@esempio.it', 'Mario Esempio', 'Lun-Ven 7:30-12:30', 'ESE', 'SI'],
@@ -47,13 +47,12 @@ const DATASETS = {
       ['code', 'Codice', 'Codice breve univoco (es. TD, LAB-SCANDICCI). Consigliato: serve per collegare le sedi.'],
       ['name', 'Ragione sociale', 'Obbligatoria.'],
       ['kind', 'Tipo', `Uno tra: ${ORG_KINDS.join(', ')}. CLIENTE = laboratorio o struttura cliente del service; SOCIETA = società del gruppo; TARGET = acquisizione in corso.`],
-      ['studiolab_code', 'Codice StudioLAB', 'Codice cliente nel LIS StudioLAB. Per i clienti del service è la chiave: due codici con la stessa partita IVA sono due organizzazioni distinte. Per ogni codice la Suite crea da sola la sede operativa gemella (tipo SERVICE), che non va messa nel file Sedi.'],
-      ['vat_number', 'Partita IVA', 'Senza spazi. Riconosce l\'organizzazione se già presente (quando non c\'è il codice StudioLAB).'], ['tax_code', 'Codice fiscale', ''],
+      ['vat_number', 'Partita IVA', 'Senza spazi. Una riga per partita IVA: l\'organizzazione è la legal entity; i suoi punti (codici StudioLAB) sono sedi nel foglio Sedi.'], ['tax_code', 'Codice fiscale', ''],
       ['sdi', 'Codice SDI', ''], ['pec', 'PEC', ''], ['email', 'Email', ''], ['phone', 'Telefono', ''],
       ['address', 'Indirizzo', ''], ['zip', 'CAP', ''], ['city', 'Città', ''], ['province', 'Provincia', 'Sigla.'], ['website', 'Sito web', ''],
       ['active', 'Attiva', 'SI oppure NO. Predefinito SI.'],
     ],
-    example: ['ESEMPIO', 'Esempio S.r.l.', 'CLIENTE', 'ES001', '00000000000', '', '', 'esempio@pec.it', 'info@esempio.it', '000 0000000', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', 'https://www.esempio.it', 'SI'],
+    example: ['ESEMPIO', 'Esempio S.r.l.', 'CLIENTE', '00000000000', '', '', 'esempio@pec.it', 'info@esempio.it', '000 0000000', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', 'https://www.esempio.it', 'SI'],
   },
   people: {
     title: 'Persone', sheet: 'Persone', order: 3,
@@ -76,21 +75,19 @@ const DATASETS = {
   users: {
     title: 'Utenti e profili', sheet: 'Utenti', order: 4,
     columns: [
-      ['email', 'Email', 'Obbligatoria. Se esiste una persona con la stessa email, l\'utente viene collegato a lei (nome, sede, ruolo).'],
-      ['last_name', 'Cognome', 'Facoltativo se la persona esiste già.'], ['first_name', 'Nome', 'Facoltativo se la persona esiste già.'],
+      ['email', 'Email', 'Obbligatoria e deve esistere nel foglio Persone già caricato: ogni utente è una persona (nome, sede e ruolo vengono da lì).'],
       ['level', 'Livello', 'USER (predefinito) oppure ADMIN. Il titolare è unico e non si importa.'],
       ['auth', 'Accesso', 'ENTRA = Microsoft 365 (predefinito per le email dei domini aziendali), LOCAL = credenziali locali con password provvisoria inviata via email (esterni).'],
       ['site_code', 'Codice sede', 'Sede principale dell\'utente (meteo, perimetro predefinito).'],
       ['grants', 'Moduli e profili', 'Elenco separato da punto e virgola: modulo:PROFILO oppure modulo:PROFILO:SEDE1|SEDE2 per i profili di sede. Esempio: cash:CASSIERE:FI-CEC|FI-NOV; nc:SEDE:FI-CEC; room:PROF. Moduli e profili ammessi nel foglio "Moduli".'],
       ['send_invite', 'Invia invito', 'SI per inviare l\'email di benvenuto (con password provvisoria per gli accessi LOCAL). Predefinito NO.'],
     ],
-    example: ['mario.esempio@esempio.it', 'Esempio', 'Mario', 'USER', 'LOCAL', 'ES-01', 'cash:CASSIERE:ES-01; nc:SEDE:ES-01; room:PROF', 'NO'],
+    example: ['mario.esempio@esempio.it', 'USER', 'LOCAL', 'ES-01', 'cash:CASSIERE:ES-01; nc:SEDE:ES-01; room:PROF', 'NO'],
   },
 };
 
 const usersRowSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
-  last_name: z.string().trim().max(60).optional().nullable(), first_name: z.string().trim().max(60).optional().nullable(),
   level: z.enum(['USER', 'ADMIN']).optional().nullable(), auth: z.enum(['ENTRA', 'LOCAL']).optional().nullable(),
   site_code: z.string().trim().max(24).optional().nullable(), grants: z.string().trim().max(2000).optional().nullable(), send_invite: z.boolean().optional().nullable(),
 });
@@ -100,8 +97,8 @@ const genPassword = () => `${crypto.randomBytes(9).toString('base64url')}A1!`;
 async function applyUserRow(c, row, ctx) {
   const email = row.email;
   const person = (await c.query('SELECT id, last_name, first_name, site_id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [email])).rows[0] || null;
-  const last = row.last_name || person?.last_name, first = row.first_name || person?.first_name;
-  if (!last || !first) throw new Error('cognome e nome mancanti e nessuna persona con questa email');
+  if (!person) throw new Error('nessuna persona con questa email in Persone: ogni utente è una persona, carica prima il file Persone');
+  const last = person.last_name, first = person.first_name;
   const internal = config.autoInternalDomains.includes(email.split('@')[1]);
   const provider = row.auth || (internal ? 'ENTRA' : 'LOCAL');
   const site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;

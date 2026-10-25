@@ -96,12 +96,12 @@ export function Sites() {
     <div className="page">
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button>} />
       <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(isService).length }]} />
-      {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Create automaticamente dalle organizzazioni con codice StudioLAB (una per codice cliente): sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Qui si correggono indirizzo e contatti; il nome e il codice seguono l'organizzazione.</span></div>}
+      {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente in Organizzazioni. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente o città' : 'Codice, nome o città'} /></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
-        {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessuna struttura cliente: nascono caricando le organizzazioni con codice StudioLAB' : 'Nessuna sede'} />}
+        {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessun punto cliente: si caricano dal file Sedi con tipo SERVICE e il codice dell\'organizzazione cliente' : 'Nessuna sede'} />}
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Città</th><th>Organizzazione</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
@@ -127,7 +127,7 @@ export function Organizations() {
   const rows = (data || []).filter((o) => !q || `${o.code || ''} ${o.name} ${o.city || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 24 },
-    { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'studiolab_code', label: 'Codice StudioLAB', max: 40, help: 'Clienti service: un codice, un\'organizzazione, una sede gemella SERVICE' }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
+    { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];

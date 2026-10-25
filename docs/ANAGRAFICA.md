@@ -56,9 +56,16 @@ Come in PORTING.md: database locale `suite` (host=/tmp), sorgente `legacy_<key>`
 con screenshot in `docs/screens/mod-<key>-*.png`. Server su porta propria (PORT=31xx). Nel report: tabelle rimosse, estensioni
 create, righe scartate e perché, pagine toccate.
 
-## Clienti service (25/10/2026)
-Ogni codice cliente StudioLAB è un'organizzazione distinta (kind CLIENTE, `organizations.studiolab_code`, chiave di riconoscimento al
-posto della partita IVA: due codici con la stessa P.IVA sono due organizzazioni). Per ciascuna la Suite crea e aggiorna da sola la
-sede gemella `SRV-<codice>` (kind SERVICE, stesso `studiolab_code`, organization_id) su cui lavorano NC, Ordini e i perimetri degli
-utenti esterni. Nel file Sedi vanno solo le sedi Toscana Diagnostica. Il connettore StudioLAB alimenterà le organizzazioni (dataset
-`organizations` dell'API di ingestione, campo `studiolab_code`).
+## Clienti service (25/10/2026, definitivo)
+Organizzazioni = legal entity, una riga per partita IVA (Toscana Diagnostica, Villa Fiorita, KOS, Turati...). Sedi = punti: le sedi
+TD e i punti dei clienti service, ciascuno con il proprio codice cliente StudioLAB (`sites.studiolab_code`, kind SERVICE) e
+`organization_id` verso la legal entity. Un cliente con tre codici StudioLAB ha una riga in Organizzazioni e tre righe in Sedi.
+Il connettore StudioLAB alimenta le sedi (dataset `sites`, campo `studiolab_code`, `organization_code` del cliente). Nessuna sede
+gemella automatica, nessun codice StudioLAB sulle organizzazioni.
+
+## Utenti = persone (25/10/2026)
+Ogni utente è una persona dell'anagrafica. Catena: proposta in Contratti del personale (CANDIDATO/IMPEGNO) → assunzione o incarico
+(ATTIVO) → accesso creato da solo (`lib/accounts.js`: Microsoft 365 per i domini aziendali, credenziali locali con invito per gli
+altri), con proposte di grant dall'area organizzativa da confermare in Amministrazione > Utenti. "Nuovo utente" sceglie una persona;
+il file Utenti accetta solo email presenti in Persone; `POST /api/people/:id/account` crea l'accesso a mano. Gli esterni che
+entrano nella Suite (referenti dei clienti service, investitori) sono persone di tipo ESTERNO collegate alla loro organizzazione.

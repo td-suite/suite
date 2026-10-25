@@ -56,6 +56,26 @@ export function UsersList() {
   );
 }
 
+// ---------- Scelta della persona per un nuovo accesso ----------
+function PersonPicker({ value, onChange }) {
+  const [qtext, setQ] = useState('');
+  const { data } = useApi(`/people${qs({ qtext, all: 1 })}`, [qtext]);
+  const rows = (data || []).filter((p) => p.email).slice(0, 30);
+  const sel = (data || []).find((p) => String(p.id) === String(value));
+  return (
+    <div className="col" style={{ gap: 8 }}>
+      <SearchInput value={qtext} onChange={setQ} placeholder="Cerca per cognome, nome o email" />
+      {sel && <div className="row tight"><Avatar name={`${sel.last_name} ${sel.first_name}`} size="sm" /><span className="strong">{sel.last_name} {sel.first_name}</span><span className="muted small">{sel.email}{sel.user_id ? ' · ha già un accesso' : ''}</span><button type="button" className="btn sm ghost" onClick={() => onChange(null)}>Cambia</button></div>}
+      {!sel && <div className="list" style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 10 }}>
+        {rows.map((p) => <button type="button" key={p.id} className="it" style={{ width: '100%', textAlign: 'left', background: 'none', border: 0, cursor: p.user_id ? 'not-allowed' : 'pointer', opacity: p.user_id ? .5 : 1 }} disabled={Boolean(p.user_id)} onClick={() => onChange(p)}>
+          <div className="t">{p.last_name} {p.first_name}</div><div className="m">{p.email} · {p.job_title || p.area || ''}{p.site_name ? ` · ${p.site_name}` : ''}{p.user_id ? ' · ha già un accesso' : ''}</div>
+        </button>)}
+        {!rows.length && <div className="small muted" style={{ padding: 12 }}>Nessuna persona con email trovata.</div>}
+      </div>}
+    </div>
+  );
+}
+
 // ---------- Riga grant ----------
 function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
   const on = Boolean(grant);
@@ -89,7 +109,7 @@ function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
 }
 
 // ---------- Dettaglio / nuovo ----------
-const EMPTY_USER = { email: '', full_name: '', first_name: '', last_name: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', person_id: '', lang: 'it', password: '', send_invite: true };
+const EMPTY_USER = { email: '', full_name: '', first_name: '', last_name: '', person_id: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', person_id: '', lang: 'it', password: '', send_invite: true };
 
 export function UserDetail() {
   const { id } = useParams();
@@ -185,11 +205,20 @@ export function UserDetail() {
         <div className="col">
           <Card title="Anagrafica" icon="user">
             <form onSubmit={saveUser} className="col" id="uform">
-              <Field label="Email" required><input type="email" value={f.email} onChange={set('email')} required disabled={!isNew && !owner} /></Field>
-              <div className="form-grid">
-                <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required /></Field>
-                <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required /></Field>
-              </div>
+              {isNew ? (
+                <Field label="Persona" required help="Ogni utente è una persona dell'anagrafica: scegli chi deve avere l'accesso. Se manca, creala prima in Persone o in Contratti del personale.">
+                  <PersonPicker value={f.person_id} onChange={(p) => setF({ ...f, person_id: p?.id || '', email: p?.email || '', first_name: p?.first_name || '', last_name: p?.last_name || '', site_id: p?.site_id || f.site_id })} />
+                </Field>
+              ) : (
+                <>
+                  <Field label="Email" required><input type="email" value={f.email} onChange={set('email')} required disabled={!owner} /></Field>
+                  <div className="form-grid">
+                    <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required /></Field>
+                    <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required /></Field>
+                  </div>
+                  {u?.person_id ? <div className="small muted">Persona collegata: <Link to={`/people/${u.person_id}`}>scheda in Rubrica</Link></div> : <div className="alert warn small"><Icon name="alert" /><span>Utente senza persona collegata (eredità): nome e sede non seguono l'anagrafica.</span></div>}
+                </>
+              )}
               <div className="form-grid">
                 <Field label="Titolo"><input value={f.title} onChange={set('title')} maxLength={20} placeholder="Dott.ssa" /></Field>
                 <Field label="Telefono"><input value={f.phone} onChange={set('phone')} /></Field>
@@ -200,7 +229,7 @@ export function UserDetail() {
                 <Field label="Sede"><select value={f.site_id} onChange={set('site_id')}><option value="">Nessuna</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.code} · {s.name}</option>)}</select></Field>
                 <Field label="Organizzazione"><select value={f.organization_id} onChange={set('organization_id')}><option value="">Nessuna</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
               </div>
-              <Field label="Persona in rubrica" help="Collega l'account alla scheda anagrafica (ruolo, area, responsabile)."><select value={f.person_id} onChange={set('person_id')}><option value="">Nessuna</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select></Field>
+              {!isNew && <Field label="Persona in rubrica" help="Collega l'account alla scheda anagrafica (ruolo, area, responsabile)."><select value={f.person_id} onChange={set('person_id')}><option value="">Nessuna</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select></Field>}
               {isNew && ['LOCAL', 'BOTH'].includes(f.auth_provider) && <>
                 <Field label="Password provvisoria" help="Vuota: viene generata e inviata con l'invito."><input type="text" autoComplete="off" value={f.password} onChange={set('password')} minLength={12} /></Field>
               </>}

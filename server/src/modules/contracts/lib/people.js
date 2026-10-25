@@ -2,6 +2,7 @@
 // Contratti del personale è l'ingresso HR: l'unico modulo autorizzato a creare e modificare public.people (oltre ad
 // Amministrazione > Persone). Ogni creazione o modifica viene registrata nell'audit della Suite con l'utente Suite (req.suiteUser),
 // non con la riga users dello schema del modulo. Le letture passano dalla vista resources_v (migrazione 016).
+import { autoAccountForPerson } from '../../../lib/accounts.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
 import { indexPersonById } from '../../../lib/search.js';
 import { one, q } from '../db.js';
@@ -41,6 +42,13 @@ export async function syncDerived(c, id) {
 }
 
 /** Crea la persona (public.people + person_ext) e registra PERSON_CREATED. Ritorna l'id di public.people. */
+// L'accesso nasce dalla persona attiva con email: dopo il COMMIT della transazione del chiamante (il client è quello del modulo)
+function queueAccount(c, personId, req) {
+  const actor = req?.suiteUser || req?.user || null;
+  // breve differimento: la transazione del modulo deve essere chiusa prima che la Suite legga la persona con il pool principale
+  setTimeout(() => autoAccountForPerson(personId, actor), 1500);
+}
+
 export async function createPerson(c, req, data) {
   const { people, ext } = splitPerson(data);
   if (!people.kind) people.kind = 'DIPENDENTE';
@@ -50,6 +58,7 @@ export async function createPerson(c, req, data) {
   const ec = Object.keys(ext);
   await c.query(`INSERT INTO person_ext (person_id, created_by${ec.length ? ', ' + ec.join(',') : ''}) VALUES ($1, $2${ec.map((_, i) => `, $${i + 3}`).join('')})`, [row.id, req.user?.id || null, ...ec.map((k) => ext[k])]);
   await syncDerived(c, row.id);
+  queueAccount(c, row.id, req);
   await suiteAudit(suiteReq(req), 'PERSON_CREATED', { module: 'contracts', entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}`, data: { kind: people.kind, status: people.status } });
   return row.id;
 }
@@ -70,6 +79,7 @@ export async function updatePerson(c, req, id, data, { audit = true } = {}) {
       ON CONFLICT (person_id) DO UPDATE SET ${ec.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, req.user?.id || null, ...ec.map((k) => ext[k])]);
   } else if (!pc.length) return null;
   await syncDerived(c, id);
+  queueAccount(c, id, req);
   if (audit) {
     row = row || (await run('SELECT id, last_name, first_name FROM public.people WHERE id=$1', [id])).rows[0];
     if (row) await suiteAudit(suiteReq(req), 'PERSON_UPDATED', { module: 'contracts', entity: 'person', entityId: id, label: `${row.last_name} ${row.first_name}`, data });
