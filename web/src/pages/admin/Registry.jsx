@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../../api.js';
-import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch } from '../../components/ui.jsx';
+import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { SITE_KIND, ORG_KIND, PERSON_KIND } from '../../format.js';
 
@@ -78,7 +78,11 @@ export function Sites() {
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null);
   const [photos, setPhotos] = useState(null);
-  const rows = (data || []).filter((s) => !q || `${s.code} ${s.name} ${s.city || ''}`.toLowerCase().includes(q.toLowerCase()));
+  // Due elenchi distinti: le sedi della rete Toscana Diagnostica e le strutture dei clienti service (sedi gemelle SRV-<codice StudioLAB>, create dalle organizzazioni)
+  const [tab, setTab] = useState('td');
+  const isService = (s) => s.kind === 'SERVICE';
+  const all = data || [];
+  const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || `${s.code} ${s.name} ${s.city || ''} ${s.organization_name || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
     { key: 'code', label: 'Codice', required: true, max: 24 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
@@ -91,11 +95,13 @@ export function Sites() {
   return (
     <div className="page">
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button>} />
-      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Codice, nome o città" /></div>
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(isService).length }]} />
+      {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Create automaticamente dalle organizzazioni con codice StudioLAB (una per codice cliente): sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Qui si correggono indirizzo e contatti; il nome e il codice seguono l'organizzazione.</span></div>}
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente o città' : 'Codice, nome o città'} /></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
-        {data && !rows.length && <Empty icon="building" title="Nessuna sede" />}
+        {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessuna struttura cliente: nascono caricando le organizzazioni con codice StudioLAB' : 'Nessuna sede'} />}
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Città</th><th>Organizzazione</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>

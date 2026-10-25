@@ -102,6 +102,9 @@ const refs = (k, row) => (row.external_id ? JSON.stringify({ [`ingest:${k.source
 // su cui lavorano NC, Ordini e i perimetri degli utenti esterni. Nasce e si aggiorna da sola; non va caricata nel file Sedi.
 async function twinServiceSite(c, orgId, row, slc) {
   if (!slc) return;
+  // solo per i clienti del service: società del gruppo, fornitori e target non hanno sedi gemelle anche se hanno un codice StudioLAB
+  const kind = row.kind || (await c.query('SELECT kind FROM organizations WHERE id=$1', [orgId])).rows[0]?.kind;
+  if (kind !== 'CLIENTE') return;
   const code = `SRV-${slc}`.slice(0, 24);
   const ex = (await c.query('SELECT id FROM sites WHERE organization_id=$1 AND kind=\'SERVICE\' AND upper(studiolab_code)=upper($2)', [orgId, slc])).rows[0];
   const vals = [row.name, row.address || null, row.zip || null, row.city || null, row.province || null, row.phone || null, row.email || null, row.active ?? true];
