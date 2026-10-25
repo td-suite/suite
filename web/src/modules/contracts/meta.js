@@ -1,0 +1,30 @@
+// Modulo Contracts (Contratti del Personale): voci di navigazione disegnate dalla Suite (la sidebar dell'app non si porta).
+// Le voci di inserimento sono riservate ai profili che scrivono (ADMIN, HR); Impostazioni e Registro al solo ADMIN.
+export default {
+  key: 'contracts',
+  title: 'Contratti del Personale',
+  kicker: 'People',
+  area: 'PEOPLE',
+  nav: [
+    { to: '', icon: 'home', label: 'Dashboard', end: true },
+    { to: 'organigramma', icon: 'tree', label: 'Organigramma' },
+    { to: 'risorse/nuova', icon: 'plus', label: 'Inserimento nuova risorsa', profiles: ['ADMIN', 'HR'] },
+    { to: 'risorse', icon: 'users', label: 'Elenco delle risorse', end: true },
+    { to: 'scadenze', icon: 'calendar', label: 'Calendario delle scadenze' },
+    { group: 'Scouting' },
+    { to: 'scouting/cv', icon: 'import', label: 'CV Box' },
+    { to: 'scouting/lettere/nuova', icon: 'mail', label: 'Lettere di impegno', profiles: ['ADMIN', 'HR'] },
+    { to: 'scouting/lettere', icon: 'list', label: 'Elenco lettere di impegno', end: true },
+    { group: 'Dipendenti' },
+    { to: 'dipendenti/nuovo', icon: 'plus', label: 'Nuovo dipendente', profiles: ['ADMIN', 'HR'] },
+    { to: 'dipendenti', icon: 'doc', label: 'Elenco dipendenti', end: true },
+    { to: 'ccnl', icon: 'file', label: 'CCNL di riferimento' },
+    { to: 'busta-paga', icon: 'stats', label: 'Simulatore busta paga' },
+    { group: 'Liberi professionisti' },
+    { to: 'lp/nuovo', icon: 'plus', label: 'Nuovo professionista', profiles: ['ADMIN', 'HR'] },
+    { to: 'lp', icon: 'user', label: 'Elenco LP', end: true },
+    { group: 'Amministrazione', profiles: ['ADMIN'] },
+    { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e import', profiles: ['ADMIN'] },
+    { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },
+  ],
+};

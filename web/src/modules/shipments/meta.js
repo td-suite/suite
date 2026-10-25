@@ -1,0 +1,35 @@
+// Voci di menu del modulo Shipments nella sidebar della Suite (percorsi relativi a /shipments).
+// Profili: SUPERADMIN e ADMIN operano; VIEWER legge tutto; ENDEAVOR vede solo la rendicontazione del progetto Endeavor DNA.
+const OPS = ['SUPERADMIN', 'ADMIN', 'VIEWER'];
+export default {
+  key: 'shipments',
+  title: 'Spedizioni e Kit',
+  kicker: 'Operations',
+  area: 'OPERATIONS',
+  nav: [
+    { to: '', icon: 'home', label: 'Scelta progetto', end: true, profiles: OPS },
+    { group: 'Endeavor DNA' },
+    { to: 'endeavor', icon: 'stats', label: 'Cruscotto', end: true, profiles: OPS },
+    { to: 'endeavor/richieste', icon: 'import', label: 'Richieste in arrivo', profiles: OPS },
+    { to: 'endeavor/magazzino', icon: 'folder', label: 'Immagazzinamento kit', profiles: OPS },
+    { to: 'endeavor/invio', icon: 'send', label: 'Invio dei kit', profiles: OPS },
+    { to: 'endeavor/ricezione', icon: 'check', label: 'Ricezione campioni', profiles: OPS },
+    { to: 'endeavor/laboratorio', icon: 'external', label: 'Spedizione a Endeavor', profiles: OPS },
+    { to: 'endeavor/elenco', icon: 'list', label: 'Tutte le richieste', profiles: OPS },
+    { to: 'endeavor/rendicontazione', icon: 'sheet', label: 'Rendicontazione quantitativa' },
+    { to: 'endeavor/rendiconto', icon: 'cash', label: 'Rendicontazione economica' },
+    { group: 'Lifestyle' },
+    { to: 'lifestyle', icon: 'stats', label: 'Cruscotto', end: true, profiles: OPS },
+    { to: 'lifestyle/richieste', icon: 'import', label: 'Richieste', profiles: OPS },
+    { to: 'lifestyle/magazzino', icon: 'folder', label: 'Immagazzinamento kit', profiles: OPS },
+    { to: 'lifestyle/invio', icon: 'send', label: 'Invio dei kit', profiles: OPS },
+    { to: 'lifestyle/invio-esame', icon: 'send', label: 'Invio dei kit + esame', profiles: OPS },
+    { to: 'lifestyle/ricezione', icon: 'check', label: 'Ricezione campioni', profiles: OPS },
+    { to: 'lifestyle/elenco', icon: 'list', label: 'Tutte le richieste', profiles: OPS },
+    { to: 'lifestyle/rendicontazione', icon: 'sheet', label: 'Rendicontazione quantitativa', profiles: OPS },
+    { group: 'Sistema' },
+    { to: 'endeavor/impostazioni', icon: 'gear', label: 'Impostazioni e tariffario', profiles: ['SUPERADMIN', 'ADMIN'] },
+    { to: 'endeavor/email', icon: 'mail', label: 'Registro email', profiles: OPS },
+    { to: 'endeavor/audit', icon: 'shield', label: 'Registro attività', profiles: OPS },
+  ],
+};

@@ -1,0 +1,18 @@
+# Prova in locale: docker compose up --build  → http://localhost:3000 (titolare con SEED_OWNER_PASSWORD)
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: suite }
+    volumes: [ "dbdata:/var/lib/postgresql/data" ]
+  app:
+    build: .
+    ports: [ "3000:3000" ]
+    depends_on: [ db ]
+    environment:
+      NODE_ENV: production
+      BASE_URL: http://localhost:3000
+      DATABASE_URL: postgres://postgres:postgres@db:5432/suite
+      SESSION_SECRET: cambia-questo-segreto-in-produzione-ora
+      SEED_OWNER_PASSWORD: Password-Provvisoria-123
+      MAIL_PROVIDER: log
+volumes: { dbdata: {} }

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#01212C" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Room Planning" />
+    <title>Room Planning · Toscana Diagnostica</title>
+  </head>
+  <body>
+    <!-- Barra "Suite TD · Home": visibile solo se si è entrati dalla Suite (cookie suite_origin=1 impostato da /api/auth/suite). Logica in /suite-bar.js (CSP: niente script inline) -->
+    <div id="suite-bar" hidden style="position:sticky;top:0;z-index:9999;display:flex;align-items:center;gap:10px;height:28px;padding:0 14px;background:#01212C;color:#fff;font:600 12px/1 'Segoe UI',Arial,sans-serif;letter-spacing:.2px">
+      <a href="https://suite.toscanadiagnostica.it" style="color:#71B1BD;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg>
+        Suite TD · Home
+      </a>
+      <span style="opacity:.55">·</span>
+      <span style="opacity:.8;font-weight:500">Room Planning</span>
+      <button id="suite-bar-close" type="button" title="Nascondi" style="margin-left:auto;background:none;border:0;color:#9fc5cd;cursor:pointer;font-size:14px;line-height:1">×</button>
+    </div>
+    <script src="/suite-bar.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+# Suite TD · Blueprint Render. Deploy: New > Blueprint > repository GitHub "suite".
+# Un solo servizio web (Docker), un worker non necessario in v0.1 (i lavori di sfondo girano nel web), un PostgreSQL con backup.
+# Le variabili con sync:false si inseriscono a mano nel pannello Environment e non vengono sovrascritte dai sync del Blueprint.
+services:
+  - type: web
+    name: td-suite
+    runtime: docker
+    plan: standard            # 2 GB: necessario per 500 utenti e per i lavori di sfondo; "starter" solo per la prova
+    region: frankfurt
+    numInstances: 1           # portare a 2 dopo il go-live per deploy senza interruzione
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: BASE_URL
+        sync: false   # https://td-suite.onrender.com fino al DNS, poi https://suite.toscanadiagnostica.it: si imposta nel pannello Render e il Blueprint non la sovrascrive
+      - key: DATABASE_URL
+        fromDatabase:
+          name: td-suite-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_HOURS
+        value: "10"
+      - key: REQUIRE_TOTP_FOR_ADMINS
+        value: "true"
+      - key: MAX_UPLOAD_MB
+        value: "40"
+      - key: PERSONAL_QUOTA_MB
+        value: "500"
+      - key: AUTO_INTERNAL_DOMAINS
+        value: toscanadiagnostica.it
+      - key: SEED_OWNER_EMAIL
+        value: francesco.epifani@toscanadiagnostica.it
+      - key: SEED_OWNER_NAME
+        value: Francesco Epifani
+      - key: SEED_OWNER_PASSWORD
+        sync: false   # facoltativa (min 12 caratteri): password locale di emergenza del titolare
+      - key: ENTRA_TENANT_ID
+        sync: false   # app registration "Suite TD" (single tenant)
+      - key: ENTRA_CLIENT_ID
+        sync: false
+      - key: ENTRA_CLIENT_SECRET
+        sync: false
+      - key: GRAPH_SENDER
+        value: suite@toscanadiagnostica.it   # casella mittente (permesso applicativo Mail.Send + Application Access Policy)
+      - key: MAIL_PROVIDER
+        value: graph
+      - key: AZURE_STORAGE_CONTAINER
+        value: suite
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5-5
+      - key: SSO_SECRET
+        generateValue: true   # segreto comune per il Single Sign-On verso le app esistenti; copiarlo in SUITE_SSO_SECRET di ogni app (oppure SSO_SECRET_<MODULO> per segreti distinti)
+      - key: LEGACY_SYNC_MINUTES
+        value: "30"
+      - key: BUSINESS_CREDENTIALS_KEY
+        sync: false   # copiare qui il valore di CREDENTIALS_KEY del servizio td-business: decifra le password dei portali travasate dal modulo Business
+      - key: CREDENTIALS_KEY
+        generateValue: true   # cifra le credenziali impostate dall'Amministrazione (connessioni ai DB delle app, chiave Anthropic, Azure Blob): non cambiarla dopo il primo avvio
+      # Le connessioni ai database delle app esistenti (sola lettura), la chiave Anthropic e la stringa Azure si impostano dalla Suite:
+      # Amministrazione > Sorgenti legacy e Amministrazione > Impostazioni > Integrazioni (solo titolare). In alternativa, come variabili:
+      # LEGACY_<MODULO>_DATABASE_URL (contracts, room, cash, orders, nc, retail, shipments, business, finance, integration), ANTHROPIC_API_KEY, AZURE_STORAGE_CONNECTION_STRING.
+      # La variabile d'ambiente, se presente, ha la precedenza sul valore impostato dalla Suite.
+
+databases:
+  - name: td-suite-db
+    plan: basic-1gb           # piani nuovi di Render: basic-256mb, basic-1gb, basic-4gb, pro-4gb, pro-8gb. Si alza dal pannello senza fermo quando crescono i dati
+    region: frankfurt
+    postgresMajorVersion: "16"

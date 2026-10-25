@@ -1,0 +1,1145 @@
+[
+ {
+  "code": "A",
+  "title": "A – REQUISITI GENERALI",
+  "items": [
+   {
+    "code": "In questa sezione sono indicati solo i requisiti minimi necessari all’esercizio di un’attività sanitaria, resta fermo quanto disposto dalla normativa nazionale e regionale per gli altri ambiti di competenza.",
+    "text": "",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": null
+   },
+   {
+    "code": "A.1",
+    "text": "Dotazione quali-quantitativa di personale sanitario, per le varie articolazioni in cui si configura il servizio, rapportata alla tipologia ed al volume delle prestazioni erogate facendo riferimento, quando previsti, a standard regionali e nazionali; deve essere comunque garantito lo standard minimo se indicato nelle sezioni specifiche",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Figure essenziali del Punto Prelievi: Direttore Sanitario (prof. G. L. Taddei, 2 h/die), personale sanitario infermieristico (A. Contino 5 h; C. Tellini in back-up) e personale amministrativo/di coordinamento. Dotazione rapportata a tipologia e volume delle prestazioni. Rif. allegati alla Relazione Operativa: «Elenco del Personale» e «Organigramma di struttura».\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-PRO024_01 — Procedura di Gestione delle Risorse Umane\n• TD-SGI-MAN001_00 — Manuale del Sistema di Gestione Integrato",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD035 (formazione in ingresso) e TD-SGI-MOD237 (scheda figura in formazione) a corredo dei fascicoli individuali; inquadramenti su CCNL Studi Professionali (Confprofessioni).",
+    "section": null
+   },
+   {
+    "code": "A.2",
+    "text": "I ruoli e le posizioni funzionali sono ricoperti da personale in possesso dei titoli previsti dalla normativa vigente e delle competenze anche in relazione alla tipologia ed ai volumi di attività, facendo riferimento,  quando previsti, a standard regionali e nazionali",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Ruoli e posizioni ricoperti da personale con i titoli previsti: Direttore Sanitario specialista in Anatomia Patologica; personale infermieristico laureato in Infermieristica. Dettaglio in «Elenco del Personale» (titolo, riferimenti contrattuali, orario) e «Organigramma specifico di struttura», costruito per garantire continuità del servizio e alternabilità.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-PRO024_01 — Procedura di Gestione delle Risorse Umane\n• TD-SGI-PRO027_01 — Procedura di Valutazione delle Competenze",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD026 (colloquio/selezione) e TD-SGI-MOD032 (specimen di firma) per la tracciabilità di titoli e competenze.",
+    "section": null
+   },
+   {
+    "code": "A.3",
+    "text": "Personale sanitario con documentata frequenza ai corsi di Basic Life Suppert Defibrillation (BLSD) con cadenza programmata secondo gli standard definiti dalle indicazioni tecniche di settore",
+    "applicability": "Nella struttura dovrà essere sempre presente una persona abilitata all'utilizzo",
+    "answer": "Sì",
+    "document": "Tutto il personale sanitario, incluso quello di Laboratorio, possiede attestazione BLSD aggiornata (American Heart Association), in coerenza con la L. 116/2021. Durante l'orario di apertura è sempre presente personale abilitato all'uso del DAE.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica\n• TD-SGI-MOD037_00 — Piano annuale della formazione aziendale\n• TD-SGI-PRO029_01 — Procedura di Formazione Aziendale",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD033 (verbalizzazione eventi formativi); attestati BLSD conservati nei fascicoli individuali.",
+    "section": null
+   },
+   {
+    "code": "A.4",
+    "text": "Modalità codificate per: accesso alle prestazioni, prenotazione, gestione tempi di attesa, registrazione, modalità di pagamento, modalità e tempi di accesso alla documentazione sanitaria, acquisizione del consenso informato, inserimento in studi clinici, tutela della privacy e predisposizione del relativo materiale informativo per l'utenza anche in riferimento al superamento delle barriere linguistiche e culturali ed alle condizioni di svantaggio nell'accessibilità ai servizi legate alla presenza di disabilità",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Modalità codificate per le quattro fattispecie del requisito: (a) accesso/prenotazione/tempi di attesa/registrazione/pagamento/accesso alla documentazione; (b) consenso informato, privacy e modulistica connessa; (c) materiale informativo per l'utenza anche multilingue; (d) condizioni di svantaggio legate a disabilità. Riscontro come da Relazione Operativa.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO037_00 — Procedura di gestione della Customer Experience e del Customer Journey\n• TD-SGI-PRO040_00 — Procedura di comunicazione con il paziente e consenso informato\n• TD-SGI-INF055_00 — Informativa privacy pazienti (artt. 13-14 GDPR)\n• TD-SGI-MAN003_00 — Manuale Privacy e PIMS (GDPR + ISO/IEC 27701)\n• TD-SGI-INF001_00 — Informativa sulle modalità di raccolta campioni per il Paziente (ITA)\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti\n• TD-SGI-PRO104_00 — Procedura Health Equity – accessibilità ai servizi\n• TD-SGI-INF002_00÷INF009_00 — Informativa raccolta campioni, versioni multilingue (EN/FR/DE/ES/PT/RU/ZH/AR)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MAN006 (Carta dei Servizi) e mediazione linguistica in talune aree; per le matrici speciali TD-SGI-PRO041 (anatomia patologica) e TD-SGI-PRO050 (batteriologia) ove attivate.",
+    "section": null
+   },
+   {
+    "code": "A.5",
+    "text": "Vengono fornite informazioni adeguate rispetto al percorso donazione organi e tessuti ed assicurati i necessari collegamenti con la rete regionale donazione e trapianti",
+    "applicability": "ove previsto",
+    "answer": "Non pertinente",
+    "document": "-",
+    "notes": "A.5: non pertinente. Il Punto Prelievi non eroga percorsi di donazione di organi e tessuti.",
+    "section": null
+   },
+   {
+    "code": "A.6",
+    "text": "Soluzioni organizzative in essere per la continuità dell'assistenza al paziente in caso di urgenze o di eventi imprevisti (clinici, organizzativi, tecnologici) durante l'intero orario di apertura della struttura",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Continuità dell'assistenza per eventi imprevisti, distinta per tipologia: Clinica (Procedura Emergenza Medica), Biologica (Procedura Emergenza Biologica), Organizzativa (sostituzione delle figure sanitarie come da «Elenco del Personale»), Tecnologica (gestionale GipoNext con funzionamento off-line, scheda cartacea di accettazione, telefonia mobile aziendale; Piano di Manutenzione e «Anagrafe dei Defibrillatori»).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD064_00 — Modulo di gestione dell'accettazione in caso di malfunzionamento del sistema\n• TD-SGI-PLN013_00 — Business Continuity Plan",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO089 (rischio biologico in laboratorio), TD-SGI-PRO075 (BCP-Lab), TD-SGI-PRO079 (LIS/GipoNext); l'«Anagrafe dei Defibrillatori» è tracciata su TD-SGI-MOD014 e TD-SGI-MOD020.",
+    "section": null
+   },
+   {
+    "code": "A.7",
+    "text": "Modalità codificate per: prelievo, conservazione, trasporto di materiali biologici, gestione del servizio di pulizia e sanificazione degli ambienti, gestione rifiuti, servizio di ristorazione, modalità di gestione del servizio lavanderia-guardaroba, modalità di compilazione, conservazione, archiviazione della documentazione sanitaria",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Riscontro per fattispecie: prelievo/conservazione/trasporto dei materiali biologici verso il Laboratorio HUB di Sesto Fiorentino (Via di Pratignone 13/4) con supporti e tempistiche che non compromettono l'integrità del campione; pulizia/sanificazione a cura del personale sanitario e di impresa certificata (contratto quadro, DUVRI, schede tecniche); gestione rifiuti con personale formato e registro cartaceo di carico/scarico; lavanderia-guardaroba affidata a fornitore qualificato; archiviazione documentale con Massimario di Scarto. Servizio di ristorazione: non pertinente.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti\n• TD-SGI-PRO035_00 — Procedura di gestione della logistica e del trasporto campioni\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-MOD227_01 — Registro Pulizie eseguite da fornitore esterno\n• TD-SGI-PRO068_00 — Procedura di gestione dei rifiuti sanitari e speciali\n• TD-SGI-IDL004_00 — IDL gestione e conservazione dei formulari rifiuti\n• TD-SGI-IDL005_00 — Elenco e classificazione dei rifiuti prodotti dalla struttura\n• TD-SGI-PRO058_00 — Procedura di Data Retention (tempi di conservazione dei dati)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO034 (qualifica fornitori pulizia e lavanderia), TD-SGI-PRO091 (rifiuti pericolosi), TD-SGI-MOD043 (bolla di trasporto UN3373/ADR), TD-SGI-REG020 (DVR/DUVRI). Archiviazione: 60 gg in sede → Archivio Unico Centrale; in sperimentazione la firma su tavoletta grafica con archiviazione digitale.",
+    "section": null
+   },
+   {
+    "code": "A.7.1",
+    "text": "Per il servizio di pulizia e sanificazione ambientale viene assicurata: l’adozione di  sistemi, tecniche e metodiche di sanificazione ambientale in linea con le evidenze disponibili; l’individuazione di standard tecnici per le prestazioni minime richieste e le frequenze di intervento di pulizia e sanificazione in relazione alle caratteristiche delle diverse aree di rischio ed integrati da ulteriori protocolli per specifiche patologie infettive; la presenza di piani di monitoraggio del processo di sanificazione e dei risultati ottenuti dalla sua attuazione; la formazione del personale addetto rapportata alla complessità dell’area di rischio e agli standard previsti",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Per la sanificazione ambientale sono definiti tecniche, prodotti e frequenze in funzione delle aree di rischio, con monitoraggio del processo e formazione del personale addetto; il personale di struttura, coadiuvato da funzione dedicata, esegue audit interni periodici (anche sulla pulizia) secondo modulistica di riferimento.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-IDL003_00 — IDL sulla corretta igiene delle mani\n• TD-SGI-PRO020_00 — Procedura di gestione degli audit interni del SGI",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD227 (registro pulizie esterne), TD-SGI-REG023 (aspetti ambientali); audit pulizia tramite TD-SGI-MOD012/MOD013; scheda tecnica del prodotto utilizzato.",
+    "section": null
+   },
+   {
+    "code": "A.7.2",
+    "text": "Nel caso di affidamento del servizio anche qualora reso nell’ambito del servizio Global service o Multifunzione devono essere rispettati i criteri ambientali minimi stabiliti dalla normativa di riferimento nazionale",
+    "applicability": "documentate anche in caso di affidamento a ditte esterne",
+    "answer": "Sì",
+    "document": "In caso di affidamento esterno del servizio sono rispettati i Criteri Ambientali Minimi (CAM); l'impresa è certificata e qualificata, opera secondo procedure aziendali e condivide dispositivi e prodotti (contratto quadro, DUVRI, schede tecniche).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO034_01 — Procedura di Qualificazione e Valutazione dei Fornitori\n• TD-SGI-PRO102_00 — Procedura Sustainable Procurement (criteri ESG/CAM fornitori)\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD227 (registro pulizie esterne) e TD-SGI-MOD042 (valutazione periodica fornitori) per la tracciabilità del servizio affidato.",
+    "section": null
+   },
+   {
+    "code": "A.8",
+    "text": "Conservazione della documentazione sanitaria secondo modalità e tempi sanciti dalla normativa vigente anche in materia di amministrazione digitale",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Conservazione e archiviazione della documentazione sanitaria secondo procedura, in conformità al Codice dell'Amministrazione Digitale, ivi compreso il Massimario di Scarto di ogni documento presente/acquisito (cfr. A.7).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO058_00 — Procedura di Data Retention (tempi di conservazione dei dati)\n• TD-SGI-PRO001_00 — Procedura di catalogazione e gestione della documentazione del SGI",
+    "notes": "Integrazioni RSGI:\nTD-SGI-IDL036 (riesame documentale periodico) per il controllo del ciclo di vita documentale.",
+    "section": null
+   },
+   {
+    "code": "A.8.1",
+    "text": "I documenti sanitari per i quali è previsto l'inserimento nel Fascicolo Sanitario Elettronico (FSE), devono rispettare gli standard definiti dalle norme nazionali e regionali attuativa.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "I documenti destinati al Fascicolo Sanitario Elettronico rispettano gli standard nazionali/regionali: il gestionale GipoNext è interfacciato con il Sistema Informativo di Regione Toscana e registrato sul Portale Ministeriale dei dispositivi certificati per il FSE.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO079_00 — Procedura di gestione del Sistema Informativo di Laboratorio (LIS)\n• TD-SGI-INF055_00 — Informativa privacy pazienti (artt. 13-14 GDPR)\n• TD-SGI-MAN003_00 — Manuale Privacy e PIMS (GDPR + ISO/IEC 27701)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO016 (sicurezza del sistema informativo) e TD-SGI-PRO070 (adeguamento NIS2) a presidio del trattamento.",
+    "section": null
+   },
+   {
+    "code": "A.9",
+    "text": "Segnaletica adeguata sia all'interno che all'esterno per favorire l'accessibilità dell'utenza",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Segnaletica interna ed esterna per l'accessibilità dell'utenza presente in struttura; la targa esterna con Direzione Sanitaria, contatti e orari sarà installata a seguito dell'autorizzazione della struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO104_00 — Procedura Health Equity – accessibilità ai servizi\n• TD-SGI-MAN006_00 — Carta dei Servizi",
+    "notes": "Integrazioni RSGI:\nUbicazione della segnaletica riportata nell'Allegato Tecnico/planimetria del professionista incaricato.",
+    "section": null
+   },
+   {
+    "code": "A.10",
+    "text": "Modalità codificate per l'identificazione dell'operatore da parte degli utenti che consentano anche l'individuazione del personale in formazione",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Identificazione degli operatori tramite badge di riconoscimento per tutti i dipendenti e collaboratori, con indicazione specifica del personale in formazione, visibile anche al paziente, come da Regolamento Generale Aziendale.\n\nDocumenti SGI di riferimento:\n• TD-SGI-REG004_01 — Regolamento Generale Aziendale\n• TD-SGI-MOD237_00 — Scheda di Ingresso e Registrazione Figura in Formazione",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD032 (specimen di firma) e TD-SGI-MOD226 (registro visitatori esterni).",
+    "section": null
+   },
+   {
+    "code": "A.11",
+    "text": "Inventario delle apparecchiature con informazioni disponibili sia in forma aggregata che analitica, in dotazione anche alle strutture organizzative per la sezione di competenza",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Inventario delle apparecchiature disponibile in forma aggregata e analitica (allegato «Elenco della Strumentazione»): Defibrillatore CU Medical I-PAD CU-SP1 e Centrifuga Benchmark LC8 PLUS, con manuale d'uso multilingue, fattura, collaudo, eventuali tarature e verifiche elettriche.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie",
+    "notes": "Integrazioni RSGI:\nTD-SGI-REG015 (inventario apparecchiature di laboratorio) per la vista di rete.",
+    "section": null
+   },
+   {
+    "code": "A.12",
+    "text": "Modalità codificate di programmazione degli acquisti delle apparecchiature biomediche e dei dispositivi medici che tengono conto dell'obsolescenza, dell'adeguamento alle norme tecniche e dell'eventuale disponibilità di nuove tecnologie per il miglioramento dell'assistenza sanitaria",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Programmazione degli acquisti definita annualmente in sede di Budget (spinte di business, esigenze cliniche, verifiche di funzionamento), con tracciabilità di obsolescenza e adeguamento normativo; l'inserimento della nuova tecnologia segue specifica Istruzione di Lavoro e la qualifica dei fornitori la relativa procedura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO022_00 — Procedura per il piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-MOD017_00 — Piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-PRO055_00 — Procedura di gestione del budget aziendale\n• TD-SGI-PRO034_01 — Procedura di Qualificazione e Valutazione dei Fornitori",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO021 (gestione apparecchiature) e criteri di Sostenibilità (TD-SGI-PRO102).",
+    "section": null
+   },
+   {
+    "code": "A.13",
+    "text": "Tracciabilità delle verifiche periodiche sullo stato di manutenzione delle attrezzature",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Tracciabilità delle verifiche periodiche sullo stato di manutenzione: Toscana Diagnostica ha sottoscritto un Accordo Quadro per esecuzione e tracciabilità delle verifiche, con Anagrafica della Strumentazione ed esiti delle verifiche eseguite.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD018_00 — Modulo di registrazione della manutenzione programmata\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD191 (calendario manutenzione/taratura) e TD-SGI-MOD180 (manutenzione ordinaria strumenti) per le apparecchiature di laboratorio.",
+    "section": null
+   },
+   {
+    "code": "A.14",
+    "text": "E' garantita la presenza e il buon funzionamento degli apparecchi vitali anche in caso di guasto prolungato mediante la disponibilità di altra apparecchiatura analoga o mediante procedura alternativa",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Presenza e buon funzionamento garantiti anche in caso di guasto prolungato: il Piano di Manutenzione copre tutti i cespiti medicali; per il DAE, verificato quotidianamente dal personale sanitario, è prevista sostituzione immediata in caso di avaria/batteria scarica (cfr. «Anagrafe dei Defibrillatori»).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD020_00 — Modulo di controllo periodico del defibrillatore semiautomatico (DAE)\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO023 (controllo temperature) per i presidi soggetti a conservazione controllata.",
+    "section": null
+   },
+   {
+    "code": "A.15",
+    "text": "Piano per la manutenzione ordinaria e straordinaria delle apparecchiature biomediche debitamente trasmesso ai livelli operativi interessati",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Piano per la manutenzione ordinaria e straordinaria delle apparecchiature trasmesso ai livelli operativi interessati, nell'ambito del Piano di Manutenzione Aziendale.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD018_00 — Modulo di registrazione della manutenzione programmata\n• TD-SGI-MOD019_00 — Modulo di registrazione della manutenzione straordinaria",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD191 (calendario manutenzione/taratura).",
+    "section": null
+   },
+   {
+    "code": "A.16",
+    "text": "Piano di manutenzione preventiva e correttiva predisposto attraverso una pianificazione dettagliata (personale coinvolto, strumentazione, eventuali contratti di manutenzione con ditte esterne) rispondente  a protocolli operativi che tengono conto della specifica gerarchia funzionale (grandi apparecchiature di diagnosi e cura così come individuate nei flussi ministeriali, apparecchi vitali indicati in apposito elenco, apparecchi accertati come critici ed individuati in apposito elenco in base alle caratteristiche di funzionamento della struttura) predisposto per ciascuna apparecchiatura e reso noto ai diversi livelli operativi per lo svolgimento dei compiti attribuiti al singolo operatore",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Piano di manutenzione preventiva e correttiva con pianificazione dettagliata (personale, strumentazione, eventuali contratti esterni) e gerarchia funzionale delle apparecchiature, definito in sede di Budget e reso noto ai livelli operativi.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD017_00 — Piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-MOD018_00 — Modulo di registrazione della manutenzione programmata\n• TD-SGI-MOD019_00 — Modulo di registrazione della manutenzione straordinaria",
+    "notes": "Integrazioni RSGI:\nPresso il Punto Prelievi non sono presenti grandi apparecchiature di diagnosi e cura né apparecchi a radiazioni ionizzanti.",
+    "section": null
+   },
+   {
+    "code": "A.17",
+    "text": "Tutte le apparecchiature sono corredate di documentazione tecnica, in lingua italiana, fornita al momento dell'acquisto, resa disponibile al responsabile della manutenzione",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Apparecchiature corredate di documentazione tecnica con parte in lingua italiana, resa disponibile al responsabile della manutenzione (manuale d'uso multilingue per ciascuno strumento).\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie",
+    "notes": "Integrazioni RSGI:\nPer ogni strumento sono archiviati manuale, fattura di acquisto, collaudo/installazione, eventuali tarature e verifiche elettriche.",
+    "section": null
+   },
+   {
+    "code": "A.18",
+    "text": "Rapporto tecnico dettagliato degli interventi di manutenzione, sia preventiva che correttiva, sulle apparecchiature biomediche in dotazione",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Rapporto tecnico dettagliato degli interventi di manutenzione (preventiva e correttiva) tracciato nell'ambito dell'Accordo Quadro e del Piano di Manutenzione.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD018_00 — Modulo di registrazione della manutenzione programmata\n• TD-SGI-MOD019_00 — Modulo di registrazione della manutenzione straordinaria",
+    "notes": "Integrazioni RSGI:\nEsiti delle verifiche registrati a fianco dell'Anagrafica della Strumentazione (TD-SGI-MOD014).",
+    "section": null
+   },
+   {
+    "code": "A.19",
+    "text": "Tracciabilità delle verifiche periodiche strumentali sul funzionamento dei principali apparecchi biomedici utilizzati in condizioni critiche (ad esempio: ventilatori polmonari, apparecchi di anestesia, pompe d'infusione, defibrillatori, elettrobisturi, ecc.), degli apparecchi che erogano radiazioni ionizzanti e che sono impiegati per la rilevazione di radiazioni ionizzanti al fine di verificarne la taratura delle principali funzioni",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Tracciabilità delle verifiche periodiche strumentali sugli apparecchi impiegati in condizioni critiche, gestita tramite Accordo Quadro e Piano di Manutenzione.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie\n• TD-SGI-MOD018_00 — Modulo di registrazione della manutenzione programmata",
+    "notes": "Integrazioni RSGI:\nPresso il Punto Prelievi non vi sono apparecchi che erogano radiazioni ionizzanti; per gli strumenti di laboratorio TD-SGI-PRO049, TD-SGI-PRO077 e TD-SGI-MOD191.",
+    "section": null
+   },
+   {
+    "code": "A.20",
+    "text": "Tracciabilità dei collaudi a seguito dell'installazione ai fini del corretto funzionamento e della sicurezza in caso di nuova acquisizione o trasferimento di apparecchi biomedici",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Tracciabilità dei collaudi a seguito di installazione/trasferimento: i due cespiti della struttura risultano collaudati in data 20/05/2026 (verbale di installazione e collaudo).\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD015_00 — Verbale di installazione e collaudo delle tecnologie sanitarie\n• TD-SGI-PRO021_00 — Procedura di gestione delle apparecchiature sanitarie",
+    "notes": "Integrazioni RSGI:\nL'inserimento della nuova tecnologia segue specifica Istruzione di Lavoro di processo.",
+    "section": null
+   },
+   {
+    "code": "A.21",
+    "text": "Piano per la manutenzione programmata e correttiva riferito alle opere civili ed impiantistiche con individuazione del  responsabile degli interventi di manutenzione della struttura e degli impianti",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Piano per la manutenzione programmata e correttiva delle opere civili ed impiantistiche con individuazione del responsabile degli interventi, condiviso annualmente in sede di Budget.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO022_00 — Procedura per il piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-MOD017_00 — Piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-PRO055_00 — Procedura di gestione del budget aziendale",
+    "notes": "Integrazioni RSGI:\nPiano di Budget annuale comprensivo del piano di manutenzione opere civili/impiantistiche.",
+    "section": null
+   },
+   {
+    "code": "A.22",
+    "text": "Tracciabilità degli interventi di manutenzione effettuati riferiti alle opere civili ed impiantistiche",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Tracciabilità degli interventi di manutenzione effettuati su opere civili ed impiantistiche.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO022_00 — Procedura per il piano degli investimenti e delle opere civili e impiantistiche\n• TD-SGI-MOD019_00 — Modulo di registrazione della manutenzione straordinaria",
+    "notes": "Integrazioni RSGI:\nRegistrazione nell'ambito del Piano di Budget annuale.",
+    "section": null
+   },
+   {
+    "code": "A.23",
+    "text": "La struttura, in relazione all’attività svolta, autocertifica il possesso dei requisiti previsti dalle leggi, nazionali e regionali, non ricomprese nel presente regolamento, in quanto soggette alla vigilanza ed al controllo di specifici organi.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Autocertificazione del possesso dei requisiti di legge non ricompresi nel regolamento (soggetti a vigilanza di organi specifici), sottoscritta e asseverata da tecnico incaricato.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD086_00 — Lettera di attestazione di autorizzazione, accreditamento e certificazioni\n• TD-SGI-IDL016_00 — Quadro sinottico delle coperture assicurative",
+    "notes": "Integrazioni RSGI:\nRiferimento al Decreto n. 15095 del 22/09/2020; quadro delle coperture assicurative su TD-SGI-IDL016.",
+    "section": null
+   },
+   {
+    "code": "A.24",
+    "text": "Programma di prevenzione della violenza contro gli operatori sanitari ai sensi delle indicazioni nazionali e regionali in materia e tracciabilità delle azioni adottate.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Programma di prevenzione della violenza contro gli operatori sanitari incluso nel Piano di Formazione Aziendale, con tracciabilità delle azioni; in allegato l'attestazione di formazione del Formatore e degli operatori della struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO028_00 — Procedura di prevenzione della violenza contro gli operatori sanitari\n• TD-SGI-PLN007_00 — Piano di formazione per la prevenzione della violenza contro gli operatori\n• TD-SGI-MOD037_00 — Piano annuale della formazione aziendale",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO029 (formazione aziendale) e TD-SGI-MOD033; attestati nei fascicoli individuali.",
+    "section": null
+   },
+   {
+    "code": "A.25",
+    "text": "Modalità codificate per il rispetto dei principi contenuti nella legge n. 219/2017 e in particolare:",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "una corretta pratica della comunicazione tra medico e paziente nonché dell’informazione e del consenso anche verso i minori e le persone incapaci;",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Corretta pratica della comunicazione tra medico e paziente e dell'informazione/consenso, anche verso minori e persone incapaci: il complesso delle procedure riduce ogni forma di barriera (fisico-logistica, economico-sociale, linguistica), con ricorso a figure di mediazione linguistica in talune aree territoriali.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO040_00 — Procedura di comunicazione con il paziente e consenso informato\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti\n• TD-SGI-INF055_00 — Informativa privacy pazienti (artt. 13-14 GDPR)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO106 (soggetti vulnerabili e tutela del minore), TD-SGI-PRO093 (open disclosure); informativa di raccolta in versione multilingue (INF001÷INF009).",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "il diritto al rifiuto delle cure;",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Diritto al rifiuto delle cure non pertinente all'attività di prelievo/diagnostica (assenza di percorsi di cura).",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "la terapia del dolore;",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Terapia del dolore non erogata.",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "il rispetto della dignità delle persone giunte nella fase finale della vita anche mediante il divieto di",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Tutela della fase finale della vita non pertinente all'attività erogata.",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "ostinazione irragionevole nelle cure;",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Divieto di ostinazione irragionevole nelle cure non pertinente all'attività erogata.",
+    "section": null
+   },
+   {
+    "code": "",
+    "text": "la valorizzazione delle volontà espresse dai pazienti, contestualmente alle cure o in modalità di disposizione anticipata",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Disposizioni anticipate di trattamento non pertinenti all'attività erogata.",
+    "section": null
+   }
+  ]
+ },
+ {
+  "code": "B",
+  "title": "B - REQUISITI ORGANIZZATIVI, STRUTTURALI E TECNOLOGICI SPECIFICI  PRESTAZIONI AMBULATORIALI",
+  "items": [
+   {
+    "code": "B.1",
+    "text": "Locali e spazi  correlati alla tipologia ed al volume delle attività erogate",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B1.1",
+    "text": "area dedicata per l’IVG farmacologica dotata di spazi specifici ad utilizzo non esclusivo, con procedure di accesso ed orari  differenziati rispetto al percorso nascita e ad altra tipologia di utenza, in particolare deve essere presente:",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "B1.1: non pertinente. Attività di IVG farmacologica non erogata (consentita solo presso strutture pubbliche).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "",
+    "text": "locale per l’osservazione delle utenti dopo la somministrazione, attrezzato con poltrone reclinabili con bagno adiacente dedicato.",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di IVG farmacologica non erogata (consentita solo presso strutture pubbliche).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "",
+    "text": "spazio per counselling medico che garantisca la privacy",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di IVG farmacologica non erogata (consentita solo presso strutture pubbliche).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "",
+    "text": "spazio per consulenza psicologica e sociale che garantisca la privacy",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di IVG farmacologica non erogata (consentita solo presso strutture pubbliche).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "",
+    "text": "collegamento funzionale con il Presidio Ospedaliero attraverso modalità e procedure condivise e formalizzate in caso di attività erogata a livello territoriale",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di IVG farmacologica non erogata (consentita solo presso strutture pubbliche).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.2",
+    "text": "Spazi/locali per funzioni direzionali, accettazione e attività amministrative",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-MAN001_00 — Manuale del Sistema di Gestione Integrato",
+    "notes": "Integrazioni RSGI:\nFunzioni direzionali, di accettazione e amministrative definite nell'organizzazione aziendale (TD-SGI-IDL007, TD-SGI-MAN001).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.3",
+    "text": "Percorsi di accesso differenziati fra utenti esterni e ricoverati, con spazi di attesa differenziati o soluzioni organizzative che garantiscano pari risultato",
+    "applicability": "per le strutture che erogano anche prestazioni di ricovero",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "B.3: non pertinente. Non si erogano prestazioni di ricovero.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.4",
+    "text": "Spazio di attesa dotato di sedute in numero adeguato rispetto ai picchi di frequenza degli accessi, nel rispetto di quanto previsto dalla normativa vigente in materia di spazi di percorso",
+    "applicability": "possono essere  anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MAN006_00 — Carta dei Servizi\n• TD-SGI-PRO104_00 — Procedura Health Equity – accessibilità ai servizi",
+    "notes": "Integrazioni RSGI:\nGestione delle attese e accessibilità governate da TD-SGI-MAN006 (Carta dei Servizi) e TD-SGI-PRO104 (Health Equity).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.5",
+    "text": "Servizi igienici per utenti distinti da quelli del personale, almeno uno al piano accessibile ai disabili secondo le specifiche tecniche previste dalle normative vigenti",
+    "applicability": "possono essere anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse.",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO104_00 — Procedura Health Equity – accessibilità ai servizi",
+    "notes": "Integrazioni RSGI:\nAlmeno un servizio igienico accessibile ai disabili; accessibilità presidiata da TD-SGI-PRO104.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.6",
+    "text": "Locale adibito ad ambulatorio, munito di lavabo con comandi non manuali, con pareti, pavimenti ed arredi facilmente lavabili e disinfettabili, che garantisce il rispetto della privacy, con locale spogliatoio per il paziente comunicante con l'ambulatorio  o area interna separata ad uso spogliatoio, quando necessario",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-IDL003_00 — IDL sulla corretta igiene delle mani\n• TD-SGI-MAN003_00 — Manuale Privacy e PIMS (GDPR + ISO/IEC 27701)",
+    "notes": "Integrazioni RSGI:\nLavabilità/disinfettabilità delle superfici (TD-SGI-PRO007), igiene delle mani (TD-SGI-IDL003) e privacy (TD-SGI-MAN003).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.7",
+    "text": "Ambulatorio attrezzato e dimensionato in rapporto al numero utenti presenti in seduta collettiva se effettuate  attività di gruppo",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MAN006_00 — Carta dei Servizi",
+    "notes": "Integrazioni RSGI:\nAttività di gruppo non tipiche del Punto Prelievi; dimensionamento riportato nell'Allegato Tecnico.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.8",
+    "text": "Spazio/locale per la refertazione, ove necessario",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO044_00 — Procedura di gestione della fase postanalitica\n• TD-SGI-PRO079_00 — Procedura di gestione del Sistema Informativo di Laboratorio (LIS)\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti",
+    "notes": "Integrazioni RSGI:\nRefertazione in capo al Laboratorio HUB; consegna gestita da TD-SGI-IDL015.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.9",
+    "text": "Locali/spazi/arredi per il deposito del materiale pulito facilmente accessibili al personale",
+    "applicability": "possono essere  anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO036_00 — Procedura di gestione del magazzino reagenti e materiali di consumo\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti",
+    "notes": "Integrazioni RSGI:\nDeposito materiale pulito gestito da procedure magazzino/sanificazione.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.10",
+    "text": "Spazio/locali per deposito di materiale sporco",
+    "applicability": "possono essere  anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO068_00 — Procedura di gestione dei rifiuti sanitari e speciali\n• TD-SGI-PRO091_00 — Procedura specifica di gestione dei Rifiuti Sanitari Pericolosi\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti",
+    "notes": "Integrazioni RSGI:\nDeposito materiale sporco gestito da procedure rifiuti/sanificazione.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.11",
+    "text": "Spazi o armadi per deposito materiale d'uso, attrezzature, strumentazioni facilmente accessibili al personale",
+    "applicability": "possono essere  anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO036_00 — Procedura di gestione del magazzino reagenti e materiali di consumo\n• TD-SGI-PRO056_00 — Procedura di gestione dell'inventario",
+    "notes": "Integrazioni RSGI:\nGestione scorte e inventario secondo procedure SGI.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.12",
+    "text": "Spazio/locale per deposito materiale e attrezzature per pulizia, lavaggio e disinfezione",
+    "applicability": "possono essere  anche in comune se coesistono più attività sanitarie ambulatoriali, gestite anche da titolarità diverse",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-MOD227_01 — Registro Pulizie eseguite da fornitore esterno",
+    "notes": "Integrazioni RSGI:\nMateriali/attrezzature per pulizia gestiti da procedura di sanificazione e registro pulizie esterne.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.13",
+    "text": "Dotazione di personale congrua al volume di attività ed ai picchi di accesso. Deve essere presente almeno:",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "Almeno un medico responsabile delle attività cliniche effettuate nell'ambulatorio durante lo svolgimento delle attività",
+    "applicability": "salvo diversa specifica prevista nella relativa sottosezione\n\nin presenza di presidi ambulatoriali dove le attività sono prevalentemente di tipo professionale e svolte da personale che per profilo e competenze può svolgere in autonomia il proprio lavoro, la presenza del medico può non essere prevista  (es.  pap test, prelievi, ecc.) o in alternativa prevista a orario in concomitanza con attività critiche",
+    "answer": "Sì",
+    "document": "Figura medica con ruolo di Direzione Sanitaria per le ore previste (prof. G. L. Taddei) e personale sanitario/amministrativo adeguato al volume di attività; dettaglio in «Elenco del Personale» e «Organigramma di struttura». Per il prelievo l'attività è professionale e può essere svolta in autonomia da personale abilitato.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-PRO024_01 — Procedura di Gestione delle Risorse Umane",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD026 (selezione) e TD-SGI-MOD035 (formazione in ingresso).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "Una unità infermieristica e/o altro professionista sanitario durante l’orario di erogazione delle prestazioni sanitarie ove richiesto dalla  tipologia di prestazione erogata, come previsto nella relativa sottosezione",
+    "applicability": "nelle strutture ambulatoriali autorizzate nelle discipline di neuropsichiatria infantile e psicologia e nei centri di recupero e riabilitazione funzionale finalizzate al rilascio delle certificazioni DSAP la figura dell'infermiere può essere sostituita dal logopedista.",
+    "answer": "Sì",
+    "document": "Unità infermieristica/figura abilitata presente durante l'erogazione del prelievo (A. Contino; C. Tellini in back-up).\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo",
+    "notes": "Integrazioni RSGI:\nGestione del personale su TD-SGI-PRO024.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "Presenti per l’intero orario di accesso delle prestazioni \nun medico specialista in ginecologia e ostetricia non obiettore\nuna unità ostetrica non obiettrice\nuna unità infermieristica non obiettrice",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Presenza di ginecologo/ostetrica/infermiere non obiettori richiesta solo per l'IVG farmacologica, non erogata.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.14",
+    "text": "Registrazione delle prestazioni effettuate  in riferimento al repertorio delle prestazioni erogate dalla struttura e comprensiva della identificazione del paziente",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Registrazione delle prestazioni con identificazione del paziente gestita su gestionale GipoNext; processo presidiato da IDL Prelievo, PO Gestione Prelievo e IDL Accettazione.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO079_00 — Procedura di gestione del Sistema Informativo di Laboratorio (LIS)\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD064 (accettazione in caso di malfunzionamento) e TD-SGI-MOD131 (attestazione prestazioni).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.15",
+    "text": "Scheda clinica ambulatoriale contenente le informazioni relative alle condizioni cliniche del paziente ed il loro aggiornamento, le prestazioni effettuate, la diagnosi e le eventuali prescrizioni terapeutiche ed i referti, l'operatore che ha effettuato la prestazione privilegiando la gestione elettronica della documentazione nel rispetto della normativa vigente in materia",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Scheda clinica gestita elettronicamente su GipoNext (fase preanalitica), con consenso informato, informativa privacy e modulistica connessa; la refertazione è in capo al Laboratorio HUB di Sesto Fiorentino.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO079_00 — Procedura di gestione del Sistema Informativo di Laboratorio (LIS)\n• TD-SGI-PRO042_00 — Procedura di gestione della fase preanalitica\n• TD-SGI-PRO040_00 — Procedura di comunicazione con il paziente e consenso informato\n• TD-SGI-INF055_00 — Informativa privacy pazienti (artt. 13-14 GDPR)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MAN003 (privacy/PIMS) e TD-SGI-PRO044 (fase postanalitica).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.16",
+    "text": "Modalità codificate per assicurare la completezza della documentazione contenente l'esito della visita o dell'esame diagnostico (referto), la consegna del referto tutti i giorni feriali, quando non disponibile contestualmente alla esecuzione della prestazione,  e l'alimentazione del FSE (se prevista)",
+    "applicability": "consegna contestuale all’esecuzione della prestazione per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Sì",
+    "document": "Completezza e consegna del referto: ritiro in presenza, tramite Portale dedicato o App «Toscana Diagnostica» (iOS/Android) con credenziali univoche; alimentazione del FSE tramite GipoNext interfacciato con Regione Toscana.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti\n• TD-SGI-PRO044_00 — Procedura di gestione della fase postanalitica\n• TD-SGI-PRO080_00 — Procedura di comunicazione dei risultati e gestione dei valori critici\n• TD-SGI-INF055_00 — Informativa privacy pazienti (artt. 13-14 GDPR)",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD235 (credenziali portale paziente), TD-SGI-MOD236 (ritiro referti), TD-SGI-MOD128 (referto in modalità elettronica).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B16.1",
+    "text": "Modalità codificate relative il percorso IVG farmacologica comprensive del consenso informato, dell’immunoprofilassi per le donne con RH negativo, la gestione di eventuali urgenze.",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "B16.1: non pertinente. Percorso IVG farmacologica non erogato.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B16.2",
+    "text": "Modalità codificate per garantire la continuità assistenziale del percorso pre e post IVG e l’accesso al percorso contraccezione gratuita",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "B16.2: non pertinente. Percorso IVG farmacologica non erogato.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.17",
+    "text": "Conservazione della documentazione  iconografica e dei referti  secondo le modalità stabilite dalla normativa specifica. Le schede ambulatoriali devono essere conservate per almeno 5 anni dalla data dell'ultima prestazione (anche in forma digitale mediante sistemi adeguati rispetto a quanto previsto dal Codice dell'Amministrazione digitale), salvo diversa indicazione normativa specifica",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Conservazione di referti e documentazione per i tempi previsti (almeno 5 anni), anche in forma digitale conforme al CAD; archiviazione temporanea 60 gg in sede e successivo trasferimento all'Archivio Unico Centrale, con Massimario di Scarto.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO058_00 — Procedura di Data Retention (tempi di conservazione dei dati)\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO001 (gestione documentale) e TD-SGI-IDL036 (riesame documentale).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.18",
+    "text": "Modalità di controllo che consentono un monitoraggio sistematico della completezza di tale scheda e della congruenza con la documentazione clinica",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Monitoraggio sistematico della completezza della scheda e della congruenza con la documentazione clinica a cura del Comitato per la Gestione del Rischio Clinico (con i Direttori Sanitari di struttura); procedura e registro dedicati.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO015_00 — Procedura di gestione del rischio clinico\n• TD-SGI-PRO101_00 — Procedura di gestione degli Output Non Conformi",
+    "notes": "Integrazioni RSGI:\nTD-SGI-PRO107 (clinical governance/comitato), TD-SGI-MOD009 (audit rischio clinico), TD-SGI-PRO092 (SEA/RCA).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.19",
+    "text": "Sistema di gestione del processo di decontaminazione, disinfezione e sterilizzazione della strumentazione ove previsto, comprensivo di tracciabilità della registrazione/conservazione dei risultati delle prove di efficacia",
+    "applicability": "la tracciabilità delle prove di efficacia deve essere assicurata anche in caso di affidamento all'esterno",
+    "answer": "Sì",
+    "document": "Presso il Punto Prelievi è privilegiato il materiale monouso; per la sanificazione il personale qualificato segue la procedura con scheda tecnica del prodotto; le pulizie degli spazi sono a carico della struttura ospitante; sono condotti audit interni periodici con tracciabilità.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti\n• TD-SGI-PRO048_00 — Procedura di sicurezza del laboratorio di analisi\n• TD-SGI-PRO020_00 — Procedura di gestione degli audit interni del SGI",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD227 (registro pulizie esterne) e TD-SGI-MOD012/MOD013 (audit); tracciabilità delle prove di efficacia ove sia presente sterilizzazione.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.20",
+    "text": "Illuminazione  e ventilazione naturali rispondenti alle normative vigenti compresi i regolamenti edilizi e di igiene del Comune su cui insiste la struttura. \nIn caso di soluzioni diverse sono garantite le condizioni microclimatiche rispondenti agli standard previsti da indicazioni tecniche di settore, ove non diversamente regolamentate dalle normative di cui sopra.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.",
+    "notes": "Integrazioni RSGI:\nCondizioni microclimatiche e impianti attestati da certificazioni impiantistiche (D.M. 37/2008) nell'Allegato Tecnico.",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "B.20.1",
+    "text": "Sistemi di continuità dell'alimentazione elettrica in riferimento alle caratteristiche dell’utenza elettrica e dell’attività svolta.",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Sistemi di continuità dell'alimentazione elettrica non richiesti per la tipologia di utenza/attività del Punto Prelievi.",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "B.20.2",
+    "text": "Presenza di impianto di illuminazione di sicurezza",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.",
+    "notes": "Integrazioni RSGI:\nImpianto di illuminazione di sicurezza attestato da dichiarazione di conformità nell'Allegato Tecnico.",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "B.20.3",
+    "text": "Impianti elettrici conformi alla normativa vigente per i luoghi di lavoro ed in funzione alla classificazione sanitaria degli ambienti",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Requisito strutturale. Per completezza si rinvia all'Allegato Tecnico (Relazione del Tecnico incaricato) e alla planimetria di struttura.",
+    "notes": "Integrazioni RSGI:\nImpianti elettrici conformi (D.M. 37/2008) attestati nell'Allegato Tecnico.",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "B.21",
+    "text": "Attrezzature e dispositivi medico chirurgici in relazione alla specificità dell'attività svolta",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.21.1",
+    "text": "lettino ginecologico",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Lettino ginecologico richiesto solo per l'IVG farmacologica, non erogata.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.21.2",
+    "text": "lampada scialitica",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Lampada scialitica richiesta solo per l'IVG farmacologica, non erogata.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.21.3",
+    "text": "ecografo",
+    "applicability": "per le strutture che eseguono IVG farmacologica (attività possibile solo presso strutture pubbliche)",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Ecografo richiesto solo per l'IVG farmacologica, non erogata.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.22",
+    "text": "Carrello o attrezzatura equivalente (zaino o altro contenitore portatile ecc.) per la gestione delle emergenze, comprendente farmaci e dispositivi medici idonei al tipo di utenza e attività, tra cui:",
+    "applicability": "quando non diversamente specificato nella specifica sottosezione",
+    "answer": "Sì",
+    "document": "La struttura è dotata di Defibrillatore Automatico e di Zaino dell'Emergenza, allestiti secondo la normativa vigente e verificati/controllati secondo IDL e Registro di riferimento. I farmaci di emergenza sono presenti nelle sole aree identificate dalla Direzione Sanitaria.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD020_00 — Modulo di controllo periodico del defibrillatore semiautomatico (DAE)\n• TD-SGI-MOD023_00 — Modulo di controllo dello zaino di emergenza\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD069 (carrello emergenza centri prelievi) e TD-SGI-MOD024 (controllo farmaci/presidi).",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "",
+    "applicability": "facilmente accessibile o dedicato in base alle specifiche della relativa sottosezione",
+    "answer": "Sì",
+    "document": "Zaino/attrezzatura per le emergenze facilmente accessibile durante l'attività.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD023_00 — Modulo di controllo dello zaino di emergenza\n• TD-SGI-PRO009_00 — Procedura di gestione dei presidi di emergenza",
+    "notes": "Integrazioni RSGI:\nGestione dei presidi di emergenza su TD-SGI-PRO009.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "defibrillatore semiautomatico",
+    "applicability": "Per quanto attiene l'uso del defibrillatore semiautomatico dovrà essere presente durante l’attività, personale in possesso della formazione aggiornata di BLSD",
+    "answer": "Sì",
+    "document": "Defibrillatore semiautomatico CU Medical I-PAD CU-SP1 presente, verificato e controllato (IDL e Registro); durante l'attività è garantito personale con formazione BLSD aggiornata. In caso di avaria, sostituzione immediata.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD020_00 — Modulo di controllo periodico del defibrillatore semiautomatico (DAE)\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali",
+    "notes": "Integrazioni RSGI:\n«Anagrafe dei Defibrillatori» tracciata su TD-SGI-MOD014.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "dispositivi base per l’ossigenoterapia, la ventilazione, la gestione delle vie aeree, l’aspirazione",
+    "applicability": "In presidi ambulatoriali dove le attività sono svolte da professionisti non abilitati alla somministrazione e gestione dei farmaci e la presenza di personale sanitario Medico o Infermieristico non è prevista in maniera continuativa durante lo svolgimento delle attività, devono essere presente dispositivi medici di base per la ventilazione ( es. pallone autoespandibile o pocket mask)",
+    "answer": "Sì",
+    "document": "Dispositivi base per la ventilazione, la gestione delle vie aeree e l'aspirazione presenti nello Zaino dell'Emergenza (es. pallone autoespandibile/pocket mask).\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD023_00 — Modulo di controllo dello zaino di emergenza\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica",
+    "notes": "Integrazioni RSGI:\nControllo periodico tramite TD-SGI-MOD069 ove utilizzato il carrello centri prelievi.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "dispositivi per accesso venoso, infusione e somministrazione farmaci",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Il Punto Prelievi non effettua accessi venosi a scopo infusivo né somministrazione di farmaci: attività di solo prelievo.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "farmaci di emergenza",
+    "applicability": "non si applica alle strutture dove la attività sono svolte da professionisti non abilitati alla somministrazione e gestione dei farmaci e la presenza di personale sanitario Medico o Infermieristico non è prevista in maniera continuativa durante lo svolgimento delle attività",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Farmaci d'emergenza presenti nelle sole aree identificate dalla Direzione Sanitaria; non è prevista presenza medico/infermieristica continuativa per la gestione/somministrazione di farmaci.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "dispositivi per la medicazione e il controllo delle emorragie",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Dispositivi per la medicazione e il controllo delle emorragie presenti nello Zaino dell'Emergenza.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD023_00 — Modulo di controllo dello zaino di emergenza\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica",
+    "notes": "Integrazioni RSGI:\nVerifica e controllo come da IDL e Registro di riferimento.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "",
+    "text": "pulsossimetro e sfigmomanometro",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Pulsossimetro e sfigmomanometro presenti nello Zaino dell'Emergenza e inventariati.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD023_00 — Modulo di controllo dello zaino di emergenza\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali",
+    "notes": "Integrazioni RSGI:\nInventario su «Elenco della Strumentazione» (TD-SGI-MOD014).",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.23",
+    "text": "Armadi, carrelli e apparecchiature che garantiscono la conservazione in sicurezza e l'integrità  dei farmaci e dei dispositivi medici. I frigoriferi garantiscono la visualizzazione e la registrazione della temperatura e sono definite modalità di controllo",
+    "applicability": "laddove previsto utilizzo di farmaci e/o dispositivi medici",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Non si conservano farmaci/dispositivi presso il Punto Prelievi oltre ai presidi base di emergenza; controllo temperature disponibile ove necessario (TD-SGI-PRO023, TD-SGI-MOD072).",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.23.1",
+    "text": "bombola di ossigeno",
+    "applicability": "per l’attività di continuità assistenziale",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di continuità assistenziale non erogata: bombola di ossigeno non richiesta.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.23.2",
+    "text": "glucometro",
+    "applicability": "per l’attività di continuità assistenziale",
+    "answer": "Sì",
+    "document": "Glucometro presente in struttura e verificato come da Procedura e Registri di riferimento.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD068_00 — Registro di controllo dello strumento per la glicemia capillare\n• TD-SGI-PRO023_00 — Procedura di gestione e controllo delle temperature\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali",
+    "notes": "Integrazioni RSGI:\nRegistro di controllo dello strumento per la glicemia capillare (TD-SGI-MOD068).",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.23.3",
+    "text": "Sistema di comunicazione diretta, anche telefonico, con servizio di emergenza territoriale e forze dell’ordine",
+    "applicability": "per l’attività di continuità assistenziale",
+    "answer": "Sì",
+    "document": "Sistema di comunicazione diretta per le emergenze, Clinica (Procedura Emergenza Medica) e Biologica (Procedura Emergenza Biologica), con il servizio di emergenza territoriale.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO008_00 — Procedura di primo soccorso e gestione dell'emergenza medica\n• TD-SGI-PRO007_00 — Procedura di gestione del rischio biologico e sanificazione degli ambienti",
+    "notes": "Integrazioni RSGI:\nContinuità del servizio presidiata anche da TD-SGI-MAN006 (recapiti e modalità di contatto).",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.23.4",
+    "text": "Sistema di videosorveglianza, nei casi di aree non continuativamente presidiate da altro personale",
+    "applicability": "per l’attività di continuità assistenziale",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Attività di continuità assistenziale non erogata: videosorveglianza non richiesta; aree presidiate durante l'orario di apertura.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "IN CASO DI UTILIZZO DI EMOCOMPONENTI AUTOLOGHI PER USO NON TRASFUSIONALE (EuNT)",
+    "text": "",
+    "applicability": "Strutture sanitarie, pubbliche o private, non dotate di Servizio Trasfusionale",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Toscana Diagnostica non utilizza emocomponenti autologhi per uso non trasfusionale (EuNT): sezione non pertinente.",
+    "section": "REQUISITI TECNOLOGICI"
+   },
+   {
+    "code": "B.24",
+    "text": "Ambiente di prelievo e somministrazione distinti da quella di preparazione.",
+    "applicability": "Può essere previsto dalla convenzione con SIMT un ambiente unico con caratteristiche idonee",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: requisito non pertinente.",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B.25",
+    "text": "Presenza di specifica convenzione stipulata con l’azienda sanitaria dove opera il servizio trasfusionale di riferimento,  ai sensi del decreto legge n.69 del 2 Novembre 2015 e “Disposizioni relative ai requisiti di qualità e sicurezza del sangue e degli emocomponenti”",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: convenzione SIMT non pertinente.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.26",
+    "text": "Protocolli operativi relativi alle modalità di produzione e applicazione",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: requisito non pertinente.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.27",
+    "text": "Registro di carico/scarico degli EuNT preparati/utilizzati",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: requisito non pertinente.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.28",
+    "text": "Modulistica per la registrazione di produzione e applicazione, rilevazione eventi avversi, registrazione follow up, report periodico di attività  conforme alla normativa nazionale e regionale",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: requisito non pertinente.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.29",
+    "text": "Piano dei controlli di qualità sugli EuNT prodotti",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Emocomponenti autologhi (EuNT) non prodotti/utilizzati: requisito non pertinente.",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B.30",
+    "text": "Dispositivi medici conformi alle indicazioni per l’uso specifico secondo la relativa normativa vigente (classe IIa o superiore)",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Dispositivi medici conformi alle indicazioni d'uso secondo la normativa vigente (classe IIa o superiore): cfr. «Elenco della Strumentazione» (DAE e centrifuga).\n\nDocumenti SGI di riferimento:\n• TD-SGI-MOD014_00 — Registro Unico delle Apparecchiature Biomedicali\n• TD-SGI-PRO105_00 — Procedura di Vigilanza Post-Market Dispositivi Medici e IVD\n• TD-SGI-PRO034_01 — Procedura di Qualificazione e Valutazione dei Fornitori",
+    "notes": "Integrazioni RSGI:\nVigilanza post-market (TD-SGI-PRO105) e qualifica fornitori (TD-SGI-PRO034).",
+    "section": "REQUISITI TECNOLOGICI"
+   }
+  ]
+ },
+ {
+  "code": "B1.1",
+  "title": "B1.1 – MEDICINA DI LABORATORIO",
+  "items": [
+   {
+    "code": "B1.1.1",
+    "text": "Locale/i di  esecuzione delle analisi, commisurati alla complessità e tipologia di esami che deve essere eseguiti; se vengono svolte indagini microbiologiche deve essere previsto un locale apposito",
+    "applicability": "In caso di prestazioni che prevedano l’utilizzo di metodi di Biologia Molecolare, non eseguite con strumentazione che svolgano in modo del tutto automatico tutte le fasi del processo analitico, devono essere previste  appropriate separazioni delle aree di esecuzione  della metodica.",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B1.1.2",
+    "text": "Locale per il trattamento del materiale d'uso, se non è  previsto l'utilizzo esclusivo di materiale monouso",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI STRUTTURALI"
+   },
+   {
+    "code": "B1.1.3",
+    "text": "Dotazione di personale congrua al volume di attività ed ai picchi di accesso. Deve essere presente almeno:",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "biologo o chimico in possesso della laurea specialistica o un medico in possesso della specializzazione in patologia clinica, biochimica clinica, microbiologia e virologia, genetica medica o disciplina equipollente",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "un tecnico sanitario di laboratorio biomedico, presente, per tutto l’orario di svolgimento dell’attività analitica",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "",
+    "text": "un medico o un'unità infermieristica o altra figura abilitata per l'attività di prelievo",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.4",
+    "text": "Regolamento di funzionamento che descrive tutti i servizi/prestazioni offerti dal laboratorio, esplicita gli esami che vengono eseguiti direttamente, con quali metodiche e attrezzature, e gli esami che vengono inviati ad altre strutture",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.5",
+    "text": "Registrazione dei  laboratori esterni a cui si ricorre per specifiche determinazioni analitiche",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.6",
+    "text": "Modalità organizzative documentate, concordate con i servizi competenti per:  identificazione degli utenti e dei campioni biologici,  tracciabilità dei campioni e dei risultati, trasferimento del materiale biologico dal/dai punto/i  di prelievo al laboratorio, approvvigionamento e gestione dei reagenti e del materiale necessario all’esecuzione delle prestazioni",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.7",
+    "text": "I reagenti ed i calibratori che non presentano marcatura CE ed i materiali di controllo, devono essere provvisti di etichette con classificazione del tipo/livello di rischio e documentazione, ad essi riconducibile, che ne indica: identità, titolo o concentrazione, condizioni di conservazione raccomandate, data di scadenza",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.8",
+    "text": "Sistema di archiviazione che contiene: referti, conservati per almeno 3 anni (fogli macchina 1 anno), i risultati dei controlli di qualità interni con relativa documentazione per almeno un anno e  VEQ per almeno tre anni",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.9",
+    "text": "Modalità standardizzate per l'esecuzione delle singole procedure diagnostiche che definiscono per ogni esame: criteri di accesso e di richiesta delle prestazioni, indicazioni per la preparazione del paziente, condizioni di raccolta, trasporto e conservazione del campione,  regole di compilazione, trasmissione e consegna dei referti\nPer i campioni provenienti da punto prelievo esterni, devono essere presenti procedure condivise con il punto prelievi, relative alla preparazione del paziente, condizioni di raccolta, trasporto e conservazione",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.10",
+    "text": "I referti devono indicare se  i risultati provengono da laboratori esterni rispetto al laboratorio che li redige",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.11",
+    "text": "Programmi di Controllo Interno di Qualità e partecipazione a programmi di Valutazione Esterna di Qualità promossi dalle regioni e validati a livello nazionale o internazionale, estesi anche ai sistemi “Point of care Testing (POCT)”\n\nPer le prestazioni per cui sono attivi programmi di VEQ devono essere previsti metodi alternativi per il monitoraggio della qualità analitica.",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.12",
+    "text": "Disponibilità di materiale informativo per gli utenti",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI ORGANIZZATIVI"
+   },
+   {
+    "code": "B1.1.13",
+    "text": "Nei locali per l’esecuzione delle analisi sono assicurate idonee condizioni microclimatiche con riferimento ai seguenti parametri:",
+    "applicability": "",
+    "answer": "",
+    "document": "",
+    "notes": "",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "",
+    "text": "T = 20 – 26 °C",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "",
+    "text": "U% = 40 – 60%",
+    "applicability": "",
+    "answer": "Non pertinente",
+    "document": "*",
+    "notes": "Requisito riferito all'attività analitica di laboratorio. Il sito è un Punto Prelievi: le analisi sono eseguite dal Laboratorio HUB di Toscana Diagnostica (Via di Pratignone 13/4, Sesto Fiorentino). Requisito assolto in capo al Laboratorio (cfr. TD-SGI-MAN002 — Manuale del Laboratorio ISO 15189).",
+    "section": "REQUISITI IMPIANTISTICI"
+   },
+   {
+    "code": "B1.1.14",
+    "text": "Nel caso il punto prelievi sia in prossimità del laboratorio è debitamente separato dal locale di esecuzione delle analisi.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Il punto prelievi è debitamente separato dal locale di esecuzione delle analisi (collegamento funzionale con il Laboratorio HUB di Sesto Fiorentino).",
+    "notes": "Integrazioni RSGI:\nConformità dimostrata da planimetria/Relazione Tecnica del professionista incaricato.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.15",
+    "text": "Esiste un'area di attesa  dotata di servizi igienici dedicati all'utenza ambulatoriale",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "È presente un'area di attesa dotata di servizi igienici dedicati all'utenza.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MAN006_00 — Carta dei Servizi",
+    "notes": "Integrazioni RSGI:\nConformità dimostrata da planimetria/Relazione Tecnica.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.16",
+    "text": "Il numero delle sedute dell'area attesa è adeguato rispetto ai picchi di frequenza degli accessi",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Il numero delle sedute dell'area di attesa è adeguato ai picchi di frequenza degli accessi.\n\nDocumenti SGI di riferimento:\n• TD-SGI-MAN006_00 — Carta dei Servizi",
+    "notes": "Integrazioni RSGI:\nConformità dimostrata da planimetria/Relazione Tecnica.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.17",
+    "text": "Il locale prelievo consente il rispetto della privacy dell'utente, è dotato di poltrona reclinabile/lettino (minimo 1 per 3 postazioni prelievo)  e di  lavabo con comandi non manuali",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Il locale prelievo garantisce la privacy ed è dotato di poltrona reclinabile/lettino e lavabo con comandi non manuali.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-MAN003_00 — Manuale Privacy e PIMS (GDPR + ISO/IEC 27701)\n• TD-SGI-IDL003_00 — IDL sulla corretta igiene delle mani",
+    "notes": "Integrazioni RSGI:\nConformità strutturale dimostrata da planimetria/Relazione Tecnica.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.18",
+    "text": "E' presente un medico o un'unità infermieristica o altra figura abilitata per l'attività di prelievo",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "È presente un'unità infermieristica/figura abilitata per l'attività di prelievo (A. Contino; C. Tellini in back-up).\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL007_01 — IDL Organizzazione, Funzioni, Job Description\n• TD-SGI-PRO024_01 — Procedura di Gestione delle Risorse Umane\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo",
+    "notes": "Integrazioni RSGI:\nDotazione dettagliata in «Elenco del Personale».",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.19",
+    "text": "L'attività del punto prelievo può essere svolta in locale destinato, in orario diverso, ad altra attività sanitaria, anche per conto di altro titolare (es. ambulatorio visita)",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "L'attività del punto prelievo può essere svolta, in orario diverso, in locale destinato ad altra attività sanitaria: pianificazione operativa dell'utilizzo degli spazi.\n\nDocumenti SGI di riferimento:\n• TD-SGI-REG004_01 — Regolamento Generale Aziendale\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo",
+    "notes": "Integrazioni RSGI:\nCfr. tabella orari di apertura nella Relazione Operativa.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.20",
+    "text": "Modalità codificate e formalizzate per lo svolgimento delle principali attività di gestione, concordate con il laboratorio di riferimento",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Modalità codificate e formalizzate per le attività di gestione, concordate con il Laboratorio di riferimento (IDL Prelievo, PO Gestione Prelievo, IDL Accettazione e relativa modulistica).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-PRO042_00 — Procedura di gestione della fase preanalitica\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO035_00 — Procedura di gestione della logistica e del trasporto campioni\n• TD-SGI-IDL010_00 — IDL Transbag e codifiche per il trasporto campioni\n• TD-SGI-INF001_00 — Informativa sulle modalità di raccolta campioni per il Paziente (ITA)\n• TD-SGI-INF002_00÷INF009_00 — Informativa raccolta campioni, versioni multilingue (EN/FR/DE/ES/PT/RU/ZH/AR)",
+    "notes": "Integrazioni RSGI:\nModalità di raccolta multilingue e mediazione linguistica per l'utenza straniera.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.21",
+    "text": "Modalità codificate e formalizzate, condivise con il laboratorio di riferimento, in merito a: preparazione del paziente, modalità di riconoscimento del paziente, procedure di prelievo,  identificazione, conservazione e trasporto campioni, consegna dei referti, comunicazione dei valori di panico ed altre comunicazioni urgenti  (Es. ripetere il prelievo)",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Modalità codificate condivise con il Laboratorio per preparazione/riconoscimento del paziente, prelievo, identificazione, conservazione e trasporto dei campioni, consegna dei referti e comunicazione dei valori di panico.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO042_00 — Procedura di gestione della fase preanalitica\n• TD-SGI-IDL011_01 — IDL Prelievo, Conservazione e Trasporto dei Campioni Biologici\n• TD-SGI-PRO080_00 — Procedura di comunicazione dei risultati e gestione dei valori critici\n• TD-SGI-IDL013_00 — Tabella dei valori critici di laboratorio\n• TD-SGI-IDL028_00 — IDL Gestione dei valori critici\n• TD-SGI-MOD192_00 — Modulo di registro chiamate per valori critici\n• TD-SGI-PRO051_00 — Procedura di gestione dell'attività di prelievo\n• TD-SGI-MOD194_00 — Modulo di rifiuto/sostituzione campioni biologici",
+    "notes": "Integrazioni RSGI:\nTabella valori critici (TD-SGI-IDL013) e registro chiamate valori critici (TD-SGI-MOD192).",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.22",
+    "text": "Il ritiro dei referti è assicurato in tutti i giorni feriali con le modalità previste dalla struttura",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Il ritiro dei referti è assicurato in tutti i giorni feriali (in presenza, Portale dedicato o App «Toscana Diagnostica»), secondo gli orari indicati nella Relazione Operativa.\n\nDocumenti SGI di riferimento:\n• TD-SGI-IDL015_00 — IDL per l'accettazione e la consegna dei referti\n• TD-SGI-MOD236_00 — Foglio di Ritiro Referti\n• TD-SGI-PRO044_00 — Procedura di gestione della fase postanalitica\n• TD-SGI-MOD128_00 — Autorizzazione alla trasmissione del referto in modalità elettronica",
+    "notes": "Integrazioni RSGI:\nTD-SGI-MOD235 (credenziali portale paziente) per l'accesso digitale ai referti.",
+    "section": "REQUISITI PUNTO PRELIEVO"
+   },
+   {
+    "code": "B1.1.23",
+    "text": "E’ identificato il laboratorio di riferimento per la gestione del POCT",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "È identificato il Laboratorio di riferimento per la gestione del POCT (dichiarazione di connessione funzionale del Punto Prelievi al Laboratorio).\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO047_00 — Procedura di gestione del Point of Care Testing (POCT)",
+    "notes": "Integrazioni RSGI:\nConnessione funzionale al Laboratorio HUB di Sesto Fiorentino.",
+    "section": "PUNTO PRELIEVO DOTATO DI POCT"
+   },
+   {
+    "code": "B1.1.24",
+    "text": "Le modalità organizzative relative all'utilizzo del POCT devono essere espressamente previste nel regolamento di funzionamento, nelle procedure organizzative e nei programmi di Controllo Interno di Qualità e di VEQ del laboratorio di riferimento (requisiti da B1.1.5 a B1.1.13).",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Le modalità d'uso del POCT sono previste nel regolamento di funzionamento, nelle procedure organizzative e nei programmi CIQ/VEQ del Laboratorio di riferimento.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO047_00 — Procedura di gestione del Point of Care Testing (POCT)\n• TD-SGI-MAN002_00 — Manuale del Laboratorio di Analisi (ISO 15189:2022)",
+    "notes": "Integrazioni RSGI:\nProgrammi CIQ (TD-SGI-PRO046) e VEQ (TD-SGI-PRO045) del Laboratorio HUB.",
+    "section": "PUNTO PRELIEVO DOTATO DI POCT"
+   },
+   {
+    "code": "B1.1.25",
+    "text": "Gli esami eseguiti mediante POCT devono essere contenuti nel pannello di esami effettuati con strumenti master presso il laboratorio di riferimento e deve essere assicurato l'allineamento tra i risultati analitici ottenuti con le differenti tipologie di strumentazione.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Gli esami POCT sono contenuti nel pannello degli strumenti master del Laboratorio, con allineamento dei risultati tra le diverse strumentazioni.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO047_00 — Procedura di gestione del Point of Care Testing (POCT)\n• TD-SGI-PRO077_00 — Procedura di tracciabilità metrologica e incertezza di misura",
+    "notes": "Integrazioni RSGI:\nValidazione/verifica dei metodi a cura del Laboratorio (TD-SGI-PRO073).",
+    "section": "PUNTO PRELIEVO DOTATO DI POCT"
+   },
+   {
+    "code": "B1.1.26",
+    "text": "Le determinazioni analitiche ottenute con POCT devono essere controllate telematicamente dal laboratorio di riferimento che le valida.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "Le determinazioni POCT sono controllate telematicamente e validate dal Laboratorio di riferimento.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO047_00 — Procedura di gestione del Point of Care Testing (POCT)\n• TD-SGI-PRO080_00 — Procedura di comunicazione dei risultati e gestione dei valori critici\n• TD-SGI-IDL027_00 — IDL Validazione tecnica del referto",
+    "notes": "Integrazioni RSGI:\nValidazione tecnica del referto in capo al Laboratorio.",
+    "section": "PUNTO PRELIEVO DOTATO DI POCT"
+   },
+   {
+    "code": "B1.1.27",
+    "text": "La refertazione è effettuata dal punto prelievo sotto la responsabilità del laboratorio.",
+    "applicability": "",
+    "answer": "Sì",
+    "document": "La refertazione è effettuata dal punto prelievo sotto la responsabilità del Laboratorio.\n\nDocumenti SGI di riferimento:\n• TD-SGI-PRO047_00 — Procedura di gestione del Point of Care Testing (POCT)\n• TD-SGI-PRO044_00 — Procedura di gestione della fase postanalitica\n• TD-SGI-IDL027_00 — IDL Validazione tecnica del referto",
+    "notes": "Integrazioni RSGI:\nResponsabilità refertazione del Laboratorio HUB.",
+    "section": "PUNTO PRELIEVO DOTATO DI POCT"
+   }
+  ]
+ }
+]

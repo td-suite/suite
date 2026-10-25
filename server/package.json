@@ -1,0 +1,38 @@
+{
+  "name": "td-suite-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Suite TD · Intranet e Operating Suite di Toscana Diagnostica (server)",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/migrate.js",
+    "sync": "node src/jobs/sync.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@azure/storage-blob": "^12.26.0",
+    "bcryptjs": "^2.4.3",
+    "bwip-js": "^4.11.4",
+    "connect-pg-simple": "^10.0.0",
+    "docxtemplater": "^3.71.1",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "jose": "^5.9.6",
+    "multer": "^1.4.5-lts.1",
+    "otplib": "^12.0.1",
+    "pdf-parse": "1.1.1",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.13.1",
+    "pizzip": "^3.3.0",
+    "pptxgenjs": "^4.0.1",
+    "qrcode": "^1.5.4",
+    "yauzl": "^3.4.0",
+    "zod": "^3.24.1"
+  }
+}
