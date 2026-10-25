@@ -201,6 +201,7 @@ export async function compareCounts(key) {
 
 export async function goLive(key, userId) {
   const st = await getModuleState(key);
+  if (st.mode === 'LIVE') return;   // i moduli che partono vuoti sono già LIVE dall'avvio
   if (!st.schema_ready || !st.last_copy_at) throw new Error('Esegui almeno un travaso prima del passaggio definitivo');
   // ultimo travaso immediatamente prima del passaggio: nulla di inserito nell'app originale nel frattempo va perso
   await runTravaso(key, userId);

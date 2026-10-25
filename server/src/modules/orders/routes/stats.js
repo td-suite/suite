@@ -52,7 +52,7 @@ r.get('/network-stock', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   res.json(await many(`SELECT s.id AS struttura_id, s.name AS struttura_name, s.kind, a.id AS article_id, a.code AS article_code, a.name AS article_name, a.category_code,
       count(p.id) FILTER (WHERE p.status='RICEVUTO')::int AS packs, count(p.id) FILTER (WHERE p.status='ATTESO')::int AS incoming
     FROM sites_v s CROSS JOIN articles a LEFT JOIN packages p ON p.struttura_id=s.id AND p.article_id=a.id
-    WHERE s.active AND s.kind IN ('SEDE','LAB') AND a.active GROUP BY s.id, a.id HAVING count(p.id) > 0 ORDER BY s.name, a.sort`));
+    WHERE s.active AND s.kind IN ('SEDE','LAB') AND a.active GROUP BY s.id, s.name, s.kind, a.id, a.code, a.name, a.category_code, a.sort HAVING count(p.id) > 0 ORDER BY s.name, a.sort`));
 }));
 
 const xlsxHeaders = (ws, headers) => { ws.addRow(headers); ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }; ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C505E' } }; ws.columns.forEach((c) => { c.width = 22; }); };
