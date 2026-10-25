@@ -15,6 +15,7 @@ import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
 import { upsertPosition, syncPersonFromPosition } from './orgcat.js';
 import { geocodeAddress } from '../lib/geocode.js';
+import { applyCentralino } from '../lib/centralino.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -36,7 +37,7 @@ const DATASETS = {
       ['kind', 'Tipo', `Uno tra: ${SITE_KINDS.join(', ')}. Predefinito PUNTO_PRELIEVI. I punti dei clienti service hanno tipo SERVICE.`],
       ['organization_code', 'Codice legal entity', 'Legal entity proprietaria (foglio Legal entity): TD per le sedi Toscana Diagnostica, il codice del cliente per i suoi punti service. Un cliente con tre codici StudioLAB ha una riga in Legal entity e tre righe qui.'],
       ['address', 'Indirizzo', 'Via e numero civico.'], ['zip', 'CAP', ''], ['city', 'Città', 'Usata anche per il meteo.'], ['province', 'Provincia', 'Sigla (FI, PO, PT...).'],
-      ['phone', 'Telefono', ''], ['email', 'Email', ''], ['manager_name', 'Responsabile di sede', 'Nome e cognome del site manager.'],
+      ['phone', 'Telefono', ''], ['email', 'Email', ''],
       ['opening_hours', 'Orari di apertura', 'Testo libero, es. "Lun-Ven 7:30-12:30, Sab 7:30-11:00".'],
       ['studiolab_code', 'Codice StudioLAB', 'Codice cliente della sede nel LIS StudioLAB (riconoscimento HL7, ordini, NC). Il connettore StudioLAB aggiorna le sedi con questo codice.'],
       ['active', 'Attiva', 'SI oppure NO. Predefinito SI.'],
@@ -227,7 +228,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   if (!ws) throw bad('Foglio dati assente');
   const headers = []; ws.getRow(1).eachCell((c, i) => { headers[i] = String(cellText(c.value) || '').trim(); });
   const known = new Set(d.columns.map(([k]) => k));
-  const IGNORED = new Set(['area', 'last_name_user', 'first_name_user']);   // colonne di modelli precedenti: ignorate
+  const IGNORED = new Set(['manager_name', 'area', 'last_name_user', 'first_name_user']);   // colonne di modelli precedenti: ignorate
   const unknown = headers.filter(Boolean).filter((h) => !known.has(h) && !IGNORED.has(h));
   if (unknown.length) throw bad(`Colonne non riconosciute: ${unknown.join(', ')}. Usa le intestazioni del modello.`);
   const rows = [];
@@ -317,6 +318,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   // numeri di riga del foglio (la riga 1 è l'intestazione) al posto degli indici
   const errors = out.errors.map((e) => ({ ...e, row: data[e.row]?.__row ?? e.row + 2 }));
   await audit(req, 'IMPORT_XLSX', { entity: 'ingest_batch', entityId: batch.id, label: `${d.title}: ${out.rows_ok} ok, ${out.rows_rejected} scartate`, data: { dataset, filename: req.file.originalname } });
+  if (dataset === 'people' || dataset === 'orgchart') await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
   if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
     many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
       for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await q('UPDATE sites SET lat=$2, lng=$3 WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [s.id, g.lat, g.lng]); } catch (e) { console.warn('[geocode]', s.id, e.message); } }

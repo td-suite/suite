@@ -901,3 +901,16 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .tree-picker { display: grid; gap: 6px; }
 .tree-picker select { width: 100%; }
 .linklike { background: none; border: 0; padding: 0; color: var(--blue); cursor: pointer; font: inherit; text-decoration: underline; }
+
+/* Mappa delle sedi */
+.sites-map { width: 100%; border-radius: 14px 14px 0 0; overflow: hidden; z-index: 0; background: var(--bg); }
+.site-pin span { display: block; width: 18px; height: 18px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.site-pop { font: 12.5px/1.35 inherit; min-width: 180px; } .site-pop .k { color: #5B6B70; font-size: 11.5px; }
+.leaflet-container { font-family: inherit; } .leaflet-popup-content { margin: 10px 12px; } .leaflet-popup-content-wrapper { border-radius: 10px; }
+.legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #5B6B70; }
+.legend-dot[data-kind="HEADQUARTER"] { background: #01212C; } .legend-dot[data-kind="LABORATORIO"] { background: #1C505E; }
+.legend-dot[data-kind="CENTRO_DIAGNOSTICO"], .legend-dot[data-kind="POLIAMBULATORIO"], .legend-dot[data-kind="CENTRO_MEDICO"] { background: #71B1BD; }
+.legend-dot[data-kind="PUNTO_PRELIEVI"] { background: #2a9d8f; } .legend-dot[data-kind="SERVICE"] { background: #9b7bb8; }
+[data-theme="dark"] .leaflet-tile { filter: brightness(.82) contrast(1.05); }
+
+.static-val { padding: 9px 12px; border: 1px dashed var(--line); border-radius: 10px; background: var(--bg); font-size: 14px; }

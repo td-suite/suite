@@ -3,6 +3,7 @@ import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
 import { syncPositionFromPerson } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
+import { applyCentralino } from '../lib/centralino.js';
 import { resolveCatalog } from './orgcat.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
@@ -59,7 +60,7 @@ const siteSchema = z.object({
   kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
   organization_id: z.number().int().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional(), manager_name: z.string().nullable().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
+  email: z.string().email().nullable().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
 });
 
@@ -76,8 +77,13 @@ const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_h
 
 r.get('/sites', ah(async (req, res) => {
   const all = isAdmin(req.user) || req.query.all === '1';
-  const rows = await many(`SELECT s.*, o.name AS organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count
-    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
+  // Responsabile di sede: dall'organigramma (responsabile del nodo Sede collegato), mai testo libero
+  const rows = await many(`SELECT s.*, o.name AS organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
+      h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
+    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id
+    LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
+        JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
+    ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
 }));
 const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
@@ -298,6 +304,7 @@ r.post('/people', requireAdmin, ah(async (req, res) => {
   indexPersonById(row.id).catch(() => {});
   autoAccountForPerson(row.id, req.user);   // ogni utente è una persona: l'accesso nasce dalla persona attiva con email
   await syncPositionFromPerson(row);        // reparto + ruolo della scheda = incarico nell'organigramma
+  await applyCentralino(row.id);
   res.status(201).json(row);
 }));
 r.put('/people/:id', ah(async (req, res) => {
@@ -312,6 +319,7 @@ r.put('/people/:id', ah(async (req, res) => {
   indexPersonById(row.id).catch(() => {});
   if (isAdmin(req.user)) autoAccountForPerson(row.id, req.user);
   if (b.unit_id !== undefined || b.role_id !== undefined) await syncPositionFromPerson(row);
+  if (b.phone_ext !== undefined) await applyCentralino(row.id);
   res.json(row);
 }));
 

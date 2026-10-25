@@ -138,3 +138,12 @@ nell'organigramma, dove le persone afferenti senza ruolo sono raggruppate come c
 (responsabile dell'unità, o dell'unità superiore se è lei la responsabile), poi dagli incarichi (migrazione 016). Nel file Persone la
 colonna Afferenza accetta il nome dell'unità o il percorso "B2B › Service di Laboratorio". Il file Organigramma precompilato ha ora il
 nodo Sede "Laboratorio Sesto Fiorentino" sotto l'area Laboratorio di Analisi, con i reparti sotto la sede.
+
+## Sedi: mappa, ricerca, responsabile, centralino (25/10/2026, notte)
+Pagina Sedi con mappa Leaflet/OpenStreetMap di tutte le sedi con coordinate (marker per tipo, popup con indirizzo, telefono, orari;
+"Sulla mappa" dalla riga; CSP aperta ai tile OSM), ricerca anche per indirizzo, CAP, provincia, nome breve e codice StudioLAB, senza
+accenti. Il responsabile di sede non è più testo libero: è il responsabile del nodo Sede dell'organigramma collegato alla sede
+(`manager_person_id`/`manager_name`/`manager_role` calcolati in GET /sites; campo in sola lettura nel form; colonna nel modello Sedi
+ignorata). Centralino (lib/centralino.js): numero diretto = 055 776 + interno (tre cifre); interni personali e di reparto dal file Rev01
+applicati dopo ogni importazione di Persone/Organigramma e al salvataggio della persona. Nessuna sede o legal entity di esempio nel
+seed: le sedi (LAB, HQ...) le codifica Francesco nel file Sedi.

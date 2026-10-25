@@ -1,4 +1,5 @@
 import { PERSONAL_EXT, DEPARTMENT_EXT, SWITCHBOARD, IVR } from './seed/centralino.js';
+import { applyCentralino } from './lib/centralino.js';
 import { displayName, splitName } from './lib/util.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,16 +43,7 @@ async function seed() {
         JSON.stringify(m.profiles || []), m.scope_type || null, m.sort_order || 100]);
   }
 
-  // Organizzazione capogruppo
-  const td = await one(`INSERT INTO organizations (kind, code, name, city, province, website, active)
-                        VALUES ('GRUPPO','TD','Toscana Diagnostica S.r.l.','Sesto Fiorentino','FI','https://www.toscanadiagnostica.it',TRUE)
-                        ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name RETURNING id`);
-  await q(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, city, province, lat, lng, sort_order)
-           VALUES ('LAB-SESTO','Laboratorio di Analisi · Sesto Fiorentino','Laboratorio','LABORATORIO',$1,'Via di Pratignone 13/4','Sesto Fiorentino','FI',43.8325,11.2010,1)
-           ON CONFLICT (code) DO NOTHING`, [td.id]);
-  await q(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, city, province, lat, lng, sort_order)
-           VALUES ('DIR-FI','Direzione · Firenze','Direzione','HEADQUARTER',$1,'Viale Belfiore 55','Firenze','FI',43.7820,11.2400,0)
-           ON CONFLICT (code) DO NOTHING`, [td.id]);
+  // Nessuna sede o legal entity di esempio: l'anagrafica la carica Francesco dai modelli (sedi LAB e HQ già codificate da lui).
 
   // Owner
   if (config.seed.ownerEmail) {
@@ -119,6 +111,7 @@ if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {
 
 // Centralino: interni personali sulle schede persona (per cognome e nome, solo se vuoti) e numeri di reparto in settings
 export async function seedCentralino() {
+  await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
   for (const [last, first, ext] of PERSONAL_EXT) {
     await q(`UPDATE people SET phone_ext=$3, updated_at=now() WHERE phone_ext IS NULL AND lower(unaccent(last_name))=lower(unaccent($1)) AND lower(unaccent(first_name))=lower(unaccent($2))`, [last, first, ext]).catch(() => {});
   }

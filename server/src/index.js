@@ -50,7 +50,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net', 'https://*.tile.openstreetmap.org'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'", 'data:'],

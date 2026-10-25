@@ -4,6 +4,7 @@ import { api, qs } from '../../api.js';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs, ConfirmModal } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
+import SitesMap from '../../components/SitesMap.jsx';
 
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
 export function LegacyRefs({ refs }) {
@@ -49,7 +50,7 @@ function EditModal({ title, fields, item, onSave, onClose, extra }) {
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
     const body = {};
-    for (const x of fields) { if (x.type === 'action') continue; const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : x.type === 'hours' ? (v && Object.values(v).some((r) => r?.length) ? Object.fromEntries(Object.entries(v).filter(([, r]) => r?.length).map(([d, r]) => [d, r.filter((x) => x.from && x.to)])) : null) : v === '' ? null : v; }
+    for (const x of fields) { if (x.type === 'action' || x.type === 'static') continue; const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : x.type === 'hours' ? (v && Object.values(v).some((r) => r?.length) ? Object.fromEntries(Object.entries(v).filter(([, r]) => r?.length).map(([d, r]) => [d, r.filter((x) => x.from && x.to)])) : null) : v === '' ? null : v; }
     try { await onSave(body); onClose(); } catch (e2) { toast(e2, 'err'); }
     setBusy(false);
   };
@@ -58,7 +59,8 @@ function EditModal({ title, fields, item, onSave, onClose, extra }) {
       <form id="eform" onSubmit={save} className="form-grid">
         {fields.map((x) => (
           <Field key={x.key} label={x.label} help={x.help} required={x.required} className={x.full ? 'span-all' : x.wide ? 'span2' : ''}>
-            {x.type === 'action' ? <div style={{ paddingTop: 2 }}><button type="button" className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); try { await x.run(f, (patch) => setF((cur) => ({ ...cur, ...patch }))); } catch (e2) { toast(e2, 'err'); } setBusy(false); }}><Icon name={x.icon || 'refresh'} />{x.button}</button>{x.help2 && <div className="small muted mt">{x.help2}</div>}</div>
+            {x.type === 'static' ? <div className="static-val">{x.value(item)}</div>
+              : x.type === 'action' ? <div style={{ paddingTop: 2 }}><button type="button" className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); try { await x.run(f, (patch) => setF((cur) => ({ ...cur, ...patch }))); } catch (e2) { toast(e2, 'err'); } setBusy(false); }}><Icon name={x.icon || 'refresh'} />{x.button}</button>{x.help2 && <div className="small muted mt">{x.help2}</div>}</div>
               : x.type === 'hours' ? <HoursEditor value={f[x.key]} onChange={(val) => setF({ ...f, [x.key]: val })} />
               : x.type === 'select' ? <select value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value, ...(x.resets ? Object.fromEntries(x.resets.map((k) => [k, ''])) : {}) })}>{!x.required && <option value="">Nessuno</option>}{(x.optionsFor ? x.optionsFor(f) : x.options).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
               : x.type === 'bool' ? <div style={{ paddingTop: 6 }}><Switch checked={f[x.key]} onChange={(v) => setF({ ...f, [x.key]: v })} label={x.label} /></div>
@@ -122,14 +124,17 @@ export function Sites() {
   const [photos, setPhotos] = useState(null);
   // Due elenchi distinti: le sedi della rete Toscana Diagnostica e le strutture dei clienti service (sedi gemelle SRV-<codice StudioLAB>, create dalle organizzazioni)
   const [tab, setTab] = useState('td');
+  const [showMap, setShowMap] = useState(true);
+  const [focusId, setFocusId] = useState(null);
+  const norm = (x) => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const isService = (s) => s.kind === 'SERVICE';
   const all = data || [];
-  const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || `${s.code} ${s.name} ${s.city || ''} ${s.organization_name || ''}`.toLowerCase().includes(q.toLowerCase()));
+  const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || norm(`${s.code} ${s.name} ${s.short_name || ''} ${s.address || ''} ${s.zip || ''} ${s.city || ''} ${s.province || ''} ${s.organization_name || ''} ${s.studiolab_code || ''}`).includes(norm(q)));
   const fields = [
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
-    { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: 'manager_name', label: 'Responsabile' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
+    { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' },
     { key: '_geo', label: 'Coordinate', type: 'action', button: 'Trova dall\'indirizzo', icon: 'pin', help: 'Da via, civico, CAP e città (OpenStreetMap). Se restano vuote, la Suite le completa da sola al salvataggio.', run: async (f, patch) => { const g = await api.post('/geocode', { address: f.address || null, zip: f.zip || null, city: f.city || null, province: f.province || null }); patch({ lat: g.lat, lng: g.lng }); toast(g.precision === 'civico' ? `Trovato al civico: ${g.label}` : g.precision === 'via' ? `Trovata la via (civico non riconosciuto): ${g.label}` : `Trovata solo la città: ${g.label}`, g.precision === 'citta' ? 'warn' : undefined); } },
     { key: 'sort_order', label: 'Ordine', type: 'number' },
@@ -141,16 +146,25 @@ export function Sites() {
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<><button className="btn ghost" title="Ricava latitudine e longitudine dall'indirizzo per le sedi che non le hanno" onClick={async () => { try { const r = await api.post('/sites/geocode-missing'); toast(r.queued ? `${r.queued} sedi in coda: coordinate pronte tra circa ${Math.max(5, r.queued * 2)} secondi` : 'Tutte le sedi hanno già le coordinate'); setTimeout(reload, Math.min(60000, Math.max(5000, r.queued * 2500))); } catch (e) { toast(e, 'err'); } }}><Icon name="pin" />Completa coordinate</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button></>} />
       <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(isService).length }]} />
       {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
-      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente o città' : 'Codice, nome o città'} /></div>
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente, indirizzo o città' : 'Codice, nome, indirizzo o città'} /><div className="spacer" /><button className={`btn ghost sm${showMap ? ' active' : ''}`} onClick={() => setShowMap((v) => !v)}><Icon name="pin" />{showMap ? 'Nascondi mappa' : 'Mappa'}</button></div>
+      {showMap && <Card flush style={{ marginBottom: 14 }}>
+        <SitesMap sites={rows} kinds={SITE_KIND} focusId={focusId} />
+        <div className="row tight small muted" style={{ padding: '8px 14px', flexWrap: 'wrap', gap: 12 }}>
+          <span>{rows.filter((s) => s.lat != null && s.lng != null).length} su {rows.length} sedi con coordinate</span>
+          {rows.some((s) => s.lat == null || s.lng == null) && <span>Per le altre usa "Completa coordinate".</span>}
+          <span className="spacer" />
+          {Object.entries(SITE_KIND).filter(([k]) => rows.some((s) => s.kind === k)).map(([k, v]) => <span key={k} className="row tight" style={{ gap: 5 }}><i className="legend-dot" data-kind={k} />{v}</span>)}
+        </div>
+      </Card>}
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessun punto cliente: si caricano dal file Sedi con tipo SERVICE e il codice della legal entity del cliente' : 'Nessuna sede'} />}
-        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Città</th><th>Legal entity</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Indirizzo</th><th>Legal entity</th><th>Responsabile</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
             <td><div className="strong">{s.name}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
-            <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.city}{s.province ? ` (${s.province})` : ''}</td><td className="small">{s.organization_name}</td><td className="num">{s.users_count}</td>
+            <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.address && <div>{s.address}</div>}<span className="muted">{[s.zip, s.city].filter(Boolean).join(' ')}{s.province ? ` (${s.province})` : ''}</span>{s.lat != null && s.lng != null ? <button className="linklike small" style={{ display: 'block' }} onClick={() => { setShowMap(true); setFocusId(s.id); }}>Sulla mappa</button> : <div className="faint small">Senza coordinate</div>}</td><td className="small">{s.organization_name}</td><td className="small">{s.manager_name ? <Link to={`/people/${s.manager_person_id}`}>{s.manager_name}</Link> : <span className="faint">da assegnare</span>}</td><td className="num">{s.users_count}</td>
             <td className="small muted">{(s.photo_file_ids || []).length ? `${s.photo_file_ids.length} / 3` : ''}</td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { await api.del(`/sites/${s.id}`); toast('Sede eliminata'); reload(); }} /></td>
           </tr>)}
