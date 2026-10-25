@@ -9,7 +9,7 @@ export async function hydrateUser(id) {
   const u = await one(
     `SELECT u.*, o.kind AS organization_kind, o.name AS organization_name, s.name AS site_name, s.code AS site_code,
             p.kind AS person_kind, p.area AS person_area, p.job_title AS person_job_title, p.title AS person_title, p.phone AS person_phone, p.phone_ext AS person_phone_ext,
-            jr.name AS person_role, ou.name AS person_unit
+            jr.name AS person_role, ou.name AS person_unit, org_unit_path(p.unit_id) AS person_unit_path, p.phone_office AS person_phone_office
        FROM users u
        LEFT JOIN people p ON p.id = u.person_id
        LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)

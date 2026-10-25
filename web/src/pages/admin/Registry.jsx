@@ -228,7 +228,8 @@ export function PeopleAdmin() {
     { key: 'last_name', label: 'Cognome', required: true }, { key: 'first_name', label: 'Nome', required: true }, { key: 'title', label: 'Titolo', max: 20 },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
     { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'phone_ext', label: 'Interno centralino', max: 10 },
-    { key: 'site_id', label: 'Sede di lavoro', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) }, { key: 'discipline', label: 'Disciplina' },
+    { key: 'site_id', label: 'Sede di lavoro', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) },
+    { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Cosa fa (dal catalogo Ruoli): vale per tutti, anche senza casella nell\'organigramma. Gli incarichi sotto sono le caselle.' }, { key: 'discipline', label: 'Disciplina' },
     { key: 'hired_at', label: 'Data di ingresso', type: 'date' }, { key: 'terminated_at', label: 'Data di cessazione', type: 'date' },
     { key: 'sex', label: 'Sesso', type: 'select', options: [{ value: 'F', label: 'F' }, { value: 'M', label: 'M' }] }, { key: 'birth_date', label: 'Data di nascita', type: 'date' }, { key: 'birth_place', label: 'Luogo di nascita', max: 120 }, { key: 'vat_number', label: 'Partita IVA', max: 20 },
     { key: 'address', label: 'Indirizzo di residenza', max: 250 }, { key: 'zip', label: 'CAP', max: 10 }, { key: 'city', label: 'Città', max: 120 }, { key: 'province', label: 'Provincia', max: 4 },
@@ -236,7 +237,7 @@ export function PeopleAdmin() {
    
   ];
   const save = async (body) => {
-    const b = { ...body, site_id: body.site_id ? Number(body.site_id) : null, organization_id: body.organization_id ? Number(body.organization_id) : null };
+    const b = { ...body, site_id: body.site_id ? Number(body.site_id) : null, organization_id: body.organization_id ? Number(body.organization_id) : null, role_id: body.role_id ? Number(body.role_id) : null };
     if (modal?.id) await api.put(`/people/${modal.id}`, b); else { const created = await api.post('/people', b); toast('Persona creata: ora assegna gli incarichi'); reload(); setModal(null); setPos(created); return; }
     toast('Persona salvata'); reload();
   };
@@ -251,10 +252,10 @@ export function PeopleAdmin() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !data.length && <Empty icon="user" title="Nessuna persona">Le persone arrivano dalle importazioni (Contracts) o si inseriscono a mano.</Empty>}
-        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Afferenza / sede</th><th>Incarichi</th><th>Dipende da</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Afferenza, ruolo, sede</th><th>Incarichi</th><th>Dipende da</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
           {data.map((p) => <tr key={p.id}>
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
-            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.unit_path && <div className="strong">{p.unit_path.replace(/^[^›]+› /, '')}</div>}{p.site_name}</td>
+            <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.unit_path && <div className="strong">{p.unit_path.replace(/^[^›]+› /, '')}</div>}{p.job_title && <div>{p.job_title}</div>}<span className="muted">{p.site_name}</span></td>
             <td className="small">{(p.positions || []).length ? (p.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.unit_name}</b> : x.unit_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>) : <span className="faint">nessuno</span>}</td>
             <td className="small">{p.manager_name || <span className="faint">{p.no_manager ? 'vertice' : 'nessuno'}</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
@@ -273,18 +274,30 @@ export function PeopleAdmin() {
 
 // Incarichi di una persona: più unità e ruoli (es. Direzione + responsabile di area + funzione). Stessa tabella org_positions dell'Organizzazione.
 // Afferenza: tendine a cascata lungo l'albero (Direzione › Area › Sede › Reparto...), fino alla foglia che si vuole
-export function UnitTreePicker({ units, value, onChange }) {
+// Collocazione semplice: Area, Reparto, Funzione in rapporto alla sede della persona. Sotto c'è sempre lo stesso albero dell'Organizzazione:
+// il valore salvato è l'unità più profonda scelta (funzione, altrimenti reparto, altrimenti il nodo sede, altrimenti l'area).
+export function OrgPlacement({ units, siteId, value, onChange }) {
   const coll = new Intl.Collator('it');
-  const byParent = useMemo(() => { const m = {}; for (const u of units) (m[u.parent_id || 'root'] ||= []).push(u); for (const k of Object.keys(m)) m[k].sort((a, b) => (a.sort_order - b.sort_order) || coll.compare(a.name, b.name)); return m; }, [units]);
   const byId = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
-  const chain = []; let cur = value ? byId.get(Number(value)) : null; while (cur) { chain.unshift(cur); cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
-  const levels = []; let parentKey = 'root';
-  for (let i = 0; ; i++) { const opts0 = byParent[parentKey] || []; if (!opts0.length) break; levels.push({ options: opts0, selected: chain[i]?.id || '' }); if (!chain[i]) break; parentKey = chain[i].id; }
+  const ancestors = (u) => { const out = []; let cur = u; while (cur) { out.push(cur); cur = cur.parent_id ? byId.get(cur.parent_id) : null; } return out; };
+  const under = (u, id) => ancestors(u).some((a) => a.id === id);
+  const sort = (list) => [...list].sort((a, b) => coll.compare(a.name, b.name));
+  const chain = value ? ancestors(byId.get(Number(value))) : [];
+  const pick = (kind) => chain.find((u) => u.kind === kind) || null;
+  const siteNode = units.find((u) => u.kind === 'SEDE' && u.site_id === Number(siteId)) || pick('SEDE');
+  const area = pick('AREA'); const rep = pick('REPARTO'); const fun = pick('FUNZIONE');
+  const areas = sort(units.filter((u) => u.kind === 'AREA'));
+  const scope = (u) => (siteNode && under(u, siteNode.id)) || (area && under(u, area.id));
+  const reparti = sort(units.filter((u) => u.kind === 'REPARTO' && (scope(u) || (!siteNode && !area))));
+  const funzioni = sort(units.filter((u) => u.kind === 'FUNZIONE' && (scope(u) || (!siteNode && !area))));
+  const deepest = (a, r, f) => (f || r || (siteNode && (!a || under(siteNode, a.id)) ? siteNode : null) || a);
+  const set = (k, id) => { const v = id ? byId.get(Number(id)) : null; let a = area, r = rep, f = fun; if (k === 'area') { a = v; r = null; f = null; } if (k === 'rep') { r = v; } if (k === 'fun') { f = v; } const d = deepest(a, r, f); onChange(d ? d.id : null); };
   return (
-    <div className="tree-picker">
-      {levels.map((lv, i) => <select key={i} value={lv.selected} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : (i > 0 ? chain[i - 1].id : null))}>
-        <option value="">{i === 0 ? 'Scegli' : 'Fermati qui'}</option>{lv.options.map((u) => <option key={u.id} value={u.id}>{u.name} · {KINDS[u.kind]}</option>)}</select>)}
-      {chain.length > 0 && <div className="small muted span-all">{chain.map((u) => u.name).join(' › ')}</div>}
+    <div className="placement">
+      <label><span>Area</span><select value={area?.id || ''} onChange={(e) => set('area', e.target.value)}><option value="">Nessuna</option>{areas.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+      <label><span>Reparto</span><select value={rep?.id || ''} onChange={(e) => set('rep', e.target.value)}><option value="">Nessuno</option>{reparti.map((u) => <option key={u.id} value={u.id}>{u.name}{u.parent_name && !under(u, siteNode?.id) ? ` (${u.parent_name})` : ''}</option>)}</select></label>
+      <label><span>Funzione</span><select value={fun?.id || ''} onChange={(e) => set('fun', e.target.value)}><option value="">Nessuna</option>{funzioni.map((u) => <option key={u.id} value={u.id}>{u.name}{u.parent_name ? ` (${u.parent_name})` : ''}</option>)}</select></label>
+      <div className="small muted" style={{ gridColumn: '1 / -1' }}>{chain.length ? chain.slice().reverse().map((u) => u.name).join(' › ') : (siteId ? 'Scegli area, reparto o funzione' : 'Prima indica la sede di lavoro qui sopra e salva')}</div>
     </div>
   );
 }
@@ -310,8 +323,8 @@ export function PositionsEditor({ person, onChange }) {
   return (
     <>
       <div className="dep-row">
-        <div><div className="small strong">Afferisce a</div><div className="small muted">Scendi nell'albero fino all'unità di appartenenza (area, sede, reparto o funzione): si salva a ogni passo e l'incarico di afferenza si sposta con te.</div></div>
-        <UnitTreePicker units={units.data || []} value={person.unit_id} onChange={setUnit} />
+        <div><div className="small strong">Collocazione</div><div className="small muted">Sede {person.site_name || 'da indicare sopra'}: area, reparto e funzione in rapporto a questa sede. Si salva subito.</div></div>
+        <OrgPlacement units={units.data || []} siteId={person.site_id} value={person.unit_id} onChange={setUnit} />
       </div>
       <div className="dep-row">
         <div><div className="small strong">Dipende da</div><div className="small muted">{person.no_manager ? 'Vertice: non dipende da nessuno' : person.manager_override_id ? 'Responsabile indicato a mano' : person.manager_auto_id ? 'Dall\'organigramma: il responsabile dell\'unità del suo incarico' : 'Nessuno: aggiungi un incarico o indicalo qui'}</div></div>
@@ -324,7 +337,8 @@ export function PositionsEditor({ person, onChange }) {
       {list.length > 0 && <table className="t" style={{ marginBottom: 14 }}><thead><tr><th>Unità</th><th>Ruolo</th><th>Responsabile</th><th></th></tr></thead><tbody>
         {list.map((x) => <tr key={x.id}><td><div className="strong">{x.unit_name}</div><div className="small muted">{KINDS[x.unit_kind]}{x.parent_name ? ` · ${x.parent_name}` : ''}</div></td><td className="small">{x.role_name || ''}</td><td>{x.is_head && <Badge tone="blue">Responsabile</Badge>}</td><td className="actions"><button type="button" className="iconbtn" aria-label="Rimuovi" onClick={() => del(x)}><Icon name="trash" /></button></td></tr>)}
       </tbody></table>}
-      {!list.length && <p className="small muted">Nessun incarico: la persona non compare nell'organigramma. Un incarico è unità (direzione, area, sede, reparto, funzione) + ruolo, con il flag se ne è la responsabile.</p>}
+      <div className="small strong" style={{ margin: '14px 0 6px' }}>Caselle nell'organigramma (solo per responsabili e figure di staff)</div>
+      {!list.length && <p className="small muted">Nessuna casella: per chi lavora in sede senza responsabilità va bene così, compare sotto la sua unità con il suo ruolo.</p>}}
       <form onSubmit={add} className="form-grid">
         <Field label="Unità" required><select value={f.unit_id} onChange={(e) => setF({ ...f, unit_id: e.target.value })} required><option value="">Scegli</option>{[...(units.data || [])].sort((a, b) => coll.compare(unitLabel(a), unitLabel(b))).map((u) => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}</select></Field>
         <Field label="Ruolo nell'incarico"><select value={f.role_id} onChange={(e) => setF({ ...f, role_id: e.target.value })}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>

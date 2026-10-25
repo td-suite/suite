@@ -225,8 +225,9 @@ export function UserDetail() {
                         <dt>Cognome e nome</dt><dd>{u.last_name} {u.first_name}{u.person_title ? ` (${u.person_title})` : ''}</dd>
                         <dt>Sede</dt><dd>{u.site_code ? `${u.site_code} · ${u.site_name}` : <span className="muted">Nessuna</span>}</dd>
                         <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}</dd>
-                        <dt>Reparto e ruolo</dt><dd>{[u.person_unit, u.person_role || u.person_job_title].filter(Boolean).join(' · ') || <span className="muted">Non indicati</span>}</dd>
-                        <dt>Telefono</dt><dd>{[u.person_phone, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>
+                        <dt>Afferisce a</dt><dd>{u.person_unit_path ? u.person_unit_path.replace(/^[^›]+› /, '') : <span className="muted">Non indicata</span>}</dd>
+                        <dt>Ruolo</dt><dd>{u.person_role || u.person_job_title || <span className="muted">Non indicato</span>}</dd>
+                        <dt>Telefono</dt><dd>{[u.person_phone_office, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null, u.person_phone ? `cell. ${u.person_phone}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>
                       </dl>
                       <div className="small muted">Questi dati si modificano solo in Amministrazione, Persone (o in Contratti del personale): qui l'account li legge dall'anagrafica unica.</div>
                     </div>
