@@ -68,7 +68,7 @@ function List() {
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="users" title="Nessuna persona trovata">{qtext ? 'Prova con un nome o un ruolo diverso.' : 'La rubrica si popola dalle anagrafiche e dalle importazioni.'}</Empty>}
       {data?.length > 0 && <><div className="small muted mb">{data.length} person{data.length === 1 ? 'a' : 'e'}</div><div className="people">{data.map((p) => <PersonCard key={p.id} p={p} />)}</div></>}
-      {!qtext && !area && !kind && !site_id && <Switchboard />}
+      {!qtext && !role_id && !kind && !site_id && <Switchboard />}
     </div>
   );
 }
