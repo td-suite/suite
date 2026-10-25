@@ -161,3 +161,10 @@ Ogni sede TD attiva (non SERVICE) ha sempre il suo nodo Sede nell'albero (`ensur
 nome che segue l'anagrafica sedi; chiamato alla creazione di una sede, dopo il file Sedi e a ogni lettura di Organizzazione). Il file
 Organigramma, per una riga Sede, aggancia il nodo esistente per codice sede o per nome/nome breve e lo sposta sotto l'area indicata,
 senza duplicarlo. Mappa con tile CARTO (Voyager): i server volontari di OpenStreetMap rifiutano le applicazioni con 403.
+
+## Tecnostruttura e pettine (26/10/2026)
+Stesso disegno di Contratti del personale (areas.kind STAFF/LINEA): `org_units.branch` = STAFF (tecnostruttura: Operations, Finance,
+Legal People and Organization, Flow & Back Office, Retail & Communications, HSQ, Lab Operations Management) o LINEA (aree operative,
+il pettine). Nell'organigramma le funzioni di staff stanno accanto al vertice, le aree operative sotto; nella scheda persona la tendina
+Area le separa in due gruppi; il file Organigramma ha la colonna Collocazione (LINEA/STAFF) e il precompilato modella così la Direzione.
+Scheda persona = Sede, Ruolo, Area/Reparto/Funzione rispetto alla sede, Dipende da (una persona): il modello di Contracts HR.

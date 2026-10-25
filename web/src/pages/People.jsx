@@ -206,6 +206,8 @@ function UnitNode({ u, children, focus }) {
   const others = (u.positions || []).filter((x) => !x.is_head && x.role_name);
   const members = (u.positions || []).filter((x) => !x.is_head && !x.role_name);
   const hit = (u.positions || []).some((x) => x.person_id === focus);
+  const staffKids = (children || []).filter((c) => c.u.branch === 'STAFF' && !c.children?.length);
+  const lineKids = (children || []).filter((c) => !staffKids.includes(c));
   return (
     <li>
       <div className={`node unit ${u.kind.toLowerCase()}${hit ? ' focus' : ''}`}>
@@ -215,7 +217,12 @@ function UnitNode({ u, children, focus }) {
         {others.map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className="pos"><div style={{ minWidth: 0 }}><div className="r">{x.role_name || 'Incarico'}</div><div className="n">{x.person_name}</div></div></Link>)}
         {members.length > 0 && <Link to={`/people?unit_id=${u.id}`} className="pos"><div className="r">{members.length} person{members.length === 1 ? 'a afferente' : 'e afferenti'}</div></Link>}
       </div>
-      {children?.length > 0 && <ul className={children.length > 3 && children.every((c) => !c.children?.length) ? 'stack' : ''}>{children.map((c) => <UnitNode key={c.u.id} u={c.u} focus={focus}>{c.children}</UnitNode>)}</ul>}
+      {staffKids.length > 0 && <div className="staff-row">{staffKids.map((c) => <div key={c.u.id} className={`node unit staff${(c.u.positions || []).some((x) => x.person_id === focus) ? ' focus' : ''}`}>
+        <div className="unit-head"><span className="unit-kind">Tecnostruttura</span><div className="unit-name">{c.u.name}</div></div>
+        {(c.u.positions || []).filter((x) => x.is_head || x.role_name).map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className={`pos${x.is_head ? ' head' : ''}`}><div style={{ minWidth: 0 }}><div className="n">{x.person_name}</div><div className="r ellipsis">{x.role_name || 'Responsabile'}</div></div></Link>)}
+        {!(c.u.positions || []).length && <div className="pos head tbd"><div className="n muted">Da assegnare</div></div>}
+      </div>)}</div>}
+      {lineKids.length > 0 && <ul className={lineKids.length > 3 && lineKids.every((c) => !c.children?.length) ? 'stack' : ''}>{lineKids.map((c) => <UnitNode key={c.u.id} u={c.u} focus={focus}>{c.children}</UnitNode>)}</ul>}
     </li>
   );
 }

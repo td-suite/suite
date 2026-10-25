@@ -294,7 +294,9 @@ export function OrgPlacement({ units, siteId, value, onChange }) {
   const set = (k, id) => { const v = id ? byId.get(Number(id)) : null; let a = area, r = rep, f = fun; if (k === 'area') { a = v; r = null; f = null; } if (k === 'rep') { r = v; } if (k === 'fun') { f = v; } const d = deepest(a, r, f); onChange(d ? d.id : null); };
   return (
     <div className="placement">
-      <label><span>Area</span><select value={area?.id || ''} onChange={(e) => set('area', e.target.value)}><option value="">Nessuna</option>{areas.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+      <label><span>Area</span><select value={area?.id || ''} onChange={(e) => set('area', e.target.value)}><option value="">Nessuna</option>
+        <optgroup label="Tecnostruttura">{areas.filter((u) => u.branch === 'STAFF').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</optgroup>
+        <optgroup label="Aree operative (pettine)">{areas.filter((u) => u.branch !== 'STAFF').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</optgroup></select></label>
       <label><span>Reparto</span><select value={rep?.id || ''} onChange={(e) => set('rep', e.target.value)}><option value="">Nessuno</option>{reparti.map((u) => <option key={u.id} value={u.id}>{u.name}{u.parent_name && !under(u, siteNode?.id) ? ` (${u.parent_name})` : ''}</option>)}</select></label>
       <label><span>Funzione</span><select value={fun?.id || ''} onChange={(e) => set('fun', e.target.value)}><option value="">Nessuna</option>{funzioni.map((u) => <option key={u.id} value={u.id}>{u.name}{u.parent_name ? ` (${u.parent_name})` : ''}</option>)}</select></label>
       <div className="small muted" style={{ gridColumn: '1 / -1' }}>{chain.length ? chain.slice().reverse().map((u) => u.name).join(' › ') : (siteId ? 'Scegli area, reparto o funzione' : 'Prima indica la sede di lavoro qui sopra e salva')}</div>
@@ -393,6 +395,7 @@ function Units() {
   const fields = (cur) => [
     { key: 'name', label: 'Nome dell\'unità', required: true, max: 160 },
     { key: 'kind', label: 'Tipo', type: 'select', required: true, options: opts(KINDS) },
+    { key: 'branch', label: 'Collocazione', type: 'select', required: true, options: [{ value: 'LINEA', label: 'Pettine (area operativa)' }, { value: 'STAFF', label: 'Tecnostruttura (funzione di staff)' }], help: 'Come in Contratti del personale: la tecnostruttura sta in alto accanto al vertice, il pettine sotto' },
     { key: 'parent_id', label: 'Dipende da', type: 'select', options: unitOpts.filter((o) => o.value !== cur?.id), help: 'Vuoto solo per la Direzione' },
     { key: 'site_id', label: 'Sede dell\'anagrafica', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), help: 'Per i nodi Sede e per i reparti' },
     { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
@@ -400,7 +403,7 @@ function Units() {
   const save = async (body) => { const b = { ...body, parent_id: body.parent_id ? Number(body.parent_id) : null, site_id: body.site_id ? Number(body.site_id) : null }; delete b.head_person_id; if (modal?.id) await api.put(`/org-units/${modal.id}`, b); else await api.post('/org-units', b); toast('Unità salvata'); reload(); };
   return (
     <>
-      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Unità, sede o persona" /><div className="spacer" /><button className="btn" onClick={() => setModal({ kind: 'AREA', parent_id: units.find((u) => u.kind === 'DIREZIONE')?.id || '' })}><Icon name="plus" />Nuova unità</button></div>
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Unità, sede o persona" /><div className="spacer" /><button className="btn" onClick={() => setModal({ kind: 'AREA', branch: 'LINEA', parent_id: units.find((u) => u.kind === 'DIREZIONE')?.id || '' })}><Icon name="plus" />Nuova unità</button></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
@@ -410,13 +413,13 @@ function Units() {
             <td><div className="row tight" style={{ paddingLeft: u.depth * 18 }}>
               {u.hasKids ? <button className="iconbtn sm" aria-label={collapsed[u.id] ? 'Espandi' : 'Comprimi'} onClick={() => setCollapsed({ ...collapsed, [u.id]: !collapsed[u.id] })}><Icon name={collapsed[u.id] ? 'chevronRight' : 'chevronDown'} /></button> : <span style={{ width: 26, display: 'inline-block' }} />}
               <div><div className="strong">{u.name}</div>{!u.active && <Badge tone="grey">Non attiva</Badge>}</div></div></td>
-            <td className="small">{KINDS[u.kind]}</td>
+            <td className="small">{KINDS[u.kind]}{u.branch === 'STAFF' && <div className="faint">tecnostruttura</div>}</td>
             <td className="small">{u.site_code ? `${u.site_code} · ${u.site_name}` : ''}</td>
             <td className="small">{(u.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.person_name}</b> : x.person_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>)}{!(u.positions || []).length && <span className="muted">Nessuno</span>}</td>
             <td className="mono small">{u.phone_ext}</td>
             <td className="actions">
               <button className="iconbtn" aria-label="Incarichi" title="Incarichi" onClick={() => setPos(u)}><Icon name="users" /></button>
-              <button className="iconbtn" aria-label="Aggiungi unità dipendente" title="Aggiungi unità dipendente" onClick={() => setModal({ parent_id: u.id, kind: u.kind === 'SEDE' ? 'REPARTO' : u.kind === 'DIREZIONE' ? 'AREA' : 'SEDE', site_id: u.site_id || '' })}><Icon name="plus" /></button>
+              <button className="iconbtn" aria-label="Aggiungi unità dipendente" title="Aggiungi unità dipendente" onClick={() => setModal({ parent_id: u.id, kind: u.kind === 'SEDE' ? 'REPARTO' : u.kind === 'DIREZIONE' ? 'AREA' : 'SEDE', branch: 'LINEA', site_id: u.site_id || '' })}><Icon name="plus" /></button>
               <button className="iconbtn" aria-label="Modifica" onClick={() => setModal(u)}><Icon name="edit" /></button>
               <DeleteButton label={`l'unità ${u.name}`} text={`Le unità dipendenti e le persone afferenti passano a ${u.parent_name || 'nessuna unità superiore'}; gli incarichi di questa unità vengono rimossi.${u.site_id ? ' La sede resta in anagrafica, senza nodo nell\'organigramma.' : ''}`} onDelete={async () => { const r = await api.del(`/org-units/${u.id}`); toast(`Unità eliminata${r.units || r.people ? ` (${r.units} unità e ${r.people} persone spostate)` : ''}`); reload(); }} />
             </td>

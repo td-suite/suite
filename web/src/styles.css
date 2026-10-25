@@ -919,3 +919,9 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .placement label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .placement select { width: 100%; }
 @media (max-width: 640px) { .placement { grid-template-columns: 1fr; } }
+
+/* Tecnostruttura: le funzioni di staff stanno accanto al nodo, non nel pettine */
+.staff-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; max-width: 760px; position: relative; padding-top: 10px; }
+.staff-row::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 10px; background: var(--line); }
+.node.unit.staff { width: 176px; min-width: 176px; max-width: 176px; }
+.node.unit.staff .unit-head { background: color-mix(in srgb, var(--mauve, #DEC0F1) 45%, var(--card)); }

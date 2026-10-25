@@ -45,7 +45,7 @@ r.delete('/job-roles/:id', requireAdmin, ah(async (req, res) => {
 
 // ---- Unità organizzative (albero) e incarichi
 const unitSchema = z.object({
-  name: z.string().trim().min(2).max(160), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional(),
+  name: z.string().trim().min(2).max(160), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional(), branch: z.enum(['LINEA', 'STAFF']).optional(),
   parent_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(), head_person_id: z.number().int().nullable().optional(),
   phone_ext: z.string().max(10).nullable().optional(), description: z.string().max(600).nullable().optional(), sort_order: z.number().int().optional(), active: z.boolean().optional(),
 });

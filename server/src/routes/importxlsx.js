@@ -82,6 +82,7 @@ const DATASETS = {
     columns: [
       ['unit', 'Unità', 'Nome del nodo (es. Direzione, Centri Polidiagnostici, Laboratorio di Analisi, Core Lab, Montemurlo). Obbligatorio. Una riga per ogni incarico; più righe con la stessa unità aggiungono incarichi.'],
       ['parent', 'Unità superiore', 'Nome del nodo da cui dipende (vuoto solo per la Direzione).'],
+      ['branch', 'Collocazione', 'LINEA (pettine, aree operative) o STAFF (tecnostruttura: Finance, Legal People and Organization, HSQ...). Predefinito LINEA.'],
       ['kind', 'Tipo', 'DIREZIONE, AREA, SEDE, REPARTO, FUNZIONE. Predefinito: SEDE se c\'è il codice sede, altrimenti AREA (REPARTO se l\'unità superiore è una sede).'],
       ['site_code', 'Codice sede', 'Per i nodi SEDE (e i reparti): la sede dell\'anagrafica.'],
       ['role', 'Ruolo dell\'incarico', 'Dal catalogo Ruoli (creato se manca): Chief Executive Officer, Site Manager, Direttore Sanitario, Responsabile...'],
@@ -90,7 +91,7 @@ const DATASETS = {
       ['is_head', 'Responsabile', 'SI se l\'incarico è il responsabile dell\'unità (la casella principale); NO per gli incarichi di staff e le altre figure (es. Direttore Sanitario).'],
       ['sort_order', 'Ordine', 'Numero per l\'ordinamento dei nodi fratelli (facoltativo).'],
     ],
-    example: ['Direzione', '', 'DIREZIONE', '', 'Chief Executive Officer', 'Esempio Mario', '', 'SI', '1'],
+    example: ['Direzione', '', 'LINEA', 'DIREZIONE', '', 'Chief Executive Officer', 'Esempio Mario', '', 'SI', '1'],
   },
   users: {
     title: 'Utenti e profili', sheet: 'Utenti', order: 4,
@@ -181,7 +182,7 @@ r.get('/import/templates/:dataset', requireAdmin, ah(async (req, res) => {
   ws.addRow(d.example);
   ws.getRow(2).font = { italic: true, color: { argb: 'FF6B7F85' } };
   // Validazioni a tendina per i campi con valori ammessi
-  const lists = { kind: req.params.dataset === 'sites' ? SITE_KINDS : req.params.dataset === 'organizations' ? ORG_KINDS : req.params.dataset === 'orgchart' ? ['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE'] : PERSON_KINDS, is_head: ['SI', 'NO'], status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
+  const lists = { kind: req.params.dataset === 'sites' ? SITE_KINDS : req.params.dataset === 'organizations' ? ORG_KINDS : req.params.dataset === 'orgchart' ? ['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE'] : PERSON_KINDS, is_head: ['SI', 'NO'], branch: ['LINEA', 'STAFF'], status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
   d.columns.forEach(([key], i) => {
     if (!lists[key]) return;
     const col = ws.getColumn(i + 1).letter;
@@ -264,11 +265,18 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
     ROW_SCHEMAS.users = usersRowSchema; APPLIERS.users = (c, row) => applyUserRow(c, row, ctx);
     out = await applyBatch(batch.id, 'users', data.map(({ __row, ...o }) => o), k);
   } else if (dataset === 'orgchart') {
-    const schema = z.object({ unit: z.string().trim().min(2).max(160), parent: z.string().trim().max(160).optional().nullable(), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional().nullable(),
+    const schema = z.object({ unit: z.string().trim().min(2).max(160), parent: z.string().trim().max(160).optional().nullable(), branch: z.enum(['LINEA', 'STAFF']).optional().nullable(), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional().nullable(),
       site_code: z.string().trim().max(40).optional().nullable(), role: z.string().trim().max(200).optional().nullable(), person: z.string().trim().max(250).optional().nullable(), person_email: z.string().trim().toLowerCase().email().optional().nullable(), is_head: z.boolean().optional().nullable(), sort_order: z.number().int().optional().nullable() });
     ROW_SCHEMAS.orgchart = schema;
+    const aliases = new Map();   // nome usato nel file → unità agganciata (quando il nodo ha il nome dell'anagrafica sedi)
     APPLIERS.orgchart = async (c, row) => {
-      const parent = row.parent ? (await c.query('SELECT id, kind, site_id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [row.parent])).rows[0] : null;
+      let parent = null;
+      if (row.parent) {
+        const key = row.parent.trim().toLowerCase();
+        parent = aliases.has(key) ? (await c.query('SELECT id, kind, site_id FROM org_units WHERE id=$1', [aliases.get(key)])).rows[0]
+          : (await c.query('SELECT id, kind, site_id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [row.parent])).rows[0];
+        if (!parent) parent = (await c.query(`SELECT u.id, u.kind, u.site_id FROM org_units u JOIN sites s ON s.id=u.site_id WHERE u.kind='SEDE' AND (lower(s.code)=lower($1) OR lower(unaccent(s.name))=lower(unaccent($1)) OR lower(unaccent(coalesce(s.short_name,'')))=lower(unaccent($1))) ORDER BY u.id LIMIT 1`, [row.parent.trim()])).rows[0];
+      }
       if (row.parent && !parent) throw new Error(`unità superiore "${row.parent}" non trovata: mettila in una riga più in alto`);
       let site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;
       if (row.site_code && !site) throw new Error(`sede ${row.site_code} inesistente`);
@@ -282,10 +290,10 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
       let unit = (await c.query('SELECT id FROM org_units WHERE lower(name)=lower($1) AND coalesce(parent_id,0)=coalesce($2,0)', [row.unit, parent?.id || null])).rows[0];
       if (!unit && site && kind === 'SEDE') {   // il nodo della sede esiste già (creato dall'anagrafica): lo si rinomina e sposta, non si duplica
         unit = (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id=$1`, [site.id])).rows[0];
-        if (unit) await c.query('UPDATE org_units SET parent_id=$2 WHERE id=$1', [unit.id, parent?.id || null]);   // il nome resta quello dell'anagrafica sedi
+        if (unit) { await c.query('UPDATE org_units SET parent_id=$2 WHERE id=$1', [unit.id, parent?.id || null]); aliases.set(row.unit.trim().toLowerCase(), unit.id); }   // il nome resta quello dell'anagrafica sedi
       }
-      if (!unit) unit = (await c.query('INSERT INTO org_units (name, kind, parent_id, site_id, sort_order) VALUES ($1,$2,$3,$4,coalesce($5,100)) RETURNING id', [row.unit, kind, parent?.id || null, siteId, row.sort_order ?? null])).rows[0];
-      else await c.query('UPDATE org_units SET kind=$2, site_id=coalesce($3, site_id), sort_order=coalesce($4, sort_order), active=TRUE WHERE id=$1', [unit.id, kind, siteId, row.sort_order ?? null]);
+      if (!unit) unit = (await c.query('INSERT INTO org_units (name, kind, parent_id, site_id, sort_order, branch) VALUES ($1,$2,$3,$4,coalesce($5,100),coalesce($6,\'LINEA\')) RETURNING id', [row.unit, kind, parent?.id || null, siteId, row.sort_order ?? null, row.branch || null])).rows[0];
+      else await c.query('UPDATE org_units SET kind=$2, site_id=coalesce($3, site_id), sort_order=coalesce($4, sort_order), branch=coalesce($5, branch), active=TRUE WHERE id=$1', [unit.id, kind, siteId, row.sort_order ?? null, row.branch || null]);
       let action = 'unità';
       if (row.person_email || row.person) {
         let person = row.person_email ? (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.person_email])).rows[0] : null;
