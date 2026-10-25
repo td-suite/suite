@@ -1,6 +1,7 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
+import { syncPositionFromPerson } from './orgcat.js';
 import { resolveCatalog } from './orgcat.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
@@ -140,7 +141,9 @@ const personSchema = z.object({
 });
 const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, p.discipline, p.manager_person_id, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, m.last_name || ' ' || m.first_name AS manager_name,
-  (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id`;
+  (SELECT u.id FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_id, (SELECT u.level FROM users u WHERE u.person_id=p.id LIMIT 1) AS user_level, (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id,
+  (SELECT coalesce(json_agg(json_build_object('id', op.id, 'unit_id', op.unit_id, 'unit_name', ou.name, 'unit_kind', ou.kind, 'parent_name', pu.name, 'role_id', op.role_id, 'role_name', jr.name, 'is_head', op.is_head) ORDER BY op.is_head DESC, ou.kind, ou.name), '[]')
+     FROM org_positions op JOIN org_units ou ON ou.id=op.unit_id LEFT JOIN org_units pu ON pu.id=ou.parent_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.person_id=p.id) AS positions`;
 r.get('/people', ah(async (req, res) => {
   const { qtext = '', area = '', role_id = '', kind = '', site_id = '', status = 'ATTIVO', all = '' } = req.query;
   const params = []; const where = [];
@@ -276,6 +279,7 @@ r.post('/people', requireAdmin, ah(async (req, res) => {
   await audit(req, 'PERSON_CREATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}` });
   indexPersonById(row.id).catch(() => {});
   autoAccountForPerson(row.id, req.user);   // ogni utente è una persona: l'accesso nasce dalla persona attiva con email
+  await syncPositionFromPerson(row);        // reparto + ruolo della scheda = incarico nell'organigramma
   res.status(201).json(row);
 }));
 r.put('/people/:id', ah(async (req, res) => {
@@ -289,6 +293,7 @@ r.put('/people/:id', ah(async (req, res) => {
   await audit(req, 'PERSON_UPDATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}`, data: b });
   indexPersonById(row.id).catch(() => {});
   if (isAdmin(req.user)) autoAccountForPerson(row.id, req.user);
+  if (b.unit_id !== undefined || b.role_id !== undefined) await syncPositionFromPerson(row);
   res.json(row);
 }));
 

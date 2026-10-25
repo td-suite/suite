@@ -7,6 +7,7 @@ import { Icon } from '../components/Icons.jsx';
 import { PERSON_KIND, fmtDate } from '../format.js';
 import { api } from '../api.js';
 import { NotFound } from './Misc.jsx';
+import { PersonPositionsModal } from './admin/Registry.jsx';
 
 const fullName = (p) => [p.last_name, p.first_name].filter(Boolean).join(' ');   // Cognome Nome, ovunque nella Suite
 const teamsUrl = (email) => `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
@@ -101,6 +102,7 @@ function Detail() {
   const { user } = useAuth();
   const { data: p, loading, error, reload } = useApi(`/people/${id}`, [id]);
   const [edit, setEdit] = useState(false);
+  const [pos, setPos] = useState(false);
   if (loading) return <div className="page"><Skeleton lines={5} /></div>;
   if (error?.status === 404) return <NotFound />;
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
@@ -134,8 +136,11 @@ function Detail() {
             {!p.email && !p.phone && !p.phone_office && <div className="muted small">Nessun contatto registrato.</div>}
           </div>
         </Card>
-        <Card title="Organizzazione" icon="tree">
+        <Card title="Organizzazione" icon="tree" actions={isAdmin(user) && <button className="btn ghost sm" onClick={() => setPos(true)}><Icon name="edit" />Incarichi</button>}>
           <div className="col">
+            <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Incarichi nell'organigramma ({p.positions?.length || 0})</div>
+              {!p.positions?.length && <div className="small muted mt">Nessun incarico: si assegnano in Amministrazione, Persone o Organizzazione.</div>}
+              <div className="col mt" style={{ gap: 6 }}>{(p.positions || []).map((x) => <Link key={x.id} to={`/people/org-chart?focus=${p.id}`} className="small" style={{ color: 'inherit' }}><span className={x.is_head ? 'strong' : ''}>{x.unit_name}</span>{x.parent_name ? <span className="muted"> ({x.parent_name})</span> : ''}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}{x.is_head && <> <Badge tone="blue">Responsabile</Badge></>}</Link>)}</div></div>
             <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Responsabile</div>
               {p.manager_person_id ? <Link to={`/people/${p.manager_person_id}`} className="row tight mt" style={{ color: 'inherit' }}><Avatar name={p.manager_name} size="sm" /><span className="strong">{p.manager_name}</span></Link> : <div className="small muted mt">Nessun responsabile indicato</div>}</div>
             <div><div className="tiny muted strong" style={{ textTransform: 'uppercase', letterSpacing: '.07em' }}>Collaboratori ({p.reports?.length || 0})</div>
@@ -147,6 +152,7 @@ function Detail() {
       </div>
       {isAdmin(user) && (p.hired_at || p.needs_review) && <div className="small muted mt2">{p.hired_at && <>In servizio dal {fmtDate(p.hired_at)}. </>}{p.needs_review && <Badge tone="amber">Da verificare</Badge>}</div>}
       {edit && <EditPersonModal p={p} onClose={() => setEdit(false)} onSaved={reload} />}
+      {pos && <PersonPositionsModal person={p} onClose={() => setPos(false)} onChange={reload} />}
     </div>
   );
 }
@@ -177,7 +183,7 @@ function OrgChart() {
   const unitsWithPositions = (data?.units || []).filter((u) => u.positions?.length).length;
   return (
     <div className="page">
-      <PageHead title="Organigramma" icon="tree" sub="Unità organizzative e incarichi: direzione, aree, sedi, reparti" actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(0.9)}>Reimposta</button></div>} />
+      <PageHead title="Organigramma" icon="tree" sub="Unità organizzative e incarichi: direzione, aree, sedi, reparti" actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(0.9)}>Reimposta</button><span className="sep" /><a className="btn ghost sm" href="/api/org-chart/export.xlsx" title="Excel (ricaricabile dalle Importazioni)"><Icon name="download" />XLSX</a><a className="btn ghost sm" href="/api/org-chart/export.pptx" title="PowerPoint"><Icon name="download" />PPTX</a><a className="btn ghost sm" href="/api/org-chart/export.pdf" title="PDF"><Icon name="download" />PDF</a></div>} />
       <ErrorBox error={error} />
       {loading && <Card><Skeleton lines={4} /></Card>}
       {data && !unitsWithPositions && <Empty icon="tree" title="Organigramma da comporre">Le unità e gli incarichi si definiscono in Amministrazione, Organizzazione, oppure si caricano con il file Organigramma da Importazioni.</Empty>}

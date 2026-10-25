@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, notFound } from '../lib/util.js';
 import { requireAdmin } from '../lib/access.js';
+import { orgchartXlsx, orgchartPptx, orgchartPdf } from '../lib/orgchartExport.js';
 
 const r = Router();
 const roleSchema = z.object({ name: z.string().trim().min(2).max(200), description: z.string().max(600).nullable().optional(), sort_order: z.number().int().optional(), active: z.boolean().optional() });
@@ -51,7 +52,7 @@ const unitSchema = z.object({
 const UNIT_COLS = `u.*, s.code AS site_code, s.name AS site_name, pu.name AS parent_name,
   (SELECT count(*)::int FROM people x WHERE x.unit_id=u.id AND x.status='ATTIVO') AS people_count,
   (SELECT json_agg(json_build_object('id', op.id, 'person_id', op.person_id, 'role_id', op.role_id, 'is_head', op.is_head, 'sort_order', op.sort_order,
-      'person_name', pp.last_name || ' ' || pp.first_name, 'role_name', jr.name, 'avatar_file_id', (SELECT uu.avatar_file_id FROM users uu WHERE uu.person_id=pp.id LIMIT 1)) ORDER BY op.is_head DESC, op.sort_order, pp.last_name)
+      'person_name', pp.last_name || ' ' || pp.first_name, 'person_email', pp.email, 'role_name', jr.name, 'avatar_file_id', (SELECT uu.avatar_file_id FROM users uu WHERE uu.person_id=pp.id LIMIT 1)) ORDER BY op.is_head DESC, op.sort_order, pp.last_name)
      FROM org_positions op JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.unit_id=u.id) AS positions`;
 async function unitRows(where = '', params = []) {
   return many(`SELECT ${UNIT_COLS} FROM org_units u LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN org_units pu ON pu.id=u.parent_id ${where} ORDER BY u.sort_order, lower(u.name)`, params);
@@ -97,10 +98,9 @@ r.delete('/org-units/:id', requireAdmin, ah(async (req, res) => {
 const posSchema = z.object({ unit_id: z.number().int(), person_id: z.number().int(), role_id: z.number().int().nullable().optional(), is_head: z.boolean().optional(), sort_order: z.number().int().optional(), note: z.string().max(300).nullable().optional() });
 r.post('/org-positions', requireAdmin, ah(async (req, res) => {
   const b = parse(posSchema, req.body);
-  const row = await one(`INSERT INTO org_positions (unit_id, person_id, role_id, is_head, sort_order, note) VALUES ($1,$2,$3,coalesce($4,FALSE),coalesce($5,100),$6)
-    ON CONFLICT (unit_id, person_id, coalesce(role_id, 0)) DO UPDATE SET is_head=EXCLUDED.is_head, sort_order=EXCLUDED.sort_order, note=EXCLUDED.note RETURNING *`,
-    [b.unit_id, b.person_id, b.role_id ?? null, b.is_head, b.sort_order, b.note ?? null]);
+  const row = await upsertPosition({ query: q }, b);
   if (b.is_head) await q('UPDATE org_units SET head_person_id=$2 WHERE id=$1', [b.unit_id, b.person_id]);
+  await syncPersonFromPosition(b.person_id);
   await audit(req, 'ORG_POSITION_SET', { entity: 'org_position', entityId: row.id, data: b });
   res.status(201).json(row);
 }));
@@ -117,6 +117,43 @@ r.get('/org-chart', ah(async (_req, res) => {
   const people = await many(`SELECT p.id, p.last_name, p.first_name, p.title, p.email, p.role_id, p.job_title, p.site_id, p.unit_id, u.name AS unit_name, p.manager_person_id, s.short_name AS site_name, s.name AS site_full_name,
     (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN org_units u ON u.id=p.unit_id WHERE p.status='ATTIVO' ORDER BY p.last_name, p.first_name`);
   res.json({ units, people });
+}));
+
+// Un incarico per (unità, persona, ruolo). Se esiste già lo stesso incarico senza ruolo, prende il ruolo invece di sdoppiarsi.
+export async function upsertPosition(c, b) {
+  const run = async (sql, params) => { const r = await c.query(sql, params); return r.rows ? r.rows[0] : r; };
+  if (b.role_id) {
+    const blank = await run('SELECT id FROM org_positions WHERE unit_id=$1 AND person_id=$2 AND role_id IS NULL', [b.unit_id, b.person_id]);
+    if (blank) return run(`UPDATE org_positions SET role_id=$2, is_head=coalesce($3, is_head), sort_order=coalesce($4, sort_order), note=coalesce($5, note) WHERE id=$1 RETURNING *`, [blank.id, b.role_id, b.is_head ?? null, b.sort_order ?? null, b.note ?? null]);
+  }
+  return run(`INSERT INTO org_positions (unit_id, person_id, role_id, is_head, sort_order, note) VALUES ($1,$2,$3,coalesce($4,FALSE),coalesce($5,100),$6)
+    ON CONFLICT (unit_id, person_id, coalesce(role_id, 0)) DO UPDATE SET is_head=EXCLUDED.is_head, sort_order=EXCLUDED.sort_order, note=EXCLUDED.note RETURNING *`,
+    [b.unit_id, b.person_id, b.role_id ?? null, b.is_head ?? null, b.sort_order ?? null, b.note ?? null]);
+}
+
+// ---- Le schede si parlano: Organizzazione ↔ Persone
+// Dagli incarichi alla scheda persona: reparto e ruolo "principali" (il primo incarico da responsabile, altrimenti il primo) se la scheda non li ha
+export async function syncPersonFromPosition(personId) {
+  const pos = await one(`SELECT op.unit_id, op.role_id, u.kind, u.site_id FROM org_positions op JOIN org_units u ON u.id=op.unit_id WHERE op.person_id=$1 ORDER BY op.is_head DESC, (u.kind='REPARTO') DESC, op.sort_order, op.id LIMIT 1`, [personId]);
+  if (!pos) return;
+  await q(`UPDATE people SET unit_id = CASE WHEN unit_id IS NULL AND $2 = 'REPARTO' THEN $3 ELSE unit_id END, role_id = coalesce(role_id, $4), site_id = coalesce(site_id, $5), updated_at=now() WHERE id=$1`, [personId, pos.kind, pos.unit_id, pos.role_id, pos.site_id]);
+}
+// Dalla scheda persona agli incarichi: reparto + ruolo scelti in Persone diventano (o aggiornano) l'incarico non da responsabile in quel reparto
+export async function syncPositionFromPerson(p) {
+  if (!p?.unit_id) return;
+  const ex = await one('SELECT id, role_id, is_head FROM org_positions WHERE person_id=$1 AND unit_id=$2 ORDER BY is_head DESC, id LIMIT 1', [p.id, p.unit_id]);
+  if (ex) { if (!ex.is_head && ex.role_id !== (p.role_id ?? null)) await q('UPDATE org_positions SET role_id=$2 WHERE id=$1', [ex.id, p.role_id ?? null]); return; }
+  await upsertPosition({ query: q }, { unit_id: p.unit_id, person_id: p.id, role_id: p.role_id ?? null, is_head: false });
+}
+
+// ---- Esportazioni dell'organigramma
+r.get('/org-chart/export.:fmt', ah(async (req, res) => {
+  const units = await unitRows('WHERE u.active');
+  const fmt = req.params.fmt; const name = `Organigramma_TD_${new Date().toISOString().slice(0, 10)}`;
+  if (fmt === 'xlsx') { res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition', `attachment; filename="${name}.xlsx"`); return res.send(await orgchartXlsx(units)); }
+  if (fmt === 'pptx') { res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'); res.setHeader('Content-Disposition', `attachment; filename="${name}.pptx"`); return res.send(await orgchartPptx(units)); }
+  if (fmt === 'pdf') { res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${name}.pdf"`); return res.send(await orgchartPdf(units)); }
+  throw bad('Formato non previsto: xlsx, pptx o pdf');
 }));
 
 // Nodo sede e reparto nell'albero (creati se mancano). `c` è un client/pool con .query (anche dentro una transazione)

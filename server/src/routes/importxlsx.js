@@ -13,6 +13,7 @@ import { ah, HttpError, audit, displayName } from '../lib/util.js';
 import { requireAdmin, requireOwner } from '../lib/access.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
+import { upsertPosition } from './orgcat.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -284,7 +285,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
         if (!person) throw new Error(`persona ${row.person_email || row.person} non in Persone: caricala prima`);
         let roleId = null;
         if (row.role) { const ex0 = (await c.query('SELECT id FROM job_roles WHERE lower(name)=lower($1)', [row.role])).rows[0]; roleId = (ex0 || (await c.query('INSERT INTO job_roles (name) VALUES ($1) RETURNING id', [row.role])).rows[0]).id; }
-        await c.query(`INSERT INTO org_positions (unit_id, person_id, role_id, is_head) VALUES ($1,$2,$3,$4) ON CONFLICT (unit_id, person_id, coalesce(role_id,0)) DO UPDATE SET is_head=EXCLUDED.is_head`, [unit.id, person.id, roleId, Boolean(row.is_head)]);
+        await upsertPosition(c, { unit_id: unit.id, person_id: person.id, role_id: roleId, is_head: Boolean(row.is_head) });
         if (row.is_head) await c.query('UPDATE org_units SET head_person_id=$2 WHERE id=$1', [unit.id, person.id]);
         action = 'incarico';
       }

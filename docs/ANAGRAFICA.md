@@ -94,3 +94,12 @@ email). La tendina "Reparto" delle persone offre i reparti della sede più quell
 L'utente collegato a una persona non ha più campi anagrafici propri da compilare: nomi, titolo, telefono, sede e legal entity (quella
 della sede se la persona non ne ha una) si leggono dalla persona (`syncUserFromPerson` in lib/accounts.js e `SYNC_USER_SQL` nelle
 importazioni), e la pagina Utenti li mostra in sola lettura con il link alla Rubrica. Il PUT /users ignora quei campi se c'è una persona.
+
+## Organizzazione ↔ Persone (25/10/2026, sera)
+Le due schede si parlano. Dalla scheda persona: Reparto + Ruolo scelti in Persone diventano un incarico in quel reparto
+(`syncPositionFromPerson`); gli altri incarichi si aggiungono dal pulsante Incarichi (in Amministrazione > Persone e nella scheda
+Rubrica), più unità e ruoli per persona. Dall'Organizzazione: ogni incarico aggiunto riempie reparto, ruolo e sede della persona se
+vuoti (`syncPersonFromPosition`). `upsertPosition` evita gli sdoppiamenti (un incarico senza ruolo prende il ruolo quando arriva).
+Le API persone espongono `positions` (unità, tipo, padre, ruolo, responsabile). Esportazioni dell'organigramma da Rubrica >
+Organigramma: `GET /api/org-chart/export.xlsx` (stesse colonne del modello di importazione: si modifica e si ricarica), `.pptx` e `.pdf`
+(una pagina per ogni unità con dipendenti, come l'Allegato 1), in lib/orgchartExport.js.
