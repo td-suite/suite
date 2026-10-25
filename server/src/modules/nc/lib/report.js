@@ -108,4 +108,4 @@ export async function exportXlsx(rows) {
 }
 
 export const listForExport = (where, params) => many(`SELECT n.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tipo AS sede_tipo, t.label AS tipo_label, uo.full_name AS opened_by_name
-  FROM nc n JOIN sedi s ON s.id=n.sede_id LEFT JOIN nc_tipi t ON t.id=n.tipo_id LEFT JOIN users uo ON uo.id=n.opened_by ${where} ORDER BY n.opened_at DESC`, params);
+  FROM nc n JOIN sites_v s ON s.id=n.sede_id LEFT JOIN nc_tipi t ON t.id=n.tipo_id LEFT JOIN users uo ON uo.id=n.opened_by ${where} ORDER BY n.opened_at DESC`, params);

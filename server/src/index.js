@@ -23,6 +23,7 @@ import searchRoutes from './routes/search.js';
 import ingestRoutes from './routes/ingest.js';
 import legacyRoutes from './routes/legacy.js';
 import travasoRoutes from './routes/travaso.js';
+import importRoutes from './routes/importxlsx.js';
 import { mountModules, mountModulesPublic } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 
@@ -104,6 +105,7 @@ app.use('/api', filesRoutes);
 app.use('/api', searchRoutes);
 app.use('/api', legacyRoutes);
 app.use('/api', travasoRoutes);
+app.use('/api', importRoutes);
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
@@ -128,7 +130,7 @@ if (fs.existsSync(webDir)) {
 
 app.use((err, req, res, _next) => {
   const status = err.status || (err.type === 'entity.too.large' ? 413 : 500);
-  if (status >= 500) console.error(`[${req.method} ${req.originalUrl}]`, err);
+  if (status >= 500 && err.code !== 'MODULE_OFF') console.error(`[${req.method} ${req.originalUrl}]`, err);
   if (err.code === '23505') return res.status(409).json({ error: 'Elemento duplicato' });
   res.status(status).json({ error: status >= 500 ? 'Errore interno del server' : err.message, code: err.code, details: err.details, current: err.current });
 });

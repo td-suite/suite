@@ -71,7 +71,7 @@ export default function Sales() {
 
 function ManualSale({ value: v, onChange, onClose, onSaved }) {
   const toast = useToast();
-  const sites = useApi('/sites');
+  const sites = useApi('/sites?network=1');
   const products = useApi('/products?active=all');
   const [q, setQ] = useState('');
   const found = useApi(q.length >= 2 ? `/customers?q=${encodeURIComponent(q)}&limit=8` : null, [q]);
@@ -90,7 +90,7 @@ function ManualSale({ value: v, onChange, onClose, onSaved }) {
       <div className="form-grid">
         <Field label="Data *"><input type="date" value={v.sale_date} onChange={(e) => s('sale_date', e.target.value)} /></Field>
         <Field label="Ora"><input type="time" value={v.sale_time || ''} onChange={(e) => s('sale_time', e.target.value)} /></Field>
-        <Field label="Sede *"><select value={v.site_id || ''} onChange={(e) => s('site_id', e.target.value)}><option value="">–</option>{(sites.data || []).filter((x) => x.kind !== 'HEADQUARTER').map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+        <Field label="Sede *"><select value={v.site_id || ''} onChange={(e) => s('site_id', e.target.value)}><option value="">–</option>{(sites.data || []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
         <Field label="Numero accettazione" help="Vuoto = generato"><input value={v.external_ref || ''} onChange={(e) => s('external_ref', e.target.value)} /></Field>
         <Field label="Cliente *" className="span2" help="Cerca per cognome, codice fiscale o ragione sociale">{v.customer ? <div className="row"><Badge tone="teal">{v.customer.kind === 'B2B' ? v.customer.company_name : `${v.customer.last_name} ${v.customer.first_name}`}</Badge><button className="btn sm link" onClick={() => s('customer', null)}>cambia</button></div> : <><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Digita almeno 2 caratteri" />{found.data?.rows?.length ? <div className="card" style={{ marginTop: 4 }}><table className="t"><tbody>{found.data.rows.map((c) => <tr key={c.id} className="click" onClick={() => { s('customer', c); setQ(''); }}><td>{c.kind === 'B2B' ? c.company_name : `${c.last_name} ${c.first_name}`}<span className="small muted"> · {c.city || ''} {c.tax_code || c.vat_number || ''}</span></td></tr>)}</tbody></table></div> : null}</>}</Field>
         <Field label="Regime"><select value={v.payment_kind || ''} onChange={(e) => s('payment_kind', e.target.value)}><option value="">–</option>{Object.entries(PAYMENT).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>

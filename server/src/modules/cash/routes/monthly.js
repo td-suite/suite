@@ -28,7 +28,7 @@ export async function ensureSezionaliSeed() {
 r.get('/sezionali', ah(async (_req, res) => {
   await ensureSezionaliSeed();
   res.json(await many(`SELECT g.code, g.description, g.site_id, g.gipo_site_id, g.active, g.updated_at, s.name AS site_name, s.code AS site_code, c.name AS company_name
-    FROM gipo_sezionali g LEFT JOIN sites s ON s.id=g.site_id LEFT JOIN companies c ON c.id=s.company_id ORDER BY g.code`));
+    FROM gipo_sezionali g LEFT JOIN sites_v s ON s.id=g.site_id LEFT JOIN companies_v c ON c.id=s.company_id ORDER BY g.code`));
 }));
 
 r.put('/sezionali/:code', ah(async (req, res) => {
@@ -59,7 +59,7 @@ function monthRange(period) {
 async function runCheck(req, period, files) {
   const { from, to } = monthRange(period);
   await ensureSezionaliSeed();
-  const sez = new Map((await many('SELECT g.code, g.site_id, g.description, s.name AS site_name, s.code AS site_code FROM gipo_sezionali g LEFT JOIN sites s ON s.id=g.site_id WHERE g.active')).map((x) => [x.code, x]));
+  const sez = new Map((await many('SELECT g.code, g.site_id, g.description, s.name AS site_name, s.code AS site_code FROM gipo_sezionali g LEFT JOIN sites_v s ON s.id=g.site_id WHERE g.active')).map((x) => [x.code, x]));
   const users = new Map((await many(`SELECT id, lower(email) AS email, full_name FROM users`)).map((u) => [u.email, u]));
   // lettura dei PDF
   const parsed = [];
@@ -86,7 +86,7 @@ async function runCheck(req, period, files) {
   // rendiconti del mese
   const reps = await many(`SELECT r.id, r.site_id, r.report_date::text AS date, r.operator_id, r.status, r.cash_to_deposit, r.pos_total, r.transfer_total, r.verified_amount, r.expected_total,
       s.name AS site_name, s.code AS site_code, u.full_name AS operator_name, lower(u.email) AS operator_email
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id LEFT JOIN users u ON u.id=r.operator_id WHERE r.report_date BETWEEN $1 AND $2`, [from, to]);
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id LEFT JOIN users u ON u.id=r.operator_id WHERE r.report_date BETWEEN $1 AND $2`, [from, to]);
   const repMap = new Map(reps.map((x) => [`${x.site_id}|${x.date}|${x.operator_id}`, x]));
   const rows = [];
   for (const [key, g] of agg) {
@@ -175,7 +175,7 @@ r.get('/:id/xlsx', ah(async (req, res) => {
 
 r.get('/:id/pdf', ah(async (req, res) => {
   const m = await load(Number(req.params.id));
-  const company = await one('SELECT * FROM companies WHERE is_franchisor ORDER BY id LIMIT 1') || await one('SELECT * FROM companies ORDER BY id LIMIT 1');
+  const company = await one('SELECT * FROM companies_v WHERE is_franchisor ORDER BY id LIMIT 1') || await one('SELECT * FROM companies_v ORDER BY id LIMIT 1');
   const pdf = await buildMonthlyCheckPdf({ check: m, company, OUTCOME });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="Controllo_mensile_${m.period}.pdf"`);

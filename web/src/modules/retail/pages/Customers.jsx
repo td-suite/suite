@@ -87,6 +87,7 @@ export default function Customers({ kind }) {
 
 export function CustomerModal({ value: v, onChange, onClose, onSave }) {
   const sites = useApi('/sites');
+  const orgs = useApi('/organizations');
   const s = (k, x) => onChange({ ...v, [k]: x });
   const isB2B = v.kind === 'B2B';
   return (
@@ -99,6 +100,9 @@ export function CustomerModal({ value: v, onChange, onClose, onSave }) {
           <Field label="Settore"><input value={v.sector || ''} onChange={(e) => s('sector', e.target.value)} placeholder="es. manifatturiero, GDO, sanità" /></Field>
           <Field label="Dipendenti"><input type="number" value={v.employees ?? ''} onChange={(e) => s('employees', e.target.value)} /></Field>
           <Field label="Referente"><input value={v.contact_name || ''} onChange={(e) => s('contact_name', e.target.value)} /></Field>
+          <Field label="Organizzazione in anagrafica" help="Collega il cliente a una società, cliente o partner dell'anagrafica unica della Suite (facoltativo)" className="span2"><select value={v.organization_id || ''} onChange={(e) => s('organization_id', e.target.value ? Number(e.target.value) : null)}><option value="">– nessun collegamento –</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}{o.vat_number ? ` · ${o.vat_number}` : ''} ({o.kind})</option>)}</select></Field>
+          <Field label="Gruppo" help="Clienti con più reparti o sedi"><input value={v.group_name || ''} onChange={(e) => s('group_name', e.target.value)} /></Field>
+          <Field label="Codice nel gestionale"><input className="mono" value={v.external_code || ''} onChange={(e) => s('external_code', e.target.value)} /></Field>
         </> : <>
           <Field label="Cognome *"><input value={v.last_name || ''} onChange={(e) => s('last_name', e.target.value)} /></Field>
           <Field label="Nome *"><input value={v.first_name || ''} onChange={(e) => s('first_name', e.target.value)} /></Field>

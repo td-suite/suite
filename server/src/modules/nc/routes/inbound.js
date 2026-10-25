@@ -6,12 +6,13 @@
 import { Router } from 'express';
 import express from 'express';
 import { config } from '../config.js';
-import { one, q } from '../db.js';
+import { q } from '../db.js';
 import { ah, HttpError } from '../lib/util.js';
 import { getModuleState } from '../../../lib/modules.js';
 import * as lis from '../lib/lis.js';
 import { parseHl7, ack } from '../lib/hl7.js';
 import { publish } from '../lib/events.js';
+import { findSedeByCodice } from '../lib/sedi.js';
 
 const r = Router();
 
@@ -56,11 +57,9 @@ r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) 
       return reply(parsed, true);
     }
     if (!a.id) { await lis.logEvento('HL7', 'ERRORE', { dettaglio: 'numero accettazione assente (PV1-19 / ORC-4 / OBR-20)', payload: req.body }); return reply(parsed, false, 'Numero accettazione assente'); }
-    let sede = null;
-    if (a.sede_codice) {
-      sede = await one('SELECT * FROM sedi WHERE lower(codice)=lower($1)', [a.sede_codice]);
-      if (!sede && !a.sede_da_msh) sede = await one(`INSERT INTO sedi (codice, nome, tipo, note) VALUES ($1,$2,'SERVICE','Creata automaticamente dal flusso HL7 (ORC-13): completare anagrafica ed email NC') RETURNING *`, [a.sede_codice, a.sede_codice]);
-    }
+    // Sede inviante: codice cliente StudioLAB (ORC-13 / FT1 / MSH-4) cercato in site_ext e in public.sites (studiolab_code, code).
+    // Nessuna creazione automatica: se il codice non è censito l'accettazione resta senza sede e la preanalitica la assegna dal Desk.
+    const sede = a.sede_codice ? await findSedeByCodice(a.sede_codice) : null;
     const row = await lis.upsertAccettazione({
       id: a.id, sede_id: sede?.id ?? null, id_richiesta_cliente: a.id_richiesta_cliente, data_accettazione: a.data_accettazione,
       paziente_cognome: a.paziente?.cognome, paziente_nome: a.paziente?.nome, paziente_nascita: a.paziente?.nascita, paziente_sesso: a.paziente?.sesso, paziente_cf: a.paziente?.cf,
@@ -70,7 +69,7 @@ r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) 
     // se arriva prima il numero placer e poi quello del laboratorio (ORL_O22), collega le due identità
     if (a.id_lab && a.id_placer && a.id_lab !== a.id_placer) await q(`UPDATE nc SET accettazione_id=$1 WHERE accettazione_id=$2`, [a.id_lab, a.id_placer]).catch(() => {});
     const flags = a.esami.filter((e) => e.bloccato || e.nonEseguito).map((e) => `${e.cod}:${e.statoHl7 || e.controllo}`);
-    await lis.logEvento('HL7', 'OK', { accettazioneId: a.id, dettaglio: `${parsed.type}${parsed.controlCode ? ` ${parsed.controlCode}` : ''} · sede ${a.sede_codice || '–'}${a.sede_da_msh ? ' (da MSH-4)' : ''} · ${a.esami.length} esami${flags.length ? ` · NC LIS: ${flags.join(', ')}` : ''}`, payload: req.body });
+    await lis.logEvento('HL7', 'OK', { accettazioneId: a.id, dettaglio: `${parsed.type}${parsed.controlCode ? ` ${parsed.controlCode}` : ''} · sede ${a.sede_codice || '–'}${a.sede_da_msh ? ' (da MSH-4)' : ''}${a.sede_codice && !sede ? ' (codice non censito in anagrafica)' : ''} · ${a.esami.length} esami${flags.length ? ` · NC LIS: ${flags.join(', ')}` : ''}`, payload: req.body });
     publish({ type: 'acc.updated', accId: row.id, at: new Date().toISOString() });
     return reply(parsed, true);
   } catch (e) {

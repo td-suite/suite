@@ -19,7 +19,7 @@ export default function ContractDetail() {
   if (!c) return <div className="page"><Loading /></div>;
   const edit = canEditKind(user, c.kind);
   const editable = ['BOZZA', 'PROPOSTA'].includes(c.status);
-  const d = c.data || {}; const p = c.partner;
+  const d = c.data || {}; const p = c.org; const site = c.site || {};
   const files = (cat) => c.files.filter((f) => f.category === cat);
   const act = async (fn, msg) => { try { const r = await fn(); if (r?.pdfError) setPdfErr(r.pdfError); q.reload(); if (msg) toast(msg); } catch (e) { toast(e.message, 'err'); } };
   const uploadFiles = (category, list, extra = {}) => act(async () => { const fd = new FormData(); fd.append('category', category); for (const [k, v] of Object.entries(extra)) fd.append(k, v); for (const f of list) fd.append('files', f); return api.upload(`/contracts/${c.id}/files`, fd); }, 'File caricati');
@@ -55,7 +55,7 @@ export default function ContractDetail() {
           {genDocx || genPdf ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[genDocx, genPdf].filter(Boolean).map((f) => <div key={f.id} className="row"><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{bytes(f.size)} · {itDateTime(f.created_at)}</span></div>)}
-              <div className="small muted">Documento generato dal format aziendale con i dati della scheda. Si stampa, si firma con il partner e si carica qui sotto la copia sottoscritta. Ogni rigenerazione sostituisce la versione precedente (v{c.version}).</div>
+              <div className="small muted">Documento generato dal format aziendale con i dati della scheda. Si stampa, si firma con la controparte e si carica qui sotto la copia sottoscritta. Ogni rigenerazione sostituisce la versione precedente (v{c.version}).</div>
             </div>
           ) : <div className="muted">Nessun documento ancora generato. {edit ? 'Completa i dati e premi "Genera proposta".' : ''}</div>}
         </Card>}
@@ -70,10 +70,10 @@ export default function ContractDetail() {
       <div className="grid g2" style={{ marginTop: 16 }}>
         <Card title={c.kind === 'SEDE' ? 'Dati della locazione' : 'Dati della proposta'}>
           {c.kind === 'PP' && <table className="t"><tbody>
-            <tr><td className="muted">Sede del Poliambulatorio / Punto Prelievi</td><td className="strong">{d.site?.street}, {d.site?.zip} {d.site?.city} ({d.site?.prov})</td></tr>
+            <tr><td className="muted">Sede del Punto Prelievi</td><td className="strong">{site.name}{site.code ? <span className="mono small muted"> · {site.code}</span> : null}<div className="small">{[site.street, site.zip, site.city, site.prov ? `(${site.prov})` : ''].filter(Boolean).join(', ')}</div></td></tr>
             <tr><td className="muted">Corrispettivo</td><td>{(d.fee?.items || []).length ? (d.fee.items.map((it, i) => <div key={i} className="small">5.1.{i + 1} {it.kind === 'PERCENT' ? `${num(it.percent)}% ${FEE_VAT[it.vat]} sul ${it.base === 'ALTRO' ? it.base_other : FEE_BASE[it.base]}${it.include_ssr ? ' (incluso SSR)' : ''}` : it.kind === 'TEXT' ? it.text : `${it.kind === 'MINIMUM' ? 'minimo garantito ' : ''}${num(it.amount)} € ${FEE_VAT[it.vat]} ${FEE_PERIOD[it.period]}${it.purpose ? ` ${it.purpose}` : ''}`}</div>)) : 'da definire'}</td></tr>
             <tr><td className="muted">Durata</td><td>{d.duration_years} anni dal {c.start_date ? itDate(c.start_date) : 'data da definire'}, rinnovo tacito annuale, recesso con 6 mesi di preavviso</td></tr>
-            <tr><td className="muted">Comune di esclusiva</td><td>{d.site?.city}</td></tr>
+            <tr><td className="muted">Comune di esclusiva</td><td>{site.city}</td></tr>
             <tr><td className="muted">Servizi</td><td>infermieristico: {(d.services?.nursing || 'TD') === 'TD' ? 'Toscana Diagnostica' : 'struttura ospitante'} · accettazione e incassi: {(d.services?.reception || 'HOST') === 'HOST' ? 'struttura ospitante' : 'Toscana Diagnostica'}</td></tr>
           </tbody></table>}
           {c.kind === 'SRV' && <table className="t"><tbody>
@@ -86,7 +86,7 @@ export default function ContractDetail() {
             <tr><td className="muted">Privacy</td><td>{d.privacy?.role === 'TITOLARE' ? 'Titolare del trattamento' : d.privacy?.role === 'RESPONSABILE' ? `Responsabile per conto di ${d.privacy.principal || '–'}` : 'da indicare'}{d.privacy?.dpo_name ? ` · DPO ${d.privacy.dpo_name} (${d.privacy.dpo_contact || ''})` : ''}</td></tr>
           </tbody></table>}
           {c.kind === 'SEDE' && <table className="t"><tbody>
-            <tr><td className="muted">Sede</td><td className="strong">{SITE_TYPE[d.site_type]} · {d.site?.street}, {d.site?.zip} {d.site?.city} ({d.site?.prov})</td></tr>
+            <tr><td className="muted">Sede</td><td className="strong">{SITE_TYPE[d.site_type]} · {site.name}{site.code ? <span className="mono small muted"> · {site.code}</span> : null}<div className="small">{[site.street, site.zip, site.city, site.prov ? `(${site.prov})` : ''].filter(Boolean).join(', ')}</div></td></tr>
             <tr><td className="muted">Canone</td><td>{d.rent?.amount != null ? `${num(d.rent.amount)} € ${RENT_PERIOD[d.rent.period]} ${FEE_VAT[d.rent.vat]}` : 'da indicare'}{d.rent?.istat ? ' · aggiornamento ISTAT' : ''}</td></tr>
             <tr><td className="muted">Deposito cauzionale</td><td>{d.rent?.deposit != null ? `${num(d.rent.deposit)} €` : '–'}</td></tr>
             <tr><td className="muted">Durata</td><td>{d.rent?.duration_years || '–'} anni{d.rent?.renewal_years ? ` + ${d.rent.renewal_years} di rinnovo` : ''}{d.rent?.notice_months ? ` · disdetta con ${d.rent.notice_months} mesi di preavviso` : ''} · dal {c.start_date ? itDate(c.start_date) : 'data da definire'}</td></tr>
@@ -103,7 +103,7 @@ export default function ContractDetail() {
           </tbody></table>}
           {c.notes && <div className="small muted" style={{ marginTop: 8 }}>Note: {c.notes}</div>}
         </Card>
-        <Card title={c.kind === 'SEDE' ? 'Anagrafica del locatore (MOD173)' : 'Anagrafica del partner (MOD173)'} actions={<Link className="btn sm ghost" to={`${BASE}/partner`}>Apri anagrafica</Link>}>
+        <Card title={c.kind === 'SEDE' ? 'Locatore (organizzazione)' : 'Organizzazione (MOD173)'} actions={<Link className="btn sm ghost" to={`${BASE}/organizzazioni`}>Impostazioni Business</Link>}>
           <table className="t"><tbody>
             <tr><td className="muted">Ragione sociale</td><td className="strong">{p.name}</td></tr>
             <tr><td className="muted">P.IVA / C.F.</td><td className="mono">{p.vat || '–'} / {p.tax_code || p.vat || '–'}</td></tr>

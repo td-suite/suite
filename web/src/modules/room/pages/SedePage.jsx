@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, base } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { Loading, ErrorBox, useToast, Modal, Badge } from '../components/ui.jsx';
 import { itDateTime } from '../format.js';
 import { Struttura, clone, DEF_C } from '../planner/planner.jsx';
-import { split, sedeLabel } from './Sedi.jsx';
+import { split, sedeLabel, ADMIN_SITES } from './Sedi.jsx';
 import { diffStrutture } from '../lib/network.js';
 
 const SAVE_DELAY = 1500;
@@ -17,7 +17,7 @@ export default function SedePage() {
   const toast = useToast();
   const { user } = useAuth();
   const [str, setStr] = useState(null);
-  const [meta, setMeta] = useState({ version: 0, updatedAt: null, updatedBy: '', canEdit: false, deletedAt: null });
+  const [meta, setMeta] = useState({ version: 0, updatedAt: null, updatedBy: '', canEdit: false, deletedAt: null, configurata: true });
   const [brand, setBrand] = useState({ logo: null, c: DEF_C });
   const [status, setStatus] = useState('idle'); // idle | dirty | saving | error
   const [err, setErr] = useState(null);
@@ -33,7 +33,7 @@ export default function SedePage() {
     const r = await api.get(`/strutture/${id}`);
     const s = r.struttura;
     base.current = { lite: JSON.stringify(split(s).lite), blobs: { logo: s.logo || null, planPdf: undefined, planImg: s.plan.imgUrl || null } };
-    setMeta({ version: r.version, updatedAt: r.updatedAt, updatedBy: r.updatedBy, canEdit: r.canEdit, deletedAt: r.deletedAt, hasPlanPdf: r.hasPlanPdf });
+    setMeta({ version: r.version, updatedAt: r.updatedAt, updatedBy: r.updatedBy, canEdit: r.canEdit, deletedAt: r.deletedAt, hasPlanPdf: r.hasPlanPdf, configurata: r.configurata, active: r.active });
     setStr(s); setStatus('idle');
     pdfLoaded.current = false;
     if (r.hasPlanPdf) {
@@ -124,9 +124,10 @@ export default function SedePage() {
     setStr((st) => { const nx = clone(st); fn(nx); return nx; });
   }, [toast]);
 
+  // La sede resta nell'anagrafica unica: qui si rimuove solo la configurazione Room (ambulatori, personale, planimetria, cronologia)
   const del = async () => {
-    if (!window.confirm(`Spostare "${sedeLabel(str)}" nel cestino? Un amministratore potrà ripristinarla.`)) return;
-    try { await api.del(`/strutture/${id}`); toast('Sede spostata nel cestino'); nav(`${base}/sedi`); } catch (e) { toast(e.message, 'err'); }
+    if (window.prompt(`Rimuovere la configurazione Room Planning di "${sedeLabel(str)}" (ambulatori, personale pianificato, planimetria e cronologia)? La sede resta nell'anagrafica della Suite. Scrivi DEFINITIVO per confermare.`) !== 'DEFINITIVO') return;
+    try { await api.del(`/strutture/${id}?confirm=DEFINITIVO`); toast('Configurazione rimossa'); nav(`${base}/sedi`); } catch (e) { toast(e.message, 'err'); }
   };
   const openHistory = async () => { try { setHistory(await api.get(`/strutture/${id}/history`)); } catch (e) { toast(e.message, 'err'); } };
   const restore = async (h) => {
@@ -155,9 +156,11 @@ export default function SedePage() {
         <span className="spacer" />
         {meta.canEdit && <button className="btn sm" disabled={st !== 'dirty' && st !== 'error'} onClick={() => { clearTimeout(timer.current); save(); }} title="Le modifiche si salvano da sole dopo un attimo (Ctrl+S per forzare)">Salva ora</button>}
         <button className="btn sm ghost" onClick={openHistory}>Cronologia</button>
-        {meta.canEdit && <button className="btn sm ghost" style={{ color: 'var(--red)' }} onClick={del}>Elimina</button>}
+        <Link className="btn sm ghost" to={ADMIN_SITES} title="Denominazione, indirizzo, contatti e stato della sede si modificano nell'anagrafica unica">Apri in Amministrazione</Link>
+        {user.role === 'ADMIN' && meta.configurata && <button className="btn sm ghost" style={{ color: 'var(--red)' }} onClick={del}>Rimuovi configurazione</button>}
       </div>
-      {meta.deletedAt && <div className="alert err" style={{ marginBottom: 10 }}>Questa sede è nel cestino (dal {itDateTime(meta.deletedAt)}). Ripristinala da Backup e cestino per modificarla.</div>}
+      {meta.active === false && <div className="alert err" style={{ marginBottom: 10 }}>Questa sede non è attiva nell'anagrafica della Suite: si consulta soltanto. Per riattivarla usa Amministrazione &gt; Sedi.</div>}
+      {!meta.configurata && meta.active !== false && <div className="alert info" style={{ marginBottom: 10 }}>Sede dell'anagrafica non ancora configurata in Room Planning: aggiungi ambulatori, personale e orari. Il primo salvataggio crea la configurazione.</div>}
       <Struttura str={str} upd={upd} brand={brand} onBack={() => nav(`${base}/sedi`)} />
       {history && (
         <Modal title={`Cronologia · ${sedeLabel(str)}`} onClose={() => setHistory(null)} wide footer={<button className="btn ghost" onClick={() => setHistory(null)}>Chiudi</button>}>

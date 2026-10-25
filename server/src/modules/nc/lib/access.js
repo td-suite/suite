@@ -1,6 +1,6 @@
 // Ruoli e perimetro del modulo Non conformità dentro la Suite.
-// req.user è la riga users dello schema nc (req.moduleUser) con role = profilo del grant Suite e sedi = id delle sedi
-// dell'app corrispondenti agli scope SITE del grant (legacy_site_ids). Login, sessione e gestione utenti sono della Suite.
+// req.user è la riga users dello schema nc (req.moduleUser) con role = profilo del grant Suite e sedi = id di public.sites
+// (anagrafica unica) negli scope SITE del grant (site_ids). Login, sessione e gestione utenti sono della Suite.
 //
 // ADMIN    direzione / amministratore dell'applicazione: tutto
 // QUALITA  responsabile qualità (RSQ): analisi causa radice, CAPA, chiusura, verifica efficacia, catalogo, sedi, statistiche

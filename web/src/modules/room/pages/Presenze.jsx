@@ -19,7 +19,7 @@ export default function Presenze() {
     <div className="page">
       <div className="page-head"><div><h1>Presenze</h1><div className="sub">Conferma giornaliera della presenza del personale sanitario e medico per sede (dalle ore, alle ore): è la base del calcolo dei compensi.</div></div>
         <div className="row">
-          <select value={sede} onChange={(e) => setSede(e.target.value)} style={{ width: 'auto' }}>{(sedi.data || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+          <select value={sede} onChange={(e) => setSede(Number(e.target.value))} style={{ width: 'auto' }}>{(sedi.data || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
           <div className="seg">{[['giorno', 'Giornata'], ['mese', 'Riepilogo mese']].map(([k, l]) => <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}</div>
         </div></div>
       {!sedi.data ? <Loading /> : !sedi.data.length ? <div className="card"><div className="bd empty">Nessuna sede da gestire. Il gestore di sede è l'utente la cui email è indicata come "Email del site manager" nell'Anagrafica della sede.</div></div>
@@ -95,7 +95,7 @@ function Riepilogo({ sede, sedi }) {
   const perProf = useMemo(() => { const m = {}; (data || []).filter((p) => p.stato === 'CONFERMATA').forEach((p) => { const x = (m[p.prof_id] ||= { nome: p.prof_nome, profilo: p.prof_profilo, n: 0, ore: 0 }); x.n++; x.ore += ore(p.ora_da, p.ora_a); }); return Object.values(m).sort((a, b) => b.ore - a.ore); }, [data]);
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, -1))}>‹</button><b style={{ minWidth: 130, textAlign: 'center' }}>{meseTxt(mese)}</b><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, 1))}>›</button><span className="small muted">{sedi.find((s) => s.id === sede)?.label}</span></div>
+      <div className="row" style={{ marginBottom: 12 }}><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, -1))}>‹</button><b style={{ minWidth: 130, textAlign: 'center' }}>{meseTxt(mese)}</b><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, 1))}>›</button><span className="small muted">{sedi.find((s) => String(s.id) === String(sede))?.label}</span></div>
       <ErrorBox error={error} />
       {!data ? <Loading /> : (
         <div className="grid g2">

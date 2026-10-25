@@ -26,7 +26,6 @@ const privacySchema = z.object({
 
 const DATA_SCHEMA = {
   PP: z.object({
-    site: z.object({ street: z.string().trim().min(2).max(200), zip: optStr(10), city: z.string().trim().min(2).max(120), prov: z.string().trim().min(2).max(4) }),
     fee: z.object({
       items: z.array(z.object({
         kind: z.enum(['PERCENT', 'FIXED', 'MINIMUM', 'TEXT']).default('PERCENT'),
@@ -59,7 +58,6 @@ const DATA_SCHEMA = {
     privacy: privacySchema,
   }),
   SEDE: z.object({
-    site: z.object({ street: z.string().trim().min(2).max(200), zip: optStr(10), city: z.string().trim().min(2).max(120), prov: z.string().trim().min(2).max(4) }),
     site_type: z.enum(['LABORATORIO', 'PUNTO_PRELIEVI', 'CENTRO_POLIDIAGNOSTICO', 'ALTRO']).default('PUNTO_PRELIEVI'),
     rent: z.object({
       amount: optNum, period: z.enum(['MESE', 'TRIMESTRE', 'ANNO']).default('MESE'), vat: z.enum(['PIU_IVA', 'IVA_INCLUSA', 'ESENTE']).default('PIU_IVA'),
@@ -71,7 +69,8 @@ const DATA_SCHEMA = {
 
 const contractSchema = z.object({
   kind: z.enum(['PP', 'SRV', 'MDL', 'SEDE']),
-  partner_id: z.coerce.number().int().positive(),
+  org_id: z.coerce.number().int().positive(),
+  site_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
   title: optStr(160),
   proposal_date: dateStr,
   start_date: optDate,
@@ -80,9 +79,24 @@ const contractSchema = z.object({
   data: z.any().default({}),
 });
 
-export const CONTRACT_COLS = `c.id, c.kind, c.protocol, c.status, c.partner_id, c.title, c.proposal_date, c.start_date, c.end_date, c.data, c.notes, c.signed_at, c.version, c.created_by, c.cancelled_at, c.cancel_reason, c.created_at, c.updated_at,
-  p.name AS partner_name, p.city AS partner_city, p.prov AS partner_prov, p.vat AS partner_vat`;
-export const CONTRACT_FROM = 'FROM contracts c JOIN partners p ON p.id=c.partner_id';
+// La controparte (c.org) è un'organizzazione dell'anagrafica unica (public.organizations, via la vista orgs_v con i campi Business);
+// la sede del punto prelievi o della sede TD in locazione (c.site) è una sede dell'anagrafica unica (public.sites)
+export const CONTRACT_COLS = `c.id, c.kind, c.protocol, c.status, c.org_id, c.site_id, c.title, c.proposal_date, c.start_date, c.end_date, c.data, c.notes, c.signed_at, c.version, c.created_by, c.cancelled_at, c.cancel_reason, c.created_at, c.updated_at,
+  p.name AS org_name, p.city AS org_city, p.prov AS org_prov, p.vat AS org_vat, p.kind AS org_kind,
+  s.code AS site_code, s.name AS site_name, s.address AS site_street, s.zip AS site_zip, s.city AS site_city, s.province AS site_prov`;
+export const CONTRACT_FROM = 'FROM contracts c JOIN orgs_v p ON p.id=c.org_id LEFT JOIN public.sites s ON s.id=c.site_id';
+const SITE_COLS = 'id, code, name, kind, address AS street, zip, city, province AS prov, active';
+
+// Sede dell'anagrafica unica per un contratto PP/SEDE: obbligatoria e attiva (il profilo di sede vede solo le sue sedi)
+async function checkSite(kind, siteId, user) {
+  if (!HAS_DOSSIER(kind)) return null;
+  if (!siteId) throw bad('Seleziona la sede dall’anagrafica (Amministrazione > Sedi)');
+  const site = await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1 AND active`, [siteId]);
+  if (!site) throw bad('Sede non trovata o disattivata');
+  const ids = Array.isArray(user?.site_ids) ? user.site_ids : [];
+  if (ids.length && !ids.includes(site.id)) throw bad('Sede fuori dal tuo perimetro');
+  return site;
+}
 
 async function addEvent(id, kind, userId, note, data, client) {
   const run = client ? client.query.bind(client) : q;
@@ -92,7 +106,8 @@ async function addEvent(id, kind, userId, note, data, client) {
 export async function loadContract(id) {
   const c = await one(`SELECT ${CONTRACT_COLS} ${CONTRACT_FROM} WHERE c.id=$1`, [id]);
   if (!c) throw notFound('Contratto non trovato');
-  c.partner = await one('SELECT * FROM partners WHERE id=$1', [c.partner_id]);
+  c.org = await one('SELECT * FROM orgs_v WHERE id=$1', [c.org_id]);
+  c.site = c.site_id ? await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1`, [c.site_id]) : null;
   c.files = await many('SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.created_at, u.full_name AS uploaded_by_name FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by WHERE f.contract_id=$1 ORDER BY f.created_at DESC', [id]);
   c.events = await many('SELECT e.*, u.full_name AS user_name FROM contract_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.contract_id=$1 ORDER BY e.at', [id]);
   if (HAS_DOSSIER(c.kind)) c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
@@ -105,14 +120,15 @@ const editable = (st) => ['BOZZA', 'PROPOSTA'].includes(st);
 
 // ---------------- Elenco ----------------
 r.get('/', ah(async (req, res) => {
-  const { kind, status, q: qs, year, partner_id } = req.query;
+  const { kind, status, q: qs, year, org_id, site_id } = req.query;
   const where = []; const p = [];
   const add = (sql, v) => { p.push(v); where.push(sql.replace('?', `$${p.length}`)); };
   if (kind) add('c.kind = ?', kind);
   if (status) { p.push(String(status).split(',')); where.push(`c.status = ANY($${p.length})`); }
   if (year) add('extract(year from c.proposal_date) = ?', Number(year));
-  if (partner_id) add('c.partner_id = ?', Number(partner_id));
-  if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(p.name) LIKE '%'||$${i}||'%' OR lower(coalesce(c.protocol,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(c.title,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(p.city,'')) LIKE '%'||$${i}||'%')`); }
+  if (org_id) add('c.org_id = ?', Number(org_id));
+  if (site_id) add('c.site_id = ?', Number(site_id));
+  if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(p.name) LIKE '%'||$${i}||'%' OR lower(coalesce(c.protocol,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(c.title,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(p.city,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.name,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.city,'')) LIKE '%'||$${i}||'%')`); }
   const rows = await many(`SELECT ${CONTRACT_COLS},
       (SELECT count(*)::int FROM contract_files f WHERE f.contract_id=c.id AND f.category='FIRMATO') AS signed_files,
       (SELECT count(*)::int FROM contract_files f WHERE f.contract_id=c.id AND f.category IN ('LISTINO_XLSX','LISTINO_PDF')) AS price_lists,
@@ -132,12 +148,13 @@ r.post('/', ah(async (req, res) => {
   const d = parse(contractSchema, req.body);
   requireKind(d.kind, req.user);
   const data = validateData(d.kind, d.data);
-  const partner = await one('SELECT * FROM partners WHERE id=$1 AND active', [d.partner_id]);
-  if (!partner) throw bad('Partner non trovato o disattivato');
-  const title = d.title || (d.kind === 'PP' ? `Punto Prelievi ${data.site.city}` : d.kind === 'SEDE' ? `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data.site_type]} ${data.site.city}` : partner.name);
+  const org = await one('SELECT * FROM orgs_v WHERE id=$1 AND active', [d.org_id]);
+  if (!org) throw bad('Organizzazione non trovata o disattivata: le organizzazioni si creano in Amministrazione > Organizzazioni');
+  const site = await checkSite(d.kind, d.site_id, req.user);
+  const title = d.title || (d.kind === 'PP' ? `Punto Prelievi ${site.city || site.name}` : d.kind === 'SEDE' ? `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data.site_type]} ${site.city || site.name}` : org.name);
   const row = await tx(async (client) => {
-    const c = (await client.query(`INSERT INTO contracts (kind, partner_id, title, proposal_date, start_date, end_date, notes, data, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, [d.kind, d.partner_id, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
+    const c = (await client.query(`INSERT INTO contracts (kind, org_id, site_id, title, proposal_date, start_date, end_date, notes, data, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [d.kind, d.org_id, site?.id || null, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
     if (HAS_DOSSIER(d.kind)) {
       // sedi intestate a TD: atto di condivisione e DUVRI con la struttura ospitante non si applicano
       const docState = d.kind === 'SEDE' ? { ATTO_CONDIVISIONE: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna struttura ospitante' }, DUVRI: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna interferenza con una struttura ospitante' } } : {};
@@ -146,7 +163,7 @@ r.post('/', ah(async (req, res) => {
     await addEvent(c.id, 'CREATO', req.user.id, null, null, client);
     return c;
   });
-  await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, partner: partner.name });
+  await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, org: org.name, site: site?.name });
   res.status(201).json(await loadContract(row.id));
 }));
 
@@ -156,9 +173,11 @@ r.put('/:id', ah(async (req, res) => {
   if (!editable(c.status)) throw bad('Il contratto è già firmato: per modificare i termini crea una nuova proposta');
   const d = parse(contractSchema.partial().omit({ kind: true }), req.body);
   const data = d.data !== undefined ? validateData(c.kind, d.data) : c.data;
-  if (d.partner_id) { const p = await one('SELECT id FROM partners WHERE id=$1 AND active', [d.partner_id]); if (!p) throw bad('Partner non trovato'); }
-  await q(`UPDATE contracts SET partner_id=coalesce($2, partner_id), title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
-    [c.id, d.partner_id || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data)]);
+  if (d.org_id) { const p = await one('SELECT id FROM public.organizations WHERE id=$1 AND active', [d.org_id]); if (!p) throw bad('Organizzazione non trovata o disattivata'); }
+  const siteId = d.site_id !== undefined ? d.site_id : c.site_id;
+  await checkSite(c.kind, siteId, req.user);
+  await q(`UPDATE contracts SET org_id=coalesce($2, org_id), site_id=$9, title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
+    [c.id, d.org_id || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data), siteId || null]);
   await addEvent(c.id, 'MODIFICATO', req.user.id);
   await audit(req, 'CONTRACT_UPDATE', 'contract', c.id);
   res.json(await loadContract(c.id));
@@ -190,7 +209,7 @@ r.post('/:id/generate', ah(async (req, res) => {
     await client.query(`DELETE FROM contract_files WHERE contract_id=$1 AND category IN ('GENERATO_DOCX','GENERATO_PDF')`, [c.id]);
   });
   c = await loadContract(c.id);
-  const data = contractData(c, c.partner, s);
+  const data = contractData(c, c.org, s);
   const docx = renderDocx(CONTRACT_TEMPLATE[c.kind], data);
   const base = `${CONTRACT_DOCNAME[c.kind]}_${c.protocol}_v${c.version}`;
   const ins = (cat, filename, mime, buf) => q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
@@ -207,10 +226,11 @@ r.post('/:id/generate', ah(async (req, res) => {
 
 // Controlli minimi prima di generare la proposta
 function completenessErrors(c) {
-  const e = []; const d = c.data || {}; const p = c.partner;
-  if (!p.vat && !p.tax_code) e.push('Indica P.IVA o codice fiscale del partner.');
-  if (!p.street || !p.city) e.push('Completa l’indirizzo del partner.');
-  if (!p.signer && !p.legal_rep) e.push('Indica il legale rappresentante o il firmatario del partner.');
+  const e = []; const d = c.data || {}; const p = c.org;
+  if (!p.vat && !p.tax_code) e.push('Indica P.IVA o codice fiscale dell’organizzazione (Amministrazione > Organizzazioni).');
+  if (!p.street || !p.city) e.push('Completa l’indirizzo dell’organizzazione (Amministrazione > Organizzazioni).');
+  if (!p.signer && !p.legal_rep) e.push('Indica il legale rappresentante o il firmatario nelle impostazioni Business dell’organizzazione.');
+  if (HAS_DOSSIER(c.kind) && !c.site) e.push('Seleziona la sede dall’anagrafica.');
   if (c.kind === 'PP') {
     const items = d.fee?.items || [];
     if (!items.length) e.push('Indica almeno una condizione del corrispettivo (art. 5.1).');

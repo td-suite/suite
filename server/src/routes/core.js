@@ -84,22 +84,6 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   res.json(s);
 }));
 // Unione di due sedi duplicate: la sorgente confluisce nella destinazione (riferimenti legacy, utenti, persone)
-r.post('/sites/:id/merge-into/:target', requireAdmin, ah(async (req, res) => {
-  const src = await one('SELECT * FROM sites WHERE id=$1', [Number(req.params.id)]);
-  const dst = await one('SELECT * FROM sites WHERE id=$1', [Number(req.params.target)]);
-  if (!src || !dst || src.id === dst.id) throw bad('Sedi non valide');
-  await q(`UPDATE sites SET legacy_refs = legacy_refs || $2, needs_review=FALSE, updated_at=now() WHERE id=$1`, [dst.id, JSON.stringify(src.legacy_refs)]);
-  await q('UPDATE users SET site_id=$2 WHERE site_id=$1', [src.id, dst.id]);
-  await q('UPDATE people SET site_id=$2 WHERE site_id=$1', [src.id, dst.id]);
-  await q(`UPDATE grant_scopes SET scope_id=$2 WHERE scope_type='SITE' AND scope_id=$1 AND NOT EXISTS (SELECT 1 FROM grant_scopes g2 WHERE g2.grant_id=grant_scopes.grant_id AND g2.scope_type='SITE' AND g2.scope_id=$2)`, [src.id, dst.id]);
-  await q(`DELETE FROM grant_scopes WHERE scope_type='SITE' AND scope_id=$1`, [src.id]);
-  await q('UPDATE events SET site_id=$2 WHERE site_id=$1', [src.id, dst.id]);
-  await q('UPDATE posts SET site_id=$2 WHERE site_id=$1', [src.id, dst.id]);
-  await q('DELETE FROM sites WHERE id=$1', [src.id]);
-  removeFromIndex('site', String(src.id)).catch(() => {});
-  await audit(req, 'SITE_MERGED', { entity: 'site', entityId: dst.id, label: `${src.code} → ${dst.code}`, data: { from: src, into: dst.code } });
-  res.json({ ok: true });
-}));
 
 // ---- Organizzazioni
 const orgSchema = z.object({

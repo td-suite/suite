@@ -18,7 +18,7 @@ r.post('/invia', ah(async (req, res) => {
     cc: z.array(z.string().email()).max(10).default([]),
     subject: z.string().min(3).max(200),
     body: z.string().min(1).max(6000),
-    sedeId: z.string().max(40).nullable().optional(),
+    sedeId: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable().optional()),
     attachment: z.object({ filename: z.string().max(120), base64: z.string().max(12_000_000), contentType: z.string().max(80).optional() }).nullable().optional(),
   }), req.body);
   const r2 = await sendMail({ ...d, sentBy: req.user.id, footer: `Inviata da ${req.user.full_name} tramite Room Planning di Toscana Diagnostica. Per domande rispondi a questa email.` });

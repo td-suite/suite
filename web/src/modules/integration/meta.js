@@ -1,5 +1,6 @@
 // Modulo Integration M&A: voci di menu disegnate dalla Suite (la sidebar dell'app non si porta).
-// La navigazione tra le società target resta nella barra interna del piano (motore GANTT).
+// La navigazione tra le società target resta nella barra interna del piano (motore GANTT); cruscotto e schede target
+// lavorano sull'anagrafica unica (organizzazioni di tipo Target, persone della Suite).
 export default {
   key: 'integration',
   title: 'Integration M&A',

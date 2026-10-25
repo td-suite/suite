@@ -23,7 +23,7 @@ const PUBLIC_COLS = USER_COLS.split(',').map((s) => s.trim());
 const publicUser = (u, req) => {
   const out = {};
   for (const c of PUBLIC_COLS) out[c] = u[c] ?? null;
-  out.role = u.role; out.is_admin = Boolean(u.is_admin); out.active = true;
+  out.role = u.role; out.is_admin = Boolean(u.is_admin); out.active = true; out.first_name = u.first_name || null; out.last_name = u.last_name || null;
   out.suite_level = u.suite_level; out.auth_method = req.session?.authMethod || null;
   return out;
 };

@@ -32,7 +32,7 @@ export default function CustomerDetail() {
       <div className="page-head">
         <div>
           <div className="row" style={{ gap: 8 }}><h1>{name}</h1><Badge tone={isB2B ? 'mauve' : 'teal'}>{c.kind}</Badge><SegmentBadge segment={c.segment} /></div>
-          <div className="sub">{isB2B ? `${B2B_TYPE[c.b2b_type] || c.b2b_type || ''}${c.sector ? ` · ${c.sector}` : ''}${c.employees ? ` · ${num(c.employees)} dipendenti` : ''}` : `${c.sex ? SEX[c.sex] : ''}${c.age != null ? `, ${c.age} anni` : ''}${c.birth_date ? ` (${itDate(c.birth_date)})` : ''}${c.tax_code ? ` · ${c.tax_code}` : ''}`} · origine {SOURCE[c.source] || c.source}{c.external_id ? ` #${c.external_id}` : ''}</div>
+          <div className="sub">{isB2B ? `${B2B_TYPE[c.b2b_type] || c.b2b_type || ''}${c.sector ? ` · ${c.sector}` : ''}${c.employees ? ` · ${num(c.employees)} dipendenti` : ''}${c.organization_name ? ` · in anagrafica Suite: ${c.organization_name}` : ''}${c.group_name ? ` · gruppo ${c.group_name}` : ''}` : `${c.sex ? SEX[c.sex] : ''}${c.age != null ? `, ${c.age} anni` : ''}${c.birth_date ? ` (${itDate(c.birth_date)})` : ''}${c.tax_code ? ` · ${c.tax_code}` : ''}`} · origine {SOURCE[c.source] || c.source}{c.external_id ? ` #${c.external_id}` : ''}</div>
         </div>
         <div className="row">
           <button className="btn ghost" onClick={() => nav(-1)}>Indietro</button>

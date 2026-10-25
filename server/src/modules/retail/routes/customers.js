@@ -10,10 +10,10 @@ import { refreshCustomerStats } from '../lib/customers.js';
 const r = Router();
 
 const BASE = `SELECT c.id, c.kind, c.source, c.external_id, c.last_name, c.first_name, c.sex, c.birth_date, c.tax_code, c.company_name, c.vat_number, c.sector, c.b2b_type, c.contact_name, c.employees,
-  c.email, c.phone, c.address, c.zip, c.city, c.province, c.home_site_id, s.name AS home_site_name, c.acquisition_channel, c.marketing_consent, c.first_visit, c.last_visit, c.visits, c.revenue, c.tags, c.notes, c.created_at,
+  c.email, c.phone, c.address, c.zip, c.city, c.province, c.home_site_id, s.name AS home_site_name, c.organization_id, o.name AS organization_name, o.kind AS organization_kind, c.group_name, c.external_code, c.acquisition_channel, c.marketing_consent, c.first_visit, c.last_visit, c.visits, c.revenue, c.tags, c.notes, c.created_at,
   CASE WHEN c.birth_date IS NULL THEN NULL ELSE date_part('year', age(c.birth_date))::int END AS age,
   CASE WHEN c.last_visit IS NULL THEN 'MAI' WHEN c.last_visit < CURRENT_DATE - ($CHURN || ' days')::interval THEN 'DORMIENTE' WHEN c.visits >= 2 THEN 'RICORRENTE' WHEN c.first_visit >= CURRENT_DATE - interval '90 days' THEN 'NUOVO' ELSE 'OCCASIONALE' END AS segment
-  FROM customers c LEFT JOIN sites s ON s.id=c.home_site_id`;
+  FROM customers c LEFT JOIN sites_v s ON s.id=c.home_site_id LEFT JOIN public.organizations o ON o.id=c.organization_id`;
 
 function listQuery(query, settings) {
   const p = new Params();
@@ -25,6 +25,7 @@ function listQuery(query, settings) {
   if (query.province) w.push(`c.province=${p.add(query.province.toUpperCase())}`);
   if (query.city) w.push(`lower(c.city)=lower(${p.add(query.city)})`);
   if (query.site_id) w.push(`c.home_site_id=${p.add(Number(query.site_id))}`);
+  if (query.organization_id) w.push(`c.organization_id=${p.add(Number(query.organization_id))}`);
   if (query.channel) w.push(`c.acquisition_channel=${p.add(query.channel)}`);
   if (query.b2b_type) w.push(`c.b2b_type=${p.add(query.b2b_type)}`);
   if (query.consent === '1') w.push('c.marketing_consent IS TRUE');
@@ -83,7 +84,7 @@ const schema = z.object({
   kind: z.enum(['B2C', 'B2B']), last_name: z.string().nullable().optional(), first_name: z.string().nullable().optional(), sex: z.enum(['F', 'M']).nullable().optional(), birth_date: z.string().nullable().optional(), tax_code: z.string().nullable().optional(),
   company_name: z.string().nullable().optional(), vat_number: z.string().nullable().optional(), sector: z.string().nullable().optional(), b2b_type: z.string().nullable().optional(), contact_name: z.string().nullable().optional(), employees: z.number().int().nullable().optional(),
   email: z.string().nullable().optional(), phone: z.string().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(), province: z.string().max(2).nullable().optional(),
-  home_site_id: z.number().int().nullable().optional(), acquisition_channel: z.string().nullable().optional(), acquisition_campaign_id: z.number().int().nullable().optional(), marketing_consent: z.boolean().nullable().optional(), tags: z.array(z.string()).optional(), notes: z.string().nullable().optional(),
+  home_site_id: z.number().int().nullable().optional(), organization_id: z.number().int().nullable().optional(), group_name: z.string().nullable().optional(), external_code: z.string().nullable().optional(), acquisition_channel: z.string().nullable().optional(), acquisition_campaign_id: z.number().int().nullable().optional(), marketing_consent: z.boolean().nullable().optional(), tags: z.array(z.string()).optional(), notes: z.string().nullable().optional(),
 });
 const clean = (d) => { for (const k of Object.keys(d)) if (d[k] === '') d[k] = null; if (d.tax_code) d.tax_code = d.tax_code.toUpperCase(); if (d.province) d.province = d.province.toUpperCase(); return d; };
 
@@ -103,10 +104,10 @@ r.get('/:id', ah(async (req, res) => {
   const c = await one(`SELECT * FROM (${BASE.replace('$CHURN', String(Number(settings.churn_days || 540)))}) t WHERE t.id=$1`, [id]);
   if (!c) throw notFound();
   const sales = await many(`SELECT s.*, p.description AS product_description, pl.name AS line_name, pl.code AS line_code, st.name AS site_name, cp.name AS campaign_name, pr.name AS promotion_name
-    FROM sales s LEFT JOIN products p ON p.id=s.product_id LEFT JOIN product_lines pl ON pl.id=p.line_id LEFT JOIN sites st ON st.id=s.site_id LEFT JOIN campaigns cp ON cp.id=s.campaign_id LEFT JOIN promotions pr ON pr.id=s.promotion_id
+    FROM sales s LEFT JOIN products p ON p.id=s.product_id LEFT JOIN product_lines pl ON pl.id=p.line_id LEFT JOIN sites_v st ON st.id=s.site_id LEFT JOIN campaigns cp ON cp.id=s.campaign_id LEFT JOIN promotions pr ON pr.id=s.promotion_id
     WHERE s.customer_id=$1 OR s.b2b_customer_id=$1 ORDER BY s.sale_date DESC, s.external_ref, s.line_no LIMIT 1000`, [id]);
   const by_line = await many(`SELECT pl.name AS label, count(*)::int AS count, sum(s.net_amount) AS revenue FROM sales s JOIN products p ON p.id=s.product_id JOIN product_lines pl ON pl.id=p.line_id WHERE s.customer_id=$1 OR s.b2b_customer_id=$1 GROUP BY pl.name, pl.sort_order ORDER BY pl.sort_order`, [id]);
-  const by_site = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS count, sum(s.net_amount) AS revenue FROM sales s JOIN sites st ON st.id=s.site_id WHERE s.customer_id=$1 OR s.b2b_customer_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
+  const by_site = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS count, sum(s.net_amount) AS revenue FROM sales s JOIN sites_v st ON st.id=s.site_id WHERE s.customer_id=$1 OR s.b2b_customer_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
   // Richiami: prestazioni periodiche già eseguite, con la prossima scadenza stimata
   const recalls = await many(`SELECT p.id AS product_id, p.code, p.description, p.periodicity_months, max(s.sale_date) AS last_date, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due_date
     FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id=$1 AND p.periodicity_months IS NOT NULL GROUP BY p.id ORDER BY due_date`, [id]);

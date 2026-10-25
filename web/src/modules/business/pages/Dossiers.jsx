@@ -18,7 +18,7 @@ export default function Dossiers() {
           <thead><tr><th>Sede</th><th>Sezione</th><th>Contratto</th><th>Fascicolo</th><th style={{ minWidth: 200 }}>Completamento</th><th>Mancanti</th></tr></thead>
           <tbody>{rows.map((x) => (
             <tr key={x.contract_id} className="click" onClick={() => nav(`${BASE}/contratti/${x.contract_id}/fascicolo`)}>
-              <td><div className="strong">{x.title}</div><div className="small muted">{x.partner_name} · {x.protocol || 'bozza'}</div></td>
+              <td><div className="strong">{x.title}</div><div className="small muted">{x.org_name} · {x.protocol || 'bozza'}</div></td>
               <td><KindBadge kind={x.kind} /></td>
               <td><StatusBadge status={x.contract_status} /></td>
               <td><Badge tone={DOSSIER_STATUS[x.status]?.tone}>{DOSSIER_STATUS[x.status]?.label}</Badge></td>

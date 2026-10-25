@@ -30,7 +30,7 @@ export default function Reconcile() {
 
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Riconciliazione pagamenti</h1><div className="sub">Confronto tra scontrini POS registrati in sede e transazioni dell'acquirer o del gateway</div></div></div>
+      <div className="page-head"><div><h1>Riconciliazione bancaria</h1><div className="sub">Confronto tra scontrini POS registrati in sede e transazioni dell'acquirer o del gateway</div></div></div>
       <div className="filters">
         {user.role === 'SUPERADMIN' && <Field label="Azienda"><select value={cid} onChange={(e) => setF({ ...f, company_id: e.target.value })}>{(companies.data || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
         <PeriodFilter value={f} onChange={setF} />

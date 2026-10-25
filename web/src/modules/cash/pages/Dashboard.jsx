@@ -22,7 +22,7 @@ export default function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Buongiorno, {user.full_name.split(' ')[0]}</h1>
+          <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
           <div className="sub">{user.role === 'SUPERADMIN' ? 'Vista di rete: tutte le aziende e le sedi' : ['ADMIN', 'FINANCE'].includes(user.role) ? `Vista azienda: ${user.company_name}` : 'Le tue sedi'}</div>
         </div>
         {counter ? <Link className="btn" to={`${BASE}/rendiconti/nuovo`}>+ Nuovo rendiconto</Link> : canReview(user) ? <Link className="btn" to={`${BASE}/revisione`}>Revisione e approvazione</Link> : canFinance(user) ? <Link className="btn" to={`${BASE}/cassaforte`}>Cassaforte</Link> : null}

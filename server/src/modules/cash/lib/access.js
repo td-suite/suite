@@ -1,7 +1,7 @@
 // Ruoli e perimetro del modulo Cash Management. L'autenticazione la fa la Suite: req.user qui è l'utente del modulo
 // (riga della tabella users dello schema cash) con role = profilo del grant Suite (SUPERADMIN, ADMIN, CASSIERE, FINANCE,
-// OPERATOR, PARTNER), company_id = azienda dell'app, site_ids = sedi del perimetro (scope SITE del grant Suite tradotti
-// negli id dell'app; se il grant non ha sedi, le assegnazioni user_sites dell'app).
+// OPERATOR, PARTNER), company_id = azienda dell'app, site_ids = sedi del perimetro: id di public.sites negli scope SITE del
+// grant Suite (anagrafica unica). Le sedi si leggono dalla vista sites_v (public.sites + site_ext, solo sedi configurate in Cash).
 import { one } from '../db.js';
 import { forbidden, notFound } from './util.js';
 
@@ -27,7 +27,7 @@ export const companyWide = (u) => ['ADMIN', 'FINANCE'].includes(u?.role);
 export const REVIEW_ROLES = ['SUPERADMIN', 'ADMIN', 'CASSIERE'];
 export const FINANCE_ROLES = ['SUPERADMIN', 'ADMIN', 'FINANCE'];
 
-// Clausola SQL che limita le sedi visibili all'utente (alias della tabella sites)
+// Clausola SQL che limita le sedi visibili all'utente (alias della vista sites_v)
 // OPERATOR, CASSIERE e PARTNER vedono solo le sedi assegnate; ADMIN e FINANCE tutta l'azienda
 export function siteScope(user, P, alias = 's') {
   if (user.role === 'SUPERADMIN') return 'TRUE';
@@ -59,8 +59,8 @@ export function canSite(user, site) {
 }
 
 export async function assertSite(user, siteId) {
-  const site = await one('SELECT * FROM sites WHERE id=$1', [siteId]);
-  if (!site) throw notFound('Sede non trovata');
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [siteId]);
+  if (!site) throw notFound('Sede non trovata o non configurata in Cash');
   if (!canSite(user, site)) throw forbidden('Sede non autorizzata');
   return site;
 }
@@ -69,3 +69,12 @@ export function assertCompany(user, companyId) {
   if (user.role === 'SUPERADMIN') return;
   if (Number(companyId) !== user.company_id) throw forbidden('Azienda non autorizzata');
 }
+
+// Sedi assegnate a un utente del modulo: scope SITE del grant Cash nella Suite (public.grants / grant_scopes), agganciati
+// per email alla riga users del modulo. Sostituisce la vecchia tabella user_sites. `emailExpr` è l'espressione SQL dell'email.
+export const grantSiteIdsSql = (emailExpr) => `(SELECT coalesce(array_agg(gs.scope_id ORDER BY gs.scope_id), '{}')
+  FROM public.grants g JOIN public.grant_scopes gs ON gs.grant_id = g.id JOIN public.users pu ON pu.id = g.user_id
+  WHERE g.module_key = 'cash' AND NOT g.proposed AND gs.scope_type = 'SITE' AND lower(pu.email) = lower(${emailExpr}))`;
+// Esistenza di un'assegnazione sede/utente del modulo (per gli operatori di una sede)
+export const hasGrantSiteSql = (emailExpr, siteExpr) => `EXISTS (SELECT 1 FROM public.grants g JOIN public.grant_scopes gs ON gs.grant_id = g.id
+  JOIN public.users pu ON pu.id = g.user_id WHERE g.module_key = 'cash' AND NOT g.proposed AND gs.scope_type = 'SITE' AND gs.scope_id = ${siteExpr} AND lower(pu.email) = lower(${emailExpr}))`;

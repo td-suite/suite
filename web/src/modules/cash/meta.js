@@ -28,7 +28,7 @@ export default {
     { group: 'Analisi' },
     { to: 'statistiche', icon: 'stats', label: 'Statistiche' },
     { to: 'canoni', icon: 'sheet', label: 'Royalty di sede', profiles: ['SUPERADMIN', 'ADMIN', 'PARTNER'] },
-    { to: 'riconciliazione', icon: 'refresh', label: 'Riconciliazione', profiles: ADMINS },
+    { to: 'riconciliazione', icon: 'refresh', label: 'Riconciliazione bancaria', profiles: ADMINS },
     { to: 'controllo-mensile', icon: 'check', label: 'Controllo mensile casse', profiles: ['SUPERADMIN'] },
     { to: 'royalty', icon: 'external', label: 'Partner: royalty e SEPA', profiles: ['SUPERADMIN'] },
     { group: 'Anagrafiche' },

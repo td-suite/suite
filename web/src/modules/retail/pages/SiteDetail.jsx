@@ -3,11 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, useToast, Kpi, Icon, Modal } from '../components/ui.jsx';
 import { HBars, C } from '../components/charts.jsx';
 import { api, base } from '../api.js';
-import { eur0, num, pct, itDate, SITE_KIND, WEEKDAYS } from '../format.js';
+import { eur0, num, pct, itDate, SITE_KIND, WEEKDAYS, ADMIN_SITES, ADMIN_PERSON } from '../format.js';
 
 const ROLES = ['Site manager', 'Accettazione', 'Infermiere', 'Tecnico di radiologia', 'Tecnico di laboratorio', 'Medico', 'Anestesista', 'Biologo', 'Amministrativo', 'Pulizie', 'Altro'];
 const ASSET_KINDS = { RM: 'Risonanza magnetica', TC: 'TC', MAMMOGRAFO: 'Mammografo', ECOGRAFO: 'Ecografo', RX: 'Radiologia', MOC: 'MOC / densitometro', EMG: 'Elettromiografo', AMBULATORIO: 'Ambulatorio', BOX_PRELIEVO: 'Box prelievo', MONITOR: 'Monitor', TOTEM: 'Totem', ALTRO: 'Altro' };
-const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', ESTERNO: 'Esterno' };
+const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
 
 export default function SiteDetail() {
   const { id } = useParams();
@@ -19,22 +19,22 @@ export default function SiteDetail() {
   const [hours, setHours] = useState(null);
   const [staff, setStaff] = useState(null);
   const [asset, setAsset] = useState(null);
-  useEffect(() => { if (d.data) { const s = d.data.site; setProfile({ surface_sqm: s.surface_sqm, rooms: s.rooms, boxes: s.boxes, parking: s.parking, accessibility: s.accessibility, services: s.services, description: s.description, opened_at: s.opened_at, catchment_cities: s.catchment_cities, phone: s.phone, email: s.email, opening_hours: s.opening_hours, manager: s.manager, sqm_waiting: s.sqm_waiting }); setHours(Array.from({ length: 7 }, (_, i) => { const h = d.data.hours.find((x) => x.weekday === i + 1); return { weekday: i + 1, closed: h ? h.closed : i === 6, open1: h?.open1?.slice(0, 5) || '', close1: h?.close1?.slice(0, 5) || '', open2: h?.open2?.slice(0, 5) || '', close2: h?.close2?.slice(0, 5) || '', note: h?.note || '' }; })); } }, [d.data]);
+  useEffect(() => { if (d.data) { const s = d.data.site; setProfile({ surface_sqm: s.surface_sqm, rooms: s.rooms, boxes: s.boxes, parking: s.parking, accessibility: s.accessibility, services: s.services, description: s.description, opened_at: s.opened_at, catchment_cities: s.catchment_cities, sqm_waiting: s.sqm_waiting, notes: s.notes }); setHours(Array.from({ length: 7 }, (_, i) => { const h = d.data.hours.find((x) => x.weekday === i + 1); return { weekday: i + 1, closed: h ? h.closed : i === 6, open1: h?.open1?.slice(0, 5) || '', close1: h?.close1?.slice(0, 5) || '', open2: h?.open2?.slice(0, 5) || '', close2: h?.close2?.slice(0, 5) || '', note: h?.note || '' }; })); } }, [d.data]);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data || !profile || !hours) return <div className="page"><Loading /></div>;
   const { site, year, assets, operators, market, fte, can_edit } = d.data;
   const staffList = d.data.staff;
   const saveProfile = async () => { try { const b = { ...profile }; for (const k of ['surface_sqm', 'rooms', 'boxes', 'sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); if (b.opened_at === '') b.opened_at = null; await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveHours = async () => { try { await api.put(`/structure/sites/${id}/hours`, { hours: hours.map((h) => ({ ...h, open1: h.open1 || null, close1: h.close1 || null, open2: h.open2 || null, close2: h.close2 || null, note: h.note || null })) }); toast('Orari salvati'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
-  const saveStaff = async () => { try { const b = { ...staff }; delete b.id; delete b.site_id; b.weekly_hours = b.weekly_hours === '' || b.weekly_hours == null ? null : Number(b.weekly_hours); if (staff.id) await api.put(`/structure/staff/${staff.id}`, b); else await api.post(`/structure/sites/${id}/staff`, b); toast('Persona salvata'); setStaff(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const saveStaff = async () => { try { const b = { retail_role: staff.retail_role || null, weekly_hours: staff.weekly_hours === '' || staff.weekly_hours == null ? null : Number(staff.weekly_hours), days: staff.days || null, notes: staff.notes || null, sort_order: Number(staff.sort_order) || 100 }; await api.put(`/structure/people/${staff.id}`, b); toast('Piano di lavoro salvato'); setStaff(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveAsset = async () => { try { const b = { ...asset }; delete b.id; delete b.site_id; b.quantity = Number(b.quantity) || 1; if (asset.id) await api.put(`/structure/assets/${asset.id}`, b); else await api.post(`/structure/sites/${id}/assets`, b); toast('Dotazione salvata'); setAsset(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const weeklyHours = hours.filter((h) => !h.closed).reduce((a, h) => { const t = (x) => (x ? Number(x.slice(0, 2)) + Number(x.slice(3)) / 60 : 0); return a + Math.max(0, t(h.close1) - t(h.open1)) + Math.max(0, t(h.close2) - t(h.open2)); }, 0);
-  const byRole = Object.entries(staffList.filter((s) => s.active).reduce((a, s) => { a[s.role] = (a[s.role] || 0) + 1; return a; }, {}));
+  const byRole = Object.entries(staffList.filter((s) => s.active).reduce((a, s) => { const k = s.role || 'ruolo da definire'; a[k] = (a[k] || 0) + 1; return a; }, {}));
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>{site.name}</h1><div className="sub">{SITE_KIND[site.kind]} · {site.address || ''}{site.city ? `, ${site.zip || ''} ${site.city} (${site.province})` : ''} · codice {site.code}{site.legacy_brand ? ` · ex ${site.legacy_brand}` : ''}{site.opened_at ? ` · aperta dal ${itDate(site.opened_at)}` : ''}</div></div>
-        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/sedi`)}>Tutte le sedi</button><Link className="btn ghost" to={`${base}/esposizione/${id}`}>Book retail</Link><Link className="btn ghost" to={`${base}/budget?tab=variance`}>Scostamenti</Link></div>
+        <div><h1>{site.name}</h1><div className="sub">{SITE_KIND[site.kind] || site.kind} · {site.address || ''}{site.city ? `, ${site.zip || ''} ${site.city} (${site.province})` : ''} · codice {site.code}{site.legacy_brand ? ` · ex ${site.legacy_brand}` : ''}{site.opened_at ? ` · aperta dal ${itDate(site.opened_at)}` : ''}</div></div>
+        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/sedi`)}>Tutte le sedi</button><Link className="btn ghost" to={`${base}/esposizione/${id}`}>Book retail</Link><Link className="btn ghost" to={`${base}/budget?tab=variance`}>Scostamenti</Link><Link className="btn ghost" to={ADMIN_SITES} title="Denominazione, indirizzo, contatti, site manager e stato della sede si modificano nell'anagrafica unica"><Icon name="external" size={16} />Apri in Amministrazione</Link></div>
       </div>
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi accent label="Fatturato anno in corso" value={eur0(year.revenue)} foot={`${num(year.tickets)} accettazioni · ${num(year.customers)} pazienti · ${num(year.days)} giorni lavorati`} />
@@ -44,28 +44,41 @@ export default function SiteDetail() {
       </div>
       <div className="tabs">{[['profilo', 'Profilo'], ['persone', 'Persone'], ['orari', 'Orari'], ['dotazioni', 'Dotazioni'], ['bacino', 'Bacino e vendite']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
 
-      {tab === 'profilo' && <Card title="Profilo della struttura" actions={can_edit && <button className="btn sm" onClick={saveProfile}>Salva</button>}>
-        <div className="form-grid">
-          <Field label="Site manager"><input value={profile.manager || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, manager: e.target.value })} /></Field>
-          <Field label="Telefono"><input value={profile.phone || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></Field>
-          <Field label="Email"><input value={profile.email || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></Field>
-          <Field label="Apertura (data)"><input type="date" value={profile.opened_at || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, opened_at: e.target.value })} /></Field>
-          <Field label="Superficie (mq)"><input type="number" value={profile.surface_sqm ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, surface_sqm: e.target.value })} /></Field>
-          <Field label="Sala d'attesa (mq)"><input type="number" value={profile.sqm_waiting ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, sqm_waiting: e.target.value })} /></Field>
-          <Field label="Ambulatori"><input type="number" value={profile.rooms ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, rooms: e.target.value })} /></Field>
-          <Field label="Box prelievo"><input type="number" value={profile.boxes ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, boxes: e.target.value })} /></Field>
-          <Field label="Parcheggio"><input value={profile.parking || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, parking: e.target.value })} /></Field>
-          <Field label="Accessibilità"><input value={profile.accessibility || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, accessibility: e.target.value })} /></Field>
-          <Field label="Comuni del bacino" help="Separati da virgola: alimentano i dati di mercato della sede" className="span2"><input value={profile.catchment_cities || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, catchment_cities: e.target.value })} /></Field>
-          <Field label="Servizi offerti" className="span2"><textarea value={profile.services || ''} disabled={!can_edit} placeholder="es. prelievi, ecografie, visite specialistiche (cardiologia, ginecologia), medicina del lavoro" onChange={(e) => setProfile({ ...profile, services: e.target.value })} /></Field>
-          <Field label="Descrizione" className="span2"><textarea value={profile.description || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, description: e.target.value })} /></Field>
-        </div>
-      </Card>}
+      {tab === 'profilo' && <div className="grid g2">
+        <Card title="Anagrafica (Amministrazione)" actions={<Link className="btn sm ghost" to={ADMIN_SITES}>Apri in Amministrazione</Link>}>
+          <div className="form-grid">
+            <Field label="Codice"><input value={site.code || ''} disabled className="mono" /></Field>
+            <Field label="Tipologia"><input value={SITE_KIND[site.kind] || site.kind || ''} disabled /></Field>
+            <Field label="Site manager"><input value={site.manager || ''} disabled placeholder="da definire in Amministrazione" /></Field>
+            <Field label="Insegna precedente"><input value={site.legacy_brand || ''} disabled /></Field>
+            <Field label="Telefono"><input value={site.phone || ''} disabled /></Field>
+            <Field label="Email"><input value={site.email || ''} disabled /></Field>
+            <Field label="Orario ufficiale" help="Testo sintetico dell'anagrafica; il dettaglio per giorno è nella scheda Orari" className="span2"><input value={site.opening_hours || ''} disabled /></Field>
+            <Field label="Indirizzo" className="span2"><input value={[site.address, site.zip, site.city, site.province && `(${site.province})`].filter(Boolean).join(' ')} disabled /></Field>
+          </div>
+          <p className="small muted" style={{ marginTop: 8 }}>Codice, nome, tipologia, indirizzo, contatti, site manager e stato attivo sono dell'anagrafica unica della Suite e si modificano in Amministrazione, Sedi.</p>
+        </Card>
+        <Card title="Profilo della struttura (Retail)" actions={can_edit && <button className="btn sm" onClick={saveProfile}>Salva</button>}>
+          <div className="form-grid">
+            <Field label="Apertura (data)"><input type="date" value={profile.opened_at || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, opened_at: e.target.value })} /></Field>
+            <Field label="Superficie (mq)"><input type="number" value={profile.surface_sqm ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, surface_sqm: e.target.value })} /></Field>
+            <Field label="Sala d'attesa (mq)"><input type="number" value={profile.sqm_waiting ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, sqm_waiting: e.target.value })} /></Field>
+            <Field label="Ambulatori"><input type="number" value={profile.rooms ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, rooms: e.target.value })} /></Field>
+            <Field label="Box prelievo"><input type="number" value={profile.boxes ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, boxes: e.target.value })} /></Field>
+            <Field label="Parcheggio"><input value={profile.parking || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, parking: e.target.value })} /></Field>
+            <Field label="Accessibilità"><input value={profile.accessibility || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, accessibility: e.target.value })} /></Field>
+            <Field label="Comuni del bacino" help="Separati da virgola: alimentano i dati di mercato della sede" className="span2"><input value={profile.catchment_cities || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, catchment_cities: e.target.value })} /></Field>
+            <Field label="Servizi offerti" className="span2"><textarea value={profile.services || ''} disabled={!can_edit} placeholder="es. prelievi, ecografie, visite specialistiche (cardiologia, ginecologia), medicina del lavoro" onChange={(e) => setProfile({ ...profile, services: e.target.value })} /></Field>
+            <Field label="Descrizione" className="span2"><textarea value={profile.description || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, description: e.target.value })} /></Field>
+            <Field label="Note Retail" className="span2"><textarea value={profile.notes || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, notes: e.target.value })} /></Field>
+          </div>
+        </Card>
+      </div>}
 
-      {tab === 'persone' && <Card title="Persone che lavorano in sede" flush actions={can_edit && <button className="btn sm" onClick={() => setStaff({ name: '', role: 'Accettazione', kind: 'DIPENDENTE', weekly_hours: 40, days: 'lun-ven', active: true })}>+ Persona</button>}>
-        {!staffList.length ? <Empty>Nessuna persona registrata</Empty> : <table className="t"><thead><tr><th>Nome</th><th>Ruolo</th><th>Rapporto</th><th>Specialità</th><th className="num">Ore/sett.</th><th>Giorni</th><th>Contatti</th>{can_edit && <th />}</tr></thead>
-          <tbody>{staffList.map((s) => <tr key={s.id} className={!s.active ? 'muted' : ''}><td className="strong">{s.name}{!s.active && <Badge tone="red">non attivo</Badge>}</td><td>{s.role}</td><td className="small">{KIND_LABEL[s.kind]}</td><td className="small">{s.specialty || '–'}</td><td className="num">{s.weekly_hours ?? '–'}</td><td className="small">{s.days || '–'}</td><td className="small muted">{[s.phone, s.email].filter(Boolean).join(' · ')}</td>{can_edit && <td className="num" style={{ whiteSpace: 'nowrap' }}><button className="btn sm ghost" onClick={() => setStaff({ ...s })}>Modifica</button> <button className="iconbtn" onClick={async () => { if (!window.confirm(`Rimuovere ${s.name}?`)) return; await api.del(`/structure/staff/${s.id}`); d.reload(); }}><Icon name="trash" /></button></td>}</tr>)}</tbody>
-          <tfoot><tr><td colSpan={4}>Totale attivi: {staffList.filter((s) => s.active).length} · {fte} FTE (su 40 h)</td><td className="num">{staffList.filter((s) => s.active).reduce((a, s) => a + Number(s.weekly_hours || 0), 0)}</td><td colSpan={can_edit ? 3 : 2} /></tr></tfoot></table>}
+      {tab === 'persone' && <Card title="Persone che lavorano in sede" flush actions={<span className="small muted">dall'anagrafica unica (persone con questa sede) · si assegnano in <Link to="/people">Amministrazione, Persone</Link></span>}>
+        {!staffList.length ? <Empty>Nessuna persona assegnata a questa sede in anagrafica: imposta la sede sulla scheda persona in <Link to="/people">Amministrazione, Persone</Link>.</Empty> : <table className="t"><thead><tr><th>Nome</th><th>Ruolo in sede</th><th>Rapporto</th><th>Disciplina</th><th className="num">Ore/sett.</th><th>Giorni</th><th>Contatti</th><th /></tr></thead>
+          <tbody>{staffList.map((s) => <tr key={s.id} className={!s.active ? 'muted' : ''}><td className="strong">{s.title ? `${s.title} ` : ''}{s.last_name} {s.first_name}{!s.active && <> <Badge tone="grey">{s.status === 'IMPEGNO' ? 'in arrivo' : 'non attivo'}</Badge></>}</td><td>{s.role || <span className="muted">da definire</span>}{s.retail_role && s.job_title && s.retail_role !== s.job_title && <div className="small muted">{s.job_title}</div>}</td><td className="small">{KIND_LABEL[s.kind] || s.kind}</td><td className="small">{s.discipline || '–'}</td><td className="num">{s.weekly_hours ?? '–'}</td><td className="small">{s.days || '–'}</td><td className="small muted">{[s.phone || s.phone_office, s.email].filter(Boolean).join(' · ')}</td><td className="num" style={{ whiteSpace: 'nowrap' }}>{can_edit && <button className="btn sm ghost" onClick={() => setStaff({ ...s, weekly_hours: s.weekly_hours ?? '', days: s.days || '', retail_role: s.retail_role || '', notes: s.notes || '', sort_order: s.sort_order ?? 100 })}>Piano di lavoro</button>} <Link className="btn sm ghost" to={ADMIN_PERSON(s.id)} title="Scheda persona in Amministrazione">Scheda</Link></td></tr>)}</tbody>
+          <tfoot><tr><td colSpan={4}>Totale attivi: {staffList.filter((s) => s.active).length} · {fte} FTE (su 40 h, dalle ore del piano di lavoro Retail)</td><td className="num">{staffList.filter((s) => s.active).reduce((a, s) => a + Number(s.weekly_hours || 0), 0)}</td><td colSpan={3} /></tr></tfoot></table>}
       </Card>}
 
       {tab === 'orari' && <Card title="Orari di apertura" actions={can_edit && <button className="btn sm" onClick={saveHours}>Salva</button>}>
@@ -75,7 +88,7 @@ export default function SiteDetail() {
             <td className="row" style={{ gap: 6 }}><input type="time" value={h.open1} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, open1: e.target.value } : x)))} /> – <input type="time" value={h.close1} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, close1: e.target.value } : x)))} /></td>
             <td><div className="row" style={{ gap: 6 }}><input type="time" value={h.open2} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, open2: e.target.value } : x)))} /> – <input type="time" value={h.close2} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, close2: e.target.value } : x)))} /></div></td>
             <td><input value={h.note} disabled={!can_edit} placeholder="es. prelievi 7:30-10:30" style={{ height: 32 }} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))} /></td></tr>)}</tbody></table>
-        <p className="small muted" style={{ marginTop: 8 }}>Il sabato aperto o chiuso determina i giorni lavorabili della sede nel calendario di Budget.</p>
+        <p className="small muted" style={{ marginTop: 8 }}>Dettaglio operativo Retail per giorno (fasce, note su prelievi). L'orario ufficiale in anagrafica è: <b>{site.opening_hours || 'non indicato'}</b> (si modifica in Amministrazione, Sedi). Il sabato aperto o chiuso determina i giorni lavorabili della sede nel calendario di Budget.</p>
       </Card>}
 
       {tab === 'dotazioni' && <Card title="Dotazioni e ambienti" flush actions={can_edit && <button className="btn sm" onClick={() => setAsset({ kind: 'ECOGRAFO', name: '', quantity: 1, active: true })}>+ Dotazione</button>}>
@@ -92,18 +105,14 @@ export default function SiteDetail() {
         </Card>
       </div>}
 
-      {staff && <Modal title={staff.id ? 'Modifica persona' : 'Nuova persona'} onClose={() => setStaff(null)} footer={<><button className="btn ghost" onClick={() => setStaff(null)}>Annulla</button><button className="btn" disabled={!staff.name || !staff.role} onClick={saveStaff}>Salva</button></>}>
+      {staff && <Modal title={`Piano di lavoro Retail · ${staff.last_name} ${staff.first_name}`} onClose={() => setStaff(null)} footer={<><button className="btn ghost" onClick={() => setStaff(null)}>Annulla</button><button className="btn" onClick={saveStaff}>Salva</button></>}>
+        <div className="alert" style={{ marginBottom: 12 }}><span>{KIND_LABEL[staff.kind] || staff.kind}{staff.job_title ? ` · ${staff.job_title}` : ''}{staff.discipline ? ` · ${staff.discipline}` : ''}. Nome, rapporto, contatti e sede si modificano nella <Link to={ADMIN_PERSON(staff.id)}>scheda persona</Link> in Amministrazione o in Contratti del personale.</span></div>
         <div className="form-grid">
-          <Field label="Nome e cognome *" className="span2"><input value={staff.name} onChange={(e) => setStaff({ ...staff, name: e.target.value })} /></Field>
-          <Field label="Ruolo *"><input list="roles" value={staff.role} onChange={(e) => setStaff({ ...staff, role: e.target.value })} /><datalist id="roles">{ROLES.map((r) => <option key={r} value={r} />)}</datalist></Field>
-          <Field label="Rapporto"><select value={staff.kind} onChange={(e) => setStaff({ ...staff, kind: e.target.value })}>{Object.entries(KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-          <Field label="Specialità"><input value={staff.specialty || ''} onChange={(e) => setStaff({ ...staff, specialty: e.target.value })} /></Field>
-          <Field label="Ore settimanali"><input type="number" step="0.5" value={staff.weekly_hours ?? ''} onChange={(e) => setStaff({ ...staff, weekly_hours: e.target.value })} /></Field>
-          <Field label="Giorni"><input value={staff.days || ''} placeholder="lun-ven, mar/gio" onChange={(e) => setStaff({ ...staff, days: e.target.value })} /></Field>
-          <Field label="Telefono"><input value={staff.phone || ''} onChange={(e) => setStaff({ ...staff, phone: e.target.value })} /></Field>
-          <Field label="Email"><input value={staff.email || ''} onChange={(e) => setStaff({ ...staff, email: e.target.value })} /></Field>
-          <Field label="Attivo" className="inline"><input type="checkbox" checked={staff.active !== false} onChange={(e) => setStaff({ ...staff, active: e.target.checked })} /> in servizio</Field>
-          <Field label="Note" className="span2"><textarea value={staff.notes || ''} onChange={(e) => setStaff({ ...staff, notes: e.target.value })} /></Field>
+          <Field label="Ruolo in sede" help="Come compare nella scheda struttura e nel book"><input list="roles" value={staff.retail_role} placeholder={staff.job_title || 'es. Accettazione'} onChange={(e) => setStaff({ ...staff, retail_role: e.target.value })} /><datalist id="roles">{ROLES.map((r) => <option key={r} value={r} />)}</datalist></Field>
+          <Field label="Ordine"><input type="number" value={staff.sort_order} onChange={(e) => setStaff({ ...staff, sort_order: e.target.value })} /></Field>
+          <Field label="Ore settimanali in sede"><input type="number" step="0.5" value={staff.weekly_hours} onChange={(e) => setStaff({ ...staff, weekly_hours: e.target.value })} /></Field>
+          <Field label="Giorni"><input value={staff.days} placeholder="lun-ven, mar/gio" onChange={(e) => setStaff({ ...staff, days: e.target.value })} /></Field>
+          <Field label="Note" className="span2"><textarea value={staff.notes} onChange={(e) => setStaff({ ...staff, notes: e.target.value })} /></Field>
         </div>
       </Modal>}
       {asset && <Modal title={asset.id ? 'Modifica dotazione' : 'Nuova dotazione'} onClose={() => setAsset(null)} footer={<><button className="btn ghost" onClick={() => setAsset(null)}>Annulla</button><button className="btn" disabled={!asset.name} onClick={saveAsset}>Salva</button></>}>

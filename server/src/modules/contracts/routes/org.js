@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse, HttpError } from '../lib/util.js';
+import { updatePerson, reindexPerson } from '../lib/people.js';
 import { requireWrite, requireRole } from '../lib/access.js';
 import { loadOrgModel, buildSections, unitChain, chartToPptx, areaNode } from '../lib/orgChart.js';
 import { docxToPdf, pdfAvailable } from '../lib/docgen.js';
@@ -26,7 +27,7 @@ const unitSchema = z.object({
 /** Albero dell'organigramma con risoluzione del responsabile (risorsa collegata o omonima) e dei riporti diretti. */
 export async function loadOrgTree() {
   const units = await many(`SELECT u.*, a.name AS area_name FROM org_units u LEFT JOIN areas a ON a.id=u.area_id ORDER BY u.sort_order, u.id`);
-  const people = await many(`SELECT id, kind, status, first_name, last_name, sex, area_id, manager_id, cv_attachment_id FROM resources WHERE status <> 'CESSATO'`);
+  const people = await many(`SELECT id, kind, status, first_name, last_name, sex, area_id, manager_id, cv_attachment_id FROM resources_v WHERE status <> 'CESSATO'`);
   const byId = Object.fromEntries(people.map((p) => [p.id, p]));
   const byName = {};
   for (const p of people) byName[`${p.first_name} ${p.last_name}`.toLowerCase().replace(/\s+/g, ' ')] = p;
@@ -102,9 +103,9 @@ r.get('/', ah(async (_req, res) => {
   const people = await many(`SELECT r.id, r.kind, r.status, r.first_name, r.last_name, r.manager_id, r.approver_id, a.name AS area_name,
       coalesce(e.job_title, l.discipline) AS job_title, e.contract_type, e.level,
       ap.first_name || ' ' || ap.last_name AS approver_name,
-      (SELECT string_agg(x.name, ', ' ORDER BY x.name) FROM resource_areas ra JOIN areas x ON x.id=ra.area_id WHERE ra.resource_id=r.id AND ra.area_id IS DISTINCT FROM r.area_id) AS extra_areas
-    FROM resources r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
-    LEFT JOIN resources ap ON ap.id=r.approver_id
+      (SELECT string_agg(x.name, ', ' ORDER BY x.name) FROM person_areas ra JOIN areas x ON x.id=ra.area_id WHERE ra.person_id=r.id AND ra.area_id IS DISTINCT FROM r.area_id) AS extra_areas
+    FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
+    LEFT JOIN resources_v ap ON ap.id=r.approver_id
     WHERE r.status IN ('ATTIVO','IMPEGNO') ORDER BY r.last_name, r.first_name`);
   const counts = { units: nodes.length, tbd: nodes.filter((n) => n.tbd).length, linked: nodes.filter((n) => n.resource).length, unlinked: nodes.filter((n) => !n.resource && !n.tbd && n.head_name).length };
   res.json({ tree: roots, counts, documents, reporting: people });
@@ -161,9 +162,10 @@ r.post('/align-managers', requireRole('ADMIN'), ah(async (req, res) => {
     done.add(n.resource.id);
     let p = map[n.parent_id]; while (p && (!p.resource || p.resource.id === n.resource.id)) p = p.parent_id ? map[p.parent_id] : null;
     if (!p) continue;
-    const cur = await one('SELECT manager_id FROM resources WHERE id=$1', [n.resource.id]);
+    const cur = await one('SELECT manager_id FROM resources_v WHERE id=$1', [n.resource.id]);
     if (cur?.manager_id === p.resource.id) continue;
-    await q('UPDATE resources SET manager_id=$2, updated_at=now() WHERE id=$1', [n.resource.id, p.resource.id]);
+    await updatePerson(null, req, n.resource.id, { manager_id: p.resource.id });   // public.people.manager_person_id, con audit della Suite
+    reindexPerson(n.resource.id);
     updated++; log.push(`${n.resource.first_name} ${n.resource.last_name} → riporta a ${p.resource.first_name} ${p.resource.last_name}`);
   }
   await audit(req, 'ORG_ALIGN_MANAGERS', 'org_unit', null, { updated });

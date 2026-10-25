@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Modal, Badge, Field, useToast } from '../components/ui.jsx';
@@ -18,6 +19,7 @@ export default function Specialisti() {
   const { user } = useAuth();
   const toast = useToast();
   const { data, error, reload } = useApi('/strutture');
+  const persone = useApi('/personale/professionisti');   // anagrafica unica: per collegare ogni nome alla scheda persona
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('tutti');
   const [sedeF, setSedeF] = useState('');
@@ -26,15 +28,16 @@ export default function Specialisti() {
   const toggle = (k) => setChecked((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const net = useMemo(() => (data ? buildNetwork(data) : null), [data]);
   const colorOf = useMemo(() => { const m = {}; (data || []).forEach((s, i) => { m[s.id] = SEDE_COLORS[i % SEDE_COLORS.length]; }); return m; }, [data]);
-  const list = useMemo(() => (net ? net.specialisti.filter((x) => !x.attivita && (tipo === 'tutti' || x.tipo === tipo) && (!sedeF || x.sedi.some((z) => z.sedeId === sedeF)) && (!q || `${x.nome} ${x.discipline.join(' ')} ${x.profili.join(' ')}`.toLowerCase().includes(q.toLowerCase()))) : []), [net, q, tipo, sedeF]);
+  const list = useMemo(() => (net ? net.specialisti.filter((x) => !x.attivita && (tipo === 'tutti' || x.tipo === tipo) && (!sedeF || x.sedi.some((z) => String(z.sedeId) === String(sedeF))) && (!q || `${x.nome} ${x.discipline.join(' ')} ${x.profili.join(' ')}`.toLowerCase().includes(q.toLowerCase()))) : []), [net, q, tipo, sedeF]);
   const x = sel && net ? net.byKey[sel] : null;
+  const personaDi = useMemo(() => { const m = new Map((persone.data || []).map((p) => [p.personaKey, p])); return (k) => m.get(k) || null; }, [persone.data]);
   const canEdit = user.role !== 'VIEWER';
   const [bulk, setBulk] = useState(false);
   return (
     <div className="page">
       <div className="page-head"><div><h1>Tutti i professionisti</h1><div className="sub">Medici e professionisti sanitari di tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div>
         {canEdit && net && <button className="btn ghost" onClick={() => setBulk(true)}>{checked.size ? `Invia il piano disponibilità ai ${checked.size} selezionati…` : 'Invio massivo del piano disponibilità…'}</button>}</div>
-      {bulk && net && <BulkModal net={net} list={checked.size ? net.specialisti.filter((x) => checked.has(x.key)) : list} ambito={checked.size ? `${checked.size} professionisti selezionati a mano` : sedeF ? `professionisti della sede ${sedeLabel((data || []).find((s) => s.id === sedeF) || {})}${tipo !== 'tutti' ? ' · ' + tipo : ''}${q ? ' · ricerca "' + q + '"' : ''}` : tipo !== 'tutti' || q ? `elenco filtrato (${list.length})` : 'tutti i professionisti'} onClose={() => setBulk(false)} toast={toast} />}
+      {bulk && net && <BulkModal net={net} list={checked.size ? net.specialisti.filter((x) => checked.has(x.key)) : list} ambito={checked.size ? `${checked.size} professionisti selezionati a mano` : sedeF ? `professionisti della sede ${sedeLabel((data || []).find((s) => String(s.id) === String(sedeF)) || {})}${tipo !== 'tutti' ? ' · ' + tipo : ''}${q ? ' · ricerca "' + q + '"' : ''}` : tipo !== 'tutti' || q ? `elenco filtrato (${list.length})` : 'tutti i professionisti'} onClose={() => setBulk(false)} toast={toast} />}
       <ErrorBox error={error} />
       {!net ? <Loading /> : (
         <div className="spec-layout">
@@ -48,14 +51,14 @@ export default function Specialisti() {
             </div>
             <div className="spec-items">{list.map((s) => (
               <button key={s.key} className={`spec-item ${sel === s.key ? 'on' : ''} ${checked.has(s.key) ? 'checked' : ''}`} onClick={() => setSel(s.key)}>
-                <div className="strong row" style={{ gap: 8 }}>{canEdit && <input type="checkbox" checked={checked.has(s.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.key)} title="Seleziona per l'invio massivo" />}<span>{s.nome}</span>{!s.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
+                <div className="strong row" style={{ gap: 8 }}>{canEdit && <input type="checkbox" checked={checked.has(s.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.key)} title="Seleziona per l'invio massivo" />}<span>{s.nome}</span>{!s.email && !personaDi(s.key)?.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
                 <div className="small muted">{s.discipline.join(', ') || s.profili.join(', ') || s.tipo}</div>
-                <div className="small">{s.nSedi} {s.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(s.ore)}/sett.{s.sessioni.some((z) => !z.room) ? <span className="red"> · non allocate</span> : null}</div>
+                <div className="small">{s.nSedi} {s.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(s.ore)}/sett.{s.sessioni.some((z) => !z.room) ? <span className="red"> · non allocate</span> : null}{persone.data && !personaDi(s.key) ? <span className="muted"> · non in anagrafica</span> : null}</div>
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
             {!x ? <div className="card"><div className="bd empty">Seleziona un professionista per vedere i suoi impegni su tutte le sedi e simulare una proposta.</div></div>
-              : <Dettaglio key={x.key} x={x} net={net} colorOf={colorOf} canEdit={canEdit} toast={toast} reload={reload} />}
+              : <Dettaglio key={x.key} x={x} net={net} colorOf={colorOf} canEdit={canEdit} toast={toast} reload={reload} persona={personaDi(x.key)} />}
           </div>
         </div>
       )}
@@ -63,13 +66,13 @@ export default function Specialisti() {
   );
 }
 
-function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
+function Dettaglio({ x, net, colorOf, canEdit, toast, reload, persona }) {
   const [win, setWin] = useState(emptyWin());
   const [soloAltre, setSoloAltre] = useState(false);
   const [minDur, setMinDur] = useState(60);
   const [sim, setSim] = useState(null);
   const [mail, setMail] = useState(null); // {kind:'agenda'|'proposta'}
-  const [email, setEmail] = useState(x.email || '');
+  const [email, setEmail] = useState(persona?.email || x.email || '');
   const sedi = [...new Map(x.sedi.map((z) => [z.sedeId, z])).values()];
   const run = () => { const r = simulate(net, x.key, win, { soloAltreSedi: soloAltre, minDur: Number(minDur) || 60 }); setSim(r); if (!r.proposte.length) toast('Nessuno spazio compatibile nelle fasce indicate', 'err'); };
   const fill = (from, to, days = [0, 1, 2, 3, 4, 5]) => setWin((w) => { const n = { ...w }; days.forEach((d) => { n[d] = [{ from, to }]; }); return n; });
@@ -94,6 +97,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: 18 }}>{x.nome} <Badge tone={x.tipo === 'medico' ? 'teal' : 'mauve'}>{x.tipo === 'medico' ? 'medico' : x.profili.join(', ') || 'sanitario'}</Badge></h2>
             <div className="muted">{x.discipline.join(', ')}{x.attrezzature.length ? ` · richiede ${x.attrezzature.join(', ')}` : ''}</div>
+            <div className="small" style={{ marginTop: 4 }}>{persona ? <>Anagrafica unica: <Link to={`/people/${persona.id}`}>{persona.nome}</Link>{persona.inRoom ? <> · <Badge tone="green">scheda Room</Badge></> : <> · <Badge tone="amber">senza scheda Room</Badge></>}</> : <span className="muted">Nome non trovato nell'anagrafica unica: per turni, presenze e rendiconti la persona va creata in Amministrazione &gt; Persone con la stessa grafia.</span>}</div>
             <div className="row small" style={{ marginTop: 6, gap: 14 }}><span><b>{durTxt(x.ore)}</b>/settimana</span><span><b>{x.sessioni.filter((q) => q.room).length}</b> sessioni</span><span>sedi: {sedeList.map((n, i) => <span key={n} className="chip" style={{ background: colorOf[x.sedi.find((z) => z.sede === n)?.sedeId] + '22' }}>{n}</span>)}</span></div>
           </div>
           <div className="row">
@@ -103,7 +107,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
             {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'piano', sim: pianoOf(net, x) })}>Invia al professionista il piano delle disponibilità</button>}
           </div>
         </div>
-        {canEdit && <div className="row" style={{ marginTop: 10 }}><Field label="Email del professionista (per gli invii)"><div className="row"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@esempio.it" style={{ width: 280 }} />{email !== (x.email || '') && <button className="btn sm ghost" onClick={saveEmail}>Salva</button>}</div></Field></div>}
+        {canEdit && <div className="row" style={{ marginTop: 10 }}><Field label={persona?.email ? 'Email del professionista (dall\'anagrafica unica)' : 'Email del professionista (per gli invii, nelle schede di sede)'}><div className="row"><input type="email" value={email} readOnly={Boolean(persona?.email)} onChange={(e) => setEmail(e.target.value)} placeholder="nome@esempio.it" style={{ width: 280 }} />{!persona?.email && email !== (x.email || '') && <button className="btn sm ghost" onClick={saveEmail}>Salva</button>}</div></Field></div>}
       </div></div>
 
       <div className="card"><div className="hd"><h2>Impegni settimanali su tutte le sedi</h2></div><div className="bd">

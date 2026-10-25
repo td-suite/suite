@@ -98,10 +98,9 @@ export function Legacy() {
   const [cred, setCred] = useState(null);
   const [busy, setBusy] = useState({});
   const rows = Array.isArray(data) ? data : data?.rows || [];
-  const sync = async (key) => { setBusy((b) => ({ ...b, [key]: true })); try { await api.post(key ? `/legacy/sources/${key}/sync` : '/legacy/sync-all'); toast('Sincronizzazione eseguita'); reload(); } catch (e) { toast(e, 'err'); } setBusy((b) => ({ ...b, [key]: false })); };
   return (
     <div className="page">
-      <PageHead title="Sorgenti legacy" icon="refresh" sub="Lettura in sola lettura dei database delle app della rete: sedi, persone, utenti e contatori" actions={<button className="btn" disabled={busy.all} onClick={() => sync('')}><Icon name="refresh" />Sincronizza tutto</button>} />
+      <PageHead title="Sorgenti legacy" icon="refresh" sub="Connessione in sola lettura ai database delle app di origine, usata dal travaso dei moduli indipendenti (Payments, Spedizioni). Le anagrafiche non si copiano: si caricano da Amministrazione." />
       {loading && <div className="grid g3">{[1, 2, 3].map((i) => <Card key={i}><Skeleton lines={3} /></Card>)}</div>}
       {unavailable && <Card><Coming what="Il collegamento alle sorgenti legacy" /></Card>}
       {error && !unavailable && <ErrorBox error={error} />}
@@ -125,61 +124,14 @@ export function Legacy() {
             {s.last_error && <div className="alert err small"><Icon name="alert" /><span>{s.last_error}</span></div>}
             {entries.length > 0
               ? <div className="stats">{entries.map(([k, v]) => <div key={k}><b>{((Number(v.creati) || 0) + (Number(v.aggiornati) || 0)).toLocaleString('it-IT')}</b>{k.replace(/_/g, ' ')}<span className="sub">{[v.creati ? `${v.creati} nuovi` : null, v.aggiornati ? `${v.aggiornati} aggiornati` : null, v.saltati ? `${v.saltati} saltati` : null].filter(Boolean).join(' · ') || 'nessuna variazione'}</span></div>)}</div>
-              : <div className="sc-empty small muted">{s.enabled ? 'Nessuna sincronizzazione eseguita: premi Sincronizza ora.' : 'Collega il database dell\'app per importare utenti, sedi e persone in sola lettura.'}</div>}
+              : <div className="sc-empty small muted">{s.enabled ? 'Database collegato: il travaso del modulo è possibile.' : 'Collega il database dell\'app di origine per il travaso del modulo.'}</div>}
             <div className="sc-actions">
               {owner && <button className={`btn sm ${s.enabled ? 'ghost' : ''}`} onClick={() => setCred({ key: s.key, label: s.label || s.key })}><Icon name="key" />{s.enabled ? 'Connessione' : 'Collega database'}</button>}
-              <button className="btn sm ghost" disabled={busy[s.key] || !s.enabled} onClick={() => sync(s.key)}><Icon name="refresh" />{busy[s.key] ? 'In corso' : 'Sincronizza ora'}</button>
               <span className="small muted" style={{ marginLeft: 'auto' }}>{total > 0 ? `${total.toLocaleString('it-IT')} record` : ''}{durata ? ` · ${(durata / 1000).toFixed(1)} s` : ''}</span>
             </div>
           </div>
         );
       })}</div>
-    </div>
-  );
-}
-
-// ---------- Riconciliazione ----------
-export function Review() {
-  const { data, loading, error, unavailable, reload } = useApi('/legacy/review');
-  const sites = useApi('/sites?all=1');
-  const toast = useToast();
-  const [tab, setTab] = useState('sites');
-  const [merge, setMerge] = useState(null);
-  const confirmSite = async (s) => { try { await api.put(`/sites/${s.id}`, { needs_review: false }); toast('Sede confermata'); reload(); } catch (e) { toast(e, 'err'); } };
-  const confirmPerson = async (p) => { try { await api.put(`/people/${p.id}`, { needs_review: false }); toast('Persona confermata'); reload(); } catch (e) { toast(e, 'err'); } };
-  const confirmOrg = async (o) => { try { await api.put(`/organizations/${o.id}`, { needs_review: false }); toast('Organizzazione confermata'); reload(); } catch (e) { toast(e, 'err'); } };
-  const d = data || {};
-  return (
-    <div className="page">
-      <PageHead title="Riconciliazione" icon="check" sub="Elementi importati dalle app legacy che richiedono una verifica: duplicati, nomi diversi, riferimenti incerti" />
-      {loading && <Card><Skeleton lines={4} /></Card>}
-      {unavailable && <Card><Coming what="La riconciliazione dei dati legacy" /></Card>}
-      {error && !unavailable && <ErrorBox error={error} />}
-      {data && <>
-        <Tabs value={tab} onChange={setTab} items={[{ value: 'sites', label: 'Sedi', count: d.sites?.length || 0 }, { value: 'people', label: 'Persone', count: d.people?.length || 0 }, { value: 'organizations', label: 'Organizzazioni', count: d.organizations?.length || 0 }]} />
-        <Card flush>
-          {!(d[tab] || []).length && <Empty icon="check" title="Niente da verificare qui." />}
-          <div className="list">{(d[tab] || []).map((r) => (
-            <div key={r.id} className="it" style={{ alignItems: 'center' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="t">{tab === 'people' ? `${r.last_name} ${r.first_name}` : r.name}{r.code && <span className="mono muted small"> · {r.code}</span>}</div>
-                <div className="m">{[r.city, r.kind, r.area, r.job_title, r.email].filter(Boolean).join(' · ')}</div>
-                <LegacyRefs refs={r.legacy_refs} />
-              </div>
-              <div className="row tight">
-                {tab === 'sites' && <button className="btn sm ghost" onClick={() => setMerge(r)}>Unisci in...</button>}
-                {tab === 'people' && <Link to="/admin/people" className="btn sm ghost">Apri</Link>}
-                <button className="btn sm" onClick={() => (tab === 'sites' ? confirmSite(r) : tab === 'people' ? confirmPerson(r) : confirmOrg(r))}><Icon name="check" />Conferma</button>
-              </div>
-            </div>
-          ))}</div>
-        </Card>
-      </>}
-      {merge && (
-        <Modal title={`Unisci "${merge.name}" in...`} onClose={() => setMerge(null)}>
-          <Field label="Sede di destinazione"><select defaultValue="" onChange={async (e) => { const t = Number(e.target.value); if (!t) return; try { await api.post(`/sites/${merge.id}/merge-into/${t}`); toast('Sedi unite'); setMerge(null); reload(); } catch (e2) { toast(e2, 'err'); } }}><option value="">Scegli la sede</option>{(sites.data || []).filter((x) => x.id !== merge.id).map((x) => <option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}</select></Field>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -248,6 +200,63 @@ export function ApiKeys() {
 
 // ---------- Importazioni ----------
 const BATCH_TONE = { OK: 'green', PARTIAL: 'amber', FAILED: 'red', DUPLICATE: 'grey', RECEIVED: 'blue' };
+// ---------- Caricamento anagrafiche da XLSX ----------
+function XlsxImport({ onDone }) {
+  const { data: datasets } = useApi('/import/datasets', []);
+  const { user } = useAuth();
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+  const [result, setResult] = useState(null);
+  const [reset, setReset] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const pick = (ds) => {
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx';
+    input.onchange = async () => {
+      const file = input.files?.[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      setBusy(ds.key);
+      try { const r = await api.upload(`/import/${ds.key}`, fd); setResult({ ds, ...r }); toast(r.rows_rejected ? `${r.rows_ok} righe caricate, ${r.rows_rejected} scartate` : `${r.rows_ok} righe caricate`); onDone?.(); }
+      catch (e) { toast(e, 'err'); }
+      setBusy(null);
+    };
+    input.click();
+  };
+  const doReset = async () => { try { await api.post('/admin/reset', { confirm: confirmText }); toast('Suite azzerata'); setReset(false); setConfirmText(''); onDone?.(); setTimeout(() => window.location.reload(), 800); } catch (e) { toast(e, 'err'); } };
+  return (
+    <>
+      <Card title="Caricamento anagrafiche" icon="upload" actions={isOwner(user) && <button className="btn sm ghost danger" onClick={() => setReset(true)}><Icon name="alert" />Azzera la Suite</button>}>
+        <p className="small muted" style={{ marginTop: 0 }}>Nell'ordine: Sedi, Organizzazioni e clienti, Persone, Utenti. Scarica il modello, compilalo (foglio "Istruzioni" incluso), caricalo. Le righe con la stessa chiave aggiornano quelle esistenti. Massimo 1000 righe per file.</p>
+        <div className="import-grid">
+          {(datasets || []).map((ds, i) => (
+            <div key={ds.key} className="import-card">
+              <div className="n"><span className="step">{i + 1}</span>{ds.title}</div>
+              <div className="small muted">{ds.columns.length} colonne · chiave: {ds.columns[0].label.toLowerCase()}</div>
+              <div className="row tight" style={{ marginTop: 10 }}>
+                <a className="btn sm ghost" href={`/api/import/templates/${ds.key}`}><Icon name="download" />Modello</a>
+                <button className="btn sm" disabled={busy === ds.key} onClick={() => pick(ds)}><Icon name="upload" />{busy === ds.key ? 'Caricamento' : 'Carica XLSX'}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      {result && (
+        <Modal title={`${result.ds.title}: esito del caricamento`} onClose={() => setResult(null)}>
+          <div className="row tight" style={{ gap: 14, marginBottom: 12 }}><Badge tone={result.rows_rejected ? 'amber' : 'green'}>{result.rows_ok} righe caricate</Badge>{result.rows_rejected > 0 && <Badge tone="red">{result.rows_rejected} scartate</Badge>}</div>
+          {result.errors?.length > 0 && <div className="table-wrap"><table className="table small"><thead><tr><th>Riga</th><th>Errore</th></tr></thead><tbody>{result.errors.map((e, i) => <tr key={i}><td>{e.row}</td><td>{e.error}</td></tr>)}</tbody></table></div>}
+          {!result.errors?.length && <div className="small muted">Nessun errore. Le righe scartate, se presenti, vanno corrette nel file e ricaricate: le altre non si duplicano.</div>}
+        </Modal>
+      )}
+      {reset && (
+        <Modal title="Azzerare la Suite?" onClose={() => setReset(false)}>
+          <div className="alert err"><Icon name="alert" /><span>Vengono eliminati sedi, organizzazioni, persone, utenti (tranne il titolare) con i loro profili, contenuti della Community, lotti caricati e tutti i dati dei moduli, che tornano spenti. Restano impostazioni, credenziali, catalogo dei moduli e frasi del giorno. Operazione irreversibile.</span></div>
+          <Field label='Per confermare scrivi: AZZERA LA SUITE'><input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} /></Field>
+          <div className="row end"><button className="btn ghost" onClick={() => setReset(false)}>Annulla</button><button className="btn danger" disabled={confirmText !== 'AZZERA LA SUITE'} onClick={doReset}>Azzera</button></div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function Imports() {
   const [f, setF] = useState({ source: '', dataset: '', status: '', page: 1 });
   const { data, loading, error, unavailable } = useApi(`/ingest-batches${qs(f)}`, [JSON.stringify(f)]);
@@ -256,7 +265,9 @@ export function Imports() {
   const rows = Array.isArray(data) ? data : data?.rows || [];
   return (
     <div className="page">
-      <PageHead title="Importazioni" icon="import" sub="Registro dei lotti ricevuti dalle API di ingestione, con l'esito riga per riga" />
+      <PageHead title="Importazioni" icon="import" sub="Caricamento delle anagrafiche da XLSX e registro di tutti i lotti ricevuti (file e API di ingestione), con l'esito riga per riga" />
+      <XlsxImport onDone={() => setF((x) => ({ ...x }))} />
+      <div className="section-title" style={{ marginTop: 22 }}><h2>Registro dei lotti</h2></div>
       <div className="filters">
         <Field label="Sorgente"><input value={f.source} onChange={(e) => setF({ ...f, source: e.target.value, page: 1 })} placeholder="contracts" /></Field>
         <Field label="Dataset"><input value={f.dataset} onChange={(e) => setF({ ...f, dataset: e.target.value, page: 1 })} placeholder="people" /></Field>

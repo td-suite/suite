@@ -182,3 +182,6 @@
 @media print {
   .ipm #td-banner, .ipm .syncchip {display: none !important; }
 }
+/* tabelle larghe (team, registro modifiche, carico di lavoro) scorrono in orizzontale su schermi stretti */
+.ipm .tbl-wrap { overflow-x: auto; max-width: 100%; }
+.ipm table.revlog td { padding: 3px 6px; vertical-align: top; }

@@ -40,7 +40,7 @@ const contractSchema = z.object({
 
 r.get('/contracts', ah(async (req, res) => {
   const P = new Params();
-  res.json(await many(`SELECT k.*, c.name AS company_name FROM royalty_contracts k JOIN companies c ON c.id=k.company_id
+  res.json(await many(`SELECT k.*, c.name AS company_name FROM royalty_contracts k JOIN companies_v c ON c.id=k.company_id
     WHERE ${isSuper(req.user) ? 'TRUE' : `k.company_id = ${P.add(req.user.company_id)}`} ORDER BY c.name, k.valid_from DESC`, P.values));
 }));
 
@@ -90,7 +90,7 @@ r.post('/contracts/:id/close', requireRole('SUPERADMIN'), ah(async (req, res) =>
 async function revenue(companyId, from, to) {
   const rep = await one(`SELECT coalesce(sum(r.cash_to_deposit + r.pos_total + r.transfer_total),0) AS gross,
       count(*) FILTER (WHERE r.status='DRAFT')::int AS drafts
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE s.company_id=$1 AND r.report_date BETWEEN $2 AND $3`, [companyId, from, to]);
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE s.company_id=$1 AND r.report_date BETWEEN $2 AND $3`, [companyId, from, to]);
   const ch = await one(`SELECT coalesce(sum(gross_amount),0) AS gross, coalesce(sum(franchisor_share),0) AS withheld
     FROM channel_revenues WHERE company_id=$1 AND rev_date BETWEEN $2 AND $3`, [companyId, from, to]);
   return { gross: Number(rep.gross), drafts: rep.drafts, channelsGross: Number(ch.gross), withheld: Number(ch.withheld) };
@@ -124,7 +124,7 @@ r.post('/statements', requireRole('SUPERADMIN'), ah(async (req, res) => {
   const d = parse(z.object({ period, company_ids: z.array(z.number().int()).optional() }), req.body);
   const { start, end } = monthRange(d.period);
   if (end >= todayRome()) throw bad('Il periodo non è ancora concluso');
-  const companies = await many(`SELECT DISTINCT c.id, c.name FROM companies c JOIN royalty_contracts k ON k.company_id=c.id
+  const companies = await many(`SELECT DISTINCT c.id, c.name FROM companies_v c JOIN royalty_contracts k ON k.company_id=c.id
     WHERE c.active AND ($1::int[] IS NULL OR c.id = ANY($1))`, [d.company_ids?.length ? d.company_ids : null]);
   const prefix = (await getSetting('royalty_invoice_prefix', 'RY')) || 'RY';
   const results = [];
@@ -159,7 +159,7 @@ r.get('/statements', ah(async (req, res) => {
   if (req.query.company_id) where.push(`st.company_id = ${P.add(Number(req.query.company_id))}`);
   if (req.query.status) where.push(`st.status = ANY(${P.add(String(req.query.status).split(','))})`);
   res.json(await many(`SELECT st.*, c.name AS company_name, c.iban IS NOT NULL AND c.sepa_mandate_id IS NOT NULL AS has_mandate, b.msg_id
-    FROM royalty_statements st JOIN companies c ON c.id=st.company_id LEFT JOIN sepa_batches b ON b.id=st.sepa_batch_id
+    FROM royalty_statements st JOIN companies_v c ON c.id=st.company_id LEFT JOIN sepa_batches b ON b.id=st.sepa_batch_id
     WHERE ${where.join(' AND ')} ORDER BY st.period_start DESC, c.name`, P.values));
 }));
 
@@ -180,8 +180,8 @@ r.get('/statements/:id/pdf', ah(async (req, res) => {
   if (!st) throw notFound();
   if (!['SUPERADMIN', 'ADMIN'].includes(req.user.role)) throw notFound();
   assertCompany(req.user, st.company_id);
-  const franchisor = await one('SELECT * FROM companies WHERE is_franchisor ORDER BY id LIMIT 1');
-  const debtor = await one('SELECT * FROM companies WHERE id=$1', [st.company_id]);
+  const franchisor = await one('SELECT * FROM companies_v WHERE is_franchisor ORDER BY id LIMIT 1');
+  const debtor = await one('SELECT * FROM companies_v WHERE id=$1', [st.company_id]);
   const doc = new PDFDocument({ size: 'A4', margin: 0 });
   doc.registerFont('R', path.join(ASSETS, 'LiberationSans-Regular.ttf'));
   doc.registerFont('B', path.join(ASSETS, 'LiberationSans-Bold.ttf'));
@@ -239,7 +239,7 @@ r.post('/sepa/batches', requireRole('SUPERADMIN'), ah(async (req, res) => {
   if (!creditor.name || !creditor.iban || !creditor.id) throw bad('Completa i dati del creditore SEPA in Impostazioni (ragione sociale, IBAN, Creditor Identifier)');
   if (!ibanValid(creditor.iban)) throw bad('IBAN del creditore non valido');
   const sts = await many(`SELECT st.*, c.name AS company_name, c.iban, c.bic, c.sepa_mandate_id, c.sepa_mandate_date, c.sepa_first_done
-    FROM royalty_statements st JOIN companies c ON c.id=st.company_id WHERE st.id = ANY($1)`, [d.statement_ids]);
+    FROM royalty_statements st JOIN companies_v c ON c.id=st.company_id WHERE st.id = ANY($1)`, [d.statement_ids]);
   const errors = [];
   for (const s of sts) {
     if (!['EMESSO', 'INSOLUTO'].includes(s.status)) errors.push(`${s.number}: stato ${s.status}`);
@@ -267,7 +267,7 @@ r.post('/sepa/batches', requireRole('SUPERADMIN'), ah(async (req, res) => {
       [msgId, d.collection_date, items.length, total, xml, req.user.id])).rows[0];
     for (const i of items) {
       await c.query(`UPDATE royalty_statements SET status='IN_ADDEBITO', sepa_batch_id=$2, sepa_end_to_end=$3 WHERE id=$1`, [i.statementId, b.id, i.endToEndId]);
-      await c.query('UPDATE companies SET sepa_first_done=TRUE WHERE id=$1', [i.companyId]);
+      await c.query('INSERT INTO org_ext (org_id, sepa_first_done) VALUES ($1, TRUE) ON CONFLICT (org_id) DO UPDATE SET sepa_first_done=TRUE, updated_at=now()', [i.companyId]);
     }
     return b;
   });

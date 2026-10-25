@@ -4,11 +4,11 @@ import { many, one, q } from '../db.js';
 import { sendMail, opsEmails } from './mailer.js';
 import { getSetting, itDate, todayRome } from './util.js';
 
-// Strutture (sedi e laboratorio) senza giacenza confermata per il mese
+// Sedi del network e laboratorio configurati in Ordini (riga di site_ext) senza giacenza confermata per il mese
 export async function pendingStockCounts(month) {
   return many(`SELECT s.id, s.name, s.code, s.kind, s.email, s.stock_deadline_day, c.status AS count_status, c.id AS count_id
-    FROM strutture s LEFT JOIN stock_counts c ON c.struttura_id=s.id AND c.month=$1::date
-    WHERE s.active AND s.kind IN ('SEDE','LAB') AND (c.id IS NULL OR c.status <> 'CONFERMATO') ORDER BY s.kind, s.name`, [`${month}-01`]);
+    FROM sites_v s LEFT JOIN stock_counts c ON c.struttura_id=s.id AND c.month=$1::date
+    WHERE s.active AND s.configured AND s.kind IN ('SEDE','LAB') AND (c.id IS NULL OR c.status <> 'CONFERMATO') ORDER BY s.kind, s.name`, [`${month}-01`]);
 }
 
 export async function runDailyAlerts({ force = false } = {}) {
@@ -35,7 +35,7 @@ export async function runDailyAlerts({ force = false } = {}) {
   }
   // 2. Ordini trasmessi da oltre N giorni senza conferma di ricezione
   const rDays = Number(await getSetting('receipt_reminder_days', '5'));
-  for (const o of await many(`SELECT o.id, o.number, o.delivered_at AS transmitted_at, s.name, s.email, s.id AS sid FROM orders o JOIN strutture s ON s.id=o.struttura_id WHERE o.status='CONSEGNATO' AND o.delivered_at < now() - ($1 || ' days')::interval`, [rDays])) {
+  for (const o of await many(`SELECT o.id, o.number, o.delivered_at AS transmitted_at, s.name, s.email, s.id AS sid FROM orders o JOIN sites_v s ON s.id=o.struttura_id WHERE o.status='CONSEGNATO' AND o.delivered_at < now() - ($1 || ' days')::interval`, [rDays])) {
     if (!o.email) continue;
     results.receipt.push({ order: o.number, ...(await sendMail({ kind: 'SOLLECITO_RICEZIONE', refKey: `RICEZIONE_SOLLECITO:${o.id}:${today}`, to: o.email, strutturaId: o.sid,
       subject: `Ordine ${o.number}: caricare il materiale consegnato nel magazzino interno`, title: 'Carico magazzino mancante',
@@ -43,7 +43,7 @@ export async function runDailyAlerts({ force = false } = {}) {
   }
   // 3. Ordini in attesa di verifica da oltre N giorni: riepilogo all'Area Operations
   const vDays = Number(await getSetting('verify_reminder_days', '2'));
-  const waiting = await many(`SELECT o.number, o.urgent, o.submitted_at, s.name FROM orders o JOIN strutture s ON s.id=o.struttura_id WHERE o.status='INVIATO' AND o.submitted_at < now() - ($1 || ' days')::interval ORDER BY o.urgent DESC, o.submitted_at`, [vDays]);
+  const waiting = await many(`SELECT o.number, o.urgent, o.submitted_at, s.name FROM orders o JOIN sites_v s ON s.id=o.struttura_id WHERE o.status='INVIATO' AND o.submitted_at < now() - ($1 || ' days')::interval ORDER BY o.urgent DESC, o.submitted_at`, [vDays]);
   const to = await opsEmails();
   if (waiting.length && to.length) {
     results.verify.push(await sendMail({ kind: 'RIEPILOGO_OPS', refKey: `RIEPILOGO_OPS:${today}`, to,

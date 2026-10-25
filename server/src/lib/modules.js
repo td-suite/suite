@@ -61,7 +61,9 @@ export async function moduleUser(key, suiteUser, { roleColumn = 'role', extraCol
   const legacySiteIds = siteIds.length
     ? (await many(`SELECT legacy_refs->>$2 AS ref FROM public.sites WHERE id = ANY($1::int[]) AND legacy_refs ? $2`, [siteIds, key])).map((r) => (/^\d+$/.test(r.ref) ? Number(r.ref) : r.ref))
     : [];
-  return { ...row, role, suite_user_id: suiteUser.id, suite_level: suiteUser.level, legacy_site_ids: legacySiteIds, active: true };
+  // site_ids: id delle sedi dell'anagrafica unica (public.sites) negli scope del grant. I moduli sull'anagrafica unica usano questi;
+  // legacy_site_ids resta per i moduli non ancora convertiti (id della sede nell'app di origine)
+  return { ...row, first_name: suiteUser.first_name, last_name: suiteUser.last_name, role, suite_user_id: suiteUser.id, suite_level: suiteUser.level, person_id: suiteUser.person_id || null, site_ids: siteIds, legacy_site_ids: legacySiteIds, active: true };
 }
 
 // Middleware: il modulo deve essere in MIRROR o LIVE e l'utente deve averne il grant; prepara req.moduleUser

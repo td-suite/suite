@@ -13,15 +13,15 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365 } 
   const base = (r) => ({ resource_id: r.id, resource_name: `${r.last_name} ${r.first_name}`, kind: r.kind });
 
   // Allegati con scadenza
-  const att = await many(`SELECT a.id, a.category, a.filename, a.expires_at, r.id, r.last_name, r.first_name, r.kind FROM attachments a JOIN resources r ON r.id=a.resource_id WHERE a.expires_at IS NOT NULL AND ${where}`, P);
+  const att = await many(`SELECT a.id, a.category, a.filename, a.expires_at, r.id, r.last_name, r.first_name, r.kind FROM attachments a JOIN resources_v r ON r.id=a.resource_id WHERE a.expires_at IS NOT NULL AND ${where}`, P);
   for (const a of att) items.push({ ...base(a), type: 'DOCUMENTO', title: `Scadenza ${CATEGORY_LABELS[a.category] || a.category}`, detail: a.filename, due_date: a.expires_at, ref: { attachment_id: a.id } });
 
   // Cessazioni programmate (decorrenza futura)
-  const term = await many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.terminated_at, r.termination_reason FROM resources r WHERE r.terminated_at IS NOT NULL AND r.terminated_at >= CURRENT_DATE AND ${where}`, P);
+  const term = await many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.terminated_at, r.termination_reason FROM resources_v r WHERE r.terminated_at IS NOT NULL AND r.terminated_at >= CURRENT_DATE AND ${where}`, P);
   for (const t of term) items.push({ ...base(t), type: 'CONTRATTO', title: 'Cessazione del rapporto', detail: TERMINATION_LABELS[t.termination_reason] || t.termination_reason || '', due_date: t.terminated_at });
 
   // Dipendenti: prova, fine contratto, scatti RAL, MBO
-  const emp = await many(`SELECT e.*, r.id, r.last_name, r.first_name, r.kind FROM employments e JOIN resources r ON r.id=e.resource_id WHERE ${where}`, P);
+  const emp = await many(`SELECT e.*, r.id, r.last_name, r.first_name, r.kind FROM employments e JOIN resources_v r ON r.id=e.resource_id WHERE ${where}`, P);
   for (const e of emp) {
     if (e.probation_end) items.push({ ...base(e), type: 'PROVA', title: 'Fine periodo di prova', due_date: e.probation_end });
     if (e.end_date) items.push({ ...base(e), type: 'CONTRATTO', title: e.contract_type === 'APPRENDISTATO' ? 'Fine periodo di apprendistato' : 'Scadenza contratto a termine', due_date: e.end_date });
@@ -33,7 +33,7 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365 } 
     }
   }
   // Liberi professionisti: scadenza/rinnovo incarico, polizza
-  const lps = await many(`SELECT l.*, r.id, r.last_name, r.first_name, r.kind FROM lp_contracts l JOIN resources r ON r.id=l.resource_id WHERE ${where}`, P);
+  const lps = await many(`SELECT l.*, r.id, r.last_name, r.first_name, r.kind FROM lp_contracts l JOIN resources_v r ON r.id=l.resource_id WHERE ${where}`, P);
   for (const l of lps) {
     if (l.end_date) {
       items.push({ ...base(l), type: 'CONTRATTO', title: l.auto_renew ? 'Scadenza incarico (rinnovo automatico salvo disdetta)' : 'Scadenza incarico', due_date: l.end_date });
@@ -42,13 +42,13 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365 } 
     if (l.insurance_expiry) items.push({ ...base(l), type: 'DOCUMENTO', title: 'Scadenza polizza RC professionale', detail: l.insurance_policy, due_date: l.insurance_expiry });
   }
   // Lettere di impegno aperte
-  const letters = await many(`SELECT c.*, r.id, r.last_name, r.first_name, r.kind FROM commitment_letters c JOIN resources r ON r.id=c.resource_id WHERE c.status IN ('BOZZA','INVIATA','ACCETTATA') AND ${resourceId ? 'r.id=$1' : 'TRUE'}`, P);
+  const letters = await many(`SELECT c.*, r.id, r.last_name, r.first_name, r.kind FROM commitment_letters c JOIN resources_v r ON r.id=c.resource_id WHERE c.status IN ('BOZZA','INVIATA','ACCETTATA') AND ${resourceId ? 'r.id=$1' : 'TRUE'}`, P);
   for (const c of letters) {
     if (c.valid_until && c.status !== 'ACCETTATA') items.push({ ...base(c), type: 'IMPEGNO', title: 'Scadenza validità lettera di impegno', due_date: c.valid_until, ref: { letter_id: c.id } });
     if (c.start_by) items.push({ ...base(c), type: 'IMPEGNO', title: 'Data ultima di presa servizio (lettera di impegno)', due_date: c.start_by, ref: { letter_id: c.id } });
   }
   // Scadenze manuali
-  const man = await many(`SELECT d.*, r.last_name, r.first_name, r.kind FROM deadlines d LEFT JOIN resources r ON r.id=d.resource_id WHERE NOT d.done AND ${resourceId ? 'd.resource_id=$1' : 'TRUE'}`, P);
+  const man = await many(`SELECT d.*, r.last_name, r.first_name, r.kind FROM deadlines d LEFT JOIN resources_v r ON r.id=d.resource_id WHERE NOT d.done AND ${resourceId ? 'd.resource_id=$1' : 'TRUE'}`, P);
   for (const d of man) items.push({ resource_id: d.resource_id, resource_name: d.resource_id ? `${d.last_name} ${d.first_name}` : null, kind: d.kind, type: 'MANUALE', title: d.title, detail: d.notes, due_date: d.due_date, ref: { deadline_id: d.id } });
 
   const t = today();

@@ -22,7 +22,7 @@ export default function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Buongiorno, {user.full_name.split(' ')[0]}</h1>
+          <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
           <div className="sub">Autorizzazioni al pagamento {d.year}: soglie {eur(d.thresholds.single)} (firma singola) e {eur(d.thresholds.joint)} (delibera CdA). Clicca su un numero per aprire l'elenco.</div>
         </div>
         {canManage(user) && <Link className="btn" to={`${base}/istanze/nuova`}>+ Nuova istanza</Link>}

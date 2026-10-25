@@ -42,7 +42,7 @@ export function Travaso() {
   const mirror = async (m) => { try { await api.post(`/travaso/${m.key}/mirror`); toast(`${m.name} torna in collaudo`); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title="Travaso moduli" icon="import" sub="Le app esistenti entrano nella Suite: schema dedicato, dati copiati dall'app originale, poi il passaggio definitivo quando i conteggi coincidono" />
+      <PageHead title="Travaso moduli" icon="import" sub="Moduli sull'anagrafica unica (Cash, Room, NC, Ordini, Retail, Contratti, Business, Integration): si avviano vuoti con un clic. Moduli indipendenti (Payments, Spedizioni): dati copiati dall'app originale, poi il passaggio definitivo quando i conteggi coincidono" />
       {loading && <Skeleton lines={6} />}
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="import" title="Nessun modulo da travasare" />}
@@ -53,21 +53,22 @@ export function Travaso() {
           <div key={m.key} className={`source-card ${m.mode !== 'OFF' ? 'on' : ''}`} style={{ borderLeftColor: m.mode === 'OFF' ? undefined : (m.mode === 'LIVE' ? 'var(--green)' : 'var(--amber)') }}>
             <div className="sc-head">
               <span className={`dot ${tone}`} aria-hidden="true" />
-              <div className="sc-title"><div className="n">{m.name}</div><div className="small muted">{m.last_copy_at ? `ultimo travaso ${timeAgo(m.last_copy_at)} · ${(stats.rows || 0).toLocaleString('it-IT')} righe` : 'nessun travaso eseguito'}</div></div>
+              <div className="sc-title"><div className="n">{m.name}</div><div className="small muted">{m.fresh ? (m.mode === 'LIVE' ? 'avviato vuoto sull\'anagrafica unica' : 'parte vuoto: sedi, persone e organizzazioni dall\'anagrafica unica') : m.last_copy_at ? `ultimo travaso ${timeAgo(m.last_copy_at)} · ${(stats.rows || 0).toLocaleString('it-IT')} righe` : 'nessun travaso eseguito'}</div></div>
               <Badge tone={tone} dot={false}>{m.running ? 'In corso' : label}</Badge>
             </div>
             {m.last_error && <div className="alert err small"><Icon name="alert" /><span>{m.last_error}</span></div>}
             <div className="row tight small muted" style={{ gap: 14 }}>
-              <span><Icon name={m.source_enabled ? 'check' : 'x'} style={{ width: 14, height: 14, verticalAlign: -2 }} /> database collegato</span>
+              {!m.fresh && <span><Icon name={m.source_enabled ? 'check' : 'x'} style={{ width: 14, height: 14, verticalAlign: -2 }} /> database collegato</span>}
               <span><Icon name={m.code_ready ? 'check' : 'x'} style={{ width: 14, height: 14, verticalAlign: -2 }} /> codice nella Suite</span>
               {m.live_since && <span>attivo dal {fmtDateTime(m.live_since)}</span>}
             </div>
             <div className="sc-actions">
-              {owner && m.mode !== 'LIVE' && <button className={`btn sm ${m.mode === 'OFF' ? '' : 'ghost'}`} disabled={busy[m.key] || !m.source_enabled || !m.code_ready} onClick={() => run(m)}><Icon name="import" />{busy[m.key] ? 'Travaso in corso' : m.mode === 'OFF' ? 'Avvia travaso' : 'Ripeti travaso'}</button>}
-              {m.mode !== 'OFF' && <button className="btn sm ghost" onClick={() => setCompare(m)}><Icon name="check" />Confronta conteggi</button>}
+              {owner && m.fresh && m.mode !== 'LIVE' && <button className="btn sm" disabled={busy[m.key] || !m.code_ready} onClick={() => run(m)}><Icon name="check" />{busy[m.key] ? 'Avvio in corso' : 'Avvia il modulo'}</button>}
+              {owner && !m.fresh && m.mode !== 'LIVE' && <button className={`btn sm ${m.mode === 'OFF' ? '' : 'ghost'}`} disabled={busy[m.key] || !m.source_enabled || !m.code_ready} onClick={() => run(m)}><Icon name="import" />{busy[m.key] ? 'Travaso in corso' : m.mode === 'OFF' ? 'Avvia travaso' : 'Ripeti travaso'}</button>}
+              {!m.fresh && m.mode !== 'OFF' && <button className="btn sm ghost" onClick={() => setCompare(m)}><Icon name="check" />Confronta conteggi</button>}
               {m.mode !== 'OFF' && <Link className="btn sm ghost" to={`/${m.key}`}><Icon name="external" />Apri nella Suite</Link>}
               {owner && m.mode === 'MIRROR' && <button className="btn sm" onClick={() => setConfirm({ title: `Attivare ${m.name} nella Suite?`, text: 'Da questo momento la Suite è la fonte dei dati del modulo: l\'app originale va messa in sola lettura o reindirizzata. La copia dall\'app originale si disattiva.', confirmText: 'Attiva nella Suite', go: () => live(m) })}><Icon name="check" />Passa a LIVE</button>}
-              {owner && m.mode === 'LIVE' && <button className="btn sm ghost danger" onClick={() => setConfirm({ title: `Riportare ${m.name} in collaudo?`, text: 'Le modifiche fatte nella Suite dopo il passaggio verranno sovrascritte al prossimo travaso.', danger: true, confirmText: 'Torna in collaudo', go: () => mirror(m) })}><Icon name="refresh" />Torna in collaudo</button>}
+              {owner && !m.fresh && m.mode === 'LIVE' && <button className="btn sm ghost danger" onClick={() => setConfirm({ title: `Riportare ${m.name} in collaudo?`, text: 'Le modifiche fatte nella Suite dopo il passaggio verranno sovrascritte al prossimo travaso.', danger: true, confirmText: 'Torna in collaudo', go: () => mirror(m) })}><Icon name="refresh" />Torna in collaudo</button>}
             </div>
           </div>
         );

@@ -36,7 +36,7 @@ export default function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Buongiorno, {user.full_name.split(' ')[0]}</h1>
+          <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
           <div className="sub">Organico di Toscana Diagnostica: {t.employees} dipendenti e {t.lp} liberi professionisti attivi{t.pending ? `, ${t.pending} in impegno` : ''}. Clicca su un numero o su un grafico per scendere nel dettaglio.</div>
         </div>
         {canWrite(user) && <Link className="btn" to={`${BASE}/risorse/nuova`}>+ Inserimento nuova risorsa</Link>}

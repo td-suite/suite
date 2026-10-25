@@ -231,9 +231,10 @@ export async function runImport({ source, dataset, buffer, filename, mapping, us
   for (const [k, h] of Object.entries(map)) if (h && !headers.includes(h)) throw bad(`La colonna "${h}" (${k}) non esiste nel file`);
   const g = (row, key) => (map[key] ? row[map[key]] : null);
   const errors = []; let ok = 0; let skipped = 0;
-  const sites = await many('SELECT id, code, name FROM sites');
+  const sites = await many('SELECT id, code, name, gipo_site_code, studiolab_code FROM sites_v WHERE active');
   const defaultSite = defaultSiteCode ? sites.find((x) => norm(x.code) === norm(defaultSiteCode)) || null : null;
-  const siteFind = (v) => { const s = norm(v); if (!s) return defaultSite; return sites.find((x) => norm(x.code) === s) || sites.find((x) => norm(x.name) === s) || sites.find((x) => norm(x.name).includes(s) || s.includes(norm(x.code))) || null; };
+  // riconoscimento della sede: codice Suite, codici nei gestionali (GIPO, StudioLab, impostazioni Retail della sede), poi nome
+  const siteFind = (v) => { const s = norm(v); if (!s) return defaultSite; return sites.find((x) => norm(x.code) === s) || sites.find((x) => x.gipo_site_code && norm(x.gipo_site_code) === s) || sites.find((x) => x.studiolab_code && norm(x.studiolab_code) === s) || sites.find((x) => norm(x.name) === s) || sites.find((x) => norm(x.name).includes(s) || s.includes(norm(x.code))) || null; };
   const lines = Object.fromEntries((await many('SELECT id, code, name FROM product_lines')).map((l) => [norm(l.code), l.id]));
   const lineGuess = (specialty, desc) => {
     const s = norm(`${specialty || ''} ${desc || ''}`);

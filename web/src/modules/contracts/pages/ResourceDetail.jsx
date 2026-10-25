@@ -4,7 +4,7 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canWrite, isAdmin, seesCosts } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, StatusBadge, Modal, PromptModal, ConfirmModal, useToast, Icon } from '../components/ui.jsx';
 import { PersonForm, EmploymentForm, LpForm } from '../components/forms.jsx';
-import { eur, itDate, itDateTime, bytes, age, CONTRACT, LEVEL_LABEL, LETTER_STATUS, DEADLINE_STATE, FEE_TYPE, FEE_VAT, SEX, TERMINATION_LABEL, today } from '../format.js';
+import { eur, itDate, itDateTime, bytes, age, CONTRACT, LEVEL_LABEL, LETTER_STATUS, DEADLINE_STATE, FEE_TYPE, FEE_VAT, SEX, TERMINATION_LABEL, PERSON_KIND, today } from '../format.js';
 
 const DOC_LABEL = { CONTRATTO: 'Lettera di assunzione', MBO: 'Piano MBO', LETTERA_IMPEGNO: 'Lettera di impegno', CONTRATTO_LP: 'Contratto LP' };
 
@@ -55,7 +55,7 @@ export default function ResourceDetail() {
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="row" style={{ gap: 8 }}><KindBadge kind={r.kind} /><StatusBadge status={r.status} />{r.area_name && <Badge tone="grey" title={r.area_path}>{r.area_name}</Badge>}{(r.extra_areas || []).map((x) => <Badge key={x.id} tone="grey" title={x.path}>{x.name}</Badge>)}</div>
+          <div className="row" style={{ gap: 8 }}><KindBadge kind={r.kind} />{r.person_kind && r.person_kind !== r.kind && <Badge tone="blue">{PERSON_KIND[r.person_kind] || r.person_kind}</Badge>}<StatusBadge status={r.status} />{r.area_name && <Badge tone="grey" title={r.area_path}>{r.area_name}</Badge>}{(r.extra_areas || []).map((x) => <Badge key={x.id} tone="grey" title={x.path}>{x.name}</Badge>)}</div>
           <h1 style={{ marginTop: 6 }}>{r.title ? `${r.title} ` : ''}{r.first_name} {r.last_name}</h1>
           <div className="sub">{isEmp ? `${r.job_title || 'Mansione n.d.'}${r.level ? ` · ${LEVEL_LABEL[r.level] || r.level}` : ''}${r.contract_type ? ` · ${CONTRACT[r.contract_type]}` : ''}` : `${r.discipline || 'Disciplina n.d.'} · libero professionista`}{r.manager_name ? ` · riporta a ${r.manager_name}` : ''}</div>
         </div>
@@ -64,6 +64,7 @@ export default function ResourceDetail() {
           {writer && isEmp && e?.mbo_enabled && <button className="btn ghost" onClick={() => generate('MBO')}><Icon name="file" />Genera MBO</button>}
           {writer && !isEmp && lp && <button className="btn" onClick={() => generate('CONTRATTO_LP')}><Icon name="file" />Genera contratto LP</button>}
           {writer && <button className="btn ghost" onClick={() => setModal('person')}><Icon name="edit" />Modifica anagrafica</button>}
+          <Link className="btn ghost" to={`/people/${r.id}`} title="Scheda della persona nell'anagrafica unica della Suite (Rubrica)">Apri in Rubrica</Link>
           <PrevNext list={siblings.data} id={r.id} />
         </div>
       </div>
@@ -75,13 +76,19 @@ export default function ResourceDetail() {
       {tab === 'scheda' && (<>
         <div className="grid g3 scheda" style={{ gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'stretch' }}>
           <Card title="Anagrafica">
+            <Row k="Tipo" v={PERSON_KIND[r.person_kind] || r.person_kind} />
             <Row k="Sesso" v={SEX[r.sex]} />
             <Row k="Nascita" v={[r.birth_place, itDate(r.birth_date), r.birth_date ? `(${age(r.birth_date)} anni)` : ''].filter(Boolean).join(' ')} />
+            <Row k="Nazionalità" v={r.nationality} />
             <Row k="Codice fiscale" v={r.tax_code} />
             <Row k="Partita IVA" v={r.vat_number} />
-            <Row k="Cellulare personale" v={r.phone} /><Row k="Telefono fisso" v={r.phone_office} /><Row k="Cellulare aziendale" v={r.mobile_company} />
+            <Row k="Cellulare personale" v={r.phone} /><Row k="Telefono fisso" v={[r.phone_office, r.phone_ext ? `int. ${r.phone_ext}` : ''].filter(Boolean).join(' · ')} /><Row k="Cellulare aziendale" v={r.mobile_company} />
             <Row k="Email" v={r.email} />
-            <Row k="Indirizzo" v={[r.address, r.zip, r.city, r.province ? `(${r.province})` : ''].filter(Boolean).join(' ')} />
+            <Row k="Residenza" v={[r.address, r.zip, r.city, r.province ? `(${r.province})` : ''].filter(Boolean).join(' ')} />
+            <Row k="Sede" v={r.site_name} />
+            {costs && <Row k="IBAN" v={r.iban} />}
+            <Row k={isEmp ? 'Matricola' : 'Codice interno'} v={r.badge_number} />
+            <Row k="Emergenze" v={r.emergency_contact} />
             <Row k="Area" v={r.area_path || r.area_name} />{(r.extra_areas || []).length > 0 && <Row k="Altre funzioni" v={r.extra_areas.map((x) => x.path).join(" | ")} />}
             <Row k="Riporta a" v={r.manager_id ? <Link to={`${BASE}/risorse/${r.manager_id}`}>{r.manager_name}</Link> : null} />
             <Row k="Approva ferie e permessi" v={r.approver_id ? <Link to={`${BASE}/risorse/${r.approver_id}`}>{r.approver_name}</Link> : r.manager_id ? <span>{r.manager_name} <span className="small muted">(responsabile)</span></span> : null} />
@@ -108,7 +115,7 @@ export default function ResourceDetail() {
                 <Row k="Decorrenza" v={itDate(e.start_date)} />
                 <Row k="Scadenza" v={itDate(e.end_date)} />
                 <Row k="Periodo di prova" v={`${e.probation}${e.probation_end ? ` (fino al ${itDate(e.probation_end)})` : ''}`} />
-                <Row k="Sede" v={e.work_site} />
+                <Row k="Sede di lavoro" v={e.work_site_name ? `${e.work_site_name}${e.work_site ? ` · ${e.work_site}` : ''}` : null} />
                 <Row k="Benefit" v={(e.benefits || []).length ? e.benefits.join('; ') : 'Nessuno'} />
                 <Row k="Smart working" v={e.smart_working ? 'Sì' : 'No'} />
                 <Row k="Data lettera" v={itDate(e.letter_date)} />
@@ -262,11 +269,12 @@ export default function ResourceDetail() {
 }
 
 function EditPerson({ r, onClose, onSaved }) {
-  const [v, setV] = useState({ ...r, extra_area_ids: (r.extra_areas || []).map((x) => x.id), job_title: r.kind === 'LP' ? (r.discipline || '') : (r.job_title || ''), birth_date: r.birth_date ? String(r.birth_date).slice(0, 10) : '', hired_at: r.hired_at ? String(r.hired_at).slice(0, 10) : '' });
+  const [v, setV] = useState({ ...r, kind: r.person_kind || r.kind, extra_area_ids: (r.extra_areas || []).map((x) => x.id), job_title: r.kind === 'LP' ? (r.discipline || '') : (r.job_title || ''), birth_date: r.birth_date ? String(r.birth_date).slice(0, 10) : '', hired_at: r.hired_at ? String(r.hired_at).slice(0, 10) : '' });
   const [err, setErr] = useState(null);
   const save = async () => {
     setErr(null);
-    const keys = ['last_name', 'first_name', 'sex', 'title', 'birth_place', 'birth_date', 'tax_code', 'vat_number', 'phone', 'phone_office', 'mobile_company', 'email', 'address', 'zip', 'city', 'province', 'area_id', 'manager_id', 'approver_id', 'notes', 'hired_at', 'job_title', 'extra_area_ids'];
+    // campi di public.people e di person_ext: il server li salva in un'unica transazione con audit PERSON_UPDATED della Suite
+    const keys = ['kind', 'last_name', 'first_name', 'sex', 'title', 'birth_place', 'birth_date', 'tax_code', 'vat_number', 'phone', 'phone_office', 'phone_ext', 'mobile_company', 'email', 'address', 'zip', 'city', 'province', 'iban', 'badge_number', 'nationality', 'emergency_contact', 'site_id', 'area_id', 'manager_id', 'approver_id', 'notes', 'hired_at', 'job_title', 'extra_area_ids'];
     const body = Object.fromEntries(keys.map((k) => [k, v[k] === '' ? null : v[k]]));
     try { await api.put(`/resources/${r.id}`, body); onSaved(); } catch (e) { setErr(e); }
   };

@@ -7,7 +7,7 @@ export default {
   kicker: 'Retail and Flow',
   area: 'RETAIL_FLOW',
   nav: [
-    { to: '', icon: 'home', label: 'Dashboard', end: true },
+    { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Clienti' },
     { to: 'clienti', icon: 'users', label: 'Clienti e profilazione', end: true },
     { to: 'clienti/b2b', icon: 'building', label: 'Aziende e strutture (B2B)' },

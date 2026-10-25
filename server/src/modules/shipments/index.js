@@ -20,7 +20,7 @@ const KEY = 'shipments';
 
 // Utente come lo vede il front-end dell'app: riga users del modulo + profilo Suite + lingua della Suite
 const publicUser = (u, suiteUser) => ({
-  id: u.id, email: u.email, full_name: u.full_name, role: u.role, lang: suiteUser?.lang || u.lang || 'it',
+  id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, lang: suiteUser?.lang || u.lang || 'it',
   active: true, auth_provider: suiteUser?.auth_provider || u.auth_provider, totp_enabled: Boolean(suiteUser?.totp_enabled),
   suite_user_id: u.suite_user_id, suite_level: u.suite_level, legacy_site_ids: u.legacy_site_ids || [],
 });

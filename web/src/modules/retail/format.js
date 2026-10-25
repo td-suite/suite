@@ -36,7 +36,11 @@ export const ROLE_HELP = {
 export const KIND = { B2C: { label: 'B2C', tone: 'teal' }, B2B: { label: 'B2B', tone: 'mauve' } };
 export const SEGMENT = { NUOVO: { label: 'Nuovo', tone: 'blue' }, RICORRENTE: { label: 'Ricorrente', tone: 'green' }, OCCASIONALE: { label: 'Occasionale', tone: 'grey' }, DORMIENTE: { label: 'Dormiente', tone: 'red' }, MAI: { label: 'Senza acquisti', tone: 'grey' } };
 export const SEX = { F: 'Donna', M: 'Uomo' };
-export const SITE_KIND = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', HEADQUARTER: 'Sede direzionale' };
+// Tipologie di sede dell'anagrafica unica della Suite (public.sites.kind)
+export const SITE_KIND = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', SERVICE: 'Struttura service', HEADQUARTER: 'Sede direzionale', ALTRO: 'Altro' };
+// Percorsi dell'anagrafica unica in Amministrazione
+export const ADMIN_SITES = '/admin/sites';
+export const ADMIN_PERSON = (id) => `/people/${id}`;
 export const CHANNEL = { WEB: 'Sito web', TUOTEMPO: 'TuoTempo', APP: 'App', TELEFONO: 'Telefono / call center', SPORTELLO: 'Sportello', MMG: 'Medico di base', CUP: 'CUP', AZIENDA: 'Azienda (B2B)', CONVENZIONE: 'Convenzione', PASSAPAROLA: 'Passaparola', CAMPAGNA: 'Campagna', ALTRO: 'Altro' };
 export const PAYMENT = { PRIVATO: 'Privato', SSN: 'SSN', CONVENZIONE: 'Convenzione', ASSICURAZIONE: 'Assicurazione', FONDO: 'Fondo sanitario', AZIENDA: 'Azienda' };
 export const B2B_TYPE = { AZIENDA: 'Azienda (medicina del lavoro / welfare)', STRUTTURA: 'Struttura sanitaria', LABORATORIO: 'Laboratorio (service)', ASSICURAZIONE: 'Assicurazione', FONDO: 'Fondo sanitario', MMG: 'Medico / studio medico', FARMACIA: 'Farmacia', VETERINARIO: 'Veterinario', INTERNO: 'Interno (sedi TD, convenzioni interne)' };

@@ -6,6 +6,7 @@ import { one, many, q } from '../db.js';
 import { LEGACY_KEYS } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
+import { FRESH_MODULES } from '../lib/travaso.js';
 import { listSources, syncSource, syncAll, getCockpit, getCounters, sourceEnabled, resetSource, legacyQuery } from '../lib/legacy.js';
 import { setSecret, secretStatus, onSecretChange } from '../lib/secrets.js';
 import { requireOwner } from '../lib/access.js';
@@ -23,7 +24,8 @@ onSecretChange((name) => {
 const r = Router();
 
 // ---- Sorgenti legacy (stato e sincronizzazione)
-r.get('/legacy/sources', requireAdmin, ah(async (_req, res) => res.json(await listSources())));
+// Solo i moduli che si travasano dall'app di origine: quelli sull'anagrafica unica partono vuoti
+r.get('/legacy/sources', requireAdmin, ah(async (_req, res) => res.json((await listSources()).filter((s) => !FRESH_MODULES.includes(s.key)))));
 
 // Stato delle credenziali impostabili dall'Amministrazione (solo titolare per vedere la provenienza e modificare)
 r.get('/legacy/sources/:key/credential', requireOwner, ah(async (req, res) => {
@@ -82,26 +84,7 @@ r.post('/legacy/sync-all', requireAdmin, ah(async (req, res) => {
   res.json(out);
 }));
 
-// ---- Riconciliazione: elementi da verificare e possibili duplicati (pg_trgm, somiglianza > 0.6)
-r.get('/legacy/review', requireAdmin, ah(async (_req, res) => {
-  const sites = await many(`SELECT s.*, o.name AS organization_name FROM sites s LEFT JOIN organizations o ON o.id = s.organization_id WHERE s.needs_review ORDER BY s.name`);
-  const people = await many(`SELECT p.id, p.kind, p.status, p.last_name, p.first_name, p.email, p.area, p.job_title, p.legacy_refs, s.name AS site_name FROM people p LEFT JOIN sites s ON s.id = p.site_id WHERE p.needs_review ORDER BY p.last_name, p.first_name`);
-  const organizations = await many(`SELECT * FROM organizations WHERE needs_review ORDER BY name`);
-  const siteDuplicates = await many(`
-    SELECT a.id AS id_a, a.code AS code_a, a.name AS name_a, a.city AS city_a, b.id AS id_b, b.code AS code_b, b.name AS name_b, b.city AS city_b, round(similarity(lower(a.name), lower(b.name))::numeric, 2) AS score
-      FROM sites a JOIN sites b ON a.id < b.id AND similarity(lower(a.name), lower(b.name)) > 0.6
-     ORDER BY score DESC LIMIT 200`);
-  const peopleDuplicates = await many(`
-    SELECT a.id AS id_a, a.last_name || ' ' || a.first_name AS name_a, a.email AS email_a, b.id AS id_b, b.last_name || ' ' || b.first_name AS name_b, b.email AS email_b,
-           round(similarity(lower(a.last_name || ' ' || a.first_name), lower(b.last_name || ' ' || b.first_name))::numeric, 2) AS score
-      FROM people a JOIN people b ON a.id < b.id AND similarity(lower(a.last_name || ' ' || a.first_name), lower(b.last_name || ' ' || b.first_name)) > 0.6
-     ORDER BY score DESC LIMIT 200`);
-  const orgDuplicates = await many(`
-    SELECT a.id AS id_a, a.name AS name_a, a.vat_number AS vat_a, b.id AS id_b, b.name AS name_b, b.vat_number AS vat_b, round(similarity(lower(a.name), lower(b.name))::numeric, 2) AS score
-      FROM organizations a JOIN organizations b ON a.id < b.id AND similarity(lower(a.name), lower(b.name)) > 0.6
-     ORDER BY score DESC LIMIT 200`);
-  res.json({ sites, people, organizations, duplicates: { sites: siteDuplicates, people: peopleDuplicates, organizations: orgDuplicates } });
-}));
+// Riconciliazione rimossa (25/10/2026): la Suite parte vuota, le anagrafiche si caricano da Amministrazione
 
 // ---- Cockpit direzionale (modulo cockpit o amministratori) e contatori dei widget
 r.get('/cockpit', ah(async (req, res) => {

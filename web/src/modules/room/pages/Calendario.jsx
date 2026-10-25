@@ -26,7 +26,7 @@ export default function Calendario() {
   const eventi = ev.data || [];
   const week = useMemo(() => (net ? datedWeek(net, eventi, monday, { sedeId: sedeId || undefined, key: key || undefined }) : null), [net, eventi, monday, sedeId, key]);
   const canEdit = user.role !== 'VIEWER';
-  const label = sedeId ? sedeLabel(strutture.data.find((s) => s.id === sedeId)) : key ? net?.byKey[key]?.nome || 'professionista' : 'tutte le sedi';
+  const label = sedeId ? sedeLabel(strutture.data.find((s) => s.id === sedeId) || {}) : key ? net?.byKey[key]?.nome || 'professionista' : 'tutte le sedi';
   const weekEvents = eventi.filter((e) => e.al >= monday && e.dal <= addDays(monday, 6) && (!sedeId || !e.sede_id || e.sede_id === sedeId) && (!key || !e.persona_key || e.persona_key === key));
   const del = async (e) => { if (!window.confirm(`Eliminare ${KIND[e.kind].toLowerCase()} ${e.persona_nome || ''} dal ${itDate(e.dal)} al ${itDate(e.al)}?`)) return; try { await api.del(`/calendario/eventi/${e.id}`); toast('Evento eliminato'); ev.reload(); } catch (e2) { toast(e2.message, 'err'); } };
   return (
@@ -56,7 +56,7 @@ export default function Calendario() {
           <b style={{ marginLeft: 8 }}>{itDate(monday)} – {itDate(addDays(monday, 6))}</b>
         </>}
         <span className="spacer" />
-        <select value={sedeId} onChange={(e) => { const v = e.target.value; setSedeId(v); if (v && key && !(net?.byKey[key]?.sedi || []).some((z) => z.sedeId === v)) setKey(''); }} style={{ width: 'auto', minWidth: 200 }}><option value="">Tutte le sedi</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
+        <select value={sedeId} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : ''; setSedeId(v); if (v && key && !(net?.byKey[key]?.sedi || []).some((z) => z.sedeId === v)) setKey(''); }} style={{ width: 'auto', minWidth: 200 }}><option value="">Tutte le sedi</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
         <select value={key} onChange={(e) => setKey(e.target.value)} style={{ width: 'auto', minWidth: 200 }}><option value="">{sedeId ? 'Tutti i professionisti della sede' : 'Tutti i professionisti'}</option>{(net?.specialisti || []).filter((x) => !x.attivita && (!sedeId || x.sedi.some((z) => z.sedeId === sedeId))).map((x) => <option key={x.key} value={x.key}>{x.nome}</option>)}</select>
       </div></div>
       {!week ? <Loading /> : view === 'giorno' ? <DayView g={week.giorni.find((x) => x.iso === day)} sedeId={sedeId} canEdit={canEdit} onSess={(q) => setModal({ sess: q })} onChiusura={(c) => canEdit && setModal({ evento: c.evento })} onDay={(iso) => goDay(iso)} /> : (
@@ -150,7 +150,7 @@ function EventoModal({ evento, sess, net, strutture, onClose, onSaved, toast }) 
   const [err, setErr] = useState(null);
   const subs = useMemo(() => (sess ? suggestSubstitutes(net, sess) : []), [net, sess]);
   const spec = net?.specialisti.filter((x) => !x.attivita) || [];
-  const sedeRooms = (strutture.find((s) => s.id === e.sede_id) || {}).ambulatori || [];
+  const sedeRooms = (strutture.find((s) => String(s.id) === String(e.sede_id)) || {}).ambulatori || [];
   const set = (k, v) => setE((x) => ({ ...x, [k]: v }));
   const pickPersona = (k) => { const x = net.byKey[k]; set('persona_key', k); setE((z) => ({ ...z, persona_key: k, persona_nome: x ? x.nome : '', persona_id: x && x.sedi[0] ? x.sedi[0].persona.id : '' })); };
   const save = async () => {
@@ -165,7 +165,7 @@ function EventoModal({ evento, sess, net, strutture, onClose, onSaved, toast }) 
       <div className="form-grid">
         <Field label="Tipo"><select value={e.kind} onChange={(ev) => set('kind', ev.target.value)}>{Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         {e.kind !== 'CHIUSURA' && <Field label="Professionista"><select value={e.persona_key} onChange={(ev) => pickPersona(ev.target.value)}><option value="">— scegli —</option>{spec.map((x) => <option key={x.key} value={x.key}>{x.nome} · {x.discipline.join(', ') || x.profili.join(', ')}</option>)}</select></Field>}
-        <Field label={e.kind === 'ASSENZA' ? 'Vale per la sede' : 'Sede'}><select value={e.sede_id || ''} onChange={(ev) => set('sede_id', ev.target.value)}>{e.kind === 'ASSENZA' && <option value="">Tutte le sedi</option>}{e.kind !== 'ASSENZA' && <option value="">— scegli —</option>}{strutture.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select></Field>
+        <Field label={e.kind === 'ASSENZA' ? 'Vale per la sede' : 'Sede'}><select value={e.sede_id || ''} onChange={(ev) => set('sede_id', ev.target.value ? Number(ev.target.value) : '')}>{e.kind === 'ASSENZA' && <option value="">Tutte le sedi</option>}{e.kind !== 'ASSENZA' && <option value="">— scegli —</option>}{strutture.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select></Field>
         <Field label="Dal"><input type="date" value={e.dal} onChange={(ev) => set('dal', ev.target.value)} /></Field>
         <Field label="Al"><input type="date" value={e.al} onChange={(ev) => set('al', ev.target.value)} /></Field>
         {e.kind === 'SESSIONE_EXTRA' && <>

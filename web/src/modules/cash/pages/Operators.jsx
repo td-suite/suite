@@ -12,7 +12,7 @@ export default function Operators() {
   const toast = useToast();
   const { company, Selector } = useCompany();
   const list = useApi(user.role === 'SUPERADMIN' && company ? `/users?company_id=${company}` : '/users');
-  const sites = useApi('/sites');
+  const sites = useApi('/sites?all=1');
   const [edit, setEdit] = useState(null);
   const [err, setErr] = useState(null);
   const siteName = (id) => sites.data?.find((s) => s.id === id)?.name || `#${id}`;

@@ -69,7 +69,6 @@ function sectionFor(pathname, user) {
         { to: '/admin/people', icon: 'user', label: 'Persone' },
         { group: 'Dati' },
         { to: '/admin/legacy', icon: 'refresh', label: 'Sorgenti legacy' },
-        { to: '/admin/review', icon: 'check', label: 'Riconciliazione' },
         { to: '/admin/travaso', icon: 'import', label: 'Travaso moduli' },
         { to: '/admin/imports', icon: 'import', label: 'Importazioni' },
         { group: 'Controllo' },
@@ -124,11 +123,10 @@ export function TopBar({ onMenu, hasSide }) {
     <header className="topbar">
       {hasSide && <button className="topbtn side-toggle" onClick={onMenu} aria-label="Apri il menu della sezione"><Icon name="menu" /></button>}
       <Link to="/" className="brand" aria-label="Home Suite TD"><img src="/logo-light.svg" alt="Toscana Diagnostica" /><span className="app-name">Suite</span></Link>
-      <div className="mid">
-        <button className="mini-search" onClick={() => navigate('/search')} aria-label="Ricerca globale"><Icon name="search" /><span>Cerca in Toscana Diagnostica</span><kbd>/</kbd></button>
-      </div>
+      <div className="mid" />
       <div className="tools">
         <Link to="/" className="topbtn" aria-label="Home"><Icon name="home" /></Link>
+        <button className="topbtn" onClick={() => navigate('/search')} aria-label="Ricerca (tasto /)" title="Ricerca · tasto /"><Icon name="search" /></button>
         <Notifications />
         <button className="topbtn" onClick={toggle} aria-label={isDark ? 'Passa al tema chiaro' : 'Passa al tema scuro'}><Icon name={isDark ? 'sunLight' : 'moon'} /></button>
         <div style={{ position: 'relative' }}>

@@ -46,6 +46,7 @@ export function baseData(s) {
 const trace = (c, label) => `${label} ${c.protocol || `#${c.id}`} · versione ${c.version} · documento generato da Toscana Diagnostica · Business il ${itDateTime(new Date())}`;
 
 // ---------------- Contratti ----------------
+// p è la riga di orgs_v: dati anagrafici da public.organizations (name, vat, street, city, prov, pec, sdi) e campi Business da org_ext
 function partnerData(p, prefix) {
   return {
     [`${prefix}_name`]: p.name, [`${prefix}_street`]: nz(p.street), [`${prefix}_zip`]: nz(p.zip), [`${prefix}_city`]: nz(p.city), [`${prefix}_prov`]: nz(p.prov),
@@ -60,7 +61,7 @@ export function contractData(c, p, s) {
   const base = baseData(s);
   const common = { protocol: c.protocol || 'bozza', proposal_date: itDate(c.proposal_date), trace_line: trace(c, 'Proposta') };
   if (c.kind === 'PP') {
-    const site = d.site || {};
+    const site = c.site || {};
     const years = d.duration_years || s.pp_duration_years || 3;
     return {
       ...base, ...common, ...partnerData(p, 'partner'),
@@ -116,7 +117,7 @@ export const CONTRACT_DOCNAME = { PP: 'Contratto_Punto_Prelievi', SRV: 'Offerta_
 // ---------------- Fascicolo di autorizzazione ----------------
 const DAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 export function dossierData(dossier, c, p, s) {
-  const d = c.data || {}; const site = d.site || {}; const x = dossier.extra || {};
+  const site = c.site || {}; const x = dossier.extra || {};
   const base = baseData(s);
   const docDate = dossier.doc_date ? itDate(dossier.doc_date) : itDate(new Date().toISOString());
   const hours = {};

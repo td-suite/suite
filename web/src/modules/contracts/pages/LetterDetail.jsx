@@ -36,7 +36,7 @@ export default function LetterDetail() {
   const save = async () => {
     const body = { ...edit }; for (const k of Object.keys(body)) if (body[k] === '') body[k] = null;
     body.ral_steps = (body.ral_steps || []).filter((s) => s.from && s.ral);
-    const keys = ['letter_date', 'start_by', 'valid_until', 'level', 'qualification', 'job_title', 'weekly_hours', 'autonomous_hours', 'ral', 'ral_steps', 'mbo_enabled', 'mbo_pct', 'work_site', 'contract_type', 'notes'];
+    const keys = ['letter_date', 'start_by', 'valid_until', 'level', 'qualification', 'job_title', 'weekly_hours', 'autonomous_hours', 'ral', 'ral_steps', 'mbo_enabled', 'mbo_pct', 'work_site_id', 'contract_type', 'notes'];
     try { await api.put(`/scouting/letters/${id}`, Object.fromEntries(keys.map((k) => [k, body[k]]))); setEdit(null); toast('Lettera aggiornata: rigenera il documento per aggiornare DOCX e PDF'); d.reload(); } catch (e) { toast(e.message, 'err'); }
   };
   return (
@@ -62,7 +62,7 @@ export default function LetterDetail() {
             <tr><td className="muted">Orario</td><td>{l.weekly_hours} ore{l.autonomous_hours ? ' · autonomia di orario' : ''}</td></tr>
             <tr><td className="muted">RAL</td><td>{eur(l.ral)}{(l.ral_steps || []).map((s, i) => <div key={i} className="small muted">dal {itDate(s.from)}: {eur(s.ral)}</div>)}</td></tr>
             {l.mbo_enabled && <tr><td className="muted">MBO</td><td>fino al {l.mbo_pct}% della RAL</td></tr>}
-            <tr><td className="muted">Sede</td><td>{l.work_site}</td></tr>
+            <tr><td className="muted">Sede di lavoro</td><td>{l.work_site_name || <span className="muted">sede legale</span>}</td></tr>
             <tr><td className="muted">Decorrenza</td><td>non oltre il {itDate(l.start_by)}</td></tr>
             <tr><td className="muted">Validità proposta</td><td>{itDate(l.valid_until) || '–'}</td></tr>
             {l.accepted_at && <tr><td className="muted">Accettata il</td><td>{itDate(l.accepted_at)}</td></tr>}

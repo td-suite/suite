@@ -26,9 +26,9 @@ function companyOf(req) {
 r.get('/safe', ah(async (req, res) => {
   const cid = companyOf(req);
   const rows = await many(`SELECT r.id, r.report_date, r.envelope_code, r.cash_to_deposit, r.verified_amount, r.verified_at, s.name AS site_name, s.code AS site_code, u.full_name AS verified_by_name
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id LEFT JOIN users u ON u.id=r.verified_by
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id LEFT JOIN users u ON u.id=r.verified_by
     WHERE s.company_id=$1 AND r.status='VERIFIED' AND r.deposit_id IS NULL ORDER BY r.report_date, s.name`, [cid]);
-  const pending = await one(`SELECT count(*)::int AS n, coalesce(sum(r.cash_to_deposit),0) AS amount FROM cash_reports r JOIN sites s ON s.id=r.site_id
+  const pending = await one(`SELECT count(*)::int AS n, coalesce(sum(r.cash_to_deposit),0) AS amount FROM cash_reports r JOIN sites_v s ON s.id=r.site_id
     WHERE s.company_id=$1 AND r.status IN ('CLOSED','PROCESSED','PICKED_UP')`, [cid]);
   res.json({ reports: rows, total: r2(rows.reduce((a, x) => a + Number(x.verified_amount), 0)), pending_count: pending.n, pending_amount: Number(pending.amount) });
 }));
@@ -41,7 +41,7 @@ r.get('/', ah(async (req, res) => {
   res.json(await many(`SELECT d.id, d.company_id, d.number, d.deposit_date, d.total_amount, d.envelopes, d.operator_name, d.picked_at, d.status, d.bank_amount, d.bank_date, d.bank_reference, d.notes, d.created_at,
       c.name AS company_name, u.full_name AS created_by_name, (SELECT count(*)::int FROM cash_reports r WHERE r.deposit_id=d.id) AS reports_count,
       ba.label AS bank_account_label, ba.iban AS bank_account_iban, ub.full_name AS bank_confirmed_by_name
-    FROM cash_deposits d JOIN companies c ON c.id=d.company_id LEFT JOIN users u ON u.id=d.created_by LEFT JOIN company_bank_accounts ba ON ba.id=d.bank_account_id LEFT JOIN users ub ON ub.id=d.bank_confirmed_by
+    FROM cash_deposits d JOIN companies_v c ON c.id=d.company_id LEFT JOIN users u ON u.id=d.created_by LEFT JOIN company_bank_accounts ba ON ba.id=d.bank_account_id LEFT JOIN users ub ON ub.id=d.bank_confirmed_by
     WHERE ${where.join(' AND ')} ORDER BY d.deposit_date DESC, d.id DESC LIMIT 500`, P.values));
 }));
 
@@ -54,8 +54,8 @@ async function loadDeposit(req, id) {
 async function fullDeposit(id) {
   const d = await one(`SELECT d.id, d.company_id, d.number, d.deposit_date, d.total_amount, d.envelopes, d.operator_name, d.picked_at, d.status, d.bank_amount, d.bank_date, d.bank_reference, d.bank_account_id, d.notes, d.created_at,
       c.name AS company_name, u.full_name AS created_by_name, (d.slip_pdf IS NOT NULL) AS has_pdf, ba.label AS bank_account_label, ba.iban AS bank_account_iban, ub.full_name AS bank_confirmed_by_name
-    FROM cash_deposits d JOIN companies c ON c.id=d.company_id LEFT JOIN users u ON u.id=d.created_by LEFT JOIN company_bank_accounts ba ON ba.id=d.bank_account_id LEFT JOIN users ub ON ub.id=d.bank_confirmed_by WHERE d.id=$1`, [id]);
-  d.reports = await many(`SELECT r.id, r.report_date, r.envelope_code, r.cash_to_deposit, r.verified_amount, s.name AS site_name FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE r.deposit_id=$1 ORDER BY r.report_date, s.name`, [id]);
+    FROM cash_deposits d JOIN companies_v c ON c.id=d.company_id LEFT JOIN users u ON u.id=d.created_by LEFT JOIN company_bank_accounts ba ON ba.id=d.bank_account_id LEFT JOIN users ub ON ub.id=d.bank_confirmed_by WHERE d.id=$1`, [id]);
+  d.reports = await many(`SELECT r.id, r.report_date, r.envelope_code, r.cash_to_deposit, r.verified_amount, s.name AS site_name FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE r.deposit_id=$1 ORDER BY r.report_date, s.name`, [id]);
   d.events = await many('SELECT e.*, u.full_name FROM deposit_events e LEFT JOIN users u ON u.id=e.user_id WHERE deposit_id=$1 ORDER BY at', [id]);
   return d;
 }
@@ -80,7 +80,7 @@ r.post('/', ah(async (req, res) => {
   if (dupSite) throw bad(`Il codice ${dupSite.envelope_code} è già usato da una busta di sede`);
   const dupDep = await one(`SELECT number FROM cash_deposits WHERE envelopes @> ANY(SELECT jsonb_build_array(jsonb_build_object('code', c)) FROM unnest($1::text[]) c) LIMIT 1`, [codes]);
   if (dupDep) throw bad(`Uno dei codici busta è già usato nel versamento ${dupDep.number}`);
-  const reports = await many(`SELECT r.*, s.name AS site_name, s.company_id FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE r.id = ANY($1)`, [d.report_ids]);
+  const reports = await many(`SELECT r.*, s.name AS site_name, s.company_id FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE r.id = ANY($1)`, [d.report_ids]);
   if (reports.length !== d.report_ids.length) throw bad('Alcuni rendiconti non esistono');
   for (const rep of reports) {
     if (rep.company_id !== cid) throw bad(`Rendiconto ${rep.site_name} ${rep.report_date} di un'altra azienda`);
@@ -89,7 +89,7 @@ r.post('/', ah(async (req, res) => {
   const total = r2(reports.reduce((a, x) => a + Number(x.verified_amount), 0));
   const envTotal = d.envelopes.some((e) => e.amount != null) ? r2(d.envelopes.reduce((a, e) => a + Number(e.amount || 0), 0)) : null;
   if (envTotal != null && envTotal !== total) throw bad(`La somma delle buste (${eur(envTotal)}) non coincide con il totale dei rendiconti (${eur(total)})`);
-  const company = await one('SELECT * FROM companies WHERE id=$1', [cid]);
+  const company = await one('SELECT * FROM companies_v WHERE id=$1', [cid]);
   const dep = await tx(async (c) => {
     await c.query('LOCK TABLE cash_deposits IN SHARE ROW EXCLUSIVE MODE');
     const year = d.deposit_date.slice(0, 4);
@@ -111,7 +111,7 @@ r.post('/', ah(async (req, res) => {
 
 r.get('/:id/pdf', ah(async (req, res) => {
   const d = await loadDeposit(req, Number(req.params.id));
-  const company = await one('SELECT * FROM companies WHERE id=$1', [d.company_id]);
+  const company = await one('SELECT * FROM companies_v WHERE id=$1', [d.company_id]);
   const full = await fullDeposit(d.id);
   // rigenerato a ogni richiesta così riporta ritiro e accredito aggiornati
   const pdf = await buildDepositPdf({ deposit: full, company, reports: full.reports, preparedBy: full.created_by_name });

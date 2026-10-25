@@ -3,7 +3,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, todayRome, eur, itDate } from '../lib/util.js';
-import { Params, siteScope, assertSite, isAdmin, requireRole, REVIEW_ROLES, canCount } from '../lib/access.js';
+import { Params, siteScope, assertSite, isAdmin, requireRole, REVIEW_ROLES, canCount, hasGrantSiteSql } from '../lib/access.js';
 import { BANKNOTES, COINS, DENOMS, dkey, CIRCUITS, computeTotals, STATUS_LABEL } from '../lib/cash.js';
 import multer from 'multer';
 import { pdfText } from '../lib/pdftext.js';
@@ -22,7 +22,7 @@ async function event(c, reportId, ev, detail, userId) {
 
 async function loadReport(user, id) {
   const rep = await one(`SELECT r.*, s.company_id, s.name AS site_name, s.code AS site_code FROM cash_reports r
-    JOIN sites s ON s.id=r.site_id WHERE r.id=$1`, [id]);
+    JOIN sites_v s ON s.id=r.site_id WHERE r.id=$1`, [id]);
   if (!rep) throw notFound('Rendiconto non trovato');
   await assertSite(user, rep.site_id);
   return rep;
@@ -37,7 +37,7 @@ async function fullReport(id) {
       (r.slip_pdf IS NOT NULL) AS has_pdf, vu.full_name AS verified_by_name, dep.number AS deposit_number, dep.status AS deposit_status,
       s.name AS site_name, s.code AS site_code, s.company_id, c.name AS company_name, c.code AS company_code,
       pu.full_name AS processed_by_name, cu.full_name AS created_by_name
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id
     LEFT JOIN users pu ON pu.id=r.processed_by LEFT JOIN users cu ON cu.id=r.created_by LEFT JOIN users vu ON vu.id=r.verified_by LEFT JOIN users ou ON ou.id=r.operator_id
     LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id WHERE r.id=$1`, [id]);
   const den = await many('SELECT denom, qty FROM report_denominations WHERE report_id=$1', [id]);
@@ -68,7 +68,7 @@ r.get('/', ah(async (req, res) => {
       (r.cash_to_deposit + r.pos_total + r.transfer_total) AS day_total,
       s.name AS site_name, s.code AS site_code, c.name AS company_name, c.id AS company_id,
       (SELECT count(*)::int FROM nonconformities n WHERE n.report_id=r.id AND n.status<>'CHIUSA') AS open_nc
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id LEFT JOIN users ou ON ou.id=r.operator_id
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id LEFT JOIN users ou ON ou.id=r.operator_id
     WHERE ${where.join(' AND ')} ORDER BY r.report_date DESC, s.name, ou.full_name LIMIT ${limit}`, P.values));
 }));
 
@@ -91,7 +91,7 @@ r.post('/', countOnly, ah(async (req, res) => {
   let operatorId = req.user.id;
   if (d.operator_id && d.operator_id !== req.user.id) {
     if (!isAdmin(req.user)) throw forbidden('Puoi aprire solo la tua cassa');
-    const op = await one(`SELECT u.id FROM users u JOIN user_sites us ON us.user_id=u.id WHERE u.id=$1 AND us.site_id=$2 AND u.active AND u.role='OPERATOR'`, [d.operator_id, site.id]);
+    const op = await one(`SELECT u.id FROM users u WHERE u.id=$1 AND u.active AND u.role='OPERATOR' AND ${hasGrantSiteSql('u.email', '$2::int')}`, [d.operator_id, site.id]);
     if (!op) throw bad('Operatore non assegnato a questa sede');
     operatorId = d.operator_id;
   }
@@ -183,7 +183,7 @@ r.post('/:id/envelope', countOnly, ah(async (req, res) => {
     code = d.code.toUpperCase();
     if (!ENVELOPE_RE.test(code)) throw bad('Codice busta non valido: 6-40 caratteri, lettere, numeri o trattino');
     if (code !== d.confirm.toUpperCase()) throw bad('I due codici busta non coincidono');
-    const dup = await one('SELECT r.report_date, s.name FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE envelope_code=$1', [code]);
+    const dup = await one('SELECT r.report_date, s.name FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE envelope_code=$1', [code]);
     if (dup) throw bad(`Busta ${code} già usata: ${dup.name}, ${dup.report_date}`);
   }
   await tx(async (c) => {
@@ -211,8 +211,8 @@ r.post('/:id/process', countOnly, ah(async (req, res) => {
   const rep = await loadReport(req.user, Number(req.params.id));
   if (rep.status !== 'CLOSED') throw bad('Per elaborare la distinta registra prima la busta Mondialpol');
   const full = await fullReport(rep.id);
-  const company = await one('SELECT * FROM companies WHERE id=$1', [full.company_id]);
-  const site = await one('SELECT * FROM sites WHERE id=$1', [full.site_id]);
+  const company = await one('SELECT * FROM companies_v WHERE id=$1', [full.company_id]);
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [full.site_id]);
   const revision = rep.slip_revision + 1;
   const number = `${company.code}-${site.code}-${full.report_date.replaceAll('-', '')}`;
   const processedAt = new Date();
@@ -377,8 +377,8 @@ r.get('/:id/custody.pdf', ah(async (req, res) => {
   const rep = await loadReport(req.user, Number(req.params.id));
   if (!['PROCESSED', 'PICKED_UP', 'VERIFIED', 'DEPOSITED'].includes(rep.status)) throw bad('Il modulo si genera dopo l\'elaborazione della distinta');
   const full = await fullReport(rep.id);
-  const company = await one('SELECT * FROM companies WHERE id=$1', [full.company_id]);
-  const site = await one('SELECT * FROM sites WHERE id=$1', [full.site_id]);
+  const company = await one('SELECT * FROM companies_v WHERE id=$1', [full.company_id]);
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [full.site_id]);
   const pdf = await buildCustodyPdf({ report: full, company, site, preparedBy: full.processed_by_name, preparedAt: full.processed_at });
   res.type('application/pdf').set('Content-Disposition', `inline; filename="Custodia_${rep.envelope_code || rep.slip_number}.pdf"`).send(pdf);
 }));

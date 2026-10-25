@@ -7,6 +7,7 @@ import { requireWrite, requireRole, readLog } from '../lib/access.js';
 import { renderDocx, docxToPdf, pdfAvailable } from '../lib/docgen.js';
 import { missingFields, contractData, mboData, dirigenteData, mboDirigenteData, commitmentData, lpData, fullName } from '../lib/docdata.js';
 import { getSettings } from '../lib/payroll.js';
+import { siteLabel } from '../lib/people.js';
 
 const r = Router();
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -19,13 +20,14 @@ const TITLES = {
 };
 
 export async function generateDocument({ req, resourceId, kind, refId = null, letterDate = null }) {
-  const resource = await one('SELECT * FROM resources WHERE id=$1', [resourceId]);
+  const resource = await one('SELECT * FROM resources_v WHERE id=$1', [resourceId]);
   if (!resource) throw notFound('Risorsa non trovata');
   const S = await getSettings();
   let data; let template = kind; let employment = null;
   if (kind === 'CONTRATTO' || kind === 'MBO') {
     employment = await one('SELECT * FROM employments WHERE resource_id=$1', [resourceId]);
     if (!employment) throw bad('Dati del rapporto di lavoro mancanti');
+    employment.work_site = await siteLabel(employment.work_site_id);   // sede di lavoro dall'anagrafica unica (public.sites)
     if (kind === 'MBO' && !employment.mbo_enabled) throw bad('MBO non previsto per questa risorsa');
     const dir = employment.contract_type === 'DIRIGENTE';
     data = kind === 'CONTRATTO' ? (dir ? dirigenteData : contractData)({ resource, employment, settings: S, letterDate }) : (dir ? mboDirigenteData : mboData)({ resource, employment, settings: S, letterDate });
@@ -37,6 +39,7 @@ export async function generateDocument({ req, resourceId, kind, refId = null, le
   } else if (kind === 'LETTERA_IMPEGNO') {
     const letter = await one('SELECT * FROM commitment_letters WHERE id=$1 AND resource_id=$2', [refId, resourceId]);
     if (!letter) throw notFound('Lettera di impegno non trovata');
+    letter.work_site = await siteLabel(letter.work_site_id);
     data = commitmentData({ resource, letter, settings: S });
   } else throw bad('Tipo documento non valido');
   const missing = missingFields(data);
@@ -101,7 +104,7 @@ r.delete('/documents/:id', requireRole('ADMIN'), ah(async (req, res) => {
 
 r.get('/documents', ah(async (req, res) => {
   const rows = await many(`SELECT g.id, g.resource_id, g.kind, g.version, g.title, g.generated_at, (g.pdf IS NOT NULL) AS has_pdf, r.last_name, r.first_name, r.kind AS resource_kind
-    FROM generated_documents g JOIN resources r ON r.id=g.resource_id ORDER BY g.generated_at DESC LIMIT 300`);
+    FROM generated_documents g JOIN resources_v r ON r.id=g.resource_id ORDER BY g.generated_at DESC LIMIT 300`);
   res.json(rows);
 }));
 

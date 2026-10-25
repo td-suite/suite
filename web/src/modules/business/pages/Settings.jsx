@@ -26,7 +26,7 @@ export default function Settings() {
           <tr><td>Accesso e utenti</td><td><Badge tone="green">gestiti dalla Suite TD (profili del modulo)</Badge></td></tr>
           <tr><td>Conversione PDF (LibreOffice)</td><td>{d.pdfEnabled ? <Badge tone="green">disponibile</Badge> : <Badge tone="red">non disponibile: i documenti vengono generati solo in DOCX</Badge>}</td></tr>
           <tr><td>Cifratura delle credenziali dei portali</td><td>{d.credentialsKeySet ? <Badge tone="green">chiave dedicata (CREDENTIALS_KEY)</Badge> : <Badge tone="mauve">chiave di sviluppo: imposta CREDENTIALS_KEY (la stessa dell'app di origine) in produzione</Badge>}</td></tr>
-          <tr><td>Dimensione massima dei file</td><td>{d.maxUploadMb} MB (pacchetti di importazione: {d.maxImportMb} MB)</td></tr>
+          <tr><td>Dimensione massima dei file</td><td>{d.maxUploadMb} MB</td></tr>
         </tbody></table>
       </Card>
       {GROUPS.map((g) => (

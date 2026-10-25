@@ -6,7 +6,7 @@ export default {
   kicker: 'Finance',
   area: 'FINANCE',
   nav: [
-    { to: '', icon: 'home', label: 'Dashboard', end: true },
+    { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Autorizzazioni al pagamento' },
     { to: 'istanze/nuova', icon: 'plus', label: 'Nuova istanza', profiles: ['SUPPORT'] },
     { to: 'da-firmare', icon: 'edit', label: 'Da firmare', profiles: ['CEO', 'CFO'], badge: 'da_firmare' },

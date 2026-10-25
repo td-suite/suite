@@ -155,7 +155,7 @@ export async function loadDemo() {
   const r = rng(20261014);
   const today = new Date();
   const lines = Object.fromEntries((await many('SELECT id, code FROM product_lines')).map((x) => [x.code, x.id]));
-  const sites = await many("SELECT id, code, kind FROM sites WHERE kind <> 'HEADQUARTER'");
+  const sites = await many('SELECT id, code, kind FROM sites_v WHERE active AND in_network');
   const siteByCode = Object.fromEntries(sites.map((s) => [s.code, s]));
   // operatori di accettazione per sede (2-3 a testa)
   const opsBySite = {}; let oi = 0; const usedOps = new Set(); for (const s of sites) { const n = s.kind === 'PUNTO_PRELIEVI' ? 2 : 3; opsBySite[s.id] = []; for (let k = 0; k < n; k++) { let nm; do { nm = `${OPERATORS[oi % OPERATORS.length].split(' ')[0]} ${LAST[(oi * 7 + k * 3) % LAST.length].slice(0, 2)}.`; oi++; } while (usedOps.has(nm)); usedOps.add(nm); opsBySite[s.id].push(nm); } }
@@ -343,15 +343,8 @@ export async function loadDemo() {
     }
   }
   void zones;
-  // Struttura: persone, orari, dotazioni
-  const ROLES_MED = ['Cardiologo', 'Ginecologo', 'Dermatologo', 'Ortopedico', 'Radiologo', 'Senologo', 'Urologo', 'Endocrinologo'];
+  // Struttura: orari e dotazioni (le persone della sede vengono da public.people: si assegnano in Amministrazione > Persone)
   for (const s of sites) {
-    const allSites = await many('SELECT manager FROM sites WHERE id=$1', [s.id]);
-    if (allSites[0]?.manager) await q("INSERT INTO site_staff(site_id, name, role, kind, weekly_hours, days, sort_order) VALUES ($1,$2,'Site manager','DIPENDENTE',40,'lun-ven',10)", [s.id, allSites[0].manager]);
-    opsBySite[s.id].forEach((op, i) => q("INSERT INTO site_staff(site_id, name, role, kind, weekly_hours, days, sort_order) VALUES ($1,$2,'Accettazione','DIPENDENTE',$3,$4,$5)", [s.id, op, i === 0 ? 40 : 30, i === 0 ? 'lun-sab' : 'lun-ven', 20 + i]));
-    if (s.kind !== 'HEADQUARTER') await q("INSERT INTO site_staff(site_id, name, role, kind, weekly_hours, days, sort_order) VALUES ($1,$2,'Infermiere','DIPENDENTE',36,'lun-sab',30)", [s.id, `${pick(r, FIRST_F)} ${pick(r, LAST)}`]);
-    if (s.kind === 'CENTRO_DIAGNOSTICO') { await q("INSERT INTO site_staff(site_id, name, role, kind, weekly_hours, days, sort_order) VALUES ($1,$2,'Tecnico di radiologia','DIPENDENTE',38,'lun-sab',40)", [s.id, `${pick(r, FIRST_M)} ${pick(r, LAST)}`]); await q("INSERT INTO site_staff(site_id, name, role, kind, specialty, weekly_hours, days, sort_order) VALUES ($1,$2,'Medico','LP','Radiologo',20,'mar/gio',50)", [s.id, `Dott. ${pick(r, FIRST_M)} ${pick(r, LAST)}`]); }
-    if (s.kind === 'POLIAMBULATORIO') for (let k = 0; k < 3; k++) await q("INSERT INTO site_staff(site_id, name, role, kind, specialty, weekly_hours, days, sort_order) VALUES ($1,$2,'Medico','LP',$3,$4,$5,$6)", [s.id, `Dott. ${pick(r, FIRST_M)} ${pick(r, LAST)}`, pick(r, ROLES_MED), 4 + Math.floor(r() * 12), pick(r, ['lun', 'mar', 'mer', 'gio', 'ven', 'lun/gio', 'mar/ven']), 50 + k]);
     for (let wd = 1; wd <= 7; wd++) {
       const closed = wd === 7 || (wd === 6 && s.kind === 'LABORATORIO');
       await q('INSERT INTO site_hours(site_id, weekday, closed, open1, close1, open2, close2, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [s.id, wd, closed, closed ? null : '07:30', closed ? null : wd === 6 ? '12:30' : '13:00', closed || wd === 6 || s.kind === 'PUNTO_PRELIEVI' ? null : '14:30', closed || wd === 6 || s.kind === 'PUNTO_PRELIEVI' ? null : '19:00', closed ? null : 'prelievi 7:30-10:30']);
@@ -361,7 +354,8 @@ export async function loadDemo() {
       : s.kind === 'PUNTO_PRELIEVI' ? [['BOX_PRELIEVO', 'Box prelievo', 1 + Math.floor(r() * 2)], ['AMBULATORIO', 'Ambulatorio', 1]]
       : s.kind === 'LABORATORIO' ? [['ALTRO', 'Linea analitica chimica-immunometria', 1], ['ALTRO', 'Ematologia', 1], ['ALTRO', 'Microbiologia', 1], ['ALTRO', 'Biologia molecolare', 1]] : [];
     for (const [k, nm, qty] of assets) await q('INSERT INTO site_assets(site_id, kind, name, quantity) VALUES ($1,$2,$3,$4)', [s.id, k, nm, qty]);
-    await q('UPDATE sites SET surface_sqm=$2, rooms=$3, boxes=$4, parking=$5, accessibility=$6, catchment_cities=$7, saturday_open=$8 WHERE id=$1', [s.id, s.kind === 'PUNTO_PRELIEVI' ? 60 + Math.floor(r() * 60) : 180 + Math.floor(r() * 400), assets.find((a) => a[0] === 'AMBULATORIO')?.[2] || 1, assets.find((a) => a[0] === 'BOX_PRELIEVO')?.[2] || 0, pick(r, ['Parcheggio privato 8 posti', 'Strisce blu in zona', 'Parcheggio pubblico a 100 m', 'Nessun parcheggio dedicato']), 'Accesso senza barriere, ascensore', (AREAS.find((a) => a[4].includes(s.code)) || AREAS[0])[0], s.kind !== 'LABORATORIO']);
+    await q(`INSERT INTO site_ext (site_id, surface_sqm, rooms, boxes, parking, accessibility, catchment_cities, saturday_open) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (site_id) DO UPDATE SET surface_sqm=EXCLUDED.surface_sqm, rooms=EXCLUDED.rooms, boxes=EXCLUDED.boxes, parking=EXCLUDED.parking, accessibility=EXCLUDED.accessibility, catchment_cities=EXCLUDED.catchment_cities, saturday_open=EXCLUDED.saturday_open, updated_at=now()`, [s.id, s.kind === 'PUNTO_PRELIEVI' ? 60 + Math.floor(r() * 60) : 180 + Math.floor(r() * 400), assets.find((a) => a[0] === 'AMBULATORIO')?.[2] || 1, assets.find((a) => a[0] === 'BOX_PRELIEVO')?.[2] || 0, pick(r, ['Parcheggio privato 8 posti', 'Strisce blu in zona', 'Parcheggio pubblico a 100 m', 'Nessun parcheggio dedicato']), 'Accesso senza barriere, ascensore', (AREAS.find((a) => a[4].includes(s.code)) || AREAS[0])[0], s.kind !== 'LABORATORIO']);
   }
   // Giorni lavorati pianificati e budget dell'anno in corso (dal dato reale del mese, con un obiettivo di crescita)
   const { plannedDays } = await import('./calendar.js');
@@ -387,7 +381,7 @@ export async function clearDemo() {
     await c.query("DELETE FROM campaigns");
     await c.query("DELETE FROM promotions");
     await c.query("DELETE FROM products WHERE source='DEMO'");
-    await c.query('DELETE FROM site_staff'); await c.query('DELETE FROM site_hours'); await c.query('DELETE FROM site_assets'); await c.query('DELETE FROM budgets'); await c.query('DELETE FROM working_days'); await c.query('DELETE FROM variance_notes');
+    await c.query('DELETE FROM site_hours'); await c.query('DELETE FROM site_assets'); await c.query('DELETE FROM budgets'); await c.query('DELETE FROM working_days'); await c.query('DELETE FROM variance_notes');
   });
   await refreshCustomerStats();
 }

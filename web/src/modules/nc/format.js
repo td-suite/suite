@@ -16,7 +16,9 @@ export const TRATT = { CONSERVAZIONE: 'Conservazione in attesa di decisione', NU
 export const RCA_CAT = { PRELIEVO: 'Prelievo', IDENTIFICAZIONE: 'Identificazione', TRASPORTO: 'Trasporto', CONSERVAZIONE: 'Conservazione', LIS: 'Sistema informatico', DOCUMENTAZIONE: 'Documentazione', FORMAZIONE: 'Formazione', MATERIALI: 'Materiali', ORGANIZZAZIONE: 'Organizzazione', ALTRO: 'Altro' };
 export const AZ_STATO = { PIANIFICATA: { label: 'Pianificata', tone: 'grey' }, IN_CORSO: { label: 'In corso', tone: 'blue' }, COMPLETATA: { label: 'Completata', tone: 'green' }, ANNULLATA: { label: 'Annullata', tone: 'grey' } };
 export const MSG_TIPO = { APERTURA: 'Apertura', RICHIESTA: 'Richiesta del laboratorio', RISPOSTA: 'Risposta della sede', CHIARIMENTO: 'Chiarimento', TRATTAMENTO: 'Trattamento', CHIUSURA: 'Chiusura', RIAPERTURA: 'Riapertura', NOTA_INTERNA: 'Nota interna', SISTEMA: 'Sistema' };
-export const SEDE_TIPO = { PUNTO_PRELIEVO: 'Punto prelievo', CENTRO_MEDICO: 'Centro medico', SERVICE: 'Cliente Service', LABORATORIO: 'Laboratorio', ALTRO: 'Altro' };
+// Tipi di sede dell'anagrafica unica della Suite (public.sites.kind); restano i vecchi codici dell'app per compatibilità
+export const SEDE_TIPO = { HEADQUARTER: 'Direzione', LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', PUNTO_PRELIEVO: 'Punto prelievi', SERVICE: 'Cliente Service', CENTRO_MEDICO: 'Centro medico', ALTRO: 'Altro' };
+export const SEDE_CANALE = { EMAIL: 'Email', PEC: 'PEC', PORTALE: 'Solo portale (utenti di sede)', NESSUNO: 'Nessuna notifica' };
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 export const slaClass = (nc) => { if (!nc.sla_due_at || nc.stato !== 'INVIATA_SEDE') return ''; const d = new Date(nc.sla_due_at) - Date.now(); return d < 0 ? 'sla-late' : d < 4 * 3600e3 ? 'sla-soon' : 'sla-ok'; };
 export const fmtBytes = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);

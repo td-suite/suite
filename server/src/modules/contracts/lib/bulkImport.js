@@ -34,7 +34,7 @@ const EMP_COLS = [
   { key: 'weekly_hours', label: 'Ore settimanali', target: 'employment', width: 12, example: 40, num: true },
   { key: 'end_date', label: 'Fine contratto (solo tempo determinato)', target: 'employment', width: 18, example: '', date: true },
   { key: 'probation_days', label: 'Giorni di prova', target: 'employment', width: 12, example: 90, num: true },
-  { key: 'work_site', label: 'Sede di lavoro', target: 'employment', width: 30, example: 'Via di Pratignone 13/4, Sesto Fiorentino' },
+  { key: 'work_site', label: 'Sede di lavoro (nome o codice della sede in Amministrazione)', target: 'worksite', width: 30, example: 'Sesto Fiorentino' },
   { key: 'mbo_amount', label: 'Premio MBO annuo (importo)', target: 'employment', width: 16, example: '', num: true },
 ];
 const LP_COLS = [
@@ -149,7 +149,8 @@ export async function readBulk(buffer, kind) {
       else if (c.target === 'feedesc') feeDesc = v;
       else if (c.target === 'vat') { const t = v.toUpperCase().replace(/\s+/g, ' ').trim(); if (/^(CON|CON IVA|SI|SÌ|S)$/.test(t)) feeVat = 'CON'; else if (/^(SENZA|SENZA IVA|NO|N|ESENTE)$/.test(t)) feeVat = 'SENZA'; else if (v) err(`"IVA sui compensi" deve essere "Con IVA" o "Senza IVA" (${v})`); }
       else if (c.target === 'area') { const a = await one('SELECT id FROM areas WHERE lower(name)=lower($1)', [v]); if (!a) err(`area "${v}" inesistente: crearla in Impostazioni o correggere il nome`); else person.area_id = a.id; }
-      else if (c.target === 'manager') { const m = await one(`SELECT id FROM resources WHERE lower(last_name || ' ' || first_name)=lower($1) OR lower(first_name || ' ' || last_name)=lower($1)`, [v]); if (!m) err(`responsabile "${v}" non trovato tra le risorse`); else person.manager_id = m.id; }
+      else if (c.target === 'manager') { const m = await one(`SELECT id FROM resources_v WHERE lower(last_name || ' ' || first_name)=lower($1) OR lower(first_name || ' ' || last_name)=lower($1)`, [v]); if (!m) err(`responsabile "${v}" non trovato tra le persone`); else person.manager_id = m.id; }
+      else if (c.target === 'worksite') { const st = await one(`SELECT id FROM public.sites WHERE active AND (lower(name)=lower($1) OR lower(code)=lower($1) OR lower(coalesce(short_name,''))=lower($1) OR lower(coalesce(city,''))=lower($1)) ORDER BY sort_order LIMIT 1`, [v]); if (!st) err(`sede di lavoro "${v}" non trovata tra le sedi della Suite (Amministrazione > Sedi)`); else emp.work_site_id = st.id; }
     }
     if (kind !== 'LP') {
       if (emp.contract_type && emp.contract_type !== 'DIRIGENTE' && !emp.level) err('manca "Livello CCNL" (obbligatorio salvo dirigenti)');

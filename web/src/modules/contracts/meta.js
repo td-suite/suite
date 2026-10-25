@@ -6,10 +6,10 @@ export default {
   kicker: 'People',
   area: 'PEOPLE',
   nav: [
-    { to: '', icon: 'home', label: 'Dashboard', end: true },
+    { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'organigramma', icon: 'tree', label: 'Organigramma' },
-    { to: 'risorse/nuova', icon: 'plus', label: 'Inserimento nuova risorsa', profiles: ['ADMIN', 'HR'] },
-    { to: 'risorse', icon: 'users', label: 'Elenco delle risorse', end: true },
+    { to: 'risorse/nuova', icon: 'plus', label: 'Nuova persona', profiles: ['ADMIN', 'HR'] },
+    { to: 'risorse', icon: 'users', label: 'Elenco persone', end: true },
     { to: 'scadenze', icon: 'calendar', label: 'Calendario delle scadenze' },
     { group: 'Scouting' },
     { to: 'scouting/cv', icon: 'import', label: 'CV Box' },

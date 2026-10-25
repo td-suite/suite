@@ -1,5 +1,6 @@
 // Modulo Integration M&A (Integration Plan Management) dentro la Suite TD.
-// Le route dell'app di origine restano identiche (routes/plan.js); cambiano solo accesso e utenti: sessione, grant e profili sono della Suite.
+// Le route dell'app di origine (routes/plan.js) lavorano sull'anagrafica unica: target = public.organizations (kind TARGET) con
+// parametri in target_ext, owner e team = public.people con person_ext (docs/ANAGRAFICA.md). Il modulo parte vuoto (FRESH_MODULES).
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';
@@ -13,7 +14,7 @@ import planRoutes from './routes/plan.js';
 const KEY = 'integration';
 
 const publicUser = (u) => u && ({
-  id: u.id, email: u.email, full_name: u.full_name, role: u.role, status: 'ACTIVE', auth_provider: 'SUITE',
+  id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, status: 'ACTIVE', auth_provider: 'SUITE',
   organization: u.organization || null, must_change_password: false, suite_user_id: u.suite_user_id, suite_level: u.suite_level,
 });
 

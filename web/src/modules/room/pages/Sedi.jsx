@@ -1,43 +1,45 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api, base } from '../api.js';
+import { Link, useNavigate } from 'react-router-dom';
+import { base } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { useApi, Loading, Empty, ErrorBox, useToast, Badge } from '../components/ui.jsx';
+import { useApi, Loading, Empty, ErrorBox, Badge } from '../components/ui.jsx';
 import { itDateTime } from '../format.js';
-import { newStruttura, computePlan } from '../planner/planner.jsx';
+import { computePlan } from '../planner/planner.jsx';
 
+// Le sedi vivono nell'anagrafica unica della Suite (Amministrazione > Sedi): qui si configurano ambulatori, personale e planimetria
+export const ADMIN_SITES = '/admin/sites';
 export const sedeLabel = (s) => (s.nomeSede ? `${s.denominazione} · ${s.nomeSede}` : s.denominazione || 'Sede senza nome');
 
 export default function Sedi() {
   const { user } = useAuth();
   const nav = useNavigate();
-  const toast = useToast();
-  const { data, error, reload } = useApi('/strutture');
+  const { data, error } = useApi('/strutture?all=1');
   const [filter, setFilter] = useState('');
-  const canCreate = user.role === 'ADMIN' || (user.role === 'PLANNER' && !(user.struttura_ids || []).length);
-  const list = useMemo(() => (data || []).filter((s) => !filter || `${s.denominazione} ${s.nomeSede || ''} ${s.indirizzo} ${s.siteManager || ''}`.toLowerCase().includes(filter.toLowerCase())), [data, filter]);
-  const create = async () => {
-    const s = newStruttura();
-    s.denominazione = 'Nuova sede';
-    try {
-      const { lite } = split(s);
-      await api.post('/strutture', { data: lite, blobs: {} });
-      toast('Sede creata'); nav(`${base}/sedi/${s.id}`);
-    } catch (e) { toast(e.message, 'err'); }
-  };
+  const canEdit = user.role === 'ADMIN' || user.role === 'PLANNER';
+  const match = (s) => !filter || `${s.denominazione} ${s.nomeSede || ''} ${s.indirizzo} ${s.siteManager || ''}`.toLowerCase().includes(filter.toLowerCase());
+  const list = useMemo(() => (data || []).filter((s) => s._configurata && match(s)), [data, filter]);
+  const altre = useMemo(() => (data || []).filter((s) => !s._configurata && match(s)), [data, filter]);
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Sedi e ambulatori</h1><div className="sub">Le strutture del network in ordine alfabetico. Apri una sede per anagrafica, ambulatori, personale, planimetria e pianificazione.</div></div>
+        <div><h1>Sedi e ambulatori</h1><div className="sub">Le sedi dell'anagrafica unica della Suite con la configurazione Room Planning: ambulatori, personale pianificato, planimetria e settimana-tipo. Denominazione, indirizzo e contatti si modificano in Amministrazione.</div></div>
         <div className="row">
           <input placeholder="Cerca sede, indirizzo, responsabile…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 260 }} />
-          {canCreate && <button className="btn" onClick={create}>+ Nuova sede</button>}
+          <Link className="btn ghost" to={ADMIN_SITES}>Apri in Amministrazione</Link>
         </div>
       </div>
       <ErrorBox error={error} />
-      {!data ? <Loading /> : !list.length ? <div className="card"><Empty>{filter ? 'Nessuna sede corrisponde alla ricerca' : 'Nessuna sede configurata'}</Empty></div> : (
+      {!data ? <Loading /> : !list.length ? <div className="card"><Empty>{filter ? 'Nessuna sede configurata corrisponde alla ricerca' : 'Nessuna sede ancora configurata in Room Planning: aprine una dall\'elenco qui sotto'}</Empty></div> : (
         <div className="grid g2">
           {list.map((s) => <SedeCard key={s.id} s={s} onOpen={() => nav(`${base}/sedi/${s.id}`)} />)}
+        </div>
+      )}
+      {data && altre.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="hd"><h2>Altre sedi dell'anagrafica</h2><span className="spacer" /><span className="small muted">{altre.length} sedi non ancora configurate in Room Planning{canEdit ? ': aprile per aggiungere ambulatori e personale' : ''}</span></div>
+          <div className="bd row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {altre.map((s) => <button key={s.id} className="chip" style={{ border: 0, cursor: 'pointer' }} title={s.indirizzo || ''} onClick={() => nav(`${base}/sedi/${s.id}`)}>{sedeLabel(s)}</button>)}
+          </div>
         </div>
       )}
     </div>
@@ -54,7 +56,7 @@ function SedeCard({ s, onOpen }) {
         {s.logo ? <img src={s.logo} alt="" style={{ height: 40, maxWidth: 110, objectFit: 'contain', borderRadius: 6, flex: 'none' }} /> : <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--teal-050)', flex: 'none' }} />}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="row" style={{ gap: 8 }}><h2 style={{ fontSize: 16 }}>{sedeLabel(s)}</h2>{alte > 0 ? <Badge tone="red">{alte} criticità</Badge> : plan && <Badge tone="green">ok</Badge>}</div>
-          <div className="muted small">{s.indirizzo || 'Indirizzo da inserire'}{s.siteManager ? ` · Resp. ${s.siteManager}` : ''}</div>
+          <div className="muted small">{s.indirizzo || 'Indirizzo da inserire in Amministrazione'}{s.siteManager ? ` · Resp. ${s.siteManager}` : ''}</div>
           <div className="row small" style={{ marginTop: 8, gap: 14 }}>
             <span><b>{s.ambulatori.length}</b> ambulatori</span><span><b>{med}</b> medici</span><span><b>{san}</b> sanitari</span><span><b>{acc}</b> accettazione</span>
             {plan && <span><b>{plan.assigns.length}</b> sessioni/sett.</span>}

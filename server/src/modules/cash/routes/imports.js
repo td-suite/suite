@@ -16,7 +16,7 @@ const CIRCUIT_MAP = { bancomat: 'BANCOMAT', pagobancomat: 'BANCOMAT', debit: 'BA
 const normCircuit = (v) => CIRCUIT_MAP[String(v || '').toLowerCase().replace(/[\s-]/g, '_')] || (v ? 'ALTRO' : null);
 
 async function siteResolver(companyId) {
-  const sites = await many('SELECT id, code, pos_terminals FROM sites WHERE company_id=$1', [companyId]);
+  const sites = await many('SELECT id, code, pos_terminals FROM sites_v WHERE company_id=$1', [companyId]);
   const byCode = new Map(sites.map((s) => [s.code.toUpperCase(), s.id]));
   const byTid = new Map();
   for (const s of sites) for (const t of (s.pos_terminals || '').split(',').map((x) => x.trim()).filter(Boolean)) byTid.set(t, s.id);
@@ -88,11 +88,11 @@ r.get('/reconciliation', ah(async (req, res) => {
   assertCompany(req.user, companyId);
   const { from, to } = req.query;
   const txs = await many(`SELECT t.*, s.name AS site_name, p.receipt_number, r.id AS report_id
-    FROM payment_transactions t LEFT JOIN sites s ON s.id=t.site_id LEFT JOIN pos_receipts p ON p.id=t.matched_receipt_id
+    FROM payment_transactions t LEFT JOIN sites_v s ON s.id=t.site_id LEFT JOIN pos_receipts p ON p.id=t.matched_receipt_id
     LEFT JOIN cash_reports r ON r.id=p.report_id
     WHERE t.company_id=$1 AND t.tx_date BETWEEN $2 AND $3 ORDER BY t.tx_date DESC, t.id`, [companyId, from, to]);
   const receipts = await many(`SELECT p.*, r.report_date, r.id AS report_id, s.name AS site_name
-    FROM pos_receipts p JOIN cash_reports r ON r.id=p.report_id JOIN sites s ON s.id=r.site_id
+    FROM pos_receipts p JOIN cash_reports r ON r.id=p.report_id JOIN sites_v s ON s.id=r.site_id
     WHERE s.company_id=$1 AND r.report_date BETWEEN $2 AND $3 AND p.matched_tx_id IS NULL ORDER BY r.report_date DESC`, [companyId, from, to]);
   res.json({
     transactions: txs,
@@ -138,7 +138,7 @@ r.get('/channels', ah(async (req, res) => {
   if (req.query.from) where.push(`cr.rev_date >= ${P.add(req.query.from)}`);
   if (req.query.to) where.push(`cr.rev_date <= ${P.add(req.query.to)}`);
   res.json(await many(`SELECT cr.*, c.name AS company_name, s.name AS site_name FROM channel_revenues cr
-    JOIN companies c ON c.id=cr.company_id LEFT JOIN sites s ON s.id=cr.site_id WHERE ${where.join(' AND ')} ORDER BY cr.rev_date DESC LIMIT 2000`, P.values));
+    JOIN companies_v c ON c.id=cr.company_id LEFT JOIN sites_v s ON s.id=cr.site_id WHERE ${where.join(' AND ')} ORDER BY cr.rev_date DESC LIMIT 2000`, P.values));
 }));
 
 r.delete('/channels/:id', ah(async (req, res) => {

@@ -31,9 +31,9 @@ r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
 
 // ---------------- Aree e sedi ----------------
 r.get('/areas', ah(async (_req, res) => res.json(await many(`SELECT a.*, t.path, t.root_id, t.root_name, h.last_name || ' ' || h.first_name AS head_name,
-  (SELECT count(*)::int FROM resources r WHERE r.status IN ('ATTIVO','IMPEGNO') AND (r.area_id=a.id OR r.id IN (SELECT resource_id FROM resource_areas WHERE area_id=a.id))) AS headcount,
+  (SELECT count(*)::int FROM resources_v r WHERE r.status IN ('ATTIVO','IMPEGNO') AND (r.area_id=a.id OR r.id IN (SELECT person_id FROM person_areas WHERE area_id=a.id))) AS headcount,
   (SELECT count(*)::int FROM areas c WHERE c.parent_id=a.id) AS children
-  FROM areas a JOIN areas_tree t ON t.id=a.id LEFT JOIN resources h ON h.id=a.head_resource_id ORDER BY t.sort_path, a.name`))));
+  FROM areas a JOIN areas_tree t ON t.id=a.id LEFT JOIN resources_v h ON h.id=a.head_person_id ORDER BY t.sort_path, a.name`))));
 r.post('/areas', requireWrite, ah(async (req, res) => {
   const d = parse(z.object({ name: z.string().min(2).max(120), sort_order: z.number().int().default(100), parent_id: z.number().int().nullable().optional(), kind: z.enum(['STAFF', 'LINEA']).default('LINEA') }), req.body);
   let level = 1;
@@ -46,7 +46,7 @@ r.delete('/areas/:id', requireRole('ADMIN'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const a = await one('SELECT name FROM areas WHERE id=$1', [id]);
   if (!a) throw notFound();
-  const n = (await one('SELECT count(*)::int AS n FROM resources WHERE area_id=$1 OR id IN (SELECT resource_id FROM resource_areas WHERE area_id=$1)', [id])).n;
+  const n = (await one('SELECT count(*)::int AS n FROM resources_v WHERE area_id=$1 OR id IN (SELECT person_id FROM person_areas WHERE area_id=$1)', [id])).n;
   if (n > 0) throw bad(`L'area "${a.name}" ha ${n} risors${n === 1 ? 'a' : 'e'} assegnat${n === 1 ? 'a' : 'e'}: spostale in un'altra area prima di eliminarla`);
   const c = (await one('SELECT count(*)::int AS n FROM areas WHERE parent_id=$1', [id])).n;
   if (c > 0) throw bad(`L'area "${a.name}" ha ${c} aree di livello inferiore: eliminale o spostale prima`);
@@ -59,7 +59,7 @@ r.put('/areas/:id', requireWrite, ah(async (req, res) => {
   const id = Number(req.params.id);
   const cur = await one('SELECT * FROM areas WHERE id=$1', [id]);
   if (!cur) throw notFound();
-  const d = parse(z.object({ name: z.string().trim().min(2).max(120).optional(), sort_order: z.number().int().optional(), active: z.boolean().optional(), parent_id: z.number().int().nullable().optional(), head_resource_id: z.number().int().nullable().optional(), kind: z.enum(['STAFF', 'LINEA']).optional() }), req.body);
+  const d = parse(z.object({ name: z.string().trim().min(2).max(120).optional(), sort_order: z.number().int().optional(), active: z.boolean().optional(), parent_id: z.number().int().nullable().optional(), head_person_id: z.number().int().nullable().optional(), kind: z.enum(['STAFF', 'LINEA']).optional() }), req.body);
   if (d.parent_id !== undefined) {
     // spostamento nella gerarchia: niente cicli, massimo quattro livelli (contando anche i discendenti)
     let newLevel = 1;
@@ -82,12 +82,11 @@ r.put('/areas/:id', requireWrite, ah(async (req, res) => {
   await audit(req, 'AREA_UPDATE', 'area', id, req.body);
   res.json({ ok: true });
 }));
-r.get('/work-sites', ah(async (_req, res) => res.json(await many('SELECT * FROM work_sites WHERE active ORDER BY id'))));
-r.post('/work-sites', requireWrite, ah(async (req, res) => {
-  const d = parse(z.object({ name: z.string().min(2).max(120), address: z.string().min(5).max(250) }), req.body);
-  res.status(201).json(await one('INSERT INTO work_sites(name, address) VALUES ($1,$2) RETURNING *', [d.name, d.address]));
-}));
-r.delete('/work-sites/:id', requireWrite, ah(async (req, res) => { await q('UPDATE work_sites SET active=FALSE WHERE id=$1', [Number(req.params.id)]); res.json({ ok: true }); }));
+// Sedi di lavoro: anagrafica unica della Suite (public.sites). Si creano e modificano in Amministrazione > Sedi, qui solo elenco
+// per i selettori (contratto, lettera di impegno, sede della persona); address è l'indirizzo completo per i documenti.
+r.get('/work-sites', ah(async (_req, res) => res.json(await many(`SELECT id, code, name, kind, city, province, active,
+  nullif(concat_ws(', ', address, nullif(concat_ws(' ', zip, city) || CASE WHEN province IS NOT NULL THEN ' (' || province || ')' ELSE '' END, '')), '') AS address
+  FROM public.sites WHERE active ORDER BY sort_order, name`))));
 
 // ---------------- Registro attività ----------------
 r.get('/audit', requireRole('ADMIN'), ah(async (req, res) => {

@@ -26,6 +26,5 @@ export default {
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e LIS', profiles: QUALITA },
     { group: 'Aiuto' },
     { to: 'guida', icon: 'info', label: 'Guida all\'uso' },
-    { to: 'notifiche', icon: 'bell', label: 'Le mie notifiche' },
   ],
 };

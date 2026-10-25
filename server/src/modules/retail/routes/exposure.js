@@ -9,7 +9,7 @@ import { bookToPptx } from '../lib/exports.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });
-const KIND_LABEL = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', HEADQUARTER: 'Sede direzionale' };
+const KIND_LABEL = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', SERVICE: 'Struttura service', HEADQUARTER: 'Sede direzionale', ALTRO: 'Altro' };
 
 r.get('/zones', ah(async (_req, res) => res.json(await many('SELECT * FROM exposure_zones ORDER BY sort_order'))));
 
@@ -37,14 +37,14 @@ r.get('/overview', ah(async (_req, res) => {
       count(e.id) FILTER (WHERE e.status='DA_SOSTITUIRE')::int AS to_replace, count(e.id) FILTER (WHERE e.status='DA_INSTALLARE')::int AS to_install,
       max(e.checked_at) AS last_check,
       (SELECT count(*)::int FROM exposure_standards st WHERE st.site_kind IN ('TUTTE', s.kind) AND st.mandatory) AS standard_required
-    FROM sites s LEFT JOIN exposure_items e ON e.site_id=s.id AND e.status<>'RIMOSSO' WHERE s.active AND s.kind<>'HEADQUARTER' GROUP BY s.id ORDER BY s.sort_order, s.name`);
+    FROM sites_v s LEFT JOIN exposure_items e ON e.site_id=s.id AND e.status<>'RIMOSSO' WHERE s.active AND s.in_network GROUP BY s.id, s.code, s.name, s.kind, s.city, s.manager, s.active, s.sort_order ORDER BY s.sort_order, s.name`);
   res.json(rows.map((x) => ({ ...x, kind_label: KIND_LABEL[x.kind], compliance_pct: x.total ? Math.round((x.ok / x.total) * 100) : 0 })));
 }));
 
 // Book di una sede
 r.get('/sites/:id', ah(async (req, res) => {
   const id = Number(req.params.id);
-  const site = await one('SELECT * FROM sites WHERE id=$1', [id]);
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
   if (!site) throw notFound();
   const items = await many(`SELECT e.*, z.name AS zone_name, z.code AS zone_code, z.sort_order AS zone_order, st.rule, st.mandatory, p.name AS promotion_name, p.claim AS promotion_claim,
       (SELECT count(*)::int FROM exposure_photos ph WHERE ph.item_id=e.id) AS photos
@@ -59,7 +59,7 @@ r.get('/sites/:id', ah(async (req, res) => {
 r.post('/sites/:id/apply-standard', ah(async (req, res) => {
   const id = Number(req.params.id);
   if (!canEditSite(req.user, id)) throw forbidden();
-  const site = await one('SELECT * FROM sites WHERE id=$1', [id]);
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
   if (!site) throw notFound();
   const promo = await one('SELECT id, claim FROM promotions WHERE year=date_part(\'year\', CURRENT_DATE) AND month=date_part(\'month\', CURRENT_DATE) AND status<>\'ANNULLATA\' ORDER BY id LIMIT 1');
   const missing = await many(`SELECT st.* FROM exposure_standards st WHERE st.site_kind IN ('TUTTE', $2) AND NOT EXISTS (SELECT 1 FROM exposure_items e WHERE e.site_id=$1 AND e.standard_id=st.id AND e.status<>'RIMOSSO')`, [id, site.kind]);
@@ -150,7 +150,7 @@ r.delete('/photos/:id', ah(async (req, res) => {
 // Book retail in PowerPoint: una sede o tutte
 r.get('/book.pptx', ah(async (req, res) => {
   const siteId = req.query.site_id ? Number(req.query.site_id) : null;
-  const sites = await many(`SELECT * FROM sites WHERE active AND kind<>'HEADQUARTER' ${siteId ? 'AND id=$1' : ''} ORDER BY sort_order, name`, siteId ? [siteId] : []);
+  const sites = await many(`SELECT * FROM sites_v WHERE active AND in_network ${siteId ? 'AND id=$1' : ''} ORDER BY sort_order, name`, siteId ? [siteId] : []);
   const zones = await many('SELECT * FROM exposure_zones ORDER BY sort_order');
   const items = await many(`SELECT e.*, st.rule FROM exposure_items e LEFT JOIN exposure_standards st ON st.id=e.standard_id WHERE e.status<>'RIMOSSO' ${siteId ? 'AND e.site_id=$1' : ''} ORDER BY e.zone_id, st.sort_order NULLS LAST`, siteId ? [siteId] : []);
   const promo = await one('SELECT name, claim FROM promotions WHERE year=date_part(\'year\', CURRENT_DATE) AND month=date_part(\'month\', CURRENT_DATE) AND status<>\'ANNULLATA\' ORDER BY id LIMIT 1');

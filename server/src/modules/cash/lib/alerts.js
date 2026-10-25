@@ -6,7 +6,7 @@ import { getSetting, itDate, eur, todayRome } from './util.js';
 export async function missingReports(date, companyId = null) {
   return many(`SELECT s.id AS site_id, s.name AS site_name, s.code AS site_code, s.site_email, s.company_id, s.hours, c.name AS company_name, s.expected_registers,
       (SELECT count(*)::int FROM cash_reports r WHERE r.site_id=s.id AND r.report_date=$1::date) AS reports_count
-    FROM sites s JOIN companies c ON c.id=s.company_id
+    FROM sites_v s JOIN companies_v c ON c.id=s.company_id
     WHERE s.active AND ($2::int IS NULL OR s.company_id=$2)
       AND substr(s.operating_days, extract(isodow FROM $1::date)::int, 1) = '1'
       AND s.start_date <= $1::date
@@ -44,7 +44,7 @@ export async function runDailyCheck({ force = false } = {}) {
   if ((await getSetting('daily_summary_admins', 'true')) === 'true') {
     const byCompany = new Map();
     for (const m of missing) byCompany.set(m.company_id, [...(byCompany.get(m.company_id) || []), m]);
-    const companies = await many('SELECT id, name FROM companies WHERE active');
+    const companies = await many('SELECT id, name FROM companies_v WHERE active');
     for (const c of companies) {
       const list = byCompany.get(c.id) || [];
       const admins = await adminEmails(c.id);

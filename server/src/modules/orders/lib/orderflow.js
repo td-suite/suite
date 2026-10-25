@@ -14,7 +14,7 @@ export const ORDER_COLS = `o.*, s.name AS struttura_name, s.code AS struttura_co
   (SELECT count(*)::int FROM packages p WHERE p.order_id=o.id AND p.status='ATTESO') AS packs_pending,
   (SELECT count(*)::int FROM issues i WHERE i.order_id=o.id AND i.status='APERTA') AS open_issues,
   (SELECT count(*)::int FROM order_lines l WHERE l.order_id=o.id AND l.delta_pct IS NOT NULL AND abs(l.delta_pct) > 50) AS anomalies`;
-export const ORDER_JOINS = `FROM orders o JOIN strutture s ON s.id=o.struttura_id LEFT JOIN users ru ON ru.id=o.requested_by LEFT JOIN users au ON au.id=o.approved_by
+export const ORDER_JOINS = `FROM orders o JOIN sites_v s ON s.id=o.struttura_id LEFT JOIN users ru ON ru.id=o.requested_by LEFT JOIN users au ON au.id=o.approved_by
   LEFT JOIN users cu ON cu.id=o.received_by LEFT JOIN users ku ON ku.id=o.closed_by LEFT JOIN users su ON su.id=o.stored_by`;
 
 export async function event(orderId, userId, ev, data) {

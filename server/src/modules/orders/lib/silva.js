@@ -22,7 +22,7 @@ export function orderPayload(order, struttura, lines) {
     tipoDestinatario: order.kind === 'CLIENTE' ? 'CLIENTE_SERVICE' : order.kind === 'SEDE' ? 'SEDE_TD' : 'LABORATORIO_TD',
     note: order.ops_notes || null,
     destinazione: {
-      codice: struttura.code, nome: struttura.name, indirizzo: struttura.address, cap: struttura.zip, citta: struttura.city, provincia: struttura.province,
+      codice: struttura.silva_code || struttura.code, codiceSede: struttura.code, nome: struttura.name, indirizzo: struttura.address, cap: struttura.zip, citta: struttura.city, provincia: struttura.province,
       referente: struttura.referente, telefono: struttura.referente_phone || struttura.phone, email: struttura.email, noteConsegna: struttura.delivery_notes,
       modalita: struttura.delivery_mode === 'RITIRO' ? 'RITIRO_PRESSO_TD' : 'CONSEGNA',
     },

@@ -1,7 +1,8 @@
-// Modulo Business (Contratti B2C/B2B): partner, contratti in quattro sezioni (punti prelievo, sedi in locazione, service,
-// medicina del lavoro), dossier e fascicoli di autorizzazione, protocolli, credenziali dei portali, generazione DOCX/PDF,
-// importazione dello status quo. Travasato dall'app business.toscanadiagnostica.it: il codice delle route è quello dell'app,
-// cambiano solo accesso (sessione e grant della Suite) e montaggio sotto /api/business.
+// Modulo Business (Contratti B2C/B2B): contratti in quattro sezioni (punti prelievo, sedi in locazione, service,
+// medicina del lavoro), dossier e fascicoli di autorizzazione, protocolli, credenziali dei portali, generazione DOCX/PDF.
+// Anagrafica unica (docs/ANAGRAFICA.md): le controparti sono public.organizations (impostazioni Business in business.org_ext),
+// le sedi dei punti prelievo e le sedi TD in locazione sono public.sites. Nessuna anagrafica propria, nessuna importazione.
+// Travasato dall'app business.toscanadiagnostica.it: il codice delle route è quello dell'app, cambiano accesso e montaggio.
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';
@@ -32,7 +33,7 @@ export default function mount(app) {
   r.get('/auth/config', (_req, res) => res.json({ appName: config.appName, entraEnabled: false }));
 
   r.use(blockWritesInMirror);
-  r.use(adminRoutes);            // settings, partners, audit, import (gli utenti li gestisce la Suite)
+  r.use(adminRoutes);            // settings, organizations (org_ext), sites, audit (gli utenti li gestisce la Suite)
   r.use('/contracts', contractRoutes);
   r.use('/dossiers', dossierRoutes);
   r.use(filesRouter);            // GET /contract-files/:id
@@ -42,7 +43,7 @@ export default function mount(app) {
 
   // Errori propri del modulo (multer, duplicati): il resto lo gestisce l'error handler della Suite
   r.use((err, req, _res, next) => {
-    if (err?.code === 'LIMIT_FILE_SIZE') return next(new HttpError(413, `File troppo grande (max ${req.path.includes('/import') ? config.maxImportMb : config.maxUploadMb} MB)`));
+    if (err?.code === 'LIMIT_FILE_SIZE') return next(new HttpError(413, `File troppo grande (max ${config.maxUploadMb} MB)`));
     if (err?.code === '23505') return next(new HttpError(409, 'Elemento duplicato'));
     next(err);
   });

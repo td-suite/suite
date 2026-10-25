@@ -7,6 +7,7 @@ import { requireWrite, requireRole, readLog } from '../lib/access.js';
 import { config } from '../config.js';
 import { extractText, quickFacts, summarizeCv } from '../lib/cv.js';
 import { personSchema } from './resources.js';
+import { createPerson, updatePerson, reindexPerson } from '../lib/people.js';
 import { generateDocument } from './documents.js';
 
 const r = Router();
@@ -98,7 +99,7 @@ const letterSchema = z.object({
   level: opt(z.string().max(12)), qualification: opt(z.string().max(60)), job_title: opt(z.string().max(160)),
   weekly_hours: num().default(40), autonomous_hours: z.boolean().default(false),
   ral: num().default(0), ral_steps: z.array(z.object({ from: z.string().regex(dateRe), ral: num() })).default([]),
-  mbo_enabled: z.boolean().default(false), mbo_pct: num(), work_site: opt(z.string().max(250)),
+  mbo_enabled: z.boolean().default(false), mbo_pct: num(), work_site_id: num(),
   contract_type: z.enum(['TIND', 'TDET', 'APPRENDISTATO']).default('TIND'), notes: opt(z.string().max(4000)),
   status: z.enum(['BOZZA', 'INVIATA', 'ACCETTATA', 'RIFIUTATA', 'SCADUTA', 'CONVERTITA']).optional(), accepted_at: optDate(),
 });
@@ -106,17 +107,17 @@ const LETTER_COLS = Object.keys(letterSchema.shape);
 
 /** Alla conversione in contratto: se il dossier non ha il CV, lo recupera dal CV Box (per collegamento, codice fiscale, email o nominativo). */
 export async function recoverCv(resourceId, req) {
-  const r = await one('SELECT id, cv_attachment_id, last_name, first_name, email, tax_code FROM resources WHERE id=$1', [resourceId]);
+  const r = await one('SELECT id, cv_attachment_id, last_name, first_name, email, tax_code FROM resources_v WHERE id=$1', [resourceId]);
   if (!r) return null;
   const has = await one("SELECT id FROM attachments WHERE resource_id=$1 AND category='CV' ORDER BY uploaded_at DESC LIMIT 1", [resourceId]);
-  if (has) { if (!r.cv_attachment_id) await q('UPDATE resources SET cv_attachment_id=$2 WHERE id=$1', [resourceId, has.id]); return has.id; }
+  if (has) { if (!r.cv_attachment_id) await updatePerson(null, req, resourceId, { cv_attachment_id: has.id }, { audit: false }); return has.id; }
   const cv = await one(`SELECT * FROM cv_box WHERE data IS NOT NULL AND (resource_id=$1
       OR (lower(email)=lower($2) AND $2 <> '')
       OR (lower(last_name)=lower($3) AND lower(first_name)=lower($4)))
     ORDER BY (resource_id=$1) DESC, received_at DESC LIMIT 1`, [resourceId, r.email || '', r.last_name, r.first_name]);
   if (!cv) return null;
   const att = await one(`INSERT INTO attachments (resource_id, category, filename, mime, size, data, uploaded_by, notes) VALUES ($1,'CV',$2,$3,$4,$5,$6,'Recuperato dal CV Box alla conversione della lettera di impegno') RETURNING id`, [resourceId, cv.filename, cv.mime, cv.size, cv.data, req?.user?.id || null]);
-  await q('UPDATE resources SET cv_attachment_id=$2 WHERE id=$1', [resourceId, att.id]);
+  await updatePerson(null, req, resourceId, { cv_attachment_id: att.id }, { audit: false });
   await q(`UPDATE cv_box SET status='CONVERTITO', resource_id=$2, updated_at=now() WHERE id=$1`, [cv.id, resourceId]);
   if (req) await audit(req, 'CV_RECOVERED', 'attachment', att.id, { resource_id: resourceId, cv_id: cv.id });
   return att.id;
@@ -127,11 +128,11 @@ r.get('/letters', ah(async (req, res) => {
   if (req.query.status) { P.push(req.query.status); w.push(`c.status = ANY(string_to_array($${P.length}, ','))`); }
   res.json(await many(`SELECT c.*, r.last_name, r.first_name, r.kind, r.status AS resource_status, r.tax_code, r.email, a.name AS area_name,
       (SELECT count(*)::int FROM generated_documents g WHERE g.kind='LETTERA_IMPEGNO' AND g.ref_id=c.id) AS documents_count
-    FROM commitment_letters c JOIN resources r ON r.id=c.resource_id LEFT JOIN areas a ON a.id=r.area_id WHERE ${w.join(' AND ')} ORDER BY c.created_at DESC`, P));
+    FROM commitment_letters c JOIN resources_v r ON r.id=c.resource_id LEFT JOIN areas a ON a.id=r.area_id WHERE ${w.join(' AND ')} ORDER BY c.created_at DESC`, P));
 }));
 
 r.get('/letters/:id', ah(async (req, res) => {
-  const l = await one(`SELECT c.*, r.last_name, r.first_name, r.tax_code, r.email, r.phone, r.area_id, r.manager_id, r.birth_place, r.birth_date, r.sex, r.status AS resource_status FROM commitment_letters c JOIN resources r ON r.id=c.resource_id WHERE c.id=$1`, [Number(req.params.id)]);
+  const l = await one(`SELECT c.*, ws.name AS work_site_name, r.last_name, r.first_name, r.tax_code, r.email, r.phone, r.area_id, r.manager_id, r.birth_place, r.birth_date, r.sex, r.status AS resource_status FROM commitment_letters c JOIN resources_v r ON r.id=c.resource_id LEFT JOIN public.sites ws ON ws.id=c.work_site_id WHERE c.id=$1`, [Number(req.params.id)]);
   if (!l) throw notFound();
   l.documents = await many('SELECT id, version, title, generated_at, (pdf IS NOT NULL) AS has_pdf, coalesce(data->\'_missing\', \'[]\'::jsonb) AS missing FROM generated_documents WHERE kind=\'LETTERA_IMPEGNO\' AND ref_id=$1 ORDER BY version DESC', [l.id]);
   l.signed_files = await many(`SELECT a.id, a.filename, a.size, a.issued_at, a.signed, a.uploaded_at, u.full_name AS uploaded_by_name FROM attachments a LEFT JOIN users u ON u.id=a.uploaded_by WHERE a.resource_id=$1 AND a.category='LETTERA_IMPEGNO' ORDER BY a.uploaded_at DESC`, [l.resource_id]);
@@ -143,12 +144,14 @@ r.get('/letters/:id', ah(async (req, res) => {
 r.post('/letters', requireWrite, ah(async (req, res) => {
   const letter = parse(letterSchema, req.body.letter || {});
   let resourceId = req.body.resource_id ? Number(req.body.resource_id) : null;
+  let created = false;
   const generate = Boolean(req.body.generate);
   const id = await tx(async (c) => {
     if (!resourceId) {
+      // nuova persona in stato IMPEGNO sull'anagrafica unica (public.people + person_ext), con audit PERSON_CREATED della Suite
       const person = parse(personSchema, { kind: 'DIPENDENTE', status: 'IMPEGNO', ...(req.body.person || {}) });
-      const cols = Object.keys(person);
-      resourceId = (await c.query(`INSERT INTO resources (${cols.join(',')}, created_by) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}, $${cols.length + 1}) RETURNING id`, [...cols.map((k) => person[k]), req.user.id])).rows[0].id;
+      resourceId = await createPerson(c, req, person);
+      created = true;
     }
     if (req.body.cv_id) {
       {
@@ -156,7 +159,7 @@ r.post('/letters', requireWrite, ah(async (req, res) => {
         const cv = (await c.query('SELECT * FROM cv_box WHERE id=$1', [Number(req.body.cv_id)])).rows[0];
         if (cv?.data) {
           const att = (await c.query(`INSERT INTO attachments (resource_id, category, filename, mime, size, data, uploaded_by, notes) VALUES ($1,'CV',$2,$3,$4,$5,$6,'Da CV Box') RETURNING id`, [resourceId, cv.filename, cv.mime, cv.size, cv.data, req.user.id])).rows[0];
-          await c.query('UPDATE resources SET cv_attachment_id=$2 WHERE id=$1', [resourceId, att.id]);
+          await updatePerson(c, req, resourceId, { cv_attachment_id: att.id }, { audit: false });
         }
         await c.query(`UPDATE cv_box SET status='CONVERTITO', resource_id=$2, updated_at=now() WHERE id=$1`, [Number(req.body.cv_id), resourceId]);
       }
@@ -166,6 +169,7 @@ r.post('/letters', requireWrite, ah(async (req, res) => {
     const row = (await c.query(`INSERT INTO commitment_letters (resource_id, created_by, ${cols.join(',')}) VALUES ($1,$2,${cols.map((_, i) => `$${i + 3}`).join(',')}) RETURNING id`, [resourceId, req.user.id, ...vals])).rows[0];
     return row.id;
   });
+  if (created) reindexPerson(resourceId);
   await audit(req, 'LETTER_CREATE', 'letter', id, { resource_id: resourceId });
   let doc = null;
   if (generate) doc = await generateDocument({ req, resourceId, kind: 'LETTERA_IMPEGNO', refId: id });
@@ -202,7 +206,7 @@ r.delete('/letters/:id', requireRole('ADMIN'), ah(async (req, res) => {
 
 // Lettere accettate non ancora convertite: base per il contratto di assunzione
 r.get('/letters-accepted', ah(async (_req, res) => {
-  res.json(await many(`SELECT c.*, r.last_name, r.first_name, r.tax_code FROM commitment_letters c JOIN resources r ON r.id=c.resource_id WHERE c.status='ACCETTATA' ORDER BY c.accepted_at DESC`));
+  res.json(await many(`SELECT c.*, r.last_name, r.first_name, r.tax_code FROM commitment_letters c JOIN resources_v r ON r.id=c.resource_id WHERE c.status='ACCETTATA' ORDER BY c.accepted_at DESC`));
 }));
 
 export default r;

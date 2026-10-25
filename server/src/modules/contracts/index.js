@@ -5,6 +5,9 @@
 // (sessione e grant della Suite) e montaggio sotto /api/contracts.
 // MODULO RISERVATO: entra solo chi ha il grant contracts oppure il titolare della Suite (OWNER). Un ADMIN Suite senza grant
 // non vede nulla, a differenza degli altri moduli. Ogni lettura di una scheda viene registrata nel read_log della Suite.
+// ANAGRAFICA UNICA (docs/ANAGRAFICA.md, migrazione 016): le persone sono public.people e questo è il modulo HR che le crea e le
+// modifica (lib/people.js, con audit PERSON_CREATED / PERSON_UPDATED della Suite); il dossier riservato sta in contracts.person_ext,
+// le sedi di lavoro sono public.sites. Niente tabelle resources e work_sites; le letture passano dalla vista resources_v.
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';
@@ -51,7 +54,7 @@ export default function mount(app) {
   // Il simulatore busta paga è un POST di solo calcolo (nessuna scrittura): resta disponibile anche in MIRROR
   r.use('/ccnl', (req, res, next) => (req.method === 'POST' && req.path === '/simulate' ? ccnlRoutes(req, res, next) : next()));
   r.use(blockWritesInMirror);
-  r.use(adminRoutes);                // settings, areas, work-sites, audit (gli utenti li gestisce la Suite)
+  r.use(adminRoutes);                // settings, areas, work-sites (elenco di public.sites), audit (gli utenti li gestisce la Suite)
   r.use('/resources', resourceRoutes);
   r.use(documentRoutes);              // /resources/:id/documents/generate, /documents/...
   r.use('/scouting', scoutingRoutes);

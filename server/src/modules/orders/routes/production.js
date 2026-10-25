@@ -31,7 +31,7 @@ function csvParse(txt, { delimiter = ',', from_line = 1 } = {}) {
 // Produzione mensile per struttura: tabella esami x mesi
 r.get('/', ah(async (req, res) => {
   const sid = isOps(req.user) ? Number(req.query.struttura_id) : req.user.struttura_id;
-  if (!sid) throw bad('Struttura obbligatoria');
+  if (!sid) throw bad('Sede obbligatoria');
   await assertStruttura(req.user, sid);
   const months = Math.min(24, Number(req.query.months || 6));
   const rows = await many(`SELECT p.month, p.exam_code, p.exam_name, p.qty, p.source,
@@ -61,13 +61,13 @@ r.post('/import', requireRole(...OPS_ROLES), upload.single('file'), ah(async (re
     const txt = req.file.buffer.toString('utf8');
     records = csvParse(txt, { delimiter: txt.split('\n')[0].includes(';') ? ';' : ',', from_line: 2, relax_column_count: true, trim: true });
   }
-  const strutture = await many('SELECT id, code, studiolab_code FROM strutture WHERE active');
+  const strutture = await many('SELECT id, code, studiolab_code, silva_code FROM sites_v WHERE active');
   const byMonth = new Map(); const errors = [];
   records.forEach((rec, i) => {
     const [code, month, examCode, examName, qty] = rec.map((v) => (v == null ? '' : String(v).trim()));
     if (!code && !examCode) return;
-    const s = strutture.find((x) => x.code === code || (x.studiolab_code && x.studiolab_code === code));
-    if (!s) return errors.push(`riga ${i + 2}: struttura ${code} non trovata`);
+    const s = strutture.find((x) => x.code === code || (x.studiolab_code && x.studiolab_code === code) || (x.silva_code && x.silva_code.toUpperCase() === code.toUpperCase()));
+    if (!s) return errors.push(`riga ${i + 2}: sede ${code} non trovata (codice sede, codice StudioLab o codice Silva)`);
     const m = month.match(/^(\d{4})[-/](\d{1,2})/) || month.match(/^(\d{1,2})[-/](\d{4})$/);
     if (!m) return errors.push(`riga ${i + 2}: mese ${month} non valido (atteso AAAA-MM)`);
     const monthIso = m[1].length === 4 ? `${m[1]}-${m[2].padStart(2, '0')}` : `${m[2]}-${m[1].padStart(2, '0')}`;
@@ -83,7 +83,7 @@ r.post('/import', requireRole(...OPS_ROLES), upload.single('file'), ah(async (re
 
 r.get('/import/template.xlsx', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Produzione');
-  ws.addRow(['Codice struttura (o codice StudioLab)', 'Mese (AAAA-MM)', 'Codice esame StudioLab', 'Descrizione esame', 'Quantità']);
+  ws.addRow(['Codice sede (o codice StudioLab / Silva)', 'Mese (AAAA-MM)', 'Codice esame StudioLab', 'Descrizione esame', 'Quantità']);
   ws.addRow(['CLI-001', '2026-09', '0014', 'Emocromo', 140]);
   ws.getRow(1).font = { bold: true }; ws.columns.forEach((c) => { c.width = 28; });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

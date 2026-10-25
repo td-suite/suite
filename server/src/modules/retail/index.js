@@ -1,7 +1,8 @@
 // Modulo Retail Assistant (retail.toscanadiagnostica.it) travasato nella Suite: clienti B2C e B2B, vendite, prestazioni,
 // campagne, calendario promozionale, esposizione e book retail, budget e scostamenti, import dai gestionali, connettori.
 // Autenticazione, utenti e profili sono della Suite; il codice dell'app lavora con la "sua" riga users nello schema retail
-// (req.moduleUser) con role = profilo del grant (ADMIN, RETAIL, SEDE, VIEWER) e site_id = sede dello scope del grant (profilo SEDE).
+// (req.moduleUser) con role = profilo del grant (ADMIN, RETAIL, SEDE, VIEWER) e site_ids = sedi dell'anagrafica unica negli scope del grant.
+// Sedi e persone sono quelle della Suite (public.sites, public.people): il modulo tiene solo site_ext e person_ext (docs/ANAGRAFICA.md).
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';
@@ -25,7 +26,7 @@ const KEY = 'retail';
 
 // Stessa forma dell'utente che il front-end dell'app si aspetta da /auth/me
 export const publicUser = (u) => ({
-  id: u.id, email: u.email, full_name: u.full_name, role: u.role, site_id: u.site_id ?? null, site_ids: u.site_ids || [],
+  id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, site_id: u.site_id ?? null, site_ids: u.site_ids || [],
   auth_provider: u.auth_provider || 'ENTRA', must_change_password: false, totp_enabled: false, active: true,
   suite_user_id: u.suite_user_id, suite_level: u.suite_level,
 });
@@ -34,12 +35,11 @@ export default function mount(app) {
   const r = Router();
   r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN' } }));
   // L'app ragiona con il suo utente: la riga users dello schema retail, con il ruolo = profilo del grant Suite.
-  // Il perimetro del profilo SEDE (users.site_id dell'app) viene dagli scope SITE del grant, tradotti negli id delle sedi dell'app.
+  // Il perimetro del profilo SEDE sono gli id di public.sites negli scope SITE del grant (anagrafica unica, req.moduleUser.site_ids).
   r.use((req, _res, next) => {
     req.suiteUser = req.user;
-    const legacy = (req.moduleUser.legacy_site_ids || []).filter((x) => Number.isFinite(Number(x))).map(Number);
-    const siteId = legacy[0] ?? (req.moduleUser.role === 'SEDE' ? req.moduleUser.site_id : null) ?? null;
-    req.user = { ...req.moduleUser, site_id: siteId, site_ids: legacy.length ? legacy : siteId != null ? [siteId] : [] };
+    const siteIds = (req.moduleUser.site_ids || []).map(Number).filter(Number.isFinite);
+    req.user = { ...req.moduleUser, site_id: siteIds[0] ?? null, site_ids: siteIds };
     next();
   });
   r.get('/state', async (req, res, next) => {
@@ -61,6 +61,7 @@ export default function mount(app) {
   // Errori specifici dell'app (duplicati, file troppo grandi) con i messaggi dell'app; il resto al gestore della Suite
   r.use((err, _req, res, next) => {
     if (err?.code === '23505') return res.status(409).json({ error: 'Elemento duplicato (codice, codice fiscale, partita IVA o email già presenti)' });
+    if (err?.code === '23503') return res.status(400).json({ error: 'Riferimento non valido: la sede, la persona o l\'organizzazione indicata non esiste nell\'anagrafica della Suite' });
     if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `File troppo grande (max ${config.maxUploadMb} MB)` });
     next(err);
   });

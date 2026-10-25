@@ -111,7 +111,7 @@ export async function ingestHl7(text) {
       const dup = await one(`SELECT count(*)::int AS n FROM studiolab_events WHERE acceptance_id=$1 AND exam_placer_id=$2 AND counted > 0`, [e.groupId || msg.acceptanceId, e.placerId || e.examCode]);
       if (dup.n > 1) { await q('UPDATE studiolab_events SET counted=0 WHERE id=$1', [r.rows[0].id]); ignored++; continue; }
     }
-    const s = await one("SELECT id FROM strutture WHERE studiolab_code=$1 OR code=$1 LIMIT 1", [client]);
+    const s = await one('SELECT id FROM sites_v WHERE studiolab_code=$1 OR code=$1 OR upper(silva_code)=upper($1) ORDER BY configured DESC, id LIMIT 1', [client]);
     if (!s) { ignored++; continue; }
     await q(`INSERT INTO production (struttura_id, month, exam_code, exam_name, qty, source) VALUES ($1,$2,$3,$4,GREATEST($5,0),'STUDIOLAB')
              ON CONFLICT (struttura_id, month, exam_code) DO UPDATE SET qty = GREATEST(production.qty + $5, 0), exam_name = coalesce(production.exam_name, EXCLUDED.exam_name), source='STUDIOLAB', updated_at=now()`,

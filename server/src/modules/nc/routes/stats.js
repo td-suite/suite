@@ -44,7 +44,7 @@ r.get('/stats', ah(async (req, res) => {
       count(*) FILTER (WHERE n.first_response_at IS NOT NULL AND n.first_response_at <= n.sla_due_at)::int AS in_sla,
       count(*) FILTER (WHERE n.first_response_at IS NOT NULL)::int AS con_risposta,
       (SELECT count(*)::int FROM accettazioni a WHERE a.sede_id = s.id ${from ? `AND coalesce(a.data_accettazione, a.created_at) >= $${p.indexOf(from) + 1}::date` : ''} ${to ? `AND coalesce(a.data_accettazione, a.created_at) < ($${p.indexOf(to) + 1}::date + 1)` : ''}) AS accettazioni
-    FROM nc n JOIN sedi s ON s.id=n.sede_id ${W} GROUP BY s.id ORDER BY totale DESC`, p);
+    FROM nc n JOIN sites_v s ON s.id=n.sede_id ${W} GROUP BY s.id, s.nome, s.codice, s.tipo ORDER BY totale DESC`, p);
 
   const perTipo = await many(`SELECT n.macro, coalesce(t.label, coalesce(n.tipo_altro,'Altro')) AS tipo, count(*)::int AS n, count(*) FILTER (WHERE n.gravita <> 'MINORE')::int AS rilevanti
     FROM nc n LEFT JOIN nc_tipi t ON t.id=n.tipo_id ${W} GROUP BY n.macro, tipo ORDER BY n DESC`, p);

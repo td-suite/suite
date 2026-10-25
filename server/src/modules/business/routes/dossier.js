@@ -25,7 +25,7 @@ async function loadDossier(contractId) {
 
 r.get('/:contractId', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.contractId));
-  res.json({ contract: { id: c.id, kind: c.kind, protocol: c.protocol, status: c.status, title: c.title, start_date: c.start_date, data: c.data, partner: c.partner }, dossier: await loadDossier(c.id) });
+  res.json({ contract: { id: c.id, kind: c.kind, protocol: c.protocol, status: c.status, title: c.title, start_date: c.start_date, data: c.data, org: c.org, site: c.site }, dossier: await loadDossier(c.id) });
 }));
 
 // Dati del fascicolo: orari, personale, strumentazione, note, codici, date
@@ -97,7 +97,7 @@ r.post('/:contractId/generate/:key', ah(async (req, res) => {
   const doc = DOC_BY_KEY[req.params.key];
   if (!doc || doc.source === 'UPLOAD') throw bad('Questo documento va caricato, non generato');
   const s = await getSettings();
-  const site = c.data?.site || {};
+  const site = c.site || {};
   const slug = `${doc.key}_${(site.city || 'sede').replace(/\W+/g, '_')}_${(d.doc_date || todayRome()).replace(/-/g, '')}`;
   await q('DELETE FROM dossier_files WHERE dossier_id=$1 AND doc_key=$2 AND source=$3', [d.id, doc.key, 'GEN']);
   const ins = (filename, mime, buf) => q('INSERT INTO dossier_files(dossier_id, doc_key, source, filename, mime, size, sha256, data, uploaded_by) VALUES ($1,$2,\'GEN\',$3,$4,$5,$6,$7,$8)', [d.id, doc.key, filename, mime, buf.length, sha256(buf), buf, req.user.id]);
@@ -107,7 +107,7 @@ r.post('/:contractId/generate/:key', ah(async (req, res) => {
     const buf = await checklistXlsx(L, { company: s.company_name, site: `${site.street || ''}, ${site.city || ''} (${site.prov || ''})`, ds: `${s.ds_title} ${s.ds_name}`, date: itDate(todayRome()) });
     await ins(`Autovalutazione_${doc.list}_${slug}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buf);
   } else {
-    const data = dossierData(d, c, c.partner, s);
+    const data = dossierData(d, c, c.org, s);
     const docx = renderDocx(doc.template, data);
     await ins(`${slug}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', docx);
     if (await pdfAvailable()) {
@@ -125,7 +125,7 @@ r.post('/:contractId/generate-all', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.contractId));
   const d = await loadDossier(c.id);
   const s = await getSettings();
-  const site = c.data?.site || {};
+  const site = c.site || {};
   const pdf = await pdfAvailable();
   const errors = [];
   for (const doc of DOSSIER_DOCS.filter((x) => x.source !== 'UPLOAD' && !d.doc_state?.[x.key]?.not_applicable)) {
@@ -137,7 +137,7 @@ r.post('/:contractId/generate-all', ah(async (req, res) => {
         const L = d.checklists.find((x) => x.code === doc.list);
         await ins(`Autovalutazione_${doc.list}_${slug}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', await checklistXlsx(L, { company: s.company_name, site: `${site.street || ''}, ${site.city || ''} (${site.prov || ''})`, ds: `${s.ds_title} ${s.ds_name}`, date: itDate(todayRome()) }));
       } else {
-        const docx = renderDocx(doc.template, dossierData(d, c, c.partner, s));
+        const docx = renderDocx(doc.template, dossierData(d, c, c.org, s));
         await ins(`${slug}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', docx);
         if (pdf) await ins(`${slug}.pdf`, 'application/pdf', await docxToPdf(docx));
       }

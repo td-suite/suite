@@ -1,14 +1,14 @@
-import { many, q } from '../db.js';
+import { q } from '../db.js';
 import { computePlan } from './engine.js';
 import { sendMail, adminEmails } from './mailer.js';
 import { getSetting, todayRome } from './util.js';
-import { joinStruttura, sortStrutture } from './strutture.js';
+import { joinStruttura, sortStrutture, loadSedi } from './strutture.js';
 
 // Stato criticità di tutte le sedi attive (calcolo con lo stesso motore del frontend)
 export async function criticita() {
-  const rows = await many('SELECT id, data FROM strutture WHERE deleted_at IS NULL');
+  const sedi = await loadSedi();
   const soglia = Number(await getSetting('crit_soglia', '5'));
-  const out = sortStrutture(rows.map((r) => joinStruttura(r.data, {}))).map((s) => {
+  const out = sortStrutture(sedi.map((x) => joinStruttura(x.lite, {}))).map((s) => {
     let plan = null; try { plan = computePlan(s); } catch { /* dati incompleti */ }
     const alte = plan ? plan.crit.filter((c) => c.lv === 'alta') : [];
     return { id: s.id, denominazione: s.denominazione, nomeSede: s.nomeSede || '', email: s.email || '', alte: alte.length, sopraSoglia: alte.length >= soglia, dettaglio: alte.slice(0, 12).map((c) => c.t) };

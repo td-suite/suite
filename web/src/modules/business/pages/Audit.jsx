@@ -6,7 +6,7 @@ export default function Audit() {
   const list = useApi('/audit?limit=300');
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Registro attività</h1><div className="sub">Ultime 300 operazioni: accessi, partner, contratti, documenti generati e caricati, credenziali, fascicoli, utenti e impostazioni.</div></div></div>
+      <div className="page-head"><div><h1>Registro attività</h1><div className="sub">Ultime 300 operazioni: accessi, organizzazioni, contratti, documenti generati e caricati, credenziali, fascicoli, utenti e impostazioni.</div></div></div>
       <ErrorBox error={list.error} />
       <Card flush>{!list.data ? <Loading /> : (
         <div className="table-wrap"><table className="t"><thead><tr><th>Quando</th><th>Utente</th><th>Azione</th><th>Oggetto</th><th>Dettagli</th></tr></thead>

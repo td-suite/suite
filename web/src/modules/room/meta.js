@@ -24,7 +24,7 @@ export default {
     { to: 'presenze', icon: 'check', label: 'Presenze', profiles: INTERNI },
     { to: 'rendiconti', icon: 'cash', label: 'Rendiconti', profiles: ['ADMIN', 'RESP_SAN', 'PROF'] },
     { to: 'fabbisogno', icon: 'alert', label: 'Fabbisogno', badge: 'scoperti', profiles: INTERNI },
-    { to: 'bacheca', icon: 'megaphone', label: 'Bacheca' },
+    { to: 'bacheca', icon: 'megaphone', label: 'Comunicazioni ai professionisti' },
     { to: 'statistiche', icon: 'stats', label: 'Statistiche', profiles: GESTIONE },
     { group: 'Amministrazione', profiles: ['ADMIN'] },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e backup', profiles: ['ADMIN'] },

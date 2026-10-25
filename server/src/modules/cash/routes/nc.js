@@ -35,7 +35,7 @@ r.get('/', ah(async (req, res) => {
   res.json(await many(`SELECT n.*, s.name AS site_name, c.name AS company_name, u.full_name AS created_by_name, r.report_date,
       (SELECT count(*)::int FROM nc_messages m WHERE m.nc_id=n.id) AS messages,
       (SELECT max(created_at) FROM nc_messages m WHERE m.nc_id=n.id) AS last_message_at
-    FROM nonconformities n JOIN companies c ON c.id=n.company_id LEFT JOIN sites s ON s.id=n.site_id
+    FROM nonconformities n JOIN companies_v c ON c.id=n.company_id LEFT JOIN sites_v s ON s.id=n.site_id
     LEFT JOIN users u ON u.id=n.created_by LEFT JOIN cash_reports r ON r.id=n.report_id
     WHERE ${where.join(' AND ')} ORDER BY (n.status='CHIUSA'), n.created_at DESC LIMIT 1000`, P.values));
 }));
@@ -43,7 +43,7 @@ r.get('/', ah(async (req, res) => {
 r.get('/:id', ah(async (req, res) => {
   const n = await load(req.user, Number(req.params.id));
   const extra = await one(`SELECT s.name AS site_name, c.name AS company_name, u.full_name AS created_by_name, cu.full_name AS closed_by_name, r.report_date
-    FROM nonconformities n JOIN companies c ON c.id=n.company_id LEFT JOIN sites s ON s.id=n.site_id LEFT JOIN users u ON u.id=n.created_by
+    FROM nonconformities n JOIN companies_v c ON c.id=n.company_id LEFT JOIN sites_v s ON s.id=n.site_id LEFT JOIN users u ON u.id=n.created_by
     LEFT JOIN users cu ON cu.id=n.closed_by LEFT JOIN cash_reports r ON r.id=n.report_id WHERE n.id=$1`, [n.id]);
   const messages = await many(`SELECT m.*, u.full_name, u.role FROM nc_messages m LEFT JOIN users u ON u.id=m.user_id WHERE nc_id=$1 ORDER BY created_at`, [n.id]);
   res.json({ ...n, ...extra, messages });
@@ -61,7 +61,7 @@ r.post('/', requireRole('SUPERADMIN', 'ADMIN', 'CASSIERE', 'FINANCE'), ah(async 
     due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   }), req.body);
   if (d.report_id) {
-    const rep = await one('SELECT r.site_id, s.company_id FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE r.id=$1', [d.report_id]);
+    const rep = await one('SELECT r.site_id, s.company_id FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE r.id=$1', [d.report_id]);
     if (!rep) throw bad('Rendiconto inesistente');
     d.site_id = rep.site_id; d.company_id = rep.company_id;
   }
@@ -73,7 +73,7 @@ r.post('/', requireRole('SUPERADMIN', 'ADMIN', 'CASSIERE', 'FINANCE'), ah(async 
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
   [d.company_id, d.site_id || null, d.report_id || null, d.kind, d.severity, d.title, d.description, d.due_date || null, req.user.id]);
   if (d.report_id) await q(`INSERT INTO report_events (report_id, event, detail, user_id) VALUES ($1,'NC_APERTA',$2,$3)`, [d.report_id, `#${row.id} ${d.title}`, req.user.id]);
-  if (d.site_id) { const site = await one('SELECT * FROM sites WHERE id=$1', [d.site_id]); notifyNcOpened({ ...d, id: row.id }, site, req.user.full_name).catch(() => {}); }
+  if (d.site_id) { const site = await one('SELECT * FROM sites_v WHERE id=$1', [d.site_id]); notifyNcOpened({ ...d, id: row.id }, site, req.user.full_name).catch(() => {}); }
   await audit(req, 'NC_CREATE', 'nc', row.id, d);
   res.status(201).json(row);
 }));
@@ -91,10 +91,10 @@ r.post('/:id/messages', ah(async (req, res) => {
   });
   if (kind === 'RISPOSTA') {
     const creator = n.created_by ? await one('SELECT email FROM users WHERE id=$1', [n.created_by]) : null;
-    const site = n.site_id ? await one('SELECT * FROM sites WHERE id=$1', [n.site_id]) : null;
+    const site = n.site_id ? await one('SELECT * FROM sites_v WHERE id=$1', [n.site_id]) : null;
     notifyNcReply(n, site, req.user.full_name, d.body, creator?.email).catch(() => {});
   } else if (n.site_id) {
-    const site = await one('SELECT * FROM sites WHERE id=$1', [n.site_id]);
+    const site = await one('SELECT * FROM sites_v WHERE id=$1', [n.site_id]);
     if (site?.site_email) sendMail({ kind: 'NC', to: site.site_email, companyId: n.company_id, siteId: site.id, sentBy: req.user.id, subject: `Nota su #${n.id} · ${site.name}: ${n.title}`, title: `Nota di ${req.user.full_name} sulla segnalazione #${n.id}`, body: d.body }).catch(() => {});
   }
   await audit(req, 'NC_MESSAGE', 'nc', n.id, { kind });

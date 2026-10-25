@@ -12,6 +12,7 @@
 //  - GET /api/studioweb/accettazioni/url -> link diretto all'accettazione in StudioWEB (se il nodo lo espone).
 import { config } from '../config.js';
 import { one, q } from '../db.js';
+import { findSedeByCodice } from './sedi.js';
 
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 // Sto facendo un'ipotesi sui codici 20/25: lo swagger li elenca senza descrizione; da confermare con CB Sistemi.
@@ -113,19 +114,16 @@ export async function urlStudioWeb(idAcc) {
 }
 
 // ---- cache locale -------------------------------------------------------------------------
+// Oggetto Cliente di StudioLAB: nessuna creazione di sedi (anagrafica unica in Amministrazione). Se il codice cliente
+// corrisponde a una sede censita, si conserva l'ultimo oggetto ricevuto in site_ext (lis_json) e, se manca, l'email NC del LIS.
 export async function upsertSedeFromCliente(cli) {
   if (!cli || !cli.CodiceCliente) return null;
-  const tipo = /lab/i.test(cli.TipoCliente || '') ? 'LABORATORIO' : 'SERVICE';
-  return one(
-    `INSERT INTO sedi (codice, nome, tipo, email_nc, indirizzo, citta, lis_json, lis_synced_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,now())
-     ON CONFLICT ((lower(codice))) DO UPDATE SET
-       nome = COALESCE(NULLIF(EXCLUDED.nome,''), sedi.nome), email_nc = COALESCE(EXCLUDED.email_nc, sedi.email_nc),
-       indirizzo = COALESCE(EXCLUDED.indirizzo, sedi.indirizzo), citta = COALESCE(EXCLUDED.citta, sedi.citta),
-       lis_json = EXCLUDED.lis_json, lis_synced_at = now(), updated_at = now()
-     RETURNING *`,
-    [cli.CodiceCliente, cli.RagioneSociale || cli.CodiceCliente, tipo, cli.EmailNonConformita || cli.Email || null,
-      cli.Indirizzo || null, [cli.CAP, cli.Citta, cli.Provincia ? `(${cli.Provincia})` : null].filter(Boolean).join(' ') || null, JSON.stringify(cli)]);
+  const sede = await findSedeByCodice(cli.CodiceCliente);
+  if (!sede) return null;
+  await q(`INSERT INTO site_ext (site_id, email_nc, lis_json, lis_synced_at) VALUES ($1,$2,$3,now())
+     ON CONFLICT (site_id) DO UPDATE SET email_nc = COALESCE(site_ext.email_nc, EXCLUDED.email_nc), lis_json = EXCLUDED.lis_json, lis_synced_at = now(), updated_at = now()`,
+  [sede.id, (cli.EmailNonConformita || cli.Email || '').toLowerCase() || null, JSON.stringify(cli)]);
+  return sede;
 }
 
 // Unisce nella cache ciò che arriva (stato/esami dalle API; paziente/sede da HL7 o manuale)

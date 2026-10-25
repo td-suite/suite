@@ -225,6 +225,7 @@ const P = {
   bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2zM10 21h4',
   map: 'M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14',
   refresh: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',
+  external: 'M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5',
 };
 export function Icon({ name, size }) {
   return (

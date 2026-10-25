@@ -95,7 +95,7 @@ export default function Desk({ readOnly = false }) {
           <div className="acc-head">
             <div>
               <div className="small muted">Sede inviante</div>
-              <div className="strong">{acc.sede_nome || <span className="red">non associata</span>} {acc.sede_codice && <span className="muted small">({acc.sede_codice} · {SEDE_TIPO[acc.sede_tipo]})</span>}
+              <div className="strong">{acc.sede_nome || <span className="red">non associata</span>} {acc.sede_codice && <span className="muted small">({acc.sede_codice} · {SEDE_TIPO[acc.sede_tipo] || acc.sede_tipo})</span>}
                 {!sede && <button className="btn link small" style={{ marginLeft: 8 }} onClick={() => setFixSede(true)}>{acc.sede_id ? 'correggi' : 'assegna'}</button>}</div>
               {!acc.sede_email && !sede && acc.sede_id && <div className="small red">La sede non ha un'email per le NC: impostala in Sedi invianti prima di inviare.</div>}
               <div className="small muted mt">Paziente</div>

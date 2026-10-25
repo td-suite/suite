@@ -161,6 +161,7 @@ const P = {
   upload: 'M12 16V5M7 10l5-5 5 5M4 20h16',
   truck: 'M2 7h11v9H2zM13 10h4l3 3v3h-7M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   bank: 'M3 10 12 4l9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 18h18M2 21h20',
+  external: 'M14 4h6v6M20 4l-9 9M19 14v6H4V5h6',
 };
 export function Icon({ name, size }) {
   return (

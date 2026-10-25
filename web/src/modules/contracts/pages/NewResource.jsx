@@ -20,8 +20,8 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
   const [path, setPath] = useState(letterMode ? 'LETTERA' : (kindProp || sp.get('kind')) === 'LP' ? 'LP' : '');
   const [step, setStep] = useState(kind ? 1 : 0);
   const [person, setPerson] = useState({ kind: kind || 'DIPENDENTE' });
-  const [emp, setEmp] = useState({ contract_type: 'TIND', weekly_hours: 40, weekly_days: 5, days_label: 'dal lunedì al venerdì', monthly_payments: 14, probation: 'Nessuno.', autonomous_hours: true, benefits: [], ral_steps: [], mbo_objectives: [], mbo_enabled: false, work_site: 'via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)' });
-  const [letter, setLetter] = useState({ contract_type: 'TIND', weekly_hours: 40, autonomous_hours: true, ral_steps: [], letter_date: today(), work_site: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)' });
+  const [emp, setEmp] = useState({ contract_type: 'TIND', weekly_hours: 40, weekly_days: 5, days_label: 'dal lunedì al venerdì', monthly_payments: 14, probation: 'Nessuno.', autonomous_hours: true, benefits: [], ral_steps: [], mbo_objectives: [], mbo_enabled: false, work_site_id: null });
+  const [letter, setLetter] = useState({ contract_type: 'TIND', weekly_hours: 40, autonomous_hours: true, ral_steps: [], letter_date: today(), work_site_id: null });
   const [lp, setLp] = useState({ fees: [], degrees: [], activities: [], auto_renew: true, notice_days: 30, insurance_required: 1000000, role_description: '' });
   const [cvFile, setCvFile] = useState(null);
   const [fromLetter, setFromLetter] = useState(null); // lettera accettata selezionata
@@ -32,7 +32,16 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const accepted = useApi(kind === 'DIPENDENTE' && path === 'CONTRATTO' ? '/scouting/letters-accepted' : null, [kind, path]);
-  const sites = useApi('/work-sites');
+  const sites = useApi('/work-sites');   // sedi dell'anagrafica unica (public.sites)
+  // sede di lavoro predefinita: la sede principale (HEADQUARTER) dell'anagrafica unica, altrimenti la prima
+  useEffect(() => {
+    const list = sites.data || []; if (!list.length) return;
+    const def = (list.find((x) => x.kind === 'HEADQUARTER') || list[0]).id;
+    setEmp((e) => (e.work_site_id ? e : { ...e, work_site_id: def }));
+    setLetter((l) => (l.work_site_id ? l : { ...l, work_site_id: def }));
+  }, [sites.data]);
+  // testo della sede letto da un contratto caricato: si cerca la sede corrispondente per nome o città
+  const matchSite = (text) => { if (!text) return null; const t = String(text).toLowerCase(); return (sites.data || []).find((x) => [x.name, x.city, x.address].filter(Boolean).some((y) => t.includes(String(y).toLowerCase()) || String(y).toLowerCase().includes(t)))?.id || null; };
   const cvId = sp.get('cv_id');
   const cv = useApi(cvId ? `/scouting/cv?q=` : null);
   useEffect(() => {
@@ -51,7 +60,7 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
   const useLetter = (l) => {
     setFromLetter(l);
     setPerson((p) => ({ ...p, id: l.resource_id, last_name: l.last_name, first_name: l.first_name, tax_code: l.tax_code || '', email: l.email || '', phone: l.phone || '', area_id: l.area_id || null, manager_id: l.manager_id || null, birth_place: l.birth_place || '', birth_date: l.birth_date ? String(l.birth_date).slice(0, 10) : '', sex: l.sex || '' }));
-    setEmp((e) => ({ ...e, contract_type: l.contract_type || 'TIND', level: l.level || '', qualification: l.qualification || '', job_title: l.job_title || '', weekly_hours: Number(l.weekly_hours || 40), autonomous_hours: Boolean(l.autonomous_hours), ral: Number(l.ral || 0), ral_steps: l.ral_steps || [], mbo_enabled: Boolean(l.mbo_enabled), mbo_pct: l.mbo_pct, work_site: l.work_site || e.work_site, start_date: l.start_by ? String(l.start_by).slice(0, 10) : '' }));
+    setEmp((e) => ({ ...e, contract_type: l.contract_type || 'TIND', level: l.level || '', qualification: l.qualification || '', job_title: l.job_title || '', weekly_hours: Number(l.weekly_hours || 40), autonomous_hours: Boolean(l.autonomous_hours), ral: Number(l.ral || 0), ral_steps: l.ral_steps || [], mbo_enabled: Boolean(l.mbo_enabled), mbo_pct: l.mbo_pct, work_site_id: l.work_site_id || e.work_site_id, start_date: l.start_by ? String(l.start_by).slice(0, 10) : '' }));
     setStep(2);
   };
 
@@ -62,23 +71,23 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
     try {
       let resourceId; let target;
       if (isLp) {
-        const r = await api.post('/resources', { person: clean({ ...person, kind: 'LP', status: 'ATTIVO' }), lp: { ...lp, fees: (lp.fees || []).filter((f) => f.description), degrees: (lp.degrees || []).filter(Boolean), activities: (lp.activities || []).filter(Boolean) } });
+        const r = await api.post('/resources', { person: clean({ ...person, kind: ['LP', 'MEDICO', 'SANITARIO'].includes(person.kind) ? person.kind : 'LP', status: 'ATTIVO' }), lp: { ...lp, fees: (lp.fees || []).filter((f) => f.description), degrees: (lp.degrees || []).filter(Boolean), activities: (lp.activities || []).filter(Boolean) } });
         resourceId = r.id; target = `${BASE}/risorse/${resourceId}`;
         if (cvFile) await uploadCv(resourceId);
         if (generate) await api.post(`/resources/${resourceId}/documents/generate`, { kind: 'CONTRATTO_LP' });
       } else if (path === 'LETTERA') {
-        const r = await api.post('/scouting/letters', { person: fromLetter?.id ? undefined : clean({ ...person, kind: 'DIPENDENTE', status: 'IMPEGNO' }), resource_id: person.id || undefined, cv_id: cvId || undefined, letter: { ...letter, ral_steps: (letter.ral_steps || []).filter((s) => s.from && s.ral) }, generate });
+        const r = await api.post('/scouting/letters', { person: fromLetter?.id ? undefined : clean({ ...person, kind: person.kind === 'DIRIGENTE' ? 'DIRIGENTE' : 'DIPENDENTE', status: 'IMPEGNO' }), resource_id: person.id || undefined, cv_id: cvId || undefined, letter: { ...letter, ral_steps: (letter.ral_steps || []).filter((s) => s.from && s.ral) }, generate });
         resourceId = r.resource_id; target = `${BASE}/scouting/lettere/${r.id}`;
         if (cvFile) await uploadCv(resourceId);
       } else {
         const e = { ...emp, benefits: (emp.benefits || []).filter(Boolean), ral_steps: (emp.ral_steps || []).filter((s) => s.from && s.ral), mbo_objectives: emp.mbo_enabled ? (emp.mbo_objectives || []).filter((o) => o.area || o.objective) : [] };
         if (fromLetter?.id) {
           resourceId = fromLetter.resource_id;
-          await api.put(`/resources/${resourceId}`, clean({ ...person, id: undefined, kind: 'DIPENDENTE', status: 'ATTIVO', hired_at: emp.start_date || null }));
+          await api.put(`/resources/${resourceId}`, clean({ ...person, id: undefined, kind: emp.contract_type === 'DIRIGENTE' || person.kind === 'DIRIGENTE' ? 'DIRIGENTE' : 'DIPENDENTE', status: 'ATTIVO', hired_at: emp.start_date || null }));
           await api.put(`/resources/${resourceId}/employment`, e);
           await api.put(`/scouting/letters/${fromLetter.id}`, { status: 'CONVERTITA' });
         } else {
-          const r = await api.post('/resources', { person: clean({ ...person, kind: 'DIPENDENTE', status: 'ATTIVO' }), employment: e });
+          const r = await api.post('/resources', { person: clean({ ...person, kind: emp.contract_type === 'DIRIGENTE' || person.kind === 'DIRIGENTE' ? 'DIRIGENTE' : 'DIPENDENTE', status: 'ATTIVO' }), employment: e });
           resourceId = r.id;
         }
         target = `${BASE}/risorse/${resourceId}`;
@@ -89,7 +98,7 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
           if (emp.mbo_enabled) await api.post(`/resources/${resourceId}/documents/generate`, { kind: 'MBO' });
         }
       }
-      toast('Risorsa salvata' + (generate ? ' e documenti generati' : ''));
+      toast('Persona salvata nell\'anagrafica unica' + (generate ? ' e documenti generati' : ''));
       nav(target);
     } catch (e2) { setErr(e2); }
     setBusy(false);
@@ -116,7 +125,7 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
       setKind('DIPENDENTE'); setPath('CONTRATTO'); setGenerate(false);
       const fill = (prev, data) => { const out = { ...prev }; for (const [k, v] of Object.entries(data || {})) if (v !== null && v !== undefined && v !== '') out[k] = v; return out; };
       setPerson((p) => fill({ ...p, kind: 'DIPENDENTE' }, r.person));
-      setEmp((e) => { const data = { ...(r.employment || {}) }; if (r.detected === 'MBO') { delete data.letter_date; if (data.mbo_fixed_amount) { data.mbo_amount = data.mbo_fixed_amount; } delete data.mbo_fixed_amount; } const n = fill(e, data); if (r.detected === 'MBO') n.mbo_enabled = true; return n; });
+      setEmp((e) => { const data = { ...(r.employment || {}) }; if (data.work_site) { const sid = matchSite(data.work_site); if (sid) data.work_site_id = sid; delete data.work_site; } if (r.detected === 'MBO') { delete data.letter_date; if (data.mbo_fixed_amount) { data.mbo_amount = data.mbo_fixed_amount; } delete data.mbo_fixed_amount; } const n = fill(e, data); if (r.detected === 'MBO') n.mbo_enabled = true; return n; });
       const label = r.detected === 'MBO' ? 'Piano MBO' : r.detected === 'UNILAV' ? 'UNILAV' : r.detected === 'CONTRATTO_DIRIGENTE' ? 'Contratto dirigente' : 'Contratto';
       setImportInfo((l) => [...l, `${label} "${r.filename}" letto${r.method === 'ocr' ? ' con OCR (scansione: verifica i dati)' : ''}. ${notes.join('. ')}`]);
       setStep(2);

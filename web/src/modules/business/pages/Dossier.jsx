@@ -17,7 +17,7 @@ export default function Dossier() {
   if (!q.data) return <div className="page"><Loading /></div>;
   const { contract: c, dossier: d } = q.data;
   const edit = canEditDossier(user);
-  const site = c.data?.site || {};
+  const site = c.site || {};
   const act = async (fn, msg) => { try { const r = await fn(); if (r?.errors?.length) setErrors(r.errors); if (r?.pdfError) toast(`PDF non prodotto: ${r.pdfError}`, 'err'); q.reload(); if (msg) toast(msg); } catch (e) { toast(e.message, 'err'); } };
   const save = (body, msg = 'Fascicolo aggiornato') => act(() => api.put(`/dossiers/${c.id}`, body), msg);
   const upload = (key, list) => act(async () => { const fd = new FormData(); for (const f of list) fd.append('files', f); return api.upload(`/dossiers/${c.id}/upload/${key}`, fd); }, 'File caricati');
@@ -29,7 +29,7 @@ export default function Dossier() {
         <div>
           <div className="row" style={{ gap: 8, marginBottom: 6 }}><Badge tone={DOSSIER_STATUS[d.status].tone}>{DOSSIER_STATUS[d.status].label}</Badge><StatusBadge status={c.status} />{c.protocol && <span className="mono">{c.protocol}</span>}</div>
           <h1>Fascicolo di autorizzazione · {c.title}</h1>
-          <div className="sub">Domanda al Comune di {site.city} ai sensi della L.R. Toscana 51/2009 (Modello 5) per il punto prelievo in {site.street}, {site.city} ({site.prov}), presso {c.partner.name}. <Link to={`${BASE}/contratti/${c.id}`}>Scheda del contratto</Link>.</div>
+          <div className="sub">Domanda al Comune di {site.city} ai sensi della L.R. Toscana 51/2009 (Modello 5) per {c.kind === 'SEDE' ? 'la sede' : 'il punto prelievo'} {site.name} in {site.street}, {site.city} ({site.prov}){c.kind === 'SEDE' ? `, locatore ${c.org?.name}` : `, presso ${c.org?.name}`}. <Link to={`${BASE}/contratti/${c.id}`}>Scheda del contratto</Link>.</div>
         </div>
         <div className="row">
           {edit && <button className="btn" onClick={() => act(() => api.post(`/dossiers/${c.id}/generate-all`), 'Documenti del fascicolo generati')}><Icon name="file" />Genera tutti i documenti</button>}

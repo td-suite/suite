@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { one, many, q } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden, HttpError } from '../lib/util.js';
-import { isAdmin, hasModule } from '../lib/access.js';
+import { isAdmin, hasModule, requireAdmin } from '../lib/access.js';
 import { canSee } from '../lib/audience.js';
 import * as blob from '../lib/blob.js';
 
@@ -95,6 +95,30 @@ r.post('/files/avatar', blob.requireBlob, uploadAvatar, ah(async (req, res) => {
   res.status(201).json({ id: row.id, filename: row.filename, mime: row.mime, size: row.size, avatar_file_id: row.id });
 }));
 
+// ---- Foto delle sedi (massimo 3 per sede, amministratori)
+r.post('/sites/:id/photos', requireAdmin, blob.requireBlob, uploadAvatar, ah(async (req, res) => {
+  const site = await one('SELECT id, photo_file_ids FROM sites WHERE id=$1', [Number(req.params.id)]);
+  if (!site) throw notFound('Sede non trovata');
+  if (!req.file) throw bad('Nessuna immagine ricevuta (campo "file")');
+  if (!IMAGE_MIMES.includes(req.file.mimetype)) throw bad('La foto deve essere un\'immagine (JPEG, PNG, WebP)');
+  if ((site.photo_file_ids || []).length >= 3) throw bad('Una sede può avere al massimo 3 foto: rimuovine una prima');
+  const row = await storeFile(req, { scope: 'SITE', folder: `site:${site.id}`, file: req.file });
+  await q('UPDATE sites SET photo_file_ids = array_append(photo_file_ids, $2), updated_at=now() WHERE id=$1', [site.id, row.id]);
+  await audit(req, 'SITE_PHOTO_ADDED', { entity: 'site', entityId: site.id, data: { file_id: row.id } });
+  res.status(201).json({ id: row.id, filename: row.filename, mime: row.mime, size: row.size });
+}));
+r.delete('/sites/:id/photos/:fileId', requireAdmin, ah(async (req, res) => {
+  const site = await one('SELECT id, photo_file_ids FROM sites WHERE id=$1', [Number(req.params.id)]);
+  if (!site) throw notFound('Sede non trovata');
+  const fid = Number(req.params.fileId);
+  if (!(site.photo_file_ids || []).includes(fid)) throw notFound('Foto non trovata su questa sede');
+  await q('UPDATE sites SET photo_file_ids = array_remove(photo_file_ids, $2), updated_at=now() WHERE id=$1', [site.id, fid]);
+  const old = await one('UPDATE files SET deleted_at=now() WHERE id=$1 AND scope=\'SITE\' AND deleted_at IS NULL RETURNING blob_path', [fid]);
+  if (old) blob.deleteBlob(old.blob_path).catch(() => {});
+  await audit(req, 'SITE_PHOTO_REMOVED', { entity: 'site', entityId: site.id, data: { file_id: fid } });
+  res.json({ ok: true });
+}));
+
 // ---- Cartella personale
 r.get('/files/mine', ah(async (req, res) => {
   const folder = req.query.folder != null ? cleanFolder(req.query.folder) : undefined;
@@ -112,6 +136,7 @@ async function canRead(user, f) {
   if (f.owner_user_id === user.id) return true;
   switch (f.scope) {
     case 'AVATAR': return true;
+    case 'SITE': return true;   // foto delle sedi: visibili a tutti gli utenti
     case 'PERSONAL': return false;
     case 'POST': {
       const posts = await many('SELECT p.audience FROM post_files pf JOIN posts p ON p.id=pf.post_id WHERE pf.file_id=$1 AND p.deleted_at IS NULL', [f.id]);

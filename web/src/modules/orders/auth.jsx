@@ -1,5 +1,5 @@
 // Adattatore di autenticazione: l'utente è quello della Suite tradotto dal server nel formato dell'app
-// (riga users del modulo con role = profilo del grant, struttura_id/struttura_kind dall'ambito del grant).
+// (riga users del modulo con role = profilo del grant; struttura_id = sede dell'anagrafica unica nell'ambito del grant, site_ids[0]).
 // Gli helper di ruolo dell'app restano identici; login, logout e onboarding sono della Suite.
 import React, { createContext, useContext } from 'react';
 

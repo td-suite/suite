@@ -19,13 +19,13 @@ export default function Snapshots() {
   };
   const download = async (s) => {
     const full = await api.get(`/snapshots/${s.id}`);
-    const blob = new Blob([JSON.stringify({ v: 2, targets: full.data.targets, team: full.data.team, meta: { rev: s.id, savedBy: s.created_by || 'sistema', savedAt: s.created_at, log: [] } }, null, 1)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ v: full.data.v || 3, takenAt: full.data.takenAt, targets: full.data.targets, team: full.data.team }, null, 1)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `TD_Integration_Plan_snapshot_${s.id}.json`; document.body.appendChild(a); a.click(); a.remove();
   };
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Snapshot e ripristino</h1><div className="sub">Fotografie integrali del piano: una ogni notte, una prima di ogni import, ripristino o eliminazione di target, più quelle manuali. Il ripristino riporta tutto il piano allo stato dello snapshot (viene salvata prima una fotografia dello stato attuale). Il file JSON scaricato si può aprire con "Carica dati".</div></div>
+        <div><h1>Snapshot e ripristino</h1><div className="sub">Fotografie integrali del piano: una ogni notte, una prima di ogni import, ripristino o eliminazione di target, più quelle manuali. Il ripristino riporta tutto il piano allo stato dello snapshot (viene salvata prima una fotografia dello stato attuale). Le target e le persone sono riferimenti all'anagrafica unica: una target eliminata dall'anagrafica non viene ripristinata.</div></div>
         <div className="row"><input placeholder="Nota (facoltativa)" value={note} onChange={(e) => setNote(e.target.value)} style={{ minWidth: 240 }} /><button className="btn" onClick={create}>Salva snapshot adesso</button></div>
       </div>
       <div className="card">
@@ -36,7 +36,7 @@ export default function Snapshots() {
               <td className="mono small">{s.id}</td><td className="small" style={{ whiteSpace: 'nowrap' }}>{itDateTime(s.created_at)}</td>
               <td className="small">{KIND[s.kind] || s.kind}</td><td className="small">{s.note || ''}</td><td className="small">{s.created_by || 'sistema'}</td>
               <td className="num">{s.n_targets}</td><td className="num">{s.n_activities}</td>
-              <td><div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}><button className="btn sm ghost" onClick={() => download(s)}>Scarica JSON</button><button className="btn sm danger" onClick={() => setRestore(s)}>Ripristina</button></div></td>
+              <td><div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}><button className="btn sm ghost" onClick={() => download(s)}>Scarica JSON</button>{s.v >= 3 ? <button className="btn sm danger" onClick={() => setRestore(s)}>Ripristina</button> : <span className="small muted" title="Snapshot precedente all'anagrafica unica">non ripristinabile</span>}</div></td>
             </tr>)}</tbody>
           </table></div>
         )}

@@ -37,7 +37,7 @@ r.get('/summary', ah(async (req, res) => {
   const P = new Params();
   const where = [siteScope(req.user, P), "s.ownership = 'OSPITATA'"];
   if (req.query.company_id) where.push(`s.company_id = ${P.add(Number(req.query.company_id))}`);
-  const sites = await many(`SELECT s.*, c.name AS company_name FROM sites s JOIN companies c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY c.name, s.name`, P.values);
+  const sites = await many(`SELECT s.*, c.name AS company_name FROM sites_v s JOIN companies_v c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY c.name, s.name`, P.values);
   const confirmed = await many(`SELECT * FROM site_royalty_statements WHERE period=$1 AND cancelled_at IS NULL AND site_id = ANY($2)`, [period, sites.map((x) => x.id)]);
   const partner = req.user.role === 'PARTNER';
   const rows = [];
@@ -130,7 +130,7 @@ async function buildSiteRoyaltyPdf(req, _res, override = {}) {
   const period = String(override.period || req.query.period || '');
   if (!PERIOD.test(period)) throw bad('Periodo non valido (AAAA-MM)');
   const site0 = await assertSite(req.user, Number(override.siteId || req.params.id));
-  const company = await one('SELECT * FROM companies WHERE id=$1', [site0.company_id]);
+  const company = await one('SELECT * FROM companies_v WHERE id=$1', [site0.company_id]);
   const { start, end } = monthRange(period);
   const st = await one('SELECT s.*, u.full_name AS confirmed_by_name FROM site_royalty_statements s LEFT JOIN users u ON u.id=s.confirmed_by WHERE s.site_id=$1 AND s.period=$2 AND s.cancelled_at IS NULL', [site0.id, period]);
   if (req.user.role === 'PARTNER' && !st) throw forbidden('Report non ancora confermato dall\'amministratore');

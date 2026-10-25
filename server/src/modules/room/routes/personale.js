@@ -1,14 +1,13 @@
-// Modulo Personale sanitario (gestione): professionisti, documenti, inviti, disponibilità, turni, presenze, rendiconti, bacheca, fabbisogno, statistiche.
+// Modulo Personale sanitario (gestione): schede Room dei professionisti dell'anagrafica unica, documenti, disponibilità, turni, presenze, rendiconti, bacheca, fabbisogno, statistiche.
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
-import { config } from '../config.js';
-import { ah, bad, notFound, forbidden, audit, parse, getSetting, r2, eur, itDate } from '../lib/util.js';
-import { isGestione, isAdmin, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from '../lib/access.js';
+import { ah, bad, notFound, forbidden, audit, parse, getSetting, r2, eur, itDate, HttpError } from '../lib/util.js';
+import { isGestione, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from '../lib/access.js';
 import { sendMail } from '../lib/mailer.js';
 import { computePlan, m2t as m2tE } from '../lib/engine.js';
-import { joinStruttura, mutateStruttura } from '../lib/strutture.js';
-import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, validTime, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede } from '../lib/personale.js';
+import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
+import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS } from '../lib/personale.js';
 
 const r = Router();
 const gest = (req, _res, next) => (isGestione(req.user) ? next() : next(forbidden('Riservato alla gestione del personale sanitario')));
@@ -18,149 +17,138 @@ const mese = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mese aaaa-mm');
 const ordered = (d) => d.ora_a > d.ora_da;
 
 // ---------- Professionisti ----------
-const profSchema = z.object({
-  nome: z.string().trim().min(2).max(120), tipo: z.enum(['medico', 'sanitario']), profilo: z.string().trim().max(60).optional().nullable(),
-  email: z.string().trim().email().max(160).optional().nullable().or(z.literal('')), attivo: z.boolean().optional(), dati: z.record(z.any()).optional(),
+// Le persone vivono in public.people (Amministrazione > Persone, Contratti del personale): qui si legge l'elenco (vista professionisti_v)
+// e si modifica solo la scheda Room (person_ext: tipo, profilo, compenso, contratto, assicurazione, competenze, sedi abilitate, recapiti integrativi).
+const siteRef = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable());
+const extSchema = z.object({
+  tipo: z.enum(['medico', 'sanitario']), profilo: z.string().trim().max(60).optional().nullable(), dati: z.record(z.any()).optional(),
 });
+// Riferimenti alle sedi dentro la scheda (sedi abilitate, eccezioni di tariffa): id di public.sites come numeri
+function normDati(dati) {
+  const d = { ...(dati || {}) };
+  const num = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : null; };
+  d.sediAbilitate = [...new Set((d.sediAbilitate || []).map(num).filter(Boolean))];
+  if (d.compenso) d.compenso = { ...d.compenso, eccezioniSede: (d.compenso.eccezioniSede || []).map((e) => ({ ...e, sedeId: num(e.sedeId) })).filter((e) => e.sedeId) };
+  // i dati anagrafici dell'anagrafica unica non si duplicano nella scheda Room
+  if (d.anagrafica) { d.anagrafica = { ...d.anagrafica }; for (const k of ['cognome', 'nome', 'codiceFiscale', 'email', 'telefono', 'cellulare', 'sesso', 'dataNascita']) delete d.anagrafica[k]; }
+  return d;
+}
+const SUITE_USER = `(SELECT json_build_object('id', u.id, 'email', u.email, 'status', u.status, 'last_login_at', u.last_login_at, 'profile', g.profile, 'proposed', g.proposed)
+    FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'room' WHERE u.person_id = p.id ORDER BY u.id LIMIT 1) AS suite_user`;
 
 r.get('/professionisti', ah(async (req, res) => {
-  const rows = await many('SELECT p.*, u.active AS user_active, u.last_login_at FROM professionisti p LEFT JOIN users u ON u.id=p.user_id ORDER BY lower(p.nome)');
+  const rows = await many(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p ORDER BY lower(p.nome)`);
   if (!isGestione(req.user)) return res.json(rows.filter((p) => p.attivo).map(profLite));
-  const docs = await many('SELECT prof_id, count(*)::int AS n, min(scadenza) FILTER (WHERE scadenza IS NOT NULL) AS prossima_scadenza FROM professionista_docs GROUP BY prof_id');
-  const dm = Object.fromEntries(docs.map((d) => [d.prof_id, d]));
-  res.json(rows.map((p) => ({ ...profLite(p), dati: p.dati, userActive: p.user_active, lastLoginAt: p.last_login_at, nDocs: dm[p.id]?.n || 0, prossimaScadenza: dm[p.id]?.prossima_scadenza || null, updatedAt: p.updated_at })));
+  const docs = await many('SELECT person_id, count(*)::int AS n, min(scadenza) FILTER (WHERE scadenza IS NOT NULL) AS prossima_scadenza FROM professionista_docs GROUP BY person_id');
+  const dm = Object.fromEntries(docs.map((d) => [d.person_id, d]));
+  res.json(rows.map((p) => ({ ...profLite(p), dati: p.dati, userId: p.suite_user?.id || null, userActive: p.suite_user ? p.suite_user.status === 'ACTIVE' : null, userProfile: p.suite_user?.profile || null, lastLoginAt: p.suite_user?.last_login_at || null,
+    nDocs: dm[p.id]?.n || 0, prossimaScadenza: dm[p.id]?.prossima_scadenza || null, updatedAt: p.updated_at })));
 }));
 r.get('/professionisti/opzioni', ah(async (_req, res) => res.json({ profili: PROFILI, docTipi: DOC_TIPI })));
 r.get('/professionisti/:id', gest, ah(async (req, res) => {
-  const p = await one('SELECT p.*, u.active AS user_active, u.auth_provider, u.last_login_at FROM professionisti p LEFT JOIN users u ON u.id=p.user_id WHERE p.id=$1', [req.params.id]);
-  if (!p) throw notFound('Professionista non trovato');
-  const docs = await many('SELECT id, tipo, nome, mime, size, scadenza, note, created_at FROM professionista_docs WHERE prof_id=$1 ORDER BY created_at DESC', [p.id]);
-  const invito = await one('SELECT created_at, expires_at, used_at FROM inviti WHERE user_id=$1 ORDER BY id DESC LIMIT 1', [p.user_id]);
+  const p = await one(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]);
+  if (!p) throw notFound('Persona non trovata nell\'anagrafica (o non è un medico, un sanitario, un libero professionista o un dipendente)');
+  const docs = await many('SELECT id, tipo, nome, mime, size, scadenza, note, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
   // Presenza nelle schede di sede (stessa persona per chiave del nome)
-  const sedi = (await many("SELECT id, data->>'denominazione' AS den, data->>'nomeSede' AS nome, data->'personale' AS personale FROM strutture WHERE deleted_at IS NULL"))
-    .filter((s) => (s.personale || []).some((x) => personKey(x.nome) === p.persona_key)).map((s) => ({ id: s.id, label: s.nome ? `${s.den} · ${s.nome}` : s.den }));
-  res.json({ ...p, docs, invito, sediPresente: sedi });
+  const key = personKey(p.nome);
+  const sedi = (await loadSedi()).filter((x) => (x.lite.personale || []).some((y) => personKey(y.nome) === key)).map((x) => ({ id: x.row.id, label: x.lite.denominazione }));
+  res.json({ ...p, anagrafica: p.dati?.anagrafica || {}, discipline: discipline(p), docs, sediPresente: sedi, suiteUser: p.suite_user, suite_user: undefined });
 }));
-r.post('/professionisti', gest, ah(async (req, res) => {
-  const d = parse(profSchema, req.body);
-  const key = personKey(d.nome);
-  if (await one('SELECT id FROM professionisti WHERE persona_key=$1', [key])) throw bad('Esiste già un professionista con questo nome');
-  const row = await one('INSERT INTO professionisti (persona_key, nome, tipo, profilo, email, attivo, dati, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
-    [key, d.nome, d.tipo, d.profilo || (d.tipo === 'medico' ? 'Medico' : null), d.email || null, d.attivo ?? true, JSON.stringify(d.dati || {}), req.user.id]);
-  await audit(req, 'PROF_CREATE', 'professionista', row.id, { nome: d.nome });
-  res.status(201).json({ id: row.id });
-}));
+// Le persone si creano in Amministrazione > Persone o in Contratti del personale
+r.post('/professionisti', gest, ah(async () => { throw new HttpError(405, 'Le persone si creano in Amministrazione > Persone (o in Contratti del personale): qui si compila solo la scheda Room'); }));
 r.put('/professionisti/:id', gest, ah(async (req, res) => {
-  const d = parse(profSchema, req.body);
-  const p = await one('SELECT * FROM professionisti WHERE id=$1', [req.params.id]); if (!p) throw notFound();
-  const key = personKey(d.nome);
-  const dup = await one('SELECT id FROM professionisti WHERE persona_key=$1 AND id<>$2', [key, p.id]); if (dup) throw bad('Esiste già un professionista con questo nome');
-  await q('UPDATE professionisti SET persona_key=$2, nome=$3, tipo=$4, profilo=$5, email=$6, attivo=$7, dati=$8, updated_at=now(), updated_by=$9 WHERE id=$1',
-    [p.id, key, d.nome, d.tipo, d.profilo || null, d.email || null, d.attivo ?? p.attivo, JSON.stringify(d.dati || {}), req.user.id]);
-  if (p.user_id && d.email && d.email.toLowerCase() !== (p.email || '').toLowerCase()) {
-    const clash = await one('SELECT id FROM users WHERE lower(email)=lower($1) AND id<>$2', [d.email, p.user_id]);
-    if (!clash) await q('UPDATE users SET email=$2, full_name=$3, updated_at=now() WHERE id=$1', [p.user_id, d.email, d.nome]);
-  }
-  if (p.user_id && d.attivo === false) await q('UPDATE users SET active=false WHERE id=$1 AND role=$2', [p.user_id, 'PROF']);
-  // La stessa persona nelle schede di sede: nome, email e profilo seguono l'anagrafica del professionista
+  const d = parse(extSchema, req.body);
+  const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]); if (!p) throw notFound();
+  const dati = normDati(d.dati);
+  const profilo = d.profilo || (d.tipo === 'medico' ? 'Medico' : null);
+  await q(`INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (person_id) DO UPDATE SET tipo=EXCLUDED.tipo, profilo=EXCLUDED.profilo, dati=EXCLUDED.dati, updated_at=now(), updated_by=EXCLUDED.updated_by`, [p.id, d.tipo, profilo, JSON.stringify(dati), req.user.id]);
+  // La stessa persona nelle schede di sede: email (dall'anagrafica unica) e profilo del personale sanitario seguono la scheda
   let sediAggiornate = 0;
-  const sedi = await many("SELECT id FROM strutture WHERE deleted_at IS NULL");
-  for (const s of sedi) {
-    const ok = await mutateStruttura(s.id, (data) => {
+  const key = personKey(p.nome);
+  for (const s of await loadSedi()) {
+    const ok = await mutateStruttura(s.row.id, (data) => {
       let ch = false;
       for (const x of data.personale || []) {
-        if (personKey(x.nome) !== p.persona_key) continue;
-        if (x.nome !== d.nome) { x.nome = d.nome; ch = true; }
-        if ((d.email || '') !== (x.email || '')) { x.email = d.email || ''; ch = true; }
-        if (d.tipo === 'sanitario' && d.profilo && x.profilo !== d.profilo) { x.profilo = d.profilo; ch = true; }
+        if (personKey(x.nome) !== key) continue;
+        if (p.email && (p.email || '') !== (x.email || '')) { x.email = p.email; ch = true; }
+        if (d.tipo === 'sanitario' && profilo && x.profilo !== profilo) { x.profilo = profilo; ch = true; }
       }
       return ch;
-    }, req.user, `anagrafica professionista ${d.nome}`);
+    }, req.user, `scheda Room di ${p.nome}`);
     if (ok) sediAggiornate++;
   }
-  await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: d.nome, sediAggiornate });
+  await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: p.nome, sediAggiornate });
   res.json({ ok: true, sediAggiornate });
 }));
-// Aggiunge dalle schede di sede il personale sanitario non ancora censito. Non tocca mai chi è già in elenco:
-// i professionisti fuori dalla programmazione delle sedi (figure di backup per tutte le strutture) restano.
+// Collega alle schede di sede: per il personale sanitario censito nelle sedi e già presente in public.people crea la scheda Room se manca.
+// Non tocca mai chi ha già la scheda. Le persone delle sedi che non esistono nell'anagrafica vengono segnalate (si creano in Amministrazione).
 r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
-  const sedi = await many("SELECT id, data FROM strutture WHERE deleted_at IS NULL");
-  const current = await many('SELECT id, persona_key, attivo FROM professionisti');
-  const byKey = new Map(current.map((x) => [x.persona_key, x]));
+  const sedi = await loadSedi();
+  const people = await many(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.attivo`);
+  const byKey = new Map(people.map((x) => [personKey(x.nome), x]));
   const seen = new Map();
-  for (const s of sedi) for (const p of s.data.personale || []) {
+  for (const s of sedi) for (const p of s.lite.personale || []) {
     if (!p.nome?.trim() || p.tipo !== 'sanitario' || isAttivita(p.nome)) continue;
     const key = personKey(p.nome);
-    if (seen.has(key)) { const x = seen.get(key); if (p.email && !x.email) x.email = p.email; if (!x.sedi.includes(s.id)) x.sedi.push(s.id); continue; }
-    seen.set(key, { key, nome: p.nome.trim(), profilo: p.profilo || null, email: p.email || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.id] });
+    if (seen.has(key)) { const x = seen.get(key); if (!x.sedi.includes(s.row.id)) x.sedi.push(s.row.id); continue; }
+    seen.set(key, { key, nome: p.nome.trim(), profilo: p.profilo || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.row.id] });
   }
-  let created = 0, riattivati = 0;
+  let created = 0; const nonCensiti = [];
   for (const x of seen.values()) {
     const ex = byKey.get(x.key);
-    if (ex) { if (!ex.attivo) { await q('UPDATE professionisti SET attivo=true, updated_at=now() WHERE id=$1', [ex.id]); riattivati++; } continue; }
+    if (!ex) { nonCensiti.push(x.nome); continue; }
+    if (ex.in_room) continue;
     const dati = { professionale: { discipline: x.disc, attrezzature: x.attr }, sediAbilitate: x.sedi, compenso: { tipo: 'ORARIO' } };
-    await q('INSERT INTO professionisti (persona_key, nome, tipo, profilo, email, dati, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [x.key, x.nome, 'sanitario', x.profilo, x.email, JSON.stringify(dati), req.user.id]);
+    await q('INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (person_id) DO NOTHING', [ex.id, 'sanitario', x.profilo || ex.profilo, JSON.stringify(dati), req.user.id]);
     created++;
   }
-  await audit(req, 'PROF_IMPORT', 'professionista', null, { created, riattivati });
-  res.json({ created, riattivati, totale: seen.size });
+  await audit(req, 'PROF_IMPORT', 'professionista', null, { created, nonCensiti: nonCensiti.length });
+  res.json({ created, riattivati: 0, totale: seen.size, nonCensiti });
 }));
-// Eliminazione di un professionista: solo se non ha dati collegati (altrimenti va disattivato dalla scheda)
+// Rimozione della scheda Room di una persona: solo se non ha dati collegati. La persona resta nell'anagrafica unica.
 r.delete('/professionisti/:id', gest, ah(async (req, res) => {
-  const p = await one('SELECT * FROM professionisti WHERE id=$1', [req.params.id]); if (!p) throw notFound();
+  const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]); if (!p) throw notFound();
   const dip = await one(`SELECT (SELECT count(*) FROM presenze WHERE prof_id=$1) AS presenze, (SELECT count(*) FROM turni WHERE prof_id=$1) AS turni, (SELECT count(*) FROM rendiconti WHERE prof_id=$1) AS rendiconti, (SELECT count(*) FROM candidature WHERE prof_id=$1) AS candidature`, [p.id]);
   const n = Object.values(dip).reduce((a, v) => a + Number(v), 0);
-  if (n > 0) throw bad(`Il professionista ha dati collegati (${Object.entries(dip).filter(([, v]) => Number(v)).map(([k, v]) => `${v} ${k}`).join(', ')}): impostalo "Non attivo" invece di eliminarlo`);
+  if (n > 0) throw bad(`La persona ha dati collegati (${Object.entries(dip).filter(([, v]) => Number(v)).map(([k, v]) => `${v} ${k}`).join(', ')}): la scheda Room non si può rimuovere; lo stato della persona si cambia in Amministrazione > Persone`);
   await tx(async (c) => {
-    await c.query('DELETE FROM professionista_docs WHERE prof_id=$1', [p.id]); await c.query('DELETE FROM disponibilita WHERE prof_id=$1', [p.id]);
-    await c.query('DELETE FROM professionisti WHERE id=$1', [p.id]);
-    if (p.user_id) { await c.query('DELETE FROM inviti WHERE user_id=$1', [p.user_id]); await c.query("UPDATE users SET active=false WHERE id=$1 AND role='PROF'", [p.user_id]); }
+    await c.query('DELETE FROM professionista_docs WHERE person_id=$1', [p.id]); await c.query('DELETE FROM disponibilita WHERE prof_id=$1', [p.id]);
+    await c.query('DELETE FROM person_ext WHERE person_id=$1', [p.id]);
   });
   await audit(req, 'PROF_DELETE', 'professionista', p.id, { nome: p.nome }); res.json({ ok: true });
 }));
 
-// Accesso al portale: nella Suite gli utenti e i grant li crea l'amministrazione della Suite (profilo "Professionista" sul modulo Room Planning).
-// Qui si collega la scheda del professionista all'account con la stessa email: se l'utente Suite esiste già viene agganciato subito,
-// altrimenti resta l'indicazione di cosa creare in Amministrazione. Nessuna password e nessun link di attivazione partono dal modulo.
-r.post('/professionisti/:id/invita', gest, ah(async (req, res) => {
-  const p = await one('SELECT * FROM professionisti WHERE id=$1', [req.params.id]); if (!p) throw notFound();
-  const email = (req.body?.email || p.email || '').trim().toLowerCase();
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Serve un indirizzo email valido per collegare il professionista al suo accesso');
-  const suiteUser = await one(`SELECT u.id, u.full_name, u.status, u.level, g.profile FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'room' AND g.proposed = FALSE WHERE lower(u.email) = lower($1)`, [email]);
-  if (suiteUser && suiteUser.profile && suiteUser.profile !== 'PROF') throw bad(`L'email ${email} appartiene a un utente con profilo ${suiteUser.profile} su Room Planning: usa un altro indirizzo`);
-  // La riga users dello schema del modulo (quella che il portale usa come req.user) viene creata o agganciata per email
-  const userId = await tx(async (c) => {
-    let u = (await c.query('SELECT * FROM users WHERE lower(email)=lower($1)', [email])).rows[0];
-    if (u && u.role !== 'PROF' && u.id !== p.user_id) throw bad(`L'email ${email} appartiene già a un utente ${u.role}: usa un altro indirizzo`);
-    if (!u) u = (await c.query("INSERT INTO users (email, full_name, role, auth_provider, must_change_password, active) VALUES ($1,$2,'PROF','ENTRA',false,true) RETURNING *", [email, p.nome])).rows[0];
-    else await c.query('UPDATE users SET active=true, full_name=$2, updated_at=now() WHERE id=$1', [u.id, p.nome]);
-    await c.query('UPDATE professionisti SET user_id=$2, email=$3, updated_at=now() WHERE id=$1', [p.id, u.id, email]);
-    return u.id;
-  });
-  const linked = Boolean(suiteUser && suiteUser.profile === 'PROF' && suiteUser.status === 'ACTIVE');
-  const hint = linked ? `Accesso attivo: ${email} entra nella Suite e vede il proprio portale.`
-    : suiteUser ? `L'utente ${email} esiste nella Suite ma non ha il profilo Professionista su Room Planning: assegnarlo da Amministrazione > Utenti.`
-      : `Nessun utente Suite con email ${email}: crearlo da Amministrazione > Utenti con il profilo Professionista su Room Planning; al primo accesso vedrà il proprio portale.`;
-  await audit(req, 'PROF_INVITE', 'professionista', p.id, { email, linked });
-  res.json({ userId, linked, suiteUser: Boolean(suiteUser), hint, link: `${config.baseUrl}`, mail: linked ? 'COLLEGATO' : 'DA_CREARE' });
+// Accesso al portale: l'utente Suite collegato alla persona (public.users.person_id) con il profilo Professionista sul modulo Room Planning.
+// Utenti, grant e collegamento alla persona si gestiscono in Amministrazione > Utenti: qui si legge solo lo stato.
+r.get('/professionisti/:id/accesso', gest, ah(async (req, res) => {
+  const p = await one(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]); if (!p) throw notFound();
+  const su = p.suite_user;
+  const byEmail = !su && p.email ? await one(`SELECT u.id, u.email, u.status, g.profile FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'room' WHERE lower(u.email) = lower($1) AND u.person_id IS NULL`, [p.email]) : null;
+  const linked = Boolean(su && su.profile === 'PROF' && !su.proposed && su.status === 'ACTIVE');
+  const hint = linked ? `Accesso attivo: ${su.email} entra nella Suite e vede il proprio portale.`
+    : su ? (su.profile ? `L'utente ${su.email} ha il profilo ${su.profile}${su.proposed ? ' (proposto, da confermare)' : ''} su Room Planning: per il portale serve il profilo Professionista attivo (Amministrazione > Utenti).` : `L'utente ${su.email} è collegato alla persona ma non ha un profilo su Room Planning: assegnare "Professionista" da Amministrazione > Utenti.`)
+      : byEmail ? `Esiste l'utente ${byEmail.email} con la stessa email ma non è collegato a questa persona: collegarlo da Amministrazione > Utenti (campo Persona).`
+        : p.email ? `Nessun utente Suite collegato: crearlo da Amministrazione > Utenti con email ${p.email}, persona collegata e profilo Professionista su Room Planning.` : 'La persona non ha email nell\'anagrafica: inserirla in Amministrazione > Persone, poi creare l\'utente.';
+  res.json({ linked, suiteUser: su, byEmail, hint });
 }));
 
 // Documenti del professionista (binari in tabella, max 8 MB ciascuno)
 r.get('/professionisti/:id/docs/:docId', gest, ah(async (req, res) => {
-  const d = await one('SELECT * FROM professionista_docs WHERE id=$1 AND prof_id=$2', [req.params.docId, req.params.id]); if (!d) throw notFound();
+  const d = await one('SELECT * FROM professionista_docs WHERE id=$1 AND person_id=$2', [req.params.docId, req.params.id]); if (!d) throw notFound();
   res.setHeader('Content-Type', d.mime); res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(d.nome)}"`);
   res.send(Buffer.from(d.data, 'base64'));
 }));
 r.post('/professionisti/:id/docs', gest, ah(async (req, res) => {
   const d = parse(z.object({ tipo: z.enum(DOC_TIPI), nome: z.string().min(1).max(200), mime: z.string().min(3).max(100), base64: z.string().min(4), scadenza: date.optional().nullable().or(z.literal('')), note: z.string().max(500).optional().nullable() }), req.body);
   const size = Math.floor(d.base64.length * 3 / 4); if (size > 8 * 1024 * 1024) throw bad('File troppo grande (max 8 MB)');
-  if (!(await one('SELECT id FROM professionisti WHERE id=$1', [req.params.id]))) throw notFound();
-  const row = await one('INSERT INTO professionista_docs (prof_id, tipo, nome, mime, size, scadenza, note, data, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [req.params.id, d.tipo, d.nome, d.mime, size, d.scadenza || null, d.note || null, d.base64, req.user.id]);
+  if (!(await one('SELECT id FROM professionisti_v WHERE id=$1', [req.params.id]))) throw notFound();
+  const row = await one('INSERT INTO professionista_docs (person_id, tipo, nome, mime, size, scadenza, note, data, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id', [req.params.id, d.tipo, d.nome, d.mime, size, d.scadenza || null, d.note || null, d.base64, req.user.id]);
   await audit(req, 'PROF_DOC_ADD', 'professionista', req.params.id, { tipo: d.tipo, nome: d.nome });
   res.status(201).json({ id: row.id });
 }));
 r.delete('/professionisti/:id/docs/:docId', gest, ah(async (req, res) => {
-  await q('DELETE FROM professionista_docs WHERE id=$1 AND prof_id=$2', [req.params.docId, req.params.id]);
+  await q('DELETE FROM professionista_docs WHERE id=$1 AND person_id=$2', [req.params.docId, req.params.id]);
   await audit(req, 'PROF_DOC_DEL', 'professionista', req.params.id, { docId: req.params.docId }); res.json({ ok: true });
 }));
 
@@ -168,20 +156,21 @@ r.delete('/professionisti/:id/docs/:docId', gest, ah(async (req, res) => {
 export const dispSchema = z.object({
   kind: z.enum(['SETTIMANALE', 'DATA']), giorno: z.number().int().min(0).max(6).optional().nullable(), data: date.optional().nullable(),
   valid_dal: date.optional().nullable().or(z.literal('')), valid_al: date.optional().nullable().or(z.literal('')), ora_da: time, ora_a: time,
-  sedi: z.array(z.string()).optional(), nota: z.string().max(300).optional().nullable(),
+  sedi: z.array(z.union([z.number().int(), z.string()])).optional(), nota: z.string().max(300).optional().nullable(),
 }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" }).refine((d) => (d.kind === 'SETTIMANALE' ? d.giorno != null : !!d.data), { message: 'Indica il giorno della settimana o la data' });
 export async function saveDisp(profId, d, id = null) {
-  const vals = [profId, d.kind, d.kind === 'SETTIMANALE' ? d.giorno : null, d.kind === 'DATA' ? d.data : null, d.valid_dal || null, d.valid_al || null, d.ora_da, d.ora_a, JSON.stringify(d.sedi || []), d.nota || null];   // sedi: JSONB nella Suite (vedi migrazione 004)
+  const sedi = [...new Set((d.sedi || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];   // id di public.sites; JSONB (vedi migrazione 004)
+  const vals = [profId, d.kind, d.kind === 'SETTIMANALE' ? d.giorno : null, d.kind === 'DATA' ? d.data : null, d.valid_dal || null, d.valid_al || null, d.ora_da, d.ora_a, JSON.stringify(sedi), d.nota || null];
   if (id) { await q('UPDATE disponibilita SET kind=$2, giorno=$3, data=$4, valid_dal=$5, valid_al=$6, ora_da=$7, ora_a=$8, sedi=$9, nota=$10, updated_at=now() WHERE id=$11 AND prof_id=$1', [...vals, id]); return id; }
   return (await one('INSERT INTO disponibilita (prof_id, kind, giorno, data, valid_dal, valid_al, ora_da, ora_a, sedi, nota) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id', vals)).id;
 }
 r.get('/disponibilita', gest, ah(async (req, res) => {
   const pid = req.query.prof_id ? Number(req.query.prof_id) : null;
-  res.json(await many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti p ON p.id=d.prof_id WHERE ($1::int IS NULL OR d.prof_id=$1) AND p.attivo ORDER BY p.nome, d.kind, d.giorno, d.data, d.ora_da`, [pid]));
+  res.json(await many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE ($1::int IS NULL OR d.prof_id=$1) AND p.attivo ORDER BY p.nome, d.kind, d.giorno, d.data, d.ora_da`, [pid]));
 }));
 r.post('/disponibilita', gest, ah(async (req, res) => {
   const { prof_id, ...rest } = req.body || {}; const d = parse(dispSchema, rest);
-  if (!(await one('SELECT id FROM professionisti WHERE id=$1', [prof_id]))) throw bad('Professionista non valido');
+  if (!(await one('SELECT id FROM professionisti_v WHERE id=$1', [prof_id]))) throw bad('Professionista non valido');
   res.status(201).json({ id: await saveDisp(Number(prof_id), d) });
 }));
 r.put('/disponibilita/:id', gest, ah(async (req, res) => {
@@ -193,21 +182,21 @@ r.delete('/disponibilita/:id', gest, ah(async (req, res) => { await q('DELETE FR
 /** Disponibilità attive in una data e fascia (prof disponibili): ritorna [{prof_id, ora_da, ora_a, sedi}] */
 export async function dispOn(iso, sedeId = null) {
   const g = dow(iso);
-  return many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti p ON p.id=d.prof_id WHERE p.attivo AND (
+  return many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND (
       (d.kind='DATA' AND d.data=$1::date) OR (d.kind='SETTIMANALE' AND d.giorno=$2 AND (d.valid_dal IS NULL OR d.valid_dal<=$1::date) AND (d.valid_al IS NULL OR d.valid_al>=$1::date)))
-    AND ($3::text IS NULL OR jsonb_array_length(d.sedi)=0 OR d.sedi ? $3::text)`, [iso, g, sedeId]);
+    AND ($3::int IS NULL OR jsonb_array_length(d.sedi)=0 OR d.sedi @> to_jsonb($3::int))`, [iso, g, sedeId == null ? null : Number(sedeId)]);
 }
 
 // ---------- Turni ----------
-const turnoSchema = z.object({ sede_id: z.string().min(1), data: date, ora_da: time, ora_a: time, prof_id: z.number().int().optional().nullable(), profilo: z.string().max(60).optional().nullable(), attivita: z.string().max(120).optional().nullable(), room_id: z.string().max(40).optional().nullable(), nota: z.string().max(300).optional().nullable() }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" });
+const turnoSchema = z.object({ sede_id: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive()), data: date, ora_da: time, ora_a: time, prof_id: z.number().int().optional().nullable(), profilo: z.string().max(60).optional().nullable(), attivita: z.string().max(120).optional().nullable(), room_id: z.string().max(40).optional().nullable(), nota: z.string().max(300).optional().nullable() }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" });
 async function meseStato(m) { return (await one('SELECT * FROM turni_mesi WHERE mese=$1', [m])) || { mese: m, stato: 'BOZZA' }; }
 r.get('/turni/mesi', ah(async (_req, res) => res.json(await many('SELECT t.*, u.full_name AS confermato_da_nome FROM turni_mesi t LEFT JOIN users u ON u.id=t.confermato_da ORDER BY mese DESC'))));
 r.get('/turni', ah(async (req, res) => {
   const m = String(req.query.mese || ''); if (!validMese(m)) throw bad('mese richiesto (aaaa-mm)');
   const st = await meseStato(m);
   if (!isGestione(req.user) && st.stato !== 'CONFERMATO') return res.json({ mese: st, turni: [] });
-  const sede = req.query.sede_id || null;
-  let turni = await many(`SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo, p.tipo AS prof_tipo FROM turni t LEFT JOIN professionisti p ON p.id=t.prof_id WHERE t.mese=$1 AND ($2::text IS NULL OR t.sede_id=$2) ORDER BY t.data, t.sede_id, t.ora_da`, [m, sede]);
+  const sede = req.query.sede_id ? Number(req.query.sede_id) : null;
+  let turni = await many(`SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo, p.tipo AS prof_tipo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.mese=$1 AND ($2::int IS NULL OR t.sede_id=$2) ORDER BY t.data, t.sede_id, t.ora_da`, [m, sede]);
   if (!isGestione(req.user)) turni = turni.filter((t) => canSeeStruttura(req.user, t.sede_id));
   res.json({ mese: st, turni });
 }));
@@ -230,14 +219,14 @@ r.delete('/turni/:id', gest, ah(async (req, res) => { await q('DELETE FROM turni
 async function checkSovrapposizione(profId, data, da, a, excludeId) {
   const rows = await many('SELECT id, ora_da, ora_a, sede_id FROM turni WHERE prof_id=$1 AND data=$2 AND ($3::int IS NULL OR id<>$3)', [profId, data, excludeId]);
   const o = rows.find((t) => t.ora_da < a && t.ora_a > da);
-  if (o) throw bad(`Il professionista ha già un turno ${o.ora_da}–${o.ora_a} in quella data (sede ${o.sede_id})`);
+  if (o) { const sm = await sediMap(); throw bad(`Il professionista ha già un turno ${o.ora_da}–${o.ora_a} in quella data (${sm[o.sede_id] || 'sede ' + o.sede_id})`); }
 }
 r.post('/turni/mesi/:mese/conferma', gest, ah(async (req, res) => {
   const m = req.params.mese; if (!validMese(m)) throw bad('mese non valido');
   await q(`INSERT INTO turni_mesi (mese, stato, confermato_da, confermato_at, nota) VALUES ($1,'CONFERMATO',$2,now(),$3) ON CONFLICT (mese) DO UPDATE SET stato='CONFERMATO', confermato_da=$2, confermato_at=now(), nota=$3`, [m, req.user.id, req.body?.nota || null]);
   await audit(req, 'TURNI_CONFERMA', 'turni_mesi', m);
   // Avviso ai professionisti con turni nel mese (se email configurata)
-  const profs = await many(`SELECT DISTINCT p.id, p.nome, p.email FROM turni t JOIN professionisti p ON p.id=t.prof_id WHERE t.mese=$1 AND p.email IS NOT NULL AND p.attivo`, [m]);
+  const profs = await many(`SELECT DISTINCT p.id, p.nome, p.email FROM turni t JOIN professionisti_v p ON p.id=t.prof_id WHERE t.mese=$1 AND p.email IS NOT NULL AND p.attivo`, [m]);
   let notified = 0;
   if (req.body?.notifica !== false) for (const p of profs) {
     const mine = await many('SELECT t.data, t.ora_da, t.ora_a, t.sede_id, t.attivita FROM turni t WHERE t.mese=$1 AND t.prof_id=$2 ORDER BY t.data, t.ora_da', [m, p.id]);
@@ -254,15 +243,15 @@ r.post('/turni/mesi/:mese/riapri', gest, ah(async (req, res) => {
 }));
 // Genera i turni del mese dalla pianificazione delle sedi (settimana-tipo applicata ai giorni del mese)
 r.post('/turni/genera', gest, ah(async (req, res) => {
-  const d = parse(z.object({ mese, sede_id: z.string().optional().nullable(), tipo: z.enum(['tutti', 'medici', 'sanitari']).default('tutti'), sovrascrivi: z.boolean().default(false) }), req.body);
-  const sedi = await many('SELECT id, data FROM strutture WHERE deleted_at IS NULL AND ($1::text IS NULL OR id=$1)', [d.sede_id || null]);
-  const profs = await many('SELECT id, persona_key, tipo FROM professionisti WHERE attivo');
-  const byKey = Object.fromEntries(profs.map((p) => [p.persona_key, p]));
+  const d = parse(z.object({ mese, sede_id: siteRef.optional(), tipo: z.enum(['tutti', 'medici', 'sanitari']).default('tutti'), sovrascrivi: z.boolean().default(false) }), req.body);
+  const sedi = (await loadSedi({ ids: d.sede_id ? [d.sede_id] : null })).map((x) => ({ id: x.row.id, lite: x.lite }));
+  const profs = await many('SELECT id, nome, tipo FROM professionisti_v WHERE attivo');
+  const byKey = Object.fromEntries(profs.map((p) => [personKey(p.nome), p]));
   const [y, mm] = d.mese.split('-').map(Number); const days = new Date(Date.UTC(y, mm, 0)).getUTCDate();
   const chiusure = await many("SELECT sede_id, dal, al FROM eventi WHERE kind='CHIUSURA'");
   let created = 0, skipped = 0, nonCensiti = new Set();
   for (const s of sedi) {
-    const str = joinStruttura(s.data, {}); let plan; try { plan = computePlan(str); } catch { continue; }
+    const str = joinStruttura(s.lite, {}); let plan; try { plan = computePlan(str); } catch { continue; }
     const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p]));
     if (d.sovrascrivi) await q("DELETE FROM turni WHERE mese=$1 AND sede_id=$2 AND nota='generato dalla pianificazione' AND id NOT IN (SELECT turno_id FROM presenze WHERE turno_id IS NOT NULL)", [d.mese, s.id]);
     for (let day = 1; day <= days; day++) {
@@ -294,21 +283,22 @@ r.post('/turni/genera', gest, ah(async (req, res) => {
 
 // ---------- Presenze ----------
 r.get('/presenze/sedi-gestite', ah(async (req, res) => {
-  const all = await many("SELECT id, data->>'denominazione' AS den, data->>'nomeSede' AS nome FROM strutture WHERE deleted_at IS NULL ORDER BY lower(data->>'denominazione')");
+  const sm = await sediMap();
+  const all = (await loadSedi()).map((x) => ({ id: x.row.id, label: sm[x.row.id] || x.lite.denominazione }));
   const ids = isGestione(req.user) ? all.map((s) => s.id) : await siteManagerSedi(req.user);
-  res.json(all.filter((s) => ids.includes(s.id)).map((s) => ({ id: s.id, label: s.nome ? `${s.den} · ${s.nome}` : s.den })));
+  res.json(all.filter((s) => ids.includes(s.id)).sort((a, b) => a.label.localeCompare(b.label, 'it')));
 }));
 // Giornata di una sede: turni previsti, presenze già confermate, professionisti abbinabili per presenze extra
 r.get('/presenze/giorno', ah(async (req, res) => {
-  const { sede_id, data } = req.query; if (!sede_id || !/^\d{4}-\d{2}-\d{2}$/.test(String(data))) throw bad('sede_id e data richiesti');
+  const sede_id = Number(req.query.sede_id), data = req.query.data; if (!sede_id || !/^\d{4}-\d{2}-\d{2}$/.test(String(data))) throw bad('sede_id e data richiesti');
   if (!(await canConfirmPresenze(req.user, sede_id))) throw forbidden('Non sei il gestore di questa sede');
-  const turni = await many('SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo FROM turni t LEFT JOIN professionisti p ON p.id=t.prof_id WHERE t.sede_id=$1 AND t.data=$2 ORDER BY t.ora_da', [sede_id, data]);
-  const presenze = await many('SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da WHERE pr.sede_id=$1 AND pr.data=$2 ORDER BY pr.ora_da', [sede_id, data]);
-  const profs = await many('SELECT id, nome, tipo, profilo FROM professionisti WHERE attivo ORDER BY lower(nome)');
+  const turni = await many('SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.sede_id=$1 AND t.data=$2 ORDER BY t.ora_da', [sede_id, data]);
+  const presenze = await many('SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti_v p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da WHERE pr.sede_id=$1 AND pr.data=$2 ORDER BY pr.ora_da', [sede_id, data]);
+  const profs = await many('SELECT id, nome, tipo, profilo FROM professionisti_v WHERE attivo ORDER BY in_room DESC, lower(nome)');
   // dalla pianificazione (settimana-tipo) per il giorno, utile se i turni non sono stati generati
   let pianificati = [];
-  const s = await one('SELECT data FROM strutture WHERE id=$1', [sede_id]);
-  if (s) { try { const str = joinStruttura(s.data, {}); const plan = computePlan(str); const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p])); const g = dow(String(data));
+  const s = (await loadSedi({ ids: [sede_id] }))[0];
+  if (s) { try { const str = joinStruttura(s.lite, {}); const plan = computePlan(str); const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p])); const g = dow(String(data));
     const byKey = Object.fromEntries(profs.map((p) => [personKey(p.nome), p]));
     for (const a of plan.assigns.filter((x) => x.d === g)) { const med = byId[a.medId]; const san = a.sanId ? byId[a.sanId] : null;
       for (const per of [med, san]) if (per && !isAttivita(per.nome)) { const pr = byKey[personKey(per.nome)]; pianificati.push({ nome: per.nome, prof_id: pr?.id || null, ora_da: m2tE(a.s), ora_a: m2tE(a.e), attivita: per === med ? 'Ambulatorio ' + (byId[a.roomId]?.nome || '') : `Supporto ${med?.nome || ''}` }); } }
@@ -316,7 +306,7 @@ r.get('/presenze/giorno', ah(async (req, res) => {
   res.json({ turni, presenze, professionisti: profs, pianificati, locked: presenze.some((p) => p.rendiconto_id) });
 }));
 r.post('/presenze/conferma', ah(async (req, res) => {
-  const d = parse(z.object({ sede_id: z.string().min(1), data: date, items: z.array(z.object({ id: z.number().int().optional().nullable(), prof_id: z.number().int(), ora_da: time, ora_a: time, stato: z.enum(['CONFERMATA', 'ASSENTE']).default('CONFERMATA'), turno_id: z.number().int().optional().nullable(), origine: z.enum(['TURNO', 'PIANIFICAZIONE', 'EXTRA']).default('TURNO'), attivita: z.string().max(120).optional().nullable(), nota: z.string().max(300).optional().nullable() }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" })).max(200) }), req.body);
+  const d = parse(z.object({ sede_id: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive()), data: date, items: z.array(z.object({ id: z.number().int().optional().nullable(), prof_id: z.number().int(), ora_da: time, ora_a: time, stato: z.enum(['CONFERMATA', 'ASSENTE']).default('CONFERMATA'), turno_id: z.number().int().optional().nullable(), origine: z.enum(['TURNO', 'PIANIFICAZIONE', 'EXTRA']).default('TURNO'), attivita: z.string().max(120).optional().nullable(), nota: z.string().max(300).optional().nullable() }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" })).max(200) }), req.body);
   if (!(await canConfirmPresenze(req.user, d.sede_id))) throw forbidden('Non sei il gestore di questa sede');
   const ids = [];
   await tx(async (c) => {
@@ -344,25 +334,25 @@ r.get('/presenze', ah(async (req, res) => {
   const { dal, al, sede_id, prof_id } = req.query;
   const ids = isGestione(req.user) ? null : await siteManagerSedi(req.user);
   if (ids && !ids.length) throw forbidden();
-  const rows = await many(`SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da
-    WHERE ($1::date IS NULL OR pr.data>=$1) AND ($2::date IS NULL OR pr.data<=$2) AND ($3::text IS NULL OR pr.sede_id=$3) AND ($4::int IS NULL OR pr.prof_id=$4) ORDER BY pr.data DESC, pr.sede_id, pr.ora_da`, [dal || null, al || null, sede_id || null, prof_id ? Number(prof_id) : null]);
+  const rows = await many(`SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti_v p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da
+    WHERE ($1::date IS NULL OR pr.data>=$1) AND ($2::date IS NULL OR pr.data<=$2) AND ($3::int IS NULL OR pr.sede_id=$3) AND ($4::int IS NULL OR pr.prof_id=$4) ORDER BY pr.data DESC, pr.sede_id, pr.ora_da`, [dal || null, al || null, sede_id ? Number(sede_id) : null, prof_id ? Number(prof_id) : null]);
   res.json(ids ? rows.filter((x) => ids.includes(x.sede_id)) : rows);
 }));
 
 // ---------- Rendiconti ----------
 async function buildRendiconto(profId, m) {
-  const prof = await one('SELECT * FROM professionisti WHERE id=$1', [profId]); if (!prof) throw notFound();
+  const prof = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [profId]); if (!prof) throw notFound();
   const pres = await many("SELECT * FROM presenze WHERE prof_id=$1 AND to_char(data,'YYYY-MM')=$2 AND (rendiconto_id IS NULL OR rendiconto_id = (SELECT id FROM rendiconti WHERE prof_id=$1 AND mese=$2)) ORDER BY data, ora_da", [profId, m]);
   return { prof, pres, calc: calcolaRendiconto(prof, pres, await sediMap()) };
 }
 r.get('/rendiconti', gest, ah(async (req, res) => {
   const m = req.query.mese || null;
   res.json(await many(`SELECT r.id, r.prof_id, r.mese, r.stato, r.ore, r.importo, r.nota, r.generato_at, r.approvato_at, r.inviato_at, p.nome, p.profilo, p.tipo, p.email, ua.full_name AS approvato_da_nome, (r.dettaglio->'oneri'->>'totaleFattura')::numeric AS totale_fattura
-    FROM rendiconti r JOIN professionisti p ON p.id=r.prof_id LEFT JOIN users ua ON ua.id=r.approvato_da WHERE ($1::text IS NULL OR r.mese=$1) ORDER BY r.mese DESC, lower(p.nome)`, [m]));
+    FROM rendiconti r JOIN professionisti_v p ON p.id=r.prof_id LEFT JOIN users ua ON ua.id=r.approvato_da WHERE ($1::text IS NULL OR r.mese=$1) ORDER BY r.mese DESC, lower(p.nome)`, [m]));
 }));
 r.get('/rendiconti/anteprima', gest, ah(async (req, res) => {
   const m = String(req.query.mese || ''); if (!validMese(m)) throw bad('mese');
-  const profs = await many(`SELECT DISTINCT p.id FROM professionisti p WHERE p.attivo AND (p.dati->'compenso'->>'tipo'='FISSO' OR EXISTS (SELECT 1 FROM presenze pr WHERE pr.prof_id=p.id AND to_char(pr.data,'YYYY-MM')=$1 AND pr.stato='CONFERMATA'))`, [m]);
+  const profs = await many(`SELECT DISTINCT p.id FROM professionisti_v p WHERE p.attivo AND (p.dati->'compenso'->>'tipo'='FISSO' OR EXISTS (SELECT 1 FROM presenze pr WHERE pr.prof_id=p.id AND to_char(pr.data,'YYYY-MM')=$1 AND pr.stato='CONFERMATA'))`, [m]);
   const esistenti = new Set((await many('SELECT prof_id FROM rendiconti WHERE mese=$1', [m])).map((x) => x.prof_id));
   const out = [];
   for (const { id } of profs) { const b = await buildRendiconto(id, m); out.push({ prof_id: id, nome: b.prof.nome, profilo: b.prof.profilo, tipo: b.calc.tipo, ore: b.calc.ore, importo: b.calc.importo, totaleFattura: b.calc.oneri.totaleFattura, presenze: b.pres.length, esiste: esistenti.has(id), tariffaMancante: b.calc.tipo === 'ORARIO' && b.calc.righe.some((x) => !x.tariffa) }); }
@@ -371,13 +361,13 @@ r.get('/rendiconti/anteprima', gest, ah(async (req, res) => {
 r.post('/rendiconti/genera', gest, ah(async (req, res) => {
   const d = parse(z.object({ mese, prof_ids: z.array(z.number().int()).optional() }), req.body);
   let ids = d.prof_ids;
-  if (!ids) ids = (await many(`SELECT DISTINCT p.id FROM professionisti p WHERE p.attivo AND (p.dati->'compenso'->>'tipo'='FISSO' OR EXISTS (SELECT 1 FROM presenze pr WHERE pr.prof_id=p.id AND to_char(pr.data,'YYYY-MM')=$1 AND pr.stato='CONFERMATA'))`, [d.mese])).map((x) => x.id);
+  if (!ids) ids = (await many(`SELECT DISTINCT p.id FROM professionisti_v p WHERE p.attivo AND (p.dati->'compenso'->>'tipo'='FISSO' OR EXISTS (SELECT 1 FROM presenze pr WHERE pr.prof_id=p.id AND to_char(pr.data,'YYYY-MM')=$1 AND pr.stato='CONFERMATA'))`, [d.mese])).map((x) => x.id);
   let created = 0, updated = 0;
   for (const id of ids) {
     const ex = await one('SELECT id, stato FROM rendiconti WHERE prof_id=$1 AND mese=$2', [id, d.mese]);
     if (ex && !['BOZZA', 'RESPINTO'].includes(ex.stato)) continue;
     const b = await buildRendiconto(id, d.mese);
-    const det = JSON.stringify({ ...b.calc, professionista: { nome: b.prof.nome, profilo: b.prof.profilo, email: b.prof.email, cf: b.prof.dati?.anagrafica?.codiceFiscale || '', piva: b.prof.dati?.anagrafica?.partitaIva || '' } });
+    const det = JSON.stringify({ ...b.calc, professionista: { nome: b.prof.nome, profilo: b.prof.profilo, email: b.prof.email, cf: b.prof.tax_code || '', piva: b.prof.dati?.anagrafica?.partitaIva || '' } });
     let rid;
     if (ex) { await q("UPDATE rendiconti SET stato='BOZZA', ore=$2, importo=$3, dettaglio=$4, generato_da=$5, generato_at=now(), approvato_da=NULL, approvato_at=NULL WHERE id=$1", [ex.id, b.calc.ore, b.calc.oneri.imponibile, det, req.user.id]); rid = ex.id; updated++; }
     else { rid = (await one('INSERT INTO rendiconti (prof_id, mese, ore, importo, dettaglio, generato_da) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [id, d.mese, b.calc.ore, b.calc.oneri.imponibile, det, req.user.id])).id; created++; }
@@ -387,7 +377,7 @@ r.post('/rendiconti/genera', gest, ah(async (req, res) => {
   res.json({ created, updated });
 }));
 r.get('/rendiconti/:id', gest, ah(async (req, res) => {
-  const x = await one('SELECT r.*, p.nome, p.profilo, p.email, p.dati AS prof_dati, ug.full_name AS generato_da_nome, ua.full_name AS approvato_da_nome FROM rendiconti r JOIN professionisti p ON p.id=r.prof_id LEFT JOIN users ug ON ug.id=r.generato_da LEFT JOIN users ua ON ua.id=r.approvato_da WHERE r.id=$1', [req.params.id]);
+  const x = await one('SELECT r.*, p.nome, p.profilo, p.email, p.tax_code, p.dati AS prof_dati, ug.full_name AS generato_da_nome, ua.full_name AS approvato_da_nome FROM rendiconti r JOIN professionisti_v p ON p.id=r.prof_id LEFT JOIN users ug ON ug.id=r.generato_da LEFT JOIN users ua ON ua.id=r.approvato_da WHERE r.id=$1', [req.params.id]);
   if (!x) throw notFound(); res.json(x);
 }));
 r.post('/rendiconti/:id/stato', gest, ah(async (req, res) => {
@@ -400,13 +390,13 @@ r.post('/rendiconti/:id/stato', gest, ah(async (req, res) => {
 // Approvazione del Responsabile del personale sanitario (o admin): approva e invia il rendiconto al professionista con copia ad amministrazione/backoffice
 r.post('/rendiconti/:id/approva', gest, ah(async (req, res) => {
   const d = parse(z.object({ attachment: z.object({ filename: z.string().min(1), base64: z.string().min(10) }).optional(), invia: z.boolean().default(true), nota: z.string().max(500).optional().nullable() }), req.body);
-  const x = await one('SELECT r.*, p.nome, p.email FROM rendiconti r JOIN professionisti p ON p.id=r.prof_id WHERE r.id=$1', [req.params.id]); if (!x) throw notFound();
+  const x = await one('SELECT r.*, p.nome, p.email FROM rendiconti r JOIN professionisti_v p ON p.id=r.prof_id WHERE r.id=$1', [req.params.id]); if (!x) throw notFound();
   if (x.stato === 'INVIATO') throw bad('Rendiconto già inviato');
   await q("UPDATE rendiconti SET stato='APPROVATO', approvato_da=$2, approvato_at=now(), nota=coalesce($3, nota) WHERE id=$1", [x.id, req.user.id, d.nota || null]);
   await audit(req, 'RENDICONTO_APPROVA', 'rendiconti', x.id);
   let mail = null;
   if (d.invia) {
-    if (!x.email) throw bad('Rendiconto approvato, ma il professionista non ha un indirizzo email: inserirlo nella scheda e poi usare "Invia"');
+    if (!x.email) throw bad('Rendiconto approvato, ma la persona non ha un indirizzo email nell\'anagrafica: inserirlo in Amministrazione > Persone e poi usare "Invia"');
     const cc = String(await getSetting('rendiconto_cc', '')).split(/[;,]/).map((s) => s.trim()).filter(Boolean);
     const det = x.dettaglio || {};
     mail = await sendMail({ kind: 'RENDICONTO', refKey: `REND:${x.id}:${Date.now()}`, to: x.email, cc, subject: `Rendiconto compensi ${meseTxt(x.mese)} · Toscana Diagnostica`, title: `Rendiconto di ${meseTxt(x.mese)}`,
@@ -422,7 +412,7 @@ r.delete('/rendiconti/:id', gest, ah(async (req, res) => {
 }));
 
 // ---------- Bacheca (posizioni aperte) ----------
-const posSchema = z.object({ titolo: z.string().trim().min(3).max(140), sede_id: z.string().optional().nullable(), profilo: z.string().max(60).optional().nullable(), descrizione: z.string().max(2000).optional().nullable(), dal: date.optional().nullable().or(z.literal('')), al: date.optional().nullable().or(z.literal('')), giorni: z.array(z.number().int().min(0).max(6)).optional(), ora_da: time.optional().nullable().or(z.literal('')), ora_a: time.optional().nullable().or(z.literal('')), stato: z.enum(['APERTA', 'ASSEGNATA', 'CHIUSA']).optional(), turno_id: z.number().int().optional().nullable() });
+const posSchema = z.object({ titolo: z.string().trim().min(3).max(140), sede_id: siteRef.optional(), profilo: z.string().max(60).optional().nullable(), descrizione: z.string().max(2000).optional().nullable(), dal: date.optional().nullable().or(z.literal('')), al: date.optional().nullable().or(z.literal('')), giorni: z.array(z.number().int().min(0).max(6)).optional(), ora_da: time.optional().nullable().or(z.literal('')), ora_a: time.optional().nullable().or(z.literal('')), stato: z.enum(['APERTA', 'ASSEGNATA', 'CHIUSA']).optional(), turno_id: z.number().int().optional().nullable() });
 r.get('/posizioni', ah(async (req, res) => {
   const rows = await many(`SELECT po.*, (SELECT count(*)::int FROM candidature c WHERE c.posizione_id=po.id) AS n_candidature, (SELECT count(*)::int FROM candidature c WHERE c.posizione_id=po.id AND c.stato='INVIATA') AS n_nuove FROM posizioni po ORDER BY (po.stato='APERTA') DESC, po.created_at DESC`);
   res.json(isGestione(req.user) ? rows : rows.filter((x) => x.stato === 'APERTA'));
@@ -438,7 +428,7 @@ r.put('/posizioni/:id', gest, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 r.delete('/posizioni/:id', gest, ah(async (req, res) => { await q('DELETE FROM posizioni WHERE id=$1', [req.params.id]); res.json({ ok: true }); }));
-r.get('/posizioni/:id/candidature', gest, ah(async (req, res) => res.json(await many('SELECT c.*, p.nome, p.profilo, p.email, p.tipo FROM candidature c JOIN professionisti p ON p.id=c.prof_id WHERE c.posizione_id=$1 ORDER BY c.created_at', [req.params.id]))));
+r.get('/posizioni/:id/candidature', gest, ah(async (req, res) => res.json(await many('SELECT c.*, p.nome, p.profilo, p.email, p.tipo FROM candidature c JOIN professionisti_v p ON p.id=c.prof_id WHERE c.posizione_id=$1 ORDER BY c.created_at', [req.params.id]))));
 r.post('/candidature/:id/:esito', gest, ah(async (req, res) => {
   const esito = req.params.esito; if (!['accetta', 'rifiuta'].includes(esito)) throw bad('esito');
   const c = await one('SELECT c.*, po.turno_id, po.id AS pid FROM candidature c JOIN posizioni po ON po.id=c.posizione_id WHERE c.id=$1', [req.params.id]); if (!c) throw notFound();
@@ -465,9 +455,9 @@ r.get('/fabbisogno', ah(async (req, res) => {
     out.push({ kind: 'TURNO', turnoId: t.id, sedeId: t.sede_id, sede: sm[t.sede_id] || t.sede_id, data: isoDate(t.data), ora_da: t.ora_da, ora_a: t.ora_a, profilo: t.profilo || '', attivita: t.attivita || '', ore: r2(oreTra(t.ora_da, t.ora_a)), candidati: cand.map((c) => ({ prof_id: c.prof_id, nome: c.nome, profilo: c.profilo, ora_da: c.ora_da, ora_a: c.ora_a })) });
   }
   // dalla pianificazione: sessioni mediche senza sanitario di supporto (settimana-tipo)
-  const sedi = await many('SELECT id, data FROM strutture WHERE deleted_at IS NULL');
+  const sedi = (await loadSedi()).map((x) => ({ id: x.row.id, lite: x.lite }));
   const pian = [];
-  for (const s of sedi) { let plan, str; try { str = joinStruttura(s.data, {}); plan = computePlan(str); } catch { continue; }
+  for (const s of sedi) { let plan, str; try { str = joinStruttura(s.lite, {}); plan = computePlan(str); } catch { continue; }
     const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p]));
     for (const u of plan.unassigned.filter((x) => /sanitario/.test(x.reason))) pian.push({ kind: 'PIANIFICAZIONE', sedeId: s.id, sede: sm[s.id], giorno: u.d, ora_da: m2tE(u.s), ora_a: m2tE(u.e), medico: byId[u.medId]?.nome || '', motivo: u.reason, ore: r2((u.e - u.s) / 60) });
   }
@@ -475,7 +465,7 @@ r.get('/fabbisogno', ah(async (req, res) => {
   const perProfilo = {};
   for (const t of out) { const k = t.profilo || 'non specificato'; (perProfilo[k] ||= { profilo: k, turni: 0, ore: 0, conCandidati: 0 }); perProfilo[k].turni++; perProfilo[k].ore = r2(perProfilo[k].ore + t.ore); if (t.candidati.length) perProfilo[k].conCandidati++; }
   // offerta complessiva: ore settimanali di disponibilità per profilo
-  const disp = await many('SELECT d.*, p.profilo, p.tipo FROM disponibilita d JOIN professionisti p ON p.id=d.prof_id WHERE p.attivo AND d.kind=\'SETTIMANALE\'');
+  const disp = await many('SELECT d.*, p.profilo, p.tipo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND d.kind=\'SETTIMANALE\'');
   const offerta = {};
   for (const d of disp) { const k = d.profilo || (d.tipo === 'medico' ? 'Medico' : 'altro'); (offerta[k] ||= { profilo: k, oreSettimana: 0, professionisti: new Set() }); offerta[k].oreSettimana = r2(offerta[k].oreSettimana + oreTra(d.ora_da, d.ora_a)); offerta[k].professionisti.add(d.prof_id); }
   res.json({ mese: m, turniScoperti: out, pianificazione: pian, perProfilo: Object.values(perProfilo), offerta: Object.values(offerta).map((o) => ({ ...o, professionisti: o.professionisti.size })) });
@@ -485,9 +475,9 @@ r.get('/fabbisogno', ah(async (req, res) => {
 r.get('/statistiche', gest, ah(async (req, res) => {
   const dal = req.query.dal || `${new Date().getFullYear()}-01-01`, al = req.query.al || new Date().toISOString().slice(0, 10);
   const sm = await sediMap();
-  const pres = await many("SELECT pr.*, p.nome, p.profilo, p.tipo, p.dati FROM presenze pr JOIN professionisti p ON p.id=pr.prof_id WHERE pr.data BETWEEN $1 AND $2 AND pr.stato='CONFERMATA'", [dal, al]);
-  const turni = await many('SELECT t.*, p.profilo, p.tipo FROM turni t LEFT JOIN professionisti p ON p.id=t.prof_id WHERE t.data BETWEEN $1 AND $2', [dal, al]);
-  const rend = await many('SELECT r.*, p.nome FROM rendiconti r JOIN professionisti p ON p.id=r.prof_id WHERE r.mese BETWEEN $1 AND $2', [dal.slice(0, 7), al.slice(0, 7)]);
+  const pres = await many("SELECT pr.*, p.nome, p.profilo, p.tipo, p.dati FROM presenze pr JOIN professionisti_v p ON p.id=pr.prof_id WHERE pr.data BETWEEN $1 AND $2 AND pr.stato='CONFERMATA'", [dal, al]);
+  const turni = await many('SELECT t.*, p.profilo, p.tipo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.data BETWEEN $1 AND $2', [dal, al]);
+  const rend = await many('SELECT r.*, p.nome FROM rendiconti r JOIN professionisti_v p ON p.id=r.prof_id WHERE r.mese BETWEEN $1 AND $2', [dal.slice(0, 7), al.slice(0, 7)]);
   const perSede = {}, perProf = {}, perProfilo = {}, perMese = {};
   for (const p of pres) { const h = oreTra(p.ora_da, p.ora_a); const c = r2(h * (p.dati?.compenso?.tipo === 'FISSO' ? 0 : tariffaPerSede(p.dati, p.sede_id)));
     const S = (perSede[p.sede_id] ||= { sedeId: p.sede_id, sede: sm[p.sede_id] || p.sede_id, ore: 0, costo: 0, presenze: 0, professionisti: new Set() }); S.ore = r2(S.ore + h); S.costo = r2(S.costo + c); S.presenze++; S.professionisti.add(p.prof_id);
@@ -498,7 +488,7 @@ r.get('/statistiche', gest, ah(async (req, res) => {
   for (const t of turni) { const mk = isoDate(t.data).slice(0, 7); const M = (perMese[mk] ||= { mese: mk, ore: 0, costo: 0, oreTurni: 0, turniScoperti: 0 }); M.oreTurni = r2(M.oreTurni + oreTra(t.ora_da, t.ora_a)); if (!t.prof_id) M.turniScoperti++; }
   const fix = (o) => Object.values(o).map((x) => ({ ...x, professionisti: x.professionisti ? x.professionisti.size : undefined, sedi: x.sedi ? x.sedi.size : undefined }));
   const oreTurniTot = r2(turni.reduce((a, t) => a + oreTra(t.ora_da, t.ora_a), 0)), orePresTot = r2(pres.reduce((a, p) => a + oreTra(p.ora_da, p.ora_a), 0));
-  const disp = await many("SELECT d.*, p.profilo FROM disponibilita d JOIN professionisti p ON p.id=d.prof_id WHERE p.attivo AND d.kind='SETTIMANALE'");
+  const disp = await many("SELECT d.*, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND d.kind='SETTIMANALE'");
   res.json({ dal, al, totali: { orePresenze: orePresTot, oreTurni: oreTurniTot, turni: turni.length, turniScoperti: turni.filter((t) => !t.prof_id).length, costo: r2(pres.reduce((a, p) => a + oreTra(p.ora_da, p.ora_a) * (p.dati?.compenso?.tipo === 'FISSO' ? 0 : tariffaPerSede(p.dati, p.sede_id)), 0)), fissiMensili: r2(rend.filter((x) => x.dettaglio?.tipo === 'FISSO').reduce((a, x) => a + Number(x.importo), 0)), professionisti: new Set(pres.map((p) => p.prof_id)).size, copertura: oreTurniTot ? Math.round(orePresTot / oreTurniTot * 100) : null, disponibilitaOreSett: r2(disp.reduce((a, d) => a + oreTra(d.ora_da, d.ora_a), 0)) },
     perSede: fix(perSede).sort((a, b) => b.ore - a.ore), perProf: fix(perProf).sort((a, b) => b.ore - a.ore), perProfilo: fix(perProfilo).sort((a, b) => b.ore - a.ore), perMese: Object.values(perMese).sort((a, b) => a.mese.localeCompare(b.mese)), rendiconti: { n: rend.length, inviati: rend.filter((x) => x.stato === 'INVIATO').length, importo: r2(rend.reduce((a, x) => a + Number(x.importo), 0)) } });
 }));

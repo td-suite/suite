@@ -519,6 +519,10 @@ async function syncRoomPeople(stats) {
 // ---------------------------------------------------------------- orchestrazione
 const running = new Set();
 export async function syncSource(key) {
+  // Decisione 25/10/2026: le anagrafiche (sedi, persone, organizzazioni, utenti) non si copiano più dalle app: la Suite parte vuota
+  // e si popola da Amministrazione (XLSX). Le sorgenti restano solo per il travaso dei moduli indipendenti e per i contatori.
+  throw new Error('La sincronizzazione delle anagrafiche dalle app non è più prevista: sedi, persone e organizzazioni si caricano da Amministrazione');
+  // eslint-disable-next-line no-unreachable
   if (!syncers[key]) throw new Error(`Sorgente legacy sconosciuta: ${key}`);
   if (!sourceEnabled(key)) { await q(`UPDATE legacy_sources SET enabled=FALSE WHERE key=$1`, [key]); throw new Error(`Sorgente "${SOURCE_LABELS[key]}" non configurata`); }
   if (running.has(key)) return { key, skipped: true, reason: 'sincronizzazione già in corso' };
@@ -558,7 +562,16 @@ let cockpitCache = { at: 0, data: null, promise: null };
 export function invalidateCaches() { countersCache = { at: 0, data: null, promise: null }; cockpitCache = { at: 0, data: null, promise: null }; }
 
 // Esegue una lettura difensiva: qualunque errore (sorgente assente, colonna diversa, timeout) produce null e un log
+// Contatori: dal modulo dentro la Suite quando è LIVE (schema del modulo), altrimenti dall'app di origine se collegata
+async function moduleLive(key) {
+  const r = await q(`SELECT mode FROM module_state WHERE key=$1`, [key]).catch(() => ({ rows: [] }));
+  return r.rows[0]?.mode === 'LIVE';
+}
 async function safe(key, sql, params) {
+  if (await moduleLive(key)) {
+    try { const { moduleDb } = await import('./modules.js'); return await moduleDb(key).many(sql.replace(/\bresources r\b/g, 'resources_v r'), params); }
+    catch (e) { console.warn(`[modulo:${key}] contatore fallito: ${e.message}`); return null; }
+  }
   if (!sourceEnabled(key)) return null;
   try { return await lq(key, sql, params); }
   catch (e) { console.warn(`[legacy:${key}] lettura fallita: ${e.message}`); return null; }

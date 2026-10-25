@@ -30,7 +30,7 @@ export default function Contracts({ kind }) {
         {kind && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>{kind === 'SEDE' ? '+ Nuova sede' : '+ Nuova proposta'}</Link>}
       </div>
       <div className="filters">
-        <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="partner, protocollo, sede…" style={{ minWidth: 260 }} /></Field>
+        <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="organizzazione, protocollo, sede…" style={{ minWidth: 260 }} /></Field>
         <Field label="Stato"><select value={status} onChange={(e) => set('status', e.target.value)}><option value="">Tutti</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
         <Field label="Anno"><select value={year} onChange={(e) => set('year', e.target.value)}><option value="">Tutti</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></Field>
         <div className="spacer" />
@@ -44,8 +44,8 @@ export default function Contracts({ kind }) {
             <tr key={r.id} className="click" onClick={() => nav(`${BASE}/contratti/${r.id}`)}>
               <td className="mono">{r.protocol || <span className="muted">bozza #{r.id}</span>}</td>
               {!kind && <td><KindBadge kind={r.kind} /></td>}
-              <td><div className="strong">{r.partner_name}</div><div className="small muted">{[r.partner_city, r.partner_prov].filter(Boolean).join(' ')}{r.partner_vat ? ` · P.IVA ${r.partner_vat}` : ''}</div></td>
-              <td className="small">{r.kind === 'PP' || r.kind === 'SEDE' ? `${r.title ? `${r.title} · ` : ''}${r.data?.site?.street || ''}, ${r.data?.site?.city || ''}` : r.title}</td>
+              <td><div className="strong">{r.org_name}</div><div className="small muted">{[r.org_city, r.org_prov].filter(Boolean).join(' ')}{r.org_vat ? ` · P.IVA ${r.org_vat}` : ''}</div></td>
+              <td className="small">{r.kind === 'PP' || r.kind === 'SEDE' ? `${r.title ? `${r.title} · ` : ''}${r.site_name || ''}${r.site_street ? ` · ${r.site_street}` : ''}${r.site_city ? `, ${r.site_city}` : ''}` : r.title}</td>
               <td>{itDate(r.proposal_date)}</td>
               <td>{r.signed_at ? itDate(r.signed_at) : <span className="muted">–</span>}</td>
               <td>

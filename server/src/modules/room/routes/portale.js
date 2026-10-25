@@ -1,24 +1,27 @@
 // Portale del professionista (ruolo PROF): i propri dati, disponibilità, turni confermati, presenze, rendiconti, bacheca.
+// Il professionista è la persona dell'anagrafica unica collegata all'utente (req.user.person_id); la scheda Room è in person_ext.
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, forbidden, audit, parse } from '../lib/util.js';
-import { profOfUser, sediMap, validMese } from '../lib/personale.js';
+import { profOfUser, sediMap, validMese, discipline } from '../lib/personale.js';
 import { dispSchema, saveDisp } from './personale.js';
 
 const r = Router();
 r.use(ah(async (req, _res, next) => {
   const p = await profOfUser(req.user);
-  if (!p) throw forbidden('Nessun profilo di professionista collegato a questo utente: contatta il Responsabile del personale sanitario');
+  if (!p) throw forbidden('Nessuna persona dell\'anagrafica collegata a questo utente: contatta il Responsabile del personale sanitario (Amministrazione > Persone)');
   req.prof = p; next();
 }));
 
-// Campi che il professionista può aggiornare da solo (contatti e coordinate bancarie); il resto lo gestisce la struttura
-const SELF = ['telefono', 'cellulare', 'indirizzo', 'cap', 'citta', 'provincia', 'pec', 'iban', 'intestatarioConto'];
+// Recapiti integrativi che il professionista può aggiornare da solo (quelli non presenti nell'anagrafica unica); nome, email, telefono e
+// codice fiscale si modificano in Amministrazione > Persone o in Contratti del personale
+const SELF = ['indirizzo', 'cap', 'citta', 'provincia', 'pec', 'iban', 'intestatarioConto'];
 r.get('/me', ah(async (req, res) => {
   const p = req.prof; const sm = await sediMap();
-  const docs = await many('SELECT id, tipo, nome, size, scadenza, created_at FROM professionista_docs WHERE prof_id=$1 ORDER BY created_at DESC', [p.id]);
-  res.json({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, anagrafica: p.dati?.anagrafica || {}, professionale: p.dati?.professionale || {}, contratto: p.dati?.contratto || {}, assicurazione: p.dati?.assicurazione || {},
+  const docs = await many('SELECT id, tipo, nome, size, scadenza, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
+  res.json({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, telefono: p.phone, codiceFiscale: p.tax_code, inRoom: p.in_room,
+    anagrafica: { ...(p.dati?.anagrafica || {}), codiceFiscale: p.tax_code || '', telefono: p.phone || '' }, professionale: { ...(p.dati?.professionale || {}), discipline: discipline(p) }, contratto: p.dati?.contratto || {}, assicurazione: p.dati?.assicurazione || {},
     compenso: { tipo: p.dati?.compenso?.tipo || 'ORARIO', tariffaOraria: p.dati?.compenso?.tariffaOraria || null, fissoMensile: p.dati?.compenso?.fissoMensile || null, eccezioniSede: (p.dati?.compenso?.eccezioniSede || []).map((e) => ({ ...e, sede: sm[e.sedeId] || e.sedeId })) },
     sediAbilitate: (p.dati?.sediAbilitate || []).map((id) => ({ id, label: sm[id] || id })), docs, selfFields: SELF });
 }));
@@ -26,10 +29,11 @@ r.put('/me', ah(async (req, res) => {
   const d = parse(z.object(Object.fromEntries(SELF.map((k) => [k, z.string().max(200).optional().nullable()]))), req.body);
   const dati = { ...(req.prof.dati || {}) }; dati.anagrafica = { ...(dati.anagrafica || {}) };
   for (const k of SELF) if (d[k] !== undefined) dati.anagrafica[k] = d[k] || '';
-  await q('UPDATE professionisti SET dati=$2, updated_at=now(), updated_by=$3 WHERE id=$1', [req.prof.id, JSON.stringify(dati), req.user.id]);
+  await q(`INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (person_id) DO UPDATE SET dati=EXCLUDED.dati, updated_at=now(), updated_by=EXCLUDED.updated_by`, [req.prof.id, req.prof.tipo, req.prof.profilo, JSON.stringify(dati), req.user.id]);
   await audit(req, 'PROF_SELF_UPDATE', 'professionista', req.prof.id); res.json({ ok: true });
 }));
-r.get('/sedi', ah(async (_req, res) => { const sm = await sediMap(); res.json(Object.entries(sm).map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label, 'it'))); }));
+r.get('/sedi', ah(async (_req, res) => { const sm = await sediMap(); res.json(Object.entries(sm).map(([id, label]) => ({ id: Number(id), label })).sort((a, b) => a.label.localeCompare(b.label, 'it'))); }));
 
 // Disponibilità
 r.get('/disponibilita', ah(async (req, res) => res.json(await many('SELECT * FROM disponibilita WHERE prof_id=$1 ORDER BY kind, giorno, data, ora_da', [req.prof.id]))));
@@ -58,7 +62,7 @@ r.get('/presenze', ah(async (req, res) => {
 // Rendiconti: visibili dal momento dell'approvazione
 r.get('/rendiconti', ah(async (req, res) => res.json(await many("SELECT id, mese, stato, ore, importo, approvato_at, inviato_at, (dettaglio->'oneri'->>'totaleFattura')::numeric AS totale_fattura FROM rendiconti WHERE prof_id=$1 AND stato IN ('APPROVATO','INVIATO') ORDER BY mese DESC", [req.prof.id]))));
 r.get('/rendiconti/:id', ah(async (req, res) => {
-  const x = await one("SELECT r.*, p.nome, p.profilo, ua.full_name AS approvato_da_nome FROM rendiconti r JOIN professionisti p ON p.id=r.prof_id LEFT JOIN users ua ON ua.id=r.approvato_da WHERE r.id=$1 AND r.prof_id=$2 AND r.stato IN ('APPROVATO','INVIATO')", [req.params.id, req.prof.id]);
+  const x = await one(`SELECT r.*, p.nome, p.profilo, ua.full_name AS approvato_da_nome FROM rendiconti r JOIN professionisti_v p ON p.id=r.prof_id LEFT JOIN users ua ON ua.id=r.approvato_da WHERE r.id=$1 AND r.prof_id=$2 AND r.stato IN ('APPROVATO','INVIATO')`, [req.params.id, req.prof.id]);
   if (!x) throw notFound(); res.json(x);
 }));
 // Bacheca

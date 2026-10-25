@@ -7,11 +7,13 @@ import { canEdit, canSeeStruttura } from '../lib/access.js';
 const r = Router();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data AAAA-MM-GG');
 const hhmm = z.string().regex(/^\d{2}:\d{2}$/).nullable().optional();
+// sede: id di public.sites (il client la manda come stringa dal selettore)
+const siteRef = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable().optional());
 const schema = z.object({
   kind: z.enum(['ASSENZA', 'CHIUSURA', 'SESSIONE_EXTRA']),
   persona_key: z.string().max(200).nullable().optional(),
   persona_nome: z.string().max(200).nullable().optional(),
-  sede_id: z.string().max(40).nullable().optional(),
+  sede_id: siteRef,
   persona_id: z.string().max(40).nullable().optional(),
   dal: date, al: date,
   sost_persona_id: z.string().max(40).nullable().optional(),

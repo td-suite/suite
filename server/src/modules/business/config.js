@@ -13,8 +13,6 @@ export const config = {
   credentialsKey: env.BUSINESS_CREDENTIALS_KEY || env.CREDENTIALS_KEY || DEV_CREDENTIALS_KEY,
   credentialsKeySet: Boolean(env.BUSINESS_CREDENTIALS_KEY || env.CREDENTIALS_KEY),
   maxUploadMb: Number(env.MAX_UPLOAD_MB || 40),
-  // pacchetti di importazione dello status quo (ZIP con manifest e documenti)
-  maxImportMb: Number(env.MAX_IMPORT_MB || 400),
   sofficeBin: env.SOFFICE_BIN || 'soffice',
   appName: 'Toscana Diagnostica · Business',
 };

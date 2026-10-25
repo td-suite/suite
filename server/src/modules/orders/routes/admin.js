@@ -1,10 +1,10 @@
-// Route di anagrafica e configurazione dell'app di origine (strutture, catalogo, correlazioni, impostazioni, registri).
+// Route di configurazione del modulo (impostazioni Ordini delle sedi dell'anagrafica unica, catalogo, correlazioni, impostazioni, registri).
 // La gestione utenti (routes users) non viene portata: utenti, profili e ambiti sono della Suite.
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, getSetting } from '../lib/util.js';
-import { requireRole, isOps, isSuper, Params, OPS_ROLES } from '../lib/access.js';
+import { requireRole, isOps, Params, OPS_ROLES } from '../lib/access.js';
 import { mailStatus, sendMail } from '../lib/mailer.js';
 import { studiolabStatus } from '../lib/studiolab.js';
 import { silvaStatus } from '../lib/silva.js';
@@ -18,105 +18,54 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const opt = (s) => s.optional().nullable().transform((v) => (v === '' ? null : v));
 const CODE = /^[A-Z0-9_-]{2,16}$/;
 
-// ---------------- Strutture ----------------
-const strutturaFields = {
-  name: z.string().min(2).max(200),
-  address: opt(z.string().max(200)), zip: opt(z.string().max(10)), city: opt(z.string().max(100)), province: opt(z.string().max(4).transform((v) => v?.toUpperCase())),
-  phone: opt(z.string().max(40)), email: opt(z.string().email().or(z.literal(''))), pec: opt(z.string().email().or(z.literal(''))),
+// ---------------- Strutture: anagrafica unica della Suite (public.sites, public.organizations) + impostazioni Ordini (site_ext) ----------------
+// Nessuna creazione, rinomina o disattivazione qui: si fa in Amministrazione > Sedi. Il modulo salva solo i propri campi
+// operativi con un upsert su site_ext (la riga nasce alla prima modifica).
+const siteExtFields = {
+  kind: z.enum(['CLIENTE', 'SEDE', 'LAB']).optional(),
+  silva_code: opt(z.string().max(40).transform((v) => v?.trim().toUpperCase() || null)),
+  stock_deadline_day: opt(z.coerce.number().int().min(1).max(31)),
   referente: opt(z.string().max(120)), referente_phone: opt(z.string().max(40)),
-  studiolab_code: opt(z.string().max(40)), delivery_notes: opt(z.string().max(500)),
   delivery_mode: z.enum(['GIRO', 'RITIRO']).optional(),
-  stock_deadline_day: z.coerce.number().int().min(1).max(31).optional(),
-  active: z.boolean().optional(),
+  delivery_notes: opt(z.string().max(500)),
+  notes: opt(z.string().max(1000)),
 };
-const STRUTTURA_COLS = `s.*, (SELECT count(*)::int FROM users u WHERE u.struttura_id=s.id AND u.active) AS users_count,
-  (SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name) FROM users u WHERE u.struttura_id=s.id AND u.active AND u.is_referente) AS referenti,
+const STRUTTURA_COLS = `s.*,
   (SELECT count(*)::int FROM orders o WHERE o.struttura_id=s.id AND o.status NOT IN ('CHIUSO','ANNULLATO')) AS open_orders,
-  (SELECT max(month) FROM stock_counts c WHERE c.struttura_id=s.id AND c.status='CONFERMATO') AS last_stock_month`;
+  (SELECT max(month) FROM stock_counts c WHERE c.struttura_id=s.id AND c.status='CONFERMATO') AS last_stock_month,
+  (SELECT count(*)::int FROM packages p WHERE p.struttura_id=s.id AND p.status='RICEVUTO') AS packs_in_stock`;
 
+// Elenco: tutte le sedi attive dell'anagrafica unica (con ?all=1 anche le disattivate); i profili di struttura vedono solo la propria
 r.get('/strutture', ah(async (req, res) => {
   const P = new Params();
-  const where = [isOps(req.user) ? 'TRUE' : `s.id=${P.add(req.user.struttura_id)}`];
+  const where = [isOps(req.user) ? 'TRUE' : `s.id=${P.add(req.user.struttura_id ?? -1)}`];
   if (req.query.kind) where.push(`s.kind=${P.add(req.query.kind)}`);
-  res.json(await many(`SELECT ${STRUTTURA_COLS} FROM strutture s WHERE ${where.join(' AND ')} ORDER BY s.kind, s.name`, P.values));
+  if (req.query.all !== '1') where.push('s.active');
+  res.json(await many(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE ${where.join(' AND ')} ORDER BY s.kind, s.sort_order, s.name`, P.values));
 }));
 
 r.get('/strutture/:id', ah(async (req, res) => {
-  const s = await one(`SELECT ${STRUTTURA_COLS} FROM strutture s WHERE s.id=$1`, [req.params.id]);
-  if (!s) throw notFound();
+  const s = await one(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE s.id=$1`, [req.params.id]);
+  if (!s) throw notFound('Sede non trovata');
   if (!isOps(req.user) && s.id !== req.user.struttura_id) throw forbidden();
   res.json(s);
 }));
 
-r.post('/strutture', requireRole('SUPERADMIN'), ah(async (req, res) => {
-  const d = parse(z.object({ kind: z.enum(['CLIENTE', 'SEDE', 'LAB']), code: z.string().regex(CODE, 'codice: 2-16 caratteri maiuscoli, numeri, - o _'), ...strutturaFields }), req.body);
-  if (await one('SELECT 1 FROM strutture WHERE code=$1', [d.code])) throw bad('Codice struttura già esistente');
-  if (d.stock_deadline_day == null) d.stock_deadline_day = d.kind === 'LAB' ? 30 : 15;
-  const cols = Object.keys(d);
-  const row = await one(`INSERT INTO strutture (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`, cols.map((c) => d[c]));
-  await audit(req, 'STRUTTURA_CREATE', 'struttura', row.id, d);
-  res.status(201).json(row);
-}));
-
+// Impostazioni Ordini della sede (upsert su site_ext). I dati anagrafici (nome, indirizzo, contatti, stato) non si toccano qui.
 r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
-  const s = await one('SELECT * FROM strutture WHERE id=$1', [req.params.id]);
-  if (!s) throw notFound();
-  const d = parse(z.object(strutturaFields), req.body);
-  if (!isSuper(req.user)) delete d.active;
+  const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [req.params.id]);
+  if (!site) throw notFound('Sede non trovata: le sedi si creano in Amministrazione');
+  const d = parse(z.object(siteExtFields), req.body);
   const cols = Object.keys(d);
   if (!cols.length) throw bad('Nessun dato');
-  await q(`UPDATE strutture SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(',')}, updated_at=now() WHERE id=$1`, [s.id, ...cols.map((c) => d[c])]);
-  await audit(req, 'STRUTTURA_UPDATE', 'struttura', s.id, d);
-  res.json({ ok: true });
-}));
-
-// Eliminazione di una struttura: solo senza attività registrata (ordini, confezioni, giacenze, produzione, utenti); altrimenti si disattiva
-r.delete('/strutture/:id', requireRole('SUPERADMIN'), ah(async (req, res) => {
-  const s = await one('SELECT * FROM strutture WHERE id=$1', [req.params.id]);
-  if (!s) throw notFound();
-  if (s.kind === 'LAB') throw bad('Il laboratorio TD non si elimina');
-  const used = await one(`SELECT (SELECT count(*) FROM orders WHERE struttura_id=$1)::int AS orders, (SELECT count(*) FROM packages WHERE struttura_id=$1)::int AS packages,
-    (SELECT count(*) FROM stock_counts WHERE struttura_id=$1)::int AS counts, (SELECT count(*) FROM production WHERE struttura_id=$1)::int AS production, (SELECT count(*) FROM users WHERE struttura_id=$1)::int AS users`, [s.id]);
-  const busy = Object.entries(used).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${{ orders: 'ordini', packages: 'confezioni', counts: 'giacenze mensili', production: 'righe di produzione', users: 'utenti' }[k]}`);
-  if (busy.length) throw bad(`Struttura con attività registrata (${busy.join(', ')}): disattivala invece di eliminarla`);
-  await q('DELETE FROM email_log WHERE struttura_id=$1', [s.id]);
-  await q('DELETE FROM issues WHERE struttura_id=$1', [s.id]);
-  await q('DELETE FROM strutture WHERE id=$1', [s.id]);
-  await audit(req, 'STRUTTURA_DELETE', 'struttura', s.id, { code: s.code, name: s.name });
-  res.json({ ok: true });
-}));
-
-// Import dell'elenco clienti esportato da StudioLab (colonne: CodiceCliente, Profilo, RagSoc, PartIVA, CodFisc, PersonaDiRiferimento, Indirizzo, Cap, Citta, Provincia, Telefono1, ...)
-// Aggiorna le strutture esistenti per codice e crea quelle nuove; non disattiva nulla.
-r.post('/strutture/import', requireRole('SUPERADMIN'), upload.single('file'), ah(async (req, res) => {
-  if (!req.file) throw bad('File mancante');
-  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(req.file.buffer);
-  const ws = wb.worksheets[0];
-  const head = ws.getRow(1).values.slice(1).map((v) => String(v || '').trim().toLowerCase());
-  const col = (name) => head.indexOf(name.toLowerCase());
-  const need = ['codicecliente', 'profilo', 'ragsoc'];
-  for (const k of need) if (col(k) < 0) throw bad(`Colonna ${k} mancante nel file`);
-  const txt = (row, name) => { const i = col(name); if (i < 0) return ''; const v = row.values.slice(1)[i]; return v == null ? '' : String(typeof v === 'object' && 'text' in v ? v.text : v).trim(); };
-  let created = 0, updated = 0;
-  await tx(async (c) => {
-    for (let i = 2; i <= ws.rowCount; i++) {
-      const row = ws.getRow(i);
-      const code = txt(row, 'codicecliente'); if (!code) continue;
-      const kind = /sede/i.test(txt(row, 'profilo')) ? 'SEDE' : 'CLIENTE';
-      const email = (txt(row, 'email').match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [''])[0].toLowerCase();
-      const vals = [code, kind, txt(row, 'ragsoc'), txt(row, 'indirizzo') || null, txt(row, 'cap') || null, txt(row, 'citta') || null, (txt(row, 'provincia') || '').toUpperCase().slice(0, 2) || null, txt(row, 'telefono1') || txt(row, 'telefono2') || null, email || null, txt(row, 'personadiriferimento') || null];
-      const ex = await c.query('SELECT id FROM strutture WHERE code=$1', [code]);
-      if (ex.rows.length) {
-        await c.query(`UPDATE strutture SET name=$3, address=coalesce($4, address), zip=coalesce($5, zip), city=coalesce($6, city), province=coalesce($7, province), phone=coalesce($8, phone), email=coalesce($9, email), referente=coalesce($10, referente), studiolab_code=coalesce(studiolab_code, $1), updated_at=now() WHERE code=$1`, vals);
-        updated++;
-      } else {
-        await c.query(`INSERT INTO strutture (code, kind, name, address, zip, city, province, phone, email, referente, studiolab_code, stock_deadline_day) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$1,15)`, vals);
-        created++;
-      }
-    }
-  });
-  await audit(req, 'STRUTTURE_IMPORT', 'struttura', null, { created, updated });
-  res.json({ created, updated });
+  if (d.silva_code) {
+    const dup = await one('SELECT site_id FROM site_ext WHERE upper(silva_code)=upper($1) AND site_id<>$2', [d.silva_code, site.id]);
+    if (dup) throw bad('Codice Silva già assegnato a un\'altra sede');
+  }
+  await q(`INSERT INTO site_ext (site_id, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
+    ON CONFLICT (site_id) DO UPDATE SET ${cols.map((c) => `${c}=EXCLUDED.${c}`).join(',')}, updated_at=now()`, [site.id, ...cols.map((c) => d[c])]);
+  await audit(req, 'STRUTTURA_UPDATE', 'struttura', site.id, { code: site.code, ...d });
+  res.json(await one(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE s.id=$1`, [site.id]));
 }));
 
 // ---------------- Utenti: gestiti dalla Suite (Amministrazione > Utenti e profili), nessuna route nel modulo ----------------
@@ -248,7 +197,7 @@ r.get('/audit', requireRole(...OPS_ROLES), ah(async (req, res) => {
 
 r.get('/email-log', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   res.json(await many(`SELECT e.id, e.kind, e.to_addr, e.subject, e.status, e.error, e.sent_at, e.attachment_name, s.name AS struttura_name, u.full_name AS sent_by_name
-    FROM email_log e LEFT JOIN strutture s ON s.id=e.struttura_id LEFT JOIN users u ON u.id=e.sent_by ORDER BY e.sent_at DESC LIMIT 300`));
+    FROM email_log e LEFT JOIN sites_v s ON s.id=e.struttura_id LEFT JOIN users u ON u.id=e.sent_by ORDER BY e.sent_at DESC LIMIT 300`));
 }));
 
 r.get('/company', ah(async (_req, res) => res.json(await one('SELECT id, name, vat_number, address, zip, city, province, phone, email, pec, website FROM company LIMIT 1'))));

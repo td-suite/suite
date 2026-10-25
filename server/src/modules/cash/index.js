@@ -1,10 +1,10 @@
 // Modulo Cash Management (rendiconti di cassa, flusso contante, royalty, SEPA): montaggio dentro la Suite TD.
 // Le route sono quelle dell'app di origine, montate sotto /api/cash con gli stessi prefissi; autenticazione, utenti,
-// profili e sedi sono della Suite. Fuori dal modulo restano login, Entra, TOTP, gestione utenti e import utenti da Excel.
+// profili e sedi sono della Suite (anagrafica unica, docs/ANAGRAFICA.md). Fuori dal modulo restano login, Entra, TOTP, gestione
+// utenti e l'import da Excel di sedi e utenti (le sedi si creano in Amministrazione > Sedi).
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState, moduleDb } from '../../lib/modules.js';
-import { many as suiteMany } from '../../db.js';
 import { registerJob } from '../../lib/jobs.js';
 import { HttpError } from './lib/util.js';
 import { partnerGuard } from './lib/access.js';
@@ -17,7 +17,6 @@ import importRoutes from './routes/imports.js';
 import royaltyRoutes from './routes/royalty.js';
 import depositRoutes from './routes/deposits.js';
 import commsRoutes from './routes/comms.js';
-import anagraficaImportRoutes from './routes/anagraficaImport.js';
 import monthlyRoutes from './routes/monthly.js';
 import siteRoyaltyRoutes from './routes/siteRoyalty.js';
 
@@ -27,9 +26,9 @@ const ROLES = ['SUPERADMIN', 'ADMIN', 'CASSIERE', 'FINANCE', 'OPERATOR', 'PARTNE
 
 // Utente come lo vede il front-end dell'app (stessa forma di /api/auth/me dell'app di origine)
 const publicUser = (u) => ({
-  id: u.id, email: u.email, full_name: u.full_name, role: u.role, company_id: u.company_id, company_name: u.company_name, company_code: u.company_code,
+  id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, company_id: u.company_id, company_name: u.company_name, company_code: u.company_code,
   cash_float: u.cash_float, site_ids: u.site_ids || [], active: true, auth_provider: 'SUITE', must_change_password: false, totp_enabled: true,
-  suite_user_id: u.suite_user_id, suite_level: u.suite_level, legacy_site_ids: u.legacy_site_ids || [],
+  suite_user_id: u.suite_user_id, suite_level: u.suite_level, person_id: u.person_id || null,
 });
 
 // Ruolo del modulo per l'utente Suite: profilo del grant, oppure SUPERADMIN per OWNER/ADMIN della Suite senza grant
@@ -39,27 +38,21 @@ function roleFor(suiteUser) {
   return suiteUser.level === 'OWNER' || suiteUser.level === 'ADMIN' ? 'SUPERADMIN' : null;
 }
 
-// Azienda dell'app per un utente Suite: organizzazione dell'utente o dello scope ORG del grant (legacy_refs.cash),
-// altrimenti l'azienda della prima sede dello scope SITE, altrimenti la capofila (is_franchisor) o la prima azienda.
+// Azienda Cash per un utente Suite: la sua organizzazione o quella dello scope ORG del grant (se società o gruppo),
+// altrimenti l'azienda Cash (site_ext) della prima sede dello scope SITE, altrimenti la capofila (is_franchisor) o la prima società.
 async function resolveCompanyId(suiteUser) {
   const g = suiteUser.grants?.[KEY];
   const orgIds = [suiteUser.organization_id, ...(g?.scopes || []).filter((s) => s.type === 'ORG').map((s) => Number(s.id))].filter(Boolean);
   if (orgIds.length) {
-    const refs = await suiteMany(`SELECT legacy_refs->>$2 AS ref FROM public.organizations WHERE id = ANY($1::int[]) AND legacy_refs ? $2`, [orgIds, KEY]);
-    for (const r of refs) {
-      const c = await db.one('SELECT id FROM companies WHERE id=$1', [Number(r.ref)]);
-      if (c) return c.id;
-    }
+    const c = await db.one('SELECT id FROM companies_v WHERE id = ANY($1::int[]) ORDER BY array_position($1::int[], id) LIMIT 1', [orgIds]);
+    if (c) return c.id;
   }
   const siteIds = (g?.scopes || []).filter((s) => s.type === 'SITE').map((s) => Number(s.id));
   if (siteIds.length) {
-    const refs = await suiteMany(`SELECT legacy_refs->>$2 AS ref FROM public.sites WHERE id = ANY($1::int[]) AND legacy_refs ? $2`, [siteIds, KEY]);
-    for (const r of refs) {
-      const s = await db.one('SELECT company_id FROM sites WHERE id=$1', [Number(r.ref)]);
-      if (s) return s.company_id;
-    }
+    const s = await db.one('SELECT company_id FROM site_ext WHERE site_id = ANY($1::int[]) ORDER BY site_id LIMIT 1', [siteIds]);
+    if (s) return s.company_id;
   }
-  const c = await db.one('SELECT id FROM companies WHERE is_franchisor ORDER BY id LIMIT 1') || await db.one('SELECT id FROM companies ORDER BY id LIMIT 1');
+  const c = await db.one('SELECT id FROM companies_v WHERE is_franchisor ORDER BY id LIMIT 1') || await db.one('SELECT id FROM companies_v WHERE active ORDER BY id LIMIT 1');
   return c?.id || null;
 }
 
@@ -74,7 +67,7 @@ async function ensureCashUser(req, _res, next) {
     const row = await db.one('SELECT id, role, company_id FROM users WHERE lower(email)=lower($1)', [req.user.email]);
     if (role !== 'SUPERADMIN' && (!row || row.company_id == null)) {
       const cid = await resolveCompanyId(req.user);
-      if (!cid) throw new HttpError(503, 'Nessuna azienda censita nel modulo Cash: esegui il travaso o crea l\'azienda');
+      if (!cid) throw new HttpError(503, 'Nessuna società o gruppo nell\'anagrafica della Suite: creala in Amministrazione > Organizzazioni');
       if (row) await db.q('UPDATE users SET company_id=$2, updated_at=now() WHERE id=$1', [row.id, cid]);
       else await db.q(`INSERT INTO users (email, full_name, role, company_id, auth_provider, must_change_password) VALUES ($1,$2,$3,$4,'ENTRA',FALSE)`, [req.user.email, req.user.full_name || req.user.email, role, cid]);
     } else if (!row) {
@@ -85,30 +78,39 @@ async function ensureCashUser(req, _res, next) {
 }
 
 // L'app ragiona con il "suo" utente: riga users del modulo + ruolo = profilo Suite + azienda + perimetro sedi.
-// Il perimetro viene dagli scope SITE del grant Suite (legacy_site_ids); se vuoto, dalle assegnazioni user_sites dell'app.
-// Le assegnazioni user_sites vengono allineate agli scope Suite, così le query dell'app che le leggono (operatori di sede,
-// comunicazioni agli operatori, conteggio utenti per sede) restano coerenti.
+// Il perimetro (site_ids) sono gli id di public.sites negli scope SITE del grant Suite (anagrafica unica, docs/ANAGRAFICA.md):
+// le assegnazioni user_sites dell'app non esistono più.
 async function buildAppUser(req, _res, next) {
   try {
     req.suiteUser = req.user;
     const mu = req.moduleUser;
-    const company = mu.company_id ? await db.one('SELECT name AS company_name, code AS company_code FROM companies WHERE id=$1', [mu.company_id]) : null;
-    const assigned = (await db.many('SELECT site_id FROM user_sites WHERE user_id=$1 ORDER BY site_id', [mu.id])).map((x) => x.site_id);
-    let siteIds = assigned;
-    const legacy = (mu.legacy_site_ids || []).map(Number).filter(Number.isFinite);
-    if (legacy.length) {
-      const sorted = [...legacy].sort((a, b) => a - b);
-      if (JSON.stringify(sorted) !== JSON.stringify(assigned)) {
-        await db.tx(async (c) => {
-          await c.query('DELETE FROM user_sites WHERE user_id=$1', [mu.id]);
-          for (const s of sorted) await c.query('INSERT INTO user_sites (user_id, site_id) SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM sites WHERE id=$2) ON CONFLICT DO NOTHING', [mu.id, s]);
-        });
-      }
-      siteIds = sorted;
-    }
+    const company = mu.company_id ? await db.one('SELECT name AS company_name, code AS company_code FROM companies_v WHERE id=$1', [mu.company_id]) : null;
+    const siteIds = [...new Set((mu.site_ids || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
     req.user = { ...mu, ...(company || {}), site_ids: siteIds, active: true };
     next();
   } catch (e) { next(e); }
+}
+
+// Passo del travaso dedicato al modulo (non più usato: Cash parte vuoto, FRESH_MODULES in lib/travaso.js). Riempiva site_ext con le
+// impostazioni Cash delle sedi dell'app di origine, tradotte in id di public.sites tramite legacy_refs->>'cash'. Le sedi
+// dell'origine senza corrispondenza nell'anagrafica unica vengono scartate e contate (vanno riconciliate in Amministrazione).
+const EXT_COLS = ['company_id', 'cash_float', 'operating_days', 'pos_terminals', 'start_date', 'ownership', 'hours', 'hours_note', 'expected_registers',
+  'site_email', 'host_name', 'host_vat', 'host_email', 'royalty_fixed_monthly', 'royalty_pct', 'royalty_base', 'royalty_vat_rate', 'royalty_notes', 'created_at', 'updated_at'];
+export async function afterTravaso(client, key, { legacyQuery, legacyMap, stats }) {
+  const map = await legacyMap('sites');
+  const src = await legacyQuery('SELECT * FROM public.sites ORDER BY id');
+  await client.query('DELETE FROM site_ext');
+  let n = 0, scartate = 0;
+  for (const s of src) {
+    const siteId = map.get(String(s.id));
+    if (siteId == null) { scartate++; continue; }
+    const vals = EXT_COLS.map((c) => (c === 'hours' ? JSON.stringify(s.hours ?? {}) : s[c] ?? null));
+    await client.query(`INSERT INTO site_ext (site_id, ${EXT_COLS.join(', ')}) VALUES ($1, ${EXT_COLS.map((_, i) => `$${i + 2}`).join(', ')})
+      ON CONFLICT (site_id) DO UPDATE SET ${EXT_COLS.map((c) => `${c}=EXCLUDED.${c}`).join(', ')}`, [siteId, ...vals]);
+    n++;
+  }
+  stats.site_ext = n;
+  if (scartate) { stats.__scartate = stats.__scartate || {}; stats.__scartate.site_ext = scartate; }
 }
 
 export default function mount(app) {
@@ -129,7 +131,7 @@ export default function mount(app) {
   r.get('/auth/me', (req, res) => res.json({ user: publicUser(req.user), authMethod: 'SUITE', onboarding: null }));
   r.use(blockWritesInMirror);
   r.use(partnerGuard);
-  r.use(adminRoutes);                         // companies, bank-accounts, sites, users (sola lettura), settings, audit
+  r.use(adminRoutes);                         // aziende (public.organizations + org_ext), conti, sedi (public.sites + site_ext), users (sola lettura), settings, audit
   r.use('/reports', reportRoutes);
   r.use('/nc', ncRoutes);
   r.use('/stats', statsRoutes);
@@ -137,7 +139,6 @@ export default function mount(app) {
   r.use('/canoni', siteRoyaltyRoutes);
   r.use('/deposits', depositRoutes);
   r.use('/comms', commsRoutes);
-  r.use('/anagrafica', anagraficaImportRoutes);
   r.use('/controllo-mensile', monthlyRoutes);
   r.use('/royalty', royaltyRoutes);
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));

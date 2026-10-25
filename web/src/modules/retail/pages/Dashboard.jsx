@@ -36,7 +36,7 @@ export default function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Buongiorno, {user.full_name.split(' ')[0]}</h1>
+          <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
           <div className="sub">Retail B2C e B2B di Toscana Diagnostica: clienti, prestazioni, campagne, promozioni ed esposizione in sede. {d?.data_range?.min ? `Dati dal ${itDate(d.data_range.min)} al ${itDate(d.data_range.max)}` : 'Nessuna vendita caricata'}{d?.last_import ? ` · ultimo import ${itDateTime(d.last_import.created_at)} (${d.last_import.source})` : ''}.</div>
         </div>
       </div>

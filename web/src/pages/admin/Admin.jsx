@@ -5,7 +5,7 @@ import { Icon } from '../../components/Icons.jsx';
 import { fmtDateTime, timeAgo } from '../../format.js';
 import { UsersList, UserDetail } from './Users.jsx';
 import { Sites, Organizations, PeopleAdmin } from './Registry.jsx';
-import { Modules, Legacy, Review, ApiKeys, Imports, Audit, Settings } from './System.jsx';
+import { Modules, Legacy, ApiKeys, Imports, Audit, Settings } from './System.jsx';
 import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
 
@@ -61,7 +61,6 @@ export default function Admin() {
       <Route path="people" element={<PeopleAdmin />} />
       <Route path="modules" element={<Modules />} />
       <Route path="legacy" element={<Legacy />} />
-      <Route path="review" element={<Review />} />
       <Route path="api-keys" element={<ApiKeys />} />
       <Route path="travaso" element={<Travaso />} />
       <Route path="imports" element={<Imports />} />

@@ -67,7 +67,7 @@ r.get('/:id', ah(async (req, res) => {
   if (!p) throw notFound();
   const products = await many('SELECT id, code, description, price FROM products WHERE id = ANY($1::int[])', [p.product_ids || []]);
   const sales_by_product = await many(`SELECT pr.description AS label, sum(s.quantity)::int AS qty, sum(s.net_amount) AS revenue FROM sales s JOIN products pr ON pr.id=s.product_id WHERE s.promotion_id=$1 GROUP BY pr.description ORDER BY revenue DESC`, [id]);
-  const sales_by_site = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS tickets, sum(s.net_amount) AS revenue FROM sales s JOIN sites st ON st.id=s.site_id WHERE s.promotion_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
+  const sales_by_site = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS tickets, sum(s.net_amount) AS revenue FROM sales s JOIN sites_v st ON st.id=s.site_id WHERE s.promotion_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
   const trend = await many(`SELECT sale_date AS day, count(DISTINCT external_ref)::int AS tickets, sum(net_amount) AS revenue FROM sales WHERE promotion_id=$1 GROUP BY 1 ORDER BY 1`, [id]);
   const campaigns = await many('SELECT id, name, channel, status, budget, spent FROM campaigns WHERE promotion_id=$1 ORDER BY start_date', [id]);
   const exposure = await many(`SELECT e.status, count(*)::int AS n FROM exposure_items e WHERE e.promotion_id=$1 GROUP BY e.status`, [id]);

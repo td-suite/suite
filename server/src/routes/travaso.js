@@ -4,7 +4,7 @@ import { many } from '../db.js';
 import { LEGACY_KEYS } from '../config.js';
 import { ah, bad, audit, notFound } from '../lib/util.js';
 import { requireAdmin, requireOwner } from '../lib/access.js';
-import { runTravaso, compareCounts, goLive, backToMirror, isRunning } from '../lib/travaso.js';
+import { runTravaso, compareCounts, goLive, backToMirror, isRunning, FRESH_MODULES } from '../lib/travaso.js';
 import { getModuleState } from '../lib/modules.js';
 import { sourceEnabled } from '../lib/legacy.js';
 import fs from 'node:fs';
@@ -20,7 +20,7 @@ r.get('/travaso', requireAdmin, ah(async (_req, res) => {
   const out = [];
   for (const m of mods) {
     const st = await getModuleState(m.key);
-    out.push({ ...m, ...st, source_enabled: sourceEnabled(m.key), code_ready: hasCode(m.key), running: isRunning(m.key) });
+    out.push({ ...m, ...st, fresh: FRESH_MODULES.includes(m.key), source_enabled: sourceEnabled(m.key), code_ready: hasCode(m.key), running: isRunning(m.key) });
   }
   res.json(out);
 }));

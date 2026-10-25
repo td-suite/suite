@@ -24,6 +24,8 @@ export const ROLE_HELP = {
   VIEWER: 'Sola lettura su anagrafiche, dossier e scadenze, senza dati retributivi.',
 };
 export const KIND = { DIPENDENTE: { label: 'Dipendente', tone: 'teal' }, LP: { label: 'LP', tone: 'mauve' } };
+// Tipo di persona dell'anagrafica unica (public.people): DIPENDENTE e DIRIGENTE hanno un rapporto subordinato, gli altri un incarico
+export const PERSON_KIND = { DIPENDENTE: 'Dipendente', DIRIGENTE: 'Dirigente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario', ESTERNO: 'Esterno' };
 export const STATUS = { CANDIDATO: { label: 'Candidato', tone: 'grey' }, IMPEGNO: { label: 'In impegno', tone: 'blue' }, ATTIVO: { label: 'Attivo', tone: 'green' }, CESSATO: { label: 'Cessato', tone: 'red' } };
 export const CONTRACT = { TIND: 'Tempo indeterminato', TDET: 'Tempo determinato', APPRENDISTATO: 'Apprendistato', DIRIGENTE: 'Dirigente' };
 export const LEVELS = ['Q', '1', '2', '3S', '3', '4S', '4', '5'];

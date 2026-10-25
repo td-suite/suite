@@ -1,97 +1,80 @@
-import React, { useState, useRef } from 'react';
+// Sedi invianti sull'anagrafica unica della Suite: l'elenco viene da Amministrazione > Sedi (public.sites); qui si impostano
+// solo le impostazioni NC della sede (codice StudioLAB, canale ed email di notifica, SLA, attiva per NC). Niente creazione,
+// rinomina o eliminazione di sedi: pulsante "Apri in Amministrazione".
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, base } from '../api.js';
 import { useAuth, isQualita } from '../auth.jsx';
-import { useApi, Card, Field, Loading, Empty, Badge, Modal, ErrorBox, useToast } from '../components/ui.jsx';
-import { SEDE_TIPO, itDateTime, fileToB64 } from '../format.js';
+import { useApi, Card, Field, Loading, Empty, Badge, Modal, ErrorBox, useToast, Icon } from '../components/ui.jsx';
+import { SEDE_TIPO, SEDE_CANALE, itDateTime } from '../format.js';
 
-const EMPTY = { codice: '', nome: '', tipo: 'PUNTO_PRELIEVO', email_nc_override: '', email_cc: '', telefono: '', referente: '', indirizzo: '', citta: '', sla_ore: '', attiva: true, note: '' };
+const EMPTY = { codice_lis: '', canale: 'EMAIL', email_nc: '', pec: '', email_cc: '', sla_ore: '', attiva: true, note: '' };
 
 export default function Sedi() {
   const { user } = useAuth();
   const toast = useToast();
   const [tutte, setTutte] = useState(false);
+  const [soloConfigurate, setSoloConfigurate] = useState(false);
   const { data, reload } = useApi(`/sedi${tutte ? '?tutte=1' : ''}`);
   const [modal, setModal] = useState(null);
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState(null);
   const [q, setQ] = useState('');
   const q2 = isQualita(user);
-  const openNew = () => { setF(EMPTY); setErr(null); setModal('new'); };
   const openEdit = (s) => { setF({ ...EMPTY, ...Object.fromEntries(Object.entries(s).filter(([k]) => k in EMPTY).map(([k, v]) => [k, v ?? ''])) }); setErr(null); setModal(s); };
   const save = async () => {
     setErr(null);
     try {
       const body = { ...f, sla_ore: f.sla_ore === '' ? null : Number(f.sla_ore) };
-      if (modal === 'new') await api.post('/sedi', body); else await api.put(`/sedi/${modal.id}`, body);
-      setModal(null); toast('Sede salvata'); reload();
+      await api.put(`/sedi/${modal.id}`, body);
+      setModal(null); toast('Impostazioni NC della sede salvate'); reload();
     } catch (e) { setErr(e); }
   };
-  const fileRef = useRef();
-  const [imp, setImp] = useState(null);   // esito import
-  const importXlsx = async (file) => {
-    if (!file) return;
-    setImp({ busy: true });
-    try { const r = await api.post('/sedi/import', { base64: await fileToB64(file) }); setImp(r); toast(`Import: ${r.create} sedi create, ${r.aggiornate} aggiornate`); reload(); }
-    catch (e) { setImp({ error: e.message }); }
-    finally { if (fileRef.current) fileRef.current.value = ''; }
-  };
-  const remove = async (s) => {
-    if (s.nc_90gg > 0 || s.nc_aperte > 0) { toast('La sede ha non conformità in archivio: disattivala dalla modifica', 'err'); return; }
-    if (!window.confirm(`Eliminare la sede ${s.nome} (${s.codice})? L'operazione non si annulla. Se ha non conformità verrà rifiutata.`)) return;
-    try { const r = await api.del(`/sedi/${s.id}`); toast(`Sede eliminata${r.accettazioni_scollegate ? ` · ${r.accettazioni_scollegate} accettazioni da riassegnare` : ''}`); reload(); }
-    catch (e) { toast(e.message, 'err'); }
-  };
-  const rows = (data || []).filter((s) => !q || `${s.nome} ${s.codice} ${s.citta || ''}`.toLowerCase().includes(q.toLowerCase()));
+  const rows = (data || []).filter((s) => (!soloConfigurate || s.configurata) && (!q || `${s.nome} ${s.codice} ${s.suite_code || ''} ${s.citta || ''}`.toLowerCase().includes(q.toLowerCase())));
+  const nConf = (data || []).filter((s) => s.configurata).length;
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Sedi invianti</h1><div className="sub">Punti prelievo e centri medici Toscana Diagnostica, laboratori e strutture in Service. Il codice coincide con il CodiceCliente di StudioLAB; l'email NC arriva dal LIS (EmailNonConformita) e qui può essere sovrascritta.</div></div>
-        {q2 && <div className="row" style={{ gap: 8 }}>
-          <input ref={fileRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => importXlsx(e.target.files?.[0])} />
-          <button className="btn ghost" disabled={imp?.busy} onClick={() => fileRef.current?.click()} title="Esportazione 'Elenco clienti' di StudioLAB (.xlsx): crea le sedi nuove e aggiorna contatti di quelle esistenti">{imp?.busy ? 'Import in corso…' : 'Importa da StudioLAB (xlsx)'}</button>
-          <button className="btn" onClick={openNew}>Nuova sede</button>
-        </div>}
+        <div><h1>Sedi invianti</h1><div className="sub">Le sedi sono quelle dell'anagrafica unica della Suite (Amministrazione, Sedi). Qui si impostano solo i dati che servono alle non conformità: codice cliente StudioLAB, canale ed email di notifica, SLA di risposta, sede attiva per le NC.</div></div>
+        <div className="row" style={{ gap: 8 }}>
+          <a className="btn ghost" href="/admin/sites" title="Creare, rinominare o disattivare una sede si fa in Amministrazione"><Icon name="building" /> Apri in Amministrazione</a>
+        </div>
       </div>
-      {imp && !imp.busy && <div className={`alert ${imp.error ? 'err' : 'info'}`} style={{ marginBottom: 14 }}><div>{imp.error ? `Import non riuscito: ${imp.error}` : <>Import completato: {imp.create} sedi create, {imp.aggiornate} aggiornate su {imp.totale} righe{imp.saltate?.length ? `, saltate: ${imp.saltate.join(', ')}` : ''}. {imp.senza_email > 0 && <b>{imp.senza_email} sedi senza email: le NC verso queste sedi non possono essere inviate finché la Qualità non imposta un indirizzo (campo "Email NC" nella modifica).</b>}</>}</div></div>}
+      {data && !nConf && <div className="alert info" style={{ marginBottom: 14 }}><div>Nessuna sede ha ancora le impostazioni NC: scegli <b>Modifica</b> sulle sedi invianti e indica almeno l'email che riceve le non conformità (se vuota si usa l'email della sede in Amministrazione).</div></div>}
       <div className="filters">
         <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="nome, codice, città" /></Field>
+        <label className="f inline"><input type="checkbox" checked={soloConfigurate} onChange={(e) => setSoloConfigurate(e.target.checked)} /> solo sedi con impostazioni NC</label>
         <label className="f inline"><input type="checkbox" checked={tutte} onChange={(e) => setTutte(e.target.checked)} /> mostra anche le sedi disattivate</label>
       </div>
       <Card flush>
-        {!data ? <Loading /> : !rows.length ? <Empty>Nessuna sede</Empty> : (
+        {!data ? <Loading /> : !rows.length ? <Empty>Nessuna sede{!data.length && <>: le sedi si caricano in <a href="/admin/sites">Amministrazione</a></>}</Empty> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th>Sede</th><th>Tipo</th><th>Email NC</th><th>Telefono / referente</th><th className="num">SLA</th><th className="num">NC aperte</th><th className="num">NC 90 gg</th><th className="num">Utenti</th><th></th></tr></thead>
+            <thead><tr><th>Sede</th><th>Tipo</th><th>Codice StudioLAB</th><th>Notifiche NC</th><th className="num">SLA</th><th className="num" title="NC aperte / NC negli ultimi 90 giorni">NC aperte / 90 gg</th><th></th></tr></thead>
             <tbody>{rows.map((s) => (
               <tr key={s.id}>
-                <td><div className="strong">{s.nome}</div><div className="small muted mono">{s.codice}{s.citta ? ` · ${s.citta}` : ''}{!s.attiva && <Badge tone="grey">disattivata</Badge>}</div></td>
-                <td className="small">{SEDE_TIPO[s.tipo]}</td>
-                <td className="small">{s.email_effettiva ? <span>{s.email_effettiva}{s.email_nc_override && <span className="muted"> (override)</span>}</span> : <span className="red">mancante</span>}{s.lis_synced_at && <div className="muted">LIS {itDateTime(s.lis_synced_at)}</div>}</td>
-                <td className="small">{s.telefono || '–'}{s.referente ? <div className="muted">{s.referente}</div> : null}</td>
+                <td style={{ minWidth: 210 }}><div className="strong">{s.nome}</div><div className="small muted" style={{ whiteSpace: 'normal' }}><span className="mono" style={{ whiteSpace: 'normal' }}>{s.suite_code}</span>{s.citta ? ` · ${s.citta}` : ''} {!s.attiva_suite ? <Badge tone="grey">disattivata in Suite</Badge> : !s.attiva ? <Badge tone="grey">non riceve NC</Badge> : null}</div></td>
+                <td className="small" style={{ whiteSpace: 'nowrap' }}>{SEDE_TIPO[s.tipo] || s.tipo}</td>
+                <td className="small mono">{s.codice_lis || s.studiolab_code || <span className="muted" title="Nessun codice StudioLAB: si usa il codice della sede in Amministrazione">{s.suite_code}</span>}{s.lis_synced_at && <div className="muted">LIS {itDateTime(s.lis_synced_at)}</div>}</td>
+                <td className="small" style={{ wordBreak: 'break-word', maxWidth: 260 }}>{s.canale === 'NESSUNO' ? <span className="muted">nessuna notifica</span> : s.canale === 'PORTALE' ? <span>solo utenti di sede ({s.n_utenti})</span> : s.email_effettiva ? <span>{s.email_effettiva}{s.canale === 'PEC' && <span className="muted"> (PEC)</span>}{!s.email_nc && !s.pec && <span className="muted" title="Email della sede in Amministrazione: qui non è stata impostata una casella NC"> (Suite)</span>}</span> : <span className="red">email mancante</span>}{s.email_cc && <div className="muted">cc {s.email_cc}</div>}{s.n_utenti > 0 && s.canale !== 'PORTALE' && <div className="muted">+ {s.n_utenti} {s.n_utenti === 1 ? 'utente di sede' : 'utenti di sede'}</div>}</td>
                 <td className="num small">{s.sla_ore ? `${s.sla_ore} h` : <span className="muted">default</span>}</td>
-                <td className="num">{s.nc_aperte > 0 ? <Badge tone="yellow">{s.nc_aperte}</Badge> : <span className="muted">0</span>}</td>
-                <td className="num">{s.nc_90gg}</td>
-                <td className="num small">{s.n_utenti}</td>
-                <td><div className="row end" style={{ gap: 6 }}><Link className="btn sm ghost" to={`${base}/nc?sede=${s.id}`}>NC</Link>{q2 && <button className="btn sm ghost" onClick={() => openEdit(s)}>Modifica</button>}{q2 && s.codice !== 'LAB-SESTO' && <button className="btn sm danger" title={s.nc_90gg > 0 || s.nc_aperte > 0 ? 'Ha non conformità: usa Disattiva' : 'Elimina la sede'} onClick={() => remove(s)}>Elimina</button>}</div></td>
+                <td className="num"><Link to={`${base}/nc?sede=${s.id}`} title="Apri le non conformità della sede" style={{ textDecoration: 'none', color: 'inherit' }}>{s.nc_aperte > 0 ? <Badge tone="yellow">{s.nc_aperte}</Badge> : <span className="muted">0</span>} <span className="muted small">/ {s.nc_90gg}</span></Link></td>
+                <td style={{ whiteSpace: 'nowrap' }}><div className="row end" style={{ gap: 6, flexWrap: 'nowrap' }}>{q2 && <button className="btn sm ghost" onClick={() => openEdit(s)}>Modifica</button>}</div></td>
               </tr>
             ))}</tbody>
           </table></div>
         )}
       </Card>
-      {modal && <Modal title={modal === 'new' ? 'Nuova sede inviante' : `Modifica ${modal.nome}`} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>Annulla</button><button className="btn" disabled={!f.codice.trim() || f.nome.trim().length < 2} onClick={save}>Salva</button></>}>
+      {modal && <Modal title={`Impostazioni NC · ${modal.nome}`} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>Annulla</button><button className="btn" onClick={save}>Salva</button></>}>
         <ErrorBox error={err} />
+        <div className="small muted" style={{ marginBottom: 10 }}>Nome, tipo, indirizzo e contatti della sede si modificano in <a href="/admin/sites">Amministrazione</a> ({modal.suite_code}{modal.telefono ? ` · ${modal.telefono}` : ''}{modal.email_suite ? ` · ${modal.email_suite}` : ''}).</div>
         <div className="form-grid">
-          <Field label="Codice (CodiceCliente StudioLAB)"><input value={f.codice} onChange={(e) => setF({ ...f, codice: e.target.value })} disabled={modal !== 'new' && Boolean(modal.lis_synced_at)} /></Field>
-          <Field label="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>{Object.entries(SEDE_TIPO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          <Field label="Nome" className="span2"><input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></Field>
-          <Field label="Email NC (override)" help={modal !== 'new' && modal.email_nc ? `Dal LIS: ${modal.email_nc}` : 'Se vuota si usa quella del LIS'}><input value={f.email_nc_override} onChange={(e) => setF({ ...f, email_nc_override: e.target.value })} placeholder="qualita@sede.it" /></Field>
-          <Field label="In copia (CC)" help="Più indirizzi separati da virgola"><input value={f.email_cc} onChange={(e) => setF({ ...f, email_cc: e.target.value })} /></Field>
-          <Field label="Telefono"><input value={f.telefono} onChange={(e) => setF({ ...f, telefono: e.target.value })} /></Field>
-          <Field label="Referente"><input value={f.referente} onChange={(e) => setF({ ...f, referente: e.target.value })} /></Field>
-          <Field label="Indirizzo"><input value={f.indirizzo} onChange={(e) => setF({ ...f, indirizzo: e.target.value })} /></Field>
-          <Field label="Città"><input value={f.citta} onChange={(e) => setF({ ...f, citta: e.target.value })} /></Field>
+          <Field label="Codice cliente StudioLAB" help={modal.studiolab_code ? `In Amministrazione: ${modal.studiolab_code}. Compila solo se il LIS usa un codice diverso.` : 'Codice con cui StudioLAB identifica la sede (HL7 ORC-13); vuoto = codice della sede in Amministrazione'}><input value={f.codice_lis} onChange={(e) => setF({ ...f, codice_lis: e.target.value })} placeholder={modal.studiolab_code || modal.suite_code} /></Field>
+          <Field label="Canale di invio"><select value={f.canale} onChange={(e) => setF({ ...f, canale: e.target.value })}>{Object.entries(SEDE_CANALE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <Field label="Email NC" help={modal.email_suite ? `Se vuota si usa l'email della sede in Amministrazione: ${modal.email_suite}` : 'Casella che riceve le non conformità'}><input value={f.email_nc} onChange={(e) => setF({ ...f, email_nc: e.target.value })} placeholder="qualita@sede.it" disabled={f.canale === 'NESSUNO' || f.canale === 'PORTALE'} /></Field>
+          <Field label="PEC" help="Usata quando il canale è PEC"><input value={f.pec} onChange={(e) => setF({ ...f, pec: e.target.value })} placeholder="sede@pec.it" disabled={f.canale !== 'PEC'} /></Field>
+          <Field label="In copia (CC)" help="Più indirizzi separati da virgola"><input value={f.email_cc} onChange={(e) => setF({ ...f, email_cc: e.target.value })} disabled={f.canale === 'NESSUNO' || f.canale === 'PORTALE'} /></Field>
           <Field label="SLA risposta (ore lavorative)" help="Vuoto = valore globale delle impostazioni"><input type="number" min="1" max="240" value={f.sla_ore} onChange={(e) => setF({ ...f, sla_ore: e.target.value })} /></Field>
-          <Field label="Stato"><select value={f.attiva ? '1' : '0'} onChange={(e) => setF({ ...f, attiva: e.target.value === '1' })}><option value="1">Attiva</option><option value="0">Disattivata</option></select></Field>
+          <Field label="Riceve non conformità"><select value={f.attiva ? '1' : '0'} onChange={(e) => setF({ ...f, attiva: e.target.value === '1' })}><option value="1">Sì, sede attiva per le NC</option><option value="0">No, non si aprono NC su questa sede</option></select></Field>
         </div>
         <Field label="Note" className="mt"><textarea value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       </Modal>}

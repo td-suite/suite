@@ -5,9 +5,9 @@ export default {
   kicker: 'Business',
   area: 'RETAIL_FLOW',
   nav: [
-    { to: '', icon: 'home', label: 'Dashboard', end: true },
+    { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Anagrafiche' },
-    { to: 'partner', icon: 'building', label: 'Partner e clienti B2B' },
+    { to: 'organizzazioni', icon: 'building', label: 'Organizzazioni' },
     { to: 'contratti', icon: 'list', label: 'Tutti i contratti' },
     { to: 'fascicoli', icon: 'folder', label: 'Fascicoli autorizzazione' },
     { group: 'Sezioni' },
@@ -18,6 +18,5 @@ export default {
     { group: 'Amministrazione', profiles: ['ADMIN'] },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni', profiles: ['ADMIN'] },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },
-    { to: 'importazione', icon: 'import', label: 'Importazione', profiles: ['ADMIN'] },
   ],
 };

@@ -30,7 +30,7 @@ function filters(query) {
   if (query.q) { const t = p.add(`%${query.q}%`); w.push(`(s.external_ref ILIKE ${t} OR c.last_name ILIKE ${t} OR c.company_name ILIKE ${t} OR b.company_name ILIKE ${t} OR p.description ILIKE ${t} OR s.product_desc ILIKE ${t})`); }
   return { where: w.join(' AND '), params: p.values };
 }
-const FROM = `FROM sales s LEFT JOIN products p ON p.id=s.product_id LEFT JOIN product_lines pl ON pl.id=p.line_id LEFT JOIN sites st ON st.id=s.site_id LEFT JOIN customers c ON c.id=s.customer_id LEFT JOIN customers b ON b.id=s.b2b_customer_id LEFT JOIN campaigns cp ON cp.id=s.campaign_id LEFT JOIN promotions pr ON pr.id=s.promotion_id`;
+const FROM = `FROM sales s LEFT JOIN products p ON p.id=s.product_id LEFT JOIN product_lines pl ON pl.id=p.line_id LEFT JOIN sites_v st ON st.id=s.site_id LEFT JOIN customers c ON c.id=s.customer_id LEFT JOIN customers b ON b.id=s.b2b_customer_id LEFT JOIN campaigns cp ON cp.id=s.campaign_id LEFT JOIN promotions pr ON pr.id=s.promotion_id`;
 const SELECT = `SELECT s.*, coalesce(p.description, s.product_desc) AS product_description, pl.name AS line_name, pl.code AS line_code, st.name AS site_name, c.last_name, c.first_name, b.company_name, cp.name AS campaign_name, pr.name AS promotion_name`;
 
 r.get('/', ah(async (req, res) => {

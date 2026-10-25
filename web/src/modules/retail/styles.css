@@ -158,6 +158,7 @@ input.money { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Alerts */
 .alert { border-radius: 10px; padding: 11px 14px; font-weight: 550; display: flex; gap: 10px; align-items: flex-start; }
+.alert.info, .alert:not(.err):not(.ok) { background: var(--blue-100, #e8f0fb); color: #1f3b63; }
 .alert.err { background: var(--red-100); color: #7d241e; }
 .alert.ok { background: var(--green-100); color: #1f5a40; }
 .alert.info { background: var(--blue-100); color: #174f5a; }

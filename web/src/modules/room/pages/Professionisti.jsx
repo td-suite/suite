@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, apiBase } from '../api.js';
 import { useApi, Loading, ErrorBox, Modal, Badge, Field, useToast, Card } from '../components/ui.jsx';
 import { itDateTime } from '../format.js';
@@ -9,24 +10,28 @@ import { DISC, EQUIP } from '../planner/planner.jsx';
 const DISCIPLINE = (Array.isArray(DISC) ? DISC : Object.keys(DISC || {})).map((d) => (typeof d === 'string' ? d : d.n || d.nome || String(d)));
 const ATTREZZ = (Array.isArray(EQUIP) ? EQUIP : Object.keys(EQUIP || {})).map((d) => (typeof d === 'string' ? d : d.n || d.nome || String(d)));
 const TABS = [['anagrafica', 'Anagrafica'], ['professionale', 'Professionale'], ['contratto', 'Contratto e assicurazione'], ['compenso', 'Compenso'], ['documenti', 'Documenti'], ['accesso', 'Accesso'], ['disponibilita', 'Disponibilità']];
-const empty = (nome = '', tipo = 'sanitario') => ({ nome, tipo, profilo: tipo === 'medico' ? 'Medico' : 'Infermiere', email: '', attivo: true, dati: { anagrafica: {}, professionale: { discipline: [], attrezzature: [], specializzazioni: [] }, contratto: { rapporto: 'LP' }, assicurazione: {}, compenso: { tipo: 'ORARIO', eccezioniSede: [], regime: 'FORFETTARIO' }, sediAbilitate: [], note: '' } });
+// Scheda Room vuota: le persone vivono nell'anagrafica unica della Suite (public.people), qui si compilano solo i dati operativi
+const empty = (tipo = 'sanitario') => ({ tipo, profilo: tipo === 'medico' ? 'Medico' : 'Infermiere', dati: { anagrafica: {}, professionale: { discipline: [], attrezzature: [], specializzazioni: [] }, contratto: { rapporto: 'LP' }, assicurazione: {}, compenso: { tipo: 'ORARIO', eccezioniSede: [], regime: 'FORFETTARIO' }, sediAbilitate: [], note: '' } });
+const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente' };
+const STATUS = { ATTIVO: ['Attivo', 'green'], IMPEGNO: ['In impegno', 'teal'], CANDIDATO: ['Candidato', 'amber'], CESSATO: ['Cessato', 'red'] };
+export const personaHref = (id) => `/people/${id}`;
 
 export default function Professionisti() {
   const toast = useToast();
   const { data, error, reload } = useApi('/personale/professionisti');
   const sedi = useApi('/strutture');
   const opz = useApi('/personale/professionisti/opzioni');
-  const [q, setQ] = useState(''); const [tipo, setTipo] = useState('tutti'); const [soloAttivi, setSoloAttivi] = useState(true);
-  const [sel, setSel] = useState(null); const [nuovo, setNuovo] = useState(false);
-  const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi]);
+  const [q, setQ] = useState(''); const [tipo, setTipo] = useState('tutti'); const [soloAttivi, setSoloAttivi] = useState(true); const [soloRoom, setSoloRoom] = useState(true);
+  const [sel, setSel] = useState(null);
+  const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (!soloRoom || p.inRoom) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi, soloRoom]);
   const importa = async () => {
-    try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created || r.riattivati ? `Aggiunti ${r.created} sanitari dalle sedi${r.riattivati ? `, riattivati ${r.riattivati}` : ''}` : 'Tutti i sanitari delle sedi sono già in elenco'); reload(); } catch (e) { toast(e.message, 'err'); }
+    try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created ? `Create ${r.created} schede Room per il personale sanitario delle sedi` : 'Il personale sanitario delle sedi presente in anagrafica ha già la scheda Room'); if (r.nonCensiti?.length) toast(`Non in anagrafica (da creare in Amministrazione > Persone): ${r.nonCensiti.join(', ')}`, 'err'); reload(); } catch (e) { toast(e.message, 'err'); }
   };
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Anagrafica completa di medici e professionisti sanitari: dati, contratto, compenso, documenti, accesso al portale e disponibilità.</div></div>
-        <div className="row"><button className="btn ghost" onClick={importa} title="Aggiunge il personale sanitario censito nelle sedi e non ancora in elenco; non elimina nessuno">Aggiungi i sanitari mancanti dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
+      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Medici e professionisti sanitari dell'anagrafica unica della Suite con la scheda Room Planning: contratto, compenso, competenze, documenti, accesso al portale e disponibilità. Nome, contatti e stato si modificano in Amministrazione &gt; Persone o in Contratti del personale.</div></div>
+        <div className="row"><button className="btn ghost" onClick={importa} title="Crea la scheda Room per il personale sanitario censito nelle sedi e già presente in anagrafica; segnala chi manca">Collega i sanitari delle sedi</button><Link className="btn" to="/people">Apri in Amministrazione</Link></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
         <div className="spec-layout">
@@ -34,40 +39,23 @@ export default function Professionisti() {
             <div className="bd" style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
               <input placeholder="Cerca nome, profilo, email…" value={q} onChange={(e) => setQ(e.target.value)} />
               <div className="seg" style={{ marginTop: 8 }}>{[['tutti', 'Tutti'], ['medico', 'Medici'], ['sanitario', 'Sanitari']].map(([k, l]) => <button key={k} className={tipo === k ? 'on' : ''} onClick={() => setTipo(k)}>{l}</button>)}</div>
-              <label className="f inline small" style={{ marginTop: 6 }}><input type="checkbox" checked={soloAttivi} onChange={(e) => setSoloAttivi(e.target.checked)} />solo attivi</label>
+              <div className="row small" style={{ marginTop: 6, gap: 10 }}><label className="f inline small"><input type="checkbox" checked={soloAttivi} onChange={(e) => setSoloAttivi(e.target.checked)} />solo attivi</label><label className="f inline small" title="Spegni per vedere tutte le persone dell'anagrafica (medici, sanitari, liberi professionisti, dipendenti) e compilare una nuova scheda Room"><input type="checkbox" checked={soloRoom} onChange={(e) => setSoloRoom(e.target.checked)} />solo con scheda Room</label></div>
               <div className="small muted">{list.length} professionisti</div>
             </div>
             <div className="spec-items">{list.map((p) => (
               <button key={p.id} className={`spec-item ${sel === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)}>
-                <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}</div>
+                <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}{!p.inRoom && <Badge tone="amber">senza scheda Room</Badge>}</div>
                 <div className="small muted">{p.profilo || (p.tipo === 'medico' ? 'Medico' : 'Sanitario')}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''}</div>
                 <div className="small">{p.email ? <span>{p.email}</span> : <span className="red">senza email</span>}{p.userId ? <span> · <Badge tone="green">portale</Badge></span> : null}{scad(p) ? <span> · <Badge tone="amber">documento in scadenza</Badge></span> : null}</div>
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!sel ? <div className="card"><div className="bd empty">Seleziona un professionista. "Aggiungi i sanitari mancanti dalle sedi" censisce chi è già nelle schede di sede; chi lavora fuori dalla programmazione delle sedi (figure di backup) si inserisce con "Nuovo professionista" e resta in elenco.</div></div>
+            {!sel ? <div className="card"><div className="bd empty">Seleziona una persona. Per aggiungere un professionista nuovo: crealo in Amministrazione &gt; Persone (o in Contratti del personale), poi spegni "solo con scheda Room", aprilo e salva la scheda. "Collega i sanitari delle sedi" crea la scheda Room per il personale sanitario già censito nelle sedi.</div></div>
               : <Scheda key={sel} id={sel} sedi={sedi.data} opz={opz.data} toast={toast} reloadList={reload} onDeleted={() => { setSel(null); reload(); }} />}
           </div>
         </div>
       )}
-      {nuovo && <NuovoModal onClose={() => setNuovo(false)} onCreated={(id) => { setNuovo(false); reload(); setSel(id); }} toast={toast} />}
     </div>
-  );
-}
-
-function NuovoModal({ onClose, onCreated, toast }) {
-  const [f, setF] = useState({ nome: '', tipo: 'sanitario', profilo: 'Infermiere', email: '' });
-  const save = async () => { try { const r = await api.post('/personale/professionisti', { ...empty(f.nome, f.tipo), profilo: f.profilo, email: f.email || null }); toast('Professionista creato'); onCreated(r.id); } catch (e) { toast(e.message, 'err'); } };
-  return (
-    <Modal title="Nuovo professionista" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={f.nome.trim().length < 2} onClick={save}>Crea</button></>}>
-      <div className="form-grid">
-        <Field label="Cognome e nome (come nelle schede di sede)"><input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} autoFocus /></Field>
-        <Field label="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value, profilo: e.target.value === 'medico' ? 'Medico' : 'Infermiere' })}><option value="medico">Medico</option><option value="sanitario">Professionista sanitario</option></select></Field>
-        <Field label="Profilo"><ProfiloInput value={f.profilo} tipo={f.tipo} onChange={(v) => setF({ ...f, profilo: v })} /></Field>
-        <Field label="Email"><input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
-      </div>
-      <p className="small muted">Il nome è la chiave che collega il professionista alle persone censite nelle sedi: usa la stessa grafia (l'ordine cognome/nome e gli accenti non contano).</p>
-    </Modal>
   );
 }
 
@@ -79,45 +67,47 @@ function ProfiloInput({ value, tipo, onChange }) {
 
 function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
   const [p, setP] = useState(null); const [orig, setOrig] = useState(null); const [tab, setTab] = useState('anagrafica'); const [busy, setBusy] = useState(false);
-  const load = async () => { const r = await api.get(`/personale/professionisti/${id}`); const base = empty(r.nome, r.tipo); const d = { ...base.dati, ...r.dati, anagrafica: { ...r.dati?.anagrafica }, professionale: { ...base.dati.professionale, ...r.dati?.professionale }, contratto: { ...base.dati.contratto, ...r.dati?.contratto }, assicurazione: { ...r.dati?.assicurazione }, compenso: { ...base.dati.compenso, ...r.dati?.compenso } }; const v = { ...r, dati: d }; setP(v); setOrig(JSON.stringify({ nome: v.nome, tipo: v.tipo, profilo: v.profilo, email: v.email, attivo: v.attivo, dati: v.dati })); };
+  const load = async () => { const r = await api.get(`/personale/professionisti/${id}`); const base = empty(r.tipo); const d = { ...base.dati, ...r.dati, anagrafica: { ...r.dati?.anagrafica }, professionale: { ...base.dati.professionale, ...r.dati?.professionale }, contratto: { ...base.dati.contratto, ...r.dati?.contratto }, assicurazione: { ...r.dati?.assicurazione }, compenso: { ...base.dati.compenso, ...r.dati?.compenso } }; const v = { ...r, dati: d }; setP(v); setOrig(JSON.stringify({ tipo: v.tipo, profilo: v.profilo, dati: v.dati })); };
   useEffect(() => { load().catch((e) => toast(e.message, 'err')); }, [id]);
   if (!p) return <Loading />;
-  const payload = { nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, attivo: p.attivo, dati: p.dati };
+  const payload = { tipo: p.tipo, profilo: p.profilo, dati: p.dati };
   const dirty = JSON.stringify(payload) !== orig;
   const set = (patch) => setP((x) => ({ ...x, ...patch }));
   const setD = (sec, patch) => setP((x) => ({ ...x, dati: { ...x.dati, [sec]: { ...(x.dati[sec] || {}), ...patch } } }));
-  const save = async () => { setBusy(true); try { const r = await api.put(`/personale/professionisti/${id}`, payload); toast(r.sediAggiornate ? `Scheda salvata · aggiornata anche in ${r.sediAggiornate} ${r.sediAggiornate === 1 ? 'sede' : 'sedi'}` : 'Scheda salvata'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
-  const elimina = async () => { if (!window.confirm(`Eliminare ${p.nome} dall'anagrafica dei professionisti? (le schede di sede non vengono toccate)`)) return; try { await api.del(`/personale/professionisti/${id}`); toast('Professionista eliminato'); onDeleted(); } catch (e) { toast(e.message, 'err'); } };
-  const A = p.dati.anagrafica, PR = p.dati.professionale, C = p.dati.contratto, AS = p.dati.assicurazione, CO = p.dati.compenso;
+  const save = async () => { setBusy(true); try { const r = await api.put(`/personale/professionisti/${id}`, payload); toast(r.sediAggiornate ? `Scheda salvata · aggiornata anche in ${r.sediAggiornate} ${r.sediAggiornate === 1 ? 'sede' : 'sedi'}` : 'Scheda Room salvata'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
+  const elimina = async () => { if (!window.confirm(`Rimuovere la scheda Room di ${p.nome} (compenso, contratto, documenti e disponibilità)? La persona resta nell'anagrafica della Suite e nelle schede di sede.`)) return; try { await api.del(`/personale/professionisti/${id}`); toast('Scheda Room rimossa'); onDeleted(); } catch (e) { toast(e.message, 'err'); } };
+  const PR = p.dati.professionale, C = p.dati.contratto, AS = p.dati.assicurazione, CO = p.dati.compenso;
   const scadenzaCls = (d) => (d && d < new Date().toISOString().slice(0, 10) ? 'red' : d && d < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10) ? 'amber' : '');
   return (
     <div className="grid" style={{ gap: 14 }}>
       <div className="card"><div className="bd">
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: 18 }}>{p.nome} <Badge tone={p.tipo === 'medico' ? 'teal' : 'mauve'}>{p.profilo || p.tipo}</Badge> {!p.attivo && <Badge tone="red">non attivo</Badge>}</h2>
-            <div className="small muted">{p.sediPresente?.length ? 'Nelle schede di sede: ' + p.sediPresente.map((s) => s.label).join(', ') : 'Non presente nelle schede di sede'}{p.updated_at ? ` · aggiornato ${itDateTime(p.updated_at)}` : ''}</div>
+            <h2 style={{ fontSize: 18 }}>{p.nome} <Badge tone={p.tipo === 'medico' ? 'teal' : 'mauve'}>{p.profilo || p.tipo}</Badge> <Badge tone={STATUS[p.status]?.[1]}>{STATUS[p.status]?.[0] || p.status}</Badge> {!p.in_room && <Badge tone="amber">senza scheda Room</Badge>}</h2>
+            <div className="small muted">{KIND[p.kind] || p.kind}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''} · {p.sediPresente?.length ? 'nelle schede di sede: ' + p.sediPresente.map((s) => s.label).join(', ') : 'non presente nelle schede di sede'}{p.updated_at ? ` · scheda Room aggiornata ${itDateTime(p.updated_at)}` : ''}</div>
           </div>
-          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<button className="btn ghost sm" style={{ color: 'var(--red)' }} onClick={elimina} title="Possibile solo senza turni, presenze, rendiconti o candidature collegati">Elimina</button><button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : 'Salva scheda'}</button></div>
+          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<Link className="btn ghost sm" to={personaHref(p.id)} title="Scheda della persona nell'anagrafica unica (nome, contatti, stato)">Scheda persona</Link>{p.in_room && <button className="btn ghost sm" style={{ color: 'var(--red)' }} onClick={elimina} title="Possibile solo senza turni, presenze, rendiconti o candidature collegati">Rimuovi scheda Room</button>}<button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : p.in_room ? 'Salva scheda' : 'Crea scheda Room'}</button></div>
         </div>
         <div className="seg" style={{ marginTop: 12, flexWrap: 'wrap' }}>{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       </div></div>
 
-      {tab === 'anagrafica' && <Card title="Dati anagrafici e contatti"><div className="form-grid">
-        <Field label="Cognome e nome (chiave di collegamento alle sedi)" help="Nome, email e profilo salvati qui vengono riportati anche nelle schede di sede dove la persona compare"><input value={p.nome} onChange={(e) => set({ nome: e.target.value })} /></Field>
-        <Field label="Tipo"><select value={p.tipo} onChange={(e) => set({ tipo: e.target.value, profilo: e.target.value === 'medico' ? 'Medico' : p.profilo === 'Medico' ? 'Infermiere' : p.profilo })}><option value="medico">Medico</option><option value="sanitario">Professionista sanitario</option></select></Field>
-        <Field label="Profilo professionale"><ProfiloInput value={p.profilo} tipo={p.tipo} onChange={(v) => set({ profilo: v })} /></Field>
-        <Field label="Stato"><select value={p.attivo ? '1' : '0'} onChange={(e) => set({ attivo: e.target.value === '1' })}><option value="1">Attivo</option><option value="0">Non attivo (cessato)</option></select></Field>
-        <In p={p} setD={setD} sec="anagrafica" k="cognome" label="Cognome" /><In p={p} setD={setD} sec="anagrafica" k="nome" label="Nome" />
-        <Field label="Sesso"><select value={A.sesso || ''} onChange={(e) => setD('anagrafica', { sesso: e.target.value })}><option value="">—</option><option value="F">F</option><option value="M">M</option></select></Field>
-        <In p={p} setD={setD} sec="anagrafica" k="dataNascita" label="Data di nascita" type="date" /><In p={p} setD={setD} sec="anagrafica" k="luogoNascita" label="Luogo di nascita" />
-        <In p={p} setD={setD} sec="anagrafica" k="codiceFiscale" label="Codice fiscale" style={{ textTransform: 'uppercase' }} /><In p={p} setD={setD} sec="anagrafica" k="partitaIva" label="Partita IVA" />
+      {tab === 'anagrafica' && <><Card title="Anagrafica unica della Suite" actions={<Link className="btn sm ghost" to={personaHref(p.id)}>Modifica in Amministrazione</Link>}>
+        <p className="small muted" style={{ marginTop: 0 }}>Questi dati vengono da Amministrazione &gt; Persone (o da Contratti del personale) e valgono per tutta la Suite: qui si consultano soltanto.</p>
+        <div className="form-grid">
+          <Ro label="Cognome" v={p.last_name} /><Ro label="Nome" v={p.first_name} /><Ro label="Titolo" v={p.title} /><Ro label="Tipo di persona" v={KIND[p.kind] || p.kind} />
+          <Ro label="Stato" v={STATUS[p.status]?.[0] || p.status} /><Ro label="Sesso" v={p.sex} /><Ro label="Data di nascita" v={p.birth_date ? itD(p.birth_date) : ''} /><Ro label="Codice fiscale" v={p.tax_code} />
+          <Ro label="Email (accesso al portale e invii)" v={p.email} /><Ro label="Telefono" v={p.phone} /><Ro label="Telefono ufficio" v={p.phone_office} /><Ro label="Disciplina" v={p.discipline?.join(', ')} />
+        </div>
+      </Card>
+      <Card title="Scheda Room Planning" className="mt"><div className="form-grid">
+        <Field label="Tipo in pianificazione" help="Medico (titolare di ambulatorio) o professionista sanitario (supporto, prelievi, tecnico)"><select value={p.tipo} onChange={(e) => set({ tipo: e.target.value, profilo: e.target.value === 'medico' ? 'Medico' : p.profilo === 'Medico' ? 'Infermiere' : p.profilo })}><option value="medico">Medico</option><option value="sanitario">Professionista sanitario</option></select></Field>
+        <Field label="Profilo professionale" help="Riportato anche nelle schede di sede dove la persona compare"><ProfiloInput value={p.profilo} tipo={p.tipo} onChange={(v) => set({ profilo: v })} /></Field>
+        <In p={p} setD={setD} sec="anagrafica" k="luogoNascita" label="Luogo di nascita" /><In p={p} setD={setD} sec="anagrafica" k="partitaIva" label="Partita IVA" />
         <In p={p} setD={setD} sec="anagrafica" k="indirizzo" label="Indirizzo" /><In p={p} setD={setD} sec="anagrafica" k="cap" label="CAP" /><In p={p} setD={setD} sec="anagrafica" k="citta" label="Città" /><In p={p} setD={setD} sec="anagrafica" k="provincia" label="Provincia" />
-        <Field label="Email (accesso al portale e invii)"><input type="email" value={p.email || ''} onChange={(e) => set({ email: e.target.value })} /></Field>
-        <In p={p} setD={setD} sec="anagrafica" k="pec" label="PEC" type="email" /><In p={p} setD={setD} sec="anagrafica" k="telefono" label="Telefono" /><In p={p} setD={setD} sec="anagrafica" k="cellulare" label="Cellulare" />
+        <In p={p} setD={setD} sec="anagrafica" k="pec" label="PEC" type="email" />
         <In p={p} setD={setD} sec="anagrafica" k="iban" label="IBAN" /><In p={p} setD={setD} sec="anagrafica" k="intestatarioConto" label="Intestatario del conto" />
         <In p={p} setD={setD} sec="anagrafica" k="contattoEmergenza" label="Contatto di emergenza" />
-      </div><Field label="Note"><textarea rows={3} value={p.dati.note || ''} onChange={(e) => setP({ ...p, dati: { ...p.dati, note: e.target.value } })} /></Field></Card>}
+      </div><Field label="Note operative"><textarea rows={3} value={p.dati.note || ''} onChange={(e) => setP({ ...p, dati: { ...p.dati, note: e.target.value } })} /></Field></Card></>}
 
       {tab === 'professionale' && <Card title="Profilo professionale">
         <div className="form-grid">
@@ -126,7 +116,7 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
           <In p={p} setD={setD} sec="professionale" k="ecmCrediti" label="Crediti ECM (triennio corrente)" type="number" /><In p={p} setD={setD} sec="professionale" k="ecmTriennio" label="Triennio ECM" placeholder="2026-2028" />
           <In p={p} setD={setD} sec="professionale" k="anniEsperienza" label="Anni di esperienza" type="number" /><In p={p} setD={setD} sec="professionale" k="lingue" label="Lingue" />
         </div>
-        <TagPicker label="Discipline / specialità" options={DISCIPLINE} value={PR.discipline || []} onChange={(v) => setD('professionale', { discipline: v })} />
+        <TagPicker label={`Discipline / specialità${p.discipline?.length && p.discipline[0] && !(PR.discipline || []).includes(p.discipline[0]) ? ` (dall'anagrafica: ${p.discipline[0]})` : ''}`} options={DISCIPLINE} value={PR.discipline || []} onChange={(v) => setD('professionale', { discipline: v })} />
         <TagPicker label="Specializzazioni e master (testo libero)" options={[]} value={PR.specializzazioni || []} onChange={(v) => setD('professionale', { specializzazioni: v })} />
         <TagPicker label="Competenze su attrezzature" options={ATTREZZ} value={PR.attrezzature || []} onChange={(v) => setD('professionale', { attrezzature: v })} />
         <TagPicker label="Altre competenze (es. prelievi pediatrici, ECG, BLSD)" options={['Prelievi', 'Prelievi pediatrici', 'ECG', 'Holter', 'BLSD', 'Medicazioni', 'Terapia infusionale', 'Vaccinazioni', 'Spirometria', 'Gestione accettazione']} value={PR.competenze || []} onChange={(v) => setD('professionale', { competenze: v })} />
@@ -162,7 +152,7 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
         {CO.tipo !== 'FISSO' && <div style={{ marginTop: 12 }}>
           <div className="row"><b>Tariffe diverse per sede</b><span className="small muted">(se vuoto vale la tariffa base)</span><span className="spacer" /><button className="btn sm ghost" onClick={() => setD('compenso', { eccezioniSede: [...(CO.eccezioniSede || []), { sedeId: sedi[0]?.id, tariffaOraria: '' }] })}>+ eccezione</button></div>
           {(CO.eccezioniSede || []).map((e, i) => <div key={i} className="row" style={{ marginTop: 6 }}>
-            <select value={e.sedeId} onChange={(ev) => setD('compenso', { eccezioniSede: CO.eccezioniSede.map((x, j) => (j === i ? { ...x, sedeId: ev.target.value } : x)) })} style={{ width: 320 }}>{sedi.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
+            <select value={e.sedeId} onChange={(ev) => setD('compenso', { eccezioniSede: CO.eccezioniSede.map((x, j) => (j === i ? { ...x, sedeId: Number(ev.target.value) } : x)) })} style={{ width: 320 }}>{sedi.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
             <input type="number" step="0.01" value={e.tariffaOraria} placeholder="€/h" style={{ width: 120 }} onChange={(ev) => setD('compenso', { eccezioniSede: CO.eccezioniSede.map((x, j) => (j === i ? { ...x, tariffaOraria: ev.target.value } : x)) })} />
             <button className="btn sm ghost" onClick={() => setD('compenso', { eccezioniSede: CO.eccezioniSede.filter((_, j) => j !== i) })}>×</button></div>)}
         </div>}
@@ -171,13 +161,14 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
       </Card>}
 
       {tab === 'documenti' && <Documenti p={p} opz={opz} toast={toast} reload={load} />}
-      {tab === 'accesso' && <Accesso p={p} toast={toast} reload={() => { load(); reloadList(); }} dirty={dirty} />}
+      {tab === 'accesso' && <Accesso p={p} />}
       {tab === 'disponibilita' && <DisponibilitaProf profId={p.id} sedi={sedi} toast={toast} />}
     </div>
   );
 }
 
 function In({ p, setD, sec, k, label, type = 'text', ...rest }) { return <Field label={label}><input type={type} value={(p.dati[sec] || {})[k] ?? ''} onChange={(e) => setD(sec, { [k]: e.target.value })} {...rest} /></Field>; }
+function Ro({ label, v }) { return <Field label={label}><input value={v || ''} readOnly title="Dato dell'anagrafica unica: si modifica in Amministrazione > Persone" style={{ background: 'var(--teal-050, #eef5f6)', cursor: 'default' }} placeholder="—" /></Field>; }
 
 function TagPicker({ label, options, value, onChange }) {
   const [txt, setTxt] = useState('');
@@ -223,23 +214,20 @@ function Documenti({ p, opz, toast, reload }) {
   );
 }
 
-function Accesso({ p, toast, reload, dirty }) {
-  const [link, setLink] = useState(null); const [busy, setBusy] = useState(false);
-  const invita = async () => {
-    if (dirty) { toast('Salva prima la scheda', 'err'); return; }
-    if (!p.email) { toast('Inserisci l\'email nella scheda', 'err'); return; }
-    if (!window.confirm(`Collegare la scheda all'accesso Suite con email ${p.email}? Il professionista entrerà nella Suite con il profilo Professionista e vedrà solo il proprio portale.`)) return;
-    setBusy(true); try { const r = await api.post(`/personale/professionisti/${p.id}/invita`, {}); setLink(r); toast(r.linked ? 'Accesso collegato' : 'Scheda collegata: l\'utente va creato o abilitato in Amministrazione della Suite'); reload(); } catch (e) { toast(e.message, 'err'); } setBusy(false);
-  };
+function Accesso({ p }) {
+  const { data, error } = useApi(`/personale/professionisti/${p.id}/accesso`);
   return (
     <Card title="Accesso al portale del professionista">
-      <p>Il professionista entra nella <b>Suite TD</b> con il proprio account (email e password o Microsoft 365) e, con il profilo <b>Professionista</b> sul modulo Room Planning, vede solo il proprio portale: disponibilità, turni confermati, presenze registrate, rendiconti approvati e bacheca. L'utente e il profilo si creano in Amministrazione della Suite; da qui si collega la scheda all'account con la stessa email.</p>
-      <div className="row" style={{ gap: 14 }}>
-        <div>Stato: {p.user_id ? (p.user_active ? <Badge tone="green">scheda collegata</Badge> : <Badge tone="red">utente disattivato</Badge>) : <Badge>nessun accesso collegato</Badge>}</div>
-        {p.last_login_at && <div className="small muted">ultimo accesso {itDateTime(p.last_login_at)}</div>}
-      </div>
-      <div className="row" style={{ marginTop: 12 }}><button className="btn" disabled={busy} onClick={invita}>{p.user_id ? 'Ricollega all\'account' : 'Collega all\'account Suite'}</button><span className="small muted">email {p.email || '(email mancante)'}</span></div>
-      {link && <div className={`alert ${link.linked ? 'ok' : 'info'}`} style={{ marginTop: 10 }}>{link.hint}</div>}
+      <p>Il professionista entra nella <b>Suite TD</b> con il proprio account (email e password o Microsoft 365) e, con il profilo <b>Professionista</b> sul modulo Room Planning, vede solo il proprio portale: disponibilità, turni confermati, presenze registrate, rendiconti approvati e bacheca. L'utente, il collegamento alla persona e il profilo si gestiscono in Amministrazione &gt; Utenti.</p>
+      <ErrorBox error={error} />
+      {!data ? <Loading /> : <>
+        <div className="row" style={{ gap: 14 }}>
+          <div>Stato: {data.linked ? <Badge tone="green">accesso attivo</Badge> : data.suiteUser ? <Badge tone="amber">utente collegato, profilo da sistemare</Badge> : <Badge>nessun utente collegato</Badge>}</div>
+          {data.suiteUser && <div className="small muted">{data.suiteUser.email}{data.suiteUser.last_login_at ? ` · ultimo accesso ${itDateTime(data.suiteUser.last_login_at)}` : ''}</div>}
+        </div>
+        <div className="alert info" style={{ marginTop: 10 }}>{data.hint}</div>
+        <div className="row" style={{ marginTop: 12 }}><Link className="btn ghost" to="/admin/users">Apri Amministrazione &gt; Utenti</Link><span className="small muted">email in anagrafica: {p.email || '(mancante)'}</span></div>
+      </>}
     </Card>
   );
 }

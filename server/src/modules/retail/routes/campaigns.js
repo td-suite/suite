@@ -54,7 +54,7 @@ r.get('/:id', ah(async (req, res) => {
   if (!c) throw notFound();
   const trend = await many(`SELECT sale_date AS day, count(DISTINCT external_ref)::int AS tickets, sum(net_amount) AS revenue FROM sales WHERE campaign_id=$1 GROUP BY 1 ORDER BY 1`, [id]);
   const products = await many(`SELECT p.description AS label, sum(s.quantity)::int AS qty, sum(s.net_amount) AS revenue FROM sales s JOIN products p ON p.id=s.product_id WHERE s.campaign_id=$1 GROUP BY p.description ORDER BY revenue DESC LIMIT 12`, [id]);
-  const sites = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS tickets, sum(s.net_amount) AS revenue FROM sales s JOIN sites st ON st.id=s.site_id WHERE s.campaign_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
+  const sites = await many(`SELECT st.name AS label, count(DISTINCT s.external_ref)::int AS tickets, sum(s.net_amount) AS revenue FROM sales s JOIN sites_v st ON st.id=s.site_id WHERE s.campaign_id=$1 GROUP BY st.name ORDER BY revenue DESC`, [id]);
   res.json({ ...c, trend, products, sites });
 }));
 

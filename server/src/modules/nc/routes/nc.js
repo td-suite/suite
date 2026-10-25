@@ -9,6 +9,7 @@ import { NC_COLS, NC_FROM, loadNc, viewFor, nextCodice, slaDue, checkRicorrenza,
 import * as mail from '../lib/mail.js';
 import * as lis from '../lib/lis.js';
 import { rapportoPdf, exportXlsx, listForExport } from '../lib/report.js';
+import { loadSede, sedeDestinatari } from '../lib/sedi.js';
 
 const r = Router();
 const MAX_FILE = 6 * 1024 * 1024;
@@ -46,7 +47,7 @@ r.get('/nc', ah(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 200, 1000);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
   const rows = await many(`SELECT ${NC_COLS} ${NC_FROM} ${where} ORDER BY CASE n.stato WHEN 'RISPOSTA_SEDE' THEN 0 WHEN 'APERTA' THEN 1 WHEN 'INVIATA_SEDE' THEN 2 WHEN 'IN_TRATTAMENTO' THEN 3 ELSE 9 END, n.opened_at DESC LIMIT ${limit} OFFSET ${offset}`, params);
-  const total = await one(`SELECT count(*)::int AS n FROM nc n JOIN sedi s ON s.id=n.sede_id ${where}`, params);
+  const total = await one(`SELECT count(*)::int AS n FROM nc n JOIN sites_v s ON s.id=n.sede_id ${where}`, params);
   res.json({ rows: rows.map((n) => viewFor(n, req.user)), total: total.n, limit, offset });
 }));
 
@@ -98,7 +99,9 @@ r.post('/nc', requireLab, ah(async (req, res) => {
   if (b.tipo_id && !tipo) throw bad('Tipologia non valida per la macro-area scelta');
   if (!tipo && !(b.tipo_altro || '').trim()) throw bad('Indica la tipologia oppure specifica "Altro"');
   for (const a of b.allegati) if (Buffer.byteLength(a.base64, 'base64') > MAX_FILE) throw bad(`Allegato ${a.nome} troppo grande (max 6 MB)`);
-  const sede = await one('SELECT * FROM sedi WHERE id=$1', [acc.sede_id]);
+  const sede = await loadSede(acc.sede_id);
+  if (!sede) throw bad('La sede inviante dell\'accettazione non esiste più nell\'anagrafica della Suite: riassegnala');
+  if (!sede.attiva) throw bad(`La sede "${sede.nome}" non è attiva per le non conformità: riattivala in Sedi invianti o riassegna l'accettazione`);
   const ric = await checkRicorrenza(acc.sede_id, b.tipo_id || null);
   const settings = await getSettings();
   // RCA obbligatoria per NC maggiori/critiche e per le ricorrenti (ISO 15189 §7.5 / §8.7)
@@ -145,7 +148,8 @@ r.get('/nc/:id', ah(async (req, res) => {
   const azioni = internal ? await many('SELECT a.*, u.full_name AS created_by_name FROM nc_azioni a LEFT JOIN users u ON u.id=a.created_by WHERE a.nc_id=$1 ORDER BY a.created_at', [nc.id]) : [];
   const email = internal ? await many('SELECT id, tipo, destinatari, cc, oggetto, stato, errore, tentativi, sent_at, created_at FROM email_log WHERE nc_id=$1 ORDER BY created_at DESC', [nc.id]) : [];
   const storico = internal ? await many('SELECT a.id, a.action, a.label, a.at, u.full_name FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.nc_id=$1 ORDER BY a.at DESC LIMIT 100', [nc.id]) : [];
-  const sede = await one('SELECT id, codice, nome, tipo, telefono, referente, coalesce(email_nc_override, email_nc) AS email, email_cc, sla_ore FROM sedi WHERE id=$1', [nc.sede_id]);
+  const sv = await loadSede(nc.sede_id);
+  const sede = sv ? { id: sv.id, codice: sv.codice, nome: sv.nome, tipo: sv.tipo, telefono: sv.telefono, referente: sv.referente, email: sv.email_effettiva, email_cc: sv.email_cc, sla_ore: sv.sla_ore, canale: sv.canale, configurata: sv.configurata, attiva: sv.attiva } : null;
   res.json({ nc: viewFor(nc, req.user), messaggi, allegati, azioni, email, storico, sede, lisStatoLabel: lis.STATO_LIS[nc.stato_lis] || null });
 }));
 
@@ -196,7 +200,7 @@ r.post('/nc/:id/messaggi', ah(async (req, res) => {
   const b = parse(msgSchema, req.body);
   if (!APERTE.includes(nc.stato) && !(isLab(req.user) && b.tipo === 'NOTA_INTERNA')) throw bad(`La non conformità è ${STATO_LABEL[nc.stato].toLowerCase()}: non accetta nuove comunicazioni`);
   for (const a of b.allegati) if (Buffer.byteLength(a.base64, 'base64') > MAX_FILE) throw bad(`Allegato ${a.nome} troppo grande (max 6 MB)`);
-  const sede = await one('SELECT * FROM sedi WHERE id=$1', [nc.sede_id]);
+  const sede = await loadSede(nc.sede_id);
 
   if (isSede(req.user)) {
     if (b.tipo !== 'RISPOSTA' && b.tipo !== 'CHIARIMENTO') throw forbidden('La sede può inviare risposte o richieste di chiarimento');
@@ -310,7 +314,7 @@ r.post('/nc/:id/chiudi', requireLab, ah(async (req, res) => {
   if (nc.rca_richiesta && !nc.rca_causa) throw bad('Questa NC richiede l\'analisi della causa radice prima della chiusura (gravità maggiore/critica o ricorrente)');
   if (!nc.trattamento_tipo) throw bad('Registra il trattamento del campione (fase 2) prima di chiudere');
   const acc = await one('SELECT * FROM accettazioni WHERE id=$1', [nc.accettazione_id]);
-  const sede = await one('SELECT * FROM sedi WHERE id=$1', [nc.sede_id]);
+  const sede = await loadSede(nc.sede_id);
   await tx(async (c) => {
     await c.query(`UPDATE nc SET stato='CHIUSA', esito_chiusura=$2, closed_by=$3, closed_at=now(), version=version+1, updated_at=now(), updated_by=$3 WHERE id=$1`, [nc.id, b.esito.trim(), req.user.id]);
     await addMessaggio(c, nc.id, { tipo: 'CHIUSURA', direzione: b.notifica_sede ? 'LAB_SEDE' : 'INTERNO', testo: b.esito.trim(), userId: req.user.id });
@@ -322,9 +326,8 @@ r.post('/nc/:id/chiudi', requireLab, ah(async (req, res) => {
   const full = await loadNc(nc.id);
   if (b.notifica_sede) {
     const tpl = mail.tplChiusura(full, sede, b.esito.trim());
-    const users = await many(`SELECT u.email FROM users u JOIN users_sedi us ON us.user_id=u.id WHERE us.sede_id=$1 AND u.status='ACTIVE' AND u.notify_email`, [sede.id]);
-    const dest = [sede.email_nc_override || sede.email_nc, ...users.map((u) => u.email)].filter(Boolean);
-    if (dest.length) esiti.email = await mail.enqueue({ ncId: nc.id, tipo: 'NC_CHIUSA', to: dest, cc: sede.email_cc, subject: tpl.subject, html: tpl.html });
+    const dest = await sedeDestinatari(sede);
+    if (dest.length) esiti.email = await mail.enqueue({ ncId: nc.id, tipo: 'NC_CHIUSA', to: dest, cc: sede?.email_cc, subject: tpl.subject, html: tpl.html });
   }
   if (b.allega_rapporto_lis && config.lis.enabled && config.lis.writeBack) {
     try {

@@ -5,7 +5,7 @@ import { qs } from '../api.js';
 
 const ACTION = {
   ACTIVITY_UPDATED: 'Attività modificata', ACTIVITY_CREATED: 'Attività aggiunta', ACTIVITY_DELETED: 'Attività eliminata', ACTIVITIES_REORDERED: 'Attività riordinate',
-  TARGET_UPDATED: 'Scheda target modificata', TARGET_CREATED: 'Target aggiunta', TARGET_DELETED: 'Target eliminata', TEAM_UPDATED: 'Registro ruoli',
+  TARGET_UPDATED: 'Parametri del piano modificati', TARGET_CREATED: 'Target aggiunta al piano', TARGET_DELETED: 'Target rimossa dal piano', TEAM_UPDATED: 'Team di integrazione',
   PLAN_IMPORTED: 'Import da file', PLAN_RESTORED: 'Ripristino snapshot', PLAN_SEEDED: 'Migrazione iniziale', SNAPSHOT_CREATED: 'Snapshot',
   LOGIN: 'Accesso', LOGOUT: 'Uscita', LOGIN_FAILED: 'Accesso fallito', USER_CREATED: 'Utente creato', USER_UPDATED: 'Utente modificato',
   USER_SELF_REGISTERED: 'Primo accesso Microsoft', USER_PASSWORD_RESET: 'Reset password', PASSWORD_CHANGED: 'Password cambiata',
@@ -15,13 +15,15 @@ export default function Audit() {
   const [action, setAction] = useState('');
   const [target, setTarget] = useState('');
   const { data } = useApi(`/audit${qs({ action, target, limit: 500 })}`);
-  const targets = [...new Set((data || []).map((a) => a.target_id).filter(Boolean))].sort();
+  // target_id è l'id dell'organizzazione (anagrafica unica): nel filtro si mostra il nome
+  const names = new Map((data || []).filter((a) => a.target_id).map((a) => [a.target_id, a.target_name || `#${a.target_id}`]));
+  const targets = [...names.keys()].sort((a, b) => names.get(a).localeCompare(names.get(b)));
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Registro attività</h1><div className="sub">Chi ha fatto cosa e quando: ogni modifica al piano con il valore prima e dopo, accessi, import e ripristini. Questo registro sostituisce il "registro revisioni" del vecchio file.</div></div></div>
+      <div className="page-head"><div><h1>Registro attività</h1><div className="sub">Chi ha fatto cosa e quando: ogni modifica al piano con il valore prima e dopo, accessi, import e ripristini. Le società sono quelle dell'anagrafica unica.</div></div></div>
       <div className="filters">
         <Field label="Azione"><select value={action} onChange={(e) => setAction(e.target.value)}><option value="">Tutte</option>{Object.entries(ACTION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-        <Field label="Target"><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Tutte</option>{targets.map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <Field label="Target"><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Tutte</option>{targets.map((t) => <option key={t} value={t}>{names.get(t)}</option>)}</select></Field>
       </div>
       <div className="card">
         {!data ? <Loading /> : !data.length ? <Empty>Nessuna attività</Empty> : (

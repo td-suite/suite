@@ -28,8 +28,8 @@ export async function collectSignals({ year, month, siteId, lineId }) {
   const pyAvg = await one(`SELECT coalesce(sum(s.net_amount),0)/greatest(count(DISTINCT date_trunc('month', s.sale_date)),1) AS v FROM sales s ${lineId ? 'JOIN products p ON p.id=s.product_id' : ''} WHERE date_part('year', s.sale_date)=$1 ${siteId ? `AND s.site_id=${Number(siteId)}` : ''} ${lineId ? `AND p.line_id=${Number(lineId)}` : ''}`, [year - 1]);
   if (Number(py.v) > 0 && Number(pyAvg.v) > 0) { const idx = pct(py.v, pyAvg.v); if (idx != null && Math.abs(idx) >= 12) sig.push({ kind: 'ESTERNA', weight: 0.4, text: `Stagionalità: nell'anno precedente questo mese valeva ${idx > 0 ? '+' : ''}${idx}% rispetto alla media mensile.` }); }
   // Mercato del bacino: reddito dei comuni rispetto alla regione, imprese/addetti per ATECO se caricati
-  const cities = siteId ? ((await one('SELECT catchment_cities, city FROM sites WHERE id=$1', [siteId])) || {}) : null;
-  const list = cities ? [...new Set([cities.city, ...(cities.catchment_cities || '').split(',').map((x) => x.trim())].filter(Boolean))] : (await many("SELECT DISTINCT city FROM sites WHERE active AND city IS NOT NULL")).map((x) => x.city);
+  const cities = siteId ? ((await one('SELECT catchment_cities, city FROM sites_v WHERE id=$1', [siteId])) || {}) : null;
+  const list = cities ? [...new Set([cities.city, ...(cities.catchment_cities || '').split(',').map((x) => x.trim())].filter(Boolean))] : (await many("SELECT DISTINCT city FROM sites_v WHERE active AND in_network AND city IS NOT NULL")).map((x) => x.city);
   const market = await many(`SELECT territory, metric, value, year, ateco FROM market_data WHERE territory_kind='COMUNE' AND lower(territory) = ANY($1) ORDER BY year DESC`, [list.map((x) => x.toLowerCase())]);
   const bench = await one("SELECT value FROM market_data WHERE territory_kind='REGIONE' AND metric='reddito_medio' ORDER BY year DESC LIMIT 1");
   const seen = new Set(); const marketFacts = [];

@@ -7,6 +7,7 @@ import { addWorkingHours } from './sla.js';
 import * as mail from './mail.js';
 import * as lis from './lis.js';
 import { publish } from './events.js';
+import { loadSede, sedeDestinatari } from './sedi.js';
 
 export const STATI = ['APERTA', 'INVIATA_SEDE', 'RISPOSTA_SEDE', 'IN_TRATTAMENTO', 'CHIUSA', 'VERIFICATA', 'ANNULLATA'];
 export const STATO_LABEL = { APERTA: 'Aperta', INVIATA_SEDE: 'In attesa della sede', RISPOSTA_SEDE: 'Risposta da gestire', IN_TRATTAMENTO: 'In trattamento', CHIUSA: 'Chiusa', VERIFICATA: 'Verificata', ANNULLATA: 'Annullata' };
@@ -18,7 +19,7 @@ export const NC_COLS = `n.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tip
   (SELECT count(*)::int FROM nc_messaggi m WHERE m.nc_id = n.id) AS n_messaggi,
   (SELECT count(*)::int FROM nc_allegati al WHERE al.nc_id = n.id) AS n_allegati,
   (SELECT count(*)::int FROM nc_azioni az WHERE az.nc_id = n.id AND az.stato NOT IN ('COMPLETATA','ANNULLATA')) AS azioni_aperte`;
-export const NC_FROM = `FROM nc n JOIN sedi s ON s.id = n.sede_id LEFT JOIN nc_tipi t ON t.id = n.tipo_id JOIN accettazioni a ON a.id = n.accettazione_id
+export const NC_FROM = `FROM nc n JOIN sites_v s ON s.id = n.sede_id LEFT JOIN nc_tipi t ON t.id = n.tipo_id JOIN accettazioni a ON a.id = n.accettazione_id
   LEFT JOIN users uo ON uo.id = n.opened_by LEFT JOIN users uc ON uc.id = n.closed_by`;
 
 export const loadNc = (id) => one(`SELECT ${NC_COLS} ${NC_FROM} WHERE n.id = $1`, [id]);
@@ -39,7 +40,7 @@ export async function nextCodice(client) {
 }
 
 export async function sedeEmail(sede) {
-  return sede.email_nc_override || sede.email_nc || '';
+  return sede?.email_effettiva || '';
 }
 
 export async function slaDue(sede, from = new Date()) {
@@ -79,16 +80,15 @@ export function emit(type, nc, by, label) {
 
 // Invio (o re-invio) della NC alla sede inviante: email + stato INVIATA_SEDE + SLA
 export async function inviaAllaSede(req, nc, { messaggio } = {}) {
-  const sede = await one('SELECT * FROM sedi WHERE id=$1', [nc.sede_id]);
-  const to = await sedeEmail(sede);
+  const sede = await loadSede(nc.sede_id);
+  if (!sede) throw bad('Sede inviante non trovata nell\'anagrafica della Suite');
   const settings = await getSettings();
   const due = await slaDue(sede);
   const full = await loadNc(nc.id);
   const tpl = messaggio ? mail.tplRichiesta(full, sede, messaggio) : mail.tplApertura(full, sede, full.tipo_label || full.tipo_altro || '–', settings);
-  // destinatari: email NC della sede + utenti SEDE della sede che ricevono notifiche
-  const users = await many(`SELECT u.email FROM users u JOIN users_sedi us ON us.user_id=u.id WHERE us.sede_id=$1 AND u.status='ACTIVE' AND u.notify_email`, [sede.id]);
-  const dest = [to, ...users.map((u) => u.email)].filter(Boolean);
-  if (!dest.length) throw bad(`La sede "${sede.nome}" non ha un indirizzo email per le non conformità: impostalo nell'anagrafica sedi prima di inviare.`);
+  // destinatari: casella NC della sede (canale email/PEC) + utenti di sede della Suite che ricevono notifiche
+  const dest = await sedeDestinatari(sede);
+  if (!dest.length) throw bad(sede.canale === 'NESSUNO' ? `La sede "${sede.nome}" ha il canale di invio "nessuno": cambialo in Sedi invianti prima di inviare.` : `La sede "${sede.nome}" non ha un indirizzo email per le non conformità: impostalo in Sedi invianti prima di inviare.`);
   const email = await mail.enqueue({ ncId: nc.id, tipo: messaggio ? 'NC_RICHIESTA' : 'NC_APERTA', to: dest, cc: sede.email_cc, subject: tpl.subject, html: tpl.html });
   const upd = await one(
     `UPDATE nc SET stato='INVIATA_SEDE', sent_at=coalesce(sent_at, now()), sla_due_at=$2, sla_reminder_at=NULL, sla_escalated_at=NULL, version=version+1, updated_at=now(), updated_by=$3 WHERE id=$1 RETURNING *`,
@@ -172,11 +172,10 @@ export async function runSlaCheck() {
   const toRemind = candidates.filter((nc) => addWorkingHours(new Date(nc.sla_due_at), num(s.sla_sollecito_ore, 0), s.orario_lavoro) <= now);
   let reminders = 0, escalations = 0;
   for (const nc of toRemind) {
-    const full = await loadNc(nc.id); const sede = await one('SELECT * FROM sedi WHERE id=$1', [nc.sede_id]);
-    const users = await many(`SELECT u.email FROM users u JOIN users_sedi us ON us.user_id=u.id WHERE us.sede_id=$1 AND u.status='ACTIVE' AND u.notify_email`, [sede.id]);
-    const dest = [await sedeEmail(sede), ...users.map((u) => u.email)].filter(Boolean);
+    const full = await loadNc(nc.id); const sede = await loadSede(nc.sede_id);
+    const dest = await sedeDestinatari(sede);
     const tpl = mail.tplSollecito(full, sede, full.tipo_label || full.tipo_altro || '–');
-    if (dest.length) await mail.enqueue({ ncId: nc.id, tipo: 'NC_SOLLECITO', to: dest, cc: sede.email_cc, subject: tpl.subject, html: tpl.html });
+    if (dest.length) await mail.enqueue({ ncId: nc.id, tipo: 'NC_SOLLECITO', to: dest, cc: sede?.email_cc, subject: tpl.subject, html: tpl.html });
     await q('UPDATE nc SET sla_reminder_at=now() WHERE id=$1', [nc.id]);
     await tx((c) => addMessaggio(c, nc.id, { tipo: 'SISTEMA', direzione: 'INTERNO', testo: `Sollecito automatico inviato alla sede (${dest.join(', ') || 'nessun destinatario'}).` }));
     reminders++;
@@ -186,7 +185,7 @@ export async function runSlaCheck() {
   for (const nc of toEscalate) {
     const escAt = addWorkingHours(new Date(nc.sla_due_at), escHours, s.orario_lavoro);
     if (escAt > now) continue;
-    const full = await loadNc(nc.id); const sede = await one('SELECT * FROM sedi WHERE id=$1', [nc.sede_id]);
+    const full = await loadNc(nc.id); const sede = await loadSede(nc.sede_id);
     const tpl = mail.tplEscalation(full, sede, full.tipo_label || full.tipo_altro || '–');
     const labUsers = await many(`SELECT email FROM users WHERE role IN ('ADMIN','QUALITA','LAB') AND status='ACTIVE' AND notify_email`);
     await mail.enqueue({ ncId: nc.id, tipo: 'NC_ESCALATION', to: [...config.mail.labNotify, ...labUsers.map((u) => u.email)], subject: tpl.subject, html: tpl.html });

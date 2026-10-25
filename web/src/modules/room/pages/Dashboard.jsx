@@ -26,7 +26,7 @@ export default function Dashboard() {
   const tot = rows.reduce((t, r) => ({ sedi: t.sedi + 1, amb: t.amb + r.s.ambulatori.length, med: t.med + r.med, sess: t.sess + (r.plan ? r.plan.assigns.length : 0), alte: t.alte + r.alte, free: t.free + r.free }), { sedi: 0, amb: 0, med: 0, sess: 0, alte: 0, free: 0 });
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Cruscotto</h1><div className="sub">Ciao {user.full_name.split(' ')[0]}: lo stato della pianificazione di tutte le sedi, ricalcolato adesso sui dati condivisi.</div></div>
+      <div className="page-head"><div><h1>Cruscotto</h1><div className="sub">Ciao {(user.first_name || user.full_name.split(' ').slice(-1)[0])}: lo stato della pianificazione di tutte le sedi, ricalcolato adesso sui dati condivisi.</div></div>
         {net && <div className="row"><button className="btn ghost" onClick={() => { const { doc, filename } = pdfReportDirezione(net); doc.save(filename); }}>Report direzione PDF</button><button className="btn ghost" onClick={() => xlsxReportDirezione(net)}>Report direzione Excel</button></div>}
       </div>
       <ErrorBox error={error} />

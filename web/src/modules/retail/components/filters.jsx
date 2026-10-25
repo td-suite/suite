@@ -27,8 +27,8 @@ export function PeriodFilter({ value, onChange, children }) {
 }
 
 export function SiteSelect({ value, onChange, label = 'Sede', all = 'Tutte le sedi' }) {
-  const sites = useApi('/sites');
-  return <Field label={label}><select value={value || ''} onChange={(e) => onChange(e.target.value)}><option value="">{all}</option>{(sites.data || []).filter((s) => s.kind !== 'HEADQUARTER').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>;
+  const sites = useApi('/sites?network=1');
+  return <Field label={label}><select value={value || ''} onChange={(e) => onChange(e.target.value)}><option value="">{all}</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>;
 }
 
 export function KindSelect({ value, onChange }) {

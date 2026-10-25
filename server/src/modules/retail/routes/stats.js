@@ -54,7 +54,7 @@ r.get('/summary', ah(async (req, res) => {
     FROM sales s LEFT JOIN products pq ON pq.id=s.product_id ${join} WHERE s.sale_date BETWEEN ${F} AND ${T} ${sc} GROUP BY 1 ORDER BY ${order} LIMIT ${limit}`, p.values); };
   const [by_line, by_site, by_channel, by_payment, by_sex, by_age, by_province, by_city, by_weekday, by_hour, by_source, by_b2b_type, by_sector, by_destination] = await Promise.all([
     group('coalesce(pl.name, \'Altro\')', 'LEFT JOIN product_lines pl ON pl.id=pq.line_id', 'min(pl.sort_order)'),
-    group('st.name', 'JOIN sites st ON st.id=s.site_id'),
+    group('st.name', 'JOIN sites_v st ON st.id=s.site_id'),
     group('coalesce(s.booking_channel, \'n.d.\')'),
     group('coalesce(s.payment_kind, \'n.d.\')'),
     group('coalesce(c.sex, \'n.d.\')', 'JOIN customers c ON c.id=s.customer_id'),
@@ -132,7 +132,7 @@ r.get('/summary', ah(async (req, res) => {
   const oc = ctx();
   const top_operators = await many(`SELECT s.operator AS label, min(st.name) AS site_name, count(DISTINCT st.id)::int AS sites, coalesce(sum(s.net_amount),0) AS revenue, count(DISTINCT (s.source, s.external_ref))::int AS tickets, sum(s.quantity)::int AS items,
       coalesce(sum(s.net_amount),0) / nullif(count(DISTINCT (s.source, s.external_ref)),0) AS avg_ticket, count(DISTINCT s.sale_date)::int AS days
-    FROM sales s LEFT JOIN sites st ON st.id=s.site_id WHERE s.operator IS NOT NULL AND s.sale_date BETWEEN ${oc.F} AND ${oc.T} ${oc.sc} GROUP BY s.operator ORDER BY revenue DESC LIMIT 15`, oc.p.values);
+    FROM sales s LEFT JOIN sites_v st ON st.id=s.site_id WHERE s.operator IS NOT NULL AND s.sale_date BETWEEN ${oc.F} AND ${oc.T} ${oc.sc} GROUP BY s.operator ORDER BY revenue DESC LIMIT 15`, oc.p.values);
   // Pazienti finali del B2B: profilo da codice fiscale / data di nascita (non sono clienti, restano riferimenti)
   const pb = (expr, order = 'patients DESC') => { const { p, F, T, sc } = ctx(); return many(`SELECT ${expr} AS label, count(DISTINCT s.patient_ref)::int AS patients, count(DISTINCT (s.source, s.external_ref))::int AS tickets, coalesce(sum(s.net_amount),0) AS revenue, coalesce(sum(s.net_amount),0) / nullif(count(DISTINCT s.patient_ref),0) AS spend_per_patient
     FROM sales s WHERE s.b2b_customer_id IS NOT NULL AND s.sale_date BETWEEN ${F} AND ${T} ${sc} GROUP BY 1 ORDER BY ${order}`, p.values); };
@@ -151,7 +151,7 @@ r.get('/recalls', ah(async (req, res) => {
   const days = Number(req.query.days || 30);
   const rows = await many(`SELECT x.customer_id, c.last_name, c.first_name, c.phone, c.email, c.marketing_consent, c.home_site_id, st.name AS site_name, p.id AS product_id, p.code, p.description, x.last_date, x.due
     FROM (SELECT s.customer_id, p.id AS pid, max(s.sale_date) AS last_date, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id IS NOT NULL AND p.periodicity_months IS NOT NULL GROUP BY s.customer_id, p.id) x
-    JOIN customers c ON c.id=x.customer_id JOIN products p ON p.id=x.pid LEFT JOIN sites st ON st.id=c.home_site_id
+    JOIN customers c ON c.id=x.customer_id JOIN products p ON p.id=x.pid LEFT JOIN sites_v st ON st.id=c.home_site_id
     WHERE x.due <= CURRENT_DATE + ($1 || ' days')::interval AND x.due >= CURRENT_DATE - interval '120 days' ${req.query.site_id ? 'AND c.home_site_id=$2' : ''}
     ORDER BY x.due LIMIT 2000`, req.query.site_id ? [days, Number(req.query.site_id)] : [days]);
   res.json(rows);

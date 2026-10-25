@@ -2,6 +2,10 @@
 /* TD Integration Plan Management - motore GANTT (vanilla JS), portato dalla pagina autocontenuta alla webapp td-integration
    e da questa alla Suite TD come modulo ES. Stato caricato dal server (REST), modifiche sincronizzate per singola entità,
    aggiornamenti in tempo reale via SSE (sessione della Suite).
+   Anagrafica unica (docs/ANAGRAFICA.md): le società target sono organizzazioni della Suite (public.organizations, tipo Target) e
+   gli owner/support delle attività sono persone della Suite (public.people): il motore lavora con i loro id e mostra i nomi
+   (STATE.people); il team (STATE.team) è l'elenco delle persone con il ruolo nel piano. Nessuna creazione o rinomina qui:
+   i pulsanti "Apri in Amministrazione" portano alle pagine della Suite. L'import da file dell'app originale non esiste più.
    Nella Suite la Content Security Policy non ammette gestori inline (onclick="..."): gli eventi sono delegati dalla radice del
    modulo tramite attributi data-hc (click), data-hx (change), data-hd (dragstart) e data-hdrop (dragover/drop), che puntano a
    chiusure registrate a ogni render. La logica di pianificazione, catalogo, workload, export e stampa è invariata. */
@@ -40,8 +44,8 @@ var LANG = 'it';
 var I18N = {
   title: { it: 'Integration Plan Management', en: 'Integration Plan Management' },
   sub: { it: 'Gestione e coordinamento del piano di integrazione post closing - Target Phase 1', en: 'Management and coordination of the post-closing integration plan - Phase 1 targets' },
-  cover: { it: 'Dashboard', en: 'Dashboard' },
-  newTarget: { it: '+ Nuovo Target', en: '+ New Target' },
+  cover: { it: 'Cruscotto', en: 'Dashboard' },
+  newTarget: { it: '+ Aggiungi target', en: '+ Add target' },
   export_: { it: 'Salva XLSX', en: 'Save XLSX' },
   import_: { it: 'Carica dati', en: 'Load data' },
   saveFile: { it: 'Salva nel file', en: 'Save to file' },
@@ -84,8 +88,8 @@ var I18N = {
   chipDirty: { it: 'da salvare nel file', en: 'to be saved to file' },
   chipSync: { it: 'allineato al file', en: 'in sync with file' },
   rev: { it: 'rev', en: 'rev' },
-  revLog: { it: 'Registro revisioni del file', en: 'File revision log' },
-  revNone: { it: 'Nessun salvataggio nel file ancora registrato: premi "Salva nel file" in alto per il primo.', en: 'No file save recorded yet: press "Save to file" above for the first one.' },
+  revLog: { it: 'Ultime modifiche (registro attività)', en: 'Latest changes (activity log)' },
+  revNone: { it: 'Nessuna modifica registrata.', en: 'No change recorded yet.' },
   revBy: { it: 'Salvato da', en: 'Saved by' },
   mergeRep: { it: 'Unione completata: {aU} attività aggiornate, {aN} aggiunte, {tN} target aggiunte, {gU} anagrafiche aggiornate. Ora premi "Salva nel file" per consolidare.', en: 'Merge complete: {aU} activities updated, {aN} added, {tN} targets added, {gU} records updated. Now press "Save to file" to consolidate.' },
   mergeNo: { it: 'Nessuna differenza trovata: le due copie erano già allineate.', en: 'No differences found: the two copies were already aligned.' },
@@ -97,7 +101,24 @@ var I18N = {
   noOwner: { it: 'Attività senza owner', en: 'Activities without owner' },
   closingWin: { it: 'Finestra closing', en: 'Closing window' },
   openCard: { it: 'Apri la scheda', en: 'Open the card' },
-  anagrafica: { it: 'Dettagli della società target', en: 'Target company details' },
+  anagrafica: { it: 'Società target (anagrafica unica)', en: 'Target company (shared registry)' },
+  anagHint: { it: 'Ragione sociale, P.IVA, indirizzo e contatti vengono da Amministrazione > Organizzazioni: qui si modificano solo i parametri del piano. Al closing l\'Amministrazione cambia il tipo in Società e il piano resta agganciato.', en: 'Company name, VAT, address and contacts come from Administration > Organisations: only the plan parameters are edited here. At closing the Administration changes the type to Company and the plan stays attached.' },
+  openAdmin: { it: 'Apri in Amministrazione', en: 'Open in Administration' },
+  openPerson: { it: 'Scheda persona', en: 'Person record' },
+  pickTarget: { it: 'Scegli la società target da aggiungere al piano (organizzazioni di tipo Target in anagrafica):', en: 'Choose the target company to add to the plan (organisations of type Target in the registry):' },
+  noTargetAvail: { it: 'Nessuna società target disponibile: crea prima l\'organizzazione (tipo Target) in Amministrazione > Organizzazioni.', en: 'No target company available: first create the organisation (type Target) in Administration > Organisations.' },
+  pickPerson: { it: 'Scegli la persona da aggiungere al team (anagrafica persone della Suite; chi ha accesso al modulo è segnato con ●):', en: 'Choose the person to add to the team (Suite people registry; module users are marked with ●):' },
+  noPersonAvail: { it: 'Nessuna persona disponibile: le persone si creano in Amministrazione > Persone.', en: 'No person available: people are created in Administration > People.' },
+  addPerson: { it: '+ Aggiungi persona', en: '+ Add person' },
+  persona: { it: 'Persona', en: 'Person' },
+  noTargets: { it: 'Nessuna società nel piano. Le società target si creano in Amministrazione > Organizzazioni (tipo Target) e poi si aggiungono qui con "+ Aggiungi target".', en: 'No company in the plan. Target companies are created in Administration > Organisations (type Target) and then added here with "+ Add target".' },
+  teamEmpty: { it: 'Il team è vuoto: aggiungi le persone dall\'anagrafica e assegna a ciascuna il ruolo nel piano (es. CEO, CFO, Legal & Compliance). Gli owner delle attività si scelgono tra queste persone.', en: 'The team is empty: add people from the registry and give each a plan role (e.g. CEO, CFO, Legal & Compliance). Activity owners are chosen among these people.' },
+  planStatus: { it: 'Stato del piano', en: 'Plan status' },
+  psATTIVO: { it: 'Attivo', en: 'Active' },
+  psSOSPESO: { it: 'Sospeso', en: 'On hold' },
+  psCONCLUSO: { it: 'Concluso', en: 'Completed' },
+  noteT: { it: 'Note del piano', en: 'Plan notes' },
+  exPerson: { it: 'non più nel team', en: 'no longer in the team' },
   rs: { it: 'Ragione Sociale', en: 'Company name' },
   ind: { it: 'Indirizzo', en: 'Address' },
   piva: { it: 'P.IVA', en: 'VAT no.' },
@@ -168,10 +189,10 @@ var I18N = {
   docFooter: { it: 'Toscana Diagnostica S.r.l. · Documento riservato · Integration Plan Management', en: 'Toscana Diagnostica S.r.l. · Confidential · Integration Plan Management' },
   wk: { it: 'Sett.', en: 'Wk' },
   progresso: { it: 'Avanzamento', en: 'Progress' },
-  saved: { it: 'Dati salvati in XLSX: un foglio per target, consultabile in Excel. Si ricarica con "Carica dati".', en: 'Data saved to XLSX: one sheet per target, readable in Excel. Reload it with "Load data".' },
+  saved: { it: 'Dati salvati in XLSX: riepilogo, team e un foglio per target, consultabili in Excel.', en: 'Data saved to XLSX: summary, team and one sheet per target, readable in Excel.' },
   fineEff: { it: 'Conclusa il', en: 'Completed on' },
-  delTarget: { it: 'Elimina scheda target', en: 'Delete target card' },
-  confermaDel: { it: 'Eliminare definitivamente la scheda di', en: 'Permanently delete the card of' },
+  delTarget: { it: 'Rimuovi dal piano', en: 'Remove from plan' },
+  confermaDel: { it: 'Rimuovere dal piano (attività comprese) la società', en: 'Remove from the plan (activities included) the company' },
   noDate: { it: 'Per generare il GANTT inserisci una data certa: Preliminare oppure Closing.', en: 'To generate the GANTT enter a firm date: Preliminary or Closing.' },
   alLate: { it: 'attività concluse oltre la settimana pianificata', en: 'activities completed after the planned week' },
   ownerActs: { it: 'Attività di', en: 'Activities of' },
@@ -190,39 +211,32 @@ var I18N = {
   mail: { it: 'Mail', en: 'Email' },
   web: { it: 'Sito web', en: 'Website' },
   pec: { it: 'PEC', en: 'Certified email (PEC)' },
-  ownerBox: { it: 'Owner del piano: ruoli, funzioni e nomi', en: 'Plan owners: roles, functions and names' },
-  ownerBoxHint: { it: 'L’assegnazione dei task usa questo elenco: gli owner sono ruoli, non nomi a caso. Modifica o aggiungi righe; il registro viaggia con i dati salvati.', en: 'Task assignment uses this list: owners are roles, not random names. Edit or add rows; the registry travels with the saved data.' },
+  ownerBox: { it: 'Team di integrazione: persone e ruoli nel piano', en: 'Integration team: people and plan roles' },
+  ownerBoxHint: { it: 'Le persone vengono dall’anagrafica unica della Suite (Amministrazione > Persone): qui si sceglie chi fa parte del team e il suo ruolo nel piano. Gli owner e i support delle attività si assegnano tra queste persone.', en: 'People come from the Suite shared registry (Administration > People): here you choose who is on the team and their plan role. Activity owners and support are assigned among these people.' },
   ruolo: { it: 'Ruolo', en: 'Role' },
   funzione: { it: 'Funzione', en: 'Function' },
-  manager: { it: 'Manager', en: 'Manager' },
+  manager: { it: 'Persona', en: 'Person' },
   nAss: { it: 'Task', en: 'Tasks' },
-  addRole: { it: '+ Aggiungi ruolo', en: '+ Add role' },
+  addRole: { it: '+ Aggiungi persona', en: '+ Add person' },
   interna: { it: 'Interna', en: 'Internal' },
   esterna: { it: 'Esterna', en: 'External' }
 };
-/* ---------------- registro ruoli (da Ruoli.xlsx) ---------------- */
-var TD_TEAM = [
-  { r: 'CEO', f: 'Interna', n: 'Francesco Epifani' },
-  { r: 'Business Back Office Manager', f: 'Interna', n: 'Rosetta Greco' },
-  { r: 'Legal & Compliance', f: 'Esterna', n: 'UFIRM' },
-  { r: 'Retail Manager', f: 'Interna', n: 'Silvia Sansoni' },
-  { r: 'Direzione Sanitaria', f: 'Interna', n: 'Gian Luigi Taddei' },
-  { r: 'Procurement', f: 'Interna', n: 'Valentina Zezza' },
-  { r: 'IT Management', f: 'Esterna', n: 'Hot Bit' },
-  { r: 'HR Manager', f: 'Interna', n: 'Angelica Corradi' },
-  { r: 'CFO', f: 'Interna', n: 'Vincenzo Malenchini' },
-  { r: 'COO', f: 'Interna', n: 'Valentina Zezza' },
-  { r: 'Direzione Commerciale', f: 'Interna', n: 'Francesco Epifani' },
-  { r: 'DPO', f: 'Esterna', n: 'Claudia Del Re' },
-  { r: 'HSQ Manager', f: 'Interna', n: 'Iacopo Cupelli' },
-  { r: 'RSPP', f: 'Interna', n: 'Iacopo Cupelli' },
-  { r: 'Broker Assicurativo', f: 'Esterna', n: 'Cristiano Di Lello' },
-  { r: 'Ingegneria Clinica', f: 'Interna', n: 'Iacopo Cupelli' },
-  { r: 'Medico Competente', f: 'Interna', n: 'Vincenzo Cupelli' }
-];
-function teamName(r) {
-  var m = (STATE.team || []).find(function (x) { return x.r === r; });
-  return m ? m.n : '';
+/* persone dell'anagrafica unica: STATE.people = [{id, name, in_team}], STATE.team = [{person_id, r, f, n}] */
+function pid(v) { var n = parseInt(v, 10); return isFinite(n) && n > 0 ? n : null; }
+function person(id) { id = pid(id); if (!id) return null; return (STATE.people || []).find(function (p) { return p.id === id; }) || null; }
+function pName(id) { var p = person(id); if (p) return p.name; var m = teamOf(id); return m ? m.n : (id ? '#' + id : ''); }
+function teamOf(id) { id = pid(id); return (STATE.team || []).find(function (x) { return x.person_id === id; }) || null; }
+/* ruolo nel piano di una persona (es. CEO) */
+function teamRole(id) { var m = teamOf(id); return m ? m.r : ''; }
+/* etichetta completa: "Nome Cognome · ruolo" */
+function pLabel(id) { var n = pName(id), r = teamRole(id); return n ? n + (r ? ' · ' + r : '') : ''; }
+function teamName(id) { return teamRole(id); }
+/* persona del team con quel ruolo nel piano (per gli owner di default del catalogo) */
+function roleToPerson(role) {
+  if (!role) return null;
+  var k = String(role).trim().toLowerCase();
+  var m = (STATE.team || []).find(function (x) { return String(x.r || '').trim().toLowerCase() === k; });
+  return m ? m.person_id : null;
 }
 function T(k) { var d = I18N[k + '_app'] || I18N[k]; return d ? (d[LANG] || d.it) : k; }
 function L(v) { return v == null ? '' : (typeof v === 'object' ? (v[LANG] || v.it || '') : v); }
@@ -319,22 +333,22 @@ var AID = 1;
 function act(cid, sw, ew, owners, o) {
   o = o || {};
   var c = catById(cid) || {};
-  var arr = owners || (c.ow ? [c.ow].concat(c.co ? [c.co] : []) : []);
+  var arr = (owners || (c.ow ? [c.ow].concat(c.co ? [c.co] : []) : [])).map(function (x) { return pid(x) || roleToPerson(x); }).filter(function (x) { return x; });
+  arr = arr.filter(function (x, i) { return arr.indexOf(x) === i; });
   return { id: 'a' + (AID++), cid: cid, nome: o.nome || null, proc: o.proc || c.proc || 'ops',
-    sw: sw, ew: ew, owner: arr[0] || '', support: arr.slice(1),
+    sw: sw, ew: ew, owner: arr[0] || null, support: arr.slice(1),
     dett: o.dett || '', note: o.note || '', st: 0, pl: !!o.pl, ms: !!o.ms, lm: 0 };
 }
 function inv(a) { return (a.owner ? [a.owner] : []).concat(a.support || []); }
 function normAtt(a) {
-  if (a.owners) { a.owner = a.owners[0] || ''; a.support = a.owners.slice(1); delete a.owners; }
-  if (!a.support) a.support = [];
+  if (a.owners) { a.owner = a.owners[0] || null; a.support = a.owners.slice(1); delete a.owners; }
+  a.owner = pid(a.owner);
+  a.support = (a.support || []).map(pid).filter(function (x) { return x && x !== a.owner; });
   return a;
 }
+/* attività del piano generale per una nuova target: gli owner di default (ruoli del catalogo) vengono risolti sulle persone
+   del team che hanno quel ruolo nel piano; senza corrispondenza l'attività nasce senza owner (punto di attenzione) */
 function genActs() { return CAT_GEN.map(function (c) { return act(c.cid, c.sw, c.ew); }); }
-/* riclassificate sui ruoli del registro (Ruoli.xlsx) */
-var FE = 'CEO', VM = 'CFO', SS = 'Retail Manager', RG = 'Business Back Office Manager',
-    VZ = 'Procurement', AC = 'HR Manager', IC = 'RSPP';
-function seedTargets() { return []; }
 function sortActs(t) {
   t.atts = t.atts.map(function (a, i) { return [a, i]; }).sort(function (x, y) {
     var a = x[0], b = y[0];
@@ -381,12 +395,14 @@ function alignOwnershipDo(src) {
   save(); render();
   tdAlert(nAtt ? T('alignDone').replace('{n}', nAtt).replace('{m}', nTg) : T('alignNone'));
 }
-var STATE = { targets: [], team: [], page: 'cover', meta: { rev: 0, savedBy: '', savedAt: '', log: [] } };
+var STATE = { targets: [], team: [], people: [], page: 'cover', meta: { rev: 0, savedBy: '', savedAt: '', log: [] } };
 
 /* --- versione portabile: lo stato viaggia dentro il file --- */
 var DIRTY = false, BOOT_SRC = '', BANNER_OFF = false, FLASH = '';
 /* contesto applicativo (impostato da IPM.mount) */
-var IPM_OPTS = { api: null, user: null, readOnly: true, onState: null, onToast: null, eventsUrl: '/api/integration/events', root: null };
+var IPM_OPTS = { api: null, user: null, readOnly: true, onState: null, onToast: null, navigate: null, eventsUrl: '/api/integration/events', root: null };
+/* collegamenti all'Amministrazione della Suite (router della Suite se disponibile, altrimenti navigazione piena) */
+function goSuite(path) { if (IPM_OPTS.navigate) IPM_OPTS.navigate(path); else window.location.href = path; }
 function canEdit() { return !IPM_OPTS.readOnly; }
 function roToast() { if (IPM_OPTS.onToast) IPM_OPTS.onToast(roMsgText(), 'err'); }
 /* testo della sola lettura: quello dell'app, oppure quello passato dalla cornice (es. modulo in MIRROR nella Suite) */
@@ -429,23 +445,22 @@ function tProgress(t) {
 }
 function allOwners() {
   var s = {};
-  (STATE.team || []).forEach(function (m) { if (m.r) s[m.r] = 1; });
+  (STATE.team || []).forEach(function (m) { s[m.person_id] = 1; });
   STATE.targets.forEach(function (t) { t.atts.forEach(function (a) { inv(a).forEach(function (o) { if (o) s[o] = 1; }); }); });
-  return Object.keys(s).sort();
+  return Object.keys(s).map(Number).sort(function (a, b) { return pName(a).localeCompare(pName(b)); });
 }
-function refreshOwnlist() {
-  var dl = byId('ownlist');
-  if (dl) dl.innerHTML = allOwners().map(function (o) {
-    var n = teamName(o);
-    return '<option value="' + esc(o) + '"' + (n ? ' label="' + esc(n) + '"' : '') + '>';
+function ownerOpts(sel) {
+  return allOwners().map(function (r) {
+    return '<option ' + (pid(sel) === r ? 'selected' : '') + ' value="' + r + '">' + esc(pLabel(r)) + (teamOf(r) ? '' : ' (' + T('exPerson') + ')') + '</option>';
   }).join('');
 }
+function refreshOwnlist() { /* non serve più: gli owner si scelgono dall'elenco del team */ }
 function save() { /* lo stato vive sul server: niente persistenza locale */ }
 function applyLoaded(d) {
   if (!d) return false;
   var ok = false;
   if (Array.isArray(d)) { if (d.length) { STATE.targets = d; ok = true; } }
-  else if (d.targets && d.targets.length) { STATE.targets = d.targets; if (d.team && d.team.length) STATE.team = d.team; if (d.meta) STATE.meta = d.meta; ok = true; }
+  else if (d.targets && d.targets.length) { STATE.targets = d.targets; if (d.team && d.team.length) STATE.team = d.team; if (d.people) STATE.people = d.people; if (d.meta) STATE.meta = d.meta; ok = true; }
   if (ok) { STATE.targets.forEach(function (t) { (t.atts || []).forEach(normAtt); }); ensureMeta(); }
   return ok;
 }
@@ -460,10 +475,6 @@ function renderCore() {
   h += syncChipHtml();
   if (canEdit()) h += '<button' + hc(addTarget) + '>' + T('newTarget') + '</button>';
   h += '<button' + hc(exportJSON) + '>📊 ' + T('export_') + '</button>';
-  if (IPM_OPTS.user && IPM_OPTS.user.role === 'ADMIN') {
-    h += '<button' + hc(function () { byId('impfile').click(); }) + '>📂 ' + T('import_') + '</button>';
-    h += '<button' + hc(function () { byId('mrgfile').click(); }) + '>⇪ ' + T('mergeBtn') + '</button>';
-  }
   h += '<button' + hc(openPrint) + '>🖨 ' + T('print') + '</button>';
   nav.innerHTML = h;
   renderBanner();
@@ -491,26 +502,27 @@ function renderCover(m) {
     '<div class="tile"><div class="lab">' + T('totAct') + '</div><div class="val">' + totA + '</div></div>' +
     '<div class="tile"><div class="lab">' + T('avgDone') + '</div><div class="val">' + Math.round(totA ? totDone / totA * 100 : 0) + '%</div></div>' +
     '<div class="tile"><div class="lab">' + T('noOwner') + '</div><div class="val" style="color:' + (noOw ? 'var(--crit)' : 'var(--good)') + '">' + noOw + '</div></div>' +
-    '<div class="tile"><div class="lab">' + T('closingWin') + '</div><div class="val" style="font-size:15px">set - ott 2026</div></div></div>';
+    '<div class="tile"><div class="lab">' + T('closingWin') + '</div><div class="val" style="font-size:15px">' + closingWindow() + '</div></div></div>';
   h += '<div class="card"><h3>' + T('targets') + '</h3><div class="tcards">';
   STATE.targets.forEach(function (t) {
     var p = Math.round(tProgress(t) * 100);
     var cd = t.closing ? fmtDY(new Date(t.closing + 'T12:00:00')) : '-';
-    h += '<div class="tcard"' + hc(function () { go(t.id); }) + '><div class="tn">' + esc(t.nome) + '</div>' +
-      '<div class="ti">' + esc(t.rs || '') + (t.ind ? ' · ' + esc(t.ind) : '') + '</div>' +
+    h += '<div class="tcard"' + hc(function () { go(t.id); }) + '><div class="tn">' + esc(t.nome) + (t.status && t.status !== 'ATTIVO' ? ' <span class="badge ' + (t.status === 'CONCLUSO' ? 'good' : 'warn') + '" style="font-size:9px">' + T('ps' + t.status) + '</span>' : '') + '</div>' +
+      '<div class="ti">' + (t.piva ? 'P.IVA ' + esc(t.piva) : '') + (t.ind ? (t.piva ? ' · ' : '') + esc(t.ind) : '') + '</div>' +
       '<div class="pbar"><i style="width:' + p + '%"></i></div>' +
       '<div class="meta"><span>' + t.atts.length + ' ' + T('wlAct').toLowerCase() + ' · ' + p + '%</span><span>' + T('closing') + ': <b>' + cd + '</b></span></div>' +
       '<div style="margin-top:8px"><span class="badge canary">' + T('openCard') + ' →</span></div></div>';
   });
+  if (!STATE.targets.length) h += '<div class="note">' + T('noTargets') + ' <a href="#" style="color:var(--teal);font-weight:650"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openAdmin') + '</a></div>';
   h += '</div><div class="note" style="margin-top:10px">' + T('fasi') + '</div></div>';
-  /* registro revisioni del file */
+  /* ultime modifiche (registro attività) */
   var mlog = ensureMeta().log || [];
   h += '<div class="card" style="margin-top:14px"><h3>🗂 ' + T('revLog') + '</h3>' +
-    (mlog.length ? '<table class="revlog" style="border-collapse:collapse;width:100%">' + mlog.slice(0, 10).map(function (e) {
+    (mlog.length ? '<div class="tbl-wrap"><table class="revlog" style="border-collapse:collapse;width:100%">' + mlog.slice(0, 10).map(function (e) {
       var d = e.at ? new Date(e.at) : null;
       return '<tr><td class="r">#' + e.rev + '</td><td style="white-space:nowrap">' + esc(e.by || '-') + '</td><td style="white-space:nowrap">' +
         (d ? fmtDY(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : '-') + '</td><td style="color:var(--ink-2)">' + esc(e.what || '') + '</td></tr>';
-    }).join('') + '</table>' : '<div class="note">' + T('revNone') + '</div>') + '</div>';
+    }).join('') + '</table></div>' : '<div class="note">' + T('revNone') + '</div>') + '</div>';
   /* registro owner: ruoli, funzioni e nomi */
   var cntO = {}, cntS = {};
   STATE.targets.forEach(function (t) { t.atts.forEach(function (a) {
@@ -518,24 +530,54 @@ function renderCover(m) {
     (a.support || []).forEach(function (o) { cntS[o] = (cntS[o] || 0) + 1; });
   }); });
   h += '<div class="card"><h3>' + T('ownerBox') + '</h3><div class="note" style="margin-bottom:8px">' + T('ownerBoxHint') + '</div>' +
-    '<div class="tbl-wrap"><table class="wl"><thead><tr><th>' + T('ruolo') + '</th><th>' + T('funzione') + '</th><th>' + T('manager') + '</th><th>' + T('nAss') + '</th><th></th></tr></thead><tbody>';
+    '<div class="tbl-wrap"><table class="wl"><thead><tr><th style="text-align:left">' + T('ruolo') + '</th><th style="text-align:left">' + T('funzione') + '</th><th style="text-align:left">' + T('manager') + '</th><th>' + T('nAss') + '</th><th></th></tr></thead><tbody>';
   (STATE.team || []).forEach(function (mrow, i) {
+    var k = mrow.person_id;
     h += '<tr>' +
-      '<td style="text-align:left"><input style="border:1px solid var(--line);border-radius:7px;padding:4px 7px;font:inherit;font-weight:700;color:var(--jet);width:100%" value="' + esc(mrow.r) + '"' + hx(function (el) { edTeam(i, 'r', el.value); }) + '></td>' +
-      '<td style="text-align:left"><select style="border:1px solid var(--line);border-radius:7px;padding:4px;font:inherit"' + hx(function (el) { edTeam(i, 'f', el.value); }) + '>' +
+      '<td style="text-align:left"><input ' + (canEdit() ? '' : 'disabled ') + 'style="border:1px solid var(--line);border-radius:7px;padding:4px 7px;font:inherit;font-weight:700;color:var(--jet);width:100%" placeholder="' + T('ruolo') + '" value="' + esc(mrow.r) + '"' + hx(function (el) { edTeam(i, 'r', el.value); }) + '></td>' +
+      '<td style="text-align:left"><select ' + (canEdit() ? '' : 'disabled ') + 'style="border:1px solid var(--line);border-radius:7px;padding:4px;font:inherit"' + hx(function (el) { edTeam(i, 'f', el.value); }) + '>' +
       '<option ' + (mrow.f === 'Interna' ? 'selected' : '') + ' value="Interna">' + T('interna') + '</option>' +
       '<option ' + (mrow.f === 'Esterna' ? 'selected' : '') + ' value="Esterna">' + T('esterna') + '</option></select></td>' +
-      '<td style="text-align:left"><input style="border:1px solid var(--line);border-radius:7px;padding:4px 7px;font:inherit;width:100%" value="' + esc(mrow.n) + '"' + hx(function (el) { edTeam(i, 'n', el.value); }) + '></td>' +
-      '<td><span class="badge ' + (cntO[mrow.r] || cntS[mrow.r] ? 'info' : 'warn') + '" title="Owner + Support">' + (cntO[mrow.r] || 0) + ' + ' + (cntS[mrow.r] || 0) + 'S</span></td>' +
-      '<td><button class="btn mini danger"' + hc(function () { delTeam(i); }) + '>✕</button></td></tr>';
+      '<td style="text-align:left"><b>' + esc(mrow.n) + '</b>' + (mrow.job_title ? ' <span style="color:var(--ink-3)">· ' + esc(mrow.job_title) + '</span>' : '') +
+      ' <a href="#" style="color:var(--teal);font-size:11px"' + hc(function () { goSuite('/people/' + k); }) + '>' + T('openPerson') + '</a></td>' +
+      '<td><span class="badge ' + (cntO[k] || cntS[k] ? 'info' : 'warn') + '" title="Owner + Support">' + (cntO[k] || 0) + ' + ' + (cntS[k] || 0) + 'S</span></td>' +
+      '<td>' + (canEdit() ? '<button class="btn mini danger"' + hc(function () { delTeam(i); }) + '>✕</button>' : '') + '</td></tr>';
   });
-  h += '</tbody></table></div>' + (canEdit() ? '<div style="margin-top:8px"><button class="btn mini ghost"' + hc(addTeam) + '>' + T('addRole') + '</button></div>' : '') + '</div>';
+  h += '</tbody></table></div>' + (!(STATE.team || []).length ? '<div class="note" style="margin-top:8px">' + T('teamEmpty') + '</div>' : '') +
+    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' + (canEdit() ? '<button class="btn mini ghost"' + hc(addTeam) + '>' + T('addRole') + '</button>' : '') +
+    '<button class="btn mini ghost"' + hc(function () { goSuite('/people'); }) + '>' + T('openAdmin') + ' → ' + T('persona') + '</button></div></div>';
   h += '<div class="card"><h3>' + T('workload') + ' (' + (LANG === 'it' ? 'tutte le società' : 'all companies') + ')</h3>' + workloadTable(null) + '</div>';
   m.innerHTML = h;
 }
 function edTeam(i, k, v) { if (!canEdit()) return roToast(); STATE.team[i][k] = v; STATE.team[i].lm = Date.now(); SYNC.team(); render(); }
 function delTeam(i) { if (!canEdit()) return roToast(); STATE.team.splice(i, 1); SYNC.team(); render(); }
-function addTeam() { if (!canEdit()) return roToast(); STATE.team.push({ r: '', f: 'Interna', n: '' }); SYNC.team(); render(); }
+/* aggiunta di una persona dall'anagrafica unica (GET /people del modulo: chi ha un grant sul modulo viene prima) */
+function addTeam() {
+  if (!canEdit()) return roToast();
+  IPM_OPTS.api.get('/people').then(function (list) {
+    var inTeam = {}; (STATE.team || []).forEach(function (m) { inTeam[m.person_id] = 1; });
+    var opts = (list || []).filter(function (p) { return !inTeam[p.id]; }).map(function (p) {
+      return { value: p.id, label: (p.has_grant ? '● ' : '') + p.name + (p.job_title ? ' · ' + p.job_title : '') };
+    });
+    if (!opts.length) return tdAlert(T('noPersonAvail'));
+    tdSelect(T('pickPerson'), opts, function (v) {
+      var p = (list || []).find(function (x) { return x.id === pid(v); });
+      if (!p) return;
+      if (!person(p.id)) STATE.people.push({ id: p.id, name: p.name, email: p.email, job_title: p.job_title, in_team: true });
+      STATE.team.push({ person_id: p.id, r: '', f: p.kind === 'ESTERNO' ? 'Esterna' : 'Interna', n: p.name, job_title: p.job_title, lm: Date.now() });
+      SYNC.team(); render();
+    });
+  }).catch(function (e) { tdAlert((e && e.message) || 'Errore'); });
+}
+/* finestra closing: dal primo all'ultimo closing delle target nel piano */
+function closingWindow() {
+  var ds = STATE.targets.map(function (t) { return t.closing; }).filter(function (d) { return d; }).sort();
+  if (!ds.length) return '-';
+  var a = new Date(ds[0] + 'T12:00:00'), b = new Date(ds[ds.length - 1] + 'T12:00:00');
+  var M = LANG === 'it' ? ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'] : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var fa = M[a.getMonth()] + ' ' + a.getFullYear(), fb = M[b.getMonth()] + ' ' + b.getFullYear();
+  return fa === fb ? fa : fa + ' - ' + fb;
+}
 
 /* ---------------- scheda target ---------------- */
 var LINEE = [['lab', 'lin_lab'], ['img', 'lin_img'], ['spec', 'lin_spec'], ['lav', 'lin_lav'], ['chir', 'lin_chir'], ['altro', 'lin_altro']];
@@ -543,12 +585,18 @@ function renderTarget(m, t) {
   if (!t) { STATE.page = 'cover'; return renderCover(m); }
   var h = '';
   /* anagrafica */
-  h += '<div class="card"><h3 style="display:flex;justify-content:space-between;align-items:center">' +
-    '<span>' + esc(t.nome) + ' · ' + T('anagrafica') + '</span>' +
-    '<button class="btn mini danger"' + hc(function () { delTarget(t.id); }) + '>🗑 ' + T('delTarget') + '</button></h3><div class="frm">' +
-    fld(t, 'nome', LANG === 'it' ? 'Nome breve' : 'Short name') + fld(t, 'rs', T('rs')) + fld(t, 'ind', T('ind')) +
-    fld(t, 'piva', T('piva')) + fld(t, 'ref', T('ref')) + fld(t, 'tel', T('tel')) + fld(t, 'mail', T('mail')) +
-    fld(t, 'web', T('web')) + fld(t, 'pec', T('pec')) + nfld(t, 'fatt', T('fatt')) + nfld(t, 'pfn', T('pfn')) + nfld(t, 'ev', T('ev')) +
+  h += '<div class="card"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<span>' + esc(t.nome) + ' · ' + T('anagrafica') + (t.kind && t.kind !== 'TARGET' ? ' <span class="badge info" style="font-size:9px">' + esc(t.kind) + '</span>' : '') + '</span>' +
+    '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button class="btn mini ghost"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openAdmin') + '</button>' +
+    (canEdit() ? '<button class="btn mini danger"' + hc(function () { delTarget(t.id); }) + '>🗑 ' + T('delTarget') + '</button>' : '') + '</span></h3>' +
+    '<div class="note" style="margin-bottom:8px">' + T('anagHint') + '</div><div class="frm">' +
+    rfld(t.rs, T('rs')) + rfld(t.ind, T('ind')) + rfld(t.piva, T('piva')) + rfld(t.tel, T('tel')) + rfld(t.mail, T('mail')) + rfld(t.web, T('web')) + rfld(t.pec, T('pec')) +
+    '</div><div class="frm" style="margin-top:10px">' +
+    fld(t, 'ref', T('ref')) + nfld(t, 'fatt', T('fatt')) + nfld(t, 'pfn', T('pfn')) + nfld(t, 'ev', T('ev')) +
+    '<div class="fld"><label>' + T('planStatus') + '</label><select' + hx(function (el) { setF(t.id, 'status', el.value); }) + '>' +
+    ['ATTIVO', 'SOSPESO', 'CONCLUSO'].map(function (k) { return '<option value="' + k + '" ' + (t.status === k ? 'selected' : '') + '>' + T('ps' + k) + '</option>'; }).join('') + '</select></div>' +
+    '<div class="fld" style="grid-column:span 2"><label>' + T('noteT') + '</label><input value="' + esc(t.note || '') + '"' + hx(function (el) { setF(t.id, 'note', el.value); }) + '></div>' +
     '</div><div style="margin-top:10px"><label style="font-size:10.5px;text-transform:uppercase;color:var(--ink-3);font-weight:700">' + T('linee') + '</label>' +
     '<div class="chips" style="margin-top:4px">' + LINEE.map(function (l) {
       return '<span class="chip ' + (t.linee.indexOf(l[0]) >= 0 ? 'on' : '') + '"' + hc(function () { togLinea(t.id, l[0]); }) + '>' + T(l[1]) + '</span>';
@@ -578,13 +626,17 @@ function renderTarget(m, t) {
     '<div class="fld"><label>' + T('nome') + '</label><input id="cust_nome"></div>' +
     '<div class="fld"><label>' + T('proc') + '</label><select id="cust_proc">' + Object.keys(PROCS).map(function (k) { return '<option value="' + k + '">' + L(PROCS[k]) + '</option>'; }).join('') + '</select></div>' +
     '<div class="fld"><label>Owner</label><select id="cust_ow"><option value="">' + T('nessuno') + '</option>' +
-    allOwners().map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('') + '</select></div>' +
+    ownerOpts(null) + '</select></div>' +
     '<div class="fld"><label>&nbsp;</label><button class="btn canary"' + hc(function () { addCustom(t.id); }) + '>+ ' + T('add') + '</button></div>' +
     '</div></div></div>';
   m.innerHTML = h;
 }
 function fld(t, k, lab) {
   return '<div class="fld"><label>' + lab + '</label><input value="' + esc(t[k] || '') + '"' + hx(function (el) { setF(t.id, k, el.value); }) + '></div>';
+}
+/* campo in sola lettura (dati che vengono dall'anagrafica unica) */
+function rfld(v, lab) {
+  return '<div class="fld"><label>' + lab + '</label><input readonly tabindex="-1" style="background:#F3F6F7;color:var(--ink-2)" value="' + esc(v || '') + '" title="' + esc(T('openAdmin')) + '"></div>';
 }
 /* campo numerico con separatore delle migliaia (fatturato, PFN, EV) */
 function nfld(t, k, lab) {
@@ -658,8 +710,8 @@ function ganttTable(t) {
     h += '<tr class="' + (a.st === 2 ? 'done' : '') + '" data-aid="' + a.id + '"' + hdrop(function (el, ev) { dragDrop(ev, t.id, a.id); }) + '>' +
       '<td class="actcol" draggable="true"' + hd(function (el, ev) { dragStart(ev, a.id); }) + hc(function () { togEdit(t.id, a.id); }) + '>' +
       '<div class="an"><span style="color:var(--ink-3);cursor:grab">⠿</span> <span style="color:' + col + '">●</span> ' + esc(actName(a)) + (a.ms ? ' ◆' : '') + (a.pl ? ' <span class="badge warn" style="font-size:9px">P&L</span>' : '') + '</div>' +
-      '<div class="ao">' + (a.owner ? esc(a.owner) : '⚠ ' + (LANG === 'it' ? 'owner da assegnare' : 'owner to assign')) +
-      ((a.support || []).length ? ' <span style="color:var(--ink-3);font-weight:500">+ ' + esc(a.support.join(', ')) + '</span>' : '') + '</div>' +
+      '<div class="ao">' + (a.owner ? esc(pLabel(a.owner)) : '⚠ ' + (LANG === 'it' ? 'owner da assegnare' : 'owner to assign')) +
+      ((a.support || []).length ? ' <span style="color:var(--ink-3);font-weight:500">+ ' + esc(a.support.map(pName).join(', ')) + '</span>' : '') + '</div>' +
       (a.dett ? '<div class="ad">' + esc(a.dett) + '</div>' : '') +
       '<span class="stato st' + a.st + '">' + T('st' + a.st) + '</span>' +
       (a.fine ? ' <span class="stato ' + (late ? 'st3' : 'st2') + '">✓ ' + fmtDY(new Date(a.fine + 'T12:00:00')) + '</span>' : '') + '</td>';
@@ -703,12 +755,11 @@ function editRow(t, a, W) {
   return '<tr class="aedit"><td colspan="' + (W + 1) + '"><div class="frm">' +
     '<div class="fld" style="grid-column:span 2"><label>' + T('attivita') + '</label><input value="' + esc(actName(a)) + '"'+ hx(function (el) { edA(t.id, a.id, 'nome', el.value); }) + '></div>' +
     '<div class="fld"><label>' + T('owners') + '</label><select'+ hx(function (el) { edA(t.id, a.id, 'owner', el.value); }) + '>' +
-    '<option value="">' + T('nessuno') + '</option>' +
-    allOwners().map(function (r) { return '<option ' + (a.owner === r ? 'selected' : '') + ' value="' + esc(r) + '">' + esc(r) + (teamName(r) ? ' · ' + esc(teamName(r)) : '') + '</option>'; }).join('') + '</select></div>' +
-    '<div class="fld"><label>' + T('support') + '</label><details class="msdd"><summary>' + ((a.support || []).length ? esc(a.support.join(', ')) : T('selSupport')) + '</summary><div class="msdd-list">' +
-    allOwners().map(function (r) {
+    '<option value="">' + T('nessuno') + '</option>' + ownerOpts(a.owner) + '</select></div>' +
+    '<div class="fld"><label>' + T('support') + '</label><details class="msdd"><summary>' + ((a.support || []).length ? esc(a.support.map(pName).join(', ')) : T('selSupport')) + '</summary><div class="msdd-list">' +
+    allOwners().filter(function (r) { return r !== pid(a.owner); }).map(function (r) {
       var on = (a.support || []).indexOf(r) >= 0;
-      return '<span class="chip ' + (on ? 'on' : '') + '"' + hc(function () { togSupport(t.id, a.id, r); }) + '>' + esc(r) + '</span>';
+      return '<span class="chip ' + (on ? 'on' : '') + '"' + hc(function () { togSupport(t.id, a.id, r); }) + '>' + esc(pLabel(r)) + '</span>';
     }).join('') + '</div></details></div>' +
     '<div class="fld"><label>' + T('proc') + '</label><select'+ hx(function (el) { edA(t.id, a.id, 'proc', el.value); }) + '>' +
     Object.keys(PROCS).map(function (k) { return '<option value="' + k + '" ' + (a.proc === k ? 'selected' : '') + '>' + L(PROCS[k]) + '</option>'; }).join('') + '</select></div>' +
@@ -729,7 +780,7 @@ function togEdit(tid, aid) { OPEN_EDIT = (OPEN_EDIT === aid ? null : aid); rende
 function edA(tid, aid, k, v) {
   if (!canEdit()) return roToast();
   var a = tg(tid).atts.find(function (x) { return x.id === aid; });
-  if (k === 'owner') a.owner = v;
+  if (k === 'owner') { a.owner = pid(v); a.support = (a.support || []).filter(function (x) { return x !== a.owner; }); }
   else if (k === 'nome') a.nome = v;
   else if (k === 'sw' || k === 'ew') { a[k] = Math.max(0, +v || 0); if (a.sw && a.ew < a.sw) a.ew = a.sw; }
   else if (k === 'st') { a.st = +v; if (a.st !== 2) a.fine = ''; }
@@ -741,7 +792,7 @@ function edA(tid, aid, k, v) {
 function togSupport(tid, aid, r) {
   if (!canEdit()) return roToast();
   var a = tg(tid).atts.find(function (x) { return x.id === aid; });
-  a.support = a.support || [];
+  a.support = a.support || []; r = pid(r);
   var i = a.support.indexOf(r);
   if (i >= 0) a.support.splice(i, 1); else a.support.push(r);
   touch(a);
@@ -808,7 +859,7 @@ function addCustom(tid) {
   var t = tg(tid);
   var nome = byId('cust_nome').value.trim();
   if (!nome) return;
-  var a = act('nuova', 0, 0, byId('cust_ow').value ? [byId('cust_ow').value] : [],
+  var a = act('nuova', 0, 0, pid(byId('cust_ow').value) ? [pid(byId('cust_ow').value)] : [],
     { nome: nome, proc: byId('cust_proc').value });
   a.id = 'x' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   bindAct(a, t.id);
@@ -819,17 +870,25 @@ function addCustom(tid) {
 }
 function addTarget() {
   if (!canEdit()) return roToast();
-  tdPrompt(LANG === 'it' ? 'Nome della nuova target:' : 'New target name:', function (nome) {
-  if (!nome) return;
-  var id = 't' + Date.now();
-  var nt = { id: id, nome: nome, rs: '', ind: '', piva: '', ref: '', fatt: '', pfn: '', ev: '',
-    linee: [], loi: '', prelim: '', closing: '', hor: 24, atts: genActs() };
-  nt.atts.forEach(function (a) { bindAct(a, nt.id); });
-  nt.lm = Date.now();
-  STATE.targets.push(nt);
-  SYNC.createTarget(nt);
-  go(id);
-  });
+  IPM_OPTS.api.get('/organizations').then(function (list) {
+    var opts = (list || []).filter(function (o) { return !o.in_plan && o.kind === 'TARGET'; }).map(function (o) {
+      return { value: o.id, label: o.name + (o.city ? ' · ' + o.city : '') + (o.vat_number ? ' · P.IVA ' + o.vat_number : '') };
+    });
+    if (!opts.length) {
+      return tdConfirm(T('noTargetAvail'), function () { goSuite('/admin/organizations'); }, null, T('openAdmin'));
+    }
+    tdSelect(T('pickTarget'), opts, function (v) {
+      var org = (list || []).find(function (o) { return o.id === pid(v); });
+      if (!org) return;
+      var nt = { id: org.id, org_id: org.id, nome: org.name, rs: org.name, ind: '', piva: org.vat_number || '', ref: '', fatt: '', pfn: '', ev: '',
+        linee: [], loi: '', prelim: '', closing: '', hor: 24, note: '', status: 'ATTIVO', atts: genActs() };
+      nt.atts.forEach(function (a) { bindAct(a, nt.id); });
+      nt.lm = Date.now();
+      STATE.targets.push(nt);
+      SYNC.createTarget(nt);
+      go(org.id);
+    }, T('openAdmin'), function () { goSuite('/admin/organizations'); });
+  }).catch(function (e) { tdAlert((e && e.message) || 'Errore'); });
 }
 
 /* ---------------- alert + workload ---------------- */
@@ -860,7 +919,7 @@ function alertsHtml(t) {
     : '<div class="badge good">✓ ' + T('alOk') + '</div>');
 }
 var WL_OPEN = null;
-function togWL(o) { WL_OPEN = (WL_OPEN === o ? null : o); render(); }
+function togWL(o) { o = pid(o); WL_OPEN = (WL_OPEN === o ? null : o); render(); }
 function workloadTable(t) {
   var rows = {};
   var list = t ? [t] : STATE.targets;
@@ -875,16 +934,16 @@ function workloadTable(t) {
       });
     });
   });
-  var ks = Object.keys(rows).sort(function (a, b) { return rows[b].w - rows[a].w; });
+  var ks = Object.keys(rows).map(Number).sort(function (a, b) { return rows[b].w - rows[a].w; });
   if (!ks.length) return '<div class="note">-</div>';
   var max = rows[ks[0]].w || 1;
   var h = '<table class="wl"><thead><tr><th>Owner</th><th>' + T('wlAct') + '</th><th>Support</th><th>' + T('wlWeeks') + '</th><th style="width:28%"></th></tr></thead><tbody>';
   ks.forEach(function (k) {
-    var nm = teamName(k);
-    h += '<tr style="cursor:pointer"' + hc(function () { togWL(k); }) + '><td>' + (WL_OPEN === k ? '▾' : '▸') + ' <b>' + esc(k) + '</b>' + (nm ? ' <span style="color:var(--ink-3)">· ' + esc(nm) + '</span>' : '') + '</td><td>' + rows[k].n + '</td><td>' + rows[k].s + '</td><td>' + rows[k].w + '</td>' +
+    var nm = teamRole(k);
+    h += '<tr style="cursor:pointer"' + hc(function () { togWL(k); }) + '><td>' + (WL_OPEN === k ? '▾' : '▸') + ' <b>' + esc(pName(k)) + '</b>' + (nm ? ' <span style="color:var(--ink-3)">· ' + esc(nm) + '</span>' : '') + '</td><td>' + rows[k].n + '</td><td>' + rows[k].s + '</td><td>' + rows[k].w + '</td>' +
       '<td><div class="pbar"><i style="width:' + Math.round(rows[k].w / max * 100) + '%"></i></div></td></tr>';
     if (WL_OPEN === k) {
-      h += '<tr><td colspan="5" style="background:#F7FAFA;padding:8px 10px"><div style="font-size:11px;color:var(--ink-3);margin-bottom:4px">' + T('ownerActs') + ' ' + esc(k) + ':</div>' +
+      h += '<tr><td colspan="5" style="background:#F7FAFA;padding:8px 10px"><div style="font-size:11px;color:var(--ink-3);margin-bottom:4px">' + T('ownerActs') + ' ' + esc(pName(k)) + ':</div>' +
         rows[k].acts.map(function (x) {
           return '<div style="font-size:12px;margin:2px 0">→ <b>' + esc(x.t.nome) + '</b> · <a href="#" style="color:var(--teal)"' + hc(function () { jumpToAct(x.t.id, x.a.id); }) + '>' + esc(actName(x.a)) + '</a>' +
             (x.sup ? ' <span class="badge info" style="font-size:9px">SUPPORT</span>' : '') +
@@ -900,7 +959,7 @@ function workloadTable(t) {
 function openPrint() {
   var sel = byId('pr_owner');
   sel.innerHTML = '<option value="*">' + (LANG === 'it' ? 'Tutti gli owner' : 'All owners') + '</option>' +
-    allOwners().map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('');
+    allOwners().map(function (o) { return '<option value="' + o + '">' + esc(pLabel(o)) + '</option>'; }).join('');
   byId('pm_t').textContent = T('printTitle');
   byId('pm_l1').textContent = T('pScope'); byId('pm_l2').textContent = T('pMode');
   byId('pm_o1').textContent = T('pThis'); byId('pm_o2').textContent = T('pAll');
@@ -910,6 +969,7 @@ function openPrint() {
 }
 function doPrint() {
   var scope = byId('pr_scope').value, mode = byId('pr_mode').value, owner = byId('pr_owner').value;
+  if (owner !== '*') owner = pid(owner);
   var list = (scope === 'this' && STATE.page !== 'cover' ? [tg(STATE.page)] : STATE.targets)
     .filter(function (t) { return startDate(t); });
   var pa = byId('printarea'), h = '';
@@ -923,7 +983,7 @@ function doPrint() {
     var allOws = owner === '*' ? (function () {
       var s = {};
       list.forEach(function (t) { ownersOf(t).forEach(function (o) { s[o] = 1; }); });
-      return Object.keys(s).sort();
+      return Object.keys(s).map(Number).sort(function (a, b) { return pName(a).localeCompare(pName(b)); });
     })() : [owner];
     allOws.forEach(function (o) { h += printOverlay(list, o); });
   }
@@ -978,7 +1038,7 @@ function printOverlay(list, owner) {
   for (var w = 1; w <= W; w++) {
     dens[w] = items.filter(function (it) { return w >= it.gs && w <= it.ge; }).length;
   }
-  var h = '<div class="psec"><div class="phead"><div><div class="t1">' + esc(owner) + ' · ' + (LANG === 'it' ? 'tutte le società (vista sovrapposta)' : 'all companies (overlaid view)') + '</div>' +
+  var h = '<div class="psec"><div class="phead"><div><div class="t1">' + esc(pLabel(owner)) + ' · ' + (LANG === 'it' ? 'tutte le società (vista sovrapposta)' : 'all companies (overlaid view)') + '</div>' +
     '<div class="t2">' + T('overlayHint') + '</div></div><div class="t2">' + T('docFooter') + ' · ' + fmtDY(new Date()) + '</div></div>';
   h += '<table class="pgantt"><thead><tr><th style="text-align:left">' + (LANG === 'it' ? 'Società' : 'Company') + '</th><th style="text-align:left">' + T('attivita') + '</th>';
   for (var w = 1; w <= W; w++) h += '<th>W' + w + '<br>' + fmtD(addW(g0, w - 1)) + '</th>';
@@ -1017,13 +1077,13 @@ function printOverlay(list, owner) {
 function ownersOf(t) {
   var s = {};
   t.atts.forEach(function (a) { inv(a).forEach(function (o) { s[o] = 1; }); });
-  return Object.keys(s).sort();
+  return Object.keys(s).map(Number).sort(function (a, b) { return pName(a).localeCompare(pName(b)); });
 }
 function hasOwner(t, o) { return t.atts.some(function (a) { return inv(a).indexOf(o) >= 0; }); }
 function printSec(t, owner) {
   var sd = startDate(t), W = t.hor;
   var atts = owner ? t.atts.filter(function (a) { return inv(a).indexOf(owner) >= 0; }) : t.atts;
-  var h = '<div class="psec"><div class="phead"><div><div class="t1">' + esc(t.nome) + (owner ? ' · ' + esc(owner) : '') + '</div>' +
+  var h = '<div class="psec"><div class="phead"><div><div class="t1">' + esc(t.nome) + (owner ? ' · ' + esc(pLabel(owner)) : '') + '</div>' +
     '<div class="t2">' + esc(t.rs || '') + ' · ' + T('closing') + ': ' + (t.closing ? fmtDY(new Date(t.closing + 'T12:00:00')) : '-') +
     (t.prelim ? ' · ' + T('prelim') + ': ' + fmtDY(new Date(t.prelim + 'T12:00:00')) : '') + '</div></div>' +
     '<div class="t2">' + T('docFooter') + ' · ' + fmtDY(new Date()) + '</div></div>';
@@ -1040,8 +1100,8 @@ function printSec(t, owner) {
   atts.forEach(function (a) {
     var col = PROCS[a.proc] ? PROCS[a.proc].hex : '#888';
     h += '<tr><td class="acol">' + (a.ms ? '◆ ' : '') + esc(actName(a)) + (a.pl ? ' [P&L]' : '') + '</td>' +
-      '<td class="acol" style="max-width:80px">' + esc(a.owner || '') + '</td>' +
-      '<td class="acol" style="max-width:80px">' + esc((a.support || []).join(', ')) + '</td>';
+      '<td class="acol" style="max-width:80px">' + esc(a.owner ? pName(a.owner) : '') + '</td>' +
+      '<td class="acol" style="max-width:80px">' + esc((a.support || []).map(pName).join(', ')) + '</td>';
     for (var w = 1; w <= W; w++) {
       var on = a.sw && w >= a.sw && w <= a.ew;
       h += '<td class="' + (on ? 'on' : '') + '" style="' + (on ? 'background:' + col : '') + '"></td>';
@@ -1106,27 +1166,26 @@ function sheetName(s) { return String(s).replace(/[\[\]:*?\/\\]/g, ' ').slice(0,
 function exportJSON() { /* mantiene il nome storico del bottone: ora salva XLSX */
   var sheets = [];
   var sum = [[T('targets')],
-    ['Target', T('rs'), T('ind'), T('piva'), T('ref'), T('tel'), T('mail'), T('web'), T('pec'), T('fatt'), T('pfn'), T('ev'), T('prelim'), T('closing'), T('progresso')]];
+    ['Target', T('rs'), T('ind'), T('piva'), T('ref'), T('tel'), T('mail'), T('web'), T('pec'), T('fatt'), T('pfn'), T('ev'), T('prelim'), T('closing'), T('planStatus'), T('progresso')]];
   STATE.targets.forEach(function (t) {
-    sum.push([t.nome, t.rs, t.ind, t.piva, t.ref, t.tel || '', t.mail || '', t.web || '', t.pec || '', +t.fatt || '', +t.pfn || '', +t.ev || '', t.prelim || '', t.closing || '', Math.round(tProgress(t) * 100) + '%']);
+    sum.push([t.nome, t.rs, t.ind, t.piva, t.ref, t.tel || '', t.mail || '', t.web || '', t.pec || '', +t.fatt || '', +t.pfn || '', +t.ev || '', t.prelim || '', t.closing || '', T('ps' + (t.status || 'ATTIVO')), Math.round(tProgress(t) * 100) + '%']);
   });
   sheets.push({ name: 'Riepilogo', rows: sum });
-  var trows = [[T('ownerBox')], [T('ruolo'), T('funzione'), T('manager')]];
-  (STATE.team || []).forEach(function (m) { trows.push([m.r, m.f, m.n]); });
-  sheets.push({ name: 'Ruoli', rows: trows });
+  var trows = [[T('ownerBox')], [T('ruolo'), T('funzione'), T('manager'), 'Email']];
+  (STATE.team || []).forEach(function (m) { trows.push([m.r, m.f, m.n, m.email || '']); });
+  sheets.push({ name: 'Team', rows: trows });
   STATE.targets.forEach(function (t) {
     var sd = startDate(t);
     var rows = [[t.nome + ' - GANTT ' + (sd ? T('settDal') + ' ' + fmtDY(sd) : '')],
       ['ID', T('attivita'), T('proc'), 'Owner', 'Ownership Support', T('sw'), T('ew'), LANG === 'it' ? 'Dal' : 'From', LANG === 'it' ? 'Al' : 'To', T('status'), T('fineEff'), 'P&L', T('ms'), T('dett'), T('note')]];
     t.atts.forEach(function (a) {
-      rows.push([a.cid || '', actName(a), L(PROCS[a.proc] || {}), a.owner || '', (a.support || []).join(', '),
+      rows.push([a.cid || '', actName(a), L(PROCS[a.proc] || {}), a.owner ? pLabel(a.owner) : '', (a.support || []).map(pName).join(', '),
         a.sw || '', a.ew || '',
         sd && a.sw ? fmtDY(addW(sd, a.sw - 1)) : '', sd && a.ew ? fmtDY(new Date(addW(sd, a.ew - 1).getTime() + 6 * 864e5)) : '',
         T('st' + a.st), a.fine || '', a.pl ? 'X' : '', a.ms ? 'X' : '', a.dett || '', a.note || '']);
     });
     sheets.push({ name: sheetName(t.nome), rows: rows });
   });
-  sheets.push({ name: '_dati', rows: [['NON MODIFICARE - stato applicazione'], ['TD_IPM_STATE:' + JSON.stringify({ v: 2, targets: STATE.targets, team: STATE.team, meta: STATE.meta })]] });
   var files = [];
   var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -1156,49 +1215,7 @@ function exportJSON() { /* mantiene il nome storico del bottone: ora salva XLSX 
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
   if (IPM_OPTS.onToast) IPM_OPTS.onToast(T('saved'));
 }
-function importJSON(ev) {
-  var f = ev.target.files[0]; if (!f) return;
-  var r = new FileReader();
-  if (/\.json$/i.test(f.name)) {
-    r.onload = function () {
-      try { var dj = JSON.parse(r.result); if (dj && dj.targets && dj.targets.length) { importIntoServer(dj); return; } } catch (e) {}
-      tdAlert(T('importErr'));
-    };
-    r.readAsText(f);
-  } else {
-    r.onload = function () {
-      try {
-        var u8 = new Uint8Array(r.result), dec = new TextDecoder();
-        var i = 0, found = null;
-        while (i + 30 < u8.length) {
-          var sig = u8[i] | (u8[i + 1] << 8) | (u8[i + 2] << 16) | (u8[i + 3] << 24);
-          if ((sig >>> 0) !== 0x04034b50) break;
-          var csize = u8[i + 18] | (u8[i + 19] << 8) | (u8[i + 20] << 16) | (u8[i + 21] << 24);
-          var nlen = u8[i + 26] | (u8[i + 27] << 8);
-          var elen = u8[i + 28] | (u8[i + 29] << 8);
-          var name = dec.decode(u8.slice(i + 30, i + 30 + nlen));
-          var dstart = i + 30 + nlen + elen;
-          if (name.indexOf('worksheets/') >= 0) {
-            var txt = dec.decode(u8.slice(dstart, dstart + csize));
-            var m = txt.indexOf('TD_IPM_STATE:');
-            if (m >= 0) {
-              var end = txt.indexOf('</t>', m);
-              var raw = txt.slice(m + 13, end).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-              found = JSON.parse(raw);
-            }
-          }
-          i = dstart + csize;
-        }
-        if (found && found.targets && found.targets.length) { importIntoServer(found); return; }
-      } catch (e) {}
-      tdAlert(T('importErr'));
-    };
-    r.readAsArrayBuffer(f);
-  }
-  ev.target.value = '';
-}
-
-/* ---------------- versione portabile: salvataggio nel file e unione ---------------- */
+/* ---------------- banner ---------------- */
 function renderBanner() {
   var el = byId('td-banner'); if (!el) return;
   var h = '';
@@ -1206,87 +1223,6 @@ function renderBanner() {
   if (IPM_OPTS.readOnly) h += '<div class="bnr info">🔒 ' + roMsgText() + '</div>';
   el.innerHTML = h;
 }
-function stateFromXlsxBytes(u8) {
-  var dec = new TextDecoder(), i = 0;
-  while (i + 30 < u8.length) {
-    var sig = (u8[i] | (u8[i + 1] << 8) | (u8[i + 2] << 16) | (u8[i + 3] << 24)) >>> 0;
-    if (sig !== 0x04034b50) break;
-    var csize = u8[i + 18] | (u8[i + 19] << 8) | (u8[i + 20] << 16) | (u8[i + 21] << 24);
-    var nlen = u8[i + 26] | (u8[i + 27] << 8), elen = u8[i + 28] | (u8[i + 29] << 8);
-    var name = dec.decode(u8.slice(i + 30, i + 30 + nlen));
-    var dstart = i + 30 + nlen + elen;
-    if (name.indexOf('worksheets/') >= 0) {
-      var txt = dec.decode(u8.slice(dstart, dstart + csize));
-      var mk = txt.indexOf('TD_IPM_STATE:');
-      if (mk >= 0) {
-        var end = txt.indexOf('</t>', mk);
-        var raw = txt.slice(mk + 13, end).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-        try { return JSON.parse(raw); } catch (e) { return null; }
-      }
-    }
-    i = dstart + csize;
-  }
-  return null;
-}
-function stateFromHtmlText(txt) {
-  var m = txt.match(/id="td-embed">([\s\S]*?)<\/script>/);
-  if (!m) return null;
-  try { var d = JSON.parse(m[1]); return d && d.targets && d.targets.length ? d : null; } catch (e) { return null; }
-}
-var T_FIELDS = ['nome', 'rs', 'ind', 'piva', 'ref', 'tel', 'mail', 'web', 'pec', 'fatt', 'pfn', 'ev', 'linee', 'loi', 'prelim', 'closing', 'hor'];
-var A_FIELDS = ['cid', 'nome', 'proc', 'sw', 'ew', 'owner', 'support', 'dett', 'note', 'st', 'fine', 'pl', 'ms', 'lm'];
-function mergeStates(other) {
-  var rep = { aU: 0, aN: 0, tN: 0, gU: 0 };
-  if (!other || !other.targets) return rep;
-  other.targets.forEach(function (ot) {
-    (ot.atts || []).forEach(normAtt);
-    var ct = STATE.targets.find(function (t) { return t.id === ot.id; });
-    if (!ct) { STATE.targets.push(ot); rep.tN++; return; }
-    if ((ot.lm || 0) > (ct.lm || 0)) {
-      T_FIELDS.forEach(function (k) { if (ot[k] !== undefined) ct[k] = Array.isArray(ot[k]) ? ot[k].slice() : ot[k]; });
-      ct.lm = ot.lm; rep.gU++;
-    }
-    var byIdA = {}; ct.atts.forEach(function (a) { byIdA[a.id] = a; });
-    (ot.atts || []).forEach(function (oa) {
-      var ca = byIdA[oa.id];
-      if (!ca) { ct.atts.push(oa); rep.aN++; }
-      else if ((oa.lm || 0) > (ca.lm || 0)) {
-        A_FIELDS.forEach(function (k) { ca[k] = Array.isArray(oa[k]) ? oa[k].slice() : oa[k]; });
-        rep.aU++;
-      }
-    });
-  });
-  (other.team || []).forEach(function (om) {
-    var cm = (STATE.team || []).find(function (x) { return x.r === om.r; });
-    if (!cm) STATE.team.push(om);
-    else if ((om.lm || 0) > (cm.lm || 0)) { Object.keys(om).forEach(function (k) { cm[k] = om[k]; }); }
-  });
-  if (other.meta) {
-    var m = ensureMeta(), om = other.meta;
-    m.rev = Math.max(m.rev || 0, om.rev || 0);
-    var seen = {};
-    m.log = (m.log || []).concat(om.log || []).filter(function (e) {
-      var k = (e.rev || 0) + '|' + (e.at || '') + '|' + (e.by || '');
-      if (seen[k]) return false; seen[k] = 1; return true;
-    }).sort(function (a, b) { return (b.at || '').localeCompare(a.at || ''); }).slice(0, 30);
-  }
-  if (rep.aU + rep.aN + rep.tN + rep.gU > 0) DIRTY = true;
-  return rep;
-}
-function mergeFile(ev) {
-  var f = ev.target.files[0]; if (!f) { ev.target.value = ''; return; }
-  var r = new FileReader();
-  r.onload = function () {
-    var u8 = new Uint8Array(r.result), st = null;
-    if (u8[0] === 0x50 && u8[1] === 0x4b) st = stateFromXlsxBytes(u8);
-    else st = stateFromHtmlText(new TextDecoder().decode(u8));
-    if (!st) { tdAlert(T('mergeErr')); return; }
-    importIntoServer(st);
-  };
-  r.readAsArrayBuffer(f);
-  ev.target.value = '';
-}
-
 /* ---------------- boot ---------------- */
 function setLang(l) {
   LANG = l;
@@ -1302,19 +1238,24 @@ function tdDialog(msg, opts) {
   var d = document.createElement('div'); d.className = 'ipm-modal show'; d.id = 'tddlg';
   d.innerHTML = '<div class="mbox"><div class="mrow" style="white-space:pre-wrap">' + esc(msg) + '</div>' +
     (opts.input ? '<div class="mrow"><div class="fld"><input id="tddlg_in" autocomplete="off"></div></div>' : '') +
+    (opts.select ? '<div class="mrow"><div class="fld"><select id="tddlg_sel">' + opts.select.map(function (o) { return '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>'; }).join('') + '</select></div></div>' : '') +
     '<div class="mrow" style="display:flex;gap:8px;justify-content:flex-end">' +
     (opts.cancel ? '<button class="btn ghost" id="tddlg_c">' + esc(T('dlgCancel')) + '</button>' : '') +
+    (opts.altLabel ? '<button class="btn ghost" id="tddlg_alt">' + esc(opts.altLabel) + '</button>' : '') +
     '<button class="btn canary" id="tddlg_ok">' + esc(opts.okLabel || T('dlgOk')) + '</button></div></div>';
   (byId('ipm-root') || document.body).appendChild(d);
   var close = function () { d.remove(); };
-  var ok = function () { var v = opts.input ? (byId('tddlg_in').value || '').trim() : true; close(); if (opts.onOk) opts.onOk(v); };
+  var ok = function () { var v = opts.input ? (byId('tddlg_in').value || '').trim() : opts.select ? byId('tddlg_sel').value : true; close(); if (opts.onOk) opts.onOk(v); };
   byId('tddlg_ok').onclick = ok;
+  if (opts.altLabel) byId('tddlg_alt').onclick = function () { close(); if (opts.onAlt) opts.onAlt(); };
   if (opts.cancel) byId('tddlg_c').onclick = function () { close(); if (opts.onCancel) opts.onCancel(); };
   if (opts.input) { var inp = byId('tddlg_in'); inp.focus(); inp.onkeydown = function (ev) { if (ev.key === 'Enter') ok(); if (ev.key === 'Escape') { close(); if (opts.onCancel) opts.onCancel(); } }; }
   else byId('tddlg_ok').focus();
 }
 function tdAlert(msg) { tdDialog(msg, {}); }
-function tdConfirm(msg, onOk, onCancel) { tdDialog(msg, { cancel: true, okLabel: T('dlgConfirm'), onOk: onOk, onCancel: onCancel }); }
+function tdConfirm(msg, onOk, onCancel, okLabel) { tdDialog(msg, { cancel: true, okLabel: okLabel || T('dlgConfirm'), onOk: onOk, onCancel: onCancel }); }
+/* scelta da elenco (persone dell'anagrafica, organizzazioni target); altLabel/onAlt = pulsante secondario (es. Apri in Amministrazione) */
+function tdSelect(msg, options, onOk, altLabel, onAlt) { tdDialog(msg, { cancel: true, select: options, okLabel: T('dlgConfirm'), onOk: onOk, altLabel: altLabel, onAlt: onAlt }); }
 function tdPrompt(msg, onOk) { tdDialog(msg, { cancel: true, input: true, onOk: onOk }); }
 function render() { if (!byId('ipm-main')) return; renderCore(); refreshOwnlist(); }
 
@@ -1323,6 +1264,8 @@ function render() { if (!byId('ipm-main')) return; renderCore(); refreshOwnlist(
 /* ================= strato dati: REST + SSE ================= */
 function bindAct(a, tid) { Object.defineProperty(a, '_t', { value: tid, enumerable: false, writable: true, configurable: true }); return a; }
 function cleanObj(o) { var c = {}; Object.keys(o).forEach(function (k) { if (k !== 'atts' && k[0] !== '_') c[k] = o[k]; }); return c; }
+/* membro del team per il server: solo person_id, ruolo, funzione, colore */
+function cleanMember(m) { return { person_id: m.person_id, r: m.r || '', f: m.f === 'Esterna' ? 'Esterna' : 'Interna', color: m.color || null, lm: m.lm || Date.now() }; }
 function applyServerRow(local, row) { Object.keys(row).forEach(function (k) { if (k === 'atts' || k === 'position' || k === 'target_id') return; local[k] = row[k]; }); }
 
 var SYNC = (function () {
@@ -1340,7 +1283,7 @@ var SYNC = (function () {
     if (!o) return;
     if (o.atts) pending[key('target', o.id)] = { kind: 'target', obj: o };
     else if (o._t) pending[key('act', o._t, o.id)] = { kind: 'act', obj: o, tid: o._t };
-    else if ('r' in o && 'f' in o) { team(); return; }
+    else if ('person_id' in o) { team(); return; }
     clearTimeout(timer); timer = setTimeout(flush, TARGET_DEBOUNCE);
     updateChip();
   }
@@ -1349,7 +1292,7 @@ var SYNC = (function () {
   function createActivity(t, a) { run(function () { return IPM_OPTS.api.post('/targets/' + enc(t.id) + '/activities', cleanObj(a)); }, function (row) { applyServerRow(a, row); }); }
   function deleteActivity(tid, aid) { run(function () { return IPM_OPTS.api.del('/targets/' + enc(tid) + '/activities/' + enc(aid)); }); }
   function createTarget(t) {
-    var body = cleanObj(t); body.atts = t.atts.map(cleanObj);
+    var body = cleanObj(t); body.org_id = t.id; body.atts = t.atts.map(cleanObj);
     run(function () { return IPM_OPTS.api.post('/targets', body); }, function (row) { applyServerRow(t, row); });
   }
   function deleteTarget(tid) { run(function () { return IPM_OPTS.api.del('/targets/' + enc(tid)); }); }
@@ -1408,8 +1351,8 @@ var SYNC = (function () {
         var tt = it.obj;
         run(function () { return IPM_OPTS.api.put('/targets/' + enc(tt.id) + '/order', { ids: tt.atts.map(function (a) { return a.id; }) }); });
       } else if (it.kind === 'team') {
-        run(function () { return IPM_OPTS.api.put('/team', { members: STATE.team.map(cleanObj) }); },
-            function (rows) { if (Array.isArray(rows)) STATE.team = rows; });
+        run(function () { return IPM_OPTS.api.put('/team', { members: STATE.team.map(cleanMember) }); },
+            function (rows) { if (Array.isArray(rows)) { STATE.team = rows; rows.forEach(function (m) { if (!person(m.person_id)) STATE.people.push({ id: m.person_id, name: m.n, email: m.email, job_title: m.job_title, in_team: true }); }); render(); } });
       }
     });
     updateChip();
@@ -1422,6 +1365,7 @@ var SYNC = (function () {
 function loadPlan(data) {
   STATE.targets = (data.targets || []).map(function (t) { (t.atts || []).forEach(function (a) { normAtt(a); bindAct(a, t.id); }); return t; });
   STATE.team = data.team || [];
+  STATE.people = data.people || [];
   STATE.meta = data.meta || { rev: 0, log: [] };
   ensureMeta();
   if (STATE.page !== 'cover' && !tg(STATE.page)) STATE.page = 'cover';
@@ -1429,15 +1373,6 @@ function loadPlan(data) {
 function reloadAll() {
   return IPM_OPTS.api.get('/plan').then(function (d) { loadPlan(d); render(); });
 }
-function importIntoServer(st) {
-  tdConfirm(T('importConfirm'), function () {
-    IPM_OPTS.api.post('/plan/import', { targets: st.targets, team: st.team || [], meta: st.meta || null })
-      .then(function () { return reloadAll(); })
-      .then(function () { FLASH = T('importDone'); STATE.page = 'cover'; render(); })
-      .catch(function (e) { tdAlert((e && e.message) || T('importErr')); });
-  });
-}
-
 /* eventi in tempo reale dagli altri utenti */
 function applyRemoteEvent(ev) {
   if (!ev || !ev.type) return;
@@ -1462,6 +1397,7 @@ function applyRemoteEvent(ev) {
     return reloadAll();
   } else if (ev.type === 'team.updated') {
     STATE.team = d.members || STATE.team;
+    STATE.team.forEach(function (m) { if (!person(m.person_id)) STATE.people.push({ id: m.person_id, name: m.n, email: m.email, job_title: m.job_title, in_team: true }); });
   }
   if (ev.meta) STATE.meta = ev.meta;
   if (ev.by && IPM_OPTS.onToast && ev.type !== 'team.updated') {
@@ -1489,9 +1425,6 @@ var IPM = {
     try { var l = localStorage.getItem('tdi_lang'); if (l === 'en' || l === 'it') LANG = l; } catch (e) {}
     var root = IPM_OPTS.root || byId('ipm-root') || document.body;
     bindDelegation(root);
-    var imp = byId('impfile'), mrg = byId('mrgfile');
-    if (imp) imp.addEventListener('change', importJSON);
-    if (mrg) mrg.addEventListener('change', mergeFile);
     return IPM_OPTS.api.get('/plan').then(function (d) {
       loadPlan(d);
       render();
@@ -1502,9 +1435,6 @@ var IPM = {
   unmount: function () {
     if (IPM_ES) { try { IPM_ES.close(); } catch (e) {} IPM_ES = null; }
     IPM_BOOTED = false;
-    var imp = byId('impfile'), mrg = byId('mrgfile');
-    if (imp) imp.removeEventListener('change', importJSON);
-    if (mrg) mrg.removeEventListener('change', mergeFile);
     if (IPM_UNBIND) IPM_UNBIND();
     HANDLERS = [];
   },

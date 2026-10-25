@@ -31,7 +31,7 @@ r.get('/summary', ah(async (req, res) => {
   const scope = where.join(' AND ');
   const repWhere = `${scope} AND r.report_date BETWEEN ${pf} AND ${pt}`;
   // le bozze non entrano nei totali (conteggio incompleto), ma contano negli stati
-  const base = `FROM cash_reports r JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id WHERE ${repWhere} AND r.status <> 'DRAFT'`;
+  const base = `FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id WHERE ${repWhere} AND r.status <> 'DRAFT'`;
 
   const [totals, byDay, bySite, byCompany, byCircuit, byStatus, channels] = await Promise.all([
     one(`SELECT coalesce(sum(r.cash_to_deposit),0) AS cash, coalesce(sum(r.pos_total),0) AS pos, coalesce(sum(r.transfer_total),0) AS transfer,
@@ -44,15 +44,15 @@ r.get('/summary', ah(async (req, res) => {
     many(`SELECT s.id AS site_id, s.name AS site_name, s.code AS site_code, c.name AS company_name, count(*)::int AS reports,
         sum(r.cash_to_deposit) AS cash, sum(r.pos_total) AS pos, sum(r.transfer_total) AS transfer,
         sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS total
-      ${base} GROUP BY s.id, c.name ORDER BY total DESC`, P.values),
+      ${base} GROUP BY s.id, s.name, s.code, c.name ORDER BY total DESC`, P.values),
     many(`SELECT c.id AS company_id, c.name AS company_name, count(*)::int AS reports,
         sum(r.cash_to_deposit) AS cash, sum(r.pos_total) AS pos, sum(r.transfer_total) AS transfer,
         sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS total
-      ${base} GROUP BY c.id ORDER BY total DESC`, P.values),
+      ${base} GROUP BY c.id, c.name ORDER BY total DESC`, P.values),
     many(`SELECT p.circuit, count(*)::int AS count, sum(p.amount) AS amount
-      FROM pos_receipts p JOIN cash_reports r ON r.id=p.report_id JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id
+      FROM pos_receipts p JOIN cash_reports r ON r.id=p.report_id JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id
       WHERE ${repWhere} GROUP BY p.circuit ORDER BY amount DESC`, P.values),
-    many(`SELECT r.status, count(*)::int AS n FROM cash_reports r JOIN sites s ON s.id=r.site_id WHERE ${repWhere} GROUP BY r.status`, P.values),
+    many(`SELECT r.status, count(*)::int AS n FROM cash_reports r JOIN sites_v s ON s.id=r.site_id WHERE ${repWhere} GROUP BY r.status`, P.values),
     channelTotals(req, from, to),
   ]);
 
@@ -65,7 +65,7 @@ r.get('/summary', ah(async (req, res) => {
   const mFrom = P2.add(from), mTo = P2.add(to < yesterday ? to : yesterday);
   const missing = await many(`SELECT s.id AS site_id, s.name AS site_name, c.name AS company_name, d::date AS date, s.expected_registers,
       (SELECT count(*)::int FROM cash_reports r WHERE r.site_id=s.id AND r.report_date=d::date) AS reports_count
-    FROM sites s JOIN companies c ON c.id=s.company_id
+    FROM sites_v s JOIN companies_v c ON c.id=s.company_id
     CROSS JOIN LATERAL generate_series(greatest(${mFrom}::date, s.start_date), ${mTo}::date, interval '1 day') d
     WHERE ${w2.join(' AND ')}
       AND substr(s.operating_days, extract(isodow FROM d)::int, 1) = '1'
@@ -82,7 +82,7 @@ r.get('/summary', ah(async (req, res) => {
            WHEN r.status='PROCESSED' THEN 'Operazione logistica non registrata'
            WHEN r.status='PICKED_UP' THEN 'Riconteggio non eseguito'
            ELSE 'In cassaforte, non versato' END AS issue
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id
     WHERE ${w3.join(' AND ')} AND r.status <> 'DEPOSITED'
       AND r.report_date < (current_date - ${P3.add(alertDays)}::int)
     ORDER BY r.report_date LIMIT 300`, P3.values);
@@ -111,7 +111,7 @@ r.get('/today', ah(async (req, res) => {
       (substr(s.operating_days, extract(isodow FROM ${today}::date)::int, 1) = '1' AND s.start_date <= ${today}::date) AS operating, s.start_date,
       (SELECT json_agg(json_build_object('id', r.id, 'status', r.status, 'operator_id', r.operator_id, 'operator_name', u.full_name, 'total', r.cash_to_deposit + r.pos_total + r.transfer_total) ORDER BY u.full_name)
          FROM cash_reports r LEFT JOIN users u ON u.id=r.operator_id WHERE r.site_id=s.id AND r.report_date=${today}::date) AS registers
-    FROM sites s JOIN companies c ON c.id=s.company_id
+    FROM sites_v s JOIN companies_v c ON c.id=s.company_id
     WHERE ${siteScope(req.user, P)} AND s.active ORDER BY c.name, s.name`, P.values);
   for (const x of rows) {
     x.registers = x.registers || [];
@@ -131,7 +131,7 @@ r.get('/export.csv', ah(async (req, res) => {
       r.pos_total AS pos, r.transfer_total AS bonifici, (r.cash_to_deposit+r.pos_total+r.transfer_total) AS totale,
       r.expected_total AS gestionale, r.envelope_code AS busta_mondialpol, r.slip_number AS distinta,
       r.pickup_operator AS operatore_logistica, r.pickup_at AS logistica_il, r.verified_amount AS riconteggiato, r.verified_at AS verificato_il, dep.number AS versamento
-    FROM cash_reports r JOIN sites s ON s.id=r.site_id JOIN companies c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id
     WHERE ${where.join(' AND ')} AND r.report_date BETWEEN ${P.add(from)} AND ${P.add(to)} ORDER BY r.report_date, c.name, s.name`, P.values);
   const cols = rows.length ? Object.keys(rows[0]) : ['azienda'];
   const fmt = (v) => {

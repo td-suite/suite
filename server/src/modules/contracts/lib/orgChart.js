@@ -1,15 +1,16 @@
-// Organigramma generato dai ruoli registrati: aree (tre livelli), referenti, linee di riporto e personale.
+// Organigramma generato dai ruoli registrati: aree del modulo (fino a quattro livelli) con referente, persone e linee di riporto
+// dall'anagrafica unica (public.people.manager_person_id via resources_v, area principale e doppie funzioni da person_ext / person_areas).
 import { many } from '../db.js';
 
 const fullName = (p) => `${p.first_name} ${p.last_name}`;
 
 /** Carica aree e persone attive con tutto ciò che serve a costruire gli organigrammi. */
 export async function loadOrgModel() {
-  const areas = await many(`SELECT a.id, a.name, a.parent_id, a.level, a.kind, a.head_resource_id, t.path, t.sort_path FROM areas a JOIN areas_tree t ON t.id=a.id ORDER BY t.sort_path, a.name`);
+  const areas = await many(`SELECT a.id, a.name, a.parent_id, a.level, a.kind, a.head_person_id, t.path, t.sort_path FROM areas a JOIN areas_tree t ON t.id=a.id ORDER BY t.sort_path, a.name`);
   const people = await many(`SELECT r.id, r.kind, r.status, r.first_name, r.last_name, r.area_id, r.manager_id, r.approver_id,
       coalesce(e.job_title, l.discipline) AS job_title, e.contract_type, e.level,
-      coalesce((SELECT array_agg(ra.area_id) FROM resource_areas ra WHERE ra.resource_id=r.id), '{}') AS extra_area_ids
-    FROM resources r LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
+      coalesce((SELECT array_agg(ra.area_id) FROM person_areas ra WHERE ra.person_id=r.id), '{}') AS extra_area_ids
+    FROM resources_v r LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
     WHERE r.status IN ('ATTIVO','IMPEGNO') ORDER BY r.last_name, r.first_name`);
   const areaById = Object.fromEntries(areas.map((a) => [a.id, a]));
   const childrenOf = {};
@@ -27,7 +28,7 @@ export async function loadOrgModel() {
   /** Referente dell'area: esplicito, altrimenti chi tra i membri del sottoalbero non riporta a un membro del sottoalbero (a parità, chi ha più riporti). */
   const headOf = (area) => {
     if (headCache[area.id] !== undefined) return headCache[area.id];
-    let h = area.head_resource_id ? peopleById[area.head_resource_id] || null : null;
+    let h = area.head_person_id ? peopleById[area.head_person_id] || null : null;
     if (!h) {
       const members = subtreeMembers(area.id);
       const ids = new Set(members.map((p) => p.id));

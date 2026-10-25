@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Field, MoneyInput, useApi, Icon } from './ui.jsx';
-import { LEVELS, LEVEL_LABEL, CONTRACT, FEE_TYPE, FEE_VAT, eur } from '../format.js';
+import { LEVELS, LEVEL_LABEL, CONTRACT, FEE_TYPE, FEE_VAT, PERSON_KIND, eur } from '../format.js';
 import { api } from '../api.js';
 
 const set = (v, onChange) => (k, x) => onChange({ ...v, [k]: x });
@@ -79,10 +79,19 @@ export function ExtraAreas({ areas, primary, value, onChange }) {
   );
 }
 
+/** Selettore della sede dell'anagrafica unica (public.sites, elenco da /work-sites). Le sedi si gestiscono in Amministrazione > Sedi. */
+export function SiteSelect({ sites = [], value, onChange, placeholder = '–', showAddress = false }) {
+  return <select value={value || ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}><option value="">{placeholder}</option>{sites.map((x) => <option key={x.id} value={x.id}>{x.name}{showAddress && x.address ? ` · ${x.address}` : ''}</option>)}</select>;
+}
+
+// Anagrafica unica della Suite: i campi generali (nome, contatti, tipo, sede, responsabile) vanno in public.people e compaiono
+// anche nella Rubrica; i campi del dossier HR (residenza, partita IVA, IBAN, matricola, note) restano riservati al modulo.
 export function PersonForm({ value: v, onChange, kind }) {
   const s = set(v, onChange);
   const areas = useApi('/areas');
   const people = useApi('/resources?status=ATTIVO,IMPEGNO');
+  const sites = useApi('/work-sites');
+  const kinds = kind === 'LP' ? ['LP', 'MEDICO', 'SANITARIO'] : ['DIPENDENTE', 'DIRIGENTE'];
   const onCf = (cf) => {
     const up = cf.toUpperCase();
     const patch = { tax_code: up };
@@ -90,29 +99,42 @@ export function PersonForm({ value: v, onChange, kind }) {
     onChange({ ...v, ...patch });
   };
   return (
+    <>
+    <div className="subhead" style={{ marginTop: 0 }}>Anagrafica (visibile nella Rubrica della Suite)</div>
     <div className="form-grid">
       <Field label="Cognome *"><input value={v.last_name || ''} onChange={(e) => s('last_name', e.target.value)} required /></Field>
       <Field label="Nome *"><input value={v.first_name || ''} onChange={(e) => s('first_name', e.target.value)} required /></Field>
+      <Field label="Tipo di persona" help={kind === 'LP' ? 'Incarico autonomo: professionista, medico o personale sanitario' : 'Rapporto subordinato: dipendente o dirigente'}><select value={kinds.includes(v.kind) ? v.kind : kinds[0]} onChange={(e) => s('kind', e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{PERSON_KIND[k]}</option>)}</select></Field>
       <Field label="Sesso"><select value={v.sex || ''} onChange={(e) => s('sex', e.target.value)}><option value="">–</option><option value="F">Donna</option><option value="M">Uomo</option></select></Field>
       <Field label="Titolo" help="dott., dott.ssa, prof., avv."><input value={v.title || ''} onChange={(e) => s('title', e.target.value)} /></Field>
-      <Field label="Luogo di nascita"><input value={v.birth_place || ''} placeholder="Firenze (FI)" onChange={(e) => s('birth_place', e.target.value)} /></Field>
       <Field label="Data di nascita"><input type="date" value={v.birth_date || ''} onChange={(e) => s('birth_date', e.target.value)} /></Field>
       <Field label="Codice fiscale"><input value={v.tax_code || ''} maxLength={16} onChange={(e) => onCf(e.target.value)} className="mono" /></Field>
-      {kind === 'LP' && <Field label="Partita IVA"><input value={v.vat_number || ''} onChange={(e) => s('vat_number', e.target.value)} className="mono" /></Field>}
-      <Field label="Cellulare personale"><input value={v.phone || ''} onChange={(e) => s('phone', e.target.value)} /></Field>
-      <Field label="Telefono fisso"><input value={v.phone_office || ''} placeholder="interno o numero diretto" onChange={(e) => s('phone_office', e.target.value)} /></Field>
-      <Field label="Cellulare aziendale"><input value={v.mobile_company || ''} onChange={(e) => s('mobile_company', e.target.value)} /></Field>
       <Field label="Email"><input type="email" value={v.email || ''} onChange={(e) => s('email', e.target.value)} /></Field>
-      <Field label="Indirizzo (via e civico)"><input value={v.address || ''} onChange={(e) => s('address', e.target.value)} /></Field>
-      <Field label="CAP"><input value={v.zip || ''} onChange={(e) => s('zip', e.target.value)} /></Field>
-      <Field label="Città"><input value={v.city || ''} onChange={(e) => s('city', e.target.value)} /></Field>
-      <Field label="Provincia"><input value={v.province || ''} maxLength={2} onChange={(e) => s('province', e.target.value.toUpperCase())} /></Field>
+      <Field label="Cellulare personale"><input value={v.phone || ''} onChange={(e) => s('phone', e.target.value)} /></Field>
+      <Field label="Telefono fisso"><input value={v.phone_office || ''} placeholder="numero diretto" onChange={(e) => s('phone_office', e.target.value)} /></Field>
+      <Field label="Interno"><input value={v.phone_ext || ''} maxLength={10} placeholder="centralino" onChange={(e) => s('phone_ext', e.target.value)} /></Field>
+      <Field label="Sede" help="Sede di appartenenza (Amministrazione > Sedi)"><SiteSelect sites={sites.data || []} value={v.site_id} onChange={(id) => s('site_id', id)} /></Field>
       <AreaSelects areas={areas.data || []} value={v.area_id} onChange={(id) => s('area_id', id)} />
       <ExtraAreas areas={areas.data || []} primary={v.area_id} value={v.extra_area_ids || []} onChange={(ids) => s('extra_area_ids', ids)} />
       <Field label="Riporta a (responsabile gerarchico)" help="Definisce l'organigramma delle persone"><select value={v.manager_id || ''} onChange={(e) => s('manager_id', e.target.value ? Number(e.target.value) : null)}><option value="">–</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
       <Field label="Approva ferie, permessi e richieste" help="Vuoto = il responsabile gerarchico"><select value={v.approver_id || ''} onChange={(e) => s('approver_id', e.target.value ? Number(e.target.value) : null)}><option value="">come il responsabile</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
-      <Field label="Note" className="span2"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field>
     </div>
+    <div className="subhead">Dossier HR (riservato al modulo Contratti del personale)</div>
+    <div className="form-grid">
+      <Field label="Luogo di nascita"><input value={v.birth_place || ''} placeholder="Firenze (FI)" onChange={(e) => s('birth_place', e.target.value)} /></Field>
+      <Field label="Nazionalità"><input value={v.nationality || ''} placeholder="italiana" onChange={(e) => s('nationality', e.target.value)} /></Field>
+      {kind === 'LP' && <Field label="Partita IVA"><input value={v.vat_number || ''} onChange={(e) => s('vat_number', e.target.value)} className="mono" /></Field>}
+      <Field label="Cellulare aziendale"><input value={v.mobile_company || ''} onChange={(e) => s('mobile_company', e.target.value)} /></Field>
+      <Field label="Residenza (via e civico)"><input value={v.address || ''} onChange={(e) => s('address', e.target.value)} /></Field>
+      <Field label="CAP"><input value={v.zip || ''} onChange={(e) => s('zip', e.target.value)} /></Field>
+      <Field label="Città"><input value={v.city || ''} onChange={(e) => s('city', e.target.value)} /></Field>
+      <Field label="Provincia"><input value={v.province || ''} maxLength={2} onChange={(e) => s('province', e.target.value.toUpperCase())} /></Field>
+      <Field label="IBAN"><input value={v.iban || ''} maxLength={34} onChange={(e) => s('iban', e.target.value.toUpperCase())} className="mono" /></Field>
+      <Field label={kind === 'LP' ? 'Codice interno' : 'Matricola'}><input value={v.badge_number || ''} onChange={(e) => s('badge_number', e.target.value)} /></Field>
+      <Field label="Contatto per emergenze" className="span2"><input value={v.emergency_contact || ''} placeholder="nome, legame, telefono" onChange={(e) => s('emergency_contact', e.target.value)} /></Field>
+      <Field label="Note HR" className="span2"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field>
+    </div>
+    </>
   );
 }
 
@@ -177,7 +199,7 @@ export function EmploymentForm({ value: v, onChange, letter = false, sites = [] 
         {!letter && <Field label="Giorni settimanali"><select value={v.weekly_days ?? 5} onChange={(e) => onChange({ ...v, weekly_days: Number(e.target.value), days_label: Number(e.target.value) === 6 ? 'dal lunedì al sabato' : 'dal lunedì al venerdì' })}><option value={5}>5 (lunedì-venerdì)</option><option value={6}>6 (lunedì-sabato)</option></select></Field>}
         <Field label="RAL (lordo annuo) *"><MoneyInput value={v.ral ?? ''} onChange={(x) => s('ral', x)} /></Field>
         {!letter && <Field label="Mensilità"><select value={v.monthly_payments ?? 14} onChange={(e) => s('monthly_payments', Number(e.target.value))}><option value={14}>14</option><option value={13}>13</option><option value={12}>12</option></select></Field>}
-        <Field label="Sede di lavoro" className="span2"><input list="sites" value={v.work_site || ''} onChange={(e) => s('work_site', e.target.value)} placeholder="via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)" /><datalist id="sites">{sites.map((x) => <option key={x.id} value={x.address}>{x.name}</option>)}</datalist></Field>
+        <Field label="Sede di lavoro" className="span2" help={v.work_site_id ? (sites.find((x) => x.id === v.work_site_id)?.address || '') : 'Sede dell\'anagrafica unica: nel documento compare l\'indirizzo completo'}><SiteSelect sites={sites} value={v.work_site_id} onChange={(id) => s('work_site_id', id)} placeholder="– sede legale (impostazioni) –" /></Field>
         {!letter && <Field label="Periodo di prova" help="Testo che compare nel contratto"><input value={v.probation ?? 'Nessuno.'} onChange={(e) => s('probation', e.target.value)} /></Field>}
         {!letter && <Field label="Giorni di prova (per il calendario)"><input type="number" value={v.probation_days ?? ''} onChange={(e) => s('probation_days', e.target.value === '' ? null : Number(e.target.value))} /></Field>}
         <Field label="Autonomia di orario" className="inline" help=""><input type="checkbox" checked={Boolean(v.autonomous_hours)} onChange={(e) => s('autonomous_hours', e.target.checked)} /> clausola D.Lgs. 66/2003 (esclusione dai limiti massimi di orario)</Field>

@@ -8,11 +8,10 @@ import Contracts from './pages/Contracts.jsx';
 import ContractForm from './pages/ContractForm.jsx';
 import ContractDetail from './pages/ContractDetail.jsx';
 import Dossier from './pages/Dossier.jsx';
-import Partners from './pages/Partners.jsx';
+import Organizations from './pages/Organizations.jsx';
 import Dossiers from './pages/Dossiers.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
-import Import from './pages/Import.jsx';
 import './business.css';
 
 export default function Module({ moduleKey, mode, moduleUser }) {
@@ -34,10 +33,10 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             {isManager(user) && <Route path="contratti/:id/modifica" element={<ContractForm />} />}
             <Route path="contratti/:id" element={<ContractDetail />} />
             <Route path="contratti/:id/fascicolo" element={<Dossier />} />
-            <Route path="partner" element={<Partners />} />
+            <Route path="organizzazioni" element={<Organizations />} />
+            <Route path="partner" element={<Navigate to={`/${moduleKey}/organizzazioni`} replace />} />
             {admin && <Route path="impostazioni" element={<Settings />} />}
             {admin && <Route path="audit" element={<Audit />} />}
-            {admin && <Route path="importazione" element={<Import />} />}
             <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
           </Routes>
         </div>

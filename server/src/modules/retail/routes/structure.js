@@ -1,19 +1,29 @@
+// Scheda struttura della sede sull'anagrafica unica: la sede viene da public.sites (vista sites_v), le persone da public.people
+// (site_id della persona), con il piano di lavoro Retail in person_ext; orari di dettaglio e dotazioni restano tabelle Retail
+// (site_hours, site_assets) con FK su public.sites. Il profilo struttura si salva in site_ext (upsert).
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, notFound, audit, parse, forbidden } from '../lib/util.js';
 import { canEditSite } from '../lib/access.js';
+import { upsertSiteExt } from './admin.js';
 
 const r = Router();
 const guard = (req, siteId) => { if (!canEditSite(req.user, siteId)) throw forbidden(); };
 
+// Persone della sede: anagrafica unica + piano di lavoro Retail
+const PEOPLE = `SELECT p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.job_title, p.discipline, p.site_id,
+    (p.status = 'ATTIVO') AS active, coalesce(e.retail_role, p.job_title, CASE p.kind WHEN 'MEDICO' THEN 'Medico' WHEN 'SANITARIO' THEN 'Sanitario' WHEN 'LP' THEN 'Libero professionista' ELSE NULL END) AS role,
+    e.retail_role, e.weekly_hours, e.days, e.notes, coalesce(e.sort_order, 100) AS sort_order, (e.person_id IS NOT NULL) AS configured
+  FROM public.people p LEFT JOIN person_ext e ON e.person_id = p.id`;
+
 // Scheda struttura di una sede: profilo, persone, orari, dotazioni, numeri dell'anno
 r.get('/sites/:id/structure', ah(async (req, res) => {
   const id = Number(req.params.id);
-  const site = await one('SELECT * FROM sites WHERE id=$1', [id]);
-  if (!site) throw notFound();
+  const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
+  if (!site) throw notFound('Sede non trovata');
   const [staff, hours, assets, year, ops, market] = await Promise.all([
-    many('SELECT * FROM site_staff WHERE site_id=$1 ORDER BY active DESC, sort_order, name', [id]),
+    many(`${PEOPLE} WHERE p.site_id=$1 AND p.status IN ('ATTIVO','IMPEGNO') ORDER BY (p.status='ATTIVO') DESC, coalesce(e.sort_order, 100), p.last_name, p.first_name`, [id]),
     many('SELECT * FROM site_hours WHERE site_id=$1 ORDER BY weekday', [id]),
     many('SELECT * FROM site_assets WHERE site_id=$1 ORDER BY active DESC, kind, name', [id]),
     one(`SELECT coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets, count(DISTINCT customer_id)::int AS customers, count(DISTINCT sale_date)::int AS days FROM sales WHERE site_id=$1 AND sale_date >= date_trunc('year', CURRENT_DATE)`, [id]),
@@ -24,28 +34,43 @@ r.get('/sites/:id/structure', ah(async (req, res) => {
   res.json({ site, staff, hours, assets, year, operators: ops, market, fte: Math.round(fte * 10) / 10, can_edit: canEditSite(req.user, id) });
 }));
 
-const staffSchema = z.object({ name: z.string().min(2), role: z.string().min(2), kind: z.enum(['DIPENDENTE', 'LP', 'ESTERNO']).default('DIPENDENTE'), specialty: z.string().nullable().optional(), weekly_hours: z.number().nullable().optional(), days: z.string().nullable().optional(), phone: z.string().nullable().optional(), email: z.string().nullable().optional(), active: z.boolean().optional(), notes: z.string().nullable().optional(), sort_order: z.number().int().optional() });
+// Piano di lavoro Retail di una persona della sede (upsert su person_ext). Nome, ruolo contrattuale, contatti e sede si
+// modificano in Amministrazione > Persone o in Contratti del personale.
+const extSchema = z.object({ retail_role: z.string().max(80).nullable().optional(), weekly_hours: z.number().min(0).max(80).nullable().optional(), days: z.string().max(80).nullable().optional(), notes: z.string().max(2000).nullable().optional(), sort_order: z.number().int().optional() });
 const clean = (d) => { for (const k of Object.keys(d)) if (d[k] === '') d[k] = null; return d; };
-r.post('/sites/:id/staff', ah(async (req, res) => {
-  const id = Number(req.params.id); guard(req, id);
-  const d = clean(parse(staffSchema, req.body)); const cols = ['site_id', ...Object.keys(d)];
-  const row = await one(`INSERT INTO site_staff(${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, [id, ...Object.keys(d).map((k) => d[k])]);
-  await audit(req, 'SITE_STAFF_CREATE', 'site', id, { name: d.name }); res.status(201).json(row);
+r.put('/people/:id', ah(async (req, res) => {
+  const pid = Number(req.params.id);
+  const person = await one('SELECT id, site_id, last_name, first_name FROM public.people WHERE id=$1', [pid]);
+  if (!person) throw notFound('Persona non trovata nell\'anagrafica della Suite');
+  if (person.site_id == null) throw forbidden('La persona non è assegnata a una sede: impostala in Amministrazione > Persone');
+  guard(req, person.site_id);
+  const d = clean(parse(extSchema, req.body));
+  const cur = (await one('SELECT * FROM person_ext WHERE person_id=$1', [pid])) || {};
+  const next = { retail_role: 'retail_role' in d ? d.retail_role : cur.retail_role ?? null, weekly_hours: 'weekly_hours' in d ? d.weekly_hours : cur.weekly_hours ?? null, days: 'days' in d ? d.days : cur.days ?? null, notes: 'notes' in d ? d.notes : cur.notes ?? null, sort_order: d.sort_order ?? cur.sort_order ?? 100 };
+  await q(`INSERT INTO person_ext (person_id, retail_role, weekly_hours, days, notes, sort_order) VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (person_id) DO UPDATE SET retail_role=EXCLUDED.retail_role, weekly_hours=EXCLUDED.weekly_hours, days=EXCLUDED.days, notes=EXCLUDED.notes, sort_order=EXCLUDED.sort_order, updated_at=now()`,
+  [pid, next.retail_role, next.weekly_hours, next.days, next.notes, next.sort_order]);
+  await audit(req, 'PERSON_EXT_UPDATE', 'person', pid, { name: `${person.last_name} ${person.first_name}`, ...d });
+  res.json(await one(`${PEOPLE} WHERE p.id=$1`, [pid]));
 }));
-r.put('/staff/:id', ah(async (req, res) => {
-  const id = Number(req.params.id); const cur = await one('SELECT site_id FROM site_staff WHERE id=$1', [id]); if (!cur) throw notFound(); guard(req, cur.site_id);
-  const d = clean(parse(staffSchema.partial(), req.body)); const cols = Object.keys(d);
-  if (cols.length) await q(`UPDATE site_staff SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')} WHERE id=$1`, [id, ...cols.map((c) => d[c])]);
+// Rimuove solo il piano di lavoro Retail: la persona resta in anagrafica
+r.delete('/people/:id', ah(async (req, res) => {
+  const pid = Number(req.params.id);
+  const person = await one('SELECT id, site_id FROM public.people WHERE id=$1', [pid]);
+  if (!person) throw notFound();
+  guard(req, person.site_id);
+  await q('DELETE FROM person_ext WHERE person_id=$1', [pid]);
   res.json({ ok: true });
 }));
-r.delete('/staff/:id', ah(async (req, res) => { const cur = await one('SELECT site_id FROM site_staff WHERE id=$1', [Number(req.params.id)]); if (!cur) throw notFound(); guard(req, cur.site_id); await q('DELETE FROM site_staff WHERE id=$1', [Number(req.params.id)]); res.json({ ok: true }); }));
 
+// Orari di dettaglio della sede (fasce mattina/pomeriggio per giorno, note operative). L'orario ufficiale sintetico resta in
+// public.sites.opening_hours; il sabato aperto o chiuso aggiorna il parametro dei giorni lavorabili in site_ext.
 r.put('/sites/:id/hours', ah(async (req, res) => {
   const id = Number(req.params.id); guard(req, id);
+  if (!(await one('SELECT id FROM public.sites WHERE id=$1', [id]))) throw notFound('Sede non trovata');
   const d = parse(z.object({ hours: z.array(z.object({ weekday: z.number().int().min(1).max(7), closed: z.boolean().default(false), open1: z.string().nullable().optional(), close1: z.string().nullable().optional(), open2: z.string().nullable().optional(), close2: z.string().nullable().optional(), note: z.string().nullable().optional() })) }), req.body);
   for (const h of d.hours) await q('INSERT INTO site_hours(site_id, weekday, closed, open1, close1, open2, close2, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (site_id, weekday) DO UPDATE SET closed=EXCLUDED.closed, open1=EXCLUDED.open1, close1=EXCLUDED.close1, open2=EXCLUDED.open2, close2=EXCLUDED.close2, note=EXCLUDED.note', [id, h.weekday, h.closed, h.open1 || null, h.close1 || null, h.open2 || null, h.close2 || null, h.note || null]);
-  // sabato aperto = usato per i giorni lavorabili
-  const sat = d.hours.find((h) => h.weekday === 6); if (sat) await q('UPDATE sites SET saturday_open=$2 WHERE id=$1', [id, !sat.closed]);
+  const sat = d.hours.find((h) => h.weekday === 6); if (sat) await upsertSiteExt(id, { saturday_open: !sat.closed });
   await audit(req, 'SITE_HOURS_UPDATE', 'site', id); res.json({ ok: true });
 }));
 
@@ -54,12 +79,11 @@ r.post('/sites/:id/assets', ah(async (req, res) => { const id = Number(req.param
 r.put('/assets/:id', ah(async (req, res) => { const id = Number(req.params.id); const cur = await one('SELECT site_id FROM site_assets WHERE id=$1', [id]); if (!cur) throw notFound(); guard(req, cur.site_id); const d = clean(parse(assetSchema.partial(), req.body)); const cols = Object.keys(d); if (cols.length) await q(`UPDATE site_assets SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')} WHERE id=$1`, [id, ...cols.map((c) => d[c])]); res.json({ ok: true }); }));
 r.delete('/assets/:id', ah(async (req, res) => { const cur = await one('SELECT site_id FROM site_assets WHERE id=$1', [Number(req.params.id)]); if (!cur) throw notFound(); guard(req, cur.site_id); await q('DELETE FROM site_assets WHERE id=$1', [Number(req.params.id)]); res.json({ ok: true }); }));
 
-// Profilo struttura (campi descrittivi) modificabile anche dal site manager
+// Profilo struttura (campi Retail di site_ext) modificabile anche dal site manager della sede
 r.put('/sites/:id/profile', ah(async (req, res) => {
   const id = Number(req.params.id); guard(req, id);
-  const d = clean(parse(z.object({ surface_sqm: z.number().int().nullable().optional(), rooms: z.number().int().nullable().optional(), boxes: z.number().int().nullable().optional(), parking: z.string().nullable().optional(), accessibility: z.string().nullable().optional(), services: z.string().nullable().optional(), description: z.string().nullable().optional(), opened_at: z.string().nullable().optional(), catchment_cities: z.string().nullable().optional(), phone: z.string().nullable().optional(), email: z.string().nullable().optional(), opening_hours: z.string().nullable().optional(), manager: z.string().nullable().optional(), sqm_waiting: z.number().int().nullable().optional() }), req.body));
-  const cols = Object.keys(d); if (cols.length) await q(`UPDATE sites SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...cols.map((c) => d[c])]);
-  await audit(req, 'SITE_PROFILE_UPDATE', 'site', id, cols); res.json({ ok: true });
+  const { data } = await upsertSiteExt(id, req.body);
+  await audit(req, 'SITE_PROFILE_UPDATE', 'site', id, Object.keys(data)); res.json({ ok: true });
 }));
 
 export default r;

@@ -856,35 +856,34 @@ function Anagrafica({
 }) {
   const set = p => upd(s => Object.assign(s, p));
   const n = t => str.personale.filter(p => p.tipo === t).length;
+  // Denominazione, indirizzo, contatti e site manager vengono dall'anagrafica unica della Suite (public.sites): qui in sola lettura
+  const ro = (l, v, placeholder) => React.createElement(Field, {
+    l
+  }, React.createElement("input", {
+    value: v || '',
+    readOnly: true,
+    placeholder: placeholder || 'da inserire in Amministrazione',
+    title: "Dato dell'anagrafica unica: si modifica in Amministrazione > Sedi",
+    style: {
+      background: 'var(--teal-050, #eef5f6)',
+      cursor: 'default'
+    }
+  }));
   return React.createElement("div", null, React.createElement("div", {
     className: "card"
-  }, React.createElement("h3", null, "Dati generali"), React.createElement("div", {
+  }, React.createElement("div", {
+    className: "rowline",
+    style: {
+      justifyContent: 'space-between',
+      alignItems: 'baseline'
+    }
+  }, React.createElement("h3", null, "Dati generali"), React.createElement("span", {
+    className: "small muted"
+  }, "Denominazione, indirizzo e contatti sono dell'anagrafica unica della Suite: ", React.createElement("a", {
+    href: "/admin/sites"
+  }, "Apri in Amministrazione"))), React.createElement("div", {
     className: "grid3"
-  }, React.createElement(Field, {
-    l: "Denominazione"
-  }, React.createElement("input", {
-    value: str.denominazione,
-    placeholder: "Es. Centro Medico Prato Nord",
-    onChange: e => set({
-      denominazione: e.target.value
-    })
-  })), React.createElement(Field, {
-    l: "Nome breve della sede (facoltativo)"
-  }, React.createElement("input", {
-    value: str.nomeSede || '',
-    placeholder: "Es. Sede M.L. King, Poliambulatorio",
-    title: "Distingue le sedi con la stessa denominazione negli elenchi e nei PDF",
-    onChange: e => set({
-      nomeSede: e.target.value
-    })
-  })), React.createElement(Field, {
-    l: "Site manager"
-  }, React.createElement("input", {
-    value: str.siteManager,
-    onChange: e => set({
-      siteManager: e.target.value
-    })
-  })), React.createElement(Field, {
+  }, ro("Denominazione", str.denominazione), ro("Indirizzo", str.indirizzo), ro("Site manager", str.siteManager), React.createElement(Field, {
     l: "Email del site manager (conferma presenze)"
   }, React.createElement("input", {
     type: "email",
@@ -916,29 +915,7 @@ function Anagrafica({
     onClick: () => set({
       logo: null
     })
-  }, "Rimuovi"))), React.createElement(Field, {
-    l: "Indirizzo"
-  }, React.createElement("input", {
-    value: str.indirizzo,
-    onChange: e => set({
-      indirizzo: e.target.value
-    })
-  })), React.createElement(Field, {
-    l: "Contatti telefonici"
-  }, React.createElement("input", {
-    value: str.telefono,
-    onChange: e => set({
-      telefono: e.target.value
-    })
-  })), React.createElement(Field, {
-    l: "Mail"
-  }, React.createElement("input", {
-    type: "email",
-    value: str.email,
-    onChange: e => set({
-      email: e.target.value
-    })
-  })))), React.createElement("div", {
+  }, "Rimuovi"))), ro("Contatti telefonici", str.telefono), ro("Mail", str.email))), React.createElement("div", {
     className: "card"
   }, React.createElement("h3", null, "Orari di apertura"), DAYS.map((dn, d) => React.createElement("div", {
     className: "avrow",

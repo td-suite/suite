@@ -15,7 +15,7 @@ export default function PromotionDetail() {
   const toast = useToast();
   const { user } = useAuth();
   const d = useApi(`/promotions/${id}`);
-  const sites = useApi('/sites');
+  const sites = useApi('/sites?network=1');
   const products = useApi('/products?active=all');
   const [v, setV] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -92,7 +92,7 @@ export default function PromotionDetail() {
             {p.prev_year?.revenue > 0 && <p className="small muted" style={{ marginTop: 8 }}>Stesso mese dell'anno scorso sulle stesse prestazioni: {eur0(p.prev_year.revenue)} ({num(p.prev_year.tickets)} accettazioni) · <Delta value={delta(p.revenue, p.prev_year.revenue)} /></p>}
           </Card>
           <Card title="Sedi coinvolte" className="card mt" actions={<span className="small muted">nessuna selezione = tutte</span>}>
-            <div className="row">{(sites.data || []).filter((x) => x.kind !== 'HEADQUARTER').map((x) => <label key={x.id} className="f inline small"><input type="checkbox" disabled={!writer} checked={(v.site_ids || []).includes(x.id)} onChange={() => s('site_ids', (v.site_ids || []).includes(x.id) ? v.site_ids.filter((i) => i !== x.id) : [...(v.site_ids || []), x.id])} />{x.name}</label>)}</div>
+            <div className="row">{(sites.data || []).map((x) => <label key={x.id} className="f inline small"><input type="checkbox" disabled={!writer} checked={(v.site_ids || []).includes(x.id)} onChange={() => s('site_ids', (v.site_ids || []).includes(x.id) ? v.site_ids.filter((i) => i !== x.id) : [...(v.site_ids || []), x.id])} />{x.name}</label>)}</div>
           </Card>
           <Card title="Campagne collegate" className="card mt" flush>{p.campaigns.length ? <table className="t"><tbody>{p.campaigns.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${base}/campagne/${c.id}`)}><td>{c.name}<div className="small muted">{c.channel} · {c.status}</div></td><td className="num">{eur0(c.spent ?? c.budget)}</td></tr>)}</tbody></table> : <Empty>Nessuna campagna collegata. <Link to={`${base}/campagne`}>Crea una campagna</Link> e collegala a questa promozione.</Empty>}</Card>
         </div>

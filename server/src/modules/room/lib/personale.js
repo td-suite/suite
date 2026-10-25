@@ -1,4 +1,6 @@
 // Funzioni condivise del modulo Personale sanitario: ore, tariffe, calcolo del rendiconto mensile, profilo dell'utente.
+// I professionisti sono le persone dell'anagrafica unica (public.people, kind MEDICO/SANITARIO/LP/DIPENDENTE) con la scheda Room
+// in person_ext: la vista professionisti_v le unisce con le colonne che il codice si aspetta (id, nome, tipo, profilo, email, attivo, dati).
 import { one, many } from '../db.js';
 import { r2 } from './util.js';
 
@@ -16,13 +18,16 @@ export const dow = (iso) => (new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7; 
 export const PROFILI = ['Medico', 'Infermiere', 'Tecnico di radiologia', 'Tecnico di laboratorio', 'Ostetrica', 'Fisioterapista', 'Biologo', 'Psicologo', 'Dietista', 'Logopedista', 'OSS', 'Altro'];
 export const DOC_TIPI = ['CV', 'DOCUMENTO_IDENTITA', 'CODICE_FISCALE', 'ALBO', 'ASSICURAZIONE', 'TITOLO_STUDIO', 'CONTRATTO', 'PRIVACY', 'ALTRO'];
 
-export const personKey = (nome) => (nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
+export const personKey = (nome) => (nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
 export const isAttivita = (nome) => /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
+
+// Colonne della vista professionisti_v usate dalle route (alias p)
+export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.site_id, p.attivo, p.dati, p.in_room, p.created_at, p.updated_at, p.updated_by';
 
 /** Tariffa oraria applicabile a una sede (eccezione per sede, altrimenti tariffa base). */
 export function tariffaPerSede(dati, sedeId) {
   const c = dati?.compenso || {};
-  const ex = (c.eccezioniSede || []).find((e) => e.sedeId === sedeId && e.tariffaOraria != null && e.tariffaOraria !== '');
+  const ex = (c.eccezioniSede || []).find((e) => String(e.sedeId) === String(sedeId) && e.tariffaOraria != null && e.tariffaOraria !== '');
   return Number(ex ? ex.tariffaOraria : c.tariffaOraria || 0);
 }
 
@@ -38,7 +43,7 @@ export function calcolaRendiconto(prof, presenze, sediById = {}) {
     const tariffa = tipo === 'ORARIO' ? tariffaPerSede(prof.dati, p.sede_id) : 0;
     const imp = r2(h * tariffa);
     ore = r2(ore + h); importo = r2(importo + imp);
-    const sede = sediById[p.sede_id] || p.sede_id;
+    const sede = sediById[p.sede_id] || String(p.sede_id);
     (perSede[p.sede_id] ||= { sedeId: p.sede_id, sede, ore: 0, importo: 0, presenze: 0 });
     perSede[p.sede_id].ore = r2(perSede[p.sede_id].ore + h); perSede[p.sede_id].importo = r2(perSede[p.sede_id].importo + imp); perSede[p.sede_id].presenze++;
     righe.push({ presenzaId: p.id, data: isoDate(p.data), sedeId: p.sede_id, sede, oraDa: p.ora_da, oraA: p.ora_a, ore: h, tariffa, importo: imp, attivita: p.attivita || '', nota: p.nota || '' });
@@ -57,18 +62,24 @@ export function calcolaRendiconto(prof, presenze, sediById = {}) {
     oneri: { imponibile, cassa, iva, ritenuta, totaleFattura, netto } };
 }
 
-/** Professionista collegato all'utente loggato (ruolo PROF). */
+/** Professionista (persona dell'anagrafica unica) collegato all'utente loggato: req.user.person_id, altrimenti la persona con la stessa email. */
 export async function profOfUser(u) {
   if (!u) return null;
-  return (await one('SELECT * FROM professionisti WHERE user_id=$1 AND attivo', [u.id])) || (await one('SELECT * FROM professionisti WHERE lower(email)=lower($1) AND attivo', [u.email]));
+  if (u.person_id) { const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [u.person_id]); if (p) return p; }
+  return one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE lower(p.email)=lower($1) AND p.attivo ORDER BY p.in_room DESC, p.id LIMIT 1`, [u.email]);
 }
 
+/** Etichette delle sedi attive dell'anagrafica unica: {id: 'Nome'} (con il primo pezzo dell'indirizzo se il nome si ripete). */
 export async function sediMap() {
-  const rows = await many("SELECT id, data->>'denominazione' AS den, data->>'nomeSede' AS nome, data->>'indirizzo' AS ind FROM strutture WHERE deleted_at IS NULL");
-  const m = {}; const cnt = {}; rows.forEach((r) => { cnt[r.den] = (cnt[r.den] || 0) + 1; });
-  rows.forEach((r) => { m[r.id] = r.nome ? `${r.den} · ${r.nome}` : cnt[r.den] > 1 && r.ind ? `${r.den} · ${r.ind.split(',')[0]}` : r.den; });
+  const rows = await many('SELECT id, name, address FROM public.sites WHERE active');
+  const m = {}; const cnt = {}; rows.forEach((r) => { cnt[r.name] = (cnt[r.name] || 0) + 1; });
+  rows.forEach((r) => { m[r.id] = cnt[r.name] > 1 && r.address ? `${r.name} · ${r.address.split(',')[0]}` : r.name; });
   return m;
 }
 
 /** Vista pubblica del professionista (senza dati fiscali) per elenchi e turni. */
-export const profLite = (p) => ({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, attivo: p.attivo, personaKey: p.persona_key, discipline: p.dati?.professionale?.discipline || [], compensoTipo: p.dati?.compenso?.tipo || 'ORARIO', userId: p.user_id || null });
+export const profLite = (p) => ({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, attivo: p.attivo, personaKey: personKey(p.nome), kind: p.kind, status: p.status, inRoom: p.in_room,
+  discipline: discipline(p), compensoTipo: p.dati?.compenso?.tipo || 'ORARIO' });
+
+/** Discipline: quella dell'anagrafica unica più quelle della scheda Room. */
+export const discipline = (p) => [...new Set([p.discipline, ...(p.dati?.professionale?.discipline || [])].filter(Boolean))];

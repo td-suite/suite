@@ -62,7 +62,7 @@ export const cleanBody = (v) => {
 export function CampaignModal({ value: v, onChange, onClose, onSave }) {
   const s = (k, x) => onChange({ ...v, [k]: x });
   const promos = useApi(`/promotions?year=${(v.start_date || '').slice(0, 4) || new Date().getFullYear()}`);
-  const sites = useApi('/sites');
+  const sites = useApi('/sites?network=1');
   const products = useApi('/products?active=all');
   const toggle = (k, id) => s(k, (v[k] || []).includes(id) ? v[k].filter((x) => x !== id) : [...(v[k] || []), id]);
   return (
@@ -85,7 +85,7 @@ export function CampaignModal({ value: v, onChange, onClose, onSave }) {
         <Field label="Note" className="span2"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field>
       </div>
       <div className="subhead">Sedi coinvolte (vuoto = tutte) · usate per l'attribuzione delle vendite nel periodo</div>
-      <div className="row">{(sites.data || []).filter((x) => x.kind !== 'HEADQUARTER').map((x) => <label key={x.id} className="f inline small"><input type="checkbox" checked={(v.site_ids || []).includes(x.id)} onChange={() => toggle('site_ids', x.id)} />{x.name}</label>)}</div>
+      <div className="row">{(sites.data || []).map((x) => <label key={x.id} className="f inline small"><input type="checkbox" checked={(v.site_ids || []).includes(x.id)} onChange={() => toggle('site_ids', x.id)} />{x.name}</label>)}</div>
       <div className="subhead">Prestazioni promosse (vuoto = tutte)</div>
       <select multiple size={6} value={(v.product_ids || []).map(String)} onChange={(e) => s('product_ids', [...e.target.selectedOptions].map((o) => Number(o.value)))} style={{ height: 'auto' }}>{(products.data?.rows || []).map((p) => <option key={p.id} value={p.id}>{p.code} · {p.description}</option>)}</select>
       <div className="help">Tieni premuto Ctrl (o Cmd) per selezionare più prestazioni.</div>

@@ -38,7 +38,7 @@ async function fullDetail(req, id) {
   o.packages = await many(`SELECT p.id, p.line_id, p.article_id, p.seq, p.status, p.barcode, p.lot, p.expiry, p.received_at, p.used_at, a.code AS article_code, a.name AS article_name, a.pack_label, a.color, a.gtin
     FROM packages p JOIN articles a ON a.id=p.article_id WHERE p.order_id=$1 ORDER BY a.sort, p.seq`, [id]);
   o.issues = await many('SELECT i.*, u.full_name AS opened_by_name, c.full_name AS closed_by_name FROM issues i LEFT JOIN users u ON u.id=i.opened_by LEFT JOIN users c ON c.id=i.closed_by WHERE i.order_id=$1 ORDER BY i.opened_at', [id]);
-  o.struttura = await one('SELECT * FROM strutture WHERE id=$1', [o.struttura_id]);
+  o.struttura = await one('SELECT * FROM sites_v WHERE id=$1', [o.struttura_id]);
   return o;
 }
 
@@ -64,9 +64,9 @@ r.get('/:id', ah(async (req, res) => {
 r.post('/', ah(async (req, res) => {
   const d = parse(z.object({ struttura_id: opt(z.coerce.number().int()), lines: lineSchema, submit: z.boolean().optional(), ...headSchema }), req.body);
   const strutturaId = isOps(req.user) ? d.struttura_id : req.user.struttura_id;
-  if (!strutturaId) throw bad('Struttura obbligatoria');
+  if (!strutturaId) throw bad('Sede obbligatoria');
   const s = await assertStruttura(req.user, strutturaId);
-  if (!s.active) throw bad('Struttura disattivata');
+  if (!s.active) throw bad('Sede disattivata');
   if (d.urgent && !d.urgent_reason) throw bad('Motivare la richiesta urgente');
   if (!d.lines.some((l) => l.qty > 0)) throw bad('Il carrello è vuoto');
   const origin = isOps(req.user) ? 'OPERATIONS' : 'CLIENTE';

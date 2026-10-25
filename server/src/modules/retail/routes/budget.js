@@ -18,7 +18,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: con
 r.get('/working-days', ah(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
   const siteId = req.query.site_id ? Number(req.query.site_id) : null;
-  const site = siteId ? await one('SELECT saturday_open FROM sites WHERE id=$1', [siteId]) : null;
+  const site = siteId ? await one('SELECT saturday_open FROM sites_v WHERE id=$1', [siteId]) : null;
   const rows = await many('SELECT * FROM working_days WHERE year=$1 AND coalesce(site_id,0)=$2', [year, siteId || 0]);
   const actual = await many(`SELECT date_part('month', sale_date)::int AS month, count(DISTINCT sale_date)::int AS days, coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets FROM sales WHERE date_part('year', sale_date)=$1 ${siteId ? 'AND site_id=$2' : ''} GROUP BY 1`, siteId ? [year, siteId] : [year]);
   const months = [];
@@ -39,7 +39,7 @@ r.put('/working-days', requireWrite, ah(async (req, res) => {
 // Applica il calendario standard (festività nazionali) all'anno, per il network e per ogni sede
 r.post('/working-days/default', requireWrite, ah(async (req, res) => {
   const { year } = parse(z.object({ year: z.number().int() }), req.body);
-  const sites = await many("SELECT id, saturday_open FROM sites WHERE active AND kind<>'HEADQUARTER'");
+  const sites = await many('SELECT id, saturday_open FROM sites_v WHERE active AND in_network');
   for (let m = 1; m <= 12; m++) {
     await q('INSERT INTO working_days(year, month, site_id, planned) VALUES ($1,$2,NULL,$3) ON CONFLICT (year, month, coalesce(site_id, 0)) DO UPDATE SET planned=EXCLUDED.planned', [year, m, plannedDays(year, m, { saturday: true })]);
     for (const s of sites) await q('INSERT INTO working_days(year, month, site_id, planned) VALUES ($1,$2,$3,$4) ON CONFLICT (year, month, coalesce(site_id, 0)) DO UPDATE SET planned=EXCLUDED.planned', [year, m, s.id, plannedDays(year, m, { saturday: s.saturday_open })]);
@@ -53,7 +53,7 @@ const ACTUAL = `SELECT date_part('month', s.sale_date)::int AS month, p.line_id,
 r.get('/budgets', ah(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
   const [budgets, actual, lines, sites, prev] = await Promise.all([
-    many('SELECT * FROM budgets WHERE year=$1', [year]), many(ACTUAL, [year]), many('SELECT id, code, name, color FROM product_lines ORDER BY sort_order'), many("SELECT id, code, name, kind FROM sites WHERE active AND kind<>'HEADQUARTER' ORDER BY sort_order, name"), many(ACTUAL, [year - 1]),
+    many('SELECT * FROM budgets WHERE year=$1', [year]), many(ACTUAL, [year]), many('SELECT id, code, name, color FROM product_lines ORDER BY sort_order'), many('SELECT id, code, name, kind FROM sites_v WHERE active AND in_network ORDER BY sort_order, name'), many(ACTUAL, [year - 1]),
   ]);
   const sum = (rows, f) => rows.filter(f).reduce((a, x) => a + Number(x.amount), 0);
   const byLine = lines.map((l) => ({ line: l, months: Array.from({ length: 12 }, (_, i) => { const m = i + 1; const b = budgets.find((x) => x.month === m && x.line_id === l.id && !x.site_id); return { month: m, budget: Number(b?.amount || 0), budget_tickets: b?.tickets ?? null, actual: sum(actual, (x) => x.month === m && x.line_id === l.id), prev: sum(prev, (x) => x.month === m && x.line_id === l.id) }; }) }));
@@ -73,8 +73,8 @@ r.put('/budgets', requireWrite, ah(async (req, res) => {
 r.get('/budgets/template.xlsx', ah(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
   const lines = await many('SELECT code, name FROM product_lines ORDER BY sort_order');
-  const sites = await many("SELECT code, name FROM sites WHERE active AND kind<>'HEADQUARTER' ORDER BY sort_order, name");
-  const budgets = await many('SELECT b.*, pl.code AS line_code, s.code AS site_code FROM budgets b LEFT JOIN product_lines pl ON pl.id=b.line_id LEFT JOIN sites s ON s.id=b.site_id WHERE year=$1', [year]);
+  const sites = await many('SELECT code, name FROM sites_v WHERE active AND in_network ORDER BY sort_order, name');
+  const budgets = await many('SELECT b.*, pl.code AS line_code, s.code AS site_code FROM budgets b LEFT JOIN product_lines pl ON pl.id=b.line_id LEFT JOIN sites_v s ON s.id=b.site_id WHERE year=$1', [year]);
   const cols = [{ header: 'Codice', key: 'code' }, { header: 'Nome', key: 'name', width: 36 }, ...Array.from({ length: 12 }, (_, i) => ({ header: `${String(i + 1).padStart(2, '0')}/${year}`, key: `m${i + 1}`, money: true, width: 13 }))];
   const rowFor = (code, name, f) => { const o = { code, name }; for (let m = 1; m <= 12; m++) o[`m${m}`] = Number(budgets.find((b) => b.month === m && f(b))?.amount || 0); return o; };
   const buf = await toXlsx([
@@ -92,7 +92,7 @@ r.post('/budgets/import', requireWrite, upload.single('file'), ah(async (req, re
   const year = Number(req.body.year || new Date().getFullYear());
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(req.file.buffer);
-  const lines = await many('SELECT id, code FROM product_lines'); const sites = await many('SELECT id, code, name FROM sites');
+  const lines = await many('SELECT id, code FROM product_lines'); const sites = await many('SELECT id, code, name FROM sites_v');
   let saved = 0; const errors = []; const ops = [];
   for (const ws of wb.worksheets) {
     if (/istruzioni/i.test(ws.name)) continue;
@@ -121,7 +121,7 @@ r.get('/variance', ah(async (req, res) => {
   const prevRows = await many(ACTUAL, [year - 1]);
   const budgets = await many('SELECT * FROM budgets WHERE year=$1 AND month=$2', [year, month]);
   const lines = await many('SELECT id, code, name FROM product_lines ORDER BY sort_order');
-  const sites = await many("SELECT id, code, name, kind, city FROM sites WHERE active AND kind<>'HEADQUARTER' ORDER BY sort_order, name");
+  const sites = await many('SELECT id, code, name, kind, city FROM sites_v WHERE active AND in_network ORDER BY sort_order, name');
   const sum = (rows, f) => rows.filter((x) => x.month === month && f(x)).reduce((a, x) => a + Number(x.amount), 0);
   const mk = (label, budget, actual, prev, extra) => ({ label, budget, actual, prev, variance: actual - budget, variance_pct: budget ? Math.round(((actual - budget) / budget) * 1000) / 10 : null, yoy_pct: prev ? Math.round(((actual - prev) / prev) * 1000) / 10 : null, ...extra });
   const byLine = lines.map((l) => mk(l.name, Number(budgets.find((b) => b.line_id === l.id && !b.site_id)?.amount || 0), sum(actualRows, (x) => x.line_id === l.id && (!siteId || x.site_id === siteId)), sum(prevRows, (x) => x.line_id === l.id && (!siteId || x.site_id === siteId)), { line_id: l.id }));

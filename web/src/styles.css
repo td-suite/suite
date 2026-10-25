@@ -836,3 +836,14 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .mod { min-height: 100%; }
 .mod-banner { display: flex; gap: 10px; align-items: center; padding: 8px 18px; background: var(--amber-100); color: var(--amber); font-size: 12.5px; border-bottom: 1px solid #efd9a0; }
 .mod-banner .ico { width: 16px; height: 16px; flex: none; }
+
+/* Caricamento anagrafiche */
+.import-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.import-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; background: var(--card); }
+.import-card .n { font-weight: 760; display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.import-card .step { width: 24px; height: 24px; border-radius: 50%; background: var(--teal); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+.site-photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.site-photos .ph { position: relative; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.site-photos .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.site-photos .ph .iconbtn { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,.9); }
+.site-photos .ph.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-style: dashed; color: var(--teal); font: inherit; font-weight: 700; cursor: pointer; }

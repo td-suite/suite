@@ -101,13 +101,13 @@ export async function syncConnector(kind, userId, { from, to } = {}) {
       imp = await runImport({ source: 'TUOTEMPO', dataset: 'PRODUCTS', buffer: Buffer.from(csv, 'utf8'), filename: `tuotempo_catalogo_${new Date().toISOString().slice(0, 10)}.csv`, mapping: { code: 'codice', description: 'descrizione', specialty: 'specialita', price: 'prezzo', duration_min: 'durata' }, userId });
     }
     // Aree -> sedi: abbina per nome o città e salva l'areaid nelle impostazioni della sede (per i filtri futuri)
-    const sites = await many('SELECT id, code, name, city FROM sites');
+    const sites = await many('SELECT id, code, name, city FROM sites_v WHERE active AND in_network');
     const normS = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
     let matched = 0; const unmatched = [];
     for (const a of areas) {
       const t = normS(a.areaTitle || a.webTitle); const city = normS(a.city);
       const site = sites.find((x) => normS(x.name) === t) || sites.find((x) => t && normS(x.name).includes(t)) || sites.find((x) => city && normS(x.city) === city && sites.filter((y) => normS(y.city) === city).length === 1) || null;
-      if (site) { matched++; await q(`UPDATE sites SET tuotempo_area_id=$2, updated_at=now() WHERE id=$1`, [site.id, a.areaid]).catch(() => {}); } else unmatched.push(a.areaTitle);
+      if (site) { matched++; await q(`INSERT INTO site_ext (site_id, tuotempo_area_id) VALUES ($1,$2) ON CONFLICT (site_id) DO UPDATE SET tuotempo_area_id=EXCLUDED.tuotempo_area_id, updated_at=now()`, [site.id, a.areaid]).catch(() => {}); } else unmatched.push(a.areaTitle);
     }
     const summary = { synced_at: new Date().toISOString(), activities: activities.length, areas: areas.length, areas_matched: matched, areas_unmatched: unmatched.slice(0, 20), resources: resources.length, resources_active: resources.filter((r) => r.status === 'a' && r.isHidden !== '1').length, machines: resources.filter((r) => r.is_machine === '1').length, insurances: insurances.length, insurance_titles: insurances.map((i) => i.insurance_title).slice(0, 50) };
     await q(`UPDATE connectors SET settings = settings || jsonb_build_object('tuotempo', $2::jsonb) WHERE id=$1`, [c.id, JSON.stringify(summary)]);
