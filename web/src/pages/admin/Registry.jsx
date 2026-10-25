@@ -138,7 +138,7 @@ export function Sites() {
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' },
     { key: '_geo', label: 'Coordinate', type: 'action', button: 'Trova dall\'indirizzo', icon: 'pin', help: 'Da via, civico, CAP e città (OpenStreetMap). Se restano vuote, la Suite le completa da sola al salvataggio.', run: async (f, patch) => { const g = await api.post('/geocode', { address: f.address || null, zip: f.zip || null, city: f.city || null, province: f.province || null }); patch({ lat: g.lat, lng: g.lng }); toast(g.precision === 'civico' ? `Trovato al civico: ${g.label}` : g.precision === 'via' ? `Trovata la via (civico non riconosciuto): ${g.label}` : `Trovata solo la città: ${g.label}`, g.precision === 'citta' ? 'warn' : undefined); } },
     { key: 'sort_order', label: 'Ordine', type: 'number' },
-    { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
+    { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
   const save = async (body) => { const b = { ...body, organization_id: body.organization_id ? Number(body.organization_id) : null }; if (modal?.id) await api.put(`/sites/${modal.id}`, b); else await api.post('/sites', b); toast('Sede salvata'); reload(); };
   return (
@@ -187,7 +187,7 @@ export function Organizations() {
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
     { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
-    { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
+    { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
   const save = async (body) => { if (modal?.id) await api.put(`/organizations/${modal.id}`, body); else await api.post('/organizations', body); toast('Legal entity salvata'); reload(); };
   return (
@@ -310,7 +310,7 @@ export function PositionsEditor({ person, onChange }) {
   return (
     <>
       <div className="dep-row">
-        <div><div className="small strong">Afferisce a</div><div className="small muted">L'unità dell'organigramma a cui appartiene: scendi nell'albero fino a dove serve (area, sede, reparto o funzione)</div></div>
+        <div><div className="small strong">Afferisce a</div><div className="small muted">Scendi nell'albero fino all'unità di appartenenza (area, sede, reparto o funzione): si salva a ogni passo e l'incarico di afferenza si sposta con te.</div></div>
         <UnitTreePicker units={units.data || []} value={person.unit_id} onChange={setUnit} />
       </div>
       <div className="dep-row">
@@ -404,7 +404,7 @@ function Units() {
               <button className="iconbtn" aria-label="Incarichi" title="Incarichi" onClick={() => setPos(u)}><Icon name="users" /></button>
               <button className="iconbtn" aria-label="Aggiungi unità dipendente" title="Aggiungi unità dipendente" onClick={() => setModal({ parent_id: u.id, kind: u.kind === 'SEDE' ? 'REPARTO' : u.kind === 'DIREZIONE' ? 'AREA' : 'SEDE', site_id: u.site_id || '' })}><Icon name="plus" /></button>
               <button className="iconbtn" aria-label="Modifica" onClick={() => setModal(u)}><Icon name="edit" /></button>
-              <DeleteButton label={`l'unità ${u.name}`} text="Possibile solo se non ha unità dipendenti né persone assegnate; altrimenti disattivala." onDelete={async () => { await api.del(`/org-units/${u.id}`); toast('Unità eliminata'); reload(); }} />
+              <DeleteButton label={`l'unità ${u.name}`} text={`Le unità dipendenti e le persone afferenti passano a ${u.parent_name || 'nessuna unità superiore'}; gli incarichi di questa unità vengono rimossi.${u.site_id ? ' La sede resta in anagrafica, senza nodo nell\'organigramma.' : ''}`} onDelete={async () => { const r = await api.del(`/org-units/${u.id}`); toast(`Unità eliminata${r.units || r.people ? ` (${r.units} unità e ${r.people} persone spostate)` : ''}`); reload(); }} />
             </td>
           </tr>)}
         </tbody></table></div>}

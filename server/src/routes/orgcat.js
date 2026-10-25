@@ -86,14 +86,18 @@ r.put('/org-units/:id', requireAdmin, ah(async (req, res) => {
   res.json(row);
 }));
 r.delete('/org-units/:id', requireAdmin, ah(async (req, res) => {
+  // Si elimina sempre: le unità dipendenti e le persone passano all'unità superiore, gli incarichi dell'unità spariscono;
+  // se era il nodo di una sede, la sede resta in anagrafica ma senza nodo (riattivabile dal form Sedi).
   const id = Number(req.params.id);
-  const n = (await one('SELECT count(*)::int AS n FROM people WHERE unit_id=$1', [id])).n;
-  if (n) throw bad(`${n} person${n === 1 ? 'a appartiene' : 'e appartengono'} a questa unità: spostale prima, oppure disattivala`);
-  const c = (await one('SELECT count(*)::int AS n FROM org_units WHERE parent_id=$1', [id])).n;
-  if (c) throw bad('L\'unità ha unità dipendenti: spostale o eliminale prima');
-  const row = await one('DELETE FROM org_units WHERE id=$1 RETURNING name', [id]); if (!row) throw notFound();
-  await audit(req, 'ORG_UNIT_DELETED', { entity: 'org_unit', entityId: id, label: row.name });
-  res.json({ ok: true });
+  const u = await one('SELECT * FROM org_units WHERE id=$1', [id]); if (!u) throw notFound();
+  const moved = { units: 0, people: 0, positions: 0 };
+  moved.units = (await q('UPDATE org_units SET parent_id=$2 WHERE parent_id=$1', [id, u.parent_id])).rowCount;
+  moved.people = (await q('UPDATE people SET unit_id=$2, updated_at=now() WHERE unit_id=$1', [id, u.parent_id])).rowCount;
+  moved.positions = (await q('DELETE FROM org_positions WHERE unit_id=$1', [id])).rowCount;
+  if (u.site_id) await q('UPDATE sites SET org_node=FALSE WHERE id=$1', [u.site_id]);
+  await q('DELETE FROM org_units WHERE id=$1', [id]);
+  await audit(req, 'ORG_UNIT_DELETED', { entity: 'org_unit', entityId: id, label: u.name, data: moved });
+  res.json({ ok: true, ...moved });
 }));
 // incarichi
 const posSchema = z.object({ unit_id: z.number().int(), person_id: z.number().int(), role_id: z.number().int().nullable().optional(), is_head: z.boolean().optional(), sort_order: z.number().int().optional(), note: z.string().max(300).nullable().optional() });
@@ -144,11 +148,14 @@ export async function syncPersonFromPosition(personId, c = { query: q }) {
   await c.query(`UPDATE people SET unit_id = coalesce(unit_id, $2), role_id = coalesce(role_id, $3), site_id = coalesce(site_id, $4), updated_at=now() WHERE id=$1`, [personId, pos.unit_id, pos.role_id, pos.site_id]);
 }
 // Dalla scheda persona agli incarichi: reparto + ruolo scelti in Persone diventano (o aggiornano) l'incarico non da responsabile in quel reparto
-export async function syncPositionFromPerson(p) {
+export async function syncPositionFromPerson(p, c = { query: q }) {
+  // l'incarico "di afferenza" segue la scheda: se l'afferenza cambia si sposta (non resta una copia nell'unità precedente)
+  await c.query(`DELETE FROM org_positions WHERE person_id=$1 AND source='AFFERENZA' AND unit_id IS DISTINCT FROM $2`, [p.id, p.unit_id ?? null]);
   if (!p?.unit_id) return;
-  const ex = await one('SELECT id, role_id, is_head FROM org_positions WHERE person_id=$1 AND unit_id=$2 ORDER BY is_head DESC, id LIMIT 1', [p.id, p.unit_id]);
-  if (ex) { if (!ex.is_head && ex.role_id !== (p.role_id ?? null)) await q('UPDATE org_positions SET role_id=$2 WHERE id=$1', [ex.id, p.role_id ?? null]); return; }
-  await upsertPosition({ query: q }, { unit_id: p.unit_id, person_id: p.id, role_id: p.role_id ?? null, is_head: false });
+  const ex = (await c.query('SELECT id, role_id, is_head FROM org_positions WHERE person_id=$1 AND unit_id=$2 ORDER BY is_head DESC, id LIMIT 1', [p.id, p.unit_id])).rows[0];
+  if (ex) { if (!ex.is_head && ex.role_id !== (p.role_id ?? null)) await c.query('UPDATE org_positions SET role_id=$2 WHERE id=$1', [ex.id, p.role_id ?? null]); return; }
+  const row = await upsertPosition(c, { unit_id: p.unit_id, person_id: p.id, role_id: p.role_id ?? null, is_head: false });
+  if (row?.id) await c.query(`UPDATE org_positions SET source='AFFERENZA' WHERE id=$1`, [row.id]);
 }
 
 // ---- Esportazioni dell'organigramma
@@ -175,7 +182,7 @@ export async function ensureSiteNode(c, siteId) {
 // Ogni sede TD attiva (non i punti dei clienti service) ha il suo nodo Sede nell'albero: se manca nasce sotto la Direzione,
 // poi si sposta sotto l'area giusta in Organizzazione (o lo fa il file Organigramma con il codice sede).
 export async function ensureSiteNodes(c = { query: q }) {
-  const missing = (await c.query(`SELECT s.id FROM sites s WHERE s.active AND s.kind <> 'SERVICE' AND NOT EXISTS (SELECT 1 FROM org_units u WHERE u.kind='SEDE' AND u.site_id=s.id) ORDER BY s.sort_order, s.name`)).rows;
+  const missing = (await c.query(`SELECT s.id FROM sites s WHERE s.active AND s.org_node AND s.kind <> 'SERVICE' AND NOT EXISTS (SELECT 1 FROM org_units u WHERE u.kind='SEDE' AND u.site_id=s.id) ORDER BY s.sort_order, s.name`)).rows;
   for (const s of missing) await ensureSiteNode(c, s.id);
   // il nodo sede segue il nome della sede
   await c.query(`UPDATE org_units u SET name = s.name, updated_at=now() FROM sites s WHERE u.kind='SEDE' AND u.site_id = s.id AND u.name <> s.name
