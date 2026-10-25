@@ -204,7 +204,7 @@ async function moduleRefs(table, col, id) {
       WHERE tc.constraint_type='FOREIGN KEY' AND ccu.table_schema='public' AND ccu.table_name=$1 AND ccu.column_name=$2`, [table, col])).rows;
   const out = [];
   for (const f of fks) {
-    if (f.table_schema === 'public' && ['grant_scopes', 'users', 'people', 'sites', 'read_log', 'audit_log', 'search_index', 'notifications', 'files', 'api_keys', 'ingest_batches', 'module_state', 'grants', 'app_settings'].includes(f.table_name)) continue;
+    if (f.table_schema === 'public' && ['grant_scopes', 'users', 'people', 'sites', 'read_log', 'audit_log', 'search_index', 'notifications', 'files', 'api_keys', 'ingest_batches', 'module_state', 'grants', 'app_settings', 'org_units', 'org_positions'].includes(f.table_name)) continue;
     if (/_ext$/.test(f.table_name) || f.table_name === 'person_areas') continue;   // estensioni: vanno via in cascata
     const n = (await q(`SELECT count(*)::int AS n FROM "${f.table_schema}"."${f.table_name}" WHERE "${f.column_name}"=$1`, [id]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n;
     if (n) out.push(`${f.table_schema === 'public' ? '' : f.table_schema + ': '}${f.table_name} (${n})`);

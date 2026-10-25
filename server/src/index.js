@@ -50,7 +50,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net', 'https://*.basemaps.cartocdn.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net', 'https://server.arcgisonline.com', 'https://*.arcgisonline.com', 'https://tile.openstreetmap.org'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'", 'data:'],

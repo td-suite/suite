@@ -12,8 +12,12 @@ export default function SitesMap({ sites, kinds, onSelect, focusId, height = 420
   useEffect(() => {
     if (!el.current || map.current) return;
     map.current = L.map(el.current, { scrollWheelZoom: false, zoomControl: true }).setView([43.5, 11.0], 8);
-    // Tile CARTO (uso gratuito per applicazioni come questa): i server volontari di OpenStreetMap rifiutano le app (403)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' }).addTo(map.current);
+    // Tile Esri World Street Map: senza chiave, consentite alle applicazioni con attribuzione (OSM volontari e CARTO le rifiutano)
+    // Se i tile Esri non arrivano, si passa a OpenStreetMap inviando il referer (la loro policy blocca le richieste anonime)
+    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors' }).addTo(map.current);
+    let errors = 0;
+    esri.on('tileerror', () => { if (++errors < 4 || !map.current) return; esri.off('tileerror'); map.current.removeLayer(esri);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map.current); });
     layer.current = L.layerGroup().addTo(map.current);
     return () => { map.current?.remove(); map.current = null; };
   }, []);
