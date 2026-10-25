@@ -65,7 +65,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/api-keys', icon: 'key', label: 'Chiavi API' },
         { group: 'Anagrafiche' },
         { to: '/admin/sites', icon: 'building', label: 'Sedi' },
-        { to: '/admin/organizations', icon: 'folder', label: 'Organizzazioni' },
+        { to: '/admin/organizations', icon: 'folder', label: 'Legal entity' },
         { to: '/admin/people', icon: 'user', label: 'Persone' },
         { to: '/admin/organization', icon: 'grid', label: 'Organizzazione' },
         { group: 'Dati' },

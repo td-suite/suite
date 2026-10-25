@@ -48,7 +48,7 @@ function BankAccounts({ company }) {
 }
 
 // Aziende: organizzazioni della Suite (public.organizations, kind SOCIETA o GRUPPO) con le impostazioni Cash (org_ext).
-// Qui non si creano, rinominano o disattivano aziende: si fa in Amministrazione > Organizzazioni. Si modificano solo i
+// Qui non si creano, rinominano o disattivano aziende: si fa in Amministrazione, Legal entity. Si modificano solo i
 // campi Cash: carta intestata e logo della distinta, conti correnti, IBAN e mandato SEPA, capofila.
 const ADMIN_ORGS = '/admin/organizations';
 const empty = { letterhead_footer: '', iban: '', bic: '', sepa_mandate_id: '', sepa_mandate_date: '', is_franchisor: false };

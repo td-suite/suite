@@ -8,7 +8,7 @@ import { sanitizeSnippet } from '../format.js';
 const KIND = {
   news: { label: 'News', tone: 'teal', icon: 'news' }, circolare: { label: 'Circolare', tone: 'mauve', icon: 'file' }, blog: { label: 'Blog', tone: 'amber', icon: 'edit' },
   post: { label: 'Bacheca', tone: 'blue', icon: 'comment' }, event: { label: 'Evento', tone: 'green', icon: 'calendar' }, person: { label: 'Persona', tone: 'mauve', icon: 'user' },
-  site: { label: 'Sede', tone: 'grey', icon: 'building' }, org: { label: 'Organizzazione', tone: 'grey', icon: 'folder' }, module: { label: 'Modulo', tone: 'teal', icon: 'grid' },
+  site: { label: 'Sede', tone: 'grey', icon: 'building' }, org: { label: 'Legal entity', tone: 'grey', icon: 'folder' }, module: { label: 'Modulo', tone: 'teal', icon: 'grid' },
   file: { label: 'File', tone: 'grey', icon: 'file' },
 };
 const kindOf = (k = '') => KIND[String(k).toLowerCase()] || { label: k, tone: 'grey', icon: 'info' };

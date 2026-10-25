@@ -7,7 +7,7 @@ export default {
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Anagrafiche' },
-    { to: 'organizzazioni', icon: 'building', label: 'Organizzazioni' },
+    { to: 'organizzazioni', icon: 'building', label: 'Legal entity' },
     { to: 'contratti', icon: 'list', label: 'Tutti i contratti' },
     { to: 'fascicoli', icon: 'folder', label: 'Fascicoli autorizzazione' },
     { group: 'Sezioni' },

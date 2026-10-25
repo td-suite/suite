@@ -11,7 +11,7 @@ export default function Guide() {
           <p>Il GANTT parte dal lunedì della settimana del preliminare se indicato, altrimenti del closing. Le attività vengono dal catalogo comune (adempimenti generali e operativi) oppure si aggiungono su misura.</p>
         </Card>
         <Card title="Target e persone: anagrafica unica">
-          <p>Le <b>società target</b> sono organizzazioni della Suite di tipo <i>Target</i>: si creano e si modificano in <b>Amministrazione &gt; Organizzazioni</b> e qui si aggiungono al piano con "+ Aggiungi target" (le attività del piano generale vengono proposte subito). Al closing l'Amministrazione cambia il tipo in <i>Società</i> e il piano resta agganciato. "Rimuovi dal piano" toglie attività e parametri, non l'organizzazione.</p>
+          <p>Le <b>società target</b> sono organizzazioni della Suite di tipo <i>Target</i>: si creano e si modificano in <b>Amministrazione, Legal entity</b> e qui si aggiungono al piano con "+ Aggiungi target" (le attività del piano generale vengono proposte subito). Al closing l'Amministrazione cambia il tipo in <i>Società</i> e il piano resta agganciato. "Rimuovi dal piano" toglie attività e parametri, non l'organizzazione.</p>
           <p>Il <b>team di integrazione</b> è fatto di persone dell'anagrafica (<b>Amministrazione &gt; Persone</b>): nel cruscotto si scelgono le persone e si assegna a ciascuna il ruolo nel piano (CEO, CFO, Legal &amp; Compliance...). Owner e support delle attività si scelgono tra queste persone; chi ha accesso al modulo compare per primo nell'elenco.</p>
         </Card>
         <Card title="Modificare un'attività">

@@ -90,7 +90,7 @@ export default function ContractForm() {
               <b>{partner.name}</b> · {[partner.street, partner.zip, partner.city, partner.prov ? `(${partner.prov})` : ''].filter(Boolean).join(', ')}<br />
               P.IVA {partner.vat || '–'} · C.F. {partner.tax_code || partner.vat || '–'} · PEC {partner.pec || '–'} · SDI {partner.sdi || '–'}<br />
               Legale rappresentante: {partner.legal_rep || '–'}{partner.signer ? ` · firmatario: ${partner.signer}${partner.signer_role ? ` (${partner.signer_role})` : ''}` : ''}
-              {(!partner.vat && !partner.tax_code) || !partner.street || !(partner.signer || partner.legal_rep) ? <div className="red" style={{ marginTop: 4 }}>Dati incompleti per la generazione del documento: P.IVA o C.F. e indirizzo in Amministrazione &gt; Organizzazioni, firmatario nelle impostazioni Business dell'organizzazione.</div> : null}
+              {(!partner.vat && !partner.tax_code) || !partner.street || !(partner.signer || partner.legal_rep) ? <div className="red" style={{ marginTop: 4 }}>Dati incompleti per la generazione del documento: P.IVA o C.F. e indirizzo in Amministrazione, Legal entity, firmatario nelle impostazioni Business dell'organizzazione.</div> : null}
             </div>
           )}
         </Card>

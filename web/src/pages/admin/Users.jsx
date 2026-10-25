@@ -233,7 +233,7 @@ export function UserDetail() {
                 <Field label="Metodo di accesso"><select value={f.auth_provider} onChange={set('auth_provider')}>{Object.entries(PROVIDER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                 <Field label="Lingua"><select value={f.lang} onChange={set('lang')}><option value="it">Italiano</option><option value="en">English</option></select></Field>
                 <Field label="Sede"><select value={f.site_id} onChange={set('site_id')}><option value="">Nessuna</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.code} · {s.name}</option>)}</select></Field>
-                <Field label="Organizzazione"><select value={f.organization_id} onChange={set('organization_id')}><option value="">Nessuna</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
+                <Field label="Legal entity"><select value={f.organization_id} onChange={set('organization_id')}><option value="">Nessuna</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
               </div>
               {!isNew && <Field label="Persona in rubrica" help="Collega l'account alla scheda anagrafica (ruolo, area, responsabile)."><select value={f.person_id} onChange={set('person_id')}><option value="">Nessuna</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select></Field>}
               {isNew && ['LOCAL', 'BOTH'].includes(f.auth_provider) && <>

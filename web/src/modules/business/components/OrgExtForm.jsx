@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { Field, ErrorBox, Modal } from './ui.jsx';
 
 // Impostazioni Business di un'organizzazione dell'anagrafica unica (tracciato TD-SGI-MOD173, parte commerciale).
-// Ragione sociale, P.IVA, indirizzo, PEC e stato si modificano in Amministrazione > Organizzazioni.
+// Ragione sociale, P.IVA, indirizzo, PEC e stato si modificano in Amministrazione, Legal entity.
 export const EMPTY_EXT = {
   legal_rep: '', signer: '', signer_role: '', contract_services: '', lab_reference: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)', billing_ref: '',
   sales_contact: '', sales_email: '', sales_phone: '',
@@ -92,7 +92,7 @@ export function OrgExtModal({ org, onClose, onSaved }) {
       <div className="alert info small" style={{ marginBottom: 14 }}>
         <b>{org.name}</b> · {ORG_KIND[org.kind] || org.kind} · {[org.street, org.zip, org.city, org.prov ? `(${org.prov})` : ''].filter(Boolean).join(', ') || 'indirizzo non indicato'}<br />
         P.IVA {org.vat || '–'} · C.F. {org.tax_code || '–'} · PEC {org.pec || '–'} · SDI {org.sdi || '–'}<br />
-        I dati anagrafici si modificano in <a href="/admin/organizations">Amministrazione &gt; Organizzazioni</a>.
+        I dati anagrafici si modificano in <a href="/admin/organizations">Amministrazione, Legal entity</a>.
       </div>
       <OrgExtFields p={p} set={set} />
     </Modal>

@@ -225,7 +225,7 @@ function XlsxImport({ onDone }) {
   return (
     <>
       <Card title="Caricamento anagrafiche" icon="upload" actions={isOwner(user) && <button className="btn sm ghost danger" onClick={() => setReset(true)}><Icon name="alert" />Azzera la Suite</button>}>
-        <p className="small muted" style={{ marginTop: 0 }}>Nell'ordine: Organizzazioni e clienti (chi ha partita IVA), Sedi (i luoghi, ognuno con il codice della sua organizzazione), Persone, Utenti. Scarica il modello, compilalo (foglio "Istruzioni" incluso), caricalo. Le righe con la stessa chiave aggiornano quelle esistenti. Massimo 1000 righe per file.</p>
+        <p className="small muted" style={{ marginTop: 0 }}>Nell'ordine: Legal entity (chi ha partita IVA: società del gruppo, clienti, fornitori), Sedi (i luoghi, ognuno con il codice della sua legal entity), Persone, Utenti. Scarica il modello, compilalo (foglio "Istruzioni" incluso), caricalo. Le righe con la stessa chiave aggiornano quelle esistenti. Massimo 1000 righe per file.</p>
         <div className="import-grid">
           {(datasets || []).map((ds, i) => (
             <div key={ds.key} className="import-card">

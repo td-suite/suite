@@ -3,7 +3,7 @@ import { Field, MultiSelect, useApi } from '../ui.jsx';
 
 const TYPES = [
   { value: 'ALL', label: 'Tutti' }, { value: 'INTERNAL', label: 'Solo interni' }, { value: 'SITES', label: 'Sedi' },
-  { value: 'ORGS', label: 'Organizzazioni' }, { value: 'MODULE', label: 'Modulo' }, { value: 'USERS', label: 'Utenti' },
+  { value: 'ORGS', label: 'Legal entity' }, { value: 'MODULE', label: 'Modulo' }, { value: 'USERS', label: 'Utenti' },
 ];
 
 export function audienceLabel(a, ctx = {}) {

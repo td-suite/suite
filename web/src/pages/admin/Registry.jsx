@@ -125,7 +125,7 @@ export function Sites() {
   const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || `${s.code} ${s.name} ${s.city || ''} ${s.organization_name || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
-    { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
+    { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: 'manager_name', label: 'Responsabile' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' }, { key: 'sort_order', label: 'Ordine', type: 'number' },
@@ -136,13 +136,13 @@ export function Sites() {
     <div className="page">
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button>} />
       <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(isService).length }]} />
-      {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente in Organizzazioni. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
+      {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente o città' : 'Codice, nome o città'} /></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
-        {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessun punto cliente: si caricano dal file Sedi con tipo SERVICE e il codice dell\'organizzazione cliente' : 'Nessuna sede'} />}
-        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Città</th><th>Organizzazione</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
+        {data && !rows.length && <Empty icon="building" title={tab === 'service' ? 'Nessun punto cliente: si caricano dal file Sedi con tipo SERVICE e il codice della legal entity del cliente' : 'Nessuna sede'} />}
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Città</th><th>Legal entity</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
             <td><div className="strong">{s.name}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
@@ -171,10 +171,10 @@ export function Organizations() {
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
-  const save = async (body) => { if (modal?.id) await api.put(`/organizations/${modal.id}`, body); else await api.post('/organizations', body); toast('Organizzazione salvata'); reload(); };
+  const save = async (body) => { if (modal?.id) await api.put(`/organizations/${modal.id}`, body); else await api.post('/organizations', body); toast('Legal entity salvata'); reload(); };
   return (
     <div className="page">
-      <PageHead title="Organizzazioni" icon="folder" sub="Società del gruppo, clienti Service, partner, fornitori e target M&A" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova organizzazione</button>} />
+      <PageHead title="Legal entity" icon="folder" sub="Soggetti giuridici, una riga per partita IVA: società del gruppo, clienti service, partner, fornitori e target M&A" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova legal entity</button>} />
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Nome, codice o città" /></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
@@ -184,11 +184,11 @@ export function Organizations() {
           {rows.map((o) => <tr key={o.id}>
             <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}</div></td>
             <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td><td className="num">{o.users_count}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`l'organizzazione ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { await api.del(`/organizations/${o.id}`); toast('Organizzazione eliminata'); reload(); }} /></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`la legal entity ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { await api.del(`/organizations/${o.id}`); toast('Legal entity eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
-      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova organizzazione'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova legal entity'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
     </div>
   );
 }
@@ -210,7 +210,7 @@ export function PeopleAdmin() {
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
     { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' },
     { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => String(u.site_id) === String(f.site_id)).map((u) => ({ value: u.id, label: u.name })), help: 'Dipende dalla sede scelta' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },
-    { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
+    { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
    
   ];
   const save = async (body) => {

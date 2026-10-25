@@ -6,7 +6,7 @@ import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, StatusBadge, Kind
 import { OrgExtModal, ORG_KIND } from '../components/OrgExtForm.jsx';
 
 // Organizzazioni dell'anagrafica unica (public.organizations): qui si leggono e si impostano i soli campi Business (org_ext).
-// Creazione, rinomina e disattivazione si fanno in Amministrazione > Organizzazioni.
+// Creazione, rinomina e disattivazione si fanno in Amministrazione, Legal entity.
 export default function Organizations() {
   const { user } = useAuth();
   const nav = useNavigate();
@@ -22,7 +22,7 @@ export default function Organizations() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Organizzazioni</h1><div className="sub">Anagrafica unica della Suite: strutture ospitanti dei punti prelievo, locatori, clienti del service e della medicina del lavoro. Qui si impostano i soli dati Business (firmatario, riferimenti, condizioni, portale, tracciato TD-SGI-MOD173).</div></div>
+        <div><h1>Legal entity</h1><div className="sub">Anagrafica unica della Suite: strutture ospitanti dei punti prelievo, locatori, clienti del service e della medicina del lavoro. Qui si impostano i soli dati Business (firmatario, riferimenti, condizioni, portale, tracciato TD-SGI-MOD173).</div></div>
         <a className="btn ghost" href="/admin/organizations">Apri in Amministrazione</a>
       </div>
       <div className="filters">
@@ -62,7 +62,7 @@ export default function Organizations() {
               )}
             </React.Fragment>))}</tbody>
         </table></div>
-      ) : <Empty>Nessuna organizzazione: si creano in Amministrazione &gt; Organizzazioni (anche da file XLSX).</Empty>}</Card>
+      ) : <Empty>Nessuna legal entity: si creano in Amministrazione, Legal entity (anche da file XLSX).</Empty>}</Card>
       {edit && <OrgExtModal org={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); list.reload(); toast('Impostazioni Business salvate'); }} />}
     </div>
   );
