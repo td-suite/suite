@@ -4,7 +4,6 @@ ALTER TABLE org_units ADD COLUMN IF NOT EXISTS parent_id INT REFERENCES org_unit
 ALTER TABLE org_units ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'REPARTO' CHECK (kind IN ('DIREZIONE','AREA','SEDE','REPARTO','FUNZIONE'));
 ALTER TABLE org_units ALTER COLUMN site_id DROP NOT NULL;
 DROP INDEX IF EXISTS org_units_site_name_uq;
-CREATE UNIQUE INDEX IF NOT EXISTS org_units_parent_name_uq ON org_units (coalesce(parent_id, 0), lower(name));
 CREATE TABLE IF NOT EXISTS org_positions (
   id          SERIAL PRIMARY KEY,
   unit_id     INT NOT NULL REFERENCES org_units(id) ON DELETE CASCADE,
@@ -27,3 +26,7 @@ UPDATE org_units r SET parent_id = s.id FROM org_units s WHERE r.kind='REPARTO' 
 INSERT INTO org_positions (unit_id, person_id, role_id, is_head)
   SELECT u.id, u.head_person_id, p.role_id, TRUE FROM org_units u JOIN people p ON p.id=u.head_person_id WHERE u.head_person_id IS NOT NULL
   ON CONFLICT DO NOTHING;
+-- l'unicità del nome vale tra fratelli: va creata dopo aver agganciato i reparti alle sedi (prima erano tutti senza padre)
+UPDATE org_units u SET name = u.name || ' (' || u.id || ')' WHERE u.id IN (
+  SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY coalesce(parent_id, 0), lower(name) ORDER BY id) AS rn FROM org_units) d WHERE d.rn > 1);
+CREATE UNIQUE INDEX IF NOT EXISTS org_units_parent_name_uq ON org_units (coalesce(parent_id, 0), lower(name));
