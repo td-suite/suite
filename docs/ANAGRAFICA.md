@@ -147,3 +147,5 @@ accenti. Il responsabile di sede non è più testo libero: è il responsabile de
 ignorata). Centralino (lib/centralino.js): numero diretto = 055 776 + interno (tre cifre); interni personali e di reparto dal file Rev01
 applicati dopo ogni importazione di Persone/Organigramma e al salvataggio della persona. Nessuna sede o legal entity di esempio nel
 seed: le sedi (LAB, HQ...) le codifica Francesco nel file Sedi.
+Vertice (migrazione 017): `people.no_manager` = la persona non dipende da nessuno anche se l'organigramma suggerirebbe un responsabile;
+opzione "Nessuno (vertice)" nella tendina Dipende da; `people_manager` restituisce NULL.

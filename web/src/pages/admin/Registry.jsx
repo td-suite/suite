@@ -253,7 +253,7 @@ export function PeopleAdmin() {
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
             <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.unit_path && <div className="strong">{p.unit_path.replace(/^[^›]+› /, '')}</div>}{p.site_name}</td>
             <td className="small">{(p.positions || []).length ? (p.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.unit_name}</b> : x.unit_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>) : <span className="faint">nessuno</span>}</td>
-            <td className="small">{p.manager_name || <span className="faint">nessuno</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
+            <td className="small">{p.manager_name || <span className="faint">{p.no_manager ? 'vertice' : 'nessuno'}</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
             <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link> : <span className="faint small">nessun accesso</span>}</td>
             <td className="actions"><button className="iconbtn" aria-label="Incarichi" title="Incarichi nell'organigramma" onClick={() => setPos(p)}><Icon name="tree" /></button><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
@@ -292,7 +292,7 @@ export function PositionsEditor({ person, onChange }) {
   const roles = useApi('/job-roles');
   const people = useApi('/people?all=1');
   const setUnit = async (v) => { try { await api.put(`/people/${person.id}`, { unit_id: v }); toast(v ? 'Afferenza salvata' : 'Afferenza rimossa'); onChange(); } catch (e2) { toast(e2, 'err'); } };
-  const setManager = async (v) => { try { await api.put(`/people/${person.id}`, { manager_person_id: v ? Number(v) : null }); toast(v ? 'Responsabile impostato' : 'Responsabile dall\'organigramma'); onChange(); } catch (e2) { toast(e2, 'err'); } };
+  const setManager = async (v) => { try { await api.put(`/people/${person.id}`, v === 'none' ? { manager_person_id: null, no_manager: true } : { manager_person_id: v ? Number(v) : null, no_manager: false }); toast(v === 'none' ? 'Non dipende da nessuno' : v ? 'Responsabile impostato' : 'Responsabile dall\'organigramma'); onChange(); } catch (e2) { toast(e2, 'err'); } };
   const [f, setF] = useState({ unit_id: '', role_id: '', is_head: false });
   const [busy, setBusy] = useState(false);
   const coll = new Intl.Collator('it');
@@ -311,9 +311,10 @@ export function PositionsEditor({ person, onChange }) {
         <UnitTreePicker units={units.data || []} value={person.unit_id} onChange={setUnit} />
       </div>
       <div className="dep-row">
-        <div><div className="small strong">Dipende da</div><div className="small muted">{person.manager_override_id ? 'Responsabile indicato a mano' : person.manager_auto_id ? 'Dall\'organigramma: il responsabile dell\'unità del suo incarico' : 'Nessuno: aggiungi un incarico o indicalo qui'}</div></div>
-        <select value={person.manager_override_id || ''} onChange={(e) => setManager(e.target.value)}>
+        <div><div className="small strong">Dipende da</div><div className="small muted">{person.no_manager ? 'Vertice: non dipende da nessuno' : person.manager_override_id ? 'Responsabile indicato a mano' : person.manager_auto_id ? 'Dall\'organigramma: il responsabile dell\'unità del suo incarico' : 'Nessuno: aggiungi un incarico o indicalo qui'}</div></div>
+        <select value={person.no_manager ? 'none' : (person.manager_override_id || '')} onChange={(e) => setManager(e.target.value)}>
           <option value="">{person.manager_auto_name ? `Dall'organigramma · ${person.manager_auto_name}` : 'Dall\'organigramma (nessuno per ora)'}</option>
+          <option value="none">Nessuno (vertice)</option>
           {[...(people.data || [])].filter((x) => x.id !== person.id).sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`)).map((x) => <option key={x.id} value={x.id}>{x.last_name} {x.first_name}</option>)}
         </select>
       </div>
