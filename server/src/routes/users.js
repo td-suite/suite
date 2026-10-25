@@ -207,6 +207,21 @@ r.post('/users/:id/grants/confirm-all', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true, confirmed: rowCount });
 }));
 
+// Eliminazione dell'accesso: la persona resta in anagrafica. Il titolare non si elimina; gli amministratori li elimina solo il titolare.
+r.delete('/users/:id', requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const target = await one('SELECT * FROM users WHERE id=$1', [id]);
+  if (!target) throw notFound('Utente inesistente');
+  if (target.level === 'OWNER') throw forbidden('Il titolare non si elimina');
+  if (target.level === 'ADMIN' && !isOwner(req.user)) throw forbidden('Solo il titolare elimina un amministratore');
+  if (id === req.user.id) throw bad('Non puoi eliminare il tuo accesso');
+  await q('DELETE FROM grants WHERE user_id=$1', [id]);
+  await q('UPDATE users SET created_by=NULL WHERE created_by=$1', [id]);
+  await q('DELETE FROM users WHERE id=$1', [id]);
+  await audit(req, 'USER_DELETED', { entity: 'user', entityId: id, label: target.email });
+  res.json({ ok: true });
+}));
+
 r.delete('/users/:id/grants/:module', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const target = await one('SELECT * FROM users WHERE id=$1', [id]);

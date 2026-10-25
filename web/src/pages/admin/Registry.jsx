@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../../api.js';
-import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs } from '../../components/ui.jsx';
+import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs, ConfirmModal } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { SITE_KIND, ORG_KIND, PERSON_KIND } from '../../format.js';
 
@@ -42,6 +42,17 @@ function EditModal({ title, fields, item, onSave, onClose }) {
 }
 
 const opts = (o) => Object.entries(o).map(([value, label]) => ({ value, label }));
+
+// Cestino di riga: conferma, poi DELETE; il server rifiuta se ci sono dati collegati (si disattiva invece di eliminare)
+function DeleteButton({ label, text, onDelete }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="iconbtn danger" aria-label={`Elimina ${label}`} title="Elimina" onClick={() => setOpen(true)}><Icon name="trash" /></button>
+      {open && <ConfirmModal title={`Eliminare ${label}?`} text={text} danger confirmText="Elimina" onConfirm={onDelete} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
 // Foto della sede: fino a 3, su Azure Blob
 function SitePhotos({ site, onClose }) {
@@ -108,7 +119,7 @@ export function Sites() {
             <td><div className="strong">{s.name}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
             <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.city}{s.province ? ` (${s.province})` : ''}</td><td className="small">{s.organization_name}</td><td className="num">{s.users_count}</td>
             <td className="small muted">{(s.photo_file_ids || []).length ? `${s.photo_file_ids.length} / 3` : ''}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { await api.del(`/sites/${s.id}`); toast('Sede eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
@@ -144,7 +155,7 @@ export function Organizations() {
           {rows.map((o) => <tr key={o.id}>
             <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}</div></td>
             <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td><td className="num">{o.users_count}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`l'organizzazione ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { await api.del(`/organizations/${o.id}`); toast('Organizzazione eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
@@ -177,7 +188,7 @@ export function PeopleAdmin() {
   };
   return (
     <div className="page">
-      <PageHead title="Persone" icon="user" sub="Anagrafica della rubrica: chi è, dove lavora, cosa fa. I dati contrattuali restano in Contracts." actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova persona</button>} />
+      <PageHead title="Persone" icon="user" sub="Anagrafica unica: chi è, dove lavora, cosa fa. Il dossier HR è in Contratti del personale." actions={<><button className="btn ghost" onClick={async () => { try { const r = await api.post('/people/dedupe'); toast(r.removed ? `${r.removed} copie eliminate${r.blocked?.length ? `, ${r.blocked.length} con dati collegati lasciate` : ''}` : 'Nessun duplicato'); reload(); } catch (e) { toast(e, 'err'); } }}><Icon name="refresh" />Elimina duplicati</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova persona</button></>} />
       <div className="filters">
         <SearchInput value={q} onChange={setQ} placeholder="Cognome, nome, email, ruolo" />
         <Field label="Stato"><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Tutti</option><option value="ATTIVO">Attivi</option><option value="IMPEGNO">Impegno</option><option value="CANDIDATO">Candidati</option><option value="CESSATO">Cessati</option></select></Field>
@@ -192,7 +203,7 @@ export function PeopleAdmin() {
             <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.area}{p.job_title && <div className="muted">{p.job_title}</div>}</td><td className="small">{p.site_name}</td><td className="small">{p.manager_name}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
             <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`} className="small">Utente</Link> : <span className="faint small">nessuno</span>}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>

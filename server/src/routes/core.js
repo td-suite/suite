@@ -1,5 +1,5 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
-import { getSetting } from '../lib/util.js';
+import { getSetting, normName } from '../lib/util.js';
 import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
@@ -149,6 +149,94 @@ r.post('/people/:id/account', requireAdmin, ah(async (req, res) => {
     res.status(out.created ? 201 : 200).json({ user_id: out.user.id, created: out.created, provider: out.provider, temporaryPassword: out.temporaryPassword });
   } catch (e) { throw bad(e.message); }
 }));
+// ---- Eliminazioni (amministratori). Un elemento referenziato da dati operativi non si elimina: si disattiva.
+async function moduleRefs(table, col, id) {
+  // tabelle di qualsiasi schema (moduli compresi) con FK verso public.<table>: quante righe puntano a questo id
+  const fks = (await q(`SELECT tc.table_schema, tc.table_name, kcu.column_name FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu ON kcu.constraint_name=tc.constraint_name AND kcu.constraint_schema=tc.constraint_schema
+      JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name AND ccu.constraint_schema=tc.constraint_schema
+      WHERE tc.constraint_type='FOREIGN KEY' AND ccu.table_schema='public' AND ccu.table_name=$1 AND ccu.column_name=$2`, [table, col])).rows;
+  const out = [];
+  for (const f of fks) {
+    if (f.table_schema === 'public' && ['grant_scopes', 'users', 'people', 'sites', 'read_log', 'audit_log', 'search_index', 'notifications', 'files', 'api_keys', 'ingest_batches', 'module_state', 'grants', 'app_settings'].includes(f.table_name)) continue;
+    if (/_ext$/.test(f.table_name) || f.table_name === 'person_areas') continue;   // estensioni: vanno via in cascata
+    const n = (await q(`SELECT count(*)::int AS n FROM "${f.table_schema}"."${f.table_name}" WHERE "${f.column_name}"=$1`, [id]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n;
+    if (n) out.push(`${f.table_schema === 'public' ? '' : f.table_schema + ': '}${f.table_name} (${n})`);
+  }
+  return out;
+}
+r.delete('/sites/:id', requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const s = await one('SELECT * FROM sites WHERE id=$1', [id]); if (!s) throw notFound();
+  const refs = await moduleRefs('sites', 'id', id);
+  if (refs.length) throw bad(`La sede ha dati collegati (${refs.join(', ')}): disattivala invece di eliminarla`);
+  await q('UPDATE people SET site_id=NULL WHERE site_id=$1', [id]); await q('UPDATE users SET site_id=NULL WHERE site_id=$1', [id]);
+  await q('DELETE FROM grant_scopes WHERE scope_type=\'SITE\' AND scope_id=$1', [id]);
+  await q('DELETE FROM sites WHERE id=$1', [id]);
+  await audit(req, 'SITE_DELETED', { entity: 'site', entityId: id, label: `${s.code} · ${s.name}` });
+  res.json({ ok: true });
+}));
+r.delete('/organizations/:id', requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const o = await one('SELECT * FROM organizations WHERE id=$1', [id]); if (!o) throw notFound();
+  const sites = (await one('SELECT count(*)::int AS n FROM sites WHERE organization_id=$1', [id])).n;
+  if (sites) throw bad(`L'organizzazione ha ${sites} sed${sites === 1 ? 'e' : 'i'} collegat${sites === 1 ? 'a' : 'e'}: eliminale o spostale prima`);
+  const refs = await moduleRefs('organizations', 'id', id);
+  if (refs.length) throw bad(`L'organizzazione ha dati collegati (${refs.join(', ')}): disattivala invece di eliminarla`);
+  await q('UPDATE people SET organization_id=NULL WHERE organization_id=$1', [id]); await q('UPDATE users SET organization_id=NULL WHERE organization_id=$1', [id]);
+  await q('DELETE FROM grant_scopes WHERE scope_type=\'ORG\' AND scope_id=$1', [id]);
+  await q('DELETE FROM organizations WHERE id=$1', [id]);
+  await audit(req, 'ORGANIZATION_DELETED', { entity: 'organization', entityId: id, label: o.name });
+  res.json({ ok: true });
+}));
+// Duplicati: stessa persona (cognome e nome, email e CF compatibili) caricata più volte. Si tiene la scheda più vecchia,
+// le copie senza dati collegati vengono eliminate; il responsabile e gli utenti che puntavano alle copie passano alla scheda tenuta.
+r.post('/people/dedupe', requireAdmin, ah(async (req, res) => {
+  const rows = await many(`SELECT id, last_name, first_name, lower(email) AS email, upper(tax_code) AS cf FROM people ORDER BY id`);
+  const groups = new Map();
+  for (const p of rows) {
+    const key = `${normName(p.last_name)}|${normName(p.first_name)}`;
+    const g = groups.get(key) || []; g.push(p); groups.set(key, g);
+  }
+  let removed = 0, kept = 0; const blocked = [];
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const keep = g[0]; kept++;
+    for (const dup of g.slice(1)) {
+      // omonimi veri: email o CF diversi e valorizzati su entrambi → non si toccano
+      if ((dup.email && keep.email && dup.email !== keep.email) || (dup.cf && keep.cf && dup.cf !== keep.cf)) continue;
+      const refs = await moduleRefs('people', 'id', dup.id);
+      if (refs.length) { blocked.push(`${dup.last_name} ${dup.first_name} (${refs.join(', ')})`); continue; }
+      await q('UPDATE people SET manager_person_id=$2 WHERE manager_person_id=$1', [dup.id, keep.id]);
+      await q('UPDATE users SET person_id=$2 WHERE person_id=$1 AND NOT EXISTS (SELECT 1 FROM users x WHERE x.person_id=$2)', [dup.id, keep.id]);
+      await q('UPDATE users SET person_id=NULL WHERE person_id=$1', [dup.id]);
+      // campi vuoti della scheda tenuta completati dalla copia
+      await q(`UPDATE people k SET email=coalesce(k.email,d.email), tax_code=coalesce(k.tax_code,d.tax_code), phone=coalesce(k.phone,d.phone), phone_office=coalesce(k.phone_office,d.phone_office), phone_ext=coalesce(k.phone_ext,d.phone_ext),
+        area=coalesce(k.area,d.area), job_title=coalesce(k.job_title,d.job_title), discipline=coalesce(k.discipline,d.discipline), site_id=coalesce(k.site_id,d.site_id), manager_person_id=coalesce(k.manager_person_id,d.manager_person_id), title=coalesce(k.title,d.title), updated_at=now()
+        FROM people d WHERE k.id=$1 AND d.id=$2`, [keep.id, dup.id]);
+      await q('DELETE FROM people WHERE id=$1', [dup.id]);
+      await removeFromIndex('person', dup.id).catch(() => {});
+      removed++;
+    }
+  }
+  await audit(req, 'PEOPLE_DEDUPED', { entity: 'person', label: `${removed} copie eliminate`, data: { removed, blocked } });
+  res.json({ removed, groups: kept, blocked });
+}));
+r.delete('/people/:id', requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const p = await one('SELECT * FROM people WHERE id=$1', [id]); if (!p) throw notFound();
+  const u = await one('SELECT id, level FROM users WHERE person_id=$1', [id]);
+  if (u?.level === 'OWNER') throw bad('La persona del titolare non si elimina');
+  const refs = await moduleRefs('people', 'id', id);
+  if (refs.length) throw bad(`La persona ha dati collegati (${refs.join(', ')}): mettila in stato CESSATO invece di eliminarla`);
+  await q('UPDATE people SET manager_person_id=NULL WHERE manager_person_id=$1', [id]);
+  if (u) { await q('DELETE FROM grants WHERE user_id=$1', [u.id]); await q('DELETE FROM users WHERE id=$1', [u.id]); }
+  await q('DELETE FROM people WHERE id=$1', [id]);
+  await removeFromIndex('person', id).catch(() => {});
+  await audit(req, 'PERSON_DELETED', { entity: 'person', entityId: id, label: `${p.last_name} ${p.first_name}`, data: { user_deleted: Boolean(u) } });
+  res.json({ ok: true });
+}));
+
 r.get('/people/switchboard', ah(async (_req, res) => { res.json(await getSetting('community.switchboard', null)); }));
 r.get('/people/areas', ah(async (_req, res) => {
   res.json(await many(`SELECT area, count(*)::int AS n FROM people WHERE area IS NOT NULL AND status='ATTIVO' GROUP BY area ORDER BY area`));

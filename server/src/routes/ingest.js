@@ -107,6 +107,8 @@ export const APPLIERS = {
     if (cf) ex = (await c.query('SELECT id FROM people WHERE upper(tax_code)=$1', [cf])).rows[0];
     if (!ex && row.email) ex = (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.email])).rows[0];
     if (!ex && row.external_id) ex = (await c.query(`SELECT id FROM people WHERE legacy_refs->>$1 = $2`, [`ingest:${k.source}`, row.external_id])).rows[0];
+    // senza email né codice fiscale: stessa persona = stesso cognome e nome (accenti e maiuscole ignorati); gli omonimi vanno distinti con email o CF
+    if (!ex) ex = (await c.query(`SELECT id FROM people WHERE lower(unaccent(last_name))=lower(unaccent($1)) AND lower(unaccent(first_name))=lower(unaccent($2)) AND ($3::text IS NULL OR email IS NULL OR lower(email)=$3) AND ($4::text IS NULL OR tax_code IS NULL OR upper(tax_code)=$4) ORDER BY id LIMIT 1`, [row.last_name, row.first_name, row.email || null, cf])).rows[0];
     const manager = row.manager_email ? (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.manager_email])).rows[0] : null;
     if (row.manager_email && !manager) throw new Error(`responsabile ${row.manager_email} non trovato: caricalo prima (o nella stessa lista, più in alto)`);
     const vals = [row.last_name, row.first_name, row.email || null, cf, row.kind || null, row.status || null, row.area || null, row.job_title || null, row.discipline || null, row.title || null,

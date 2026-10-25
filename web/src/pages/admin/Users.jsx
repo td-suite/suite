@@ -16,7 +16,10 @@ export function UsersList() {
   const setF = (k, v) => setSp((s) => { const n = new URLSearchParams(s); if (v) n.set(k, v); else n.delete(k); if (k !== 'page') n.delete('page'); return n; });
   const page = Number(get('page') || 1);
   const params = { qtext: get('qtext'), status: get('status'), module: get('module'), level: get('level'), site_id: get('site_id'), page, pageSize: 50 };
-  const { data, loading, error } = useApi(`/users${qs(params)}`, [sp.toString()]);
+  const { data, loading, error, reload } = useApi(`/users${qs(params)}`, [sp.toString()]);
+  const { user: me } = useAuth();
+  const toast = useToast();
+  const [confirmDel, setConfirmDel] = useState(null);
   const mods = useApi('/modules');
   const sites = useApi('/sites?all=1');
   const onlyProposals = get('proposals') === '1';
@@ -37,7 +40,7 @@ export function UsersList() {
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !rows.length && <Empty icon="users" title="Nessun utente corrisponde ai filtri" />}
         {rows.length > 0 && <div className="table-wrap"><table className="t">
-          <thead><tr><th>Utente</th><th>Livello</th><th>Stato</th><th>Accesso</th><th>Sede / organizzazione</th><th>Moduli</th><th>Ultimo accesso</th></tr></thead>
+          <thead><tr><th>Utente</th><th>Livello</th><th>Stato</th><th>Accesso</th><th>Sede / organizzazione</th><th>Moduli</th><th>Ultimo accesso</th><th></th></tr></thead>
           <tbody>{rows.map((u) => { const proposed = (u.grants || []).filter((g) => g.proposed).length; const active = (u.grants || []).filter((g) => !g.proposed); return (
             <tr key={u.id} className="click" onClick={() => navigate(`/admin/users/${u.id}`)}>
               <td><div className="row tight" style={{ flexWrap: 'nowrap' }}><Avatar name={u.full_name} size="sm" /><div style={{ minWidth: 0 }}><Link to={`/admin/users/${u.id}`} className="strong" onClick={(e) => e.stopPropagation()}>{u.full_name}</Link><div className="small muted ellipsis">{u.email}</div></div></div></td>
@@ -47,11 +50,13 @@ export function UsersList() {
               <td className="small">{u.site_name || <span className="faint">nessuna sede</span>}{u.organization_name && <div className="tiny muted">{u.organization_name}</div>}</td>
               <td className="small"><span>{active.length} modul{active.length === 1 ? 'o' : 'i'}</span>{proposed > 0 && <div><Badge tone="mauve">{proposed} propost{proposed === 1 ? 'a' : 'e'} da confermare</Badge></div>}</td>
               <td className="small nowrap">{u.last_login_at ? timeAgo(u.last_login_at) : <span className="faint">mai</span>}</td>
+              <td className="actions" onClick={(e) => e.stopPropagation()}>{u.level !== 'OWNER' && (u.level !== 'ADMIN' || isOwner(me)) && <button className="iconbtn danger" aria-label="Elimina accesso" title="Elimina accesso" onClick={() => setConfirmDel(u)}><Icon name="trash" /></button>}</td>
             </tr>
           ); })}</tbody>
         </table></div>}
         {data && <Pager page={page} pageSize={50} total={data.total} onChange={(p) => setF('page', String(p))} />}
       </Card>
+      {confirmDel && <ConfirmModal title={`Eliminare l'accesso di ${confirmDel.full_name}?`} text="L'utente non potrà più entrare nella Suite e perde i moduli assegnati. La persona resta in anagrafica: l'accesso si può ricreare dalla sua scheda." danger confirmText="Elimina" onConfirm={async () => { await api.del(`/users/${confirmDel.id}`); toast('Accesso eliminato'); reload(); }} onClose={() => setConfirmDel(null)} />}
     </div>
   );
 }
