@@ -84,7 +84,7 @@ export function Sites() {
   const all = data || [];
   const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || `${s.code} ${s.name} ${s.city || ''} ${s.organization_name || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
-    { key: 'code', label: 'Codice', required: true, max: 24 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
+    { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Organizzazione', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: 'manager_name', label: 'Responsabile' }, { key: 'opening_hours', label: 'Orari' },
@@ -126,7 +126,7 @@ export function Organizations() {
   const [modal, setModal] = useState(null);
   const rows = (data || []).filter((o) => !q || `${o.code || ''} ${o.name} ${o.city || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
-    { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 24 },
+    { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
     { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },

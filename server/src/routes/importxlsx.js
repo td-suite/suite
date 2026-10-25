@@ -66,7 +66,7 @@ const DATASETS = {
       ['job_title', 'Ruolo', 'Mansione o incarico, breve (es. Site Manager, Tecnico di laboratorio biomedico).'],
       ['discipline', 'Disciplina', 'Per medici e professionisti: Ginecologia, Cardiologia...'],
       ['site_code', 'Codice sede', 'Sede di lavoro principale (foglio Sedi).'],
-      ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: deve essere già caricata o comparire più in alto nella stessa lista.'],
+      ['manager_email', 'Email del responsabile', 'Email della persona a cui riporta: basta che sia nel file (in qualsiasi riga) o già caricata.'],
       ['phone', 'Cellulare', ''], ['phone_office', 'Telefono ufficio', ''], ['phone_ext', 'Interno centralino', 'Es. 101.'],
       ['hired_at', 'Data di assunzione', 'AAAA-MM-GG.'], ['terminated_at', 'Data di cessazione', 'AAAA-MM-GG.'],
     ],
@@ -89,7 +89,7 @@ const DATASETS = {
 const usersRowSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   level: z.enum(['USER', 'ADMIN']).optional().nullable(), auth: z.enum(['ENTRA', 'LOCAL']).optional().nullable(),
-  site_code: z.string().trim().max(24).optional().nullable(), grants: z.string().trim().max(2000).optional().nullable(), send_invite: z.boolean().optional().nullable(),
+  site_code: z.string().trim().max(40).optional().nullable(), grants: z.string().trim().max(2000).optional().nullable(), send_invite: z.boolean().optional().nullable(),
 });
 const genPassword = () => `${crypto.randomBytes(9).toString('base64url')}A1!`;
 
@@ -241,6 +241,23 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
     const ctx = { modules: mods, owner: req.user.level === 'OWNER', userId: req.user.id };
     ROW_SCHEMAS.users = usersRowSchema; APPLIERS.users = (c, row) => applyUserRow(c, row, ctx);
     out = await applyBatch(batch.id, 'users', data.map(({ __row, ...o }) => o), k);
+  } else if (dataset === 'people') {
+    // Due passaggi: prima tutte le persone (senza responsabile), poi i responsabili per email, così l'ordine delle righe non conta
+    out = await applyBatch(batch.id, 'people', data.map(({ __row, manager_email, ...o }) => o), k);
+    const failed = new Set(out.errors.map((e) => e.row));
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i]; if (failed.has(i) || !row.manager_email) continue;
+      const me = String(row.manager_email).trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(me)) { out.errors.push({ row: i, error: `email del responsabile non valida: "${row.manager_email}"` }); out.rows_rejected++; continue; }
+      const mgr = await one('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [me]);
+      if (!mgr) { out.errors.push({ row: i, error: `responsabile ${me} non presente in Persone (né nel file né già caricato)` }); out.rows_rejected++; continue; }
+      const own = row.email ? String(row.email).trim().toLowerCase() : null;
+      const cf = row.tax_code ? String(row.tax_code).trim().toUpperCase() : null;
+      if (own) await q('UPDATE people SET manager_person_id=$2, updated_at=now() WHERE lower(email)=$1', [own, mgr.id]);
+      else if (cf) await q('UPDATE people SET manager_person_id=$2, updated_at=now() WHERE upper(tax_code)=$1', [cf, mgr.id]);
+      else await q('UPDATE people SET manager_person_id=$3, updated_at=now() WHERE lower(last_name)=lower($1) AND lower(first_name)=lower($2) AND manager_person_id IS NULL', [row.last_name, row.first_name, mgr.id]);
+    }
+    if (out.errors.length) await q(`UPDATE ingest_batches SET rows_rejected=$2, status=CASE WHEN rows_ok=0 THEN 'REJECTED' ELSE 'PARTIAL' END, result = coalesce(result,'{}'::jsonb) || jsonb_build_object('errors', $3::jsonb) WHERE id=$1`, [batch.id, out.rows_rejected, JSON.stringify(out.errors)]);
   } else {
     out = await applyBatch(batch.id, dataset, data.map(({ __row, ...o }) => o), k);
   }

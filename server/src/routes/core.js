@@ -52,7 +52,7 @@ r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
 
 // ---- Sedi
 const siteSchema = z.object({
-  code: z.string().min(2).max(24), name: z.string().min(2), short_name: z.string().max(60).nullable().optional(),
+  code: z.string().min(2).max(40), name: z.string().min(2).max(250), short_name: z.string().max(120).nullable().optional(),
   kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
   organization_id: z.number().int().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
@@ -88,7 +88,7 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
 
 // ---- Organizzazioni
 const orgSchema = z.object({
-  kind: z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO']).optional(), code: z.string().max(24).nullable().optional(), name: z.string().min(2),
+  kind: z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO']).optional(), code: z.string().max(40).nullable().optional(), name: z.string().min(2).max(250),
   vat_number: z.string().max(20).nullable().optional(), tax_code: z.string().max(20).nullable().optional(), sdi: z.string().max(10).nullable().optional(), pec: z.string().nullable().optional(),
   email: z.string().nullable().optional(), phone: z.string().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), website: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), notes: z.string().nullable().optional(),

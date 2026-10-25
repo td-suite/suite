@@ -63,16 +63,16 @@ const dateStr = opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data AAAA-MM-GG'));
 export const ROW_SCHEMAS = {
   people: z.object({
     last_name: str(80).min(1), first_name: str(80).min(1), email, tax_code: opt(str(16)), kind: opt(z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'])),
-    status: opt(z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'])), area: opt(str(80)), job_title: opt(str(120)), discipline: opt(str(120)), title: opt(str(20)),
-    site_code: opt(str(24)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
+    status: opt(z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'])), area: opt(str(160)), job_title: opt(str(200)), discipline: opt(str(160)), title: opt(str(20)),
+    site_code: opt(str(40)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
   }),
   sites: z.object({
-    code: str(24).min(2), name: str(160).min(2), short_name: opt(str(60)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
+    code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
     address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), lat: opt(z.number()), lng: opt(z.number()), phone: opt(str(40)), email,
-    manager_name: opt(str(120)), opening_hours: opt(str(400)), studiolab_code: opt(str(40)), legacy_brand: opt(str(80)), active: opt(z.boolean()), organization_code: opt(str(24)),
+    manager_name: opt(str(160)), opening_hours: opt(str(600)), studiolab_code: opt(str(40)), legacy_brand: opt(str(120)), active: opt(z.boolean()), organization_code: opt(str(40)),
   }),
   organizations: z.object({
-    name: str(200).min(2), kind: opt(z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'])), code: opt(str(24)), vat_number: opt(str(20)), tax_code: opt(str(20)),
+    name: str(250).min(2), kind: opt(z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'])), code: opt(str(40)), vat_number: opt(str(20)), tax_code: opt(str(20)),
     sdi: opt(str(10)), pec: email, email, phone: opt(str(40)), address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), website: opt(str(200)), active: opt(z.boolean()),
   }),
   events: z.object({
