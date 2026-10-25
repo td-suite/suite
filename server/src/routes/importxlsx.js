@@ -26,7 +26,7 @@ const PERSON_STATUS = ['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'];
 // Colonne dei modelli: chiave tecnica (intestazione), etichetta e spiegazione in italiano, valori ammessi
 const DATASETS = {
   sites: {
-    title: 'Sedi', sheet: 'Sedi', order: 1,
+    title: 'Sedi', sheet: 'Sedi', order: 2,
     columns: [
       ['code', 'Codice', 'Codice breve univoco della sede (es. FI-CEC). Obbligatorio. È la chiave con cui le persone e gli utenti vengono collegati alla sede.'],
       ['name', 'Denominazione', 'Nome completo della sede. Obbligatorio.'],
@@ -42,7 +42,7 @@ const DATASETS = {
     example: ['ES-01', 'Esempio · Punto prelievi Esempiopoli', 'Esempiopoli', 'PUNTO_PRELIEVI', '', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', '000 0000000', 'esempio@esempio.it', 'Mario Esempio', 'Lun-Ven 7:30-12:30', 'ESE', 'SI'],
   },
   organizations: {
-    title: 'Organizzazioni e clienti', sheet: 'Organizzazioni', order: 2,
+    title: 'Organizzazioni e clienti', sheet: 'Organizzazioni', order: 1,
     columns: [
       ['code', 'Codice', 'Codice breve univoco (es. TD, LAB-SCANDICCI). Consigliato: serve per collegare le sedi.'],
       ['name', 'Ragione sociale', 'Obbligatoria.'],
