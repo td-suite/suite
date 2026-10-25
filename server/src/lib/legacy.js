@@ -7,7 +7,7 @@ import pg from 'pg';
 import crypto from 'node:crypto';
 import { config, LEGACY_KEYS } from '../config.js';
 import { one, many, q } from '../db.js';
-import { normName } from './util.js';
+import { normName, displayName, splitName } from './util.js';
 import { MODULES, LEGACY_ROLE_MAP, AREA_GRANT_PROPOSALS } from '../seed/modules.js';
 
 // Una descrizione del ruolo diventa titolo solo se è corta come un titolo (es. "Site Manager"), non se è una frase
