@@ -1,6 +1,6 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
-import { ensureUserForPerson, autoAccountForPerson } from '../lib/accounts.js';
+import { ensureUserForPerson, autoAccountForPerson, createMissingAccounts } from '../lib/accounts.js';
 import { syncPositionFromPerson, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
@@ -189,6 +189,11 @@ r.get('/people', ah(async (req, res) => {
   res.json(rows);
 }));
 // Accesso dalla persona (amministratori): crea o aggancia l'utente, con password provvisoria per gli esterni
+r.post('/people/accounts/missing', requireAdmin, ah(async (req, res) => {
+  const out = await createMissingAccounts({ actor: req.user, sendInvite: req.body?.send_invite === true });
+  await audit(req, 'ACCOUNTS_CREATED_BULK', { entity: 'user', label: `${out.created} accessi creati`, data: out });
+  res.json(out);
+}));
 r.post('/people/:id/account', requireAdmin, ah(async (req, res) => {
   try {
     const out = await ensureUserForPerson(Number(req.params.id), { actor: req.user, onlyIfActive: false, sendInvite: req.body?.send_invite !== false });

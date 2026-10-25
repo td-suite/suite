@@ -215,7 +215,9 @@ export function Organizations() {
 export function PeopleAdmin() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('ATTIVO');
-  const { data, loading, error, reload } = useApi(`/people${qs({ qtext: q, status, all: status ? '' : '1' })}`, [q, status]);
+  const [access, setAccess] = useState('');
+  const { data: raw, loading, error, reload } = useApi(`/people${qs({ qtext: q, status, all: status ? '' : '1' })}`, [q, status]);
+  const data = useMemo(() => raw ? raw.filter((p) => !access || (access === 'yes' ? p.user_id : !p.user_id)) : raw, [raw, access]);
   const sites = useApi('/sites?all=1');
   const orgs = useApi('/organizations');
   const roles = useApi('/job-roles');
@@ -247,7 +249,9 @@ export function PeopleAdmin() {
       <div className="filters">
         <SearchInput value={q} onChange={setQ} placeholder="Cognome, nome, email, ruolo" />
         <Field label="Stato"><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Tutti</option><option value="ATTIVO">Attivi</option><option value="IMPEGNO">Impegno</option><option value="CANDIDATO">Candidati</option><option value="CESSATO">Cessati</option></select></Field>
+        <Field label="Accesso"><select value={access} onChange={(e) => setAccess(e.target.value)}><option value="">Tutte</option><option value="no">Senza accesso</option><option value="yes">Con accesso</option></select></Field>
       </div>
+      {(data || []).some((p) => !p.user_id && p.status === 'ATTIVO') && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>{(data || []).filter((p) => !p.user_id && p.status === 'ATTIVO' && p.email).length} persone attive con email senza accesso, {(data || []).filter((p) => !p.user_id && p.status === 'ATTIVO' && !p.email).length} senza email (a queste va prima data un'email). <button className="linklike" onClick={async () => { try { const r = await api.post('/people/accounts/missing', {}); toast(`${r.created} accessi creati (${r.entra} Microsoft 365, ${r.local} con credenziali)${r.errors.length ? `, ${r.errors.length} errori` : ''}`); reload(); } catch (e) { toast(e, 'err'); } }}>Crea gli accessi mancanti</button></span></div>}
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
@@ -259,7 +263,8 @@ export function PeopleAdmin() {
             <td className="small">{(p.positions || []).length ? (p.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.unit_name}</b> : x.unit_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>) : <span className="faint">nessuno</span>}</td>
             <td className="small">{p.manager_name || <span className="faint">{p.no_manager ? 'vertice' : 'nessuno'}</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
-            <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link> : <span className="faint small">nessun accesso</span>}</td>
+            <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link>
+              : <span className="small"><Badge tone="amber">Senza accesso</Badge><div className="faint">{!p.email ? 'manca l\'email' : p.status !== 'ATTIVO' ? `stato ${p.status.toLowerCase()}` : 'da creare'}</div></span>}</td>
             <td className="actions"><button className="iconbtn" aria-label="Incarichi" title="Incarichi nell'organigramma" onClick={() => setPos(p)}><Icon name="tree" /></button><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}

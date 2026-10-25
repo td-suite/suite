@@ -80,6 +80,20 @@ export function autoAccountForPerson(personId, actor) {
   ensureUserForPerson(personId, { actor, onlyIfActive: true }).catch((e) => { if (!/email|stato/.test(e.message)) console.warn('[accounts]', e.message); });
 }
 
+/** Accessi mancanti: ogni persona ATTIVA con email ha un account. Microsoft 365 per i domini aziendali (nessun invito necessario);
+ *  credenziali locali per gli altri, invito via email solo se richiesto (sendInvite). Ritorna il riepilogo. */
+export async function createMissingAccounts({ actor = null, sendInvite = false } = {}) {
+  const rows = await many(`SELECT p.id FROM people p WHERE p.status='ATTIVO' AND p.email IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id=p.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(p.email)) ORDER BY p.last_name`);
+  const out = { created: 0, entra: 0, local: 0, errors: [] };
+  for (const r of rows) {
+    try { const res = await ensureUserForPerson(r.id, { actor, sendInvite, onlyIfActive: true }); if (res.created) { out.created++; out[res.provider === 'ENTRA' ? 'entra' : 'local']++; } }
+    catch (e) { out.errors.push(`${r.id}: ${e.message}`); }
+  }
+  // persone attive con email che hanno già un utente con la stessa email ma non collegato
+  await q(`UPDATE users u SET person_id=p.id FROM people p WHERE u.person_id IS NULL AND lower(u.email)=lower(p.email)`);
+  return out;
+}
+
 /** Utenti senza persona (eredità): elenco per l'Amministrazione */
 export async function usersWithoutPerson() {
   return many(`SELECT id, email, full_name, level FROM users WHERE person_id IS NULL AND level <> 'OWNER' ORDER BY full_name`);

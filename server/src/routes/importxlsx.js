@@ -16,6 +16,7 @@ import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
 import { upsertPosition, syncPersonFromPosition, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
+import { createMissingAccounts } from '../lib/accounts.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -338,13 +339,15 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   const errors = out.errors.map((e) => ({ ...e, row: data[e.row]?.__row ?? e.row + 2 }));
   await audit(req, 'IMPORT_XLSX', { entity: 'ingest_batch', entityId: batch.id, label: `${d.title}: ${out.rows_ok} ok, ${out.rows_rejected} scartate`, data: { dataset, filename: req.file.originalname } });
   if (dataset === 'people' || dataset === 'orgchart') await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
+  let accounts = null;
+  if (dataset === 'people') accounts = await createMissingAccounts({ actor: req.user, sendInvite: false }).catch((e) => { console.warn('[accounts]', e.message); return null; });
   if (dataset === 'sites') await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
     many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
       for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await q('UPDATE sites SET lat=$2, lng=$3 WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [s.id, g.lat, g.lng]); } catch (e) { console.warn('[geocode]', s.id, e.message); } }
     }).catch(() => {});
   }
-  res.status(201).json({ batch_id: batch.id, status: out.status, rows_total: data.length, rows_ok: out.rows_ok, rows_rejected: out.rows_rejected, errors });
+  res.status(201).json({ batch_id: batch.id, status: out.status, rows_total: data.length, rows_ok: out.rows_ok, rows_rejected: out.rows_rejected, errors, accounts });
 }));
 
 // ---- Azzeramento (titolare): la Suite torna vuota. Restano il titolare, le impostazioni, le credenziali cifrate, il catalogo dei moduli,

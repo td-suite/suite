@@ -168,3 +168,9 @@ Legal People and Organization, Flow & Back Office, Retail & Communications, HSQ,
 il pettine). Nell'organigramma le funzioni di staff stanno accanto al vertice, le aree operative sotto; nella scheda persona la tendina
 Area le separa in due gruppi; il file Organigramma ha la colonna Collocazione (LINEA/STAFF) e il precompilato modella così la Direzione.
 Scheda persona = Sede, Ruolo, Area/Reparto/Funzione rispetto alla sede, Dipende da (una persona): il modello di Contracts HR.
+
+## Persone ⊇ Utenti (26/10/2026)
+Ogni utente è una persona (anche gli esterni: tipo ESTERNO con la loro legal entity). Ogni persona ATTIVA con email ha un accesso:
+nasce al salvataggio, dopo il file Persone (`createMissingAccounts`, senza inviti automatici) e dal pulsante "Crea gli accessi mancanti" in
+Persone (`POST /api/people/accounts/missing`). Microsoft 365 per i domini aziendali, credenziali locali per gli altri (invito con il
+Reset password dalla scheda utente). Chi non ha email o non è attivo compare "Senza accesso" con il motivo; filtro Accesso in Persone.
