@@ -76,3 +76,21 @@ Ruolo (public.job_roles, catalogo), Responsabile (manager_person_id). L'organigr
 da tendine; i file XLSX creano nel catalogo i ruoli e i reparti nuovi. Amministrazione > Organizzazione governa ruoli e reparti.
 Orari delle sedi strutturati per giorno (`sites.opening_hours_json`, due fasce, copia agli altri giorni) con testo riassuntivo in `opening_hours`.
 Elenchi di sedi, organizzazioni, persone e utenti sempre in ordine alfabetico.
+
+## Organigramma ad albero (25/10/2026)
+Modello del documento TD-SGI-IDL007_01 Allegato 1. `public.org_units` è un albero (`parent_id`) di unità con `kind`: DIREZIONE (radice
+Toscana Diagnostica), AREA (Laboratorio di Analisi, Network Punti Prelievo, B2B, Centri Polidiagnostici), SEDE (nodo collegato a
+`sites.id`), REPARTO (dipende da una sede o da un'area, es. Core Lab sotto Laboratorio di Analisi), FUNZIONE (Service di Laboratorio,
+Medicina del Lavoro...). Gli incarichi stanno in `public.org_positions` (unità + persona + ruolo del catalogo + `is_head`): una persona
+può avere più incarichi (Greco: Flow & Back Office in Direzione, responsabile Centri Polidiagnostici, Service di Laboratorio; Taddei
+Direttore Sanitario di nove punti). `org_units.head_person_id` resta allineato all'incarico `is_head`. `GET /api/org-chart` ritorna
+`{units, people}`; la Rubrica disegna le unità come caselle (responsabile in evidenza, altri incarichi sotto; "Da assegnare" se vuota),
+con i livelli a molte foglie in colonna. Amministrazione > Organizzazione > Unità e incarichi è l'editor; il dataset `orgchart`
+(file Organigramma: unità, unità superiore, tipo, codice sede, ruolo, persona o email, responsabile, ordine) lo carica in blocco:
+le righe creano l'unità e, se indicano una persona, l'incarico; le persone devono già esistere in Persone (match per cognome nome o
+email). La tendina "Reparto" delle persone offre i reparti della sede più quelli senza sede (reparti di area).
+
+## Utenti senza doppia compilazione (25/10/2026)
+L'utente collegato a una persona non ha più campi anagrafici propri da compilare: nomi, titolo, telefono, sede e legal entity (quella
+della sede se la persona non ne ha una) si leggono dalla persona (`syncUserFromPerson` in lib/accounts.js e `SYNC_USER_SQL` nelle
+importazioni), e la pagina Utenti li mostra in sola lettura con il link alla Rubrica. Il PUT /users ignora quei campi se c'è una persona.

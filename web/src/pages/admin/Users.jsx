@@ -126,9 +126,9 @@ export function UserDetail() {
   const owner = isOwner(me);
   const detail = useApi(!isNew ? `/users/${id}` : null, [id]);
   const mods = useApi('/modules');
+  const people = useApi('/people?all=1');
   const sites = useApi('/sites?all=1');
   const orgs = useApi('/organizations');
-  const people = useApi('/people?all=1');
   const [f, setF] = useState(EMPTY_USER);
   const [grants, setGrants] = useState({}); // module_key → {profile, scopes, proposed, source}
   const [busy, setBusy] = useState(false);
@@ -218,24 +218,36 @@ export function UserDetail() {
               ) : (
                 <>
                   <Field label="Email" required><input type="email" value={f.email} onChange={set('email')} required disabled={!owner} /></Field>
-                  <div className="form-grid">
-                    <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required /></Field>
-                    <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required /></Field>
-                  </div>
-                  {u?.person_id ? <div className="small muted">Persona collegata: <Link to={`/people/${u.person_id}`}>scheda in Rubrica</Link></div> : <div className="alert warn small"><Icon name="alert" /><span>Utente senza persona collegata (eredità): nome e sede non seguono l'anagrafica.</span></div>}
+                  {u?.person_id ? (
+                    <div className="person-facts">
+                      <div className="row tight" style={{ justifyContent: 'space-between' }}><span className="small strong">Dalla scheda persona</span><Link to={`/people/${u.person_id}`} className="small">Apri in Rubrica</Link></div>
+                      <dl className="facts">
+                        <dt>Cognome e nome</dt><dd>{u.last_name} {u.first_name}{u.person_title ? ` (${u.person_title})` : ''}</dd>
+                        <dt>Sede</dt><dd>{u.site_code ? `${u.site_code} · ${u.site_name}` : <span className="muted">Nessuna</span>}</dd>
+                        <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}</dd>
+                        <dt>Reparto e ruolo</dt><dd>{[u.person_unit, u.person_role || u.person_job_title].filter(Boolean).join(' · ') || <span className="muted">Non indicati</span>}</dd>
+                        <dt>Telefono</dt><dd>{[u.person_phone, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>
+                      </dl>
+                      <div className="small muted">Questi dati si modificano solo in Amministrazione, Persone (o in Contratti del personale): qui l'account li legge dall'anagrafica unica.</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="form-grid">
+                        <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required /></Field>
+                        <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required /></Field>
+                      </div>
+                      <div className="alert warn small"><Icon name="alert" /><span>Utente senza persona collegata (eredità): collegalo a una persona qui sotto, così nome, sede e legal entity seguono l'anagrafica.</span></div>
+                      <Field label="Persona in rubrica"><select value={f.person_id} onChange={set('person_id')}><option value="">Nessuna</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select></Field>
+                    </>
+                  )}
                 </>
               )}
               <div className="form-grid">
-                <Field label="Titolo"><input value={f.title} onChange={set('title')} maxLength={20} placeholder="Dott.ssa" /></Field>
-                <Field label="Telefono"><input value={f.phone} onChange={set('phone')} /></Field>
                 <Field label="Livello" help={!owner ? 'Solo il titolare cambia il livello' : undefined}><select value={f.level} onChange={set('level')} disabled={!owner}>{Object.entries(LEVEL).map(([k, v]) => <option key={k} value={k} disabled={k === 'OWNER' && !owner}>{v}</option>)}</select></Field>
                 <Field label="Stato"><select value={f.status} onChange={set('status')} disabled={targetIsOwner}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                 <Field label="Metodo di accesso"><select value={f.auth_provider} onChange={set('auth_provider')}>{Object.entries(PROVIDER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                 <Field label="Lingua"><select value={f.lang} onChange={set('lang')}><option value="it">Italiano</option><option value="en">English</option></select></Field>
-                <Field label="Sede"><select value={f.site_id} onChange={set('site_id')}><option value="">Nessuna</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.code} · {s.name}</option>)}</select></Field>
-                <Field label="Legal entity"><select value={f.organization_id} onChange={set('organization_id')}><option value="">Nessuna</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>
               </div>
-              {!isNew && <Field label="Persona in rubrica" help="Collega l'account alla scheda anagrafica (ruolo, area, responsabile)."><select value={f.person_id} onChange={set('person_id')}><option value="">Nessuna</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select></Field>}
               {isNew && ['LOCAL', 'BOTH'].includes(f.auth_provider) && <>
                 <Field label="Password provvisoria" help="Vuota: viene generata e inviata con l'invito."><input type="text" autoComplete="off" value={f.password} onChange={set('password')} minLength={12} /></Field>
               </>}

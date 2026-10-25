@@ -3,6 +3,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
+import { syncUserFromPerson } from '../lib/accounts.js';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
@@ -145,10 +146,14 @@ r.put('/users/:id', requireAdmin, ah(async (req, res) => {
   }
   if (b.email && b.email.toLowerCase() !== target.email && await one('SELECT 1 FROM users WHERE lower(email)=$1 AND id<>$2', [b.email.toLowerCase(), id])) throw bad('Email già in uso');
   const fields = ['email', 'first_name', 'last_name', 'full_name', 'title', 'phone', 'level', 'status', 'auth_provider', 'organization_id', 'site_id', 'person_id', 'lang'];
+  // Anagrafica unica: se l'utente è una persona, nomi, titolo, telefono, sede e legal entity vengono dalla scheda persona (non si compilano qui)
+  const personId = b.person_id !== undefined ? b.person_id : target.person_id;
+  if (personId) for (const k of ['first_name', 'last_name', 'full_name', 'title', 'phone', 'organization_id', 'site_id']) delete b[k];
   if (b.first_name !== undefined || b.last_name !== undefined) { const nm = namesFrom({ first_name: b.first_name ?? target.first_name, last_name: b.last_name ?? target.last_name }); b.first_name = nm.first_name; b.last_name = nm.last_name; b.full_name = nm.full_name; }
   const sets = []; const params = [id];
   for (const f of fields) if (b[f] !== undefined) { params.push(f === 'email' ? b[f].toLowerCase() : b[f]); sets.push(`${f}=$${params.length}`); }
   if (sets.length) await q(`UPDATE users SET ${sets.join(', ')}, updated_at=now() WHERE id=$1`, params);
+  if (personId) await syncUserFromPerson(personId);
   await audit(req, 'USER_UPDATED', { entity: 'user', entityId: id, label: target.email, data: b });
   res.json({ ok: true });
 }));

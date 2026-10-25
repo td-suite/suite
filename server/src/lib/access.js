@@ -8,11 +8,14 @@ import { HttpError, forbidden } from './util.js';
 export async function hydrateUser(id) {
   const u = await one(
     `SELECT u.*, o.kind AS organization_kind, o.name AS organization_name, s.name AS site_name, s.code AS site_code,
-            p.kind AS person_kind, p.area AS person_area, p.job_title AS person_job_title
+            p.kind AS person_kind, p.area AS person_area, p.job_title AS person_job_title, p.title AS person_title, p.phone AS person_phone, p.phone_ext AS person_phone_ext,
+            jr.name AS person_role, ou.name AS person_unit
        FROM users u
-       LEFT JOIN organizations o ON o.id = u.organization_id
-       LEFT JOIN sites s ON s.id = u.site_id
        LEFT JOIN people p ON p.id = u.person_id
+       LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
+       LEFT JOIN sites s ON s.id = coalesce(p.site_id, u.site_id)
+       LEFT JOIN job_roles jr ON jr.id = p.role_id
+       LEFT JOIN org_units ou ON ou.id = p.unit_id
       WHERE u.id = $1`, [id]);
   if (!u) return null;
   const grants = await many(

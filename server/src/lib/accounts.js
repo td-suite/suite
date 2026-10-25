@@ -43,9 +43,9 @@ export async function ensureUserForPerson(personId, opts = {}) {
   const full = displayName(p.last_name, p.first_name);
   let u = await one('SELECT * FROM users WHERE lower(email)=$1', [email]);
   if (u) {
-    if (!u.person_id || u.person_id !== p.id || u.full_name !== full) {
-      u = await one(`UPDATE users SET person_id=$2, first_name=$3, last_name=$4, full_name=$5, site_id=coalesce(site_id,$6), updated_at=now() WHERE id=$1 RETURNING *`, [u.id, p.id, p.first_name, p.last_name, full, p.site_id]);
-    }
+    await q('UPDATE users SET person_id=$2 WHERE id=$1', [u.id, p.id]);
+    await syncUserFromPerson(p.id);
+    u = await one('SELECT * FROM users WHERE id=$1', [u.id]);
     return { user: u, created: false, provider: u.auth_provider, temporaryPassword: null };
   }
   const internal = config.autoInternalDomains.includes(email.split('@')[1]);
@@ -54,6 +54,7 @@ export async function ensureUserForPerson(personId, opts = {}) {
   u = await one(`INSERT INTO users (email, full_name, first_name, last_name, level, status, auth_provider, site_id, person_id, password_hash, must_change_password, created_by)
      VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$8,$9,$10,$11) RETURNING *`,
     [email, full, p.first_name, p.last_name, level, provider, p.site_id, p.id, plain ? await bcrypt.hash(plain, 12) : null, Boolean(plain), actor?.id || null]);
+  await syncUserFromPerson(p.id);
   const proposals = await proposeGrantsFromArea(u.id, p.area, actor?.id);
   await audit({ user: actor, ip: null }, 'USER_CREATED_FROM_PERSON', { entity: 'user', entityId: u.id, label: `${email} (${provider}) da persona ${p.id}`, data: { person_id: p.id, proposals } });
   if (sendInvite) {
@@ -66,8 +67,16 @@ export async function ensureUserForPerson(personId, opts = {}) {
   return { user: u, created: true, provider, temporaryPassword: plain };
 }
 
+/** Sede, legal entity, nomi, titolo e telefono dell'utente vengono dalla persona: una sola anagrafica, nessuna copia da compilare. */
+export async function syncUserFromPerson(personId) {
+  await q(`UPDATE users u SET first_name=p.first_name, last_name=p.last_name, full_name=p.last_name || ' ' || p.first_name, title=p.title, phone=p.phone,
+      site_id=p.site_id, organization_id=coalesce(p.organization_id, s.organization_id), updated_at=now()
+    FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`, [personId]);
+}
+
 /** Da chiamare quando una persona cambia: se è attiva con email e non ha accesso, l'accesso nasce da solo (senza bloccare il chiamante). */
 export function autoAccountForPerson(personId, actor) {
+  syncUserFromPerson(personId).catch((e) => console.warn('[accounts] sync', e.message));
   ensureUserForPerson(personId, { actor, onlyIfActive: true }).catch((e) => { if (!/email|stato/.test(e.message)) console.warn('[accounts]', e.message); });
 }
 

@@ -72,6 +72,21 @@ const DATASETS = {
     ],
     example: ['Esempio', 'Mario', 'Dott.', 'mario.esempio@esempio.it', '', 'DIPENDENTE', 'ATTIVO', 'Ruolo di esempio', '', 'ES-01', 'Reparto di esempio', '', '000 0000000', '000 0000000', '100', '2026-01-01', ''],
   },
+  orgchart: {
+    title: 'Organigramma', sheet: 'Organigramma', order: 5,
+    columns: [
+      ['unit', 'Unità', 'Nome del nodo (es. Direzione, Centri Polidiagnostici, Laboratorio di Analisi, Core Lab, Montemurlo). Obbligatorio. Una riga per ogni incarico; più righe con la stessa unità aggiungono incarichi.'],
+      ['parent', 'Unità superiore', 'Nome del nodo da cui dipende (vuoto solo per la Direzione).'],
+      ['kind', 'Tipo', 'DIREZIONE, AREA, SEDE, REPARTO, FUNZIONE. Predefinito: SEDE se c\'è il codice sede, altrimenti AREA (REPARTO se l\'unità superiore è una sede).'],
+      ['site_code', 'Codice sede', 'Per i nodi SEDE (e i reparti): la sede dell\'anagrafica.'],
+      ['role', 'Ruolo dell\'incarico', 'Dal catalogo Ruoli (creato se manca): Chief Executive Officer, Site Manager, Direttore Sanitario, Responsabile...'],
+      ['person', 'Persona (Cognome Nome)', 'Chi ricopre l\'incarico, come in Persone (cognome e nome). Vuota se la casella è ancora da assegnare (TBD).'],
+      ['person_email', 'Email della persona', 'In alternativa al nome, l\'email della persona in Persone.'],
+      ['is_head', 'Responsabile', 'SI se l\'incarico è il responsabile dell\'unità (la casella principale); NO per gli incarichi di staff e le altre figure (es. Direttore Sanitario).'],
+      ['sort_order', 'Ordine', 'Numero per l\'ordinamento dei nodi fratelli (facoltativo).'],
+    ],
+    example: ['Direzione', '', 'DIREZIONE', '', 'Chief Executive Officer', 'Esempio Mario', '', 'SI', '1'],
+  },
   users: {
     title: 'Utenti e profili', sheet: 'Utenti', order: 4,
     columns: [
@@ -161,7 +176,7 @@ r.get('/import/templates/:dataset', requireAdmin, ah(async (req, res) => {
   ws.addRow(d.example);
   ws.getRow(2).font = { italic: true, color: { argb: 'FF6B7F85' } };
   // Validazioni a tendina per i campi con valori ammessi
-  const lists = { kind: req.params.dataset === 'sites' ? SITE_KINDS : req.params.dataset === 'organizations' ? ORG_KINDS : PERSON_KINDS, status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
+  const lists = { kind: req.params.dataset === 'sites' ? SITE_KINDS : req.params.dataset === 'organizations' ? ORG_KINDS : req.params.dataset === 'orgchart' ? ['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE'] : PERSON_KINDS, is_head: ['SI', 'NO'], status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
   d.columns.forEach(([key], i) => {
     if (!lists[key]) return;
     const col = ws.getColumn(i + 1).letter;
@@ -195,7 +210,8 @@ const cellText = (v) => {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v);
 };
-const BOOL_COLS = new Set(['active', 'send_invite', 'all_day', 'requires_ack', 'is_public']);
+const BOOL_COLS = new Set(['active', 'send_invite', 'all_day', 'requires_ack', 'is_public', 'is_head']);
+const NUM_COLS2 = new Set(['sort_order']);
 const NUM_COLS = new Set(['lat', 'lng']);
 
 r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, res) => {
@@ -222,7 +238,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
       if (v === '' || v == null) return;
       empty = false;
       if (BOOL_COLS.has(k)) v = /^(si|sì|s|yes|y|true|1|x)$/i.test(v);
-      else if (NUM_COLS.has(k)) v = Number(String(v).replace(',', '.'));
+      else if (NUM_COLS.has(k) || NUM_COLS2.has(k)) v = Number(String(v).replace(',', '.'));
       obj[k] = v;
     });
     if (!empty) rows.push({ __row: n, ...obj });
@@ -242,6 +258,39 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
     const ctx = { modules: mods, owner: req.user.level === 'OWNER', userId: req.user.id };
     ROW_SCHEMAS.users = usersRowSchema; APPLIERS.users = (c, row) => applyUserRow(c, row, ctx);
     out = await applyBatch(batch.id, 'users', data.map(({ __row, ...o }) => o), k);
+  } else if (dataset === 'orgchart') {
+    const schema = z.object({ unit: z.string().trim().min(2).max(160), parent: z.string().trim().max(160).optional().nullable(), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional().nullable(),
+      site_code: z.string().trim().max(40).optional().nullable(), role: z.string().trim().max(200).optional().nullable(), person: z.string().trim().max(250).optional().nullable(), person_email: z.string().trim().toLowerCase().email().optional().nullable(), is_head: z.boolean().optional().nullable(), sort_order: z.number().int().optional().nullable() });
+    ROW_SCHEMAS.orgchart = schema;
+    APPLIERS.orgchart = async (c, row) => {
+      const parent = row.parent ? (await c.query('SELECT id, kind, site_id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [row.parent])).rows[0] : null;
+      if (row.parent && !parent) throw new Error(`unità superiore "${row.parent}" non trovata: mettila in una riga più in alto`);
+      const site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;
+      if (row.site_code && !site) throw new Error(`sede ${row.site_code} inesistente`);
+      const kind = row.kind || (site ? 'SEDE' : parent?.kind === 'SEDE' ? 'REPARTO' : parent ? 'AREA' : 'DIREZIONE');
+      const siteId = site?.id || (kind === 'REPARTO' ? parent?.site_id || null : null);
+      let unit = (await c.query('SELECT id FROM org_units WHERE lower(name)=lower($1) AND coalesce(parent_id,0)=coalesce($2,0)', [row.unit, parent?.id || null])).rows[0];
+      if (!unit) unit = (await c.query('INSERT INTO org_units (name, kind, parent_id, site_id, sort_order) VALUES ($1,$2,$3,$4,coalesce($5,100)) RETURNING id', [row.unit, kind, parent?.id || null, siteId, row.sort_order ?? null])).rows[0];
+      else await c.query('UPDATE org_units SET kind=$2, site_id=coalesce($3, site_id), sort_order=coalesce($4, sort_order), active=TRUE WHERE id=$1', [unit.id, kind, siteId, row.sort_order ?? null]);
+      let action = 'unità';
+      if (row.person_email || row.person) {
+        let person = row.person_email ? (await c.query('SELECT id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [row.person_email])).rows[0] : null;
+        if (!person && row.person) {
+          const key = row.person.toLowerCase().replace(/\s+/g, ' ');
+          const cands = (await c.query(`SELECT id FROM people WHERE lower(last_name || ' ' || first_name)=$1 OR lower(first_name || ' ' || last_name)=$1 ORDER BY id`, [key])).rows;
+          if (cands.length > 1) throw new Error(`più persone si chiamano "${row.person}": usa l'email`);
+          person = cands[0];
+        }
+        if (!person) throw new Error(`persona ${row.person_email || row.person} non in Persone: caricala prima`);
+        let roleId = null;
+        if (row.role) { const ex0 = (await c.query('SELECT id FROM job_roles WHERE lower(name)=lower($1)', [row.role])).rows[0]; roleId = (ex0 || (await c.query('INSERT INTO job_roles (name) VALUES ($1) RETURNING id', [row.role])).rows[0]).id; }
+        await c.query(`INSERT INTO org_positions (unit_id, person_id, role_id, is_head) VALUES ($1,$2,$3,$4) ON CONFLICT (unit_id, person_id, coalesce(role_id,0)) DO UPDATE SET is_head=EXCLUDED.is_head`, [unit.id, person.id, roleId, Boolean(row.is_head)]);
+        if (row.is_head) await c.query('UPDATE org_units SET head_person_id=$2 WHERE id=$1', [unit.id, person.id]);
+        action = 'incarico';
+      }
+      return { id: unit.id, action: `${action} creata` };
+    };
+    out = await applyBatch(batch.id, 'orgchart', data.map(({ __row, ...o }) => o), k);
   } else if (dataset === 'people') {
     // Due passaggi: prima tutte le persone (senza responsabile), poi i responsabili per email, così l'ordine delle righe non conta
     out = await applyBatch(batch.id, 'people', data.map(({ __row, manager_email, ...o }) => o), k);

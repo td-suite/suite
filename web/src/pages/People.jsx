@@ -84,7 +84,7 @@ function EditPersonModal({ p, onClose, onSaved }) {
     <Modal title="Aggiorna la scheda" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="pform">Salva</button></>}>
       <form id="pform" onSubmit={save} className="form-grid">
         <Field label="Sede"><input value={p.site_name || ''} disabled title="La sede si cambia in Amministrazione" /></Field>
-        <Field label="Reparto" help={p.site_id ? undefined : 'Imposta prima la sede in Amministrazione'}><select value={f.unit_id || ''} onChange={set('unit_id')} disabled={!p.site_id}><option value="">Nessuno</option>{(units.data || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+        <Field label="Reparto" help={p.site_id ? undefined : 'Imposta prima la sede in Amministrazione'}><select value={f.unit_id || ''} onChange={set('unit_id')} disabled={!p.site_id}><option value="">Nessuno</option>{(units.data || []).filter((u) => u.kind === 'REPARTO').map((u) => <option key={u.id} value={u.id}>{u.name}{!u.site_id && u.parent_name ? ` (${u.parent_name})` : ''}</option>)}</select></Field>
         <Field label="Ruolo"><select value={f.role_id || ''} onChange={set('role_id')}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
         <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
@@ -161,27 +161,48 @@ function Node({ p, children }) {
 }
 
 function OrgChart() {
-  const { data, loading, error } = useApi('/people/org-chart');
-  const [zoom, setZoom] = useState(1);
+  const { data, loading, error } = useApi('/org-chart');
+  const [zoom, setZoom] = useState(0.9);
+  const [sp] = useSearchParams();
+  const focus = Number(sp.get('focus')) || null;
   const tree = useMemo(() => {
-    const rows = data || [];
-    const ids = new Set(rows.map((r) => r.id));
-    const byMgr = {};
-    for (const r of rows) { const k = r.manager_person_id && ids.has(r.manager_person_id) ? r.manager_person_id : 'root'; (byMgr[k] ||= []).push(r); }
-    const coll = new Intl.Collator('it'); for (const k of Object.keys(byMgr)) byMgr[k].sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`));
-    const build = (p, depth = 0) => ({ p, children: depth > 8 ? [] : (byMgr[p.id] || []).map((c) => build(c, depth + 1)) });
-    return (byMgr.root || []).map((r) => build(r));
+    const units = data?.units || [];
+    const byParent = {};
+    for (const u of units) (byParent[u.parent_id || 'root'] ||= []).push(u);
+    const coll = new Intl.Collator('it');
+    for (const k of Object.keys(byParent)) byParent[k].sort((a, b) => (a.sort_order - b.sort_order) || coll.compare(a.name, b.name));
+    const build = (u, depth = 0) => ({ u, children: depth > 8 ? [] : (byParent[u.id] || []).map((c) => build(c, depth + 1)) });
+    return (byParent.root || []).map((u) => build(u));
   }, [data]);
+  const unitsWithPositions = (data?.units || []).filter((u) => u.positions?.length).length;
   return (
     <div className="page">
-      <PageHead title="Organigramma" icon="tree" sub="Struttura della rete a partire dai responsabili" actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(1)}>Reimposta</button></div>} />
+      <PageHead title="Organigramma" icon="tree" sub="Unità organizzative e incarichi: direzione, aree, sedi, reparti" actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(0.9)}>Reimposta</button></div>} />
       <ErrorBox error={error} />
       {loading && <Card><Skeleton lines={4} /></Card>}
-      {data && !data.length && <Empty icon="tree" title="Nessuna persona attiva">L'organigramma si costruisce dai responsabili indicati nelle schede.</Empty>}
-      {tree.length > 0 && (
-        <Card flush><div className="org"><div className="org-wrap" style={{ transform: `scale(${zoom})` }}><ul className="tree">{tree.map((n) => <Node key={n.p.id} p={n.p}>{n.children}</Node>)}</ul></div></div></Card>
+      {data && !unitsWithPositions && <Empty icon="tree" title="Organigramma da comporre">Le unità e gli incarichi si definiscono in Amministrazione, Organizzazione, oppure si caricano con il file Organigramma da Importazioni.</Empty>}
+      {tree.length > 0 && unitsWithPositions > 0 && (
+        <Card flush><div className="org"><div className="org-wrap" style={{ zoom }}><ul className="tree">{tree.map((n) => <UnitNode key={n.u.id} u={n.u} focus={focus}>{n.children}</UnitNode>)}</ul></div></div></Card>
       )}
     </div>
+  );
+}
+
+const KIND_LABEL = { DIREZIONE: 'Direzione', AREA: 'Area', SEDE: 'Sede', REPARTO: 'Reparto', FUNZIONE: 'Funzione' };
+function UnitNode({ u, children, focus }) {
+  const heads = (u.positions || []).filter((x) => x.is_head);
+  const others = (u.positions || []).filter((x) => !x.is_head);
+  const hit = (u.positions || []).some((x) => x.person_id === focus);
+  return (
+    <li>
+      <div className={`node unit ${u.kind.toLowerCase()}${hit ? ' focus' : ''}`}>
+        <div className="unit-head"><span className="unit-kind">{KIND_LABEL[u.kind]}</span><div className="unit-name">{u.name}</div></div>
+        {heads.map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className="pos head"><Avatar name={x.person_name} fileId={x.avatar_file_id} size="sm" /><div style={{ minWidth: 0 }}><div className="n">{x.person_name}</div><div className="r ellipsis">{x.role_name || 'Responsabile'}</div></div></Link>)}
+        {!heads.length && <div className="pos head tbd"><div className="n muted">Da assegnare</div></div>}
+        {others.map((x) => <Link key={x.id} to={`/people/${x.person_id}`} className="pos"><div style={{ minWidth: 0 }}><div className="r">{x.role_name || 'Incarico'}</div><div className="n">{x.person_name}</div></div></Link>)}
+      </div>
+      {children?.length > 0 && <ul className={children.length > 3 && children.every((c) => !c.children?.length) ? 'stack' : ''}>{children.map((c) => <UnitNode key={c.u.id} u={c.u} focus={focus}>{c.children}</UnitNode>)}</ul>}
+    </li>
   );
 }
 

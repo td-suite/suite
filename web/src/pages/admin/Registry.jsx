@@ -208,7 +208,7 @@ export function PeopleAdmin() {
   const fields = [
     { key: 'last_name', label: 'Cognome', required: true }, { key: 'first_name', label: 'Nome', required: true }, { key: 'title', label: 'Titolo', max: 20 },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
-    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => String(u.site_id) === String(f.site_id)).map((u) => ({ value: u.id, label: u.name })), help: 'Dipende dalla sede scelta' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },  
+    { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'site_id', label: 'Sede', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), resets: ['unit_id'] }, { key: 'unit_id', label: 'Reparto', type: 'select', options: [], optionsFor: (f) => (units.data || []).filter((u) => u.kind === 'REPARTO' && (String(u.site_id) === String(f.site_id) || (!u.site_id && f.site_id))).map((u) => ({ value: u.id, label: u.parent_name && !u.site_id ? `${u.name} (${u.parent_name})` : u.name })), help: 'I reparti della sede scelta e quelli di area (es. Laboratorio)' }, { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Dal catalogo in Organizzazione' }, { key: 'discipline', label: 'Disciplina' }, { key: 'manager_person_id', label: 'Responsabile', type: 'select', options: people },  
       
     { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) }, { key: 'tax_code', label: 'Codice fiscale', max: 16 },
    
@@ -249,47 +249,99 @@ export function Organization() {
   const [tab, setTab] = useState('units');
   return (
     <div className="page">
-      <PageHead title="Organizzazione" icon="grid" sub="Reparti per sede e ruoli: con il responsabile compongono l'organigramma. Il reparto dipende dalla sede; il ruolo si sceglie dal catalogo." />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'units', label: 'Reparti per sede' }, { value: 'roles', label: 'Ruoli' }]} />
+      <PageHead title="Organizzazione" icon="grid" sub="L'albero delle unità (direzione, aree, sedi, reparti) con gli incarichi di ciascuna: è l'organigramma. Una persona può avere più incarichi." />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'units', label: 'Unità e incarichi' }, { value: 'roles', label: 'Ruoli' }]} />
       {tab === 'roles' ? <Roles embedded /> : <Units />}
     </div>
   );
 }
 
+const KINDS = { DIREZIONE: 'Direzione', AREA: 'Area', SEDE: 'Sede', REPARTO: 'Reparto', FUNZIONE: 'Funzione' };
 function Units() {
   const { data, loading, error, reload } = useApi('/org-units?all=1');
   const sites = useApi('/sites?all=1');
   const people = useApi('/people?all=1');
+  const roles = useApi('/job-roles?all=1');
   const toast = useToast();
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null);
-  const rows = (data || []).filter((u) => !q || `${u.name} ${u.site_name}`.toLowerCase().includes(q.toLowerCase()));
-  const fields = [
-    { key: 'site_id', label: 'Sede', type: 'select', required: true, options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) },
-    { key: 'name', label: 'Reparto', required: true, max: 160 },
-    { key: 'head_person_id', label: 'Responsabile del reparto', type: 'select', options: (people.data || []).map((p) => ({ value: p.id, label: `${p.last_name} ${p.first_name}` })) },
-    { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attivo', type: 'bool' }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
+  const [pos, setPos] = useState(null);
+  const [collapsed, setCollapsed] = useState({});
+  const units = data || [];
+  const rows = useMemo(() => {
+    const byParent = {}; const coll = new Intl.Collator('it');
+    for (const u of units) (byParent[u.parent_id || 'root'] ||= []).push(u);
+    for (const k of Object.keys(byParent)) byParent[k].sort((a, b) => (a.sort_order - b.sort_order) || coll.compare(a.name, b.name));
+    const out = []; const match = (u) => !q || `${u.name} ${u.site_name || ''} ${(u.positions || []).map((x) => x.person_name).join(' ')}`.toLowerCase().includes(q.toLowerCase());
+    const walk = (list, depth) => { for (const u of list) { const kids = byParent[u.id] || []; if (match(u) || q) out.push({ ...u, depth, hasKids: kids.length > 0 }); if (!collapsed[u.id] || q) walk(kids, depth + 1); } };
+    walk(byParent.root || [], 0);
+    return q ? out.filter(match) : out;
+  }, [units, q, collapsed]);
+  const unitOpts = units.map((u) => ({ value: u.id, label: `${u.name} (${KINDS[u.kind]})` }));
+  const fields = (cur) => [
+    { key: 'name', label: 'Nome dell\'unità', required: true, max: 160 },
+    { key: 'kind', label: 'Tipo', type: 'select', required: true, options: opts(KINDS) },
+    { key: 'parent_id', label: 'Dipende da', type: 'select', options: unitOpts.filter((o) => o.value !== cur?.id), help: 'Vuoto solo per la Direzione' },
+    { key: 'site_id', label: 'Sede dell\'anagrafica', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), help: 'Per i nodi Sede e per i reparti' },
+    { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
   ];
-  const save = async (body) => { const b = { ...body, site_id: Number(body.site_id), head_person_id: body.head_person_id ? Number(body.head_person_id) : null }; if (modal?.id) await api.put(`/org-units/${modal.id}`, b); else await api.post('/org-units', b); toast('Reparto salvato'); reload(); };
+  const save = async (body) => { const b = { ...body, parent_id: body.parent_id ? Number(body.parent_id) : null, site_id: body.site_id ? Number(body.site_id) : null }; delete b.head_person_id; if (modal?.id) await api.put(`/org-units/${modal.id}`, b); else await api.post('/org-units', b); toast('Unità salvata'); reload(); };
   return (
     <>
-      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Reparto o sede" /><div className="spacer" /><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuovo reparto</button></div>
+      <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Unità, sede o persona" /><div className="spacer" /><button className="btn" onClick={() => setModal({ kind: 'AREA', parent_id: units.find((u) => u.kind === 'DIREZIONE')?.id || '' })}><Icon name="plus" />Nuova unità</button></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
-        {data && !rows.length && <Empty icon="grid" title="Nessun reparto" />}
-        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Sede</th><th>Reparto</th><th>Responsabile</th><th>Interno</th><th>Persone</th><th></th></tr></thead><tbody>
+        {data && !rows.length && <Empty icon="grid" title="Nessuna unità">Crea la Direzione, poi le aree, le sedi e i reparti. Oppure carica il file Organigramma da Importazioni.</Empty>}
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Unità</th><th>Tipo</th><th>Sede</th><th>Incarichi</th><th>Interno</th><th></th></tr></thead><tbody>
           {rows.map((u) => <tr key={u.id}>
-            <td className="small">{u.site_name}</td>
-            <td><div className="strong">{u.name}</div>{!u.active && <Badge tone="grey">Non attivo</Badge>}</td>
-            <td className="small">{u.head_name}</td><td className="mono small">{u.phone_ext}</td>
-            <td className="num">{u.people_count}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(u)}><Icon name="edit" /></button><DeleteButton label={`il reparto ${u.name}`} text="Possibile solo se nessuna persona vi appartiene; altrimenti disattivalo." onDelete={async () => { await api.del(`/org-units/${u.id}`); toast('Reparto eliminato'); reload(); }} /></td>
+            <td><div className="row tight" style={{ paddingLeft: u.depth * 18 }}>
+              {u.hasKids ? <button className="iconbtn sm" aria-label={collapsed[u.id] ? 'Espandi' : 'Comprimi'} onClick={() => setCollapsed({ ...collapsed, [u.id]: !collapsed[u.id] })}><Icon name={collapsed[u.id] ? 'chevronRight' : 'chevronDown'} /></button> : <span style={{ width: 26, display: 'inline-block' }} />}
+              <div><div className="strong">{u.name}</div>{!u.active && <Badge tone="grey">Non attiva</Badge>}</div></div></td>
+            <td className="small">{KINDS[u.kind]}</td>
+            <td className="small">{u.site_code ? `${u.site_code} · ${u.site_name}` : ''}</td>
+            <td className="small">{(u.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.person_name}</b> : x.person_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>)}{!(u.positions || []).length && <span className="muted">Nessuno</span>}</td>
+            <td className="mono small">{u.phone_ext}</td>
+            <td className="actions">
+              <button className="iconbtn" aria-label="Incarichi" title="Incarichi" onClick={() => setPos(u)}><Icon name="users" /></button>
+              <button className="iconbtn" aria-label="Aggiungi unità dipendente" title="Aggiungi unità dipendente" onClick={() => setModal({ parent_id: u.id, kind: u.kind === 'SEDE' ? 'REPARTO' : u.kind === 'DIREZIONE' ? 'AREA' : 'SEDE', site_id: u.site_id || '' })}><Icon name="plus" /></button>
+              <button className="iconbtn" aria-label="Modifica" onClick={() => setModal(u)}><Icon name="edit" /></button>
+              <DeleteButton label={`l'unità ${u.name}`} text="Possibile solo se non ha unità dipendenti né persone assegnate; altrimenti disattivala." onDelete={async () => { await api.del(`/org-units/${u.id}`); toast('Unità eliminata'); reload(); }} />
+            </td>
           </tr>)}
         </tbody></table></div>}
       </Card>
-      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuovo reparto'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova unità'} fields={fields(modal)} item={modal} onSave={save} onClose={() => setModal(null)} />}
+      {pos && <PositionsModal unit={units.find((u) => u.id === pos.id) || pos} people={people.data || []} roles={roles.data || []} onClose={() => setPos(null)} onChange={reload} />}
     </>
+  );
+}
+
+// Incarichi di un'unità: persona + ruolo + flag responsabile. Una persona può avere più incarichi in unità diverse.
+function PositionsModal({ unit, people, roles, onClose, onChange }) {
+  const toast = useToast();
+  const [f, setF] = useState({ person_id: '', role_id: '', is_head: false });
+  const [busy, setBusy] = useState(false);
+  const coll = new Intl.Collator('it');
+  const add = async (e) => {
+    e.preventDefault(); if (!f.person_id) return; setBusy(true);
+    try { await api.post('/org-positions', { unit_id: unit.id, person_id: Number(f.person_id), role_id: f.role_id ? Number(f.role_id) : null, is_head: f.is_head }); toast('Incarico salvato'); setF({ person_id: '', role_id: '', is_head: false }); onChange(); } catch (e2) { toast(e2, 'err'); }
+    setBusy(false);
+  };
+  const del = async (x) => { try { await api.del(`/org-positions/${x.id}`); toast('Incarico rimosso'); onChange(); } catch (e2) { toast(e2, 'err'); } };
+  return (
+    <Modal title={`Incarichi · ${unit.name}`} onClose={onClose} wide footer={<button className="btn ghost" onClick={onClose}>Chiudi</button>}>
+      {(unit.positions || []).length > 0 && <table className="t" style={{ marginBottom: 14 }}><thead><tr><th>Persona</th><th>Ruolo</th><th>Responsabile</th><th></th></tr></thead><tbody>
+        {unit.positions.map((x) => <tr key={x.id}><td className="strong">{x.person_name}</td><td className="small">{x.role_name || ''}</td><td>{x.is_head && <Badge tone="blue">Responsabile</Badge>}</td><td className="actions"><button className="iconbtn" aria-label="Rimuovi" onClick={() => del(x)}><Icon name="trash" /></button></td></tr>)}
+      </tbody></table>}
+      {!(unit.positions || []).length && <p className="small muted">Nessun incarico ancora: la casella risulta "Da assegnare" nell'organigramma.</p>}
+      <form onSubmit={add} className="form-grid">
+        <Field label="Persona" required><select value={f.person_id} onChange={(e) => setF({ ...f, person_id: e.target.value })} required><option value="">Scegli</option>{[...people].sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`)).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
+        <Field label="Ruolo nell'incarico"><select value={f.role_id} onChange={(e) => setF({ ...f, role_id: e.target.value })}><option value="">Nessuno</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+        <Field label="Responsabile dell'unità"><div style={{ paddingTop: 6 }}><Switch checked={f.is_head} onChange={(v) => setF({ ...f, is_head: v })} label="Responsabile" /></div></Field>
+        <div className="span-all"><button className="btn" disabled={busy || !f.person_id}><Icon name="plus" />Aggiungi incarico</button></div>
+      </form>
+    </Modal>
   );
 }
 
