@@ -56,7 +56,7 @@ export default function Profile() {
                 <Field label="Sede principale"><select value={f.site_id} onChange={(e) => setF({ ...f, site_id: e.target.value })}><option value="">Nessuna</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` · ${s.city}` : ''}</option>)}</select></Field>
                 <Field label="Lingua"><select value={f.lang} onChange={(e) => setF({ ...f, lang: e.target.value })}><option value="it">Italiano</option><option value="en">English</option></select></Field>
               </div>
-              <Field label="Presentazione" help="Poche righe su di te, visibili nella rubrica."><textarea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} style={{ minHeight: 70 }} /></Field>
+              <Field label="Presentazione" help={`Visibile nella rubrica · ${f.bio.length} / 4000 caratteri`}><textarea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value.slice(0, 4000) })} style={{ minHeight: 160 }} /></Field>
               <label className="f inline"><Switch checked={f.notify_email} onChange={(v) => setF({ ...f, notify_email: v })} label="Notifiche via email" />Ricevi le notifiche anche via email</label>
               <div className="row end"><button className="btn" disabled={busy}>Salva</button></div>
             </form>

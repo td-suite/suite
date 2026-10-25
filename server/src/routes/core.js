@@ -170,8 +170,10 @@ r.get('/people/:id', ah(async (req, res) => {
   if (!row) throw notFound();
   if (!isAdmin(req.user)) { delete row.legacy_refs; delete row.hired_at; }
   const reports = await many(`SELECT id, last_name, first_name, job_title FROM people WHERE manager_person_id=$1 AND status='ATTIVO' ORDER BY last_name`, [row.id]);
+  // Presentazione scritta dalla persona stessa nel proprio profilo Suite
+  const bio = row.user_id ? (await one('SELECT bio FROM users WHERE id=$1', [row.user_id]))?.bio || null : null;
   await readLog(req, { module: 'rubrica', entity: 'person', entityId: row.id });
-  res.json({ ...row, reports });
+  res.json({ ...row, reports, bio });
 }));
 r.post('/people', requireAdmin, ah(async (req, res) => {
   const b = parse(personSchema, req.body);

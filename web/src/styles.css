@@ -631,6 +631,8 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .switchboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
 .switchboard .it { display: flex; gap: 10px; align-items: center; font-size: 13.5px; padding: 4px 0; }
 .switchboard .ext { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--teal); background: var(--teal-050); border-radius: 7px; padding: 1px 8px; min-width: 44px; text-align: center; }
+.bio p { margin: 0 0 10px; line-height: 1.6; max-width: 80ch; }
+.bio p:last-child { margin-bottom: 0; }
 .person-head { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .person-head h1 { font-size: 28px; }
 .person-head .role { color: var(--muted); font-size: 15px; }

@@ -153,7 +153,7 @@ r.post('/reset', loginLimiter, ah(async (req, res) => {
 
 r.put('/me', ah(async (req, res) => {
   if (!req.user) throw new HttpError(401, 'Non autenticato');
-  const b = parse(z.object({ phone: z.string().max(40).nullable().optional(), bio: z.string().max(600).nullable().optional(), notify_email: z.boolean().optional(),
+  const b = parse(z.object({ phone: z.string().max(40).nullable().optional(), bio: z.string().max(4000).nullable().optional(), notify_email: z.boolean().optional(),
     lang: z.enum(['it', 'en']).optional(), site_id: z.number().int().nullable().optional(), title: z.string().max(20).nullable().optional() }), req.body);
   await q(`UPDATE users SET phone=coalesce($2,phone), bio=coalesce($3,bio), notify_email=coalesce($4,notify_email), lang=coalesce($5,lang),
            site_id = CASE WHEN $7 THEN $6 ELSE site_id END, title=coalesce($8,title), updated_at=now() WHERE id=$1`,

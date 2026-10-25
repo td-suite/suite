@@ -120,6 +120,7 @@ function Detail() {
           </div>
         </div>
       </Card>
+      {p.bio && <Card title="Presentazione" icon="user" className="mt2"><div className="bio">{p.bio.split(/\n\s*\n/).map((par, i) => <p key={i}>{par}</p>)}</div></Card>}
       <div className="grid g2 mt2">
         <Card title="Contatti" icon="phone">
           <div className="contact-list">
