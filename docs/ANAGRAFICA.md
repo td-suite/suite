@@ -55,3 +55,10 @@ Come in PORTING.md: database locale `suite` (host=/tmp), sorgente `legacy_<key>`
 (righe scartate ammesse solo se motivate), verifica delle route principali, build web pulita, Playwright sulle pagine principali
 con screenshot in `docs/screens/mod-<key>-*.png`. Server su porta propria (PORT=31xx). Nel report: tabelle rimosse, estensioni
 create, righe scartate e perché, pagine toccate.
+
+## Clienti service (25/10/2026)
+Ogni codice cliente StudioLAB è un'organizzazione distinta (kind CLIENTE, `organizations.studiolab_code`, chiave di riconoscimento al
+posto della partita IVA: due codici con la stessa P.IVA sono due organizzazioni). Per ciascuna la Suite crea e aggiorna da sola la
+sede gemella `SRV-<codice>` (kind SERVICE, stesso `studiolab_code`, organization_id) su cui lavorano NC, Ordini e i perimetri degli
+utenti esterni. Nel file Sedi vanno solo le sedi Toscana Diagnostica. Il connettore StudioLAB alimenterà le organizzazioni (dataset
+`organizations` dell'API di ingestione, campo `studiolab_code`).

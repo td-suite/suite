@@ -74,6 +74,7 @@ export const ROW_SCHEMAS = {
   organizations: z.object({
     name: str(200).min(2), kind: opt(z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'])), code: opt(str(24)), vat_number: opt(str(20)), tax_code: opt(str(20)),
     sdi: opt(str(10)), pec: email, email, phone: opt(str(40)), address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), website: opt(str(200)), active: opt(z.boolean()),
+    studiolab_code: opt(str(40)),
   }),
   events: z.object({
     title: str(200).min(2), description: opt(str(4000)), kind: opt(z.enum(['EVENTO', 'RIUNIONE', 'FORMAZIONE', 'SCADENZA', 'TURNO', 'FESTIVITA', 'ALTRO'])),
@@ -96,6 +97,22 @@ const batchSchema = z.object({
 
 const zodMsg = (e) => e.issues.map((i) => `${i.path.join('.') || 'campo'}: ${i.message}`).join('; ');
 const refs = (k, row) => (row.external_id ? JSON.stringify({ [`ingest:${k.source}`]: row.external_id }) : '{}');
+
+// Sede gemella di un cliente service: per ogni organizzazione con codice StudioLAB esiste una sede SERVICE con lo stesso codice,
+// su cui lavorano NC, Ordini e i perimetri degli utenti esterni. Nasce e si aggiorna da sola; non va caricata nel file Sedi.
+async function twinServiceSite(c, orgId, row, slc) {
+  if (!slc) return;
+  const code = `SRV-${slc}`.slice(0, 24);
+  const ex = (await c.query('SELECT id FROM sites WHERE organization_id=$1 AND kind=\'SERVICE\' AND upper(studiolab_code)=upper($2)', [orgId, slc])).rows[0];
+  const vals = [row.name, row.address || null, row.zip || null, row.city || null, row.province || null, row.phone || null, row.email || null, row.active ?? true];
+  if (ex) {
+    await c.query(`UPDATE sites SET name=$2, address=coalesce($3,address), zip=coalesce($4,zip), city=coalesce($5,city), province=coalesce($6,province), phone=coalesce($7,phone), email=coalesce($8,email), active=$9, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
+    return ex.id;
+  }
+  const ins = await c.query(`INSERT INTO sites (code, name, kind, organization_id, address, zip, city, province, phone, email, active, studiolab_code, legacy_refs)
+    VALUES ($1,$2,'SERVICE',$3,$4,$5,$6,$7,$8,$9,$10,$11,'{}'::jsonb) ON CONFLICT (code) DO UPDATE SET organization_id=EXCLUDED.organization_id, studiolab_code=EXCLUDED.studiolab_code RETURNING id`, [code, ...vals.slice(0, 1), orgId, ...vals.slice(1, 7), vals[7], slc]);
+  return ins.rows[0].id;
+}
 
 // ---- applicazione riga per riga (ogni riga in un savepoint: un errore non blocca le altre)
 export const APPLIERS = {
@@ -142,18 +159,25 @@ export const APPLIERS = {
   async organizations(c, row, k) {
     let ex = null;
     const vat = row.vat_number ? row.vat_number.replace(/\s+/g, '') : null;
-    if (vat) ex = (await c.query(`SELECT id FROM organizations WHERE regexp_replace(coalesce(vat_number,''), '\\s', '', 'g') = $1`, [vat])).rows[0];
+    const slc = row.studiolab_code ? row.studiolab_code.trim() : null;
+    // Clienti service: il codice cliente StudioLAB è la chiave (due codici con la stessa partita IVA sono due organizzazioni distinte)
+    if (slc) ex = (await c.query('SELECT id FROM organizations WHERE upper(studiolab_code)=upper($1)', [slc])).rows[0];
+    else if (vat) ex = (await c.query(`SELECT id FROM organizations WHERE regexp_replace(coalesce(vat_number,''), '\\s', '', 'g') = $1 AND (studiolab_code IS NULL OR studiolab_code='')`, [vat])).rows[0];
     if (!ex && row.code) ex = (await c.query('SELECT id FROM organizations WHERE lower(code)=lower($1)', [row.code])).rows[0];
     if (!ex && row.tax_code) ex = (await c.query('SELECT id FROM organizations WHERE upper(tax_code)=upper($1)', [row.tax_code])).rows[0];
-    if (!ex) ex = (await c.query('SELECT id FROM organizations WHERE lower(name)=lower($1)', [row.name])).rows[0];
+    if (!ex && !slc) ex = (await c.query('SELECT id FROM organizations WHERE lower(name)=lower($1) AND (studiolab_code IS NULL OR studiolab_code=\'\')', [row.name])).rows[0];
     const vals = [row.name, row.kind || null, row.code || null, vat, row.tax_code || null, row.sdi || null, row.pec || null, row.email || null, row.phone || null, row.address || null, row.zip || null, row.city || null, row.province || null, row.website || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code || row.vat_number || row.name })];
     if (ex) {
       await c.query(`UPDATE organizations SET name=$2, kind=coalesce($3,kind), code=coalesce(code,$4), vat_number=coalesce($5,vat_number), tax_code=coalesce($6,tax_code), sdi=coalesce($7,sdi), pec=coalesce($8,pec), email=coalesce($9,email),
         phone=coalesce($10,phone), address=coalesce($11,address), zip=coalesce($12,zip), city=coalesce($13,city), province=coalesce($14,province), website=coalesce($15,website), active=coalesce($16,active), legacy_refs=legacy_refs || $17::jsonb, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
+      await c.query('UPDATE organizations SET studiolab_code=coalesce($2, studiolab_code) WHERE id=$1', [ex.id, slc]);
+      await twinServiceSite(c, ex.id, row, slc);
       return { id: ex.id, action: 'aggiornata' };
     }
     const ins = await c.query(`INSERT INTO organizations (name, kind, code, vat_number, tax_code, sdi, pec, email, phone, address, zip, city, province, website, active, legacy_refs)
       VALUES ($1,coalesce($2,'CLIENTE'),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,coalesce($15,TRUE),$16) RETURNING id`, vals);
+    if (slc) await c.query('UPDATE organizations SET studiolab_code=$2 WHERE id=$1', [ins.rows[0].id, slc]);
+    await twinServiceSite(c, ins.rows[0].id, row, slc);
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async events(c, row, k) {
