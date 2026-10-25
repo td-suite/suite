@@ -234,11 +234,12 @@ export function PeopleAdmin() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !data.length && <Empty icon="user" title="Nessuna persona">Le persone arrivano dalle importazioni (Contracts) o si inseriscono a mano.</Empty>}
-        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Sede</th><th>Incarichi</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
+        {data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Persona</th><th>Tipo</th><th>Sede</th><th>Incarichi</th><th>Dipende da</th><th>Contatti</th><th>Accesso</th><th></th></tr></thead><tbody>
           {data.map((p) => <tr key={p.id}>
             <td><Link to={`/people/${p.id}`} className="strong">{p.last_name} {p.first_name}</Link></td>
             <td className="small">{PERSON_KIND[p.kind] || p.kind}</td><td className="small">{p.site_name}</td>
             <td className="small">{(p.positions || []).length ? (p.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.unit_name}</b> : x.unit_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>) : <span className="faint">nessuno</span>}</td>
+            <td className="small">{p.manager_name || <span className="faint">nessuno</span>}{p.manager_name && !p.manager_override_id && <div className="faint">dall'organigramma</div>}</td>
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
             <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link> : <span className="faint small">nessun accesso</span>}</td>
             <td className="actions"><button className="iconbtn" aria-label="Incarichi" title="Incarichi nell'organigramma" onClick={() => setPos(p)}><Icon name="tree" /></button><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
@@ -258,6 +259,8 @@ export function PositionsEditor({ person, onChange }) {
   const toast = useToast();
   const units = useApi('/org-units');
   const roles = useApi('/job-roles');
+  const people = useApi('/people?all=1');
+  const setManager = async (v) => { try { await api.put(`/people/${person.id}`, { manager_person_id: v ? Number(v) : null }); toast(v ? 'Responsabile impostato' : 'Responsabile dall\'organigramma'); onChange(); } catch (e2) { toast(e2, 'err'); } };
   const [f, setF] = useState({ unit_id: '', role_id: '', is_head: false });
   const [busy, setBusy] = useState(false);
   const coll = new Intl.Collator('it');
@@ -271,6 +274,13 @@ export function PositionsEditor({ person, onChange }) {
   const list = person.positions || [];
   return (
     <>
+      <div className="dep-row">
+        <div><div className="small strong">Dipende da</div><div className="small muted">{person.manager_override_id ? 'Responsabile indicato a mano' : person.manager_auto_id ? 'Dall\'organigramma: il responsabile dell\'unità del suo incarico' : 'Nessuno: aggiungi un incarico o indicalo qui'}</div></div>
+        <select value={person.manager_override_id || ''} onChange={(e) => setManager(e.target.value)}>
+          <option value="">{person.manager_auto_name ? `Dall'organigramma · ${person.manager_auto_name}` : 'Dall\'organigramma (nessuno per ora)'}</option>
+          {[...(people.data || [])].filter((x) => x.id !== person.id).sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`)).map((x) => <option key={x.id} value={x.id}>{x.last_name} {x.first_name}</option>)}
+        </select>
+      </div>
       {list.length > 0 && <table className="t" style={{ marginBottom: 14 }}><thead><tr><th>Unità</th><th>Ruolo</th><th>Responsabile</th><th></th></tr></thead><tbody>
         {list.map((x) => <tr key={x.id}><td><div className="strong">{x.unit_name}</div><div className="small muted">{KINDS[x.unit_kind]}{x.parent_name ? ` · ${x.parent_name}` : ''}</div></td><td className="small">{x.role_name || ''}</td><td>{x.is_head && <Badge tone="blue">Responsabile</Badge>}</td><td className="actions"><button type="button" className="iconbtn" aria-label="Rimuovi" onClick={() => del(x)}><Icon name="trash" /></button></td></tr>)}
       </tbody></table>}

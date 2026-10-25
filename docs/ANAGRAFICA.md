@@ -121,3 +121,10 @@ da: pulsante "Trova dall'indirizzo" nel form Sedi (`POST /api/geocode`, da confe
 salvataggio di una sede senza coordinate, "Completa coordinate" nella pagina Sedi (`POST /api/sites/geocode-missing`, in coda) e dopo
 ogni importazione del file Sedi. Dal sandbox di sviluppo gli host non sono raggiungibili: collaudato con risposte simulate, da verificare
 in produzione su Render.
+
+## Dipendenza gerarchica (25/10/2026, notte)
+Nella scheda persona, sopra gli incarichi, "Dipende da": per chi ha un incarico la Suite riporta il responsabile calcolato
+dall'Organizzazione (`people_manager_auto`, migrazione 014: il responsabile dell'unità del suo incarico, o dell'unità superiore se è
+lei la responsabile); per tutti gli altri (medici, infermieri, collaboratori senza casella nell'organigramma) e per le eccezioni si
+sceglie a mano una persona (`manager_person_id`), che prevale. La colonna "Dipende da" in Persone segnala "dall'organigramma" quando
+il valore è derivato. Il file Persone continua ad accettare `manager_email` come dipendenza manuale.

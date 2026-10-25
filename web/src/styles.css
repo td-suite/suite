@@ -894,3 +894,6 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .facts dt { color: var(--muted); } .facts dd { margin: 0; }
 
 .row .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+
+.dep-row { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.2fr); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); margin-bottom: 12px; }
+@media (max-width: 640px) { .dep-row { grid-template-columns: 1fr; } }
