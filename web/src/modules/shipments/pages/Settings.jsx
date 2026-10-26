@@ -5,7 +5,7 @@ import { useT } from '../i18n.jsx';
 import { Card, Field, ErrorBox, Loading, Badge, Modal, useApi, useToast } from '../components/ui.jsx';
 import { fdt } from '../format.js';
 
-const TEXT = ['billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'notify_admins_email', 'td_sites'];
+const TEXT = ['billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'notify_admins_email'];   // td_sites: ora dall'anagrafica unica (Sedi)
 const AREA = ['lab_consignee', 'return_address'];
 const NUMS = ['sample_fee', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'retention_months'];
 const BOOLS = ['daily_alerts_enabled', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'inbox_enabled'];

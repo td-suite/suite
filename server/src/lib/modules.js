@@ -46,8 +46,9 @@ export async function moduleUser(key, suiteUser, { roleColumn = 'role', extraCol
   const db = moduleDb(key);
   const grant = suiteUser.grants?.[key];
   const isSuiteAdmin = suiteUser.level === 'OWNER' || suiteUser.level === 'ADMIN';
-  if (!grant && !isSuiteAdmin) throw forbidden('Modulo non assegnato');
-  const role = grant?.profile || extraColumns.defaultAdminRole || 'ADMIN';
+  // openToAll (es. Ticket): chiunque sia autenticato entra con il ruolo implicito defaultRole, senza grant
+  if (!grant && !isSuiteAdmin && !extraColumns.openToAll) throw forbidden('Modulo non assegnato');
+  const role = grant?.profile || (isSuiteAdmin ? extraColumns.defaultAdminRole || 'ADMIN' : extraColumns.defaultRole || 'ADMIN');
   let row = await db.one('SELECT * FROM users WHERE lower(email)=lower($1)', [suiteUser.email]);
   if (!row) {
     const cols = ['email', 'full_name', roleColumn, ...Object.keys(extraColumns.insert || {})];

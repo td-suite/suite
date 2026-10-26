@@ -67,7 +67,11 @@ const SETTING_KEYS = ['sample_fee', 'billing_customer', 'billing_customer_addres
 const PUBLIC_KEYS = ['td_sites', 'return_address', 'lab_consignee', 'sample_fee', 'billing_customer'];
 r.get('/settings/public', ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [PUBLIC_KEYS]);
-  res.json(Object.fromEntries(rows.map((x) => [x.key, x.value])));
+  const out = Object.fromEntries(rows.map((x) => [x.key, x.value]));
+  // sedi TD per la consegna dei campioni: dall'anagrafica unica (punti prelievo, laboratori, centri attivi), non dal testo libero
+  const sites = await many(`SELECT coalesce(short_name, name) AS n FROM public.sites WHERE active AND kind IN ('PUNTO_PRELIEVI','LABORATORIO','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO') ORDER BY sort_order, lower(name)`);
+  if (sites.length) out.td_sites = sites.map((x) => x.n).join(', ');
+  res.json(out);
 }));
 r.get('/settings', requireRole('SUPERADMIN', 'ADMIN'), ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings');

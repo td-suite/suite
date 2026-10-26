@@ -1,0 +1,120 @@
+/* Modulo Ticket: stili propri, isolati dal plugin Vite sotto .mod-ticket (prefisso di classe tk-) */
+.tk-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.tk-kpi.click { cursor: pointer; }
+.tk-kpi.click:hover { background: var(--hover); }
+.tk-kpi.warn .val { color: #a35a00; }
+.tk-kpi.late .val { color: var(--red); }
+.tk-kpi.ok .val { color: var(--green); }
+.tk-kpi.info .val { color: var(--teal); }
+.tk-prot { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 800; color: var(--teal); letter-spacing: .01em; white-space: nowrap; }
+.tk-late { color: var(--red); font-weight: 700; }
+.tk-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-bottom: 16px; }
+@media (max-width: 1000px) { .tk-two { grid-template-columns: 1fr; } }
+.tk-two > * { min-width: 0; }
+.tk-table td { vertical-align: top; }
+.t th.num, .t td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tk-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tk-check input { width: 16px; height: 16px; }
+.tk-switch { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; }
+.tk-f-unit { min-width: 260px; flex: 2 1 260px; max-width: 460px; }
+.tk-unitsel select { width: 100%; }
+.tk-unitpath { margin-top: 4px; }
+
+/* form */
+.tk-form { display: grid; gap: 12px; }
+.tk-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .tk-form .two { grid-template-columns: 1fr; } }
+.tk-form textarea { min-height: 72px; resize: vertical; }
+.tk-form > .card { margin-bottom: 0; }
+.tk-alert { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--teal-050); color: var(--ink); font-size: 13px; }
+.tk-alert .ico { width: 18px; height: 18px; flex: none; color: var(--teal); margin-top: 1px; }
+.tk-alert.warn { background: #fff4d6; color: #5a3d00; }
+.tk-alert.warn .ico { color: #a35a00; }
+.tk-alert.ok { background: var(--green-100); color: #1d4d39; }
+.tk-alert.ok .ico { color: var(--green); }
+.tk-files { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.tk-files li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.tk-files li span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-files .ico { width: 16px; height: 16px; color: var(--teal); }
+
+/* dettaglio */
+.tk-detail { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .tk-detail { grid-template-columns: 1fr; } }
+.tk-detail > * { min-width: 0; }
+.tk-main { display: grid; gap: 16px; }
+.tk-side { display: grid; gap: 14px; position: sticky; top: 14px; }
+.tk-desc { white-space: pre-wrap; line-height: 1.55; }
+.tk-actions .btn { margin: 2px 0; }
+.tk-thread { display: grid; gap: 10px; margin-bottom: 12px; }
+.tk-msg { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--card-2); }
+.tk-msg.rich { background: var(--teal-050); border-color: transparent; }
+.tk-msg.interno { background: #fff8e6; border-color: #f1dca3; }
+.tk-msg .hd { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; font-size: 13px; }
+.tk-msg .tx { white-space: pre-wrap; line-height: 1.5; font-size: 14px; }
+.tk-compose { display: grid; gap: 8px; }
+.tk-compose textarea { width: 100%; resize: vertical; }
+.tk-att { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; margin: 4px 6px 0 0; color: var(--ink); background: var(--card); max-width: 100%; }
+.tk-att:hover { background: var(--hover); text-decoration: none; }
+.tk-att .ico { width: 16px; height: 16px; color: var(--teal); flex: none; }
+.tk-att span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-attlist { display: flex; flex-wrap: wrap; gap: 0 6px; margin-bottom: 10px; }
+.tk-meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; font-size: 13.5px; margin: 0; }
+.tk-meta dt { color: var(--muted); font-weight: 650; }
+.tk-meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+/* SLA */
+.tk-sla { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.tk-sla:last-of-type { border-bottom: 0; }
+.tk-sla .bar { height: 8px; border-radius: 6px; background: var(--teal-050); overflow: hidden; }
+.tk-sla .bar i { display: block; height: 100%; background: var(--teal); border-radius: 6px; transition: width .3s; }
+.tk-sla.warn .bar i { background: #e0a224; }
+.tk-sla.late .bar i { background: var(--red); }
+.tk-sla.ok .bar i { background: var(--green); }
+
+/* cronologia */
+.tk-timeline { padding: 6px 18px 12px; }
+.tk-ev { display: grid; grid-template-columns: 14px 120px 1fr; gap: 10px; align-items: start; padding: 8px 0; position: relative; }
+.tk-ev::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.tk-ev i { width: 14px; height: 14px; border-radius: 50%; background: var(--teal); border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--line); position: relative; z-index: 1; margin-top: 3px; }
+.tk-ev.ev-STATO i, .tk-ev.ev-PRIORITA i { background: #e0a224; }
+.tk-ev.ev-CHIUSO i, .tk-ev.ev-VALUTATO i { background: var(--green); }
+.tk-ev.ev-ESCALATION i, .tk-ev.ev-ANNULLATO i, .tk-ev.ev-LETTURA_RISERVATO i { background: var(--red); }
+.tk-ev.ev-NOTA i { background: #a35a00; }
+.tk-ev .when { font-size: 12px; color: var(--muted); padding-top: 2px; white-space: nowrap; }
+.tk-ev .what { font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .tk-ev { grid-template-columns: 14px 1fr; } .tk-ev .when { grid-column: 2; } }
+
+/* stelle */
+.tk-stelle { display: inline-flex; gap: 2px; }
+.tk-stelle button { background: none; border: 0; padding: 0; color: var(--line); cursor: pointer; display: grid; }
+.tk-stelle button:disabled { cursor: default; }
+.tk-stelle button.on { color: #e0a224; }
+.tk-stelle button.on .ico { fill: #e0a224; }
+
+/* statistiche: barre CSS */
+.tk-bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; height: 180px; align-items: end; margin-bottom: 8px; }
+.tk-bars .col { display: grid; grid-template-rows: 1fr auto; height: 100%; gap: 4px; }
+.tk-bars .stack { display: flex; gap: 2px; align-items: end; height: 100%; }
+.tk-bars .stack i { flex: 1; display: block; border-radius: 4px 4px 0 0; min-height: 2px; }
+.tk-bars .stack i.a { background: var(--teal); }
+.tk-bars .stack i.c { background: var(--green); }
+.tk-bars .lbl { font-size: 10.5px; text-align: center; color: var(--ink); line-height: 1.15; }
+.tk-leg { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; }
+.tk-leg::before { content: ''; width: 10px; height: 10px; border-radius: 3px; background: var(--teal); }
+.tk-leg.c::before { background: var(--green); }
+.tk-hbars { display: grid; gap: 6px; }
+.tk-hbars .hrow { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font-size: 13px; }
+.tk-hbars .bar { height: 10px; background: var(--teal-050); border-radius: 6px; overflow: hidden; }
+.tk-hbars .bar i { display: block; height: 100%; background: var(--teal); border-radius: 6px; }
+.tk-hbars .v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tk-hbars i.st-APERTO { background: #3b82c4; } .tk-hbars i.st-IN_ATTESA { background: #e0a224; } .tk-hbars i.st-RISOLTO { background: var(--green); } .tk-hbars i.st-CHIUSO { background: #8a9aa0; } .tk-hbars i.st-ANNULLATO { background: var(--red); }
+.tk-slatab input { width: 100%; max-width: 120px; }
+
+/* guida */
+.tk-steps { display: grid; gap: 10px; counter-reset: s; }
+.tk-steps > div { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+.tk-steps > div::before { counter-increment: s; content: counter(s); width: 26px; height: 26px; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 13px; }
+.tk-guide p { margin: 0 0 10px; }
+.tk-guide .card { margin-bottom: 14px; }
+.page > .card { margin-bottom: 16px; }
+.tk-two .table-wrap table, .tk-detail .table-wrap table { min-width: 0; }

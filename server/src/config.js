@@ -3,7 +3,7 @@ const env = process.env;
 const list = (v, lower = false) => (v || '').split(',').map((s) => (lower ? s.trim().toLowerCase() : s.trim())).filter(Boolean);
 const bool = (v, d = false) => (v == null || v === '' ? d : String(v).toLowerCase() === 'true');
 
-export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail', 'business', 'finance', 'integration', 'contracts', 'circolari'];
+export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail', 'business', 'finance', 'integration', 'contracts', 'circolari', 'ticket'];
 
 export const config = {
   port: Number(env.PORT || 3000),

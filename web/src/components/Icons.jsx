@@ -156,6 +156,8 @@ const UI = {
   zoomOut: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6',
   birthday: 'M5 12h14v8H5zM5 16c2 1.5 4 1.5 6 0 2 1.5 4 1.5 6 0M12 4v4M9 12V9h6v3',
   dots: 'M5 12h.01M12 12h.01M19 12h.01',
+  ticket: 'M3 8V6h18v2a2 2 0 0 0 0 4v2H3v-2a2 2 0 0 0 0-4zM3 14v4h18v-4M9 6v2M9 10v1M9 13v1M9 16v2M13 11h5',
+  star: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z',
 };
 
 export const MODULE_ICONS = Object.keys(MODULES);

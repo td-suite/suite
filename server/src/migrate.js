@@ -35,13 +35,13 @@ export async function migrate() {
 async function seed() {
   // Catalogo moduli: inserisce i nuovi e aggiorna nome, descrizione, profili e URL di quelli esistenti (non tocca sso_secret e active)
   for (const m of MODULES) {
-    await q(`INSERT INTO modules (key, area, name, tagline, description, icon, kind, legacy_url, route, restricted, profiles, scope_type, sort_order)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    await q(`INSERT INTO modules (key, area, name, tagline, description, icon, kind, legacy_url, route, restricted, profiles, scope_type, sort_order, open_to_all)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
              ON CONFLICT (key) DO UPDATE SET area=EXCLUDED.area, name=EXCLUDED.name, tagline=EXCLUDED.tagline, icon=EXCLUDED.icon, kind=EXCLUDED.kind,
                legacy_url=coalesce(modules.legacy_url, EXCLUDED.legacy_url), route=EXCLUDED.route, restricted=EXCLUDED.restricted, profiles=EXCLUDED.profiles,
-               scope_type=EXCLUDED.scope_type, sort_order=EXCLUDED.sort_order, updated_at=now()`,
+               scope_type=EXCLUDED.scope_type, sort_order=EXCLUDED.sort_order, open_to_all=EXCLUDED.open_to_all, updated_at=now()`,
       [m.key, m.area, m.name, m.tagline || null, m.description || null, m.icon, m.kind, m.legacy_url || null, m.route || null, Boolean(m.restricted),
-        JSON.stringify(m.profiles || []), m.scope_type || null, m.sort_order || 100]);
+        JSON.stringify(m.profiles || []), m.scope_type || null, m.sort_order || 100, Boolean(m.open_to_all)]);
   }
 
   // Nessuna sede o legal entity di esempio: l'anagrafica la carica Francesco dai modelli (sedi LAB e HQ già codificate da lui).
@@ -66,7 +66,7 @@ async function seed() {
   }
 
   // Sorgenti legacy: una riga per app, abilitata se la URL è configurata
-  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)' };
+  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)', ticket: 'Ticket (nativo, senza sorgente)' };
   for (const k of LEGACY_KEYS) {
     await q(`INSERT INTO legacy_sources (key, label, enabled) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET enabled=EXCLUDED.enabled`, [k, labels[k], Boolean(config.legacy[k])]);
   }

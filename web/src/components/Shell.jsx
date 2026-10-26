@@ -152,7 +152,7 @@ export default function Shell() {
   useEffect(() => setOpen(false), [loc.pathname]);
   // Contatori accanto alle voci di menu dei moduli (GET /api/<modulo>/badges → { chiave: numero }), aggiornati ogni minuto
   const [badges, setBadges] = useState({});
-  const badgeKey = section?.items?.some((i) => i.badge) ? section.key : null;
+  const badgeKey = section?.items?.some((i) => i.badge || i.flag) ? section.key : null;
   useEffect(() => {
     if (!badgeKey) { setBadges({}); return; }
     let alive = true;
@@ -176,7 +176,7 @@ export default function Shell() {
           <aside className={`side ${open ? 'open' : ''}`} aria-label={`Menu ${section.title}`}>
             <div className="sect"><div className="k">{section.kicker}</div><div className="t"><i style={{ background: section.color }} />{section.title}</div></div>
             <nav>
-              {section.items.map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
+              {section.items.filter((it) => !it.flag || badges[it.flag] > 0).map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
                 : it.href ? <a key={it.href} href={it.href} target={it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener"><Icon name={it.icon} />{it.label}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>

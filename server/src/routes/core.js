@@ -26,12 +26,13 @@ export const AREAS = [
 ];
 
 r.get('/home/modules', ah(async (req, res) => {
-  const mods = await many('SELECT key, area, name, tagline, icon, kind, legacy_url, route, restricted, sort_order, scope_type FROM modules WHERE active ORDER BY area, sort_order');
+  const mods = await many('SELECT key, area, name, tagline, icon, kind, legacy_url, route, restricted, sort_order, scope_type, open_to_all FROM modules WHERE active ORDER BY area, sort_order');
   const u = req.user;
   const active = await activeModuleKeys();   // moduli travasati (MIRROR/LIVE): si aprono dentro la Suite
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
     if (m.kind === 'PUBLIC') return true;                 // vetrine pubbliche: sempre raggiungibili
+    if (m.open_to_all) return true;                       // moduli aperti a tutti gli utenti autenticati (Ticket)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
   }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : null), href: moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
   const areas = AREAS.map((a) => ({ ...a, modules: visible.filter((m) => m.area === a.key) })).filter((a) => a.modules.length);

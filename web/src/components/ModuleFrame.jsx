@@ -24,7 +24,8 @@ export default function ModuleFrame({ moduleKey }) {
     return () => { alive = false; };
   }, [key]);
   if (!def) return <Navigate to="/" replace />;
-  if (!(isAdmin(user) || hasModule(user, key))) return <Forbidden />;
+  // openToAll (meta.js del modulo, es. Ticket): accessibile a chiunque sia autenticato, anche senza grant
+  if (!(isAdmin(user) || hasModule(user, key) || def.openToAll)) return <Forbidden />;
   if (err) return <div className="page"><Empty icon="alert" title="Modulo non caricato">{err.message}</Empty></div>;
   if (state?.error) {
     const off = state.error.code === 'MODULE_OFF' || state.error.status === 503;

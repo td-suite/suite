@@ -273,3 +273,11 @@ DOCX/PDF su carta intestata, archivio full-text, liste di distribuzione dall'ana
 "Avvia" (FRESH_MODULES). Documentazione in docs/CIRCOLARI.md. Regole di accesso iniziali: Retail & Communications e HSQ → PUBBLICATORE,
 Laboratorio → REDATTORE. Dipendenza nuova del server: docx. Collaudo locale: TXT con tabella → bozza → anteprima → TD-2026/001 → PDF, QR
 pubblico, ricerca generale (kind circolare_td).
+
+## Ticket (26/10/2026)
+Modulo nativo sotto HQS (dopo Circolari): richieste e segnalazioni ai responsabili delle caselle dell'organigramma, protocollo
+TK-AAAA/NNNN, SLA per priorità, cronologia, allegati, statistiche, esportazioni XLSX e PDF. Nessuna anagrafica propria: FK verso
+`public.users` (richiedente, assegnatario, osservatori), `public.people`, `public.sites` e `public.organizations` ("per conto di" sede TD
+o Legal entity), `public.org_units` (casella destinataria, categoria predefinita, escalation); i gestori sono i responsabili delle
+caselle (`org_positions.is_head`) e della catena sopra. Aperto a tutti gli utenti autenticati senza grant (`modules.open_to_all`,
+migrazione 024; ruolo implicito UTENTE in `moduleUser`); profili ADMIN, RESPONSABILE, VIEWER. Documentazione in docs/TICKET.md.

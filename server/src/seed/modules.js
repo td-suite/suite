@@ -46,6 +46,9 @@ export const MODULES = [
 
   { key: 'circolari', area: 'HQS', name: 'Circolari', tagline: 'Protocollo TD-AAAA/NNN, impaginazione su carta intestata, archivio e invio ai clienti', icon: 'doc', kind: 'LEGACY', legacy_url: null, sort_order: 40,
     profiles: [P('ADMIN', 'Amministratore'), P('PUBBLICATORE', 'Pubblicazione e invio'), P('REDATTORE', 'Redazione bozze'), P('VIEWER', 'Consultazione')] },
+  // Ticket: aperto a tutti gli utenti autenticati (open_to_all: widget in home e accesso senza grant, ruolo implicito UTENTE)
+  { key: 'ticket', area: 'HQS', name: 'Ticket', tagline: 'Richieste e segnalazioni ai responsabili: SLA, cronologia, statistiche', icon: 'ticket', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: true,
+    profiles: [P('ADMIN', 'Amministratore'), P('RESPONSABILE', 'Responsabile di unità'), P('VIEWER', 'Consultazione')] },
 
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,
