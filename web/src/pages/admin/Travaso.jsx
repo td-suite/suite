@@ -34,7 +34,7 @@ export function Travaso() {
   const [confirm, setConfirm] = useState(null);
   const run = async (m) => {
     setBusy((b) => ({ ...b, [m.key]: true }));
-    try { const r = await api.post(`/travaso/${m.key}/run`); toast(`${m.name}: ${r.rows.toLocaleString('it-IT')} righe in ${r.tables} tabelle (${(r.ms / 1000).toFixed(1)} s)`); reload(); }
+    try { const r = await api.post(`/travaso/${m.key}/run`); toast(r.fresh ? `${m.name}: avviato vuoto e LIVE sull'anagrafica unica` : `${m.name}: ${(r.rows || 0).toLocaleString('it-IT')} righe in ${r.tables || 0} tabelle (${((r.ms || 0) / 1000).toFixed(1)} s)`); reload(); }
     catch (e) { toast(e, 'err'); }
     setBusy((b) => ({ ...b, [m.key]: false }));
   };
