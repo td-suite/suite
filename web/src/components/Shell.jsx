@@ -70,6 +70,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/organization', icon: 'grid', label: 'Organizzazione' },
         { group: 'Dati' },
         { to: '/admin/legacy', icon: 'refresh', label: 'Sorgenti legacy' },
+        { to: '/admin/connectors', icon: 'cloud', label: 'Connettori' },
         { to: '/admin/travaso', icon: 'import', label: 'Travaso moduli' },
         { to: '/admin/imports', icon: 'import', label: 'Importazioni' },
         { group: 'Controllo' },

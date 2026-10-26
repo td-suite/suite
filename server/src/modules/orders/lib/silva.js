@@ -1,14 +1,15 @@
 // Integrazione con Silva Group (gestore del magazzino di Toscana Diagnostica).
-// Modello "il fornitore interroga noi" ogni 5 minuti con la chiave SILVA_INBOUND_KEY (header X-API-KEY):
+// Modello "il fornitore interroga noi" ogni 5 minuti con il segreto in ingresso del connettore SILVA (header X-API-KEY; ripiego SILVA_INBOUND_KEY):
 //   POST /api/integrations/silva/stock                     feed delle giacenze di magazzino (articoli, lotti, scadenze, quantità)
 //   GET  /api/integrations/silva/orders                    ordini approvati da preparare (contenuto, destinazione, urgenza)
 //   POST /api/integrations/silva/orders/:numero/presa-in-carico | spedito | consegnato   avanzamento dell'ordine
 // In subordine, l'Area Operations può inviare l'ordine in PDF alla casella SILVA_ORDER_EMAIL e registrare a mano gli avanzamenti.
 import { config } from '../config.js';
+import { connectorSync } from '../../../lib/connectors.js';
 import { sendMail } from './mailer.js';
 import { itDate } from './util.js';
 
-export const silvaStatus = () => ({ inboundConfigured: Boolean(config.silva.inboundKey), email: config.silva.email || null, customerCode: config.silva.customerCode });
+export const silvaStatus = () => { const c = connectorSync('SILVA'); return { inboundConfigured: Boolean(config.silva.inboundKey), email: config.silva.email || null, customerCode: config.silva.customerCode, connector: { source: c.source, configured: c.configured, active: c.active, last_test_at: c.last_test_at, last_status: c.last_status } }; };
 
 // Ordine come lo legge il fornitore: una riga per articolo, quantità in confezioni e in unità, destinazione e urgenza
 export function orderPayload(order, struttura, lines) {
@@ -37,7 +38,7 @@ export function orderPayload(order, struttura, lines) {
 
 /** Ripiego: ordine PDF via email alla casella del fornitore. Ritorna l'esito del registro invii. */
 export async function emailOrder({ order, struttura, lines, pdf }) {
-  if (!config.silva.email) return { status: 'FALLITA', error: 'SILVA_ORDER_EMAIL non impostata' };
+  if (!config.silva.email) return { status: 'FALLITA', error: 'Email ordini Silva non impostata (connettore Silva in Amministrazione > Connettori)' };
   const payload = orderPayload(order, struttura, lines);
   return sendMail({
     kind: 'ORDINE_FORNITORE', refKey: `SILVA:${order.id}:${Date.now()}`, to: config.silva.email, strutturaId: struttura.id,

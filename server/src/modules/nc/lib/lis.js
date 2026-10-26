@@ -13,6 +13,7 @@
 import { config } from '../config.js';
 import { one, q } from '../db.js';
 import { findSedeByCodice, extOf } from './sedi.js';
+import { logConnector } from '../../../lib/connectors.js';
 
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 // Sto facendo un'ipotesi sui codici 20/25: lo swagger li elenca senza descrizione; da confermare con CB Sistemi.
@@ -20,11 +21,13 @@ export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazio
 class LisError extends Error { constructor(msg, status, body) { super(msg); this.status = status; this.body = body; } }
 
 async function call(method, path, body, { query } = {}) {
-  if (!config.lis.enabled) throw new LisError('LIS non configurato (LIS_API_KEY assente)', 503);
+  if (!config.lis.enabled) throw new LisError('LIS non configurato (connettore StudioLAB in Amministrazione > Connettori)', 503);
   const url = new URL(config.lis.baseUrl + path);
   for (const [k, v] of Object.entries(query || {})) if (v != null && v !== '') url.searchParams.set(k, v);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), config.lis.timeoutMs);
+  const t0 = Date.now();
+  const log = (status, message) => logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'nc', endpoint: `${method} ${path}`, status, ms: Date.now() - t0, message });
   let res, text;
   try {
     res = await fetch(url, {
@@ -34,11 +37,18 @@ async function call(method, path, body, { query } = {}) {
     });
     text = await res.text();
   } catch (e) {
-    throw new LisError(e.name === 'AbortError' ? 'StudioLAB non risponde (timeout)' : `StudioLAB non raggiungibile: ${e.message}`, 502);
+    const msg = e.name === 'AbortError' ? 'StudioLAB non risponde (timeout)' : `StudioLAB non raggiungibile: ${e.message}`;
+    log('ERRORE', msg);
+    throw new LisError(msg, 502);
   } finally { clearTimeout(t); }
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!res.ok) throw new LisError(`StudioLAB ${res.status}: ${(data && (data.Message || data.ErrorMessage || data.message || data.Messaggio)) || text || res.statusText}`, res.status, data);
+  if (!res.ok) {
+    const msg = `StudioLAB ${res.status}: ${(data && (data.Message || data.ErrorMessage || data.message || data.Messaggio)) || text || res.statusText}`;
+    log(String(res.status), msg);
+    throw new LisError(msg, res.status, data);
+  }
+  log('OK', null);
   return data;
 }
 

@@ -9,7 +9,7 @@ import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../l
 import { registerJob } from '../../lib/jobs.js';
 import { many } from './db.js';
 import { config } from './config.js';
-import { syncConnector } from './lib/connectors.js';
+import { syncConnector, migrateCredentialsToCore } from './lib/connectors.js';
 import adminRoutes from './routes/admin.js';
 import customerRoutes from './routes/customers.js';
 import productRoutes from './routes/products.js';
@@ -30,6 +30,13 @@ export const publicUser = (u) => ({
   auth_provider: u.auth_provider || 'ENTRA', must_change_password: false, totp_enabled: false, active: true,
   suite_user_id: u.suite_user_id, suite_level: u.suite_level,
 });
+
+// Dopo migrazioni e caricamento dei connettori: le credenziali dei connettori dell'app di origine (retail.connectors) si copiano
+// una volta nel connettore unico della Suite, se quello è ancora vuoto
+export async function afterStart() {
+  const st = await getModuleState(KEY);
+  if (st.schema_ready) await migrateCredentialsToCore();
+}
 
 export default function mount(app) {
   const r = Router();

@@ -289,3 +289,11 @@ utente, a disposizione di chi ha il grant (richiesta del CEO: nessun permesso pe
 schema del modulo (`public.files` richiede Azure Blob e senza di esso risponde 503). Profili ADMIN "Gestione" e VIEWER "Consultazione";
 regole di accesso iniziali: responsabili di unità → VIEWER, Retail & Communications e HSQ → ADMIN. Indice di ricerca con audience
 MODULE (solo chi ha il grant). Documentazione in docs/CARTELLA.md.
+
+## Connettori unici (26/10/2026)
+Decisione del CEO. I dati di accesso ai sistemi esterni (StudioLAB ServiceNET, GIPO, TuoTempo, Silva) stanno una volta sola in
+`public.connectors` (migrazione 025) e si configurano in Amministrazione > Connettori: base URL, credenziali e segreto in ingresso
+cifrati con lib/secrets, impostazioni, prova di connessione, registro delle chiamate (`connector_log`). I moduli leggono da
+`lib/connectors.js` (`getConnector`, `connectorSync`, `verifyInbound`, `logConnector`) con ripiego sulle variabili d'ambiente
+storiche finché il connettore non è configurato; le pagine Impostazioni dei moduli mostrano solo lo stato. Documentazione in
+docs/CONNETTORI.md.

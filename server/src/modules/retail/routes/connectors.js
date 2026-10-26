@@ -3,42 +3,33 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, audit, parse } from '../lib/util.js';
 import { requireRole } from '../lib/access.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
-import { testConnector, syncConnector, getConnector } from '../lib/connectors.js';
+import { testConnector, syncConnector, getConnector, coreStatus } from '../lib/connectors.js';
 
 const r = Router();
 
-const publicRow = (c) => {
-  let creds = {};
-  try { creds = c.credentials ? JSON.parse(decrypt(c.credentials)) : {}; } catch { creds = {}; }
-  const masked = Object.fromEntries(Object.entries(creds).map(([k, v]) => [k, v ? `${String(v).slice(0, 2)}••••` : '']));
-  return { ...c, credentials: undefined, has_credentials: Boolean(c.credentials), credential_keys: masked };
-};
+// Credenziali e base URL stanno nel connettore della Suite (Amministrazione > Connettori): qui solo pianificazione ed esiti
+const publicRow = (c) => ({ ...c, credentials: undefined, has_credentials: false, credential_keys: {} });
 
 r.get('/', requireRole('ADMIN', 'RETAIL'), ah(async (_req, res) => {
   const rows = await many('SELECT * FROM connectors ORDER BY kind');
   const logs = await many('SELECT * FROM sync_log ORDER BY started_at DESC LIMIT 30');
-  res.json({ connectors: rows.map(publicRow), logs });
+  const core = {};
+  for (const c of rows) { try { core[c.kind] = await coreStatus(c.kind); } catch { core[c.kind] = null; } }
+  res.json({ connectors: rows.map((c) => ({ ...publicRow(c), core: core[c.kind] })), logs });
 }));
 
 r.put('/:kind', requireRole('ADMIN'), ah(async (req, res) => {
   const kind = req.params.kind.toUpperCase();
   const c = await getConnector(kind);
-  const d = parse(z.object({ enabled: z.boolean().optional(), base_url: z.string().nullable().optional(), auth_kind: z.enum(['API_KEY', 'BASIC', 'OAUTH2', 'SFTP']).optional(), schedule: z.enum(['MANUALE', 'HOURLY', 'DAILY']).optional(), settings: z.record(z.string(), z.any()).optional(), credentials: z.record(z.string(), z.string()).optional() }), req.body);
+  // base_url, auth_kind e credentials non si accettano più qui: si impostano in Amministrazione > Connettori
+  const d = parse(z.object({ enabled: z.boolean().optional(), schedule: z.enum(['MANUALE', 'HOURLY', 'DAILY']).optional(), settings: z.record(z.string(), z.any()).optional() }).passthrough(), req.body);
   const sets = []; const vals = [c.id];
   if (d.enabled !== undefined) { sets.push(`enabled=$${vals.push(d.enabled)}`); }
-  if (d.base_url !== undefined) { sets.push(`base_url=$${vals.push(d.base_url)}`); }
-  if (d.auth_kind) { sets.push(`auth_kind=$${vals.push(d.auth_kind)}`); }
   if (d.schedule) { sets.push(`schedule=$${vals.push(d.schedule)}`); }
-  if (d.settings) { sets.push(`settings=$${vals.push(JSON.stringify({ ...(c.settings || {}), ...d.settings }))}`); }
-  if (d.credentials && Object.keys(d.credentials).length) {
-    let cur = {}; try { cur = c.credentials ? JSON.parse(decrypt(c.credentials)) : {}; } catch { cur = {}; }
-    const merged = { ...cur }; for (const [k, v] of Object.entries(d.credentials)) if (v && !v.includes('••••')) merged[k] = v;
-    sets.push(`credentials=$${vals.push(encrypt(JSON.stringify(merged)))}`);
-  }
+  if (d.settings) { const st = { ...d.settings }; delete st.instance; sets.push(`settings=$${vals.push(JSON.stringify({ ...(c.settings || {}), ...st }))}`); }
   if (sets.length) await q(`UPDATE connectors SET ${sets.join(', ')}, updated_at=now() WHERE id=$1`, vals);
-  await audit(req, 'CONNECTOR_UPDATE', 'connector', kind, { fields: Object.keys(d) });
-  res.json(publicRow(await getConnector(kind)));
+  await audit(req, 'CONNECTOR_UPDATE', 'connector', kind, { fields: Object.keys(d).filter((k) => ['enabled', 'schedule', 'settings'].includes(k)) });
+  res.json({ ...publicRow(await getConnector(kind)), core: await coreStatus(kind).catch(() => null) });
 }));
 
 r.post('/:kind/test', requireRole('ADMIN', 'RETAIL'), ah(async (req, res) => {

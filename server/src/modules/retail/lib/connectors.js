@@ -1,15 +1,46 @@
-// Connettori verso i gestionali. Struttura pronta: configurazione cifrata, test di connessione, sincronizzazione.
-// GIPO e StudioLab non espongono API pubbliche documentate: finché il fornitore non fornisce credenziali
-// di integrazione, i dati entrano con l'import da file (lib/importer.js). TuoTempo espone API REST v3.
+// Connettori verso i gestionali: sincronizzazioni del modulo (TuoTempo, import da file). Base URL, credenziali e
+// impostazioni di accesso (istanza, lingua) vengono dal connettore unico della Suite (Amministrazione > Connettori,
+// lib/connectors.js del core): la riga retail.connectors conserva solo pianificazione, esito e riepilogo dell'ultima
+// sincronizzazione. GIPO e StudioLab non espongono API pubbliche documentate: i dati entrano con l'import da file (lib/importer.js).
 import { one, many, q } from '../db.js';
 import { decrypt } from './crypto.js';
 import { HttpError } from './util.js';
 import { runImport } from './importer.js';
+import { getConnector as getCoreConnector, testConnector as testCoreConnector, logConnector, publicConnector } from '../../../lib/connectors.js';
+import { encrypt as coreEncrypt } from '../../../lib/secrets.js';
 
 export async function getConnector(kind) {
   const c = await one('SELECT * FROM connectors WHERE kind=$1', [kind]);
   if (!c) throw new HttpError(404, 'Connettore inesistente');
   return c;
+}
+// Stato del connettore core per l'interfaccia del modulo (mai credenziali in chiaro)
+export const coreStatus = (kind) => publicConnector(kind);
+
+// Credenziali salvate nell'app di origine (retail.connectors, cifrate con la chiave del modulo): se il connettore core è ancora
+// vuoto si copiano lì una volta, ricifrate con lib/secrets della Suite; poi la configurazione si fa solo in Amministrazione.
+export async function migrateCredentialsToCore() {
+  const rows = await many('SELECT * FROM connectors WHERE core_migrated_at IS NULL');
+  for (const c of rows) {
+    try {
+      let creds = {}; try { creds = c.credentials ? JSON.parse(decrypt(c.credentials)) : {}; } catch { creds = {}; }
+      const core = await getCoreConnector(c.kind);
+      const sets = []; const vals = [c.kind];
+      const add = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length}`); };
+      if (!core.configured && Object.values(creds).some(Boolean)) {
+        const mapped = { ...creds };
+        if (mapped.token && !mapped.api_key) { mapped.api_key = mapped.token; delete mapped.token; }
+        add('credentials', coreEncrypt(JSON.stringify(mapped)));
+        if (c.base_url) add('base_url', c.base_url);
+        if (c.auth_kind && ['API_KEY', 'BASIC', 'OAUTH2'].includes(c.auth_kind)) add('auth_kind', c.auth_kind);
+        const st = { ...(c.settings || {}) }; delete st.tuotempo; delete st.sync_days; delete st.note;
+        if (Object.keys(st).length) add('settings', JSON.stringify({ ...core.settings, ...st }));
+        await q(`UPDATE public.connectors SET ${sets.join(', ')}, updated_at=now() WHERE kind=$1`, vals);
+        console.log(`[retail] credenziali ${c.kind} copiate nel connettore della Suite`);
+      }
+      await q('UPDATE connectors SET core_migrated_at=now() WHERE id=$1', [c.id]);
+    } catch (e) { console.error(`[retail] migrazione credenziali ${c.kind}:`, e.message); }
+  }
 }
 
 // TuoTempo API v3 (documento "Tuotempo Api integration (Key Entities)"): Bearer api_key fisso, chiamate server-side da IP statici
@@ -23,27 +54,34 @@ const TT_FIELDS = {
   insurances: 'insuranceid,insurance_title,legacyid,legacyTitle,isDefault,IsHidden,tags',
 };
 export const TT_USER_AGENT = 'td-retail/1.0 (node-fetch; Toscana Diagnostica)';
-async function tuotempoRequest(c, path, params = {}) {
-  const creds = c.credentials ? JSON.parse(decrypt(c.credentials)) : {};
-  const settings = c.settings || {};
-  if (!settings.instance) throw new HttpError(400, 'Impostare l\'identificativo dell\'istanza TuoTempo (dbName) nelle impostazioni del connettore');
-  if (!creds.token && !creds.password) throw new HttpError(400, 'Impostare l\'api_key TuoTempo (autenticazione API key)');
+async function tuotempoRequest(_c, path, params = {}) {
+  const core = await getCoreConnector('TUOTEMPO');
+  if (!core.active) throw new HttpError(400, 'Connettore TuoTempo non configurato o disabilitato: Amministrazione > Connettori');
+  const creds = core.credentials || {};
+  const settings = core.settings || {};
+  if (!settings.instance) throw new HttpError(400, 'Impostare l\'identificativo dell\'istanza TuoTempo (dbName) nel connettore (Amministrazione > Connettori)');
+  const token = creds.api_key || creds.token || creds.password;
+  if (!token) throw new HttpError(400, 'Impostare l\'api_key TuoTempo nel connettore (Amministrazione > Connettori)');
   const resource = path.replace(/^\//, '').split('/')[0];
-  const url = new URL(`${(c.base_url || 'https://app.tuotempo.com/api/v3').replace(/\/$/, '')}/${settings.instance}/${path.replace(/^\//, '')}`);
+  const url = new URL(`${(core.base_url || 'https://app.tuotempo.com/api/v3').replace(/\/$/, '')}/${settings.instance}/${path.replace(/^\//, '')}`);
   if (!params.fields && TT_FIELDS[resource]) params.fields = TT_FIELDS[resource];
   if (settings.lang || !params.lang) params.lang = settings.lang || 'it';
   for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, v);
-  const headers = { accept: 'application/json', 'content-type': 'application/json; charset=utf-8', 'user-agent': TT_USER_AGENT, authorization: `Bearer ${creds.token || creds.password}` };
+  const headers = { accept: 'application/json', 'content-type': 'application/json; charset=utf-8', 'user-agent': TT_USER_AGENT, authorization: `Bearer ${token}` };
+  const t0 = Date.now();
+  const log = (status, message) => logConnector({ kind: 'TUOTEMPO', direction: 'OUT', module: 'retail', endpoint: `GET /${resource}`, status, ms: Date.now() - t0, message });
   let res;
-  try { res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) }); } catch (e) { throw new HttpError(502, `TuoTempo non raggiungibile: ${e.cause?.message || e.message}`); }
+  try { res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) }); } catch (e) { log('ERRORE', e.cause?.message || e.message); throw new HttpError(502, `TuoTempo non raggiungibile: ${e.cause?.message || e.message}`); }
   const text = await res.text();
   let json = null; try { json = JSON.parse(text); } catch { /* non JSON */ }
   if (!res.ok || (json && json.result && json.result !== 'OK')) {
     const msg = json?.msg || text.slice(0, 200);
     const hint = /not logged in|permission/i.test(msg) ? ' · Verifica: api_key corretta per questa istanza, IP statici in uscita di Render autorizzati da Docplanner, risorsa inclusa nel perimetro contrattuale (solo Key Entities).' : '';
+    log(String(res.status), msg);
     throw new HttpError(502, `TuoTempo ${res.status}${json?.exception ? ` ${json.exception}` : ''}: ${msg}${hint}`);
   }
-  if (!json) throw new HttpError(502, 'Risposta TuoTempo non in formato JSON');
+  if (!json) { log('ERRORE', 'risposta non JSON'); throw new HttpError(502, 'Risposta TuoTempo non in formato JSON'); }
+  log('OK', null);
   return json;
 }
 const ttResults = (j) => (Array.isArray(j?.return?.results) ? j.return.results : Array.isArray(j?.results) ? j.results : Array.isArray(j?.return?.results?.results) ? j.return.results.results : []);
@@ -59,19 +97,12 @@ async function ttList(c, resource, params = {}) {
   return out;
 }
 
+// Prova di connessione: la fa il connettore della Suite (una chiamata leggera per sistema); qui si registra l'esito sulla riga del modulo
 export async function testConnector(kind) {
-  const c = await getConnector(kind);
-  if (kind === 'TUOTEMPO') {
-    // Endpoint leggero del perimetro autorizzato (Key Entities): elenco aree (sedi) dell'istanza
-    const r = await tuotempoRequest(c, 'areas', {});
-    const areas = ttResults(r);
-    return { ok: true, message: `Connessione riuscita: ${areas.length} aree (${areas.slice(0, 5).map((a) => a.areaTitle).join(', ')}${areas.length > 5 ? '…' : ''})` };
-  }
-  if (!c.base_url) throw new HttpError(400, `${kind}: nessun endpoint configurato. Finché il fornitore non attiva l'integrazione, usa l'import da file.`);
-  try {
-    const res = await fetch(c.base_url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
-    return { ok: res.ok, message: `Endpoint raggiungibile (HTTP ${res.status})` };
-  } catch (e) { throw new HttpError(502, `Endpoint non raggiungibile: ${e.message}`); }
+  await getConnector(kind);
+  const out = await testCoreConnector(kind);
+  if (!out.ok) throw new HttpError(502, out.message);
+  return out;
 }
 
 // Sincronizzazione TuoTempo: il perimetro contrattuale copre solo le Key Entities, quindi si sincronizza il catalogo prenotabile

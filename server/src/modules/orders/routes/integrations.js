@@ -9,12 +9,18 @@ import { orderPayload, silvaStatus } from '../lib/silva.js';
 import { byNumber, markPicked, markShipped, markDelivered, ORDER_COLS, ORDER_JOINS } from '../lib/orderflow.js';
 import { ingestHl7, buildAck } from '../lib/studiolab.js';
 import { orderLines } from '../lib/orders.js';
+import { verifyInbound, inboundConfigured, logConnector } from '../../../lib/connectors.js';
 
 const r = Router();
 const keyOf = (req) => req.get('X-API-KEY') || req.get('x-api-key') || req.query.api_key || '';
-const requireKey = (expected, who) => (req, _res, next) => {
-  if (!expected) return next(new HttpError(503, `Integrazione ${who} non configurata (chiave mancante nel pannello)`));
-  if (keyOf(req) !== expected) return next(new HttpError(401, 'Chiave API non valida'));
+// Chiave del fornitore = segreto in ingresso del connettore (Amministrazione > Connettori), verificato a tempo costante; ogni chiamata nel registro del connettore
+const requireKey = (kind, who) => (req, res, next) => {
+  const t0 = Date.now();
+  const endpoint = `${req.method} ${req.baseUrl}${req.path}`;
+  const log = (status, message) => logConnector({ kind, direction: 'IN', module: 'orders', endpoint, status, ms: Date.now() - t0, message });
+  if (!inboundConfigured(kind)) { log('503', 'non configurato'); return res.status(503).json({ error: `Integrazione ${who} non configurata (segreto in ingresso del connettore ${kind} in Amministrazione > Connettori)` }); }
+  if (!verifyInbound(kind, keyOf(req))) { log('401', 'chiave non valida'); return next(new HttpError(401, 'Chiave API non valida')); }
+  res.on('finish', () => log(res.statusCode < 400 ? 'OK' : String(res.statusCode), null));
   next();
 };
 async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, value]); }
@@ -22,7 +28,7 @@ async function setSetting(key, value) { await q('INSERT INTO app_settings (key, 
 // =====================================================================================================================
 // Silva Group (gestore del magazzino)
 // =====================================================================================================================
-const silvaKey = () => requireKey(config.silva.inboundKey, 'Silva');
+const silvaKey = () => requireKey('SILVA', 'Silva');
 
 r.get('/silva/ping', silvaKey(), ah(async (_req, res) => res.json({ ok: true, cliente: config.silva.customerCode, ora: new Date().toISOString() })));
 
@@ -109,11 +115,9 @@ r.post('/silva/orders/:numero/consegnato', silvaKey(), ah(async (req, res) => {
 // =====================================================================================================================
 // StudioLab ServiceNET (CB Sistemi): HL7 over HTTPS in ingresso
 // =====================================================================================================================
-// POST testo HL7 (Content-Type text/plain), header X-API-KEY = STUDIOLAB_INBOUND_KEY. Risposta sempre 200 con l'ACK nel corpo.
-r.post('/studiolab/hl7', textBody({ type: '*/*', limit: '5mb' }), ah(async (req, res) => {
+// POST testo HL7 (Content-Type text/plain), header X-API-KEY = segreto in ingresso del connettore StudioLAB. Risposta sempre 200 con l'ACK nel corpo.
+r.post('/studiolab/hl7', textBody({ type: '*/*', limit: '5mb' }), requireKey('STUDIOLAB', 'StudioLab'), ah(async (req, res) => {
   res.type('text/plain');
-  if (!config.studiolab.inboundKey) return res.status(503).send('Integrazione StudioLab in ingresso non configurata');
-  if (keyOf(req) !== config.studiolab.inboundKey) return res.status(401).send('Chiave API non valida');
   const body = typeof req.body === 'string' ? req.body : Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
   try {
     const out = await ingestHl7(body);

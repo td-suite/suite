@@ -29,3 +29,16 @@ export async function mountModules(app) {
     } catch (e) { console.error(`[moduli] ${key}: ${e.message}`); }
   }
 }
+
+// Passi dei moduli da eseguire dopo migrazioni, segreti e connettori (es. copia una tantum di credenziali nel core):
+// un modulo li espone con `export async function afterStart()`
+export async function runModulesAfterStart() {
+  for (const key of fs.readdirSync(here, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)) {
+    const entry = path.join(here, key, 'index.js');
+    if (!fs.existsSync(entry)) continue;
+    try {
+      const m = await import(`./${key}/index.js`);
+      if (typeof m.afterStart === 'function') await m.afterStart();
+    } catch (e) { console.error(`[moduli] ${key} (afterStart): ${e.message}`); }
+  }
+}

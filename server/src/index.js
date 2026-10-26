@@ -13,6 +13,8 @@ import { loadUser, requireAuth } from './lib/access.js';
 import { HttpError } from './lib/util.js';
 import { startScheduler, listJobs } from './lib/jobs.js';
 import { loadSecrets } from './lib/secrets.js';
+import { loadConnectors } from './lib/connectors.js';
+import connectorsRoutes from './routes/connectors.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import coreRoutes from './routes/core.js';
@@ -25,7 +27,7 @@ import legacyRoutes from './routes/legacy.js';
 import travasoRoutes from './routes/travaso.js';
 import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
-import { mountModules, mountModulesPublic } from './modules/index.js';
+import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
 
@@ -109,6 +111,7 @@ app.use('/api', legacyRoutes);
 app.use('/api', travasoRoutes);
 app.use('/api', importRoutes);
 app.use('/api', orgcatRoutes);
+app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
@@ -151,6 +154,8 @@ async function start() {
   await migrate();
   await applyModuleMigrations();   // migrazioni nuove dei moduli già travasati o avviati (schema_ready)
   await loadSecrets();
+  await loadConnectors();   // connettori verso i sistemi esterni: cache in memoria, ripiego sulle variabili d'ambiente
+  await runModulesAfterStart();
   await import('./jobs/register.js').catch((e) => console.warn('[jobs] registro non caricato:', e.message));
   app.listen(config.port, () => console.log(`${config.appName} in ascolto su :${config.port} · Entra ${config.entra.enabled ? 'attivo' : 'non configurato'} · Blob ${config.blob.enabled ? 'attivo' : 'non configurato'} · AI ${config.anthropic.enabled ? 'attiva' : 'non configurata'} · mail ${config.mail.provider}`));
   if (!config.disableScheduler) startScheduler();

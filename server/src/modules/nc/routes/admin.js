@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { connectorSync } from '../../../lib/connectors.js';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { config } from '../config.js';
@@ -69,7 +70,9 @@ r.post('/email/test', requireAdmin, ah(async (req, res) => {
 
 // ---- LIS
 r.get('/lis/status', requireInternal, ah(async (_req, res) => {
-  const out = { enabled: config.lis.enabled, baseUrl: config.lis.baseUrl, codiceCliente: config.lis.codiceCliente, writeBack: config.lis.writeBack, segnalazioni: config.lis.segnalazioni, push: Boolean(config.lis.pushSecret), ok: null, whoami: null, versione: null, error: null, catalogo: null };
+  const conn = connectorSync('STUDIOLAB');
+  // base URL, chiave e segreto in ingresso vengono dal connettore unico (Amministrazione > Connettori): qui solo lo stato
+  const out = { enabled: config.lis.enabled, baseUrl: config.lis.baseUrl, codiceCliente: config.lis.codiceCliente, writeBack: config.lis.writeBack, segnalazioni: config.lis.segnalazioni, push: Boolean(config.lis.pushSecret), connector: { source: conn.source, configured: conn.configured, active: conn.active, last_test_at: conn.last_test_at, last_status: conn.last_status, last_message: conn.last_message }, ok: null, whoami: null, versione: null, error: null, catalogo: null };
   if (config.lis.enabled) {
     try { out.whoami = await lis.whoami(); out.ok = true; } catch (e) { out.ok = false; out.error = e.message; }
     try { const e = await lis.ping(); out.versione = e?.Version || null; } catch { /* non bloccante */ }

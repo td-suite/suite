@@ -1,7 +1,8 @@
-// Canali in ingresso da StudioLAB, senza sessione utente: protetti da segreto condiviso (LIS_PUSH_SECRET).
+// Canali in ingresso da StudioLAB, senza sessione utente: protetti dal segreto in ingresso del connettore StudioLAB
+// (Amministrazione > Connettori; ripiego sulla variabile LIS_PUSH_SECRET finché il connettore non è configurato).
 //  POST /api/nc/lis/push   NotificaPush JSON {IdAccettazione, TipoNotifica, IdDocumento}  -> aggiorna la cache dal LIS
 //  POST /api/nc/hl7        messaggio HL7 v2.5 StudioLAB (OML^O21, ORL^O22, MDM^T02/T10, ADT) nel body text/plain -> aggiorna la cache, risponde ACK (sempre HTTP 200)
-//  Specifica: CB Sistemi, "Integrazione HL7 con ServiceNET" rev. 3 (27/03/2026). Autenticazione: header X-API-KEY (o X-Push-Secret) = LIS_PUSH_SECRET
+//  Specifica: CB Sistemi, "Integrazione HL7 con ServiceNET" rev. 3 (27/03/2026). Autenticazione: header X-API-KEY (o X-Push-Secret) = segreto in ingresso del connettore
 //  Nella Suite: montati prima di sessione e CSRF (vedi index.js). Con modulo non LIVE i canali rifiutano (l'app originale riceve ancora il flusso).
 import { Router } from 'express';
 import express from 'express';
@@ -13,38 +14,46 @@ import * as lis from '../lib/lis.js';
 import { parseHl7, ack } from '../lib/hl7.js';
 import { publish } from '../lib/events.js';
 import { findSedeByCodice } from '../lib/sedi.js';
+import { verifyInbound, inboundConfigured, logConnector } from '../../../lib/connectors.js';
 
 const r = Router();
 
 // Esito preliminare: segreto e stato del modulo. Ritorna null se si può procedere, altrimenti { status, error }
-async function gate(req) {
-  if (!config.lis.pushSecret) return { status: 503, error: 'Canale non configurato (LIS_PUSH_SECRET)' };
+// Il segreto in ingresso è quello del connettore StudioLAB (Amministrazione > Connettori; ripiego LIS_PUSH_SECRET / STUDIOLAB_INBOUND_KEY)
+async function gate(req, endpoint) {
+  const t0 = Date.now();
+  const refuse = (status, error) => { logConnector({ kind: 'STUDIOLAB', direction: 'IN', module: 'nc', endpoint, status: String(status), ms: Date.now() - t0, message: error }); return { status, error }; };
+  if (!inboundConfigured('STUDIOLAB')) return refuse(503, 'Canale non configurato: segreto in ingresso del connettore StudioLAB assente (Amministrazione > Connettori)');
   const given = req.get('X-Push-Secret') || req.get('X-API-KEY') || req.query.secret;
-  if (given !== config.lis.pushSecret) return { status: 401, error: 'Segreto non valido' };
+  if (!verifyInbound('STUDIOLAB', given)) return refuse(401, 'Segreto non valido');
   const st = await getModuleState('nc');
-  if (st.mode !== 'LIVE') return { status: 423, error: 'Modulo Non conformità non ancora attivo nella Suite: il flusso StudioLAB resta sull\'app originale' };
+  if (st.mode !== 'LIVE') return refuse(423, 'Modulo Non conformità non ancora attivo nella Suite: il flusso StudioLAB resta sull\'app originale');
   return null;
 }
+const logIn = (endpoint, t0, ok, message) => logConnector({ kind: 'STUDIOLAB', direction: 'IN', module: 'nc', endpoint, status: ok ? 'OK' : 'ERRORE', ms: Date.now() - t0, message });
 
 r.post('/lis/push', express.json({ limit: '1mb' }), ah(async (req, res) => {
-  const g = await gate(req); if (g) return res.status(g.status).json({ error: g.error });
+  const t0 = Date.now();
+  const g = await gate(req, 'POST /api/nc/lis/push'); if (g) return res.status(g.status).json({ error: g.error });
   const id = String(req.body?.IdAccettazione || req.body?.idAccettazione || '').trim();
-  if (!id) { await lis.logEvento('PUSH', 'ERRORE', { dettaglio: 'IdAccettazione mancante', payload: JSON.stringify(req.body) }); throw new HttpError(400, 'IdAccettazione mancante'); }
+  if (!id) { await lis.logEvento('PUSH', 'ERRORE', { dettaglio: 'IdAccettazione mancante', payload: JSON.stringify(req.body) }); logIn('POST /api/nc/lis/push', t0, false, 'IdAccettazione mancante'); throw new HttpError(400, 'IdAccettazione mancante'); }
   let row = null;
-  try { row = await lis.refreshFromLis(id); } catch (e) { await lis.logEvento('PUSH', 'ERRORE', { accettazioneId: id, dettaglio: e.message, payload: JSON.stringify(req.body) }); return res.status(202).json({ ok: false, error: e.message }); }
+  try { row = await lis.refreshFromLis(id); } catch (e) { await lis.logEvento('PUSH', 'ERRORE', { accettazioneId: id, dettaglio: e.message, payload: JSON.stringify(req.body) }); logIn('POST /api/nc/lis/push', t0, false, e.message); return res.status(202).json({ ok: false, error: e.message }); }
   if (!row) row = await lis.upsertAccettazione({ id }, 'PUSH');   // conosciuta solo per numero: la preanalitica la completerà
   await lis.logEvento('PUSH', 'OK', { accettazioneId: id, dettaglio: `${req.body?.TipoNotifica || 'notifica'}${req.body?.IdDocumento ? ` · doc ${req.body.IdDocumento}` : ''}`, payload: JSON.stringify(req.body) });
+  logIn('POST /api/nc/lis/push', t0, true, `accettazione ${id}`);
   publish({ type: 'acc.updated', accId: id, at: new Date().toISOString() });
   res.json({ ok: true, id });
 }));
 
 r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) => {
   const reply = (parsed, ok, err) => res.status(200).type('text/plain').send(ack(parsed, ok, err));   // Appendice B: sempre 200, esito nel segmento MSA
-  const g = await gate(req);
+  const t0 = Date.now();
+  const g = await gate(req, 'POST /api/nc/hl7');
   if (g) return g.status === 423 ? reply(null, false, g.error) : res.status(g.status).json({ error: g.error });
   let parsed;
   try { parsed = parseHl7(req.body); }
-  catch (e) { await lis.logEvento('HL7', 'ERRORE', { dettaglio: e.message, payload: req.body }); return reply(null, false, e.message); }
+  catch (e) { await lis.logEvento('HL7', 'ERRORE', { dettaglio: e.message, payload: req.body }); logIn('POST /api/nc/hl7', t0, false, e.message); return reply(null, false, e.message); }
   const a = parsed.accettazione;
   try {
     // Anagrafica: ADT^A05 aggiorna il paziente sulle accettazioni note; ADT^A39 (merge) viene solo registrato
@@ -54,6 +63,7 @@ r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) 
         const r2 = await q(`UPDATE accettazioni SET paziente_cognome=coalesce($2,paziente_cognome), paziente_nome=coalesce($3,paziente_nome), paziente_nascita=coalesce($4,paziente_nascita), paziente_sesso=coalesce($5,paziente_sesso), updated_at=now() WHERE paziente_cf=$1`, [a.paziente.cf, a.paziente.cognome, a.paziente.nome, a.paziente.nascita, a.paziente.sesso]);
         await lis.logEvento('HL7', 'OK', { dettaglio: `${parsed.type}: anagrafica aggiornata su ${r2.rowCount} accettazioni`, payload: req.body });
       }
+      logIn('POST /api/nc/hl7', t0, true, `${parsed.type}`);
       return reply(parsed, true);
     }
     if (!a.id) { await lis.logEvento('HL7', 'ERRORE', { dettaglio: 'numero accettazione assente (PV1-19 / ORC-4 / OBR-20)', payload: req.body }); return reply(parsed, false, 'Numero accettazione assente'); }
@@ -72,9 +82,11 @@ r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) 
     const flags = a.esami.filter((e) => e.bloccato || e.nonEseguito).map((e) => `${e.cod}:${e.statoHl7 || e.controllo}`);
     await lis.logEvento('HL7', 'OK', { accettazioneId: a.id, dettaglio: `${parsed.type}${parsed.controlCode ? ` ${parsed.controlCode}` : ''} · sede ${a.sede_codice || '–'}${a.sede_da_msh ? ' (da MSH-4)' : ''}${a.sede_codice && !sede ? ' (codice non censito in anagrafica)' : ''} · ${a.esami.length} esami${flags.length ? ` · NC LIS: ${flags.join(', ')}` : ''}`, payload: req.body });
     publish({ type: 'acc.updated', accId: row.id, at: new Date().toISOString() });
+    logIn('POST /api/nc/hl7', t0, true, `${parsed.type} · accettazione ${a.id}`);
     return reply(parsed, true);
   } catch (e) {
     await lis.logEvento('HL7', 'ERRORE', { accettazioneId: a?.id, dettaglio: e.message, payload: req.body });
+    logIn('POST /api/nc/hl7', t0, false, e.message);
     return reply(parsed, false, `Errore interno: ${e.message}`);
   }
 }));

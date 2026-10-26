@@ -9,6 +9,7 @@ import { Modules, Legacy, ApiKeys, Imports, Audit, Settings } from './System.jsx
 import { Organization } from './Registry.jsx';
 import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
+import { Connectors } from './Connectors.jsx';
 
 function Overview() {
   const summary = useApi('/users/summary');
@@ -63,6 +64,7 @@ export default function Admin() {
       <Route path="modules" element={<Modules />} />
       <Route path="organization" element={<Organization />} />
       <Route path="legacy" element={<Legacy />} />
+      <Route path="connectors" element={<Connectors />} />
       <Route path="api-keys" element={<ApiKeys />} />
       <Route path="travaso" element={<Travaso />} />
       <Route path="imports" element={<Imports />} />
