@@ -110,7 +110,7 @@ r.get('/today', ah(async (req, res) => {
   const rows = await many(`SELECT s.id AS site_id, s.name AS site_name, s.code AS site_code, c.name AS company_name, s.cash_float, s.expected_registers,
       (substr(s.operating_days, extract(isodow FROM ${today}::date)::int, 1) = '1' AND s.start_date <= ${today}::date) AS operating, s.start_date,
       (SELECT json_agg(json_build_object('id', r.id, 'status', r.status, 'operator_id', r.operator_id, 'operator_name', u.full_name, 'total', r.cash_to_deposit + r.pos_total + r.transfer_total) ORDER BY u.full_name)
-         FROM cash_reports r LEFT JOIN users u ON u.id=r.operator_id WHERE r.site_id=s.id AND r.report_date=${today}::date) AS registers
+         FROM cash_reports r LEFT JOIN users_v u ON u.id=r.operator_id WHERE r.site_id=s.id AND r.report_date=${today}::date) AS registers
     FROM sites_v s JOIN companies_v c ON c.id=s.company_id
     WHERE ${siteScope(req.user, P)} AND s.active ORDER BY c.name, s.name`, P.values);
   for (const x of rows) {

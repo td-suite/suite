@@ -3,7 +3,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, todayRome, eur, itDate } from '../lib/util.js';
-import { Params, siteScope, assertSite, isAdmin, requireRole, REVIEW_ROLES, canCount, hasGrantSiteSql } from '../lib/access.js';
+import { Params, siteScope, assertSite, isAdmin, requireRole, REVIEW_ROLES, canCount, ensureCashUserId } from '../lib/access.js';
 import { BANKNOTES, COINS, DENOMS, dkey, CIRCUITS, computeTotals, STATUS_LABEL } from '../lib/cash.js';
 import multer from 'multer';
 import { pdfText } from '../lib/pdftext.js';
@@ -38,13 +38,13 @@ async function fullReport(id) {
       s.name AS site_name, s.code AS site_code, s.company_id, c.name AS company_name, c.code AS company_code,
       pu.full_name AS processed_by_name, cu.full_name AS created_by_name
     FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id
-    LEFT JOIN users pu ON pu.id=r.processed_by LEFT JOIN users cu ON cu.id=r.created_by LEFT JOIN users vu ON vu.id=r.verified_by LEFT JOIN users ou ON ou.id=r.operator_id
+    LEFT JOIN users_v pu ON pu.id=r.processed_by LEFT JOIN users_v cu ON cu.id=r.created_by LEFT JOIN users_v vu ON vu.id=r.verified_by LEFT JOIN users_v ou ON ou.id=r.operator_id
     LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id WHERE r.id=$1`, [id]);
   const den = await many('SELECT denom, qty FROM report_denominations WHERE report_id=$1', [id]);
   rep.denominations = Object.fromEntries(DENOMS.map((d) => [dkey(d), den.find((x) => Number(x.denom) === d)?.qty || 0]));
   rep.receipts = await many('SELECT * FROM pos_receipts WHERE report_id=$1 ORDER BY id', [id]);
   rep.transfers = await many('SELECT * FROM bank_transfers WHERE report_id=$1 ORDER BY id', [id]);
-  rep.events = await many(`SELECT e.*, u.full_name FROM report_events e LEFT JOIN users u ON u.id=e.user_id WHERE report_id=$1 ORDER BY at`, [id]);
+  rep.events = await many(`SELECT e.*, u.full_name FROM report_events e LEFT JOIN users_v u ON u.id=e.user_id WHERE report_id=$1 ORDER BY at`, [id]);
   rep.nonconformities = await many('SELECT id, kind, severity, title, status, created_at FROM nonconformities WHERE report_id=$1 ORDER BY id', [id]);
   const t = computeTotals(rep);
   Object.assign(rep, { notes_total: t.notes_total, day_total: Number((Number(rep.cash_to_deposit) + Number(rep.pos_total) + Number(rep.transfer_total)).toFixed(2)) });
@@ -68,7 +68,7 @@ r.get('/', ah(async (req, res) => {
       (r.cash_to_deposit + r.pos_total + r.transfer_total) AS day_total,
       s.name AS site_name, s.code AS site_code, c.name AS company_name, c.id AS company_id,
       (SELECT count(*)::int FROM nonconformities n WHERE n.report_id=r.id AND n.status<>'CHIUSA') AS open_nc
-    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id LEFT JOIN users ou ON ou.id=r.operator_id
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id JOIN companies_v c ON c.id=s.company_id LEFT JOIN cash_deposits dep ON dep.id=r.deposit_id LEFT JOIN users_v ou ON ou.id=r.operator_id
     WHERE ${where.join(' AND ')} ORDER BY r.report_date DESC, s.name, ou.full_name LIMIT ${limit}`, P.values));
 }));
 
@@ -87,17 +87,21 @@ r.post('/', countOnly, ah(async (req, res) => {
   if (!site.active) throw bad('Sede non attiva');
   if (d.report_date < site.start_date) throw bad(`La sede ${site.name} è operativa dal ${itDate(site.start_date)}: nessun rendiconto atteso prima`);
   if (d.report_date > todayRome()) throw bad('Non si può rendicontare una data futura');
-  // cassa per operatore: un rendiconto per sede, giorno e operatore. Gli amministratori possono aprire la cassa di un altro operatore della sede.
+  // cassa per operatore: un rendiconto per sede, giorno e operatore. Gli amministratori possono aprire la cassa di un altro
+  // operatore della sede: `operator_id` è l'id dell'utente Suite (elenco GET /users, vista operators_v); la chiave esterna
+  // cash_reports.operator_id resta la riga tecnica di cash.users, creata se l'operatore non è ancora entrato in Cash.
   let operatorId = req.user.id;
-  if (d.operator_id && d.operator_id !== req.user.id) {
+  let opCashFloat = req.user.cash_float;
+  if (d.operator_id && d.operator_id !== req.user.suite_user_id) {
     if (!isAdmin(req.user)) throw forbidden('Puoi aprire solo la tua cassa');
-    const op = await one(`SELECT u.id FROM users u WHERE u.id=$1 AND u.active AND u.role='OPERATOR' AND ${hasGrantSiteSql('u.email', '$2::int')}`, [d.operator_id, site.id]);
+    const op = await one(`SELECT o.id, o.cash_float FROM operators_v o WHERE o.id=$1 AND o.active AND o.role='OPERATOR' AND $2::int = ANY(o.site_ids)`, [d.operator_id, site.id]);
     if (!op) throw bad('Operatore non assegnato a questa sede');
-    operatorId = d.operator_id;
+    operatorId = await ensureCashUserId(op.id);
+    opCashFloat = op.cash_float;
   }
   const ex = await one('SELECT id FROM cash_reports WHERE site_id=$1 AND report_date=$2 AND operator_id=$3', [d.site_id, d.report_date, operatorId]);
   if (ex) return res.status(409).json({ error: 'Esiste già il rendiconto di questa cassa per la data', id: ex.id });
-  const opRow = await one('SELECT cash_float FROM users WHERE id=$1', [operatorId]);
+  const opRow = { cash_float: opCashFloat };
   const cashFloat = opRow?.cash_float != null ? Number(opRow.cash_float) : Number(site.cash_float);
   const row = await tx(async (c) => {
     const rep = (await c.query(`INSERT INTO cash_reports (site_id, report_date, cash_float, cash_to_deposit, created_by, updated_by, operator_id)

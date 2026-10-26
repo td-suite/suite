@@ -225,7 +225,7 @@ r.get('/statements/:id/pdf', ah(async (req, res) => {
 // ------------- SEPA Direct Debit -------------
 r.get('/sepa/batches', requireRole('SUPERADMIN'), ah(async (_req, res) => {
   res.json(await many(`SELECT b.id, b.msg_id, b.collection_date, b.tx_count, b.total_amount, b.status, b.created_at, u.full_name AS created_by_name
-    FROM sepa_batches b LEFT JOIN users u ON u.id=b.created_by ORDER BY b.created_at DESC`));
+    FROM sepa_batches b LEFT JOIN users_v u ON u.id=b.created_by ORDER BY b.created_at DESC`));
 }));
 
 r.post('/sepa/batches', requireRole('SUPERADMIN'), ah(async (req, res) => {

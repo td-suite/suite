@@ -191,7 +191,16 @@ r.post('/grant-rules/apply', requireAdmin, ah(async (req, res) => {
 
 // ---- Esportazioni dell'organigramma
 r.get('/org-chart/export.:fmt', ah(async (req, res) => {
-  const units = await unitRows('WHERE u.active');
+  let units = await unitRows('WHERE u.active');
+  // da una sede, un'area o un reparto in giù (con la catena fino al vertice): per ASL, ispezioni, singole strutture
+  const startId = Number(req.query.unit_id) || null;
+  if (startId && units.some((u) => u.id === startId)) {
+    const byId = new Map(units.map((u) => [u.id, u])); const keep = new Set();
+    let cur = byId.get(startId); while (cur) { keep.add(cur.id); cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
+    const walk = (id) => { for (const u of units) if (u.parent_id === id && !keep.has(u.id)) { keep.add(u.id); walk(u.id); } }; walk(startId);
+    units = units.filter((u) => keep.has(u.id)).map((u) => (keep.has(u.parent_id) || !u.parent_id ? u : { ...u, parent_id: null }));
+    // le unità sorelle lungo la catena non ci sono: ogni nodo della catena ha un solo figlio, fino all'unità di partenza
+  }
   const fmt = req.params.fmt; const name = `Organigramma_TD_${new Date().toISOString().slice(0, 10)}`;
   if (fmt === 'xlsx') { res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition', `attachment; filename="${name}.xlsx"`); return res.send(await orgchartXlsx(units)); }
   if (fmt === 'pptx') { res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'); res.setHeader('Content-Disposition', `attachment; filename="${name}.pptx"`); return res.send(await orgchartPptx(units)); }

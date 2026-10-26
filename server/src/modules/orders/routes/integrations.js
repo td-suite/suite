@@ -77,7 +77,7 @@ r.get('/silva/orders', silvaKey(), ah(async (req, res) => {
   const orders = await many(`SELECT ${ORDER_COLS} ${ORDER_JOINS} WHERE o.status = ANY($1::text[]) ORDER BY o.urgent DESC, o.approved_at`, [statuses]);
   const out = [];
   for (const o of orders) {
-    const s = await one('SELECT * FROM sites_v WHERE id=$1', [o.struttura_id]);
+    const s = await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]);
     const lines = await many(`SELECT l.*, a.code AS article_code, a.name AS article_name, a.unit, a.pack_size, a.pack_label, a.gtin, a.silva_code FROM order_lines l JOIN articles a ON a.id=l.article_id WHERE l.order_id=$1 ORDER BY a.sort`, [o.id]);
     out.push(orderPayload(o, s, lines));
   }
@@ -87,7 +87,7 @@ r.get('/silva/orders', silvaKey(), ah(async (req, res) => {
 }));
 r.get('/silva/orders/:numero', silvaKey(), ah(async (req, res) => {
   const o = await byNumber(req.params.numero);
-  const s = await one('SELECT * FROM sites_v WHERE id=$1', [o.struttura_id]);
+  const s = await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]);
   res.json(orderPayload(o, s, await orderLines(o.id)));
 }));
 

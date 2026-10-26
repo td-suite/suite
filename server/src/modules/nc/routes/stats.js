@@ -38,13 +38,13 @@ r.get('/stats', ah(async (req, res) => {
   const oreRisposta = risposte.map((x) => workingHoursBetween(x.sent_at, x.first_response_at, s.orario_lavoro));
   const mediaRisposta = oreRisposta.length ? Math.round((oreRisposta.reduce((a, b) => a + b, 0) / oreRisposta.length) * 10) / 10 : null;
 
-  const perSede = await many(`SELECT s.id, s.nome, s.codice, s.tipo, count(*)::int AS totale,
+  const perSede = await many(`SELECT s.id, s.origin, s.nome, s.codice, s.tipo, count(*)::int AS totale,
       count(*) FILTER (WHERE n.stato IN ('APERTA','INVIATA_SEDE','RISPOSTA_SEDE','IN_TRATTAMENTO'))::int AS aperte,
       count(*) FILTER (WHERE n.gravita <> 'MINORE')::int AS rilevanti, count(*) FILTER (WHERE n.ricorrente)::int AS ricorrenti,
       count(*) FILTER (WHERE n.first_response_at IS NOT NULL AND n.first_response_at <= n.sla_due_at)::int AS in_sla,
       count(*) FILTER (WHERE n.first_response_at IS NOT NULL)::int AS con_risposta,
       (SELECT count(*)::int FROM accettazioni a WHERE a.sede_id = s.id ${from ? `AND coalesce(a.data_accettazione, a.created_at) >= $${p.indexOf(from) + 1}::date` : ''} ${to ? `AND coalesce(a.data_accettazione, a.created_at) < ($${p.indexOf(to) + 1}::date + 1)` : ''}) AS accettazioni
-    FROM nc n JOIN sites_v s ON s.id=n.sede_id ${W} GROUP BY s.id, s.nome, s.codice, s.tipo ORDER BY totale DESC`, p);
+    FROM nc n JOIN sedi_v s ON s.id=n.sede_id ${W} GROUP BY s.id, s.origin, s.nome, s.codice, s.tipo ORDER BY totale DESC`, p);
 
   const perTipo = await many(`SELECT n.macro, coalesce(t.label, coalesce(n.tipo_altro,'Altro')) AS tipo, count(*)::int AS n, count(*) FILTER (WHERE n.gravita <> 'MINORE')::int AS rilevanti
     FROM nc n LEFT JOIN nc_tipi t ON t.id=n.tipo_id ${W} GROUP BY n.macro, tipo ORDER BY n DESC`, p);

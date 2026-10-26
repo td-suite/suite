@@ -27,6 +27,7 @@ import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
 import { mountModules, mountModulesPublic } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
+import { applyModuleMigrations } from './lib/travaso.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -148,6 +149,7 @@ async function start() {
     }
   }
   await migrate();
+  await applyModuleMigrations();   // migrazioni nuove dei moduli già travasati o avviati (schema_ready)
   await loadSecrets();
   await import('./jobs/register.js').catch((e) => console.warn('[jobs] registro non caricato:', e.message));
   app.listen(config.port, () => console.log(`${config.appName} in ascolto su :${config.port} · Entra ${config.entra.enabled ? 'attivo' : 'non configurato'} · Blob ${config.blob.enabled ? 'attivo' : 'non configurato'} · AI ${config.anthropic.enabled ? 'attiva' : 'non configurata'} · mail ${config.mail.provider}`));

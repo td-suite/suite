@@ -132,7 +132,7 @@ async function buildSiteRoyaltyPdf(req, _res, override = {}) {
   const site0 = await assertSite(req.user, Number(override.siteId || req.params.id));
   const company = await one('SELECT * FROM companies_v WHERE id=$1', [site0.company_id]);
   const { start, end } = monthRange(period);
-  const st = await one('SELECT s.*, u.full_name AS confirmed_by_name FROM site_royalty_statements s LEFT JOIN users u ON u.id=s.confirmed_by WHERE s.site_id=$1 AND s.period=$2 AND s.cancelled_at IS NULL', [site0.id, period]);
+  const st = await one('SELECT s.*, u.full_name AS confirmed_by_name FROM site_royalty_statements s LEFT JOIN users_v u ON u.id=s.confirmed_by WHERE s.site_id=$1 AND s.period=$2 AND s.cancelled_at IS NULL', [site0.id, period]);
   if (req.user.role === 'PARTNER' && !st) throw forbidden('Report non ancora confermato dall\'amministratore');
   let rev = await siteRevenue(site0.id, start, end);
   let site = site0;

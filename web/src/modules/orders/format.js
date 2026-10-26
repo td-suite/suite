@@ -35,6 +35,12 @@ export const PHASES = [
 ];
 export const phaseOf = (status) => PHASES.find((p) => p.statuses.includes(status)) || null;
 export const KIND = { CLIENTE: 'Cliente Service', SEDE: 'Sede del network', LAB: 'Laboratorio TD' };
+// Origine della struttura nell'anagrafica unica: sede TD (public.sites) o Legal entity (public.organizations)
+export const STRUTTURA_ORIGIN = { SITE: 'Sede TD', ORG: 'Legal entity' };
+export const ORG_KIND = { GRUPPO: 'Gruppo', SOCIETA: 'Società del gruppo', CLIENTE: 'Cliente service', PARTNER: 'Partner', FORNITORE: 'Fornitore', TARGET: 'Target', ALTRO: 'Altro' };
+export const SITE_KIND = { HEADQUARTER: 'Direzione', LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', SERVICE: 'Punto cliente service', CENTRO_MEDICO: 'Centro medico', ALTRO: 'Altro' };
+// Etichetta della struttura nei selettori: nome, codice e per le Legal entity il tipo
+export const strutturaLabel = (s) => `${s.name} (${s.code})${s.origin === 'ORG' && s.org_kind ? ` · ${ORG_KIND[s.org_kind] || s.org_kind}` : ''}`;
 export const ORIGIN = { CLIENTE: 'Richiesta del cliente', SISTEMA: 'Generato dalla giacenza', OPERATIONS: 'Area Operations' };
 export const ROLE = { SUPERADMIN: 'Super amministratore', PROCUREMENT: 'Area Operations (Procurement)', CLIENTE: 'Cliente', SEDE: 'Sede TD', LAB: 'Laboratorio TD' };
 export const ROLE_HELP = {

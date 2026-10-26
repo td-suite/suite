@@ -1,8 +1,8 @@
 // Modulo Non conformità (nc.toscanadiagnostica.it) travasato nella Suite: NC preanalitiche in cinque fasi, desk accettazioni,
-// sedi invianti (clienti StudioLAB), dialogo via email con le sedi, canali macchina StudioLAB (push, HL7), SLA, SSE.
+// sedi invianti (sedi TD e Legal entity: clienti del service, fornitori), dialogo via email con le sedi, canali macchina StudioLAB (push, HL7), SLA, SSE.
 // Autenticazione, utenti e profili sono della Suite; il codice dell'app lavora con la "sua" riga users nello schema nc
-// (req.moduleUser) con role = profilo del grant e sedi = id di public.sites negli scope del grant (anagrafica unica: le sedi
-// invianti sono quelle di Amministrazione, con le impostazioni NC in nc.site_ext).
+// (req.moduleUser) con role = profilo del grant e sedi = chiavi unificate delle sedi negli scope del grant (anagrafica unica:
+// sedi TD di Amministrazione con le impostazioni NC in nc.site_ext, Legal entity con le impostazioni in nc.org_ext; vista sedi_v).
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../../lib/access.js';
@@ -13,6 +13,7 @@ import { q } from './db.js';
 import { ah, parse } from './lib/util.js';
 import { sseHandler } from './lib/events.js';
 import { runSlaCheck } from './lib/nc.js';
+import { perimetroSedi } from './lib/sedi.js';
 import inboundRoutes from './routes/inbound.js';
 import sediRoutes from './routes/sedi.js';
 import accRoutes from './routes/accettazioni.js';
@@ -45,8 +46,9 @@ export default function mount(app) {
     let u = req.moduleUser;
     // Lo stato dell'account lo decide la Suite: chi arriva qui è attivo anche per le notifiche dell'app
     if (u.status !== 'ACTIVE') { await q(`UPDATE users SET status='ACTIVE', updated_at=now() WHERE id=$1`, [u.id]); u = { ...u, status: 'ACTIVE' }; }
-    // Perimetro: id delle sedi dell'anagrafica unica (public.sites) negli scope SITE del grant Suite (anagrafica unica, docs/ANAGRAFICA.md)
-    const sedi = [...new Set((u.site_ids || []).map(Number).filter(Number.isFinite))];
+    // Perimetro: chiavi unificate delle sedi invianti (docs/ANAGRAFICA.md, migrazione 004): > 0 sede TD negli scope SITE del grant
+    // Suite (un punto SERVICE porta alla sua Legal entity), < 0 Legal entity degli scope ORG o dell'utente stesso
+    const sedi = await perimetroSedi(req.suiteUser);
     req.user = { ...u, sedi };
     next();
   }));

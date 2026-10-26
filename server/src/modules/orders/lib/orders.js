@@ -6,6 +6,16 @@ import { consumptionByArticle } from './studiolab.js';
 
 export const ARTICLE_COLS = `a.code AS article_code, a.name AS article_name, a.category_code, a.unit, a.pack_size, a.pack_label, a.color, a.gtin, a.coverage_factor`;
 
+// Intestazione dei documenti: la riga company dell'app di origine se c'è, altrimenti la Legal entity di Toscana Diagnostica
+// dall'anagrafica unica (la Suite parte vuota: company non viene più seminata dal travaso).
+export async function companyInfo() {
+  const c = await one('SELECT * FROM company LIMIT 1');
+  if (c) return c;
+  const o = await one(`SELECT id, name, vat_number, address, zip, city, province, phone, email, pec, website FROM public.organizations
+    WHERE active AND kind IN ('GRUPPO','SOCIETA') ORDER BY (upper(code) = 'TD') DESC, (kind = 'GRUPPO') DESC, id LIMIT 1`);
+  return o || { name: 'Toscana Diagnostica' };
+}
+
 export async function nextOrderNumber(client) {
   const year = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome', year: 'numeric' }).format(new Date()));
   const r = await client.query(`INSERT INTO order_counters (year, last) VALUES ($1, 1) ON CONFLICT (year) DO UPDATE SET last = order_counters.last + 1 RETURNING last`, [year]);
@@ -83,7 +93,7 @@ export function proposeQty({ prodPacks, stockPacks, factor, formula }) {
 
 export async function stockCountDetail(countId) {
   const c = await one(`SELECT c.*, s.name AS struttura_name, s.code AS struttura_code, s.kind, u.full_name AS confirmed_by_name, o.number AS order_number, o.status AS order_status
-    FROM stock_counts c JOIN sites_v s ON s.id=c.struttura_id LEFT JOIN users u ON u.id=c.confirmed_by LEFT JOIN orders o ON o.id=c.order_id WHERE c.id=$1`, [countId]);
+    FROM stock_counts c JOIN strutture_v s ON s.id=c.struttura_id LEFT JOIN users u ON u.id=c.confirmed_by LEFT JOIN orders o ON o.id=c.order_id WHERE c.id=$1`, [countId]);
   if (!c) return null;
   c.lines = await many(`SELECT l.*, ${ARTICLE_COLS} FROM stock_count_lines l JOIN articles a ON a.id=l.article_id WHERE l.count_id=$1 ORDER BY a.sort, a.code`, [countId]);
   c.extras = await many(`SELECT e.*, a.name AS article_name, a.pack_label FROM stock_count_extras e LEFT JOIN articles a ON a.id=e.article_id WHERE e.count_id=$1 ORDER BY e.id`, [countId]);
@@ -96,7 +106,7 @@ export async function openStockCount(strutturaId, monthIso) {
   let c = await one('SELECT * FROM stock_counts WHERE struttura_id=$1 AND month=$2', [strutturaId, month]);
   if (c && c.status === 'CONFERMATO') return c.id;
   if (!c) c = await one('INSERT INTO stock_counts (struttura_id, month) VALUES ($1,$2) RETURNING *', [strutturaId, month]);
-  const s = await one('SELECT kind FROM sites_v WHERE id=$1', [strutturaId]);
+  const s = await one('SELECT kind FROM strutture_v WHERE id=$1', [strutturaId]);
   const stock = await stockByArticle(strutturaId);
   const last = await lastOrderByArticle(strutturaId);
   // elenco della struttura: articoli visibili al suo tipo più quelli che ha comunque movimentato

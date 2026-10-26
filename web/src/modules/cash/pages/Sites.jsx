@@ -6,6 +6,8 @@ import { useApi, Field, Loading, ErrorBox, Empty, Badge, Modal, MoneyInput, Icon
 import { eur, itDate, itDateTime } from '../format.js';
 
 // Sedi: anagrafica unica della Suite (public.sites) con le impostazioni Cash della sede (site_ext).
+// Solo le sedi di Toscana Diagnostica (le strutture dei clienti service non compaiono mai in Cash); le sedi TD senza
+// impostazioni Cash compaiono comunque, con i campi operativi vuoti, e si configurano da qui.
 // Qui non si creano, rinominano o disattivano sedi: si fa in Amministrazione > Sedi. Si modificano solo le impostazioni
 // operative di Cash (fondo cassa, giorni e orari, casse attese, email, tipo di sede e royalty).
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -29,7 +31,6 @@ export default function Sites() {
   const [edit, setEdit] = useState(null);
   const [hist, setHist] = useState(null);
   const [err, setErr] = useState(null);
-  const [show, setShow] = useState('configured');   // configured | all
   const save = async () => {
     setErr(null);
     const b = { company_id: Number(edit.company_id || user.company_id) || undefined, cash_float: Number(edit.cash_float), site_email: edit.site_email || null, host_email: edit.host_email || null,
@@ -43,8 +44,7 @@ export default function Sites() {
     } catch (e) { setErr(e); }
   };
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
-  const list = (data || []).filter((s) => show === 'all' || s.configured);
-  const sorted = [...list].sort((a, b) => {
+  const sorted = [...(data || [])].sort((a, b) => {
     if (a.configured !== b.configured) return a.configured ? -1 : 1;
     const va = sort.key === 'company' ? a.company_name : sort.key === 'code' ? a.code : a.name;
     const vb = sort.key === 'company' ? b.company_name : sort.key === 'code' ? b.code : b.name;
@@ -58,20 +58,19 @@ export default function Sites() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Sedi e fondo cassa</h1><div className="sub">Le sedi sono quelle dell'anagrafica unica della Suite: qui si impostano fondo cassa, giorni e orari, casse attese, email e royalty di ogni sede</div></div>
+        <div><h1>Sedi e fondo cassa</h1><div className="sub">Le sedi di Toscana Diagnostica dell'anagrafica unica della Suite: qui si impostano fondo cassa, giorni e orari, casse attese, email e royalty di ogni sede{unconfigured > 0 && <>. <b>{unconfigured}</b> {unconfigured === 1 ? 'sede da configurare' : 'sedi da configurare'}</>}</div></div>
         <div className="row">
-          {unconfigured > 0 && <button className="btn ghost" onClick={() => setShow(show === 'all' ? 'configured' : 'all')}>{show === 'all' ? 'Solo sedi configurate' : `Mostra tutte le sedi (${unconfigured} da configurare)`}</button>}
           <Link className="btn ghost" to={ADMIN_SITES}><Icon name="external" size={16} />Apri in Amministrazione</Link>
         </div>
       </div>
-      {!data ? <Loading /> : !sorted.length ? <div className="card"><Empty>{show === 'all' ? 'Nessuna sede nell\'anagrafica' : 'Nessuna sede configurata in Cash'}{unconfigured > 0 && show !== 'all' && <div style={{ marginTop: 8 }}><button className="btn sm" onClick={() => setShow('all')}>Mostra le sedi da configurare</button></div>}</Empty></div> : (
+      {!data ? <Loading /> : !sorted.length ? <div className="card"><Empty>Nessuna sede di Toscana Diagnostica nell'anagrafica: le sedi si creano in <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link></Empty></div> : (
         <div className="card"><div className="table-wrap"><table className="t">
           <thead><tr><Th k="code">Codice</Th><Th k="name">Sede</Th>{sup && <Th k="company">Azienda</Th>}<th>Giorni operativi</th><th>Struttura ospitante</th><th>Canone</th><th className="num">Fondo cassa</th><th className="num">Utenti</th><th>Stato</th><th /></tr></thead>
           <tbody>{sorted.map((s) => (
             <tr key={s.id} style={{ opacity: s.configured ? 1 : .7 }}>
               <td className="mono">{s.code}</td><td><b>{s.name}</b><div className="small muted">{[s.address, s.city, s.province && `(${s.province})`].filter(Boolean).join(' ')}</div>{s.configured && (s.site_email ? <div className="small muted">{s.site_email}</div> : <div className="small red">email sede mancante</div>)}</td>
               {sup && <td>{s.company_name || <span className="muted">–</span>}</td>}
-              {!s.configured ? <td colSpan={5} className="small muted">Impostazioni Cash non ancora definite</td> : <>
+              {!s.configured ? <td colSpan={5} className="small muted">Impostazioni Cash non ancora definite: fondo cassa, giorni e orari, casse attese, email e royalty si compilano con "Configura in Cash"</td> : <>
               <td>{DAYS.map((d, i) => <span key={d} className="chip" style={{ opacity: s.operating_days[i] === '1' ? 1 : .3 }}>{d}</span>)}<div className="small muted">dal {itDate(s.start_date)}</div>{s.hours && Object.keys(s.hours).length > 0 && <div className="small muted">{hoursSummary(s.hours)}</div>}</td>
               <td>{s.ownership === 'PROPRIA' ? <Badge tone="teal">Sede di proprietà</Badge> : s.host_name || <span className="muted">–</span>}{s.host_email && <div className="small muted">{s.host_email}</div>}</td>
               <td className="small">{s.ownership === 'PROPRIA' ? <span className="muted">nessuna royalty</span> : <>{Number(s.royalty_fixed_monthly) > 0 && <div>{eur(s.royalty_fixed_monthly)}/mese</div>}{Number(s.royalty_pct) > 0 && <div>{s.royalty_pct}% {s.royalty_base === 'TOTALE' ? 'sul totale' : s.royalty_base === 'CONTANTI_POS' ? 'su contanti e POS' : 'sui contanti'}</div>}{Number(s.royalty_fixed_monthly) > 0 || Number(s.royalty_pct) > 0 ? <div className="muted">IVA {s.royalty_vat_rate}%</div> : <span className="muted">nessuno</span>}</>}</td>

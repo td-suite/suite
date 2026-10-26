@@ -2,7 +2,7 @@ import React, { useContext, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { qs, base, apiBase } from '../api.js';
 import { useAuth, isSede, isLab } from '../auth.jsx';
-import { useApi, Card, Field, Loading, Empty, Badge } from '../components/ui.jsx';
+import { useApi, Card, Field, Loading, Empty, Badge, SedeSelect } from '../components/ui.jsx';
 import { STATO, STATO_SEDE, GRAVITA, MACRO, itDateTime, slaClass } from '../format.js';
 import { LiveCtx } from '../live.jsx';
 
@@ -29,7 +29,7 @@ export default function NcList({ preset = null, title = 'Non conformità' }) {
       <div className="filters">
         <Field label="Cerca"><input value={f.q} onChange={(e) => set('q', e.target.value)} placeholder="codice, accettazione, testo" /></Field>
         {!preset?.stato && <Field label="Stato"><select value={f.stato} onChange={(e) => { set('stato', e.target.value); if (e.target.value) set('aperte', ''); }}><option value="">Tutti</option>{Object.entries(S).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>}
-        {!sede && <Field label="Sede"><select value={f.sede} onChange={(e) => set('sede', e.target.value)}><option value="">Tutte</option>{(sedi || []).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select></Field>}
+        {!sede && <Field label="Sede"><SedeSelect sedi={sedi} value={f.sede} onChange={(e) => set('sede', e.target.value)} /></Field>}
         <Field label="Macro-area"><select value={f.macro} onChange={(e) => { set('macro', e.target.value); set('tipo', ''); }}><option value="">Tutte</option>{Object.entries(MACRO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
         <Field label="Tipologia"><select value={f.tipo} onChange={(e) => set('tipo', e.target.value)}><option value="">Tutte</option>{(tipi || []).filter((t) => !f.macro || t.macro === f.macro).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
         <Field label="Gravità"><select value={f.gravita} onChange={(e) => set('gravita', e.target.value)}><option value="">Tutte</option>{Object.entries(GRAVITA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>

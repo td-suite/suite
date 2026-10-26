@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, qs, BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
-import { useApi, Field, Loading, Empty, Badge, ErrorBox, Card } from '../components/ui.jsx';
+import { useApi, Field, Loading, Empty, Badge, ErrorBox, Card, StrutturaOptions } from '../components/ui.jsx';
 import { itDateTime, monthLabel, currentMonth, KIND } from '../format.js';
 import { PhaseBanner } from '../components/phase.jsx';
 
@@ -28,7 +28,7 @@ export default function StockCounts() {
       <div className="page-head">
         <div><h1>{ops ? 'Giacenze mensili delle strutture' : 'Giacenza mensile'}</h1><div className="sub">{ops ? 'Inserimento della giacenza entro il 15 (sedi) e il 30 (laboratorio); dalla conferma nasce l\'ordine del mese' : `Da inserire e confermare entro il giorno ${user.stock_deadline_day} di ogni mese: dalla conferma il sistema genera l'ordine`}</div></div>
         <div className="row">
-          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSid(e.target.value)} style={{ minWidth: 240 }}><option value="">Tutte</option>{(strutture.data || []).filter((s) => s.kind !== 'CLIENTE').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>}
+          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSid(e.target.value)} style={{ minWidth: 240 }}><option value="">Tutte</option><StrutturaOptions strutture={strutture.data} filter={(s) => s.kind !== 'CLIENTE'} /></select></Field>}
           <Field label="Mese"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
           <button className="btn" disabled={!canOpen} onClick={open}>Apri la giacenza del mese</button>
         </div>

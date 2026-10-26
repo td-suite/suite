@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
-import { useApi, Field, Loading, ErrorBox, Icon, useToast, Modal } from '../components/ui.jsx';
+import { useApi, Field, Loading, ErrorBox, Icon, useToast, Modal, StrutturaOptions } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 import { PhaseBanner } from '../components/phase.jsx';
 
@@ -49,7 +49,7 @@ export default function Catalog() {
         <div>
           <div className="toolbar">
             <div className="row">
-              {ops && <Field label="Ordine per conto della struttura" style={{ flex: 2 }}><select value={strutturaId} onChange={(e) => setStrutturaId(e.target.value)}><option value="">Scegli il cliente o la sede…</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}</select></Field>}
+              {ops && <Field label="Ordine per conto della struttura" style={{ flex: 2 }}><select value={strutturaId} onChange={(e) => setStrutturaId(e.target.value)}><option value="">Scegli la sede TD o la Legal entity…</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
               <Field label="Cerca nel catalogo" style={{ flex: 1, minWidth: 220 }}><input placeholder="Nome o codice articolo" value={search} onChange={(e) => setSearch(e.target.value)} /></Field>
             </div>
             <div className="chips">

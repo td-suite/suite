@@ -7,7 +7,7 @@ import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../l
 import { registerJob } from '../../lib/jobs.js';
 import { one } from './db.js';
 import { ah } from './lib/util.js';
-import { requireRole, OPS_ROLES, STRUTTURA_ROLES } from './lib/access.js';
+import { requireRole, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
@@ -22,26 +22,33 @@ const KEY = 'orders';
 // Utente come lo vede il front-end dell'app: riga users del modulo + profilo Suite + sede di appartenenza (anagrafica unica)
 const publicUser = (u) => ({
   id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, struttura_id: u.struttura_id ?? null,
-  struttura_name: u.struttura_name || null, struttura_code: u.struttura_code || null, struttura_kind: u.struttura_kind || null, stock_deadline_day: u.stock_deadline_day ?? null,
+  struttura_name: u.struttura_name || null, struttura_code: u.struttura_code || null, struttura_kind: u.struttura_kind || null, struttura_origin: u.struttura_origin || null, stock_deadline_day: u.stock_deadline_day ?? null,
   is_referente: Boolean(u.is_referente), active: true, auth_provider: 'SUITE', totp_enabled: false, must_change_password: false,
   suite_user_id: u.suite_user_id, suite_level: u.suite_level, person_id: u.person_id ?? null, site_ids: u.site_ids || [],
 });
 
-// Perimetro: per i profili di struttura (CLIENTE, SEDE, LAB) la sede è quella dell'ambito del grant Suite (req.user.site_ids[0],
-// id di public.sites). Il laboratorio TD è unico: senza ambito si prende la sede configurata come LAB. Senza alcuna assegnazione
-// l'utente non ha sede e le route di struttura rispondono "Sede obbligatoria".
+// Perimetro: per i profili di struttura (CLIENTE, SEDE, LAB) la struttura è quella dell'ambito del grant Suite: la sede
+// (req.user.site_ids[0], id di public.sites; se è un punto SERVICE la struttura è la sua Legal entity, chiave -organization_id)
+// oppure, senza sedi nell'ambito, la Legal entity dell'utente o del suo ambito ORG (chiave -org_id, vista strutture_v).
+// Il laboratorio TD è unico: senza ambito si prende la struttura configurata come LAB. Senza alcuna assegnazione l'utente
+// non ha struttura e le route di struttura rispondono "Sede obbligatoria".
 async function resolveStruttura(req, _res, next) {
   try {
     const u = req.moduleUser;
     u.struttura_id = null;
     if (STRUTTURA_ROLES.includes(u.role)) {
       let sid = u.site_ids?.[0] ?? null;
-      if (sid == null && u.role === 'LAB') sid = (await one("SELECT id FROM sites_v WHERE kind='LAB' AND active ORDER BY configured DESC, sort_order, id LIMIT 1"))?.id ?? null;
+      if (sid != null) {
+        const site = await one('SELECT id, kind, organization_id FROM public.sites WHERE id=$1', [sid]);
+        sid = strutturaKeyOfSite(site);
+      }
+      if (sid == null && req.user.org_ids?.length) sid = -req.user.org_ids[0];
+      if (sid == null && u.role === 'LAB') sid = (await one("SELECT id FROM strutture_v WHERE kind='LAB' AND active AND NOT delivery_point ORDER BY configured DESC, sort_order, id LIMIT 1"))?.id ?? null;
       u.struttura_id = sid;
     }
     if (u.struttura_id != null) {
-      const s = await one('SELECT name, code, kind, stock_deadline_day FROM sites_v WHERE id=$1', [u.struttura_id]);
-      if (s) { u.struttura_name = s.name; u.struttura_code = s.code; u.struttura_kind = s.kind; u.stock_deadline_day = s.stock_deadline_day; }
+      const s = await one('SELECT name, code, kind, origin, stock_deadline_day FROM strutture_v WHERE id=$1', [u.struttura_id]);
+      if (s) { u.struttura_name = s.name; u.struttura_code = s.code; u.struttura_kind = s.kind; u.struttura_origin = s.origin; u.stock_deadline_day = s.stock_deadline_day; }
       else u.struttura_id = null;
     }
     req.suiteUser = req.user;

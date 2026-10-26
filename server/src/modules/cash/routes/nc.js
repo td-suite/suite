@@ -36,16 +36,16 @@ r.get('/', ah(async (req, res) => {
       (SELECT count(*)::int FROM nc_messages m WHERE m.nc_id=n.id) AS messages,
       (SELECT max(created_at) FROM nc_messages m WHERE m.nc_id=n.id) AS last_message_at
     FROM nonconformities n JOIN companies_v c ON c.id=n.company_id LEFT JOIN sites_v s ON s.id=n.site_id
-    LEFT JOIN users u ON u.id=n.created_by LEFT JOIN cash_reports r ON r.id=n.report_id
+    LEFT JOIN users_v u ON u.id=n.created_by LEFT JOIN cash_reports r ON r.id=n.report_id
     WHERE ${where.join(' AND ')} ORDER BY (n.status='CHIUSA'), n.created_at DESC LIMIT 1000`, P.values));
 }));
 
 r.get('/:id', ah(async (req, res) => {
   const n = await load(req.user, Number(req.params.id));
   const extra = await one(`SELECT s.name AS site_name, c.name AS company_name, u.full_name AS created_by_name, cu.full_name AS closed_by_name, r.report_date
-    FROM nonconformities n JOIN companies_v c ON c.id=n.company_id LEFT JOIN sites_v s ON s.id=n.site_id LEFT JOIN users u ON u.id=n.created_by
-    LEFT JOIN users cu ON cu.id=n.closed_by LEFT JOIN cash_reports r ON r.id=n.report_id WHERE n.id=$1`, [n.id]);
-  const messages = await many(`SELECT m.*, u.full_name, u.role FROM nc_messages m LEFT JOIN users u ON u.id=m.user_id WHERE nc_id=$1 ORDER BY created_at`, [n.id]);
+    FROM nonconformities n JOIN companies_v c ON c.id=n.company_id LEFT JOIN sites_v s ON s.id=n.site_id LEFT JOIN users_v u ON u.id=n.created_by
+    LEFT JOIN users_v cu ON cu.id=n.closed_by LEFT JOIN cash_reports r ON r.id=n.report_id WHERE n.id=$1`, [n.id]);
+  const messages = await many(`SELECT m.*, u.full_name, u.role FROM nc_messages m LEFT JOIN users_v u ON u.id=m.user_id WHERE nc_id=$1 ORDER BY created_at`, [n.id]);
   res.json({ ...n, ...extra, messages });
 }));
 
@@ -90,7 +90,7 @@ r.post('/:id/messages', ah(async (req, res) => {
     if (kind === 'RISPOSTA') await c.query(`UPDATE nonconformities SET status='RISPOSTA' WHERE id=$1`, [n.id]);
   });
   if (kind === 'RISPOSTA') {
-    const creator = n.created_by ? await one('SELECT email FROM users WHERE id=$1', [n.created_by]) : null;
+    const creator = n.created_by ? await one('SELECT email FROM users_v WHERE id=$1', [n.created_by]) : null;
     const site = n.site_id ? await one('SELECT * FROM sites_v WHERE id=$1', [n.site_id]) : null;
     notifyNcReply(n, site, req.user.full_name, d.body, creator?.email).catch(() => {});
   } else if (n.site_id) {

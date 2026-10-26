@@ -18,6 +18,11 @@ export const AZ_STATO = { PIANIFICATA: { label: 'Pianificata', tone: 'grey' }, I
 export const MSG_TIPO = { APERTURA: 'Apertura', RICHIESTA: 'Richiesta del laboratorio', RISPOSTA: 'Risposta della sede', CHIARIMENTO: 'Chiarimento', TRATTAMENTO: 'Trattamento', CHIUSURA: 'Chiusura', RIAPERTURA: 'Riapertura', NOTA_INTERNA: 'Nota interna', SISTEMA: 'Sistema' };
 // Tipi di sede dell'anagrafica unica della Suite (public.sites.kind); restano i vecchi codici dell'app per compatibilità
 export const SEDE_TIPO = { HEADQUARTER: 'Direzione', LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', PUNTO_PRELIEVO: 'Punto prelievi', SERVICE: 'Cliente Service', CENTRO_MEDICO: 'Centro medico', ALTRO: 'Altro' };
+// Tipi di Legal entity dell'anagrafica unica (public.organizations.kind): le sedi invianti con origin ORG
+export const ORG_TIPO = { GRUPPO: 'Gruppo', SOCIETA: 'Società', CLIENTE: 'Cliente', PARTNER: 'Partner', FORNITORE: 'Fornitore', TARGET: 'Target', ALTRO: 'Altro' };
+export const SEDE_ORIGIN = { SITE: 'Sede TD', ORG: 'Legal entity' };
+// Etichetta del tipo di una riga di sedi_v (o di una NC/accettazione con sede_origin e sede_tipo)
+export const sedeTipoLabel = (origin, tipo) => (origin === 'ORG' ? (ORG_TIPO[tipo] || tipo) : (SEDE_TIPO[tipo] || tipo));
 export const SEDE_CANALE = { EMAIL: 'Email', PEC: 'PEC', PORTALE: 'Solo portale (utenti di sede)', NESSUNO: 'Nessuna notifica' };
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 export const slaClass = (nc) => { if (!nc.sla_due_at || nc.stato !== 'INVIATA_SEDE') return ''; const d = new Date(nc.sla_due_at) - Date.now(); return d < 0 ? 'sla-late' : d < 4 * 3600e3 ? 'sla-soon' : 'sla-ok'; };

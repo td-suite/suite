@@ -2,10 +2,12 @@
 /* TD Integration Plan Management - motore GANTT (vanilla JS), portato dalla pagina autocontenuta alla webapp td-integration
    e da questa alla Suite TD come modulo ES. Stato caricato dal server (REST), modifiche sincronizzate per singola entità,
    aggiornamenti in tempo reale via SSE (sessione della Suite).
-   Anagrafica unica (docs/ANAGRAFICA.md): le società target sono organizzazioni della Suite (public.organizations, tipo Target) e
-   gli owner/support delle attività sono persone della Suite (public.people): il motore lavora con i loro id e mostra i nomi
-   (STATE.people); il team (STATE.team) è l'elenco delle persone con il ruolo nel piano. Nessuna creazione o rinomina qui:
-   i pulsanti "Apri in Amministrazione" portano alle pagine della Suite. L'import da file dell'app originale non esiste più.
+   Anagrafica unica (docs/ANAGRAFICA.md): le società target sono TUTTE le Legal entity della Suite di tipo TARGET
+   (public.organizations), anche quelle senza piano avviato (configured=false: "da avviare"); il modulo conserva solo i parametri
+   del piano (integration.org_ext). Quando la Legal entity diventa SOCIETA (acquisizione conclusa) la target resta in elenco come
+   "integrata" (integrated=true) in sola lettura. Gli owner/support delle attività sono persone della Suite (public.people): il
+   motore lavora con i loro id e mostra i nomi (STATE.people); il team (STATE.team) è l'elenco delle persone con il ruolo nel
+   piano. Nessuna creazione o rinomina qui: "Apri in Legal entity" e "Apri in Amministrazione" portano alle pagine della Suite.
    Nella Suite la Content Security Policy non ammette gestori inline (onclick="..."): gli eventi sono delegati dalla radice del
    modulo tramite attributi data-hc (click), data-hx (change), data-hd (dragstart) e data-hdrop (dragover/drop), che puntano a
    chiusure registrate a ogni render. La logica di pianificazione, catalogo, workload, export e stampa è invariata. */
@@ -45,7 +47,17 @@ var I18N = {
   title: { it: 'Integration Plan Management', en: 'Integration Plan Management' },
   sub: { it: 'Gestione e coordinamento del piano di integrazione post closing - Target Phase 1', en: 'Management and coordination of the post-closing integration plan - Phase 1 targets' },
   cover: { it: 'Cruscotto', en: 'Dashboard' },
-  newTarget: { it: '+ Aggiungi target', en: '+ Add target' },
+  startPlan: { it: 'Avvia il piano', en: 'Start the plan' },
+  startConfirm: { it: 'Avviare il piano di integrazione per {t}? Vengono create le attività del piano generale (gli owner si assegnano dopo).', en: 'Start the integration plan for {t}? The master plan activities are created (owners are assigned afterwards).' },
+  toStart: { it: 'Da avviare', en: 'To start' },
+  toStartHint: { it: 'Legal entity di tipo Target presente in anagrafica: il piano di integrazione non è ancora stato avviato. Avvialo da qui per creare le attività del piano generale e il GANTT.', en: 'Target legal entity in the registry: the integration plan has not been started yet. Start it here to create the master plan activities and the GANTT.' },
+  integrated: { it: 'Integrata', en: 'Integrated' },
+  integratedHint: { it: 'Acquisizione conclusa: in Amministrazione la Legal entity non è più di tipo Target. Il piano resta consultabile in sola lettura e non viene cancellato.', en: 'Acquisition completed: in Administration the legal entity is no longer of type Target. The plan stays available read-only and is not deleted.' },
+  integratedRO: { it: 'Società integrata: il piano è chiuso e si consulta soltanto.', en: 'Integrated company: the plan is closed and read-only.' },
+  toStartRO: { it: 'Piano non ancora avviato: premi "Avvia il piano".', en: 'Plan not started yet: press "Start the plan".' },
+  inactiveOrg: { it: 'disattivata', en: 'inactive' },
+  openLegal: { it: 'Apri in Legal entity', en: 'Open in Legal entity' },
+  nTargetsSub: { it: '{a} con piano avviato', en: '{a} with plan started' },
   export_: { it: 'Salva XLSX', en: 'Save XLSX' },
   import_: { it: 'Carica dati', en: 'Load data' },
   saveFile: { it: 'Salva nel file', en: 'Save to file' },
@@ -102,16 +114,14 @@ var I18N = {
   closingWin: { it: 'Finestra closing', en: 'Closing window' },
   openCard: { it: 'Apri la scheda', en: 'Open the card' },
   anagrafica: { it: 'Società target (anagrafica unica)', en: 'Target company (shared registry)' },
-  anagHint: { it: 'Ragione sociale, P.IVA, indirizzo e contatti vengono da Amministrazione, Legal entity: qui si modificano solo i parametri del piano. Al closing l\'Amministrazione cambia il tipo in Società e il piano resta agganciato.', en: 'Company name, VAT, address and contacts come from Administration > Organisations: only the plan parameters are edited here. At closing the Administration changes the type to Company and the plan stays attached.' },
+  anagHint: { it: 'Ragione sociale, P.IVA, indirizzo e contatti vengono da Amministrazione, Legal entity: qui si modificano solo i parametri del piano. Quando l\'acquisizione si conclude l\'Amministrazione cambia il tipo in Società e il piano resta consultabile come integrato.', en: 'Company name, VAT, address and contacts come from Administration > Legal entity: only the plan parameters are edited here. When the acquisition completes the Administration changes the type to Company and the plan stays available as integrated.' },
   openAdmin: { it: 'Apri in Amministrazione', en: 'Open in Administration' },
   openPerson: { it: 'Scheda persona', en: 'Person record' },
-  pickTarget: { it: 'Scegli la società target da aggiungere al piano (organizzazioni di tipo Target in anagrafica):', en: 'Choose the target company to add to the plan (organisations of type Target in the registry):' },
-  noTargetAvail: { it: 'Nessuna società target disponibile: crea prima l\'organizzazione (tipo Target) in Amministrazione, Legal entity.', en: 'No target company available: first create the organisation (type Target) in Administration > Organisations.' },
   pickPerson: { it: 'Scegli la persona da aggiungere al team (anagrafica persone della Suite; chi ha accesso al modulo è segnato con ●):', en: 'Choose the person to add to the team (Suite people registry; module users are marked with ●):' },
   noPersonAvail: { it: 'Nessuna persona disponibile: le persone si creano in Amministrazione > Persone.', en: 'No person available: people are created in Administration > People.' },
   addPerson: { it: '+ Aggiungi persona', en: '+ Add person' },
   persona: { it: 'Persona', en: 'Person' },
-  noTargets: { it: 'Nessuna società nel piano. Le società target si creano in Amministrazione, Legal entity (tipo Target) e poi si aggiungono qui con "+ Aggiungi target".', en: 'No company in the plan. Target companies are created in Administration > Organisations (type Target) and then added here with "+ Add target".' },
+  noTargets: { it: 'Nessuna sede da integrare: le società target si creano in Amministrazione, Legal entity (tipo Target) e compaiono qui da sole.', en: 'No company to integrate: target companies are created in Administration > Legal entity (type Target) and appear here automatically.' },
   teamEmpty: { it: 'Il team è vuoto: aggiungi le persone dall\'anagrafica e assegna a ciascuna il ruolo nel piano (es. CEO, CFO, Legal & Compliance). Gli owner delle attività si scelgono tra queste persone.', en: 'The team is empty: add people from the registry and give each a plan role (e.g. CEO, CFO, Legal & Compliance). Activity owners are chosen among these people.' },
   planStatus: { it: 'Stato del piano', en: 'Plan status' },
   psATTIVO: { it: 'Attivo', en: 'Active' },
@@ -378,8 +388,8 @@ function alignOwnershipDo(src) {
   var map = {};
   src.atts.forEach(function (a) { if (!a.ms) map[alignKey(a)] = a; });
   var nAtt = 0, nTg = 0;
-  STATE.targets.forEach(function (t) {
-    if (t.id === src.id) return;
+  planTargets().forEach(function (t) {
+    if (t.id === src.id || t.integrated) return;
     var touched = 0;
     t.atts.forEach(function (a) {
       if (a.ms) return;
@@ -403,10 +413,23 @@ var DIRTY = false, BOOT_SRC = '', BANNER_OFF = false, FLASH = '';
 var IPM_OPTS = { api: null, user: null, readOnly: true, onState: null, onToast: null, navigate: null, eventsUrl: '/api/integration/events', root: null };
 /* collegamenti all'Amministrazione della Suite (router della Suite se disponibile, altrimenti navigazione piena) */
 function goSuite(path) { if (IPM_OPTS.navigate) IPM_OPTS.navigate(path); else window.location.href = path; }
-function canEdit() { return !IPM_OPTS.readOnly; }
+/* target con piano avviato (quelle "da avviare" non hanno dati del modulo: restano fuori da conteggi, stampa ed export) */
+function planTargets() { return STATE.targets.filter(function (t) { return t.configured !== false; }); }
+/* la target della pagina corrente è modificabile solo se il piano è avviato e la società è ancora di tipo Target */
+function curTarget() { return STATE.page !== 'cover' ? tg(STATE.page) : null; }
+function canEdit() {
+  if (IPM_OPTS.readOnly) return false;
+  var t = curTarget();
+  return !(t && (t.integrated || t.configured === false));
+}
 function roToast() { if (IPM_OPTS.onToast) IPM_OPTS.onToast(roMsgText(), 'err'); }
-/* testo della sola lettura: quello dell'app, oppure quello passato dalla cornice (es. modulo in MIRROR nella Suite) */
-function roMsgText() { var m = IPM_OPTS.roMsg; return m ? (typeof m === 'object' ? (m[LANG] || m.it) : m) : T('roMsg'); }
+/* testo della sola lettura: quello dell'app, quello passato dalla cornice (es. modulo in MIRROR nella Suite) oppure lo stato della target */
+function roMsgText() {
+  var t = curTarget();
+  if (!IPM_OPTS.readOnly && t && t.integrated) return T('integratedRO');
+  if (!IPM_OPTS.readOnly && t && t.configured === false) return T('toStartRO');
+  var m = IPM_OPTS.roMsg; return m ? (typeof m === 'object' ? (m[LANG] || m.it) : m) : T('roMsg');
+}
 function nowIso() { return new Date().toISOString(); }
 function touch(o) { if (o) { o.lm = Date.now(); SYNC.schedule(o); } DIRTY = true; }
 function ensureMeta() { if (!STATE.meta) STATE.meta = { rev: 0, savedBy: '', savedAt: '', log: [] }; if (!STATE.meta.log) STATE.meta.log = []; return STATE.meta; }
@@ -446,7 +469,7 @@ function tProgress(t) {
 function allOwners() {
   var s = {};
   (STATE.team || []).forEach(function (m) { s[m.person_id] = 1; });
-  STATE.targets.forEach(function (t) { t.atts.forEach(function (a) { inv(a).forEach(function (o) { if (o) s[o] = 1; }); }); });
+  planTargets().forEach(function (t) { t.atts.forEach(function (a) { inv(a).forEach(function (o) { if (o) s[o] = 1; }); }); });
   return Object.keys(s).map(Number).sort(function (a, b) { return pName(a).localeCompare(pName(b)); });
 }
 function ownerOpts(sel) {
@@ -469,11 +492,11 @@ function renderCore() {
   var nav = byId('ipm-nav');
   var h = '<button class="' + (STATE.page === 'cover' ? 'on' : '') + '"'+ hc(function () { go('cover'); }) + '>🏠 ' + T('cover') + '</button>';
   STATE.targets.forEach(function (t) {
-    h += '<button class="' + (STATE.page === t.id ? 'on' : '') + '"' + hc(function () { go(t.id); }) + '>' + esc(t.nome || '?') + '</button>';
+    var mark = t.configured === false ? ' <span style="opacity:.65">· ' + T('toStart').toLowerCase() + '</span>' : (t.integrated ? ' ✓' : '');
+    h += '<button class="' + (STATE.page === t.id ? 'on' : '') + '" title="' + esc(t.configured === false ? T('toStart') : (t.integrated ? T('integrated') : '')) + '"' + hc(function () { go(t.id); }) + '>' + esc(t.nome || '?') + mark + '</button>';
   });
   h += '<span class="sp"></span>';
   h += syncChipHtml();
-  if (canEdit()) h += '<button' + hc(addTarget) + '>' + T('newTarget') + '</button>';
   h += '<button' + hc(exportJSON) + '>📊 ' + T('export_') + '</button>';
   h += '<button' + hc(openPrint) + '>🖨 ' + T('print') + '</button>';
   nav.innerHTML = h;
@@ -493,27 +516,37 @@ function go(p) { STATE.page = p; render(); window.scrollTo(0, 0); }
 /* ---------------- copertina ---------------- */
 function renderCover(m) {
   var totA = 0, totDone = 0, noOw = 0;
-  STATE.targets.forEach(function (t) {
+  var started = planTargets();
+  started.forEach(function (t) {
     totA += t.atts.length;
     t.atts.forEach(function (a) { if (a.st === 2) totDone++; if (!a.owner) noOw++; });
   });
   var h = '<div class="tiles" style="margin-bottom:14px">' +
-    '<div class="tile dark"><div class="lab">' + T('targets') + '</div><div class="val">' + STATE.targets.length + '</div><div class="sub">Phase 1</div></div>' +
+    '<div class="tile dark"><div class="lab">' + T('targets') + '</div><div class="val">' + STATE.targets.length + '</div><div class="sub">' + T('nTargetsSub').replace('{a}', started.length) + '</div></div>' +
     '<div class="tile"><div class="lab">' + T('totAct') + '</div><div class="val">' + totA + '</div></div>' +
     '<div class="tile"><div class="lab">' + T('avgDone') + '</div><div class="val">' + Math.round(totA ? totDone / totA * 100 : 0) + '%</div></div>' +
     '<div class="tile"><div class="lab">' + T('noOwner') + '</div><div class="val" style="color:' + (noOw ? 'var(--crit)' : 'var(--good)') + '">' + noOw + '</div></div>' +
     '<div class="tile"><div class="lab">' + T('closingWin') + '</div><div class="val" style="font-size:15px">' + closingWindow() + '</div></div></div>';
-  h += '<div class="card"><h3>' + T('targets') + '</h3><div class="tcards">';
+  h += '<div class="card"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>' + T('targets') + '</span>' +
+    '<button class="btn mini ghost"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openLegal') + '</button></h3><div class="tcards">';
   STATE.targets.forEach(function (t) {
     var p = Math.round(tProgress(t) * 100);
     var cd = t.closing ? fmtDY(new Date(t.closing + 'T12:00:00')) : '-';
-    h += '<div class="tcard"' + hc(function () { go(t.id); }) + '><div class="tn">' + esc(t.nome) + (t.status && t.status !== 'ATTIVO' ? ' <span class="badge ' + (t.status === 'CONCLUSO' ? 'good' : 'warn') + '" style="font-size:9px">' + T('ps' + t.status) + '</span>' : '') + '</div>' +
-      '<div class="ti">' + (t.piva ? 'P.IVA ' + esc(t.piva) : '') + (t.ind ? (t.piva ? ' · ' : '') + esc(t.ind) : '') + '</div>' +
+    var badges = targetBadges(t);
+    var ti = '<div class="ti">' + (t.piva ? 'P.IVA ' + esc(t.piva) : '') + (t.ind ? (t.piva ? ' · ' : '') + esc(t.ind) : '') + '</div>';
+    if (t.configured === false) {
+      /* Legal entity TARGET senza piano: niente dati del modulo, solo avvio e collegamento all'anagrafica */
+      h += '<div class="tcard" style="opacity:.92"' + hc(function () { go(t.id); }) + '><div class="tn">' + esc(t.nome) + badges + '</div>' + ti +
+        '<div class="note" style="margin:6px 0">' + T('toStartHint') + '</div>' +
+        '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><span class="badge canary">' + T('openCard') + ' →</span></div></div>';
+      return;
+    }
+    h += '<div class="tcard"' + hc(function () { go(t.id); }) + '><div class="tn">' + esc(t.nome) + badges + '</div>' + ti +
       '<div class="pbar"><i style="width:' + p + '%"></i></div>' +
       '<div class="meta"><span>' + t.atts.length + ' ' + T('wlAct').toLowerCase() + ' · ' + p + '%</span><span>' + T('closing') + ': <b>' + cd + '</b></span></div>' +
       '<div style="margin-top:8px"><span class="badge canary">' + T('openCard') + ' →</span></div></div>';
   });
-  if (!STATE.targets.length) h += '<div class="note">' + T('noTargets') + ' <a href="#" style="color:var(--teal);font-weight:650"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openAdmin') + '</a></div>';
+  if (!STATE.targets.length) h += '<div class="note">' + T('noTargets') + ' <a href="#" style="color:var(--teal);font-weight:650"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openLegal') + '</a></div>';
   h += '</div><div class="note" style="margin-top:10px">' + T('fasi') + '</div></div>';
   /* ultime modifiche (registro attività) */
   var mlog = ensureMeta().log || [];
@@ -525,7 +558,7 @@ function renderCover(m) {
     }).join('') + '</table></div>' : '<div class="note">' + T('revNone') + '</div>') + '</div>';
   /* registro owner: ruoli, funzioni e nomi */
   var cntO = {}, cntS = {};
-  STATE.targets.forEach(function (t) { t.atts.forEach(function (a) {
+  planTargets().forEach(function (t) { t.atts.forEach(function (a) {
     if (a.owner) cntO[a.owner] = (cntO[a.owner] || 0) + 1;
     (a.support || []).forEach(function (o) { cntS[o] = (cntS[o] || 0) + 1; });
   }); });
@@ -571,7 +604,7 @@ function addTeam() {
 }
 /* finestra closing: dal primo all'ultimo closing delle target nel piano */
 function closingWindow() {
-  var ds = STATE.targets.map(function (t) { return t.closing; }).filter(function (d) { return d; }).sort();
+  var ds = planTargets().map(function (t) { return t.closing; }).filter(function (d) { return d; }).sort();
   if (!ds.length) return '-';
   var a = new Date(ds[0] + 'T12:00:00'), b = new Date(ds[ds.length - 1] + 'T12:00:00');
   var M = LANG === 'it' ? ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'] : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -581,22 +614,40 @@ function closingWindow() {
 
 /* ---------------- scheda target ---------------- */
 var LINEE = [['lab', 'lin_lab'], ['img', 'lin_img'], ['spec', 'lin_spec'], ['lav', 'lin_lav'], ['chir', 'lin_chir'], ['altro', 'lin_altro']];
+/* badge di stato della target: da avviare, integrata (tipo non più Target), disattivata, stato del piano */
+function targetBadges(t) {
+  var b = '';
+  if (t.configured === false) b += ' <span class="badge warn" style="font-size:9px">' + T('toStart') + '</span>';
+  else if (t.integrated) b += ' <span class="badge good" style="font-size:9px">✓ ' + T('integrated') + (t.kind && t.kind !== 'TARGET' ? ' · ' + esc(t.kind) : '') + '</span>';
+  else if (t.status && t.status !== 'ATTIVO') b += ' <span class="badge ' + (t.status === 'CONCLUSO' ? 'good' : 'warn') + '" style="font-size:9px">' + T('ps' + t.status) + '</span>';
+  if (t.active === false) b += ' <span class="badge crit" style="font-size:9px">' + T('inactiveOrg') + '</span>';
+  return b;
+}
 function renderTarget(m, t) {
   if (!t) { STATE.page = 'cover'; return renderCover(m); }
   var h = '';
+  var dis = canEdit() ? '' : ' disabled';
   /* anagrafica */
   h += '<div class="card"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-    '<span>' + esc(t.nome) + ' · ' + T('anagrafica') + (t.kind && t.kind !== 'TARGET' ? ' <span class="badge info" style="font-size:9px">' + esc(t.kind) + '</span>' : '') + '</span>' +
+    '<span>' + esc(t.nome) + ' · ' + T('anagrafica') + targetBadges(t) + '</span>' +
     '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
-    '<button class="btn mini ghost"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openAdmin') + '</button>' +
+    '<button class="btn mini ghost"' + hc(function () { goSuite('/admin/organizations'); }) + '>' + T('openLegal') + '</button>' +
+    (t.configured === false && !IPM_OPTS.readOnly ? '<button class="btn mini canary"' + hc(function () { startPlan(t.id); }) + '>▶ ' + T('startPlan') + '</button>' : '') +
     (canEdit() ? '<button class="btn mini danger"' + hc(function () { delTarget(t.id); }) + '>🗑 ' + T('delTarget') + '</button>' : '') + '</span></h3>' +
-    '<div class="note" style="margin-bottom:8px">' + T('anagHint') + '</div><div class="frm">' +
+    '<div class="note" style="margin-bottom:8px">' + (t.configured === false ? T('toStartHint') : (t.integrated ? T('integratedHint') : T('anagHint'))) + '</div><div class="frm">' +
     rfld(t.rs, T('rs')) + rfld(t.ind, T('ind')) + rfld(t.piva, T('piva')) + rfld(t.tel, T('tel')) + rfld(t.mail, T('mail')) + rfld(t.web, T('web')) + rfld(t.pec, T('pec')) +
-    '</div><div class="frm" style="margin-top:10px">' +
+    '</div>';
+  if (t.configured === false) {
+    /* piano non avviato: nessun parametro, nessun GANTT */
+    h += '</div>';
+    m.innerHTML = h;
+    return;
+  }
+  h += '<div class="frm" style="margin-top:10px">' +
     fld(t, 'ref', T('ref')) + nfld(t, 'fatt', T('fatt')) + nfld(t, 'pfn', T('pfn')) + nfld(t, 'ev', T('ev')) +
-    '<div class="fld"><label>' + T('planStatus') + '</label><select' + hx(function (el) { setF(t.id, 'status', el.value); }) + '>' +
+    '<div class="fld"><label>' + T('planStatus') + '</label><select' + dis + hx(function (el) { setF(t.id, 'status', el.value); }) + '>' +
     ['ATTIVO', 'SOSPESO', 'CONCLUSO'].map(function (k) { return '<option value="' + k + '" ' + (t.status === k ? 'selected' : '') + '>' + T('ps' + k) + '</option>'; }).join('') + '</select></div>' +
-    '<div class="fld" style="grid-column:span 2"><label>' + T('noteT') + '</label><input value="' + esc(t.note || '') + '"' + hx(function (el) { setF(t.id, 'note', el.value); }) + '></div>' +
+    '<div class="fld" style="grid-column:span 2"><label>' + T('noteT') + '</label><input' + dis + ' value="' + esc(t.note || '') + '"' + hx(function (el) { setF(t.id, 'note', el.value); }) + '></div>' +
     '</div><div style="margin-top:10px"><label style="font-size:10.5px;text-transform:uppercase;color:var(--ink-3);font-weight:700">' + T('linee') + '</label>' +
     '<div class="chips" style="margin-top:4px">' + LINEE.map(function (l) {
       return '<span class="chip ' + (t.linee.indexOf(l[0]) >= 0 ? 'on' : '') + '"' + hc(function () { togLinea(t.id, l[0]); }) + '>' + T(l[1]) + '</span>';
@@ -605,12 +656,12 @@ function renderTarget(m, t) {
   var sd = startDate(t);
   h += '<div class="card"><h3>' + T('operazione') + '</h3><div class="opbox">' +
     dfld(t, 'loi', T('loi')) + dfld(t, 'prelim', T('prelim')) + dfld(t, 'closing', T('closing')) +
-    '<div class="fld"><label>' + T('orizzonte') + '</label><input type="number" min="8" max="52" value="' + t.hor + '"' + hx(function (el) { setHor(t.id, el.value); }) + '></div>' +
+    '<div class="fld"><label>' + T('orizzonte') + '</label><input' + dis + ' type="number" min="8" max="52" value="' + t.hor + '"' + hx(function (el) { setHor(t.id, el.value); }) + '></div>' +
     (sd ? '<span class="badge info">' + T('settDal') + ' ' + fmtDY(sd) + '</span>' : '<span class="badge crit">' + T('noDate') + '</span>') + '</div>' +
     '<div class="note" style="margin-top:6px">' + T('ganttStart') + '</div></div>';
   /* gantt */
   h += '<div class="card"><h3 style="display:flex;justify-content:space-between;align-items:center"><span>' + T('gantt') + '</span>' +
-    (sd ? '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' +
+    (sd && canEdit() ? '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' +
       '<button class="btn mini ghost"' + hc(function () { sortChrono(t.id); }) + '>' + T('sortChrono') + '</button>' +
       '<button class="btn mini ghost" title="' + T('alignTip') + '"' + hc(function () { alignOwnership(t.id); }) + '>' + T('alignBtn') + '</button></span>' : '') + '</h3>' +
     (sd ? '<div class="note" style="margin-bottom:8px">' + T('ganttHint') + ' ' + T('drag') + '</div>' + ganttTable(t) + legendHtml()
@@ -619,8 +670,8 @@ function renderTarget(m, t) {
   h += '<div class="grid" style="grid-template-columns:1fr 1fr">' +
     '<div class="card"><h3>' + T('alerts') + '</h3>' + alertsHtml(t) + '</div>' +
     '<div class="card"><h3>' + T('workload') + '</h3>' + workloadTable(t) + '</div></div>';
-  /* catalogo */
-  h += '<div class="card"><h3>' + T('catalogo') + '</h3><div class="note">' + T('catHint') + '</div>' + catalogHtml(t) +
+  /* catalogo (solo se il piano è modificabile) */
+  if (canEdit()) h += '<div class="card"><h3>' + T('catalogo') + '</h3><div class="note">' + T('catHint') + '</div>' + catalogHtml(t) +
     '<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><b style="font-size:13px;color:var(--teal)">' + T('addCustom') + '</b>' +
     '<div class="frm" style="margin-top:6px;grid-template-columns:2fr 1fr 1fr auto">' +
     '<div class="fld"><label>' + T('nome') + '</label><input id="cust_nome"></div>' +
@@ -632,15 +683,15 @@ function renderTarget(m, t) {
   m.innerHTML = h;
 }
 function fld(t, k, lab) {
-  return '<div class="fld"><label>' + lab + '</label><input value="' + esc(t[k] || '') + '"' + hx(function (el) { setF(t.id, k, el.value); }) + '></div>';
+  return '<div class="fld"><label>' + lab + '</label><input' + (canEdit() ? '' : ' disabled') + ' value="' + esc(t[k] || '') + '"' + hx(function (el) { setF(t.id, k, el.value); }) + '></div>';
 }
 /* campo in sola lettura (dati che vengono dall'anagrafica unica) */
 function rfld(v, lab) {
-  return '<div class="fld"><label>' + lab + '</label><input readonly tabindex="-1" style="background:#F3F6F7;color:var(--ink-2)" value="' + esc(v || '') + '" title="' + esc(T('openAdmin')) + '"></div>';
+  return '<div class="fld"><label>' + lab + '</label><input readonly tabindex="-1" style="background:#F3F6F7;color:var(--ink-2)" value="' + esc(v || '') + '" title="' + esc(T('openLegal')) + '"></div>';
 }
 /* campo numerico con separatore delle migliaia (fatturato, PFN, EV) */
 function nfld(t, k, lab) {
-  return '<div class="fld"><label>' + lab + '</label><input value="' + esc(fmtMil(t[k])) + '" inputmode="numeric"' + hx(function (el) { setNF(t.id, k, el.value); }) + '></div>';
+  return '<div class="fld"><label>' + lab + '</label><input' + (canEdit() ? '' : ' disabled') + ' value="' + esc(fmtMil(t[k])) + '" inputmode="numeric"' + hx(function (el) { setNF(t.id, k, el.value); }) + '></div>';
 }
 function setNF(tid, k, v) {
   if (!canEdit()) return roToast();
@@ -652,13 +703,14 @@ function delTarget(tid) {
   if (!canEdit()) return roToast();
   var t = tg(tid);
   tdConfirm(T('confermaDel') + ' ' + t.nome + '?', function () {
-    STATE.targets = STATE.targets.filter(function (x) { return x.id !== tid; });
+    /* la Legal entity resta in anagrafica: la riga torna "da avviare" (il server la rimanda così) */
+    t.configured = false; t.atts = []; t.status = 'ATTIVO'; t.closing = ''; t.prelim = ''; t.loi = ''; t.version = 0;
     SYNC.deleteTarget(tid);
     go('cover');
   });
 }
 function dfld(t, k, lab) {
-  return '<div class="fld"><label>' + lab + '</label><input type="date" value="' + (t[k] || '') + '"' + hx(function (el) { setF(t.id, k, el.value); }) + '></div>';
+  return '<div class="fld"><label>' + lab + '</label><input' + (canEdit() ? '' : ' disabled') + ' type="date" value="' + (t[k] || '') + '"' + hx(function (el) { setF(t.id, k, el.value); }) + '></div>';
 }
 function setF(tid, k, v) { if (!canEdit()) return roToast(); var t = tg(tid); t[k] = v; touch(t); render(); }
 function setHor(tid, v) { if (!canEdit()) return roToast(); var t = tg(tid); t.hor = Math.max(8, Math.min(52, +v || 24)); touch(t); render(); }
@@ -868,27 +920,20 @@ function addCustom(tid) {
   OPEN_EDIT = a.id;
   render();
 }
-function addTarget() {
-  if (!canEdit()) return roToast();
-  IPM_OPTS.api.get('/organizations').then(function (list) {
-    var opts = (list || []).filter(function (o) { return !o.in_plan && o.kind === 'TARGET'; }).map(function (o) {
-      return { value: o.id, label: o.name + (o.city ? ' · ' + o.city : '') + (o.vat_number ? ' · P.IVA ' + o.vat_number : '') };
-    });
-    if (!opts.length) {
-      return tdConfirm(T('noTargetAvail'), function () { goSuite('/admin/organizations'); }, null, T('openAdmin'));
-    }
-    tdSelect(T('pickTarget'), opts, function (v) {
-      var org = (list || []).find(function (o) { return o.id === pid(v); });
-      if (!org) return;
-      var nt = { id: org.id, org_id: org.id, nome: org.name, rs: org.name, ind: '', piva: org.vat_number || '', ref: '', fatt: '', pfn: '', ev: '',
-        linee: [], loi: '', prelim: '', closing: '', hor: 24, note: '', status: 'ATTIVO', atts: genActs() };
-      nt.atts.forEach(function (a) { bindAct(a, nt.id); });
-      nt.lm = Date.now();
-      STATE.targets.push(nt);
-      SYNC.createTarget(nt);
-      go(org.id);
-    }, T('openAdmin'), function () { goSuite('/admin/organizations'); });
-  }).catch(function (e) { tdAlert((e && e.message) || 'Errore'); });
+/* avvio del piano per una Legal entity TARGET già in elenco: crea la riga org_ext sul server con le attività del piano generale */
+function startPlan(tid) {
+  if (IPM_OPTS.readOnly) return roToast();
+  var t = tg(tid);
+  if (!t || t.configured !== false) return;
+  tdConfirm(T('startConfirm').replace('{t}', t.nome), function () {
+    t.ref = ''; t.fatt = ''; t.pfn = ''; t.ev = ''; t.linee = []; t.loi = ''; t.prelim = ''; t.closing = ''; t.hor = 24; t.note = ''; t.status = 'ATTIVO';
+    t.atts = genActs();
+    t.atts.forEach(function (a) { bindAct(a, t.id); });
+    t.lm = Date.now();
+    t.configured = true;
+    SYNC.createTarget(t);
+    go(t.id);
+  }, null, T('startPlan'));
 }
 
 /* ---------------- alert + workload ---------------- */
@@ -922,7 +967,7 @@ var WL_OPEN = null;
 function togWL(o) { o = pid(o); WL_OPEN = (WL_OPEN === o ? null : o); render(); }
 function workloadTable(t) {
   var rows = {};
-  var list = t ? [t] : STATE.targets;
+  var list = t ? [t] : planTargets();
   list.forEach(function (tt) {
     tt.atts.forEach(function (a) {
       var dur = a.sw ? (a.ew - a.sw + 1) : 0;
@@ -970,8 +1015,8 @@ function openPrint() {
 function doPrint() {
   var scope = byId('pr_scope').value, mode = byId('pr_mode').value, owner = byId('pr_owner').value;
   if (owner !== '*') owner = pid(owner);
-  var list = (scope === 'this' && STATE.page !== 'cover' ? [tg(STATE.page)] : STATE.targets)
-    .filter(function (t) { return startDate(t); });
+  var list = (scope === 'this' && STATE.page !== 'cover' ? [tg(STATE.page)] : planTargets())
+    .filter(function (t) { return t && startDate(t); });
   var pa = byId('printarea'), h = '';
   if (mode === 'full') {
     list.forEach(function (t) { h += printSec(t, null); });
@@ -1167,14 +1212,14 @@ function exportJSON() { /* mantiene il nome storico del bottone: ora salva XLSX 
   var sheets = [];
   var sum = [[T('targets')],
     ['Target', T('rs'), T('ind'), T('piva'), T('ref'), T('tel'), T('mail'), T('web'), T('pec'), T('fatt'), T('pfn'), T('ev'), T('prelim'), T('closing'), T('planStatus'), T('progresso')]];
-  STATE.targets.forEach(function (t) {
+  planTargets().forEach(function (t) {
     sum.push([t.nome, t.rs, t.ind, t.piva, t.ref, t.tel || '', t.mail || '', t.web || '', t.pec || '', +t.fatt || '', +t.pfn || '', +t.ev || '', t.prelim || '', t.closing || '', T('ps' + (t.status || 'ATTIVO')), Math.round(tProgress(t) * 100) + '%']);
   });
   sheets.push({ name: 'Riepilogo', rows: sum });
   var trows = [[T('ownerBox')], [T('ruolo'), T('funzione'), T('manager'), 'Email']];
   (STATE.team || []).forEach(function (m) { trows.push([m.r, m.f, m.n, m.email || '']); });
   sheets.push({ name: 'Team', rows: trows });
-  STATE.targets.forEach(function (t) {
+  planTargets().forEach(function (t) {
     var sd = startDate(t);
     var rows = [[t.nome + ' - GANTT ' + (sd ? T('settDal') + ' ' + fmtDY(sd) : '')],
       ['ID', T('attivita'), T('proc'), 'Owner', 'Ownership Support', T('sw'), T('ew'), LANG === 'it' ? 'Dal' : 'From', LANG === 'it' ? 'Al' : 'To', T('status'), T('fineEff'), 'P&L', T('ms'), T('dett'), T('note')]];
@@ -1293,9 +1338,11 @@ var SYNC = (function () {
   function deleteActivity(tid, aid) { run(function () { return IPM_OPTS.api.del('/targets/' + enc(tid) + '/activities/' + enc(aid)); }); }
   function createTarget(t) {
     var body = cleanObj(t); body.org_id = t.id; body.atts = t.atts.map(cleanObj);
-    run(function () { return IPM_OPTS.api.post('/targets', body); }, function (row) { applyServerRow(t, row); });
+    run(function () { return IPM_OPTS.api.post('/targets', body); }, function (row) { applyServerRow(t, row); render(); })
+      .then(function (row) { if (!row) reloadAll(); });
   }
-  function deleteTarget(tid) { run(function () { return IPM_OPTS.api.del('/targets/' + enc(tid)); }); }
+  /* rimozione del piano: la Legal entity resta in elenco (da avviare), quindi si ricarica lo stato dal server */
+  function deleteTarget(tid) { run(function () { return IPM_OPTS.api.del('/targets/' + enc(tid)); }).then(function () { reloadAll(); }); }
   function enc(s) { return encodeURIComponent(s); }
   function updateChip() { var n = document.querySelector('#ipm-root .syncchip'); if (n) n.outerHTML = syncChipHtml(); }
   function run(fn, onOk) {

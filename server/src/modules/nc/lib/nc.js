@@ -13,13 +13,13 @@ export const STATI = ['APERTA', 'INVIATA_SEDE', 'RISPOSTA_SEDE', 'IN_TRATTAMENTO
 export const STATO_LABEL = { APERTA: 'Aperta', INVIATA_SEDE: 'In attesa della sede', RISPOSTA_SEDE: 'Risposta da gestire', IN_TRATTAMENTO: 'In trattamento', CHIUSA: 'Chiusa', VERIFICATA: 'Verificata', ANNULLATA: 'Annullata' };
 export const APERTE = ['APERTA', 'INVIATA_SEDE', 'RISPOSTA_SEDE', 'IN_TRATTAMENTO'];
 
-export const NC_COLS = `n.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tipo AS sede_tipo, t.label AS tipo_label, t.codice AS tipo_codice,
+export const NC_COLS = `n.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tipo AS sede_tipo, s.origin AS sede_origin, t.label AS tipo_label, t.codice AS tipo_codice,
   a.stato_lis, a.data_accettazione, a.paziente_cognome, a.paziente_nome, a.paziente_nascita, a.paziente_sesso, a.esami AS acc_esami, a.origine AS acc_origine, a.id_richiesta_cliente,
   uo.full_name AS opened_by_name, uc.full_name AS closed_by_name,
   (SELECT count(*)::int FROM nc_messaggi m WHERE m.nc_id = n.id) AS n_messaggi,
   (SELECT count(*)::int FROM nc_allegati al WHERE al.nc_id = n.id) AS n_allegati,
   (SELECT count(*)::int FROM nc_azioni az WHERE az.nc_id = n.id AND az.stato NOT IN ('COMPLETATA','ANNULLATA')) AS azioni_aperte`;
-export const NC_FROM = `FROM nc n JOIN sites_v s ON s.id = n.sede_id LEFT JOIN nc_tipi t ON t.id = n.tipo_id JOIN accettazioni a ON a.id = n.accettazione_id
+export const NC_FROM = `FROM nc n JOIN sedi_v s ON s.id = n.sede_id LEFT JOIN nc_tipi t ON t.id = n.tipo_id JOIN accettazioni a ON a.id = n.accettazione_id
   LEFT JOIN users uo ON uo.id = n.opened_by LEFT JOIN users uc ON uc.id = n.closed_by`;
 
 export const loadNc = (id) => one(`SELECT ${NC_COLS} ${NC_FROM} WHERE n.id = $1`, [id]);

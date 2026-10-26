@@ -1,6 +1,8 @@
 // Accesso al piano: lettura completa, mappatura righe <-> oggetti del motore, snapshot, ripristino.
-// Anagrafica unica: la target è una public.organizations (kind TARGET) con i parametri del piano in target_ext;
-// owner e support delle attività sono public.people; il team è person_ext (ruolo nel piano) sulle persone della Suite.
+// Anagrafica unica: le target sono TUTTE le Legal entity public.organizations di tipo TARGET; il modulo conserva solo i
+// parametri del piano in org_ext (org_id -> public.organizations). Una target senza riga org_ext è "da avviare"
+// (configured=false); una target con piano il cui tipo è diventato SOCIETA è "integrata" (integrated=true, sola lettura).
+// Owner e support delle attività sono public.people; il team è person_ext (ruolo nel piano) sulle persone della Suite.
 import { many, one, q, tx } from '../db.js';
 
 // campi del piano modificabili dal modulo (gli altri dati della target vengono da public.organizations)
@@ -36,6 +38,7 @@ export function targetRowToObj(r) {
     ref: r.ref, fatt: numOrEmpty(r.fatt), pfn: numOrEmpty(r.pfn), ev: numOrEmpty(r.ev), linee: r.linee || [],
     loi: r.loi, prelim: r.prelim, closing: r.closing, hor: r.hor, note: r.note || '', status: r.status || 'ATTIVO',
     lm: Number(r.lm) || 0, version: r.version, position: r.position, updated_at: r.updated_at, updated_by: r.updated_by,
+    active: r.active !== false, configured: r.configured !== false, integrated: r.integrated === true,
   };
 }
 export function actRowToObj(r) {
@@ -79,6 +82,15 @@ export async function readTarget(id, client) {
   const runner = client ? (t, p) => client.query(t, p).then((r) => r.rows[0] || null) : one;
   return runner('SELECT * FROM targets_v WHERE id=$1', [id]);
 }
+// Target con il piano avviato e ancora modificabile: 404 se non è in anagrafica, 400 se il piano non è stato avviato
+// o se la Legal entity non è più TARGET (acquisizione conclusa: il piano resta consultabile ma non si modifica).
+export async function readEditableTarget(id, client) {
+  const t = await readTarget(id, client);
+  if (!t) throw Object.assign(new Error('Target non trovata'), { status: 404 });
+  if (!t.configured) throw Object.assign(new Error(`Il piano di "${t.nome}" non è ancora stato avviato: usa "Avvia il piano" dalla scheda della società`), { status: 400 });
+  if (t.integrated) throw Object.assign(new Error(`"${t.nome}" è ormai una società del gruppo (tipo ${t.kind}): il piano di integrazione è chiuso e resta consultabile`), { status: 400 });
+  return t;
+}
 export async function readAct(tid, id, client) {
   const runner = client ? (t, p) => client.query(t, p).then((r) => r.rows[0] || null) : one;
   return runner(`${ACT_SELECT} WHERE a.target_id=$1 AND a.id=$2`, [tid, id]);
@@ -117,7 +129,7 @@ async function readTeam(runner) {
 
 export async function readPlan() {
   const runner = (t, p) => q(t, p);
-  const targets = (await many('SELECT * FROM targets_v ORDER BY position, created_at')).map(targetRowToObj);
+  const targets = (await many('SELECT * FROM targets_v ORDER BY configured DESC, position, created_at, lower(nome)')).map(targetRowToObj);
   const acts = (await many(`${ACT_SELECT} ORDER BY a.target_id, a.position, a.created_at`)).map(actRowToObj);
   const byT = new Map(targets.map((t) => [t.id, t]));
   for (const t of targets) t.atts = [];
@@ -133,10 +145,11 @@ export async function readMeta() {
   return { rev: n.n, log: log.map((l) => ({ rev: l.id, by: l.full_name || 'sistema', at: l.at, what: l.label || l.action })) };
 }
 
-// snapshot integrale (JSON) del piano: target (org_id + parametri), attività con owner/support (person_id), team (person_id + ruolo)
+// snapshot integrale (JSON) del piano: target con piano avviato (org_id + parametri), attività con owner/support (person_id),
+// team (person_id + ruolo). Le Legal entity TARGET senza piano non hanno dati del modulo e non entrano nello snapshot.
 export async function takeSnapshot(kind, note, userId, client) {
   const runner = client ? (t, p) => client.query(t, p) : q;
-  const targets = (await runner('SELECT * FROM targets_v ORDER BY position')).rows.map(targetRowToObj);
+  const targets = (await runner('SELECT * FROM targets_v WHERE configured ORDER BY position')).rows.map(targetRowToObj);
   const acts = (await runner(`${ACT_SELECT} ORDER BY a.target_id, a.position`)).rows.map(actRowToObj);
   for (const t of targets) t.atts = acts.filter((a) => a.target_id === t.id);
   const team = (await runner('SELECT person_id, position, r, f, color, lm, n FROM team_v ORDER BY position, lower(n)')).rows.map((m) => ({ ...m, lm: Number(m.lm) || 0 }));
@@ -152,8 +165,8 @@ export async function importPlan(state, { userId, replace = false } = {}) {
   if ((state?.v || 0) < 3) throw Object.assign(new Error('Snapshot di una versione precedente del modulo (target e persone non erano ancora quelle dell\'anagrafica unica): non ripristinabile'), { status: 400 });
   await tx(async (c) => {
     await takeSnapshot(replace ? 'pre-restore' : 'pre-import', null, userId, c);
-    if (replace) { await c.query('DELETE FROM activities'); await c.query('DELETE FROM target_ext'); await c.query('DELETE FROM person_ext'); }
-    const curT = new Map((await c.query('SELECT * FROM target_ext')).rows.map((r) => [r.org_id, r]));
+    if (replace) { await c.query('DELETE FROM activities'); await c.query('DELETE FROM org_ext'); await c.query('DELETE FROM person_ext'); }
+    const curT = new Map((await c.query('SELECT * FROM org_ext')).rows.map((r) => [r.org_id, r]));
     const curA = new Map((await c.query('SELECT * FROM activities')).rows.map((r) => [`${r.target_id}|${r.id}`, r]));
     const orgs = new Set((await c.query('SELECT id FROM public.organizations')).rows.map((r) => r.id));
     const people = new Set((await c.query('SELECT id FROM public.people')).rows.map((r) => r.id));
@@ -167,13 +180,13 @@ export async function importPlan(state, { userId, replace = false } = {}) {
       const ex = curT.get(oid);
       if (!ex) {
         await c.query(
-          `INSERT INTO target_ext (org_id, position, status, ref, fatt, pfn, ev, linee, loi, prelim, closing, hor, note, lm, updated_by)
+          `INSERT INTO org_ext (org_id, position, status, ref, fatt, pfn, ev, linee, loi, prelim, closing, hor, note, lm, updated_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
           [oid, t.position ?? tpos++, nt.status, nt.ref, nt.fatt, nt.pfn, nt.ev, JSON.stringify(nt.linee), nt.loi, nt.prelim, nt.closing, nt.hor, nt.note, nt.lm, userId || null]);
         rep.tN++;
       } else if (replace || (nt.lm || 0) > (Number(ex.lm) || 0)) {
         await c.query(
-          `UPDATE target_ext SET status=$2, ref=$3, fatt=$4, pfn=$5, ev=$6, linee=$7, loi=$8, prelim=$9, closing=$10, hor=$11, note=$12, lm=$13,
+          `UPDATE org_ext SET status=$2, ref=$3, fatt=$4, pfn=$5, ev=$6, linee=$7, loi=$8, prelim=$9, closing=$10, hor=$11, note=$12, lm=$13,
              version=version+1, updated_by=$14, updated_at=now() WHERE org_id=$1`,
           [oid, nt.status, nt.ref, nt.fatt, nt.pfn, nt.ev, JSON.stringify(nt.linee), nt.loi, nt.prelim, nt.closing, nt.hor, nt.note, nt.lm, userId || null]);
         rep.tU++;

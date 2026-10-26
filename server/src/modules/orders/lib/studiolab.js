@@ -111,7 +111,7 @@ export async function ingestHl7(text) {
       const dup = await one(`SELECT count(*)::int AS n FROM studiolab_events WHERE acceptance_id=$1 AND exam_placer_id=$2 AND counted > 0`, [e.groupId || msg.acceptanceId, e.placerId || e.examCode]);
       if (dup.n > 1) { await q('UPDATE studiolab_events SET counted=0 WHERE id=$1', [r.rows[0].id]); ignored++; continue; }
     }
-    const s = await one('SELECT id FROM sites_v WHERE studiolab_code=$1 OR code=$1 OR upper(silva_code)=upper($1) ORDER BY configured DESC, id LIMIT 1', [client]);
+    const s = await one("SELECT id FROM strutture_v WHERE studiolab_code=$1 OR code=$1 OR upper(silva_code)=upper($1) ORDER BY (studiolab_code=$1) DESC, origin DESC, configured DESC, id LIMIT 1", [client]);
     if (!s) { ignored++; continue; }
     await q(`INSERT INTO production (struttura_id, month, exam_code, exam_name, qty, source) VALUES ($1,$2,$3,$4,GREATEST($5,0),'STUDIOLAB')
              ON CONFLICT (struttura_id, month, exam_code) DO UPDATE SET qty = GREATEST(production.qty + $5, 0), exam_name = coalesce(production.exam_name, EXCLUDED.exam_name), source='STUDIOLAB', updated_at=now()`,
@@ -135,17 +135,30 @@ export async function saveProduction(strutturaId, monthIso, items, source) {
   return n;
 }
 
+/**
+ * Strutture su cui sta la produzione di una struttura: la struttura stessa più, per una Legal entity (chiave negativa), i suoi
+ * punti service (sites kind SERVICE con organization_id), perché il flusso HL7 di StudioLab attribuisce gli esami al codice
+ * cliente del punto. Così la verifica dell'ordine della Legal entity confronta con la produzione di tutti i suoi punti.
+ */
+export async function productionStrutture(strutturaId) {
+  const id = Number(strutturaId);
+  if (!(id < 0)) return [id];
+  const pts = await many("SELECT id FROM public.sites WHERE organization_id=$1 AND kind='SERVICE'", [-id]);
+  return [id, ...pts.map((p) => p.id)];
+}
+
 /** Consumo medio mensile di materiale per struttura (unità e confezioni) dagli ultimi N mesi, via correlazione esame -> articolo. */
 export async function consumptionByArticle(strutturaId, months = 3) {
+  const ids = await productionStrutture(strutturaId);
   const rows = await many(`
-    WITH mesi AS (SELECT DISTINCT month FROM production WHERE struttura_id=$1 ORDER BY month DESC LIMIT $2)
+    WITH mesi AS (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2)
     SELECT m.article_id, a.pack_size, sum(p.qty * m.qty_per_exam)::numeric AS units, count(DISTINCT p.month)::int AS n_months,
            json_agg(json_build_object('exam_code', p.exam_code, 'exam_name', coalesce(p.exam_name, m.exam_name), 'month', p.month, 'qty', p.qty, 'qty_per_exam', m.qty_per_exam) ORDER BY p.month DESC, p.exam_code) AS detail
       FROM production p JOIN mesi ON mesi.month = p.month
       JOIN exam_mappings m ON m.exam_code = p.exam_code AND m.active
       JOIN articles a ON a.id = m.article_id
-     WHERE p.struttura_id=$1 GROUP BY m.article_id, a.pack_size`, [strutturaId, months]);
-  const nMonths = (await one(`SELECT count(*)::int AS n FROM (SELECT DISTINCT month FROM production WHERE struttura_id=$1 ORDER BY month DESC LIMIT $2) x`, [strutturaId, months]))?.n || 0;
+     WHERE p.struttura_id = ANY($1::int[]) GROUP BY m.article_id, a.pack_size`, [ids, months]);
+  const nMonths = (await one(`SELECT count(*)::int AS n FROM (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2) x`, [ids, months]))?.n || 0;
   const map = new Map();
   for (const r of rows) {
     const units = Number(r.units) / Math.max(1, nMonths);

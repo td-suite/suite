@@ -4,7 +4,7 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Card, StatusBadge, Badge, Modal, PromptModal, Field, Icon, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
-import { itDate, itDateTime, dec, pct, KIND, ORIGIN, PHASES, phaseOf, STATUS_LONG, PKG_STATUS, ISSUE_KIND } from '../format.js';
+import { itDate, itDateTime, dec, pct, KIND, ORIGIN, PHASES, phaseOf, STATUS_LONG, PKG_STATUS, ISSUE_KIND, STRUTTURA_ORIGIN } from '../format.js';
 
 const deltaTone = (d) => (d == null ? 'grey' : Math.abs(d) > 50 ? 'red' : Math.abs(d) > 20 ? 'mauve' : 'green');
 
@@ -153,7 +153,7 @@ export default function OrderDetail() {
           </Card>
           {o.struttura && (
             <Card title="Punto di consegna" className="mt">
-              <div className="strong">{o.struttura.name}</div>
+              <div className="strong">{o.struttura.name} <Badge tone={o.struttura.origin === 'ORG' ? 'blue' : 'teal'}>{STRUTTURA_ORIGIN[o.struttura.origin] || 'Sede TD'}</Badge></div>
               <div className="small">{[o.struttura.address, [o.struttura.zip, o.struttura.city, o.struttura.province].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</div>
               <div className="small muted">{o.struttura.referente}{o.struttura.referente_phone ? ` · ${o.struttura.referente_phone}` : ''}{o.struttura.email ? ` · ${o.struttura.email}` : ''}</div>
               {o.struttura.delivery_notes && <div className="small" style={{ marginTop: 6 }}>{o.struttura.delivery_notes}</div>}

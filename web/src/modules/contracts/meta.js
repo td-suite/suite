@@ -7,7 +7,6 @@ export default {
   area: 'PEOPLE',
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
-    { to: 'organigramma', icon: 'tree', label: 'Organigramma' },
     { to: 'risorse/nuova', icon: 'plus', label: 'Nuova persona', profiles: ['ADMIN', 'HR'] },
     { to: 'risorse', icon: 'users', label: 'Elenco persone', end: true },
     { to: 'scadenze', icon: 'calendar', label: 'Calendario delle scadenze' },

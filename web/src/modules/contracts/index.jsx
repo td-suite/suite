@@ -5,7 +5,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, canWrite, isAdmin } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Organigramma from './pages/Organigramma.jsx';
 import NewResource from './pages/NewResource.jsx';
 import Resources from './pages/Resources.jsx';
 import ResourceDetail from './pages/ResourceDetail.jsx';
@@ -29,7 +28,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
         <div className="ctr" data-mode={mode}>
           <Routes>
             <Route path="" element={<Dashboard />} />
-            <Route path="organigramma" element={<Organigramma />} />
+            <Route path="organigramma" element={<Navigate to="/people/org-chart" replace />} />
             {writer && <Route path="risorse/nuova" element={<NewResource key="new" />} />}
             {writer && <Route path="dipendenti/nuovo" element={<NewResource key="emp" kind="DIPENDENTE" />} />}
             {writer && <Route path="lp/nuovo" element={<NewResource key="lp" kind="LP" />} />}

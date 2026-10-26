@@ -7,18 +7,21 @@ import { isGestione, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from
 import { sendMail } from '../lib/mailer.js';
 import { computePlan, m2t as m2tE } from '../lib/engine.js';
 import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
-import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS } from '../lib/personale.js';
+import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE } from '../lib/personale.js';
 
 const r = Router();
 const gest = (req, _res, next) => (isGestione(req.user) ? next() : next(forbidden('Riservato alla gestione del personale sanitario')));
+// Chi decide chi è pianificabile: gestione del personale sanitario e pianificatori (non chi è in sola consultazione)
+const plan = (req, _res, next) => (isGestione(req.user) || req.user?.role === 'PLANNER' ? next() : next(forbidden('Profilo in sola consultazione')));
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'orario hh:mm');
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data aaaa-mm-gg');
 const mese = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mese aaaa-mm');
 const ordered = (d) => d.ora_a > d.ora_da;
 
 // ---------- Professionisti ----------
-// Le persone vivono in public.people (Amministrazione > Persone, Contratti del personale): qui si legge l'elenco (vista professionisti_v)
-// e si modifica solo la scheda Room (person_ext: tipo, profilo, compenso, contratto, assicurazione, competenze, sedi abilitate, recapiti integrativi).
+// Le persone vivono in public.people (Amministrazione > Persone, Contratti del personale): qui si legge l'elenco (vista professionisti_v,
+// TUTTE le persone dell'anagrafica unica, qualunque tipo) e si modifica solo la scheda Room (person_ext: tipo, profilo, compenso, contratto,
+// assicurazione, competenze, sedi abilitate, recapiti integrativi) e il flag di esclusione dalla pianificazione (planning_excluded).
 const siteRef = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable());
 const extSchema = z.object({
   tipo: z.enum(['medico', 'sanitario']), profilo: z.string().trim().max(60).optional().nullable(), dati: z.record(z.any()).optional(),
@@ -36,18 +39,53 @@ function normDati(dati) {
 const SUITE_USER = `(SELECT json_build_object('id', u.id, 'email', u.email, 'status', u.status, 'last_login_at', u.last_login_at, 'profile', g.profile, 'proposed', g.proposed)
     FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'room' WHERE u.person_id = p.id ORDER BY u.id LIMIT 1) AS suite_user`;
 
+// ?pianificabili=1 restituisce solo chi può essere scelto in turni, disponibilità, presenze e calendario (attivo e non escluso)
 r.get('/professionisti', ah(async (req, res) => {
-  const rows = await many(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p ORDER BY lower(p.nome)`);
+  const soloPian = ['1', 'true'].includes(String(req.query.pianificabili || ''));
+  const rows = await many(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE ($1::bool IS FALSE OR p.pianificabile) ORDER BY lower(p.nome)`, [soloPian]);
   if (!isGestione(req.user)) return res.json(rows.filter((p) => p.attivo).map(profLite));
   const docs = await many('SELECT person_id, count(*)::int AS n, min(scadenza) FILTER (WHERE scadenza IS NOT NULL) AS prossima_scadenza FROM professionista_docs GROUP BY person_id');
   const dm = Object.fromEntries(docs.map((d) => [d.person_id, d]));
   res.json(rows.map((p) => ({ ...profLite(p), dati: p.dati, userId: p.suite_user?.id || null, userActive: p.suite_user ? p.suite_user.status === 'ACTIVE' : null, userProfile: p.suite_user?.profile || null, lastLoginAt: p.suite_user?.last_login_at || null,
     nDocs: dm[p.id]?.n || 0, prossimaScadenza: dm[p.id]?.prossima_scadenza || null, updatedAt: p.updated_at })));
 }));
-r.get('/professionisti/opzioni', ah(async (_req, res) => res.json({ profili: PROFILI, docTipi: DOC_TIPI })));
+// Opzioni dei filtri della pagina Professionisti: tipi di persona, sedi TD (non i punti dei clienti service), ruoli del catalogo, discipline in uso
+r.get('/professionisti/opzioni', ah(async (_req, res) => {
+  const sedi = await many(`SELECT id, name, short_name, code FROM public.sites WHERE active AND kind <> 'SERVICE' ORDER BY lower(name)`);
+  const ruoli = await many(`SELECT id, name FROM public.job_roles WHERE active ORDER BY lower(name)`);
+  const disc = await many(`SELECT DISTINCT discipline AS d FROM public.people WHERE coalesce(discipline, '') <> '' ORDER BY 1`);
+  res.json({ profili: PROFILI, docTipi: DOC_TIPI, kinds: Object.entries(KIND_LABEL).map(([k, label]) => ({ k, label })), sedi, ruoli, discipline: disc.map((x) => x.d) });
+}));
+// Esclusione dalla pianificazione di una persona (e rientro): la riga person_ext nasce anche senza scheda Room, solo per il flag
+r.put('/professionisti/:id/pianificazione', plan, ah(async (req, res) => {
+  const d = parse(z.object({ excluded: z.boolean() }), req.body);
+  const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]); if (!p) throw notFound('Persona non trovata nell\'anagrafica');
+  await q(`INSERT INTO person_ext (person_id, planning_excluded, updated_by) VALUES ($1,$2,$3)
+    ON CONFLICT (person_id) DO UPDATE SET planning_excluded=EXCLUDED.planning_excluded, updated_at=now(), updated_by=EXCLUDED.updated_by`, [p.id, d.excluded, req.user.id]);
+  if (!d.excluded) await q(`DELETE FROM person_ext WHERE person_id=$1 AND tipo IS NULL AND dati = '{}'::jsonb`, [p.id]);   // riga nata solo per il flag
+  await audit(req, d.excluded ? 'PROF_ESCLUDI' : 'PROF_INCLUDI', 'professionista', p.id, { nome: p.nome });
+  res.json({ ok: true, planningExcluded: d.excluded });
+}));
+// Azioni di massa: "Escludi tutti i non sanitari" (kind DIPENDENTE/ESTERNO/DIRIGENTE senza disciplina, senza ruolo sanitario e senza scheda
+// Room compilata; MEDICO, SANITARIO e LP restano dentro) e "Includi tutti" (riporta dentro chiunque).
+r.post('/professionisti/pianificazione/massa', plan, ah(async (req, res) => {
+  const d = parse(z.object({ azione: z.enum(['ESCLUDI_NON_SANITARI', 'INCLUDI_TUTTI']) }), req.body);
+  let n = 0;
+  if (d.azione === 'ESCLUDI_NON_SANITARI') {
+    const rows = await many(`SELECT p.id FROM professionisti_v p WHERE p.attivo AND NOT p.planning_excluded AND NOT p.in_room
+      AND p.kind IN ('DIPENDENTE', 'ESTERNO', 'DIRIGENTE') AND coalesce(p.discipline, '') = '' AND NOT coalesce(p.role_name, '') ~* $1`, [RUOLO_SANITARIO_RE]);
+    for (const { id } of rows) await q(`INSERT INTO person_ext (person_id, planning_excluded, updated_by) VALUES ($1,TRUE,$2) ON CONFLICT (person_id) DO UPDATE SET planning_excluded=TRUE, updated_at=now(), updated_by=EXCLUDED.updated_by`, [id, req.user.id]);
+    n = rows.length;
+  } else {
+    n = (await q(`UPDATE person_ext SET planning_excluded=FALSE, updated_at=now(), updated_by=$1 WHERE planning_excluded`, [req.user.id])).rowCount;
+    await q(`DELETE FROM person_ext WHERE tipo IS NULL AND NOT planning_excluded AND dati = '{}'::jsonb`);   // righe nate solo per il flag
+  }
+  await audit(req, 'PROF_PIANIFICAZIONE_MASSA', 'professionista', null, { azione: d.azione, n });
+  res.json({ ok: true, n });
+}));
 r.get('/professionisti/:id', gest, ah(async (req, res) => {
   const p = await one(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]);
-  if (!p) throw notFound('Persona non trovata nell\'anagrafica (o non è un medico, un sanitario, un libero professionista o un dipendente)');
+  if (!p) throw notFound('Persona non trovata nell\'anagrafica unica');
   const docs = await many('SELECT id, tipo, nome, mime, size, scadenza, note, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
   // Presenza nelle schede di sede (stessa persona per chiave del nome)
   const key = personKey(p.nome);
@@ -100,7 +138,7 @@ r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
     if (!ex) { nonCensiti.push(x.nome); continue; }
     if (ex.in_room) continue;
     const dati = { professionale: { discipline: x.disc, attrezzature: x.attr }, sediAbilitate: x.sedi, compenso: { tipo: 'ORARIO' } };
-    await q('INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (person_id) DO NOTHING', [ex.id, 'sanitario', x.profilo || ex.profilo, JSON.stringify(dati), req.user.id]);
+    await q('INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (person_id) DO UPDATE SET tipo=EXCLUDED.tipo, profilo=EXCLUDED.profilo, dati=EXCLUDED.dati, updated_at=now(), updated_by=EXCLUDED.updated_by WHERE person_ext.tipo IS NULL', [ex.id, 'sanitario', x.profilo || ex.profilo, JSON.stringify(dati), req.user.id]);
     created++;
   }
   await audit(req, 'PROF_IMPORT', 'professionista', null, { created, nonCensiti: nonCensiti.length });
@@ -114,7 +152,9 @@ r.delete('/professionisti/:id', gest, ah(async (req, res) => {
   if (n > 0) throw bad(`La persona ha dati collegati (${Object.entries(dip).filter(([, v]) => Number(v)).map(([k, v]) => `${v} ${k}`).join(', ')}): la scheda Room non si può rimuovere; lo stato della persona si cambia in Amministrazione > Persone`);
   await tx(async (c) => {
     await c.query('DELETE FROM professionista_docs WHERE person_id=$1', [p.id]); await c.query('DELETE FROM disponibilita WHERE prof_id=$1', [p.id]);
-    await c.query('DELETE FROM person_ext WHERE person_id=$1', [p.id]);
+    // se la persona è esclusa dalla pianificazione la riga resta, svuotata, per conservare il flag
+    await c.query(`UPDATE person_ext SET tipo=NULL, profilo=NULL, dati='{}'::jsonb, updated_at=now(), updated_by=$2 WHERE person_id=$1 AND planning_excluded`, [p.id, req.user.id]);
+    await c.query('DELETE FROM person_ext WHERE person_id=$1 AND NOT planning_excluded', [p.id]);
   });
   await audit(req, 'PROF_DELETE', 'professionista', p.id, { nome: p.nome }); res.json({ ok: true });
 }));
@@ -166,11 +206,12 @@ export async function saveDisp(profId, d, id = null) {
 }
 r.get('/disponibilita', gest, ah(async (req, res) => {
   const pid = req.query.prof_id ? Number(req.query.prof_id) : null;
-  res.json(await many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE ($1::int IS NULL OR d.prof_id=$1) AND p.attivo ORDER BY p.nome, d.kind, d.giorno, d.data, d.ora_da`, [pid]));
+  res.json(await many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE ($1::int IS NULL OR d.prof_id=$1) AND p.attivo AND ($1::int IS NOT NULL OR NOT p.planning_excluded) ORDER BY p.nome, d.kind, d.giorno, d.data, d.ora_da`, [pid]));
 }));
 r.post('/disponibilita', gest, ah(async (req, res) => {
   const { prof_id, ...rest } = req.body || {}; const d = parse(dispSchema, rest);
-  if (!(await one('SELECT id FROM professionisti_v WHERE id=$1', [prof_id]))) throw bad('Professionista non valido');
+  const pr = await one('SELECT id, planning_excluded FROM professionisti_v WHERE id=$1', [prof_id]); if (!pr) throw bad('Professionista non valido');
+  if (pr.planning_excluded) throw bad('La persona è esclusa dalla pianificazione: riportala tra i pianificabili prima di registrare disponibilità');
   res.status(201).json({ id: await saveDisp(Number(prof_id), d) });
 }));
 r.put('/disponibilita/:id', gest, ah(async (req, res) => {
@@ -182,7 +223,7 @@ r.delete('/disponibilita/:id', gest, ah(async (req, res) => { await q('DELETE FR
 /** Disponibilità attive in una data e fascia (prof disponibili): ritorna [{prof_id, ora_da, ora_a, sedi}] */
 export async function dispOn(iso, sedeId = null) {
   const g = dow(iso);
-  return many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND (
+  return many(`SELECT d.*, p.nome, p.tipo, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.pianificabile AND (
       (d.kind='DATA' AND d.data=$1::date) OR (d.kind='SETTIMANALE' AND d.giorno=$2 AND (d.valid_dal IS NULL OR d.valid_dal<=$1::date) AND (d.valid_al IS NULL OR d.valid_al>=$1::date)))
     AND ($3::int IS NULL OR jsonb_array_length(d.sedi)=0 OR d.sedi @> to_jsonb($3::int))`, [iso, g, sedeId == null ? null : Number(sedeId)]);
 }
@@ -217,6 +258,9 @@ r.put('/turni/:id', gest, ah(async (req, res) => {
 }));
 r.delete('/turni/:id', gest, ah(async (req, res) => { await q('DELETE FROM turni WHERE id=$1', [req.params.id]); res.json({ ok: true }); }));
 async function checkSovrapposizione(profId, data, da, a, excludeId) {
+  const pr = await one('SELECT nome, planning_excluded FROM professionisti_v WHERE id=$1', [profId]);
+  if (!pr) throw bad('Persona non trovata nell\'anagrafica');
+  if (pr.planning_excluded) throw bad(`${pr.nome} è esclusa dalla pianificazione: riportala tra i pianificabili dalla pagina Professionisti`);
   const rows = await many('SELECT id, ora_da, ora_a, sede_id FROM turni WHERE prof_id=$1 AND data=$2 AND ($3::int IS NULL OR id<>$3)', [profId, data, excludeId]);
   const o = rows.find((t) => t.ora_da < a && t.ora_a > da);
   if (o) { const sm = await sediMap(); throw bad(`Il professionista ha già un turno ${o.ora_da}–${o.ora_a} in quella data (${sm[o.sede_id] || 'sede ' + o.sede_id})`); }
@@ -245,7 +289,7 @@ r.post('/turni/mesi/:mese/riapri', gest, ah(async (req, res) => {
 r.post('/turni/genera', gest, ah(async (req, res) => {
   const d = parse(z.object({ mese, sede_id: siteRef.optional(), tipo: z.enum(['tutti', 'medici', 'sanitari']).default('tutti'), sovrascrivi: z.boolean().default(false) }), req.body);
   const sedi = (await loadSedi({ ids: d.sede_id ? [d.sede_id] : null })).map((x) => ({ id: x.row.id, lite: x.lite }));
-  const profs = await many('SELECT id, nome, tipo FROM professionisti_v WHERE attivo');
+  const profs = await many('SELECT id, nome, tipo FROM professionisti_v WHERE pianificabile');
   const byKey = Object.fromEntries(profs.map((p) => [personKey(p.nome), p]));
   const [y, mm] = d.mese.split('-').map(Number); const days = new Date(Date.UTC(y, mm, 0)).getUTCDate();
   const chiusure = await many("SELECT sede_id, dal, al FROM eventi WHERE kind='CHIUSURA'");
@@ -294,7 +338,7 @@ r.get('/presenze/giorno', ah(async (req, res) => {
   if (!(await canConfirmPresenze(req.user, sede_id))) throw forbidden('Non sei il gestore di questa sede');
   const turni = await many('SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.sede_id=$1 AND t.data=$2 ORDER BY t.ora_da', [sede_id, data]);
   const presenze = await many('SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti_v p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da WHERE pr.sede_id=$1 AND pr.data=$2 ORDER BY pr.ora_da', [sede_id, data]);
-  const profs = await many('SELECT id, nome, tipo, profilo FROM professionisti_v WHERE attivo ORDER BY in_room DESC, lower(nome)');
+  const profs = await many('SELECT id, nome, tipo, profilo FROM professionisti_v WHERE pianificabile ORDER BY in_room DESC, lower(nome)');
   // dalla pianificazione (settimana-tipo) per il giorno, utile se i turni non sono stati generati
   let pianificati = [];
   const s = (await loadSedi({ ids: [sede_id] }))[0];
@@ -465,7 +509,7 @@ r.get('/fabbisogno', ah(async (req, res) => {
   const perProfilo = {};
   for (const t of out) { const k = t.profilo || 'non specificato'; (perProfilo[k] ||= { profilo: k, turni: 0, ore: 0, conCandidati: 0 }); perProfilo[k].turni++; perProfilo[k].ore = r2(perProfilo[k].ore + t.ore); if (t.candidati.length) perProfilo[k].conCandidati++; }
   // offerta complessiva: ore settimanali di disponibilità per profilo
-  const disp = await many('SELECT d.*, p.profilo, p.tipo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND d.kind=\'SETTIMANALE\'');
+  const disp = await many('SELECT d.*, p.profilo, p.tipo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.pianificabile AND d.kind=\'SETTIMANALE\'');
   const offerta = {};
   for (const d of disp) { const k = d.profilo || (d.tipo === 'medico' ? 'Medico' : 'altro'); (offerta[k] ||= { profilo: k, oreSettimana: 0, professionisti: new Set() }); offerta[k].oreSettimana = r2(offerta[k].oreSettimana + oreTra(d.ora_da, d.ora_a)); offerta[k].professionisti.add(d.prof_id); }
   res.json({ mese: m, turniScoperti: out, pianificazione: pian, perProfilo: Object.values(perProfilo), offerta: Object.values(offerta).map((o) => ({ ...o, professionisti: o.professionisti.size })) });
@@ -488,7 +532,7 @@ r.get('/statistiche', gest, ah(async (req, res) => {
   for (const t of turni) { const mk = isoDate(t.data).slice(0, 7); const M = (perMese[mk] ||= { mese: mk, ore: 0, costo: 0, oreTurni: 0, turniScoperti: 0 }); M.oreTurni = r2(M.oreTurni + oreTra(t.ora_da, t.ora_a)); if (!t.prof_id) M.turniScoperti++; }
   const fix = (o) => Object.values(o).map((x) => ({ ...x, professionisti: x.professionisti ? x.professionisti.size : undefined, sedi: x.sedi ? x.sedi.size : undefined }));
   const oreTurniTot = r2(turni.reduce((a, t) => a + oreTra(t.ora_da, t.ora_a), 0)), orePresTot = r2(pres.reduce((a, p) => a + oreTra(p.ora_da, p.ora_a), 0));
-  const disp = await many("SELECT d.*, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.attivo AND d.kind='SETTIMANALE'");
+  const disp = await many("SELECT d.*, p.profilo FROM disponibilita d JOIN professionisti_v p ON p.id=d.prof_id WHERE p.pianificabile AND d.kind='SETTIMANALE'");
   res.json({ dal, al, totali: { orePresenze: orePresTot, oreTurni: oreTurniTot, turni: turni.length, turniScoperti: turni.filter((t) => !t.prof_id).length, costo: r2(pres.reduce((a, p) => a + oreTra(p.ora_da, p.ora_a) * (p.dati?.compenso?.tipo === 'FISSO' ? 0 : tariffaPerSede(p.dati, p.sede_id)), 0)), fissiMensili: r2(rend.filter((x) => x.dettaglio?.tipo === 'FISSO').reduce((a, x) => a + Number(x.importo), 0)), professionisti: new Set(pres.map((p) => p.prof_id)).size, copertura: oreTurniTot ? Math.round(orePresTot / oreTurniTot * 100) : null, disponibilitaOreSett: r2(disp.reduce((a, d) => a + oreTra(d.ora_da, d.ora_a), 0)) },
     perSede: fix(perSede).sort((a, b) => b.ore - a.ore), perProf: fix(perProf).sort((a, b) => b.ore - a.ore), perProfilo: fix(perProfilo).sort((a, b) => b.ore - a.ore), perMese: Object.values(perMese).sort((a, b) => a.mese.localeCompare(b.mese)), rendiconti: { n: rend.length, inviati: rend.filter((x) => x.stato === 'INVIATO').length, importo: r2(rend.reduce((a, x) => a + Number(x.importo), 0)) } });
 }));

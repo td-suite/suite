@@ -92,7 +92,7 @@ function Notifications() {
   const openOne = async (n) => {
     setOpen(false);
     if (!n.read_at) api.post('/notifications/read', { ids: [n.id] }, { silent: true }).then(load).catch(() => {});
-    if (n.link) { if (/^https?:/.test(n.link) || n.link.startsWith('/go/')) window.location.href = n.link; else navigate(n.link); }
+    if (n.link) { if (/^https?:/.test(n.link) || n.link.startsWith('/go/')) window.open(n.link, '_blank', 'noopener'); else navigate(n.link); }
   };
   return (
     <div style={{ position: 'relative' }}>
@@ -177,7 +177,7 @@ export default function Shell() {
             <div className="sect"><div className="k">{section.kicker}</div><div className="t"><i style={{ background: section.color }} />{section.title}</div></div>
             <nav>
               {section.items.map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
-                : it.href ? <a key={it.href} href={it.href}><Icon name={it.icon} />{it.label}</a>
+                : it.href ? <a key={it.href} href={it.href} target={it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener"><Icon name={it.icon} />{it.label}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link></div>

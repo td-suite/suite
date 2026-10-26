@@ -34,7 +34,7 @@ export default {
     { group: 'Anagrafiche' },
     { to: 'aziende', icon: 'building', label: 'Aziende', profiles: ADMINS },
     { to: 'sedi', icon: 'pin', label: 'Sedi e fondo cassa', profiles: ADMINS },
-    { to: 'operatori', icon: 'users', label: 'Operatori e fondo cassa', profiles: ADMINS },
+    { to: 'operatori', icon: 'users', label: 'Operatori', profiles: ADMINS },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ADMINS },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni', profiles: ['SUPERADMIN'] },
   ],

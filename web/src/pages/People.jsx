@@ -175,26 +175,50 @@ function Node({ p, children }) {
 function OrgChart() {
   const { data, loading, error } = useApi('/org-chart');
   const [zoom, setZoom] = useState(0.9);
-  const [sp] = useSearchParams();
-  const focus = Number(sp.get('focus')) || null;
+  const [sp, setSp] = useSearchParams();
+  const focus = Number(sp.get('focus')) || null;          // persona evidenziata
+  const startUnit = Number(sp.get('unit')) || null;       // punto di partenza: unità (sede, area, reparto)
+  const startPerson = Number(sp.get('person')) || null;   // punto di partenza: persona (la sua unità principale)
+  const units = data?.units || []; const people = data?.people || [];
+  const byId = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
+  const coll = new Intl.Collator('it');
+  // unità di partenza: dall'URL, oppure quella della persona scelta (afferenza, altrimenti il primo incarico)
+  const rootUnitId = useMemo(() => {
+    if (startUnit) return startUnit;
+    if (startPerson) { const p = people.find((x) => x.id === startPerson); if (p?.unit_id) return p.unit_id; const pos = units.find((u) => (u.positions || []).some((x) => x.person_id === startPerson)); return pos?.id || null; }
+    return null;
+  }, [startUnit, startPerson, people, units]);
+  const chain = useMemo(() => { const out = []; let cur = rootUnitId ? byId.get(rootUnitId) : null; while (cur?.parent_id) { cur = byId.get(cur.parent_id); if (cur) out.unshift(cur); } return out; }, [rootUnitId, byId]);
   const tree = useMemo(() => {
-    const units = data?.units || [];
     const byParent = {};
     for (const u of units) (byParent[u.parent_id || 'root'] ||= []).push(u);
-    const coll = new Intl.Collator('it');
     for (const k of Object.keys(byParent)) byParent[k].sort((a, b) => (a.sort_order - b.sort_order) || coll.compare(a.name, b.name));
     const build = (u, depth = 0) => ({ u, children: depth > 8 ? [] : (byParent[u.id] || []).map((c) => build(c, depth + 1)) });
+    if (rootUnitId && byId.has(rootUnitId)) return [build(byId.get(rootUnitId))];
     return (byParent.root || []).map((u) => build(u));
-  }, [data]);
-  const unitsWithPositions = (data?.units || []).filter((u) => u.positions?.length).length;
+  }, [units, rootUnitId]);
+  const unitsWithPositions = units.filter((u) => u.positions?.length).length;
+  const setStart = (k, v) => setSp((prev) => { const n = new URLSearchParams(prev); n.delete('unit'); n.delete('person'); if (v) n.set(k, v); return n; });
+  const sedi = units.filter((u) => u.kind === 'SEDE').sort((a, b) => coll.compare(a.name, b.name));
+  const aree = units.filter((u) => u.kind === 'AREA').sort((a, b) => coll.compare(a.name, b.name));
+  const exportQs = rootUnitId ? `?unit_id=${rootUnitId}` : '';
   return (
     <div className="page">
-      <PageHead title="Organigramma" icon="tree" sub="Unità organizzative e incarichi: direzione, aree, sedi, reparti" actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(0.9)}>Reimposta</button><span className="sep" /><a className="btn ghost sm" href="/api/org-chart/export.xlsx" title="Excel (ricaricabile dalle Importazioni)"><Icon name="download" />XLSX</a><a className="btn ghost sm" href="/api/org-chart/export.pptx" title="PowerPoint"><Icon name="download" />PPTX</a><a className="btn ghost sm" href="/api/org-chart/export.pdf" title="PDF"><Icon name="download" />PDF</a></div>} />
+      <PageHead title="Organigramma" icon="tree" sub={rootUnitId && byId.get(rootUnitId) ? `Dal vertice a ${byId.get(rootUnitId).name} e tutto ciò che ne dipende` : 'Unità organizzative e incarichi: direzione, aree, sedi, reparti'} actions={<div className="row tight"><button className="btn ghost sm" onClick={() => setZoom((z) => Math.max(.4, z - .1))} aria-label="Riduci"><Icon name="zoomOut" /></button><span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span><button className="btn ghost sm" onClick={() => setZoom((z) => Math.min(1.6, z + .1))} aria-label="Ingrandisci"><Icon name="zoomIn" /></button><button className="btn ghost sm" onClick={() => setZoom(0.9)}>Reimposta</button><span className="sep" /><a className="btn ghost sm" href={`/api/org-chart/export.xlsx${exportQs}`} title="Excel (ricaricabile dalle Importazioni)"><Icon name="download" />XLSX</a><a className="btn ghost sm" href={`/api/org-chart/export.pptx${exportQs}`} title="PowerPoint"><Icon name="download" />PPTX</a><a className="btn ghost sm" href={`/api/org-chart/export.pdf${exportQs}`} title="PDF"><Icon name="download" />PDF</a></div>} />
+      <div className="filters">
+        <Field label="Parti da una sede"><select value={startUnit && byId.get(startUnit)?.kind === 'SEDE' ? startUnit : ''} onChange={(e) => setStart('unit', e.target.value)}><option value="">Tutta la rete</option>{sedi.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+        <Field label="Parti da un'area"><select value={startUnit && byId.get(startUnit)?.kind === 'AREA' ? startUnit : ''} onChange={(e) => setStart('unit', e.target.value)}><option value="">Tutta la rete</option>{aree.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+        <Field label="Parti da una persona"><select value={startPerson || ''} onChange={(e) => setStart('person', e.target.value)}><option value="">Nessuna</option>{[...people].sort((a, b) => coll.compare(`${a.last_name} ${a.first_name}`, `${b.last_name} ${b.first_name}`)).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
+        {(startUnit || startPerson) && <button className="btn ghost sm" style={{ alignSelf: 'end' }} onClick={() => setStart('unit', '')}><Icon name="x" />Tutta la rete</button>}
+      </div>
       <ErrorBox error={error} />
       {loading && <Card><Skeleton lines={4} /></Card>}
       {data && !unitsWithPositions && <Empty icon="tree" title="Organigramma da comporre">Le unità e gli incarichi si definiscono in Amministrazione, Organizzazione, oppure si caricano con il file Organigramma da Importazioni.</Empty>}
       {tree.length > 0 && unitsWithPositions > 0 && (
-        <Card flush><div className="org"><div className="org-wrap" style={{ zoom }}><ul className="tree">{tree.map((n) => <UnitNode key={n.u.id} u={n.u} focus={focus}>{n.children}</UnitNode>)}</ul></div></div></Card>
+        <Card flush><div className="org"><div className="org-wrap" style={{ zoom }}>
+          {chain.length > 0 && <div className="org-chain">{chain.map((u) => <button key={u.id} type="button" className="chain-node" onClick={() => setStart('unit', u.id)} title="Riparti da qui"><span className="unit-kind">{KIND_LABEL[u.kind]}</span><b>{u.name}</b>{(u.positions || []).filter((x) => x.is_head).map((x) => <span key={x.id} className="small muted"> · {x.person_name}</span>)}</button>)}<div className="chain-arrow" /></div>}
+          <ul className="tree">{tree.map((n) => <UnitNode key={n.u.id} u={n.u} focus={focus || startPerson}>{n.children}</UnitNode>)}</ul>
+        </div></div></Card>
       )}
     </div>
   );

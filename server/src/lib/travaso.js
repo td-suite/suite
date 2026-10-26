@@ -32,6 +32,7 @@ async function ensureSchema(key) {
         await c.query(sql);
         await c.query(`INSERT INTO ${ident(key)}.schema_migrations(name) VALUES ($1)`, [f]);
         await c.query('COMMIT');
+        console.log(`[migrate] ${key}: applicata ${f}`);
       } catch (e) { await c.query('ROLLBACK'); throw new Error(`Migrazione ${key}/${f}: ${e.message}`); }
     }
     // Chiavi esterne differibili: la copia avviene in un'unica transazione senza dipendere dall'ordine delle tabelle
@@ -126,6 +127,17 @@ async function resetSequences(client, key) {
   const seqs = await client.query(`SELECT s.relname AS seq, t.relname AS tbl, a.attname AS col FROM pg_class s JOIN pg_depend d ON d.objid=s.oid JOIN pg_class t ON t.oid=d.refobjid JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid JOIN pg_namespace n ON n.oid=s.relnamespace WHERE s.relkind='S' AND n.nspname=$1`, [key]);
   for (const r of seqs.rows) {
     await client.query(`SELECT setval($1::regclass, COALESCE((SELECT MAX(${ident(r.col)}) FROM ${ident(key)}.${ident(r.tbl)}), 0) + 1, false)`, [`${ident(key)}.${ident(r.seq)}`]);
+  }
+}
+
+// All'avvio del server: le migrazioni nuove dei moduli con schema già creato (MIRROR o LIVE) si applicano subito, come quelle
+// della Suite. Senza questo passo una migrazione aggiunta a un modulo LIVE non arriverebbe mai al database.
+export async function applyModuleMigrations() {
+  const rows = (await q(`SELECT key FROM public.module_state WHERE schema_ready ORDER BY key`)).rows;
+  for (const { key } of rows) {
+    if (!fs.existsSync(path.join(modulesDir, key, 'migrations'))) continue;
+    try { await ensureSchema(key); }
+    catch (e) { console.error(`[migrate] ${key}:`, e.message); throw e; }
   }
 }
 

@@ -57,7 +57,8 @@ r.post('/hl7', express.text({ type: '*/*', limit: '4mb' }), ah(async (req, res) 
       return reply(parsed, true);
     }
     if (!a.id) { await lis.logEvento('HL7', 'ERRORE', { dettaglio: 'numero accettazione assente (PV1-19 / ORC-4 / OBR-20)', payload: req.body }); return reply(parsed, false, 'Numero accettazione assente'); }
-    // Sede inviante: codice cliente StudioLAB (ORC-13 / FT1 / MSH-4) cercato in site_ext e in public.sites (studiolab_code, code).
+    // Sede inviante: codice cliente StudioLAB (ORC-13 / FT1 / MSH-4) cercato in org_ext/site_ext e in public.sites (studiolab_code, code):
+    // il codice di un punto SERVICE attribuisce l'accettazione alla Legal entity del punto (sede_id = -organization_id).
     // Nessuna creazione automatica: se il codice non è censito l'accettazione resta senza sede e la preanalitica la assegna dal Desk.
     const sede = a.sede_codice ? await findSedeByCodice(a.sede_codice) : null;
     const row = await lis.upsertAccettazione({

@@ -21,6 +21,8 @@ export default function Calendario() {
   const [key, setKey] = useState('');
   const [modal, setModal] = useState(null); // {evento} per modifica/creazione, oppure {sess} per dettaglio
   const strutture = useApi('/strutture');
+  const persone = useApi('/personale/professionisti');   // per nascondere dal selettore chi è escluso dalla pianificazione
+  const esclusi = useMemo(() => new Set((persone.data || []).filter((p) => p.planningExcluded).map((p) => p.personaKey)), [persone.data]);
   const ev = useApi(`/calendario/eventi?dal=${addDays(monday, -60)}&al=${addDays(monday, 120)}`, [monday]);
   const net = useMemo(() => (strutture.data ? buildNetwork(strutture.data) : null), [strutture.data]);
   const eventi = ev.data || [];
@@ -57,7 +59,7 @@ export default function Calendario() {
         </>}
         <span className="spacer" />
         <select value={sedeId} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : ''; setSedeId(v); if (v && key && !(net?.byKey[key]?.sedi || []).some((z) => z.sedeId === v)) setKey(''); }} style={{ width: 'auto', minWidth: 200 }}><option value="">Tutte le sedi</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
-        <select value={key} onChange={(e) => setKey(e.target.value)} style={{ width: 'auto', minWidth: 200 }}><option value="">{sedeId ? 'Tutti i professionisti della sede' : 'Tutti i professionisti'}</option>{(net?.specialisti || []).filter((x) => !x.attivita && (!sedeId || x.sedi.some((z) => z.sedeId === sedeId))).map((x) => <option key={x.key} value={x.key}>{x.nome}</option>)}</select>
+        <select value={key} onChange={(e) => setKey(e.target.value)} style={{ width: 'auto', minWidth: 200 }}><option value="">{sedeId ? 'Tutti i professionisti della sede' : 'Tutti i professionisti'}</option>{(net?.specialisti || []).filter((x) => !x.attivita && !esclusi.has(x.key) && (!sedeId || x.sedi.some((z) => z.sedeId === sedeId))).map((x) => <option key={x.key} value={x.key}>{x.nome}</option>)}</select>
       </div></div>
       {!week ? <Loading /> : view === 'giorno' ? <DayView g={week.giorni.find((x) => x.iso === day)} sedeId={sedeId} canEdit={canEdit} onSess={(q) => setModal({ sess: q })} onChiusura={(c) => canEdit && setModal({ evento: c.evento })} onDay={(iso) => goDay(iso)} /> : (
         <div className="cal-grid">{week.giorni.map((g) => (

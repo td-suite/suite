@@ -1,6 +1,7 @@
 // Funzioni condivise del modulo Personale sanitario: ore, tariffe, calcolo del rendiconto mensile, profilo dell'utente.
-// I professionisti sono le persone dell'anagrafica unica (public.people, kind MEDICO/SANITARIO/LP/DIPENDENTE) con la scheda Room
-// in person_ext: la vista professionisti_v le unisce con le colonne che il codice si aspetta (id, nome, tipo, profilo, email, attivo, dati).
+// I professionisti sono TUTTE le persone dell'anagrafica unica (public.people, qualunque kind) con la scheda Room in person_ext:
+// la vista professionisti_v le unisce con le colonne che il codice si aspetta (id, nome, tipo, profilo, email, attivo, dati, sede, ruolo).
+// Chi non va pianificato si esclude persona per persona (person_ext.planning_excluded): pianificabile = attivo e non escluso.
 import { one, many } from '../db.js';
 import { r2 } from './util.js';
 
@@ -22,7 +23,13 @@ export const personKey = (nome) => (nome || '').normalize('NFD').replace(/[̀-ͯ
 export const isAttivita = (nome) => /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
 
 // Colonne della vista professionisti_v usate dalle route (alias p)
-export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.site_id, p.attivo, p.dati, p.in_room, p.created_at, p.updated_at, p.updated_by';
+export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.site_id, p.site_name, p.role_id, p.role_name, p.attivo, p.dati, p.in_room, p.planning_excluded, p.pianificabile, p.created_at, p.updated_at, p.updated_by';
+// Tipi di persona dell'anagrafica unica (people.kind) con l'etichetta mostrata nel modulo
+export const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
+// Ruolo del catalogo (public.job_roles) considerato sanitario: espressione regolare PostgreSQL (case insensitive) sul nome.
+// Serve all'azione di massa "Escludi tutti i non sanitari": chi ha kind DIPENDENTE/ESTERNO/DIRIGENTE senza disciplina e senza
+// ruolo sanitario viene escluso dalla pianificazione; MEDICO e SANITARIO restano sempre dentro.
+export const RUOLO_SANITARIO_RE = '(medic|sanitar|infermier|ostetric|fisioterap|biolog|psicolog|dietist|logoped|radiolog|laborator|tsrm|tslb|\\moss\\M|prelev|assistente sanitari)';
 
 /** Tariffa oraria applicabile a una sede (eccezione per sede, altrimenti tariffa base). */
 export function tariffaPerSede(dati, sedeId) {
@@ -78,7 +85,8 @@ export async function sediMap() {
 }
 
 /** Vista pubblica del professionista (senza dati fiscali) per elenchi e turni. */
-export const profLite = (p) => ({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, attivo: p.attivo, personaKey: personKey(p.nome), kind: p.kind, status: p.status, inRoom: p.in_room,
+export const profLite = (p) => ({ id: p.id, nome: p.nome, lastName: p.last_name, firstName: p.first_name, tipo: p.tipo, profilo: p.profilo, email: p.email, attivo: p.attivo, personaKey: personKey(p.nome), kind: p.kind, status: p.status, inRoom: p.in_room,
+  siteId: p.site_id, siteName: p.site_name, roleId: p.role_id, roleName: p.role_name, planningExcluded: p.planning_excluded, pianificabile: p.pianificabile,
   discipline: discipline(p), compensoTipo: p.dati?.compenso?.tipo || 'ORARIO' });
 
 /** Discipline: quella dell'anagrafica unica più quelle della scheda Room. */

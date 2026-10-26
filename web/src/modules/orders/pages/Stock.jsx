@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api, qs, API_BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
-import { useApi, Field, Loading, ErrorBox, Card, Badge, Icon, Modal, useToast } from '../components/ui.jsx';
+import { useApi, Field, Loading, ErrorBox, Card, Badge, Icon, Modal, useToast, StrutturaOptions } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 import { ScanButton } from '../components/scan.jsx';
 import { itDate, itDateTime, dec, PKG_STATUS } from '../format.js';
@@ -34,7 +34,7 @@ export default function Stock() {
       <div className="page-head">
         <div><h1>{data?.struttura.kind === 'CLIENTE' ? 'Materiale ricevuto' : 'Giacenza attuale'}</h1><div className="sub">{data ? `${data.struttura.name}: confezioni in giacenza per articolo, aggiornata dai carichi (fase 5) e dagli scarichi (fase 6)` : 'Confezioni in giacenza per articolo'}</div></div>
         <div className="row">
-          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSp(e.target.value ? { struttura_id: e.target.value } : {})} style={{ minWidth: 260 }}><option value="">Scegli…</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.kind})</option>)}</select></Field>}
+          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSp(e.target.value ? { struttura_id: e.target.value } : {})} style={{ minWidth: 260 }}><option value="">Scegli…</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
           {data && <a className="btn ghost" href={`${API_BASE}/stats/export/stock.xlsx`}><Icon name="download" size={16} />Excel</a>}
           {data && <button className="btn ghost" onClick={() => setInitial({ lines: [] })}><Icon name="plus" size={16} />Carico iniziale</button>}
         </div>

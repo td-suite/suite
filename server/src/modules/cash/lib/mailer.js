@@ -61,7 +61,7 @@ export async function sendMail(opts) {
   return { status, error, id: row.id };
 }
 
-// Destinatari amministratori di un'azienda (email degli utenti ADMIN attivi del modulo)
+// Destinatari amministratori di un'azienda: utenti della Suite attivi con profilo Cash ADMIN sull'azienda (vista operators_v)
 export async function adminEmails(companyId) {
-  return (await many(`SELECT email FROM users WHERE company_id=$1 AND role='ADMIN' AND active`, [companyId])).map((x) => x.email);
+  return (await many(`SELECT email FROM operators_v WHERE company_id=$1 AND role='ADMIN' AND active`, [companyId])).map((x) => x.email);
 }

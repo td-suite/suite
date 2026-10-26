@@ -182,3 +182,87 @@ scope sulla sede) mai grant confermati; le proposte non più coperte spariscono,
 dell'accesso, al salvataggio della persona, a ogni incarico, dopo le importazioni e da "Rigenera le proposte". 37 regole iniziali
 seminate quando esistono le unità (Finance, Operations, Flow & Back Office, Retail & Communications, HSQ, Legal, Laboratorio, B2B,
 tipi di sede, responsabili, Direttore Sanitario, Site Manager). Il vecchio AREA_GRANT_PROPOSALS sul campo libero "area" non è più usato.
+
+## Cash: solo sedi TD, operatori = utenti Suite (26/10/2026)
+Decisione di Francesco Epifani. Cash non vede mai le strutture dei clienti service (`public.sites.kind = 'SERVICE'`): la vista
+`cash.sites_v` (migrazione 012) le esclude e passa a `LEFT JOIN site_ext`, con `configured` a dire se la sede ha le impostazioni Cash;
+la pagina Sedi elenca tutte le sedi TD (anche da configurare, con i campi operativi vuoti), i selettori e le statistiche solo quelle
+configurate. Il salvataggio delle impostazioni fa upsert su `site_ext`. Nessuna anagrafica degli operatori in Cash: gli operatori sono
+gli utenti della Suite con grant sul modulo (`cash.operators_v` su `public.users`/`grants`/`grant_scopes`, id = utente Suite); la pagina
+Operatori è in sola lettura (cognome e nome, email, profilo Cash, sedi dello scope, stato, "Apri in Utenti" verso `/admin/users/<id>`),
+con il solo fondo cassa personale modificabile in `cash.user_ext (user_id → public.users)`. `cash.users` resta riga tecnica per le chiavi
+esterne dei rendiconti, agganciata con `suite_user_id`; nomi, email e profilo nei rendiconti e nei documenti vengono dalla Suite tramite
+`cash.users_v`. Le migrazioni nuove dei moduli con schema pronto si applicano all'avvio del server (`applyModuleMigrations` in
+lib/travaso.js): prima si applicavano solo al travaso o all'avvio del modulo.
+
+
+## Integration: le target sono le Legal entity TARGET (26/10/2026)
+Decisione di Francesco Epifani. Il modulo Integration non ha anagrafica propria: le "sedi da integrare" (i target del post closing)
+sono tutte le Legal entity `public.organizations` con `kind = 'TARGET'`, e il modulo conserva soltanto `integration.org_ext`
+(`org_id → public.organizations ON DELETE CASCADE`, migrazione 003: rinomina di `target_ext` senza perdita di dati) con i campi
+operativi del piano (date LOI/preliminare/closing, stato, referente, fatturato/PFN/EV, linee, orizzonte del GANTT); attività e
+support restano agganciate a `public.organizations`. La vista `integration.targets_v` fa `LEFT JOIN org_ext` ed espone `configured`
+(piano avviato) e `integrated` (piano presente ma tipo non più TARGET). Pagina del piano: tutte le Legal entity TARGET compaiono da
+sole, anche "da avviare" (nessun dato del modulo: fuori da conteggi, snapshot, stampa ed export), con "Apri in Legal entity"
+(`/admin/organizations`) e nessuna creazione o rinomina nel modulo; "Avvia il piano" dalla scheda crea la riga `org_ext` e le attività
+del piano generale (`POST /api/integration/targets`). Quando l'Amministrazione cambia il tipo da TARGET a SOCIETA (acquisizione conclusa)
+la riga resta in elenco come "Integrata": piano consultabile in sola lettura, scritture e rimozione rifiutate con 400, nessuna
+cancellazione. "Rimuovi dal piano" toglie attività e parametri e la Legal entity torna "da avviare".
+
+## Business: organizzazioni e sedi TD (26/10/2026)
+Decisione di Francesco Epifani. La pagina `/business/organizzazioni` è "Organizzazioni e sedi": un elenco unico con il filtro Tipo
+(Legal entity = `public.organizations`, Sede TD = `public.sites` con `kind <> 'SERVICE'`), letti dall'anagrafica unica senza copie,
+con "Apri in Legal entity" (`/admin/organizations`) e "Apri in Sedi" (`/admin/sites`); nessuna creazione o modifica anagrafica nel
+modulo (restano solo le impostazioni Business in `business.org_ext`). Contratti e fascicoli si collegano sia alla controparte
+(`org_id`) sia alla sede TD (`site_id`), almeno uno dei due (migrazione 005: `contracts.org_id` facoltativo con
+`contracts_party_check`; `dossiers.org_id/site_id/title` propri, ereditati dal contratto e allineati a ogni modifica del contratto;
+`dossiers.contract_id` facoltativo). Il contratto del punto prelievi lega la sede TD al partner che la ospita; punti prelievo e sedi
+in locazione richiedono sempre la sede TD; la generazione dei documenti richiede la controparte. I fascicoli hanno route e pagina
+per id proprio (`/api/business/dossiers/:id`, `/business/fascicoli/:id`; il vecchio `/contratti/:id/fascicolo` reindirizza) e
+possono nascere anche senza contratto su una sede TD ("Nuovo fascicolo": senza controparte atto di condivisione e DUVRI sono
+esclusi). `GET /api/business/sites` esclude le sedi SERVICE e riporta contratti e fascicoli collegati.
+
+## Ordini: strutture = sedi TD e Legal entity (26/10/2026)
+Decisione di Francesco Epifani. In Ordini e Magazzino la "struttura" (chi ordina e riceve materiale) ha due origini nell'anagrafica
+unica: le sedi TD (`public.sites`, `kind <> 'SERVICE'`, impostazioni in `orders.site_ext`) e le Legal entity (`public.organizations`:
+clienti del service di laboratorio, partner, fornitori, società del gruppo; impostazioni in `orders.org_ext`, migrazione 005, stessi
+campi di site_ext: ruolo nel flusso, codice Silva, giorno della giacenza, referente, modalità e note di consegna). I punti dei clienti
+service (`sites.kind = 'SERVICE'`) non sono strutture: compaiono come punti di consegna della loro Legal entity (`organization_id`) e
+la produzione StudioLab attribuita al loro codice cliente si somma sulla Legal entity (`productionStrutture` in lib/studiolab.js).
+Chiave unica `struttura_id` in orders, packages, stock_counts, production, issues, email_log: `> 0` id della sede, `< 0` opposto
+dell'id della Legal entity; le colonne generate `site_id` e `org_id` (una sola valorizzata) portano le FK reali verso `public.sites`
+e `public.organizations`, così le query del modulo restano a un solo intero. Vista `orders.strutture_v` (origin SITE/ORG, site_id,
+org_id, kind, codici, `configured`, `delivery_point`, `points`) al posto di `sites_v`, che resta ma non è più usata. Un utente di
+struttura con ambito su un punto SERVICE opera sulla sua Legal entity; con ambito ORG o Legal entity propria, su quella. Pagina
+Strutture: elenco unico con filtro Tipo (Sede TD / Legal entity), punti di consegna sotto la Legal entity, "Apri in Sedi"
+(`/admin/sites`) e "Apri in Legal entity" (`/admin/organizations`); i selettori di struttura (nuovo ordine, archivio, giacenze,
+giacenze mensili, produzione) offrono le due origini in due gruppi. Intestazione dei PDF: `company` dell'app se presente,
+altrimenti la Legal entity TD dall'anagrafica (`companyInfo`).
+
+## Non conformità: sedi invianti = sedi TD e Legal entity (26/10/2026)
+Decisione di Francesco Epifani. In Non conformità la "sede inviante" ha due origini nell'anagrafica unica, con la convenzione di
+Ordini: le sedi TD (`public.sites`, `kind <> 'SERVICE'`, impostazioni in `nc.site_ext`) e le Legal entity (`public.organizations`:
+laboratori clienti del service, fornitori, partner; impostazioni in `nc.org_ext`, migrazione 004, stessi campi di site_ext: codice
+LIS, canale, email/PEC NC, CC, SLA, attiva, note, ultimo oggetto Cliente del LIS). Chiave unica `sede_id` in `nc` e `accettazioni`:
+`> 0` id della sede, `< 0` opposto dell'id della Legal entity; colonne generate `site_id` e `org_id` con le FK reali. I punti SERVICE
+non sono sedi: compaiono come punti StudioLAB della loro Legal entity (`organization_id`, colonna `punti` della vista) e una NC o
+un'accettazione che arriva dal canale macchina (HL7 ORC-13 / FT1 / MSH-4, push) con il codice cliente di un punto si attribuisce alla
+Legal entity (`findSedeByCodice` in lib/sedi.js: org_ext.codice_lis, poi site_ext.codice_lis / sites.studiolab_code / sites.code con
+il punto SERVICE che porta alla Legal entity, infine organizations.code). Vista `nc.sedi_v` (origin SITE/ORG, site_id, org_id,
+organization_id, punti, punto_service, pec_suite) al posto di `sites_v`, che resta ma non è più usata; i dati esistenti su un punto
+SERVICE passano alla sua Legal entity nella migrazione. Perimetro di un utente SEDE (`perimetroSedi`): scope SITE = la sede TD (un
+punto SERVICE porta alla Legal entity), scope ORG = la Legal entity, senza ambito la Legal entity dell'utente; gli utenti di sede che
+ricevono le notifiche di una Legal entity sono quelli con scope ORG su di essa, scope SITE su un suo punto o appartenenti a essa.
+Pagina Sedi invianti: elenco unico con filtro Tipo (Sede TD / Legal entity), punti StudioLAB sotto la Legal entity, "Apri in Sedi"
+(`/admin/sites`) e "Apri in Legal entity" (`/admin/organizations`), nessun CRUD anagrafico; `PUT /api/nc/sedi/:id` con id negativo
+scrive su org_ext e rifiuta i punti SERVICE. I selettori di sede (accettazione manuale, correzione sede, filtri archivio, elenco NC,
+statistiche) offrono le due origini in due gruppi (`SedeSelect` in components/ui.jsx).
+
+## Revisione dei moduli dopo l'avvio (26/10/2026)
+Cash: solo sedi TD (le non configurate compaiono "da configurare"), operatori = utenti Suite con grant cash (operators_v, cash.user_ext
+solo per il fondo cassa). Integration: target = Legal entity TARGET (org_ext). Business: Organizzazioni e sedi, contratti e fascicoli
+su Legal entity e/o sede TD. Room: tutte le persone attive con filtri e flag pianificazione (person_ext.planning_excluded, azione
+"Escludi non sanitari"). Ordini e NC: struttura = sede TD (id > 0) o Legal entity (id < 0) con colonne generate e FK reali, punti SERVICE
+sotto la loro Legal entity. Organigramma: la sezione di Contratti del personale rimanda alla Rubrica, che parte da sede, area o persona
+(catena dal vertice + sottoalbero; esportazioni con ?unit_id). SGI e Portale Service si aprono in una scheda nuova. Le migrazioni dei
+moduli si applicano all'avvio del server (applyModuleMigrations), non solo al travaso.

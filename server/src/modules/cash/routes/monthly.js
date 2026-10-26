@@ -60,7 +60,9 @@ async function runCheck(req, period, files) {
   const { from, to } = monthRange(period);
   await ensureSezionaliSeed();
   const sez = new Map((await many('SELECT g.code, g.site_id, g.description, s.name AS site_name, s.code AS site_code FROM gipo_sezionali g LEFT JOIN sites_v s ON s.id=g.site_id WHERE g.active')).map((x) => [x.code, x]));
-  const users = new Map((await many(`SELECT id, lower(email) AS email, full_name FROM users`)).map((u) => [u.email, u]));
+  // operatori = utenti della Suite con grant cash (operators_v); la chiave dei rendiconti è la riga tecnica (cash_user_id).
+  // Chi ha l'accesso ma non è mai entrato in Cash non ha rendiconti: resta riconosciuto (chiave 's<id>'), con rendiconto mancante.
+  const users = new Map((await many(`SELECT id, cash_user_id, lower(email) AS email, full_name FROM operators_v`)).map((u) => [u.email, { id: u.cash_user_id || `s${u.id}`, full_name: u.full_name }]));
   // lettura dei PDF
   const parsed = [];
   for (const f of files) {
@@ -77,7 +79,7 @@ async function runCheck(req, period, files) {
     const s = sez.get(m.sezionale);
     const u = users.get(m.user);
     if (!s || !s.site_id) problems.push({ kind: 'SEZIONALE', detail: `Sezionale /${m.sezionale} non associato a una sede (movimento ${m.number} del ${itDate(m.date)}, ${m.user})` });
-    if (!u) problems.push({ kind: 'OPERATORE', detail: `Utente GIPO ${m.user} non censito in Cash Management (movimento ${m.number} del ${itDate(m.date)})` });
+    if (!u) problems.push({ kind: 'OPERATORE', detail: `Utente GIPO ${m.user} senza accesso al modulo Cash nella Suite (movimento ${m.number} del ${itDate(m.date)})` });
     const key = `${s?.site_id || 'x' + m.sezionale}|${m.date}|${u?.id || m.user}`;
     const row = agg.get(key) || { site_id: s?.site_id || null, sezionale: m.sezionale, site_name: s?.site_name || `Sezionale /${m.sezionale}`, site_code: s?.site_code || null, date: m.date, operator_id: u?.id || null, operator_name: u?.full_name || m.user, operator_email: m.user, gipo_amount: 0, gipo_count: 0 };
     row.gipo_amount = r2(row.gipo_amount + m.amount); row.gipo_count++;
@@ -86,7 +88,7 @@ async function runCheck(req, period, files) {
   // rendiconti del mese
   const reps = await many(`SELECT r.id, r.site_id, r.report_date::text AS date, r.operator_id, r.status, r.cash_to_deposit, r.pos_total, r.transfer_total, r.verified_amount, r.expected_total,
       s.name AS site_name, s.code AS site_code, u.full_name AS operator_name, lower(u.email) AS operator_email
-    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id LEFT JOIN users u ON u.id=r.operator_id WHERE r.report_date BETWEEN $1 AND $2`, [from, to]);
+    FROM cash_reports r JOIN sites_v s ON s.id=r.site_id LEFT JOIN users_v u ON u.id=r.operator_id WHERE r.report_date BETWEEN $1 AND $2`, [from, to]);
   const repMap = new Map(reps.map((x) => [`${x.site_id}|${x.date}|${x.operator_id}`, x]));
   const rows = [];
   for (const [key, g] of agg) {
@@ -132,11 +134,11 @@ r.post('/run', upload.array('files', 12), ah(async (req, res) => {
 }));
 
 r.get('/', ah(async (_req, res) => {
-  res.json(await many(`SELECT m.id, m.period, m.date_from, m.date_to, m.created_at, u.full_name AS created_by_name, m.summary FROM monthly_checks m LEFT JOIN users u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 100`));
+  res.json(await many(`SELECT m.id, m.period, m.date_from, m.date_to, m.created_at, u.full_name AS created_by_name, m.summary FROM monthly_checks m LEFT JOIN users_v u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 100`));
 }));
 
 async function load(id) {
-  const m = await one(`SELECT m.*, u.full_name AS created_by_name FROM monthly_checks m LEFT JOIN users u ON u.id=m.created_by WHERE m.id=$1`, [id]);
+  const m = await one(`SELECT m.*, u.full_name AS created_by_name FROM monthly_checks m LEFT JOIN users_v u ON u.id=m.created_by WHERE m.id=$1`, [id]);
   if (!m) throw notFound('Controllo non trovato');
   return m;
 }

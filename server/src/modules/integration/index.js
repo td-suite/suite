@@ -1,6 +1,7 @@
 // Modulo Integration M&A (Integration Plan Management) dentro la Suite TD.
 // Le route dell'app di origine (routes/plan.js) lavorano sull'anagrafica unica: target = public.organizations (kind TARGET) con
-// parametri in target_ext, owner e team = public.people con person_ext (docs/ANAGRAFICA.md). Il modulo parte vuoto (FRESH_MODULES).
+// parametri del piano in org_ext (tutte le Legal entity TARGET sono in elenco, anche senza piano avviato), owner e team =
+// public.people con person_ext (docs/ANAGRAFICA.md). Il modulo parte vuoto (FRESH_MODULES).
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';

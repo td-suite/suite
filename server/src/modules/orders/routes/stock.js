@@ -111,7 +111,7 @@ r.get('/counts', ah(async (req, res) => {
   if (req.query.struttura_id) where.push(`c.struttura_id=${P.add(Number(req.query.struttura_id))}`);
   res.json(await many(`SELECT c.*, s.name AS struttura_name, s.code AS struttura_code, s.kind, u.full_name AS confirmed_by_name, o.number AS order_number, o.status AS order_status,
       (SELECT count(*)::int FROM stock_count_lines l WHERE l.count_id=c.id AND l.counted_qty <> l.system_qty) AS differences
-    FROM stock_counts c JOIN sites_v s ON s.id=c.struttura_id LEFT JOIN users u ON u.id=c.confirmed_by LEFT JOIN orders o ON o.id=c.order_id
+    FROM stock_counts c JOIN strutture_v s ON s.id=c.struttura_id LEFT JOIN users u ON u.id=c.confirmed_by LEFT JOIN orders o ON o.id=c.order_id
     WHERE ${where.join(' AND ')} ORDER BY c.month DESC, s.name LIMIT 300`, P.values));
 }));
 
@@ -185,7 +185,7 @@ r.post('/counts/:id/confirm', ah(async (req, res) => {
   const formula = await getSetting('reorder_formula', 'DIFF_X_FACTOR');
   const months = Number(await getSetting('production_months', '3'));
   const cons = c.kind === 'LAB' ? { map: new Map(), months: 0 } : await consumptionByArticle(c.struttura_id, months);
-  const s = await one('SELECT * FROM sites_v WHERE id=$1', [c.struttura_id]);
+  const s = await one('SELECT * FROM strutture_v WHERE id=$1', [c.struttura_id]);
   const result = await tx(async (cl) => {
     let adjusted = 0;
     for (const l of c.lines) {
@@ -238,7 +238,7 @@ r.get('/issues', ah(async (req, res) => {
   const P = new Params();
   const where = [isOps(req.user) ? 'TRUE' : `i.struttura_id=${P.add(req.user.struttura_id)}`];
   if (req.query.status) where.push(`i.status=${P.add(req.query.status)}`);
-  res.json(await many(`SELECT i.*, o.number AS order_number, s.name AS struttura_name, u.full_name AS opened_by_name FROM issues i LEFT JOIN orders o ON o.id=i.order_id JOIN sites_v s ON s.id=i.struttura_id LEFT JOIN users u ON u.id=i.opened_by
+  res.json(await many(`SELECT i.*, o.number AS order_number, s.name AS struttura_name, u.full_name AS opened_by_name FROM issues i LEFT JOIN orders o ON o.id=i.order_id JOIN strutture_v s ON s.id=i.struttura_id LEFT JOIN users u ON u.id=i.opened_by
     WHERE ${where.join(' AND ')} ORDER BY i.status, i.opened_at DESC LIMIT 300`, P.values));
 }));
 r.post('/issues/:id/close', requireRole(...OPS_ROLES), ah(async (req, res) => {
@@ -246,7 +246,7 @@ r.post('/issues/:id/close', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const i = await one("UPDATE issues SET status='CHIUSA', response=$2, closed_by=$3, closed_at=now() WHERE id=$1 AND status='APERTA' RETURNING *", [req.params.id, response, req.user.id]);
   if (!i) throw notFound();
   if (i.order_id) await q('INSERT INTO order_events (order_id, user_id, event, data) VALUES ($1,$2,$3,$4)', [i.order_id, req.user.id, 'Difformità chiusa', JSON.stringify({ response })]);
-  const s = await one('SELECT email, name FROM sites_v WHERE id=$1', [i.struttura_id]);
+  const s = await one('SELECT email, name FROM strutture_v WHERE id=$1', [i.struttura_id]);
   if (s?.email) await sendMail({ kind: 'DIFFORMITA_CHIUSA', to: s.email, strutturaId: i.struttura_id, sentBy: req.user.id, subject: 'Difformità gestita da Toscana Diagnostica', title: 'Difformità gestita', body: `Segnalazione: ${i.description}\n\nRisposta dell'Area Operations: ${response}` });
   await audit(req, 'ISSUE_CLOSE', 'issue', i.id);
   res.json({ ok: true });

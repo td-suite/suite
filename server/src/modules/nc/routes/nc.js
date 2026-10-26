@@ -47,7 +47,7 @@ r.get('/nc', ah(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 200, 1000);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
   const rows = await many(`SELECT ${NC_COLS} ${NC_FROM} ${where} ORDER BY CASE n.stato WHEN 'RISPOSTA_SEDE' THEN 0 WHEN 'APERTA' THEN 1 WHEN 'INVIATA_SEDE' THEN 2 WHEN 'IN_TRATTAMENTO' THEN 3 ELSE 9 END, n.opened_at DESC LIMIT ${limit} OFFSET ${offset}`, params);
-  const total = await one(`SELECT count(*)::int AS n FROM nc n JOIN sites_v s ON s.id=n.sede_id ${where}`, params);
+  const total = await one(`SELECT count(*)::int AS n FROM nc n JOIN sedi_v s ON s.id=n.sede_id ${where}`, params);
   res.json({ rows: rows.map((n) => viewFor(n, req.user)), total: total.n, limit, offset });
 }));
 

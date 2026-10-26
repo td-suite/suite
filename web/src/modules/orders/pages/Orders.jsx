@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, isOps } from '../auth.jsx';
-import { useApi, Field, Loading, Empty, StatusBadge, Badge, Icon, ErrorBox, useToast } from '../components/ui.jsx';
+import { useApi, Field, Loading, Empty, StatusBadge, Badge, Icon, ErrorBox, useToast, StrutturaOptions } from '../components/ui.jsx';
 import { api, qs, BASE, API_BASE } from '../api.js';
 import { itDateTime, KIND, ORIGIN, STATUS } from '../format.js';
 import { PhaseBanner } from '../components/phase.jsx';
@@ -35,7 +35,7 @@ export default function Orders({ verify = false }) {
         <div className="filters">
           <Field label="Stato"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">Tutti</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
           {ops && <Field label="Tipo"><select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="">Tutti</option>{Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>}
-          {ops && <Field label="Struttura"><select value={f.struttura_id} onChange={(e) => setF({ ...f, struttura_id: e.target.value })}><option value="">Tutte</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>}
+          {ops && <Field label="Struttura"><select value={f.struttura_id} onChange={(e) => setF({ ...f, struttura_id: e.target.value })}><option value="">Tutte</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
         </div>
       )}
       <ErrorBox error={err} />

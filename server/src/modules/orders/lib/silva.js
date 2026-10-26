@@ -20,6 +20,7 @@ export function orderPayload(order, struttura, lines) {
     urgenza: order.urgent ? 'URGENTE' : 'ORDINARIA',
     motivoUrgenza: order.urgent ? order.urgent_reason || null : null,
     tipoDestinatario: order.kind === 'CLIENTE' ? 'CLIENTE_SERVICE' : order.kind === 'SEDE' ? 'SEDE_TD' : 'LABORATORIO_TD',
+    origineDestinatario: struttura.origin === 'ORG' ? 'LEGAL_ENTITY' : 'SEDE',   // Legal entity (public.organizations) o sede (public.sites)
     note: order.ops_notes || null,
     destinazione: {
       codice: struttura.silva_code || struttura.code, codiceSede: struttura.code, nome: struttura.name, indirizzo: struttura.address, cap: struttura.zip, citta: struttura.city, provincia: struttura.province,

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireRole, isOps, assertStruttura, OPS_ROLES } from '../lib/access.js';
-import { saveProduction, studiolabStatus, whoAmI, syncExamCatalog } from '../lib/studiolab.js';
+import { saveProduction, studiolabStatus, whoAmI, syncExamCatalog, productionStrutture } from '../lib/studiolab.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -28,15 +28,17 @@ function csvParse(txt, { delimiter = ',', from_line = 1 } = {}) {
   return rows.slice(from_line - 1);
 }
 
-// Produzione mensile per struttura: tabella esami x mesi
+// Produzione mensile per struttura: tabella esami x mesi. Per una Legal entity somma la produzione dei suoi punti service.
 r.get('/', ah(async (req, res) => {
   const sid = isOps(req.user) ? Number(req.query.struttura_id) : req.user.struttura_id;
   if (!sid) throw bad('Sede obbligatoria');
   await assertStruttura(req.user, sid);
   const months = Math.min(24, Number(req.query.months || 6));
-  const rows = await many(`SELECT p.month, p.exam_code, p.exam_name, p.qty, p.source,
+  const ids = await productionStrutture(sid);
+  const rows = await many(`SELECT p.month, p.exam_code, max(p.exam_name) AS exam_name, sum(p.qty)::int AS qty, string_agg(DISTINCT p.source, ', ') AS source,
       (SELECT json_agg(json_build_object('article', a.name, 'qty_per_exam', m.qty_per_exam)) FROM exam_mappings m JOIN articles a ON a.id=m.article_id WHERE m.exam_code=p.exam_code AND m.active) AS materials
-    FROM production p WHERE p.struttura_id=$1 AND p.month >= (date_trunc('month', now()) - ($2 || ' months')::interval)::date ORDER BY p.month DESC, p.exam_code`, [sid, months]);
+    FROM production p WHERE p.struttura_id = ANY($1::int[]) AND p.month >= (date_trunc('month', now()) - ($2 || ' months')::interval)::date
+    GROUP BY p.month, p.exam_code ORDER BY p.month DESC, p.exam_code`, [ids, months]);
   res.json(rows);
 }));
 
@@ -61,13 +63,13 @@ r.post('/import', requireRole(...OPS_ROLES), upload.single('file'), ah(async (re
     const txt = req.file.buffer.toString('utf8');
     records = csvParse(txt, { delimiter: txt.split('\n')[0].includes(';') ? ';' : ',', from_line: 2, relax_column_count: true, trim: true });
   }
-  const strutture = await many('SELECT id, code, studiolab_code, silva_code FROM sites_v WHERE active');
+  const strutture = await many('SELECT id, code, studiolab_code, silva_code FROM strutture_v WHERE active ORDER BY origin DESC, id');
   const byMonth = new Map(); const errors = [];
   records.forEach((rec, i) => {
     const [code, month, examCode, examName, qty] = rec.map((v) => (v == null ? '' : String(v).trim()));
     if (!code && !examCode) return;
     const s = strutture.find((x) => x.code === code || (x.studiolab_code && x.studiolab_code === code) || (x.silva_code && x.silva_code.toUpperCase() === code.toUpperCase()));
-    if (!s) return errors.push(`riga ${i + 2}: sede ${code} non trovata (codice sede, codice StudioLab o codice Silva)`);
+    if (!s) return errors.push(`riga ${i + 2}: struttura ${code} non trovata (codice sede o punto service, codice StudioLab, codice Legal entity o codice Silva)`);
     const m = month.match(/^(\d{4})[-/](\d{1,2})/) || month.match(/^(\d{1,2})[-/](\d{4})$/);
     if (!m) return errors.push(`riga ${i + 2}: mese ${month} non valido (atteso AAAA-MM)`);
     const monthIso = m[1].length === 4 ? `${m[1]}-${m[2].padStart(2, '0')}` : `${m[2]}-${m[1].padStart(2, '0')}`;

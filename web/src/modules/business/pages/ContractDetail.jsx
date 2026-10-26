@@ -19,7 +19,7 @@ export default function ContractDetail() {
   if (!c) return <div className="page"><Loading /></div>;
   const edit = canEditKind(user, c.kind);
   const editable = ['BOZZA', 'PROPOSTA'].includes(c.status);
-  const d = c.data || {}; const p = c.org; const site = c.site || {};
+  const d = c.data || {}; const p = c.org || {}; const site = c.site || {};  // controparte e sede TD: una delle due può mancare
   const files = (cat) => c.files.filter((f) => f.category === cat);
   const act = async (fn, msg) => { try { const r = await fn(); if (r?.pdfError) setPdfErr(r.pdfError); q.reload(); if (msg) toast(msg); } catch (e) { toast(e.message, 'err'); } };
   const uploadFiles = (category, list, extra = {}) => act(async () => { const fd = new FormData(); fd.append('category', category); for (const [k, v] of Object.entries(extra)) fd.append(k, v); for (const f of list) fd.append('files', f); return api.upload(`/contracts/${c.id}/files`, fd); }, 'File caricati');
@@ -32,13 +32,13 @@ export default function ContractDetail() {
       <div className="page-head">
         <div>
           <div className="row" style={{ gap: 8, marginBottom: 6 }}><KindBadge kind={c.kind} /><StatusBadge status={c.status} />{c.protocol && <span className="mono">{c.protocol} · v{c.version}</span>}</div>
-          <h1>{c.title || p.name}</h1>
-          <div className="sub">{p.name} · {[p.street, p.city, p.prov ? `(${p.prov})` : ''].filter(Boolean).join(', ')} · {c.kind === 'SEDE' ? 'contratto del' : 'proposta del'} {itDate(c.proposal_date)}{c.signed_at ? ` · firmato il ${itDate(c.signed_at)}` : ''}</div>
+          <h1>{c.title || p.name || site.name}</h1>
+          <div className="sub">{c.org ? `Controparte ${p.name} · ${[p.street, p.city, p.prov ? `(${p.prov})` : ''].filter(Boolean).join(', ')}` : 'Nessuna controparte'}{c.site ? ` · sede TD ${site.name}${site.city ? ` (${site.city})` : ''}` : ''} · {c.kind === 'SEDE' ? 'contratto del' : 'proposta del'} {itDate(c.proposal_date)}{c.signed_at ? ` · firmato il ${itDate(c.signed_at)}` : ''}</div>
         </div>
         <div className="row">
           {edit && editable && <Link className="btn ghost" to={`${BASE}/contratti/${c.id}/modifica`}><Icon name="edit" />Modifica</Link>}
           {edit && editable && c.kind !== 'SEDE' && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), c.protocol ? 'Documento rigenerato' : 'Proposta protocollata e generata')}><Icon name="file" />{c.protocol ? 'Rigenera DOCX e PDF' : 'Genera proposta (DOCX e PDF)'}</button>}
-          {HAS_DOSSIER(c.kind) && <Link className="btn dark" to={`${BASE}/contratti/${c.id}/fascicolo`}><Icon name="folder" />Fascicolo autorizzazione</Link>}
+          {c.dossier && <Link className="btn dark" to={`${BASE}/fascicoli/${c.dossier.id}`}><Icon name="folder" />Fascicolo autorizzazione</Link>}
         </div>
       </div>
 
@@ -77,7 +77,7 @@ export default function ContractDetail() {
             <tr><td className="muted">Servizi</td><td>infermieristico: {(d.services?.nursing || 'TD') === 'TD' ? 'Toscana Diagnostica' : 'struttura ospitante'} · accettazione e incassi: {(d.services?.reception || 'HOST') === 'HOST' ? 'struttura ospitante' : 'Toscana Diagnostica'}</td></tr>
           </tbody></table>}
           {c.kind === 'SRV' && <table className="t"><tbody>
-            <tr><td className="muted">Sede operativa</td><td className="strong">{d.site_name || p.name}<div className="small muted">{d.site_address || [p.street, p.city].filter(Boolean).join(', ')}</div></td></tr>
+            <tr><td className="muted">Sede operativa</td><td className="strong">{d.site_name || p.name || '–'}<div className="small muted">{d.site_address || [p.street, p.city].filter(Boolean).join(', ')}</div></td></tr>
             <tr><td className="muted">Direttore Sanitario del cliente</td><td>{d.client_ds || <span className="red">da indicare</span>}</td></tr>
             <tr><td className="muted">Listino</td><td>{d.price_list_file || <span className="red">non caricato</span>}</td></tr>
             <tr><td className="muted">Esenzione IVA art. 10</td><td>{d.vat_exemption === true ? 'esente' : d.vat_exemption === false ? 'imponibile' : 'da dichiarare'}</td></tr>
@@ -103,8 +103,8 @@ export default function ContractDetail() {
           </tbody></table>}
           {c.notes && <div className="small muted" style={{ marginTop: 8 }}>Note: {c.notes}</div>}
         </Card>
-        <Card title={c.kind === 'SEDE' ? 'Locatore (organizzazione)' : 'Organizzazione (MOD173)'} actions={<Link className="btn sm ghost" to={`${BASE}/organizzazioni`}>Impostazioni Business</Link>}>
-          <table className="t"><tbody>
+        <Card title={c.kind === 'SEDE' ? 'Controparte: locatore (Legal entity)' : 'Controparte (Legal entity, MOD173)'} actions={<div className="row" style={{ gap: 6 }}><Link className="btn sm ghost" to={`${BASE}/organizzazioni`}>Impostazioni Business</Link><a className="btn sm ghost" href="/admin/organizations">Apri in Legal entity</a></div>}>
+          {!c.org ? <div className="muted">Nessuna controparte indicata: il contratto è collegato alla sola sede TD. Per generare il documento indica la Legal entity dalla modifica.</div> : <table className="t"><tbody>
             <tr><td className="muted">Ragione sociale</td><td className="strong">{p.name}</td></tr>
             <tr><td className="muted">P.IVA / C.F.</td><td className="mono">{p.vat || '–'} / {p.tax_code || p.vat || '–'}</td></tr>
             <tr><td className="muted">Sede</td><td>{[p.street, p.zip, p.city, p.prov ? `(${p.prov})` : ''].filter(Boolean).join(', ')}</td></tr>
@@ -113,7 +113,8 @@ export default function ContractDetail() {
             <tr><td className="muted">Gestione del servizio</td><td className="small">{p.svc_contact || '–'} {p.svc_email ? `· ${p.svc_email}` : ''} {p.svc_mobile ? `· ${p.svc_mobile}` : ''}</td></tr>
             <tr><td className="muted">Approvvigionamento</td><td className="small">{p.proc_contact || '–'} {p.proc_email ? `· ${p.proc_email}` : ''} {p.proc_mobile ? `· ${p.proc_mobile}` : ''}</td></tr>
             <tr><td className="muted">Pagamento</td><td className="small">{p.pay_method || '–'} {p.pay_terms ? `· ${p.pay_terms}` : ''} {p.bank_name ? `· ${p.bank_name}` : ''} {p.iban ? <span className="mono">{p.iban}</span> : ''}</td></tr>
-          </tbody></table>
+          </tbody></table>}
+          {c.site && <div className="small" style={{ marginTop: 10 }}><span className="subhead">Sede TD</span> {site.name}{site.code ? <span className="mono muted"> · {site.code}</span> : null} · {[site.street, site.zip, site.city, site.prov ? `(${site.prov})` : ''].filter(Boolean).join(', ') || 'indirizzo non indicato'} <a className="btn sm ghost" style={{ marginLeft: 8 }} href="/admin/sites">Apri in Sedi</a></div>}
         </Card>
       </div>
 

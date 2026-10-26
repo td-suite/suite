@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { many, one } from '../db.js';
 import { ah, bad, audit, parse, todayRome, itDate } from '../lib/util.js';
-import { requireRole, assertSite, assertCompany, isSuper, Params, hasGrantSiteSql } from '../lib/access.js';
+import { requireRole, assertSite, assertCompany, isSuper, Params } from '../lib/access.js';
 import { sendMail, mailStatus } from '../lib/mailer.js';
 import { missingReports, sendMissingAlert, runDailyCheck, runClosingAlerts, closingTime } from '../lib/alerts.js';
 
@@ -24,7 +24,7 @@ r.get('/daily', ah(async (req, res) => {
       (SELECT count(*)::int FROM cash_reports r WHERE r.site_id=s.id AND r.report_date=${d}::date AND r.status<>'DRAFT') AS closed_count,
       (SELECT coalesce(sum(r.cash_to_deposit + r.pos_total + r.transfer_total),0) FROM cash_reports r WHERE r.site_id=s.id AND r.report_date=${d}::date AND r.status<>'DRAFT') AS day_total,
       (SELECT json_agg(json_build_object('id', r.id, 'status', r.status, 'operator_name', u.full_name, 'total', r.cash_to_deposit + r.pos_total + r.transfer_total, 'updated_at', r.updated_at) ORDER BY u.full_name)
-         FROM cash_reports r LEFT JOIN users u ON u.id=r.operator_id WHERE r.site_id=s.id AND r.report_date=${d}::date) AS registers,
+         FROM cash_reports r LEFT JOIN users_v u ON u.id=r.operator_id WHERE r.site_id=s.id AND r.report_date=${d}::date) AS registers,
       (SELECT status FROM email_log e WHERE e.ref_key = 'SOLLECITO:' || s.id || ':' || ${d} ORDER BY e.created_at DESC LIMIT 1) AS alert_status,
       (SELECT created_at FROM email_log e WHERE e.ref_key = 'SOLLECITO:' || s.id || ':' || ${d} ORDER BY e.created_at DESC LIMIT 1) AS alert_at
     FROM sites_v s JOIN companies_v c ON c.id=s.company_id
@@ -69,7 +69,7 @@ r.post('/message', ah(async (req, res) => {
   if (d.to_site && site.site_email) to.push(site.site_email);
   if (d.to_host && site.host_email) to.push(site.host_email);
   // operatori della sede: utenti del modulo con la sede negli scope del grant Suite
-  if (d.to_operators) to.push(...(await many(`SELECT u.email FROM users u WHERE u.active AND u.role='OPERATOR' AND ${hasGrantSiteSql('u.email', '$1::int')}`, [site.id])).map((x) => x.email));
+  if (d.to_operators) to.push(...(await many(`SELECT o.email FROM operators_v o WHERE o.active AND o.role='OPERATOR' AND $1::int = ANY(o.site_ids)`, [site.id])).map((x) => x.email));
   if (!to.length) throw bad('Nessun destinatario: imposta le email nell\'anagrafica della sede o scegli gli operatori');
   const out = await sendMail({ kind: 'COMUNICAZIONE', to: [...new Set(to)], cc: req.user.email, companyId: site.company_id, siteId: site.id, sentBy: req.user.id,
     subject: `${d.subject} · ${site.name}`, title: d.subject, body: `${d.body}\n\n${req.user.full_name}` });
@@ -84,7 +84,7 @@ r.get('/log', ah(async (req, res) => {
   if (req.query.kind) where.push(`e.kind = ${P.add(req.query.kind)}`);
   if (req.query.site_id) where.push(`e.site_id = ${P.add(Number(req.query.site_id))}`);
   res.json(await many(`SELECT e.id, e.kind, e.to_addr, e.cc_addr, e.subject, e.body, e.attachment_name, e.status, e.error, e.created_at, s.name AS site_name, u.full_name AS sent_by_name
-    FROM email_log e LEFT JOIN sites_v s ON s.id=e.site_id LEFT JOIN users u ON u.id=e.sent_by WHERE ${where.join(' AND ')} ORDER BY e.created_at DESC LIMIT 500`, P.values));
+    FROM email_log e LEFT JOIN sites_v s ON s.id=e.site_id LEFT JOIN users_v u ON u.id=e.sent_by WHERE ${where.join(' AND ')} ORDER BY e.created_at DESC LIMIT 500`, P.values));
 }));
 
 // Email di prova (super amministratore)

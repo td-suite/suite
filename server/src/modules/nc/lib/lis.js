@@ -12,7 +12,7 @@
 //  - GET /api/studioweb/accettazioni/url -> link diretto all'accettazione in StudioWEB (se il nodo lo espone).
 import { config } from '../config.js';
 import { one, q } from '../db.js';
-import { findSedeByCodice } from './sedi.js';
+import { findSedeByCodice, extOf } from './sedi.js';
 
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 // Sto facendo un'ipotesi sui codici 20/25: lo swagger li elenca senza descrizione; da confermare con CB Sistemi.
@@ -115,14 +115,16 @@ export async function urlStudioWeb(idAcc) {
 
 // ---- cache locale -------------------------------------------------------------------------
 // Oggetto Cliente di StudioLAB: nessuna creazione di sedi (anagrafica unica in Amministrazione). Se il codice cliente
-// corrisponde a una sede censita, si conserva l'ultimo oggetto ricevuto in site_ext (lis_json) e, se manca, l'email NC del LIS.
+// corrisponde a una sede inviante censita (sede TD, oppure Legal entity tramite un suo punto SERVICE), si conserva l'ultimo
+// oggetto ricevuto in site_ext / org_ext (lis_json) e, se manca, l'email NC del LIS.
 export async function upsertSedeFromCliente(cli) {
   if (!cli || !cli.CodiceCliente) return null;
   const sede = await findSedeByCodice(cli.CodiceCliente);
   if (!sede) return null;
-  await q(`INSERT INTO site_ext (site_id, email_nc, lis_json, lis_synced_at) VALUES ($1,$2,$3,now())
-     ON CONFLICT (site_id) DO UPDATE SET email_nc = COALESCE(site_ext.email_nc, EXCLUDED.email_nc), lis_json = EXCLUDED.lis_json, lis_synced_at = now(), updated_at = now()`,
-  [sede.id, (cli.EmailNonConformita || cli.Email || '').toLowerCase() || null, JSON.stringify(cli)]);
+  const { table, col, key } = extOf(sede.id);
+  await q(`INSERT INTO ${table} (${col}, email_nc, lis_json, lis_synced_at) VALUES ($1,$2,$3,now())
+     ON CONFLICT (${col}) DO UPDATE SET email_nc = COALESCE(${table}.email_nc, EXCLUDED.email_nc), lis_json = EXCLUDED.lis_json, lis_synced_at = now(), updated_at = now()`,
+  [key, (cli.EmailNonConformita || cli.Email || '').toLowerCase() || null, JSON.stringify(cli)]);
   return sede;
 }
 

@@ -2,8 +2,8 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, qs, base } from '../api.js';
 import { useAuth, isSede } from '../auth.jsx';
-import { useApi, Card, Field, Loading, Empty, Badge, ErrorBox, Icon, useToast, Modal } from '../components/ui.jsx';
-import { STATO, STATO_SEDE, STATO_LIS, GRAVITA, MACRO, SEDE_TIPO, itDate, itDateTime } from '../format.js';
+import { useApi, Card, Field, Loading, Empty, Badge, ErrorBox, Icon, useToast, Modal, SedeSelect } from '../components/ui.jsx';
+import { STATO, STATO_SEDE, STATO_LIS, GRAVITA, MACRO, sedeTipoLabel, itDate, itDateTime } from '../format.js';
 import { LiveCtx } from '../live.jsx';
 import NcWizard from '../components/NcWizard.jsx';
 
@@ -23,7 +23,7 @@ function ManualForm({ id, sedi, onDone, onClose }) {
       <div className="alert info">L'accettazione non è in archivio (LIS non collegato o ordine non trasmesso). Registrala con i dati minimi: la NC potrà essere aperta subito. Se il campione è privo di ordine informatico, la NC giusta è "Informatica · Accettazione non trasmessa al LIS".</div>
       <ErrorBox error={err} />
       <div className="form-grid mt">
-        <Field label="Sede inviante"><select value={f.sede_id} onChange={(e) => setF({ ...f, sede_id: e.target.value })}><option value="">Scegli…</option>{sedi.map((s) => <option key={s.id} value={s.id}>{s.nome} ({s.codice})</option>)}</select></Field>
+        <Field label="Sede inviante"><SedeSelect sedi={sedi} value={f.sede_id} onChange={(e) => setF({ ...f, sede_id: e.target.value })} emptyLabel="Scegli…" withCode /></Field>
         <Field label="Riferimento richiesta cliente" help="Facoltativo"><input value={f.id_richiesta_cliente} onChange={(e) => setF({ ...f, id_richiesta_cliente: e.target.value })} /></Field>
         <Field label="Cognome paziente"><input value={f.paziente_cognome} onChange={(e) => setF({ ...f, paziente_cognome: e.target.value.toUpperCase() })} /></Field>
         <Field label="Nome paziente"><input value={f.paziente_nome} onChange={(e) => setF({ ...f, paziente_nome: e.target.value.toUpperCase() })} /></Field>
@@ -95,7 +95,7 @@ export default function Desk({ readOnly = false }) {
           <div className="acc-head">
             <div>
               <div className="small muted">Sede inviante</div>
-              <div className="strong">{acc.sede_nome || <span className="red">non associata</span>} {acc.sede_codice && <span className="muted small">({acc.sede_codice} · {SEDE_TIPO[acc.sede_tipo] || acc.sede_tipo})</span>}
+              <div className="strong">{acc.sede_nome || <span className="red">non associata</span>} {acc.sede_codice && <span className="muted small">({acc.sede_codice} · {acc.sede_origin === 'ORG' ? 'Legal entity, ' : ''}{sedeTipoLabel(acc.sede_origin, acc.sede_tipo)})</span>}
                 {!sede && <button className="btn link small" style={{ marginLeft: 8 }} onClick={() => setFixSede(true)}>{acc.sede_id ? 'correggi' : 'assegna'}</button>}</div>
               {!acc.sede_email && !sede && acc.sede_id && <div className="small red">La sede non ha un'email per le NC: impostala in Sedi invianti prima di inviare.</div>}
               <div className="small muted mt">Paziente</div>
@@ -124,7 +124,7 @@ export default function Desk({ readOnly = false }) {
 
       <Card title={sede ? 'Accettazioni' : 'Accettazioni in archivio'} className="mt" style={{ marginTop: 16 }} flush actions={<div className="row">
         <input placeholder="Cerca numero o cognome" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} style={{ minHeight: 32, width: 200 }} />
-        {!sede && <select value={filter.sede} onChange={(e) => setFilter({ ...filter, sede: e.target.value })} style={{ minHeight: 32, width: 220 }}><option value="">Tutte le sedi</option>{(sedi || []).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select>}
+        {!sede && <SedeSelect sedi={sedi} value={filter.sede} onChange={(e) => setFilter({ ...filter, sede: e.target.value })} style={{ minHeight: 32, width: 220 }} allLabel="Tutte le sedi" />}
         <input type="date" value={filter.from} onChange={(e) => setFilter({ ...filter, from: e.target.value })} style={{ minHeight: 32, width: 150 }} />
         {!sede && <label className="f inline small"><input type="checkbox" checked={filter.solo_nc === '1'} onChange={(e) => setFilter({ ...filter, solo_nc: e.target.checked ? '1' : '' })} /> solo con NC</label>}
       </div>}>
@@ -145,8 +145,7 @@ export default function Desk({ readOnly = false }) {
       {manual && <ManualForm id={manual} sedi={(sedi || []).filter((s) => s.attiva)} onClose={() => setManual(null)} onDone={(id) => { setManual(null); toast('Accettazione registrata'); setCode(id); lookup(id); reload(); }} />}
       {wizard && acc && <NcWizard acc={acc} onClose={() => setWizard(false)} onDone={(nc) => { setWizard(false); live.refreshCounts(); nav(`${base}/nc/${nc.id}`); }} />}
       {fixSede && acc && <Modal title="Sede inviante dell'accettazione" onClose={() => setFixSede(false)}>
-        <Field label="Sede"><select defaultValue={acc.sede_id || ''} onChange={async (e) => { try { await api.patch(`/accettazioni/${encodeURIComponent(acc.id)}/sede`, { sede_id: Number(e.target.value) }); setFixSede(false); toast('Sede aggiornata'); lookup(acc.id); } catch (er) { toast(er.message, 'err'); } }}>
-          <option value="">Scegli…</option>{(sedi || []).map((s) => <option key={s.id} value={s.id}>{s.nome} ({s.codice})</option>)}</select></Field>
+        <Field label="Sede"><SedeSelect sedi={sedi} defaultValue={acc.sede_id || ''} onChange={async (e) => { if (!e.target.value) return; try { await api.patch(`/accettazioni/${encodeURIComponent(acc.id)}/sede`, { sede_id: Number(e.target.value) }); setFixSede(false); toast('Sede aggiornata'); lookup(acc.id); } catch (er) { toast(er.message, 'err'); } }} emptyLabel="Scegli…" withCode /></Field>
       </Modal>}
     </div>
   );

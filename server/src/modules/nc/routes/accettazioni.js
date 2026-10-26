@@ -6,10 +6,10 @@ import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireLab, isSede, canSeeSede } from '../lib/access.js';
 import * as lis from '../lib/lis.js';
 import { NC_COLS, NC_FROM, viewFor } from '../lib/nc.js';
-import { loadSede } from '../lib/sedi.js';
+import { loadSedeInviante } from '../lib/sedi.js';
 
 const r = Router();
-const ACC_COLS = `a.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tipo AS sede_tipo, s.email_effettiva AS sede_email, s.canale AS sede_canale, s.attiva AS sede_attiva,
+const ACC_COLS = `a.*, s.nome AS sede_nome, s.codice AS sede_codice, s.tipo AS sede_tipo, s.origin AS sede_origin, s.email_effettiva AS sede_email, s.canale AS sede_canale, s.attiva AS sede_attiva,
   (SELECT count(*)::int FROM nc n WHERE n.accettazione_id=a.id AND n.stato <> 'ANNULLATA') AS n_nc`;
 
 // Elenco accettazioni in cache (ultime ricevute) con filtri
@@ -23,19 +23,19 @@ r.get('/accettazioni', ah(async (req, res) => {
   if (to) { p.push(to); w.push(`coalesce(a.data_accettazione, a.created_at) < ($${p.length}::date + 1)`); }
   if (solo_nc === '1') w.push(`EXISTS (SELECT 1 FROM nc n WHERE n.accettazione_id=a.id AND n.stato <> 'ANNULLATA'${isSede(req.user) ? ' AND n.sent_at IS NOT NULL' : ''})`);
   p.push(Math.min(Number(limit) || 100, 500));
-  const rows = await many(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sites_v s ON s.id=a.sede_id ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY coalesce(a.data_accettazione, a.created_at) DESC LIMIT $${p.length}`, p);
+  const rows = await many(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sedi_v s ON s.id=a.sede_id ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY coalesce(a.data_accettazione, a.created_at) DESC LIMIT $${p.length}`, p);
   res.json(rows);
 }));
 
 // Richiamo per numero di accettazione: cache locale + aggiornamento dal LIS se configurato
 r.get('/accettazioni/:id', ah(async (req, res) => {
   const id = String(req.params.id).trim();
-  let acc = await one(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sites_v s ON s.id=a.sede_id WHERE a.id=$1`, [id]);
+  let acc = await one(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sedi_v s ON s.id=a.sede_id WHERE a.id=$1`, [id]);
   let lisError = null;
   if (config.lis.enabled && (!acc || req.query.refresh === '1' || !acc.fetched_at || Date.now() - new Date(acc.fetched_at).getTime() > 10 * 60 * 1000)) {
     try {
       const row = await lis.refreshFromLis(id);
-      if (row) acc = await one(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sites_v s ON s.id=a.sede_id WHERE a.id=$1`, [id]);
+      if (row) acc = await one(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sedi_v s ON s.id=a.sede_id WHERE a.id=$1`, [id]);
     } catch (e) { lisError = e.message; }
   }
   if (!acc) {
@@ -59,8 +59,9 @@ const manualSchema = z.object({
 });
 r.post('/accettazioni', requireLab, ah(async (req, res) => {
   const b = parse(manualSchema, req.body);
-  const sede = await loadSede(b.sede_id);
+  const sede = await loadSedeInviante(b.sede_id);
   if (!sede) throw bad('Sede inviante non valida');
+  b.sede_id = sede.id;
   if (!sede.attiva) throw bad(`La sede "${sede.nome}" non è attiva per le non conformità`);
   const existing = await one('SELECT id FROM accettazioni WHERE id=$1', [b.id]);
   const row = await lis.upsertAccettazione({
@@ -77,10 +78,10 @@ r.patch('/accettazioni/:id/sede', requireLab, ah(async (req, res) => {
   const { sede_id } = parse(z.object({ sede_id: z.number().int() }), req.body);
   const acc = await one('SELECT * FROM accettazioni WHERE id=$1', [req.params.id]);
   if (!acc) throw notFound();
-  const sede = await loadSede(sede_id);
+  const sede = await loadSedeInviante(sede_id);
   if (!sede) throw bad('Sede non valida');
   if (!sede.attiva) throw bad(`La sede "${sede.nome}" non è attiva per le non conformità`);
-  await one('UPDATE accettazioni SET sede_id=$2, updated_at=now() WHERE id=$1 RETURNING *', [acc.id, sede_id]);
+  await one('UPDATE accettazioni SET sede_id=$2, updated_at=now() WHERE id=$1 RETURNING *', [acc.id, sede.id]);
   await audit(req, 'ACC_UPDATED', { entity: 'accettazione', entityId: acc.id, label: `${acc.id} · sede corretta` });
   res.json({ ok: true });
 }));

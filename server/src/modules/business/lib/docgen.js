@@ -116,7 +116,10 @@ export const CONTRACT_DOCNAME = { PP: 'Contratto_Punto_Prelievi', SRV: 'Offerta_
 
 // ---------------- Fascicolo di autorizzazione ----------------
 const DAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+// c è il contesto del contratto di origine (protocollo, decorrenza, versione, sede) e p la controparte (struttura ospitante
+// o locatore, orgs_v); un fascicolo di una sede TD senza contratto non ha controparte: i campi host_* restano vuoti
 export function dossierData(dossier, c, p, s) {
+  p = p || {};
   const site = c.site || {}; const x = dossier.extra || {};
   const base = baseData(s);
   const docDate = dossier.doc_date ? itDate(dossier.doc_date) : itDate(new Date().toISOString());
@@ -134,7 +137,7 @@ export function dossierData(dossier, c, p, s) {
     site_street: nz(site.street), site_street_upper: up(site.street), site_city: nz(site.city), site_city_upper: up(site.city), site_prov: nz(site.prov), site_zip: nz(site.zip),
     site_prov_name: nz(x.prov_name, site.prov), site_floor: nz(x.floor, 'Piano Terra'), site_building_type: nz(x.building_type, 'Studi Medici'), site_workers: nz(x.workers, '1'),
     site_notes: nz(x.notes),
-    host_name: p.name, host_name_upper: up(p.name), host_street: nz(p.street), host_zip: nz(p.zip), host_city: nz(p.city), host_prov: nz(p.prov),
+    host_name: nz(p.name), host_name_upper: up(p.name), host_street: nz(p.street), host_zip: nz(p.zip), host_city: nz(p.city), host_prov: nz(p.prov),
     host_signer: nz(p.signer, p.legal_rep || 'Il Legale Rappresentante'), host_signer_role: nz(p.signer_role, 'Legale Rappresentante'),
     ds_start_date: c.start_date ? itDate(c.start_date) : '__/__/____',
     dvr_code: nz(x.dvr_code, 'TD-SGI-REG0xx_00'), duvri_code: nz(x.duvri_code, 'TD-SGI-REG0xx_00'),

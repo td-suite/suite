@@ -31,9 +31,10 @@ r.put('/settings', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---------------- Organizzazioni (anagrafica unica della Suite) ----------------
-// Ragione sociale, P.IVA, indirizzo, PEC e stato si modificano in Amministrazione > Organizzazioni (public.organizations).
+// ---------------- Organizzazioni e sedi (anagrafica unica della Suite) ----------------
+// Legal entity: ragione sociale, P.IVA, indirizzo, PEC e stato si modificano in Amministrazione > Legal entity (public.organizations).
 // Qui si leggono tutte le organizzazioni e si modificano le sole impostazioni Business (org_ext, tracciato TD-SGI-MOD173).
+// Sedi TD: public.sites con kind <> 'SERVICE', in sola lettura (Amministrazione > Sedi), con i contratti e i fascicoli collegati.
 const optStr = (max) => z.preprocess((v) => (v === '' || v === undefined ? null : v), z.string().trim().max(max).nullable());
 const orgExtSchema = z.object({
   legal_rep: optStr(160), signer: optStr(160), signer_role: optStr(120),
@@ -50,7 +51,9 @@ const orgExtSchema = z.object({
 export const ORG_EXT_COLS = Object.keys(orgExtSchema.shape).filter((k) => k !== 'portal_password');
 
 const ORG_LIST = `SELECT v.*, (SELECT count(*)::int FROM contracts c WHERE c.org_id=v.id AND c.status<>'ANNULLATO') AS contracts,
-      (SELECT json_agg(json_build_object('id', c.id, 'kind', c.kind, 'protocol', c.protocol, 'status', c.status, 'title', c.title) ORDER BY c.created_at DESC) FROM contracts c WHERE c.org_id=v.id) AS contract_list
+      (SELECT json_agg(json_build_object('id', c.id, 'kind', c.kind, 'protocol', c.protocol, 'status', c.status, 'title', c.title, 'site_name', s.name) ORDER BY c.created_at DESC) FROM contracts c LEFT JOIN public.sites s ON s.id=c.site_id WHERE c.org_id=v.id) AS contract_list,
+      (SELECT count(*)::int FROM dossiers d WHERE d.org_id=v.id) AS dossiers,
+      (SELECT json_agg(json_build_object('id', d.id, 'status', d.status, 'title', coalesce(d.title, c.title, s.name), 'site_name', s.name) ORDER BY d.created_at DESC) FROM dossiers d LEFT JOIN contracts c ON c.id=d.contract_id LEFT JOIN public.sites s ON s.id=d.site_id WHERE d.org_id=v.id) AS dossier_list
     FROM orgs_v v`;
 
 r.get('/organizations', ah(async (req, res) => {
@@ -92,14 +95,23 @@ r.get('/organizations/:id/portal-password', requireManager, ah(async (req, res) 
   res.json({ password: decrypt(x.portal_password_enc) });
 }));
 
-// Sedi dell'anagrafica unica per i selettori dei form (punti prelievo e sedi TD in locazione).
-// I profili Business non sono di sede: se il grant ha scope di sede si limita alle sedi del grant.
+// Sedi TD dell'anagrafica unica (public.sites, kind <> 'SERVICE': i punti dei clienti service non sono sedi TD) per la pagina
+// Organizzazioni e sedi e per i selettori dei form, con i contratti e i fascicoli collegati. Nessuna scrittura: le sedi si
+// creano e si modificano in Amministrazione > Sedi. I profili Business non sono di sede: se il grant ha scope di sede si
+// limita alle sedi del grant. ?all=1 include le sedi disattivate (per mostrare quelle già collegate).
 r.get('/sites', ah(async (req, res) => {
   const ids = Array.isArray(req.user.site_ids) ? req.user.site_ids : [];
   const all = req.query.all === '1';
-  const rows = await many(`SELECT s.id, s.code, s.name, s.kind, s.address, s.zip, s.city, s.province, s.active, s.organization_id, o.name AS organization_name
+  const qs = String(req.query.q || '').trim().toLowerCase();
+  const rows = await many(`SELECT s.id, s.code, s.name, s.short_name, s.kind, s.address, s.zip, s.city, s.province, s.phone, s.email, s.active, s.organization_id, o.name AS organization_name,
+      (SELECT count(*)::int FROM contracts c WHERE c.site_id=s.id AND c.status<>'ANNULLATO') AS contracts,
+      (SELECT json_agg(json_build_object('id', c.id, 'kind', c.kind, 'protocol', c.protocol, 'status', c.status, 'title', c.title, 'org_name', p.name) ORDER BY c.created_at DESC) FROM contracts c LEFT JOIN public.organizations p ON p.id=c.org_id WHERE c.site_id=s.id) AS contract_list,
+      (SELECT count(*)::int FROM dossiers d WHERE d.site_id=s.id) AS dossiers,
+      (SELECT json_agg(json_build_object('id', d.id, 'status', d.status, 'title', coalesce(d.title, c.title, s.name), 'org_name', p.name) ORDER BY d.created_at DESC) FROM dossiers d LEFT JOIN contracts c ON c.id=d.contract_id LEFT JOIN public.organizations p ON p.id=d.org_id WHERE d.site_id=s.id) AS dossier_list
     FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id
-    WHERE ($1::int[] = '{}' OR s.id = ANY($1::int[])) AND ($2 OR s.active) ORDER BY s.sort_order, s.name`, [ids, all]);
+    WHERE s.kind <> 'SERVICE' AND ($1::int[] = '{}' OR s.id = ANY($1::int[])) AND ($2 OR s.active)
+      AND ($3='' OR lower(s.name) LIKE '%'||$3||'%' OR lower(s.code) LIKE '%'||$3||'%' OR lower(coalesce(s.city,'')) LIKE '%'||$3||'%' OR lower(coalesce(s.address,'')) LIKE '%'||$3||'%')
+    ORDER BY s.name`, [ids, all, qs]);
   res.json(rows);
 }));
 
@@ -115,8 +127,9 @@ r.get('/audit', requireAdmin, ah(async (req, res) => {
 r.post('/reset', requireAdmin, ah(async (req, res) => {
   const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
   if (confirm !== 'AZZERA') throw bad('Per confermare scrivi AZZERA');
-  const before = await one('SELECT (SELECT count(*) FROM contracts)::int AS contracts');
+  const before = await one('SELECT (SELECT count(*) FROM contracts)::int AS contracts, (SELECT count(*) FROM dossiers)::int AS dossiers');
   await q('DELETE FROM contracts');
+  await q('DELETE FROM dossiers');  // anche i fascicoli delle sedi TD senza contratto
   await q('DELETE FROM protocol_counters');
   await audit(req, 'DATA_RESET', 'system', null, before);
   res.json({ ok: true, deleted: before });

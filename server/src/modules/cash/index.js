@@ -64,14 +64,16 @@ async function ensureCashUser(req, _res, next) {
     if (st.mode === 'OFF' || !st.schema_ready) return next();   // ci pensa requireModuleReady a rispondere 503
     const role = roleFor(req.user);
     if (!role) return next();                                   // nessun grant: requireModuleReady risponde 403
-    const row = await db.one('SELECT id, role, company_id FROM users WHERE lower(email)=lower($1)', [req.user.email]);
+    const row = await db.one('SELECT id, role, company_id, suite_user_id FROM users WHERE lower(email)=lower($1)', [req.user.email]);
     if (role !== 'SUPERADMIN' && (!row || row.company_id == null)) {
       const cid = await resolveCompanyId(req.user);
       if (!cid) throw new HttpError(503, 'Nessuna società o gruppo nell\'anagrafica della Suite: creala in Amministrazione > Organizzazioni');
-      if (row) await db.q('UPDATE users SET company_id=$2, updated_at=now() WHERE id=$1', [row.id, cid]);
-      else await db.q(`INSERT INTO users (email, full_name, role, company_id, auth_provider, must_change_password) VALUES ($1,$2,$3,$4,'ENTRA',FALSE)`, [req.user.email, req.user.full_name || req.user.email, role, cid]);
+      if (row) await db.q('UPDATE users SET company_id=$2, suite_user_id=coalesce(suite_user_id, $3), updated_at=now() WHERE id=$1', [row.id, cid, req.user.id]);
+      else await db.q(`INSERT INTO users (email, full_name, role, company_id, suite_user_id, auth_provider, must_change_password) VALUES ($1,$2,$3,$4,$5,'ENTRA',FALSE)`, [req.user.email, req.user.full_name || req.user.email, role, cid, req.user.id]);
     } else if (!row) {
-      await db.q(`INSERT INTO users (email, full_name, role, company_id, auth_provider, must_change_password) VALUES ($1,$2,'SUPERADMIN',NULL,'ENTRA',FALSE)`, [req.user.email, req.user.full_name || req.user.email]);
+      await db.q(`INSERT INTO users (email, full_name, role, company_id, suite_user_id, auth_provider, must_change_password) VALUES ($1,$2,'SUPERADMIN',NULL,$3,'ENTRA',FALSE)`, [req.user.email, req.user.full_name || req.user.email, req.user.id]);
+    } else if (row.suite_user_id == null) {
+      await db.q('UPDATE users SET suite_user_id=$2, updated_at=now() WHERE id=$1', [row.id, req.user.id]);
     }
     next();
   } catch (e) { next(e); }
@@ -86,7 +88,9 @@ async function buildAppUser(req, _res, next) {
     const mu = req.moduleUser;
     const company = mu.company_id ? await db.one('SELECT name AS company_name, code AS company_code FROM companies_v WHERE id=$1', [mu.company_id]) : null;
     const siteIds = [...new Set((mu.site_ids || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
-    req.user = { ...mu, ...(company || {}), site_ids: siteIds, active: true };
+    // Fondo cassa personale dell'operatore: campo operativo di Cash per persona (user_ext, agganciato all'utente Suite)
+    const ext = await db.one('SELECT cash_float FROM user_ext WHERE user_id=$1', [mu.suite_user_id]);
+    req.user = { ...mu, ...(company || {}), site_ids: siteIds, cash_float: ext?.cash_float ?? null, active: true };
     next();
   } catch (e) { next(e); }
 }

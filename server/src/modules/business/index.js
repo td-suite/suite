@@ -1,7 +1,8 @@
 // Modulo Business (Contratti B2C/B2B): contratti in quattro sezioni (punti prelievo, sedi in locazione, service,
 // medicina del lavoro), dossier e fascicoli di autorizzazione, protocolli, credenziali dei portali, generazione DOCX/PDF.
-// Anagrafica unica (docs/ANAGRAFICA.md): le controparti sono public.organizations (impostazioni Business in business.org_ext),
-// le sedi dei punti prelievo e le sedi TD in locazione sono public.sites. Nessuna anagrafica propria, nessuna importazione.
+// Anagrafica unica (docs/ANAGRAFICA.md): le controparti sono le Legal entity public.organizations (impostazioni Business in
+// business.org_ext), le sedi TD sono public.sites (kind <> 'SERVICE'). Contratti e fascicoli si collegano alla controparte e/o
+// alla sede TD (almeno una delle due). Nessuna anagrafica propria, nessuna importazione.
 // Travasato dall'app business.toscanadiagnostica.it: il codice delle route è quello dell'app, cambiano accesso e montaggio.
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';

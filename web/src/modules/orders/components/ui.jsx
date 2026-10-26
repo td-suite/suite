@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { STATUS } from '../format.js';
+import { STATUS, STRUTTURA_ORIGIN, strutturaLabel } from '../format.js';
 
 // ---------- Toast ----------
 const ToastCtx = createContext(() => {});
@@ -56,6 +56,14 @@ export function Empty({ children }) { return <div className="empty">{children}</
 
 // ---------- Primitives ----------
 export function Badge({ tone = 'grey', children }) { return <span className={`badge b-${tone}`}>{children}</span>; }
+// Opzioni di un selettore di struttura: le due origini dell'anagrafica unica in due gruppi (sedi TD, poi Legal entity)
+export function StrutturaOptions({ strutture, filter = () => true }) {
+  const list = (strutture || []).filter(filter);
+  return ['SITE', 'ORG'].map((origin) => {
+    const rows = list.filter((s) => (s.origin || 'SITE') === origin);
+    return rows.length ? <optgroup key={origin} label={STRUTTURA_ORIGIN[origin]}>{rows.map((s) => <option key={s.id} value={s.id}>{strutturaLabel(s)}</option>)}</optgroup> : null;
+  });
+}
 export function StatusBadge({ status }) {
   const s = STATUS[status] || { label: status, tone: 'grey' };
   return <Badge tone={s.tone}>{s.label}</Badge>;

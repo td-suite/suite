@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { api, qs, API_BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
-import { useApi, Field, Loading, Empty, Card, ErrorBox, Modal, Icon, Badge, useToast } from '../components/ui.jsx';
+import { useApi, Field, Loading, Empty, Card, ErrorBox, Modal, Icon, Badge, useToast, StrutturaOptions } from '../components/ui.jsx';
 import { monthLabel, currentMonth, dec, itDateTime } from '../format.js';
 
 // Produzione mensile per struttura (StudioLab): esami x mesi, correlata ai materiali consumati
@@ -32,7 +32,7 @@ export default function Production() {
       <div className="page-head">
         <div><h1>Produzione{ops ? ' StudioLab' : ''}</h1><div className="sub">Esami refertati per mese, correlati ai materiali di consumo attraverso la tabella esame → articolo</div></div>
         <div className="row">
-          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSid(e.target.value)} style={{ minWidth: 260 }}><option value="">Scegli…</option>{(strutture.data || []).filter((s) => s.kind !== 'LAB').map((s) => <option key={s.id} value={s.id}>{s.name}{s.studiolab_code ? ` · ${s.studiolab_code}` : ''}</option>)}</select></Field>}
+          {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSid(e.target.value)} style={{ minWidth: 260 }}><option value="">Scegli…</option><StrutturaOptions strutture={strutture.data} filter={(s) => s.kind !== 'LAB'} /></select></Field>}
           {ops && <a className="btn ghost" href={`${API_BASE}/production/import/template.xlsx`}><Icon name="download" size={16} />Modello</a>}
           {ops && <label className="btn ghost"><Icon name="upload" size={16} />Importa file<input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && importFile(e.target.files[0])} /></label>}
           {ops && sid && <button className="btn ghost" onClick={() => setManual({ month: currentMonth(), items: [{ examCode: '', examName: '', qty: '' }] })}><Icon name="plus" size={16} />Inserisci mese</button>}

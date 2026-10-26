@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, MoneyInput, useToast, Icon, UploadButton, Badge } from '../components/ui.jsx';
-import { ORG_KIND } from '../components/OrgExtForm.jsx';
+import { PartyCards } from '../components/PartyPicker.jsx';
 import { today, KIND, DAYS, FEE_VAT, FEE_PERIOD, FEE_BASE, FEE_KIND, SITE_TYPE, RENT_PERIOD, bytes } from '../format.js';
 
 const EMPTY = {
@@ -23,10 +23,10 @@ export default function ContractForm() {
   const kind = existing.data?.kind || kindParam;
   const settings = useApi('/settings');
   const [f, setF] = useState(null);
-  const [partnerQ, setPartnerQ] = useState('');
-  // organizzazioni e sedi dell'anagrafica unica (Amministrazione): qui si scelgono, non si creano
-  const partners = useApi(`/organizations${partnerQ ? `?q=${encodeURIComponent(partnerQ)}` : ''}`);
-  const sites = useApi(kindParam === 'PP' || kindParam === 'SEDE' || id ? '/sites?all=1' : null);
+  // Legal entity (controparte) e sedi TD dell'anagrafica unica (Amministrazione): qui si scelgono, non si creano.
+  // Almeno una delle due è obbligatoria; per punti prelievo e sedi in locazione la sede TD è sempre richiesta.
+  const partners = useApi('/organizations');
+  const sites = useApi('/sites?all=1');
   const [err, setErr] = useState(null);
   const [pending, setPending] = useState([]); // file da caricare dopo il salvataggio (nuova proposta)
 
@@ -50,9 +50,9 @@ export default function ContractForm() {
   const save = async () => {
     setErr(null);
     try {
-      const body = { kind, org_id: Number(f.org_id), site_id: f.site_id ? Number(f.site_id) : null, title: f.title || null, proposal_date: f.proposal_date, start_date: f.start_date || null, end_date: f.end_date || null, notes: f.notes || null, data: cleanData(kind, d) };
-      if (!body.org_id) throw new Error('Seleziona l’organizzazione dall’anagrafica');
-      if ((kind === 'PP' || kind === 'SEDE') && !body.site_id) throw new Error('Seleziona la sede dall’anagrafica');
+      const body = { kind, org_id: f.org_id ? Number(f.org_id) : null, site_id: f.site_id ? Number(f.site_id) : null, title: f.title || null, proposal_date: f.proposal_date, start_date: f.start_date || null, end_date: f.end_date || null, notes: f.notes || null, data: cleanData(kind, d) };
+      if (!body.org_id && !body.site_id) throw new Error('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
+      if ((kind === 'PP' || kind === 'SEDE') && !body.site_id) throw new Error('Seleziona la sede TD dall’anagrafica');
       const r = id ? await api.put(`/contracts/${id}`, body) : await api.post('/contracts', body);
       for (const pf of pending) { const fd = new FormData(); fd.append('category', pf.category); fd.append('files', pf.file); await api.upload(`/contracts/${r.id}/files`, fd); }
       toast(id ? (kind === 'SEDE' ? 'Sede aggiornata' : 'Proposta aggiornata') : (kind === 'SEDE' ? 'Sede registrata' : 'Proposta creata in bozza'));
@@ -74,26 +74,13 @@ export default function ContractForm() {
         <div className="row"><button className="btn ghost" onClick={() => nav(-1)}>Annulla</button><button className="btn" onClick={save}>Salva</button></div>
       </div>
       <ErrorBox error={err} />
-      <div className="grid g2">
-        <Card title={kind === 'SEDE' ? 'Locatore (organizzazione)' : 'Organizzazione'} actions={<a className="btn sm ghost" href="/admin/organizations">Apri in Amministrazione</a>}>
-          <div className="form-grid">
-            <Field label="Cerca nell'anagrafica"><input value={partnerQ} onChange={(e) => setPartnerQ(e.target.value)} placeholder="ragione sociale, P.IVA, città" /></Field>
-            <Field label={kind === 'SEDE' ? 'Locatore' : 'Cliente / partner'} className="span2" help="organizzazioni dell'anagrafica unica della Suite">
-              <select value={f.org_id} onChange={(e) => setF({ ...f, org_id: e.target.value })}>
-                <option value="">Seleziona…</option>
-                {(partners.data || []).filter((p) => p.active || p.id === Number(f.org_id)).map((p) => <option key={p.id} value={p.id}>{p.name}{p.kind ? ` · ${ORG_KIND[p.kind] || p.kind}` : ''}{p.city ? ` · ${p.city}` : ''}{p.vat ? ` · ${p.vat}` : ''}</option>)}
-              </select>
-            </Field>
-          </div>
-          {partner && (
-            <div className="alert info small" style={{ marginTop: 12 }}>
-              <b>{partner.name}</b> · {[partner.street, partner.zip, partner.city, partner.prov ? `(${partner.prov})` : ''].filter(Boolean).join(', ')}<br />
-              P.IVA {partner.vat || '–'} · C.F. {partner.tax_code || partner.vat || '–'} · PEC {partner.pec || '–'} · SDI {partner.sdi || '–'}<br />
-              Legale rappresentante: {partner.legal_rep || '–'}{partner.signer ? ` · firmatario: ${partner.signer}${partner.signer_role ? ` (${partner.signer_role})` : ''}` : ''}
-              {(!partner.vat && !partner.tax_code) || !partner.street || !(partner.signer || partner.legal_rep) ? <div className="red" style={{ marginTop: 4 }}>Dati incompleti per la generazione del documento: P.IVA o C.F. e indirizzo in Amministrazione, Legal entity, firmatario nelle impostazioni Business dell'organizzazione.</div> : null}
-            </div>
-          )}
-        </Card>
+      <PartyCards orgs={partners.data} sites={sites.data} orgId={f.org_id} siteId={f.site_id} onOrg={(v) => setF({ ...f, org_id: v })} onSite={(v) => setF({ ...f, site_id: v })} org={partner} site={site}
+        orgTitle={{ PP: 'Controparte: struttura ospitante (Legal entity)', SEDE: 'Controparte: locatore (Legal entity)', SRV: 'Controparte: cliente del service (Legal entity)', MDL: 'Controparte: cliente (Legal entity)' }[kind]}
+        siteTitle={{ PP: 'Sede TD del Punto Prelievi', SEDE: 'Sede TD in locazione', SRV: 'Sede TD di riferimento', MDL: 'Sede TD di riferimento' }[kind]}
+        siteRequired={kind === 'PP' || kind === 'SEDE'}
+        orgNote={kind === 'PP' ? 'Il contratto del punto prelievi lega la sede TD al partner che la ospita: la controparte è intestataria del documento generato.' : kind === 'SEDE' ? 'Il locatore della sede intestata a Toscana Diagnostica.' : 'Intestataria della lettera di offerta: serve per generare il documento.'}
+        siteNote={kind === 'PP' ? 'Sede dell’anagrafica unica (Amministrazione > Sedi): indirizzo e comune compaiono nel contratto e nel fascicolo. Il comune è anche il comune di esclusiva (art. 3.1) e il destinatario della domanda di autorizzazione (Modello 5).' : kind === 'SEDE' ? 'Sede intestata a Toscana Diagnostica: l’autorizzazione sanitaria si chiede a nome proprio e il fascicolo si compila dalla scheda. Atto di condivisione e DUVRI con la struttura ospitante sono esclusi in automatico.' : 'Facoltativa: la sede TD che eroga il servizio (laboratorio di riferimento). Almeno una tra controparte e sede TD va indicata.'} />
+      <div className="grid g2 mt">
         <Card title="Proposta">
           <div className="form-grid">
             <Field label={kind === 'SEDE' ? 'Data del contratto di locazione' : 'Data della proposta'}><input type="date" value={f.proposal_date} onChange={(e) => setF({ ...f, proposal_date: e.target.value })} /></Field>
@@ -105,10 +92,6 @@ export default function ContractForm() {
       </div>
 
       {kind === 'PP' && <>
-        <Card title="Sede del Punto Prelievi (premesse del contratto)" className="mt" actions={<a className="btn sm ghost" href="/admin/sites">Apri in Amministrazione</a>}>
-          <SitePicker sites={sites.data || []} value={f.site_id} onChange={(v) => setF({ ...f, site_id: v })} site={site} />
-          <div className="small muted" style={{ marginTop: 8 }}>La sede è quella dell'anagrafica unica (Amministrazione &gt; Sedi): indirizzo e comune compaiono nel contratto e nel fascicolo. Il comune è anche il comune di esclusiva (art. 3.1, ultimo punto) e il destinatario della domanda di autorizzazione (Modello 5).</div>
-        </Card>
         <Card title="Ripartizione dei servizi (art. 3)" className="mt">
           <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', alignItems: 'end' }}>
             <Field label="Servizio infermieristico per i prelievi">
@@ -198,15 +181,9 @@ export default function ContractForm() {
       </>}
 
       {kind === 'SEDE' && <>
-        <Card title="Sede" className="mt" actions={<a className="btn sm ghost" href="/admin/sites">Apri in Amministrazione</a>}>
-          <div className="form-grid">
-            <Field label="Tipo di sede"><select value={d.site_type} onChange={(e) => setD('site_type', e.target.value)}>{Object.entries(SITE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          </div>
-          <div style={{ marginTop: 10 }}><SitePicker sites={sites.data || []} value={f.site_id} onChange={(v) => setF({ ...f, site_id: v })} site={site} /></div>
-          <div className="small muted" style={{ marginTop: 8 }}>La sede è intestata a Toscana Diagnostica ed è una sede dell'anagrafica unica: l'autorizzazione sanitaria si chiede a nome proprio e il fascicolo (Modello 5 o istanza equivalente, planimetrie, relazioni, liste di autovalutazione, DVR) si compila dalla scheda. Atto di condivisione e DUVRI con la struttura ospitante sono esclusi in automatico.</div>
-        </Card>
         <Card title="Locazione" className="mt">
           <div className="form-grid">
+            <Field label="Tipo di sede"><select value={d.site_type} onChange={(e) => setD('site_type', e.target.value)}>{Object.entries(SITE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
             <Field label="Canone (€)"><MoneyInput value={d.rent.amount} onChange={(v) => setD('rent.amount', v)} /></Field>
             <Field label="Periodicità"><select value={d.rent.period} onChange={(e) => setD('rent.period', e.target.value)}>{Object.entries(RENT_PERIOD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
             <Field label="IVA"><select value={d.rent.vat} onChange={(e) => setD('rent.vat', e.target.value)}>{Object.entries(FEE_VAT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -228,27 +205,6 @@ export default function ContractForm() {
 
       <div className="row end" style={{ marginTop: 18 }}><button className="btn ghost" onClick={() => nav(-1)}>Annulla</button><button className="btn lg" onClick={save}><Icon name="check" />Salva</button></div>
     </div>
-  );
-}
-
-// Selettore della sede sull'anagrafica unica (public.sites), con ricerca per nome, codice o comune
-function SitePicker({ sites, value, onChange, site }) {
-  const [q, setQ] = useState('');
-  const ql = q.trim().toLowerCase();
-  const list = sites.filter((x) => (x.active || x.id === Number(value)) && (!ql || `${x.name} ${x.code} ${x.city || ''} ${x.address || ''}`.toLowerCase().includes(ql)));
-  return (
-    <>
-      <div className="form-grid">
-        <Field label="Cerca la sede"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="nome, codice, comune" /></Field>
-        <Field label="Sede" className="span2">
-          <select value={value || ''} onChange={(e) => onChange(e.target.value)}>
-            <option value="">Seleziona…</option>
-            {list.map((x) => <option key={x.id} value={x.id}>{x.name}{x.city ? ` · ${x.city}` : ''}{x.code ? ` · ${x.code}` : ''}</option>)}
-          </select>
-        </Field>
-      </div>
-      {site && <div className="alert info small" style={{ marginTop: 10 }}><b>{site.name}</b> · {[site.address || site.street, site.zip, site.city, (site.province || site.prov) ? `(${site.province || site.prov})` : ''].filter(Boolean).join(', ') || 'indirizzo non indicato'}{site.organization_name ? ` · ${site.organization_name}` : ''}{!(site.address || site.street) || !site.city ? <div className="red" style={{ marginTop: 4 }}>Completa indirizzo e comune della sede in Amministrazione &gt; Sedi: compaiono nel contratto e nel fascicolo.</div> : null}</div>}
-    </>
   );
 }
 

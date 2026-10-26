@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canEditDossier } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, Modal, ConfirmModal, UploadButton, Icon, useToast } from '../components/ui.jsx';
+import { PartyCards } from '../components/PartyPicker.jsx';
 import { itDate, itDateTime, bytes, DOSSIER_STATUS, DOC_STATUS, DAYS } from '../format.js';
 
+// Scheda del fascicolo (per id del fascicolo). Il fascicolo ha i propri riferimenti all'anagrafica unica: la sede TD
+// autorizzanda e la controparte (struttura ospitante o locatore); se nasce da un contratto li segue, altrimenti si scelgono qui.
 export default function Dossier() {
   const { id } = useParams();
+  const nav = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
   const q = useApi(`/dossiers/${id}`);
@@ -15,24 +19,26 @@ export default function Dossier() {
   const [errors, setErrors] = useState(null);
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!q.data) return <div className="page"><Loading /></div>;
-  const { contract: c, dossier: d } = q.data;
+  const d = q.data; const c = d.contract;
   const edit = canEditDossier(user);
-  const site = c.site || {};
+  const site = d.site || {}; const org = d.org;
   const act = async (fn, msg) => { try { const r = await fn(); if (r?.errors?.length) setErrors(r.errors); if (r?.pdfError) toast(`PDF non prodotto: ${r.pdfError}`, 'err'); q.reload(); if (msg) toast(msg); } catch (e) { toast(e.message, 'err'); } };
-  const save = (body, msg = 'Fascicolo aggiornato') => act(() => api.put(`/dossiers/${c.id}`, body), msg);
-  const upload = (key, list) => act(async () => { const fd = new FormData(); for (const f of list) fd.append('files', f); return api.upload(`/dossiers/${c.id}/upload/${key}`, fd); }, 'File caricati');
+  const save = (body, msg = 'Fascicolo aggiornato') => act(() => api.put(`/dossiers/${d.id}`, body), msg);
+  const upload = (key, list) => act(async () => { const fd = new FormData(); for (const f of list) fd.append('files', f); return api.upload(`/dossiers/${d.id}/upload/${key}`, fd); }, 'File caricati');
   const groups = [...new Set(d.rows.map((r) => r.group))];
+  const where = d.site ? `${site.name}${site.street ? ` in ${site.street}` : ''}${site.city ? `, ${site.city}` : ''}${site.prov ? ` (${site.prov})` : ''}` : 'sede TD da indicare';
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
-          <div className="row" style={{ gap: 8, marginBottom: 6 }}><Badge tone={DOSSIER_STATUS[d.status].tone}>{DOSSIER_STATUS[d.status].label}</Badge><StatusBadge status={c.status} />{c.protocol && <span className="mono">{c.protocol}</span>}</div>
-          <h1>Fascicolo di autorizzazione · {c.title}</h1>
-          <div className="sub">Domanda al Comune di {site.city} ai sensi della L.R. Toscana 51/2009 (Modello 5) per {c.kind === 'SEDE' ? 'la sede' : 'il punto prelievo'} {site.name} in {site.street}, {site.city} ({site.prov}){c.kind === 'SEDE' ? `, locatore ${c.org?.name}` : `, presso ${c.org?.name}`}. <Link to={`${BASE}/contratti/${c.id}`}>Scheda del contratto</Link>.</div>
+          <div className="row" style={{ gap: 8, marginBottom: 6 }}><Badge tone={DOSSIER_STATUS[d.status].tone}>{DOSSIER_STATUS[d.status].label}</Badge>{c && <StatusBadge status={c.status} />}{c?.protocol && <span className="mono">{c.protocol}</span>}{!c && <Badge tone="grey">senza contratto</Badge>}</div>
+          <h1>Fascicolo di autorizzazione · {d.label}</h1>
+          <div className="sub">Domanda al Comune{site.city ? ` di ${site.city}` : ''} ai sensi della L.R. Toscana 51/2009 (Modello 5) per {c?.kind === 'PP' ? 'il punto prelievo' : 'la sede'} {where}{org ? (c?.kind === 'SEDE' ? `, locatore ${org.name}` : `, controparte ${org.name}`) : ', nessuna struttura ospitante'}. {c && <Link to={`${BASE}/contratti/${c.id}`}>Scheda del contratto</Link>}</div>
         </div>
         <div className="row">
-          {edit && <button className="btn" onClick={() => act(() => api.post(`/dossiers/${c.id}/generate-all`), 'Documenti del fascicolo generati')}><Icon name="file" />Genera tutti i documenti</button>}
+          {edit && !c && d.status === 'IN_CORSO' && <button className="btn ghost danger" onClick={() => setModal({ type: 'delete' })}>Elimina fascicolo</button>}
+          {edit && <button className="btn" onClick={() => act(() => api.post(`/dossiers/${d.id}/generate-all`), 'Documenti del fascicolo generati')}><Icon name="file" />Genera tutti i documenti</button>}
         </div>
       </div>
 
@@ -59,7 +65,7 @@ export default function Dossier() {
                 <td><Badge tone={DOC_STATUS[r.status].tone}>{DOC_STATUS[r.status].label}</Badge></td>
                 <td>{r.files.map((f) => <div key={f.id} className="row small" style={{ gap: 6, marginBottom: 3 }}><Badge tone={f.source === 'GEN' ? 'blue' : 'green'}>{f.source === 'GEN' ? 'generato' : 'caricato'}</Badge><a href={`${API_BASE}/dossier-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="muted">{bytes(f.size)}</span>{edit && <button className="iconbtn" style={{ width: 24, height: 24 }} title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>)}</td>
                 <td className="num">{edit && <div className="row end" style={{ gap: 6 }}>
-                  {r.source !== 'UPLOAD' && r.status !== 'NON_APPLICABILE' && <button className="btn sm ghost" onClick={() => act(() => api.post(`/dossiers/${c.id}/generate/${r.key}`), r.source === 'CHECK' ? 'Lista esportata in XLSX' : 'Documento generato')}><Icon name="file" />{r.source === 'CHECK' ? 'Esporta XLSX' : 'Genera'}</button>}
+                  {r.source !== 'UPLOAD' && r.status !== 'NON_APPLICABILE' && <button className="btn sm ghost" onClick={() => act(() => api.post(`/dossiers/${d.id}/generate/${r.key}`), r.source === 'CHECK' ? 'Lista esportata in XLSX' : 'Documento generato')}><Icon name="file" />{r.source === 'CHECK' ? 'Esporta XLSX' : 'Genera'}</button>}
                   {r.status !== 'NON_APPLICABILE' && <UploadButton label={r.source === 'UPLOAD' ? 'Carica' : 'Carica firmato'} multiple={Boolean(r.multi)} onFiles={(fl) => upload(r.key, fl)} />}
                   <button className="btn sm ghost" title="Nota o non applicabile" onClick={() => setModal({ type: 'note', r })}><Icon name="edit" /></button>
                 </div>}</td>
@@ -68,13 +74,14 @@ export default function Dossier() {
         </Card>
       ))}
 
-      {tab === 'sede' && <SiteTab d={d} c={c} edit={edit} save={save} />}
+      {tab === 'sede' && <><PartyTab d={d} edit={edit} save={save} /><SiteTab d={d} c={c} edit={edit} save={save} /></>}
       {tab === 'personale' && <StaffTab d={d} edit={edit} save={save} />}
       {tab === 'strumentazione' && <EquipmentTab d={d} edit={edit} save={save} />}
-      {['A', 'B', 'B1.1'].includes(tab) && <ChecklistTab key={tab} d={d} c={c} code={tab} edit={edit} onSaved={() => q.reload()} />}
+      {['A', 'B', 'B1.1'].includes(tab) && <ChecklistTab key={tab} d={d} code={tab} edit={edit} onSaved={() => q.reload()} />}
 
-      {modal?.type === 'delfile' && <ConfirmModal danger title="Rimuovi file" text={`Rimuovere ${modal.f.filename} dal fascicolo?`} confirmText="Rimuovi" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/dossiers/${c.id}/files/${modal.f.id}`); q.reload(); }} />}
-      {modal?.type === 'note' && <DocNoteModal r={modal.r} onClose={() => setModal(null)} onSave={async (b) => { await api.put(`/dossiers/${c.id}/docs/${modal.r.key}`, b); setModal(null); q.reload(); }} />}
+      {modal?.type === 'delfile' && <ConfirmModal danger title="Rimuovi file" text={`Rimuovere ${modal.f.filename} dal fascicolo?`} confirmText="Rimuovi" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/dossiers/${d.id}/files/${modal.f.id}`); q.reload(); }} />}
+      {modal?.type === 'delete' && <ConfirmModal danger title="Elimina fascicolo" text="Il fascicolo e i file collegati verranno eliminati." confirmText="Elimina" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/dossiers/${d.id}`); nav(`${BASE}/fascicoli`); }} />}
+      {modal?.type === 'note' && <DocNoteModal r={modal.r} onClose={() => setModal(null)} onSave={async (b) => { await api.put(`/dossiers/${d.id}/docs/${modal.r.key}`, b); setModal(null); q.reload(); }} />}
     </div>
   );
 }
@@ -163,7 +170,31 @@ function EquipmentTab({ d, edit, save }) {
   );
 }
 
-function ChecklistTab({ d, c, code, edit, onSaved }) {
+// Controparte (Legal entity) e sede TD del fascicolo: con un contratto di origine si leggono dal contratto, altrimenti si scelgono qui
+function PartyTab({ d, edit, save }) {
+  const [f, setF] = useState({ org_id: d.org_id || '', site_id: d.site_id || '', title: d.title || '' });
+  useEffect(() => { setF({ org_id: d.org_id || '', site_id: d.site_id || '', title: d.title || '' }); }, [d.org_id, d.site_id, d.title]);
+  const orgs = useApi('/organizations');
+  const sites = useApi('/sites?all=1');
+  const org = (orgs.data || []).find((x) => x.id === Number(f.org_id)) || (Number(f.org_id) === d.org_id ? d.org : null);
+  const site = (sites.data || []).find((x) => x.id === Number(f.site_id)) || (Number(f.site_id) === d.site_id ? d.site : null);
+  const locked = Boolean(d.contract_id) || !edit;
+  const dirty = String(f.org_id) !== String(d.org_id || '') || String(f.site_id) !== String(d.site_id || '') || (f.title || '') !== (d.title || '');
+  return (
+    <div style={{ marginTop: 16 }}>
+      <PartyCards orgs={orgs.data} sites={sites.data} orgId={f.org_id} siteId={f.site_id} onOrg={(v) => setF({ ...f, org_id: v })} onSite={(v) => setF({ ...f, site_id: v })} org={org} site={site}
+        orgTitle="Controparte (Legal entity)" siteTitle="Sede TD autorizzanda" orgDisabled={locked} siteDisabled={locked}
+        orgNote={d.contract_id ? 'Fascicolo nato da un contratto: la controparte si modifica dal contratto di origine.' : 'Struttura ospitante, se c’è: senza controparte atto di condivisione e DUVRI non si applicano.'}
+        siteNote={d.contract_id ? 'La sede TD segue il contratto di origine.' : 'La sede di Toscana Diagnostica per cui si chiede l’autorizzazione sanitaria: indirizzo e comune compaiono nei documenti.'} />
+      {!locked && <div className="row end" style={{ marginTop: 10, gap: 8 }}>
+        <Field label="Denominazione del fascicolo"><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={site?.name ? `Autorizzazione ${site.name}` : ''} style={{ minWidth: 280 }} /></Field>
+        <button className="btn" disabled={!dirty || (!f.org_id && !f.site_id)} onClick={() => save({ org_id: f.org_id ? Number(f.org_id) : null, site_id: f.site_id ? Number(f.site_id) : null, title: f.title || null }, 'Controparte e sede salvate')}>Salva controparte e sede</button>
+      </div>}
+    </div>
+  );
+}
+
+function ChecklistTab({ d, code, edit, onSaved }) {
   const toast = useToast();
   const L = d.checklists.find((x) => x.code === code);
   const [items, setItems] = useState(L?.items || []);
@@ -172,7 +203,7 @@ function ChecklistTab({ d, c, code, edit, onSaved }) {
   const [reset, setReset] = useState(false);
   if (!L) return <ErrorBox error={new Error('Lista non trovata')} />;
   const set = (i, k, v) => { setItems(items.map((it, j) => (j === i ? { ...it, [k]: v } : it))); setDirty(true); };
-  const save = async () => { try { await api.put(`/dossiers/${c.id}/checklists/${code}`, { items }); setDirty(false); onSaved(); toast('Lista salvata'); } catch (e) { toast(e.message, 'err'); } };
+  const save = async () => { try { await api.put(`/dossiers/${d.id}/checklists/${code}`, { items }); setDirty(false); onSaved(); toast('Lista salvata'); } catch (e) { toast(e.message, 'err'); } };
   const vis = items.map((it, i) => ({ it, i })).filter(({ it }) => !filter || `${it.code} ${it.text} ${it.answer} ${it.document} ${it.notes}`.toLowerCase().includes(filter.toLowerCase()));
   const answered = items.filter((it) => it.code && it.answer).length; const total = items.filter((it) => it.code).length;
   let lastSection = null;
@@ -195,7 +226,7 @@ function ChecklistTab({ d, c, code, edit, onSaved }) {
         })}</tbody>
       </table></div>
       <div className="small muted" style={{ padding: '8px 14px' }}>Risposte e riferimenti precaricati dalle liste compilate per il punto prelievi di Calenzano (Sistema di Gestione Integrato): adeguare sede, orari, personale e strumentazione. L'export XLSX riproduce il tracciato regionale.</div>
-      {reset && <ConfirmModal danger title="Ripristina il modello" text="Le risposte di questa lista tornano ai valori del modello Calenzano. Le modifiche fatte per questo punto prelievi vengono perse." confirmText="Ripristina" onClose={() => setReset(false)} onConfirm={async () => { const r = await api.post(`/dossiers/${c.id}/checklists/${code}/reset`); setItems(r.checklists.find((x) => x.code === code).items); setDirty(false); onSaved(); }} />}
+      {reset && <ConfirmModal danger title="Ripristina il modello" text="Le risposte di questa lista tornano ai valori del modello Calenzano. Le modifiche fatte per questo punto prelievi vengono perse." confirmText="Ripristina" onClose={() => setReset(false)} onConfirm={async () => { const r = await api.post(`/dossiers/${d.id}/checklists/${code}/reset`); setItems(r.checklists.find((x) => x.code === code).items); setDirty(false); onSaved(); }} />}
     </Card>
   );
 }

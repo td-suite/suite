@@ -10,7 +10,7 @@ export default function Turni() {
   const { user } = useAuth(); const toast = useToast();
   const gest = ['ADMIN', 'RESP_SAN'].includes(user.role);
   const [mese, setMese] = useState(thisMonth()); const [sede, setSede] = useState('');
-  const sedi = useApi('/strutture'); const profs = useApi('/personale/professionisti');
+  const sedi = useApi('/strutture'); const profs = useApi('/personale/professionisti?pianificabili=1');   // solo persone attive e non escluse dalla pianificazione
   const { data, error, reload } = useApi(`/personale/turni?mese=${mese}${sede ? '&sede_id=' + sede : ''}`, [mese, sede]);
   const [edit, setEdit] = useState(null); const [gen, setGen] = useState(false);
   const sm = useMemo(() => Object.fromEntries((sedi.data || []).map((s) => [s.id, sedeLabel(s)])), [sedi.data]);

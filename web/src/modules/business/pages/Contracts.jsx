@@ -30,7 +30,7 @@ export default function Contracts({ kind }) {
         {kind && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>{kind === 'SEDE' ? '+ Nuova sede' : '+ Nuova proposta'}</Link>}
       </div>
       <div className="filters">
-        <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="organizzazione, protocollo, sede…" style={{ minWidth: 260 }} /></Field>
+        <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="controparte, sede TD, protocollo…" style={{ minWidth: 260 }} /></Field>
         <Field label="Stato"><select value={status} onChange={(e) => set('status', e.target.value)}><option value="">Tutti</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
         <Field label="Anno"><select value={year} onChange={(e) => set('year', e.target.value)}><option value="">Tutti</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></Field>
         <div className="spacer" />
@@ -39,13 +39,14 @@ export default function Contracts({ kind }) {
       <ErrorBox error={list.error} />
       <Card flush>{!list.data ? <Loading /> : rows.length ? (
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Protocollo</th>{!kind && <th>Sezione</th>}<th>Partner</th><th>{kind === 'PP' || kind === 'SEDE' ? 'Sede' : 'Oggetto'}</th><th>Proposta</th><th>Firma</th><th>Documenti</th><th>Stato</th></tr></thead>
+          <thead><tr><th>Protocollo</th>{!kind && <th>Sezione</th>}<th>Controparte</th><th>Sede TD</th><th>Oggetto</th><th>Proposta</th><th>Firma</th><th>Documenti</th><th>Stato</th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id} className="click" onClick={() => nav(`${BASE}/contratti/${r.id}`)}>
               <td className="mono">{r.protocol || <span className="muted">bozza #{r.id}</span>}</td>
               {!kind && <td><KindBadge kind={r.kind} /></td>}
-              <td><div className="strong">{r.org_name}</div><div className="small muted">{[r.org_city, r.org_prov].filter(Boolean).join(' ')}{r.org_vat ? ` · P.IVA ${r.org_vat}` : ''}</div></td>
-              <td className="small">{r.kind === 'PP' || r.kind === 'SEDE' ? `${r.title ? `${r.title} · ` : ''}${r.site_name || ''}${r.site_street ? ` · ${r.site_street}` : ''}${r.site_city ? `, ${r.site_city}` : ''}` : r.title}</td>
+              <td>{r.org_name ? <><div className="strong">{r.org_name}</div><div className="small muted">{[r.org_city, r.org_prov].filter(Boolean).join(' ')}{r.org_vat ? ` · P.IVA ${r.org_vat}` : ''}</div></> : <span className="muted">–</span>}</td>
+              <td>{r.site_name ? <><div className="strong">{r.site_name}</div><div className="small muted">{[r.site_street, r.site_city].filter(Boolean).join(', ')}{r.site_code ? ` · ${r.site_code}` : ''}</div></> : <span className="muted">–</span>}</td>
+              <td className="small">{r.title}</td>
               <td>{itDate(r.proposal_date)}</td>
               <td>{r.signed_at ? itDate(r.signed_at) : <span className="muted">–</span>}</td>
               <td>

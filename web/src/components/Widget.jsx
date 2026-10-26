@@ -8,7 +8,7 @@ export default function Widget({ module: m, areaColor, areaKey, counter, counter
   // inside: modulo nativo o già travasato nella Suite (MIRROR/LIVE) → navigazione interna; altrimenti apre l'app originale via SSO
   const legacy = m.kind !== 'NATIVE' && !m.inside;
   const open = () => {
-    if (legacy) window.location.href = m.href || `/go/${m.key}`;
+    if (legacy) window.open(m.href || `/go/${m.key}`, '_blank', 'noopener');   // le app esterne (SGI, Service) si aprono in una scheda nuova: la Suite resta
     else navigate(m.href || m.route || '/');
   };
   const hasCounter = counter && counter.value != null;
@@ -23,7 +23,7 @@ export default function Widget({ module: m, areaColor, areaKey, counter, counter
       {hasCounter && counter.label ? <div className="tag live">{counter.label}</div> : <div className="tag">{m.module_mode === 'MIRROR' ? 'In collaudo nella Suite' : m.tagline}</div>}
       <div className="bottom">
         {(profileLabel || m.profile) ? <span className="prof">{profileLabel || m.profile}</span> : <span />}
-        {legacy && <span className="ext" title="Apre l'applicazione"><Icon name="external" /></span>}
+        {legacy && <span className="ext" title="Apre l'applicazione in una scheda nuova"><Icon name="external" /></span>}
       </div>
     </button>
   );

@@ -6,6 +6,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, getSetting } from '../lib/util.js';
 import { requireRole, isOps, Params, OPS_ROLES } from '../lib/access.js';
 import { mailStatus, sendMail } from '../lib/mailer.js';
+import { companyInfo } from '../lib/orders.js';
 import { studiolabStatus } from '../lib/studiolab.js';
 import { silvaStatus } from '../lib/silva.js';
 import { config } from '../config.js';
@@ -18,9 +19,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const opt = (s) => s.optional().nullable().transform((v) => (v === '' ? null : v));
 const CODE = /^[A-Z0-9_-]{2,16}$/;
 
-// ---------------- Strutture: anagrafica unica della Suite (public.sites, public.organizations) + impostazioni Ordini (site_ext) ----------------
-// Nessuna creazione, rinomina o disattivazione qui: si fa in Amministrazione > Sedi. Il modulo salva solo i propri campi
-// operativi con un upsert su site_ext (la riga nasce alla prima modifica).
+// ---------------- Strutture: anagrafica unica della Suite + impostazioni Ordini ----------------
+// Due origini (vista strutture_v, migrazione 005): sedi TD (public.sites, kind <> 'SERVICE', id > 0, impostazioni in site_ext) e
+// Legal entity (public.organizations, id = -org_id, impostazioni in org_ext). I punti dei clienti service (sites SERVICE) non sono
+// strutture a sé: compaiono come punti di consegna della loro Legal entity (colonna points). Nessuna creazione, rinomina o
+// disattivazione qui: si fa in Amministrazione > Sedi o > Legal entity. Il modulo salva solo i propri campi operativi con un
+// upsert sulla tabella di estensione (la riga nasce alla prima modifica).
 const siteExtFields = {
   kind: z.enum(['CLIENTE', 'SEDE', 'LAB']).optional(),
   silva_code: opt(z.string().max(40).transform((v) => v?.trim().toUpperCase() || null)),
@@ -35,37 +39,43 @@ const STRUTTURA_COLS = `s.*,
   (SELECT max(month) FROM stock_counts c WHERE c.struttura_id=s.id AND c.status='CONFERMATO') AS last_stock_month,
   (SELECT count(*)::int FROM packages p WHERE p.struttura_id=s.id AND p.status='RICEVUTO') AS packs_in_stock`;
 
-// Elenco: tutte le sedi attive dell'anagrafica unica (con ?all=1 anche le disattivate); i profili di struttura vedono solo la propria
+// Elenco unico: sedi TD e Legal entity attive (con ?all=1 anche le disattivate; ?origin=SITE|ORG per una sola origine;
+// ?kind= per il ruolo nel flusso). I punti di consegna (sedi SERVICE) non compaiono come righe. I profili di struttura vedono solo la propria.
 r.get('/strutture', ah(async (req, res) => {
   const P = new Params();
-  const where = [isOps(req.user) ? 'TRUE' : `s.id=${P.add(req.user.struttura_id ?? -1)}`];
+  const where = [isOps(req.user) ? 'NOT s.delivery_point' : `s.id=${P.add(req.user.struttura_id ?? 0)}`];
   if (req.query.kind) where.push(`s.kind=${P.add(req.query.kind)}`);
+  if (req.query.origin) where.push(`s.origin=${P.add(req.query.origin)}`);
   if (req.query.all !== '1') where.push('s.active');
-  res.json(await many(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE ${where.join(' AND ')} ORDER BY s.kind, s.sort_order, s.name`, P.values));
+  res.json(await many(`SELECT ${STRUTTURA_COLS} FROM strutture_v s WHERE ${where.join(' AND ')} ORDER BY s.origin DESC, s.kind, s.sort_order, s.name`, P.values));
 }));
 
 r.get('/strutture/:id', ah(async (req, res) => {
-  const s = await one(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE s.id=$1`, [req.params.id]);
-  if (!s) throw notFound('Sede non trovata');
+  const s = await one(`SELECT ${STRUTTURA_COLS} FROM strutture_v s WHERE s.id=$1`, [Number(req.params.id) || 0]);
+  if (!s) throw notFound('Struttura non trovata');
   if (!isOps(req.user) && s.id !== req.user.struttura_id) throw forbidden();
   res.json(s);
 }));
 
-// Impostazioni Ordini della sede (upsert su site_ext). I dati anagrafici (nome, indirizzo, contatti, stato) non si toccano qui.
+// Impostazioni Ordini della struttura: upsert su site_ext (sede, id > 0) o su org_ext (Legal entity, id < 0).
+// I dati anagrafici (nome, indirizzo, contatti, stato) non si toccano qui.
 r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
-  const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [req.params.id]);
-  if (!site) throw notFound('Sede non trovata: le sedi si creano in Amministrazione');
+  const id = Number(req.params.id) || 0;
+  const s = await one('SELECT id, origin, site_id, org_id, code, name, delivery_point FROM strutture_v WHERE id=$1', [id]);
+  if (!s) throw notFound('Struttura non trovata: sedi e Legal entity si creano in Amministrazione');
+  if (s.delivery_point) throw bad('Un punto di un cliente service non ha impostazioni proprie: si configura la sua Legal entity');
   const d = parse(z.object(siteExtFields), req.body);
   const cols = Object.keys(d);
   if (!cols.length) throw bad('Nessun dato');
   if (d.silva_code) {
-    const dup = await one('SELECT site_id FROM site_ext WHERE upper(silva_code)=upper($1) AND site_id<>$2', [d.silva_code, site.id]);
-    if (dup) throw bad('Codice Silva già assegnato a un\'altra sede');
+    const dup = await one('SELECT id, name FROM strutture_v WHERE upper(silva_code)=upper($1) AND id<>$2', [d.silva_code, s.id]);
+    if (dup) throw bad(`Codice Silva già assegnato a un'altra struttura (${dup.name})`);
   }
-  await q(`INSERT INTO site_ext (site_id, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
-    ON CONFLICT (site_id) DO UPDATE SET ${cols.map((c) => `${c}=EXCLUDED.${c}`).join(',')}, updated_at=now()`, [site.id, ...cols.map((c) => d[c])]);
-  await audit(req, 'STRUTTURA_UPDATE', 'struttura', site.id, { code: site.code, ...d });
-  res.json(await one(`SELECT ${STRUTTURA_COLS} FROM sites_v s WHERE s.id=$1`, [site.id]));
+  const [table, keyCol, keyVal] = s.origin === 'ORG' ? ['org_ext', 'org_id', s.org_id] : ['site_ext', 'site_id', s.site_id];
+  await q(`INSERT INTO ${table} (${keyCol}, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
+    ON CONFLICT (${keyCol}) DO UPDATE SET ${cols.map((c) => `${c}=EXCLUDED.${c}`).join(',')}, updated_at=now()`, [keyVal, ...cols.map((c) => d[c])]);
+  await audit(req, 'STRUTTURA_UPDATE', 'struttura', s.id, { origin: s.origin, code: s.code, ...d });
+  res.json(await one(`SELECT ${STRUTTURA_COLS} FROM strutture_v s WHERE s.id=$1`, [s.id]));
 }));
 
 // ---------------- Utenti: gestiti dalla Suite (Amministrazione > Utenti e profili), nessuna route nel modulo ----------------
@@ -197,10 +207,10 @@ r.get('/audit', requireRole(...OPS_ROLES), ah(async (req, res) => {
 
 r.get('/email-log', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   res.json(await many(`SELECT e.id, e.kind, e.to_addr, e.subject, e.status, e.error, e.sent_at, e.attachment_name, s.name AS struttura_name, u.full_name AS sent_by_name
-    FROM email_log e LEFT JOIN sites_v s ON s.id=e.struttura_id LEFT JOIN users u ON u.id=e.sent_by ORDER BY e.sent_at DESC LIMIT 300`));
+    FROM email_log e LEFT JOIN strutture_v s ON s.id=e.struttura_id LEFT JOIN users u ON u.id=e.sent_by ORDER BY e.sent_at DESC LIMIT 300`));
 }));
 
-r.get('/company', ah(async (_req, res) => res.json(await one('SELECT id, name, vat_number, address, zip, city, province, phone, email, pec, website FROM company LIMIT 1'))));
+r.get('/company', ah(async (_req, res) => { const { logo, letterhead_footer, ...c } = await companyInfo(); res.json(c); }));
 
 export default r;
 export { getSetting };

@@ -3,7 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse } from '../lib/util.js';
-import { requireRole, isSuper, Params, siteScope, companyWide, canSite, assertCompany, assertSite, FINANCE_ROLES, grantSiteIdsSql } from '../lib/access.js';
+import { requireRole, isSuper, Params, companyWide, canSite, assertCompany, assertSite, FINANCE_ROLES } from '../lib/access.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } });
@@ -35,7 +35,7 @@ r.get('/companies', ah(async (req, res) => {
   const P = new Params();
   const rows = await many(`SELECT ${COMPANY_COLS},
       (SELECT count(*)::int FROM sites_v s WHERE s.company_id=c.id AND s.active) AS sites_count,
-      (SELECT count(*)::int FROM users u WHERE u.company_id=c.id AND u.active) AS users_count,
+      (SELECT count(*)::int FROM operators_v o WHERE o.company_id=c.id AND o.active) AS users_count,
       (SELECT count(*)::int FROM company_bank_accounts b WHERE b.company_id=c.id AND b.active) AS accounts_count
     FROM companies_v c WHERE ${isSuper(req.user) ? 'TRUE' : `c.id = ${P.add(req.user.company_id)}`} ORDER BY c.is_franchisor DESC, c.active DESC, c.name`, P.values);
   res.json(rows);
@@ -150,43 +150,33 @@ r.put('/companies/:id/bank-accounts/:aid', requireRole('SUPERADMIN', 'ADMIN'), a
 const ROYALTY_COLS = ['royalty_fixed_monthly', 'royalty_pct', 'royalty_vat_rate', 'royalty_base'];
 const EXT_COLS = ['company_id', 'cash_float', 'operating_days', 'pos_terminals', 'start_date', 'ownership', 'hours', 'hours_note', 'expected_registers',
   'site_email', 'host_name', 'host_vat', 'host_email', ...ROYALTY_COLS, 'royalty_notes'];
-// Utenti del modulo con la sede negli scope del grant Suite (sostituisce il conteggio su user_sites)
-const USERS_COUNT_SQL = `(SELECT count(DISTINCT pu.id)::int FROM public.grants g JOIN public.grant_scopes gs ON gs.grant_id=g.id JOIN public.users pu ON pu.id=g.user_id
-      WHERE g.module_key='cash' AND NOT g.proposed AND gs.scope_type='SITE' AND gs.scope_id=s.id AND pu.status='ACTIVE')`;
+// Operatori (utenti Suite con grant cash attivo) che hanno la sede nel perimetro del grant
+const USERS_COUNT_SQL = `(SELECT count(*)::int FROM operators_v o WHERE o.active AND s.id = ANY(o.site_ids))`;
 
 // ---------------- Sedi (anagrafica unica) ----------------
-// Le sedi vivono in public.sites (Amministrazione > Sedi): qui si leggono con le impostazioni Cash (site_ext).
-// Senza `all=1` l'elenco contiene solo le sedi configurate in Cash (vista sites_v): è quello usato dai selettori.
-// Con `all=1` (pagina Sedi) l'elenco è l'intera anagrafica visibile all'utente, con `configured` a indicare la presenza
-// delle impostazioni Cash: l'amministratore può configurare una sede nuova senza crearla qui.
+// Le sedi vivono in public.sites (Amministrazione > Sedi): qui si leggono con le impostazioni Cash (site_ext) dalla vista
+// sites_v, che contiene le sole sedi di Toscana Diagnostica (mai le strutture dei clienti service, kind SERVICE).
+// Senza `all=1` l'elenco contiene solo le sedi configurate in Cash: è quello usato dai selettori nei form.
+// Con `all=1` (pagina Sedi) ci sono anche le sedi TD senza impostazioni Cash (`configured` falso, campi operativi vuoti):
+// l'amministratore le configura da lì senza crearle.
 r.get('/sites', ah(async (req, res) => {
   const P = new Params();
-  if (req.query.all === '1') {
-    const where = [];
-    if (isSuper(req.user)) where.push('TRUE');
-    else if (companyWide(req.user)) where.push(`(e.company_id = ${P.add(req.user.company_id)} OR e.site_id IS NULL)`);
-    else where.push(`s.id = ANY(${P.add(req.user.site_ids || [])}::int[])`);
-    if (req.query.company_id) where.push(`e.company_id = ${P.add(Number(req.query.company_id))}`);
-    if (req.query.active === '1') where.push('s.active');
-    const rows = await many(`SELECT s.id, s.code, s.name, s.address, s.city, s.province, s.active, s.kind, s.organization_id,
-        (e.site_id IS NOT NULL) AS configured, e.company_id, e.cash_float, e.operating_days, e.pos_terminals, e.start_date, e.ownership, e.hours, e.hours_note,
-        e.expected_registers, e.site_email, e.host_name, e.host_vat, e.host_email, e.royalty_fixed_monthly, e.royalty_pct, e.royalty_base, e.royalty_vat_rate, e.royalty_notes,
-        e.created_at, e.updated_at, c.name AS company_name, c.code AS company_code, ${USERS_COUNT_SQL} AS users_count
-      FROM public.sites s LEFT JOIN site_ext e ON e.site_id=s.id LEFT JOIN companies_v c ON c.id=e.company_id
-      WHERE ${where.join(' AND ')} ORDER BY (e.site_id IS NULL), c.name NULLS LAST, s.name`, P.values);
-    return res.json(rows);
-  }
-  const where = [siteScope(req.user, P)];
+  const all = req.query.all === '1';
+  const where = [];
+  if (isSuper(req.user)) where.push('TRUE');
+  else if (companyWide(req.user)) where.push(all ? `(s.company_id = ${P.add(req.user.company_id)} OR NOT s.configured)` : `s.company_id = ${P.add(req.user.company_id)}`);
+  else where.push(`s.id = ANY(${P.add(req.user.site_ids || [])}::int[])`);
+  if (!all) where.push('s.configured');
   if (req.query.company_id) where.push(`s.company_id = ${P.add(Number(req.query.company_id))}`);
   if (req.query.active === '1') where.push('s.active');
-  const rows = await many(`SELECT s.*, TRUE AS configured, c.name AS company_name, c.code AS company_code, ${USERS_COUNT_SQL} AS users_count
-    FROM sites_v s JOIN companies_v c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY c.name, s.name`, P.values);
+  const rows = await many(`SELECT s.*, c.name AS company_name, c.code AS company_code, ${USERS_COUNT_SQL} AS users_count
+    FROM sites_v s LEFT JOIN companies_v c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY (NOT s.configured), c.name NULLS LAST, s.name`, P.values);
   res.json(rows);
 }));
 
 r.get('/sites/:id/float-history', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   await assertSite(req.user, Number(req.params.id));
-  res.json(await many(`SELECT h.*, u.full_name FROM cash_float_history h LEFT JOIN users u ON u.id=h.changed_by
+  res.json(await many(`SELECT h.*, u.full_name FROM cash_float_history h LEFT JOIN users_v u ON u.id=h.changed_by
     WHERE site_id=$1 ORDER BY changed_at DESC`, [Number(req.params.id)]));
 }));
 
@@ -194,9 +184,11 @@ r.get('/sites/:id/float-history', requireRole('SUPERADMIN', 'ADMIN'), ah(async (
 // Non si creano, rinominano o disattivano sedi: si fa in Amministrazione > Sedi.
 r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   const id = Number(req.params.id);
-  const reg = await one('SELECT id, code, name, active FROM public.sites WHERE id=$1', [id]);
+  const reg = await one('SELECT id, code, name, kind, active FROM public.sites WHERE id=$1', [id]);
   if (!reg) throw notFound('Sede non presente nell\'anagrafica della Suite');
-  const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
+  if (reg.kind === 'SERVICE') throw bad('Le strutture dei clienti service non si configurano in Cash: il modulo tratta solo le sedi di Toscana Diagnostica');
+  const row = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
+  const site = row?.configured ? row : null;   // null: prima configurazione della sede in Cash
   if (site && !canSite(req.user, site)) throw forbidden('Sede non autorizzata');
   // partial() applica comunque i default: li rimuovo per non azzerare i campi omessi
   const partial = z.object(Object.fromEntries(Object.entries(siteSchema.shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.removeDefault() : v).optional()])));
@@ -229,36 +221,45 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
     }
     delete d.float_reason;
     if (d.hours !== undefined) d.hours = JSON.stringify(d.hours);
+    if (site && d.company_id === undefined) d.company_id = site.company_id;   // company_id è NOT NULL anche nel ramo INSERT dell'upsert
     const cols = EXT_COLS.filter((k) => d[k] !== undefined);
     if (!cols.length) return;
-    if (site) await c.query(`UPDATE site_ext SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now() WHERE site_id=$1`, [id, ...cols.map((k) => d[k])]);
-    else await c.query(`INSERT INTO site_ext (site_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')})`, [id, ...cols.map((k) => d[k])]);
+    // upsert: la riga di site_ext nasce alla prima scrittura (docs/ANAGRAFICA.md), poi si aggiorna
+    await c.query(`INSERT INTO site_ext (site_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')})
+      ON CONFLICT (site_id) DO UPDATE SET ${cols.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, ...cols.map((k) => d[k])]);
   });
   await audit(req, site ? 'SITE_UPDATE' : 'SITE_CONFIGURE', 'site', id, req.body);
   res.json({ ok: true, id });
 }));
 
-// ---------------- Utenti ----------------
-// Gli utenti, i profili e le sedi assegnate si gestiscono nella Suite (Amministrazione > Utenti): qui resta l'elenco in sola
-// lettura (serve per aprire la cassa di un operatore e per il controllo mensile) e il fondo cassa personale dell'operatore,
-// che è un dato del processo di cassa e non dell'account.
+// ---------------- Operatori (utenti della Suite) ----------------
+// Nessuna anagrafica degli operatori in Cash: gli operatori sono gli utenti della Suite con un grant sul modulo cash
+// (vista operators_v su public.users / grants / grant_scopes). Account, profilo e sedi si modificano in Amministrazione > Utenti
+// (/admin/users/<id>); qui l'elenco è in sola lettura. L'unico campo operativo di Cash per persona è il fondo cassa personale
+// dell'operatore (user_ext, agganciato a public.users). `id` è l'id dell'utente Suite.
+const OPERATOR_COLS = `o.id, o.cash_user_id, o.email, o.full_name, o.first_name, o.last_name, o.person_id, o.role, o.status, o.active, o.last_login_at,
+  o.company_id, c.name AS company_name, o.site_ids, o.cash_float,
+  (SELECT coalesce(json_agg(json_build_object('id', s.id, 'code', s.code, 'name', s.name, 'active', s.active) ORDER BY s.name), '[]'::json)
+     FROM public.sites s WHERE s.id = ANY(o.site_ids)) AS sites`;
 r.get('/users', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   const P = new Params();
-  const where = [isSuper(req.user) ? 'TRUE' : `u.company_id = ${P.add(req.user.company_id)}`];
-  if (req.query.company_id) where.push(`u.company_id = ${P.add(Number(req.query.company_id))}`);
-  const rows = await many(`SELECT u.id, u.email, u.full_name, u.role, u.company_id, u.auth_provider, u.active, u.cash_float, u.last_login_at, c.name AS company_name,
-      ${grantSiteIdsSql('u.email')} AS site_ids
-    FROM users u LEFT JOIN companies_v c ON c.id=u.company_id WHERE ${where.join(' AND ')} ORDER BY u.active DESC, u.full_name`, P.values);
+  const where = [isSuper(req.user) ? 'TRUE' : `o.company_id = ${P.add(req.user.company_id)}`];
+  if (req.query.company_id) where.push(`o.company_id = ${P.add(Number(req.query.company_id))}`);
+  const rows = await many(`SELECT ${OPERATOR_COLS} FROM operators_v o LEFT JOIN companies_v c ON c.id=o.company_id
+    WHERE ${where.join(' AND ')} ORDER BY o.active DESC, o.full_name`, P.values);
   res.json(rows);
 }));
 
+// Fondo cassa personale dell'operatore (campo Cash di user_ext): upsert; vuoto = vale il fondo cassa della sede
 r.put('/users/:id/cash-float', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   const id = Number(req.params.id);
-  const u = await one('SELECT * FROM users WHERE id=$1', [id]);
-  if (!u) throw notFound();
+  const u = await one('SELECT * FROM operators_v WHERE id=$1', [id]);
+  if (!u) throw notFound('Utente senza accesso al modulo Cash: assegnalo in Amministrazione > Utenti');
   if (!isSuper(req.user) && (u.role === 'SUPERADMIN' || u.company_id !== req.user.company_id)) throw forbidden();
   const d = parse(z.object({ cash_float: z.number().min(0).max(100000).nullable() }), req.body);
-  await q('UPDATE users SET cash_float=$2, updated_at=now() WHERE id=$1', [id, u.role === 'OPERATOR' ? d.cash_float : null]);
+  const value = u.role === 'OPERATOR' ? d.cash_float : null;
+  if (value == null) await q('DELETE FROM user_ext WHERE user_id=$1', [id]);
+  else await q('INSERT INTO user_ext (user_id, cash_float) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET cash_float=EXCLUDED.cash_float, updated_at=now()', [id, value]);
   await audit(req, 'USER_CASH_FLOAT', 'user', id, d);
   res.json({ ok: true });
 }));
@@ -297,7 +298,7 @@ r.get('/audit', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   const where = [isSuper(req.user) ? 'TRUE' : `u.company_id = ${P.add(req.user.company_id)}`];
   if (req.query.action) where.push(`a.action = ${P.add(req.query.action)}`);
   const limit = Math.min(Number(req.query.limit) || 200, 1000);
-  res.json(await many(`SELECT a.*, u.full_name, u.email FROM audit_log a LEFT JOIN users u ON u.id=a.user_id
+  res.json(await many(`SELECT a.*, u.full_name, u.email FROM audit_log a LEFT JOIN users_v u ON u.id=a.user_id
     WHERE ${where.join(' AND ')} ORDER BY a.at DESC LIMIT ${limit}`, P.values));
 }));
 

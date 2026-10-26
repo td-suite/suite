@@ -12,7 +12,7 @@ const ATTREZZ = (Array.isArray(EQUIP) ? EQUIP : Object.keys(EQUIP || {})).map((d
 const TABS = [['anagrafica', 'Anagrafica'], ['professionale', 'Professionale'], ['contratto', 'Contratto e assicurazione'], ['compenso', 'Compenso'], ['documenti', 'Documenti'], ['accesso', 'Accesso'], ['disponibilita', 'Disponibilità']];
 // Scheda Room vuota: le persone vivono nell'anagrafica unica della Suite (public.people), qui si compilano solo i dati operativi
 const empty = (tipo = 'sanitario') => ({ tipo, profilo: tipo === 'medico' ? 'Medico' : 'Infermiere', dati: { anagrafica: {}, professionale: { discipline: [], attrezzature: [], specializzazioni: [] }, contratto: { rapporto: 'LP' }, assicurazione: {}, compenso: { tipo: 'ORARIO', eccezioniSede: [], regime: 'FORFETTARIO' }, sediAbilitate: [], note: '' } });
-const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente' };
+const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
 const STATUS = { ATTIVO: ['Attivo', 'green'], IMPEGNO: ['In impegno', 'teal'], CANDIDATO: ['Candidato', 'amber'], CESSATO: ['Cessato', 'red'] };
 export const personaHref = (id) => `/people/${id}`;
 
@@ -30,7 +30,7 @@ export default function Professionisti() {
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Medici e professionisti sanitari dell'anagrafica unica della Suite con la scheda Room Planning: contratto, compenso, competenze, documenti, accesso al portale e disponibilità. Nome, contatti e stato si modificano in Amministrazione &gt; Persone o in Contratti del personale.</div></div>
+      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Persone dell'anagrafica unica della Suite con la scheda Room Planning: contratto, compenso, competenze, documenti, accesso al portale e disponibilità. Nome, contatti e stato si modificano in Rubrica o in Contratti del personale; chi è pianificabile si decide in "Tutti i professionisti".</div></div>
         <div className="row"><button className="btn ghost" onClick={importa} title="Crea la scheda Room per il personale sanitario censito nelle sedi e già presente in anagrafica; segnala chi manca">Collega i sanitari delle sedi</button><Link className="btn" to="/people">Apri in Amministrazione</Link></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
@@ -39,12 +39,12 @@ export default function Professionisti() {
             <div className="bd" style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
               <input placeholder="Cerca nome, profilo, email…" value={q} onChange={(e) => setQ(e.target.value)} />
               <div className="seg" style={{ marginTop: 8 }}>{[['tutti', 'Tutti'], ['medico', 'Medici'], ['sanitario', 'Sanitari']].map(([k, l]) => <button key={k} className={tipo === k ? 'on' : ''} onClick={() => setTipo(k)}>{l}</button>)}</div>
-              <div className="row small" style={{ marginTop: 6, gap: 10 }}><label className="f inline small"><input type="checkbox" checked={soloAttivi} onChange={(e) => setSoloAttivi(e.target.checked)} />solo attivi</label><label className="f inline small" title="Spegni per vedere tutte le persone dell'anagrafica (medici, sanitari, liberi professionisti, dipendenti) e compilare una nuova scheda Room"><input type="checkbox" checked={soloRoom} onChange={(e) => setSoloRoom(e.target.checked)} />solo con scheda Room</label></div>
+              <div className="row small" style={{ marginTop: 6, gap: 10 }}><label className="f inline small"><input type="checkbox" checked={soloAttivi} onChange={(e) => setSoloAttivi(e.target.checked)} />solo attivi</label><label className="f inline small" title="Spegni per vedere tutte le persone dell'anagrafica (qualunque tipo) e compilare una nuova scheda Room"><input type="checkbox" checked={soloRoom} onChange={(e) => setSoloRoom(e.target.checked)} />solo con scheda Room</label></div>
               <div className="small muted">{list.length} professionisti</div>
             </div>
             <div className="spec-items">{list.map((p) => (
               <button key={p.id} className={`spec-item ${sel === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)}>
-                <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}{!p.inRoom && <Badge tone="amber">senza scheda Room</Badge>}</div>
+                <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}{!p.inRoom && <Badge tone="amber">senza scheda Room</Badge>}{p.planningExcluded && <Badge tone="red">esclusa</Badge>}</div>
                 <div className="small muted">{p.profilo || (p.tipo === 'medico' ? 'Medico' : 'Sanitario')}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''}</div>
                 <div className="small">{p.email ? <span>{p.email}</span> : <span className="red">senza email</span>}{p.userId ? <span> · <Badge tone="green">portale</Badge></span> : null}{scad(p) ? <span> · <Badge tone="amber">documento in scadenza</Badge></span> : null}</div>
               </button>))}</div>
@@ -75,6 +75,7 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
   const set = (patch) => setP((x) => ({ ...x, ...patch }));
   const setD = (sec, patch) => setP((x) => ({ ...x, dati: { ...x.dati, [sec]: { ...(x.dati[sec] || {}), ...patch } } }));
   const save = async () => { setBusy(true); try { const r = await api.put(`/personale/professionisti/${id}`, payload); toast(r.sediAggiornate ? `Scheda salvata · aggiornata anche in ${r.sediAggiornate} ${r.sediAggiornate === 1 ? 'sede' : 'sedi'}` : 'Scheda Room salvata'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
+  const pianificazione = async () => { setBusy(true); try { await api.put(`/personale/professionisti/${id}/pianificazione`, { excluded: !p.planning_excluded }); toast(p.planning_excluded ? 'Persona di nuovo pianificabile' : 'Persona esclusa dalla pianificazione'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
   const elimina = async () => { if (!window.confirm(`Rimuovere la scheda Room di ${p.nome} (compenso, contratto, documenti e disponibilità)? La persona resta nell'anagrafica della Suite e nelle schede di sede.`)) return; try { await api.del(`/personale/professionisti/${id}`); toast('Scheda Room rimossa'); onDeleted(); } catch (e) { toast(e.message, 'err'); } };
   const PR = p.dati.professionale, C = p.dati.contratto, AS = p.dati.assicurazione, CO = p.dati.compenso;
   const scadenzaCls = (d) => (d && d < new Date().toISOString().slice(0, 10) ? 'red' : d && d < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10) ? 'amber' : '');
@@ -83,20 +84,21 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
       <div className="card"><div className="bd">
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: 18 }}>{p.nome} <Badge tone={p.tipo === 'medico' ? 'teal' : 'mauve'}>{p.profilo || p.tipo}</Badge> <Badge tone={STATUS[p.status]?.[1]}>{STATUS[p.status]?.[0] || p.status}</Badge> {!p.in_room && <Badge tone="amber">senza scheda Room</Badge>}</h2>
+            <h2 style={{ fontSize: 18 }}>{p.nome} <Badge tone={p.tipo === 'medico' ? 'teal' : 'mauve'}>{p.profilo || p.tipo}</Badge> <Badge tone={STATUS[p.status]?.[1]}>{STATUS[p.status]?.[0] || p.status}</Badge> {!p.in_room && <Badge tone="amber">senza scheda Room</Badge>} {p.planning_excluded && <Badge tone="red">esclusa dalla pianificazione</Badge>}</h2>
             <div className="small muted">{KIND[p.kind] || p.kind}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''} · {p.sediPresente?.length ? 'nelle schede di sede: ' + p.sediPresente.map((s) => s.label).join(', ') : 'non presente nelle schede di sede'}{p.updated_at ? ` · scheda Room aggiornata ${itDateTime(p.updated_at)}` : ''}</div>
           </div>
-          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<Link className="btn ghost sm" to={personaHref(p.id)} title="Scheda della persona nell'anagrafica unica (nome, contatti, stato)">Scheda persona</Link>{p.in_room && <button className="btn ghost sm" style={{ color: 'var(--red)' }} onClick={elimina} title="Possibile solo senza turni, presenze, rendiconti o candidature collegati">Rimuovi scheda Room</button>}<button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : p.in_room ? 'Salva scheda' : 'Crea scheda Room'}</button></div>
+          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<Link className="btn ghost sm" to={personaHref(p.id)} title="Scheda della persona nell'anagrafica unica (nome, contatti, stato)">Apri in Rubrica</Link><button className="btn ghost sm" disabled={busy} onClick={pianificazione} title="Chi è escluso non compare nei selettori di turni, disponibilità, presenze e calendario">{p.planning_excluded ? 'Riporta tra i pianificabili' : 'Escludi dalla pianificazione'}</button>{p.in_room && <button className="btn ghost sm" style={{ color: 'var(--red)' }} onClick={elimina} title="Possibile solo senza turni, presenze, rendiconti o candidature collegati">Rimuovi scheda Room</button>}<button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : p.in_room ? 'Salva scheda' : 'Crea scheda Room'}</button></div>
         </div>
         <div className="seg" style={{ marginTop: 12, flexWrap: 'wrap' }}>{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       </div></div>
 
-      {tab === 'anagrafica' && <><Card title="Anagrafica unica della Suite" actions={<Link className="btn sm ghost" to={personaHref(p.id)}>Modifica in Amministrazione</Link>}>
+      {tab === 'anagrafica' && <><Card title="Anagrafica unica della Suite" actions={<Link className="btn sm ghost" to={personaHref(p.id)}>Apri in Rubrica</Link>}>
         <p className="small muted" style={{ marginTop: 0 }}>Questi dati vengono da Amministrazione &gt; Persone (o da Contratti del personale) e valgono per tutta la Suite: qui si consultano soltanto.</p>
         <div className="form-grid">
           <Ro label="Cognome" v={p.last_name} /><Ro label="Nome" v={p.first_name} /><Ro label="Titolo" v={p.title} /><Ro label="Tipo di persona" v={KIND[p.kind] || p.kind} />
           <Ro label="Stato" v={STATUS[p.status]?.[0] || p.status} /><Ro label="Sesso" v={p.sex} /><Ro label="Data di nascita" v={p.birth_date ? itD(p.birth_date) : ''} /><Ro label="Codice fiscale" v={p.tax_code} />
           <Ro label="Email (accesso al portale e invii)" v={p.email} /><Ro label="Telefono" v={p.phone} /><Ro label="Telefono ufficio" v={p.phone_office} /><Ro label="Disciplina" v={p.discipline?.join(', ')} />
+          <Ro label="Sede di lavoro" v={p.site_name} /><Ro label="Ruolo" v={p.role_name} />
         </div>
       </Card>
       <Card title="Scheda Room Planning" className="mt"><div className="form-grid">

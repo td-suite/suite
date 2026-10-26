@@ -55,6 +55,23 @@ export function ErrorBox({ error }) { return error ? <div className="alert err">
 export function Empty({ children }) { return <div className="empty">{children}</div>; }
 
 // ---------- Primitives ----------
+// Selettore di sede inviante sulle due origini dell'anagrafica unica: Sedi TD (public.sites) e Legal entity
+// (public.organizations: laboratori clienti del service, fornitori), in due gruppi. value/onChange lavorano sulla chiave
+// unificata del modulo (id > 0 sede, id < 0 Legal entity) come stringa. withCode aggiunge il codice StudioLAB al nome.
+export function SedeSelect({ sedi, value, onChange, allLabel = 'Tutte', emptyLabel, withCode, style, disabled, defaultValue }) {
+  const list = (sedi || []).filter((s) => !s.punto_service);
+  const td = list.filter((s) => s.origin !== 'ORG');
+  const le = list.filter((s) => s.origin === 'ORG');
+  const opt = (s) => <option key={s.id} value={s.id}>{s.nome}{withCode ? ` (${s.codice})` : ''}</option>;
+  const props = defaultValue !== undefined ? { defaultValue } : { value };
+  return (
+    <select {...props} onChange={onChange} style={style} disabled={disabled}>
+      <option value="">{emptyLabel || allLabel}</option>
+      {td.length > 0 && <optgroup label="Sedi TD">{td.map(opt)}</optgroup>}
+      {le.length > 0 && <optgroup label="Legal entity">{le.map(opt)}</optgroup>}
+    </select>
+  );
+}
 export function Badge({ tone = 'grey', children }) { return <span className={`badge b-${tone}`}>{children}</span>; }
 export function Field({ label, help, children, className = '' }) {
   return (

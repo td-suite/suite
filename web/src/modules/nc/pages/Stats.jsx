@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { qs, apiBase } from '../api.js';
 import { useAuth, isSede, isLab } from '../auth.jsx';
-import { useApi, Card, Field, Kpi, Loading, Empty } from '../components/ui.jsx';
+import { useApi, Card, Field, Kpi, Loading, Empty, SedeSelect } from '../components/ui.jsx';
 import { MACRO, GRAVITA, STATO, RCA_CAT } from '../format.js';
 
 const monthStart = (back) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - back); return d.toISOString().slice(0, 10); };
@@ -43,7 +43,7 @@ export default function Stats() {
       <div className="filters">
         <Field label="Dal"><input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></Field>
         <Field label="Al"><input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></Field>
-        {!isSede(user) && <Field label="Sede"><select value={f.sede} onChange={(e) => setF({ ...f, sede: e.target.value })}><option value="">Tutte</option>{(sedi || []).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select></Field>}
+        {!isSede(user) && <Field label="Sede"><SedeSelect sedi={sedi} value={f.sede} onChange={(e) => setF({ ...f, sede: e.target.value })} /></Field>}
         <div className="row" style={{ alignSelf: 'flex-end' }}>{[['Mese corrente', monthStart(0)], ['3 mesi', monthStart(2)], ['6 mesi', monthStart(5)], ['12 mesi', monthStart(11)]].map(([l, v]) => <button key={l} className="btn sm ghost" onClick={() => setF({ ...f, from: v, to: '' })}>{l}</button>)}</div>
       </div>
       {!data ? <Loading /> : <>
@@ -85,7 +85,7 @@ export default function Stats() {
         <Card title="Per sede inviante" flush>
           {!data.perSede.length ? <Empty>Nessun dato</Empty> : <div className="table-wrap"><table className="t">
             <thead><tr><th>Sede</th><th className="num">NC</th><th className="num">Aperte</th><th className="num">Maggiori + critiche</th><th className="num">Ricorrenti</th><th className="num">Risposte in SLA</th><th className="num">Accettazioni</th><th className="num">NC / 1.000</th></tr></thead>
-            <tbody>{data.perSede.map((s) => <tr key={s.id}><td><div className="strong">{s.nome}</div><div className="small muted">{s.codice}</div></td><td className="num strong">{s.totale}</td><td className="num">{s.aperte}</td><td className={`num ${s.rilevanti ? 'red' : ''}`}>{s.rilevanti}</td><td className={`num ${s.ricorrenti ? 'red' : ''}`}>{s.ricorrenti}</td><td className="num">{pct(s.in_sla, s.con_risposta)}</td><td className="num muted">{s.accettazioni}</td><td className="num">{s.accettazioni ? Math.round((s.totale / s.accettazioni) * 10000) / 10 : '–'}</td></tr>)}</tbody>
+            <tbody>{data.perSede.map((s) => <tr key={s.id}><td><div className="strong">{s.nome}</div><div className="small muted">{s.codice}{s.origin === 'ORG' ? ' · Legal entity' : ''}</div></td><td className="num strong">{s.totale}</td><td className="num">{s.aperte}</td><td className={`num ${s.rilevanti ? 'red' : ''}`}>{s.rilevanti}</td><td className={`num ${s.ricorrenti ? 'red' : ''}`}>{s.ricorrenti}</td><td className="num">{pct(s.in_sla, s.con_risposta)}</td><td className="num muted">{s.accettazioni}</td><td className="num">{s.accettazioni ? Math.round((s.totale / s.accettazioni) * 10000) / 10 : '–'}</td></tr>)}</tbody>
           </table></div>}
           <div className="small muted" style={{ padding: '10px 14px' }}>{data.nota_denominatore}</div>
         </Card>

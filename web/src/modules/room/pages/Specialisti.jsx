@@ -5,7 +5,6 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Modal, Badge, Field, useToast } from '../components/ui.jsx';
 import { durTxt } from '../planner/planner.jsx';
 import { buildNetwork, simulate, DAYS, DAYS_S, m2t } from '../lib/network.js';
-import { sedeLabel } from './Sedi.jsx';
 import { pdfAgendaSpecialista, pdfProposta, pdfPianoDisponibilita, pdfBase64 } from '../lib/exports.js';
 
 const SEDE_COLORS = ['#1C505E', '#35768A', '#7A4E9E', '#2F8F5B', '#B7791F', '#B03A2E', '#4A6FA5', '#6B8E23'];
@@ -15,54 +14,130 @@ const sediOf = (x) => [...new Set(x.sedi.map((z) => z.sede))];
 const pianoText = (x, p) => `Gentile ${x.nome},\n\nin allegato trovi il piano delle disponibilità nelle strutture del network Toscana Diagnostica, costruito in rapporto agli impegni che hai già in calendario con noi (${durTxt(x.ore)} a settimana${sediOf(x).length ? ', ' + sediOf(x).join(', ') : ''}).\n\nNella prima parte sono riepilogati i tuoi impegni attuali; nella seconda gli spazi ambulatoriali liberi e compatibili con la tua attività (${x.discipline.join(', ') || x.profili.join(', ')}) nelle nostre sedi, al di fuori delle fasce in cui sei già impegnato con noi: ${p.perSede.length ? p.perSede.map((q) => `${q.sede} (${durTxt(q.min)})`).join(', ') : 'al momento nessuno spazio libero compatibile'}.\n\nSe alcune di queste fasce fossero di tuo interesse per ampliare la collaborazione, rispondi a questa email indicando giorni e orari preferiti: definiremo insieme l'inserimento.\n\nCordiali saluti`;
 const PIANO_SUBJECT = 'Piano delle disponibilità nelle strutture Toscana Diagnostica';
 
+const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
+const KIND_TONE = { MEDICO: 'teal', SANITARIO: 'mauve', LP: 'green', DIPENDENTE: 'grey', ESTERNO: 'amber', DIRIGENTE: 'grey' };
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Tutte le persone dell'anagrafica unica (public.people, stato ATTIVO) con i filtri sul modello attuale: tipo (people.kind), sede di lavoro,
+// ruolo del catalogo, disciplina, testo su cognome e nome, pianificabili / esclusi. Per chi compare nella settimana-tipo delle sedi
+// si mostrano impegni, agenda e simulatore di proposta (dati del network, agganciati per chiave del nome).
 export default function Specialisti() {
   const { user } = useAuth();
   const toast = useToast();
   const { data, error, reload } = useApi('/strutture');
-  const persone = useApi('/personale/professionisti');   // anagrafica unica: per collegare ogni nome alla scheda persona
+  const persone = useApi('/personale/professionisti');
+  const opz = useApi('/personale/professionisti/opzioni');
   const [q, setQ] = useState('');
-  const [tipo, setTipo] = useState('tutti');
+  const [kind, setKind] = useState('');
   const [sedeF, setSedeF] = useState('');
+  const [ruoloF, setRuoloF] = useState('');
+  const [discF, setDiscF] = useState('');
+  const [pian, setPian] = useState('pianificabili');   // pianificabili | esclusi | tutti
   const [sel, setSel] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
+  const [bulk, setBulk] = useState(false);
+  const [busy, setBusy] = useState(false);
   const toggle = (k) => setChecked((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const net = useMemo(() => (data ? buildNetwork(data) : null), [data]);
   const colorOf = useMemo(() => { const m = {}; (data || []).forEach((s, i) => { m[s.id] = SEDE_COLORS[i % SEDE_COLORS.length]; }); return m; }, [data]);
-  const list = useMemo(() => (net ? net.specialisti.filter((x) => !x.attivita && (tipo === 'tutti' || x.tipo === tipo) && (!sedeF || x.sedi.some((z) => String(z.sedeId) === String(sedeF))) && (!q || `${x.nome} ${x.discipline.join(' ')} ${x.profili.join(' ')}`.toLowerCase().includes(q.toLowerCase()))) : []), [net, q, tipo, sedeF]);
-  const x = sel && net ? net.byKey[sel] : null;
-  const personaDi = useMemo(() => { const m = new Map((persone.data || []).map((p) => [p.personaKey, p])); return (k) => m.get(k) || null; }, [persone.data]);
   const canEdit = user.role !== 'VIEWER';
-  const [bulk, setBulk] = useState(false);
+  const canPlan = ['ADMIN', 'PLANNER', 'RESP_SAN'].includes(user.role);
+  // Persone attive dell'anagrafica, con il profilo del network (se la persona compare nella settimana-tipo di qualche sede)
+  const attive = useMemo(() => (persone.data || []).filter((p) => p.status === 'ATTIVO').map((p) => ({ ...p, net: net?.byKey[p.personaKey] || null })), [persone.data, net]);
+  const discipline = useMemo(() => [...new Set([...(opz.data?.discipline || []), ...attive.flatMap((p) => [...(p.discipline || []), ...(p.net?.discipline || [])])].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')), [opz.data, attive]);
+  const list = useMemo(() => attive.filter((p) =>
+    (!kind || p.kind === kind)
+    && (!sedeF || String(p.siteId) === String(sedeF))
+    && (!ruoloF || String(p.roleId) === String(ruoloF))
+    && (!discF || (p.discipline || []).includes(discF) || (p.net?.discipline || []).includes(discF))
+    && (pian === 'tutti' || (pian === 'esclusi' ? p.planningExcluded : !p.planningExcluded))
+    && (!q || norm(`${p.lastName} ${p.firstName} ${p.nome}`).includes(norm(q)))), [attive, q, kind, sedeF, ruoloF, discF, pian]);
+  const nEsclusi = attive.filter((p) => p.planningExcluded).length;
+  // Persone della settimana-tipo delle sedi che non esistono nell'anagrafica unica: si segnalano, non si perdono
+  const nonInAnagrafica = useMemo(() => { const keys = new Set(attive.map((p) => p.personaKey)); return (net?.specialisti || []).filter((x) => !x.attivita && !keys.has(x.key)); }, [net, attive]);
+  const p = sel ? attive.find((z) => z.id === sel) : null;
+  const sediOpz = opz.data?.sedi || [];
+  const sedeNome = (id) => { const s = sediOpz.find((z) => String(z.id) === String(id)); return s ? (s.short_name || s.name) : ''; };
+  const setExcluded = async (persona, excluded) => {
+    setBusy(true);
+    try { await api.put(`/personale/professionisti/${persona.id}/pianificazione`, { excluded }); toast(excluded ? `${persona.nome} esclusa dalla pianificazione` : `${persona.nome} di nuovo pianificabile`); persone.reload(); } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
+  };
+  const massa = async (azione) => {
+    const msg = azione === 'ESCLUDI_NON_SANITARI' ? 'Escludere dalla pianificazione tutte le persone di tipo Dipendente, Esterno o Dirigente senza disciplina e senza ruolo sanitario? Medici, professionisti sanitari e liberi professionisti restano dentro. Chiunque si può riportare tra i pianificabili dalla sua scheda.' : 'Riportare tra i pianificabili tutte le persone escluse?';
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try { const r = await api.post('/personale/professionisti/pianificazione/massa', { azione }); toast(azione === 'ESCLUDI_NON_SANITARI' ? `Escluse ${r.n} persone` : `Riportate tra i pianificabili ${r.n} persone`); persone.reload(); } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
+  };
+  const checkedNet = (net?.specialisti || []).filter((x) => checked.has(x.key));
+  const listNet = list.filter((z) => z.net).map((z) => z.net);
+  const ambito = checked.size ? `${checked.size} professionisti selezionati a mano` : [kind && KIND_LABEL[kind], sedeF && `sede ${sedeNome(sedeF)}`, ruoloF && (opz.data?.ruoli || []).find((r) => String(r.id) === String(ruoloF))?.name, discF, pian !== 'tutti' && pian, q && `ricerca "${q}"`].filter(Boolean).join(' · ') || 'tutte le persone pianificabili';
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Tutti i professionisti</h1><div className="sub">Medici e professionisti sanitari di tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div>
-        {canEdit && net && <button className="btn ghost" onClick={() => setBulk(true)}>{checked.size ? `Invia il piano disponibilità ai ${checked.size} selezionati…` : 'Invio massivo del piano disponibilità…'}</button>}</div>
-      {bulk && net && <BulkModal net={net} list={checked.size ? net.specialisti.filter((x) => checked.has(x.key)) : list} ambito={checked.size ? `${checked.size} professionisti selezionati a mano` : sedeF ? `professionisti della sede ${sedeLabel((data || []).find((s) => String(s.id) === String(sedeF)) || {})}${tipo !== 'tutti' ? ' · ' + tipo : ''}${q ? ' · ricerca "' + q + '"' : ''}` : tipo !== 'tutti' || q ? `elenco filtrato (${list.length})` : 'tutti i professionisti'} onClose={() => setBulk(false)} toast={toast} />}
-      <ErrorBox error={error} />
-      {!net ? <Loading /> : (
+      <div className="page-head"><div><h1>Tutti i professionisti</h1><div className="sub">Tutte le persone dell'anagrafica unica della Suite (stato attivo): impegni settimanali nelle sedi, agenda, simulatore di proposta e scelta di chi è pianificabile. Nome e dati anagrafici si modificano in Rubrica.</div></div>
+        <div className="row">
+          {canPlan && <button className="btn ghost" disabled={busy || !persone.data} onClick={() => massa('ESCLUDI_NON_SANITARI')} title="Esclude dalla pianificazione dipendenti, esterni e dirigenti senza disciplina né ruolo sanitario; medici e sanitari restano dentro">Escludi tutti i non sanitari</button>}
+          {canPlan && nEsclusi > 0 && <button className="btn ghost" disabled={busy} onClick={() => massa('INCLUDI_TUTTI')}>Includi tutti ({nEsclusi})</button>}
+          {canEdit && net && <button className="btn ghost" onClick={() => setBulk(true)}>{checked.size ? `Invia il piano disponibilità ai ${checked.size} selezionati…` : 'Invio massivo del piano disponibilità…'}</button>}
+        </div></div>
+      {bulk && net && <BulkModal net={net} list={checked.size ? checkedNet : listNet} ambito={ambito} onClose={() => setBulk(false)} toast={toast} />}
+      <ErrorBox error={error || persone.error} />
+      {!net || !persone.data ? <Loading /> : (
         <div className="spec-layout">
           <div className="card spec-list">
             <div className="bd" style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
-              <input placeholder="Cerca nome o disciplina…" value={q} onChange={(e) => setQ(e.target.value)} />
-              <div className="seg" style={{ marginTop: 8 }}>{[['tutti', 'Tutti'], ['medico', 'Medici'], ['sanitario', 'Sanitari']].map(([k, l]) => <button key={k} className={tipo === k ? 'on' : ''} onClick={() => setTipo(k)}>{l}</button>)}</div>
-              <select value={sedeF} onChange={(e) => setSedeF(e.target.value)} style={{ marginTop: 8 }}><option value="">Tutte le strutture</option>{(data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
-              <div className="row small muted" style={{ marginTop: 6, gap: 6 }}><span>{list.length} professionisti{sedeF ? '' : ` · ${net.sedi.length} sedi`}</span><span className="spacer" />
-                {canEdit && <><button className="btn sm ghost" onClick={() => setChecked(new Set([...checked, ...list.map((x) => x.key)]))} title="Seleziona tutti quelli in elenco">Sel. tutti</button>{checked.size > 0 && <button className="btn sm ghost" onClick={() => setChecked(new Set())}>Nessuno ({checked.size})</button>}</>}</div>
+              <input placeholder="Cerca cognome o nome…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <div className="seg" style={{ marginTop: 8 }}>{[['pianificabili', 'Pianificabili'], ['esclusi', 'Esclusi'], ['tutti', 'Tutti']].map(([k, l]) => <button key={k} className={pian === k ? 'on' : ''} onClick={() => setPian(k)}>{l}</button>)}</div>
+              <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ marginTop: 8 }}><option value="">Tutti i tipi di persona</option>{(opz.data?.kinds || Object.entries(KIND_LABEL).map(([k, label]) => ({ k, label }))).map((k) => <option key={k.k} value={k.k}>{k.label}</option>)}</select>
+              <select value={sedeF} onChange={(e) => setSedeF(e.target.value)} style={{ marginTop: 6 }}><option value="">Tutte le sedi di lavoro</option>{sediOpz.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+              <select value={ruoloF} onChange={(e) => setRuoloF(e.target.value)} style={{ marginTop: 6 }}><option value="">Tutti i ruoli</option>{(opz.data?.ruoli || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+              <select value={discF} onChange={(e) => setDiscF(e.target.value)} style={{ marginTop: 6 }}><option value="">Tutte le discipline</option>{discipline.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+              <div className="row small muted" style={{ marginTop: 6, gap: 6 }}><span>{list.length} persone{nEsclusi ? ` · ${nEsclusi} escluse` : ''}</span><span className="spacer" />
+                {canEdit && <><button className="btn sm ghost" onClick={() => setChecked(new Set([...checked, ...listNet.map((x) => x.key)]))} title="Seleziona per l'invio massivo tutte le persone in elenco presenti nelle sedi">Sel. tutti</button>{checked.size > 0 && <button className="btn sm ghost" onClick={() => setChecked(new Set())}>Nessuno ({checked.size})</button>}</>}</div>
             </div>
-            <div className="spec-items">{list.map((s) => (
-              <button key={s.key} className={`spec-item ${sel === s.key ? 'on' : ''} ${checked.has(s.key) ? 'checked' : ''}`} onClick={() => setSel(s.key)}>
-                <div className="strong row" style={{ gap: 8 }}>{canEdit && <input type="checkbox" checked={checked.has(s.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.key)} title="Seleziona per l'invio massivo" />}<span>{s.nome}</span>{!s.email && !personaDi(s.key)?.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
-                <div className="small muted">{s.discipline.join(', ') || s.profili.join(', ') || s.tipo}</div>
-                <div className="small">{s.nSedi} {s.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(s.ore)}/sett.{s.sessioni.some((z) => !z.room) ? <span className="red"> · non allocate</span> : null}{persone.data && !personaDi(s.key) ? <span className="muted"> · non in anagrafica</span> : null}</div>
-              </button>))}</div>
+            <div className="spec-items">{list.map((z) => (
+              <button key={z.id} className={`spec-item ${sel === z.id ? 'on' : ''} ${z.net && checked.has(z.net.key) ? 'checked' : ''}`} onClick={() => setSel(z.id)}>
+                <div className="strong row" style={{ gap: 8 }}>{canEdit && z.net && <input type="checkbox" checked={checked.has(z.net.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(z.net.key)} title="Seleziona per l'invio massivo" />}<span>{z.lastName} {z.firstName}</span>{z.planningExcluded && <span className="small muted" style={{ fontWeight: 400 }}>esclusa</span>}{!z.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
+                <div className="small muted">{KIND_LABEL[z.kind] || z.kind}{z.roleName ? ` · ${z.roleName}` : ''}{(z.discipline || []).length ? ` · ${z.discipline.join(', ')}` : z.net?.discipline?.length ? ` · ${z.net.discipline.join(', ')}` : ''}</div>
+                <div className="small">{z.siteName ? <span>{sedeNome(z.siteId) || z.siteName}</span> : <span className="muted">sede non indicata</span>}{z.net ? <span> · {z.net.nSedi} {z.net.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(z.net.ore)}/sett.{z.net.sessioni.some((w) => !w.room) ? <span className="red"> · non allocate</span> : null}</span> : <span className="muted"> · non nelle sedi</span>}</div>
+              </button>))}
+              {!list.length && <div className="empty">Nessuna persona con questi filtri.</div>}
+              {nonInAnagrafica.length > 0 && <div className="bd small muted" style={{ borderTop: '1px solid var(--line)' }} title={nonInAnagrafica.map((x) => x.nome).join(', ')}>Nella settimana-tipo delle sedi ma non in anagrafica: {nonInAnagrafica.length} ({nonInAnagrafica.slice(0, 4).map((x) => x.nome).join(', ')}{nonInAnagrafica.length > 4 ? '…' : ''}). Si creano in Rubrica con la stessa grafia.</div>}
+            </div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!x ? <div className="card"><div className="bd empty">Seleziona un professionista per vedere i suoi impegni su tutte le sedi e simulare una proposta.</div></div>
-              : <Dettaglio key={x.key} x={x} net={net} colorOf={colorOf} canEdit={canEdit} toast={toast} reload={reload} persona={personaDi(x.key)} />}
+            {!p ? <div className="card"><div className="bd empty">Seleziona una persona per vedere i suoi dati, gli impegni su tutte le sedi e simulare una proposta.</div></div>
+              : <div className="grid" style={{ gap: 16 }}>
+                <SchedaPersona p={p} sedeNome={sedeNome} canPlan={canPlan} busy={busy} onExcluded={(v) => setExcluded(p, v)} />
+                {p.net ? <Dettaglio key={p.net.key} x={p.net} net={net} colorOf={colorOf} canEdit={canEdit} toast={toast} reload={reload} persona={p} />
+                  : <div className="card"><div className="bd empty">La persona non compare nella settimana-tipo di nessuna sede: niente impegni da mostrare. Si inserisce dal personale della sede in "Sedi e ambulatori".</div></div>}
+              </div>}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// Dati anagrafici in sola lettura (vengono dalla Rubrica) e scelta "pianificabile / esclusa"
+function SchedaPersona({ p, sedeNome, canPlan, busy, onExcluded }) {
+  return (
+    <div className="card"><div className="bd">
+      <div className="row" style={{ alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 18 }}>{p.lastName} {p.firstName} <Badge tone={KIND_TONE[p.kind] || 'grey'}>{KIND_LABEL[p.kind] || p.kind}</Badge> {p.planningExcluded ? <Badge tone="red">esclusa dalla pianificazione</Badge> : <Badge tone="green">pianificabile</Badge>}{p.inRoom && <> <Badge tone="teal">scheda Room</Badge></>}</h2>
+          <div className="small muted">{[p.roleName, p.siteName ? `sede ${sedeNome(p.siteId) || p.siteName}` : 'sede di lavoro non indicata', (p.discipline || []).join(', '), p.email || 'senza email'].filter(Boolean).join(' · ')}</div>
+          <div className="small muted" style={{ marginTop: 4 }}>Nome, contatti, sede di lavoro, ruolo e disciplina sono dell'anagrafica unica: si modificano in Rubrica. Tariffe, disponibilità e contratto stanno nella scheda Room (pagina Professionisti).</div>
+        </div>
+        <div className="row">
+          <Link className="btn ghost sm" to={`/people/${p.id}`}>Apri in Rubrica</Link>
+          {canPlan && (p.planningExcluded
+            ? <button className="btn sm" disabled={busy} onClick={() => onExcluded(false)}>Riporta tra i pianificabili</button>
+            : <button className="btn sm ghost" disabled={busy} onClick={() => onExcluded(true)} title="La persona non comparirà più nei selettori di turni, disponibilità, presenze e calendario">Escludi dalla pianificazione</button>)}
+        </div>
+      </div>
+    </div></div>
   );
 }
 
@@ -95,9 +170,8 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload, persona }) {
       <div className="card"><div className="bd">
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: 18 }}>{x.nome} <Badge tone={x.tipo === 'medico' ? 'teal' : 'mauve'}>{x.tipo === 'medico' ? 'medico' : x.profili.join(', ') || 'sanitario'}</Badge></h2>
+            <h2 style={{ fontSize: 18 }}>Nelle sedi come {x.nome} <Badge tone={x.tipo === 'medico' ? 'teal' : 'mauve'}>{x.tipo === 'medico' ? 'medico' : x.profili.join(', ') || 'sanitario'}</Badge></h2>
             <div className="muted">{x.discipline.join(', ')}{x.attrezzature.length ? ` · richiede ${x.attrezzature.join(', ')}` : ''}</div>
-            <div className="small" style={{ marginTop: 4 }}>{persona ? <>Anagrafica unica: <Link to={`/people/${persona.id}`}>{persona.nome}</Link>{persona.inRoom ? <> · <Badge tone="green">scheda Room</Badge></> : <> · <Badge tone="amber">senza scheda Room</Badge></>}</> : <span className="muted">Nome non trovato nell'anagrafica unica: per turni, presenze e rendiconti la persona va creata in Amministrazione &gt; Persone con la stessa grafia.</span>}</div>
             <div className="row small" style={{ marginTop: 6, gap: 14 }}><span><b>{durTxt(x.ore)}</b>/settimana</span><span><b>{x.sessioni.filter((q) => q.room).length}</b> sessioni</span><span>sedi: {sedeList.map((n, i) => <span key={n} className="chip" style={{ background: colorOf[x.sedi.find((z) => z.sede === n)?.sedeId] + '22' }}>{n}</span>)}</span></div>
           </div>
           <div className="row">

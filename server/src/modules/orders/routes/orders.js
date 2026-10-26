@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, itDate } from '../lib/util.js';
 import { requireRole, isOps, Params, assertStruttura, OPS_ROLES } from '../lib/access.js';
-import { nextOrderNumber, orderLines, enrichLines, assertStatus, ARTICLE_COLS } from '../lib/orders.js';
+import { nextOrderNumber, orderLines, enrichLines, assertStatus, ARTICLE_COLS, companyInfo } from '../lib/orders.js';
 import { emailOrder } from '../lib/silva.js';
 import { ORDER_COLS, ORDER_JOINS as JOINS, event, markPicked, markShipped, markDelivered, markStored } from '../lib/orderflow.js';
 import { buildOrderPdf } from '../pdf/order.js';
@@ -38,7 +38,7 @@ async function fullDetail(req, id) {
   o.packages = await many(`SELECT p.id, p.line_id, p.article_id, p.seq, p.status, p.barcode, p.lot, p.expiry, p.received_at, p.used_at, a.code AS article_code, a.name AS article_name, a.pack_label, a.color, a.gtin
     FROM packages p JOIN articles a ON a.id=p.article_id WHERE p.order_id=$1 ORDER BY a.sort, p.seq`, [id]);
   o.issues = await many('SELECT i.*, u.full_name AS opened_by_name, c.full_name AS closed_by_name FROM issues i LEFT JOIN users u ON u.id=i.opened_by LEFT JOIN users c ON c.id=i.closed_by WHERE i.order_id=$1 ORDER BY i.opened_at', [id]);
-  o.struttura = await one('SELECT * FROM sites_v WHERE id=$1', [o.struttura_id]);
+  o.struttura = await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]);
   return o;
 }
 
@@ -145,7 +145,7 @@ async function approve(req, id) {
   await audit(req, 'ORDER_APPROVE', 'order', id);
   // PDF archiviato sull'ordine e inviato alla struttura
   const full = await fullDetail(req, id);
-  const company = await one('SELECT * FROM company LIMIT 1');
+  const company = await companyInfo();
   const cats = await many('SELECT code, name FROM categories');
   const lines = full.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
   const pdf = await buildOrderPdf({ order: full, struttura: full.struttura, lines, company, packages: [], events: full.events });
@@ -160,7 +160,7 @@ r.post('/:id/approve', requireRole(...OPS_ROLES), ah(async (req, res) => res.jso
 async function emailToSupplier(req, id) {
   const o = await fullDetail(req, id);
   assertStatus(o, 'APPROVATO', 'PRESO_IN_CARICO');
-  const company = await one('SELECT * FROM company LIMIT 1');
+  const company = await companyInfo();
   const cats = await many('SELECT code, name FROM categories');
   const lines = o.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
   const pdf = o.pdf || await buildOrderPdf({ order: o, struttura: o.struttura, lines, company, packages: [], events: o.events });
@@ -278,7 +278,7 @@ r.post('/:id/cancel', ah(async (req, res) => {
 
 r.get('/:id/pdf', ah(async (req, res) => {
   const o = await fullDetail(req, req.params.id);
-  const company = await one('SELECT * FROM company LIMIT 1');
+  const company = await companyInfo();
   const cats = await many('SELECT code, name FROM categories');
   const lines = o.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
   const pdf = await buildOrderPdf({ order: o, struttura: o.struttura, lines, company, packages: o.packages, events: o.events });

@@ -925,3 +925,15 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .staff-row::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 10px; background: var(--line); }
 .node.unit.staff { width: 176px; min-width: 176px; max-width: 176px; }
 .node.unit.staff .unit-head { background: color-mix(in srgb, var(--mauve, #DEC0F1) 45%, var(--card)); }
+
+/* Organigramma: catena dal vertice all'unità di partenza */
+.org-chain { display: flex; flex-direction: column; align-items: center; gap: 0; padding-bottom: 0; }
+.chain-node { background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 6px 14px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.chain-node:hover { border-color: var(--blue); }
+.chain-node + .chain-node, .chain-arrow { margin-top: 0; }
+.chain-node + .chain-node::before, .chain-arrow::before { content: ''; display: block; }
+.org-chain > .chain-node:not(:first-child) { position: relative; margin-top: 18px; }
+.org-chain > .chain-node:not(:first-child)::after { content: ''; position: absolute; top: -18px; left: 50%; width: 1px; height: 18px; background: var(--line); }
+.chain-arrow { width: 1px; height: 18px; background: var(--line); }
+.org-chain + .tree { padding-top: 0; }
+.org-chain + .tree::before { display: none; }

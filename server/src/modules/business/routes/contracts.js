@@ -69,7 +69,8 @@ const DATA_SCHEMA = {
 
 const contractSchema = z.object({
   kind: z.enum(['PP', 'SRV', 'MDL', 'SEDE']),
-  org_id: z.coerce.number().int().positive(),
+  // controparte (Legal entity) e sede TD: almeno una delle due (contracts_party_check)
+  org_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
   site_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
   title: optStr(160),
   proposal_date: dateStr,
@@ -79,23 +80,37 @@ const contractSchema = z.object({
   data: z.any().default({}),
 });
 
-// La controparte (c.org) è un'organizzazione dell'anagrafica unica (public.organizations, via la vista orgs_v con i campi Business);
-// la sede del punto prelievi o della sede TD in locazione (c.site) è una sede dell'anagrafica unica (public.sites)
+// La controparte (c.org) è una Legal entity dell'anagrafica unica (public.organizations, via la vista orgs_v con i campi Business);
+// la sede TD (c.site) è una sede dell'anagrafica unica (public.sites, kind <> 'SERVICE'). Almeno una delle due è presente:
+// il contratto del punto prelievi lega la sede TD al partner che la ospita, la sede in locazione lega la sede TD al locatore.
 export const CONTRACT_COLS = `c.id, c.kind, c.protocol, c.status, c.org_id, c.site_id, c.title, c.proposal_date, c.start_date, c.end_date, c.data, c.notes, c.signed_at, c.version, c.created_by, c.cancelled_at, c.cancel_reason, c.created_at, c.updated_at,
   p.name AS org_name, p.city AS org_city, p.prov AS org_prov, p.vat AS org_vat, p.kind AS org_kind,
-  s.code AS site_code, s.name AS site_name, s.address AS site_street, s.zip AS site_zip, s.city AS site_city, s.province AS site_prov`;
-export const CONTRACT_FROM = 'FROM contracts c JOIN orgs_v p ON p.id=c.org_id LEFT JOIN public.sites s ON s.id=c.site_id';
-const SITE_COLS = 'id, code, name, kind, address AS street, zip, city, province AS prov, active';
+  s.code AS site_code, s.name AS site_name, s.kind AS site_kind, s.address AS site_street, s.zip AS site_zip, s.city AS site_city, s.province AS site_prov`;
+export const CONTRACT_FROM = 'FROM contracts c LEFT JOIN orgs_v p ON p.id=c.org_id LEFT JOIN public.sites s ON s.id=c.site_id';
+export const SITE_COLS = 'id, code, name, kind, address AS street, zip, city, province AS prov, active, organization_id';
 
-// Sede dell'anagrafica unica per un contratto PP/SEDE: obbligatoria e attiva (il profilo di sede vede solo le sue sedi)
-async function checkSite(kind, siteId, user) {
-  if (!HAS_DOSSIER(kind)) return null;
-  if (!siteId) throw bad('Seleziona la sede dall’anagrafica (Amministrazione > Sedi)');
-  const site = await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1 AND active`, [siteId]);
-  if (!site) throw bad('Sede non trovata o disattivata');
+// Sede TD dell'anagrafica unica: obbligatoria per punti prelievo e sedi in locazione, facoltativa per le altre sezioni;
+// sempre attiva e mai un punto dei clienti service (kind SERVICE). Il profilo di sede vede solo le sue sedi.
+export async function checkSite(kind, siteId, user) {
+  if (!siteId) { if (HAS_DOSSIER(kind)) throw bad('Seleziona la sede TD dall’anagrafica (Amministrazione > Sedi)'); return null; }
+  const site = await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1 AND active AND kind <> 'SERVICE'`, [siteId]);
+  if (!site) throw bad('Sede TD non trovata o disattivata (i punti dei clienti service non sono sedi TD)');
   const ids = Array.isArray(user?.site_ids) ? user.site_ids : [];
   if (ids.length && !ids.includes(site.id)) throw bad('Sede fuori dal tuo perimetro');
   return site;
+}
+
+// Controparte (Legal entity dell'anagrafica unica): se indicata deve esistere ed essere attiva
+export async function checkOrg(orgId) {
+  if (!orgId) return null;
+  const org = await one('SELECT * FROM orgs_v WHERE id=$1 AND active', [orgId]);
+  if (!org) throw bad('Legal entity non trovata o disattivata: le organizzazioni si creano in Amministrazione > Legal entity');
+  return org;
+}
+
+// Documenti del fascicolo che non si applicano quando non c'è una struttura ospitante (sede intestata a TD o nessuna controparte)
+export function defaultDocState(noHost) {
+  return noHost ? { ATTO_CONDIVISIONE: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna struttura ospitante' }, DUVRI: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna interferenza con una struttura ospitante' } } : {};
 }
 
 async function addEvent(id, kind, userId, note, data, client) {
@@ -106,11 +121,11 @@ async function addEvent(id, kind, userId, note, data, client) {
 export async function loadContract(id) {
   const c = await one(`SELECT ${CONTRACT_COLS} ${CONTRACT_FROM} WHERE c.id=$1`, [id]);
   if (!c) throw notFound('Contratto non trovato');
-  c.org = await one('SELECT * FROM orgs_v WHERE id=$1', [c.org_id]);
+  c.org = c.org_id ? await one('SELECT * FROM orgs_v WHERE id=$1', [c.org_id]) : null;
   c.site = c.site_id ? await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1`, [c.site_id]) : null;
   c.files = await many('SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.created_at, u.full_name AS uploaded_by_name FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by WHERE f.contract_id=$1 ORDER BY f.created_at DESC', [id]);
   c.events = await many('SELECT e.*, u.full_name AS user_name FROM contract_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.contract_id=$1 ORDER BY e.at', [id]);
-  if (HAS_DOSSIER(c.kind)) c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
+  c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
   const cred = await one('SELECT portal_url, username, notes, updated_at, (password_enc IS NOT NULL) AS has_password FROM portal_credentials WHERE contract_id=$1', [id]);
   c.credentials = cred;
   return c;
@@ -128,11 +143,12 @@ r.get('/', ah(async (req, res) => {
   if (year) add('extract(year from c.proposal_date) = ?', Number(year));
   if (org_id) add('c.org_id = ?', Number(org_id));
   if (site_id) add('c.site_id = ?', Number(site_id));
-  if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(p.name) LIKE '%'||$${i}||'%' OR lower(coalesce(c.protocol,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(c.title,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(p.city,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.name,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.city,'')) LIKE '%'||$${i}||'%')`); }
+  if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(coalesce(p.name,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(c.protocol,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(c.title,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(p.city,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.name,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(s.city,'')) LIKE '%'||$${i}||'%')`); }
   const rows = await many(`SELECT ${CONTRACT_COLS},
       (SELECT count(*)::int FROM contract_files f WHERE f.contract_id=c.id AND f.category='FIRMATO') AS signed_files,
       (SELECT count(*)::int FROM contract_files f WHERE f.contract_id=c.id AND f.category IN ('LISTINO_XLSX','LISTINO_PDF')) AS price_lists,
-      (SELECT d.status FROM dossiers d WHERE d.contract_id=c.id) AS dossier_status
+      (SELECT d.status FROM dossiers d WHERE d.contract_id=c.id) AS dossier_status,
+      (SELECT d.id FROM dossiers d WHERE d.contract_id=c.id) AS dossier_id
     ${CONTRACT_FROM} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY c.created_at DESC LIMIT 1000`, p);
   res.json(rows);
 }));
@@ -148,22 +164,22 @@ r.post('/', ah(async (req, res) => {
   const d = parse(contractSchema, req.body);
   requireKind(d.kind, req.user);
   const data = validateData(d.kind, d.data);
-  const org = await one('SELECT * FROM orgs_v WHERE id=$1 AND active', [d.org_id]);
-  if (!org) throw bad('Organizzazione non trovata o disattivata: le organizzazioni si creano in Amministrazione > Organizzazioni');
+  if (!d.org_id && !d.site_id) throw bad('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
+  const org = await checkOrg(d.org_id);
   const site = await checkSite(d.kind, d.site_id, req.user);
-  const title = d.title || (d.kind === 'PP' ? `Punto Prelievi ${site.city || site.name}` : d.kind === 'SEDE' ? `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data.site_type]} ${site.city || site.name}` : org.name);
+  const title = d.title || (d.kind === 'PP' ? `Punto Prelievi ${site.city || site.name}` : d.kind === 'SEDE' ? `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data.site_type]} ${site.city || site.name}` : org?.name || site?.name);
   const row = await tx(async (client) => {
     const c = (await client.query(`INSERT INTO contracts (kind, org_id, site_id, title, proposal_date, start_date, end_date, notes, data, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [d.kind, d.org_id, site?.id || null, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [d.kind, org?.id || null, site?.id || null, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
     if (HAS_DOSSIER(d.kind)) {
-      // sedi intestate a TD: atto di condivisione e DUVRI con la struttura ospitante non si applicano
-      const docState = d.kind === 'SEDE' ? { ATTO_CONDIVISIONE: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna struttura ospitante' }, DUVRI: { not_applicable: true, note: 'Sede intestata a Toscana Diagnostica: nessuna interferenza con una struttura ospitante' } } : {};
-      await client.query('INSERT INTO dossiers (contract_id, hours, checklists, doc_date, doc_state) VALUES ($1,$2,$3,$4,$5)', [c.id, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(docState)]);
+      // il fascicolo nasce con la controparte e la sede TD del contratto (dossiers.org_id / site_id) e le segue
+      await client.query('INSERT INTO dossiers (contract_id, org_id, site_id, hours, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        [c.id, org?.id || null, site?.id || null, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(defaultDocState(d.kind === 'SEDE' || !org)), req.user.id]);
     }
     await addEvent(c.id, 'CREATO', req.user.id, null, null, client);
     return c;
   });
-  await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, org: org.name, site: site?.name });
+  await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, org: org?.name, site: site?.name });
   res.status(201).json(await loadContract(row.id));
 }));
 
@@ -173,11 +189,15 @@ r.put('/:id', ah(async (req, res) => {
   if (!editable(c.status)) throw bad('Il contratto è già firmato: per modificare i termini crea una nuova proposta');
   const d = parse(contractSchema.partial().omit({ kind: true }), req.body);
   const data = d.data !== undefined ? validateData(c.kind, d.data) : c.data;
-  if (d.org_id) { const p = await one('SELECT id FROM public.organizations WHERE id=$1 AND active', [d.org_id]); if (!p) throw bad('Organizzazione non trovata o disattivata'); }
+  const orgId = d.org_id !== undefined ? d.org_id : c.org_id;
   const siteId = d.site_id !== undefined ? d.site_id : c.site_id;
+  if (!orgId && !siteId) throw bad('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
+  await checkOrg(orgId);
   await checkSite(c.kind, siteId, req.user);
-  await q(`UPDATE contracts SET org_id=coalesce($2, org_id), site_id=$9, title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
-    [c.id, d.org_id || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data), siteId || null]);
+  await q(`UPDATE contracts SET org_id=$2, site_id=$9, title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
+    [c.id, orgId || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data), siteId || null]);
+  // il fascicolo del contratto segue controparte e sede del contratto
+  await q('UPDATE dossiers SET org_id=$2, site_id=$3, updated_at=now() WHERE contract_id=$1 AND (org_id IS DISTINCT FROM $2 OR site_id IS DISTINCT FROM $3)', [c.id, orgId || null, siteId || null]);
   await addEvent(c.id, 'MODIFICATO', req.user.id);
   await audit(req, 'CONTRACT_UPDATE', 'contract', c.id);
   res.json(await loadContract(c.id));
@@ -227,10 +247,11 @@ r.post('/:id/generate', ah(async (req, res) => {
 // Controlli minimi prima di generare la proposta
 function completenessErrors(c) {
   const e = []; const d = c.data || {}; const p = c.org;
+  if (!p) { e.push('Indica la controparte (Legal entity): il documento è intestato a lei.'); return e; }
   if (!p.vat && !p.tax_code) e.push('Indica P.IVA o codice fiscale dell’organizzazione (Amministrazione > Organizzazioni).');
   if (!p.street || !p.city) e.push('Completa l’indirizzo dell’organizzazione (Amministrazione > Organizzazioni).');
   if (!p.signer && !p.legal_rep) e.push('Indica il legale rappresentante o il firmatario nelle impostazioni Business dell’organizzazione.');
-  if (HAS_DOSSIER(c.kind) && !c.site) e.push('Seleziona la sede dall’anagrafica.');
+  if (HAS_DOSSIER(c.kind) && !c.site) e.push('Seleziona la sede TD dall’anagrafica.');
   if (c.kind === 'PP') {
     const items = d.fee?.items || [];
     if (!items.length) e.push('Indica almeno una condizione del corrispettivo (art. 5.1).');

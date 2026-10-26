@@ -7,7 +7,7 @@ import IPM from '../lib/ipm-engine.js';
 
 // Il motore GANTT (vanilla JS) disegna nav, cruscotto e schede target dentro #ipm-main; React tiene solo cornice e finestra di stampa.
 // Anagrafica unica: le target sono organizzazioni della Suite (tipo Target) e gli owner sono persone della Suite; il motore
-// riceve `navigate` per i pulsanti "Apri in Amministrazione" (/admin/organizations, /people/:id).
+// riceve `navigate` per i pulsanti "Apri in Legal entity" (/admin/organizations) e "Scheda persona" (/people/:id).
 export default function Plan({ mode }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -42,7 +42,7 @@ export default function Plan({ mode }) {
       <div className="page-head">
         <div>
           <h1>Integration Plan Management</h1>
-          <div className="sub">{lang === 'it' ? 'Gestione e coordinamento del piano di integrazione post closing. Le società target e le persone del team vengono dall\'anagrafica unica della Suite; ogni modifica viene salvata subito e condivisa in tempo reale.' : 'Post-closing integration plan management. Target companies and team members come from the Suite shared registry; every change is saved immediately and shared in real time.'}</div>
+          <div className="sub">{lang === 'it' ? 'Gestione e coordinamento del piano di integrazione post closing. Le sedi da integrare sono le Legal entity di tipo Target e le persone del team vengono dall\'anagrafica unica della Suite; ogni modifica viene salvata subito e condivisa in tempo reale.' : 'Post-closing integration plan management. Target companies and team members come from the Suite shared registry; every change is saved immediately and shared in real time.'}</div>
         </div>
         <div className="lang"><button id="lang-it" className={lang === 'it' ? 'on' : ''} onClick={() => switchLang('it')}>IT</button><button id="lang-en" className={lang === 'en' ? 'on' : ''} onClick={() => switchLang('en')}>EN</button></div>
       </div>

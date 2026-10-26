@@ -4,7 +4,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, notFound, audit, diff, HttpError, parse } from '../lib/util.js';
 import { requireEditor, requireAdmin } from '../lib/access.js';
 import { publish, sseHandler } from '../lib/events.js';
-import { readPlan, readMeta, readTarget, readAct, writeSupport, assertPeople, targetRowToObj, actRowToObj, normTarget, normAct, T_FIELDS, A_FIELDS, FIELD_LABELS, STATUS_LABELS, takeSnapshot, importPlan } from '../lib/plan.js';
+import { readPlan, readMeta, readTarget, readEditableTarget, readAct, writeSupport, assertPeople, targetRowToObj, actRowToObj, normTarget, normAct, T_FIELDS, A_FIELDS, FIELD_LABELS, STATUS_LABELS, takeSnapshot, importPlan } from '../lib/plan.js';
 
 const r = Router();
 
@@ -50,12 +50,14 @@ async function emit(req, type, data, { label, targetId } = {}) {
 r.get('/plan', ah(async (_req, res) => { res.json(await readPlan()); }));
 r.get('/events', sseHandler);
 
-// ---- anagrafica unica (sola lettura: si crea e si modifica in Amministrazione)
-// Organizzazioni candidate al piano: kind TARGET attive, più quelle già nel piano (anche se nel frattempo diventate SOCIETA)
+// ---- anagrafica unica (sola lettura: le Legal entity si creano e si modificano in Amministrazione > Legal entity)
+// Elenco delle sedi da integrare: tutte le Legal entity di tipo TARGET (anche senza piano avviato: in_plan=false)
+// più quelle con un piano che nel frattempo sono diventate SOCIETA (integrated=true).
 r.get('/organizations', ah(async (_req, res) => {
-  res.json(await many(`SELECT o.id, o.kind, o.code, o.name, o.city, o.province, o.vat_number, o.active, (x.org_id IS NOT NULL) AS in_plan
-    FROM public.organizations o LEFT JOIN target_ext x ON x.org_id = o.id
-    WHERE x.org_id IS NOT NULL OR (o.kind = 'TARGET' AND o.active) ORDER BY o.name`));
+  res.json(await many(`SELECT o.id, o.kind, o.code, o.name, o.city, o.province, o.vat_number, o.active,
+      (x.org_id IS NOT NULL) AS in_plan, (x.org_id IS NOT NULL AND o.kind <> 'TARGET') AS integrated
+    FROM public.organizations o LEFT JOIN org_ext x ON x.org_id = o.id
+    WHERE x.org_id IS NOT NULL OR o.kind = 'TARGET' ORDER BY lower(o.name)`));
 }));
 // Persone dell'anagrafica per il team: chi ha un grant sul modulo viene prima (has_grant), poi tutte le persone attive
 r.get('/people', ah(async (req, res) => {
@@ -69,7 +71,8 @@ r.get('/people', ah(async (req, res) => {
     ORDER BY has_grant DESC, lower(p.last_name), lower(p.first_name) LIMIT 500`, params));
 }));
 
-// ---- target: aggancio del piano a un'organizzazione dell'anagrafica
+// ---- target: avvio del piano per una Legal entity TARGET dell'anagrafica (crea la riga org_ext e le attività iniziali).
+// Nessuna creazione o rinomina della società qui: nome, tipo e dati fiscali si cambiano in Amministrazione > Legal entity.
 const targetSchema = z.object({
   org_id: z.coerce.number().int().positive(),
   version: z.number().int().optional(),
@@ -80,15 +83,15 @@ r.post('/targets', requireEditor, ah(async (req, res) => {
   const nt = normTarget(body);
   const atts = Array.isArray(body.atts) ? body.atts : [];
   const org = await one('SELECT id, kind, name, active FROM public.organizations WHERE id=$1', [body.org_id]);
-  if (!org) throw notFound('Organizzazione non trovata in anagrafica');
-  if (org.kind !== 'TARGET') throw bad(`"${org.name}" non è una società target (tipo ${org.kind}): il tipo si cambia in Amministrazione > Organizzazioni`);
+  if (!org) throw notFound('Legal entity non trovata in anagrafica');
+  if (org.kind !== 'TARGET') throw bad(`"${org.name}" non è una società target (tipo ${org.kind}): il tipo si cambia in Amministrazione > Legal entity`);
   await assertPeople(atts.flatMap((a) => { const na = normAct(a || {}); return [na.owner, ...na.support]; }));
   const row = await tx(async (c) => {
-    const ex = await c.query('SELECT 1 FROM target_ext WHERE org_id=$1', [org.id]);
-    if (ex.rows.length) throw new HttpError(409, 'Questa società è già nel piano');
-    const pos = (await c.query('SELECT coalesce(max(position)+1,0) AS p FROM target_ext')).rows[0].p;
+    const ex = await c.query('SELECT 1 FROM org_ext WHERE org_id=$1', [org.id]);
+    if (ex.rows.length) throw new HttpError(409, 'Il piano di questa società è già stato avviato');
+    const pos = (await c.query('SELECT coalesce(max(position)+1,0) AS p FROM org_ext')).rows[0].p;
     await c.query(
-      `INSERT INTO target_ext (org_id, position, status, ref, fatt, pfn, ev, linee, loi, prelim, closing, hor, note, lm, updated_by)
+      `INSERT INTO org_ext (org_id, position, status, ref, fatt, pfn, ev, linee, loi, prelim, closing, hor, note, lm, updated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [org.id, pos, nt.status, nt.ref, nt.fatt, nt.pfn, nt.ev, JSON.stringify(nt.linee), nt.loi, nt.prelim, nt.closing, nt.hor, nt.note, nt.lm || Date.now(), req.user.id]);
     let i = 0;
@@ -102,19 +105,18 @@ r.post('/targets', requireEditor, ah(async (req, res) => {
           na.dett, na.note, na.st, na.pl, na.ms, na.fine, na.lm, req.user.id]);
       if (ins.rows.length) await writeSupport(c, org.id, String(a.id), na.support);
     }
-    await audit(req, 'TARGET_CREATED', { entity: 'target', entityId: org.id, targetId: String(org.id), label: `Nuovo piano per ${org.name} (${i} attività)` }, c);
+    await audit(req, 'TARGET_CREATED', { entity: 'target', entityId: org.id, targetId: String(org.id), label: `Piano avviato per ${org.name} (${i} attività)` }, c);
     return readTarget(org.id, c);
   });
   const obj = targetRowToObj(row);
-  await emit(req, 'target.created', obj, { label: `nuovo piano per ${obj.nome}`, targetId: obj.id });
+  await emit(req, 'target.created', obj, { label: `piano avviato per ${obj.nome}`, targetId: obj.id });
   res.status(201).json(obj);
 }));
 
 r.patch('/targets/:id', requireEditor, ah(async (req, res) => {
   const id = idParam(req.params.id);
   const incoming = req.body || {};
-  const cur = await readTarget(id);
-  if (!cur) throw notFound('Target non trovata');
+  const cur = await readEditableTarget(id);
   if (incoming.version != null && Number(incoming.version) !== cur.version) {
     const err = new HttpError(409, 'Modificata da un altro utente'); err.current = { kind: 'target', row: targetRowToObj(cur) }; throw err;
   }
@@ -124,7 +126,7 @@ r.patch('/targets/:id', requireEditor, ah(async (req, res) => {
   const changes = diff(targetRowToObj(cur), { ...nt, fatt: nt.fatt === '' ? '' : Number(nt.fatt), pfn: nt.pfn === '' ? '' : Number(nt.pfn), ev: nt.ev === '' ? '' : Number(nt.ev) },
     T_FIELDS.filter((k) => k !== 'lm'));
   const upd = await one(
-    `UPDATE target_ext SET status=$2, ref=$3, fatt=$4, pfn=$5, ev=$6, linee=$7, loi=$8, prelim=$9, closing=$10, hor=$11, note=$12, lm=$13,
+    `UPDATE org_ext SET status=$2, ref=$3, fatt=$4, pfn=$5, ev=$6, linee=$7, loi=$8, prelim=$9, closing=$10, hor=$11, note=$12, lm=$13,
        version=version+1, updated_by=$14, updated_at=now()
      WHERE org_id=$1 AND version=$15 RETURNING org_id`,
     [id, nt.status, nt.ref, nt.fatt, nt.pfn, nt.ev, JSON.stringify(nt.linee), nt.loi, nt.prelim, nt.closing, nt.hor, nt.note,
@@ -142,15 +144,16 @@ r.patch('/targets/:id', requireEditor, ah(async (req, res) => {
   res.json(obj);
 }));
 
-// rimozione del piano (l'organizzazione resta in anagrafica)
+// rimozione del piano (la Legal entity resta in anagrafica e, se è ancora TARGET, resta nell'elenco come "da avviare")
 r.delete('/targets/:id', requireEditor, ah(async (req, res) => {
   const id = idParam(req.params.id);
   const cur = await readTarget(id);
-  if (!cur) throw notFound('Target non trovata');
+  if (!cur || !cur.configured) throw notFound('Piano non trovato');
+  if (cur.integrated) throw bad(`"${cur.nome}" è ormai una società del gruppo: il piano di integrazione è chiuso e resta consultabile, non si rimuove`);
   await tx(async (c) => {
     await takeSnapshot('pre-delete', `Rimozione dal piano di ${cur.nome}`, req.user.id, c);
     await c.query('DELETE FROM activities WHERE target_id=$1', [id]);
-    await c.query('DELETE FROM target_ext WHERE org_id=$1', [id]);
+    await c.query('DELETE FROM org_ext WHERE org_id=$1', [id]);
     await audit(req, 'TARGET_DELETED', { entity: 'target', entityId: id, targetId: String(id), label: `Rimosso dal piano ${cur.nome}` }, c);
   });
   await emit(req, 'target.deleted', { id }, { label: `rimosso dal piano ${cur.nome}`, targetId: id });
@@ -160,8 +163,7 @@ r.delete('/targets/:id', requireEditor, ah(async (req, res) => {
 // ---- attività
 r.post('/targets/:tid/activities', requireEditor, ah(async (req, res) => {
   const tid = idParam(req.params.tid);
-  const t = await readTarget(tid);
-  if (!t) throw notFound('Target non trovata');
+  const t = await readEditableTarget(tid);
   const body = req.body || {};
   const id = String(body.id || '').trim();
   if (!id || id.length > 80) throw bad('Identificativo attività non valido');
@@ -190,8 +192,7 @@ r.post('/targets/:tid/activities', requireEditor, ah(async (req, res) => {
 r.patch('/targets/:tid/activities/:id', requireEditor, ah(async (req, res) => {
   const tid = idParam(req.params.tid); const { id } = req.params;
   const incoming = req.body || {};
-  const t = await readTarget(tid);
-  if (!t) throw notFound('Target non trovata');
+  const t = await readEditableTarget(tid);
   const cur = await readAct(tid, id);
   if (!cur) throw notFound('Attività non trovata');
   if (incoming.version != null && Number(incoming.version) !== cur.version) {
@@ -228,9 +229,9 @@ r.patch('/targets/:tid/activities/:id', requireEditor, ah(async (req, res) => {
 
 r.delete('/targets/:tid/activities/:id', requireEditor, ah(async (req, res) => {
   const tid = idParam(req.params.tid); const { id } = req.params;
-  const t = await readTarget(tid);
+  const t = await readEditableTarget(tid);
   const cur = await readAct(tid, id);
-  if (!t || !cur) throw notFound('Attività non trovata');
+  if (!cur) throw notFound('Attività non trovata');
   await q('DELETE FROM activities WHERE target_id=$1 AND id=$2', [tid, id]);
   const label = `${actTitle(t, actRowToObj(cur))} · attività eliminata`;
   await audit(req, 'ACTIVITY_DELETED', { entity: 'activity', entityId: `${tid}/${id}`, targetId: String(tid), label, data: { deleted: actRowToObj(cur) } });
@@ -241,8 +242,7 @@ r.delete('/targets/:tid/activities/:id', requireEditor, ah(async (req, res) => {
 r.put('/targets/:tid/order', requireEditor, ah(async (req, res) => {
   const tid = idParam(req.params.tid);
   const { ids } = parse(z.object({ ids: z.array(z.string()).max(1000) }), req.body);
-  const t = await readTarget(tid);
-  if (!t) throw notFound('Target non trovata');
+  const t = await readEditableTarget(tid);
   await tx(async (c) => {
     for (let i = 0; i < ids.length; i++) await c.query('UPDATE activities SET position=$3 WHERE target_id=$1 AND id=$2', [tid, ids[i], i]);
     await audit(req, 'ACTIVITIES_REORDERED', { entity: 'target', entityId: tid, targetId: String(tid), label: `${t.nome} · riordino attività` }, c);
