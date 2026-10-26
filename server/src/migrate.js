@@ -54,7 +54,7 @@ async function seed() {
       const u = await one(
         `INSERT INTO users (email, full_name, first_name, last_name, title, level, status, auth_provider, organization_id, password_hash, must_change_password)
          VALUES ($1,$2,$7,$8,'Dott.','OWNER','ACTIVE',$3,$4,$5,$6) RETURNING id`,
-        [config.seed.ownerEmail, displayName(splitName(config.seed.ownerName).last_name, splitName(config.seed.ownerName).first_name), pwd ? 'BOTH' : 'ENTRA', td.id, pwd, Boolean(pwd), splitName(config.seed.ownerName).first_name, splitName(config.seed.ownerName).last_name]);
+        [config.seed.ownerEmail, displayName(splitName(config.seed.ownerName).last_name, splitName(config.seed.ownerName).first_name), pwd ? 'BOTH' : 'ENTRA', null, pwd, Boolean(pwd), splitName(config.seed.ownerName).first_name, splitName(config.seed.ownerName).last_name]);
       for (const m of MODULES) {
         const profile = (m.profiles.find((p) => ['OWNER', 'SUPERADMIN', 'ADMIN', 'CEO', 'DIREZIONE', 'PUBLISHER', 'EDITOR'].includes(p.key)) || m.profiles[0]).key;
         await q(`INSERT INTO grants (user_id, module_key, profile, source) VALUES ($1,$2,$3,'SEED') ON CONFLICT DO NOTHING`, [u.id, m.key, profile]);
@@ -66,7 +66,7 @@ async function seed() {
   }
 
   // Sorgenti legacy: una riga per app, abilitata se la URL è configurata
-  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)' };
+  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)' };
   for (const k of LEGACY_KEYS) {
     await q(`INSERT INTO legacy_sources (key, label, enabled) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET enabled=EXCLUDED.enabled`, [k, labels[k], Boolean(config.legacy[k])]);
   }

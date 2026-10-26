@@ -10,6 +10,7 @@ const seedRules = [
   ['Retail & Communications Management', null, null, false, 'retail', 'RETAIL', 'ALL'], ['Retail & Communications Management', null, null, false, 'comunicazione', 'EDITOR', 'ALL'],
   ['HSQ Management', null, null, false, 'nc', 'QUALITA', 'ALL'], ['HSQ Management', null, null, false, 'sgi', 'EDITOR', 'ALL'], ['HSQ Management', null, null, false, 'service', 'EDITOR', 'ALL'],
   ['Legal, People and Organization', null, null, false, 'business', 'VIEWER', 'ALL'], ['Legal, People and Organization', null, null, false, 'contracts', 'HR', 'ALL'],
+  ['Retail & Communications Management', null, null, false, 'circolari', 'PUBBLICATORE', 'ALL'], ['HSQ Management', null, null, false, 'circolari', 'PUBBLICATORE', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'circolari', 'REDATTORE', 'ALL'],
   // pettine
   ['Laboratorio di Analisi', null, null, false, 'nc', 'LAB', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'orders', 'LAB', 'ALL'],
   ['B2B', null, null, false, 'business', 'OPERATOR', 'ALL'],

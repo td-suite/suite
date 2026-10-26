@@ -142,7 +142,7 @@ export async function applyModuleMigrations() {
 }
 
 // Moduli sull'anagrafica unica: partono vuoti (schema creato, subito LIVE), nessuna copia dall'app di origine
-export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration'];
+export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari'];
 export async function startFresh(key, userId) {
   if (!FRESH_MODULES.includes(key)) throw new Error('Questo modulo si avvia con il travaso dei dati');
   const st = await getModuleState(key);

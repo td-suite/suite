@@ -58,6 +58,12 @@ async function call({ kind, system, user, maxTokens = 1200, userId, query, timeo
   }
 }
 
+// Chiamata generica con risposta JSON, usata dai moduli (es. Circolari per strutturare le bozze). Mai dati sensibili.
+export async function askJson({ kind, system, user, maxTokens = 2000, userId, query, timeoutMs = 60_000 }) {
+  const text = await call({ kind, system, user, maxTokens, userId, query, timeoutMs });
+  try { return extractJson(text); } catch { throw new HttpError(502, 'Risposta del modello non interpretabile'); }
+}
+
 // Frasi del giorno ispirate ai valori aziendali: positive, mai banali, massimo 180 caratteri, in italiano
 export async function generateQuotes(values, n = 7, { userId } = {}) {
   const count = Math.min(Math.max(Number(n) || 7, 1), 20);

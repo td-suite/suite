@@ -1,0 +1,53 @@
+/* Modulo Circolari: stili propri, isolati dal plugin Vite sotto .mod-circolari */
+.circ-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.circ-prot { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 800; color: var(--teal); letter-spacing: .01em; white-space: nowrap; }
+.circ-snippet { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.circ-snippet b { color: var(--ink); background: #fff3b0; border-radius: 3px; padding: 0 2px; }
+.circ-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .circ-grid { grid-template-columns: 1fr; } }
+.circ-side { position: sticky; top: 14px; display: grid; gap: 14px; }
+.circ-form { display: grid; gap: 12px; }
+.circ-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.circ-form textarea { min-height: 72px; resize: vertical; }
+.circ-blocchi { display: grid; gap: 10px; }
+.circ-blocco { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--card); display: grid; gap: 8px; }
+.circ-blocco .bh { display: flex; align-items: center; gap: 8px; }
+.circ-blocco .bh .tipo { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 800; color: var(--teal); }
+.circ-blocco .bh .spacer { flex: 1; }
+.circ-blocco textarea { width: 100%; min-height: 60px; resize: vertical; }
+.circ-blocco.titolo input { font-weight: 700; }
+.circ-tab { overflow-x: auto; }
+.circ-tab table { border-collapse: collapse; min-width: 100%; }
+.circ-tab th, .circ-tab td { padding: 2px; }
+.circ-tab input { width: 100%; min-width: 110px; font-size: 13px; padding: 6px 8px; }
+.circ-tab thead input { font-weight: 700; background: var(--teal-050); }
+.circ-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.circ-preview { width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); }
+.circ-preview-ph { height: 40vh; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; text-align: center; padding: 20px; }
+.circ-meta { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; font-size: 13.5px; }
+.circ-meta dt { color: var(--muted); font-weight: 650; }
+.circ-meta dd { margin: 0; }
+.circ-qr { display: flex; gap: 12px; align-items: center; }
+.circ-qr img { width: 92px; height: 92px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.circ-dest { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.circ-dest table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.circ-dest td { padding: 6px 10px; border-bottom: 1px solid var(--line-soft); }
+.circ-dest input[type=text] { width: 100%; padding: 4px 6px; font-size: 13px; }
+.circ-steps { display: grid; gap: 10px; counter-reset: s; }
+.circ-steps > div { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+.circ-steps > div::before { counter-increment: s; content: counter(s); width: 26px; height: 26px; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 13px; }
+.circ-guide h3 { margin: 18px 0 6px; }
+.circ-guide p { margin: 0 0 10px; }
+.circ-banner { display: grid; grid-template-columns: 56% 44%; border-radius: 10px; overflow: hidden; color: #fff; font-family: Arial, Helvetica, sans-serif; margin-bottom: 12px; }
+.circ-banner .l { background: #1C505E; padding: 12px 16px; }
+.circ-banner .l .big { font-size: 24px; font-weight: 800; letter-spacing: .06em; }
+.circ-banner .l .sm { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+.circ-banner .r { background: #71B1BD; padding: 12px 16px; text-align: right; }
+.circ-banner .r .lbl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; }
+.circ-banner .r .num { font-size: 17px; font-weight: 800; }
+.circ-banner .r .dt { font-size: 10.5px; }
+.alert.warn { background: #fff4d6; color: #7a5200; }
+.circ-grid > * { min-width: 0; }
+.circ-lettura .table-wrap { overflow-x: auto; max-width: 100%; }
+.circ-lettura table.t { min-width: 0; }
+.circ-lettura .t th, .circ-lettura .t td { white-space: normal; }

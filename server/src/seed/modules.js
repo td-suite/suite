@@ -44,6 +44,9 @@ export const MODULES = [
   { key: 'comunicazione', area: 'RETAIL_FLOW', name: 'Comunicazione', tagline: 'News, circolari, blog, avvisi, frase del giorno', icon: 'comunicazione', kind: 'NATIVE', route: '/community/manage', sort_order: 40,
     profiles: [P('EDITOR', 'Redazione'), P('PUBLISHER', 'Pubblicazione e circolari')] },
 
+  { key: 'circolari', area: 'HQS', name: 'Circolari', tagline: 'Protocollo TD-AAAA/NNN, impaginazione su carta intestata, archivio e invio ai clienti', icon: 'doc', kind: 'LEGACY', legacy_url: null, sort_order: 40,
+    profiles: [P('ADMIN', 'Amministratore'), P('PUBBLICATORE', 'Pubblicazione e invio'), P('REDATTORE', 'Redazione bozze'), P('VIEWER', 'Consultazione')] },
+
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,
     profiles: [P('ADMIN', 'Amministratore')] },
@@ -60,12 +63,12 @@ export const AREA_GRANT_PROPOSALS = {
   finance: [['finance', 'SUPPORT'], ['cash', 'FINANCE'], ['cockpit', 'VIEWER']],
   operations: [['orders', 'PROCUREMENT'], ['shipments', 'ADMIN'], ['cash', 'ADMIN'], ['room', 'PLANNER']],
   'flow & back office': [['orders', 'PROCUREMENT'], ['shipments', 'ADMIN']],
-  'retail & communications': [['retail', 'RETAIL'], ['comunicazione', 'EDITOR']],
+  'retail & communications': [['retail', 'RETAIL'], ['comunicazione', 'EDITOR'], ['circolari', 'PUBBLICATORE']],
   retail: [['retail', 'RETAIL'], ['comunicazione', 'EDITOR']],
   hsq: [['nc', 'QUALITA'], ['sgi', 'EDITOR'], ['service', 'EDITOR']],
   hqs: [['nc', 'QUALITA'], ['sgi', 'EDITOR'], ['service', 'EDITOR']],
   'direzione sanitaria': [['nc', 'QUALITA'], ['room', 'RESP_SAN']],
   legal: [['business', 'VIEWER']],
   'legal people and organization': [['business', 'VIEWER']],
-  laboratorio: [['nc', 'LAB'], ['orders', 'LAB']],
+  laboratorio: [['nc', 'LAB'], ['orders', 'LAB'], ['circolari', 'REDATTORE']],
 };

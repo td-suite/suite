@@ -266,3 +266,10 @@ su Legal entity e/o sede TD. Room: tutte le persone attive con filtri e flag pia
 sotto la loro Legal entity. Organigramma: la sezione di Contratti del personale rimanda alla Rubrica, che parte da sede, area o persona
 (catena dal vertice + sottoalbero; esportazioni con ?unit_id). SGI e Portale Service si aprono in una scheda nuova. Le migrazioni dei
 moduli si applicano all'avvio del server (applyModuleMigrations), non solo al travaso.
+
+## Circolari (26/10/2026)
+Modulo nativo integrato dal pacchetto di Francesco sotto HQS (dopo Non conformità): protocollo TD-AAAA/NNN alla pubblicazione, impaginazione
+DOCX/PDF su carta intestata, archivio full-text, liste di distribuzione dall'anagrafica unica, QR pubblico. Parte vuoto e LIVE con
+"Avvia" (FRESH_MODULES). Documentazione in docs/CIRCOLARI.md. Regole di accesso iniziali: Retail & Communications e HSQ → PUBBLICATORE,
+Laboratorio → REDATTORE. Dipendenza nuova del server: docx. Collaudo locale: TXT con tabella → bozza → anteprima → TD-2026/001 → PDF, QR
+pubblico, ricerca generale (kind circolare_td).
