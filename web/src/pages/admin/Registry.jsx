@@ -345,7 +345,7 @@ export function PositionsEditor({ person, onChange }) {
         {list.map((x) => <tr key={x.id}><td><div className="strong">{x.unit_name}</div><div className="small muted">{KINDS[x.unit_kind]}{x.parent_name ? ` · ${x.parent_name}` : ''}</div></td><td className="small">{x.role_name || ''}</td><td>{x.is_head && <Badge tone="blue">Responsabile</Badge>}</td><td className="actions"><button type="button" className="iconbtn" aria-label="Rimuovi" onClick={() => del(x)}><Icon name="trash" /></button></td></tr>)}
       </tbody></table>}
       <div className="small strong" style={{ margin: '14px 0 6px' }}>Caselle nell'organigramma (solo per responsabili e figure di staff)</div>
-      {!list.length && <p className="small muted">Nessuna casella: per chi lavora in sede senza responsabilità va bene così, compare sotto la sua unità con il suo ruolo.</p>}}
+      {!list.length && <p className="small muted">Nessuna casella: per chi lavora in sede senza responsabilità va bene così, compare sotto la sua unità con il suo ruolo.</p>}
       <form onSubmit={add} className="form-grid">
         <Field label="Unità" required><select value={f.unit_id} onChange={(e) => setF({ ...f, unit_id: e.target.value })} required><option value="">Scegli</option>{[...(units.data || [])].sort((a, b) => coll.compare(unitLabel(a), unitLabel(b))).map((u) => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}</select></Field>
         <Field label="Ruolo nell'incarico"><select value={f.role_id} onChange={(e) => setF({ ...f, role_id: e.target.value })}><option value="">Nessuno</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
