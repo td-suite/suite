@@ -281,3 +281,11 @@ TK-AAAA/NNNN, SLA per priorità, cronologia, allegati, statistiche, esportazioni
 o Legal entity), `public.org_units` (casella destinataria, categoria predefinita, escalation); i gestori sono i responsabili delle
 caselle (`org_positions.is_head`) e della catena sopra. Aperto a tutti gli utenti autenticati senza grant (`modules.open_to_all`,
 migrazione 024; ruolo implicito UTENTE in `moduleUser`); profili ADMIN, RESPONSABILE, VIEWER. Documentazione in docs/TICKET.md.
+
+## Cartella condivisa (26/10/2026)
+Modulo nativo sotto Retail & Flow (dopo Comunicazione): cartelle ad albero e documenti con versioni, evidenza con scadenza e novità per
+utente, a disposizione di chi ha il grant (richiesta del CEO: nessun permesso per cartella, il widget lo vede solo chi è abilitato,
+`open_to_all` FALSE). Nessuna anagrafica propria: FK verso `public.users` (chi crea, carica, legge). Contenuto dei file in BYTEA nello
+schema del modulo (`public.files` richiede Azure Blob e senza di esso risponde 503). Profili ADMIN "Gestione" e VIEWER "Consultazione";
+regole di accesso iniziali: responsabili di unità → VIEWER, Retail & Communications e HSQ → ADMIN. Indice di ricerca con audience
+MODULE (solo chi ha il grant). Documentazione in docs/CARTELLA.md.

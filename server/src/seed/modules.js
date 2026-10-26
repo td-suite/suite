@@ -49,6 +49,9 @@ export const MODULES = [
   // Ticket: aperto a tutti gli utenti autenticati (open_to_all: widget in home e accesso senza grant, ruolo implicito UTENTE)
   { key: 'ticket', area: 'HQS', name: 'Ticket', tagline: 'Richieste e segnalazioni ai responsabili: SLA, cronologia, statistiche', icon: 'ticket', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: true,
     profiles: [P('ADMIN', 'Amministratore'), P('RESPONSABILE', 'Responsabile di unità'), P('VIEWER', 'Consultazione')] },
+  // Cartella condivisa: documenti per chi ha il grant (open_to_all FALSE, richiesta del CEO: il widget lo vede solo chi è abilitato)
+  { key: 'cartella', area: 'RETAIL_FLOW', name: 'Cartella condivisa', tagline: 'Documenti per tutti: cartelle, file in evidenza, novità', icon: 'folder', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: false,
+    profiles: [P('ADMIN', 'Gestione'), P('VIEWER', 'Consultazione')] },
 
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,

@@ -13,6 +13,8 @@ const seedRules = [
   ['Retail & Communications Management', null, null, false, 'circolari', 'PUBBLICATORE', 'ALL'], ['HSQ Management', null, null, false, 'circolari', 'PUBBLICATORE', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'circolari', 'REDATTORE', 'ALL'],
   // Ticket: responsabili di unità e HSQ Management (amministrazione del modulo)
   [null, null, null, true, 'ticket', 'RESPONSABILE', 'ALL'], ['HSQ Management', null, null, false, 'ticket', 'ADMIN', 'ALL'],
+  // Cartella condivisa: tutti i responsabili di unità in consultazione; Retail & Communications e HSQ gestiscono
+  [null, null, null, true, 'cartella', 'VIEWER', 'ALL'], ['Retail & Communications Management', null, null, false, 'cartella', 'ADMIN', 'ALL'], ['HSQ Management', null, null, false, 'cartella', 'ADMIN', 'ALL'],
   // pettine
   ['Laboratorio di Analisi', null, null, false, 'nc', 'LAB', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'orders', 'LAB', 'ALL'],
   ['B2B', null, null, false, 'business', 'OPERATOR', 'ALL'],

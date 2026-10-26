@@ -66,7 +66,7 @@ async function seed() {
   }
 
   // Sorgenti legacy: una riga per app, abilitata se la URL è configurata
-  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)', ticket: 'Ticket (nativo, senza sorgente)' };
+  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)', ticket: 'Ticket (nativo, senza sorgente)', cartella: 'Cartella condivisa (nativo, senza sorgente)' };
   for (const k of LEGACY_KEYS) {
     await q(`INSERT INTO legacy_sources (key, label, enabled) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET enabled=EXCLUDED.enabled`, [k, labels[k], Boolean(config.legacy[k])]);
   }

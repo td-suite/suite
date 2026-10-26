@@ -6,7 +6,7 @@ import SearchBar from '../components/SearchBar.jsx';
 import { sanitizeSnippet } from '../format.js';
 
 const KIND = {
-  news: { label: 'News', tone: 'teal', icon: 'news' }, circolare: { label: 'Circolare', tone: 'mauve', icon: 'file' }, circolare_td: { label: 'Circolare aziendale', tone: 'mauve', icon: 'doc' }, ticket: { label: 'Ticket', tone: 'teal', icon: 'ticket' }, blog: { label: 'Blog', tone: 'amber', icon: 'edit' },
+  news: { label: 'News', tone: 'teal', icon: 'news' }, circolare: { label: 'Circolare', tone: 'mauve', icon: 'file' }, circolare_td: { label: 'Circolare aziendale', tone: 'mauve', icon: 'doc' }, ticket: { label: 'Ticket', tone: 'teal', icon: 'ticket' }, cartella: { label: 'Documento condiviso', tone: 'teal', icon: 'folder' }, blog: { label: 'Blog', tone: 'amber', icon: 'edit' },
   post: { label: 'Bacheca', tone: 'blue', icon: 'comment' }, event: { label: 'Evento', tone: 'green', icon: 'calendar' }, person: { label: 'Persona', tone: 'mauve', icon: 'user' },
   site: { label: 'Sede', tone: 'grey', icon: 'building' }, org: { label: 'Legal entity', tone: 'grey', icon: 'folder' }, module: { label: 'Modulo', tone: 'teal', icon: 'grid' },
   file: { label: 'File', tone: 'grey', icon: 'file' },
