@@ -29,7 +29,9 @@ export async function seedGrantRules() {
   if ((await one('SELECT count(*)::int AS n FROM grant_rules')).n) return 0;
   let n = 0;
   for (const [unitName, roleName, siteKind, heads, mod, profile, scope] of seedRules) {
-    const unit = unitName ? await one('SELECT id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [unitName]) : null;
+    // nome esatto, altrimenti un'unità il cui nome contiene la parola chiave (es. "Finance Management" per Finance), di tecnostruttura se ce n'è una
+    const unit = unitName ? (await one('SELECT id FROM org_units WHERE lower(name)=lower($1) ORDER BY id LIMIT 1', [unitName])
+      || await one(`SELECT id FROM org_units WHERE kind IN ('AREA','FUNZIONE') AND lower(unaccent(name)) LIKE '%' || lower(unaccent($1)) || '%' ORDER BY (branch='STAFF') DESC, length(name), id LIMIT 1`, [unitName.split(',')[0].split(' &')[0]])) : null;
     if (unitName && !unit) continue;
     const role = roleName ? await one('SELECT id FROM job_roles WHERE lower(name)=lower($1)', [roleName]) : null;
     if (roleName && !role) continue;
