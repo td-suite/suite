@@ -169,13 +169,13 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
   const usedOrg = new Map(); const usedPerson = new Map();
   for (const [lid, oid] of Object.entries(mapping.organizations || {})) {
     if (!orgById.has(oid)) { warnings.push(`Target ${lid}: la Legal entity scelta nella Suite (${oid}) non esiste o non è di tipo TARGET / SOCIETA: abbinamento ignorato`); continue; }
-    if (usedOrg.has(oid)) throw new Error(`La stessa Legal entity della Suite (${oid}) è abbinata a due target dell'app originale (${usedOrg.get(oid)} e ${lid}): correggi l'abbinamento`);
-    usedOrg.set(oid, lid); orgMap.set(String(lid), oid);
+    if (usedOrg.has(oid)) warnings.push(`La Legal entity "${orgById.get(oid).name}" è abbinata a due target dell'app originale (${usedOrg.get(oid)} e ${lid}): i contenuti confluiscono nello stesso piano`);
+    if (!usedOrg.has(oid)) usedOrg.set(oid, lid); orgMap.set(String(lid), oid);
   }
   for (const [lid, pid] of Object.entries(mapping.people || {})) {
     if (!personOk.has(pid)) { warnings.push(`Persona ${lid}: la persona scelta nella Suite (${pid}) non esiste: abbinamento ignorato`); continue; }
-    if (usedPerson.has(pid)) throw new Error(`La stessa persona della Suite (${pid}) è abbinata a due persone del team dell'app originale (${usedPerson.get(pid)} e ${lid}): correggi l'abbinamento`);
-    usedPerson.set(pid, lid); personMap.set(String(lid), pid);
+    if (usedPerson.has(pid)) warnings.push(`La persona della Suite ${pid} è abbinata a due persone del team dell'app originale (${usedPerson.get(pid)} e ${lid}): i contenuti confluiscono nella stessa persona`);
+    if (!usedPerson.has(pid)) usedPerson.set(pid, lid); personMap.set(String(lid), pid);
   }
   const org = (v) => (v == null ? null : orgMap.get(String(v)) ?? null);
   const person = (v) => (v == null ? null : personMap.get(String(v)) ?? null);

@@ -160,13 +160,13 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
   const usedSite = new Map(); const usedPerson = new Map();
   for (const [lid, sid] of Object.entries(mapping.sites || {})) {
     if (!siteOk.has(sid)) { warnings.push(`Sede ${lid}: la sede scelta nella Suite (${sid}) non esiste o è un cliente service: abbinamento ignorato`); continue; }
-    if (usedSite.has(sid)) throw new Error(`La stessa sede della Suite (${sid}) è abbinata a due sedi dell'app originale (${usedSite.get(sid)} e ${lid}): correggi l'abbinamento`);
-    usedSite.set(sid, lid); siteMap.set(String(lid), sid);
+    if (usedSite.has(sid)) warnings.push(`La sede della Suite ${sid} è abbinata a due sedi dell'app originale (${usedSite.get(sid)} e ${lid}): i contenuti confluiscono nella stessa sede`);
+    if (!usedSite.has(sid)) usedSite.set(sid, lid); siteMap.set(String(lid), sid);
   }
   for (const [lid, pid] of Object.entries(mapping.people || {})) {
     if (!personOk.has(pid)) { warnings.push(`Persona ${lid}: la persona scelta nella Suite (${pid}) non esiste: abbinamento ignorato`); continue; }
-    if (usedPerson.has(pid)) throw new Error(`La stessa persona della Suite (${pid}) è abbinata a due professionisti dell'app originale (${usedPerson.get(pid)} e ${lid}): correggi l'abbinamento`);
-    usedPerson.set(pid, lid); personMap.set(String(lid), pid);
+    if (usedPerson.has(pid)) warnings.push(`La persona della Suite ${pid} è abbinata a due professionisti dell'app originale (${usedPerson.get(pid)} e ${lid}): i contenuti confluiscono nella stessa persona`);
+    if (!usedPerson.has(pid)) usedPerson.set(pid, lid); personMap.set(String(lid), pid);
   }
   const site = (v) => (v == null ? null : siteMap.get(String(v)) ?? null);
   const person = (v) => (v == null ? null : personMap.get(String(v)) ?? null);
