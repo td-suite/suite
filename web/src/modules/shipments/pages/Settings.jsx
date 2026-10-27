@@ -8,7 +8,7 @@ import { fdt } from '../format.js';
 const TEXT = ['billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'notify_admins_email'];   // td_sites: ora dall'anagrafica unica (Sedi)
 const AREA = ['lab_consignee', 'return_address'];
 const NUMS = ['sample_fee', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'retention_months'];
-const BOOLS = ['daily_alerts_enabled', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'inbox_enabled'];
+const BOOLS = ['daily_alerts_enabled', 'notify_patient_on_ship', 'inbox_enabled']; // l'email ad Affinity alla spedizione è sempre attiva (regola del CEO, 27/10/2026)
 const LABEL = { sample_fee: 'set.sampleFee', billing_customer: 'set.customer', billing_customer_address: 'set.customerAddr', affinity_notify_emails: 'set.notify', affinity_sender_filter: 'set.senderFilter', lab_consignee: 'set.consignee', return_address: 'set.returnAddr', td_sites: 'set.sites', alert_return_days: 'set.alertReturn', alert_awb_days: 'set.alertAwb', alert_stock_min: 'set.alertStock', daily_alerts_enabled: 'set.dailyAlerts', notify_patient_on_ship: 'set.notifyPatient', notify_affinity_on_ship: 'set.notifyAffinityShip', notify_admins_email: 'set.adminsEmail', retention_months: 'set.retention', inbox_enabled: 'set.inbox' };
 
 export default function Settings() {
@@ -71,6 +71,7 @@ export default function Settings() {
           {TEXT.map((k) => <Field key={k} label={t(LABEL[k])} className={['affinity_notify_emails', 'td_sites', 'billing_customer_address'].includes(k) ? 'span2' : ''}><input value={s[k]} disabled={!sup} onChange={(e) => setS({ ...s, [k]: e.target.value })} /></Field>)}
           {NUMS.filter((k) => k !== 'sample_fee').map((k) => <Field key={k} label={t(LABEL[k])}><input type="number" value={s[k]} disabled={!sup} onChange={(e) => setS({ ...s, [k]: e.target.value })} /></Field>)}
           {AREA.map((k) => <Field key={k} label={t(LABEL[k])}><textarea rows={5} value={s[k]} disabled={!sup} onChange={(e) => setS({ ...s, [k]: e.target.value })} /></Field>)}
+          <p className="small muted">{t('set.affinityAlways')}</p>
           {BOOLS.map((k) => <label key={k} className="f inline"><input type="checkbox" checked={s[k] === 'true'} disabled={!sup} onChange={(e) => setS({ ...s, [k]: e.target.checked ? 'true' : 'false' })} />{t(LABEL[k])}</label>)}
         </div>
         {sup && <div className="row end" style={{ marginTop: 14 }}><button className="btn" onClick={save}>{t('c.save')}</button></div>}

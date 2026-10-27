@@ -110,12 +110,12 @@ export default function OrderDetail({ project }) {
         </Modal>
       )}
       {modal === 'ship' && (
-        <Modal title={t('ord.shipTitle')} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" disabled={legs.outbound && !form.outbound_tracking} onClick={() => act(() => api.post(`/orders/${o.id}/ship`, { ...form, outbound_tracking: form.outbound_tracking || null, return_tracking: form.return_tracking || null }))}>{t('ord.ship')}</button></>}>
+        <Modal title={t('ord.shipTitle')} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" disabled={(legs.outbound && !form.outbound_tracking) || (!legs.outbound && o.project === 'ENDEAVOR' && !form.return_tracking)} onClick={() => act(() => api.post(`/orders/${o.id}/ship`, { ...form, outbound_tracking: form.outbound_tracking || null, return_tracking: form.return_tracking || null }))}>{t('ord.ship')}</button></>}>
           <ErrorBox error={err} />
           <div className="small" style={{ marginBottom: 10 }}>{t('ord.out')}: <b>{svc(legs.outbound)}</b> · {t('ord.ret')}: <b>{svc(legs.ret)}</b>{o.mode_price != null && project === 'ENDEAVOR' && <> · {t('ord.feeShip')}: <b>{eur(o.mode_price, lang)}</b></>}</div>
           {!legs.outbound && <div className="alert info" style={{ marginBottom: 10 }}>{t('ord.handover')}</div>}
           {legs.outbound && <Field label={t('ord.outTracking')}><input className="mono" autoFocus value={form.outbound_tracking} onChange={(e) => setForm({ ...form, outbound_tracking: e.target.value.toUpperCase().trim() })} /></Field>}
-          {legs.ret && <Field label={`${t('ord.retTracking')} (${t('c.optional')})`} help={t('ord.retHelp')}><input className="mono" value={form.return_tracking} onChange={(e) => setForm({ ...form, return_tracking: e.target.value.toUpperCase().trim() })} /></Field>}
+          {legs.ret && <Field label={`${t('ord.retTracking')} (${!legs.outbound && o.project === 'ENDEAVOR' ? t('c.required') : t('c.optional')})`} help={t('ord.retHelp')}><input className="mono" value={form.return_tracking} onChange={(e) => setForm({ ...form, return_tracking: e.target.value.toUpperCase().trim() })} /></Field>}
           <Field label={t('ord.shipDate')}><input type="date" value={form.shipped_at} onChange={(e) => setForm({ ...form, shipped_at: e.target.value })} /></Field>
           {!legs.outbound && <Field label={t('ord.handoverNote')}><input value={form.handover_note || ''} onChange={(e) => setForm({ ...form, handover_note: e.target.value })} /></Field>}
         </Modal>

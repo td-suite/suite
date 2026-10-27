@@ -311,3 +311,13 @@ titoli, albo, polizza, durata, tariffario a voci), 259 allegati classificati nel
 routes/imports.js: prima la corrispondenza per CF e poi per nome, così chi era stato caricato senza CF non viene duplicato).
 Lo script che costruisce il pacchetto è fuori repository (sessione Cowork); le note "da verificare" sono nel campo note di
 ogni contratto.
+
+## Spedizioni: comunicazione ad Affinity / Endeavor sempre con il codice SDA (27/10/2026)
+Richiesta del CEO: nelle email a katalin@affinitydna.co.uk, katie@easydna.com e stefano@affinitydna.co.uk che danno evidenza
+dell'invio del kit al paziente, il codice SDA della spedizione va incluso sempre, perché serve a registrare la spedizione.
+Fatto in routes/orders.js: l'email parte a ogni spedizione di un ordine ENDEAVOR (non è più disattivabile dalle impostazioni),
+con il codice SDA in oggetto ("Kit … shipped · SDA …") e nel corpo ("SDA shipment code"); la spedizione a mano, che non ha
+lettera di vettura di andata, richiede obbligatoriamente il codice dell'etichetta SDA di ritorno (controllo lato server e
+pulsante disabilitato nella finestra di spedizione); un codice di ritorno inserito in seguito dalla scheda dell'ordine genera
+un secondo messaggio ad Affinity con quel codice (notifyAffinityReturn). I destinatari restano nell'impostazione
+affinity_notify_emails (seminata con i tre indirizzi).

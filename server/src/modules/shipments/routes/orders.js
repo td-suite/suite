@@ -187,6 +187,30 @@ const shipSchema = z.object({
   shipped_at: dateStr.optional(),
   handover_note: opt(z.string().max(300)),
 });
+// Comunicazione ad Affinity / Endeavor dell'invio del kit al paziente: obbligatoria e sempre con il codice SDA della spedizione
+// (lettera di vettura di andata; per la consegna a mano l'etichetta SDA di ritorno). Se il ritorno viene registrato dopo, parte un
+// secondo messaggio con quel codice (notifyAffinityReturn).
+export async function notifyAffinityShip(o, userId) {
+  const to = await getSetting('affinity_notify_emails', '');
+  if (!to) return null;
+  const out = o.shipments.find((s) => s.direction === 'OUTBOUND');
+  const ret = o.shipments.find((s) => s.direction === 'RETURN');
+  const sda = out?.tracking_number || ret?.tracking_number;
+  if (!sda) return null; // non può accadere: lo ship lo pretende
+  const who = [o.patient_title, o.patient_first_name, o.patient_last_name].filter(Boolean).join(' ');
+  return sendMail({ kind: 'AFFINITY_SHIP', refKey: `AFFINITY_SHIP:${o.id}`, orderId: o.id, to, lang: 'en', sentBy: userId,
+    subject: `Kit ${o.barcode || ''} shipped · SDA ${sda} · ${o.external_ref || ''} · ${o.patient_last_name}`, title: 'Kit shipped',
+    body: `Hello,\n\nkit ${o.barcode || '-'} (order ${o.external_ref || '#' + o.id}) for ${who}, ${o.city || ''}, was ${o.handover ? 'handed over' : 'handed to SDA'} on ${itDate(dateOnly(o.shipped_at))}.\n\nSDA shipment code: ${sda}\n\nShipping mode: ${o.mode_en || '-'}\n${out ? `Outbound SDA waybill: ${out.tracking_number}\n${out.url}\n` : ''}${ret ? `Return SDA label: ${ret.tracking_number || 'to be communicated'}${ret.url ? `\n${ret.url}` : ''}\n` : ''}\nBest regards\nToscana Diagnostica · Shipments` });
+}
+export async function notifyAffinityReturn(o, userId) {
+  const to = await getSetting('affinity_notify_emails', '');
+  const ret = o.shipments.find((s) => s.direction === 'RETURN');
+  if (!to || !ret?.tracking_number) return null;
+  return sendMail({ kind: 'AFFINITY_RETURN', refKey: `AFFINITY_RETURN:${o.id}:${ret.tracking_number}`, orderId: o.id, to, lang: 'en', sentBy: userId,
+    subject: `Kit ${o.barcode || ''} · return SDA ${ret.tracking_number} · ${o.external_ref || ''} · ${o.patient_last_name}`, title: 'Return label registered',
+    body: `Hello,\n\nfor kit ${o.barcode || '-'} (order ${o.external_ref || '#' + o.id}, ${o.patient_last_name}) the SDA return label code is ${ret.tracking_number}.\n${ret.url || ''}\n\nBest regards\nToscana Diagnostica · Shipments` });
+}
+
 r.post('/:id(\\d+)/ship', requireRole(...OPERATORS), ah(async (req, res) => {
   const d = parse(shipSchema, req.body);
   const id = Number(req.params.id);
@@ -201,6 +225,9 @@ r.post('/:id(\\d+)/ship', requireRole(...OPERATORS), ah(async (req, res) => {
       if (!d.outbound_tracking) throw badL(req, 'Inserisci il numero della lettera di vettura SDA di andata', 'Enter the SDA outbound waybill number');
       await c.query(`INSERT INTO shipments (order_id, direction, carrier, service, tracking_number, label_printed_at, shipped_at, last_status, created_by) VALUES ($1,'OUTBOUND','SDA',$2,$3,now(),$4,'IN_TRANSIT',$5)`, [o.id, legs.outbound, d.outbound_tracking, when, req.user.id]);
     }
+    // Regola del CEO (27/10/2026): la comunicazione ad Affinity / Endeavor porta SEMPRE un codice SDA. Senza tratta di andata
+    // (consegna a mano) il codice obbligatorio è quello dell'etichetta SDA di ritorno.
+    if (o.project === 'ENDEAVOR' && !legs.outbound && !d.return_tracking) throw badL(req, 'Inserisci il codice SDA dell\'etichetta di ritorno: è obbligatorio per registrare la spedizione e comunicarla ad Affinity', 'Enter the SDA return label code: it is required to register the shipment and notify Affinity');
     if (legs.ret) {
       await c.query(`INSERT INTO shipments (order_id, direction, carrier, service, tracking_number, label_printed_at, last_status, created_by) VALUES ($1,'RETURN','SDA',$2,$3,now(),'PENDING',$4)`, [o.id, legs.ret, d.return_tracking || null, req.user.id]);
     }
@@ -229,15 +256,8 @@ r.post('/:id(\\d+)/ship', requireRole(...OPERATORS), ah(async (req, res) => {
           : `Gentile ${o.patient_first_name},\n\nil tuo kit è stato affidato al corriere SDA il ${itDate(dateOnly(o.shipped_at))}. Numero di tracciamento: ${out.tracking_number}\n${out.url}\n\nNella busta trovi le istruzioni e, dove prevista, l'etichetta prepagata per il ritorno del campione.` });
     }
   }
-  // email ad Affinity / Endeavor con i numeri di tracciamento (richiesta ricorrente nelle loro email: "we will need both tracking numbers")
-  if (o.project === 'ENDEAVOR' && (await getSetting('notify_affinity_on_ship', 'true')) === 'true') {
-    const to = await getSetting('affinity_notify_emails', '');
-    const out = o.shipments.find((s) => s.direction === 'OUTBOUND');
-    const ret = o.shipments.find((s) => s.direction === 'RETURN');
-    if (to) await sendMail({ kind: 'AFFINITY_SHIP', refKey: `AFFINITY_SHIP:${o.id}`, orderId: o.id, to, lang: 'en', sentBy: req.user.id,
-      subject: `Kit ${o.barcode || ''} shipped · ${o.external_ref || ''} · ${o.patient_last_name}`, title: 'Kit shipped',
-      body: `Hello,\n\nkit ${o.barcode || '-'} (order ${o.external_ref || '#' + o.id}) for ${[o.patient_title, o.patient_first_name, o.patient_last_name].filter(Boolean).join(' ')}, ${o.city || ''}, was ${o.handover ? 'handed over' : 'handed to SDA'} on ${itDate(dateOnly(o.shipped_at))}.\n\nShipping mode: ${o.mode_en || '-'}\n${out ? `Outbound SDA waybill: ${out.tracking_number}\n${out.url}\n` : ''}${ret ? `Return SDA label: ${ret.tracking_number || 'to be communicated'}${ret.url ? `\n${ret.url}` : ''}\n` : ''}\nBest regards\nToscana Diagnostica · Shipments` });
-  }
+  // Email ad Affinity / Endeavor: sempre, con il codice SDA in oggetto e nel corpo (regola del CEO, 27/10/2026)
+  if (o.project === 'ENDEAVOR') await notifyAffinityShip(o, req.user.id);
   res.json(await loadOrder(id));
 }));
 
@@ -360,7 +380,10 @@ r.put('/:id(\\d+)/shipments/:sid', requireRole(...OPERATORS), ah(async (req, res
   if (!sh) throw notFound();
   await q(`UPDATE shipments SET tracking_number=coalesce($2, tracking_number), shipped_at=coalesce($3::timestamptz, shipped_at), provider_registered=FALSE, last_checked_at=NULL, updated_at=now() WHERE id=$1`, [sh.id, d.tracking_number, d.shipped_at ? new Date(`${d.shipped_at}T12:00:00+02:00`) : null]);
   await logEvent(null, { orderId: sh.order_id, event: 'TRACKING_EDIT', data: { direction: sh.direction, ...d }, userId: req.user.id });
-  res.json(await loadOrder(Number(req.params.id)));
+  const o = await loadOrder(Number(req.params.id));
+  // codice SDA di ritorno inserito dopo la spedizione: Affinity lo riceve subito
+  if (o.project === 'ENDEAVOR' && sh.direction === 'RETURN' && d.tracking_number && d.tracking_number !== sh.tracking_number) await notifyAffinityReturn(o, req.user.id);
+  res.json(o);
 }));
 r.post('/:id(\\d+)/shipments/:sid/refresh', requireRole(...OPERATORS), ah(async (req, res) => {
   const out = await refreshOne(Number(req.params.sid), req.user.id);
