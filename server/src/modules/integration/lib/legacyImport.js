@@ -238,6 +238,7 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL,$16,$17)`,
         [oid, Number.isFinite(Number(t.position)) ? Number(t.position) : tpos++, status, str(t.ref), str(t.fatt), str(t.pfn), str(t.ev), json(Array.isArray(t.linee) ? t.linee.map(String) : []),
           str(t.loi), str(t.prelim), str(t.closing), Math.max(8, Math.min(52, Number(t.hor) || 24)), str(t.note), Number(t.lm) || 0, Number(t.version) || 1, t.updated_at || new Date(), t.created_at || new Date()]);
+      existingExt.add(oid);   // una seconda target abbinata alla stessa Legal entity non duplica i parametri
       await remember('targets', t.id, oid); st('parametri_del_piano').copied++;
     }
     const targetImported = (lid) => Boolean(already('targets', lid));
@@ -260,6 +261,7 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
       const f = /estern/i.test(str(m.f)) ? 'Esterna' : 'Interna';
       await client.query('INSERT INTO person_ext (person_id, position, r, f, color, lm) VALUES ($1,$2,$3,$4,$5,$6)',
         [pid, Number.isFinite(Number(m.position)) ? Number(m.position) : ppos++, str(m.r), f, clean(m.color) || null, Number(m.lm) || 0]);
+      existingPx.add(pid);
       await remember('team', m.id, pid); st('team_di_integrazione').copied++;
     }
     // owner e support delle attività dell'app: id del registro team, oppure ruolo o nome del registro → persona della Suite abbinata

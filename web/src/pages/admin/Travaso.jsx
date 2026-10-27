@@ -113,14 +113,14 @@ function LegacyImportModal({ m, onClose, onDone }) {
     <Modal title={`Importa i contenuti dall'app originale · ${m.name}`} onClose={onClose} wide
       footer={<>
         <button className="btn ghost" onClick={onClose}>Chiudi</button>
-        <button className="btn ghost" disabled={!map || busy || duplicates > 0} onClick={() => run(true)}><Icon name="search" />{busy === 'dry' ? 'Prova in corso' : 'Prova senza scrivere'}</button>
-        <button className="btn" disabled={!map || busy || duplicates > 0} onClick={() => setConfirm(true)}><Icon name="import" />{busy === 'run' ? 'Importazione in corso' : 'Importa'}</button>
+        <button className="btn ghost" disabled={!map || busy} onClick={() => run(true)}><Icon name="search" />{busy === 'dry' ? 'Prova in corso' : 'Prova senza scrivere'}</button>
+        <button className="btn" disabled={!map || busy} onClick={() => setConfirm(true)}><Icon name="import" />{busy === 'run' ? 'Importazione in corso' : 'Importa'}</button>
       </>}>
       {loading && <Skeleton lines={8} />}
       <ErrorBox error={error} />
       {data && map && <>
         <div className="alert info small"><Icon name="info" /><span>Le sedi e le persone dell'app originale vanno abbinate all'anagrafica unica della Suite: la proposta automatica usa codice, email, codice fiscale o partita IVA e nome. Nessuna anagrafica viene creata o modificata; ciò che non è abbinato si salta e compare nel rapporto. {matched} abbinamenti su {total}.</span></div>
-        {duplicates > 0 && <div className="alert err small"><Icon name="alert" /><span>La stessa anagrafica della Suite è scelta per più voci dell'app originale: correggi gli abbinamenti prima di continuare.</span></div>}
+        {duplicates > 0 && <div className="alert warn small"><Icon name="alert" /><span>La stessa anagrafica della Suite è scelta per {duplicates > 1 ? `${duplicates} coppie di voci` : 'due voci'} dell'app originale: i loro contenuti confluiranno nella stessa scheda (va bene se nell'app c'erano doppioni). Se non è voluto, correggi gli abbinamenti.</span></div>}
         {(data.warnings || []).map((w, i) => <div key={i} className="alert warn small"><Icon name="alert" /><span>{w}</span></div>)}
         {['sites', 'people', 'organizations'].map((k) => <MatchSection key={k} kind={k} rows={data.entities[k] || []} catalog={data.catalog[k] || []} mapping={map[k]} setMapping={setMapping} />)}
         <h3 style={{ margin: '0 0 6px' }}>Contenuti dell'app originale</h3>

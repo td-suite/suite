@@ -237,6 +237,7 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
         continue;
       }
       await client.query('INSERT INTO site_ext (site_id, data, version, created_at, updated_at, updated_by) VALUES ($1,$2,$3,$4,$5,NULL)', [sid, json(extData(s.data || {})), s.version || 1, s.created_at, s.updated_at]);
+      existingExt.add(sid);   // seconda struttura abbinata alla stessa sede: non duplica
       await remember('strutture', s.id, sid); st('site_ext').copied++;
     }
     const siteImported = (lid) => Boolean(already('strutture', lid));
@@ -318,6 +319,7 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
         await client.query('UPDATE person_ext SET tipo=$2, profilo=$3, dati=$4::jsonb || dati, updated_at=GREATEST(updated_at, $5), updated_by=NULL WHERE person_id=$1', [pid, tipo, clean(p.profilo), dati, p.updated_at]);
       } else {
         await client.query('INSERT INTO person_ext (person_id, tipo, profilo, dati, created_at, updated_at, updated_by) VALUES ($1,$2,$3,$4,$5,$6,NULL)', [pid, tipo, clean(p.profilo), dati, p.created_at, p.updated_at]);
+        existingPx.set(pid, tipo);
       }
       await remember('professionisti', p.id, pid); st('person_ext').copied++;
     }
