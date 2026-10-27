@@ -119,16 +119,19 @@ export function PersonForm({ value: v, onChange, kind }) {
       <Field label="Riporta a (responsabile gerarchico)" help="Definisce l'organigramma delle persone"><select value={v.manager_id || ''} onChange={(e) => s('manager_id', e.target.value ? Number(e.target.value) : null)}><option value="">–</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
       <Field label="Approva ferie, permessi e richieste" help="Vuoto = il responsabile gerarchico"><select value={v.approver_id || ''} onChange={(e) => s('approver_id', e.target.value ? Number(e.target.value) : null)}><option value="">come il responsabile</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
     </div>
-    <div className="subhead">Dossier HR (riservato al modulo Contratti del personale)</div>
+    <div className="subhead">Dati personali (anagrafica unica, visibili solo agli amministratori)</div>
     <div className="form-grid">
       <Field label="Luogo di nascita"><input value={v.birth_place || ''} placeholder="Firenze (FI)" onChange={(e) => s('birth_place', e.target.value)} /></Field>
-      <Field label="Nazionalità"><input value={v.nationality || ''} placeholder="italiana" onChange={(e) => s('nationality', e.target.value)} /></Field>
       {kind === 'LP' && <Field label="Partita IVA"><input value={v.vat_number || ''} onChange={(e) => s('vat_number', e.target.value)} className="mono" /></Field>}
-      <Field label="Cellulare aziendale"><input value={v.mobile_company || ''} onChange={(e) => s('mobile_company', e.target.value)} /></Field>
       <Field label="Residenza (via e civico)"><input value={v.address || ''} onChange={(e) => s('address', e.target.value)} /></Field>
       <Field label="CAP"><input value={v.zip || ''} onChange={(e) => s('zip', e.target.value)} /></Field>
       <Field label="Città"><input value={v.city || ''} onChange={(e) => s('city', e.target.value)} /></Field>
       <Field label="Provincia"><input value={v.province || ''} maxLength={2} onChange={(e) => s('province', e.target.value.toUpperCase())} /></Field>
+    </div>
+    <div className="subhead">Dossier HR (riservato al modulo Contratti del personale)</div>
+    <div className="form-grid">
+      <Field label="Nazionalità"><input value={v.nationality || ''} placeholder="italiana" onChange={(e) => s('nationality', e.target.value)} /></Field>
+      <Field label="Cellulare aziendale"><input value={v.mobile_company || ''} onChange={(e) => s('mobile_company', e.target.value)} /></Field>
       <Field label="IBAN"><input value={v.iban || ''} maxLength={34} onChange={(e) => s('iban', e.target.value.toUpperCase())} className="mono" /></Field>
       <Field label={kind === 'LP' ? 'Codice interno' : 'Matricola'}><input value={v.badge_number || ''} onChange={(e) => s('badge_number', e.target.value)} /></Field>
       <Field label="Contatto per emergenze" className="span2"><input value={v.emergency_contact || ''} placeholder="nome, legame, telefono" onChange={(e) => s('emergency_contact', e.target.value)} /></Field>

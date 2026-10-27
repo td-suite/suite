@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
+import { getCompany } from '../../../lib/company.js';
 import {
   Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
   WidthType, ShadingType, BorderStyle, AlignmentType, VerticalAlign, PageOrientation,
@@ -50,10 +51,14 @@ const cell = (children, w, o = {}) => new TableCell({
 const table = (rows, widths, o = {}) => new Table({ rows, columnWidths: widths, width: { size: widths.reduce((a, b) => a + b, 0), type: WidthType.DXA }, layout: TableLayoutType.FIXED, borders: o.borders || NOB });
 
 // ---------- Carta intestata ----------
+// Dati societari (ragione sociale, piè di pagina, contatti) dai Dati aziendali della Suite (docs/IMPOSTAZIONI.md): company è
+// impostato da renderDocx prima di comporre il documento; config.footer e config.contacts restano come ripiego.
+let company = null;
+const footerLines = () => (company ? [company.legal_name, ...company.footer_text.split('\n')] : [config.footer.line1, config.footer.line2, config.footer.line3]);
 function header(W) {
   const logoW = 5370, cW = 2700, midW = W - logoW - cW;
   const contact = (icon, text) => new Paragraph({ spacing: { before: 0, after: 40 }, children: [new ImageRun({ type: 'png', data: icon, transformation: { width: 11, height: 11 } }), t('   ' + text, { size: 16, color: '1A3C47' })] });
-  const [mail, pec, web] = config.contacts;
+  const [mail, pec, web] = company ? [company.email, company.pec, company.website] : config.contacts;
   return new Header({ children: [
     table([new TableRow({ height: { value: 1250, rule: 'atLeast' }, children: [
       cell(imgPar(logo, 232, 73), logoW, { margins: { top: 0, bottom: 0, left: 0, right: 0 } }),
@@ -69,9 +74,7 @@ function footer(prot) {
   const num = (child) => new TextRun({ children: [child], font: FONT, size: 18, color: TEAL_TXT });
   return new Footer({ children: [
     new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 40 }, children: [f(`${prot ? `Circolare ${prot}` : 'Bozza non protocollata'} - Pag. `), num(PageNumber.CURRENT), f(' di '), num(PageNumber.TOTAL_PAGES)] }),
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [f(config.footer.line1, true)] }),
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [f(config.footer.line2)] }),
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [f(config.footer.line3)] }),
+    ...footerLines().map((line, i) => new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [f(line, i === 0)] })),
   ] });
 }
 
@@ -147,7 +150,7 @@ function closing(W, c, qr) {
     cell(left, lw, { fill: LIGHT, margins: { top: 160, bottom: 160, left: 220, right: 220 }, valign: VerticalAlign.TOP }),
     cell([
       p([t(clean(c.saluto || 'Cordiali saluti,'), { size: 21 })], { after: 200 }),
-      p([t('Toscana Diagnostica S.r.l.', { size: 21, bold: true, color: TEAL })], { after: 400 }),
+      p([t(company ? company.legal_name : config.footer.line1, { size: 21, bold: true, color: TEAL })], { after: 400 }),
       p([t(clean(c.firma_nome), { size: 21, bold: true })], { after: 0, line: 250 }),
       p([t(clean(c.firma_ruolo), { size: 18, color: GREY })], { after: 0, line: 250 }),
     ], rw, { margins: { top: 160, bottom: 160, left: 320, right: 0 }, valign: VerticalAlign.TOP }),
@@ -187,6 +190,7 @@ export async function qrPng(url) {
 
 // c: riga della tabella circolari (campi JSON già parsati). opts.publicUrl: URL del QR (solo se pubblicata)
 export async function renderDocx(c, opts = {}) {
+  try { company = await getCompany(); } catch { company = null; }
   const orient = effectiveOrientation(c);
   const landscape = orient === 'ORIZZONTALE';
   const W = landscape ? WL : WP;
@@ -201,7 +205,7 @@ export async function renderDocx(c, opts = {}) {
   children.push(spacer(200), closing(W, cc, qr));
 
   const doc = new Document({
-    creator: 'Toscana Diagnostica S.r.l.',
+    creator: company ? company.legal_name : config.footer.line1,
     title: `${c.protocollo ? `Circolare ${c.protocollo}` : 'Bozza di circolare'} - ${clean(c.titolo)}`,
     styles: {
       default: { document: { run: { font: FONT, size: 21, color: INK } } },

@@ -3,6 +3,8 @@ import bwipjs from 'bwip-js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getCompany } from '../../../lib/company.js';
+import { config } from '../config.js';
 
 export const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets');
 export const C = { teal: '#1C505E', blue: '#71B1BD', jet: '#01212C', silk: '#FFFAE3', mauve: '#DEC0F1', grey: '#5B6B70', line: '#C9D9DC', ink: '#0f2a33' };
@@ -11,19 +13,30 @@ export const PAGE = { w: 595.28, h: 841.89 };
 export const M = { left: 18 * MM, right: 18 * MM, top: 12 * MM, bottom: 14 * MM };
 export const W = PAGE.w - M.left - M.right;
 
+// Carta intestata: ragione sociale, piè di pagina e sito dai Dati aziendali della Suite (Amministrazione > Impostazioni,
+// docs/IMPOSTAZIONI.md); l'email è la casella del modulo (SHIPMENTS_GRAPH_INBOX) e in mancanza quella aziendale.
+// COMPANY è il ripiego se la lettura fallisce; newDoc lo aggiorna dal core prima di ogni documento.
 export const COMPANY = {
   name: 'Toscana Diagnostica S.r.l.',
   footer: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI). Tel. e Fax: 055776511. Direttore Sanitario: prof. Gian Luigi Taddei.\nP.IVA e C.F.: 07528130482, REA n. FI-709602, Capitale Sociale: € 50.000,00 i.v.',
   email: 'shipments@toscanadiagnostica.it',
   website: 'www.toscanadiagnostica.it',
 };
+export async function refreshCompany() {
+  try {
+    const co = await getCompany();
+    Object.assign(COMPANY, { name: co.legal_name, footer: co.footer_text, website: co.website, email: config.graph?.inbox || co.email });
+  } catch { /* resta il ripiego */ }
+  return COMPANY;
+}
 const LOGO = fs.readFileSync(path.join(ASSETS, 'logo-td.png'));
 
 export async function barcode(text, opts = {}) {
   return bwipjs.toBuffer({ bcid: 'code128', text: String(text), scale: 3, height: opts.height || 14, includetext: false, backgroundcolor: 'FFFFFF' });
 }
 
-export function newDoc(info) {
+export async function newDoc(info) {
+  await refreshCompany();
   const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false, bufferPages: true, info: { Author: COMPANY.name, Creator: 'TD Shipments', ...info } });
   doc.registerFont('R', path.join(ASSETS, 'LiberationSans-Regular.ttf'));
   doc.registerFont('B', path.join(ASSETS, 'LiberationSans-Bold.ttf'));

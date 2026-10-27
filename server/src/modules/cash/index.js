@@ -98,8 +98,8 @@ async function buildAppUser(req, _res, next) {
 // Passo del travaso dedicato al modulo (non più usato: Cash parte vuoto, FRESH_MODULES in lib/travaso.js). Riempiva site_ext con le
 // impostazioni Cash delle sedi dell'app di origine, tradotte in id di public.sites tramite legacy_refs->>'cash'. Le sedi
 // dell'origine senza corrispondenza nell'anagrafica unica vengono scartate e contate (vanno riconciliate in Amministrazione).
-const EXT_COLS = ['company_id', 'cash_float', 'operating_days', 'pos_terminals', 'start_date', 'ownership', 'hours', 'hours_note', 'expected_registers',
-  'site_email', 'host_name', 'host_vat', 'host_email', 'royalty_fixed_monthly', 'royalty_pct', 'royalty_base', 'royalty_vat_rate', 'royalty_notes', 'created_at', 'updated_at'];
+// (Orari, email, data di apertura e struttura ospitante non si copiano più: sono nell'anagrafica unica, docs/IMPOSTAZIONI.md.)
+const EXT_COLS = ['company_id', 'cash_float', 'pos_terminals', 'ownership', 'expected_registers', 'royalty_fixed_monthly', 'royalty_pct', 'royalty_base', 'royalty_vat_rate', 'royalty_notes', 'created_at', 'updated_at'];
 export async function afterTravaso(client, key, { legacyQuery, legacyMap, stats }) {
   const map = await legacyMap('sites');
   const src = await legacyQuery('SELECT * FROM public.sites ORDER BY id');
@@ -108,7 +108,7 @@ export async function afterTravaso(client, key, { legacyQuery, legacyMap, stats 
   for (const s of src) {
     const siteId = map.get(String(s.id));
     if (siteId == null) { scartate++; continue; }
-    const vals = EXT_COLS.map((c) => (c === 'hours' ? JSON.stringify(s.hours ?? {}) : s[c] ?? null));
+    const vals = EXT_COLS.map((c) => s[c] ?? null);
     await client.query(`INSERT INTO site_ext (site_id, ${EXT_COLS.join(', ')}) VALUES ($1, ${EXT_COLS.map((_, i) => `$${i + 2}`).join(', ')})
       ON CONFLICT (site_id) DO UPDATE SET ${EXT_COLS.map((c) => `${c}=EXCLUDED.${c}`).join(', ')}`, [siteId, ...vals]);
     n++;

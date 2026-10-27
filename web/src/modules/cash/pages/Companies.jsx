@@ -49,9 +49,10 @@ function BankAccounts({ company }) {
 
 // Aziende: organizzazioni della Suite (public.organizations, kind SOCIETA o GRUPPO) con le impostazioni Cash (org_ext).
 // Qui non si creano, rinominano o disattivano aziende: si fa in Amministrazione, Legal entity. Si modificano solo i
-// campi Cash: carta intestata e logo della distinta, conti correnti, IBAN e mandato SEPA, capofila.
+// campi Cash: carta intestata e logo della distinta, conti correnti per gli accrediti, mandato SEPA, capofila. IBAN e BIC
+// della società (debitore SEPA) sono della Legal entity in Amministrazione (docs/IMPOSTAZIONI.md): qui si leggono soltanto.
 const ADMIN_ORGS = '/admin/organizations';
-const empty = { letterhead_footer: '', iban: '', bic: '', sepa_mandate_id: '', sepa_mandate_date: '', is_franchisor: false };
+const empty = { letterhead_footer: '', sepa_mandate_id: '', sepa_mandate_date: '', is_franchisor: false };
 const KIND = { SOCIETA: 'Società', GRUPPO: 'Gruppo' };
 
 export default function Companies() {
@@ -66,7 +67,7 @@ export default function Companies() {
   const save = async () => {
     setErr(null);
     const b = Object.fromEntries(Object.entries(edit).filter(([k]) => k in empty));
-    if (!sup) for (const k of ['iban', 'bic', 'sepa_mandate_id', 'sepa_mandate_date', 'is_franchisor']) delete b[k];
+    if (!sup) for (const k of ['sepa_mandate_id', 'sepa_mandate_date', 'is_franchisor']) delete b[k];
     for (const k of Object.keys(b)) if (b[k] === '') b[k] = null;
     if ('is_franchisor' in b) b.is_franchisor = !!b.is_franchisor;
     try {
@@ -117,7 +118,9 @@ export default function Companies() {
           {sup && <>
             <h3 style={{ margin: '16px 0 8px' }}>Addebito SEPA (debitore)</h3>
             <div className="form-grid">
-              {f('iban', 'IBAN', { className: 'mono' })}{f('bic', 'BIC (facoltativo)')}{f('sepa_mandate_id', 'Identificativo mandato SDD')}
+              <Field label="IBAN" help={<>Della Legal entity: si modifica in <Link to={ADMIN_ORGS}>Amministrazione, Legal entity</Link></>}><input className="mono" value={edit.iban || ''} disabled placeholder="non indicato in Amministrazione" /></Field>
+              <Field label="BIC" help="Dalla Legal entity"><input value={edit.bic || ''} disabled placeholder="non indicato" /></Field>
+              {f('sepa_mandate_id', 'Identificativo mandato SDD')}
               <Field label="Data firma mandato"><input type="date" value={edit.sepa_mandate_date ? String(edit.sepa_mandate_date).slice(0, 10) : ''} onChange={(e) => setEdit({ ...edit, sepa_mandate_date: e.target.value })} /></Field>
               <label className="f inline" style={{ marginTop: 22 }}><input type="checkbox" checked={!!edit.is_franchisor} onChange={(e) => setEdit({ ...edit, is_franchisor: e.target.checked })} />Capofila della rete (creditore delle royalty, nessun addebito)</label>
             </div>

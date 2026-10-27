@@ -12,7 +12,7 @@ export async function statementPdf({ project, month, period, lines, settings, la
   const [yy, mm] = month.split('-');
   const monthLabel = `${MONTHS[lang === 'en' ? 'en' : 'it'][Number(mm) - 1]} ${yy}`;
   const customer = settings.billing_customer || 'Endeavor DNA Laboratories';
-  const doc = newDoc({ Title: `${t.title} ${month}`, Subject: t.title });
+  const doc = await newDoc({ Title: `${t.title} ${month}`, Subject: t.title });
   doc.addPage();
   let y = letterhead(doc, t.title, t.sub(monthLabel, customer));
   const info = [[t.cust, `${customer}${settings.billing_customer_address ? `, ${settings.billing_customer_address}` : ''}`], [t.per, monthLabel], [t.status, t.st[period?.status || 'OPEN']]];

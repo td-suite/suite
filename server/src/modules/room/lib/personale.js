@@ -23,7 +23,7 @@ export const personKey = (nome) => (nome || '').normalize('NFD').replace(/[̀-ͯ
 export const isAttivita = (nome) => /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
 
 // Colonne della vista professionisti_v usate dalle route (alias p)
-export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.site_id, p.site_name, p.role_id, p.role_name, p.attivo, p.dati, p.in_room, p.planning_excluded, p.pianificabile, p.created_at, p.updated_at, p.updated_by';
+export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.birth_place, p.vat_number, p.address, p.zip, p.city, p.province, p.site_id, p.site_name, p.role_id, p.role_name, p.attivo, p.dati, p.in_room, p.planning_excluded, p.pianificabile, p.created_at, p.updated_at, p.updated_by';
 // Tipi di persona dell'anagrafica unica (people.kind) con l'etichetta mostrata nel modulo
 export const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
 // Ruolo del catalogo (public.job_roles) considerato sanitario: espressione regolare PostgreSQL (case insensitive) sul nome.

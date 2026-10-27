@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import { getCompany } from './company.js';
 
 const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'modules', 'shipments', 'assets');
 const FONT_R = path.join(ASSETS, 'LiberationSans-Regular.ttf');
@@ -33,6 +34,7 @@ const today = () => new Date().toLocaleDateString('it-IT');
 
 // ---------------------------------------------------------------- XLSX
 export async function orgchartXlsx(units) {
+  const co = await getCompany();
   const { flat } = buildModel(units);
   const wb = new ExcelJS.Workbook(); wb.creator = 'Suite TD';
   const ws = wb.addWorksheet('Organigramma');
@@ -55,7 +57,7 @@ export async function orgchartXlsx(units) {
   rows.sort((a, b) => coll.compare(a.person, b.person) || coll.compare(a.unit, b.unit)); rows.forEach((r) => w2.addRow(r));
   w2.getRow(1).font = { bold: true, color: { argb: 'FF' + C.white } }; w2.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + C.teal } }; w2.views = [{ state: 'frozen', ySplit: 1 }]; w2.autoFilter = 'A1:F1';
   const w3 = wb.addWorksheet('Istruzioni'); w3.getColumn(1).width = 110;
-  [`Organigramma Toscana Diagnostica esportato dalla Suite il ${today()}.`, 'Il foglio "Organigramma" ha le stesse colonne del modello di importazione: modificalo e ricaricalo da Amministrazione > Importazioni > Organigramma.', 'Il foglio "Incarichi" è una vista per persona, in sola lettura.'].forEach((t) => w3.addRow([t]));
+  [`Organigramma ${co.name} esportato dalla Suite il ${today()}.`, 'Il foglio "Organigramma" ha le stesse colonne del modello di importazione: modificalo e ricaricalo da Amministrazione > Importazioni > Organigramma.', 'Il foglio "Incarichi" è una vista per persona, in sola lettura.'].forEach((t) => w3.addRow([t]));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -96,9 +98,10 @@ function layoutPage(page, W, H) {
 
 // ---------------------------------------------------------------- PPTX
 export async function orgchartPptx(units) {
+  const co = await getCompany();
   const { pages } = buildModel(units);
   const PptxGenJS = (await import('pptxgenjs')).default;
-  const pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_WIDE'; pptx.author = 'Suite TD'; pptx.company = 'Toscana Diagnostica S.r.l.'; pptx.title = 'Organigramma Toscana Diagnostica';
+  const pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_WIDE'; pptx.author = 'Suite TD'; pptx.company = co.legal_name; pptx.title = `Organigramma ${co.name}`;
   const W = 13.333, H = 7.5;
   const drawBox = (slide, b) => {
     const fill = b.staff ? HEAD_FILL.STAFF : (HEAD_FILL[b.u.kind] || C.bg); const dark = b.u.kind === 'DIREZIONE';
@@ -115,12 +118,12 @@ export async function orgchartPptx(units) {
     if (LOGO) slide.addImage({ data: 'image/png;base64,' + LOGO.toString('base64'), x: 0.35, y: 0.17, h: 0.44, w: 1.55 });
     slide.addText(title, { x: 2.1, y: 0.1, w: 8.5, h: 0.38, fontFace: 'Calibri', fontSize: 16, bold: true, color: C.white, margin: 0 });
     slide.addText(sub, { x: 2.1, y: 0.44, w: 8.5, h: 0.28, fontFace: 'Calibri', fontSize: 9.5, color: 'B9CDD3', margin: 0 });
-    slide.addText(`Organigramma Toscana Diagnostica · agg. ${today()} · Suite TD · ${n}`, { x: 0.35, y: H - 0.38, w: W - 0.7, h: 0.3, fontFace: 'Calibri', fontSize: 8, color: C.grey, align: 'right', margin: 0 });
+    slide.addText(`Organigramma ${co.name} · agg. ${today()} · Suite TD · ${n}`, { x: 0.35, y: H - 0.38, w: W - 0.7, h: 0.3, fontFace: 'Calibri', fontSize: 8, color: C.grey, align: 'right', margin: 0 });
   };
   if (!pages.length) { const s = pptx.addSlide(); chrome(s, 'Organigramma', 'Nessuna unità con dipendenti', 1); }
   pages.forEach((page, idx) => {
     const slide = pptx.addSlide();
-    chrome(slide, page.unit.name, page.crumbs.length ? page.crumbs.join(' › ') : 'Toscana Diagnostica', idx + 1);
+    chrome(slide, page.unit.name, page.crumbs.length ? page.crumbs.join(' › ') : co.name, idx + 1);
     const { root, boxes, staffBoxes } = layoutPage(page, W, H);
     drawBox(slide, root);
     const cx = root.x + root.w / 2; const yBottom = root.y + root.h; const line = { color: C.line, width: 1 };
@@ -139,8 +142,9 @@ export async function orgchartPptx(units) {
 
 // ---------------------------------------------------------------- PDF (A4 orizzontale, stesse pagine)
 export async function orgchartPdf(units) {
+  const co = await getCompany();
   const { pages } = buildModel(units);
-  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0, autoFirstPage: false, info: { Title: 'Organigramma Toscana Diagnostica', Author: 'Toscana Diagnostica S.r.l.', Creator: 'Suite TD' } });
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0, autoFirstPage: false, info: { Title: `Organigramma ${co.name}`, Author: co.legal_name, Creator: 'Suite TD' } });
   doc.registerFont('R', FONT_R); doc.registerFont('B', FONT_B);
   const chunks = []; doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res) => doc.on('end', () => res(Buffer.concat(chunks))));
@@ -166,11 +170,11 @@ export async function orgchartPdf(units) {
     if (LOGO) { try { doc.image(LOGO, X(0.35), Y(0.17), { fit: [X(1.55), Y(0.44)] }); } catch { /* */ } }
     doc.font('B').fontSize(14).fillColor(hex(C.white)).text(title, X(2.1), Y(0.14), { width: X(8.5), lineBreak: false });
     doc.font('R').fontSize(8.5).fillColor('#B9CDD3').text(sub, X(2.1), Y(0.47), { width: X(8.5), lineBreak: false });
-    doc.font('R').fontSize(7).fillColor(hex(C.grey)).text(`Organigramma Toscana Diagnostica · agg. ${today()} · Suite TD · ${n}`, X(0.35), PH - Y(0.36), { width: PW - X(0.7), align: 'right', lineBreak: false });
+    doc.font('R').fontSize(7).fillColor(hex(C.grey)).text(`Organigramma ${co.name} · agg. ${today()} · Suite TD · ${n}`, X(0.35), PH - Y(0.36), { width: PW - X(0.7), align: 'right', lineBreak: false });
   };
   if (!pages.length) chrome('Organigramma', 'Nessuna unità con dipendenti', 1);
   pages.forEach((page, idx) => {
-    chrome(page.unit.name, page.crumbs.length ? page.crumbs.join(' › ') : 'Toscana Diagnostica', idx + 1);
+    chrome(page.unit.name, page.crumbs.length ? page.crumbs.join(' › ') : co.name, idx + 1);
     const { root, boxes, staffBoxes } = layoutPage(page, 13.333, 7.5);
     drawBox(root);
     const cx = X(root.x + root.w / 2); const yBottom = Y(root.y + root.h);

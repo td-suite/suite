@@ -54,7 +54,8 @@ export default function Settings() {
       <div className="grid g2">
         {GROUPS.map((g) => (
           <Card key={g.title} title={g.title}>
-            <div className="form-grid">{g.keys.map(([k, l]) => <Field key={k} label={l} className={k === 'irpef_brackets' || k.startsWith('company_') ? 'span2' : ''}><input value={v[k] ?? ''} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></Field>)}</div>
+            {g.title.startsWith('Dati societari') && <p className="small muted" style={{ marginTop: 0 }}>Ragione sociale, sede legale, P.IVA, REA, capitale, contatti e Direttore Sanitario vengono dai Dati aziendali della Suite: si modificano in <Link to="/admin/settings">Amministrazione, Impostazioni</Link>.</p>}
+            <div className="form-grid">{g.keys.map(([k, l]) => <Field key={k} label={l} className={k === 'irpef_brackets' || k.startsWith('company_') ? 'span2' : ''}><input value={v[k] ?? ''} disabled={(d.data?.coreKeys || []).includes(k)} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></Field>)}</div>
           </Card>
         ))}
         <Card title="Aree aziendali" className="span2" actions={<span className="small muted">fino a quattro livelli, dall'organigramma TD-SGI-IDL007</span>}>

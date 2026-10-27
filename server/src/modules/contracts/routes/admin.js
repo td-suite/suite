@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireRole, requireWrite } from '../lib/access.js';
-import { getSettings } from '../lib/payroll.js';
+import { getSettings, CORE_KEYS } from '../lib/payroll.js';
 import { config } from '../config.js';
 import { pdfAvailable } from '../lib/docgen.js';
 
@@ -16,13 +16,14 @@ const SETTING_KEYS = ['company_name', 'company_address', 'company_legal_address'
 
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();
-  res.json({ settings: s, entraEnabled: false, aiEnabled: Boolean(config.anthropicKey), pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb });
+  res.json({ settings: s, coreKeys: CORE_KEYS, entraEnabled: false, aiEnabled: Boolean(config.anthropicKey), pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb });
 }));
 
 r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
   const body = req.body || {};
   for (const k of Object.keys(body)) {
     if (!SETTING_KEYS.includes(k)) throw bad(`Impostazione sconosciuta: ${k}`);
+    if (CORE_KEYS.includes(k)) continue;   // dati aziendali: si modificano in Amministrazione > Impostazioni > Dati aziendali
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }
   await audit(req, 'SETTINGS_UPDATE', 'settings', null, body);

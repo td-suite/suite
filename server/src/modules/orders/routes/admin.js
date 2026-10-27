@@ -24,12 +24,13 @@ const CODE = /^[A-Z0-9_-]{2,16}$/;
 // Legal entity (public.organizations, id = -org_id, impostazioni in org_ext). I punti dei clienti service (sites SERVICE) non sono
 // strutture a sé: compaiono come punti di consegna della loro Legal entity (colonna points). Nessuna creazione, rinomina o
 // disattivazione qui: si fa in Amministrazione > Sedi o > Legal entity. Il modulo salva solo i propri campi operativi con un
-// upsert sulla tabella di estensione (la riga nasce alla prima modifica).
+// upsert sulla tabella di estensione (la riga nasce alla prima modifica). Referente e telefono del referente sono del core
+// (docs/IMPOSTAZIONI.md): la vista strutture_v li calcola dall'organigramma e dall'anagrafica.
 const siteExtFields = {
   kind: z.enum(['CLIENTE', 'SEDE', 'LAB']).optional(),
   silva_code: opt(z.string().max(40).transform((v) => v?.trim().toUpperCase() || null)),
   stock_deadline_day: opt(z.coerce.number().int().min(1).max(31)),
-  referente: opt(z.string().max(120)), referente_phone: opt(z.string().max(40)),
+  // referente e telefono vengono dal core (responsabile di sede dell'organigramma, contatti della Legal entity): non si scrivono qui
   delivery_mode: z.enum(['GIRO', 'RITIRO']).optional(),
   delivery_notes: opt(z.string().max(500)),
   notes: opt(z.string().max(1000)),

@@ -1,5 +1,6 @@
 // Organigramma generato dai ruoli registrati: aree del modulo (fino a quattro livelli) con referente, persone e linee di riporto
 // dall'anagrafica unica (public.people.manager_person_id via resources_v, area principale e doppie funzioni da person_ext / person_areas).
+import { getCompany } from '../../../lib/company.js';
 import { many } from '../db.js';
 
 const fullName = (p) => `${p.first_name} ${p.last_name}`;
@@ -139,12 +140,13 @@ function layout(tree, { boxW, gapX, showStaff }) {
   return { all, rowH, totalW: tree._w, boxH };
 }
 
+let company = null;   // Dati aziendali della Suite, caricati da chartToPptx (docs/IMPOSTAZIONI.md)
 function header(slide, { title, subtitle }) {
   slide.background = { color: 'FFFFFF' };
-  slide.addText('TOSCANA DIAGNOSTICA S.r.l.', { x: 0.4, y: 0.2, w: 8, h: 0.3, fontFace: 'Arial', fontSize: 11, bold: true, color: PETROL });
+  slide.addText((company?.legal_name || 'Toscana Diagnostica S.r.l.').toUpperCase(), { x: 0.4, y: 0.2, w: 8, h: 0.3, fontFace: 'Arial', fontSize: 11, bold: true, color: PETROL });
   slide.addText(title.toUpperCase(), { x: 0.4, y: 0.45, w: 10, h: 0.4, fontFace: 'Arial', fontSize: 16, bold: true, color: PETROL });
   slide.addText(`Organigramma · ${subtitle || ''} · aggiornato al ${new Date().toLocaleDateString('it-IT')}`, { x: 0.4, y: 0.82, w: 10, h: 0.25, fontFace: 'Arial', fontSize: 9, color: GREY });
-  slide.addText('Toscana Diagnostica S.r.l. · Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI) · P.IVA e C.F. 07528130482 · Generato da TD Contracts dai ruoli registrati', { x: 0.4, y: 7.1, w: 12.5, h: 0.25, fontFace: 'Arial', fontSize: 7, color: PETROL, align: 'center' });
+  slide.addText(company ? `${company.legal_name} · ${company.address_full} · P.IVA e C.F. ${company.vat} · Generato da TD Contracts dai ruoli registrati` : 'Toscana Diagnostica S.r.l. · Generato da TD Contracts dai ruoli registrati', { x: 0.4, y: 7.1, w: 12.5, h: 0.25, fontFace: 'Arial', fontSize: 7, color: PETROL, align: 'center' });
 }
 
 function drawBox(pptx, slide, n, { x, y, w, h, s, isRoot, showStaff }) {
@@ -289,9 +291,10 @@ function addSection(pptx, section, showStaff) {
 
 export async function chartToPptx({ title, subtitle, tree, showStaff = true }) {
   const PptxGenJS = (await import('pptxgenjs')).default;
+  try { company = await getCompany(); } catch { company = null; }
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 in
-  pptx.author = 'TD Contracts'; pptx.company = 'Toscana Diagnostica S.r.l.'; pptx.title = title;
+  pptx.author = 'TD Contracts'; pptx.company = company?.legal_name || 'Toscana Diagnostica S.r.l.'; pptx.title = title;
   addSection(pptx, { title, subtitle, tree }, showStaff);
   return Buffer.from(await pptx.write({ outputType: 'nodebuffer' }));
 }

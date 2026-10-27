@@ -45,7 +45,7 @@ function HoursEditor({ value, onChange }) {
 
 function EditModal({ title, fields, item, onSave, onClose, extra }) {
   const toast = useToast();
-  const [f, setF] = useState(() => Object.fromEntries(fields.map((x) => [x.key, item?.[x.key] ?? (x.type === 'bool' ? (x.default ?? true) : x.type === 'hours' ? null : '')])));
+  const [f, setF] = useState(() => Object.fromEntries(fields.map((x) => [x.key, x.type === 'date' && item?.[x.key] ? String(item[x.key]).slice(0, 10) : item?.[x.key] ?? (x.type === 'bool' ? (x.default ?? true) : x.type === 'hours' ? null : '')])));
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
@@ -135,6 +135,7 @@ export function Sites() {
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
+    { key: 'opened_at', label: 'Data di apertura', type: 'date', help: 'Primo giorno di attività della sede: la leggono Cash (da quando attende il rendiconto) e Retail (scheda sede).' },
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' },
     { key: '_geo', label: 'Coordinate', type: 'action', button: 'Trova dall\'indirizzo', icon: 'pin', help: 'Da via, civico, CAP e città (OpenStreetMap). Se restano vuote, la Suite le completa da sola al salvataggio.', run: async (f, patch) => { const g = await api.post('/geocode', { address: f.address || null, zip: f.zip || null, city: f.city || null, province: f.province || null }); patch({ lat: g.lat, lng: g.lng }); toast(g.precision === 'civico' ? `Trovato al civico: ${g.label}` : g.precision === 'via' ? `Trovata la via (civico non riconosciuto): ${g.label}` : `Trovata solo la città: ${g.label}`, g.precision === 'citta' ? 'warn' : undefined); } },
     { key: 'sort_order', label: 'Ordine', type: 'number' },
@@ -187,6 +188,7 @@ export function Organizations() {
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
     { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
+    { key: 'iban', label: 'IBAN', max: 40, help: 'Coordinate bancarie della Legal entity: le leggono Business (contratti) e Cash (addebiti SEPA).' }, { key: 'bic', label: 'BIC', max: 11 }, { key: 'bank_name', label: 'Banca', max: 160 },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
   const save = async (body) => { if (modal?.id) await api.put(`/organizations/${modal.id}`, body); else await api.post('/organizations', body); toast('Legal entity salvata'); reload(); };

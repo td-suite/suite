@@ -42,9 +42,10 @@ const DATASETS = {
       ['phone', 'Telefono', ''], ['email', 'Email', ''],
       ['opening_hours', 'Orari di apertura', 'Testo libero, es. "Lun-Ven 7:30-12:30, Sab 7:30-11:00".'],
       ['studiolab_code', 'Codice StudioLAB', 'Codice cliente della sede nel LIS StudioLAB (riconoscimento HL7, ordini, NC). Il connettore StudioLAB aggiorna le sedi con questo codice.'],
+      ['opened_at', 'Data di apertura', 'AAAA-MM-GG. Primo giorno di attività della sede: la usano Cash (da quando attende il rendiconto) e Retail.'],
       ['active', 'Attiva', 'SI oppure NO. Predefinito SI.'],
     ],
-    example: ['ES-01', 'Esempio · Punto prelievi Esempiopoli', 'Esempiopoli', 'PUNTO_PRELIEVI', '', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', '000 0000000', 'esempio@esempio.it', 'Mario Esempio', 'Lun-Ven 7:30-12:30', 'ESE', 'SI'],
+    example: ['ES-01', 'Esempio · Punto prelievi Esempiopoli', 'Esempiopoli', 'PUNTO_PRELIEVI', '', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', '000 0000000', 'esempio@esempio.it', 'Lun-Ven 7:30-12:30', 'ESE', '2026-01-01', 'SI'],
   },
   organizations: {
     title: 'Legal entity', sheet: 'Legal entity', order: 1,
@@ -55,9 +56,10 @@ const DATASETS = {
       ['vat_number', 'Partita IVA', 'Senza spazi. Una riga per partita IVA; i punti (codici StudioLAB) sono sedi nel foglio Sedi.'], ['tax_code', 'Codice fiscale', ''],
       ['sdi', 'Codice SDI', ''], ['pec', 'PEC', ''], ['email', 'Email', ''], ['phone', 'Telefono', ''],
       ['address', 'Indirizzo', ''], ['zip', 'CAP', ''], ['city', 'Città', ''], ['province', 'Provincia', 'Sigla.'], ['website', 'Sito web', ''],
+      ['iban', 'IBAN', 'Coordinate bancarie della Legal entity (le leggono Business per i contratti e Cash per gli addebiti SEPA).'], ['bic', 'BIC', ''], ['bank_name', 'Banca', 'Istituto di credito.'],
       ['active', 'Attiva', 'SI oppure NO. Predefinito SI.'],
     ],
-    example: ['ESEMPIO', 'Esempio S.r.l.', 'CLIENTE', '00000000000', '', '', 'esempio@pec.it', 'info@esempio.it', '000 0000000', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', 'https://www.esempio.it', 'SI'],
+    example: ['ESEMPIO', 'Esempio S.r.l.', 'CLIENTE', '00000000000', '', '', 'esempio@pec.it', 'info@esempio.it', '000 0000000', 'Via dell\'Esempio 1', '00000', 'Esempiopoli', 'XX', 'https://www.esempio.it', '', '', '', 'SI'],
   },
   people: {
     title: 'Persone', sheet: 'Persone', order: 3,

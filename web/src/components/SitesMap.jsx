@@ -12,9 +12,9 @@ export default function SitesMap({ sites, kinds, onSelect, focusId, height = 420
   useEffect(() => {
     if (!el.current || map.current) return;
     map.current = L.map(el.current, { scrollWheelZoom: false, zoomControl: true }).setView([43.5, 11.0], 8);
-    // Tile Esri World Street Map: senza chiave, consentite alle applicazioni con attribuzione (OSM volontari e CARTO le rifiutano)
+    // Tile Esri World Topo Map (mappa fisica con rilievo, strade e toponimi): senza chiave, consentite alle applicazioni con attribuzione (OSM volontari e CARTO le rifiutano)
     // Se i tile Esri non arrivano, si passa a OpenStreetMap inviando il referer (la loro policy blocca le richieste anonime)
-    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors' }).addTo(map.current);
+    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors' }).addTo(map.current);
     let errors = 0;
     esri.on('tileerror', () => { if (++errors < 4 || !map.current) return; esri.off('tileerror'); map.current.removeLayer(esri);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map.current); });

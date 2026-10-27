@@ -377,6 +377,27 @@ function Integrations() {
   );
 }
 
+// Dati aziendali (app_settings.company): carta intestata, piè di pagina, firme e intestazioni di tutti i moduli
+function CompanyEditor({ value, onSave }) {
+  const info = useApi('/company');
+  const fields = info.data?.fields || [];
+  const [f, setF] = useState(value && typeof value === 'object' ? value : {});
+  useEffect(() => setF(value && typeof value === 'object' ? value : {}), [value]);
+  const dirty = JSON.stringify(f) !== JSON.stringify(value || {});
+  return (
+    <div>
+      <p className="small muted" style={{ marginTop: 0 }}>Ragione sociale, sede legale, partita IVA, REA, capitale sociale, contatti e Direttore Sanitario usati da Business, Finance, Spedizioni, Circolari, Contratti del personale e dall'organigramma per carte intestate, piè di pagina e firme. Si modificano solo qui.</p>
+      <div className="form-grid">
+        {fields.map(([k, label, help]) => <Field key={k} label={label} help={help} className={k === 'footer' ? 'span-all' : ''}>
+          {k === 'footer' ? <textarea value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} style={{ minHeight: 70 }} placeholder={info.data?.company?.footer_text || ''} />
+            : <input value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={info.data?.company?.[k] || ''} />}
+        </Field>)}
+      </div>
+      <div className="row between" style={{ marginTop: 10 }}><span className="small muted">Un campo vuoto usa il valore di ripiego mostrato in grigio.</span><button className="btn sm" disabled={!dirty} onClick={() => onSave(Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v ?? '').trim()])))}>Salva</button></div>
+    </div>
+  );
+}
+
 export function Settings() {
   const { data, loading, error, reload } = useApi('/settings');
   const toast = useToast();
@@ -390,7 +411,8 @@ export function Settings() {
       <ErrorBox error={error} />
       <div className="col">
         {isOwner(me) && <Integrations />}
-        {data && Object.entries(data).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+        {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /></Card>}
+        {data && Object.entries(data).filter(([k]) => k !== 'company').sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
             {k === 'community.values' ? <ValuesEditor value={v} onSave={(nv) => save(k, nv)} /> : <JsonEditor k={k} value={v} onSave={(nv) => save(k, nv)} />}
           </Card>

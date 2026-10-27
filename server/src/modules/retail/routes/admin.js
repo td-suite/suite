@@ -56,15 +56,17 @@ const SITE_COLS = `s.*, (SELECT count(*)::int FROM exposure_items e WHERE e.site
     (SELECT count(*)::int FROM exposure_items e WHERE e.site_id=s.id AND e.status='INSTALLATO') AS exposure_ok,
     (SELECT coalesce(sum(net_amount),0) FROM sales x WHERE x.site_id=s.id AND x.sale_date >= date_trunc('year', CURRENT_DATE)) AS revenue_ytd,
     (SELECT count(*)::int FROM public.people p WHERE p.site_id=s.id AND p.status='ATTIVO') AS people_count`;
+// Codice StudioLAB, sabato aperto (dagli orari) e data di apertura sono dell'anagrafica unica (docs/IMPOSTAZIONI.md): la vista
+// sites_v li calcola da public.sites e qui non si scrivono.
 const extSchema = z.object({
   in_network: z.boolean().nullable().optional(),
-  tuotempo_area_id: z.string().max(40).nullable().optional(), gipo_site_code: z.string().max(40).nullable().optional(), studiolab_code: z.string().max(40).nullable().optional(),
-  saturday_open: z.boolean().optional(), catchment_cities: z.string().max(400).nullable().optional(),
+  tuotempo_area_id: z.string().max(40).nullable().optional(), gipo_site_code: z.string().max(40).nullable().optional(),
+  catchment_cities: z.string().max(400).nullable().optional(),
   sqm_waiting: z.number().int().nullable().optional(), surface_sqm: z.number().int().nullable().optional(), rooms: z.number().int().nullable().optional(), boxes: z.number().int().nullable().optional(),
-  parking: z.string().nullable().optional(), accessibility: z.string().nullable().optional(), services: z.string().nullable().optional(), description: z.string().nullable().optional(),
-  opened_at: z.string().nullable().optional(), notes: z.string().max(4000).nullable().optional(),
+  parking: z.string().nullable().optional(), accessibility: z.string().nullable().optional(), services: z.string().nullable().optional(), commercial_description: z.string().nullable().optional(),
+  notes: z.string().max(4000).nullable().optional(),
 });
-const EXT_COLS = ['in_network', 'tuotempo_area_id', 'gipo_site_code', 'studiolab_code', 'saturday_open', 'catchment_cities', 'sqm_waiting', 'surface_sqm', 'rooms', 'boxes', 'parking', 'accessibility', 'services', 'description', 'opened_at', 'notes'];
+const EXT_COLS = ['in_network', 'tuotempo_area_id', 'gipo_site_code', 'catchment_cities', 'sqm_waiting', 'surface_sqm', 'rooms', 'boxes', 'parking', 'accessibility', 'services', 'commercial_description', 'notes'];
 const cleanStr = (v) => { const t = (v ?? '').toString().trim(); return t || null; };
 
 // Impostazioni Retail della sede: upsert su site_ext (la riga nasce alla prima scrittura). Usato dalla pagina Sedi e dalla scheda struttura.
@@ -75,10 +77,9 @@ export async function upsertSiteExt(siteId, body) {
   const cur = (await one('SELECT * FROM site_ext WHERE site_id=$1', [siteId])) || {};
   const next = {};
   for (const k of EXT_COLS) {
-    if (!(k in b)) { next[k] = cur[k] ?? (k === 'saturday_open' ? true : null); continue; }
+    if (!(k in b)) { next[k] = cur[k] ?? null; continue; }
     const v = b[k];
     next[k] = typeof v === 'string' ? cleanStr(v) : v ?? null;
-    if (k === 'saturday_open') next[k] = v !== false;
   }
   await q(`INSERT INTO site_ext (site_id, ${EXT_COLS.join(', ')}) VALUES ($1, ${EXT_COLS.map((_, i) => `$${i + 2}`).join(', ')})
     ON CONFLICT (site_id) DO UPDATE SET ${EXT_COLS.map((c) => `${c}=EXCLUDED.${c}`).join(', ')}, updated_at=now()`, [siteId, ...EXT_COLS.map((c) => next[c])]);

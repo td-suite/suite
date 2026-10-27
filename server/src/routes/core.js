@@ -1,5 +1,6 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
+import { getCompany, COMPANY_FIELDS } from '../lib/company.js';
 import { ensureUserForPerson, autoAccountForPerson, createMissingAccounts } from '../lib/accounts.js';
 import { syncPositionFromPerson, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
@@ -63,6 +64,7 @@ const siteSchema = z.object({
   province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(), org_node: z.boolean().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
+  opened_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),   // data di apertura della sede (letta da Cash e Retail)
 });
 
 // Orari strutturati → testo riassuntivo (es. "Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00"), giorni consecutivi uguali raggruppati
@@ -131,6 +133,9 @@ const orgSchema = z.object({
   vat_number: z.string().max(20).nullable().optional(), tax_code: z.string().max(20).nullable().optional(), sdi: z.string().max(10).nullable().optional(), pec: z.string().nullable().optional(),
   email: z.string().nullable().optional(), phone: z.string().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), website: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), notes: z.string().nullable().optional(),
+  // coordinate bancarie della Legal entity (lette da Business e Cash)
+  iban: z.string().max(40).nullable().optional().transform((v) => (v ? v.replace(/\s+/g, '').toUpperCase() : v)).refine((v) => !v || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(v), 'IBAN non valido'),
+  bic: z.string().max(11).nullable().optional().transform((v) => (v ? v.replace(/\s+/g, '').toUpperCase() : v)), bank_name: z.string().max(160).nullable().optional(),
 });
 r.get('/organizations', ah(async (req, res) => {
   const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count FROM organizations o ORDER BY lower(o.name)`);
@@ -362,6 +367,8 @@ r.get('/read-log', requireAdmin, ah(async (req, res) => {
   if (req.user.level !== 'OWNER') throw bad('Riservato al titolare');
   res.json(await many('SELECT r.*, u.full_name AS user_name FROM read_log r LEFT JOIN users u ON u.id=r.user_id ORDER BY r.at DESC LIMIT 200'));
 }));
+// Dati aziendali (app_settings.company): letti da tutti i moduli per carte intestate e piè di pagina; editor in Impostazioni
+r.get('/company', ah(async (_req, res) => { res.json({ company: await getCompany(), fields: COMPANY_FIELDS }); }));
 r.get('/settings', requireAdmin, ah(async (_req, res) => {
   res.json(Object.fromEntries((await many(`SELECT key, value FROM app_settings WHERE key NOT LIKE 'reset:%' AND key NOT LIKE 'secret:%'`)).map((s) => [s.key, s.value])));
 }));

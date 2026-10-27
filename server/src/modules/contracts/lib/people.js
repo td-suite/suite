@@ -8,8 +8,9 @@ import { indexPersonById } from '../../../lib/search.js';
 import { one, q } from '../db.js';
 
 // Colonne di public.people (anagrafica generale, visibile nella Rubrica) e di person_ext (dossier HR riservato)
-export const PEOPLE_COLS = ['kind', 'status', 'last_name', 'first_name', 'sex', 'title', 'birth_date', 'tax_code', 'email', 'phone', 'phone_office', 'phone_ext', 'manager_person_id', 'site_id', 'hired_at', 'terminated_at', 'job_title', 'discipline'];
-export const EXT_COLS = ['birth_place', 'vat_number', 'mobile_company', 'address', 'zip', 'city', 'province', 'iban', 'badge_number', 'nationality', 'emergency_contact', 'area_id', 'approver_id', 'cv_attachment_id', 'termination_reason', 'termination_notes', 'interview_notes', 'notes'];
+// Luogo di nascita, partita IVA e residenza sono dati personali dell'anagrafica unica (migrazione core 018, docs/IMPOSTAZIONI.md)
+export const PEOPLE_COLS = ['kind', 'status', 'last_name', 'first_name', 'sex', 'title', 'birth_date', 'birth_place', 'tax_code', 'vat_number', 'email', 'phone', 'phone_office', 'phone_ext', 'address', 'zip', 'city', 'province', 'manager_person_id', 'site_id', 'hired_at', 'terminated_at', 'job_title', 'discipline'];
+export const EXT_COLS = ['mobile_company', 'iban', 'badge_number', 'nationality', 'emergency_contact', 'area_id', 'approver_id', 'cv_attachment_id', 'termination_reason', 'termination_notes', 'interview_notes', 'notes'];
 // Nomi usati dall'app di origine (e dal front-end) che corrispondono a colonne di public.people con altro nome
 const ALIASES = { manager_id: 'manager_person_id' };
 // Tipo di persona dell'anagrafica unica: DIPENDENTE e DIRIGENTE hanno un rapporto subordinato (employments), gli altri un incarico (lp_contracts)

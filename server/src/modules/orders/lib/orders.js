@@ -1,19 +1,19 @@
 // Logica di dominio degli ordini: numerazione, arricchimento righe con produzione e giacenza, approvazione con creazione
 // delle confezioni attese, ricezione, proposta d'ordine mensile.
+import { getCompany } from '../../../lib/company.js';
 import { one, many, q } from '../db.js';
 import { bad, getSetting } from './util.js';
 import { consumptionByArticle } from './studiolab.js';
 
 export const ARTICLE_COLS = `a.code AS article_code, a.name AS article_name, a.category_code, a.unit, a.pack_size, a.pack_label, a.color, a.gtin, a.coverage_factor`;
 
-// Intestazione dei documenti: la riga company dell'app di origine se c'è, altrimenti la Legal entity di Toscana Diagnostica
-// dall'anagrafica unica (la Suite parte vuota: company non viene più seminata dal travaso).
+// Intestazione dei PDF: i dati aziendali della Suite (Amministrazione > Impostazioni > Dati aziendali, docs/IMPOSTAZIONI.md);
+// la tabella company del modulo conserva solo logo e piè di pagina personalizzato, se mai impostati.
 export async function companyInfo() {
-  const c = await one('SELECT * FROM company LIMIT 1');
-  if (c) return c;
-  const o = await one(`SELECT id, name, vat_number, address, zip, city, province, phone, email, pec, website FROM public.organizations
-    WHERE active AND kind IN ('GRUPPO','SOCIETA') ORDER BY (upper(code) = 'TD') DESC, (kind = 'GRUPPO') DESC, id LIMIT 1`);
-  return o || { name: 'Toscana Diagnostica' };
+  const co = await getCompany();
+  const c = await one('SELECT logo, logo_mime, letterhead_footer FROM company LIMIT 1');
+  return { name: co.legal_name, vat_number: co.vat, address: co.address, zip: co.zip, city: co.city, province: co.province, phone: co.phone, email: co.email, pec: co.pec, website: co.website,
+    letterhead_footer: c?.letterhead_footer || co.footer_text, logo: c?.logo || null, logo_mime: c?.logo_mime || null };
 }
 
 export async function nextOrderNumber(client) {

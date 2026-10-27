@@ -8,10 +8,11 @@ import { KIND, STRUTTURA_ORIGIN, ORG_KIND, SITE_KIND, monthLabel } from '../form
 // Legal entity (public.organizations: clienti del service di laboratorio, partner, fornitori, società del gruppo), con le
 // impostazioni di Ordini e Magazzino (site_ext / org_ext). I punti dei clienti service compaiono come punti di consegna sotto la
 // loro Legal entity. Qui non si crea, rinomina o disattiva nulla: si fa in Amministrazione > Sedi o > Legal entity. Si modificano
-// solo i campi operativi del modulo: ruolo nel flusso ordini, codice Silva, giorno limite della giacenza, referente consegne, note.
+// solo i campi operativi del modulo: ruolo nel flusso ordini, codice Silva, giorno limite della giacenza, modalità e note di consegna.
+// Il referente è il responsabile di sede dell'organigramma (sedi TD) o il telefono ed email della Legal entity: dal core (docs/IMPOSTAZIONI.md).
 const ADMIN_SITES = '/admin/sites';
 const ADMIN_ORGS = '/admin/organizations';
-const FIELDS = ['kind', 'silva_code', 'stock_deadline_day', 'referente', 'referente_phone', 'delivery_mode', 'delivery_notes', 'notes'];
+const FIELDS = ['kind', 'silva_code', 'stock_deadline_day', 'delivery_mode', 'delivery_notes', 'notes'];
 const adminHref = (s) => (s.origin === 'ORG' ? ADMIN_ORGS : ADMIN_SITES);
 const adminLabel = (s) => (s.origin === 'ORG' ? 'Apri in Legal entity' : 'Apri in Sedi');
 const typeLabel = (s) => (s.origin === 'ORG' ? ORG_KIND[s.org_kind] || s.org_kind : SITE_KIND[s.site_kind] || s.site_kind);
@@ -30,7 +31,7 @@ export default function Strutture() {
   const unconfigured = (data || []).filter((s) => !s.configured).length;
   const nSites = (data || []).filter((s) => s.origin === 'SITE').length;
   const nOrgs = (data || []).filter((s) => s.origin === 'ORG').length;
-  const openEdit = (s) => setEdit({ id: s.id, origin: s.origin, code: s.code, name: s.name, type: typeLabel(s), configured: s.configured, kind: s.kind, silva_code: s.silva_code || '', stock_deadline_day: s.stock_deadline_day, referente: s.referente || '', referente_phone: s.referente_phone || '', delivery_mode: s.delivery_mode || 'GIRO', delivery_notes: s.delivery_notes || '', notes: s.notes || '', points: s.points || [] });
+  const openEdit = (s) => setEdit({ id: s.id, origin: s.origin, code: s.code, name: s.name, type: typeLabel(s), configured: s.configured, kind: s.kind, silva_code: s.silva_code || '', stock_deadline_day: s.stock_deadline_day, referente: s.referente || '', referente_phone: s.referente_phone || '', referente_role: s.referente_role || '', email: s.email || '', delivery_mode: s.delivery_mode || 'GIRO', delivery_notes: s.delivery_notes || '', notes: s.notes || '', points: s.points || [] });
   const save = async () => {
     setErr(null);
     const b = Object.fromEntries(FIELDS.map((k) => [k, edit[k] === '' ? null : edit[k]]));
@@ -88,8 +89,8 @@ export default function Strutture() {
             <Field label="Codice cliente Silva (magazzino)" help="Destinazione comunicata al fornitore; se vuoto si usa il codice della struttura"><input value={edit.silva_code} onChange={(e) => setEdit({ ...edit, silva_code: e.target.value.toUpperCase() })} /></Field>
             {edit.kind !== 'CLIENTE' && <Field label="Giacenza mensile entro il giorno"><input type="number" min="1" max="31" value={edit.stock_deadline_day} onChange={(e) => setEdit({ ...edit, stock_deadline_day: e.target.value })} /></Field>}
             <Field label="Modalità di consegna"><select value={edit.delivery_mode} onChange={(e) => setEdit({ ...edit, delivery_mode: e.target.value })}><option value="GIRO">Giro logistico TD</option><option value="RITIRO">Ritiro presso TD</option></select></Field>
-            <Field label="Referente per le consegne"><input value={edit.referente} onChange={(e) => setEdit({ ...edit, referente: e.target.value })} /></Field>
-            <Field label="Telefono referente"><input value={edit.referente_phone} onChange={(e) => setEdit({ ...edit, referente_phone: e.target.value })} /></Field>
+            <Field label={edit.origin === 'ORG' ? 'Referente (contatti della Legal entity)' : 'Referente (responsabile di sede)'} help={edit.origin === 'ORG' ? <>Telefono ed email della Legal entity: si modificano in <Link to="/admin/organizations">Amministrazione, Legal entity</Link></> : <>Responsabile del nodo Sede nell'organigramma: si assegna in <Link to="/admin/organization">Amministrazione, Organizzazione</Link></>}><input value={edit.origin === 'ORG' ? [edit.referente_phone, edit.email].filter(Boolean).join(' · ') : edit.referente ? `${edit.referente}${edit.referente_role ? ` · ${edit.referente_role}` : ''}` : ''} disabled placeholder={edit.origin === 'ORG' ? 'nessun contatto in Amministrazione' : 'da assegnare nell\'organigramma'} /></Field>
+            {edit.origin !== 'ORG' && <Field label="Telefono del referente" help="Cellulare o telefono ufficio della persona, altrimenti il telefono della sede (Amministrazione, Persone e Sedi)"><input value={edit.referente_phone} disabled placeholder="non indicato" /></Field>}
             <Field label="Note per la consegna" help={edit.origin === 'ORG' ? 'Per una Legal entity con più punti indica qui a quale punto consegnare' : undefined} className="span2"><textarea value={edit.delivery_notes} onChange={(e) => setEdit({ ...edit, delivery_notes: e.target.value })} style={{ minHeight: 56 }} /></Field>
             <Field label="Note interne" className="span2"><textarea value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} style={{ minHeight: 56 }} /></Field>
           </div>

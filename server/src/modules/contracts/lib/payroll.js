@@ -1,10 +1,21 @@
 // Calcoli retributivi: scomposizione RAL (come l'Elaboratore Buste Paga), costo azienda, stima netto
 import { many, one } from '../db.js';
 import { r2 } from './util.js';
+import { getCompany } from '../../../lib/company.js';
+import { DEFAULT_SETTINGS } from './seedData.js';
 
+// Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura.
+// company_address (sede operativa / di lavoro predefinita) resta del modulo: se vuota vale la sede legale.
+export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_vat', 'company_rea', 'company_capital', 'company_phone', 'company_email', 'company_pec', 'company_website', 'health_director'];
+export const coreSettings = (co) => ({ company_name: co.legal_name, company_legal_address: co.address_full, company_vat: co.vat, company_rea: co.rea, company_capital: co.share_capital,
+  company_phone: co.phone, company_email: co.email, company_pec: co.pec, company_website: co.website, health_director: co.health_director });
 export async function getSettings() {
   const rows = await many('SELECT key, value FROM app_settings');
-  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const s = { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+  const core = coreSettings(await getCompany());
+  for (const [k, v] of Object.entries(core)) if (v) s[k] = v;
+  if (!s.company_address) s.company_address = s.company_legal_address;
+  return s;
 }
 
 // Minimo tabellare vigente per livello alla data indicata

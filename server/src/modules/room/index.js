@@ -92,7 +92,7 @@ export async function afterTravaso(client, key, { legacyQuery, legacyMap, stats 
     const d = { ...(dati || {}) };
     d.sediAbilitate = [...new Set((d.sediAbilitate || []).map(site).filter(Boolean))];
     if (d.compenso) d.compenso = { ...d.compenso, eccezioniSede: (d.compenso.eccezioniSede || []).map((e) => ({ ...e, sedeId: site(e.sedeId) })).filter((e) => e.sedeId) };
-    if (d.anagrafica) { d.anagrafica = { ...d.anagrafica }; for (const k of ['cognome', 'nome', 'codiceFiscale', 'email', 'telefono', 'cellulare', 'sesso', 'dataNascita']) delete d.anagrafica[k]; }
+    if (d.anagrafica) { d.anagrafica = { ...d.anagrafica }; for (const k of ['cognome', 'nome', 'codiceFiscale', 'email', 'telefono', 'cellulare', 'sesso', 'dataNascita', 'luogoNascita', 'partitaIva', 'indirizzo', 'cap', 'citta', 'provincia']) delete d.anagrafica[k]; }
     for (const k of ['cognome', 'nome', 'codiceFiscale', 'cellulare', 'telefono', 'discipline']) delete d[k];   // vecchio formato piatto
     return d;
   };

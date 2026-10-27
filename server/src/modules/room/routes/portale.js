@@ -16,12 +16,13 @@ r.use(ah(async (req, _res, next) => {
 
 // Recapiti integrativi che il professionista può aggiornare da solo (quelli non presenti nell'anagrafica unica); nome, email, telefono e
 // codice fiscale si modificano in Amministrazione > Persone o in Contratti del personale
-const SELF = ['indirizzo', 'cap', 'citta', 'provincia', 'pec', 'iban', 'intestatarioConto'];
+// Residenza, luogo di nascita e partita IVA sono dell'anagrafica unica (docs/IMPOSTAZIONI.md): qui si leggono soltanto
+const SELF = ['pec', 'iban', 'intestatarioConto'];
 r.get('/me', ah(async (req, res) => {
   const p = req.prof; const sm = await sediMap();
   const docs = await many('SELECT id, tipo, nome, size, scadenza, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
   res.json({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, telefono: p.phone, codiceFiscale: p.tax_code, inRoom: p.in_room,
-    anagrafica: { ...(p.dati?.anagrafica || {}), codiceFiscale: p.tax_code || '', telefono: p.phone || '' }, professionale: { ...(p.dati?.professionale || {}), discipline: discipline(p) }, contratto: p.dati?.contratto || {}, assicurazione: p.dati?.assicurazione || {},
+    anagrafica: { ...(p.dati?.anagrafica || {}), codiceFiscale: p.tax_code || '', telefono: p.phone || '', luogoNascita: p.birth_place || '', partitaIva: p.vat_number || '', indirizzo: p.address || '', cap: p.zip || '', citta: p.city || '', provincia: p.province || '' }, professionale: { ...(p.dati?.professionale || {}), discipline: discipline(p) }, contratto: p.dati?.contratto || {}, assicurazione: p.dati?.assicurazione || {},
     compenso: { tipo: p.dati?.compenso?.tipo || 'ORARIO', tariffaOraria: p.dati?.compenso?.tariffaOraria || null, fissoMensile: p.dati?.compenso?.fissoMensile || null, eccezioniSede: (p.dati?.compenso?.eccezioniSede || []).map((e) => ({ ...e, sede: sm[e.sedeId] || e.sedeId })) },
     sediAbilitate: (p.dati?.sediAbilitate || []).map((id) => ({ id, label: sm[id] || id })), docs, selfFields: SELF });
 }));

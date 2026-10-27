@@ -21,9 +21,9 @@ export const extOf = (id) => (Number(id) < 0 ? { table: 'org_ext', col: 'org_id'
 export const sedeKeyOfSite = (site) => (!site ? null : site.kind === 'SERVICE' && site.organization_id ? -site.organization_id : site.id);
 
 // Riconoscimento della sede inviante dal codice cliente StudioLAB (HL7 ORC-13 / FT1, push, import): prima il codice LIS
-// impostato nel modulo (org_ext, site_ext), poi studiolab_code e code dell'anagrafica unica (sedi e punti SERVICE: il punto
-// porta alla sua Legal entity), infine il codice della Legal entity. Nessuna creazione automatica: le anagrafiche nascono in
-// Amministrazione.
+// proprio della Legal entity (org_ext), poi studiolab_code e code dell'anagrafica unica (sedi TD e punti SERVICE: il punto
+// porta alla sua Legal entity), infine il codice della Legal entity. Il codice StudioLAB di una sede TD è solo quello
+// dell'anagrafica (docs/IMPOSTAZIONI.md). Nessuna creazione automatica: le anagrafiche nascono in Amministrazione.
 export async function findSedeByCodice(codice) {
   const c = String(codice || '').trim();
   if (!c) return null;
@@ -32,9 +32,9 @@ export async function findSedeByCodice(codice) {
       SELECT -e.org_id AS id, 1 AS prio FROM org_ext e WHERE lower(e.codice_lis) = lower($1)
       UNION ALL
       SELECT CASE WHEN s.kind = 'SERVICE' AND s.organization_id IS NOT NULL THEN -s.organization_id ELSE s.id END AS id,
-             CASE WHEN lower(e.codice_lis) = lower($1) THEN 2 WHEN lower(s.studiolab_code) = lower($1) THEN 3 ELSE 4 END AS prio
-        FROM public.sites s LEFT JOIN site_ext e ON e.site_id = s.id
-       WHERE lower(e.codice_lis) = lower($1) OR lower(s.studiolab_code) = lower($1) OR lower(s.code) = lower($1)
+             CASE WHEN lower(s.studiolab_code) = lower($1) THEN 3 ELSE 4 END AS prio
+        FROM public.sites s
+       WHERE lower(s.studiolab_code) = lower($1) OR lower(s.code) = lower($1)
       UNION ALL
       SELECT -o.id AS id, 5 AS prio FROM public.organizations o WHERE lower(o.code) = lower($1)
     ) k JOIN sedi_v v ON v.id = k.id

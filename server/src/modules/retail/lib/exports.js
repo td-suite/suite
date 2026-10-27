@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
+import { getCompany } from '../../../lib/company.js';
 
 const C = { teal: '1C505E', blue: '71B1BD', jet: '01212C', silk: 'FFFAE3', mauve: 'DEC0F1', ink: '0F2A33', muted: '5B6F75', line: 'DBE5E7', green: '2F7D5B', red: 'B3372F' };
 const LOGO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'logo-td.png');
@@ -27,13 +28,14 @@ export async function toXlsx(sheets) {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
+let companyName = 'Toscana Diagnostica';   // aggiornato da getCompany() all'avvio di ogni esportazione
 function slideHeader(pptx, slide, title, subtitle) {
   slide.background = { color: 'FFFFFF' };
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.9, fill: { color: C.jet }, line: { color: C.jet } });
   if (fs.existsSync(LOGO)) slide.addImage({ path: LOGO, x: 0.35, y: 0.18, h: 0.54, w: 2.2 });
   slide.addText(title, { x: 2.8, y: 0.12, w: 9.2, h: 0.45, fontFace: 'Calibri', fontSize: 20, bold: true, color: 'FFFFFF' });
   if (subtitle) slide.addText(subtitle, { x: 2.8, y: 0.52, w: 9.2, h: 0.3, fontFace: 'Calibri', fontSize: 11, color: '9CC4CC' });
-  slide.addText('Toscana Diagnostica · Retail · documento interno', { x: 0.35, y: 7.1, w: 8, h: 0.3, fontFace: 'Calibri', fontSize: 9, color: C.muted });
+  slide.addText(`${companyName} · Retail · documento interno`, { x: 0.35, y: 7.1, w: 8, h: 0.3, fontFace: 'Calibri', fontSize: 9, color: C.muted });
 }
 
 const STATUS_LABEL = { DA_INSTALLARE: 'Da installare', INSTALLATO: 'Installato', DA_SOSTITUIRE: 'Da sostituire', RIMOSSO: 'Rimosso', NON_CONFORME: 'Non conforme' };
@@ -44,7 +46,8 @@ export async function bookToPptx({ sites, zones, promo, generatedAt }) {
   const PptxGenJS = (await import('pptxgenjs')).default;
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
-  pptx.author = 'TD Retail'; pptx.company = 'Toscana Diagnostica S.r.l.'; pptx.title = 'Book Retail';
+  const co = await getCompany(); companyName = co.name;
+  pptx.author = 'TD Retail'; pptx.company = co.legal_name; pptx.title = 'Book Retail';
   // Copertina
   const cover = pptx.addSlide();
   cover.background = { color: C.jet };
@@ -88,7 +91,8 @@ export async function promoCalendarToPptx({ year, promotions, products }) {
   const PptxGenJS = (await import('pptxgenjs')).default;
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
-  pptx.author = 'TD Retail'; pptx.company = 'Toscana Diagnostica S.r.l.'; pptx.title = `Calendario promozionale ${year}`;
+  const co = await getCompany(); companyName = co.name;
+  pptx.author = 'TD Retail'; pptx.company = co.legal_name; pptx.title = `Calendario promozionale ${year}`;
   const MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
   const ov = pptx.addSlide();
   slideHeader(pptx, ov, `Calendario promozionale ${year}`, 'Una promozione al mese: tema, claim, meccanica, target');

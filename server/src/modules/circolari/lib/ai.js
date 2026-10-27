@@ -3,6 +3,7 @@
 // commerciali e organizzative. Se l'AI non è configurata si usa l'euristica di lib/extract.js.
 import { aiEnabled, askJson, cleanText } from '../../../lib/claude.js';
 import { heuristicStructure } from './extract.js';
+import { getCompany } from '../../../lib/company.js';
 
 const BLOCK_TYPES = new Set(['titolo', 'paragrafo', 'elenco', 'tabella']);
 
@@ -25,8 +26,9 @@ function sanitizeBlocks(arr) {
 export async function structureDraft({ text, blocchi, hint, userId }) {
   const fallback = heuristicStructure(blocchi || []);
   if (!aiEnabled()) return { ...fallback, ai: false };
+  const co = await getCompany();
   const system = [
-    'Sei la redazione di Toscana Diagnostica S.r.l., rete toscana di laboratori e centri diagnostici.',
+    `Sei la redazione di ${co.legal_name}, rete toscana di laboratori e centri diagnostici.`,
     'Trasformi la bozza grezza di una circolare aziendale (scritta dal laboratorio o da un ufficio) nella scheda strutturata della circolare ufficiale, destinata a clienti, strutture sanitarie, laboratori partner o personale.',
     'Regole di scrittura: italiano, registro professionale e diretto, frasi brevi, nessun trattino lungo, nessuna enfasi retorica, nessuna parola come "approfondire", "sinergia", "eccellenza", "all\'avanguardia". Non inventare dati, date, prezzi o impegni che non sono nella bozza: se mancano, lascia il campo vuoto.',
     'Non alterare numeri, orari, date, codici, nomi di esami o condizioni presenti nella bozza. Le tabelle della bozza restano tabelle con le stesse colonne e righe.',

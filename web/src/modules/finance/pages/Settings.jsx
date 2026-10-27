@@ -14,7 +14,7 @@ const FIELDS = [
   ['reminder_days', 'Sollecito automatico dopo (giorni)', '0 per disattivare. Il controllo gira ogni 6 ore.'],
   ['protocol_prefix', 'Prefisso del protocollo', 'es. AP → AP-2026-0001'],
   ['mail_cc', 'Copia conoscenza su tutte le email', 'Indirizzi separati da virgola, es. amministrazione@toscanadiagnostica.it'],
-  ['company_name', 'Ragione sociale', ''],
+  ['company_name', 'Ragione sociale', 'Dai Dati aziendali della Suite (Amministrazione, Impostazioni): qui in sola lettura.'],
 ];
 const TEXTS = [
   ['form_title_joint', 'Titolo del modulo (firma congiunta)'],
@@ -50,7 +50,7 @@ export default function Settings() {
       <div className="grid g2">
         <Card title="Poteri di firma e flusso">
           <div className="form-grid">
-            {FIELDS.map(([k, label, help]) => <Field key={k} label={label} help={help} className={k === 'mail_cc' || k === 'company_name' ? 'span2' : ''}>{NUM.includes(k) ? <MoneyInput value={f[k]} onChange={(v) => setF({ ...f, [k]: v })} /> : <input value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} />}</Field>)}
+            {FIELDS.map(([k, label, help]) => <Field key={k} label={label} help={help} className={k === 'mail_cc' || k === 'company_name' ? 'span2' : ''}>{NUM.includes(k) ? <MoneyInput value={f[k]} onChange={(v) => setF({ ...f, [k]: v })} /> : <input value={f[k] ?? ''} disabled={(d.coreKeys || []).includes(k)} onChange={(e) => setF({ ...f, [k]: e.target.value })} />}</Field>)}
           </div>
           <div className="small muted" style={{ marginTop: 10 }}>Firmatari attivi: {d.signers.length ? d.signers.map((s) => `${s.role}: ${s.title ? `${s.title} ` : ''}${s.full_name} (${s.email})`).join(' · ') : <span className="red">nessuno: assegna i profili CEO e CFO del modulo Payments in Amministrazione &gt; Utenti della Suite</span>}</div>
           <div className="small muted" style={{ marginTop: 6 }}>Utenti, profili (Finance Support, CEO, CFO, Consultazione) e accessi si gestiscono nella Suite: Amministrazione &gt; Utenti, modulo Payments.</div>

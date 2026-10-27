@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireAdmin, requireManage } from '../lib/access.js';
-import { getSettings, DEFAULT_SETTINGS, normalizeIban, validIban } from '../lib/rules.js';
+import { getSettings, DEFAULT_SETTINGS, normalizeIban, validIban, CORE_KEYS } from '../lib/rules.js';
 import { config } from '../config.js';
 import { pdfAvailable } from '../lib/docgen.js';
 import { mailAvailable } from '../lib/mail.js';
@@ -17,7 +17,7 @@ const r = Router();
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();
   const signers = await many("SELECT role, full_name, title, email FROM users WHERE role IN ('CEO','CFO') AND active");
-  res.json({ settings: s, defaults: DEFAULT_SETTINGS, signers, entraEnabled: config.entra.enabled, mailMode: config.mail.mode, mailSender: config.mail.sender, pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb, signAllowLocal: config.signAllowLocal });
+  res.json({ settings: s, defaults: DEFAULT_SETTINGS, coreKeys: CORE_KEYS, signers, entraEnabled: config.entra.enabled, mailMode: config.mail.mode, mailSender: config.mail.sender, pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb, signAllowLocal: config.signAllowLocal });
 }));
 
 r.get('/settings/mail-status', requireAdmin, ah(async (_req, res) => res.json(await mailAvailable())));
@@ -26,6 +26,7 @@ r.put('/settings', requireAdmin, ah(async (req, res) => {
   const body = req.body || {};
   for (const k of Object.keys(body)) {
     if (!(k in DEFAULT_SETTINGS)) throw bad(`Impostazione sconosciuta: ${k}`);
+    if (CORE_KEYS.includes(k)) continue;   // ragione sociale: Dati aziendali della Suite
     if (['threshold_single', 'threshold_joint', 'aggregation_days', 'token_days', 'reminder_days'].includes(k) && !(Number(body[k]) >= 0)) throw bad(`${k}: valore numerico non valido`);
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }

@@ -2,6 +2,7 @@
 // impronta del contenuto firmato, validazione IBAN, importo in lettere.
 import crypto from 'node:crypto';
 import { many } from '../db.js';
+import { getCompany } from '../../../lib/company.js';
 
 export const DEFAULT_SETTINGS = {
   company_name: 'Toscana Diagnostica S.r.l.',
@@ -18,10 +19,15 @@ export const DEFAULT_SETTINGS = {
   protocol_prefix: 'AP',
 };
 
+// Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura
+export const CORE_KEYS = ['company_name'];
 export async function getSettings() {
   const rows = await many('SELECT key, value FROM app_settings');
   const s = { ...DEFAULT_SETTINGS };
   for (const r of rows) s[r.key] = r.value;
+  const co = await getCompany();
+  s.company_name = co.legal_name;   // la ragione sociale è della Suite
+  s.company = co;
   return s;
 }
 

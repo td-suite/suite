@@ -80,10 +80,12 @@ export const ROW_SCHEMAS = {
     code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
     address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), lat: opt(z.number()), lng: opt(z.number()), phone: opt(str(40)), email,
     manager_name: opt(str(160)), opening_hours: opt(str(600)), studiolab_code: opt(str(40)), legacy_brand: opt(str(120)), active: opt(z.boolean()), organization_code: opt(str(40)),
+    opened_at: dateStr,
   }),
   organizations: z.object({
     name: str(250).min(2), kind: opt(z.enum(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'])), code: opt(str(40)), vat_number: opt(str(20)), tax_code: opt(str(20)),
     sdi: opt(str(10)), pec: email, email, phone: opt(str(40)), address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), website: opt(str(200)), active: opt(z.boolean()),
+    iban: opt(str(40)), bic: opt(str(11)), bank_name: opt(str(160)),
   }),
   events: z.object({
     title: str(200).min(2), description: opt(str(4000)), kind: opt(z.enum(['EVENTO', 'RIUNIONE', 'FORMAZIONE', 'SCADENZA', 'TURNO', 'FESTIVITA', 'ALTRO'])),
@@ -152,16 +154,15 @@ export const APPLIERS = {
     if (row.organization_code && !org) throw new Error(`organizzazione ${row.organization_code} inesistente`);
     const ex = (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.code])).rows[0];
     const vals = [row.name, row.short_name || null, row.kind || null, org?.id || null, row.address || null, row.zip || null, row.city || null, row.province || null, row.lat ?? null, row.lng ?? null,
-      row.phone || null, row.email || null, row.manager_name || null, row.opening_hours || null, row.studiolab_code || null, row.legacy_brand || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code })];
+      row.phone || null, row.email || null, row.manager_name || null, row.opening_hours || null, row.studiolab_code || null, row.legacy_brand || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code }), row.opened_at || null];
     if (ex) {
       await c.query(`UPDATE sites SET name=$2, short_name=coalesce($3,short_name), kind=coalesce($4,kind), organization_id=coalesce($5,organization_id), address=coalesce($6,address), zip=coalesce($7,zip), city=coalesce($8,city),
         province=coalesce($9,province), lat=coalesce($10,lat), lng=coalesce($11,lng), phone=coalesce($12,phone), email=coalesce($13,email), manager_name=coalesce($14,manager_name), opening_hours=coalesce($15,opening_hours),
-        studiolab_code=coalesce($16,studiolab_code), legacy_brand=coalesce($17,legacy_brand), active=coalesce($18,active), legacy_refs=legacy_refs || $19::jsonb, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
-      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
+        studiolab_code=coalesce($16,studiolab_code), legacy_brand=coalesce($17,legacy_brand), active=coalesce($18,active), legacy_refs=legacy_refs || $19::jsonb, opened_at=coalesce($20::date,opened_at), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       return { id: ex.id, action: 'aggiornata' };
     }
-    const ins = await c.query(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, zip, city, province, lat, lng, phone, email, manager_name, opening_hours, studiolab_code, legacy_brand, active, legacy_refs)
-      VALUES ($1,$2,$3,coalesce($4,'PUNTO_PRELIEVI'),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,coalesce($18,TRUE),$19) RETURNING id`, [row.code, ...vals]);
+    const ins = await c.query(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, zip, city, province, lat, lng, phone, email, manager_name, opening_hours, studiolab_code, legacy_brand, active, legacy_refs, opened_at)
+      VALUES ($1,$2,$3,coalesce($4,'PUNTO_PRELIEVI'),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,coalesce($18,TRUE),$19,$20) RETURNING id`, [row.code, ...vals]);
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async organizations(c, row, k) {
@@ -172,15 +173,17 @@ export const APPLIERS = {
     if (!ex && row.code) ex = (await c.query('SELECT id FROM organizations WHERE lower(code)=lower($1)', [row.code])).rows[0];
     if (!ex && row.tax_code) ex = (await c.query('SELECT id FROM organizations WHERE upper(tax_code)=upper($1)', [row.tax_code])).rows[0];
     if (!ex) ex = (await c.query('SELECT id FROM organizations WHERE lower(name)=lower($1)', [row.name])).rows[0];
-    const vals = [row.name, row.kind || null, row.code || null, vat, row.tax_code || null, row.sdi || null, row.pec || null, row.email || null, row.phone || null, row.address || null, row.zip || null, row.city || null, row.province || null, row.website || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code || row.vat_number || row.name })];
+    const iban = row.iban ? row.iban.replace(/\s+/g, '').toUpperCase() : null;
+    const vals = [row.name, row.kind || null, row.code || null, vat, row.tax_code || null, row.sdi || null, row.pec || null, row.email || null, row.phone || null, row.address || null, row.zip || null, row.city || null, row.province || null, row.website || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code || row.vat_number || row.name }),
+      iban, row.bic ? row.bic.replace(/\s+/g, '').toUpperCase() : null, row.bank_name || null];
     if (ex) {
       await c.query(`UPDATE organizations SET name=$2, kind=coalesce($3,kind), code=coalesce(code,$4), vat_number=coalesce($5,vat_number), tax_code=coalesce($6,tax_code), sdi=coalesce($7,sdi), pec=coalesce($8,pec), email=coalesce($9,email),
-        phone=coalesce($10,phone), address=coalesce($11,address), zip=coalesce($12,zip), city=coalesce($13,city), province=coalesce($14,province), website=coalesce($15,website), active=coalesce($16,active), legacy_refs=legacy_refs || $17::jsonb, updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
-      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
+        phone=coalesce($10,phone), address=coalesce($11,address), zip=coalesce($12,zip), city=coalesce($13,city), province=coalesce($14,province), website=coalesce($15,website), active=coalesce($16,active), legacy_refs=legacy_refs || $17::jsonb,
+        iban=coalesce($18,iban), bic=coalesce($19,bic), bank_name=coalesce($20,bank_name), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       return { id: ex.id, action: 'aggiornata' };
     }
-    const ins = await c.query(`INSERT INTO organizations (name, kind, code, vat_number, tax_code, sdi, pec, email, phone, address, zip, city, province, website, active, legacy_refs)
-      VALUES ($1,coalesce($2,'CLIENTE'),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,coalesce($15,TRUE),$16) RETURNING id`, vals);
+    const ins = await c.query(`INSERT INTO organizations (name, kind, code, vat_number, tax_code, sdi, pec, email, phone, address, zip, city, province, website, active, legacy_refs, iban, bic, bank_name)
+      VALUES ($1,coalesce($2,'CLIENTE'),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,coalesce($15,TRUE),$16,$17,$18,$19) RETURNING id`, vals);
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async events(c, row, k) {
@@ -204,7 +207,6 @@ export const APPLIERS = {
     if (ex) {
       await c.query(`UPDATE news SET title=$2, kind=coalesce($3,kind), summary=$4, body=$5, tags=$6, requires_ack=coalesce($7,requires_ack), is_public=coalesce($8,is_public), audience=coalesce($9,audience), updated_at=now() WHERE id=$1`,
         [ex.id, row.title, row.kind || null, row.summary || null, row.body, tags, row.requires_ack ?? null, row.is_public ?? null, row.audience ? JSON.stringify(row.audience) : null]);
-      await c.query(PERSONAL_SQL, [ex.id, row.sex || null, row.birth_date || null, row.birth_place || null, row.vat_number || null, row.address || null, row.zip || null, row.city || null, row.province || null]);
       return { id: ex.id, action: 'aggiornata' };
     }
     let slug = slugify(row.title); const base = slug; let i = 1;

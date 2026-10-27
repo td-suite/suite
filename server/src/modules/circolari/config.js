@@ -13,7 +13,8 @@ export const config = {
   // Orientamento automatico: orizzontale se una tabella ha più di queste colonne
   landscapeColumns: Number(env.CIRCOLARI_LANDSCAPE_COLUMNS || 5),
   maxEmailBatch: Number(env.CIRCOLARI_MAX_EMAIL_BATCH || 200),
-  // Dati societari del piè di pagina (carta intestata luglio 2026)
+  // Dati societari del piè di pagina (carta intestata luglio 2026): solo ripiego, i valori vivi sono in Amministrazione >
+  // Impostazioni > Dati aziendali (lib/company.js, docs/IMPOSTAZIONI.md)
   footer: {
     line1: 'Toscana Diagnostica S.r.l.',
     line2: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI). Tel. e Fax: 055776511. Direttore Sanitario: prof. Gian Luigi Taddei.',

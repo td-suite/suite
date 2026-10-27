@@ -28,7 +28,11 @@ export function AuthProvider({ children }) {
     const onAuthState = () => refresh();
     window.addEventListener('suite:unauthorized', onUnauth);
     window.addEventListener('suite:authstate', onAuthState);
-    return () => { window.removeEventListener('suite:unauthorized', onUnauth); window.removeEventListener('suite:authstate', onAuthState); };
+    // i moduli assegnati da un amministratore devono comparire senza rifare l'accesso: profilo riletto al ritorno sulla scheda e ogni minuto
+    const onFocus = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', onFocus); document.addEventListener('visibilitychange', onFocus);
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 60000);
+    return () => { window.removeEventListener('suite:unauthorized', onUnauth); window.removeEventListener('suite:authstate', onAuthState); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); clearInterval(timer); };
   }, [refresh]);
 
   const logout = useCallback(async () => {

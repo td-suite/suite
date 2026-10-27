@@ -21,10 +21,11 @@ export default function Settings() {
       <ErrorBox error={err} />
       <div className="grid">
         <Card title="Creditore SEPA (Toscana Diagnostica)">
+          <p className="small muted" style={{ marginTop: 0 }}>Se vuoti, ragione sociale, IBAN e BIC del creditore vengono dalla Legal entity capofila dell'anagrafica (IBAN in Amministrazione, Legal entity) e dai Dati aziendali della Suite (Amministrazione, Impostazioni). Compilali qui solo per forzare un valore diverso.</p>
           <div className="form-grid">
-            {i('creditor_name', 'Ragione sociale')}
-            {i('creditor_iban', 'IBAN di accredito', null, { className: 'mono' })}
-            {i('creditor_bic', 'BIC (facoltativo)')}
+            {i('creditor_name', 'Ragione sociale (forzatura)')}
+            {i('creditor_iban', 'IBAN di accredito (forzatura)', null, { className: 'mono' })}
+            {i('creditor_bic', 'BIC (forzatura, facoltativo)')}
             {i('creditor_id', 'Creditor Identifier (CI)', 'Rilasciato dalla banca per gli addebiti SDD, formato ITnnZZZ + codice', { className: 'mono' })}
           </div>
         </Card>

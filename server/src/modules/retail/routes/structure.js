@@ -1,6 +1,7 @@
 // Scheda struttura della sede sull'anagrafica unica: la sede viene da public.sites (vista sites_v), le persone da public.people
 // (site_id della persona), con il piano di lavoro Retail in person_ext; orari di dettaglio e dotazioni restano tabelle Retail
-// (site_hours, site_assets) con FK su public.sites. Il profilo struttura si salva in site_ext (upsert).
+// (site_hours: solo le note operative per giorno; site_assets) con FK su public.sites. Le fasce di apertura per giorno sono
+// quelle dell'anagrafica unica (public.sites.opening_hours_json, docs/IMPOSTAZIONI.md). Il profilo struttura si salva in site_ext (upsert).
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
@@ -24,14 +25,18 @@ r.get('/sites/:id/structure', ah(async (req, res) => {
   if (!site) throw notFound('Sede non trovata');
   const [staff, hours, assets, year, ops, market] = await Promise.all([
     many(`${PEOPLE} WHERE p.site_id=$1 AND p.status IN ('ATTIVO','IMPEGNO') ORDER BY (p.status='ATTIVO') DESC, coalesce(e.sort_order, 100), p.last_name, p.first_name`, [id]),
-    many('SELECT * FROM site_hours WHERE site_id=$1 ORDER BY weekday', [id]),
+    many('SELECT weekday, note FROM site_hours WHERE site_id=$1 ORDER BY weekday', [id]),
     many('SELECT * FROM site_assets WHERE site_id=$1 ORDER BY active DESC, kind, name', [id]),
     one(`SELECT coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets, count(DISTINCT customer_id)::int AS customers, count(DISTINCT sale_date)::int AS days FROM sales WHERE site_id=$1 AND sale_date >= date_trunc('year', CURRENT_DATE)`, [id]),
     many(`SELECT operator AS label, coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets FROM sales WHERE site_id=$1 AND operator IS NOT NULL AND sale_date >= date_trunc('year', CURRENT_DATE) GROUP BY operator ORDER BY revenue DESC LIMIT 10`, [id]),
     many(`SELECT territory, metric, value, year, ateco, source FROM market_data WHERE territory_kind='COMUNE' AND lower(territory) = ANY($1) ORDER BY territory, metric, year DESC`, [[site.city, ...(site.catchment_cities || '').split(',')].map((x) => (x || '').trim().toLowerCase()).filter(Boolean)]),
   ]);
   const fte = staff.filter((s) => s.active).reduce((a, s) => a + Number(s.weekly_hours || 0), 0) / 40;
-  res.json({ site, staff, hours, assets, year, operators: ops, market, fte: Math.round(fte * 10) / 10, can_edit: canEditSite(req.user, id) });
+  // Orari per giorno dall'anagrafica (fino a due fasce) + nota operativa Retail del giorno
+  const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const hj = site.hours_json || {};
+  const hoursOut = DAYS.map((d, i) => { const r = Array.isArray(hj[d]) ? hj[d] : []; const n = hours.find((h) => h.weekday === i + 1); return { weekday: i + 1, closed: !r.length, open1: r[0]?.from || null, close1: r[0]?.to || null, open2: r[1]?.from || null, close2: r[1]?.to || null, note: n?.note || null }; });
+  res.json({ site, staff, hours: hoursOut, assets, year, operators: ops, market, fte: Math.round(fte * 10) / 10, can_edit: canEditSite(req.user, id) });
 }));
 
 // Piano di lavoro Retail di una persona della sede (upsert su person_ext). Nome, ruolo contrattuale, contatti e sede si
@@ -63,14 +68,17 @@ r.delete('/people/:id', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Orari di dettaglio della sede (fasce mattina/pomeriggio per giorno, note operative). L'orario ufficiale sintetico resta in
-// public.sites.opening_hours; il sabato aperto o chiuso aggiorna il parametro dei giorni lavorabili in site_ext.
+// Note operative per giorno (es. prelievi solo 7:30-10:30). Le fasce di apertura si modificano in Amministrazione > Sedi:
+// il sabato aperto o chiuso (giorni lavorabili del Budget) deriva da lì.
 r.put('/sites/:id/hours', ah(async (req, res) => {
   const id = Number(req.params.id); guard(req, id);
   if (!(await one('SELECT id FROM public.sites WHERE id=$1', [id]))) throw notFound('Sede non trovata');
-  const d = parse(z.object({ hours: z.array(z.object({ weekday: z.number().int().min(1).max(7), closed: z.boolean().default(false), open1: z.string().nullable().optional(), close1: z.string().nullable().optional(), open2: z.string().nullable().optional(), close2: z.string().nullable().optional(), note: z.string().nullable().optional() })) }), req.body);
-  for (const h of d.hours) await q('INSERT INTO site_hours(site_id, weekday, closed, open1, close1, open2, close2, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (site_id, weekday) DO UPDATE SET closed=EXCLUDED.closed, open1=EXCLUDED.open1, close1=EXCLUDED.close1, open2=EXCLUDED.open2, close2=EXCLUDED.close2, note=EXCLUDED.note', [id, h.weekday, h.closed, h.open1 || null, h.close1 || null, h.open2 || null, h.close2 || null, h.note || null]);
-  const sat = d.hours.find((h) => h.weekday === 6); if (sat) await upsertSiteExt(id, { saturday_open: !sat.closed });
+  const d = parse(z.object({ hours: z.array(z.object({ weekday: z.number().int().min(1).max(7), note: z.string().max(300).nullable().optional() })) }), req.body);
+  for (const h of d.hours) {
+    const note = (h.note || '').trim() || null;
+    if (note) await q('INSERT INTO site_hours(site_id, weekday, note) VALUES ($1,$2,$3) ON CONFLICT (site_id, weekday) DO UPDATE SET note=EXCLUDED.note', [id, h.weekday, note]);
+    else await q('DELETE FROM site_hours WHERE site_id=$1 AND weekday=$2', [id, h.weekday]);
+  }
   await audit(req, 'SITE_HOURS_UPDATE', 'site', id); res.json({ ok: true });
 }));
 

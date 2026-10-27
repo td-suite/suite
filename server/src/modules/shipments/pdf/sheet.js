@@ -9,7 +9,7 @@ const T = {
 
 export async function shippingSheet(o, { legs, settings, lang = 'it' }) {
   const t = T[lang] || T.it;
-  const doc = newDoc({ Title: `${t.title} ${o.external_ref || o.id}`, Subject: t.title });
+  const doc = await newDoc({ Title: `${t.title} ${o.external_ref || o.id}`, Subject: t.title });
   doc.addPage();
   let y = letterhead(doc, t.title, t.sub(o));
   const name = [o.patient_title, o.patient_first_name, o.patient_last_name].filter(Boolean).join(' ');
@@ -55,7 +55,7 @@ const L = {
 };
 export async function labSheet(l, { consignee, sender, lang = 'en' }) {
   const t = L[lang] || L.en;
-  const doc = newDoc({ Title: `${t.title} ${l.awb_number || l.id}`, Subject: t.title });
+  const doc = await newDoc({ Title: `${t.title} ${l.awb_number || l.id}`, Subject: t.title });
   doc.addPage();
   let y = letterhead(doc, t.title, t.sub(l));
   const colW = (W - 14) / 2;

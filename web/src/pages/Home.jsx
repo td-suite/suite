@@ -38,7 +38,8 @@ function useClock() {
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const modules = useApi('/home/modules');
+  const grantKeys = Object.keys(user?.grants || {}).sort().join(',');   // cambia quando un amministratore assegna o toglie un modulo
+  const modules = useApi('/home/modules', [grantKeys, user?.level]);
   const home = useApi('/community/home');
   const notif = useApi('/notifications');
   const [counters, setCounters] = useState(null);

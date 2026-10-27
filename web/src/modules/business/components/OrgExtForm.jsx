@@ -3,13 +3,13 @@ import { api } from '../api.js';
 import { Field, ErrorBox, Modal } from './ui.jsx';
 
 // Impostazioni Business di un'organizzazione dell'anagrafica unica (tracciato TD-SGI-MOD173, parte commerciale).
-// Ragione sociale, P.IVA, indirizzo, PEC e stato si modificano in Amministrazione, Legal entity.
+// Ragione sociale, P.IVA, indirizzo, PEC, stato, banca e IBAN si modificano in Amministrazione, Legal entity (docs/IMPOSTAZIONI.md).
 export const EMPTY_EXT = {
   legal_rep: '', signer: '', signer_role: '', contract_services: '', lab_reference: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)', billing_ref: '',
   sales_contact: '', sales_email: '', sales_phone: '',
   svc_contact: '', svc_email: '', svc_mobile: '', svc_address: '', proc_contact: '', proc_email: '', proc_mobile: '', proc_address: '',
   pay_method: 'Bonifico bancario', pay_terms: '30 gg fm', currency: 'EUR', withholding: false, vat_territoriality: 'Italia', intent_declaration: '', split_payment: false, tax_values: '',
-  bank_name: '', iban: '', portal_url: '', portal_username: '', portal_password: '', notes: '',
+  portal_url: '', portal_username: '', portal_password: '', notes: '',
 };
 
 export const ORG_KIND = { GRUPPO: 'Gruppo', SOCIETA: 'Società', CLIENTE: 'Cliente', PARTNER: 'Partner', FORNITORE: 'Fornitore', TARGET: 'Target', ALTRO: 'Altro' };
@@ -56,7 +56,10 @@ export function OrgExtFields({ p, set }) {
       </div>
       <div>
         <h3>Istituto di credito del cliente / partner</h3>
-        <div className="form-grid" style={{ marginTop: 8 }}>{F('bank_name', 'Nome della banca')}{F('iban', 'IBAN', { upper: true })}</div>
+        <div className="form-grid" style={{ marginTop: 8 }}>
+          <Field label="Nome della banca" help="Dalla Legal entity in Amministrazione"><input value={p.bank_name || ''} disabled placeholder="non indicata" /></Field>
+          <Field label="IBAN" help={<>Si modifica in <a href="/admin/organizations">Amministrazione, Legal entity</a></>}><input value={p.iban || ''} disabled placeholder="non indicato" /></Field>
+        </div>
       </div>
       <div>
         <h3>Credenziali del portale (livello organizzazione)</h3>
@@ -75,7 +78,7 @@ export function OrgExtFields({ p, set }) {
 }
 
 export function OrgExtModal({ org, onClose, onSaved }) {
-  const [p, setP] = useState({ ...EMPTY_EXT, ...Object.fromEntries(Object.entries(org || {}).filter(([k, v]) => k in EMPTY_EXT && v != null)), notes: org?.business_notes || '', has_portal_password: Boolean(org?.has_portal_password), portal_password: '' });
+  const [p, setP] = useState({ ...EMPTY_EXT, ...Object.fromEntries(Object.entries(org || {}).filter(([k, v]) => k in EMPTY_EXT && v != null)), notes: org?.business_notes || '', has_portal_password: Boolean(org?.has_portal_password), portal_password: '', bank_name: org?.bank_name || '', iban: org?.iban || '' });
   const [err, setErr] = useState(null);
   const set = (k, v) => setP((x) => ({ ...x, [k]: v }));
   const save = async () => {

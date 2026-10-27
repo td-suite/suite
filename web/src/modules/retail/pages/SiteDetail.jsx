@@ -19,13 +19,13 @@ export default function SiteDetail() {
   const [hours, setHours] = useState(null);
   const [staff, setStaff] = useState(null);
   const [asset, setAsset] = useState(null);
-  useEffect(() => { if (d.data) { const s = d.data.site; setProfile({ surface_sqm: s.surface_sqm, rooms: s.rooms, boxes: s.boxes, parking: s.parking, accessibility: s.accessibility, services: s.services, description: s.description, opened_at: s.opened_at, catchment_cities: s.catchment_cities, sqm_waiting: s.sqm_waiting, notes: s.notes }); setHours(Array.from({ length: 7 }, (_, i) => { const h = d.data.hours.find((x) => x.weekday === i + 1); return { weekday: i + 1, closed: h ? h.closed : i === 6, open1: h?.open1?.slice(0, 5) || '', close1: h?.close1?.slice(0, 5) || '', open2: h?.open2?.slice(0, 5) || '', close2: h?.close2?.slice(0, 5) || '', note: h?.note || '' }; })); } }, [d.data]);
+  useEffect(() => { if (d.data) { const s = d.data.site; setProfile({ surface_sqm: s.surface_sqm, rooms: s.rooms, boxes: s.boxes, parking: s.parking, accessibility: s.accessibility, services: s.services, commercial_description: s.commercial_description, catchment_cities: s.catchment_cities, sqm_waiting: s.sqm_waiting, notes: s.notes }); setHours(Array.from({ length: 7 }, (_, i) => { const h = d.data.hours.find((x) => x.weekday === i + 1); return { weekday: i + 1, closed: h ? h.closed : true, open1: h?.open1 || '', close1: h?.close1 || '', open2: h?.open2 || '', close2: h?.close2 || '', note: h?.note || '' }; })); } }, [d.data]);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data || !profile || !hours) return <div className="page"><Loading /></div>;
   const { site, year, assets, operators, market, fte, can_edit } = d.data;
   const staffList = d.data.staff;
-  const saveProfile = async () => { try { const b = { ...profile }; for (const k of ['surface_sqm', 'rooms', 'boxes', 'sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); if (b.opened_at === '') b.opened_at = null; await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
-  const saveHours = async () => { try { await api.put(`/structure/sites/${id}/hours`, { hours: hours.map((h) => ({ ...h, open1: h.open1 || null, close1: h.close1 || null, open2: h.open2 || null, close2: h.close2 || null, note: h.note || null })) }); toast('Orari salvati'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const saveProfile = async () => { try { const b = { ...profile }; for (const k of ['surface_sqm', 'rooms', 'boxes', 'sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const saveHours = async () => { try { await api.put(`/structure/sites/${id}/hours`, { hours: hours.map((h) => ({ weekday: h.weekday, note: h.note || null })) }); toast('Note salvate'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveStaff = async () => { try { const b = { retail_role: staff.retail_role || null, weekly_hours: staff.weekly_hours === '' || staff.weekly_hours == null ? null : Number(staff.weekly_hours), days: staff.days || null, notes: staff.notes || null, sort_order: Number(staff.sort_order) || 100 }; await api.put(`/structure/people/${staff.id}`, b); toast('Piano di lavoro salvato'); setStaff(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveAsset = async () => { try { const b = { ...asset }; delete b.id; delete b.site_id; b.quantity = Number(b.quantity) || 1; if (asset.id) await api.put(`/structure/assets/${asset.id}`, b); else await api.post(`/structure/sites/${id}/assets`, b); toast('Dotazione salvata'); setAsset(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const weeklyHours = hours.filter((h) => !h.closed).reduce((a, h) => { const t = (x) => (x ? Number(x.slice(0, 2)) + Number(x.slice(3)) / 60 : 0); return a + Math.max(0, t(h.close1) - t(h.open1)) + Math.max(0, t(h.close2) - t(h.open2)); }, 0);
@@ -60,7 +60,7 @@ export default function SiteDetail() {
         </Card>
         <Card title="Profilo della struttura (Retail)" actions={can_edit && <button className="btn sm" onClick={saveProfile}>Salva</button>}>
           <div className="form-grid">
-            <Field label="Apertura (data)"><input type="date" value={profile.opened_at || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, opened_at: e.target.value })} /></Field>
+            <Field label="Apertura (data)" help="Dall'anagrafica della sede (Amministrazione, Sedi)"><input value={site.opened_at ? itDate(site.opened_at) : ''} disabled placeholder="non indicata in Amministrazione" /></Field>
             <Field label="Superficie (mq)"><input type="number" value={profile.surface_sqm ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, surface_sqm: e.target.value })} /></Field>
             <Field label="Sala d'attesa (mq)"><input type="number" value={profile.sqm_waiting ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, sqm_waiting: e.target.value })} /></Field>
             <Field label="Ambulatori"><input type="number" value={profile.rooms ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, rooms: e.target.value })} /></Field>
@@ -69,7 +69,7 @@ export default function SiteDetail() {
             <Field label="Accessibilità"><input value={profile.accessibility || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, accessibility: e.target.value })} /></Field>
             <Field label="Comuni del bacino" help="Separati da virgola: alimentano i dati di mercato della sede" className="span2"><input value={profile.catchment_cities || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, catchment_cities: e.target.value })} /></Field>
             <Field label="Servizi offerti" className="span2"><textarea value={profile.services || ''} disabled={!can_edit} placeholder="es. prelievi, ecografie, visite specialistiche (cardiologia, ginecologia), medicina del lavoro" onChange={(e) => setProfile({ ...profile, services: e.target.value })} /></Field>
-            <Field label="Descrizione" className="span2"><textarea value={profile.description || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, description: e.target.value })} /></Field>
+            <Field label="Descrizione commerciale" help="Testo per il book retail e la scheda sede (non è l'anagrafica)" className="span2"><textarea value={profile.commercial_description || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, commercial_description: e.target.value })} /></Field>
             <Field label="Note Retail" className="span2"><textarea value={profile.notes || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, notes: e.target.value })} /></Field>
           </div>
         </Card>
@@ -81,14 +81,13 @@ export default function SiteDetail() {
           <tfoot><tr><td colSpan={4}>Totale attivi: {staffList.filter((s) => s.active).length} · {fte} FTE (su 40 h, dalle ore del piano di lavoro Retail)</td><td className="num">{staffList.filter((s) => s.active).reduce((a, s) => a + Number(s.weekly_hours || 0), 0)}</td><td colSpan={3} /></tr></tfoot></table>}
       </Card>}
 
-      {tab === 'orari' && <Card title="Orari di apertura" actions={can_edit && <button className="btn sm" onClick={saveHours}>Salva</button>}>
-        <table className="t hours"><thead><tr><th>Giorno</th><th>Chiuso</th><th>Mattina</th><th>Pomeriggio</th><th>Note</th></tr></thead>
+      {tab === 'orari' && <Card title="Orari di apertura" actions={<>{can_edit && <button className="btn sm" onClick={saveHours}>Salva le note</button>}<Link className="btn sm ghost" to={ADMIN_SITES}>Apri in Amministrazione</Link></>}>
+        <table className="t hours"><thead><tr><th>Giorno</th><th>Mattina</th><th>Pomeriggio</th><th>Nota operativa Retail</th></tr></thead>
           <tbody>{hours.map((h, i) => <tr key={h.weekday}><td className="strong">{WEEKDAYS[h.weekday]}</td>
-            <td><input type="checkbox" checked={h.closed} disabled={!can_edit} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, closed: e.target.checked } : x)))} /></td>
-            <td className="row" style={{ gap: 6 }}><input type="time" value={h.open1} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, open1: e.target.value } : x)))} /> – <input type="time" value={h.close1} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, close1: e.target.value } : x)))} /></td>
-            <td><div className="row" style={{ gap: 6 }}><input type="time" value={h.open2} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, open2: e.target.value } : x)))} /> – <input type="time" value={h.close2} disabled={!can_edit || h.closed} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, close2: e.target.value } : x)))} /></div></td>
+            <td className="small">{h.closed ? <span className="muted">chiuso</span> : h.open1 ? `${h.open1} – ${h.close1}` : '–'}</td>
+            <td className="small">{h.closed ? '' : h.open2 ? `${h.open2} – ${h.close2}` : '–'}</td>
             <td><input value={h.note} disabled={!can_edit} placeholder="es. prelievi 7:30-10:30" style={{ height: 32 }} onChange={(e) => setHours(hours.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))} /></td></tr>)}</tbody></table>
-        <p className="small muted" style={{ marginTop: 8 }}>Dettaglio operativo Retail per giorno (fasce, note su prelievi). L'orario ufficiale in anagrafica è: <b>{site.opening_hours || 'non indicato'}</b> (si modifica in Amministrazione, Sedi). Il sabato aperto o chiuso determina i giorni lavorabili della sede nel calendario di Budget.</p>
+        <p className="small muted" style={{ marginTop: 8 }}>Le fasce di apertura sono quelle dell'anagrafica unica (orario ufficiale: <b>{site.opening_hours || 'non indicato'}</b>) e si modificano in <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link>; qui restano solo le note operative Retail per giorno. Il sabato aperto o chiuso, che determina i giorni lavorabili nel calendario di Budget, deriva dagli stessi orari.</p>
       </Card>}
 
       {tab === 'dotazioni' && <Card title="Dotazioni e ambienti" flush actions={can_edit && <button className="btn sm" onClick={() => setAsset({ kind: 'ECOGRAFO', name: '', quantity: 1, active: true })}>+ Dotazione</button>}>

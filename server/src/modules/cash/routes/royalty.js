@@ -7,6 +7,7 @@ import { ah, bad, notFound, audit, parse, getSetting, eur, itDate, r2, todayRome
 import { requireRole, assertCompany, isSuper, Params } from '../lib/access.js';
 import { computeRoyalty, normalizeTiers } from '../lib/royalty.js';
 import { buildPain008, ibanValid, newMsgId } from '../lib/sepa.js';
+import { getCompany } from '../../../lib/company.js';
 import { letterhead, ASSETS, C, M, W, CONTENT_TOP } from '../pdf/distinta.js';
 
 const r = Router();
@@ -232,9 +233,14 @@ r.post('/sepa/batches', requireRole('SUPERADMIN'), ah(async (req, res) => {
   const d = parse(z.object({ statement_ids: z.array(z.number().int()).min(1), collection_date: isoDate }), req.body);
   const minDate = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
   if (d.collection_date < minDate) throw bad(`Data di addebito troppo vicina: minimo ${itDate(minDate)} (verifica i tempi richiesti dalla banca)`);
+  // Creditore SEPA: ragione sociale, IBAN e BIC vengono dalla capofila dell'anagrafica (Legal entity con is_franchisor, IBAN in
+  // Amministrazione > Legal entity) o dai dati aziendali della Suite; le impostazioni Cash restano come forzatura. Il Creditor
+  // Identifier è solo di Cash.
+  const franchisor = await one(`SELECT name, iban, bic FROM companies_v WHERE is_franchisor AND active ORDER BY id LIMIT 1`);
+  const company = await getCompany();
   const creditor = {
-    name: await getSetting('creditor_name'), iban: await getSetting('creditor_iban'),
-    bic: await getSetting('creditor_bic'), id: await getSetting('creditor_id'),
+    name: (await getSetting('creditor_name')) || franchisor?.name || company.legal_name, iban: (await getSetting('creditor_iban')) || franchisor?.iban,
+    bic: (await getSetting('creditor_bic')) || franchisor?.bic, id: await getSetting('creditor_id'),
   };
   if (!creditor.name || !creditor.iban || !creditor.id) throw bad('Completa i dati del creditore SEPA in Impostazioni (ragione sociale, IBAN, Creditor Identifier)');
   if (!ibanValid(creditor.iban)) throw bad('IBAN del creditore non valido');

@@ -1,5 +1,6 @@
 // Impostazioni predefinite, etichette, regole dei contratti e del fascicolo
 import { many } from '../db.js';
+import { getCompany, splitTitle } from '../../../lib/company.js';
 
 export const DEFAULT_SETTINGS = {
   // Società
@@ -55,10 +56,21 @@ export const DEFAULT_SETTINGS = {
   duvri_costs_default: 'Non sono stati identificati rischi di interferenza, pertanto i costi sono pari a 0 Euro.',
 };
 
+// Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura
+export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_city', 'company_prov', 'company_vat', 'company_tax_code', 'company_capital', 'company_phone', 'company_fax', 'company_pec', 'ds_name', 'ds_title'];
+export function coreSettings(co) {
+  const ds = splitTitle(co.health_director);
+  return { company_name: co.legal_name, company_legal_address: [co.city && `${co.city}${co.province ? ` (${co.province})` : ''}`, co.address].filter(Boolean).join(', '),
+    company_city: co.city, company_prov: co.province, company_vat: co.vat, company_tax_code: co.tax_code, company_capital: co.share_capital,
+    company_phone: co.phone, company_fax: co.fax, company_pec: co.pec, ds_name: ds.name, ds_title: ds.title };
+}
 export async function getSettings() {
   const rows = await many('SELECT key, value FROM app_settings');
   const s = { ...DEFAULT_SETTINGS };
   for (const r of rows) s[r.key] = r.value;
+  const core = coreSettings(await getCompany());
+  for (const [k, v] of Object.entries(core)) if (v) s[k] = v;   // i dati aziendali della Suite prevalgono sulle copie del modulo
+  if (!s.ds_phone) s.ds_phone = s.company_phone;
   return s;
 }
 

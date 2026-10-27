@@ -99,13 +99,13 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
           <Ro label="Stato" v={STATUS[p.status]?.[0] || p.status} /><Ro label="Sesso" v={p.sex} /><Ro label="Data di nascita" v={p.birth_date ? itD(p.birth_date) : ''} /><Ro label="Codice fiscale" v={p.tax_code} />
           <Ro label="Email (accesso al portale e invii)" v={p.email} /><Ro label="Telefono" v={p.phone} /><Ro label="Telefono ufficio" v={p.phone_office} /><Ro label="Disciplina" v={p.discipline?.join(', ')} />
           <Ro label="Sede di lavoro" v={p.site_name} /><Ro label="Ruolo" v={p.role_name} />
+          <Ro label="Luogo di nascita" v={p.birth_place} /><Ro label="Partita IVA" v={p.vat_number} />
+          <Ro label="Residenza" v={[p.address, [p.zip, p.city].filter(Boolean).join(' '), p.province && `(${p.province})`].filter(Boolean).join(', ')} />
         </div>
       </Card>
       <Card title="Scheda Room Planning" className="mt"><div className="form-grid">
         <Field label="Tipo in pianificazione" help="Medico (titolare di ambulatorio) o professionista sanitario (supporto, prelievi, tecnico)"><select value={p.tipo} onChange={(e) => set({ tipo: e.target.value, profilo: e.target.value === 'medico' ? 'Medico' : p.profilo === 'Medico' ? 'Infermiere' : p.profilo })}><option value="medico">Medico</option><option value="sanitario">Professionista sanitario</option></select></Field>
         <Field label="Profilo professionale" help="Riportato anche nelle schede di sede dove la persona compare"><ProfiloInput value={p.profilo} tipo={p.tipo} onChange={(v) => set({ profilo: v })} /></Field>
-        <In p={p} setD={setD} sec="anagrafica" k="luogoNascita" label="Luogo di nascita" /><In p={p} setD={setD} sec="anagrafica" k="partitaIva" label="Partita IVA" />
-        <In p={p} setD={setD} sec="anagrafica" k="indirizzo" label="Indirizzo" /><In p={p} setD={setD} sec="anagrafica" k="cap" label="CAP" /><In p={p} setD={setD} sec="anagrafica" k="citta" label="Città" /><In p={p} setD={setD} sec="anagrafica" k="provincia" label="Provincia" />
         <In p={p} setD={setD} sec="anagrafica" k="pec" label="PEC" type="email" />
         <In p={p} setD={setD} sec="anagrafica" k="iban" label="IBAN" /><In p={p} setD={setD} sec="anagrafica" k="intestatarioConto" label="Intestatario del conto" />
         <In p={p} setD={setD} sec="anagrafica" k="contattoEmergenza" label="Contatto di emergenza" />

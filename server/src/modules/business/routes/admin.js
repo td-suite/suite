@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireAdmin, requireManager } from '../lib/access.js';
-import { getSettings, DEFAULT_SETTINGS } from '../lib/rules.js';
+import { getSettings, DEFAULT_SETTINGS, CORE_KEYS } from '../lib/rules.js';
 import { config } from '../config.js';
 import { pdfAvailable } from '../lib/docgen.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
@@ -16,13 +16,14 @@ const r = Router();
 // ---------------- Impostazioni ----------------
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();
-  res.json({ settings: s, defaults: DEFAULT_SETTINGS, pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb, credentialsKeySet: config.credentialsKeySet });
+  res.json({ settings: s, defaults: DEFAULT_SETTINGS, coreKeys: CORE_KEYS, pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb, credentialsKeySet: config.credentialsKeySet });
 }));
 
 r.put('/settings', requireAdmin, ah(async (req, res) => {
   const body = req.body || {};
   for (const k of Object.keys(body)) {
     if (!(k in DEFAULT_SETTINGS)) throw bad(`Impostazione sconosciuta: ${k}`);
+    if (CORE_KEYS.includes(k)) continue;   // dati aziendali: si modificano in Amministrazione > Impostazioni > Dati aziendali
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }
   // nel registro non finiscono i dati anagrafici personali
@@ -44,7 +45,7 @@ const orgExtSchema = z.object({
   proc_contact: optStr(160), proc_email: optStr(160), proc_mobile: optStr(60), proc_address: optStr(200),
   pay_method: optStr(80), pay_terms: optStr(120), currency: z.string().trim().max(5).default('EUR'),
   withholding: z.boolean().default(false), vat_territoriality: optStr(80), intent_declaration: optStr(120), split_payment: z.boolean().default(false), tax_values: optStr(120),
-  bank_name: optStr(160), iban: optStr(40),
+  // banca e IBAN sono della Legal entity (public.organizations, Amministrazione > Legal entity): qui si leggono soltanto
   portal_url: optStr(300), portal_username: optStr(160), portal_password: optStr(200),
   notes: optStr(2000),
 });
@@ -75,7 +76,6 @@ r.put('/organizations/:id/ext', requireManager, ah(async (req, res) => {
   const org = await one('SELECT id, name FROM public.organizations WHERE id=$1', [id]);
   if (!org) throw notFound('Organizzazione non trovata: creala in Amministrazione > Organizzazioni');
   const d = parse(orgExtSchema.partial(), req.body);
-  if (d.iban) d.iban = d.iban.replace(/\s+/g, '').toUpperCase();
   const { portal_password, ...fields } = d;
   if (portal_password !== undefined && portal_password !== null) fields.portal_password_enc = encrypt(portal_password);
   const cols = Object.keys(fields);

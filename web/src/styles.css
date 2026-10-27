@@ -631,7 +631,7 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .switchboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
 .switchboard .it { display: flex; gap: 10px; align-items: center; font-size: 13.5px; padding: 4px 0; }
 .switchboard .ext { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--teal); background: var(--teal-050); border-radius: 7px; padding: 1px 8px; min-width: 44px; text-align: center; }
-.bio p { margin: 0 0 10px; line-height: 1.6; max-width: 80ch; }
+.bio p { margin: 0 0 10px; line-height: 1.65; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
 .bio p:last-child { margin-bottom: 0; }
 .person-head { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .person-head h1 { font-size: 28px; }
@@ -951,3 +951,8 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .side nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); background-clip: padding-box; }
 .side nav:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.35); background-clip: padding-box; }
 .side nav:not(:hover)::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); background-clip: padding-box; }
+
+/* Elenchi di persone con avatar: l'avatar resta in riga, va a capo solo il testo */
+.person-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.person-row .avatar, .person-row > :first-child { flex: 0 0 auto; }
+.person-row .person-txt { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; padding-top: 3px; }

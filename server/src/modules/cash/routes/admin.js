@@ -14,21 +14,20 @@ const ibanRe = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
 // ---------------- Aziende (anagrafica unica) ----------------
 // Le aziende di Cash sono le organizzazioni della Suite con kind SOCIETA o GRUPPO (public.organizations, Amministrazione >
 // Organizzazioni): ragione sociale, partita IVA, indirizzo e contatti si modificano lì. Qui restano i soli campi Cash
-// (org_ext): piè di pagina e logo della distinta, IBAN di versamento, riferimenti SEPA, capofila. La riga di org_ext nasce
-// alla prima scrittura (upsert).
+// (org_ext): piè di pagina e logo della distinta, riferimenti del mandato SEPA, capofila. IBAN, BIC e banca sono della Legal
+// entity (public.organizations, Amministrazione > Legal entity, docs/IMPOSTAZIONI.md): qui si leggono soltanto. La riga di
+// org_ext nasce alla prima scrittura (upsert).
 const EXT_FIELDS = {
   letterhead_footer: opt(z.string().max(600)),
 };
 const sepaFields = {
-  iban: opt(z.string().transform((v) => v.replace(/\s/g, '').toUpperCase()).refine((v) => !v || ibanRe.test(v), 'IBAN non valido')),
-  bic: opt(z.string().max(11)),
   sepa_mandate_id: opt(z.string().max(35)),
   sepa_mandate_date: opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   is_franchisor: z.boolean().optional(),
 };
-const ORG_EXT_COLS = ['letterhead_footer', 'iban', 'bic', 'sepa_mandate_id', 'sepa_mandate_date', 'is_franchisor'];
+const ORG_EXT_COLS = ['letterhead_footer', 'sepa_mandate_id', 'sepa_mandate_date', 'is_franchisor'];
 const COMPANY_COLS = `c.id, c.code, c.name, c.kind, c.vat_number, c.tax_code, c.address, c.zip, c.city, c.province, c.phone, c.email, c.pec, c.website,
-  c.letterhead_footer, c.iban, c.bic, c.sepa_mandate_id, c.sepa_mandate_date, c.sepa_first_done, c.is_franchisor, c.active, c.configured,
+  c.letterhead_footer, c.iban, c.bic, c.bank_name, c.sepa_mandate_id, c.sepa_mandate_date, c.sepa_first_done, c.is_franchisor, c.active, c.configured,
   (c.logo IS NOT NULL) AS has_logo, c.created_at`;
 
 r.get('/companies', ah(async (req, res) => {
@@ -76,23 +75,17 @@ r.get('/companies/:id/logo', ah(async (req, res) => {
 }));
 
 // ---------------- Sedi ----------------
-// Impostazioni Cash della sede (site_ext). Codice, nome, indirizzo, città, provincia e stato attivo sono dell'anagrafica unica.
+// Impostazioni Cash della sede (site_ext). Codice, nome, indirizzo, email, orari e giorni di apertura, data di apertura sono
+// dell'anagrafica unica (Amministrazione > Sedi) e la vista sites_v li espone già calcolati (site_email, hours, operating_days,
+// start_date). La struttura ospitante è una Legal entity (host_org_id -> public.organizations): nome, P.IVA ed email dal core.
 const siteSchema = z.object({
   company_id: z.number().int().optional(),
-  site_email: opt(z.string().email().or(z.literal(''))),
-  host_email: opt(z.string().email().or(z.literal(''))),
   cash_float: z.number().min(0).max(100000),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data di avvio non valida'),
   ownership: z.enum(['PROPRIA', 'OSPITATA']).default('OSPITATA'),
-  // orari: chiavi 1..7 (lun..dom) -> { open: 'HH:MM', close: 'HH:MM' }
-  hours: z.record(z.string().regex(/^[1-7]$/), z.object({ open: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), close: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional() })).default({}),
-  hours_note: opt(z.string().max(300)),
   expected_registers: z.number().int().min(1).max(20).default(1),
-  operating_days: z.string().regex(/^[01]{7}$/).default('1111110'),
   pos_terminals: opt(z.string().max(300)),
   float_reason: z.string().max(300).optional(),
-  host_name: opt(z.string().max(200)),
-  host_vat: opt(z.string().max(20)),
+  host_org_id: z.number().int().nullable().optional(),
   royalty_fixed_monthly: z.number().min(0).max(1_000_000).default(0),
   royalty_pct: z.number().min(0).max(100).default(0),
   royalty_base: z.enum(['TOTALE', 'CONTANTI_POS', 'CONTANTI']).default('TOTALE'),
@@ -148,8 +141,7 @@ r.put('/companies/:id/bank-accounts/:aid', requireRole('SUPERADMIN', 'ADMIN'), a
 }));
 
 const ROYALTY_COLS = ['royalty_fixed_monthly', 'royalty_pct', 'royalty_vat_rate', 'royalty_base'];
-const EXT_COLS = ['company_id', 'cash_float', 'operating_days', 'pos_terminals', 'start_date', 'ownership', 'hours', 'hours_note', 'expected_registers',
-  'site_email', 'host_name', 'host_vat', 'host_email', ...ROYALTY_COLS, 'royalty_notes'];
+const EXT_COLS = ['company_id', 'cash_float', 'pos_terminals', 'ownership', 'expected_registers', 'host_org_id', ...ROYALTY_COLS, 'royalty_notes'];
 // Operatori (utenti Suite con grant cash attivo) che hanno la sede nel perimetro del grant
 const USERS_COUNT_SQL = `(SELECT count(*)::int FROM operators_v o WHERE o.active AND s.id = ANY(o.site_ids))`;
 
@@ -172,6 +164,11 @@ r.get('/sites', ah(async (req, res) => {
   const rows = await many(`SELECT s.*, c.name AS company_name, c.code AS company_code, ${USERS_COUNT_SQL} AS users_count
     FROM sites_v s LEFT JOIN companies_v c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY (NOT s.configured), c.name NULLS LAST, s.name`, P.values);
   res.json(rows);
+}));
+
+// Legal entity dell'anagrafica unica per la tendina "Struttura ospitante" (partner che ospita il punto prelievi)
+r.get('/host-organizations', requireRole('SUPERADMIN', 'ADMIN'), ah(async (_req, res) => {
+  res.json(await many(`SELECT id, kind, code, name, vat_number, email, city, active FROM public.organizations WHERE active ORDER BY lower(name)`));
 }));
 
 r.get('/sites/:id/float-history', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
@@ -202,7 +199,8 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
     if (!isSuper(req.user)) throw forbidden('Solo il super amministratore sposta una sede su un\'altra azienda');
     if (await one('SELECT 1 FROM cash_reports WHERE site_id=$1', [id])) throw bad('La sede ha rendiconti: l\'azienda non si può cambiare');
   }
-  if ((d.ownership || site?.ownership) === 'PROPRIA') Object.assign(d, { host_name: null, host_vat: null, host_email: null, royalty_fixed_monthly: 0, royalty_pct: 0, royalty_vat_rate: 0, royalty_notes: null });
+  if ((d.ownership || site?.ownership) === 'PROPRIA') Object.assign(d, { host_org_id: null, royalty_fixed_monthly: 0, royalty_pct: 0, royalty_vat_rate: 0, royalty_notes: null });
+  if (d.host_org_id != null && !await one('SELECT 1 FROM public.organizations WHERE id=$1', [d.host_org_id])) throw bad('Struttura ospitante inesistente: scegli una Legal entity dell\'anagrafica');
   await tx(async (c) => {
     if (!site) {
       await c.query('INSERT INTO cash_float_history (site_id, old_value, new_value, changed_by, reason) VALUES ($1,NULL,$2,$3,$4)', [id, d.cash_float, req.user.id, 'Impostazione iniziale']);
@@ -220,7 +218,6 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
       }
     }
     delete d.float_reason;
-    if (d.hours !== undefined) d.hours = JSON.stringify(d.hours);
     if (site && d.company_id === undefined) d.company_id = site.company_id;   // company_id è NOT NULL anche nel ramo INSERT dell'upsert
     const cols = EXT_COLS.filter((k) => d[k] !== undefined);
     if (!cols.length) return;

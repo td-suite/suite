@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import { getCompany } from '../../../lib/company.js';
 import { STATO_LABEL } from './core.js';
 
 const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'shipments', 'assets');
@@ -81,8 +82,9 @@ export async function ticketsXlsx(rows, stats, { titolo = 'Ticket' } = {}) {
 }
 
 // ------------------------------------------------------------------ PDF comune
-function newDoc(title) {
-  const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false, info: { Title: title, Author: 'Toscana Diagnostica S.r.l.', Creator: 'Suite TD' } });
+async function newDoc(title) {
+  const co = await getCompany();
+  const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false, info: { Title: title, Author: co.legal_name, Creator: 'Suite TD' } });
   doc.registerFont('R', FONT_R); doc.registerFont('B', FONT_B);
   const W = doc.page ? doc.page.width : 595.28, H = 841.89, M = 40;
   let n = 0;
@@ -138,7 +140,7 @@ const finish = (doc) => new Promise((resolve, reject) => { const chunks = []; do
 
 // ------------------------------------------------------------------ Scheda PDF del ticket
 export async function schedaPdf(t, { commenti = [], eventi = [], allegati = [], osservatori = [], responsabili = [] }) {
-  const { doc, header, h2, para, table, kpis } = newDoc(`Ticket ${t.protocollo}`);
+  const { doc, header, h2, para, table, kpis } = await newDoc(`Ticket ${t.protocollo}`);
   const sub = `${t.riservato ? 'RISERVATO · ' : ''}${t.categoria_nome || ''} · ${PRIO[t.priorita]} · ${STATO_LABEL[t.stato]}`;
   header(sub);
   para(t.titolo, { bold: true, size: 14 });
@@ -169,7 +171,7 @@ export async function schedaPdf(t, { commenti = [], eventi = [], allegati = [], 
 // ------------------------------------------------------------------ Rapporto PDF di periodo (una pagina per sezione)
 export async function rapportoPdf(stats, { da, a, unitName } = {}) {
   const periodo = `${da ? `dal ${dd(da)}` : 'dall\'inizio'} ${a ? `al ${dd(a)}` : 'a oggi'}${unitName ? ` · ${unitName}` : ''}`;
-  const { doc, header, h2, para, table, kpis } = newDoc('Rapporto ticket');
+  const { doc, header, h2, para, table, kpis } = await newDoc('Rapporto ticket');
   const pct = (v) => (v == null ? '-' : `${v}%`);
   header(`Periodo ${periodo}`);
   h2('Quadro generale');
