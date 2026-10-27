@@ -65,7 +65,9 @@ r.post('/pack', requireRole('ADMIN'), upload.single('file'), ah(async (req, res)
         const { area_name, manager_key, ...rawPerson } = item.person;
         const person = personSchema.parse(rawPerson);
         if (area_name) person.area_id = (await one('SELECT id FROM areas WHERE lower(name)=lower($1)', [AREA_ALIASES[area_name] || area_name]))?.id || null;
-        const existing = person.tax_code ? await one('SELECT id FROM public.people WHERE upper(tax_code)=upper($1)', [person.tax_code]) : await one('SELECT id FROM public.people WHERE lower(last_name)=lower($1) AND lower(first_name)=lower($2)', [person.last_name, person.first_name]);
+        // Persona già in anagrafica: per codice fiscale, altrimenti per cognome e nome (chi è stato caricato senza CF non va duplicato)
+        const existing = (person.tax_code && await one('SELECT id FROM public.people WHERE upper(tax_code)=upper($1)', [person.tax_code]))
+          || await one('SELECT id FROM public.people WHERE lower(last_name)=lower($1) AND lower(first_name)=lower($2) ORDER BY id LIMIT 1', [person.last_name, person.first_name]);
         let id;
         if (existing && mode === 'skip') { keyToId[item.key] = existing.id; stats.resources_skipped++; continue; }
         await tx(async (c) => {

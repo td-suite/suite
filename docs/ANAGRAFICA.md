@@ -297,3 +297,17 @@ cifrati con lib/secrets, impostazioni, prova di connessione, registro delle chia
 `lib/connectors.js` (`getConnector`, `connectorSync`, `verifyInbound`, `logConnector`) con ripiego sulle variabili d'ambiente
 storiche finché il connettore non è configurato; le pagine Impostazioni dei moduli mostrano solo lo stato. Documentazione in
 docs/CONNETTORI.md.
+
+## Contratti del personale: caricamento dei dossier dalle cartelle HRM (27/10/2026)
+Richiesta del CEO: "integriamo i dati di dipendenti e LP che ho messo in Contesto, per inserire tutti i dati nel widget
+Contratti del personale". Fonti: OneDrive HRM/Dipendenti (dipendenti.xlsx, ORGANICO TEAM SYSTEM al 26/10/2026, FILE VISITE
++ FORMAZIONE, lettere di assunzione DOCX/PDF, UNILAV, dossier per cartella) e HRM/LP (medici LP.xlsx, infermieri-tecnici
+LP.xlsx, contratti LP DOCX e PDF scansionati con tariffario, documentazione per professionista). Costruito il pacchetto
+`2026-10-27_ContrattiPersonale_pacchetto_dossier.zip` (manifest.json + files/) per Contratti del personale > Impostazioni >
+Importa pacchetto, modalità "Aggiorna esistenti": 33 risorse (23 dipendenti con contratto, livello, RAL, paga base,
+superminimo, indennità, scatti 2027, prova, benefit, smart working, MBO, UNILAV; 10 liberi professionisti con disciplina,
+titoli, albo, polizza, durata, tariffario a voci), 259 allegati classificati nelle categorie del dossier dal nome del file,
+5 CV nel CV Box. Le persone si agganciano all'anagrafica unica per codice fiscale e, se manca, per cognome e nome (fix in
+routes/imports.js: prima la corrispondenza per CF e poi per nome, così chi era stato caricato senza CF non viene duplicato).
+Lo script che costruisce il pacchetto è fuori repository (sessione Cowork); le note "da verificare" sono nel campo note di
+ogni contratto.
