@@ -12,6 +12,9 @@ import { takeSnapshot } from './lib/plan.js';
 import { clientCount } from './lib/events.js';
 import planRoutes from './routes/plan.js';
 
+// Importazione dei contenuti dall'app originale (Amministrazione > Travaso moduli): interfaccia comune del core
+export { legacyMatch, legacyImport } from './lib/legacyImport.js';
+
 const KEY = 'integration';
 
 const publicUser = (u) => u && ({

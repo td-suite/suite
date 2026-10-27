@@ -321,3 +321,21 @@ lettera di vettura di andata, richiede obbligatoriamente il codice dell'etichett
 pulsante disabilitato nella finestra di spedizione); un codice di ritorno inserito in seguito dalla scheda dell'ordine genera
 un secondo messaggio ad Affinity con quel codice (notifyAffinityReturn). I destinatari restano nell'impostazione
 affinity_notify_emails (seminata con i tre indirizzi).
+
+## Travaso dei contenuti dall'app originale nei moduli ripartiti da zero (27/10/2026)
+Richiesta del CEO: "due cose vorrei travasare e poi la Suite è completa: Room Planning prima e Integration dopo". I due moduli
+erano partiti vuoti sull'anagrafica unica; i contenuti delle app originali (database Render collegati in Sorgenti legacy)
+si riportano ora con "Importa i contenuti dall'app originale" sulla card del modulo in Amministrazione > Travaso moduli
+(solo Owner/Admin, modulo in LIVE, sorgente collegata). Interfaccia comune: il modulo esporta `legacyMatch` (entità
+dell'app originale con proposta di abbinamento all'anagrafica unica: riferimento salvato > codice > email > CF/P.IVA > nome
+normalizzato; proposta solo se univoca, candidati per i dubbi) e `legacyImport({ mapping, dryRun })` (una transazione,
+"Prova senza scrivere" = stessa esecuzione con rollback, idempotente tramite `<key>.legacy_import_map`; scrive su public.*
+solo `legacy_refs`; ciò che punta a un'entità non abbinata si salta e compare nel rapporto; ciò che nella Suite esiste già
+non si sovrascrive e viene segnalato). Core: routes/travaso.js (`legacy-match`, `legacy-import`, audit LEGACY_IMPORT),
+pagina Travaso.jsx (finestra con Sedi / Persone / Legal entity, tendine con i candidati e tutte le anagrafiche, tabelle con
+i conteggi, prova, importazione con conferma, rapporto). Room: lib/legacyImport.js copia site_ext (dal JSON della struttura),
+planimetrie e cronologia, scheda Room dei professionisti (i dati anagrafici restano nel core e non vengono sovrascritti),
+documenti, disponibilità, turni, mesi, presenze, rendiconti, posizioni, candidature, eventi, email. Integration:
+lib/legacyImport.js copia parametri del piano (org_ext), team (person_ext), attività con owner e support tradotti (owner non
+abbinato = attività copiata senza owner con avviso), snapshot convertiti al formato della Suite, registro delle modifiche.
+Collaudo con database legacy di prova e Playwright (schermate in docs/screens/legacy-import-*.png).

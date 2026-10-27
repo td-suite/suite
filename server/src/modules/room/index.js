@@ -19,6 +19,10 @@ import adminRoutes from './routes/admin.js';
 
 const KEY = 'room';
 
+// Importazione dei contenuti dall'app originale nel modulo avviato vuoto (Amministrazione > Travaso moduli): abbinamento delle
+// sedi e dei professionisti dell'app all'anagrafica unica, poi copia di impostazioni, planimetrie, turni, presenze, rendiconti...
+export { legacyMatch, legacyImport } from './lib/legacyImport.js';
+
 // Stessa forma dell'utente che il front-end dell'app si aspetta da /auth/me
 export const publicUser = (u) => ({
   id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, auth_provider: u.auth_provider || 'ENTRA',
