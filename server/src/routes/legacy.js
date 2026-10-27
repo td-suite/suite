@@ -6,7 +6,7 @@ import { one, many, q } from '../db.js';
 import { LEGACY_KEYS } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
-import { FRESH_MODULES } from '../lib/travaso.js';
+import { FRESH_MODULES, CONTENT_IMPORT_MODULES } from '../config.js';
 import { listSources, syncSource, syncAll, getCockpit, getCounters, sourceEnabled, resetSource, legacyQuery } from '../lib/legacy.js';
 import { setSecret, secretStatus, onSecretChange } from '../lib/secrets.js';
 import { requireOwner } from '../lib/access.js';
@@ -25,7 +25,8 @@ const r = Router();
 
 // ---- Sorgenti legacy (stato e sincronizzazione)
 // Solo i moduli che si travasano dall'app di origine: quelli sull'anagrafica unica partono vuoti
-r.get('/legacy/sources', requireAdmin, ah(async (_req, res) => res.json((await listSources()).filter((s) => !FRESH_MODULES.includes(s.key)))));
+// Moduli che si travasano dall'app di origine (Payments, Spedizioni) e moduli ripartiti da zero che importano i contenuti (Room, Integration)
+r.get('/legacy/sources', requireAdmin, ah(async (_req, res) => res.json((await listSources()).filter((s) => !FRESH_MODULES.includes(s.key) || CONTENT_IMPORT_MODULES.includes(s.key)).map((s) => ({ ...s, content_import: CONTENT_IMPORT_MODULES.includes(s.key) })))));
 
 // Stato delle credenziali impostabili dall'Amministrazione (solo titolare per vedere la provenienza e modificare)
 r.get('/legacy/sources/:key/credential', requireOwner, ah(async (req, res) => {
@@ -72,6 +73,7 @@ r.put('/integrations/:name', requireOwner, ah(async (req, res) => {
 r.post('/legacy/sources/:key/sync', requireAdmin, ah(async (req, res) => {
   const key = req.params.key;
   if (!LEGACY_KEYS.includes(key)) throw notFound('Sorgente inesistente');
+  if (FRESH_MODULES.includes(key)) throw bad('Questo modulo usa l\'anagrafica unica: niente sincronizzazione; i contenuti si importano da Travaso moduli');
   if (!sourceEnabled(key)) throw bad('Sorgente non configurata: imposta la connessione al database dalla card (titolare) oppure la variabile LEGACY_' + key.toUpperCase() + '_DATABASE_URL su Render');
   const out = await syncSource(key);
   await audit(req, 'LEGACY_SYNC', { module: key, entity: 'legacy_source', entityId: key, label: `Sincronizzazione ${key}: ${out.status || 'saltata'}`, data: out });

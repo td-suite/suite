@@ -5,7 +5,7 @@
 // Nessuna istruzione di scrittura viene mai inviata ai database legacy: legacyQuery accetta solo SELECT/WITH.
 import pg from 'pg';
 import crypto from 'node:crypto';
-import { config, LEGACY_KEYS } from '../config.js';
+import { FRESH_MODULES, config, LEGACY_KEYS } from '../config.js';
 import { one, many, q } from '../db.js';
 import { normName, displayName, splitName } from './util.js';
 import { MODULES, LEGACY_ROLE_MAP, AREA_GRANT_PROPOSALS } from '../seed/modules.js';
@@ -544,6 +544,7 @@ export async function syncSource(key) {
 export async function syncAll() {
   const results = [];
   for (const k of SYNC_ORDER) {
+    if (FRESH_MODULES.includes(k)) continue; // anagrafica unica: nessuna sincronizzazione dall'app originale
     if (!sourceEnabled(k)) { await q(`UPDATE legacy_sources SET enabled=FALSE WHERE key=$1`, [k]); results.push({ key: k, status: 'NON_CONFIGURATA' }); continue; }
     results.push(await syncSource(k));
   }

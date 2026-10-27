@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool, q, one } from '../db.js';
 import { legacyQuery, legacyQueryLong, sourceEnabled, resetSource } from './legacy.js';
+import { FRESH_MODULES } from '../config.js';
 import { getModuleState, setModuleState, modulePool } from './modules.js';
 import { LEGACY_KEYS } from '../config.js';
 
@@ -142,7 +143,7 @@ export async function applyModuleMigrations() {
 }
 
 // Moduli sull'anagrafica unica: partono vuoti (schema creato, subito LIVE), nessuna copia dall'app di origine
-export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari', 'ticket', 'cartella'];
+export { FRESH_MODULES };
 export async function startFresh(key, userId) {
   if (!FRESH_MODULES.includes(key)) throw new Error('Questo modulo si avvia con il travaso dei dati');
   const st = await getModuleState(key);

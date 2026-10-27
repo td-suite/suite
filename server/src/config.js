@@ -4,6 +4,11 @@ const list = (v, lower = false) => (v || '').split(',').map((s) => (lower ? s.tr
 const bool = (v, d = false) => (v == null || v === '' ? d : String(v).toLowerCase() === 'true');
 
 export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail', 'business', 'finance', 'integration', 'contracts', 'circolari', 'ticket', 'cartella'];
+// Moduli ripartiti da zero sull'anagrafica unica: niente travaso né sincronizzazione delle anagrafiche; la sorgente legacy serve
+// solo a importare i contenuti dall'app originale (Travaso moduli > Importa i contenuti)
+export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari', 'ticket', 'cartella'];
+// Moduli con l'importazione dei contenuti dall'app originale
+export const CONTENT_IMPORT_MODULES = ['room', 'integration'];
 
 export const config = {
   port: Number(env.PORT || 3000),
