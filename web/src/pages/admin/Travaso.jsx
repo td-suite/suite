@@ -107,7 +107,8 @@ function LegacyImportModal({ m, onClose, onDone }) {
   };
   const total = data ? Object.values(data.entities).reduce((a, rows) => a + rows.length, 0) : 0;
   const matched = map ? Object.values(map).reduce((a, x) => a + Object.keys(x).length, 0) : 0;
-  const duplicates = map ? Object.values(map).flatMap((x) => { const seen = new Map(); return Object.values(x).filter((id) => { const d = seen.has(id); seen.set(id, true); return d; }); }).length : 0;
+  // Doppioni: la stessa anagrafica scelta per due voci (le voci "Non abbinare", vuote, non contano)
+  const duplicates = map ? Object.values(map).flatMap((x) => { const seen = new Set(); return Object.values(x).filter((id) => { if (!id) return false; const d = seen.has(id); seen.add(id); return d; }); }).length : 0;
   return (
     <Modal title={`Importa i contenuti dall'app originale · ${m.name}`} onClose={onClose} wide
       footer={<>
