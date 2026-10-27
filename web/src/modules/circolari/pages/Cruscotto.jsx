@@ -16,6 +16,13 @@ export default function Cruscotto() {
     <div className="page">
       <PageHead title="Circolari aziendali" icon="doc" sub="Registro unico delle circolari: protocollo TD-AAAA/NNN assegnato alla pubblicazione, impaginazione sulla carta intestata in Word e PDF, archivio con ricerca sul contenuto, invio ai clienti." actions={canEdit(user) && <Link className="btn" to={`${base}/nuova`}><Icon name="plus" />Nuova circolare</Link>} />
       {error && <Empty icon="alert" title="Dati non disponibili">{error.message}</Empty>}
+      {user?.perimetro && !user.perimetro.tutte && (
+        <div className="small muted" style={{ marginBottom: 12 }}>
+          {user.perimetro.segmenti?.length
+            ? <>Vedi le circolari pubblicate per: {user.perimetro.segmenti.map((k) => SEGMENTO[k] || k).join(', ')}.</>
+            : <>Nessuna circolare nel tuo perimetro: il tuo account non è associato a un segmento né a una lista di distribuzione.</>}
+        </div>
+      )}
       <div className="circ-kpis">
         <div className="card kpi"><div className="lbl">Pubblicate</div><div className="val">{stati.PUBBLICATA || 0}</div><div className="foot">in vigore</div></div>
         <div className="card kpi"><div className="lbl">Bozze</div><div className="val">{stati.BOZZA || 0}</div><div className="foot">da completare</div></div>

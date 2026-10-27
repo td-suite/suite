@@ -44,7 +44,9 @@ export const MODULES = [
   { key: 'comunicazione', area: 'RETAIL_FLOW', name: 'Comunicazione', tagline: 'News, circolari, blog, avvisi, frase del giorno', icon: 'comunicazione', kind: 'NATIVE', route: '/community/manage', sort_order: 40,
     profiles: [P('EDITOR', 'Redazione'), P('PUBLISHER', 'Pubblicazione e circolari')] },
 
-  { key: 'circolari', area: 'HQS', name: 'Circolari', tagline: 'Protocollo TD-AAAA/NNN, impaginazione su carta intestata, archivio e invio ai clienti', icon: 'doc', kind: 'LEGACY', legacy_url: null, sort_order: 40,
+  { key: 'circolari', area: 'HQS', name: 'Circolari', tagline: 'Protocollo TD-AAAA/NNN, impaginazione su carta intestata, archivio e invio ai clienti', icon: 'doc', kind: 'LEGACY', legacy_url: null, sort_order: 40, open_to_all: true,
+    // Aperto a tutti gli account (richiesta del CEO, 27/10/2026): chi ha un account vede le circolari pubblicate del proprio perimetro
+    // (dipendenti: tutte; clienti service, punti prelievo, partner: quelle del loro segmento e delle liste di distribuzione in cui compaiono)
     profiles: [P('ADMIN', 'Amministratore'), P('PUBBLICATORE', 'Pubblicazione e invio'), P('REDATTORE', 'Redazione bozze'), P('VIEWER', 'Consultazione')] },
   // Ticket: aperto a tutti gli utenti autenticati (open_to_all: widget in home e accesso senza grant, ruolo implicito UTENTE)
   { key: 'ticket', area: 'HQS', name: 'Ticket', tagline: 'Richieste e segnalazioni ai responsabili: SLA, cronologia, statistiche', icon: 'ticket', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: true,

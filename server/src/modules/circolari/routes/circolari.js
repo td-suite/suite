@@ -12,6 +12,7 @@ import { renderDocx, effectiveOrientation, dataItaliana } from '../lib/render.js
 import { docxToPdf, pdfAvailable, pdfPages } from '../lib/pdf.js';
 import { extract, fromText, heuristicStructure, clampBlocks } from '../lib/extract.js';
 import { structureDraft } from '../lib/ai.js';
+import { perimetro, filtro, visibile } from '../lib/visibilita.js';
 import { nextNumero, formatProtocollo, newToken } from '../lib/protocollo.js';
 
 const r = Router();
@@ -90,6 +91,7 @@ r.get('/circolari', ah(async (req, res) => {
   if (f.stato) where.push(`stato = ${p(f.stato)}`);
   if (f.anno) where.push(`anno = ${p(f.anno)}`);
   if (f.segmento) where.push(`segmento = ${p(f.segmento)}`);
+  const per = await perimetro(req); const fv = filtro(per, p); if (fv) where.push(fv);
   let rank = 'NULL::real AS rank', snippet = 'NULL::text AS snippet', order = 'coalesce(published_at, updated_at) DESC';
   if (f.q) {
     const qi = p(f.q);
@@ -105,10 +107,12 @@ r.get('/circolari', ah(async (req, res) => {
   res.json({ total, page: f.page, pageSize: f.pageSize, rows: rows.map((x) => ({ ...x, created_by_name: names[x.created_by] || null, published_by_name: names[x.published_by] || null })) });
 }));
 
-r.get('/circolari/riepilogo', ah(async (_req, res) => {
-  const anni = await many(`SELECT anno, count(*)::int AS n FROM circolari WHERE anno IS NOT NULL GROUP BY anno ORDER BY anno DESC`);
-  const stati = await many(`SELECT stato, count(*)::int AS n FROM circolari GROUP BY stato`);
-  const ultime = await many(`SELECT ${LIST_COLS} FROM circolari WHERE stato='PUBBLICATA' ORDER BY published_at DESC LIMIT 5`);
+r.get('/circolari/riepilogo', ah(async (req, res) => {
+  const per = await perimetro(req); const params = []; const p = (v) => { params.push(v); return `$${params.length}`; };
+  const fv = filtro(per, p); const and = fv ? ` AND ${fv}` : '';
+  const anni = await many(`SELECT anno, count(*)::int AS n FROM circolari WHERE anno IS NOT NULL${and} GROUP BY anno ORDER BY anno DESC`, params);
+  const stati = await many(`SELECT stato, count(*)::int AS n FROM circolari WHERE TRUE${and} GROUP BY stato`, params);
+  const ultime = await many(`SELECT ${LIST_COLS} FROM circolari WHERE stato='PUBBLICATA'${and} ORDER BY published_at DESC LIMIT 5`, params);
   const invii = await one(`SELECT count(*)::int AS n, coalesce(sum(n_inviati),0)::int AS inviati FROM invii`);
   const letture = await one(`SELECT count(*)::int AS n FROM letture`);
   res.json({ anni, stati: Object.fromEntries(stati.map((s) => [s.stato, s.n])), ultime, invii, letture: letture.n });
@@ -155,6 +159,7 @@ r.post('/circolari/importa', (req, res, next) => upload(req, res, (e) => (e ? ne
 // ---- Dettaglio
 r.get('/circolari/:id', ah(async (req, res) => {
   const c = await load(req.params.id);
+  if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   const invii = await many('SELECT i.id, i.lista_id, l.nome AS lista_nome, i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at FROM invii i LEFT JOIN liste l ON l.id=i.lista_id WHERE i.circolare_id=$1 ORDER BY i.inviato_at DESC', [c.id]);
   const letture = (await one('SELECT count(*)::int AS n FROM letture WHERE circolare_id=$1', [c.id])).n;
   const revisioni = c.numero ? await many(`SELECT id, revisione, protocollo, stato, published_at, titolo FROM circolari WHERE anno=$1 AND numero=$2 ORDER BY revisione`, [c.anno, c.numero]) : [];
@@ -201,14 +206,16 @@ const sendFile = (res, c, kind) => {
   return res.send(c.docx);
 };
 r.get('/circolari/:id/docx', ah(async (req, res) => {
-  const c = await one('SELECT id, protocollo, docx FROM circolari WHERE id=$1', [req.params.id]);
+  const c = await one('SELECT id, protocollo, docx, stato, segmento FROM circolari WHERE id=$1', [req.params.id]);
   if (!c) throw notFound('Circolare non trovata');
+  if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   if (!c.docx) throw new HttpError(409, 'Documento non ancora impaginato: genera l\'anteprima');
   sendFile(res, c, 'docx');
 }));
 r.get('/circolari/:id/pdf', ah(async (req, res) => {
-  const c = await one('SELECT id, protocollo, pdf, render_error FROM circolari WHERE id=$1', [req.params.id]);
+  const c = await one('SELECT id, protocollo, pdf, render_error, stato, segmento FROM circolari WHERE id=$1', [req.params.id]);
   if (!c) throw notFound('Circolare non trovata');
+  if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   if (!c.pdf) throw new HttpError(409, c.render_error || 'PDF non ancora generato: genera l\'anteprima');
   sendFile(res, c, 'pdf');
 }));

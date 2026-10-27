@@ -56,3 +56,19 @@ VIEWER (consultazione e download). Proposte di grant: area "retail & communicati
 - BYTEA di DOCX e PDF nello schema del modulo: migrazione su Azure Blob nella fase 2, come per gli altri moduli.
 - Tracciamento delle aperture per destinatario (oggi solo conteggio delle letture dal QR) e pagina pubblica HTML oltre al PDF.
 - Collaudo della strutturazione con Claude in produzione (in locale la chiave non c'è: testato il ripiego euristico).
+
+## Accesso aperto e perimetro di lettura (27/10/2026)
+Richiesta del CEO: "a Circolari accede chiunque abbia un account, in rapporto alle liste di distribuzione: un cliente service
+vede le circolari per il service, un punto prelievi quelle per i punti prelievo, un dipendente le vede tutte". Il modulo è
+`open_to_all` (come Ticket): compare in home per tutti gli account e si entra senza grant con il ruolo implicito VIEWER.
+Il perimetro lo calcola `server/src/modules/circolari/lib/visibilita.js` dall'anagrafica unica, a ogni richiesta:
+- interno (persona DIPENDENTE, DIRIGENTE, LP, MEDICO o SANITARIO di una Legal entity GRUPPO/SOCIETA, oppure senza Legal
+  entity; Owner e Admin della Suite): tutte le circolari di tutti i segmenti, tranne le bozze, che vede solo chi ha un grant
+  di redazione (ADMIN, PUBBLICATORE, REDATTORE);
+- esterno (persona ESTERNO o Legal entity CLIENTE, PARTNER, FORNITORE, TARGET, ALTRO): solo circolari PUBBLICATE dei suoi
+  segmenti: sede di tipo SERVICE o Legal entity CLIENTE → Clienti service; sede PUNTO_PRELIEVI → Punti prelievo; Legal entity
+  PARTNER → Partner; più i segmenti di ogni lista di distribuzione attiva in cui compare la sua email (Medicina del lavoro e
+  Altro si raggiungono solo così: l'anagrafica non distingue un cliente di medicina del lavoro).
+Il filtro vale per elenco, cruscotto, badge, dettaglio, PDF e DOCX; il cruscotto mostra all'esterno il suo perimetro. Le
+regole di accesso (Amministrazione > Regole di accesso) restano solo per assegnare PUBBLICATORE e REDATTORE; nessun grant
+serve per leggere. Nulla cambia per la versione pubblica da QR code (già senza sessione).
