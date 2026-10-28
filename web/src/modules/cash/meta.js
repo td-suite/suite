@@ -25,6 +25,7 @@ export default {
     { to: 'cassaforte', icon: 'shield', label: 'Cassaforte', profiles: FINANCE },
     { to: 'versamenti', icon: 'send', label: 'Versamento al portavalori', profiles: FINANCE },
     { to: 'accrediti', icon: 'building', label: 'Conferma dell\'accredito', profiles: FINANCE },
+    { to: 'scadenziario', icon: 'calendar', label: 'Scadenziario strutture', badge: 'scadenziario', profiles: ALL },
     { group: 'Analisi' },
     { to: 'statistiche', icon: 'stats', label: 'Statistiche' },
     { to: 'canoni', icon: 'sheet', label: 'Royalty di sede', profiles: ['SUPERADMIN', 'ADMIN', 'PARTNER'] },

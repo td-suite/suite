@@ -40,6 +40,7 @@ da `getCompany()`.
 | cash | company_bank_accounts | elenco conti per gli accrediti | SPECIFICO | Più conti per azienda con etichetta e predefinito: diverso dall'IBAN unico della Legal entity. |
 | cash | Impostazioni | creditor_name, creditor_iban, creditor_bic | SPECIFICO (forzatura) | Se vuoti valgono la capofila (`is_franchisor`, IBAN della Legal entity) e `company.legal_name`; `creditor_id` resta solo di Cash. |
 | cash | user_ext | cash_float | SPECIFICO | Fondo cassa personale. |
+| cash | Impostazioni (Scadenziario strutture, 28/10/2026) | schedule_alert_days (7), schedule_istat_pct (1.5), schedule_utility_growth_pct (0), schedule_notify_roles (SUPERADMIN,ADMIN,FINANCE) | SPECIFICO | Anticipo degli avvisi in app, ipotesi di rivalutazione ISTAT e di crescita delle utenze per la previsione, profili Cash che ricevono gli avvisi. Sedi, locatori e fornitori vengono dall'anagrafica unica (public.sites, public.organizations): nessun dato ridigitato. Migrazione cash 014. |
 | room | site_ext | data (ambulatori, planimetria) | SPECIFICO | Configurazione degli ambulatori. |
 | room | person_ext.dati.anagrafica | luogoNascita, partitaIva, indirizzo, cap, citta, provincia | DUPLICATO | `people.birth_place, vat_number, address, zip, city, province` (migrazione 007, valori riportati nel core se vuoti); scheda in sola lettura, portale senza auto-modifica della residenza. |
 | room | person_ext.dati.anagrafica | pec, iban, intestatarioConto, contattoEmergenza | SPECIFICO | Dati per i rendiconti del professionista (il core non ha IBAN né PEC personali). |

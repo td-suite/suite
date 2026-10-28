@@ -19,6 +19,8 @@ import depositRoutes from './routes/deposits.js';
 import commsRoutes from './routes/comms.js';
 import monthlyRoutes from './routes/monthly.js';
 import siteRoyaltyRoutes from './routes/siteRoyalty.js';
+import scheduleRoutes from './routes/schedule.js';
+import { scheduleBadge, runScheduleAlerts, pruneScheduleNotified, READ_ROLES as SCHEDULE_ROLES } from './lib/scheduleData.js';
 
 const KEY = 'cash';
 const db = moduleDb(KEY);
@@ -125,7 +127,9 @@ export default function mount(app) {
     try {
       const { one } = await import('./db.js');
       const r = await one(`SELECT count(*)::int AS n FROM cash_reports WHERE status='CLOSED'`);
-      res.json({ revisione: r.n });
+      // scadenziario: scadute + in scadenza entro 7 giorni (non fatte, non automatiche), nel perimetro dell'utente
+      const scadenziario = SCHEDULE_ROLES.includes(req.user.role) ? await scheduleBadge(req.user).catch(() => 0) : 0;
+      res.json({ revisione: r.n, scadenziario });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res) => {
@@ -145,6 +149,7 @@ export default function mount(app) {
   r.use('/comms', commsRoutes);
   r.use('/controllo-mensile', monthlyRoutes);
   r.use('/royalty', royaltyRoutes);
+  r.use('/scadenziario', scheduleRoutes);   // scadenziario strutture: affitti, utenze, scatti, previsione
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
   app.use(`/api/${KEY}`, r);
 
@@ -157,4 +162,14 @@ export default function mount(app) {
     const closing = await runClosingAlerts();
     return { morning: morning ? { date: morning.date, missing: morning.missing, sent: morning.results.length } : null, closing: closing ? { date: closing.date, sent: (closing.results || []).filter((x) => x.status !== 'DUPLICATA').length } : null };
   });
+
+  // Scadenziario strutture: avvisi in app per le scadenze dei prossimi giorni (schedule_alert_days) e per quelle scadute non
+  // segnate, una sola volta per evento (schedule_notified). Ogni 6 ore, anche all'avvio; solo con modulo LIVE.
+  registerJob(`${KEY}:scadenziario`, 360, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    const out = await runScheduleAlerts();
+    out.pruned = await pruneScheduleNotified();
+    return out;
+  }, { runAtStart: true });
 }

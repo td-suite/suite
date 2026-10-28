@@ -262,7 +262,8 @@ r.put('/users/:id/cash-float', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req
 }));
 
 // ---------------- Impostazioni (creditore SEPA) ----------------
-const SETTINGS_KEYS = ['creditor_name', 'creditor_iban', 'creditor_bic', 'creditor_id', 'royalty_invoice_prefix', 'pickup_alert_days', 'daily_alert_hour', 'daily_alert_enabled', 'daily_summary_admins', 'closing_alert_delay_minutes'];
+const SETTINGS_KEYS = ['creditor_name', 'creditor_iban', 'creditor_bic', 'creditor_id', 'royalty_invoice_prefix', 'pickup_alert_days', 'daily_alert_hour', 'daily_alert_enabled', 'daily_summary_admins', 'closing_alert_delay_minutes',
+  'schedule_alert_days', 'schedule_istat_pct', 'schedule_utility_growth_pct', 'schedule_notify_roles'];   // scadenziario strutture
 
 r.get('/settings', requireRole('SUPERADMIN'), ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [SETTINGS_KEYS]);
@@ -281,6 +282,11 @@ r.put('/settings', requireRole('SUPERADMIN'), ah(async (req, res) => {
     closing_alert_delay_minutes: z.string().regex(/^\d{1,3}$/).optional(),
     daily_alert_enabled: z.enum(['true', 'false']).optional(),
     daily_summary_admins: z.enum(['true', 'false']).optional(),
+    // scadenziario strutture
+    schedule_alert_days: z.string().regex(/^\d{1,3}$/).optional(),
+    schedule_istat_pct: z.string().regex(/^-?\d{1,2}([.,]\d{1,3})?$/).transform((v) => v.replace(',', '.')).optional(),
+    schedule_utility_growth_pct: z.string().regex(/^-?\d{1,2}([.,]\d{1,3})?$/).transform((v) => v.replace(',', '.')).optional(),
+    schedule_notify_roles: z.string().transform((v) => v.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean)).refine((a) => a.every((x) => ['SUPERADMIN', 'ADMIN', 'CASSIERE', 'FINANCE', 'OPERATOR'].includes(x)), 'profili ammessi: SUPERADMIN, ADMIN, CASSIERE, FINANCE, OPERATOR').transform((a) => a.join(',')).optional(),
   }), req.body);
   for (const [k, v] of Object.entries(d)) {
     await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, v]);
