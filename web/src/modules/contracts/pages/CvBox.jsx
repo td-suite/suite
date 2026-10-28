@@ -24,15 +24,15 @@ export default function CvBox() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>CV Box</h1><div className="sub">Repository dei curriculum ricevuti, con sintesi del profilo e area di potenziale destinazione.{settings.data?.aiEnabled ? ' La sintesi viene proposta automaticamente al caricamento.' : ' Sintesi automatica non attiva (configurare ANTHROPIC_API_KEY): la sintesi si scrive a mano.'}</div></div>
+        <div><h1>CV Box</h1><div className="sub">Repository dei curriculum ricevuti, con sintesi del profilo e area di potenziale destinazione.{settings.data?.aiEnabled ? ' La sintesi viene proposta automaticamente al caricamento.' : ' Sintesi automatica non attiva (chiave Anthropic in Amministrazione > Impostazioni > Integrazioni): la sintesi si scrive a mano.'}</div></div>
         {writer && <button className="btn" onClick={() => setModal('upload')}><Icon name="upload" />Carica CV</button>}
       </div>
       {inbox.data && (
         <div className={`alert ${inbox.data.configured && inbox.data.enabled && !inbox.data.last_error ? 'info' : 'warn'} small`} style={{ marginBottom: 12 }}>
-          <Icon name="mail" />
+          <Icon name="mail" size={18} />
           <span>
             {inbox.data.configured
-              ? <>Casella <b>{inbox.data.mailbox}</b>: {inbox.data.enabled ? 'letta ogni 10 minuti' : 'lettura disattivata (Impostazioni)'}; i CV allegati alle email entrano qui da soli ({inbox.data.imported} finora).{inbox.data.last_poll ? ` Ultima lettura ${new Date(inbox.data.last_poll).toLocaleString('it-IT')}.` : ' Nessuna lettura ancora eseguita.'}{inbox.data.last_error ? ` Ultimo errore: ${inbox.data.last_error}` : ''}</>
+              ? <>Casella <b>{inbox.data.mailbox}</b>{inbox.data.real_mailbox ? <> (letta da <b>{inbox.data.real_mailbox}</b>)</> : null}: {inbox.data.enabled ? 'letta ogni 10 minuti' : 'lettura disattivata (Impostazioni)'}; i CV allegati alle email entrano qui da soli ({inbox.data.imported} finora).{inbox.data.last_poll ? ` Ultima lettura ${new Date(inbox.data.last_poll).toLocaleString('it-IT')}.` : ' Nessuna lettura ancora eseguita.'}{inbox.data.last_error ? ` Ultimo errore: ${inbox.data.last_error}` : ''}</>
               : <>Casella <b>{inbox.data.mailbox}</b> non collegata: mancano le credenziali Microsoft della Suite (Entra) con il permesso Mail.Read sulla casella. Fino ad allora i CV si caricano a mano.</>}
           </span>
           {writer && inbox.data.configured && <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={polling} onClick={pollNow}>{polling ? 'Lettura in corso' : 'Leggi ora'}</button>}

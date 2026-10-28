@@ -11,10 +11,10 @@ export const config = {
   maxPackMb: Number(env.MAX_PACK_MB || 600),
   // LibreOffice headless per i PDF: presente nell'immagine Docker di produzione, in locale la generazione degrada a solo DOCX
   sofficeBin: env.SOFFICE_BIN || 'soffice',
-  // Lettura dei CV, dei contratti e degli allegati con l'API Claude (facoltativa). I documenti del personale sono dati
-  // sensibili: la funzione si attiva solo con una chiave dedicata (CONTRACTS_ANTHROPIC_API_KEY) oppure, in modo esplicito,
-  // con CONTRACTS_AI_ENABLED=true per riusare la chiave della Suite. Senza chiave le letture restano euristiche, come nell'app.
-  anthropicKey: env.CONTRACTS_ANTHROPIC_API_KEY || (env.CONTRACTS_AI_ENABLED === 'true' ? env.ANTHROPIC_API_KEY || '' : ''),
+  // Lettura dei CV, dei contratti e degli allegati con l'API Claude: chiave dedicata CONTRACTS_ANTHROPIC_API_KEY se presente,
+  // altrimenti la chiave della Suite (Amministrazione > Impostazioni > Integrazioni, oppure ANTHROPIC_API_KEY), letta a ogni
+  // uso perché il titolare può impostarla dalla Suite senza riavvio. Senza chiave le letture restano euristiche, come nell'app.
+  get anthropicKey() { return env.CONTRACTS_ANTHROPIC_API_KEY || suite.anthropic.apiKey || ''; },
   anthropicModel: env.CONTRACTS_ANTHROPIC_MODEL || env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
   appName: 'Toscana Diagnostica · Contracts',
 };

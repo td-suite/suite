@@ -8,7 +8,7 @@ const GROUPS = [
   { title: 'Costo azienda (ipotesi: verificare con il consulente del lavoro)', keys: [['cost_inps_pct', 'Contributi INPS a carico azienda %'], ['cost_inail_pct', 'INAIL %'], ['cost_tfr_pct', 'TFR %'], ['cost_apprentice_inps_pct', 'INPS apprendisti %'], ['cost_dirigente_extra_pct', 'Extra dirigenti (FASI, Previndai) %'], ['function_allowance_share', 'Quota indennità di funzione sull\'eccedenza (0,7)']] },
   { title: 'Simulatore netto (stime)', keys: [['employee_inps_pct', 'INPS a carico dipendente %'], ['addizionale_regionale_pct', 'Addizionale regionale %'], ['addizionale_comunale_pct', 'Addizionale comunale %'], ['irpef_brackets', 'Scaglioni IRPEF (JSON)']] },
   { title: 'Scadenze', keys: [['deadline_alert_days', 'Giorni di allerta in dashboard']] },
-  { title: 'CV Box: casella di recruiting letta con Microsoft Graph', keys: [['cv_inbox', 'Indirizzo della casella'], ['cv_inbox_enabled', 'Lettura automatica attiva (true / false)']] },
+  { title: 'CV Box: casella di recruiting letta con Microsoft Graph', keys: [['cv_inbox', 'Indirizzo a cui scrivono i candidati'], ['cv_inbox_mailbox', 'Casella da leggere (solo se l\'indirizzo è un alias o un gruppo: la casella che lo riceve)'], ['cv_inbox_enabled', 'Lettura automatica attiva (true / false)']] },
 ];
 
 export default function Settings() {
@@ -36,9 +36,10 @@ export default function Settings() {
       <div className="page-head"><div><h1>Impostazioni e import</h1><div className="sub">Dati societari per i documenti, parametri di costo, aree, sedi e importazione del pacchetto iniziale.</div></div><button className="btn" onClick={save}>Salva impostazioni</button></div>
       <div className="grid g2" style={{ marginBottom: 16 }}>
         <Card title="Stato dell'installazione">
-          <p>Accesso Microsoft 365: {d.data.entraEnabled ? <Badge tone="green">attivo</Badge> : <Badge tone="grey">non configurato (ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET)</Badge>}</p>
+          <p>Accesso Microsoft 365 (credenziali della Suite, usate per la casella di recruiting): {d.data.entraEnabled ? <Badge tone="green">attivo</Badge> : <Badge tone="grey">non configurato su Render (ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET)</Badge>}</p>
+          {d.data.inbox && <p>Casella di recruiting {d.data.inbox.mailbox}{d.data.inbox.real_mailbox ? ` (letta da ${d.data.inbox.real_mailbox})` : ''}: {d.data.inbox.last_error ? <Badge tone="red">{d.data.inbox.last_error}</Badge> : d.data.inbox.last_poll ? <Badge tone="green">ultima lettura {new Date(d.data.inbox.last_poll).toLocaleString('it-IT')}</Badge> : <Badge tone="grey">nessuna lettura ancora eseguita</Badge>}</p>}
           <p>Conversione PDF (LibreOffice): {d.data.pdfEnabled ? <Badge tone="green">disponibile</Badge> : <Badge tone="red">non disponibile: vengono prodotti solo DOCX</Badge>}</p>
-          <p>Sintesi automatica dei CV (API Claude): {d.data.aiEnabled ? <Badge tone="green">attiva</Badge> : <Badge tone="grey">non configurata (ANTHROPIC_API_KEY)</Badge>}</p>
+          <p>Sintesi automatica dei CV (API Claude): {d.data.aiEnabled ? <Badge tone="green">attiva</Badge> : <Badge tone="grey">non configurata: chiave Anthropic in Amministrazione &gt; Impostazioni &gt; Integrazioni</Badge>}</p>
           <p className="small muted">Dimensione massima per allegato: {d.data.maxUploadMb} MB.</p>
         </Card>
         <Card title="Importa pacchetto iniziale (seed pack)">

@@ -1,7 +1,9 @@
 // Casella di recruiting (recruitment@toscanadiagnostica.it) letta con Microsoft Graph: ogni allegato PDF / Word di un'email in
 // arrivo diventa un CV nel CV Box (mittente come email e nome del candidato, oggetto come riferimento, sintesi AI se attiva).
 // Permesso applicativo necessario sull'app registration della Suite: Mail.Read (o Mail.ReadWrite) sulla casella.
-// Impostazioni del modulo: cv_inbox (indirizzo), cv_inbox_enabled (true/false), cv_inbox_since (cursore), cv_inbox_last.
+// Impostazioni del modulo: cv_inbox (indirizzo a cui scrivono i candidati), cv_inbox_mailbox (facoltativo: la casella vera da
+// leggere quando cv_inbox è un alias o un gruppo di distribuzione; i messaggi si filtrano per destinatario), cv_inbox_enabled,
+// cv_inbox_since (cursore), cv_inbox_last, cv_inbox_error.
 import { one, many, q } from '../db.js';
 import { config } from '../config.js';
 import { config as suite } from '../../../config.js';
@@ -39,6 +41,7 @@ export async function inboxStatus() {
   return {
     configured: graphConfigured(),
     mailbox: (await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '',
+    real_mailbox: (await setting('cv_inbox_mailbox', '')) || '',
     enabled: (await setting('cv_inbox_enabled', 'true')) === 'true',
     last_poll: await setting('cv_inbox_last', null),
     last_error: await setting('cv_inbox_error', null),
@@ -49,20 +52,24 @@ export async function inboxStatus() {
 // Legge le email nuove della casella e crea i CV: una riga per allegato, mai due volte lo stesso allegato (graph_id)
 export async function pollRecruitingInbox({ force = false } = {}) {
   if (!graphConfigured()) return { skipped: 'graph_non_configurato' };
-  const mailbox = (await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '';
-  if (!mailbox) return { skipped: 'casella_non_impostata' };
+  const address = ((await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '').trim();
+  const mailbox = ((await setting('cv_inbox_mailbox', '')) || address).trim();   // casella letta davvero
+  if (!address) return { skipped: 'casella_non_impostata' };
   if (!force && (await setting('cv_inbox_enabled', 'true')) !== 'true') return { skipped: 'disattivata' };
   const since = (await setting('cv_inbox_since', null)) || new Date(Date.now() - 30 * 86400000).toISOString();
   const filter = encodeURIComponent(`receivedDateTime ge ${since} and hasAttachments eq true`);
+  const isAlias = mailbox.toLowerCase() !== address.toLowerCase();
+  const toAddress = (m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])].some((r) => (r.emailAddress?.address || '').toLowerCase() === address.toLowerCase());
   let created = 0; let fetched = 0; let last = since;
   try {
-    const j = await graph(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,receivedDateTime,from,subject,bodyPreview,hasAttachments`);
+    const j = await graph(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,receivedDateTime,from,toRecipients,ccRecipients,subject,bodyPreview,hasAttachments`);
     const areas = (await many('SELECT name FROM areas WHERE active ORDER BY sort_order')).map((a) => a.name);
     for (const m of j.value || []) {
       fetched++;
       if (m.receivedDateTime > last) last = m.receivedDateTime;
       const from = m.from?.emailAddress || {};
       if ((from.address || '').toLowerCase() === mailbox.toLowerCase()) continue;
+      if (isAlias && !toAddress(m)) continue;   // nella casella vera entrano anche altre email: solo quelle indirizzate a recruitment@
       const atts = await graph(`/users/${encodeURIComponent(mailbox)}/messages/${m.id}/attachments?$select=id,name,contentType,size,isInline`);
       for (const a of atts.value || []) {
         if (a['@odata.type'] !== '#microsoft.graph.fileAttachment' || a.isInline) continue;
@@ -91,7 +98,10 @@ export async function pollRecruitingInbox({ force = false } = {}) {
     await setSetting('cv_inbox_last', new Date().toISOString());
     await setSetting('cv_inbox_error', '');
   } catch (e) {
-    await setSetting('cv_inbox_error', e.message);
+    let msg = e.message;
+    if (/ErrorInvalidUser|ResourceNotFound/.test(msg)) msg = `Microsoft non trova una casella "${mailbox}": se recruitment@ è un alias o un gruppo di distribuzione, indica in Impostazioni la casella vera che lo riceve (campo "Casella da leggere"); se è una casella condivisa, verifica che esista con quell'indirizzo. Dettaglio: ${msg}`;
+    else if (/ErrorAccessDenied|Authorization_RequestDenied|403/.test(msg)) msg = `Permesso mancante: sull'app registration della Suite serve Mail.Read (applicativo) con consenso amministratore. Dettaglio: ${msg}`;
+    await setSetting('cv_inbox_error', msg);
     throw e;
   }
   return { fetched, created };
