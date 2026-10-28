@@ -102,3 +102,12 @@ Date di firma dei contratti PP (scansioni), Calenzano art. 5 (1.200 euro/mese le
 come format non compilato (anagrafica da pipeline e censimento, P.IVA assente), documenti "firmati" di era Fanfani (Santa Zita 2024, Baronci
 2024, Beato Gregorio X 2023), codice fiscale Santa Zita a 10 cifre, Endeavor DNA data 2025 vs decorrenza 2026, Studio Medico Sole con due
 intestazioni, data di rilascio dell'autorizzazione di Montemurlo.
+
+## Aggiornamenti del 28/10/2026 (sera)
+- Cestino a fine riga nell'elenco dei contratti (richiesta del CEO): le bozze le elimina chi gestisce la sezione, i contratti protocollati
+  (compresi quelli caricati dai pacchetti) solo il Superamministratore; la cancellazione è definitiva e porta via documenti, cronologia,
+  credenziali e fascicolo collegato; la Legal entity resta. Attenzione: un contratto eliminato torna se si ricarica il pacchetto che lo contiene
+  (la chiave di importazione sparisce con lui); per toglierlo per sempre va tolto anche dal manifest o lasciato fuori dal ricaricamento.
+- Pacchetti ricostruiti: il contratto storico Fanfani di Quarrata (controparte "XXX" nel docx) è ora intestato a G.B. Center come il contratto TD;
+  la Legal entity fittizia "GB Medical Center (controparte nel docx lasciata come XXX)" non viene più creata. Chi ha già importato la prima
+  versione: ricaricare il pacchetto 01 riassegna il contratto e la Legal entity fittizia resta orfana, da eliminare in Amministrazione > Legal entity.

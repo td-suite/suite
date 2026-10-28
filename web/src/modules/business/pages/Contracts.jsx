@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, canEditKind } from '../auth.jsx';
-import { qs, BASE } from '../api.js';
-import { useApi, Card, Field, Loading, ErrorBox, Empty, Badge, StatusBadge, KindBadge } from '../components/ui.jsx';
+import { useAuth, canEditKind, isAdmin } from '../auth.jsx';
+import { api, qs, BASE } from '../api.js';
+import { useApi, Card, Field, Loading, ErrorBox, Empty, Badge, StatusBadge, KindBadge, ConfirmModal, Icon, useToast } from '../components/ui.jsx';
 import { itDate, STATUS, KIND, DOSSIER_STATUS } from '../format.js';
 
 const SUB = {
@@ -21,6 +21,11 @@ export default function Contracts({ kind }) {
   const year = sp.get('year') || '';
   const list = useApi(`/contracts${qs({ kind, status, year, q })}`);
   const rows = list.data || [];
+  const toast = useToast();
+  const [del, setDel] = useState(null);
+  // Cestino a fine riga: bozze per chi gestisce la sezione, contratti protocollati solo per il Superamministratore
+  const canDelete = (r) => (r.status === 'BOZZA' ? canEditKind(user, r.kind) : isAdmin(user));
+  const doDelete = async () => { try { await api.del(`/contracts/${del.id}`); toast('Contratto eliminato'); list.reload(); } catch (e) { toast(e.message, 'err'); } setDel(null); };
   const set = (k, v) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n); };
   const years = [2026, 2027, 2028, 2029, 2030];
   return (
@@ -39,7 +44,7 @@ export default function Contracts({ kind }) {
       <ErrorBox error={list.error} />
       <Card flush>{!list.data ? <Loading /> : rows.length ? (
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Protocollo</th>{!kind && <th>Sezione</th>}<th>Controparte</th><th>Sede TD</th><th>Oggetto</th><th>Proposta</th><th>Firma</th><th>Documenti</th><th>Stato</th></tr></thead>
+          <thead><tr><th>Protocollo</th>{!kind && <th>Sezione</th>}<th>Controparte</th><th>Sede TD</th><th>Oggetto</th><th>Proposta</th><th>Firma</th><th>Documenti</th><th>Stato</th><th></th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id} className="click" onClick={() => nav(`${BASE}/contratti/${r.id}`)}>
               <td className="mono">{r.protocol || <span className="muted">bozza #{r.id}</span>}</td>
@@ -55,9 +60,12 @@ export default function Contracts({ kind }) {
                 {r.dossier_status && <Badge tone={DOSSIER_STATUS[r.dossier_status].tone}>fascicolo: {DOSSIER_STATUS[r.dossier_status].label.toLowerCase()}</Badge>}
               </td>
               <td><StatusBadge status={r.status} /></td>
+              <td className="num" onClick={(e) => e.stopPropagation()}>{canDelete(r) && <button className="iconbtn danger" title="Elimina il contratto" aria-label="Elimina" onClick={() => setDel(r)}><Icon name="trash" /></button>}</td>
             </tr>))}</tbody>
         </table></div>
       ) : <Empty>Nessun contratto con questi filtri</Empty>}</Card>
+      {del && <ConfirmModal danger title="Eliminare il contratto?" confirmText="Elimina" onClose={() => setDel(null)} onConfirm={doDelete}
+        text={`${del.protocol ? `${del.protocol} · ` : ''}${del.title || ''}${del.org_name ? ` (${del.org_name})` : ''}: vengono cancellati definitivamente documenti, cronologia, credenziali e, se c'è, il fascicolo di autorizzazione collegato. La Legal entity resta in Amministrazione.`} />}
     </div>
   );
 }

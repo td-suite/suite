@@ -339,11 +339,14 @@ r.post('/:id/status', ah(async (req, res) => {
 r.delete('/:id', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
-  if (c.status !== 'BOZZA') throw bad('Si elimina solo una bozza: le proposte protocollate si annullano');
+  // Bozze: chiunque gestisca la sezione. Contratti protocollati (anche quelli caricati dai pacchetti): solo il Superamministratore,
+  // con cancellazione definitiva di documenti, eventi, credenziali e fascicolo collegato (richiesta del CEO, 28/10/2026: cestino a fine riga).
+  if (c.status !== 'BOZZA' && !isAdmin(req.user)) throw bad('Un contratto protocollato lo elimina solo il Superamministratore; chi gestisce la sezione lo annulla');
+  const dossier = await one('SELECT id FROM dossiers WHERE contract_id=$1', [c.id]);
   const blobs = await many('SELECT blob_path FROM contract_files WHERE contract_id=$1 UNION ALL SELECT f.blob_path FROM dossier_files f JOIN dossiers d ON d.id=f.dossier_id WHERE d.contract_id=$1', [c.id]);
   await q('DELETE FROM contracts WHERE id=$1', [c.id]);
   await dropBlobs(blobs.map((b) => b.blob_path));
-  await audit(req, 'CONTRACT_DELETE', 'contract', c.id);
+  await audit(req, 'CONTRACT_DELETE', 'contract', c.id, { protocol: c.protocol, status: c.status, title: c.title, org: c.org?.name, dossier_id: dossier?.id || null, files: blobs.length });
   res.json({ ok: true });
 }));
 
