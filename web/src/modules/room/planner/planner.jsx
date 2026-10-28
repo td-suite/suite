@@ -883,13 +883,13 @@ function Anagrafica({
     href: "/admin/sites"
   }, "Apri in Amministrazione"))), React.createElement("div", {
     className: "grid3"
-  }, ro("Denominazione", str.denominazione), ro("Indirizzo", str.indirizzo), ro("Site manager", str.siteManager), React.createElement(Field, {
+  }, ro("Denominazione", str.denominazione), ro("Indirizzo", str.indirizzo), ro("Site manager (dall'organigramma)", str.siteManager || 'da inserire in Amministrazione > Organizzazione'), React.createElement(Field, {
     l: "Email del site manager (conferma presenze)"
   }, React.createElement("input", {
     type: "email",
     value: str.siteManagerEmail || '',
-    placeholder: "nome@toscanadiagnostica.it",
-    title: "L'utente con questa email può confermare ogni giorno le presenze del personale sanitario di questa sede",
+    placeholder: str.siteManagerEmailDefault || "nome@toscanadiagnostica.it",
+    title: str.siteManagerEmailDefault ? "Vuoto = il responsabile di sede dell'organigramma (" + str.siteManagerEmailDefault + ") conferma le presenze; scrivi un'email per indicare un'altra persona" : "L'utente con questa email può confermare ogni giorno le presenze del personale sanitario di questa sede",
     onChange: e => set({
       siteManagerEmail: e.target.value
     })

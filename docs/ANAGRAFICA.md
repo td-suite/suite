@@ -521,3 +521,11 @@ Aggiunti Business (contratti in scadenza entro 60 giorni e fascicoli aperti), Re
 (bozze), Cartella (documenti nuovi negli ultimi 7 giorni) e Comunicazione (contenuti in bozza e avvisi attivi, letti nel core). Il
 contatore di Integration ora segue lo schema della Suite (target = Legal entity, data di fine sull'attività) e conserva la query legacy per
 l'app di origine. Cache di 5 minuti, visibilità per grant come prima; SGI e Portale Service sono portali esterni e non hanno contatore.
+
+## Room Planning: responsabile di sede dall'organigramma (28/10/2026)
+Segnalazione del CEO: la tabella delle sedi e la scheda non riportavano responsabile e email indicati in Amministrazione. Room leggeva
+`public.sites.manager_name` (testo libero che la Suite non compila più). Migrazione room 009: `sites_v` espone `manager_name`,
+`manager_email` e `manager_person_id` dal capo del nodo Sede dell'organigramma (stessa regola di Amministrazione > Sedi), con riserva sul
+testo libero. La scheda mostra "Site manager (dall'organigramma)"; il campo "Email del site manager" resta un'eccezione facoltativa: vuoto
+significa che conferma le presenze il responsabile dell'organigramma (la sua email compare come suggerimento), e `siteManagerSedi` segue la
+stessa regola.

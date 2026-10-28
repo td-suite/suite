@@ -6,10 +6,10 @@ import { newStruttura } from './engine.js';
 
 export const BLOB_KINDS = ['logo', 'planPdf', 'planImg'];
 // Campi del documento che appartengono all'anagrafica unica: si leggono da public.sites e non si salvano in site_ext
-export const ANAGRAFICA_KEYS = ['id', 'denominazione', 'nomeSede', 'indirizzo', 'telefono', 'email', 'siteManager'];
+export const ANAGRAFICA_KEYS = ['id', 'denominazione', 'nomeSede', 'indirizzo', 'telefono', 'email', 'siteManager', 'siteManagerEmailDefault'];
 
 // Colonne di sites_v che servono alle route
-export const SITE_COLS = 's.id, s.code, s.name, s.short_name, s.kind, s.address, s.zip, s.city, s.province, s.phone, s.email, s.manager_name, s.active, s.sort_order, s.data, s.version, s.created_at, s.updated_at, s.updated_by, s.configurata';
+export const SITE_COLS = 's.id, s.code, s.name, s.short_name, s.kind, s.address, s.zip, s.city, s.province, s.phone, s.email, s.manager_name, s.manager_email, s.active, s.sort_order, s.data, s.version, s.created_at, s.updated_at, s.updated_by, s.configurata';
 
 export function indirizzoDi(row) {
   const parts = [row.address || ''];
@@ -26,7 +26,7 @@ export function liteOf(row) {
   for (const k of ANAGRAFICA_KEYS) delete lite[k];
   lite.plan = { markers: data.plan?.markers || {} };
   lite.logo = null;
-  return { id: row.id, denominazione: row.name || '', nomeSede: '', indirizzo: indirizzoDi(row), telefono: row.phone || '', email: row.email || '', siteManager: row.manager_name || '', ...lite,
+  return { id: row.id, denominazione: row.name || '', nomeSede: '', indirizzo: indirizzoDi(row), telefono: row.phone || '', email: row.email || '', siteManager: row.manager_name || '', siteManagerEmailDefault: row.manager_email || '', ...lite,
     _code: row.code, _active: row.active, _configurata: Boolean(row.configurata) };
 }
 

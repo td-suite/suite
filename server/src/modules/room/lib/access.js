@@ -16,7 +16,8 @@ export const canSeeStruttura = (u, id) => !isProf(u) && (isGestione(u) || !(u.si
 // Sedi di cui l'utente è gestore (email del site manager nelle impostazioni Room della sede): può confermare le presenze
 export async function siteManagerSedi(u) {
   if (!u) return [];
-  return (await many(`SELECT e.site_id FROM site_ext e JOIN public.sites s ON s.id = e.site_id WHERE s.active AND lower(coalesce(e.data->>'siteManagerEmail','')) = lower($1)`, [u.email])).map((r) => r.site_id);
+  // Sedi del site manager: email indicata in Room oppure, se vuota, il responsabile di sede dell'organigramma (sites_v.manager_email)
+  return (await many(`SELECT v.id AS site_id FROM sites_v v WHERE v.active AND lower(coalesce(nullif(v.data->>'siteManagerEmail',''), v.manager_email, '')) = lower($1)`, [u.email])).map((r) => r.site_id);
 }
 export async function canConfirmPresenze(u, sedeId) { return isGestione(u) || (await siteManagerSedi(u)).includes(Number(sedeId)); }
 // I professionisti usano solo il proprio portale (percorsi relativi al router del modulo)
