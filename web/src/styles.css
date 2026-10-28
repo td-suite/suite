@@ -956,3 +956,21 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .person-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .person-row .avatar, .person-row > :first-child { flex: 0 0 auto; }
 .person-row .person-txt { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; padding-top: 3px; }
+
+/* ---- Profili di accesso (28/10/2026) ---- */
+.grant-row.pi { grid-template-columns: 30px minmax(140px, 1fr) 200px minmax(140px, 1fr); }
+.profile-items { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; max-height: 55vh; overflow-y: auto; }
+.profile-items .grant-area { padding-top: 10px; }
+.profiles-t .chip { font-weight: 600; }
+.profile-pop { top: calc(100% + 6px); right: auto; left: 0; min-width: 260px; }
+.profile-pop .item .badge { margin-left: 6px; }
+.t td.sel, .t th.sel { width: 34px; padding-right: 0; }
+.t td.sel input, .t th.sel input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--teal); }
+.bulkbar { position: sticky; top: var(--topbar-h); z-index: 2; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border-radius: 12px; background: var(--teal); color: #fff; box-shadow: var(--shadow-lg); }
+.bulkbar .n { font-weight: 750; }
+.bulkbar .btn { background: #fff; color: var(--teal); border-color: #fff; }
+.bulkbar .btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.5); }
+.bulkbar .menu-pop { color: var(--ink); }
+.bulkbar .spacer { flex: 1; }
+@media (max-width: 640px) { .grant-row.pi { grid-template-columns: 30px minmax(0, 1fr); } .grant-row.pi .pr, .grant-row.pi .sc { grid-column: 2 / -1; } }
+.t tbody tr.selected td { background: var(--teal-050); }

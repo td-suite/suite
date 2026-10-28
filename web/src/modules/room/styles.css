@@ -361,3 +361,24 @@ th.sortable:hover { color: var(--teal); }
 .spec-item.checked { background: var(--teal-050); }
 .spec-item.on.checked { background: var(--teal); }
 .spec-item input[type=checkbox] { width: 16px; height: 16px; margin: 0; }
+
+/* Scheda della sede: i tab del planner si dispongono a capo e non devono diventare un contenitore scorrevole. La regola generale
+   della Suite `.tabs { overflow-x: auto }` li rendeva scorrevoli di 1 px in verticale (bordo inferiore del tab attivo): dopo il clic
+   su "Planimetria" il fuoco resta sul tab e lo scorrimento da tastiera/trackpad (PageDown, spazio, frecce) finiva nel tab e non nella
+   pagina, con una barra di scorrimento spuria accanto ai tab. Richiesta del CEO (28/10/2026): la pagina della planimetria deve scorrere. */
+.page.rp .tabs { overflow: visible; }
+
+/* Portale dei professionisti (Amministratore e Planner): tendina cercabile per scegliere la persona */
+.persona-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 18px; }
+.persona-picker .pp-label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.persona-picker .pp-field { position: relative; width: min(420px, 100%); }
+.persona-picker .pp-field input { width: 100%; padding-right: 30px; }
+.persona-picker .pp-caret { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 12px; }
+.persona-picker .pp-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; margin: 0; padding: 4px; list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(1, 33, 44, .16); max-height: 320px; overflow-y: auto; }
+.persona-picker .pp-item { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.persona-picker .pp-item.hi { background: var(--teal-050); }
+.persona-picker .pp-item.on { font-weight: 700; }
+.persona-picker .pp-item .pp-nome { color: var(--ink); }
+.persona-picker .pp-item .pp-sub { font-size: 12px; color: var(--muted); }
+.persona-picker .pp-empty { padding: 10px; color: var(--muted); font-size: 13px; }
+.persona-picker .pp-hint { flex-basis: 100%; }

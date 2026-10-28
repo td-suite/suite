@@ -33,6 +33,8 @@ export default function Module({ moduleUser }) {
   const admin = user.role === 'ADMIN';
   const gest = admin || user.role === 'RESP_SAN';
   const prof = user.role === 'PROF';
+  // Amministratore e Planner aprono riepilogo e disponibilità di un professionista a scelta (tendina in cima alla pagina)
+  const portaleInterni = admin || user.role === 'PLANNER';
   return (
     <AuthProvider user={user}>
       <ToastProvider>
@@ -47,8 +49,8 @@ export default function Module({ moduleUser }) {
             <Route path="*" element={<Navigate to={`${base}/portale`} replace />} />
           </> : <>
             <Route path="" element={<Dashboard />} />
-            <Route path="portale" element={<SoloProfessionisti />} />
-            <Route path="disponibilita" element={<SoloProfessionisti />} />
+            <Route path="portale" element={portaleInterni ? <PortaleHome /> : <SoloProfessionisti />} />
+            <Route path="disponibilita" element={portaleInterni ? <PortaleDisponibilita /> : <SoloProfessionisti />} />
             <Route path="specialisti" element={<Specialisti />} />
             <Route path="calendario" element={<Calendario />} />
             <Route path="sedi" element={<Sedi />} />

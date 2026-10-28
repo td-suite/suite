@@ -339,3 +339,113 @@ documenti, disponibilità, turni, mesi, presenze, rendiconti, posizioni, candida
 lib/legacyImport.js copia parametri del piano (org_ext), team (person_ext), attività con owner e support tradotti (owner non
 abbinato = attività copiata senza owner con avviso), snapshot convertiti al formato della Suite, registro delle modifiche.
 Collaudo con database legacy di prova e Playwright (schermate in docs/screens/legacy-import-*.png).
+
+### Sedi già configurate e persone mancanti (28/10/2026)
+Segnalazione del CEO: "Il travaso in room planning ha saltato tutti i professionisti, gli ambulatori, le prestazioni. Occorre
+recuperarli. Se i professionisti mancano in Persone, fammi XLSX da caricare e quindi poi importare." Cause: le sedi che il CEO
+aveva già configurato nella Suite (es. solo la planimetria) venivano saltate per intero ("impostazioni Room già presenti");
+i professionisti dell'app assenti in Persone non erano abbinabili e tutto ciò che li riguardava veniva saltato. Regole ora in vigore:
+- **Fusione per sezione delle impostazioni Room** (Room, lib/legacyImport.js `mergeSiteExt`): per una sede abbinata che ha già
+  site_ext nella Suite, ogni chiave di primo livello del JSON dell'app (ambulatori, personale, prestazioni, hours, desk*, note,
+  plan = marker della planimetria, e qualunque altra, in modo generico) entra solo se nella Suite manca o è vuota (null, stringa
+  vuota, elenco vuoto, oggetto vuoto, nessun marker); le sezioni già valorizzate restano e il rapporto dice "sezioni X mantenute
+  dalla Suite" (solo se diverse da quelle dell'app). Riferimenti interni: i marker puntano agli id degli ambulatori, quindi marker
+  dell'app su ambulatori della Suite entrano solo per gli id esistenti (nessuno = sezione non integrata, avviso); marker della
+  Suite che non corrispondono agli ambulatori integrati dall'app restano e vengono segnalati. Il personale di sede è riferito per
+  nome (personKey), non per id. Ogni fusione aumenta version, aggiorna updated_at e scrive in struttura_history una riga
+  "Integrazione dall'app originale: ..." (user_name "Importazione dall'app originale"). **Ripetibile**: la fusione si riesegue
+  anche per una sede già in legacy_import_map, così una prima importazione che aveva saltato viene recuperata ricontrollando le
+  sezioni vuote; se nulla è da integrare la sede conta come "già presente". Le planimetrie (struttura_blobs) non si sovrascrivono.
+- **XLSX delle persone non abbinate**: il modulo esporta `legacyPeopleRows({ legacyQuery, mapping })` (facoltativa: i
+  professionisti dell'app NON presenti in mapping.people nel formato del dataset `people` di routes/importxlsx.js: cognome, nome,
+  titolo, email, codice fiscale, tipo MEDICO/SANITARIO dal tipo Room, stato ATTIVO/CESSATO, ruolo = profilo, disciplina, codice
+  sede = prima sede abilitata abbinata, cellulare, telefono, sesso, data e luogo di nascita, partita IVA, residenza). Il core
+  espone `POST /api/travaso/:key/legacy-people.xlsx` con body `{ mapping }` (400 se il modulo non esporta la funzione; audit
+  LEGACY_PEOPLE_XLSX) che produce il modello Persone precompilato con `buildTemplate('people', { rows, note })` esportata da
+  importxlsx.js (stesso foglio, tendine e foglio Istruzioni del modello scaricabile). Nella finestra di Travaso.jsx, sezione
+  Persone, il pulsante "Scarica XLSX delle persone non abbinate (N)" compare se `legacy_match.people_xlsx` è vero e ci sono
+  persone senza abbinamento; il testo dice di caricare il file in Amministrazione > Importazioni > Persone e riaprire la finestra.
+- **Seconda importazione**: `legacyMatch` propone le persone appena caricate per email, codice fiscale o nome (indice sulle
+  anagrafiche della Suite, proposta solo se univoca); le righe saltate dalla prima importazione non sono mai registrate in
+  legacy_import_map (solo le righe scritte e le entità abbinate), quindi la seconda esecuzione copia scheda Room, documenti,
+  disponibilità, turni, presenze, rendiconti e candidature di quelle persone. Collaudo: sede già configurata con sola planimetria +
+  professionista assente → prima importazione (sezioni integrate, persona saltata) → XLSX → caricamento con POST /api/import/people
+  → seconda importazione (persona riconosciuta per email, 1 scheda, 2 documenti, 2 disponibilità, 3 turni, 1 rendiconto, 2 presenze,
+  1 candidatura copiate) → sezioni svuotate e terza esecuzione: integrate di nuovo. Schermata docs/screens/legacy-import-persone-xlsx.png.
+
+## Profili di accesso (28/10/2026)
+Richiesta del CEO, testuale: "Vorrei creare dei profili per i permessi, in modo da cliccare i profili e assegnarli automaticamente
+[...] Aggiungi inoltre un quadratino prima del nome dell'utente in modo da selezionarlo. In questo modo posso assegnare massivamente
+i profili agli utenti." Il profilo "Default" va "attivato di default a tutti".
+Un profilo di accesso è un pacchetto "widget → profilo del modulo" (`access_profiles`, migrazione 027: name unico, description,
+is_default con indice parziale che ne ammette uno solo, items jsonb `[{module_key, profile}]`, sort_order). Tre profili seminati una
+volta sola (ON CONFLICT DO NOTHING, il CEO li modifica dall'Amministrazione): **Default** (predefinito: rubrica LETTORE, ticket
+RESPONSABILE, circolari VIEWER, sgi LETTORE, cartella ADMIN, room VIEWER, retail VIEWER), **Site Manager** (Default + nc SEDE, orders
+SEDE, cash ADMIN, room PLANNER, retail SEDE), **Direzione** (rubrica LETTORE, ticket RESPONSABILE, circolari PUBBLICATORE, nc SEDE, sgi
+EDITOR, service EDITOR, orders SEDE, cartella ADMIN, cash ADMIN, room PLANNER, retail SEDE, integration EDITOR, business VIEWER,
+comunicazione EDITOR; Room indicata due volte dal CEO, vale Planner). Circolari e Ticket sono open_to_all: il grant si crea lo stesso
+perché fissa il profilo. `grants.profile_id` dice da quale profilo è nato un grant (ON DELETE SET NULL: eliminando il profilo i
+permessi restano); nuova sorgente `PROFILE` nel CHECK di `grants.source`.
+Applicazione (`lib/accessProfiles.js`, `applyProfile(profileId, userIds, { actorId, mode })`): i grant nascono confermati (proposed
+FALSE, source PROFILE); sui moduli con `scope_type = 'SITE'` l'ambito è la sede della persona (people.site_id, altrimenti users.site_id);
+senza sede il grant nasce senza ambito e il rapporto lo segnala (per i profili "scoped", che la sede la richiedono). Modalità
+**merge** (predefinita): aggiunge ciò che manca; aggiorna un grant esistente solo se era una proposta (dall'organigramma) o nato da un
+profilo; un grant manuale (MANUAL/LEGACY/SEED) con profilo diverso resta e finisce negli avvisi; un grant nato da un altro profilo non
+viene declassato (ordine di forza dei profili come in grantRules: così "Applica il Default a tutti" non toglie nulla a chi ha Site
+Manager o Direzione, e lo segnala); un grant uguale resta ("lasciato") e si aggancia al profilo se non ne aveva uno. Modalità
+**replace** (solo via API, su richiesta esplicita): sostituisce tutti i grant dell'utente con quelli del profilo. Rispetta le regole di
+users.js: i moduli riservati li assegna solo il titolare (per un amministratore vengono saltati con avviso), il titolare lo modifica
+solo il titolare. Una modifica manuale del grant (PUT /users/:id/grants/:module, bulk) lo sgancia dal profilo (profile_id NULL,
+source MANUAL): da lì in poi nessun profilo lo tocca. Rapporto `{ users, added, updated, kept, removed, warnings, rows }`.
+`applyDefaultProfile(userId, actorId)` viene chiamata in `ensureUserForPerson` (accesso dalla persona, importazioni, accessi mancanti)
+e nella creazione da Amministrazione > Utenti dopo i grant indicati: ogni nuovo account parte col Default senza perdere quanto scelto a
+mano. `applyDefaultToAll` lo applica a tutti gli utenti ACTIVE/PENDING.
+Route `/api/access-profiles` (`routes/accessProfiles.js`): GET elenco con conteggio utenti, GET /:id con gli utenti, POST/PUT/DELETE
+(requireOwner, validazione degli item contro il catalogo moduli, un solo predefinito), POST /:id/apply { user_ids, mode } e POST
+/default/apply-all (requireAdmin). Audit: ACCESS_PROFILE_CREATED / UPDATED / DELETED / APPLIED (con conteggi e avvisi nei dati).
+Interfaccia: Amministrazione > Accessi > **Profili di accesso** (`pages/admin/AccessProfiles.jsx`): elenco con widget inclusi, numero
+di utenti e badge Default; finestra di creazione/modifica (nome, descrizione, interruttore "profilo predefinito per tutti i nuovi
+utenti", tabella widget → profilo per area con "Nessuno" che toglie la riga; solo lettura per gli amministratori non titolari);
+"Applica il Default a tutti gli utenti" con conferma e rapporto. In **Utenti**: casella a inizio riga e in intestazione (seleziona tutti
+i filtrati; il titolare lo seleziona solo il titolare), barra "N utenti selezionati · Assegna profilo ▾ · Annulla selezione", conferma
+che spiega cosa succede, toast e rapporto (aggiunti / aggiornati / lasciati / avvisi, tabella per utente); la selezione si azzera al
+cambio di filtri o pagina. Nella scheda utente "Applica profilo" con la stessa tendina; le righe dei grant nati da un profilo mostrano
+"dal profilo <nome>" al posto della tagline. Collaudo con db dedicato (API: seed, nuovo utente col Default, merge che non declassa,
+scope sede, replace, permessi admin/titolare, apply-all, audit) e Playwright (docs/screens/profili-*.png).
+
+## Room Planning: portale dei professionisti per gli interni e scorrimento della planimetria (28/10/2026)
+Richieste del CEO, testuali: "In Room Planning: il super amministratore, l'amministratore e il Planner vede anche riepilogo! E può
+selezionare il singolo professionista." "Idem per le mie disponibilità." "Nella pagina della planimetria, non si può scorrere
+(alto/basso) la pagina."
+Portale: le pagine Riepilogo (`portale`) e Disponibilità (`disponibilita`) restano per il PROF nel gruppo "Il mio portale" (voci con
+`onlyProfiles`, invariate: nessuna tendina, solo se stesso) e compaiono anche per ADMIN e PLANNER nel gruppo "Portale dei
+professionisti" (il titolare della Suite nel modulo è ADMIN: `defaultAdminRole`; non esiste un profilo SUPERADMIN in Room, i profili
+sono ADMIN, PLANNER, RESP_SAN, PROF, VIEWER). In cima alla pagina una tendina cercabile "Professionista" (`PersonaPicker` in
+pages/Portale.jsx: elenco di `GET /api/room/portale/professionisti`, cioè le persone attive dell'anagrafica unica con scheda Room in
+`person_ext`) carica riepilogo e disponibilità della persona scelta; la scelta vive nell'indirizzo (`?persona=`) e nella sessione del
+browser, così passando da una pagina all'altra resta. Server (routes/portale.js): tutte le API del portale accettano `?person_id=`
+solo per ADMIN e PLANNER (403 per PROF, RESP_SAN, VIEWER; 404 se la persona non ha la scheda Room); `req.prof` è la persona scelta e
+`req.perConto` lo segnala. Le modifiche delle disponibilità per conto del professionista (DISP_ADD, DISP_UPDATE, DISP_DELETE) vanno
+nel registro attività con l'autore interno e `data = {per_conto, person_id, persona}`; recapiti personali (PUT /me) e candidature
+restano del solo professionista (403 per conto). RESP_SAN e VIEWER senza `person_id` continuano a vedere, se collegati a una persona,
+il proprio portale come prima.
+Planimetria (pages/SedePage.jsx, scheda Planimetria del planner): la regola generale della Suite `.tabs { overflow-x: auto }` si
+applicava anche ai tab del planner, che diventavano un contenitore scorrevole di 1 px in verticale (bordo inferiore del tab attivo):
+dopo il clic su "Planimetria" il fuoco resta sul tab e lo scorrimento da tastiera e trackpad (PageDown, frecce, Fine) finiva nel tab,
+non nella pagina, con una barra di scorrimento spuria accanto ai tab (visibile nella schermata del CEO). Correzione in
+modules/room/styles.css: `.page.rp .tabs { overflow: visible }`. Nessun listener sulla rotellina: la pianta non ha zoom, la pagina
+scorre normalmente anche sopra la planimetria. Collaudo Playwright con sede dalla planimetria alta, due professionisti con scheda Room,
+utenti PLANNER, PROF e VIEWER: docs/screens/room-portale-*.png e room-planimetria-*.png.
+
+## Contratti del personale: dati di base e casella di recruiting (28/10/2026)
+Segnalazione del CEO: "non funziona l'algoritmo effettivamente costruito nell'app originale di Contracts". Causa: con la
+partenza da zero mancavano i dati di base che l'app originale seminava all'avvio (livelli e minimi tabellari CCNL Studi
+Professionali con le tranche 2024-2026, sezioni di sintesi, requisiti del dossier), quindi la scomposizione della RAL non aveva
+il minimo tabellare: paga base = RAL/14, superminimo e indennità a zero. Ora lib/seed.js (`ensureSeed`, job `contracts:dati-base`
+all'avvio e ogni giorno, idempotente) inserisce livelli, minimi, sezioni e requisiti; la scomposizione torna quella delle lettere
+(es. livello 1, RAL 40.000: paga base 2.131,39, superminimo 217,72, indennità 508,03).
+CV Box: il CEO chiede se la casella recruitment@toscanadiagnostica.it è letta. Non lo era (né nell'app originale: solo
+caricamento manuale). Costruito lib/inbox.js: ogni 10 minuti (modulo LIVE) legge con Microsoft Graph le email con allegati della
+casella (impostazioni cv_inbox, cv_inbox_enabled) e crea un CV per ogni allegato PDF/Word (mittente come candidato, oggetto come
+riferimento, sintesi AI se attiva), senza doppioni (cv_box.graph_id, migrazione 018); stato e "Leggi ora" in cima al CV Box.
+Richiede sull'app registration della Suite il permesso applicativo Mail.Read sulla casella recruitment@.

@@ -4,6 +4,7 @@ import { useApi, Card, Badge, Skeleton, Empty, Coming, PageHead } from '../../co
 import { Icon } from '../../components/Icons.jsx';
 import { fmtDateTime, timeAgo } from '../../format.js';
 import { UsersList, UserDetail } from './Users.jsx';
+import { AccessProfiles } from './AccessProfiles.jsx';
 import { Sites, Organizations, PeopleAdmin } from './Registry.jsx';
 import { Modules, Legacy, ApiKeys, Imports, Audit, Settings } from './System.jsx';
 import { Organization } from './Registry.jsx';
@@ -58,6 +59,7 @@ export default function Admin() {
       <Route index element={<Overview />} />
       <Route path="users" element={<UsersList />} />
       <Route path="users/:id" element={<UserDetail />} />
+      <Route path="access-profiles" element={<AccessProfiles />} />
       <Route path="sites" element={<Sites />} />
       <Route path="organizations" element={<Organizations />} />
       <Route path="people" element={<PeopleAdmin />} />

@@ -8,6 +8,7 @@ const GROUPS = [
   { title: 'Costo azienda (ipotesi: verificare con il consulente del lavoro)', keys: [['cost_inps_pct', 'Contributi INPS a carico azienda %'], ['cost_inail_pct', 'INAIL %'], ['cost_tfr_pct', 'TFR %'], ['cost_apprentice_inps_pct', 'INPS apprendisti %'], ['cost_dirigente_extra_pct', 'Extra dirigenti (FASI, Previndai) %'], ['function_allowance_share', 'Quota indennità di funzione sull\'eccedenza (0,7)']] },
   { title: 'Simulatore netto (stime)', keys: [['employee_inps_pct', 'INPS a carico dipendente %'], ['addizionale_regionale_pct', 'Addizionale regionale %'], ['addizionale_comunale_pct', 'Addizionale comunale %'], ['irpef_brackets', 'Scaglioni IRPEF (JSON)']] },
   { title: 'Scadenze', keys: [['deadline_alert_days', 'Giorni di allerta in dashboard']] },
+  { title: 'CV Box: casella di recruiting letta con Microsoft Graph', keys: [['cv_inbox', 'Indirizzo della casella'], ['cv_inbox_enabled', 'Lettura automatica attiva (true / false)']] },
 ];
 
 export default function Settings() {

@@ -7,6 +7,7 @@ import { requireAdmin, requireOwner } from '../lib/access.js';
 import { runTravaso, compareCounts, goLive, backToMirror, isRunning, FRESH_MODULES } from '../lib/travaso.js';
 import { getModuleState } from '../lib/modules.js';
 import { sourceEnabled, legacyQuery, legacyQueryLong } from '../lib/legacy.js';
+import { buildTemplate } from './importxlsx.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,19 +21,21 @@ r.get('/travaso', requireAdmin, ah(async (_req, res) => {
   const out = [];
   for (const m of mods) {
     const st = await getModuleState(m.key);
-    out.push({ ...m, ...st, fresh: FRESH_MODULES.includes(m.key), source_enabled: sourceEnabled(m.key), code_ready: hasCode(m.key), running: isRunning(m.key), legacy_import: await supportsLegacyImport(m.key) });
+    const li = await supportsLegacyImport(m.key);
+    out.push({ ...m, ...st, fresh: FRESH_MODULES.includes(m.key), source_enabled: sourceEnabled(m.key), code_ready: hasCode(m.key), running: isRunning(m.key), legacy_import: li.ok, legacy_people_xlsx: li.people });
   }
   res.json(out);
 }));
 
-// Il modulo sa importare i contenuti dall'app originale (esporta legacyMatch e legacyImport)
+// Il modulo sa importare i contenuti dall'app originale (esporta legacyMatch e legacyImport); people = sa anche produrre le righe
+// delle persone non abbinate per il modello XLSX di Importazioni (legacyPeopleRows, facoltativa)
 const legacyImportCache = new Map();
 async function supportsLegacyImport(key) {
-  if (!FRESH_MODULES.includes(key) || !hasCode(key)) return false;
+  if (!FRESH_MODULES.includes(key) || !hasCode(key)) return { ok: false, people: false };
   if (!legacyImportCache.has(key)) {
-    let ok = false;
-    try { const mod = await import(`../modules/${key}/index.js`); ok = typeof mod.legacyMatch === 'function' && typeof mod.legacyImport === 'function'; } catch { ok = false; }
-    legacyImportCache.set(key, ok);
+    let v = { ok: false, people: false };
+    try { const mod = await import(`../modules/${key}/index.js`); v = { ok: typeof mod.legacyMatch === 'function' && typeof mod.legacyImport === 'function', people: typeof mod.legacyPeopleRows === 'function' }; } catch { v = { ok: false, people: false }; }
+    legacyImportCache.set(key, v);
   }
   return legacyImportCache.get(key);
 }
@@ -110,7 +113,26 @@ r.get('/travaso/:key/legacy-match', requireAdmin, ah(async (req, res) => {
     tables: out.tables || [],
     catalog: { ...catalog, ...(out.catalog || {}) },
     warnings: out.warnings || [],
+    people_xlsx: typeof mod.legacyPeopleRows === 'function',
   });
+}));
+
+// Persone dell'app originale non abbinate: modello XLSX del dataset "people" di Importazioni precompilato con tutto ciò che l'app sa di
+// loro (il modulo le descrive con legacyPeopleRows). Caricato in Amministrazione > Importazioni > Persone, una nuova apertura della
+// finestra le riconosce (email, codice fiscale, nome) e la seconda importazione copia ciò che la prima aveva saltato.
+r.post('/travaso/:key/legacy-people.xlsx', requireAdmin, ah(async (req, res) => {
+  const { key } = req.params;
+  check(key);
+  const mod = await legacyModule(key);
+  if (typeof mod.legacyPeopleRows !== 'function') throw bad(`Il modulo ${key} non prevede il file delle persone non abbinate`);
+  const mapping = cleanMapping(req.body?.mapping);
+  const rows = await mod.legacyPeopleRows({ legacyQuery: (sql, params) => legacyQuery(key, sql, params), mapping, key }).catch((e) => { throw bad(`Lettura dell'app originale non riuscita: ${e.message}`); });
+  const mod0 = await many('SELECT name FROM modules WHERE key=$1', [key]);
+  const { wb } = await buildTemplate('people', { rows, note: `Persone dell'app originale di ${mod0[0]?.name || key} non abbinate all'anagrafica della Suite (${rows.length}). Dopo il caricamento riapri "Importa i contenuti dall'app originale": verranno riconosciute per email o codice fiscale.` });
+  await audit(req, 'LEGACY_PEOPLE_XLSX', { module: key, label: `${rows.length} persone non abbinate nel file`, data: { rows: rows.length } });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="SuiteTD_persone_${key}_da_abbinare.xlsx"`);
+  await wb.xlsx.write(res); res.end();
 }));
 
 const cleanMapping = (m) => {

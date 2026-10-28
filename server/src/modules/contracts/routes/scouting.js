@@ -5,6 +5,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, notFound, audit, parse, HttpError } from '../lib/util.js';
 import { requireWrite, requireRole, readLog } from '../lib/access.js';
 import { config } from '../config.js';
+import { inboxStatus, pollRecruitingInbox } from '../lib/inbox.js';
 import { extractText, quickFacts, summarizeCv } from '../lib/cv.js';
 import { personSchema } from './resources.js';
 import { createPerson, updatePerson, reindexPerson } from '../lib/people.js';
@@ -207,6 +208,14 @@ r.delete('/letters/:id', requireRole('ADMIN'), ah(async (req, res) => {
 // Lettere accettate non ancora convertite: base per il contratto di assunzione
 r.get('/letters-accepted', ah(async (_req, res) => {
   res.json(await many(`SELECT c.*, r.last_name, r.first_name, r.tax_code FROM commitment_letters c JOIN resources_v r ON r.id=c.resource_id WHERE c.status='ACCETTATA' ORDER BY c.accepted_at DESC`));
+}));
+
+// ---------------- Casella di recruiting (Microsoft Graph) ----------------
+r.get('/cv-inbox', ah(async (_req, res) => res.json(await inboxStatus())));
+r.post('/cv-inbox/poll', requireWrite, ah(async (req, res) => {
+  const out = await pollRecruitingInbox({ force: true });
+  await audit(req, 'CV_INBOX_POLL', 'cv', null, out);
+  res.json({ ...out, status: await inboxStatus() });
 }));
 
 export default r;

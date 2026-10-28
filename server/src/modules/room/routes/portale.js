@@ -1,18 +1,45 @@
 // Portale del professionista (ruolo PROF): i propri dati, disponibilità, turni confermati, presenze, rendiconti, bacheca.
 // Il professionista è la persona dell'anagrafica unica collegata all'utente (req.user.person_id); la scheda Room è in person_ext.
+// Richiesta del CEO (28/10/2026): Amministratore e Planner vedono riepilogo e disponibilità di un professionista a scelta.
+// Con `?person_id=` (solo ADMIN/PLANNER, 403 per gli altri) il portale lavora sulla persona indicata (req.prof) e le modifiche
+// per conto del professionista finiscono nel registro attività con la persona (req.perConto).
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, forbidden, audit, parse } from '../lib/util.js';
-import { profOfUser, sediMap, validMese, discipline } from '../lib/personale.js';
+import { profOfUser, sediMap, validMese, discipline, PROF_COLS } from '../lib/personale.js';
 import { dispSchema, saveDisp } from './personale.js';
 
 const r = Router();
-r.use(ah(async (req, _res, next) => {
-  const p = await profOfUser(req.user);
-  if (!p) throw forbidden('Nessuna persona dell\'anagrafica collegata a questo utente: contatta il Responsabile del personale sanitario (Amministrazione > Persone)');
-  req.prof = p; next();
+// Profili interni che possono aprire il portale di un altro professionista
+const PER_CONTO = ['ADMIN', 'PLANNER'];
+const canPerConto = (u) => PER_CONTO.includes(u?.role);
+
+// Elenco dei professionisti con scheda Room (person_ext) per la tendina "Professionista" di riepilogo e disponibilità
+r.get('/professionisti', ah(async (req, res) => {
+  if (!canPerConto(req.user)) throw forbidden('Riservato ad Amministratore e Planner');
+  const rows = await many(`SELECT p.id, p.nome, p.tipo, p.profilo, p.email, p.discipline, p.dati, p.attivo, p.pianificabile, p.site_name FROM professionisti_v p WHERE p.in_room AND p.attivo ORDER BY lower(p.nome)`);
+  res.json(rows.map((p) => ({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, discipline: discipline(p), pianificabile: p.pianificabile, sede: p.site_name || null })));
 }));
+
+r.use(ah(async (req, _res, next) => {
+  const pid = req.query.person_id;
+  if (pid != null && String(pid) !== '') {
+    if (!canPerConto(req.user)) throw forbidden('Il portale di un altro professionista è consultabile solo da Amministratore e Planner');
+    const id = Number(pid);
+    if (!Number.isInteger(id) || id <= 0) throw bad('person_id non valido');
+    const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1 AND p.in_room`, [id]);
+    if (!p) throw notFound('Professionista senza scheda Room Planning');
+    req.prof = p; req.perConto = true; return next();
+  }
+  const p = await profOfUser(req.user);
+  if (!p) throw forbidden(canPerConto(req.user) ? 'Scegli un professionista: il tuo utente non è collegato a una persona dell\'anagrafica' : 'Nessuna persona dell\'anagrafica collegata a questo utente: contatta il Responsabile del personale sanitario (Amministrazione > Persone)');
+  req.prof = p; req.perConto = false; next();
+}));
+// Dati per il registro attività quando un interno agisce per conto del professionista
+const perConto = (req, extra = {}) => (req.perConto ? { per_conto: true, person_id: req.prof.id, persona: req.prof.nome, ...extra } : (Object.keys(extra).length ? extra : undefined));
+// Azioni che restano del solo professionista (recapiti personali, candidature)
+const soloProprio = (req) => { if (req.perConto) throw forbidden('Questa operazione la fa il professionista dal proprio portale'); };
 
 // Recapiti integrativi che il professionista può aggiornare da solo (quelli non presenti nell'anagrafica unica); nome, email, telefono e
 // codice fiscale si modificano in Amministrazione > Persone o in Contratti del personale
@@ -21,12 +48,13 @@ const SELF = ['pec', 'iban', 'intestatarioConto'];
 r.get('/me', ah(async (req, res) => {
   const p = req.prof; const sm = await sediMap();
   const docs = await many('SELECT id, tipo, nome, size, scadenza, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
-  res.json({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, telefono: p.phone, codiceFiscale: p.tax_code, inRoom: p.in_room,
+  res.json({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo, email: p.email, telefono: p.phone, codiceFiscale: p.tax_code, inRoom: p.in_room, perConto: req.perConto,
     anagrafica: { ...(p.dati?.anagrafica || {}), codiceFiscale: p.tax_code || '', telefono: p.phone || '', luogoNascita: p.birth_place || '', partitaIva: p.vat_number || '', indirizzo: p.address || '', cap: p.zip || '', citta: p.city || '', provincia: p.province || '' }, professionale: { ...(p.dati?.professionale || {}), discipline: discipline(p) }, contratto: p.dati?.contratto || {}, assicurazione: p.dati?.assicurazione || {},
     compenso: { tipo: p.dati?.compenso?.tipo || 'ORARIO', tariffaOraria: p.dati?.compenso?.tariffaOraria || null, fissoMensile: p.dati?.compenso?.fissoMensile || null, eccezioniSede: (p.dati?.compenso?.eccezioniSede || []).map((e) => ({ ...e, sede: sm[e.sedeId] || e.sedeId })) },
     sediAbilitate: (p.dati?.sediAbilitate || []).map((id) => ({ id, label: sm[id] || id })), docs, selfFields: SELF });
 }));
 r.put('/me', ah(async (req, res) => {
+  soloProprio(req);
   const d = parse(z.object(Object.fromEntries(SELF.map((k) => [k, z.string().max(200).optional().nullable()]))), req.body);
   const dati = { ...(req.prof.dati || {}) }; dati.anagrafica = { ...(dati.anagrafica || {}) };
   for (const k of SELF) if (d[k] !== undefined) dati.anagrafica[k] = d[k] || '';
@@ -38,12 +66,15 @@ r.get('/sedi', ah(async (_req, res) => { const sm = await sediMap(); res.json(Ob
 
 // Disponibilità
 r.get('/disponibilita', ah(async (req, res) => res.json(await many('SELECT * FROM disponibilita WHERE prof_id=$1 ORDER BY kind, giorno, data, ora_da', [req.prof.id]))));
-r.post('/disponibilita', ah(async (req, res) => { const d = parse(dispSchema, req.body); const id = await saveDisp(req.prof.id, d); await audit(req, 'DISP_ADD', 'disponibilita', id); res.status(201).json({ id }); }));
+r.post('/disponibilita', ah(async (req, res) => { const d = parse(dispSchema, req.body); const id = await saveDisp(req.prof.id, d); await audit(req, 'DISP_ADD', 'disponibilita', id, perConto(req)); res.status(201).json({ id }); }));
 r.put('/disponibilita/:id', ah(async (req, res) => {
   const row = await one('SELECT id FROM disponibilita WHERE id=$1 AND prof_id=$2', [req.params.id, req.prof.id]); if (!row) throw notFound();
-  await saveDisp(req.prof.id, parse(dispSchema, req.body), row.id); res.json({ ok: true });
+  await saveDisp(req.prof.id, parse(dispSchema, req.body), row.id); await audit(req, 'DISP_UPDATE', 'disponibilita', row.id, perConto(req)); res.json({ ok: true });
 }));
-r.delete('/disponibilita/:id', ah(async (req, res) => { await q('DELETE FROM disponibilita WHERE id=$1 AND prof_id=$2', [req.params.id, req.prof.id]); res.json({ ok: true }); }));
+r.delete('/disponibilita/:id', ah(async (req, res) => {
+  const row = await one('SELECT id FROM disponibilita WHERE id=$1 AND prof_id=$2', [req.params.id, req.prof.id]); if (!row) return res.json({ ok: true });
+  await q('DELETE FROM disponibilita WHERE id=$1', [row.id]); await audit(req, 'DISP_DELETE', 'disponibilita', row.id, perConto(req)); res.json({ ok: true });
+}));
 
 // Turni (solo mesi confermati) e presenze
 r.get('/turni', ah(async (req, res) => {
@@ -73,11 +104,12 @@ r.get('/posizioni', ah(async (req, res) => {
   res.json(rows.map((x) => ({ ...x, sede: x.sede_id ? sm[x.sede_id] || x.sede_id : 'qualsiasi sede' })));
 }));
 r.post('/posizioni/:id/candidati', ah(async (req, res) => {
+  soloProprio(req);
   const po = await one("SELECT id FROM posizioni WHERE id=$1 AND stato='APERTA'", [req.params.id]); if (!po) throw notFound('Posizione non più aperta');
   const nota = String(req.body?.nota || '').slice(0, 500);
   await q('INSERT INTO candidature (posizione_id, prof_id, nota) VALUES ($1,$2,$3) ON CONFLICT (posizione_id, prof_id) DO UPDATE SET nota=$3, stato=\'INVIATA\', created_at=now()', [po.id, req.prof.id, nota || null]);
   await audit(req, 'CANDIDATURA', 'posizioni', po.id); res.status(201).json({ ok: true });
 }));
-r.delete('/posizioni/:id/candidati', ah(async (req, res) => { await q("DELETE FROM candidature WHERE posizione_id=$1 AND prof_id=$2 AND stato='INVIATA'", [req.params.id, req.prof.id]); res.json({ ok: true }); }));
+r.delete('/posizioni/:id/candidati', ah(async (req, res) => { soloProprio(req); await q("DELETE FROM candidature WHERE posizione_id=$1 AND prof_id=$2 AND stato='INVIATA'", [req.params.id, req.prof.id]); res.json({ ok: true }); }));
 
 export default r;

@@ -16,6 +16,8 @@ import { HttpError, forbidden } from '../../lib/util.js';
 import { config } from './config.js';
 import { publicUser } from './lib/access.js';
 import { applyDueTerminations } from './lib/termination.js';
+import { ensureSeed } from './lib/seed.js';
+import { pollRecruitingInbox } from './lib/inbox.js';
 import adminRoutes from './routes/admin.js';
 import resourceRoutes from './routes/resources.js';
 import documentRoutes from './routes/documents.js';
@@ -74,6 +76,18 @@ export default function mount(app) {
   app.use(`/api/${KEY}`, r);
 
   // Cessazioni con decorrenza raggiunta: una volta al giorno, solo con modulo LIVE (in MIRROR i dati arrivano dall'app originale)
+  // Dati di base (livelli e minimi CCNL, requisiti del dossier): una volta al giorno e all'avvio, solo con modulo pronto
+  registerJob(`${KEY}:dati-base`, 24 * 60, async () => {
+    const st = await getModuleState(KEY);
+    if (!st.schema_ready) return { skipped: true };
+    return ensureSeed();
+  }, { runAtStart: true });
+  // Casella recruitment@: ogni 10 minuti i CV allegati alle email entrano nel CV Box (solo modulo LIVE)
+  registerJob(`${KEY}:cv-inbox`, 10, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
+    return pollRecruitingInbox();
+  }, { runAtStart: true });
   registerJob(`${KEY}:cessazioni`, 24 * 60, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };

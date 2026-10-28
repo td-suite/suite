@@ -13,6 +13,9 @@ export default function CvBox() {
   const list = useApi(`/scouting/cv${qs(f)}`);
   const areas = useApi('/areas');
   const settings = useApi('/settings');
+  const inbox = useApi('/scouting/cv-inbox');
+  const [polling, setPolling] = useState(false);
+  const pollNow = async () => { setPolling(true); try { const r = await api.post('/scouting/cv-inbox/poll'); toast(r.skipped ? `Lettura non eseguita: ${r.skipped.replace(/_/g, ' ')}` : `${r.created} CV nuovi su ${r.fetched} email lette`); inbox.reload(); list.reload(); } catch (e) { toast(e.message, 'err'); } setPolling(false); };
   const [modal, setModal] = useState(null);
   const [sel, setSel] = useState(null);
   const cur = sel && (list.data || []).find((c) => c.id === sel);
@@ -24,6 +27,17 @@ export default function CvBox() {
         <div><h1>CV Box</h1><div className="sub">Repository dei curriculum ricevuti, con sintesi del profilo e area di potenziale destinazione.{settings.data?.aiEnabled ? ' La sintesi viene proposta automaticamente al caricamento.' : ' Sintesi automatica non attiva (configurare ANTHROPIC_API_KEY): la sintesi si scrive a mano.'}</div></div>
         {writer && <button className="btn" onClick={() => setModal('upload')}><Icon name="upload" />Carica CV</button>}
       </div>
+      {inbox.data && (
+        <div className={`alert ${inbox.data.configured && inbox.data.enabled && !inbox.data.last_error ? 'info' : 'warn'} small`} style={{ marginBottom: 12 }}>
+          <Icon name="mail" />
+          <span>
+            {inbox.data.configured
+              ? <>Casella <b>{inbox.data.mailbox}</b>: {inbox.data.enabled ? 'letta ogni 10 minuti' : 'lettura disattivata (Impostazioni)'}; i CV allegati alle email entrano qui da soli ({inbox.data.imported} finora).{inbox.data.last_poll ? ` Ultima lettura ${new Date(inbox.data.last_poll).toLocaleString('it-IT')}.` : ' Nessuna lettura ancora eseguita.'}{inbox.data.last_error ? ` Ultimo errore: ${inbox.data.last_error}` : ''}</>
+              : <>Casella <b>{inbox.data.mailbox}</b> non collegata: mancano le credenziali Microsoft della Suite (Entra) con il permesso Mail.Read sulla casella. Fino ad allora i CV si caricano a mano.</>}
+          </span>
+          {writer && inbox.data.configured && <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={polling} onClick={pollNow}>{polling ? 'Lettura in corso' : 'Leggi ora'}</button>}
+        </div>
+      )}
       <div className="filters">
         <Field label="Cerca"><input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Nome, ruolo, parole della sintesi" /></Field>
         <Field label="Stato"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">Tutti</option>{Object.entries(CV_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>

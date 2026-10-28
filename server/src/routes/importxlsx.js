@@ -175,18 +175,25 @@ async function applyUserRow(c, row, ctx) {
 }
 
 // ---- Modelli XLSX
-r.get('/import/templates/:dataset', requireAdmin, ah(async (req, res) => {
-  const d = DATASETS[req.params.dataset];
+/** Cartella di lavoro del modello di un dataset: foglio dati (intestazioni, riga di esempio o righe precompilate, tendine) e foglio
+ *  "Istruzioni". Con rows (oggetti con le chiavi delle colonne) il modello esce precompilato al posto dell'esempio: lo usa anche
+ *  l'importazione dei contenuti dall'app originale per le persone non abbinate (routes/travaso.js). Ritorna { wb, filename }. */
+export async function buildTemplate(dataset, { rows = null, note = null } = {}) {
+  const d = DATASETS[dataset];
   if (!d) throw new HttpError(404, 'Modello inesistente');
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Suite TD';
   const ws = wb.addWorksheet(d.sheet, { views: [{ state: 'frozen', ySplit: 1 }] });
   ws.columns = d.columns.map(([key, label]) => ({ header: key, key, width: Math.max(14, Math.min(40, label.length + 6)) }));
   ws.getRow(1).font = { bold: true }; ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F0F2' } };
-  ws.addRow(d.example);
-  ws.getRow(2).font = { italic: true, color: { argb: 'FF6B7F85' } };
+  if (rows) {
+    for (const row of rows) ws.addRow(d.columns.map(([key]) => (row[key] == null ? '' : (typeof row[key] === 'boolean' ? (row[key] ? 'SI' : 'NO') : row[key]))));
+  } else {
+    ws.addRow(d.example);
+    ws.getRow(2).font = { italic: true, color: { argb: 'FF6B7F85' } };
+  }
   // Validazioni a tendina per i campi con valori ammessi
-  const lists = { kind: req.params.dataset === 'sites' ? SITE_KINDS : req.params.dataset === 'organizations' ? ORG_KINDS : req.params.dataset === 'orgchart' ? ['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE'] : PERSON_KINDS, is_head: ['SI', 'NO'], branch: ['LINEA', 'STAFF'], status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
+  const lists = { kind: dataset === 'sites' ? SITE_KINDS : dataset === 'organizations' ? ORG_KINDS : dataset === 'orgchart' ? ['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE'] : PERSON_KINDS, is_head: ['SI', 'NO'], branch: ['LINEA', 'STAFF'], status: PERSON_STATUS, active: ['SI', 'NO'], send_invite: ['SI', 'NO'], level: ['USER', 'ADMIN'], auth: ['ENTRA', 'LOCAL'] };
   d.columns.forEach(([key], i) => {
     if (!lists[key]) return;
     const col = ws.getColumn(i + 1).letter;
@@ -196,16 +203,24 @@ r.get('/import/templates/:dataset', requireAdmin, ah(async (req, res) => {
   info.columns = [{ header: 'Colonna', key: 'k', width: 24 }, { header: 'Etichetta', key: 'l', width: 26 }, { header: 'Istruzioni', key: 'i', width: 110 }];
   info.getRow(1).font = { bold: true };
   for (const [key, label, help] of d.columns) info.addRow({ k: key, l: label, i: help });
-  info.addRow({}); info.addRow({ k: 'Note', i: `Compila il foglio "${d.sheet}" lasciando la riga 1 (intestazioni) così com'è; la riga 2 è un esempio da sostituire o cancellare. Massimo 1000 righe per file. Le righe già presenti (stessa chiave) vengono aggiornate, non duplicate. Carica il file in Amministrazione > Importazioni.` });
-  if (req.params.dataset === 'users') {
+  info.addRow({}); info.addRow({ k: 'Note', i: rows
+    ? `Il foglio "${d.sheet}" è precompilato: controlla e completa le righe lasciando la riga 1 (intestazioni) così com'è. Massimo 1000 righe per file. Le righe già presenti (stessa chiave) vengono aggiornate, non duplicate. Carica il file in Amministrazione > Importazioni.`
+    : `Compila il foglio "${d.sheet}" lasciando la riga 1 (intestazioni) così com'è; la riga 2 è un esempio da sostituire o cancellare. Massimo 1000 righe per file. Le righe già presenti (stessa chiave) vengono aggiornate, non duplicate. Carica il file in Amministrazione > Importazioni.` });
+  if (note) info.addRow({ k: 'Origine', i: note });
+  if (dataset === 'users') {
     const mods = await many(`SELECT key, name, restricted, scope_type, profiles FROM modules WHERE active AND kind <> 'PUBLIC' ORDER BY area, sort_order`);
     const ms = wb.addWorksheet('Moduli');
     ms.columns = [{ header: 'modulo', key: 'k', width: 16 }, { header: 'Nome', key: 'n', width: 30 }, { header: 'Profili ammessi (* = richiede le sedi)', key: 'p', width: 70 }, { header: 'Note', key: 'x', width: 40 }];
     ms.getRow(1).font = { bold: true };
     for (const m of mods) ms.addRow({ k: m.key, n: m.name, p: (m.profiles || []).map((p) => `${p.key}${p.scoped ? '*' : ''}${p.label ? ` (${p.label})` : ''}`).join(', '), x: m.restricted ? 'Riservato: solo il titolare' : '' });
   }
+  return { wb, filename: `SuiteTD_modello_${d.sheet.toLowerCase()}.xlsx`, dataset: d };
+}
+
+r.get('/import/templates/:dataset', requireAdmin, ah(async (req, res) => {
+  const { wb, filename } = await buildTemplate(req.params.dataset);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="SuiteTD_modello_${d.sheet.toLowerCase()}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   await wb.xlsx.write(res); res.end();
 }));
 

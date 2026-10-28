@@ -17,6 +17,7 @@ import { loadConnectors } from './lib/connectors.js';
 import connectorsRoutes from './routes/connectors.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
+import accessProfilesRoutes from './routes/accessProfiles.js';
 import coreRoutes from './routes/core.js';
 import ssoRoutes from './routes/sso.js';
 import communityRoutes from './routes/community.js';
@@ -103,6 +104,7 @@ app.use('/api/public', communityRoutes.public || ((_req, _res, next) => next()))
 app.use('/api', requireAuth);
 app.use('/api', ssoRoutes);
 app.use('/api', usersRoutes);
+app.use('/api/access-profiles', accessProfilesRoutes);   // profili di accesso: pacchetti di permessi (Amministrazione)
 app.use('/api', coreRoutes);
 app.use('/api', communityRoutes);
 app.use('/api', filesRoutes);

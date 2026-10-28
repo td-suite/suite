@@ -43,17 +43,45 @@ function MatchSelect({ row, value, onChange, catalog, filter }) {
   );
 }
 
-function MatchSection({ kind, rows, catalog, mapping, setMapping }) {
+// Scarica un file (XLSX) con una POST: l'api client restituisce testo, qui serve il binario con nome del file
+async function downloadPost(url, body, fallbackName) {
+  const res = await fetch(`/api${url}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'td-suite', 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  if (!res.ok) { let msg = `Errore ${res.status}`; try { const j = await res.json(); msg = j.error || msg; } catch { /* corpo non JSON */ } throw new Error(msg); }
+  const name = (/filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '') || [])[1] || fallbackName;
+  const blob = await res.blob();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+function MatchSection({ kind, rows, catalog, mapping, setMapping, peopleXlsx, moduleKey, fullMapping }) {
   const [filter, setFilter] = useState('');
+  const [dl, setDl] = useState(false);
+  const toast = useToast();
   const [title, single, hint] = ENTITY[kind];
   if (!rows.length) return <div className="mb2"><h3 style={{ margin: '0 0 6px' }}>{title}</h3><div className="small muted">Nessuna {single} nell'app originale.</div></div>;
   const matched = rows.filter((r) => mapping[r.legacy_id]).length;
+  const unmatched = rows.length - matched;
+  const downloadPeople = async () => {
+    setDl(true);
+    try { await downloadPost(`/travaso/${moduleKey}/legacy-people.xlsx`, { mapping: fullMapping }, 'SuiteTD_persone_da_abbinare.xlsx'); toast(`File con ${unmatched} persone da caricare in Amministrazione > Importazioni > Persone`); }
+    catch (e) { toast(e, 'err'); }
+    setDl(false);
+  };
   return (
     <div className="mb2">
       <div className="row between mb">
         <div><h3 style={{ margin: 0 }}>{title}</h3><div className="small muted">{matched} su {rows.length} abbinate · le non abbinate si saltano insieme ai loro contenuti</div></div>
         <div className="search-input" style={{ minWidth: 240 }}><Icon name="search" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Cerca nelle anagrafiche (${hint})`} aria-label={`Cerca ${single}`} /></div>
       </div>
+      {kind === 'people' && peopleXlsx && unmatched > 0 && (
+        <div className="alert info small mb" data-testid="legacy-people-xlsx">
+          <Icon name="download" />
+          <span>
+            <button type="button" className="btn sm" disabled={dl} onClick={downloadPeople} style={{ marginRight: 8 }}><Icon name="download" />{dl ? 'Preparazione del file' : `Scarica XLSX delle persone non abbinate (${unmatched})`}</button>
+            Persone presenti nell'app originale ma non in Persone: carica il file in <Link to="/admin/imports">Amministrazione &gt; Importazioni &gt; Persone</Link>, poi riapri questa finestra: le persone verranno riconosciute per email o codice fiscale e la nuova importazione copierà i loro contenuti.
+          </span>
+        </div>
+      )}
       <table className="t"><thead><tr><th>App originale</th><th>Proposta</th><th style={{ width: '45%' }}>Anagrafica della Suite</th></tr></thead>
         <tbody>{rows.map((r) => (
           <tr key={r.legacy_id}>
@@ -122,12 +150,12 @@ function LegacyImportModal({ m, onClose, onDone }) {
         <div className="alert info small"><Icon name="info" /><span>Le sedi e le persone dell'app originale vanno abbinate all'anagrafica unica della Suite: la proposta automatica usa codice, email, codice fiscale o partita IVA e nome. Nessuna anagrafica viene creata o modificata; ciò che non è abbinato si salta e compare nel rapporto. {matched} abbinamenti su {total}.</span></div>
         {duplicates > 0 && <div className="alert warn small"><Icon name="alert" /><span>La stessa anagrafica della Suite è scelta per {duplicates > 1 ? `${duplicates} coppie di voci` : 'due voci'} dell'app originale: i loro contenuti confluiranno nella stessa scheda (va bene se nell'app c'erano doppioni). Se non è voluto, correggi gli abbinamenti.</span></div>}
         {(data.warnings || []).map((w, i) => <div key={i} className="alert warn small"><Icon name="alert" /><span>{w}</span></div>)}
-        {['sites', 'people', 'organizations'].map((k) => <MatchSection key={k} kind={k} rows={data.entities[k] || []} catalog={data.catalog[k] || []} mapping={map[k]} setMapping={setMapping} />)}
+        {['sites', 'people', 'organizations'].map((k) => <MatchSection key={k} kind={k} rows={data.entities[k] || []} catalog={data.catalog[k] || []} mapping={map[k]} setMapping={setMapping} peopleXlsx={Boolean(data.people_xlsx)} moduleKey={m.key} fullMapping={map} />)}
         <h3 style={{ margin: '0 0 6px' }}>Contenuti dell'app originale</h3>
         <div className="row tight small">{(data.tables || []).map((t) => <span key={t.table} className="chip" title={t.table}>{tableIt(t.table)} <b>{t.rows.toLocaleString('it-IT')}</b></span>)}</div>
         {result && <ImportReport r={result} />}
       </>}
-      {confirm && <ConfirmModal title={`Importare i contenuti in ${m.name}?`} text={`${matched} sedi e persone abbinate: impostazioni, planimetrie, turni, presenze, rendiconti e gli altri contenuti dell'app originale vengono copiati nella Suite con gli id dell'anagrafica unica. Ciò che è già presente nella Suite non viene sovrascritto; le righe non abbinate si saltano. Usa prima "Prova senza scrivere" per vedere il piano.`} confirmText="Importa" onConfirm={() => run(false)} onClose={() => setConfirm(false)} />}
+      {confirm && <ConfirmModal title={`Importare i contenuti in ${m.name}?`} text={`${matched} sedi e persone abbinate: impostazioni, planimetrie, turni, presenze, rendiconti e gli altri contenuti dell'app originale vengono copiati nella Suite con gli id dell'anagrafica unica. Ciò che è già presente nella Suite non viene sovrascritto (una sede già configurata viene integrata sezione per sezione: ambulatori, personale, orari... solo dove nella Suite mancano); le righe non abbinate si saltano. Usa prima "Prova senza scrivere" per vedere il piano.`} confirmText="Importa" onConfirm={() => run(false)} onClose={() => setConfirm(false)} />}
     </Modal>
   );
 }

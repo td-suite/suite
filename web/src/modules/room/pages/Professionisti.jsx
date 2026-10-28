@@ -234,23 +234,25 @@ function Accesso({ p }) {
   );
 }
 
-export function DisponibilitaProf({ profId, sedi, toast, portale = false }) {
+// portale: le API del portale (la persona dell'utente); personId (solo con portale): Amministratore o Planner per conto del professionista scelto
+export function DisponibilitaProf({ profId, sedi, toast, portale = false, personId = null }) {
   const base = portale ? '/portale/disponibilita' : `/personale/disponibilita`;
-  const { data, reload } = useApi(portale ? base : `${base}?prof_id=${profId}`);
+  const pq = portale && personId ? `?person_id=${personId}` : '';
+  const { data, reload } = useApi(portale ? `${base}${pq}` : `${base}?prof_id=${profId}`);
   const [edit, setEdit] = useState(null);
   const sedeName = (id) => { const s = (sedi || []).find((x) => x.id === id); return s ? (s.label || sedeLabel(s)) : id; };
   const save = async () => {
     try {
       const body = { ...edit, giorno: edit.kind === 'SETTIMANALE' ? Number(edit.giorno) : null, data: edit.kind === 'DATA' ? edit.data : null, ...(portale ? {} : { prof_id: profId }) };
-      if (edit.id) await api.put(`${base}/${edit.id}`, body); else await api.post(base, body);
+      if (edit.id) await api.put(`${base}/${edit.id}${pq}`, body); else await api.post(`${base}${pq}`, body);
       setEdit(null); reload(); toast('Disponibilità salvata');
     } catch (e) { toast(e.message, 'err'); }
   };
-  const del = async (d) => { if (!window.confirm('Eliminare questa disponibilità?')) return; try { await api.del(`${base}/${d.id}`); reload(); } catch (e) { toast(e.message, 'err'); } };
+  const del = async (d) => { if (!window.confirm('Eliminare questa disponibilità?')) return; try { await api.del(`${base}/${d.id}${pq}`); reload(); } catch (e) { toast(e.message, 'err'); } };
   const sett = (data || []).filter((d) => d.kind === 'SETTIMANALE'), date = (data || []).filter((d) => d.kind === 'DATA');
   return (
-    <Card title={portale ? 'Le mie disponibilità' : 'Disponibilità offerte'} actions={<button className="btn sm" onClick={() => setEdit({ kind: 'SETTIMANALE', giorno: 0, ora_da: '08:00', ora_a: '14:00', sedi: [], nota: '', valid_dal: '', valid_al: '' })}>+ Aggiungi</button>}>
-      <p className="small muted" style={{ marginTop: 0 }}>{portale ? 'Indica giorni, orari e sedi in cui sei disponibile oltre agli impegni già in calendario: la struttura valuta cosa integrare e ti propone i turni.' : 'Fasce in cui il professionista si rende disponibile (ricorrenti per giorno della settimana, oppure in date precise), eventualmente limitate ad alcune sedi.'}</p>
+    <Card title={portale && !personId ? 'Le mie disponibilità' : 'Disponibilità offerte'} actions={<button className="btn sm" onClick={() => setEdit({ kind: 'SETTIMANALE', giorno: 0, ora_da: '08:00', ora_a: '14:00', sedi: [], nota: '', valid_dal: '', valid_al: '' })}>+ Aggiungi</button>}>
+      <p className="small muted" style={{ marginTop: 0 }}>{portale && !personId ? 'Indica giorni, orari e sedi in cui sei disponibile oltre agli impegni già in calendario: la struttura valuta cosa integrare e ti propone i turni.' : 'Fasce in cui il professionista si rende disponibile (ricorrenti per giorno della settimana, oppure in date precise), eventualmente limitate ad alcune sedi.'}</p>
       {!data ? <Loading /> : (
         <>
           <div className="win-grid">{[0, 1, 2, 3, 4, 5, 6].map((g) => <div key={g} className="win-day"><div className="small strong">{DAYS[g]}</div>

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { syncUserFromPerson } from '../lib/accounts.js';
+import { applyDefaultProfile } from '../lib/accessProfiles.js';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
@@ -84,9 +85,9 @@ r.get('/users/summary', requireAdmin, ah(async (_req, res) => {
 r.get('/users/:id', requireAdmin, ah(async (req, res) => {
   const u = await hydrateUser(Number(req.params.id));
   if (!u) throw notFound();
-  const grants = await many(`SELECT g.*, m.name AS module_name, m.area, m.restricted, m.scope_type,
+  const grants = await many(`SELECT g.*, m.name AS module_name, m.area, m.restricted, m.scope_type, ap.name AS access_profile_name,
       coalesce(json_agg(json_build_object('type', gs.scope_type, 'id', gs.scope_id)) FILTER (WHERE gs.grant_id IS NOT NULL), '[]') AS scopes
-    FROM grants g JOIN modules m ON m.key=g.module_key LEFT JOIN grant_scopes gs ON gs.grant_id=g.id WHERE g.user_id=$1 GROUP BY g.id, m.name, m.area, m.restricted, m.scope_type, m.sort_order ORDER BY m.area, m.sort_order`, [u.id]);
+    FROM grants g JOIN modules m ON m.key=g.module_key LEFT JOIN access_profiles ap ON ap.id=g.profile_id LEFT JOIN grant_scopes gs ON gs.grant_id=g.id WHERE g.user_id=$1 GROUP BY g.id, m.name, m.area, m.restricted, m.scope_type, m.sort_order, ap.name ORDER BY m.area, m.sort_order`, [u.id]);
   const audit_ = await many(`SELECT at, action, label, data FROM audit_log WHERE (entity='user' AND entity_id=$1) OR user_id=$2 ORDER BY at DESC LIMIT 30`, [String(u.id), u.id]);
   // dati della persona collegata (anagrafica unica): publicUser li filtra per la sessione, qui servono tutti
   const person = { person_kind: u.person_kind, person_title: u.person_title, person_phone: u.person_phone, person_phone_office: u.person_phone_office, person_phone_ext: u.person_phone_ext, person_role: u.person_role, person_unit: u.person_unit, person_unit_path: u.person_unit_path };
@@ -128,7 +129,9 @@ r.post('/users', requireAdmin, ah(async (req, res) => {
     }
     return u;
   });
-  await audit(req, 'USER_CREATED', { entity: 'user', entityId: u.id, label: u.email, data: { level: u.level, provider, grants: (b.grants || []).map((g) => `${g.module_key}:${g.profile}`) } });
+  // profilo di accesso predefinito (Default) dopo i grant indicati: aggiunge solo ciò che manca, non declassa quanto scelto qui
+  const def = await applyDefaultProfile(u.id, req.user.id).catch((e) => { console.warn('[users] profilo predefinito:', e.message); return null; });
+  await audit(req, 'USER_CREATED', { entity: 'user', entityId: u.id, label: u.email, data: { level: u.level, provider, grants: (b.grants || []).map((g) => `${g.module_key}:${g.profile}`), default_profile: def ? { id: def.profile.id, added: def.added, updated: def.updated } : null } });
 
   let invited = false;
   if (b.send_invite !== false) {
@@ -196,7 +199,7 @@ r.put('/users/:id/grants/:module', requireAdmin, ah(async (req, res) => {
   await tx(async (c) => {
     const { rows: [g] } = await c.query(
       `INSERT INTO grants (user_id, module_key, profile, proposed, source, created_by) VALUES ($1,$2,$3,FALSE,'MANUAL',$4)
-       ON CONFLICT (user_id, module_key) DO UPDATE SET profile=EXCLUDED.profile, proposed=FALSE, source='MANUAL', updated_at=now() RETURNING id`, [id, m.key, b.profile, req.user.id]);
+       ON CONFLICT (user_id, module_key) DO UPDATE SET profile=EXCLUDED.profile, proposed=FALSE, source='MANUAL', profile_id=NULL, updated_at=now() RETURNING id`, [id, m.key, b.profile, req.user.id]);
     if (b.scopes) {
       await c.query('DELETE FROM grant_scopes WHERE grant_id=$1', [g.id]);
       for (const s of b.scopes) await c.query('INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [g.id, s.type, s.id]);
@@ -253,7 +256,7 @@ r.post('/grants/bulk', requireAdmin, ah(async (req, res) => {
   for (const uid of b.user_ids) {
     const t = await one('SELECT level FROM users WHERE id=$1', [uid]);
     if (!t || (t.level === 'OWNER' && !isOwner(req.user))) continue;
-    await q(`INSERT INTO grants (user_id, module_key, profile, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, module_key) DO UPDATE SET profile=EXCLUDED.profile, proposed=FALSE, updated_at=now()`, [uid, m.key, b.profile, req.user.id]);
+    await q(`INSERT INTO grants (user_id, module_key, profile, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, module_key) DO UPDATE SET profile=EXCLUDED.profile, proposed=FALSE, source='MANUAL', profile_id=NULL, updated_at=now()`, [uid, m.key, b.profile, req.user.id]);
     n++;
   }
   await audit(req, 'GRANT_BULK', { module: m.key, label: `${m.key}:${b.profile} × ${n}` });

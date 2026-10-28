@@ -12,7 +12,7 @@ const r = Router();
 // Gli utenti (creazione, ruoli, reset password) li gestisce la Suite: le route /users dell'app non si portano.
 
 // ---------------- Impostazioni ----------------
-const SETTING_KEYS = ['company_name', 'company_address', 'company_legal_address', 'company_vat', 'company_rea', 'company_capital', 'company_phone', 'company_email', 'company_pec', 'company_website', 'health_director', 'signatory_name', 'signatory_title', 'letter_city', 'cost_inps_pct', 'cost_inail_pct', 'cost_tfr_pct', 'cost_apprentice_inps_pct', 'cost_dirigente_extra_pct', 'irpef_brackets', 'employee_inps_pct', 'addizionale_regionale_pct', 'addizionale_comunale_pct', 'function_allowance_share', 'deadline_alert_days', 'board_signatory_name', 'board_signatory_title', 'dirigenti_minimum', 'dirigenti_monthly_payments'];
+const SETTING_KEYS = ['cv_inbox', 'cv_inbox_enabled', 'company_name', 'company_address', 'company_legal_address', 'company_vat', 'company_rea', 'company_capital', 'company_phone', 'company_email', 'company_pec', 'company_website', 'health_director', 'signatory_name', 'signatory_title', 'letter_city', 'cost_inps_pct', 'cost_inail_pct', 'cost_tfr_pct', 'cost_apprentice_inps_pct', 'cost_dirigente_extra_pct', 'irpef_brackets', 'employee_inps_pct', 'addizionale_regionale_pct', 'addizionale_comunale_pct', 'function_allowance_share', 'deadline_alert_days', 'board_signatory_name', 'board_signatory_title', 'dirigenti_minimum', 'dirigenti_monthly_payments'];
 
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();

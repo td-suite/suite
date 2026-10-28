@@ -5,6 +5,7 @@ import { useAuth, isOwner } from '../../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, Avatar, useToast, Switch, MultiSelect, Modal, ConfirmModal, Pager, CopyButton } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { LEVEL, STATUS, STATUS_TONE, PROVIDER, fmtDateTime, timeAgo, AREA_COLORS, AREA_NAMES } from '../../format.js';
+import { ProfilePicker, ProfileReport } from './AccessProfiles.jsx';
 
 // ---------- Elenco ----------
 export function UsersList() {
@@ -24,6 +25,16 @@ export function UsersList() {
   const sites = useApi('/sites?all=1');
   const onlyProposals = get('proposals') === '1';
   const rows = (data?.rows || []).filter((u) => !onlyProposals || u.grants?.some((g) => g.proposed));
+  // Selezione per l'assegnazione massiva dei profili di accesso ("quadratino prima del nome", richiesta del CEO 28/10/2026)
+  const [selected, setSelected] = useState(() => new Set());
+  const [applyProfile, setApplyProfile] = useState(null);   // profilo scelto, in attesa di conferma
+  const [report, setReport] = useState(null);
+  useEffect(() => { setSelected(new Set()); }, [sp.toString()]);   // cambio filtri o pagina: la selezione riparte
+  const selectable = rows.filter((u) => u.level !== 'OWNER' || isOwner(me));
+  const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
+  const toggleOne = (id) => setSelected((x) => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectable.map((u) => u.id)));
+  const selectedRows = rows.filter((u) => selected.has(u.id));
   return (
     <div className="page">
       <PageHead title="Utenti" icon="users" sub={data ? `${data.total} utent${data.total === 1 ? "e registrato" : "i registrati"}` : 'Account, livelli e accesso ai widget'} actions={<Link to="/admin/users/new" className="btn"><Icon name="plus" />Nuovo utente</Link>} />
@@ -35,14 +46,21 @@ export function UsersList() {
         <Field label="Sede"><select value={get('site_id')} onChange={(e) => setF('site_id', e.target.value)}><option value="">Tutte</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <label className="f inline" style={{ alignSelf: 'center' }}><input type="checkbox" checked={onlyProposals} onChange={(e) => setF('proposals', e.target.checked ? '1' : '')} />Solo con proposte</label>
       </div>
+      {selected.size > 0 && <div className="bulkbar" role="region" aria-label="Azioni sugli utenti selezionati">
+        <span className="n">{selected.size} utent{selected.size === 1 ? 'e selezionato' : 'i selezionati'}</span>
+        <ProfilePicker label="Assegna profilo" className="btn sm" onPick={(p) => setApplyProfile(p)} />
+        <div className="spacer" />
+        <button className="btn sm ghost" onClick={() => setSelected(new Set())}><Icon name="x" />Annulla selezione</button>
+      </div>}
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={5} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !rows.length && <Empty icon="users" title="Nessun utente corrisponde ai filtri" />}
         {rows.length > 0 && <div className="table-wrap"><table className="t">
-          <thead><tr><th>Utente</th><th>Livello</th><th>Stato</th><th>Accesso</th><th>Sede / organizzazione</th><th>Moduli</th><th>Ultimo accesso</th><th></th></tr></thead>
+          <thead><tr><th className="sel"><input type="checkbox" checked={allSelected} disabled={!selectable.length} onChange={toggleAll} aria-label="Seleziona tutti gli utenti dell'elenco" title="Seleziona tutti" /></th><th>Utente</th><th>Livello</th><th>Stato</th><th>Accesso</th><th>Sede / organizzazione</th><th>Moduli</th><th>Ultimo accesso</th><th></th></tr></thead>
           <tbody>{rows.map((u) => { const proposed = (u.grants || []).filter((g) => g.proposed).length; const active = (u.grants || []).filter((g) => !g.proposed); return (
-            <tr key={u.id} className="click" onClick={() => navigate(`/admin/users/${u.id}`)}>
+            <tr key={u.id} className={`click ${selected.has(u.id) ? 'selected' : ''}`} onClick={() => navigate(`/admin/users/${u.id}`)}>
+              <td className="sel" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.has(u.id)} disabled={u.level === 'OWNER' && !isOwner(me)} onChange={() => toggleOne(u.id)} aria-label={`Seleziona ${u.full_name}`} /></td>
               <td><div className="row tight" style={{ flexWrap: 'nowrap' }}><Avatar name={u.full_name} size="sm" /><div style={{ minWidth: 0 }}><Link to={`/admin/users/${u.id}`} className="strong" onClick={(e) => e.stopPropagation()}>{u.full_name}</Link><div className="small muted ellipsis">{u.email}</div></div></div></td>
               <td><Badge tone={u.level === 'USER' ? 'grey' : u.level === 'OWNER' ? 'teal' : 'blue'}>{LEVEL[u.level]}</Badge></td>
               <td><Badge tone={STATUS_TONE[u.status]}>{STATUS[u.status]}</Badge></td>
@@ -56,6 +74,10 @@ export function UsersList() {
         </table></div>}
         {data && <Pager page={page} pageSize={50} total={data.total} onChange={(p) => setF('page', String(p))} />}
       </Card>
+      {applyProfile && <ConfirmModal title={`Assegnare il profilo "${applyProfile.name}" a ${selected.size} utent${selected.size === 1 ? 'e' : 'i'}?`} confirmText="Assegna"
+        text={`Vengono aggiunti i permessi del profilo (${(applyProfile.items || []).length} widget) a: ${selectedRows.slice(0, 6).map((u) => u.full_name).join(', ')}${selectedRows.length > 6 ? ` e altri ${selectedRows.length - 6}` : ''}. I permessi già presenti non vengono tolti: si aggiornano solo le proposte e quelli nati da un profilo, mai un permesso assegnato a mano. Sui widget per sede l'ambito è la sede della persona.`}
+        onConfirm={async () => { const r = await api.post(`/access-profiles/${applyProfile.id}/apply`, { user_ids: [...selected], mode: 'merge' }); setReport(r); setSelected(new Set()); toast(`Profilo applicato: ${r.added} aggiunti, ${r.updated} aggiornati, ${r.kept} lasciati${r.warnings.length ? `, ${r.warnings.length} avvisi` : ''}`); reload(); }} onClose={() => setApplyProfile(null)} />}
+      {report && <Modal title="Rapporto dell'assegnazione" wide onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} /></Modal>}
       {confirmDel && <ConfirmModal title={`Eliminare l'accesso di ${confirmDel.full_name}?`} text="L'utente non potrà più entrare nella Suite e perde i moduli assegnati. La persona resta in anagrafica: l'accesso si può ricreare dalla sua scheda." danger confirmText="Elimina" onConfirm={async () => { await api.del(`/users/${confirmDel.id}`); toast('Accesso eliminato'); reload(); }} onClose={() => setConfirmDel(null)} />}
     </div>
   );
@@ -96,7 +118,7 @@ function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
       <div className="wi" style={{ color: AREA_COLORS[m.area] || 'var(--teal)' }}><Icon name={m.icon} /></div>
       <div className="mod" style={{ minWidth: 0 }}>
         <div className="nm">{m.restricted && <Icon name="lock" title="Modulo riservato" />}{m.name}{grant?.proposed && <Badge tone="mauve">Proposta</Badge>}</div>
-        <div className="tg">{m.tagline}</div>
+        <div className="tg">{grant?.access_profile_name ? <span title="Permesso nato da un profilo di accesso">dal profilo {grant.access_profile_name}</span> : m.tagline}</div>
       </div>
       <div className="sw"><Switch checked={on} onChange={toggle} disabled={locked} label={`Abilita ${m.name}`} /></div>
       <div className="pr">
@@ -134,12 +156,14 @@ export function UserDetail() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // {temporaryPassword, invited}
   const [confirm, setConfirm] = useState(null);
+  const [applyProfile, setApplyProfile] = useState(null);
+  const [report, setReport] = useState(null);
 
   useEffect(() => {
     if (detail.data) {
       const u = detail.data.user;
       setF({ ...EMPTY_USER, ...Object.fromEntries(Object.entries(u).filter(([k]) => k in EMPTY_USER).map(([k, v]) => [k, v ?? ''])), password: '', send_invite: false });
-      setGrants(Object.fromEntries((detail.data.grants || []).map((g) => [g.module_key, { profile: g.profile, scopes: g.scopes || [], proposed: g.proposed, source: g.source }])));
+      setGrants(Object.fromEntries((detail.data.grants || []).map((g) => [g.module_key, { profile: g.profile, scopes: g.scopes || [], proposed: g.proposed, source: g.source, access_profile_name: g.access_profile_name }])));
     }
   }, [detail.data]);
 
@@ -265,7 +289,7 @@ export function UserDetail() {
           )}
         </div>
         <div className="col">
-          <Card title="Accesso ai widget" icon="grid" flush actions={<>{proposedCount > 0 && !isNew && <button className="btn sm mauve" onClick={confirmAll}><Icon name="check" />Conferma tutte le proposte ({proposedCount})</button>}{isNew && <span className="small muted">I moduli verranno assegnati alla creazione</span>}</>}>
+          <Card title="Accesso ai widget" icon="grid" flush actions={<>{!isNew && <ProfilePicker label="Applica profilo" className="btn sm ghost" onPick={(p) => setApplyProfile(p)} />}{proposedCount > 0 && !isNew && <button className="btn sm mauve" onClick={confirmAll}><Icon name="check" />Conferma tutte le proposte ({proposedCount})</button>}{isNew && <span className="small muted">I moduli verranno assegnati alla creazione (più il profilo di accesso predefinito)</span>}</>}>
             {mods.loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
             {!mods.loading && <div className="grant-row head" role="row"><div /><div className="small muted">Modulo</div><div className="small muted">Attivo</div><div className="small muted">Profilo</div><div className="small muted">Sedi</div></div>}
             {byArea.map(([area, list]) => (
@@ -274,7 +298,7 @@ export function UserDetail() {
                 {list.map((m) => <GrantRow key={m.key} module={m} grant={grants[m.key]} sites={sites.data} orgs={orgs.data} canAssign={!m.restricted || owner} onChange={(g) => changeGrant(m, g)} />)}
               </div>
             ))}
-            <div className="small muted" style={{ padding: 14 }}>Le righe evidenziate in viola sono proposte automatiche (dall'area organizzativa o dalle app legacy) in attesa di conferma. Il modulo con il lucchetto è assegnabile solo dal titolare.</div>
+            <div className="small muted" style={{ padding: 14 }}>Le righe evidenziate in viola sono proposte automatiche (dall'area organizzativa o dalle app legacy) in attesa di conferma. Il modulo con il lucchetto è assegnabile solo dal titolare. "Applica profilo" aggiunge i permessi di un profilo di accesso senza togliere quelli esistenti.</div>
           </Card>
         </div>
       </div>
@@ -287,6 +311,10 @@ export function UserDetail() {
         </Modal>
       )}
       {confirm && <ConfirmModal title={confirm.title} text={confirm.text} danger={confirm.danger} confirmText={confirm.confirmText} onConfirm={confirm.go} onClose={() => setConfirm(null)} />}
+      {applyProfile && <ConfirmModal title={`Applicare il profilo "${applyProfile.name}" a ${u?.full_name}?`} confirmText="Applica"
+        text={`Vengono aggiunti i permessi del profilo (${(applyProfile.items || []).length} widget). I permessi già presenti non vengono tolti: si aggiornano solo le proposte e quelli nati da un profilo, mai un permesso assegnato a mano. Sui widget per sede l'ambito è la sede della persona.`}
+        onConfirm={async () => { const r = await api.post(`/access-profiles/${applyProfile.id}/apply`, { user_ids: [Number(id)], mode: 'merge' }); setReport(r); toast(`Profilo applicato: ${r.added} aggiunti, ${r.updated} aggiornati, ${r.kept} lasciati`); detail.reload(); }} onClose={() => setApplyProfile(null)} />}
+      {report && <Modal title="Rapporto dell'applicazione" onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} compact /></Modal>}
     </div>
   );
 }

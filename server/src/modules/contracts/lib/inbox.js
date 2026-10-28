@@ -1,0 +1,98 @@
+// Casella di recruiting (recruitment@toscanadiagnostica.it) letta con Microsoft Graph: ogni allegato PDF / Word di un'email in
+// arrivo diventa un CV nel CV Box (mittente come email e nome del candidato, oggetto come riferimento, sintesi AI se attiva).
+// Permesso applicativo necessario sull'app registration della Suite: Mail.Read (o Mail.ReadWrite) sulla casella.
+// Impostazioni del modulo: cv_inbox (indirizzo), cv_inbox_enabled (true/false), cv_inbox_since (cursore), cv_inbox_last.
+import { one, many, q } from '../db.js';
+import { config } from '../config.js';
+import { config as suite } from '../../../config.js';
+import { extractText, quickFacts, summarizeCv } from './cv.js';
+
+const CV_MIMES = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+const cvExt = (n) => /\.(pdf|docx?|rtf|odt)$/i.test(n || '');
+const SKIP_NAMES = /^(image\d*|logo|firma|signature|outlook|banner)/i;
+
+export const graphConfigured = () => Boolean(suite.mail.graph.tenantId && suite.mail.graph.clientId && suite.mail.graph.clientSecret);
+async function setting(key, def = null) { const r = await one('SELECT value FROM app_settings WHERE key=$1', [key]); return r ? r.value : def; }
+async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, String(value ?? '')]); }
+
+let token = { value: null, exp: 0 };
+async function graphToken() {
+  if (token.value && Date.now() < token.exp - 60_000) return token.value;
+  const g = suite.mail.graph;
+  const res = await fetch(`https://login.microsoftonline.com/${g.tenantId}/oauth2/v2.0/token`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: g.clientId, client_secret: g.clientSecret, scope: 'https://graph.microsoft.com/.default', grant_type: 'client_credentials' }),
+  });
+  const j = await res.json();
+  if (!res.ok || !j.access_token) throw new Error(`Token Microsoft non ottenuto: ${j.error_description || res.status}`);
+  token = { value: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+  return j.access_token;
+}
+async function graph(path) {
+  const t = await graphToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}` } });
+  if (!res.ok) throw new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+export async function inboxStatus() {
+  return {
+    configured: graphConfigured(),
+    mailbox: (await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '',
+    enabled: (await setting('cv_inbox_enabled', 'true')) === 'true',
+    last_poll: await setting('cv_inbox_last', null),
+    last_error: await setting('cv_inbox_error', null),
+    imported: Number((await one(`SELECT count(*)::int AS n FROM cv_box WHERE source LIKE 'Email %'`))?.n || 0),
+  };
+}
+
+// Legge le email nuove della casella e crea i CV: una riga per allegato, mai due volte lo stesso allegato (graph_id)
+export async function pollRecruitingInbox({ force = false } = {}) {
+  if (!graphConfigured()) return { skipped: 'graph_non_configurato' };
+  const mailbox = (await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '';
+  if (!mailbox) return { skipped: 'casella_non_impostata' };
+  if (!force && (await setting('cv_inbox_enabled', 'true')) !== 'true') return { skipped: 'disattivata' };
+  const since = (await setting('cv_inbox_since', null)) || new Date(Date.now() - 30 * 86400000).toISOString();
+  const filter = encodeURIComponent(`receivedDateTime ge ${since} and hasAttachments eq true`);
+  let created = 0; let fetched = 0; let last = since;
+  try {
+    const j = await graph(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,receivedDateTime,from,subject,bodyPreview,hasAttachments`);
+    const areas = (await many('SELECT name FROM areas WHERE active ORDER BY sort_order')).map((a) => a.name);
+    for (const m of j.value || []) {
+      fetched++;
+      if (m.receivedDateTime > last) last = m.receivedDateTime;
+      const from = m.from?.emailAddress || {};
+      if ((from.address || '').toLowerCase() === mailbox.toLowerCase()) continue;
+      const atts = await graph(`/users/${encodeURIComponent(mailbox)}/messages/${m.id}/attachments?$select=id,name,contentType,size,isInline`);
+      for (const a of atts.value || []) {
+        if (a['@odata.type'] !== '#microsoft.graph.fileAttachment' || a.isInline) continue;
+        if (!(CV_MIMES.has(a.contentType) || cvExt(a.name)) || SKIP_NAMES.test(a.name || '')) continue;
+        const gid = `${m.id}:${a.id}`;
+        if (await one('SELECT 1 FROM cv_box WHERE graph_id=$1', [gid])) continue;
+        const full = await graph(`/users/${encodeURIComponent(mailbox)}/messages/${m.id}/attachments/${a.id}`);
+        if (!full.contentBytes) continue;
+        const buf = Buffer.from(full.contentBytes, 'base64');
+        let text = ''; let facts = {}; let ai = null;
+        try { text = await extractText(buf, a.contentType, a.name); facts = quickFacts(text); } catch (e) { console.error('[cv inbox] testo non estratto:', e.message); }
+        if (text && config.anthropicKey) { try { ai = await summarizeCv(text, areas); } catch (e) { console.error('[cv inbox] sintesi AI:', e.message); } }
+        const nameParts = String(from.name || '').trim().split(/\s+/);
+        const guessLast = nameParts.length > 1 ? nameParts.slice(1).join(' ') : nameParts[0] || null;
+        const guessFirst = nameParts.length > 1 ? nameParts[0] : null;
+        const areaId = ai?.area ? (await one('SELECT id FROM areas WHERE lower(name)=lower($1)', [ai.area]))?.id || null : null;
+        await q(`INSERT INTO cv_box (last_name, first_name, email, phone, area_id, role_target, summary, rating, status, source, filename, mime, size, data, text_excerpt, received_at, graph_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'NUOVO',$9,$10,$11,$12,$13,$14,$15::date,$16)`,
+          [ai?.last_name || guessLast, ai?.first_name || guessFirst, ai?.email || facts.email || from.address || null, ai?.phone || facts.phone || null, areaId,
+            ai?.role_target || (m.subject ? m.subject.slice(0, 120) : null), ai?.summary || (m.bodyPreview ? m.bodyPreview.slice(0, 1000) : null), ai?.rating || null,
+            `Email ${mailbox}`, a.name, a.contentType || 'application/octet-stream', buf.length, buf, text.slice(0, 4000) || null, m.receivedDateTime.slice(0, 10), gid]);
+        created++;
+      }
+    }
+    await setSetting('cv_inbox_since', last);
+    await setSetting('cv_inbox_last', new Date().toISOString());
+    await setSetting('cv_inbox_error', '');
+  } catch (e) {
+    await setSetting('cv_inbox_error', e.message);
+    throw e;
+  }
+  return { fetched, created };
+}

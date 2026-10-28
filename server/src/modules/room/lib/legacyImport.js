@@ -143,6 +143,100 @@ export async function legacyMatch({ legacyQuery }) {
   };
 }
 
+// ---------------------------------------------------------------- fusione delle impostazioni Room di una sede
+// Una sezione è una chiave di primo livello del documento di site_ext (ambulatori, personale, prestazioni, hours, deskCapacity, note,
+// plan = marker della planimetria...). Vuota = assente, null, stringa vuota, elenco vuoto, oggetto vuoto (per plan: nessun marker).
+const isEmptyValue = (v) => v == null || v === '' || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length);
+const sectionEmpty = (k, v) => (k === 'plan' ? isEmptyValue(v && v.markers) : isEmptyValue(v));
+const sameSection = (k, a, b) => JSON.stringify(k === 'plan' ? (a && a.markers) || {} : a) === JSON.stringify(k === 'plan' ? (b && b.markers) || {} : b);
+const SECTION_LABEL = { plan: 'marker della planimetria', hours: 'orari', note: 'note', deskCapacity: 'postazioni desk', deskCapAM: 'postazioni desk (mattina)', deskCapPM: 'postazioni desk (pomeriggio)', deskSplit: 'cambio turno desk' };
+const sectionLabel = (k) => SECTION_LABEL[k] || k;
+const lvPlan = (ext) => (ext.plan && typeof ext.plan === 'object' ? ext.plan : {});
+const ambIds = (list) => new Set((Array.isArray(list) ? list : []).map((a) => String(a && a.id)));
+
+/** Fonde le impostazioni dell'app originale in quelle della Suite, sezione per sezione (vince la Suite dove è già valorizzata).
+ *  Ritorna { data, taken: [etichette integrate], kept: [etichette mantenute dalla Suite], warnings } e non modifica gli argomenti. */
+export function mergeSiteExt(suiteData, legacyExt) {
+  const data = { ...(suiteData || {}) };
+  const taken = []; const kept = []; const warnings = [];
+  const takenKeys = new Set();
+  for (const k of Object.keys(legacyExt || {})) {
+    const lv = legacyExt[k];
+    if (sectionEmpty(k, lv)) continue;                              // l'app non ha nulla per questa sezione
+    if (sectionEmpty(k, data[k])) { data[k] = lv; takenKeys.add(k); taken.push(sectionLabel(k)); }
+    else if (!sameSection(k, data[k], lv)) kept.push(sectionLabel(k));   // già uguale all'app (es. importata prima): nulla da dire
+  }
+  // Riferimenti interni: i marker della planimetria puntano agli id degli ambulatori. Marker e ambulatori di origine diversa non si mischiano.
+  const ambFromApp = takenKeys.has('ambulatori'), markersFromApp = takenKeys.has('plan');
+  if (markersFromApp && !ambFromApp && !sectionEmpty('ambulatori', data.ambulatori)) {
+    const ids = ambIds(data.ambulatori);   // ambulatori della Suite
+    const mk = legacyExt.plan.markers; const ok = {};
+    for (const id of Object.keys(mk)) if (ids.has(String(id))) ok[id] = mk[id];
+    const dropped = Object.keys(mk).length - Object.keys(ok).length;
+    if (!Object.keys(ok).length) {
+      data.plan = { ...(suiteData.plan || {}), markers: (suiteData.plan && suiteData.plan.markers) || {} }; takenKeys.delete('plan');
+      taken.splice(taken.indexOf(sectionLabel('plan')), 1);
+      warnings.push('i marker della planimetria dell\'app originale puntano ad ambulatori diversi da quelli della Suite: non integrati, da riposizionare in Room Planning');
+    } else {
+      data.plan = { ...lvPlan(legacyExt), markers: ok };
+      if (dropped) warnings.push(`${dropped} marker della planimetria dell'app originale puntano ad ambulatori che nella Suite non esistono: tolti, gli altri integrati`);
+    }
+  }
+  if (ambFromApp && !markersFromApp && !sectionEmpty('plan', data.plan)) {
+    const ids = ambIds(data.ambulatori);   // ambulatori dell'app
+    const orphan = Object.keys(data.plan.markers).filter((id) => !ids.has(String(id)));
+    if (orphan.length) warnings.push(`i marker della planimetria della Suite (${orphan.join(', ')}) non corrispondono agli ambulatori integrati dall'app originale: controlla la planimetria in Room Planning`);
+  }
+  return { data, taken, kept, warnings };
+}
+// ---------------------------------------------------------------- persone non abbinate → righe del dataset "people" (XLSX di Importazioni)
+// Per i professionisti dell'app originale NON presenti in mapping.people: tutto ciò che l'app sa della persona, nel formato del modello
+// Persone di Amministrazione > Importazioni (routes/importxlsx.js). Caricato il file, una nuova apertura della finestra li riconosce
+// per email o codice fiscale (o nome) e la seconda importazione copia i contenuti saltati dalla prima.
+const DISC_LABEL = (d) => (Array.isArray(d) ? d.filter(Boolean).join(', ') : clean(d));
+function splitNome(full) {
+  // "Cognome Nome" (formato dell'app): il primo termine è il cognome, il resto il nome; con un solo termine resta il cognome
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { cognome: null, nome: null };
+  return { cognome: parts[0], nome: parts.slice(1).join(' ') || null };
+}
+export async function legacyPeopleRows({ legacyQuery, mapping }) {
+  const matched = new Set(Object.keys((mapping && mapping.people) || {}).map(String));
+  const siteMap = new Map(Object.entries((mapping && mapping.sites) || {}).map(([lid, sid]) => [String(lid), Number(sid)]));
+  const codes = new Map((await suiteMany('SELECT id, code FROM public.sites')).map((s) => [s.id, s.code]));
+  const profs = await legacyQuery(LEGACY_PROFS_SQL);
+  const rows = [];
+  for (const p of profs) {
+    if (matched.has(String(p.id))) continue;
+    const an = (p.dati && p.dati.anagrafica) || {}; const flat = p.dati || {}; const prof = (p.dati && p.dati.professionale) || {};
+    const idn = profIdentity(p);
+    const sn = splitNome(p.nome);
+    const cognome = idn.cognome || sn.cognome, nome = idn.nome || sn.nome;
+    if (!cognome) continue;
+    const tipo = p.tipo === 'medico' ? 'MEDICO' : 'SANITARIO';
+    const sesso = clean(an.sesso) ? String(an.sesso).trim().toUpperCase().slice(0, 1) : null;
+    const titolo = clean(an.titolo) || (tipo === 'MEDICO' ? (sesso === 'F' ? 'Dott.ssa' : 'Dott.') : null);
+    // sede principale: la prima delle sedi abilitate che risulta abbinata a una sede della Suite
+    let siteCode = null;
+    for (const lid of flat.sediAbilitate || []) { const sid = siteMap.get(String(lid)); if (sid && codes.get(sid)) { siteCode = codes.get(sid); break; } }
+    rows.push({
+      legacy_id: String(p.id),
+      last_name: cognome, first_name: nome || '', title: titolo,
+      email: idn.emails[0] || null, tax_code: idn.cf || clean(an.codiceFiscale || flat.codiceFiscale) || null,
+      kind: tipo, status: p.attivo === false ? 'CESSATO' : 'ATTIVO',
+      job_title: clean(p.profilo) || clean(prof.profilo) || null,
+      discipline: DISC_LABEL(prof.discipline || flat.discipline) || null,
+      site_code: siteCode,
+      phone: clean(an.cellulare || flat.cellulare) || null, phone_office: clean(an.telefono || flat.telefono) || null,
+      sex: sesso && ['F', 'M'].includes(sesso) ? sesso : null,
+      birth_date: clean(an.dataNascita) || null, birth_place: clean(an.luogoNascita) || null,
+      vat_number: idn.piva || clean(an.partitaIva || flat.partitaIva) || null,
+      address: clean(an.indirizzo) || null, zip: clean(an.cap) || null, city: clean(an.citta) || null, province: clean(an.provincia) ? String(an.provincia).trim().toUpperCase() : null,
+    });
+  }
+  return rows;
+}
+
 // ---------------------------------------------------------------- importazione
 const BATCH = 200, BATCH_HEAVY = 20;
 // Colonne degli utenti dell'app (created_by, updated_by, user_id, sent_by, confermato_da, generato_da, approvato_da) → NULL:
@@ -222,22 +316,40 @@ export async function legacyImport({ legacyQueryLong, mapping, dryRun }) {
     for (const [lid, pid] of personMap) await client.query(`UPDATE public.people SET legacy_refs = coalesce(legacy_refs, '{}'::jsonb) || jsonb_build_object($1::text, $2::int), updated_at = now() WHERE id = $3 AND coalesce(legacy_refs->>$1, '') <> $2::text`, [KEY, Number(lid), pid]);
     stats.abbinamenti = { copied: siteMap.size + personMap.size, skipped: 0, existing: 0, sedi: siteMap.size, persone: personMap.size };
 
-    // ---- 1) sedi: impostazioni Room della sede (documento senza anagrafica e senza binari) in site_ext
-    const existingExt = new Set((await client.query('SELECT site_id FROM site_ext')).rows.map((r) => r.site_id));
+    // ---- 1) sedi: impostazioni Room della sede (documento senza anagrafica e senza binari) in site_ext.
+    // Sede già configurata nella Suite (es. solo la planimetria): fusione per sezione, non salto. Ogni chiave di primo livello del
+    // JSON dell'app (ambulatori, personale, prestazioni, hours, desk*, plan.markers, note e qualunque altra) entra solo se nella Suite
+    // manca o è vuota; le sezioni già valorizzate nella Suite restano e vengono segnalate. La fusione si ripete anche per una sede
+    // già importata (legacy_import_map): le sezioni ancora vuote vengono integrate (è il caso di una prima importazione che ha saltato).
+    const existingExt = new Map((await client.query('SELECT site_id, data, version FROM site_ext')).rows.map((r) => [r.site_id, r]));
     const strutture = await legacyQueryLong(LEGACY_SITES_SQL);
+    const mergedSites = new Set();   // sedi della Suite già fuse in questa esecuzione (due strutture dell'app sulla stessa sede)
     for (const s of strutture) {
       const sid = site(s.id);
       const den = s.data?.denominazione || s.id;
       if (!sid) { skip('site_ext', s.id, `sede "${den}" non abbinata a una sede della Suite`); continue; }
-      if (already('strutture', s.id)) { st('site_ext').existing++; continue; }
-      if (existingExt.has(sid)) {
-        skip('site_ext', s.id, `la sede "${den}" ha già impostazioni Room inserite nella Suite: non sovrascritte`);
-        warnings.push(`Sede "${den}": impostazioni Room già presenti nella Suite, i contenuti dell'app originale (ambulatori, orari, personale di sede) non sono stati importati`);
-        await remember('strutture', s.id, sid);   // la sede è abbinata: planimetrie, cronologia e turni si importano comunque
+      const legacyExt = extData(s.data || {});
+      const cur = existingExt.get(sid);
+      if (!cur) {
+        await client.query('INSERT INTO site_ext (site_id, data, version, created_at, updated_at, updated_by) VALUES ($1,$2,$3,$4,$5,NULL)', [sid, json(legacyExt), s.version || 1, s.created_at, s.updated_at]);
+        existingExt.set(sid, { site_id: sid, data: legacyExt, version: s.version || 1 });   // seconda struttura abbinata alla stessa sede: si fonde
+        await remember('strutture', s.id, sid); st('site_ext').copied++;
         continue;
       }
-      await client.query('INSERT INTO site_ext (site_id, data, version, created_at, updated_at, updated_by) VALUES ($1,$2,$3,$4,$5,NULL)', [sid, json(extData(s.data || {})), s.version || 1, s.created_at, s.updated_at]);
-      existingExt.add(sid);   // seconda struttura abbinata alla stessa sede: non duplica
+      const m = mergeSiteExt(cur.data || {}, legacyExt);
+      for (const w of m.warnings) warnings.push(`Sede "${den}": ${w}`);
+      if (!m.taken.length) {
+        if (already('strutture', s.id) || mergedSites.has(sid)) st('site_ext').existing++;
+        else { skip('site_ext', s.id, `la sede "${den}" ha già tutte le impostazioni Room nella Suite: ${m.kept.length ? `sezioni ${m.kept.join(', ')} mantenute dalla Suite` : 'nulla da integrare'}`); await remember('strutture', s.id, sid); }
+        if (m.kept.length && !mergedSites.has(sid)) warnings.push(`Sede "${den}": sezioni ${m.kept.join(', ')} mantenute dalla Suite (già valorizzate), non sovrascritte con quelle dell'app originale`);
+        continue;
+      }
+      const newVersion = (cur.version || 0) + 1;
+      const note = `Integrazione dall'app originale: ${m.taken.join(', ')}${m.kept.length ? ` (mantenute dalla Suite: ${m.kept.join(', ')})` : ''}`;
+      await client.query('UPDATE site_ext SET data=$2, version=$3, updated_at=now(), updated_by=NULL WHERE site_id=$1', [sid, json(m.data), newVersion]);
+      await client.query('INSERT INTO struttura_history (struttura_id, version, data, user_id, user_name, note) VALUES ($1,$2,$3,NULL,$4,$5)', [sid, newVersion, json(m.data), 'Importazione dall\'app originale', note]);
+      existingExt.set(sid, { site_id: sid, data: m.data, version: newVersion }); mergedSites.add(sid);
+      warnings.push(`Sede "${den}": integrate dall'app originale le sezioni ${m.taken.join(', ')}${m.kept.length ? `; sezioni ${m.kept.join(', ')} mantenute dalla Suite` : ''}`);
       await remember('strutture', s.id, sid); st('site_ext').copied++;
     }
     const siteImported = (lid) => Boolean(already('strutture', lid));

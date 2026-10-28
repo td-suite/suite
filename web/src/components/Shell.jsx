@@ -61,6 +61,7 @@ function sectionFor(pathname, user) {
         { to: '/admin', icon: 'home', label: 'Panoramica', end: true },
         { group: 'Accessi' },
         { to: '/admin/users', icon: 'users', label: 'Utenti' },
+        { to: '/admin/access-profiles', icon: 'shield', label: 'Profili di accesso' },
         { to: '/admin/modules', icon: 'grid', label: 'Moduli' },
         { to: '/admin/api-keys', icon: 'key', label: 'Chiavi API' },
         { group: 'Anagrafiche' },
