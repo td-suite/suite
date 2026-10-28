@@ -1,4 +1,4 @@
-// Scadenziario strutture: calcolo delle scadenze e della previsione dei costi (funzioni pure, senza database).
+// Scadenziario strutture (widget Payments): calcolo delle scadenze e della previsione dei costi (funzioni pure, senza database).
 // Le scadenze non si salvano: si ricavano ogni volta da contratti di affitto (con gli scatti del canone) e utenze (con le
 // bollette registrate). Gli esiti (schedule_done) e gli avvisi (schedule_notified) sono le sole cose persistite.
 // Le date sono stringhe 'YYYY-MM-DD' (come le restituisce il db della Suite); l'aritmetica è sui giorni UTC, come nella bozza.
@@ -87,12 +87,15 @@ export const TRANSFER_LABEL = { DA_AVVIARE: 'Da avviare', IN_CORSO: 'In corso', 
 // Eventi dello scadenziario tra `from` e `to` (ISO). Ogni evento:
 // { key, kind, cat (AFFITTO|UTENZA), site_id, ref (id contratto o utenza), date, title, desc, amount, estimate, auto, done, days }
 // kind: canone | istat | registro | fine | disdetta | bolletta | offerta. Scadute = date < oggi, non done, non auto.
-export function buildEvents({ leases = [], steps = [], utilities = [], bills = [], done = [], from, to, today }) {
+export function buildEvents({ leases = [], steps = [], utilities = [], bills = [], done = [], requests = [], from, to, today }) {
   const T = parseDate(today) ?? parseDate(new Date().toISOString());
   const F = parseDate(from) ?? T - 60 * DAY;
   const TO = parseDate(to) ?? T + 400 * DAY;
   const doneMap = new Map();
   for (const d of done || []) doneMap.set(d.event_key || d.key, d);
+  // istanze di pagamento collegate alla scadenza (schedule_requests + payment_requests): { event_key, request_id, protocol, status, amount }
+  const reqMap = new Map();
+  for (const r of requests || []) reqMap.set(r.event_key, r);
   const stepsBy = byId(steps, 'lease_id');
   const billsBy = byId(bills, 'utility_id');
   const out = [];
@@ -101,8 +104,9 @@ export function buildEvents({ leases = [], steps = [], utilities = [], bills = [
     const dn = doneMap.get(key);
     out.push({ key, kind: e.kind, cat: e.cat, site_id: e.site_id, ref: e.ref, date: toIso(e.t), title: e.title, desc: e.desc || '',
       amount: e.amount == null ? null : r2(e.amount), estimate: !!e.estimate, auto: !!e.auto, done: !!dn || !!e.done,
-      done_at: dn?.done_at || e.done_at || null, done_amount: dn?.amount != null ? Number(dn.amount) : null, done_note: dn?.note || null,
-      bill_id: e.bill_id || null, days: Math.round((e.t - T) / DAY) });
+      done_at: dn?.done_at || e.done_at || null, done_amount: dn?.amount != null ? Number(dn.amount) : null, done_note: dn?.note || null, done_request_id: dn?.request_id || null,
+      bill_id: e.bill_id || null, days: Math.round((e.t - T) / DAY),
+      request: reqMap.has(key) ? { id: reqMap.get(key).request_id, protocol: reqMap.get(key).protocol || null, status: reqMap.get(key).status || null, amount: reqMap.get(key).amount != null ? Number(reqMap.get(key).amount) : null } : null });
   };
 
   for (const c of leases) {

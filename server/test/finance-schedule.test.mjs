@@ -1,7 +1,7 @@
-// Scadenziario strutture: test della logica pura (lib/schedule.js). Esecuzione: node --test server/test/
+// Scadenziario strutture (Payments): test della logica pura (modules/finance/lib/schedule.js). Esecuzione: node --test server/test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEvents, forecast, contractEnd, occurrences, stepAt, parseDate, toIso, addMonths, kpis, billEstimate } from '../src/modules/cash/lib/schedule.js';
+import { buildEvents, forecast, contractEnd, occurrences, stepAt, parseDate, toIso, addMonths, kpis, billEstimate } from '../src/modules/finance/lib/schedule.js';
 
 const TODAY = '2026-10-28';
 const lease = (over = {}) => ({ id: 1, site_id: 10, unit: 'Piano terra', landlord_name: 'Rossi Immobiliare', kind: 'COMMERCIALE_6_6', start_date: '2024-03-01', first_term_years: 6, renewal_years: 6, notice_months: 12, period_months: 1, first_due: null, registration: 'IMPOSTA_ANNUALE', istat: true, auto_pay: false, active: true, ...over });
@@ -156,4 +156,16 @@ test('previsione: nessun costo dopo la scadenza senza rinnovo', () => {
   assert.equal(s.rent[4], 600);           // feb 2027
   assert.equal(s.rent[5], 0);             // mar 2027: scaduto il 1 marzo 2027
   assert.equal(s.leases[0].end, '2027-03-01');
+});
+
+test('istanze collegate: la scadenza porta protocollo e stato dell istanza', () => {
+  const requests = [{ event_key: 'canone:lease:1:2026-11-01', request_id: 5, protocol: 'AP-2026-0005', status: 'IN_FIRMA', amount: 1050 }];
+  const evs = buildEvents({ leases: [lease()], steps, requests, from: '2026-10-01', to: '2026-11-30', today: TODAY });
+  const nov = evs.find((e) => e.key === 'canone:lease:1:2026-11-01');
+  assert.deepEqual(nov.request, { id: 5, protocol: 'AP-2026-0005', status: 'IN_FIRMA', amount: 1050 });
+  assert.equal(evs.find((e) => e.key === 'canone:lease:1:2026-10-01').request, null);
+  // esito da istanza eseguita: request_id sull esito
+  const done = [{ event_key: 'canone:lease:1:2026-10-01', amount: 1050, note: 'Istanza AP-2026-0004 eseguita', request_id: 4 }];
+  const evs2 = buildEvents({ leases: [lease()], steps, done, from: '2026-10-01', to: '2026-10-31', today: TODAY });
+  assert.equal(evs2[0].done, true); assert.equal(evs2[0].done_request_id, 4);
 });

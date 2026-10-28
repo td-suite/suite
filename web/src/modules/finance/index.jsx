@@ -13,6 +13,7 @@ import Sign from './pages/Sign.jsx';
 import Beneficiaries from './pages/Beneficiaries.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
+import Schedule from './pages/Schedule.jsx';
 import './finance.css';
 
 export default function Module({ moduleUser }) {
@@ -34,6 +35,7 @@ export default function Module({ moduleUser }) {
           <Route path="istanze/:id" element={<RequestDetail />} />
           <Route path="firma/:token" element={<Sign />} />
           <Route path="beneficiari" element={<Beneficiaries />} />
+          <Route path="scadenziario" element={<Schedule />} />
           {(admin || user?.role === 'SUPPORT') && <Route path="impostazioni" element={<Settings />} />}
           {admin && <Route path="audit" element={<Audit />} />}
           <Route path="*" element={<Navigate to={base} replace />} />

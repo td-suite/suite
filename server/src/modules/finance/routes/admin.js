@@ -27,7 +27,13 @@ r.put('/settings', requireAdmin, ah(async (req, res) => {
   for (const k of Object.keys(body)) {
     if (!(k in DEFAULT_SETTINGS)) throw bad(`Impostazione sconosciuta: ${k}`);
     if (CORE_KEYS.includes(k)) continue;   // ragione sociale: Dati aziendali della Suite
-    if (['threshold_single', 'threshold_joint', 'aggregation_days', 'token_days', 'reminder_days'].includes(k) && !(Number(body[k]) >= 0)) throw bad(`${k}: valore numerico non valido`);
+    if (['threshold_single', 'threshold_joint', 'aggregation_days', 'token_days', 'reminder_days', 'schedule_alert_days'].includes(k) && !(Number(body[k]) >= 0)) throw bad(`${k}: valore numerico non valido`);
+    if (['schedule_istat_pct', 'schedule_utility_growth_pct'].includes(k)) { body[k] = String(body[k] ?? '').replace(',', '.'); if (!Number.isFinite(Number(body[k]))) throw bad(`${k}: percentuale non valida`); }
+    if (k === 'schedule_notify_roles') {
+      const roles = String(body[k] || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+      if (roles.some((x) => !['SUPPORT', 'CEO', 'CFO', 'VIEWER'].includes(x))) throw bad('Profili ammessi per gli avvisi: SUPPORT, CEO, CFO, VIEWER');
+      body[k] = roles.join(',');
+    }
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }
   if (body.threshold_single != null || body.threshold_joint != null) {

@@ -15,6 +15,8 @@ import adminRoutes from './routes/admin.js';
 import requestRoutes, { filesRouter } from './routes/requests.js';
 import signRoutes from './routes/sign.js';
 import statsRoutes from './routes/stats.js';
+import scheduleRoutes from './routes/schedule.js';
+import { scheduleBadge, runScheduleAlerts, pruneScheduleNotified } from './lib/scheduleData.js';
 
 const KEY = 'finance';
 const PUBLIC_COLS = USER_COLS.split(',').map((s) => s.trim());
@@ -61,7 +63,9 @@ export default function mount(app) {
       const r = await one(`SELECT count(*) FILTER (WHERE status='IN_FIRMA')::int AS in_firma, count(*) FILTER (WHERE status='FIRMATA')::int AS da_eseguire FROM payment_requests`);
       const role = req.user.role;
       const mine = ['CEO','CFO'].includes(role) ? (await one(`SELECT count(*)::int AS n FROM payment_requests r WHERE r.status='IN_FIRMA' AND (r.tier <> 'SINGOLA' OR r.single_signer=$1) AND NOT EXISTS (SELECT 1 FROM signatures s WHERE s.request_id=r.id AND s.valid AND s.role=$1)`, [role])).n : 0;
-      res.json({ in_firma: r.in_firma, da_eseguire: r.da_eseguire, da_firmare: mine });
+      // scadenziario strutture: scadute + in scadenza entro 7 giorni (non fatte, non automatiche)
+      const scadenziario = await scheduleBadge().catch(() => 0);
+      res.json({ in_firma: r.in_firma, da_eseguire: r.da_eseguire, da_firmare: mine, scadenziario });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {
@@ -78,6 +82,7 @@ export default function mount(app) {
   r.use(filesRouter);
   r.use('/sign', signRoutes);
   r.use('/stats', statsRoutes);
+  r.use('/scadenziario', scheduleRoutes);   // scadenziario strutture: affitti, utenze, scatti, istanze dalle scadenze, previsione
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
   // Errori propri dell'app (duplicati, dimensione allegati) con i messaggi dell'app
   r.use((err, req, res, next) => {
@@ -95,4 +100,14 @@ export default function mount(app) {
     await runReminders();
     return { ok: true };
   });
+
+  // Scadenziario strutture: avvisi in app per le scadenze dei prossimi giorni (schedule_alert_days) e per quelle scadute non
+  // segnate, una sola volta per evento (schedule_notified). Ogni 6 ore, anche all'avvio; solo con modulo LIVE.
+  registerJob(`${KEY}:scadenziario`, 360, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
+    const out = await runScheduleAlerts();
+    out.pruned = await pruneScheduleNotified();
+    return out;
+  }, { runAtStart: true });
 }

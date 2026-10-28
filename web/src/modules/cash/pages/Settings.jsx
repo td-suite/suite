@@ -11,7 +11,7 @@ export default function Settings() {
   const daily = useApi('/comms/daily');
   const [testTo, setTestTo] = useState('');
   const [testRes, setTestRes] = useState(null);
-  useEffect(() => { if (data) setF({ creditor_name: '', creditor_iban: '', creditor_bic: '', creditor_id: '', royalty_invoice_prefix: 'RY', pickup_alert_days: '2', daily_alert_hour: '10', daily_alert_enabled: 'true', daily_summary_admins: 'true', closing_alert_delay_minutes: '60', schedule_alert_days: '7', schedule_istat_pct: '1.5', schedule_utility_growth_pct: '0', schedule_notify_roles: 'SUPERADMIN,ADMIN,FINANCE', ...data }); }, [data]);
+  useEffect(() => { if (data) setF({ creditor_name: '', creditor_iban: '', creditor_bic: '', creditor_id: '', royalty_invoice_prefix: 'RY', pickup_alert_days: '2', daily_alert_hour: '10', daily_alert_enabled: 'true', daily_summary_admins: 'true', closing_alert_delay_minutes: '60', ...data }); }, [data]);
   if (!f) return <div className="page"><Loading /></div>;
   const save = async () => { setErr(null); try { await api.put('/settings', f); toast('Impostazioni salvate'); } catch (e) { setErr(e); } };
   const i = (k, label, help, extra = {}) => <Field label={label} help={help}><input value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...extra} /></Field>;
@@ -52,15 +52,6 @@ export default function Settings() {
           </div>
           {testRes && <div className={`alert ${testRes.status === 'INVIATA' ? 'ok' : 'warn'}`} style={{ marginTop: 10 }}>{testRes.status === 'INVIATA' ? 'Email inviata.' : testRes.status === 'NON_CONFIGURATA' ? 'Invio non configurato: registrata nel registro invii.' : `Invio fallito: ${testRes.error}`}</div>}
           <p className="small muted" style={{ marginTop: 10 }}>Le email partono dalla casella della Suite TD (Microsoft 365, permesso applicativo Mail.Send). Se l'invio non è configurato sul server della Suite, ogni messaggio resta comunque nel registro invii.</p>
-        </Card>
-        <Card title="Scadenziario strutture">
-          <p className="small muted" style={{ marginTop: 0 }}>Affitti e utenze delle sedi (pagina Scadenziario strutture). Sedi, locatori e fornitori vengono dall'anagrafica unica: qui restano solo i parametri degli avvisi e le ipotesi della previsione.</p>
-          <div className="form-grid">
-            {i('schedule_alert_days', 'Avviso: giorni di anticipo', 'Le scadenze entro questi giorni (e quelle scadute non segnate) generano una notifica in app, una sola volta per scadenza', { type: 'number', min: 0, max: 120 })}
-            {i('schedule_istat_pct', 'Previsione: rivalutazione ISTAT annua %', 'Ipotesi applicata ai canoni con adeguamento ISTAT dal prossimo anniversario della decorrenza', { type: 'number', step: '0.1', min: -10, max: 30 })}
-            {i('schedule_utility_growth_pct', 'Previsione: crescita annua delle utenze %', 'Ipotesi applicata alla media mensile delle bollette (0 = costi costanti)', { type: 'number', step: '0.1', min: -50, max: 99 })}
-            {i('schedule_notify_roles', 'Profili che ricevono gli avvisi', 'Profili Cash separati da virgola: SUPERADMIN, ADMIN, FINANCE, CASSIERE, OPERATOR (gli operatori solo per le proprie sedi)')}
-          </div>
         </Card>
         <div id="sezionali"><Sezionali /></div>
       </div>

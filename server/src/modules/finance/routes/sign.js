@@ -6,6 +6,7 @@ import { one, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, HttpError, suiteAudit } from '../lib/util.js';
 import { loadRequest, addEvent, finalize, notifyRejection, voidSignatures } from '../lib/workflow.js';
+import { onRequestStatus } from '../lib/scheduleData.js';
 import { ROLE_LABEL } from '../lib/docgen.js';
 
 const r = Router();
@@ -63,6 +64,7 @@ r.post('/:token/reject', ah(async (req, res) => {
     await c.query('UPDATE sign_tokens SET used_at=now() WHERE id=$1', [t.id]);
     await c.query('UPDATE payment_requests SET status=\'RIFIUTATA\', rejected_reason=$2, updated_at=now() WHERE id=$1', [x.id, reason]);
     await voidSignatures(x.id, `Rifiuto del ${ROLE_LABEL[t.role]}`, c);
+    await onRequestStatus(x.id, 'RIFIUTATA', { client: c, userId: req.user.id });   // scadenziario: la scadenza collegata torna aperta
   });
   const who = `${req.user.title ? `${req.user.title} ` : ''}${req.user.full_name}`;
   await addEvent(x.id, 'RIFIUTO', req.user.id, `Rifiutata dal ${ROLE_LABEL[t.role]}: ${reason}`);

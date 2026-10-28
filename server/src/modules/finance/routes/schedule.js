@@ -1,18 +1,21 @@
-// Scadenziario strutture: contratti di affitto (con gli scatti del canone), utenze (con le bollette), agenda delle scadenze,
-// esiti, previsione dei costi ed esportazione. Montato su /api/cash/scadenziario.
-// Accesso: SUPERADMIN, ADMIN, FINANCE leggono e scrivono; OPERATOR e CASSIERE leggono le proprie sedi; PARTNER escluso.
+// Scadenziario strutture (Payments): contratti di affitto (con gli scatti del canone), utenze (con le bollette), agenda delle
+// scadenze, esiti, istanze di pagamento create dalle scadenze, previsione dei costi ed esportazione. Montato su /api/finance/scadenziario.
+// Accesso: tutti gli utenti del modulo leggono; SUPPORT e amministratori (canManage) scrivono; CEO e CFO possono segnare gli esiti.
 import { Router } from 'express';
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, todayRome, itDate, eur } from '../lib/util.js';
-import { Params, siteScope } from '../lib/access.js';
+import { canManage, isSigner, requireManage } from '../lib/access.js';
 import { buildEvents, kpis, forecast, contractEnd, stepAt, toIso, parseDate, addMonths, isOverdue, UTILITY_LABEL, LEASE_KIND_LABEL, REGISTRATION_LABEL, TRANSFER_LABEL } from '../lib/schedule.js';
-import { WRITE_ROLES, READ_ROLES, visibleSiteIds, loadScheduleData, scheduleSettings, siteName } from '../lib/scheduleData.js';
+import { loadScheduleData, scheduleSettings, siteName, EVENT_KEY_RE } from '../lib/scheduleData.js';
+import { requestSchema, createRequest } from '../lib/requestCreate.js';
 
 const r = Router();
-r.use((req, _res, next) => (READ_ROLES.includes(req.user.role) ? next() : next(forbidden('Sezione non disponibile per il profilo'))));
-const requireWrite = (req, _res, next) => (WRITE_ROLES.includes(req.user.role) ? next() : next(forbidden('Profilo in sola lettura sullo scadenziario')));
+const requireWrite = requireManage;
+// esiti: anche i firmatari (CEO, CFO) possono segnare una scadenza come pagata / fatta
+const requireDone = (req, _res, next) => (canManage(req.user) || isSigner(req.user) ? next() : next(forbidden('Profilo in sola lettura sullo scadenziario')));
+const MESI_LUNGHI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data AAAA-MM-GG').refine((v) => { const t = parseDate(v); return t != null && toIso(t) === v; }, 'data inesistente');
 const opt = (s) => s.optional().nullable().transform((v) => (v === '' ? null : v));
@@ -20,35 +23,32 @@ const optText = (max) => opt(z.string().trim().max(max));
 const money = z.coerce.number().min(0).max(100_000_000);
 const intId = z.coerce.number().int().positive();
 
-// ---- perimetro ----
+// ---- sedi (nessun perimetro per utente in Payments) ----
 async function scopedSiteIds(req) {
-  const ids = await visibleSiteIds(req.user);
   const asked = req.query.site_id ? Number(req.query.site_id) : null;
-  if (asked) {
-    if (ids && !ids.includes(asked)) throw forbidden('Sede non autorizzata');
-    return [asked];
-  }
-  return ids;
+  return asked ? [asked] : null;
 }
-async function assertSiteAccess(user, siteId) {
-  const site = await one('SELECT id, code, name FROM sites_v WHERE id=$1', [siteId]);
+async function assertSiteAccess(_user, siteId) {
+  const site = await one(`SELECT id, code, name FROM public.sites WHERE id=$1 AND kind IS DISTINCT FROM 'SERVICE'`, [siteId]);
   if (!site) throw notFound('Sede non trovata nell\'anagrafica della Suite (le strutture dei clienti service non si gestiscono qui)');
-  const ids = await visibleSiteIds(user);
-  if (ids && !ids.includes(siteId)) throw forbidden('Sede non autorizzata');
   return site;
+}
+async function assertBeneficiary(id) {
+  if (id == null) return;
+  if (!await one('SELECT 1 FROM beneficiaries WHERE id=$1', [id])) throw bad('Beneficiario Payments inesistente');
 }
 async function assertOrg(id, label) {
   if (id == null) return;
   if (!await one('SELECT 1 FROM public.organizations WHERE id=$1', [id])) throw bad(`${label} inesistente: scegli una Legal entity dell'anagrafica`);
 }
 async function getLease(req, id) {
-  const l = await one('SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_name FROM lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id WHERE l.id=$1', [id]);
+  const l = await one('SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_name, b.name AS beneficiary_name FROM lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id LEFT JOIN beneficiaries b ON b.id=l.beneficiary_id WHERE l.id=$1', [id]);
   if (!l) throw notFound('Contratto non trovato');
   await assertSiteAccess(req.user, l.site_id);
   return l;
 }
 async function getUtility(req, id) {
-  const u = await one('SELECT u.*, coalesce(u.supplier_name, o.name) AS supplier_name FROM utilities u LEFT JOIN public.organizations o ON o.id=u.supplier_org_id WHERE u.id=$1', [id]);
+  const u = await one('SELECT u.*, coalesce(u.supplier_name, o.name) AS supplier_name, b.name AS beneficiary_name FROM utilities u LEFT JOIN public.organizations o ON o.id=u.supplier_org_id LEFT JOIN beneficiaries b ON b.id=u.beneficiary_id WHERE u.id=$1', [id]);
   if (!u) throw notFound('Utenza non trovata');
   await assertSiteAccess(req.user, u.site_id);
   return u;
@@ -56,12 +56,11 @@ async function getUtility(req, id) {
 
 // ---- sedi e Legal entity per i selettori ----
 r.get('/sites', ah(async (req, res) => {
-  const P = new Params();
-  const rows = await many(`SELECT s.id, s.code, s.name, s.city, s.province, s.address, s.active, s.configured, s.ownership, s.host_name, s.company_id,
+  const rows = await many(`SELECT s.id, s.code, s.name, s.city, s.province, s.address, s.active, s.kind,
       (SELECT count(*)::int FROM lease_contracts l WHERE l.site_id=s.id AND l.active) AS leases_count,
       (SELECT count(*)::int FROM utilities u WHERE u.site_id=s.id AND u.active) AS utilities_count,
       (SELECT count(*)::int FROM utilities u WHERE u.site_id=s.id AND u.active AND u.transfer_status IN ('DA_AVVIARE','IN_CORSO')) AS transfers_open
-    FROM sites_v s WHERE ${siteScope(req.user, P)} ${req.query.active === '1' ? 'AND s.active' : ''} ORDER BY s.name`, P.values);
+    FROM public.sites s WHERE s.kind IS DISTINCT FROM 'SERVICE' ${req.query.active === '1' ? 'AND s.active' : ''} ORDER BY s.name`);
   // prossima scadenza per sede (eventi futuri non fatti)
   const data = await loadScheduleData(rows.map((x) => x.id));
   const today = todayRome();
@@ -75,7 +74,7 @@ r.get('/sites', ah(async (req, res) => {
 }));
 
 r.get('/organizations', ah(async (_req, res) => {
-  res.json(await many(`SELECT id, kind, code, name, vat_number, city, active FROM public.organizations WHERE active ORDER BY lower(name)`));
+  res.json(await many(`SELECT id, kind, code, name, vat_number, tax_code, city, active, (iban IS NOT NULL AND iban <> '') AS has_iban FROM public.organizations WHERE active ORDER BY lower(name)`));
 }));
 
 // ---- agenda ----
@@ -91,11 +90,11 @@ r.get('/events', ah(async (req, res) => {
   const names = new Map(data.sites.map((s) => [s.id, s]));
   for (const e of events) { const s = names.get(e.site_id); e.site_name = s?.name || `Sede ${e.site_id}`; e.site_code = s?.code || null; }
   const settings = await scheduleSettings();
-  res.json({ today, from, to, events, kpi: kpis({ events: buildEvents({ ...data, from, to, today }), leases: data.leases, steps: data.steps, utilities: data.utilities, today }), sites: data.sites, alert_days: settings.alert_days, can_write: WRITE_ROLES.includes(req.user.role) });
+  res.json({ today, from, to, events, kpi: kpis({ events: buildEvents({ ...data, from, to, today }), leases: data.leases, steps: data.steps, utilities: data.utilities, today }), sites: data.sites, alert_days: settings.alert_days, can_write: canManage(req.user), can_done: canManage(req.user) || isSigner(req.user) });
 }));
 
-const KEY_RE = /^(canone|istat|registro|fine|disdetta|bolletta|offerta):(lease|utility):(\d+):(\d{4}-\d{2}-\d{2})$/;
-r.post('/events/done', requireWrite, ah(async (req, res) => {
+const KEY_RE = EVENT_KEY_RE;
+r.post('/events/done', requireDone, ah(async (req, res) => {
   const d = parse(z.object({ key: z.string().regex(KEY_RE, 'chiave evento non valida'), note: optText(500), amount: opt(money) }), req.body);
   const [, kind, type, id, date] = d.key.match(KEY_RE);
   const owner = type === 'lease' ? await getLease(req, Number(id)) : await getUtility(req, Number(id));
@@ -109,7 +108,7 @@ r.post('/events/done', requireWrite, ah(async (req, res) => {
   res.status(201).json({ ok: true });
 }));
 
-r.delete('/events/done/:key', requireWrite, ah(async (req, res) => {
+r.delete('/events/done/:key', requireDone, ah(async (req, res) => {
   const key = String(req.params.key);
   const m = key.match(KEY_RE);
   if (!m) throw bad('Chiave evento non valida');
@@ -123,6 +122,19 @@ r.delete('/events/done/:key', requireWrite, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Istanze collegate non ancora eseguite (bozza, in firma, autorizzata) per mese della scadenza: quanto del previsto è già in corso
+function openRequestsByMonth(data, months) {
+  const row = months.map(() => 0); const items = [];
+  for (const rq of data.requests) {
+    if (!['BOZZA', 'IN_FIRMA', 'FIRMATA'].includes(rq.status)) continue;
+    const m = rq.event_key.match(EVENT_KEY_RE); if (!m) continue;
+    const i = months.indexOf(m[4].slice(0, 7));
+    if (i >= 0) row[i] = Math.round((row[i] + Number(rq.amount)) * 100) / 100;
+    items.push({ key: rq.event_key, request_id: rq.request_id, protocol: rq.protocol, status: rq.status, amount: Number(rq.amount), date: m[4] });
+  }
+  return { months: row, sum: Math.round(row.reduce((a, b) => a + b, 0) * 100) / 100, count: items.length, items };
+}
+
 // ---- previsione ----
 r.get('/forecast', ah(async (req, res) => {
   const siteIds = await scopedSiteIds(req);
@@ -133,7 +145,78 @@ r.get('/forecast', ah(async (req, res) => {
   const names = new Map(data.sites.map((s) => [s.id, s]));
   for (const s of f.sites) { s.site_name = names.get(s.site_id)?.name || `Sede ${s.site_id}`; s.site_code = names.get(s.site_id)?.code || null; }
   for (const s of f.previous.sites) s.site_name = names.get(s.site_id)?.name || `Sede ${s.site_id}`;
+  f.requests_open = openRequestsByMonth(data, f.months);
   res.json(f);
+}));
+
+// ---- istanza di pagamento da una scadenza ----
+// Crea un'istanza in bozza con le regole di POST /requests (lib/requestCreate.js): beneficiario dal beneficiario Payments del
+// contratto/utenza (ultimo IBAN noto), altrimenti dal locatore/fornitore e dalla Legal entity collegata (IBAN del core).
+r.post('/events/request', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ key: z.string().regex(KEY_RE, 'chiave evento non valida'), amount: opt(money) }), req.body);
+  const [, kind, type, id, date] = d.key.match(KEY_RE);
+  if (!['canone', 'registro', 'bolletta'].includes(kind)) throw bad('Si crea un\'istanza solo per canoni, imposta di registro e bollette');
+  const owner = type === 'lease' ? await getLease(req, Number(id)) : await getUtility(req, Number(id));
+  const data = await loadScheduleData([owner.site_id]);
+  const today = todayRome();
+  const ev = buildEvents({ ...data, from: toIso(parseDate(date) - 86400000), to: toIso(parseDate(date) + 86400000), today }).find((e) => e.key === d.key);
+  if (!ev) throw notFound('Scadenza non trovata');
+  if (ev.done) throw bad('La scadenza è già segnata come pagata');
+  if (ev.request && !['ANNULLATA', 'RIFIUTATA'].includes(ev.request.status)) throw bad(`Esiste già l'istanza ${ev.request.protocol || `n. ${ev.request.id}`} per questa scadenza`);
+  const amount = d.amount ?? ev.amount;
+  if (!(amount > 0)) throw bad(ev.estimate ? 'Indica l\'importo da pagare: la scadenza è una stima' : 'Importo della scadenza mancante: indica la rata nel contratto o l\'importo della bolletta');
+  // beneficiario
+  const site = siteName(data.sites, owner.site_id);
+  const orgId = type === 'lease' ? owner.landlord_org_id : owner.supplier_org_id;
+  const org = orgId ? await one('SELECT name, vat_number, tax_code, iban, bic, bank_name FROM public.organizations WHERE id=$1', [orgId]) : null;
+  const ben = owner.beneficiary_id ? await one(`SELECT b.id, b.name, b.tax_id, i.iban, i.bic, i.bank FROM beneficiaries b
+      LEFT JOIN LATERAL (SELECT iban, bic, bank FROM beneficiary_ibans WHERE beneficiary_id=b.id ORDER BY verified_at DESC NULLS LAST, first_seen_at DESC LIMIT 1) i ON TRUE WHERE b.id=$1`, [owner.beneficiary_id]) : null;
+  const who = type === 'lease' ? 'locatore' : 'fornitore';
+  const name = ben?.name || (type === 'lease' ? owner.landlord_name : owner.supplier_name) || org?.name;
+  if (!name) throw bad(`Indica il ${who} (beneficiario Payments, Legal entity o nome) nella scheda ${type === 'lease' ? 'del contratto' : 'dell\'utenza'}`);
+  const iban = ben?.iban || org?.iban;
+  if (!iban) throw bad(`Indica l'IBAN del ${who} nel beneficiario Payments o nella Legal entity`);
+  const period = kind === 'bolletta' && ev.bill_id ? await one('SELECT period_from, period_to FROM utility_bills WHERE id=$1', [ev.bill_id]) : null;
+  const when = period?.period_from && period?.period_to ? `periodo ${itDate(period.period_from)} - ${itDate(period.period_to)}` : kind === 'canone' ? `${MESI_LUNGHI[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : `scadenza ${itDate(date)}`;
+  const body = {
+    request_date: today, requester: req.user.full_name,
+    beneficiary_name: name, beneficiary_tax_id: ben?.tax_id || org?.vat_number || org?.tax_code || null, beneficiary_iban: iban, beneficiary_bic: ben?.bic || org?.bic || null, beneficiary_bank: ben?.bank || org?.bank_name || null,
+    amount, purpose: `${ev.title} ${site} ${when}`.slice(0, 600),
+    doc_type: kind === 'bolletta' ? 'FATTURA' : 'CONTRATTO',
+    doc_number: (kind === 'bolletta' ? owner.code : [owner.unit, owner.landlord_name].filter(Boolean).join(' - ')) || null,
+    doc_date: kind === 'bolletta' ? null : owner.start_date,
+    payment_method: kind === 'registro' ? 'F24' : 'SEPA', value_date: date,
+    // canoni e bollette sono pagamenti ricorrenti già approvati (contratto / utenza); nessuna soglia lo vieta (la delibera CdA oltre
+    // soglia si soddisfa anche con prior_approval), l'imposta di registro resta senza approvazione preventiva
+    prior_approval: kind !== 'registro', prior_approval_ref: kind === 'canone' ? 'Contratto di affitto' : kind === 'bolletta' ? 'Utenza' : null,
+    checks: {}, notes: `Scadenziario: ${d.key}${ev.estimate ? ' (importo stimato, confermato alla creazione)' : ''}`,
+  };
+  const parsed = parse(requestSchema, body);
+  const out = await tx(async (c) => {
+    const created = await createRequest(parsed, req.user, { client: c });
+    await c.query('INSERT INTO schedule_requests (event_key, request_id) VALUES ($1,$2) ON CONFLICT (event_key) DO UPDATE SET request_id=EXCLUDED.request_id, created_at=now()', [d.key, created.id]);
+    return created;
+  });
+  await audit(req, 'SCHEDULE_REQUEST_CREATE', 'payment_request', out.id, { key: d.key, amount, beneficiary: name });
+  res.status(201).json(await out.load());
+}));
+
+// Beneficiario Payments dal locatore / fornitore: nome e codice fiscale della Legal entity (o il nome indicato), IBAN dal core se c'è
+r.post('/beneficiaries', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ org_id: opt(intId), name: optText(200), tax_id: optText(40) }), req.body);
+  const org = d.org_id ? await one('SELECT name, vat_number, tax_code, iban, bic, bank_name FROM public.organizations WHERE id=$1', [d.org_id]) : null;
+  if (d.org_id && !org) throw bad('Legal entity inesistente');
+  const name = (org?.name || d.name || '').trim();
+  if (name.length < 2) throw bad('Indica il nome del beneficiario');
+  const taxId = org?.vat_number || org?.tax_code || d.tax_id || null;
+  let b = taxId ? await one('SELECT * FROM beneficiaries WHERE lower(tax_id)=lower($1)', [taxId]) : null;
+  if (!b) b = await one('SELECT * FROM beneficiaries WHERE lower(name)=lower($1)', [name]);
+  if (!b) b = await one('INSERT INTO beneficiaries (name, tax_id) VALUES ($1,$2) RETURNING *', [name, taxId]);
+  else if (!b.tax_id && taxId) await q('UPDATE beneficiaries SET tax_id=$2 WHERE id=$1', [b.id, taxId]);
+  if (org?.iban) await q('INSERT INTO beneficiary_ibans (beneficiary_id, iban, bic, bank) VALUES ($1,$2,$3,$4) ON CONFLICT (beneficiary_id, iban) DO NOTHING', [b.id, org.iban.replace(/\s+/g, '').toUpperCase(), org.bic || null, org.bank_name || null]);
+  await audit(req, 'BENEFICIARY_CREATE', 'beneficiary', b.id, { name, tax_id: taxId, org_id: d.org_id, from: 'scadenziario' });
+  const ibans = await many('SELECT iban, bic, bank, verified_at FROM beneficiary_ibans WHERE beneficiary_id=$1 ORDER BY first_seen_at DESC', [b.id]);
+  res.status(201).json({ ...b, ibans });
 }));
 
 // ---- contratti ----
@@ -141,6 +224,7 @@ const leaseSchema = z.object({
   site_id: intId,
   landlord_org_id: opt(intId),
   landlord_name: optText(200),
+  beneficiary_id: opt(intId),      // beneficiario Payments del locatore
   unit: optText(200),
   kind: z.enum(['COMMERCIALE_6_6', 'COMMERCIALE_9_9', 'ABITATIVO_4_4', 'ABITATIVO_3_2', 'TRANSITORIO', 'COMODATO', 'ALTRO']).default('COMMERCIALE_6_6'),
   start_date: DATE,
@@ -158,7 +242,7 @@ const leaseSchema = z.object({
   active: z.boolean().default(true),
   amount: opt(money),      // importo iniziale della rata: crea o aggiorna lo scatto INIZIALE
 });
-const LEASE_COLS = ['site_id', 'landlord_org_id', 'landlord_name', 'unit', 'kind', 'start_date', 'first_term_years', 'renewal_years', 'notice_months', 'period_months', 'first_due', 'deposit', 'registration', 'istat', 'auto_pay', 'business_contract_id', 'notes', 'active'];
+const LEASE_COLS = ['site_id', 'landlord_org_id', 'landlord_name', 'beneficiary_id', 'unit', 'kind', 'start_date', 'first_term_years', 'renewal_years', 'notice_months', 'period_months', 'first_due', 'deposit', 'registration', 'istat', 'auto_pay', 'business_contract_id', 'notes', 'active'];
 const partialOf = (schema) => z.object(Object.fromEntries(Object.entries(schema.shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.removeDefault() : v).optional()])));
 
 // Contratto arricchito: canone vigente, scadenza, disdetta, scatti
@@ -182,7 +266,7 @@ r.get('/leases', ah(async (req, res) => {
 
 r.get('/leases/:id', ah(async (req, res) => {
   const l = await getLease(req, Number(req.params.id));
-  const steps = await many('SELECT s.*, u.full_name AS created_by_name FROM lease_steps s LEFT JOIN users_v u ON u.id=s.created_by WHERE s.lease_id=$1 ORDER BY s.valid_from', [l.id]);
+  const steps = await many('SELECT s.*, u.full_name AS created_by_name FROM lease_steps s LEFT JOIN users u ON u.id=s.created_by WHERE s.lease_id=$1 ORDER BY s.valid_from', [l.id]);
   const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [l.site_id]);
   res.json({ ...decorateLease(l, steps, todayRome()), site_name: site?.name });
 }));
@@ -191,6 +275,7 @@ r.post('/leases', requireWrite, ah(async (req, res) => {
   const d = parse(leaseSchema, req.body);
   await assertSiteAccess(req.user, d.site_id);
   await assertOrg(d.landlord_org_id, 'Locatore');
+  await assertBeneficiary(d.beneficiary_id);
   if (d.first_due && d.first_due < d.start_date) throw bad('La prima scadenza della rata non può precedere la decorrenza');
   const row = await tx(async (c) => {
     const l = (await c.query(`INSERT INTO lease_contracts (${LEASE_COLS.join(', ')}, created_by) VALUES (${LEASE_COLS.map((_, i) => `$${i + 1}`).join(', ')}, $${LEASE_COLS.length + 1}) RETURNING *`, [...LEASE_COLS.map((k) => d[k] ?? null), req.user.id])).rows[0];
@@ -206,6 +291,7 @@ r.put('/leases/:id', requireWrite, ah(async (req, res) => {
   const d = parse(partialOf(leaseSchema), req.body);
   if (d.site_id != null && d.site_id !== l.site_id) await assertSiteAccess(req.user, d.site_id);
   if (d.landlord_org_id !== undefined) await assertOrg(d.landlord_org_id, 'Locatore');
+  if (d.beneficiary_id != null) await assertBeneficiary(d.beneficiary_id);
   const start = d.start_date ?? l.start_date;
   const firstDue = d.first_due === undefined ? l.first_due : d.first_due;
   if (firstDue && firstDue < start) throw bad('La prima scadenza della rata non può precedere la decorrenza');
@@ -230,6 +316,7 @@ r.delete('/leases/:id', requireWrite, ah(async (req, res) => {
   await tx(async (c) => {
     await c.query('DELETE FROM lease_contracts WHERE id=$1', [l.id]);
     await c.query(`DELETE FROM schedule_done WHERE event_key LIKE '%:lease:' || $1 || ':%'`, [String(l.id)]);
+    await c.query(`DELETE FROM schedule_requests WHERE event_key LIKE '%:lease:' || $1 || ':%'`, [String(l.id)]);
   });
   await audit(req, 'LEASE_DELETE', 'lease', l.id, { site_id: l.site_id, unit: l.unit });
   res.json({ ok: true });
@@ -279,6 +366,7 @@ const utilitySchema = z.object({
   kind: z.enum(['ENERGIA', 'GAS', 'ACQUA', 'TARI', 'TELEFONIA', 'CONDOMINIO', 'VIGILANZA', 'PULIZIE', 'ALTRO']).default('ALTRO'),
   supplier_org_id: opt(intId),
   supplier_name: optText(200),
+  beneficiary_id: opt(intId),      // beneficiario Payments del fornitore
   code: optText(100),
   holder: optText(200),
   transfer_status: z.enum(['DA_AVVIARE', 'IN_CORSO', 'COMPLETATA', 'NON_NECESSARIA']).default('NON_NECESSARIA'),
@@ -290,7 +378,7 @@ const utilitySchema = z.object({
   notes: optText(2000),
   active: z.boolean().default(true),
 });
-const UTILITY_COLS = ['site_id', 'kind', 'supplier_org_id', 'supplier_name', 'code', 'holder', 'transfer_status', 'period_months', 'ref_due', 'avg_amount', 'offer_end', 'auto_pay', 'notes', 'active'];
+const UTILITY_COLS = ['site_id', 'kind', 'supplier_org_id', 'supplier_name', 'beneficiary_id', 'code', 'holder', 'transfer_status', 'period_months', 'ref_due', 'avg_amount', 'offer_end', 'auto_pay', 'notes', 'active'];
 
 function decorateUtility(u, bills, today) {
   const ub = bills.filter((b) => b.utility_id === u.id).sort((a, b) => String(b.due_date).localeCompare(String(a.due_date)));
@@ -312,7 +400,7 @@ r.get('/utilities', ah(async (req, res) => {
 
 r.get('/utilities/:id', ah(async (req, res) => {
   const u = await getUtility(req, Number(req.params.id));
-  const bills = await many('SELECT b.*, x.full_name AS created_by_name FROM utility_bills b LEFT JOIN users_v x ON x.id=b.created_by WHERE b.utility_id=$1 ORDER BY b.due_date DESC', [u.id]);
+  const bills = await many('SELECT b.*, x.full_name AS created_by_name FROM utility_bills b LEFT JOIN users x ON x.id=b.created_by WHERE b.utility_id=$1 ORDER BY b.due_date DESC', [u.id]);
   const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [u.site_id]);
   res.json({ ...decorateUtility(u, bills, todayRome()), site_name: site?.name });
 }));
@@ -321,6 +409,7 @@ r.post('/utilities', requireWrite, ah(async (req, res) => {
   const d = parse(utilitySchema, req.body);
   await assertSiteAccess(req.user, d.site_id);
   await assertOrg(d.supplier_org_id, 'Fornitore');
+  await assertBeneficiary(d.beneficiary_id);
   const row = await one(`INSERT INTO utilities (${UTILITY_COLS.join(', ')}, created_by) VALUES (${UTILITY_COLS.map((_, i) => `$${i + 1}`).join(', ')}, $${UTILITY_COLS.length + 1}) RETURNING *`, [...UTILITY_COLS.map((k) => d[k] ?? null), req.user.id]);
   await audit(req, 'UTILITY_CREATE', 'utility', row.id, { site_id: d.site_id, kind: d.kind, supplier: d.supplier_name });
   res.status(201).json(row);
@@ -331,6 +420,7 @@ r.put('/utilities/:id', requireWrite, ah(async (req, res) => {
   const d = parse(partialOf(utilitySchema), req.body);
   if (d.site_id != null && d.site_id !== u.site_id) await assertSiteAccess(req.user, d.site_id);
   if (d.supplier_org_id !== undefined) await assertOrg(d.supplier_org_id, 'Fornitore');
+  if (d.beneficiary_id != null) await assertBeneficiary(d.beneficiary_id);
   const cols = UTILITY_COLS.filter((k) => d[k] !== undefined);
   if (cols.length) await q(`UPDATE utilities SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [u.id, ...cols.map((k) => d[k])]);
   await audit(req, 'UTILITY_UPDATE', 'utility', u.id, d);
@@ -342,6 +432,7 @@ r.delete('/utilities/:id', requireWrite, ah(async (req, res) => {
   await tx(async (c) => {
     await c.query('DELETE FROM utilities WHERE id=$1', [u.id]);
     await c.query(`DELETE FROM schedule_done WHERE event_key LIKE '%:utility:' || $1 || ':%'`, [String(u.id)]);
+    await c.query(`DELETE FROM schedule_requests WHERE event_key LIKE '%:utility:' || $1 || ':%'`, [String(u.id)]);
   });
   await audit(req, 'UTILITY_DELETE', 'utility', u.id, { site_id: u.site_id, kind: u.kind });
   res.json({ ok: true });

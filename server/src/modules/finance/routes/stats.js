@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { many, one } from '../db.js';
 import { ah } from '../lib/util.js';
 import { getSettings } from '../lib/rules.js';
+import { scheduleSummary } from '../lib/scheduleData.js';
 
 const r = Router();
 
@@ -31,8 +32,9 @@ r.get('/summary', ah(async (req, res) => {
   const mine = ['CEO', 'CFO'].includes(req.user.role)
     ? pending.filter((p) => (p.tier !== 'SINGOLA' || p.single_signer === req.user.role) && !(p.signed_roles || []).includes(req.user.role))
     : [];
+  const schedule = await scheduleSummary().catch(() => null);   // riquadro Scadenze strutture
   res.json({
-    year, thresholds: { single: Number(s.threshold_single), joint: Number(s.threshold_joint) },
+    year, schedule, thresholds: { single: Number(s.threshold_single), joint: Number(s.threshold_joint) },
     counts: { draft: get('BOZZA'), in_signature: get('IN_FIRMA'), rejected: get('RIFIUTATA'), signed: get('FIRMATA'), executed: get('ESEGUITA'), cancelled: get('ANNULLATA') },
     ytd, executed_ytd: executedYtd, by_tier: byTier, monthly, top_beneficiaries: topBeneficiaries, timing, pending, to_execute: toExecute, aggregation_alerts: aggregationAlerts, mine,
   });

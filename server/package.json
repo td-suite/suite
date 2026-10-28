@@ -9,7 +9,7 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/migrate.js",
     "sync": "node src/jobs/sync.js",
-    "test": "node --test test/"
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",

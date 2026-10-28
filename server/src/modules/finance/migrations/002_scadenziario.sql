@@ -1,7 +1,9 @@
--- Scadenziario strutture (richiesta del CEO, 28/10/2026, docs/ANAGRAFICA.md): contratti di affitto con gli scatti del canone,
--- utenze con le bollette registrate, esiti delle scadenze e registro degli avvisi inviati. Le sedi sono quelle dell'anagrafica
--- unica (public.sites); locatore e fornitore sono Legal entity (public.organizations), facoltativi. Le scadenze non si salvano:
--- si calcolano da contratti e utenze (lib/schedule.js) e qui restano solo gli esiti (schedule_done) e gli avvisi (schedule_notified).
+-- Scadenziario strutture nel widget Payments (richiesta del CEO, 28/10/2026, docs/ANAGRAFICA.md): contratti di affitto con gli
+-- scatti del canone, utenze con le bollette registrate, esiti delle scadenze, collegamento con le istanze di pagamento e registro
+-- degli avvisi inviati. Le sedi sono quelle dell'anagrafica unica (public.sites); locatore e fornitore sono Legal entity
+-- (public.organizations), facoltativi, con il beneficiario Payments (beneficiaries) per creare le istanze. Le scadenze non si
+-- salvano: si calcolano da contratti e utenze (lib/schedule.js); qui restano esiti (schedule_done), istanze collegate
+-- (schedule_requests) e avvisi (schedule_notified).
 
 -- ---------- Contratti di affitto ----------
 CREATE TABLE IF NOT EXISTS lease_contracts (
@@ -9,6 +11,7 @@ CREATE TABLE IF NOT EXISTS lease_contracts (
   site_id              INT NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
   landlord_org_id      INT REFERENCES public.organizations(id) ON DELETE SET NULL,
   landlord_name        TEXT,
+  beneficiary_id       INT REFERENCES beneficiaries(id) ON DELETE SET NULL,   -- beneficiario Payments del locatore (per le istanze)
   unit                 TEXT,                                   -- immobile / unità (piano terra, box, magazzino)
   kind                 TEXT NOT NULL DEFAULT 'COMMERCIALE_6_6' CHECK (kind IN ('COMMERCIALE_6_6','COMMERCIALE_9_9','ABITATIVO_4_4','ABITATIVO_3_2','TRANSITORIO','COMODATO','ALTRO')),
   start_date           DATE NOT NULL,                          -- decorrenza
@@ -51,6 +54,7 @@ CREATE TABLE IF NOT EXISTS utilities (
   kind             TEXT NOT NULL DEFAULT 'ALTRO' CHECK (kind IN ('ENERGIA','GAS','ACQUA','TARI','TELEFONIA','CONDOMINIO','VIGILANZA','PULIZIE','ALTRO')),
   supplier_org_id  INT REFERENCES public.organizations(id) ON DELETE SET NULL,
   supplier_name    TEXT,
+  beneficiary_id   INT REFERENCES beneficiaries(id) ON DELETE SET NULL,       -- beneficiario Payments del fornitore (per le istanze)
   code             TEXT,                                       -- POD / PDR / numero cliente
   holder           TEXT,                                       -- intestatario attuale
   transfer_status  TEXT NOT NULL DEFAULT 'NON_NECESSARIA' CHECK (transfer_status IN ('DA_AVVIARE','IN_CORSO','COMPLETATA','NON_NECESSARIA')),   -- voltura
@@ -92,9 +96,18 @@ CREATE TABLE IF NOT EXISTS schedule_done (
   done_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   user_id    INT,
   note       TEXT,
-  amount     NUMERIC(12,2)                                     -- importo effettivamente pagato, se diverso
+  amount     NUMERIC(12,2),                                    -- importo effettivamente pagato, se diverso
+  request_id INT REFERENCES payment_requests(id) ON DELETE SET NULL   -- istanza eseguita che ha chiuso la scadenza
 );
 CREATE INDEX IF NOT EXISTS schedule_done_site_idx ON schedule_done (site_id);
+
+-- Istanze di pagamento create dallo scadenziario: una per scadenza; il collegamento cade se l'istanza viene annullata o rifiutata
+CREATE TABLE IF NOT EXISTS schedule_requests (
+  event_key   TEXT PRIMARY KEY,
+  request_id  INT NOT NULL REFERENCES payment_requests(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS schedule_requests_request_idx ON schedule_requests (request_id);
 
 -- Avvisi già inviati (per non ripeterli)
 CREATE TABLE IF NOT EXISTS schedule_notified (
@@ -102,10 +115,10 @@ CREATE TABLE IF NOT EXISTS schedule_notified (
   notified_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ---------- Impostazioni (gruppo "Scadenziario strutture" di Impostazioni) ----------
+-- ---------- Impostazioni (gruppo "Scadenziario strutture" delle Impostazioni di Payments) ----------
 INSERT INTO app_settings (key, value) VALUES
   ('schedule_alert_days', '7'),                                -- giorni di anticipo degli avvisi
   ('schedule_istat_pct', '1.5'),                               -- ipotesi di rivalutazione ISTAT annua per la previsione
   ('schedule_utility_growth_pct', '0'),                        -- ipotesi di crescita annua delle utenze per la previsione
-  ('schedule_notify_roles', 'SUPERADMIN,ADMIN,FINANCE')        -- profili Cash che ricevono gli avvisi in app
+  ('schedule_notify_roles', 'CEO,CFO,SUPPORT')                 -- profili Payments che ricevono gli avvisi in app
 ON CONFLICT (key) DO NOTHING;

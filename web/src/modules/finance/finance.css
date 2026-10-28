@@ -374,3 +374,29 @@ label.btn { cursor: pointer; }
 /* Avvisi con più righe (pagina di firma, rifiuti): ogni elemento su una riga propria */
 .alert > span, .alert > div { display: block; margin-top: 4px; }
 .alert > b + span { display: inline; margin-top: 0; }
+
+/* Scadenziario strutture: agenda per mese, scheda di sede, previsione, istanze collegate */
+.sched-month .bd.flush { padding: 0 6px; }
+.sched-ev { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 10px; border-bottom: 1px solid #edf2f3; }
+.sched-ev:last-child { border-bottom: 0; }
+.sched-ev.done { opacity: .55; }
+.sched-ev .day { text-align: center; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sched-ev .day b { display: block; font-size: 20px; font-weight: 700; color: var(--ink); }
+.sched-ev .day span { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.sched-ev .what .t { font-weight: 650; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sched-ev .what .d { overflow-wrap: anywhere; }
+.sched-ev .amt { font-weight: 650; }
+.sched-ev .act { flex-wrap: wrap; }
+.req-link:hover { text-decoration: none; filter: brightness(.95); }
+.dossier .bd .table-wrap table.t th { position: static; }
+.dossier table.t td.actions { white-space: normal; min-width: 170px; text-align: right; }
+.dossier table.t td.actions .btn { margin: 2px 0; }
+table.t.forecast th, table.t.forecast td { padding: 8px 10px; font-size: 12.5px; white-space: nowrap; }
+table.t.forecast tr.sub td { padding-top: 3px; padding-bottom: 3px; border-bottom: 0; }
+table.t.forecast tfoot td { font-weight: 700; background: #fafcfc; border-top: 1px solid var(--line); }
+table.t.forecast tfoot tr.req-row td { font-weight: 550; color: var(--muted); font-style: italic; }
+.forecast-prev { margin-top: 16px; }
+@media (max-width: 640px) {
+  .sched-ev { grid-template-columns: 46px minmax(0, 1fr); }
+  .sched-ev .amt, .sched-ev .act { grid-column: 2; justify-content: flex-start !important; text-align: left; }
+}

@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, qs, API_BASE } from '../api.js';
-import { useAuth, can } from '../auth.jsx';
+import { Link } from 'react-router-dom';
+import { api, qs, fileUrl } from '../api.js';
+import { base } from '../paths.js';
+import { useAuth, canManage, isSigner } from '../auth.jsx';
 import { useApi, Card, Kpi, Field, Modal, Badge, MoneyInput, useToast, Icon, Loading, ErrorBox, Empty } from '../components/ui.jsx';
-import { eur, itDate } from '../format.js';
+import { eur, itDate, STATUS } from '../format.js';
 
-// Scadenziario strutture (richiesta del CEO, 28/10/2026): affitti e utenze di ogni sede, con avvisi dei pagamenti, storico degli
-// scatti del canone e delle bollette, previsione dei costi. Le scadenze non si inseriscono: si calcolano dai contratti e dalle
-// utenze (server, lib/schedule.js); qui si segnano come pagate / fatte. Le sedi sono quelle dell'anagrafica unica; locatore e
-// fornitore si scelgono tra le Legal entity. SUPERADMIN, ADMIN e FINANCE scrivono; OPERATOR e CASSIERE leggono le proprie sedi.
+// Scadenziario strutture nel widget Payments (richiesta del CEO, 28/10/2026): affitti e utenze di ogni sede, con avvisi dei
+// pagamenti, storico degli scatti del canone e delle bollette, previsione dei costi e istanze di pagamento create dalle scadenze.
+// Le scadenze non si inseriscono: si calcolano dai contratti e dalle utenze (server, lib/schedule.js); qui si segnano come pagate /
+// fatte o si trasformano in istanze. Le sedi sono quelle dell'anagrafica unica; locatore e fornitore si scelgono tra le Legal entity
+// e si agganciano a un beneficiario Payments. Finance Support e amministratori scrivono; CEO e CFO segnano gli esiti; gli altri leggono.
 
 const LEASE_KIND = { COMMERCIALE_6_6: 'Commerciale 6+6', COMMERCIALE_9_9: 'Commerciale 9+9', ABITATIVO_4_4: 'Abitativo 4+4', ABITATIVO_3_2: 'Abitativo 3+2', TRANSITORIO: 'Transitorio', COMODATO: 'Comodato', ALTRO: 'Altro' };
 const REGISTRATION = { IMPOSTA_ANNUALE: 'Imposta annuale', UNICA_SOLUZIONE: 'Unica soluzione', CEDOLARE_SECCA: 'Cedolare secca', DA_REGISTRARE: 'Da registrare' };
@@ -24,6 +27,13 @@ const monthLabel = (mk) => { const [y, m] = mk.split('-'); return `${MESI_LUNGHI
 const monthShort = (mk) => { const [y, m] = mk.split('-'); return `${MESI[Number(m) - 1]} ${y.slice(2)}`; };
 const HORIZONS = [[30, '30 giorni'], [90, '90 giorni'], [180, '6 mesi'], [365, '12 mesi']];
 const isOverdue = (e) => e.days < 0 && !e.done && !e.auto;
+const PAYABLE = ['canone', 'bolletta', 'registro'];
+
+// Istanza di pagamento collegata alla scadenza: protocollo (o numero in bozza) e stato, con link alla scheda
+function RequestBadge({ r }) {
+  const st = STATUS[r.status] || { label: r.status, tone: 'grey' };
+  return <Link to={`${base}/istanze/${r.id}`} className="req-link" title="Apri l'istanza di pagamento"><Badge tone={st.tone}>Istanza {r.protocol || `n. ${r.id}`} · {st.label.toLowerCase()}</Badge></Link>;
+}
 const nn = (v) => (v == null || v === '' ? null : v);
 
 function StatePill({ e }) {
@@ -37,7 +47,8 @@ function StatePill({ e }) {
 
 export default function Schedule() {
   const { user } = useAuth();
-  const canWrite = can(user, 'SUPERADMIN', 'ADMIN', 'FINANCE');
+  const canWrite = canManage(user);
+  const canDone = canWrite || isSigner(user);
   const toast = useToast();
   const [sp, setSp] = useSearchParams();
   const [tab, setTab] = useState(sp.get('tab') || 'agenda');
@@ -80,7 +91,7 @@ export default function Schedule() {
           <div className="sub">Affitti e utenze di ogni sede: scadenze dei pagamenti, scatti del canone, volture e previsione dei costi{ev.data ? `. Oggi ${itDate(ev.data.today)}` : ''}{ev.data?.alert_days ? ` · avvisi ${ev.data.alert_days} giorni prima` : ''}</div>
         </div>
         <div className="row">
-          <a className="btn ghost" href={`${API_BASE}/scadenziario/export.xlsx${qs({ site_id: siteId })}`}><Icon name="download" size={16} />Esporta XLSX</a>
+          <a className="btn ghost" href={fileUrl(`/scadenziario/export.xlsx${qs({ site_id: siteId })}`)}><Icon name="download" size={16} />Esporta XLSX</a>
           {canWrite && <button className="btn ghost" onClick={() => setModal({ type: 'utility', data: { site_id: siteId } })}><Icon name="plus" size={16} />Utenza</button>}
           {canWrite && <button className="btn" onClick={() => setModal({ type: 'lease', data: { site_id: siteId } })}><Icon name="plus" size={16} />Contratto di affitto</button>}
         </div>
@@ -111,7 +122,7 @@ export default function Schedule() {
         </div>
       </div>
 
-      {tab === 'agenda' && <Agenda ev={ev} cat={cat} setCat={setCat} horizon={horizon} setHorizon={setHorizon} showDone={showDone} setShowDone={setShowDone} canWrite={canWrite} onDone={(e) => (e.done ? toggleDone(e) : setModal({ type: 'done', event: e }))} hasData={!!(leases.data?.length || utilities.data?.length)} onNew={() => setModal({ type: 'lease', data: { site_id: siteId } })} />}
+      {tab === 'agenda' && <Agenda ev={ev} cat={cat} setCat={setCat} horizon={horizon} setHorizon={setHorizon} showDone={showDone} setShowDone={setShowDone} canWrite={canWrite} canDone={canDone} onRequest={(e) => setModal({ type: 'request', event: e })} onDone={(e) => (e.done ? toggleDone(e) : setModal({ type: 'done', event: e }))} hasData={!!(leases.data?.length || utilities.data?.length)} onNew={() => setModal({ type: 'lease', data: { site_id: siteId } })} />}
       {tab === 'strutture' && <Strutture sites={sites} leases={leases} utilities={utilities} events={ev.data?.events || []} siteId={siteId} canWrite={canWrite} open={setModal} />}
       {tab === 'previsione' && <Previsione siteId={siteId} />}
       {tab === 'volture' && <Volture rows={transfers} loading={!utilities.data} canWrite={canWrite} siteName={siteName} open={setModal} />}
@@ -120,13 +131,14 @@ export default function Schedule() {
       {modal?.type === 'step' && <StepForm lease={modal.lease} step={modal.step} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
       {modal?.type === 'utility' && <UtilityForm data={modal.data} sites={sites.data || []} orgs={orgs.data || []} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
       {modal?.type === 'bill' && <BillForm utility={modal.utility} bill={modal.bill} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
+      {modal?.type === 'request' && <RequestModal event={modal.event} onClose={close} onCreated={() => { close(); ev.reload(); }} />}
       {modal?.type === 'done' && <DoneForm event={modal.event} error={err} onClose={close} onConfirm={(p) => toggleDone(modal.event, p)} />}
     </div>
   );
 }
 
 // ---------------- Agenda ----------------
-function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, canWrite, onDone, hasData, onNew }) {
+function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, canWrite, canDone, onDone, onRequest, hasData, onNew }) {
   const events = ev.data?.events || [];
   const visible = events.filter((e) => (!cat || e.cat === cat) && (e.days < 0 ? isOverdue(e) || (showDone && e.days >= -60) : e.days <= horizon && (showDone || !e.done)));
   const groups = useMemo(() => {
@@ -160,8 +172,10 @@ function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, c
                 </div>
                 <div className="amt num">{e.amount != null ? <>{e.estimate && <span className="muted" title="importo stimato">~</span>}{eur(e.amount)}{e.done_amount != null && e.done_amount !== e.amount && <div className="small muted">pagati {eur(e.done_amount)}</div>}</> : ''}</div>
                 <div className="act row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+                  {e.request && <RequestBadge r={e.request} />}
                   <StatePill e={e} />
-                  {canWrite && (e.kind !== 'fine' || e.days < 0) && <button className={`btn sm ${e.done ? 'ghost' : ''}`} onClick={() => onDone(e)}>{e.done ? '✓ Fatta' : ['canone', 'bolletta', 'registro'].includes(e.kind) ? 'Segna pagato' : 'Segna fatto'}</button>}
+                  {canWrite && !e.done && PAYABLE.includes(e.kind) && (!e.request || ['ANNULLATA', 'RIFIUTATA'].includes(e.request.status)) && <button className="btn sm ghost" onClick={() => onRequest(e)} title="Crea un'istanza di autorizzazione al pagamento per questa scadenza">Crea istanza</button>}
+                  {canDone && (e.kind !== 'fine' || e.days < 0) && <button className={`btn sm ${e.done ? 'ghost' : ''}`} onClick={() => onDone(e)}>{e.done ? '✓ Fatta' : PAYABLE.includes(e.kind) ? 'Segna pagato' : 'Segna fatto'}</button>}
                 </div>
               </div>
             ))}
@@ -215,7 +229,7 @@ function Dossier({ site, leases, utilities, events, canWrite, open }) {
           <tbody>{leases.map((l) => (
             <React.Fragment key={l.id}>
               <tr>
-                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div>{!l.active && <Badge tone="red">Cessato</Badge>}</td>
+                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div>{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
                 <td>{LEASE_KIND[l.kind] || l.kind}<div className="small muted">dal {itDate(l.start_date)}{l.first_term_years ? ` · ${l.first_term_years} anni` : ''}{l.renewal_years ? ` + ${l.renewal_years}` : ''}</div></td>
                 <td className="num"><b>{l.current_amount != null ? eur(l.current_amount) : <span className="muted">non indicata</span>}</b><div className="small muted">/{PER_SHORT[l.period_months] || 'rata'}{l.auto_pay ? ' · automatico' : ''}{l.current_step_from ? ` · dal ${itDate(l.current_step_from)}` : ''}</div></td>
                 <td>{l.end_date ? <>{itDate(l.end_date)}{l.expired ? <div className="small red">scaduto</div> : l.renewals ? <div className="small muted">rinnovato {l.renewals} {l.renewals === 1 ? 'volta' : 'volte'}</div> : null}</> : <span className="muted">–</span>}</td>
@@ -249,7 +263,7 @@ function Dossier({ site, leases, utilities, events, canWrite, open }) {
           <tbody>{utilities.map((u) => (
             <React.Fragment key={u.id}>
               <tr>
-                <td><b>{UTILITY_KIND[u.kind] || u.kind}</b><div className="small muted">{u.supplier_name || 'fornitore non indicato'} · {PERIOD[u.period_months] ? PERIOD[u.period_months].toLowerCase() : ''}{u.auto_pay ? ' · addebito automatico' : ''}</div>{!u.active && <Badge tone="red">Cessata</Badge>}</td>
+                <td><b>{UTILITY_KIND[u.kind] || u.kind}</b><div className="small muted">{u.supplier_name || 'fornitore non indicato'} · {PERIOD[u.period_months] ? PERIOD[u.period_months].toLowerCase() : ''}{u.auto_pay ? ' · addebito automatico' : ''}</div>{u.beneficiary_name && <div className="small muted">beneficiario {u.beneficiary_name}</div>}{!u.active && <Badge tone="red">Cessata</Badge>}</td>
                 <td className="mono">{u.code || <span className="muted">–</span>}</td>
                 <td>{u.holder || <span className="muted">–</span>}</td>
                 <td><Badge tone={TRANSFER_TONE[u.transfer_status]}>{TRANSFER[u.transfer_status]}</Badge></td>
@@ -295,10 +309,11 @@ function Previsione({ siteId }) {
         <label className="f inline"><input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} />dettaglio affitti e utenze per sede</label>
         <span className="small muted" style={{ marginLeft: 'auto' }}>Ipotesi dalle Impostazioni: rivalutazione ISTAT {d.assumptions.istat_pct.toLocaleString('it-IT')}% annuo dal prossimo anniversario · crescita utenze {d.assumptions.utility_growth_pct.toLocaleString('it-IT')}% annuo · imposta di registro {d.assumptions.registry_pct}% del canone annuo (minimo {d.assumptions.registry_min} €)</span>
       </div>
-      <div className="grid g4" style={{ marginBottom: 16 }}>
+      <div className="grid g5" style={{ marginBottom: 16 }}>
         <Kpi accent label={`Costo previsto ${months} mesi`} value={eur(d.totals.sum)} foot={`${eur(d.totals.sum / months)} al mese in media`} />
         <Kpi label="Affitti" value={eur(d.totals.sum_rent + d.totals.sum_registry)} foot={d.totals.sum_registry ? `di cui imposta di registro ${eur(d.totals.sum_registry)}` : 'canoni con rivalutazione ipotetica'} />
         <Kpi label="Utenze" value={eur(d.totals.sum_utilities)} foot="media delle bollette registrate o importo medio" />
+        <Kpi label="Istanze già create" value={eur(d.requests_open?.sum || 0)} foot={d.requests_open?.count ? `${d.requests_open.count} ${d.requests_open.count === 1 ? 'istanza' : 'istanze'} in bozza, in firma o autorizzate` : 'nessuna istanza aperta dalle scadenze'} />
         <Kpi label="Ultimi 12 mesi registrati" value={eur(prevSum)} foot={prevSum ? `affitti ${eur(d.previous.sum_rent)} · utenze ${eur(d.previous.sum_utilities)}` : 'bollette pagate e rate segnate fatte'} />
       </div>
       {!d.sites.length ? <div className="card"><Empty>Nessun contratto né utenza: la previsione si costruisce da soli questi dati.</Empty></div> : (
@@ -320,6 +335,7 @@ function Previsione({ siteId }) {
               <tr><td>Affitti{d.totals.sum_registry ? ' e imposta di registro' : ''}</td>{d.totals.rent.map((v, i) => <td key={i} className="num">{eur(v + d.totals.registry[i])}</td>)}<td className="num">{eur(d.totals.sum_rent + d.totals.sum_registry)}</td></tr>
               <tr><td>Utenze</td>{d.totals.utilities.map((v, i) => <td key={i} className="num">~{eur(v)}</td>)}<td className="num">{eur(d.totals.sum_utilities)}</td></tr>
               <tr><td>Totale rete</td>{d.totals.total.map((v, i) => <td key={i} className="num">{eur(v)}</td>)}<td className="num">{eur(d.totals.sum)}</td></tr>
+              {d.requests_open && <tr className="req-row"><td title="Istanze di pagamento create dalle scadenze, non ancora eseguite (bozza, in firma, autorizzate)">Istanze già create</td>{d.requests_open.months.map((v, i) => <td key={i} className="num">{v ? eur(v) : <span className="muted">–</span>}</td>)}<td className="num">{eur(d.requests_open.sum)}</td></tr>}
             </tfoot>
           </table></div>
         </Card>
@@ -377,12 +393,12 @@ const confirmDelete = (what) => window.confirm(`Eliminare ${what}? L'operazione 
 
 function LeaseForm({ data, sites, orgs, onClose, onSaved }) {
   const edit = !!data?.id;
-  const [f, setF] = useState({ site_id: data?.site_id || '', landlord_org_id: data?.landlord_org_id || '', landlord_name: data?.landlord_name || '', unit: data?.unit || '', kind: data?.kind || 'COMMERCIALE_6_6', start_date: data?.start_date || '', first_term_years: data?.first_term_years ?? (data?.kind?.startsWith('COMMERCIALE_9') ? 9 : 6), renewal_years: data?.renewal_years ?? 6, notice_months: data?.notice_months ?? 12, period_months: data?.period_months || 1, first_due: data?.first_due || '', amount: data?.current_amount ?? data?.steps?.find((s) => s.reason === 'INIZIALE')?.amount ?? '', deposit: data?.deposit ?? '', registration: data?.registration || 'IMPOSTA_ANNUALE', istat: data?.istat ?? true, auto_pay: data?.auto_pay ?? false, business_contract_id: data?.business_contract_id || '', notes: data?.notes || '', active: data?.active ?? true });
+  const [f, setF] = useState({ site_id: data?.site_id || '', landlord_org_id: data?.landlord_org_id || '', landlord_name: data?.landlord_name || '', beneficiary_id: data?.beneficiary_id || '', unit: data?.unit || '', kind: data?.kind || 'COMMERCIALE_6_6', start_date: data?.start_date || '', first_term_years: data?.first_term_years ?? (data?.kind?.startsWith('COMMERCIALE_9') ? 9 : 6), renewal_years: data?.renewal_years ?? 6, notice_months: data?.notice_months ?? 12, period_months: data?.period_months || 1, first_due: data?.first_due || '', amount: data?.current_amount ?? data?.steps?.find((s) => s.reason === 'INIZIALE')?.amount ?? '', deposit: data?.deposit ?? '', registration: data?.registration || 'IMPOSTA_ANNUALE', istat: data?.istat ?? true, auto_pay: data?.auto_pay ?? false, business_contract_id: data?.business_contract_id || '', notes: data?.notes || '', active: data?.active ?? true });
   const { busy, err, run } = useSaver(onSaved);
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
   const iniAmount = edit ? data.steps?.find((s) => s.reason === 'INIZIALE')?.amount : null;
   const save = () => run(async () => {
-    const body = { site_id: Number(f.site_id), landlord_org_id: f.landlord_org_id ? Number(f.landlord_org_id) : null, landlord_name: nn(f.landlord_name), unit: nn(f.unit), kind: f.kind, start_date: f.start_date, first_term_years: f.first_term_years === '' ? null : Number(f.first_term_years), renewal_years: f.renewal_years === '' ? null : Number(f.renewal_years), notice_months: f.notice_months === '' ? null : Number(f.notice_months), period_months: Number(f.period_months), first_due: nn(f.first_due), deposit: f.deposit === '' ? null : Number(f.deposit), registration: nn(f.registration), istat: !!f.istat, auto_pay: !!f.auto_pay, business_contract_id: f.business_contract_id ? Number(f.business_contract_id) : null, notes: nn(f.notes), active: !!f.active };
+    const body = { site_id: Number(f.site_id), landlord_org_id: f.landlord_org_id ? Number(f.landlord_org_id) : null, landlord_name: nn(f.landlord_name), beneficiary_id: f.beneficiary_id ? Number(f.beneficiary_id) : null, unit: nn(f.unit), kind: f.kind, start_date: f.start_date, first_term_years: f.first_term_years === '' ? null : Number(f.first_term_years), renewal_years: f.renewal_years === '' ? null : Number(f.renewal_years), notice_months: f.notice_months === '' ? null : Number(f.notice_months), period_months: Number(f.period_months), first_due: nn(f.first_due), deposit: f.deposit === '' ? null : Number(f.deposit), registration: nn(f.registration), istat: !!f.istat, auto_pay: !!f.auto_pay, business_contract_id: f.business_contract_id ? Number(f.business_contract_id) : null, notes: nn(f.notes), active: !!f.active };
     // importo iniziale: alla creazione crea lo scatto INIZIALE; in modifica solo se cambia rispetto allo scatto iniziale
     if (!edit) { if (f.amount !== '') body.amount = Number(f.amount); } else if (f.amount !== '' && Number(f.amount) !== Number(iniAmount ?? NaN)) body.amount = Number(f.amount);
     if (edit) await api.put(`/scadenziario/leases/${data.id}`, body); else await api.post('/scadenziario/leases', body);
@@ -398,6 +414,7 @@ function LeaseForm({ data, sites, orgs, onClose, onSaved }) {
         <Field label="Tipologia"><select value={f.kind} onChange={set('kind')}>{Object.entries(LEASE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label="Locatore (Legal entity)" help="Dall'anagrafica; se manca, scrivi il nome qui sotto"><OrgSelect value={f.landlord_org_id} onChange={set('landlord_org_id')} orgs={orgs} /></Field>
         <Field label="Locatore (nome)" help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : 'Nome del proprietario se non è in anagrafica'}><input value={f.landlord_name} onChange={set('landlord_name')} placeholder={org?.name || ''} /></Field>
+        <Field label="Beneficiario Payments" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle scadenze" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.landlord_name ? { name: f.landlord_name } : null} fromLabel="nuovo dal locatore" /></Field>
       </div>
       <h3 style={{ margin: '16px 0 8px' }}>Durata</h3>
       <div className="form-grid">
@@ -455,11 +472,11 @@ function StepForm({ lease, step, onClose, onSaved }) {
 
 function UtilityForm({ data, sites, orgs, onClose, onSaved }) {
   const edit = !!data?.id;
-  const [f, setF] = useState({ site_id: data?.site_id || '', kind: data?.kind || 'ENERGIA', supplier_org_id: data?.supplier_org_id || '', supplier_name: data?.supplier_name || '', code: data?.code || '', holder: data?.holder || '', transfer_status: data?.transfer_status || 'NON_NECESSARIA', period_months: data?.period_months || 2, ref_due: data?.ref_due || '', avg_amount: data?.avg_amount ?? '', offer_end: data?.offer_end || '', auto_pay: data?.auto_pay ?? false, notes: data?.notes || '', active: data?.active ?? true });
+  const [f, setF] = useState({ site_id: data?.site_id || '', kind: data?.kind || 'ENERGIA', supplier_org_id: data?.supplier_org_id || '', supplier_name: data?.supplier_name || '', beneficiary_id: data?.beneficiary_id || '', code: data?.code || '', holder: data?.holder || '', transfer_status: data?.transfer_status || 'NON_NECESSARIA', period_months: data?.period_months || 2, ref_due: data?.ref_due || '', avg_amount: data?.avg_amount ?? '', offer_end: data?.offer_end || '', auto_pay: data?.auto_pay ?? false, notes: data?.notes || '', active: data?.active ?? true });
   const { busy, err, run } = useSaver(onSaved);
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
   const save = () => run(async () => {
-    const body = { site_id: Number(f.site_id), kind: f.kind, supplier_org_id: f.supplier_org_id ? Number(f.supplier_org_id) : null, supplier_name: nn(f.supplier_name), code: nn(f.code), holder: nn(f.holder), transfer_status: f.transfer_status, period_months: Number(f.period_months), ref_due: nn(f.ref_due), avg_amount: f.avg_amount === '' ? null : Number(f.avg_amount), offer_end: nn(f.offer_end), auto_pay: !!f.auto_pay, notes: nn(f.notes), active: !!f.active };
+    const body = { site_id: Number(f.site_id), kind: f.kind, supplier_org_id: f.supplier_org_id ? Number(f.supplier_org_id) : null, supplier_name: nn(f.supplier_name), beneficiary_id: f.beneficiary_id ? Number(f.beneficiary_id) : null, code: nn(f.code), holder: nn(f.holder), transfer_status: f.transfer_status, period_months: Number(f.period_months), ref_due: nn(f.ref_due), avg_amount: f.avg_amount === '' ? null : Number(f.avg_amount), offer_end: nn(f.offer_end), auto_pay: !!f.auto_pay, notes: nn(f.notes), active: !!f.active };
     if (edit) await api.put(`/scadenziario/utilities/${data.id}`, body); else await api.post('/scadenziario/utilities', body);
   }, edit ? 'Utenza aggiornata' : 'Utenza registrata');
   const del = () => confirmDelete('l\'utenza con le sue bollette') && run(() => api.del(`/scadenziario/utilities/${data.id}`), 'Utenza eliminata');
@@ -473,6 +490,7 @@ function UtilityForm({ data, sites, orgs, onClose, onSaved }) {
         <Field label="Fatturazione"><select value={f.period_months} onChange={set('period_months')}>{[1, 2, 3, 4, 6, 12].map((n) => <option key={n} value={n}>{PERIOD[n]}</option>)}</select></Field>
         <Field label="Fornitore (Legal entity)" help="Dall'anagrafica; se manca, scrivi il nome qui sotto"><OrgSelect value={f.supplier_org_id} onChange={set('supplier_org_id')} orgs={orgs} /></Field>
         <Field label="Fornitore (nome)" help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : null}><input value={f.supplier_name} onChange={set('supplier_name')} placeholder={org?.name || ''} /></Field>
+        <Field label="Beneficiario Payments" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle bollette" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.supplier_name ? { name: f.supplier_name } : null} fromLabel="nuovo dal fornitore" /></Field>
         <Field label="POD / PDR / numero cliente"><input className="mono" value={f.code} onChange={set('code')} /></Field>
         <Field label="Intestatario attuale"><input value={f.holder} onChange={set('holder')} /></Field>
         <Field label="Voltura"><select value={f.transfer_status} onChange={set('transfer_status')}>{Object.entries(TRANSFER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -529,6 +547,60 @@ function DoneForm({ event: e, error, onClose, onConfirm }) {
       <div className="form-grid">
         {pay && <Field label="Importo effettivamente pagato" help="Solo se diverso da quello previsto"><MoneyInput value={amount} onChange={setAmount} /></Field>}
         <Field label="Nota (facoltativa)" className={pay ? '' : 'span2'}><input value={note} onChange={(ev) => setNote(ev.target.value)} placeholder={pay ? 'es. bonifico del 3/11, CRO…' : 'es. raccomandata inviata il…'} autoFocus /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+// Beneficiario Payments: ricerca nell'anagrafica dei beneficiari (GET /beneficiaries?q=) e creazione dal locatore / fornitore
+function BeneficiarySelect({ value, onChange, fromOrg, fromLabel }) {
+  const [q, setQ] = useState('');
+  const [list, setList] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const toast = useToast();
+  useEffect(() => { let alive = true; api.get(`/beneficiaries${qs({ q })}`, { silent: true }).then((r) => alive && setList(r || [])).catch(() => {}); return () => { alive = false; }; }, [q]);
+  const cur = list.find((b) => b.id === Number(value));
+  const create = async () => {
+    setBusy(true); setErr(null);
+    try { const b = await api.post('/scadenziario/beneficiaries', fromOrg.id ? { org_id: fromOrg.id } : { name: fromOrg.name }); setList((l) => (l.some((x) => x.id === b.id) ? l : [b, ...l])); onChange(String(b.id)); toast(b.ibans?.length ? 'Beneficiario pronto con IBAN' : 'Beneficiario creato: aggiungi l\'IBAN in Beneficiari e IBAN'); }
+    catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <div className="row" style={{ gap: 6 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="cerca per nome o P.IVA" style={{ flex: '0 0 180px' }} />
+        <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }}>
+          <option value="">Nessuno</option>
+          {cur && !list.includes(cur) && <option value={cur.id}>{cur.name}</option>}
+          {list.map((b) => <option key={b.id} value={b.id}>{b.name}{b.tax_id ? ` · ${b.tax_id}` : ''}{b.ibans?.length ? '' : ' · senza IBAN'}</option>)}
+        </select>
+        {fromOrg && <button type="button" className="btn sm ghost" disabled={busy} onClick={create}>{fromLabel}</button>}
+      </div>
+      {cur && <div className="small muted" style={{ marginTop: 4 }}>{cur.ibans?.length ? `IBAN ${cur.ibans[0].iban}${cur.ibans[0].verified_at ? ' (verificato)' : ' (da verificare)'}` : <span className="red">Nessun IBAN: aggiungilo in Beneficiari e IBAN prima di creare istanze</span>}</div>}
+      <ErrorBox error={err} />
+    </div>
+  );
+}
+
+// Istanza di pagamento da una scadenza: conferma (e, per le stime, importo) prima di creare la bozza
+function RequestModal({ event: e, onClose, onCreated }) {
+  const toast = useToast();
+  const [amount, setAmount] = useState(e.amount ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const go = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await api.post('/scadenziario/events/request', { key: e.key, amount: amount === '' ? null : Number(amount) }); toast(`Istanza ${r.protocol || `n. ${r.id}`} creata in bozza`); onCreated(r); }
+    catch (x) { setErr(x); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Crea istanza di pagamento" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !(Number(amount) > 0)} onClick={go}>Crea istanza</button></>}>
+      <ErrorBox error={err} />
+      <div className="alert info" style={{ marginBottom: 12 }}><span><b>{e.title}</b> · {e.site_name} · {itDate(e.date)}{e.desc ? <div className="small">{e.desc}</div> : null}</span></div>
+      <p className="small muted" style={{ marginTop: 0 }}>Nasce un'istanza in bozza con beneficiario, IBAN, importo, causale e valuta già compilati dalla scadenza; la completi (conto di addebito, verifiche, allegati) e la invii in firma dalla scheda dell'istanza. Quando viene eseguita, la scadenza si chiude da sola.</p>
+      <div className="form-grid">
+        <Field label={e.estimate ? 'Importo da pagare (la scadenza è una stima)' : 'Importo'} help={e.estimate ? 'Conferma o correggi l\'importo stimato' : 'Importo della scadenza; modificalo solo se diverso'}><MoneyInput value={amount} onChange={setAmount} autoFocus /></Field>
       </div>
     </Modal>
   );

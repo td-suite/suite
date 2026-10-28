@@ -212,25 +212,3 @@ table.t td:last-child { white-space: nowrap; }
 .sites-table .table-wrap { overflow-x: auto; scrollbar-gutter: stable; }
 .sites-table table.t th { white-space: normal; }
 .sites-table table.t td:nth-child(4) { max-width: 200px; }
-
-/* Scadenziario strutture: agenda per mese, scheda di sede, previsione */
-.sched-month .bd.flush { padding: 0 6px; }
-.sched-ev { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 10px; border-bottom: 1px solid var(--line-soft); }
-.sched-ev:last-child { border-bottom: 0; }
-.sched-ev.done { opacity: .55; }
-.sched-ev .day { text-align: center; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.sched-ev .day b { display: block; font-size: 20px; font-weight: 700; color: var(--ink); }
-.sched-ev .day span { font-size: 11px; color: var(--muted); text-transform: uppercase; }
-.sched-ev .what .t { font-weight: 650; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.sched-ev .what .d { overflow-wrap: anywhere; }
-.sched-ev .amt { font-weight: 650; }
-.dossier .bd .table-wrap table.t th { position: static; }
-.dossier table.t td.actions { white-space: normal; min-width: 170px; }
-.dossier table.t td.actions .btn { margin: 2px 0; }
-table.t.forecast th, table.t.forecast td { padding: 8px 10px; font-size: 12.5px; white-space: nowrap; }
-table.t.forecast tr.sub td { padding-top: 3px; padding-bottom: 3px; border-bottom: 0; }
-.forecast-prev { margin-top: 16px; }
-@media (max-width: 640px) {
-  .sched-ev { grid-template-columns: 46px minmax(0, 1fr); }
-  .sched-ev .amt, .sched-ev .act { grid-column: 2; justify-content: flex-start !important; text-align: left; }
-}

@@ -25,8 +25,9 @@ export async function loadRequest(id) {
   return r;
 }
 
-export async function addEvent(requestId, kind, userId, note, data) {
-  await q('INSERT INTO request_events(request_id, kind, user_id, note, data) VALUES ($1,$2,$3,$4,$5)', [requestId, kind, userId || null, note || null, data ? JSON.stringify(data) : null]);
+export async function addEvent(requestId, kind, userId, note, data, client = null) {
+  const run = client ? client.query.bind(client) : q;   // dentro una transazione aperta (creazione dallo scadenziario)
+  await run('INSERT INTO request_events(request_id, kind, user_id, note, data) VALUES ($1,$2,$3,$4,$5)', [requestId, kind, userId || null, note || null, data ? JSON.stringify(data) : null]);
 }
 
 export async function signerUser(role) {

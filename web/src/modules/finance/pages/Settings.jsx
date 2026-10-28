@@ -69,6 +69,15 @@ export default function Settings() {
         <table className="t"><thead><tr><th>Banca</th><th>IBAN</th><th>Etichetta</th><th>Stato</th><th className="num" /></tr></thead>
           <tbody>{(banks.data || []).map((b) => <tr key={b.id}><td>{b.bank_name}</td><td className="mono">{prettyIban(b.iban)}</td><td>{b.label}</td><td>{b.active ? <Badge tone="green">attivo</Badge> : <Badge tone="grey">disattivato</Badge>}</td><td className="num">{admin && <button className="btn sm ghost" onClick={() => setBank(b)}>Modifica</button>}</td></tr>)}</tbody></table>
       </Card>
+      <Card title="Scadenziario strutture" className="mt">
+        <p className="small muted" style={{ marginTop: 0 }}>Affitti e utenze delle sedi (pagina Scadenziario strutture). Sedi, locatori e fornitori vengono dall'anagrafica unica della Suite, i beneficiari dall'anagrafica Payments: qui restano solo i parametri degli avvisi e le ipotesi della previsione.</p>
+        <div className="form-grid">
+          <Field label="Avviso: giorni di anticipo" help="Le scadenze entro questi giorni (e quelle scadute non segnate) generano una notifica in app, una sola volta per scadenza. Il controllo gira ogni 6 ore."><input type="number" min={0} max={120} value={f.schedule_alert_days ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_alert_days: e.target.value })} /></Field>
+          <Field label="Previsione: rivalutazione ISTAT annua %" help="Ipotesi applicata ai canoni con adeguamento ISTAT dal prossimo anniversario della decorrenza"><input type="number" step="0.1" value={f.schedule_istat_pct ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_istat_pct: e.target.value })} /></Field>
+          <Field label="Previsione: crescita annua delle utenze %" help="Ipotesi applicata alla media mensile delle bollette (0 = costi costanti)"><input type="number" step="0.1" value={f.schedule_utility_growth_pct ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_utility_growth_pct: e.target.value })} /></Field>
+          <Field label="Profili che ricevono gli avvisi" help="Profili Payments separati da virgola: CEO, CFO, SUPPORT, VIEWER (con SUPPORT anche titolare e amministratori della Suite)"><input value={f.schedule_notify_roles ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_notify_roles: e.target.value })} /></Field>
+        </div>
+      </Card>
       <Card title="Testi del modulo" className="mt">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {TEXTS.map(([k, label]) => <Field key={k} label={label} help={f[k] !== d.defaults[k] ? 'modificato rispetto al testo predefinito' : ''}>{k.startsWith('form_title') ? <input value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} /> : <textarea value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} style={{ minHeight: k === 'auth_text' ? 140 : 70 }} />}</Field>)}

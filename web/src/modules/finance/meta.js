@@ -14,6 +14,8 @@ export default {
     { to: 'da-eseguire', icon: 'cash', label: 'Da eseguire', profiles: ['SUPPORT'], badge: 'da_eseguire' },
     { to: 'istanze', icon: 'list', label: 'Tutte le istanze', end: true },
     { to: 'archivio', icon: 'folder', label: 'Archivio' },
+    { group: 'Affitti e utenze' },
+    { to: 'scadenziario', icon: 'calendar', label: 'Scadenziario strutture', badge: 'scadenziario' },
     { group: 'Anagrafiche' },
     { to: 'beneficiari', icon: 'users', label: 'Beneficiari e IBAN' },
     { group: 'Amministrazione', profiles: ['SUPPORT'] },

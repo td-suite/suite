@@ -2,7 +2,7 @@ import React from 'react';
 import { base } from '../paths.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, canManage, isSigner } from '../auth.jsx';
-import { useApi, Kpi, Card, Loading, ErrorBox, Empty, Badge, TierBadge } from '../components/ui.jsx';
+import { useApi, Kpi, Card, Loading, ErrorBox, Empty, Badge, TierBadge, Icon } from '../components/ui.jsx';
 import { HBars, Donut, Legend, C } from '../components/charts.jsx';
 import { eur, itDate, itDateTime, hours, TIER, ROLE_SIGNER } from '../format.js';
 
@@ -77,6 +77,18 @@ export default function Dashboard() {
           ) : <Empty>Nessun pagamento in attesa di esecuzione</Empty>}
         </Card>
       </div>
+
+      {d.schedule && (d.schedule.leases_active > 0 || d.schedule.utilities_active > 0 || d.schedule.overdue > 0) && (
+        <Card title="Scadenze strutture" className="mt" actions={<Link className="btn sm ghost" to={`${base}/scadenziario`}><Icon name="calendar" />Apri lo scadenziario</Link>}>
+          <div className="grid g4">
+            <div onClick={() => nav(`${base}/scadenziario`)} style={{ cursor: 'pointer' }}><Kpi label="Scadute" value={<span className={d.schedule.overdue ? 'red' : ''}>{d.schedule.overdue}</span>} foot={d.schedule.overdue ? `${eur(d.schedule.overdue_amount)} da gestire` : 'nessuna scadenza arretrata'} /></div>
+            <div onClick={() => nav(`${base}/scadenziario`)} style={{ cursor: 'pointer' }}><Kpi label="Entro 30 giorni" value={d.schedule.next30} foot={`${eur(d.schedule.next30_amount)} in arrivo`} /></div>
+            <Kpi label="Canoni al mese" value={eur(d.schedule.monthly_rent)} foot={`${d.schedule.leases_active} contratti · ${d.schedule.utilities_active} utenze`} />
+            <div onClick={() => nav(`${base}/scadenziario?tab=volture`)} style={{ cursor: 'pointer' }}><Kpi label="Volture aperte" value={<span className={d.schedule.transfers_open ? 'red' : ''}>{d.schedule.transfers_open}</span>} foot="utenze da intestare" /></div>
+          </div>
+          {d.schedule.next.length > 0 && <div className="small muted" style={{ marginTop: 10 }}>Prossime: {d.schedule.next.map((n) => `${itDate(n.date)} ${n.title} · ${n.site_name}${n.amount != null ? ` · ${n.estimate ? '~' : ''}${eur(n.amount)}` : ''}${n.request ? ` (istanza ${n.request.protocol || `n. ${n.request.id}`})` : ''}`).join(' · ')}</div>}
+        </Card>
+      )}
 
       <div className="grid g2" style={{ marginTop: 16 }}>
         <Card title="Importi per mese e scaglione" actions={<span className="small muted">ultimi 12 mesi</span>}>

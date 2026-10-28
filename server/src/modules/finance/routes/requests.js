@@ -6,79 +6,14 @@ import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, notFound, forbidden, audit, parse, suiteAudit } from '../lib/util.js';
 import { requireManage, canManage } from '../lib/access.js';
-import { getSettings, computeTier, normalizeIban, validIban } from '../lib/rules.js';
+import { getSettings } from '../lib/rules.js';
+import { requestSchema, prepare, upsertBeneficiary, editable, createRequest, dateStr } from '../lib/requestCreate.js';
+import { onRequestStatus } from '../lib/scheduleData.js';
 import { loadRequest, addEvent, submit, resend, voidSignatures, aggregationCheck, generateDocument, signers, REQUEST_COLS, REQUEST_FROM } from '../lib/workflow.js';
 import { formData, renderDocx, docxToPdf, pdfAvailable } from '../lib/docgen.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });
-
-const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data non valida');
-const optStr = (max) => z.preprocess((v) => (v === '' || v === undefined ? null : v), z.string().max(max).nullable());
-const optDate = z.preprocess((v) => (v === '' || v === undefined ? null : v), dateStr.nullable());
-
-const requestSchema = z.object({
-  request_date: dateStr,
-  requester: z.string().trim().min(2).max(160),
-  cost_center: optStr(160),
-  beneficiary_name: z.string().trim().min(2).max(200),
-  beneficiary_tax_id: optStr(40),
-  beneficiary_iban: z.string().trim().min(10).max(40),
-  beneficiary_bic: optStr(20),
-  beneficiary_bank: optStr(160),
-  amount: z.coerce.number().positive().max(999999999.99),
-  purpose: z.string().trim().min(3).max(600),
-  doc_type: z.enum(['FATTURA', 'CONTRATTO', 'ORDINE', 'ALTRO']),
-  doc_other: optStr(120),
-  doc_number: optStr(80),
-  doc_date: optDate,
-  bank_account_id: z.coerce.number().int().positive().nullable().optional(),
-  payment_method: z.enum(['SEPA', 'URGENTE', 'ESTERO', 'F24', 'ALTRO']),
-  payment_method_other: optStr(120),
-  value_date: optDate,
-  single_signer: z.enum(['CEO', 'CFO']).nullable().optional(),
-  board_number: optStr(80),
-  board_date: optDate,
-  prior_approval: z.boolean().default(false),
-  prior_approval_ref: optStr(300),
-  checks: z.object({ budget: z.boolean().default(false), aggregation: z.boolean().default(false), documents: z.boolean().default(false), related_party: z.boolean().default(false), cfo_consent: z.boolean().default(false), iban_verified: z.boolean().default(false) }).default({}),
-  iban_verified_note: optStr(300),
-  notes: optStr(2000),
-});
-
-const editable = (st) => ['BOZZA', 'RIFIUTATA', 'IN_FIRMA'].includes(st);
-
-// Anagrafica beneficiario: riconosce la controparte per P.IVA/CF o nome; segnala IBAN mai visto o non confermato
-async function upsertBeneficiary(d, client) {
-  let b = null;
-  if (d.beneficiary_tax_id) b = (await client.query('SELECT * FROM beneficiaries WHERE lower(tax_id)=lower($1)', [d.beneficiary_tax_id])).rows[0];
-  if (!b) b = (await client.query('SELECT * FROM beneficiaries WHERE lower(name)=lower($1)', [d.beneficiary_name])).rows[0];
-  if (!b) b = (await client.query('INSERT INTO beneficiaries(name, tax_id) VALUES ($1,$2) RETURNING *', [d.beneficiary_name, d.beneficiary_tax_id || null])).rows[0];
-  else if (!b.tax_id && d.beneficiary_tax_id) await client.query('UPDATE beneficiaries SET tax_id=$2 WHERE id=$1', [b.id, d.beneficiary_tax_id]);
-  let ib = (await client.query('SELECT * FROM beneficiary_ibans WHERE beneficiary_id=$1 AND iban=$2', [b.id, d.beneficiary_iban])).rows[0];
-  const known = (await client.query('SELECT count(*)::int AS n FROM beneficiary_ibans WHERE beneficiary_id=$1 AND id<>coalesce($2,0)', [b.id, ib?.id || null])).rows[0].n;
-  if (!ib) ib = (await client.query('INSERT INTO beneficiary_ibans(beneficiary_id, iban, bic, bank) VALUES ($1,$2,$3,$4) RETURNING *', [b.id, d.beneficiary_iban, d.beneficiary_bic || null, d.beneficiary_bank || null])).rows[0];
-  // "nuovo IBAN": coordinate mai confermate tramite canale indipendente (prima volta o variazione rispetto a IBAN già noti)
-  return { beneficiary: b, iban: ib, new_iban: !ib.verified_at, changed: known > 0 && !ib.verified_at };
-}
-
-async function prepare(d, s) {
-  d.beneficiary_iban = normalizeIban(d.beneficiary_iban);
-  if (!validIban(d.beneficiary_iban)) throw bad('IBAN del beneficiario non valido (controllo formale fallito)');
-  d.tier = computeTier(d.amount, s);
-  if (d.tier !== 'SINGOLA') d.single_signer = null;
-  if (d.doc_type !== 'ALTRO') d.doc_other = null;
-  if (d.payment_method !== 'ALTRO') d.payment_method_other = null;
-  if (!d.prior_approval) d.prior_approval_ref = null;
-  let debit = null;
-  if (d.bank_account_id) {
-    const b = await one('SELECT * FROM bank_accounts WHERE id=$1 AND active', [d.bank_account_id]);
-    if (!b) throw bad('Conto di addebito non valido');
-    debit = `${b.bank_name} – IBAN ${b.iban}`;
-  }
-  d.debit_account = debit;
-  return d;
-}
 
 // Controlli di completezza per l'invio in firma
 function submitErrors(r) {
@@ -127,17 +62,10 @@ r.get('/:id', ah(async (req, res) => {
 
 // ---------------- Creazione e modifica ----------------
 r.post('/', requireManage, ah(async (req, res) => {
-  const s = await getSettings();
-  const d = await prepare(parse(requestSchema, req.body), s);
-  const row = await tx(async (c) => {
-    const b = await upsertBeneficiary(d, c);
-    const cols = ['request_date', 'requester', 'cost_center', 'beneficiary_id', 'beneficiary_name', 'beneficiary_tax_id', 'beneficiary_iban', 'beneficiary_bic', 'beneficiary_bank', 'amount', 'purpose', 'doc_type', 'doc_other', 'doc_number', 'doc_date', 'bank_account_id', 'debit_account', 'payment_method', 'payment_method_other', 'value_date', 'tier', 'single_signer', 'board_number', 'board_date', 'prior_approval', 'prior_approval_ref', 'checks', 'new_iban', 'iban_verified_note', 'notes', 'created_by'];
-    const vals = { ...d, beneficiary_id: b.beneficiary.id, new_iban: b.new_iban, checks: JSON.stringify(d.checks), created_by: req.user.id };
-    return (await c.query(`INSERT INTO payment_requests(${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`, cols.map((k) => vals[k] ?? null))).rows[0];
-  });
-  await addEvent(row.id, 'CREATA', req.user.id, 'Istanza creata in bozza');
-  await audit(req, 'REQUEST_CREATE', 'payment_request', row.id, { beneficiary: d.beneficiary_name, amount: d.amount, tier: d.tier });
-  res.status(201).json(await loadRequest(row.id));
+  const d = parse(requestSchema, req.body);
+  const out = await createRequest(d, req.user);
+  await audit(req, 'REQUEST_CREATE', 'payment_request', out.id, { beneficiary: out.data.beneficiary_name, amount: out.data.amount, tier: out.data.tier });
+  res.status(201).json(await out.load());
 }));
 
 r.put('/:id', requireManage, ah(async (req, res) => {
@@ -206,6 +134,7 @@ r.post('/:id/cancel', requireManage, ah(async (req, res) => {
   await tx(async (c) => {
     await c.query('UPDATE payment_requests SET status=\'ANNULLATA\', cancelled_at=now(), cancel_reason=$2, updated_at=now() WHERE id=$1', [x.id, reason]);
     await voidSignatures(x.id, `Istanza annullata: ${reason}`, c);
+    await onRequestStatus(x.id, 'ANNULLATA', { client: c, userId: req.user.id });   // scadenziario: la scadenza collegata torna aperta
   });
   await addEvent(x.id, 'ANNULLATA', req.user.id, reason);
   await audit(req, 'REQUEST_CANCEL', 'payment_request', x.id, { reason });
@@ -222,6 +151,7 @@ r.post('/:id/execute', requireManage, ah(async (req, res) => {
   await q('UPDATE payment_requests SET status=\'ESEGUITA\', executed_at=$2, cro_trn=$3, executed_by=$4, executed_recorded_by=$5, executed_recorded_at=now(), updated_at=now() WHERE id=$1',
     [x.id, d.executed_at, d.cro_trn, d.executed_by || req.user.full_name, req.user.id]);
   await addEvent(x.id, 'ESEGUITA', req.user.id, `Pagamento eseguito il ${d.executed_at.split('-').reverse().join('/')} · CRO/TRN ${d.cro_trn}`);
+  await onRequestStatus(x.id, 'ESEGUITA', { userId: req.user.id });   // scadenziario: la scadenza collegata viene segnata pagata
   try { await generateDocument(x.id, 'MODULO_ESEGUITO'); } catch (e) { await addEvent(x.id, 'ERRORE_PDF', req.user.id, e.message); }
   await audit(req, 'REQUEST_EXECUTE', 'payment_request', x.id, d);
   await suiteAudit(req, 'REQUEST_EXECUTE', 'payment_request', x.id, { protocol: x.protocol, ...d });

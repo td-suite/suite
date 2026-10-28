@@ -27,7 +27,6 @@ import Sites from './pages/Sites.jsx';
 import Operators from './pages/Operators.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
-import Schedule from './pages/Schedule.jsx';
 import './styles.css';
 
 function Gate() {
@@ -59,7 +58,6 @@ function Gate() {
       {finance && <Route path="cassaforte" element={<Safe />} />}
       {finance && <Route path="versamenti" element={<DepositsList />} />}
       {finance && <Route path="accrediti" element={<Credits />} />}
-      <Route path="scadenziario" element={<Schedule />} />
       <Route path="nc" element={<NcList />} />
       <Route path="nc/:id" element={<NcDetail />} />
       <Route path="statistiche" element={<Stats />} />

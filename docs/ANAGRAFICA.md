@@ -450,52 +450,66 @@ casella (impostazioni cv_inbox, cv_inbox_enabled) e crea un CV per ogni allegato
 riferimento, sintesi AI se attiva), senza doppioni (cv_box.graph_id, migrazione 018); stato e "Leggi ora" in cima al CV Box.
 Richiede sull'app registration della Suite il permesso applicativo Mail.Read sulla casella recruitment@.
 
-## Scadenziario strutture (28/10/2026)
+## Payments: Scadenziario strutture (28/10/2026)
 Richiesta del CEO, testuale: "Ci servirebbe un sistema per mappare tutti gli affitti con tutte le utenze in modo che mi avvisi dei
 pagamenti e che possiamo consultarlo per tenere tutti gli scatti e per prevedere i costi futuri. Integriamola come funzione su
-Payments." La bozza HTML (schemi, agenda per mese, scheda struttura, volture) è rifatta come funzione nativa del modulo Cash:
-voce di menu "Scadenziario strutture" (gruppo Finance, badge con il numero di scadenze scadute o entro 7 giorni), pagina
-`web/src/modules/cash/pages/Schedule.jsx`, route `/api/cash/scadenziario` (`routes/schedule.js`), logica pura in `lib/schedule.js`,
-accesso ai dati e avvisi in `lib/scheduleData.js`, migrazione `014_scadenziario.sql`.
-**Anagrafica**: le sedi sono `public.sites` (vista `cash.sites_v`: solo sedi TD, scelte dalla tendina `GET /scadenziario/sites`,
-con conteggi di contratti, utenze, volture aperte e prossima scadenza); locatore e fornitore sono Legal entity facoltative
-(`landlord_org_id`, `supplier_org_id` → `public.organizations`, elenco `GET /scadenziario/organizations`) con un nome libero
-(`landlord_name`, `supplier_name`) se la controparte non è in anagrafica; se il nome è vuoto vale quello della Legal entity.
-Nessun dato di esempio: la pagina parte vuota e spiega cosa registrare.
-**Tabelle** (schema cash): `lease_contracts` (sede, locatore, immobile, tipologia COMMERCIALE_6_6 / 9_9 / ABITATIVO_4_4 / 3_2 /
-TRANSITORIO / COMODATO / ALTRO, decorrenza, primo periodo e rinnovo tacito in anni, preavviso in mesi, periodicità della rata 1/2/3/6/12,
+Payments." Costruita prima in Cash Management e poi, per correzione di rotta del CEO, spostata per intero nel widget Payments (modulo
+`finance`) e collegata alle istanze di pagamento; da Cash è stata rimossa senza tracce (la migrazione 014 di cash non era mai stata
+applicata in produzione). Voce di menu "Scadenziario strutture" (gruppo "Affitti e utenze", badge con le scadenze scadute o entro 7
+giorni), pagina `web/src/modules/finance/pages/Schedule.jsx`, route `/api/finance/scadenziario` (`routes/schedule.js`), logica pura in
+`lib/schedule.js`, dati, badge, avvisi e aggancio alle istanze in `lib/scheduleData.js`, creazione condivisa delle istanze in
+`lib/requestCreate.js`, migrazione `002_scadenziario.sql`.
+**Anagrafica**: le sedi sono `public.sites` senza perimetro per utente (Payments non ha sedi per utente; le strutture dei clienti service
+restano fuori), scelte da `GET /scadenziario/sites` con conteggi di contratti, utenze, volture aperte e prossima scadenza; locatore e
+fornitore sono Legal entity facoltative (`landlord_org_id`, `supplier_org_id` → `public.organizations`, elenco `GET /scadenziario/organizations`
+con `has_iban`) con un nome libero se la controparte non è in anagrafica (se vuoto vale quello della Legal entity); il **beneficiario
+Payments** (`beneficiary_id` → `finance.beneficiaries`, tendina con ricerca su `GET /beneficiaries?q=` e "nuovo dal locatore / fornitore":
+`POST /scadenziario/beneficiaries { org_id | name }` crea il beneficiario con nome e P.IVA/CF della Legal entity e ne importa l'IBAN se il
+core ce l'ha) è il collegamento con le istanze. Nessun dato di esempio.
+**Tabelle** (schema finance): `lease_contracts` (sede, locatore, beneficiary_id, immobile, tipologia COMMERCIALE_6_6 / 9_9 / ABITATIVO_4_4
+/ 3_2 / TRANSITORIO / COMODATO / ALTRO, decorrenza, primo periodo e rinnovo tacito in anni, preavviso in mesi, periodicità 1/2/3/6/12,
 prima scadenza, deposito, registrazione IMPOSTA_ANNUALE / UNICA_SOLUZIONE / CEDOLARE_SECCA / DA_REGISTRARE, istat, auto_pay,
-`business_contract_id` come solo riferimento al contratto SEDE del widget Business, note, active); `lease_steps` (gli scatti del canone:
-importo della rata valido da una data, motivo INIZIALE / ISTAT / RINEGOZIAZIONE / ALTRO, variazione %; UNIQUE per contratto e data;
-il canone vigente a una data è l'ultimo scatto con `valid_from <= data`; il salvataggio di un contratto con importo iniziale crea o
-aggiorna lo scatto INIZIALE alla decorrenza); `utilities` (sede, tipo ENERGIA / GAS / ACQUA / TARI / TELEFONIA / CONDOMINIO / VIGILANZA /
-PULIZIE / ALTRO, fornitore, POD/PDR/numero cliente, intestatario, voltura DA_AVVIARE / IN_CORSO / COMPLETATA / NON_NECESSARIA,
-fatturazione 1/2/3/4/6/12 mesi, scadenza nota, importo medio, fine offerta, addebito automatico); `utility_bills` (bollette registrate:
-periodo, scadenza, importo, consumo e unità, pagata il); `schedule_done` (esiti: chiave dell'evento, sede, chi e quando, nota, importo
-pagato se diverso); `schedule_notified` (avvisi già inviati).
-**Eventi** (`buildEvents`, mai salvati, ricalcolati da contratti e utenze; chiave `<tipo>:<lease|utility>:<id>:<data>`): rata del canone a
-ogni periodo da prima scadenza o decorrenza, importo = scatto vigente; adeguamento ISTAT all'anniversario della decorrenza (se istat);
-imposta di registro annuale entro 30 giorni dall'annualità (F24 ELIDE; importo stimato 2% del canone annuo, minimo 67 euro) se
-registrazione IMPOSTA_ANNUALE; scadenza del contratto con rinnovi taciti (primo periodo + rinnovi finché la scadenza supera oggi; un
-contratto scaduto senza rinnovo compare sempre come "Contratto scaduto" finché non viene segnato o cessato); termine di disdetta
-(scadenza meno preavviso); bollette attese da scadenza nota + fatturazione con importo stimato (media delle bollette registrate negli
-ultimi 12 mesi, altrimenti importo medio, segnate "~"); le bollette registrate con scadenza nel periodo sostituiscono la stima (importo
-reale, fatta se pagata; nessuna stima nei mesi con bolletta registrata né prima dell'ultima registrata); fine offerta. Scadute = data
-passata, non fatta, non automatica. "Segna pagato/fatto" scrive in `schedule_done` (nota e importo facoltativi) e, per una bolletta
-registrata, imposta `paid_at`; si può annullare. Finestra predefinita dell'agenda: 60 giorni indietro, 400 avanti.
-**KPI**: scadute (con importo), entro 30 giorni, disdette entro 6 mesi, volture aperte (DA_AVVIARE o IN_CORSO), canoni al mese (rate
-vigenti dei contratti non scaduti ripartite per mese).
-**Previsione** (`forecast`, scheda Previsione e foglio XLSX): per i prossimi N mesi (6/12/24) e per sede, affitti = rata vigente / mesi
-di periodicità, con rivalutazione ipotetica `schedule_istat_pct` dal prossimo anniversario (composta), imposta di registro nel mese
-dovuto, nessun costo dopo la scadenza senza rinnovo; utenze = media mensile delle bollette (o importo medio) con crescita annua
-`schedule_utility_growth_pct`; totali per sede e di rete; confronto con i 12 mesi precedenti registrati (bollette pagate per mese di
-pagamento + rate di canone e imposte segnate fatte, con l'importo pagato se indicato).
-**Avvisi**: job `cash:scadenziario` (ogni 360 minuti, anche all'avvio, solo modulo LIVE): per ogni evento entro `schedule_alert_days`
-giorni o scaduto, non fatto e non automatico, non ancora in `schedule_notified`, una notifica in app (`notify` della Suite, kind INFO,
-module_key cash, titolo "Scadenza: <titolo> · <sede>", corpo con importo e data, link `/cash/scadenziario?site_id=…`) agli utenti con
-grant cash nei profili `schedule_notify_roles` (operators_v; ADMIN e FINANCE per le sedi della propria azienda, OPERATOR e CASSIERE solo
-per le proprie sedi; con SUPERADMIN anche titolari e amministratori della Suite). `GET /badges` espone `scadenziario`.
-**Accesso**: SUPERADMIN, ADMIN, FINANCE leggono e scrivono; OPERATOR e CASSIERE leggono le proprie sedi (`req.user.site_ids`, filtro
-`siteScope`); PARTNER escluso. Validazione zod, audit LEASE_* / LEASE_STEP_* / UTILITY_* / UTILITY_BILL_* / SCHEDULE_DONE / SCHEDULE_UNDONE.
-Export `GET /scadenziario/export.xlsx` (fogli Agenda, Contratti, Utenze, Bollette, Previsione). Test `server/test/cash-schedule.test.mjs`
-(node --test). Schermate docs/screens/cash-scadenziario-*.png.
+`business_contract_id` come solo riferimento al contratto SEDE del widget Business, note, active); `lease_steps` (scatti del canone:
+importo valido da una data, motivo INIZIALE / ISTAT / RINEGOZIAZIONE / ALTRO, variazione %, UNIQUE per contratto e data; il canone vigente a
+una data è l'ultimo scatto con `valid_from <= data`; il salvataggio di un contratto con importo iniziale crea o aggiorna lo scatto INIZIALE);
+`utilities` (sede, tipo ENERGIA / GAS / ACQUA / TARI / TELEFONIA / CONDOMINIO / VIGILANZA / PULIZIE / ALTRO, fornitore, beneficiary_id,
+POD/PDR, intestatario, voltura DA_AVVIARE / IN_CORSO / COMPLETATA / NON_NECESSARIA, fatturazione 1/2/3/4/6/12 mesi, scadenza nota, importo
+medio, fine offerta, addebito automatico); `utility_bills` (bollette registrate: periodo, scadenza, importo, consumo, pagata il);
+`schedule_done` (esiti: chiave dell'evento, sede, chi e quando, nota, importo pagato, `request_id` dell'istanza eseguita); `schedule_requests`
+(event_key → payment_requests.id: istanza creata dalla scadenza); `schedule_notified` (avvisi già inviati).
+**Eventi** (`buildEvents`, mai salvati; chiave `<tipo>:<lease|utility>:<id>:<data>`): rata del canone a ogni periodo (importo = scatto
+vigente); adeguamento ISTAT all'anniversario (se istat); imposta di registro entro 30 giorni dall'annualità (F24 ELIDE, stima 2% del canone
+annuo, minimo 67 euro) se IMPOSTA_ANNUALE; scadenza del contratto con rinnovi taciti (un contratto scaduto senza rinnovo compare sempre
+finché non viene segnato o cessato); termine di disdetta; bollette attese da scadenza nota + fatturazione (stima = media delle bollette
+degli ultimi 12 mesi, altrimenti importo medio, segnate "~"); le bollette registrate sostituiscono la stima (importo reale, fatta se pagata);
+fine offerta. Scadute = data passata, non fatta, non automatica. Ogni evento porta l'istanza collegata (`request`: id, protocollo, stato,
+importo). Finestra predefinita 60 giorni indietro, 400 avanti.
+**Istanze dalle scadenze** (la parte nuova): su canoni, imposta di registro e bollette non pagate il pulsante "Crea istanza" chiama
+`POST /scadenziario/events/request { key, amount? }` (SUPPORT e amministratori): per le stime l'importo si conferma prima. L'istanza nasce in
+bozza con la stessa funzione di `POST /requests` (`createRequest` in lib/requestCreate.js: `requestSchema`, `prepare`, `upsertBeneficiary`,
+nessuna regola duplicata): data di oggi, richiedente = utente, beneficiario dal beneficiario Payments del contratto/utenza (ultimo IBAN noto,
+prima quelli verificati) oppure dal nome del locatore/fornitore e dalla Legal entity collegata (name, vat_number/tax_code, iban, bic,
+bank_name); importo della scadenza; causale "<titolo> <sede> <periodo o data>"; doc_type CONTRATTO (doc_number unità e locatore, doc_date
+decorrenza) per canoni e registro, FATTURA (doc_number codice utenza) per le bollette; SEPA (F24 per il registro); valuta = data della
+scadenza; prior_approval vero con riferimento "Contratto di affitto" / "Utenza" per canoni e bollette (pagamenti ricorrenti già approvati;
+lo schema lo ammette in ogni scaglione: oltre soglia la delibera CdA è soddisfatta anche dall'approvazione preventiva), falso per il
+registro; note "Scadenziario: <key>". Senza IBAN la richiesta fallisce: "Indica l'IBAN del locatore/fornitore nel beneficiario Payments o
+nella Legal entity". Il collegamento va in `schedule_requests`; in agenda la scadenza mostra "Istanza AP-2026-0001 · stato" con link a
+`/finance/istanze/:id`. Quando l'istanza passa a ESEGUITA (`POST /requests/:id/execute`) la scadenza viene segnata fatta da sola
+(`schedule_done` con request_id, importo eseguito, nota "Istanza <protocollo> eseguita il ..."; una bolletta registrata prende `paid_at`);
+se viene ANNULLATA (`/cancel`) o RIFIUTATA (routes/sign.js) il collegamento cade e la scadenza torna aperta (`onRequestStatus` in
+lib/scheduleData.js). La Previsione ha la riga "Istanze già create" (istanze collegate in bozza, in firma o autorizzate, per mese della
+scadenza) sotto il totale di rete, e il KPI corrispondente. Il cruscotto di Payments ha il riquadro "Scadenze strutture" (scadute, entro 30
+giorni e importo in arrivo, canoni al mese, volture aperte, prossime scadenze; `schedule` in `GET /stats/summary`).
+**KPI, previsione, avvisi**: come nella versione Cash (scadute, entro 30 giorni, disdette entro 6 mesi, volture aperte, canoni al mese;
+previsione per sede e mese con rivalutazione ISTAT ipotetica `schedule_istat_pct`, imposta di registro, crescita utenze
+`schedule_utility_growth_pct`, confronto con i 12 mesi precedenti registrati). Job `finance:scadenziario` (360 minuti, anche all'avvio, solo
+LIVE): per ogni scadenza entro `schedule_alert_days` giorni o scaduta, non fatta e non automatica, non ancora in `schedule_notified`, una
+notifica in app (`notify` della Suite, kind INFO, module_key finance, titolo "Scadenza: <titolo> · <sede>", corpo con importo, data e istanza
+collegata, link `/finance/scadenziario?site_id=…`) agli utenti della Suite con grant finance nei profili `schedule_notify_roles`
+(predefinito CEO,CFO,SUPPORT; con SUPPORT anche titolare e amministratori della Suite). `GET /badges` espone `scadenziario`.
+**Accesso**: tutti gli utenti del modulo leggono; SUPPORT e amministratori (`canManage`) scrivono contratti, scatti, utenze, bollette e
+creano istanze; CEO e CFO possono inoltre segnare gli esiti; VIEWER sola lettura. Validazione zod, audit LEASE_* / LEASE_STEP_* /
+UTILITY_* / UTILITY_BILL_* / SCHEDULE_DONE / SCHEDULE_UNDONE / SCHEDULE_REQUEST_CREATE / BENEFICIARY_CREATE. Export
+`GET /scadenziario/export.xlsx` (fogli Agenda, Contratti, Utenze, Bollette, Previsione). Test `server/test/finance-schedule.test.mjs`.
+Schermate docs/screens/finance-scadenziario-*.png.

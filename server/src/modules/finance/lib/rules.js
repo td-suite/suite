@@ -17,6 +17,11 @@ export const DEFAULT_SETTINGS = {
   reminder_days: '2',          // sollecito automatico ai firmatari dopo n giorni
   mail_cc: '',                 // copia conoscenza su tutte le mail (es. amministrazione@)
   protocol_prefix: 'AP',
+  // Scadenziario strutture (affitti e utenze): anticipo degli avvisi, ipotesi della previsione, profili avvisati
+  schedule_alert_days: '7',
+  schedule_istat_pct: '1.5',
+  schedule_utility_growth_pct: '0',
+  schedule_notify_roles: 'CEO,CFO,SUPPORT',
 };
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura
