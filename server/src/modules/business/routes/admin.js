@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { dropBlobs, storageMode } from '../lib/storage.js';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse } from '../lib/util.js';
@@ -16,7 +17,7 @@ const r = Router();
 // ---------------- Impostazioni ----------------
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();
-  res.json({ settings: s, defaults: DEFAULT_SETTINGS, coreKeys: CORE_KEYS, pdfEnabled: await pdfAvailable(), maxUploadMb: config.maxUploadMb, credentialsKeySet: config.credentialsKeySet });
+  res.json({ settings: s, defaults: DEFAULT_SETTINGS, coreKeys: CORE_KEYS, pdfEnabled: await pdfAvailable(), storage: storageMode(), maxUploadMb: config.maxUploadMb, credentialsKeySet: config.credentialsKeySet });
 }));
 
 r.put('/settings', requireAdmin, ah(async (req, res) => {
@@ -128,9 +129,11 @@ r.post('/reset', requireAdmin, ah(async (req, res) => {
   const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
   if (confirm !== 'AZZERA') throw bad('Per confermare scrivi AZZERA');
   const before = await one('SELECT (SELECT count(*) FROM contracts)::int AS contracts, (SELECT count(*) FROM dossiers)::int AS dossiers');
+  const blobs = await many('SELECT blob_path FROM contract_files UNION ALL SELECT blob_path FROM dossier_files');
   await q('DELETE FROM contracts');
   await q('DELETE FROM dossiers');  // anche i fascicoli delle sedi TD senza contratto
   await q('DELETE FROM protocol_counters');
+  await dropBlobs(blobs.map((b) => b.blob_path));
   await audit(req, 'DATA_RESET', 'system', null, before);
   res.json({ ok: true, deleted: before });
 }));

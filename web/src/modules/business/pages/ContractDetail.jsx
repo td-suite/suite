@@ -130,7 +130,7 @@ export default function ContractDetail() {
 
       <div className="grid g2" style={{ marginTop: 16 }}>
         <Card title="Altri documenti" actions={edit && <UploadButton label="Carica" multiple onFiles={(fl) => uploadFiles('ALTRO', fl)} />}>
-          {files('ALTRO').length ? files('ALTRO').map((f) => <div key={f.id} className="row" style={{ marginBottom: 6 }}><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{bytes(f.size)} · {itDateTime(f.created_at)}</span>{edit && <button className="iconbtn" title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>) : <div className="muted">Visure, polizze, corrispondenza, integrazioni.</div>}
+          {files('ALTRO').length ? files('ALTRO').map((f) => <div key={f.id} className="row" style={{ marginBottom: 6 }}><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{f.label && f.label !== f.filename ? `${f.label} · ` : ''}{bytes(f.size)} · {itDateTime(f.created_at)}</span>{edit && <button className="iconbtn" title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>) : <div className="muted">Visure, polizze, corrispondenza, integrazioni.</div>}
         </Card>
         <Card title="Cronologia">
           <ul className="timeline">{c.events.map((e) => <li key={e.id}><div className="ev">{EVENT[e.kind] || e.kind}</div><div className="small muted">{itDateTime(e.at)} · {e.user_name || 'sistema'}{e.note ? ` · ${e.note}` : ''}</div></li>)}</ul>

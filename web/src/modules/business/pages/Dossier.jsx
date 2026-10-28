@@ -63,7 +63,7 @@ export default function Dossier() {
               <tr key={r.key}>
                 <td><div className="strong" style={{ fontSize: 13 }}>{r.label.split(' · ')[0]}</div><div className="small muted">{r.label.split(' · ').slice(1).join(' · ')}{r.signer ? ` · firma: ${r.signer}` : ''}{r.required ? '' : ' · facoltativo'}</div>{r.note && <div className="small" style={{ color: 'var(--teal)' }}>Nota: {r.note}</div>}</td>
                 <td><Badge tone={DOC_STATUS[r.status].tone}>{DOC_STATUS[r.status].label}</Badge></td>
-                <td>{r.files.map((f) => <div key={f.id} className="row small" style={{ gap: 6, marginBottom: 3 }}><Badge tone={f.source === 'GEN' ? 'blue' : 'green'}>{f.source === 'GEN' ? 'generato' : 'caricato'}</Badge><a href={`${API_BASE}/dossier-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="muted">{bytes(f.size)}</span>{edit && <button className="iconbtn" style={{ width: 24, height: 24 }} title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>)}</td>
+                <td><FileList files={r.files} edit={edit} onDelete={(f) => setModal({ type: 'delfile', f })} /></td>
                 <td className="num">{edit && <div className="row end" style={{ gap: 6 }}>
                   {r.source !== 'UPLOAD' && r.status !== 'NON_APPLICABILE' && <button className="btn sm ghost" onClick={() => act(() => api.post(`/dossiers/${d.id}/generate/${r.key}`), r.source === 'CHECK' ? 'Lista esportata in XLSX' : 'Documento generato')}><Icon name="file" />{r.source === 'CHECK' ? 'Esporta XLSX' : 'Genera'}</button>}
                   {r.status !== 'NON_APPLICABILE' && <UploadButton label={r.source === 'UPLOAD' ? 'Carica' : 'Carica firmato'} multiple={Boolean(r.multi)} onFiles={(fl) => upload(r.key, fl)} />}
@@ -228,5 +228,22 @@ function ChecklistTab({ d, code, edit, onSaved }) {
       <div className="small muted" style={{ padding: '8px 14px' }}>Risposte e riferimenti precaricati dalle liste compilate per il punto prelievi di Calenzano (Sistema di Gestione Integrato): adeguare sede, orari, personale e strumentazione. L'export XLSX riproduce il tracciato regionale.</div>
       {reset && <ConfirmModal danger title="Ripristina il modello" text="Le risposte di questa lista tornano ai valori del modello Calenzano. Le modifiche fatte per questo punto prelievi vengono perse." confirmText="Ripristina" onClose={() => setReset(false)} onConfirm={async () => { const r = await api.post(`/dossiers/${d.id}/checklists/${code}/reset`); setItems(r.checklists.find((x) => x.code === code).items); setDirty(false); onSaved(); }} />}
     </Card>
+  );
+}
+
+
+// Elenco dei file di una voce: pochi file in chiaro; molti file (archivio caricato dalle cartelle) raggruppati per cartella di origine, richiudibili
+function FileList({ files, edit, onDelete }) {
+  const row = (f) => <div key={f.id} className="row small" style={{ gap: 6, marginBottom: 3 }}><Badge tone={f.source === 'GEN' ? 'blue' : 'green'}>{f.source === 'GEN' ? 'generato' : 'caricato'}</Badge><a href={`${API_BASE}/dossier-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="muted">{bytes(f.size)}</span>{edit && <button className="iconbtn" style={{ width: 24, height: 24 }} title="Rimuovi" onClick={() => onDelete(f)}><Icon name="trash" /></button>}</div>;
+  if (!files?.length) return null;
+  if (files.length <= 8) return files.map(row);
+  const groups = {};
+  for (const f of files) (groups[f.label || 'Altri file'] ||= []).push(f);
+  const keys = Object.keys(groups).sort();
+  return (
+    <div>
+      <div className="small muted" style={{ marginBottom: 4 }}>{files.length} file in {keys.length} {keys.length === 1 ? 'cartella' : 'cartelle'}</div>
+      {keys.map((k) => <details key={k} style={{ marginBottom: 4 }}><summary className="small" style={{ cursor: 'pointer' }}>{k} <span className="muted">({groups[k].length})</span></summary><div style={{ paddingLeft: 10, marginTop: 4 }}>{groups[k].map(row)}</div></details>)}
+    </div>
   );
 }

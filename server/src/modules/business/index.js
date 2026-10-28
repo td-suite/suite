@@ -2,7 +2,7 @@
 // medicina del lavoro), dossier e fascicoli di autorizzazione, protocolli, credenziali dei portali, generazione DOCX/PDF.
 // Anagrafica unica (docs/ANAGRAFICA.md): le controparti sono le Legal entity public.organizations (impostazioni Business in
 // business.org_ext), le sedi TD sono public.sites (kind <> 'SERVICE'). Contratti e fascicoli si collegano alla controparte e/o
-// alla sede TD (almeno una delle due). Nessuna anagrafica propria, nessuna importazione.
+// alla sede TD (almeno una delle due). Nessuna anagrafica propria; le controparti arrivano dai pacchetti di caricamento come Legal entity.
 // Travasato dall'app business.toscanadiagnostica.it: il codice delle route è quello dell'app, cambiano accesso e montaggio.
 import { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
@@ -14,6 +14,7 @@ import adminRoutes from './routes/admin.js';
 import contractRoutes, { filesRouter } from './routes/contracts.js';
 import dossierRoutes, { dossierFilesRouter } from './routes/dossier.js';
 import statsRoutes from './routes/stats.js';
+import importRoutes from './routes/imports.js';
 
 const KEY = 'business';
 
@@ -49,6 +50,7 @@ export default function mount(app) {
   r.use(filesRouter);            // GET /contract-files/:id
   r.use(dossierFilesRouter);     // GET /dossier-files/:id
   r.use('/stats', statsRoutes);
+  r.use(importRoutes);           // POST /import/pack (pacchetti dello status quo), GET /import/runs
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
   // Errori propri del modulo (multer, duplicati): il resto lo gestisce l'error handler della Suite

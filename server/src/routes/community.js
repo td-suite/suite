@@ -441,11 +441,17 @@ r.delete('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
   const id = idParam(req.params.id);
   const cur = await one('SELECT * FROM news WHERE id=$1', [id]);
   if (!cur) throw notFound('Contenuto non trovato');
-  if (cur.status === 'DRAFT') {
+  if (cur.status === 'DRAFT' || cur.status === 'ARCHIVED') {
+    // Bozze e contenuti già archiviati si eliminano definitivamente (con prese visione, questionario e notifiche collegate)
+    if (cur.status === 'ARCHIVED' && !canPublish(req.user)) throw forbidden('Un contenuto archiviato lo elimina solo chi può pubblicare');
     await q('DELETE FROM news WHERE id=$1', [id]);
-    await audit(req, 'NEWS_DELETED', { module: MODULE, entity: 'news', entityId: id, label: cur.title });
+    await q(`DELETE FROM notifications WHERE link=$1 AND kind IN ('NEWS','CIRCOLARE')`, [`/community/news/${cur.slug}`]).catch(() => {});
+    await removeNews(cur).catch(() => {});
+    await audit(req, 'NEWS_DELETED', { module: MODULE, entity: 'news', entityId: id, label: cur.protocol ? `${cur.protocol} ${cur.title}` : cur.title });
+    return res.json({ ok: true, deleted: true });
   } else {
-    // Contenuti già pubblicati: si archiviano (restano protocollo e prese visione), non si cancellano
+    // Contenuti pubblicati: il primo passaggio archivia (sparisce dagli elenchi dei lettori, restano protocollo e prese visione);
+    // un secondo "Elimina" sull'archiviato lo cancella definitivamente
     if (!canPublish(req.user)) throw forbidden('Un contenuto pubblicato lo archivia solo chi può pubblicare');
     await q(`UPDATE news SET status='ARCHIVED', updated_at=now() WHERE id=$1`, [id]);
     await audit(req, 'NEWS_ARCHIVED', { module: MODULE, entity: 'news', entityId: id, label: cur.protocol ? `${cur.protocol} ${cur.title}` : cur.title });

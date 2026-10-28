@@ -8,6 +8,7 @@ import { requireDossier } from '../lib/access.js';
 import { getSettings } from '../lib/rules.js';
 import { dossierData, renderDocx, docxToPdf, pdfAvailable, baseData } from '../lib/docgen.js';
 import { sha256 } from '../lib/crypto.js';
+import { storeBuffer, sendFile, dropBlobs } from '../lib/storage.js';
 import { DOSSIER_DOCS, DOC_BY_KEY, defaultChecklists, completeness, checklistXlsx, DEFAULT_HOURS } from '../lib/dossier.js';
 import { addEvent, checkOrg, checkSite, defaultDocState, SITE_COLS } from './contracts.js';
 
@@ -114,7 +115,9 @@ r.delete('/:id', ah(async (req, res) => {
   const d = await loadDossier(Number(req.params.id));
   if (d.contract_id) throw bad('Il fascicolo di un contratto si elimina con il contratto');
   if (d.status !== 'IN_CORSO') throw bad('Si elimina solo un fascicolo in preparazione');
+  const blobs = await many('SELECT blob_path FROM dossier_files WHERE dossier_id=$1', [d.id]);
   await q('DELETE FROM dossiers WHERE id=$1', [d.id]);
+  await dropBlobs(blobs.map((b) => b.blob_path));
   await audit(req, 'DOSSIER_DELETE', 'dossier', d.id, { title: d.label });
   res.json({ ok: true });
 }));
@@ -157,8 +160,9 @@ r.post('/:id/checklists/:list/reset', ah(async (req, res) => {
 async function generateDoc(d, doc, s, pdf, userId) {
   const site = d.site || {};
   const slug = `${doc.key}_${(site.city || 'sede').replace(/\W+/g, '_')}_${(d.doc_date || todayRome()).replace(/-/g, '')}`;
-  await q('DELETE FROM dossier_files WHERE dossier_id=$1 AND doc_key=$2 AND source=$3', [d.id, doc.key, 'GEN']);
-  const ins = (filename, mime, buf) => q('INSERT INTO dossier_files(dossier_id, doc_key, source, filename, mime, size, sha256, data, uploaded_by) VALUES ($1,$2,\'GEN\',$3,$4,$5,$6,$7,$8)', [d.id, doc.key, filename, mime, buf.length, sha256(buf), buf, userId]);
+  const old = await many('DELETE FROM dossier_files WHERE dossier_id=$1 AND doc_key=$2 AND source=$3 RETURNING blob_path', [d.id, doc.key, 'GEN']);
+  await dropBlobs(old.map((r) => r.blob_path));
+  const ins = async (filename, mime, buf) => { const st = await storeBuffer('fascicoli', filename, mime, buf); await q('INSERT INTO dossier_files(dossier_id, doc_key, source, filename, mime, size, sha256, data, blob_path, uploaded_by) VALUES ($1,$2,\'GEN\',$3,$4,$5,$6,$7,$8,$9)', [d.id, doc.key, filename, mime, st.size, st.sha256, st.data, st.blob_path, userId]); };
   if (doc.source === 'CHECK') {
     const L = d.checklists.find((x) => x.code === doc.list);
     const buf = await checklistXlsx(L, { company: s.company_name, site: `${site.street || ''}, ${site.city || ''} (${site.prov || ''})`, ds: `${s.ds_title} ${s.ds_name}`, date: itDate(todayRome()) });
@@ -210,8 +214,9 @@ r.post('/:id/upload/:key', upload.array('files', 20), ah(async (req, res) => {
   if (!req.files?.length) throw bad('Nessun file');
   if (!doc.multi && doc.source === 'UPLOAD' && req.files.length > 1) throw bad('Questo documento prevede un solo file');
   for (const f of req.files) {
-    await q('INSERT INTO dossier_files(dossier_id, doc_key, source, filename, mime, size, sha256, data, label, uploaded_by) VALUES ($1,$2,\'UPLOAD\',$3,$4,$5,$6,$7,$8,$9)',
-      [d.id, doc.key, f.originalname, f.mimetype || 'application/octet-stream', f.size, sha256(f.buffer), f.buffer, req.body.label || null, req.user.id]);
+    const st = await storeBuffer('fascicoli', f.originalname, f.mimetype, f.buffer);
+    await q('INSERT INTO dossier_files(dossier_id, doc_key, source, filename, mime, size, sha256, data, blob_path, label, uploaded_by) VALUES ($1,$2,\'UPLOAD\',$3,$4,$5,$6,$7,$8,$9,$10)',
+      [d.id, doc.key, f.originalname, f.mimetype || 'application/octet-stream', st.size, st.sha256, st.data, st.blob_path, req.body.label || null, req.user.id]);
   }
   if (doc.key === 'AUTORIZZAZIONE') {
     await q(`UPDATE dossiers SET status='AUTORIZZATO', authorized_at=coalesce(authorized_at, current_date), updated_at=now() WHERE id=$1`, [d.id]);
@@ -225,19 +230,18 @@ r.post('/:id/upload/:key', upload.array('files', 20), ah(async (req, res) => {
 r.delete('/:id/files/:fid', ah(async (req, res) => {
   requireDossier(req.user);
   const d = await loadDossier(Number(req.params.id));
-  const f = await one('DELETE FROM dossier_files WHERE id=$1 AND dossier_id=$2 RETURNING filename, doc_key', [Number(req.params.fid), d.id]);
+  const f = await one('DELETE FROM dossier_files WHERE id=$1 AND dossier_id=$2 RETURNING filename, doc_key, blob_path', [Number(req.params.fid), d.id]);
   if (!f) throw notFound();
+  await dropBlobs([f.blob_path]);
   await logEvent(d, 'FASCICOLO_RIMOSSO', req.user.id, f.filename);
   res.json(await loadDossier(d.id));
 }));
 
 export const dossierFilesRouter = Router();
 dossierFilesRouter.get('/dossier-files/:id', ah(async (req, res) => {
-  const f = await one('SELECT filename, mime, data FROM dossier_files WHERE id=$1', [Number(req.params.id)]);
+  const f = await one('SELECT filename, mime, data, blob_path FROM dossier_files WHERE id=$1', [Number(req.params.id)]);
   if (!f) throw notFound();
-  res.setHeader('Content-Type', f.mime);
-  res.setHeader('Content-Disposition', `${req.query.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
-  res.send(f.data);
+  await sendFile(res, f, { inline: Boolean(req.query.inline) });
 }));
 
 export { baseData };

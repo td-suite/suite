@@ -8,6 +8,7 @@ import { requireKind, isAdmin } from '../lib/access.js';
 import { getSettings, KIND, canEditKind, HAS_DOSSIER } from '../lib/rules.js';
 import { contractData, renderDocx, docxToPdf, pdfAvailable, CONTRACT_TEMPLATE, CONTRACT_DOCNAME } from '../lib/docgen.js';
 import { encrypt, decrypt, sha256 } from '../lib/crypto.js';
+import { storeBuffer, sendFile, dropBlobs } from '../lib/storage.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
 import { defaultChecklists, DEFAULT_HOURS } from '../lib/dossier.js';
 
@@ -123,7 +124,7 @@ export async function loadContract(id) {
   if (!c) throw notFound('Contratto non trovato');
   c.org = c.org_id ? await one('SELECT * FROM orgs_v WHERE id=$1', [c.org_id]) : null;
   c.site = c.site_id ? await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1`, [c.site_id]) : null;
-  c.files = await many('SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.created_at, u.full_name AS uploaded_by_name FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by WHERE f.contract_id=$1 ORDER BY f.created_at DESC', [id]);
+  c.files = await many('SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.label, f.created_at, u.full_name AS uploaded_by_name FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by WHERE f.contract_id=$1 ORDER BY f.created_at DESC', [id]);
   c.events = await many('SELECT e.*, u.full_name AS user_name FROM contract_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.contract_id=$1 ORDER BY e.at', [id]);
   c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
   const cred = await one('SELECT portal_url, username, notes, updated_at, (password_enc IS NOT NULL) AS has_password FROM portal_credentials WHERE contract_id=$1', [id]);
@@ -226,14 +227,15 @@ r.post('/:id/generate', ah(async (req, res) => {
     }
     await client.query(`UPDATE contracts SET status='PROPOSTA', updated_at=now() WHERE id=$1`, [c.id]);
     // le versioni precedenti del documento generato vengono sostituite (il firmato resta)
-    await client.query(`DELETE FROM contract_files WHERE contract_id=$1 AND category IN ('GENERATO_DOCX','GENERATO_PDF')`, [c.id]);
+    const old = await client.query(`DELETE FROM contract_files WHERE contract_id=$1 AND category IN ('GENERATO_DOCX','GENERATO_PDF') RETURNING blob_path`, [c.id]);
+    await dropBlobs(old.rows.map((r) => r.blob_path));
   });
   c = await loadContract(c.id);
   const data = contractData(c, c.org, s);
   const docx = renderDocx(CONTRACT_TEMPLATE[c.kind], data);
   const base = `${CONTRACT_DOCNAME[c.kind]}_${c.protocol}_v${c.version}`;
-  const ins = (cat, filename, mime, buf) => q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [c.id, cat, filename, mime, buf.length, sha256(buf), buf, c.version, req.user.id]);
+  const ins = async (cat, filename, mime, buf) => { const st = await storeBuffer('contratti', filename, mime, buf); await q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, blob_path, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+    [c.id, cat, filename, mime, st.size, st.sha256, st.data, st.blob_path, c.version, req.user.id]); };
   await ins('GENERATO_DOCX', `${base}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', docx);
   let pdfError = null;
   if (await pdfAvailable()) {
@@ -286,8 +288,9 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
     if (category === 'LISTINO_XLSX' && !isXlsx) throw bad(`${f.originalname}: il listino va caricato in formato XLSX`);
     if (category === 'LISTINO_PDF' && !isPdf) throw bad(`${f.originalname}: il listino va caricato in formato PDF`);
     if (category === 'FIRMATO' && !isPdf) throw bad(`${f.originalname}: il contratto firmato va caricato in PDF`);
-    await q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-      [c.id, category, f.originalname, f.mimetype || 'application/octet-stream', f.size, sha256(f.buffer), f.buffer, c.version, req.user.id]);
+    const st = await storeBuffer('contratti', f.originalname, f.mimetype, f.buffer);
+    await q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, blob_path, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [c.id, category, f.originalname, f.mimetype || 'application/octet-stream', st.size, st.sha256, st.data, st.blob_path, c.version, req.user.id]);
   }
   if (category === 'FIRMATO') {
     const signedAt = /^\d{4}-\d{2}-\d{2}$/.test(req.body.signed_at || '') ? req.body.signed_at : todayRome();
@@ -309,7 +312,8 @@ r.delete('/:id/files/:fid', ah(async (req, res) => {
   const f = await one('SELECT id, category, filename FROM contract_files WHERE id=$1 AND contract_id=$2', [Number(req.params.fid), c.id]);
   if (!f) throw notFound();
   if (f.category === 'FIRMATO' && !isAdmin(req.user)) throw bad('Il contratto firmato può essere rimosso solo dal Superamministratore');
-  await q('DELETE FROM contract_files WHERE id=$1', [f.id]);
+  const gone = await one('DELETE FROM contract_files WHERE id=$1 RETURNING blob_path', [f.id]);
+  await dropBlobs([gone?.blob_path]);
   await addEvent(c.id, 'ALLEGATO_RIMOSSO', req.user.id, f.filename);
   await audit(req, 'CONTRACT_FILE_DELETE', 'contract', c.id, { file: f.filename });
   res.json(await loadContract(c.id));
@@ -336,7 +340,9 @@ r.delete('/:id', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
   if (c.status !== 'BOZZA') throw bad('Si elimina solo una bozza: le proposte protocollate si annullano');
+  const blobs = await many('SELECT blob_path FROM contract_files WHERE contract_id=$1 UNION ALL SELECT f.blob_path FROM dossier_files f JOIN dossiers d ON d.id=f.dossier_id WHERE d.contract_id=$1', [c.id]);
   await q('DELETE FROM contracts WHERE id=$1', [c.id]);
+  await dropBlobs(blobs.map((b) => b.blob_path));
   await audit(req, 'CONTRACT_DELETE', 'contract', c.id);
   res.json({ ok: true });
 }));
@@ -372,11 +378,9 @@ r.put('/:id/credentials', ah(async (req, res) => {
 // ---------------- Download file ----------------
 export const filesRouter = Router();
 filesRouter.get('/contract-files/:id', ah(async (req, res) => {
-  const f = await one('SELECT filename, mime, data FROM contract_files WHERE id=$1', [Number(req.params.id)]);
+  const f = await one('SELECT filename, mime, data, blob_path FROM contract_files WHERE id=$1', [Number(req.params.id)]);
   if (!f) throw notFound();
-  res.setHeader('Content-Type', f.mime);
-  res.setHeader('Content-Disposition', `${req.query.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
-  res.send(f.data);
+  await sendFile(res, f, { inline: Boolean(req.query.inline) });
 }));
 
 export { addEvent, KIND };

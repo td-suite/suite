@@ -61,7 +61,7 @@ function ContentTable() {
           </table></div>
         )}
       </Card>
-      {del && <ConfirmModal title="Eliminare il contenuto?" text={`"${del.title}" verrà rimosso definitivamente.`} confirmText="Elimina" danger onConfirm={async () => { await api.del(`/community/manage/news/${del.id}`); reload(); }} onClose={() => setDel(null)} />}
+      {del && <ConfirmModal title={del.status === 'PUBLISHED' ? 'Archiviare il contenuto?' : 'Eliminare il contenuto?'} text={del.status === 'PUBLISHED' ? `"${del.title}" è pubblicato: viene archiviato (sparisce dagli elenchi dei lettori, restano protocollo e prese visione). Per cancellarlo del tutto, premi di nuovo Elimina sull'archiviato.` : `"${del.title}" verrà rimosso definitivamente${del.status === 'ARCHIVED' ? ', con prese visione e questionario' : ''}.`} confirmText={del.status === 'PUBLISHED' ? 'Archivia' : 'Elimina'} danger onConfirm={async () => { try { const r = await api.del(`/community/manage/news/${del.id}`); toast(r?.deleted ? 'Contenuto eliminato' : 'Contenuto archiviato'); } catch (e) { toast(e, 'err'); } reload(); }} onClose={() => setDel(null)} />}
     </div>
   );
 }
