@@ -41,7 +41,9 @@ async function graph(path) {
 // chiamate di posta, anche quando il nome utente è sul dominio .onmicrosoft.com o l'indirizzo è un alias
 async function resolveMailbox(address) {
   const a = address.trim();
-  try { const u = await graph(`/users/${encodeURIComponent(a)}?$select=id,mail,userPrincipalName,displayName`); return { ...u, how: 'nome utente' }; } catch (e) { if (!/404/.test(e.message)) throw e; }
+  // Leggere l'oggetto utente richiede User.Read.All (applicativo): se manca, si usa l'indirizzo così com'è
+  try { const u = await graph(`/users/${encodeURIComponent(a)}?$select=id,mail,userPrincipalName,displayName`); return { ...u, how: 'nome utente' }; }
+  catch (e) { if (/403|Authorization_RequestDenied|Insufficient/i.test(e.message)) return { id: a, mail: a, userPrincipalName: a, displayName: a, how: 'indirizzo (senza verifica: manca il permesso User.Read.All)' }; if (!/404/.test(e.message)) throw e; }
   const j = await graph(`/users?$filter=mail eq '${a.replace(/'/g, "''")}' or proxyAddresses/any(x:x eq 'smtp:${a.replace(/'/g, "''")}')&$select=id,mail,userPrincipalName,displayName&$count=true`);
   const u = (j.value || [])[0];
   if (!u) throw new Error(`Microsoft non trova nessun utente o casella con indirizzo "${a}" nel tenant delle credenziali della Suite (tenant ${suite.mail.graph.tenantId.slice(0, 8)}…): verifica che la casella condivisa sia in questo tenant e che l'indirizzo sia quello principale o un alias.`);
@@ -57,7 +59,7 @@ export async function testInbox() {
   try { await graphToken(); steps.push({ step: 'Credenziali Microsoft della Suite', ok: true, detail: `tenant ${suite.mail.graph.tenantId}` }); } catch (e) { steps.push({ step: 'Credenziali Microsoft della Suite', ok: false, detail: e.message }); return { ok: false, steps }; }
   let u;
   try { u = await resolveMailbox(mailbox); steps.push({ step: `Casella "${mailbox}"`, ok: true, detail: `trovata per ${u.how}: ${u.displayName} · nome utente ${u.userPrincipalName} · indirizzo ${u.mail || '(vuoto)'} · id ${u.id}` }); } catch (e) { steps.push({ step: `Casella "${mailbox}"`, ok: false, detail: e.message }); return { ok: false, steps }; }
-  try { const f = await graph(`/users/${u.id}/mailFolders/inbox?$select=id,totalItemCount,unreadItemCount`); steps.push({ step: 'Posta in arrivo', ok: true, detail: `${f.totalItemCount} email, ${f.unreadItemCount} non lette` }); } catch (e) { steps.push({ step: 'Posta in arrivo', ok: false, detail: /403|Access/i.test(e.message) ? `Permesso mancante: sull'app registration serve Mail.Read (applicativo) con consenso amministratore, oppure la casella è esclusa da una Application Access Policy. ${e.message}` : e.message }); return { ok: false, steps }; }
+  try { const f = await graph(`/users/${u.id}/mailFolders/inbox?$select=id,totalItemCount,unreadItemCount`); steps.push({ step: 'Posta in arrivo', ok: true, detail: `${f.totalItemCount} email, ${f.unreadItemCount} non lette` }); } catch (e) { steps.push({ step: 'Posta in arrivo', ok: false, detail: /403|Access/i.test(e.message) ? `Permesso mancante: sull'app registration serve Mail.Read (applicativo) con consenso amministratore, oppure la casella è esclusa da una Application Access Policy. ${e.message}` : /ErrorInvalidUser/.test(e.message) ? `Exchange non riconosce questa casella con l'indirizzo usato. Aggiungi all'app registration il permesso applicativo User.Read.All (Microsoft Graph, consenso amministratore): la Suite potrà cercare la casella per id anche quando il nome utente interno è diverso dall'indirizzo. ${e.message}` : e.message }); return { ok: false, steps }; }
   return { ok: true, steps, mailbox_id: u.id };
 }
 
