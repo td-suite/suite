@@ -123,11 +123,11 @@ export default function Schedule() {
       </div>
 
       {tab === 'agenda' && <Agenda ev={ev} cat={cat} setCat={setCat} horizon={horizon} setHorizon={setHorizon} showDone={showDone} setShowDone={setShowDone} canWrite={canWrite} canDone={canDone} onRequest={(e) => setModal({ type: 'request', event: e })} onDone={(e) => (e.done ? toggleDone(e) : setModal({ type: 'done', event: e }))} hasData={!!(leases.data?.length || utilities.data?.length)} onNew={() => setModal({ type: 'lease', data: { site_id: siteId } })} />}
-      {tab === 'strutture' && <Strutture sites={sites} leases={leases} utilities={utilities} events={ev.data?.events || []} siteId={siteId} canWrite={canWrite} open={setModal} />}
+      {tab === 'strutture' && <Strutture sites={sites} leases={leases} utilities={utilities} events={ev.data?.events || []} siteId={siteId} canWrite={canWrite} open={setModal} onChanged={reloadAll} />}
       {tab === 'previsione' && <Previsione siteId={siteId} />}
       {tab === 'volture' && <Volture rows={transfers} loading={!utilities.data} canWrite={canWrite} siteName={siteName} open={setModal} />}
 
-      {modal?.type === 'lease' && <LeaseForm data={modal.data} sites={sites.data || []} orgs={orgs.data || []} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
+      {modal?.type === 'lease' && <LeaseForm data={modal.data} sites={sites.data || []} orgs={orgs.data || []} orgsReload={orgs.reload} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
       {modal?.type === 'step' && <StepForm lease={modal.lease} step={modal.step} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
       {modal?.type === 'utility' && <UtilityForm data={modal.data} sites={sites.data || []} orgs={orgs.data || []} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
       {modal?.type === 'bill' && <BillForm utility={modal.utility} bill={modal.bill} onClose={close} onSaved={() => { close(); reloadAll(); }} />}
@@ -187,7 +187,7 @@ function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, c
 }
 
 // ---------------- Strutture ----------------
-function Strutture({ sites, leases, utilities, events, siteId, canWrite, open }) {
+function Strutture({ sites, leases, utilities, events, siteId, canWrite, open, onChanged }) {
   if (!sites.data || !leases.data || !utilities.data) return <Loading />;
   const list = (sites.data || []).filter((s) => !siteId || s.id === Number(siteId));
   const withData = list.filter((s) => leases.data.some((l) => l.site_id === s.id) || utilities.data.some((u) => u.site_id === s.id));
@@ -195,7 +195,7 @@ function Strutture({ sites, leases, utilities, events, siteId, canWrite, open })
   if (!list.length) return <div className="card"><Empty>Nessuna sede nel tuo perimetro.</Empty></div>;
   return (
     <>
-      {withData.map((s) => <Dossier key={s.id} site={s} leases={leases.data.filter((l) => l.site_id === s.id)} utilities={utilities.data.filter((u) => u.site_id === s.id)} events={events.filter((e) => e.site_id === s.id)} canWrite={canWrite} open={open} />)}
+      {withData.map((s) => <Dossier key={s.id} site={s} leases={leases.data.filter((l) => l.site_id === s.id)} utilities={utilities.data.filter((u) => u.site_id === s.id)} events={events.filter((e) => e.site_id === s.id)} canWrite={canWrite} open={open} onChanged={onChanged} />)}
       {without.length > 0 && (
         <Card title={withData.length ? 'Sedi senza contratti né utenze' : 'Sedi dell\'anagrafica'} flush>
           <table className="t"><tbody>
@@ -208,7 +208,7 @@ function Strutture({ sites, leases, utilities, events, siteId, canWrite, open })
   );
 }
 
-function Dossier({ site, leases, utilities, events, canWrite, open }) {
+function Dossier({ site, leases, utilities, events, canWrite, open, onChanged }) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const next = events.find((e) => e.days >= 0 && !e.done);
   const overdue = events.filter(isOverdue).length;
@@ -229,7 +229,7 @@ function Dossier({ site, leases, utilities, events, canWrite, open }) {
           <tbody>{leases.map((l) => (
             <React.Fragment key={l.id}>
               <tr>
-                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div>{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
+                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div><LeaseDocs lease={l} canWrite={canWrite} onChanged={onChanged} />{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
                 <td>{LEASE_KIND[l.kind] || l.kind}<div className="small muted">dal {itDate(l.start_date)}{l.first_term_years ? ` · ${l.first_term_years} anni` : ''}{l.renewal_years ? ` + ${l.renewal_years}` : ''}</div></td>
                 <td className="num"><b>{l.current_amount != null ? eur(l.current_amount) : <span className="muted">non indicata</span>}</b><div className="small muted">/{PER_SHORT[l.period_months] || 'rata'}{l.auto_pay ? ' · automatico' : ''}{l.current_step_from ? ` · dal ${itDate(l.current_step_from)}` : ''}</div></td>
                 <td>{l.end_date ? <>{itDate(l.end_date)}{l.expired ? <div className="small red">scaduto</div> : l.renewals ? <div className="small muted">rinnovato {l.renewals} {l.renewals === 1 ? 'volta' : 'volte'}</div> : null}</> : <span className="muted">–</span>}</td>
@@ -391,8 +391,9 @@ function useSaver(onSaved) {
 }
 const confirmDelete = (what) => window.confirm(`Eliminare ${what}? L'operazione non si può annullare.`);
 
-function LeaseForm({ data, sites, orgs, onClose, onSaved }) {
+function LeaseForm({ data, sites, orgs, orgsReload, onClose, onSaved }) {
   const edit = !!data?.id;
+  const [ai, setAi] = useState(null);     // esito della lettura del PDF: { document_id, proposta, avvisi, confidence, initial_steps, model }
   const [f, setF] = useState({ site_id: data?.site_id || '', landlord_org_id: data?.landlord_org_id || '', landlord_name: data?.landlord_name || '', beneficiary_id: data?.beneficiary_id || '', unit: data?.unit || '', kind: data?.kind || 'COMMERCIALE_6_6', start_date: data?.start_date || '', first_term_years: data?.first_term_years ?? (data?.kind?.startsWith('COMMERCIALE_9') ? 9 : 6), renewal_years: data?.renewal_years ?? 6, notice_months: data?.notice_months ?? 12, period_months: data?.period_months || 1, first_due: data?.first_due || '', amount: data?.current_amount ?? data?.steps?.find((s) => s.reason === 'INIZIALE')?.amount ?? '', deposit: data?.deposit ?? '', registration: data?.registration || 'IMPOSTA_ANNUALE', istat: data?.istat ?? true, auto_pay: data?.auto_pay ?? false, business_contract_id: data?.business_contract_id || '', notes: data?.notes || '', active: data?.active ?? true });
   const { busy, err, run } = useSaver(onSaved);
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
@@ -401,39 +402,54 @@ function LeaseForm({ data, sites, orgs, onClose, onSaved }) {
     const body = { site_id: Number(f.site_id), landlord_org_id: f.landlord_org_id ? Number(f.landlord_org_id) : null, landlord_name: nn(f.landlord_name), beneficiary_id: f.beneficiary_id ? Number(f.beneficiary_id) : null, unit: nn(f.unit), kind: f.kind, start_date: f.start_date, first_term_years: f.first_term_years === '' ? null : Number(f.first_term_years), renewal_years: f.renewal_years === '' ? null : Number(f.renewal_years), notice_months: f.notice_months === '' ? null : Number(f.notice_months), period_months: Number(f.period_months), first_due: nn(f.first_due), deposit: f.deposit === '' ? null : Number(f.deposit), registration: nn(f.registration), istat: !!f.istat, auto_pay: !!f.auto_pay, business_contract_id: f.business_contract_id ? Number(f.business_contract_id) : null, notes: nn(f.notes), active: !!f.active };
     // importo iniziale: alla creazione crea lo scatto INIZIALE; in modifica solo se cambia rispetto allo scatto iniziale
     if (!edit) { if (f.amount !== '') body.amount = Number(f.amount); } else if (f.amount !== '' && Number(f.amount) !== Number(iniAmount ?? NaN)) body.amount = Number(f.amount);
+    // contratto letto dal PDF: documento da collegare e scatti iniziali proposti (rate iniziali diverse + canone a regime con l'importo del form)
+    if (!edit && ai?.document_id) {
+      body.document_id = ai.document_id;
+      const steps = (ai.initial_steps || []).filter((st) => st.valid_from >= f.start_date).map((st) => (st.reason === 'INIZIALE' && f.amount !== '' ? { ...st, amount: Number(f.amount) } : st));
+      if (steps.length > 1) body.initial_steps = steps;
+    }
     if (edit) await api.put(`/scadenziario/leases/${data.id}`, body); else await api.post('/scadenziario/leases', body);
   }, edit ? 'Contratto aggiornato' : 'Contratto registrato');
   const del = () => confirmDelete('il contratto con i suoi scatti e gli esiti') && run(() => api.del(`/scadenziario/leases/${data.id}`), 'Contratto eliminato');
   const org = f.landlord_org_id ? orgs.find((o) => o.id === Number(f.landlord_org_id)) : null;
+  // valori del form dalla proposta letta nel PDF (solo i campi letti; l'utente controlla e salva)
+  const fromProposal = (lease) => Object.fromEntries(Object.entries(lease || {}).filter(([k, v]) => k in f && v != null).map(([k, v]) => [k, typeof v === 'boolean' ? v : String(v)]));
+  const onAnalyzed = (r) => {
+    setAi(r);
+    if (!edit) setF((cur) => ({ ...cur, ...fromProposal(r.proposta?.lease) }));
+  };
+  const applyDiff = (fields) => { setF((cur) => ({ ...cur, ...Object.fromEntries(Object.entries(fromProposal(ai?.proposta?.lease)).filter(([k]) => fields.includes(k))) })); };
+  const Pin = ({ k }) => <ConfPin c={ai?.confidence?.[k]} />;
   return (
     <Modal wide title={edit ? `Modifica contratto · ${data.unit || data.site_name || ''}` : 'Nuovo contratto di affitto'} onClose={onClose} footer={<Footer onClose={onClose} onSave={save} onDelete={edit ? del : null} busy={busy} disabled={!f.site_id || !f.start_date} />}>
       <ErrorBox error={err} />
+      <PdfPanel edit={edit} leaseId={data?.id} ai={ai} current={f} onAnalyzed={onAnalyzed} onApplyDiff={applyDiff} onOrgCreated={(o) => { setF((cur) => ({ ...cur, landlord_org_id: String(o.id), landlord_name: '' })); setAi((a) => a ? { ...a, proposta: { ...a.proposta, landlord_org_id: o.id, landlord_label: o.name, landlord_how: o.existing ? o.how : 'creata dal contratto' } } : a); orgsReload?.(); }} />
       <div className="form-grid">
-        <Field label="Sede" help="Dall'anagrafica unica della Suite" className="span2"><SiteSelect value={f.site_id} onChange={set('site_id')} sites={sites} /></Field>
-        <Field label="Immobile / unità" help="es. piano terra, box, magazzino"><input value={f.unit} onChange={set('unit')} /></Field>
-        <Field label="Tipologia"><select value={f.kind} onChange={set('kind')}>{Object.entries(LEASE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-        <Field label="Locatore (Legal entity)" help="Dall'anagrafica; se manca, scrivi il nome qui sotto"><OrgSelect value={f.landlord_org_id} onChange={set('landlord_org_id')} orgs={orgs} /></Field>
-        <Field label="Locatore (nome)" help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : 'Nome del proprietario se non è in anagrafica'}><input value={f.landlord_name} onChange={set('landlord_name')} placeholder={org?.name || ''} /></Field>
+        <Field label={<>Sede <Pin k="site_id" /></>} help={ai?.proposta?.site_id ? `Dal contratto: ${ai.proposta.site_label} (${ai.proposta.site_how})` : 'Dall\'anagrafica unica della Suite'} className="span2"><SiteSelect value={f.site_id} onChange={set('site_id')} sites={sites} /></Field>
+        <Field label={<>Immobile / unità <Pin k="unit" /></>} help="es. piano terra, box, magazzino"><input value={f.unit} onChange={set('unit')} /></Field>
+        <Field label={<>Tipologia <Pin k="kind" /></>}><select value={f.kind} onChange={set('kind')}>{Object.entries(LEASE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <Field label={<>Locatore (Legal entity) <Pin k="landlord_org_id" /></>} help={ai?.proposta?.landlord_org_id ? `Dal contratto: ${ai.proposta.landlord_label} (${ai.proposta.landlord_how})` : 'Dall\'anagrafica; se manca, scrivi il nome qui sotto'}><OrgSelect value={f.landlord_org_id} onChange={set('landlord_org_id')} orgs={orgs} /></Field>
+        <Field label={<>Locatore (nome) <Pin k="landlord_name" /></>} help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : 'Nome del proprietario se non è in anagrafica'}><input value={f.landlord_name} onChange={set('landlord_name')} placeholder={org?.name || ''} /></Field>
         <Field label="Beneficiario Payments" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle scadenze" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.landlord_name ? { name: f.landlord_name } : null} fromLabel="nuovo dal locatore" /></Field>
       </div>
       <h3 style={{ margin: '16px 0 8px' }}>Durata</h3>
       <div className="form-grid">
-        <Field label="Decorrenza *"><input type="date" value={f.start_date} onChange={set('start_date')} required /></Field>
-        <Field label="Primo periodo (anni)"><input type="number" min={0} max={99} value={f.first_term_years} onChange={set('first_term_years')} /></Field>
-        <Field label="Rinnovo tacito (anni)" help="0 = nessun rinnovo automatico"><input type="number" min={0} max={99} value={f.renewal_years} onChange={set('renewal_years')} /></Field>
-        <Field label="Preavviso disdetta (mesi)"><input type="number" min={0} max={60} value={f.notice_months} onChange={set('notice_months')} /></Field>
+        <Field label={<>Decorrenza * <Pin k="start_date" /></>}><input type="date" value={f.start_date} onChange={set('start_date')} required /></Field>
+        <Field label={<>Primo periodo (anni) <Pin k="first_term_years" /></>}><input type="number" min={0} max={99} value={f.first_term_years} onChange={set('first_term_years')} /></Field>
+        <Field label={<>Rinnovo tacito (anni) <Pin k="renewal_years" /></>} help="0 = nessun rinnovo automatico"><input type="number" min={0} max={99} value={f.renewal_years} onChange={set('renewal_years')} /></Field>
+        <Field label={<>Preavviso disdetta (mesi) <Pin k="notice_months" /></>}><input type="number" min={0} max={60} value={f.notice_months} onChange={set('notice_months')} /></Field>
       </div>
       <h3 style={{ margin: '16px 0 8px' }}>Canone</h3>
       <div className="form-grid">
-        <Field label={edit ? 'Importo iniziale della rata' : 'Importo della rata'} help={edit ? 'Scatto iniziale; i successivi si aggiungono con "Nuovo scatto"' : 'Crea il primo scatto del canone alla decorrenza'}><MoneyInput value={f.amount} onChange={set('amount')} /></Field>
-        <Field label="Periodicità della rata"><select value={f.period_months} onChange={set('period_months')}>{[1, 2, 3, 6, 12].map((n) => <option key={n} value={n}>{PERIOD[n]}</option>)}</select></Field>
+        <Field label={<>{edit ? 'Importo iniziale della rata' : 'Importo della rata'} <Pin k="amount" /></>} help={edit ? 'Scatto iniziale; i successivi si aggiungono con "Nuovo scatto"' : 'Crea il primo scatto del canone alla decorrenza'}><MoneyInput value={f.amount} onChange={set('amount')} /></Field>
+        <Field label={<>Periodicità della rata <Pin k="period_months" /></>}><select value={f.period_months} onChange={set('period_months')}>{[1, 2, 3, 6, 12].map((n) => <option key={n} value={n}>{PERIOD[n]}</option>)}</select></Field>
         <Field label="Prima scadenza della rata" help="Se vuota vale la decorrenza"><input type="date" value={f.first_due} onChange={set('first_due')} /></Field>
-        <Field label="Deposito cauzionale"><MoneyInput value={f.deposit} onChange={set('deposit')} /></Field>
-        <Field label="Registrazione"><select value={f.registration} onChange={set('registration')}><option value="">Non indicata</option>{Object.entries(REGISTRATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <Field label={<>Deposito cauzionale <Pin k="deposit" /></>}><MoneyInput value={f.deposit} onChange={set('deposit')} /></Field>
+        <Field label={<>Registrazione <Pin k="registration" /></>}><select value={f.registration} onChange={set('registration')}><option value="">Non indicata</option>{Object.entries(REGISTRATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label="Riferimento Business" help="Id del contratto SEDE nel widget Business, facoltativo"><input type="number" min={1} value={f.business_contract_id} onChange={set('business_contract_id')} /></Field>
       </div>
       <div className="row" style={{ marginTop: 12, gap: 20 }}>
-        <label className="f inline"><input type="checkbox" checked={!!f.istat} onChange={set('istat')} />Adeguamento ISTAT annuale</label>
+        <label className="f inline"><input type="checkbox" checked={!!f.istat} onChange={set('istat')} />Adeguamento ISTAT annuale <Pin k="istat" /></label>
         <label className="f inline"><input type="checkbox" checked={!!f.auto_pay} onChange={set('auto_pay')} />Pagamento automatico (RID o bonifico permanente)</label>
         {edit && <label className="f inline"><input type="checkbox" checked={!!f.active} onChange={set('active')} />Contratto attivo</label>}
       </div>
@@ -603,5 +619,101 @@ function RequestModal({ event: e, onClose, onCreated }) {
         <Field label={e.estimate ? 'Importo da pagare (la scadenza è una stima)' : 'Importo'} help={e.estimate ? 'Conferma o correggi l\'importo stimato' : 'Importo della scadenza; modificalo solo se diverso'}><MoneyInput value={amount} onChange={setAmount} autoFocus /></Field>
       </div>
     </Modal>
+  );
+}
+
+// ---------------- Contratto in PDF: lettura con Claude ----------------
+const CONF_TONE = { alta: 'green', media: 'mauve', bassa: 'red' };
+const CONF_LABEL = { alta: 'confidenza alta', media: 'confidenza media', bassa: 'confidenza bassa' };
+// Spilla colorata accanto al campo letto dal PDF: verde alta, gialla media, rossa bassa; al passaggio del mouse la citazione
+function ConfPin({ c }) {
+  if (!c) return null;
+  return <span className={`conf-pin ${c.level}`} title={`${CONF_LABEL[c.level] || c.level}${c.quote ? `: "${c.quote}"` : ''}`} aria-label={CONF_LABEL[c.level] || c.level} />;
+}
+
+const DIFF_FIELDS = [['site_id', 'Sede'], ['landlord_org_id', 'Locatore (Legal entity)'], ['landlord_name', 'Locatore (nome)'], ['unit', 'Immobile / unità'], ['kind', 'Tipologia'], ['start_date', 'Decorrenza'], ['first_term_years', 'Primo periodo (anni)'], ['renewal_years', 'Rinnovo tacito (anni)'], ['notice_months', 'Preavviso (mesi)'], ['period_months', 'Periodicità'], ['amount', 'Importo della rata'], ['deposit', 'Deposito'], ['registration', 'Registrazione'], ['istat', 'ISTAT']];
+const same = (a, b) => String(a ?? '') === String(b ?? '') || (a !== '' && b != null && Number(a) === Number(b) && !Number.isNaN(Number(a)));
+
+// Riquadro in alto nel form: zona di caricamento, esito della lettura (sede e locatore abbinati, avvisi, scatti proposti) e,
+// per un contratto esistente, le differenze campo per campo da applicare con una spunta
+function PdfPanel({ edit, leaseId, ai, current, onAnalyzed, onApplyDiff, onOrgCreated }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [sel, setSel] = useState({});
+  const [drag, setDrag] = useState(false);
+  const inputRef = React.useRef(null);
+  const analyze = async (file) => {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { setErr(new Error('Carica un file PDF')); return; }
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await api.upload(edit ? `/scadenziario/leases/${leaseId}/analizza` : '/scadenziario/leases/analizza', fd);
+      const conf = r.proposta?.confidence || {};
+      onAnalyzed({ document_id: r.document_id, proposta: r.proposta, avvisi: r.avvisi || [], confidence: conf, initial_steps: r.proposta?.initial_steps || [], model: r.model, filename: file.name, pages: r.pages, ocr: r.ocr });
+      if (edit) setSel({});
+      toast(edit ? 'Contratto riletto: controlla le differenze' : 'Contratto letto: controlla i campi e salva');
+    } catch (e) { setErr(e); } finally { setBusy(false); if (inputRef.current) inputRef.current.value = ''; }
+  };
+  const createOrg = async () => {
+    setBusy(true); setErr(null);
+    try { const o = await api.post('/scadenziario/organizations', { from_document_id: ai.document_id }); onOrgCreated(o); toast(o.existing ? `Legal entity già presente: ${o.name}` : `Legal entity ${o.name} creata (da rivedere in Amministrazione)`); }
+    catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  const diffs = edit && ai ? DIFF_FIELDS.map(([k, label]) => ({ k, label, cur: current[k], read: ai.proposta?.lease?.[k] })).filter((d) => d.read != null && !same(d.cur, d.read)) : [];
+  const fmt = (k, v) => (v == null || v === '' ? '–' : k === 'kind' ? LEASE_KIND[v] || v : k === 'registration' ? REGISTRATION[v] || v : k === 'period_months' ? PERIOD[v] || v : ['amount', 'deposit'].includes(k) ? eur(v) : k === 'start_date' ? itDate(v) : k === 'istat' ? (v ? 'sì' : 'no') : k === 'site_id' ? (ai?.proposta?.site_id === Number(v) ? ai.proposta.site_label : `sede ${v}`) : k === 'landlord_org_id' ? (ai?.proposta?.landlord_org_id === Number(v) ? ai.proposta.landlord_label : `Legal entity ${v}`) : String(v));
+  return (
+    <div className={`pdf-panel ${drag ? 'drag' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); analyze(e.dataTransfer.files?.[0]); }}>
+      <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+        <Icon name="file" size={22} />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <b>{edit ? 'Rileggi dal PDF' : 'Carica il contratto in PDF'}</b>
+          <div className="small muted">{edit ? 'Claude rilegge il contratto e propone le differenze rispetto ai dati salvati: le applichi con una spunta.' : 'Claude legge locatore, sede, canone e durata e precompila i campi: controlli e salvi tu, niente salvataggio automatico.'}{busy ? ' Lettura in corso…' : ''}</div>
+        </div>
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => analyze(e.target.files?.[0])} />
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={16} />{busy ? 'Lettura…' : ai ? 'Altro PDF' : 'Scegli il PDF'}</button>
+      </div>
+      <ErrorBox error={err} />
+      {ai && (
+        <div className="pdf-result">
+          <div className="small"><b>{ai.filename}</b>{ai.pages ? ` · ${ai.pages} pagine` : ''}{ai.ocr ? ' · OCR' : ''}{ai.model ? ` · lettura ${ai.model === 'mock' ? 'di prova' : ai.model}` : ''}</div>
+          <div className="small" style={{ marginTop: 4 }}>
+            Sede: {ai.proposta?.site_id ? <><b>{ai.proposta.site_label}</b> <span className="muted">({ai.proposta.site_how})</span></> : <span className="red">non abbinata</span>} · Locatore: {ai.proposta?.landlord_org_id ? <><b>{ai.proposta.landlord_label}</b> <span className="muted">({ai.proposta.landlord_how})</span></> : <><span className="red">non in anagrafica</span> <button type="button" className="btn sm ghost" disabled={busy} onClick={createOrg}>Crea Legal entity dal contratto</button></>}
+            {ai.proposta?.beneficiary_id ? <> · Beneficiario Payments: <b>{ai.proposta.beneficiary_label}</b></> : null}
+          </div>
+          {!edit && ai.initial_steps?.length > 1 && <div className="small" style={{ marginTop: 4 }}>Scatti proposti: {ai.initial_steps.map((st) => `${itDate(st.valid_from)} ${eur(st.amount)}${st.reason === 'INIZIALE' ? ' (a regime)' : ''}`).join(' · ')}</div>}
+          {ai.avvisi?.length > 0 && <div className="alert warn" style={{ marginTop: 8, flexDirection: 'column', gap: 2 }}>{ai.avvisi.map((a, i) => <div key={i} className="small">{a}</div>)}</div>}
+          {edit && (diffs.length ? (
+            <div style={{ marginTop: 8 }}>
+              <table className="t diff"><thead><tr><th /><th>Campo</th><th>Attuale</th><th>Letto nel PDF</th><th /></tr></thead>
+                <tbody>{diffs.map((d) => <tr key={d.k}><td><input type="checkbox" checked={!!sel[d.k]} onChange={(e) => setSel({ ...sel, [d.k]: e.target.checked })} /></td><td>{d.label}</td><td className="muted">{fmt(d.k, d.cur)}</td><td><b>{fmt(d.k, d.read)}</b> <ConfPin c={ai.confidence?.[d.k]} /></td><td className="small muted">{ai.confidence?.[d.k]?.quote ? `"${ai.confidence[d.k].quote.slice(0, 90)}${ai.confidence[d.k].quote.length > 90 ? '…' : ''}"` : ''}</td></tr>)}</tbody></table>
+              <div className="row" style={{ marginTop: 6 }}><button type="button" className="btn sm" disabled={!Object.values(sel).some(Boolean)} onClick={() => { onApplyDiff(Object.keys(sel).filter((k) => sel[k])); setSel({}); toast('Differenze applicate: controlla e salva'); }}>Applica le differenze selezionate</button><button type="button" className="btn sm ghost" onClick={() => setSel(Object.fromEntries(diffs.map((d) => [d.k, true])))}>Seleziona tutte</button></div>
+            </div>
+          ) : <div className="small muted" style={{ marginTop: 6 }}>Nessuna differenza tra il contratto salvato e quanto letto nel PDF.</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Documenti del contratto nella scheda Strutture: icona, download inline, eliminazione e "Aggiungi documento" (allegato senza analisi)
+function LeaseDocs({ lease, canWrite, onChanged }) {
+  const toast = useToast();
+  const inputRef = React.useRef(null);
+  const [busy, setBusy] = useState(false);
+  const docs = lease.documents || [];
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try { const fd = new FormData(); fd.append('file', file); await api.upload(`/scadenziario/leases/${lease.id}/documenti`, fd); toast('Documento allegato'); onChanged?.(); }
+    catch (e) { toast(e.message, 'err'); } finally { setBusy(false); if (inputRef.current) inputRef.current.value = ''; }
+  };
+  const del = async (d) => { if (!window.confirm(`Eliminare il documento ${d.filename}?`)) return; try { await api.del(`/scadenziario/documenti/${d.id}`); toast('Documento eliminato'); onChanged?.(); } catch (e) { toast(e.message, 'err'); } };
+  return (
+    <div className="lease-docs small">
+      {docs.map((d) => <span key={d.id} className="doc-chip" title={`${d.filename} · ${Math.round(d.size / 1024)} KB${d.analyzed ? ' · letto con Claude' : ''}`}><Icon name="file" size={13} /><a href={fileUrl(`/scadenziario/documenti/${d.id}`)} target="_blank" rel="noreferrer">{d.filename.length > 28 ? `${d.filename.slice(0, 25)}…` : d.filename}</a>{d.analyzed && <span className="muted" title="Letto con Claude">AI</span>}{canWrite && <button type="button" className="iconbtn" title="Elimina" onClick={() => del(d)}>✕</button>}</span>)}
+      {canWrite && <><input ref={inputRef} type="file" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} /><button type="button" className="btn link small" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? 'Caricamento…' : docs.length ? '+ documento' : '+ Aggiungi documento'}</button></>}
+    </div>
   );
 }

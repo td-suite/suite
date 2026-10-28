@@ -169,3 +169,18 @@ test('istanze collegate: la scadenza porta protocollo e stato dell istanza', () 
   const evs2 = buildEvents({ leases: [lease()], steps, done, from: '2026-10-01', to: '2026-10-31', today: TODAY });
   assert.equal(evs2[0].done, true); assert.equal(evs2[0].done_request_id, 4);
 });
+
+test('contratto in PDF: scatti iniziali dalle rate ridotte e canone a regime (lib/leaseAnalysis.js)', async () => {
+  const { initialSteps, mockExtract } = await import('../src/modules/finance/lib/leaseAnalysis.js');
+  const ex = { canone: { rate_iniziali: [{ dal: '2026-04-15', al: '2026-04-30', importo: 2500 }, { dal: '2026-05-01', al: '2026-05-31', importo: 5000 }] } };
+  assert.deepEqual(initialSteps(ex, { start_date: '2026-04-15', amount: 7300 }).map((s) => [s.valid_from, s.amount, s.reason]), [['2026-04-15', 2500, 'ALTRO'], ['2026-05-01', 5000, 'ALTRO'], ['2026-06-01', 7300, 'INIZIALE']]);
+  assert.deepEqual(initialSteps({ canone: {} }, { start_date: '2026-04-15', amount: 7300 }).map((s) => [s.valid_from, s.amount, s.reason]), [['2026-04-15', 7300, 'INIZIALE']]);
+  assert.deepEqual(initialSteps(ex, { start_date: null, amount: 7300 }), []);
+  // estrattore di prova (FINANCE_AI_MOCK) su un testo nello stile del contratto Pratignone
+  const t = 'Con la presente scrittura la società (in seguito chiamata LOCATORE) ALFA IMMOBILIARE s.r.l., C.F. 01234567890, P.IVA 01234567890 con sede a Prato (PO) in Via Roma n. 1, nella persona del legale rappresentante Dr. Mario Rossi nato a Prato, concede in locazione l\'immobile sito a Prato (PO) in Via Roma n. 1 p.T, iscritto al catasto urbano al fgl. 1 part. 2 sub 3 cat. D/7 R.C. 100,00 alla società TOSCANA DIAGNOSTICA S.R.L., con sede in Firenze, c.f. e p.iva 07528130482 (in seguito chiamata CONDUTTORE). 1) La locazione avrà la durata di anni 6 (sei) con inizio dal 01/01/2027 e con rinnovazione tacita per ulteriori sei anni, salvo disdetta da comunicarsi, dodici mesi prima della scadenza. 2) Il canone di locazione è stabilito consensualmente in Euro 12.000,00 (dodicimila/00) da pagarsi n. 12 rate mensili anticipate di Euro 1.000,00 (mille/00). Il canone è esente iva. 12) a titolo di deposito cauzionale la parte conduttrice versa la somma di euro 3.000,00 pari a tre mensilità.';
+  const ex2 = mockExtract(t);
+  assert.equal(ex2.locatore.ragione_sociale, 'ALFA IMMOBILIARE s.r.l.'); assert.equal(ex2.locatore.piva, '01234567890');
+  assert.equal(ex2.immobile.citta, 'Prato'); assert.equal(ex2.durata.decorrenza, '2027-01-01'); assert.equal(ex2.durata.rinnovo_anni, 6); assert.equal(ex2.durata.preavviso_mesi, 12);
+  assert.equal(ex2.canone.importo, 1000); assert.equal(ex2.canone.periodo, 'MESE'); assert.equal(ex2.canone.iva, 'ESENTE'); assert.equal(ex2.canone.deposito, 3000); assert.equal(ex2.tipo_contratto, 'COMMERCIALE_6_6');
+  assert.equal(ex2.confidenza['canone.importo'].livello, 'alta');
+});

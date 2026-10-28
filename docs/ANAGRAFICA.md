@@ -514,6 +514,43 @@ UTILITY_* / UTILITY_BILL_* / SCHEDULE_DONE / SCHEDULE_UNDONE / SCHEDULE_REQUEST_
 `GET /scadenziario/export.xlsx` (fogli Agenda, Contratti, Utenze, Bollette, Previsione). Test `server/test/finance-schedule.test.mjs`.
 Schermate docs/screens/finance-scadenziario-*.png.
 
+### Contratto di affitto in PDF letto con Claude (28/10/2026)
+Richiesta del CEO, testuale: "Anche con l'utilizzo dell'API di Anthropic, permetti l'upload del contratto PDF e riconosci sede, importi,
+locatore, durata." Nel form "Contratto di affitto" un riquadro in alto ("Carica il contratto in PDF") accetta il PDF (fino a 20 MB, SUPPORT
+e amministratori): `POST /api/finance/scadenziario/leases/analizza` (multipart `file`) salva il documento in `finance.lease_documents`
+(migrazione 003: bytea o percorso nel blob della Suite tramite `server/src/lib/moduleStorage.js`, condiviso con Business; `lease_id` resta
+vuoto finché il contratto non viene creato), estrae il testo con `server/src/lib/pdftext.js` (pdftotext -layout; OCR tesseract se il PDF
+è una scansione, con avviso; la stessa libreria usata dai Referti esterni, che ne conserva le firme), lo tronca a 60.000 caratteri con
+avviso e lo passa a Claude (`askJson` di lib/claude.js, kind `lease_contract`, maxTokens 3000, registrato in `ai_log`; il contratto di
+locazione non contiene dati di pazienti) con un prompt di sistema in italiano da trascrittore fedele: locatore (ragione sociale, P.IVA, CF,
+indirizzo, PEC, legale rappresentante), conduttore, immobile (indirizzo, città, descrizione, dati catastali), durata (decorrenza, anni,
+rinnovo, preavviso, scadenza), canone (importo e periodo della rata, IVA, rate iniziali diverse anche in forma strutturata, ISTAT, deposito,
+fideiussione, spese), registrazione, tipo di contratto, clausole rilevanti e `confidenza` per campo (alta/media/bassa) con la citazione
+testuale. Senza chiave Anthropic la richiesta risponde 400 "Intelligenza artificiale non configurata: inserisci la chiave Anthropic in
+Amministrazione > Impostazioni". Poi (`lib/leaseAnalysis.js`, `buildProposal`) abbina la sede TD per città e indirizzo dell'immobile
+(`matchSite` di `server/src/lib/anagraficaMatch.js`, estratta dal caricamento pacchetti di Business e condivisa, con il criterio
+"città e indirizzo" in più), il locatore alle Legal entity per P.IVA, CF o nome (`matchOrg`) e il beneficiario Payments per P.IVA o nome;
+risposta `{ document_id, extracted, proposta: { site_id, site_label, site_how, landlord_org_id, landlord_label, landlord_how, beneficiary_id,
+lease (campi del form), initial_steps, confidence }, avvisi }` (OCR, testo troncato, conduttore diverso da Toscana Diagnostica, campi a bassa
+confidenza, rate iniziali diverse, sede o locatore non abbinati).
+Nel form i campi si precompilano e ogni campo letto mostra una spilla (verde alta, gialla media, rossa bassa; al passaggio del mouse la
+citazione); sede e locatore proposti con il criterio di abbinamento; se il locatore manca, "Crea Legal entity dal contratto"
+(`POST /scadenziario/organizations { from_document_id }`: public.organizations kind PARTNER con needs_review, P.IVA, CF, indirizzo, PEC;
+se esiste già la restituisce). Gli avvisi in un riquadro giallo. L'utente controlla e salva: nessun salvataggio automatico. `POST /leases`
+accetta `document_id` (collega il documento) e `initial_steps`: con rate iniziali diverse (caso Pratignone: 15-30/04/2026 2.500, maggio
+5.000, da giugno 7.300) nascono gli scatti ALTRO per i periodi ridotti e lo scatto INIZIALE con l'importo a regime dal primo giorno
+successivo (la coppia contratto/data è unica, quindi INIZIALE non può stare alla decorrenza insieme alla prima rata ridotta), così il
+calendario parte giusto. `GET /leases/:id` e l'elenco restituiscono i documenti; `POST /leases/:id/documenti` allega senza analisi,
+`GET /documenti/:id` scarica (inline), `GET /documenti/:id/lettura` restituisce la proposta salvata, `DELETE /documenti/:id`. Nella scheda
+Strutture ogni contratto mostra i documenti (icona, download, eliminazione, "Aggiungi documento"). Su un contratto esistente "Rileggi dal
+PDF" (`POST /leases/:id/analizza`, documento collegato subito) propone le differenze campo per campo (attuale vs letto, con spilla e
+citazione) da applicare con una spunta e poi salvare.
+Limiti: lettura assistita, da verificare sempre sul contratto (il modello trascrive, non interpreta; i campi a bassa confidenza sono
+segnalati); nessun salvataggio automatico; ogni chiamata in `ai_log` senza il testo del contratto. Collaudo senza chiave: `FINANCE_AI_MOCK=1`
+(letto solo con NODE_ENV diverso da production) sostituisce il modello con un estrattore a espressioni regolari (`mockExtract`, stesso JSON,
+avviso "Lettura di prova" nella risposta) provato sul contratto del laboratorio di via del Pratignone; il prompt reale resta quello per
+Claude. Schermate docs/screens/finance-scadenziario-pdf-{analisi,differenze}.png.
+
 ## Contatori dei widget nella Home (28/10/2026)
 Segnalazione del CEO: "non vedo le notifiche sulle icone dei widget". I contatori delle card della Home (GET /api/home/counters, lib/legacy.js)
 erano definiti solo per gli otto moduli travasati (NC, Ordini, Cash, Payments, Integration, Spedizioni, Room, Contratti del personale).

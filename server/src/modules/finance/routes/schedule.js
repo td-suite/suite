@@ -2,6 +2,7 @@
 // scadenze, esiti, istanze di pagamento create dalle scadenze, previsione dei costi ed esportazione. Montato su /api/finance/scadenziario.
 // Accesso: tutti gli utenti del modulo leggono; SUPPORT e amministratori (canManage) scrivono; CEO e CFO possono segnare gli esiti.
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { one, many, q, tx } from '../db.js';
@@ -10,6 +11,13 @@ import { canManage, isSigner, requireManage } from '../lib/access.js';
 import { buildEvents, kpis, forecast, contractEnd, stepAt, toIso, parseDate, addMonths, isOverdue, UTILITY_LABEL, LEASE_KIND_LABEL, REGISTRATION_LABEL, TRANSFER_LABEL } from '../lib/schedule.js';
 import { loadScheduleData, scheduleSettings, siteName, EVENT_KEY_RE } from '../lib/scheduleData.js';
 import { requestSchema, createRequest } from '../lib/requestCreate.js';
+import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../../../lib/moduleStorage.js';
+import { extractText, analyzeText, buildProposal, mockEnabled, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
+import { aiEnabled } from '../../../lib/claude.js';
+import { matchOrg } from '../../../lib/anagraficaMatch.js';
+
+const uploadPdf = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+const DOC_COLS = 'id, lease_id, filename, mime, size, sha256, (extracted IS NOT NULL) AS analyzed, extracted_at, model, ocr, uploaded_by, created_at';
 
 const r = Router();
 const requireWrite = requireManage;
@@ -219,6 +227,78 @@ r.post('/beneficiaries', requireWrite, ah(async (req, res) => {
   res.status(201).json({ ...b, ibans });
 }));
 
+// ---- contratto in PDF: lettura con Claude e documenti ----
+// Analisi: salva il documento (lease_id vuoto, o il contratto indicato per "Rileggi dal PDF"), estrae il testo (OCR se scansione),
+// chiede a Claude il JSON del contratto, abbina sede, locatore e beneficiario e propone i campi del form. Niente salvataggio automatico.
+async function analyzeUpload(req, res, lease) {
+  if (!req.file) throw bad('Carica il contratto in PDF');
+  if (!(req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(req.file.originalname))) throw bad('Formato ammesso: PDF');
+  if (!mockEnabled() && !aiEnabled()) throw bad(AI_NOT_CONFIGURED);
+  const text = await extractText(req.file.buffer);
+  const avvisi = [...text.avvisi];
+  const { extracted, model } = await analyzeText(text.text, { userId: req.suiteUser?.id || null });
+  const stored = await storeBuffer('finance', 'contratti', req.file.originalname, 'application/pdf', req.file.buffer);
+  const doc = await one(`INSERT INTO lease_documents (lease_id, filename, mime, size, sha256, data, blob_path, extracted, extracted_at, model, text_chars, ocr, uploaded_by)
+    VALUES ($1,$2,'application/pdf',$3,$4,$5,$6,$7,now(),$8,$9,$10,$11) RETURNING ${DOC_COLS}`,
+  [lease?.id || null, req.file.originalname, stored.size, stored.sha256, stored.data, stored.blob_path, JSON.stringify(extracted), model, text.chars, text.ocr, req.user.id]);
+  const proposta = await buildProposal(extracted, { avvisi });
+  if (model === 'mock') avvisi.unshift('Lettura di prova (FINANCE_AI_MOCK): estrattore a espressioni regolari, non il modello Anthropic');
+  await audit(req, 'LEASE_DOCUMENT_ANALYZE', 'lease_document', doc.id, { filename: doc.filename, size: doc.size, model, ocr: text.ocr, chars: text.chars, lease_id: lease?.id || null });
+  res.status(201).json({ document_id: doc.id, document: doc, extracted, proposta, avvisi, text_chars: text.chars, pages: text.pages, ocr: text.ocr, model });
+}
+r.post('/leases/analizza', requireWrite, uploadPdf.single('file'), ah(async (req, res) => analyzeUpload(req, res, null)));
+r.post('/leases/:id/analizza', requireWrite, uploadPdf.single('file'), ah(async (req, res) => analyzeUpload(req, res, await getLease(req, Number(req.params.id)))));
+
+// Allegato senza analisi
+r.post('/leases/:id/documenti', requireWrite, uploadPdf.single('file'), ah(async (req, res) => {
+  const l = await getLease(req, Number(req.params.id));
+  if (!req.file) throw bad('Nessun file');
+  const stored = await storeBuffer('finance', 'contratti', req.file.originalname, req.file.mimetype || 'application/octet-stream', req.file.buffer);
+  const doc = await one(`INSERT INTO lease_documents (lease_id, filename, mime, size, sha256, data, blob_path, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${DOC_COLS}`,
+    [l.id, req.file.originalname, req.file.mimetype || 'application/octet-stream', stored.size, stored.sha256, stored.data, stored.blob_path, req.user.id]);
+  await audit(req, 'LEASE_DOCUMENT_UPLOAD', 'lease', l.id, { document_id: doc.id, filename: doc.filename, size: doc.size });
+  res.status(201).json(doc);
+}));
+r.get('/documenti/:id', ah(async (req, res) => {
+  const f = await one('SELECT * FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
+  if (!f) throw notFound('Documento non trovato');
+  await sendFile(res, f, { inline: req.query.download !== '1' });
+}));
+r.get('/documenti/:id/lettura', ah(async (req, res) => {
+  const f = await one(`SELECT ${DOC_COLS}, extracted FROM lease_documents WHERE id=$1`, [Number(req.params.id)]);
+  if (!f) throw notFound('Documento non trovato');
+  res.json({ ...f, proposta: f.extracted ? await buildProposal(f.extracted, { avvisi: [] }) : null });
+}));
+r.delete('/documenti/:id', requireWrite, ah(async (req, res) => {
+  const f = await one('SELECT id, lease_id, filename, blob_path FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
+  if (!f) throw notFound('Documento non trovato');
+  if (f.lease_id) await getLease(req, f.lease_id);
+  await q('DELETE FROM lease_documents WHERE id=$1', [f.id]);
+  await dropBlobs('finance', [f.blob_path]);
+  await audit(req, 'LEASE_DOCUMENT_DELETE', 'lease', f.lease_id, { document_id: f.id, filename: f.filename });
+  res.json({ ok: true });
+}));
+
+// Legal entity dal locatore letto nel contratto (public.organizations, kind PARTNER, da rivedere in Amministrazione)
+r.post('/organizations', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ from_document_id: intId }), req.body);
+  const f = await one('SELECT id, extracted FROM lease_documents WHERE id=$1', [d.from_document_id]);
+  if (!f?.extracted?.locatore) throw bad('Il documento non ha dati del locatore');
+  const loc = f.extracted.locatore;
+  const name = String(loc.ragione_sociale || '').trim();
+  if (name.length < 2) throw bad('Ragione sociale del locatore non letta dal contratto: crea la Legal entity in Amministrazione');
+  const hit = await matchOrg({ vat_number: loc.piva, tax_code: loc.cf, name });
+  if (hit) return res.json({ id: hit.id, name: hit.name, existing: true, how: hit.how });
+  const addr = String(loc.indirizzo || '');
+  const mCity = addr.match(/,\s*([^,(]+?)\s*(?:\(([A-Z]{2})\))?\s*$/);
+  const row = await one(`INSERT INTO public.organizations (kind, name, vat_number, tax_code, pec, address, city, province, needs_review, notes)
+    VALUES ('PARTNER', $1, $2, $3, $4, $5, $6, $7, TRUE, $8) RETURNING id, name, kind, vat_number, tax_code, city`,
+  [name, loc.piva || null, loc.cf || null, loc.pec || null, mCity ? addr.slice(0, mCity.index).trim() || null : addr || null, mCity ? mCity[1].trim() : null, mCity?.[2] || null,
+    `Creata dallo Scadenziario strutture (Payments) dal contratto di affitto in PDF${loc.legale_rappresentante ? ` · legale rappresentante ${loc.legale_rappresentante}` : ''}`]);
+  await audit(req, 'ORGANIZATION_CREATE', 'organization', row.id, { name, vat_number: loc.piva, from_document_id: f.id, source: 'scadenziario' });
+  res.status(201).json({ ...row, existing: false });
+}));
+
 // ---- contratti ----
 const leaseSchema = z.object({
   site_id: intId,
@@ -241,6 +321,8 @@ const leaseSchema = z.object({
   notes: optText(2000),
   active: z.boolean().default(true),
   amount: opt(money),      // importo iniziale della rata: crea o aggiorna lo scatto INIZIALE
+  document_id: opt(intId), // contratto in PDF analizzato (lease_documents con lease_id vuoto): viene collegato alla creazione
+  initial_steps: z.array(z.object({ valid_from: DATE, amount: money, reason: z.enum(['INIZIALE', 'ISTAT', 'RINEGOZIAZIONE', 'ALTRO']).default('ALTRO'), notes: optText(300) })).max(12).optional(),   // scatti iniziali proposti dalla lettura (rate iniziali diverse)
 });
 const LEASE_COLS = ['site_id', 'landlord_org_id', 'landlord_name', 'beneficiary_id', 'unit', 'kind', 'start_date', 'first_term_years', 'renewal_years', 'notice_months', 'period_months', 'first_due', 'deposit', 'registration', 'istat', 'auto_pay', 'business_contract_id', 'notes', 'active'];
 const partialOf = (schema) => z.object(Object.fromEntries(Object.entries(schema.shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.removeDefault() : v).optional()])));
@@ -261,14 +343,16 @@ r.get('/leases', ah(async (req, res) => {
   const siteIds = await scopedSiteIds(req);
   const data = await loadScheduleData(siteIds, { includeInactive: req.query.all === '1' });
   const today = todayRome();
-  res.json(data.leases.map((l) => ({ ...decorateLease(l, data.steps, today), site_name: siteName(data.sites, l.site_id) })));
+  const docs = data.leases.length ? await many(`SELECT ${DOC_COLS} FROM lease_documents WHERE lease_id = ANY($1::int[]) ORDER BY created_at`, [data.leases.map((l) => l.id)]) : [];
+  res.json(data.leases.map((l) => ({ ...decorateLease(l, data.steps, today), site_name: siteName(data.sites, l.site_id), documents: docs.filter((d) => d.lease_id === l.id) })));
 }));
 
 r.get('/leases/:id', ah(async (req, res) => {
   const l = await getLease(req, Number(req.params.id));
   const steps = await many('SELECT s.*, u.full_name AS created_by_name FROM lease_steps s LEFT JOIN users u ON u.id=s.created_by WHERE s.lease_id=$1 ORDER BY s.valid_from', [l.id]);
   const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [l.site_id]);
-  res.json({ ...decorateLease(l, steps, todayRome()), site_name: site?.name });
+  const documents = await many(`SELECT ${DOC_COLS} FROM lease_documents WHERE lease_id=$1 ORDER BY created_at`, [l.id]);
+  res.json({ ...decorateLease(l, steps, todayRome()), site_name: site?.name, documents });
 }));
 
 r.post('/leases', requireWrite, ah(async (req, res) => {
@@ -277,12 +361,20 @@ r.post('/leases', requireWrite, ah(async (req, res) => {
   await assertOrg(d.landlord_org_id, 'Locatore');
   await assertBeneficiary(d.beneficiary_id);
   if (d.first_due && d.first_due < d.start_date) throw bad('La prima scadenza della rata non può precedere la decorrenza');
+  const doc = d.document_id ? await one('SELECT id, lease_id FROM lease_documents WHERE id=$1', [d.document_id]) : null;
+  if (d.document_id && !doc) throw bad('Documento analizzato non trovato: ricarica il PDF');
+  if (doc?.lease_id) throw bad('Il documento è già collegato a un altro contratto');
+  // scatti iniziali: quelli proposti dalla lettura del PDF (rate iniziali diverse + canone a regime), altrimenti INIZIALE alla decorrenza
+  const steps = (d.initial_steps && d.initial_steps.length ? d.initial_steps : (d.amount != null ? [{ valid_from: d.start_date, amount: d.amount, reason: 'INIZIALE', notes: null }] : []))
+    .filter((st) => st.valid_from >= d.start_date);
+  if (new Set(steps.map((st) => st.valid_from)).size !== steps.length) throw bad('Gli scatti iniziali hanno date ripetute');
   const row = await tx(async (c) => {
     const l = (await c.query(`INSERT INTO lease_contracts (${LEASE_COLS.join(', ')}, created_by) VALUES (${LEASE_COLS.map((_, i) => `$${i + 1}`).join(', ')}, $${LEASE_COLS.length + 1}) RETURNING *`, [...LEASE_COLS.map((k) => d[k] ?? null), req.user.id])).rows[0];
-    if (d.amount != null) await c.query(`INSERT INTO lease_steps (lease_id, valid_from, amount, reason, created_by) VALUES ($1,$2,$3,'INIZIALE',$4)`, [l.id, d.start_date, d.amount, req.user.id]);
+    for (const st of steps) await c.query(`INSERT INTO lease_steps (lease_id, valid_from, amount, reason, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6)`, [l.id, st.valid_from, st.amount, st.reason, st.notes || null, req.user.id]);
+    if (doc) await c.query('UPDATE lease_documents SET lease_id=$2 WHERE id=$1', [doc.id, l.id]);
     return l;
   });
-  await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount });
+  await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount, steps: steps.length, document_id: doc?.id || null });
   res.status(201).json(row);
 }));
 

@@ -22,6 +22,7 @@ import { DOC_BY_KEY, defaultChecklists, DEFAULT_HOURS } from '../lib/dossier.js'
 import { addEvent, nextProtocol } from './contracts.js';
 import { getSettings } from '../lib/rules.js';
 import { indexOrg } from '../../../lib/search.js';
+import { matchOrg, matchSite } from '../../../lib/anagraficaMatch.js';
 
 const r = Router();
 const upload = multer({ storage: multer.diskStorage({ destination: os.tmpdir() }), limits: { fileSize: Number(process.env.BUSINESS_PACK_MAX_MB || 400) * 1024 * 1024 } });
@@ -53,43 +54,7 @@ async function walkZip(file, handler) {
 }
 
 // ---- abbinamenti con l'anagrafica unica
-const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(srl|s r l|spa|s p a|snc|s n c|sas|s a s|srls|s r l s|societa|soc|coop|cooperativa|onlus|odv|ets|di|e|and|the|il|la|le|lo|i|gli)\b/g, ' ').replace(/\s+/g, ' ').trim();
-const digits = (s) => String(s || '').replace(/\D/g, '');
-const cfOrVat = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^IT/, '');
-
-async function matchOrg(o) {
-  const vat = cfOrVat(o.vat_number); const cf = cfOrVat(o.tax_code);
-  if (vat && vat.length >= 11) { const hit = await one(`SELECT id, name FROM public.organizations WHERE regexp_replace(upper(coalesce(vat_number,'')), '[^A-Z0-9]', '', 'g') IN ($1, $2)`, [vat, `IT${vat}`]); if (hit) return { ...hit, how: 'partita IVA' }; }
-  if (cf && cf.length >= 11) { const hit = await one(`SELECT id, name FROM public.organizations WHERE regexp_replace(upper(coalesce(tax_code,'')), '[^A-Z0-9]', '', 'g')=$1 OR regexp_replace(upper(coalesce(vat_number,'')), '[^A-Z0-9]', '', 'g')=$1`, [cf]); if (hit) return { ...hit, how: 'codice fiscale' }; }
-  const n = norm(o.name);
-  if (n) {
-    const rows = await many('SELECT id, name FROM public.organizations WHERE active');
-    const exact = rows.filter((x) => norm(x.name) === n);
-    if (exact.length === 1) return { ...exact[0], how: 'nome' };
-    const sim = await one(`SELECT id, name, similarity(lower(name), lower($1)) AS s FROM public.organizations WHERE active ORDER BY s DESC LIMIT 1`, [o.name]);
-    if (sim && Number(sim.s) >= 0.72) return { id: sim.id, name: sim.name, how: `nome simile (${Math.round(sim.s * 100)}%)` };
-  }
-  return null;
-}
-
-async function matchSite(m) {
-  if (!m) return null;
-  if (m.code) { const hit = await one(`SELECT id, code, name, city FROM public.sites WHERE upper(code)=upper($1) AND kind <> 'SERVICE'`, [m.code]); if (hit) return { ...hit, how: 'codice' }; }
-  const names = (m.names || []).map(norm).filter(Boolean);
-  const city = norm(m.city);
-  const all = await many(`SELECT id, code, name, short_name, city, kind, active FROM public.sites WHERE kind <> 'SERVICE'`);
-  const byCity = city ? all.filter((s) => norm(s.city) === city) : [];
-  const nameHit = (list) => list.filter((s) => names.some((n) => norm(s.name).includes(n) || norm(s.short_name).includes(n) || n.includes(norm(s.name))));
-  let hits = nameHit(byCity);
-  if (hits.length === 1) return { ...hits[0], how: 'città e nome' };
-  if (byCity.length === 1) return { ...byCity[0], how: 'città' };
-  const active = byCity.filter((s) => s.active);
-  if (active.length === 1) return { ...active[0], how: 'città (unica sede attiva)' };
-  hits = nameHit(all);
-  if (hits.length === 1) return { ...hits[0], how: 'nome' };
-  return null;
-}
-
+// Abbinamento a Legal entity e sedi: lib/anagraficaMatch.js della Suite (condiviso con lo Scadenziario strutture di Payments)
 function clean(o, keys) { const out = {}; for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') out[k] = typeof o[k] === 'string' ? o[k].trim() : o[k]; return out; }
 const ORG_COLS = ['name', 'kind', 'vat_number', 'tax_code', 'sdi', 'pec', 'email', 'phone', 'address', 'zip', 'city', 'province', 'website', 'notes'];
 const EXT_COLS = ['legal_rep', 'signer', 'signer_role', 'contract_services', 'lab_reference', 'billing_ref', 'sales_contact', 'sales_email', 'sales_phone', 'svc_contact', 'svc_email', 'svc_mobile', 'svc_address', 'proc_contact', 'proc_email', 'proc_mobile', 'proc_address', 'pay_method', 'pay_terms', 'vat_territoriality', 'intent_declaration', 'tax_values', 'portal_url', 'portal_username', 'notes'];
