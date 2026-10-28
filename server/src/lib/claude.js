@@ -114,3 +114,29 @@ export async function answerSearch(question, results, { userId } = {}) {
   for (const n of cited) if (!sources.includes(n)) sources.push(n);
   return { text: cleanText(obj?.text || text, 2000), sources };
 }
+
+// Questionario di comprensione di una circolare: tre domande a risposta multipla (quattro opzioni, una corretta) ricavate dal testo
+export async function generateQuiz({ title, body, n = 3 }, { userId } = {}) {
+  const count = Math.min(Math.max(Number(n) || 3, 1), 5);
+  const system = [
+    'Sei la redazione interna di Toscana Diagnostica, rete toscana di laboratori e centri diagnostici.',
+    'Prepari brevi questionari di comprensione delle circolari aziendali per verificare che chi legge abbia colto i punti essenziali.',
+    'Scrivi in italiano, in modo chiaro e concreto. Non usare emoji e non usare trattini lunghi.',
+    'Le domande devono riguardare SOLO quanto scritto nel testo (regole, scadenze, responsabilità, comportamenti richiesti), mai nozioni esterne.',
+    'Ogni domanda ha quattro opzioni plausibili e una sola corretta; le opzioni sbagliate devono essere credibili ma inequivocabilmente errate rispetto al testo.',
+    'Rispondi esclusivamente con un array JSON, senza testo prima o dopo.',
+  ].join(' ');
+  const user = `Circolare: ${cleanText(title, 200)}\n\nTesto:\n${String(body || '').slice(0, 12000)}\n\n` +
+    `Genera ${count} domande a risposta multipla. Formato: [{"q": "domanda", "options": ["A", "B", "C", "D"], "answer": indice della risposta corretta da 0 a 3}]`;
+  const text = await call({ kind: 'quiz', system, user, maxTokens: 1500, userId, query: `generateQuiz news "${cleanText(title, 80)}"`, timeoutMs: 45_000 });
+  let arr;
+  try { arr = extractJson(text); } catch { throw new HttpError(502, 'Risposta del modello non interpretabile'); }
+  if (!Array.isArray(arr)) throw new HttpError(502, 'Risposta del modello non interpretabile');
+  const out = arr.map((x) => ({
+    q: cleanText(x?.q, 300),
+    options: (Array.isArray(x?.options) ? x.options : []).map((o) => cleanText(o, 200)).filter(Boolean).slice(0, 4),
+    answer: Number(x?.answer),
+  })).filter((x) => x.q && x.options.length >= 3 && Number.isInteger(x.answer) && x.answer >= 0 && x.answer < x.options.length).slice(0, count);
+  if (!out.length) throw new HttpError(502, 'Il modello non ha prodotto domande valide');
+  return out;
+}

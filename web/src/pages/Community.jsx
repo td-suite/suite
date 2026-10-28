@@ -61,6 +61,38 @@ function NewsList({ kind: fixedKind }) {
 }
 
 // ---------- Articolo ----------
+// Questionario di comprensione della circolare: si risponde una volta sola, poi si vedono punteggio e risposte corrette
+function Quiz({ news, onDone }) {
+  const toast = useToast();
+  const qz = news.quiz;
+  const [picked, setPicked] = useState(() => qz.questions.map(() => null));
+  const [result, setResult] = useState(qz.answered ? { score: qz.my.score, total: qz.my.total, correct: qz.my.correct, answers: qz.my.answers } : null);
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (picked.some((p) => p === null)) return toast('Rispondi a tutte le domande', 'err');
+    setBusy(true);
+    try { const r = await api.post(`/community/news/${news.id}/quiz`, { answers: picked }); setResult({ ...r, answers: picked }); toast(`Questionario inviato: ${r.score} su ${r.total}`); onDone?.(); } catch (e) { toast(e, 'err'); }
+    setBusy(false);
+  };
+  return (
+    <div className="quizbox">
+      <h3><Icon name="sparkle" /> Questionario di comprensione</h3>
+      <div className="small muted">{result ? `Hai risposto: ${result.score} risposte corrette su ${result.total}.` : 'Tre domande sul contenuto della circolare. Rispondi e poi conferma la presa visione.'}</div>
+      {qz.questions.map((x, i) => (
+        <div key={i} className="qq">
+          <div className="qt">{i + 1}. {x.q}</div>
+          {x.options.map((o, oi) => {
+            const chosen = result ? result.answers[i] === oi : picked[i] === oi;
+            const cls = result ? (result.correct[i] === oi ? 'ok' : chosen ? 'ko' : '') : '';
+            return <label key={oi} className={`opt ${cls}`}><input type="radio" name={`q${news.id}-${i}`} disabled={Boolean(result)} checked={chosen} onChange={() => setPicked((p) => p.map((v, k) => (k === i ? oi : v)))} /><span>{o}{result && result.correct[i] === oi && <span className="small muted"> (corretta)</span>}</span></label>;
+          })}
+        </div>
+      ))}
+      {!result && <div className="mt"><button className="btn" disabled={busy} onClick={send}><Icon name="send" />Invia le risposte</button></div>}
+    </div>
+  );
+}
+
 function Article() {
   const { slug } = useParams();
   const { data, loading, error, unavailable, reload } = useApi(`/community/news/${encodeURIComponent(slug)}`, [slug]);
@@ -85,6 +117,7 @@ function Article() {
         {n.cover_file_id && <img className="cover lg" src={`/api/files/${n.cover_file_id}`} alt="" />}
         <Markdown source={n.body} />
         {n.files?.length > 0 && <div className="mt2"><h3>Allegati</h3><div className="row tight mt">{n.files.map((f) => <a key={f.id} className="chip" href={`/api/files/${f.id}`}><Icon name="file" />{f.filename}</a>)}</div></div>}
+        {n.quiz?.questions?.length > 0 && <Quiz news={n} onDone={reload} />}
         {n.requires_ack && (
           <div className={`ackbox ${isAcked ? 'done' : ''}`}>
             <Icon name={isAcked ? 'check' : 'eye'} style={{ width: 26, height: 26, color: isAcked ? 'var(--green)' : 'var(--mauve-700)' }} />
@@ -92,7 +125,7 @@ function Article() {
               <div className="t">{isAcked ? 'Presa visione registrata' : 'Questa circolare richiede la presa visione'}</div>
               <div className="small muted">{isAcked ? `Confermata${n.acked_at ? ` il ${fmtDateTime(n.acked_at)}` : ''}.` : `Leggila con attenzione e conferma${n.ack_due ? ` entro il ${fmtDate(n.ack_due)}` : ''}.`}</div>
             </div>
-            {!isAcked && <button className="btn mauve" onClick={ack}><Icon name="check" />Confermo la presa visione</button>}
+            {!isAcked && <button className="btn mauve" onClick={ack} disabled={Boolean(n.quiz && !n.quiz.answered)} title={n.quiz && !n.quiz.answered ? 'Prima rispondi al questionario' : undefined}><Icon name="check" />Confermo la presa visione</button>}
           </div>
         )}
       </article>

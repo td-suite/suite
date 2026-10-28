@@ -72,3 +72,23 @@ Il perimetro lo calcola `server/src/modules/circolari/lib/visibilita.js` dall'an
 Il filtro vale per elenco, cruscotto, badge, dettaglio, PDF e DOCX; il cruscotto mostra all'esterno il suo perimetro. Le
 regole di accesso (Amministrazione > Regole di accesso) restano solo per assegnare PUBBLICATORE e REDATTORE; nessun grant
 serve per leggere. Nulla cambia per la versione pubblica da QR code (già senza sessione).
+
+## Comunicazione: modifica dei contenuti pubblicati, formattazione, questionario (28/10/2026)
+Segnalazioni del CEO: "quando aggiorno la news va in errore e non riprende il testo inserito"; "sull'elaboratore di testo aggiungi i tasti di
+formattazione"; "quando inseriamo una circolare, con le API di Anthropic crea 3 domande a risposta multipla, registra gli esiti e falli vedere
+solo a chi gestisce il widget".
+- Causa dell'errore: la scheda di modifica non aveva una lettura singola del contenuto (ricadeva sull'elenco, che non porta il testo) e il
+  pulsante richiamava la pubblicazione su un contenuto già pubblicato (rifiutata). Ora: `GET /api/community/manage/news/:id` restituisce il
+  contenuto completo (testo, allegati, questionario); su un contenuto pubblicato il pulsante è "Aggiorna" e salva soltanto (resta pubblicato,
+  nessuna nuova notifica); la pubblicazione di un contenuto già pubblicato aggiorna l'indice di ricerca e risponde `already_published`.
+- Barra di formattazione Markdown sopra l'editor (grassetto, corsivo, titolo, sottotitolo, elenco puntato e numerato, citazione, link,
+  separatore): agisce sulla selezione della textarea.
+- Questionario di comprensione (migrazione 028): alla pubblicazione di una circolare `generateQuiz` (lib/claude.js) ricava dal testo tre
+  domande a quattro opzioni; tabelle `news_quiz` e `news_quiz_answers`. I lettori ricevono le domande senza la risposta corretta
+  (`GET /community/news/:slug` → `quiz`), rispondono una sola volta (`POST /community/news/:id/quiz`) e vedono punteggio e risposte corrette;
+  con presa visione obbligatoria la conferma è possibile solo dopo aver risposto. Gli esiti (per domanda e per persona) escono solo in
+  `GET /community/news/:id/acks` (chi pubblica) e nella pagina Presa visione, scheda Questionario. La redazione può rigenerare o rimuovere il
+  questionario dalla scheda del contenuto (`POST/DELETE /manage/news/:id/quiz`). Senza chiave Anthropic la circolare si pubblica senza
+  questionario e la risposta lo segnala (`quiz_error`).
+- Dove si scrive: Blog da Gestione > Nuovo contenuto con Tipo = Blog (letto in Community > Blog); Bacheca dal riquadro in alto della pagina
+  Bacheca (post liberi di tutti gli utenti); Avvisi da Gestione > Avvisi; presa visione con Tipo = Circolare, interruttore "Richiede presa visione".

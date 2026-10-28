@@ -66,7 +66,7 @@ export default function mount(app) {
   r.get('/auth/config', (_req, res) => res.json({ appName: config.appName, entraEnabled: false }));
 
   // Il simulatore busta paga è un POST di solo calcolo (nessuna scrittura): resta disponibile anche in MIRROR
-  r.use('/ccnl', (req, res, next) => (req.method === 'POST' && req.path === '/simulate' ? ccnlRoutes(req, res, next) : next()));
+  r.use('/ccnl', (req, res, next) => (req.method === 'POST' && (req.path === '/simulate' || req.path === '/simulate/export') ? ccnlRoutes(req, res, next) : next()));
   r.use(blockWritesInMirror);
   r.use(adminRoutes);                // settings, areas, work-sites (elenco di public.sites), audit (gli utenti li gestisce la Suite)
   r.use('/resources', resourceRoutes);

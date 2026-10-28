@@ -3,7 +3,8 @@ import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse } from '../lib/util.js';
-import { requireWrite, requireRole } from '../lib/access.js';
+import { requireWrite, requireRole, canWrite } from '../lib/access.js';
+import { buildPayrollDocx, buildPayrollPdf } from '../lib/payrollDoc.js';
 import { config } from '../config.js';
 import { getSettings, decompose, decomposeDirigente, minimumFor, costCoefficient, companyCost, netEstimate } from '../lib/payroll.js';
 
@@ -63,8 +64,7 @@ r.get('/documents/:id/download', ah(async (req, res) => {
 r.delete('/documents/:id', requireRole('ADMIN'), ah(async (req, res) => { await q('DELETE FROM ccnl_documents WHERE id=$1', [Number(req.params.id)]); res.json({ ok: true }); }));
 
 // Simulatore busta paga (come l'Elaboratore Buste Paga + stima costo azienda e netto)
-r.post('/simulate', ah(async (req, res) => {
-  const d = parse(z.object({
+const simulateSchema = z.object({
     ral: z.number().min(0).optional().nullable(),
     level: z.string().optional().nullable(),
     monthly_payments: z.number().int().min(12).max(15).default(14),
@@ -72,7 +72,8 @@ r.post('/simulate', ah(async (req, res) => {
     contract_type: z.enum(['TIND', 'TDET', 'APPRENDISTATO', 'DIRIGENTE']).default('TIND'),
     mbo_pct: z.number().min(0).max(100).optional().nullable(),
     weekly_hours: z.number().min(1).max(48).default(40),
-  }), req.body);
+  });
+async function simulate(d) {
   const S = await getSettings();
   const m = await minimumFor(d.level, d.at_date);
   let ral = d.ral;
@@ -83,7 +84,25 @@ r.post('/simulate', ah(async (req, res) => {
   const coef = costCoefficient(S, { contract_type: d.contract_type });
   const cost = companyCost(ral, coef, d.mbo_pct || 0);
   const net = netEstimate(ral, S, d.monthly_payments);
-  res.json({ minimum: m, decomposition: dec, cost: { coefficient: coef, ...cost }, net, assumptions: { cost_inps_pct: S.cost_inps_pct, cost_inail_pct: S.cost_inail_pct, cost_tfr_pct: S.cost_tfr_pct, employee_inps_pct: S.employee_inps_pct } });
+  return { settings: S, result: { minimum: m, decomposition: dec, cost: { coefficient: coef, ...cost }, net, assumptions: { cost_inps_pct: S.cost_inps_pct, cost_inail_pct: S.cost_inail_pct, cost_tfr_pct: S.cost_tfr_pct, employee_inps_pct: S.employee_inps_pct } } };
+}
+r.post('/simulate', ah(async (req, res) => {
+  const d = parse(simulateSchema, req.body);
+  res.json((await simulate(d)).result);
+}));
+// Estratto della simulazione: DOCX o PDF (costo azienda solo per chi lo vede nel widget)
+r.post('/simulate/export', ah(async (req, res) => {
+  const d = parse(simulateSchema, req.body);
+  const format = req.query.format === 'pdf' ? 'pdf' : 'docx';
+  const { settings, result } = await simulate(d);
+  const includeCosts = canWrite(req.user);   // stessi profili che vedono i costi nel widget (ADMIN, HR)
+  const args = { params: d, result, settings, user: req.user?.full_name, includeCosts };
+  const stamp = new Date().toISOString().slice(0, 10);
+  const name = `${stamp}_Simulazione_busta_paga${d.level ? `_livello_${d.level}` : ''}_RAL_${Math.round(result.decomposition.ral)}.${format}`;
+  const buf = format === 'pdf' ? await buildPayrollPdf(args) : await buildPayrollDocx(args);
+  await audit(req, 'PAYROLL_SIMULATION_EXPORT', 'simulation', null, { format, ral: result.decomposition.ral, level: d.level });
+  res.set('Content-Type', format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    .set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`).send(buf);
 }));
 
 export default r;

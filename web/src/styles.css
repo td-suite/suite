@@ -974,3 +974,18 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .bulkbar .spacer { flex: 1; }
 @media (max-width: 640px) { .grant-row.pi { grid-template-columns: 30px minmax(0, 1fr); } .grant-row.pi .pr, .grant-row.pi .sc { grid-column: 2 / -1; } }
 .t tbody tr.selected td { background: var(--teal-050); }
+
+/* Barra di formattazione dell'editor Markdown (Comunicazione) */
+.md-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.md-toolbar .iconbtn { min-width: 32px; height: 30px; font-size: 13px; color: var(--ink); font-family: var(--sans); }
+.md-toolbar .iconbtn:hover { background: var(--bg-2, rgba(0,0,0,.05)); }
+/* Questionario della circolare */
+.quizbox { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-top: 18px; background: var(--card); }
+.quizbox h3 { margin: 0 0 6px; }
+.quizbox .qq { margin-top: 14px; }
+.quizbox .qq .qt { font-weight: 600; margin-bottom: 6px; }
+.quizbox .opt { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.quizbox .opt:hover { background: var(--bg-2, rgba(0,0,0,.04)); }
+.quizbox .opt.ok { background: rgba(31,139,76,.12); }
+.quizbox .opt.ko { background: rgba(192,57,43,.10); }
+.quizbox .opt input { margin-top: 3px; }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, API_BASE } from '../api.js';
 import { useAuth, seesCosts } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, MoneyInput, Loading, Empty } from '../components/ui.jsx';
 import { eur, itDate, LEVELS, LEVEL_LABEL, CONTRACT } from '../format.js';
@@ -19,9 +19,26 @@ export default function Payroll() {
   }, [f]);
   const pick = (id) => { const p = (people.data || []).find((x) => String(x.id) === id); if (p) setF({ ...f, ral: p.ral_current || p.ral, level: p.level || '', monthly_payments: p.monthly_payments || 14, contract_type: p.contract_type || 'TIND', mbo_pct: p.mbo_enabled ? p.mbo_pct : '', weekly_hours: p.weekly_hours || 40 }); };
   const dec = res?.decomposition;
+  const [exporting, setExporting] = useState('');
+  // Estratto DOCX o PDF della simulazione corrente (stessi parametri del calcolo a video)
+  const exportDoc = async (format) => {
+    setExporting(format);
+    try {
+      const body = { ral: f.ral ? Number(f.ral) : null, level: f.level || null, monthly_payments: Number(f.monthly_payments), contract_type: f.contract_type, mbo_pct: f.mbo_pct === '' ? null : Number(f.mbo_pct), weekly_hours: Number(f.weekly_hours), at_date: f.at_date || null };
+      const r = await fetch(`${API_BASE}/ccnl/simulate/export?format=${format}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'td-suite' }, body: JSON.stringify(body) });
+      if (!r.ok) { let msg = `Errore ${r.status}`; try { msg = (await r.json()).error || msg; } catch {} throw new Error(msg); }
+      const cd = r.headers.get('content-disposition') || ''; const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? decodeURIComponent(m[1]) : `simulazione.${format}`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) { setErr(e); }
+    setExporting('');
+  };
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Simulatore busta paga</h1><div className="sub">Replica l'Elaboratore Buste Paga: dalla RAL e dal livello ricava paga base (minimo tabellare), indennità di funzione (70% dell'eccedenza) e superminimo. Aggiunge la stima del costo azienda e del netto.</div></div></div>
+      <div className="page-head"><div><h1>Simulatore busta paga</h1><div className="sub">Replica l'Elaboratore Buste Paga: dalla RAL e dal livello ricava paga base (minimo tabellare), indennità di funzione (70% dell'eccedenza) e superminimo. Aggiunge la stima del costo azienda e del netto.</div></div>
+        <div className="row tight">
+          <button className="btn ghost" disabled={!res || Boolean(exporting)} onClick={() => exportDoc('docx')}>{exporting === 'docx' ? 'Preparo…' : 'Estratto DOCX'}</button>
+          <button className="btn" disabled={!res || Boolean(exporting)} onClick={() => exportDoc('pdf')}>{exporting === 'pdf' ? 'Preparo…' : 'Estratto PDF'}</button>
+        </div></div>
       <div className="grid g3" style={{ gridTemplateColumns: '1fr 1.2fr' }}>
         <Card title="Parametri">
           <div className="form-grid">

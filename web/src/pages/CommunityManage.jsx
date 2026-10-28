@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, NavLink } from 'react-router-dom';
 import { api, qs } from '../api.js';
 import { useAuth, isAdmin, canManageComm, canPublish } from '../auth.jsx';
@@ -67,6 +67,43 @@ function ContentTable() {
 }
 
 // ---------- Editor ----------
+// Pulsanti di formattazione Markdown: agiscono sulla selezione della textarea (o inseriscono un modello)
+const TOOLS = [
+  { key: 'bold', label: 'G', title: 'Grassetto', style: { fontWeight: 700 }, wrap: ['**', '**'], sample: 'testo in grassetto' },
+  { key: 'italic', label: 'C', title: 'Corsivo', style: { fontStyle: 'italic' }, wrap: ['*', '*'], sample: 'testo in corsivo' },
+  { key: 'h1', label: 'T1', title: 'Titolo', line: '# ' },
+  { key: 'h2', label: 'T2', title: 'Sottotitolo', line: '## ' },
+  { key: 'ul', label: '•', title: 'Elenco puntato', line: '- ' },
+  { key: 'ol', label: '1.', title: 'Elenco numerato', line: '1. ' },
+  { key: 'quote', label: '“', title: 'Citazione', line: '> ' },
+  { key: 'link', label: 'Link', title: 'Collegamento', link: true },
+  { key: 'hr', label: '—', title: 'Separatore', block: '\n---\n' },
+];
+function MarkdownToolbar({ textareaRef, value, onChange }) {
+  const apply = (t) => {
+    const ta = textareaRef.current; if (!ta) return;
+    const start = ta.selectionStart ?? value.length; const end = ta.selectionEnd ?? value.length;
+    const sel = value.slice(start, end);
+    let next = value; let cursor = end;
+    if (t.wrap) { const inner = sel || t.sample; next = value.slice(0, start) + t.wrap[0] + inner + t.wrap[1] + value.slice(end); cursor = start + t.wrap[0].length + inner.length + t.wrap[1].length; }
+    else if (t.line) {
+      // ogni riga selezionata riceve il prefisso (titoli: solo la prima)
+      const ls = value.lastIndexOf('\n', start - 1) + 1; const le = value.indexOf('\n', end); const blockEnd = le < 0 ? value.length : le;
+      const lines = value.slice(ls, blockEnd).split('\n');
+      const out = lines.map((l, i) => (t.key.startsWith('h') && i > 0 ? l : (l.startsWith(t.line) ? l : (t.key === 'ol' ? `${i + 1}. ${l.replace(/^(\d+\.|-)\s+/, '')}` : t.line + l.replace(/^(#+|>|-|\d+\.)\s+/, '')))));
+      next = value.slice(0, ls) + out.join('\n') + value.slice(blockEnd); cursor = ls + out.join('\n').length;
+    } else if (t.link) { const txt = sel || 'testo del collegamento'; const ins = `[${txt}](https://)`; next = value.slice(0, start) + ins + value.slice(end); cursor = start + ins.length - 1; }
+    else if (t.block) { next = value.slice(0, start) + t.block + value.slice(end); cursor = start + t.block.length; }
+    onChange(next);
+    requestAnimationFrame(() => { ta.focus(); try { ta.setSelectionRange(cursor, cursor); } catch {} });
+  };
+  return (
+    <div className="md-toolbar" role="toolbar" aria-label="Formattazione">
+      {TOOLS.map((t) => <button key={t.key} type="button" className="iconbtn" title={t.title} aria-label={t.title} style={t.style} onClick={() => apply(t)}>{t.label}</button>)}
+    </div>
+  );
+}
+
 const EMPTY_NEWS = { kind: 'NEWS', title: '', summary: '', body: '', audience: { type: 'ALL' }, requires_ack: false, ack_due: '', is_public: false, tags: [], cover_file_id: null, status: 'DRAFT' };
 
 function Editor() {
@@ -79,6 +116,8 @@ function Editor() {
   const [f, setF] = useState(EMPTY_NEWS);
   const [tagText, setTagText] = useState('');
   const [busy, setBusy] = useState(false);
+  const bodyRef = useRef(null);
+  const [quizBusy, setQuizBusy] = useState(false);
   useEffect(() => {
     if (existing.data) {
       const n = existing.data.row || existing.data;
@@ -104,7 +143,9 @@ function Editor() {
     try {
       let nid = isNew ? null : Number(id);
       if (isNew) { const r = await api.post('/community/manage/news', payload()); nid = r.id; } else await api.put(`/community/manage/news/${nid}`, payload());
-      if (publish) { await api.post(`/community/manage/news/${nid}/publish`); toast('Pubblicato'); } else toast('Bozza salvata');
+      if (f.status === 'PUBLISHED') toast('Contenuto aggiornato');
+      else if (publish) { const r = await api.post(`/community/manage/news/${nid}/publish`); toast(r?.quiz ? 'Pubblicato, con questionario di comprensione' : r?.quiz_error ? `Pubblicato. Questionario non generato: ${r.quiz_error}` : 'Pubblicato'); }
+      else toast('Bozza salvata');
       navigate('/community/manage');
     } catch (e) { toast(e, 'err'); }
     setBusy(false);
@@ -119,7 +160,7 @@ function Editor() {
   return (
     <div className="page">
       <PageHead crumb={<><Link to="/community/manage">Gestione</Link><Icon name="chevron" /><span>{isNew ? 'Nuovo contenuto' : 'Modifica'}</span></>} title={isNew ? 'Nuovo contenuto' : f.title || 'Modifica'} icon="edit"
-        actions={<><Link to="/community/manage" className="btn ghost">Annulla</Link><button className="btn ghost" disabled={busy} onClick={() => save(false)}><Icon name="check" />Salva bozza</button>{canPublish(user) && <button className="btn" disabled={busy} onClick={() => save(true)}><Icon name="send" />{f.status === 'PUBLISHED' ? 'Aggiorna e ripubblica' : 'Pubblica'}</button>}</>} />
+        actions={<><Link to="/community/manage" className="btn ghost">Annulla</Link><button className="btn ghost" disabled={busy} onClick={() => save(false)}><Icon name="check" />Salva bozza</button>{canPublish(user) && <button className="btn" disabled={busy} onClick={() => save(true)}><Icon name="send" />{f.status === 'PUBLISHED' ? 'Aggiorna' : 'Pubblica'}</button>}</>} />
       {f.status === 'PUBLISHED' && <div className="alert info mb2"><Icon name="info" /><span>Questo contenuto è già pubblicato{f.protocol ? ` con protocollo ${f.protocol}` : ''}: le modifiche saranno visibili subito dopo il salvataggio.</span></div>}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)' }}>
         <div className="col">
@@ -130,8 +171,9 @@ function Editor() {
             </div>
           </Card>
           <Card title="Testo" icon="edit" actions={cfg.blobEnabled && <label className="btn sm ghost" style={{ cursor: 'pointer' }}><Icon name="image" />Inserisci immagine<input type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && insertImage(e.target.files[0])} /></label>}>
+            <MarkdownToolbar textareaRef={bodyRef} value={f.body} onChange={(v) => set('body', v)} />
             <div className="editor">
-              <textarea value={f.body} onChange={(e) => set('body', e.target.value)} placeholder={'Scrivi in Markdown.\n\n# Titolo\nParagrafo con **grassetto** e [link](https://...).\n\n- elenco\n- puntato'} aria-label="Testo in Markdown" />
+              <textarea ref={bodyRef} value={f.body} onChange={(e) => set('body', e.target.value)} placeholder={'Scrivi in Markdown.\n\n# Titolo\nParagrafo con **grassetto** e [link](https://...).\n\n- elenco\n- puntato'} aria-label="Testo in Markdown" />
               <div className="preview" aria-label="Anteprima">{f.body ? <Markdown source={f.body} /> : <div className="empty compact muted">L'anteprima compare mentre scrivi.</div>}</div>
             </div>
           </Card>
@@ -150,6 +192,21 @@ function Editor() {
               <Field label="Tag" help="Separati da virgola"><input value={tagText} onChange={(e) => setTagText(e.target.value)} placeholder="qualità, formazione" /></Field>
             </div>
           </Card>
+          {f.kind === 'CIRCOLARE' && (
+            <Card title="Questionario di comprensione" icon="sparkle">
+              <div className="col">
+                <div className="small muted">Alla pubblicazione Claude ricava dal testo tre domande a risposta multipla. Chi legge risponde prima di confermare la presa visione; gli esiti sono visibili solo nella pagina Presa visione.</div>
+                {f.quiz?.questions?.length > 0 && <ol className="small" style={{ paddingLeft: 18, margin: 0 }}>{f.quiz.questions.map((x, i) => <li key={i}>{x.q}</li>)}</ol>}
+                {!isNew && canPublish(user) && (
+                  <div className="row tight">
+                    <button type="button" className="btn sm ghost" disabled={quizBusy} onClick={async () => { setQuizBusy(true); try { const r = await api.post(`/community/manage/news/${id}/quiz`); set('quiz', r.quiz); toast('Questionario generato'); } catch (e) { toast(e, 'err'); } setQuizBusy(false); }}><Icon name="refresh" />{f.quiz ? 'Rigenera' : 'Genera ora'}</button>
+                    {f.quiz && <button type="button" className="btn sm ghost danger" disabled={quizBusy} onClick={async () => { setQuizBusy(true); try { await api.del(`/community/manage/news/${id}/quiz`); set('quiz', null); toast('Questionario rimosso'); } catch (e) { toast(e, 'err'); } setQuizBusy(false); }}><Icon name="trash" />Rimuovi</button>}
+                  </div>
+                )}
+                {!isNew && f.quiz && <Link className="small" to={`/community/manage/news/${id}/acks`}>Vedi gli esiti</Link>}
+              </div>
+            </Card>
+          )}
           <Card title="Copertina" icon="image">
             {f.cover_file_id ? <div className="col"><img className="cover lg" src={`/api/files/${f.cover_file_id}`} alt="" style={{ height: 150 }} /><button className="btn sm ghost" onClick={() => set('cover_file_id', null)}><Icon name="trash" />Rimuovi</button></div>
               : cfg.blobEnabled ? <label className="dropzone" style={{ display: 'block' }}><Icon name="upload" /><div className="small">Carica un'immagine di copertina</div><input type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && uploadCover(e.target.files[0])} /></label>
@@ -181,13 +238,35 @@ function Acks() {
             <div className="card kpi"><div className="lbl">Mancano</div><div className="val red">{missing.length}</div></div>
             <div className="card kpi"><div className="lbl">Copertura</div><div className="val">{acked.length + missing.length ? Math.round((acked.length / (acked.length + missing.length)) * 100) : 0}<small>%</small></div></div>
           </div>
-          <Tabs value={tab} onChange={setTab} items={[{ value: 'missing', label: 'Chi manca', count: missing.length }, { value: 'acked', label: 'Chi ha letto', count: acked.length }]} />
+          <Tabs value={tab} onChange={setTab} items={[{ value: 'missing', label: 'Chi manca', count: missing.length }, { value: 'acked', label: 'Chi ha letto', count: acked.length }, ...(data.quiz ? [{ value: 'quiz', label: 'Questionario', count: data.quiz.answered }] : [])]} />
+          {tab === 'quiz' && data.quiz ? (
+            <div className="col">
+              <Card title="Esiti del questionario" icon="sparkle" sub={`${data.quiz.answered} risposte · media ${data.quiz.avg ?? '-'} su ${data.quiz.total}`}>
+                <div className="col">
+                  {data.quiz.questions.map((x, i) => (
+                    <div key={i}>
+                      <div className="strong">{i + 1}. {x.q}</div>
+                      {x.options.map((o, oi) => <div key={oi} className="small" style={{ display: 'flex', gap: 8, padding: '2px 0' }}><span style={{ minWidth: 36, textAlign: 'right' }} className="mono">{x.counts[oi]}</span><span style={{ fontWeight: oi === x.answer ? 600 : 400 }}>{o}{oi === x.answer ? ' (corretta)' : ''}</span></div>)}
+                      <div className="small muted">Risposte corrette: {x.correct} su {data.quiz.answered}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              <Card flush>
+                {!data.quiz.rows.length && <Empty icon="check" compact title="Nessuno ha ancora risposto" />}
+                <div className="list">{data.quiz.rows.map((u) => (
+                  <div key={u.user_id} className="it" style={{ alignItems: 'center' }}><Avatar name={u.full_name} size="sm" /><div style={{ flex: 1 }}><div className="t">{u.full_name}</div><div className="m">{u.email}</div></div><Badge tone={u.score === u.total ? 'green' : u.score ? 'amber' : 'red'}>{u.score} su {u.total}</Badge><span className="small muted">{fmtDateTime(u.at)}</span></div>
+                ))}</div>
+              </Card>
+            </div>
+          ) : (
           <Card flush>
             {(tab === 'missing' ? missing : acked).length === 0 && <Empty icon="check" compact title={tab === 'missing' ? 'Tutti hanno confermato.' : 'Nessuna conferma ancora'} />}
             <div className="list">{(tab === 'missing' ? missing : acked).map((u) => (
               <div key={u.id || u.user_id} className="it" style={{ alignItems: 'center' }}><Avatar name={u.full_name} fileId={u.avatar_file_id} size="sm" /><div style={{ flex: 1 }}><div className="t">{u.full_name}</div><div className="m">{[u.email, u.site_name].filter(Boolean).join(' · ')}</div></div>{(u.at || u.acked_at) && <span className="small muted">{fmtDateTime(u.at || u.acked_at)}</span>}</div>
             ))}</div>
           </Card>
+          )}
         </>
       )}
     </div>

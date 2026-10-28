@@ -9,7 +9,7 @@ import { isAdmin, hasModule, canSeeSite } from '../lib/access.js';
 import { audienceSql, canSee } from '../lib/audience.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { normalizeAudience, audienceUsers, notify, ensureDailyQuote, nextProtocol } from '../lib/community.js';
-import { aiEnabled, generateQuotes } from '../lib/claude.js';
+import { aiEnabled, generateQuotes, generateQuiz } from '../lib/claude.js';
 import { weatherForSite, weatherForPoint } from '../lib/weather.js';
 import { indexNews, removeNews, indexPost, indexEvent, indexNotice, removeFromIndex } from '../lib/search.js';
 import * as blob from '../lib/blob.js';
@@ -35,6 +35,22 @@ const audienceSchema = z.discriminatedUnion('type', [
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data nel formato AAAA-MM-GG');
 const isoDate = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'data e ora non valide');
 const idParam = (v) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw bad('Identificativo non valido'); return n; };
+
+// ---- Questionario delle circolari (news_quiz): domande senza la risposta corretta per i lettori, complete per la redazione
+async function quizFor(newsId) {
+  const qz = await one('SELECT questions, model, created_at FROM news_quiz WHERE news_id=$1', [newsId]);
+  return qz ? { questions: qz.questions, model: qz.model, created_at: qz.created_at } : null;
+}
+const publicQuiz = (quiz) => (quiz ? { questions: quiz.questions.map(({ q, options }) => ({ q, options })), created_at: quiz.created_at } : null);
+async function buildQuiz(n, userId) {
+  if (n.kind !== 'CIRCOLARE' || !aiEnabled()) return null;
+  const questions = await generateQuiz({ title: n.title, body: `${n.summary ? `${n.summary}\n\n` : ''}${n.body}` }, { userId });
+  await q(`INSERT INTO news_quiz (news_id, questions, model, created_by) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (news_id) DO UPDATE SET questions=EXCLUDED.questions, model=EXCLUDED.model, created_by=EXCLUDED.created_by, created_at=now()`,
+    [n.id, JSON.stringify(questions), config.anthropic.model, userId]);
+  await q('DELETE FROM news_quiz_answers WHERE news_id=$1', [n.id]);   // domande nuove, esiti da rifare
+  return quizFor(n.id);
+}
 const audienceLabel = (a) => ({ ALL: 'tutti', INTERNAL: 'personale interno', SITES: 'sedi selezionate', ORGS: 'organizzazioni selezionate', MODULE: `utenti del modulo ${a.key}`, USERS: 'utenti selezionati' }[a?.type] || 'tutti');
 
 // Un utente può scegliere un'audience solo se vi rientra lui stesso (salvo la redazione), così non invia contenuti dove non vede
@@ -222,7 +238,26 @@ r.get('/community/news/:slug', ah(async (req, res) => {
   if (!n) throw notFound('Contenuto non trovato');
   const editor = canEdit(req.user);
   if (!editor && (n.status !== 'PUBLISHED' || !canSee(req.user, n.audience))) throw notFound('Contenuto non trovato');
-  res.json({ ...n, files: await newsFiles(n.id), can_edit: editor, can_publish: canPublish(req.user) });
+  const quiz = await quizFor(n.id);
+  const mine = quiz ? await one('SELECT answers, score, total, at FROM news_quiz_answers WHERE news_id=$1 AND user_id=$2', [n.id, req.user.id]) : null;
+  res.json({ ...n, files: await newsFiles(n.id), can_edit: editor, can_publish: canPublish(req.user),
+    quiz: quiz ? { ...publicQuiz(quiz), answered: Boolean(mine), my: mine ? { ...mine, correct: quiz.questions.map((x) => x.answer) } : null } : null });
+}));
+
+// Risposte al questionario della circolare: una sola volta per utente; restituisce punteggio e risposte corrette
+r.post('/community/news/:id/quiz', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const n = await one('SELECT id, title, protocol, audience, status FROM news WHERE id=$1', [id]);
+  if (!n || n.status !== 'PUBLISHED' || !canSee(req.user, n.audience)) throw notFound('Contenuto non trovato');
+  const quiz = await quizFor(id);
+  if (!quiz) throw bad('Questa circolare non ha un questionario');
+  if (await one('SELECT 1 FROM news_quiz_answers WHERE news_id=$1 AND user_id=$2', [id, req.user.id])) throw bad('Hai già risposto a questo questionario');
+  const { answers } = parse(z.object({ answers: z.array(z.number().int().min(0).max(5)).min(1).max(5) }), req.body);
+  if (answers.length !== quiz.questions.length) throw bad('Rispondi a tutte le domande');
+  const score = quiz.questions.reduce((acc, x, i) => acc + (answers[i] === x.answer ? 1 : 0), 0);
+  await q('INSERT INTO news_quiz_answers (news_id, user_id, answers, score, total) VALUES ($1,$2,$3,$4,$5)', [id, req.user.id, JSON.stringify(answers), score, quiz.questions.length]);
+  await audit(req, 'NEWS_QUIZ_ANSWERED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol || n.title, data: { score, total: quiz.questions.length } });
+  res.json({ ok: true, score, total: quiz.questions.length, correct: quiz.questions.map((x) => x.answer) });
 }));
 
 r.post('/community/news/:id/ack', ah(async (req, res) => {
@@ -230,6 +265,7 @@ r.post('/community/news/:id/ack', ah(async (req, res) => {
   const n = await one('SELECT id, title, slug, protocol, audience, status, requires_ack FROM news WHERE id=$1', [id]);
   if (!n || n.status !== 'PUBLISHED' || !canSee(req.user, n.audience)) throw notFound('Contenuto non trovato');
   if (!n.requires_ack) throw bad('Questo contenuto non richiede presa visione');
+  if (await one('SELECT 1 FROM news_quiz WHERE news_id=$1', [id]) && !(await one('SELECT 1 FROM news_quiz_answers WHERE news_id=$1 AND user_id=$2', [id, req.user.id]))) throw bad('Rispondi prima al questionario di comprensione, poi conferma la presa visione');
   const ins = await q('INSERT INTO news_acks (news_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, req.user.id]);
   if (ins.rowCount) await audit(req, 'NEWS_ACKED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol || n.title });
   // Le notifiche relative a questa circolare risultano lette
@@ -245,7 +281,15 @@ r.get('/community/news/:id/acks', requirePublisher, ah(async (req, res) => {
   const acks = await many('SELECT k.user_id, k.at, u.full_name, u.email FROM news_acks k JOIN users u ON u.id=k.user_id WHERE k.news_id=$1 ORDER BY k.at', [id]);
   const ackedIds = new Set(acks.map((a) => a.user_id));
   const missing = expected.filter((u) => !ackedIds.has(u.id)).map((u) => ({ user_id: u.id, full_name: u.full_name, email: u.email }));
-  res.json({ news: n, expected: expected.length, acked: acks, missing });
+  // Esiti del questionario: solo qui, per chi gestisce il widget
+  const quiz = await quizFor(id);
+  let quizReport = null;
+  if (quiz) {
+    const rows = await many('SELECT a.user_id, a.answers, a.score, a.total, a.at, u.full_name, u.email FROM news_quiz_answers a JOIN users u ON u.id=a.user_id WHERE a.news_id=$1 ORDER BY a.at', [id]);
+    const perQuestion = quiz.questions.map((x, i) => ({ q: x.q, options: x.options, answer: x.answer, counts: x.options.map((_, oi) => rows.filter((r) => r.answers[i] === oi).length), correct: rows.filter((r) => r.answers[i] === x.answer).length }));
+    quizReport = { questions: perQuestion, answered: rows.length, avg: rows.length ? Math.round((rows.reduce((a, r) => a + r.score, 0) / rows.length) * 10) / 10 : null, total: quiz.questions.length, rows, created_at: quiz.created_at };
+  }
+  res.json({ news: n, expected: expected.length, acked: acks, missing, quiz: quizReport });
 }));
 
 // ---- Gestione redazionale
@@ -261,6 +305,14 @@ r.get('/community/manage/news', requireEditor, ah(async (req, res) => {
                              FROM news n LEFT JOIN users u ON u.id=n.author_id WHERE ${where.join(' AND ')}
                             ORDER BY (n.status='DRAFT') DESC, coalesce(n.published_at, n.updated_at) DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
   res.json({ total, page, pageSize, rows });
+}));
+
+// Lettura completa di un contenuto per la scheda di modifica (l'elenco non porta il testo)
+r.get('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const n = await one(`SELECT n.*, u.full_name AS author_name, (SELECT count(*)::int FROM news_acks k WHERE k.news_id=n.id) AS acks_count FROM news n LEFT JOIN users u ON u.id=n.author_id WHERE n.id=$1`, [id]);
+  if (!n) throw notFound('Contenuto non trovato');
+  res.json({ ...n, files: await newsFiles(n.id), quiz: await quizFor(n.id) });
 }));
 
 r.post('/community/manage/news', requireEditor, ah(async (req, res) => {
@@ -323,13 +375,22 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
   const id = idParam(req.params.id);
   const cur = await one('SELECT * FROM news WHERE id=$1', [id]);
   if (!cur) throw notFound('Contenuto non trovato');
-  if (cur.status === 'PUBLISHED') throw bad('Contenuto già pubblicato');
+  if (cur.status === 'PUBLISHED') {
+    // Già pubblicato: le modifiche sono già visibili; si aggiorna solo l'indice di ricerca, senza nuove notifiche
+    await indexNews(cur).catch((e) => console.warn('[search]', e.message));
+    return res.json({ ...cur, files: await newsFiles(cur.id), notified: 0, emails: 0, already_published: true });
+  }
   const n = await tx(async (c) => {
     let protocol = cur.protocol;
     if (cur.kind === 'CIRCOLARE' && !protocol) protocol = await nextProtocol('CIRC', c);
     return (await c.query(`UPDATE news SET status='PUBLISHED', published_at=coalesce(published_at, now()), protocol=$2, updated_at=now() WHERE id=$1 RETURNING *`, [id, protocol])).rows[0];
   });
   await audit(req, 'NEWS_PUBLISHED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol ? `${n.protocol} ${n.title}` : n.title, data: { kind: n.kind, audience: n.audience, requires_ack: n.requires_ack } });
+  // Circolari: questionario di comprensione generato dal testo (se l'intelligenza artificiale è configurata); un errore non blocca la pubblicazione
+  let quiz = null; let quizError = null;
+  if (n.kind === 'CIRCOLARE' && !(await one('SELECT 1 FROM news_quiz WHERE news_id=$1', [id]))) {
+    try { quiz = await buildQuiz(n, req.user.id); } catch (e) { quizError = e.message; console.warn('[quiz]', e.message); }
+  }
   await indexNews(n).catch((e) => console.warn('[search]', e.message));
 
   // Notifica in app a tutti gli utenti nel perimetro; email solo per le circolari con presa visione obbligatoria
@@ -354,7 +415,26 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
     // Invio in sfondo: la risposta non aspetta la posta
     setImmediate(() => Promise.allSettled(targets.map((u) => sendMail({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` }))).catch(() => {}));
   }
-  res.json({ ...n, files: await newsFiles(n.id), notified, emails });
+  res.json({ ...n, files: await newsFiles(n.id), notified, emails, quiz: publicQuiz(quiz), quiz_error: quizError });
+}));
+
+// Questionario: rigenera (anche su circolari pubblicate: gli esiti precedenti si azzerano) o rimuove
+r.post('/community/manage/news/:id/quiz', requirePublisher, ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const n = await one('SELECT * FROM news WHERE id=$1', [id]);
+  if (!n) throw notFound('Contenuto non trovato');
+  if (n.kind !== 'CIRCOLARE') throw bad('Il questionario è previsto solo per le circolari');
+  if (!aiEnabled()) throw bad('Intelligenza artificiale non configurata: inserisci la chiave Anthropic in Amministrazione > Impostazioni');
+  const quiz = await buildQuiz(n, req.user.id);
+  await audit(req, 'NEWS_QUIZ_GENERATED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol || n.title });
+  res.json({ quiz });
+}));
+r.delete('/community/manage/news/:id/quiz', requirePublisher, ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  await q('DELETE FROM news_quiz WHERE news_id=$1', [id]);
+  await q('DELETE FROM news_quiz_answers WHERE news_id=$1', [id]);
+  await audit(req, 'NEWS_QUIZ_REMOVED', { module: MODULE, entity: 'news', entityId: id });
+  res.json({ ok: true });
 }));
 
 r.delete('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
