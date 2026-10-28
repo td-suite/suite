@@ -568,13 +568,13 @@ async function moduleLive(key) {
   const r = await q(`SELECT mode FROM module_state WHERE key=$1`, [key]).catch(() => ({ rows: [] }));
   return r.rows[0]?.mode === 'LIVE';
 }
-async function safe(key, sql, params) {
+async function safe(key, sql, params, legacySql) {
   if (await moduleLive(key)) {
     try { const { moduleDb } = await import('./modules.js'); return await moduleDb(key).many(sql.replace(/\bresources r\b/g, 'resources_v r'), params); }
     catch (e) { console.warn(`[modulo:${key}] contatore fallito: ${e.message}`); return null; }
   }
   if (!sourceEnabled(key)) return null;
-  try { return await lq(key, sql, params); }
+  try { return await lq(key, legacySql || sql, params); }
   catch (e) { console.warn(`[legacy:${key}] lettura fallita: ${e.message}`); return null; }
 }
 const n0 = (rows, col = 'n') => (rows && rows[0] && rows[0][col] != null ? Number(rows[0][col]) : null);
@@ -584,7 +584,9 @@ const COUNTER_QUERIES = {
   orders: { label: 'Ordini da evadere', sql: `SELECT count(*)::int AS n FROM orders WHERE status NOT IN ('BOZZA','CONSEGNATO','IMMAGAZZINATO','CHIUSO','ANNULLATO')` },
   cash: { label: 'Rendiconti da approvare', sql: `SELECT count(*)::int AS n FROM cash_reports WHERE status = 'CLOSED'` },
   finance: { label: 'Autorizzazioni in attesa di firma', sql: `SELECT count(*)::int AS n FROM payment_requests WHERE status = 'IN_FIRMA'` },
-  integration: { label: 'Attività M&A in ritardo', sql: `SELECT count(*)::int AS n FROM activities a JOIN targets t ON t.id = a.target_id WHERE a.st < 3 AND t.closing ~ '^\\d{4}-\\d{2}-\\d{2}' AND (t.closing::date + (a.ew * 7)) < CURRENT_DATE` },
+  // Integration nella Suite: i target sono Legal entity (org_ext), la data di fine attività è sul record (stessa regola del badge del modulo)
+  integration: { label: 'Attività M&A in ritardo', sql: `SELECT count(*)::int AS n FROM activities a JOIN org_ext e ON e.org_id=a.target_id WHERE a.st < 3 AND a.fine ~ '^\\d{4}-\\d{2}-\\d{2}$' AND a.fine::date < CURRENT_DATE`,
+    legacySql: `SELECT count(*)::int AS n FROM activities a JOIN targets t ON t.id = a.target_id WHERE a.st < 3 AND t.closing ~ '^\\d{4}-\\d{2}-\\d{2}' AND (t.closing::date + (a.ew * 7)) < CURRENT_DATE` },
   shipments: { label: 'Kit in viaggio', sql: `SELECT count(*)::int AS n FROM kits WHERE status IN ('SHIPPED','SHIPPED_TO_LAB')` },
   room: { label: 'Turni scoperti nel mese', sql: `SELECT count(*)::int AS n FROM turni WHERE prof_id IS NULL AND mese = to_char(CURRENT_DATE, 'YYYY-MM')` },
   contracts: { label: 'Scadenze entro 30 giorni', sql: `SELECT (
@@ -593,13 +595,26 @@ const COUNTER_QUERIES = {
       (SELECT count(*) FROM employments e JOIN resources r ON r.id = e.resource_id WHERE r.status = 'ATTIVO' AND e.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) +
       (SELECT count(*) FROM lp_contracts l JOIN resources r ON r.id = l.resource_id WHERE r.status = 'ATTIVO' AND l.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30)
     )::int AS n` },
+  // Widget nativi e moduli senza app di origine: stesso meccanismo (lettura nello schema del modulo quando è LIVE)
+  business: { label: 'Contratti in scadenza e fascicoli aperti', sql: `SELECT ((SELECT count(*) FROM contracts WHERE status IN ('FIRMATO','AUTORIZZATO','ATTIVO') AND end_date IS NOT NULL AND end_date <= CURRENT_DATE + 60) + (SELECT count(*) FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')))::int AS n` },
+  retail: { label: 'Richiami scaduti', sql: `SELECT count(*) FILTER (WHERE due < CURRENT_DATE)::int AS n FROM (SELECT s.customer_id, p.id, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id IS NOT NULL AND p.periodicity_months IS NOT NULL GROUP BY s.customer_id, p.id) x` },
+  ticket: { label: 'Ticket aperti', sql: `SELECT count(*)::int AS n FROM tickets WHERE stato NOT IN ('CHIUSO','ANNULLATO')` },
+  circolari: { label: 'Circolari in bozza', sql: `SELECT count(*)::int AS n FROM circolari WHERE stato='BOZZA'` },
+  cartella: { label: 'Documenti nuovi (7 giorni)', sql: `SELECT count(*)::int AS n FROM documenti WHERE created_at > now() - interval '7 days'` },
+};
+// Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
+const CORE_COUNTERS = {
+  comunicazione: { label: 'Contenuti in bozza e avvisi attivi', sql: `SELECT ((SELECT count(*) FROM news WHERE status='DRAFT') + (SELECT count(*) FROM notices WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at >= now())))::int AS n` },
 };
 
 async function computeCounters() {
   const out = {};
   await Promise.all(Object.entries(COUNTER_QUERIES).map(async ([key, c]) => {
-    const v = n0(await safe(key, c.sql));
+    const v = n0(await safe(key, c.sql, undefined, c.legacySql));
     if (v != null) out[key] = { value: v, label: c.label };
+  }));
+  await Promise.all(Object.entries(CORE_COUNTERS).map(async ([key, c]) => {
+    try { const v = n0((await q(c.sql)).rows); if (v != null) out[key] = { value: v, label: c.label }; } catch (e) { console.warn(`[contatore:${key}] ${e.message}`); }
   }));
   return out;
 }

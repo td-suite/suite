@@ -513,3 +513,11 @@ creano istanze; CEO e CFO possono inoltre segnare gli esiti; VIEWER sola lettura
 UTILITY_* / UTILITY_BILL_* / SCHEDULE_DONE / SCHEDULE_UNDONE / SCHEDULE_REQUEST_CREATE / BENEFICIARY_CREATE. Export
 `GET /scadenziario/export.xlsx` (fogli Agenda, Contratti, Utenze, Bollette, Previsione). Test `server/test/finance-schedule.test.mjs`.
 Schermate docs/screens/finance-scadenziario-*.png.
+
+## Contatori dei widget nella Home (28/10/2026)
+Segnalazione del CEO: "non vedo le notifiche sulle icone dei widget". I contatori delle card della Home (GET /api/home/counters, lib/legacy.js)
+erano definiti solo per gli otto moduli travasati (NC, Ordini, Cash, Payments, Integration, Spedizioni, Room, Contratti del personale).
+Aggiunti Business (contratti in scadenza entro 60 giorni e fascicoli aperti), Retail (richiami scaduti), Ticket (ticket aperti), Circolari
+(bozze), Cartella (documenti nuovi negli ultimi 7 giorni) e Comunicazione (contenuti in bozza e avvisi attivi, letti nel core). Il
+contatore di Integration ora segue lo schema della Suite (target = Legal entity, data di fine sull'attività) e conserva la query legacy per
+l'app di origine. Cache di 5 minuti, visibilità per grant come prima; SGI e Portale Service sono portali esterni e non hanno contatore.
