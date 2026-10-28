@@ -15,6 +15,8 @@ export default function CvBox() {
   const settings = useApi('/settings');
   const inbox = useApi('/scouting/cv-inbox');
   const [polling, setPolling] = useState(false);
+  const [test, setTest] = useState(null);
+  const testNow = async () => { setPolling(true); try { setTest(await api.post('/scouting/cv-inbox/test')); } catch (e) { toast(e.message, 'err'); } setPolling(false); };
   const pollNow = async () => { setPolling(true); try { const r = await api.post('/scouting/cv-inbox/poll'); toast(r.skipped ? `Lettura non eseguita: ${r.skipped.replace(/_/g, ' ')}` : `${r.created} CV nuovi su ${r.fetched} email lette`); inbox.reload(); list.reload(); } catch (e) { toast(e.message, 'err'); } setPolling(false); };
   const [modal, setModal] = useState(null);
   const [sel, setSel] = useState(null);
@@ -35,7 +37,13 @@ export default function CvBox() {
               ? <>Casella <b>{inbox.data.mailbox}</b>{inbox.data.real_mailbox ? <> (letta da <b>{inbox.data.real_mailbox}</b>)</> : null}: {inbox.data.enabled ? 'letta ogni 10 minuti' : 'lettura disattivata (Impostazioni)'}; i CV allegati alle email entrano qui da soli ({inbox.data.imported} finora).{inbox.data.last_poll ? ` Ultima lettura ${new Date(inbox.data.last_poll).toLocaleString('it-IT')}.` : ' Nessuna lettura ancora eseguita.'}{inbox.data.last_error ? ` Ultimo errore: ${inbox.data.last_error}` : ''}</>
               : <>Casella <b>{inbox.data.mailbox}</b> non collegata: mancano le credenziali Microsoft della Suite (Entra) con il permesso Mail.Read sulla casella. Fino ad allora i CV si caricano a mano.</>}
           </span>
-          {writer && inbox.data.configured && <button className="btn sm ghost" style={{ marginLeft: 'auto' }} disabled={polling} onClick={pollNow}>{polling ? 'Lettura in corso' : 'Leggi ora'}</button>}
+          {writer && inbox.data.configured && <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}><button className="btn sm ghost" disabled={polling} onClick={testNow}>Prova la casella</button><button className="btn sm ghost" disabled={polling} onClick={pollNow}>{polling ? 'In corso' : 'Leggi ora'}</button></span>}
+        </div>
+      )}
+      {test && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div className="strong" style={{ marginBottom: 6 }}>Prova della casella: {test.ok ? 'tutto a posto' : 'bloccata al passaggio segnato'}</div>
+          {test.steps.map((st, i) => <div key={i} className="small" style={{ display: 'flex', gap: 8, padding: '3px 0' }}><Badge tone={st.ok ? 'green' : 'red'} dot={false}>{st.ok ? 'ok' : 'no'}</Badge><span><b>{st.step}</b> · {st.detail}</span></div>)}
         </div>
       )}
       <div className="filters">

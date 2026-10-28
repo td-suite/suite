@@ -5,7 +5,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, notFound, audit, parse, HttpError } from '../lib/util.js';
 import { requireWrite, requireRole, readLog } from '../lib/access.js';
 import { config } from '../config.js';
-import { inboxStatus, pollRecruitingInbox } from '../lib/inbox.js';
+import { inboxStatus, pollRecruitingInbox, testInbox } from '../lib/inbox.js';
 import { extractText, quickFacts, summarizeCv } from '../lib/cv.js';
 import { personSchema } from './resources.js';
 import { createPerson, updatePerson, reindexPerson } from '../lib/people.js';
@@ -212,6 +212,7 @@ r.get('/letters-accepted', ah(async (_req, res) => {
 
 // ---------------- Casella di recruiting (Microsoft Graph) ----------------
 r.get('/cv-inbox', ah(async (_req, res) => res.json(await inboxStatus())));
+r.post('/cv-inbox/test', requireWrite, ah(async (_req, res) => res.json(await testInbox())));
 r.post('/cv-inbox/poll', requireWrite, ah(async (req, res) => {
   const out = await pollRecruitingInbox({ force: true });
   await audit(req, 'CV_INBOX_POLL', 'cv', null, out);

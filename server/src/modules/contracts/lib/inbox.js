@@ -32,9 +32,33 @@ async function graphToken() {
 }
 async function graph(path) {
   const t = await graphToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}` } });
-  if (!res.ok) throw new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}`, ConsistencyLevel: 'eventual' } });
+  if (!res.ok) throw new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 300)}`);
   return res.json();
+}
+
+// La casella si cerca per nome utente, poi per indirizzo (mail o proxyAddresses): l'id dell'oggetto è la chiave sicura per le
+// chiamate di posta, anche quando il nome utente è sul dominio .onmicrosoft.com o l'indirizzo è un alias
+async function resolveMailbox(address) {
+  const a = address.trim();
+  try { const u = await graph(`/users/${encodeURIComponent(a)}?$select=id,mail,userPrincipalName,displayName`); return { ...u, how: 'nome utente' }; } catch (e) { if (!/404/.test(e.message)) throw e; }
+  const j = await graph(`/users?$filter=mail eq '${a.replace(/'/g, "''")}' or proxyAddresses/any(x:x eq 'smtp:${a.replace(/'/g, "''")}')&$select=id,mail,userPrincipalName,displayName&$count=true`);
+  const u = (j.value || [])[0];
+  if (!u) throw new Error(`Microsoft non trova nessun utente o casella con indirizzo "${a}" nel tenant delle credenziali della Suite (tenant ${suite.mail.graph.tenantId.slice(0, 8)}…): verifica che la casella condivisa sia in questo tenant e che l'indirizzo sia quello principale o un alias.`);
+  return { ...u, how: 'indirizzo' };
+}
+
+// Diagnosi passo per passo (pulsante "Prova la casella")
+export async function testInbox() {
+  const steps = [];
+  const address = ((await setting('cv_inbox', 'recruitment@toscanadiagnostica.it')) || '').trim();
+  const mailbox = ((await setting('cv_inbox_mailbox', '')) || address).trim();
+  if (!graphConfigured()) return { ok: false, steps: [{ step: 'Credenziali Microsoft della Suite', ok: false, detail: 'ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET mancanti su Render' }] };
+  try { await graphToken(); steps.push({ step: 'Credenziali Microsoft della Suite', ok: true, detail: `tenant ${suite.mail.graph.tenantId}` }); } catch (e) { steps.push({ step: 'Credenziali Microsoft della Suite', ok: false, detail: e.message }); return { ok: false, steps }; }
+  let u;
+  try { u = await resolveMailbox(mailbox); steps.push({ step: `Casella "${mailbox}"`, ok: true, detail: `trovata per ${u.how}: ${u.displayName} · nome utente ${u.userPrincipalName} · indirizzo ${u.mail || '(vuoto)'} · id ${u.id}` }); } catch (e) { steps.push({ step: `Casella "${mailbox}"`, ok: false, detail: e.message }); return { ok: false, steps }; }
+  try { const f = await graph(`/users/${u.id}/mailFolders/inbox?$select=id,totalItemCount,unreadItemCount`); steps.push({ step: 'Posta in arrivo', ok: true, detail: `${f.totalItemCount} email, ${f.unreadItemCount} non lette` }); } catch (e) { steps.push({ step: 'Posta in arrivo', ok: false, detail: /403|Access/i.test(e.message) ? `Permesso mancante: sull'app registration serve Mail.Read (applicativo) con consenso amministratore, oppure la casella è esclusa da una Application Access Policy. ${e.message}` : e.message }); return { ok: false, steps }; }
+  return { ok: true, steps, mailbox_id: u.id };
 }
 
 export async function inboxStatus() {
@@ -59,10 +83,12 @@ export async function pollRecruitingInbox({ force = false } = {}) {
   const since = (await setting('cv_inbox_since', null)) || new Date(Date.now() - 30 * 86400000).toISOString();
   const filter = encodeURIComponent(`receivedDateTime ge ${since} and hasAttachments eq true`);
   const isAlias = mailbox.toLowerCase() !== address.toLowerCase();
+  let userId = null;
   const toAddress = (m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])].some((r) => (r.emailAddress?.address || '').toLowerCase() === address.toLowerCase());
   let created = 0; let fetched = 0; let last = since;
   try {
-    const j = await graph(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,receivedDateTime,from,toRecipients,ccRecipients,subject,bodyPreview,hasAttachments`);
+    userId = (await resolveMailbox(mailbox)).id;
+    const j = await graph(`/users/${userId}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,receivedDateTime,from,toRecipients,ccRecipients,subject,bodyPreview,hasAttachments`);
     const areas = (await many('SELECT name FROM areas WHERE active ORDER BY sort_order')).map((a) => a.name);
     for (const m of j.value || []) {
       fetched++;
@@ -70,13 +96,13 @@ export async function pollRecruitingInbox({ force = false } = {}) {
       const from = m.from?.emailAddress || {};
       if ((from.address || '').toLowerCase() === mailbox.toLowerCase()) continue;
       if (isAlias && !toAddress(m)) continue;   // nella casella vera entrano anche altre email: solo quelle indirizzate a recruitment@
-      const atts = await graph(`/users/${encodeURIComponent(mailbox)}/messages/${m.id}/attachments?$select=id,name,contentType,size,isInline`);
+      const atts = await graph(`/users/${userId}/messages/${m.id}/attachments?$select=id,name,contentType,size,isInline`);
       for (const a of atts.value || []) {
         if (a['@odata.type'] !== '#microsoft.graph.fileAttachment' || a.isInline) continue;
         if (!(CV_MIMES.has(a.contentType) || cvExt(a.name)) || SKIP_NAMES.test(a.name || '')) continue;
         const gid = `${m.id}:${a.id}`;
         if (await one('SELECT 1 FROM cv_box WHERE graph_id=$1', [gid])) continue;
-        const full = await graph(`/users/${encodeURIComponent(mailbox)}/messages/${m.id}/attachments/${a.id}`);
+        const full = await graph(`/users/${userId}/messages/${m.id}/attachments/${a.id}`);
         if (!full.contentBytes) continue;
         const buf = Buffer.from(full.contentBytes, 'base64');
         let text = ''; let facts = {}; let ai = null;
