@@ -529,3 +529,67 @@ Segnalazione del CEO: la tabella delle sedi e la scheda non riportavano responsa
 testo libero. La scheda mostra "Site manager (dall'organigramma)"; il campo "Email del site manager" resta un'eccezione facoltativa: vuoto
 significa che conferma le presenze il responsabile dell'organigramma (la sua email compare come suggerimento), e `siteManagerSedi` segue la
 stessa regola.
+
+## Referti esterni (28/10/2026)
+Richiesta del CEO, testuale: "Vorrei generare un WIDGET da includere in Area Operations destinato al SOLO personale di laboratorio. Il
+funzionamento è semplice. In input un file PDF. In output DOCX e PDF in formato Toscana Diagnostica. Aggiungici un archivio che per ogni riga
+riporta cognome e nome della paziente e 3 icone: PDF di partenza, DOCX trasformato, PDF trasformato." Specifica della routine (sorgenti, parser,
+format canonico, casi particolari) nel documento td-referti-ext consolidato nelle sessioni 08/09–24/10/2026.
+Modulo nativo `referti` in Operations (dopo Spedizioni), kind LEGACY senza app di origine, parte vuoto e LIVE con "Avvia" (FRESH_MODULES).
+`open_to_all` FALSE: il widget lo vede solo chi ha il grant. Profili: **LAB** "Laboratorio" (carica, corregge, anteprima, conferma, scarta),
+**QUALITA** "Qualità" (archivio, registro, export, impostazioni e template; nessuna elaborazione), **VIEWER** "Consultazione"; Owner e Admin
+della Suite sono ADMIN del modulo (lib/access.js, qualunque profilo porti il loro grant). Regole di accesso iniziali: Laboratorio di Analisi →
+LAB, HSQ Management → QUALITA. Nessuna anagrafica propria: `uploaded_by`, `confirmed_by`, `registro.user_id` → `public.users`.
+**Schema `referti`** (migrazione 001): `elaborazioni` (PDF caricato: filename, size, sha256, data bytea o blob_path, pagine, sorgente rilevata,
+stato CARICATO/ELABORATO/SCARTATO con motivo, ocr), `schede` (un paziente: pagine int[] del sorgente, sorgente BIANALISI/CERBA_RDI/
+CERBA_NUOVA_IGEA/ALTRO, colonne di ricerca cognome_nome/data_nascita/sesso/accettazione/data_acc/referto_codice/referto_data, `dati` jsonb
+modificabile = JSON intermedio {anagrafica, settori, esami, antibiogrammi, note, corpo 1|2}, `dati_orig` uscita del parser, `testo_sorgente`,
+`anomalie` [{codice, testo}], stato BOZZA/CONFERMATA/SCARTATA, nome_file, sostituisce_id/sostituita_da, confirmed_*), `file_prodotti`
+(SORGENTE_PDF/DOCX/PDF con contenuto a due vie o rimando al PDF intero dell'elaborazione, flag `intero`), `registro` (azione, user_id, dettagli),
+`app_settings`, `templates` (DOCX della carta intestata caricato dalle Impostazioni). File su Azure Blob quando configurato, altrimenti bytea
+(lib/storage.js, stesso schema di Business).
+**Flusso** (routes su /api/referti): `POST /elaborazioni` (PDF multipli, multer in memoria, 20 MB l'uno) → `pdftotext -layout` pagina per pagina
+(lib/pdf.js; sotto 40 caratteri/pagina OCR con tesseract: `-l ita`, ripiego su `eng` se il pacchetto manca, anomalia "OCR: verifica manuale
+obbligatoria") → rilevamento della sorgente dall'intestazione (lib/parsers/index.js; senza intestazione nota né anagrafica riconoscibile il PDF
+è SCARTATO con motivo) → spezzamento dei merge per paziente (nuova scheda quando cambiano cognome/nome + accettazione nell'intestazione di
+pagina, le pagine senza intestazione sono continuazione) → parser della sorgente (corpo1.js per Bianalisi e Cerba RDI: tabella esame |
+risultato | [U.M.] | riferimento con sottorighe Metodo/Materiale/Sede, antibiogramma testuale "Sensibile - MIC <=4", legenda EUCAST, valori
+spezzati ricomposti; cerbaNuovaIgea.js per il corpo 2: blocchi esame con etichetta/valore, esiti lunghi integrali, antibiogramma tabellare
+"Microrganismo #n" + "Carica Batterica" + legenda della sorgente + righe S/I/R MIC, due microrganismi affiancati "#1 MIC #2 MIC" separati in due
+tabelle omettendo per #2 gli antibiotici vuoti) → schede in BOZZA con anomalie (anagrafica abbreviata/incompleta, OCR, valore ricomposto, carica
+assente, due microrganismi, nota di sostituzione, nome file già presente, riga non interpretata: ciò che il parser non riconosce finisce in
+righe "testo libero" del settore corrente, mai perso). `GET /schede/:id`, `PATCH /schede/:id` (LAB: JSON intermedio e nome file),
+`POST /schede/:id/anteprima` (DOCX+PDF temporanei in base64 + checklist), `POST /schede/:id/conferma` (controllo di coerenza §5.4 in lib/coerenza.js:
+token risultato della sorgente presenti nel testo del DOCX, stesso numero di antibiotici (conteggio indipendente sul testo grezzo), nessun
+numero in più, anagrafica completa; se fallisce 400 con la checklist salvo `force: true` tracciato come forzatura; poi file definitivi
+`Referto - COGNOME NOME.docx/.pdf`, suffisso tra parentesi se un'altra scheda confermata ha lo stesso nome (regola ESAME/SORGENTE/DATA dalle
+Impostazioni), sovrascrittura tracciata (azione SOSTITUZIONE, `sostituita_da`) se la scheda porta la nota "annulla e sostituisce"),
+`POST /schede/:id/scarta`, `POST /elaborazioni/:id/conferma-verdi` (schede senza anomalie), `GET /archivio?q=&from=&to=&sorgente=` (una riga per
+scheda confermata con i tre file; `GET /file/:id[?inline=1]`; il PDF sorgente di un merge si ritaglia alle pagine della scheda con pdf-lib se
+installato, altrimenti si restituisce il PDF intero con `intero=true` e lo si dice in pagina), `GET /registro`, `GET /registro.xlsx` (ExcelJS),
+`GET/PUT /settings` e `POST/DELETE /settings/template` (admin o QUALITA), `GET /badges` {da_confermare}.
+**Generatore** (lib/docgen.js): corpo con la libreria `docx` secondo il format canonico §4 (A4, margini 2/2/2 cm e superiore 3,94 cm, Lato,
+colori 004F5F/5A6B70/1A1A1A/C9E1E6/42B2BF/EAF5F7, riquadro anagrafico a destra 4479 twip, titoli di settore 12,5 pt con filetto, corpo 1
+tabella 3969/3061/2608, corpo 2 etichetta/valore 4309/3628/1701 e antibiogramma 4876/1928/1474 con testata 004F5F e righe alternate, note
+7,5 pt grigie), poi **trapianto OpenXML** nel template della carta intestata: `word/document.xml` del template sostituito con il corpo generato
+mantenendo il `sectPr` del template (header, footer con numero di pagina, media e rels restano quelli del template). Template predefinito:
+`templates/carta_intestata_default.docx` = copia di `offerta_service.docx` di Business (logo e contatti TD, piè di pagina a 3 righe), con i
+margini canonici applicati; se dalle Impostazioni si carica un DOCX (es. "Referto - BARONI VERA.docx") il generatore usa header, footer e
+sectPr di quello. PDF con `docxToPdf` di Business (soffice headless, coda sequenziale).
+**Web** (web/src/modules/referti): Inbox (zona di caricamento multipla, esito per file, schede da confermare con badge, elaborazioni recenti con
+"Conferma tutte le verdi"), Scheda (PDF sorgente in iframe `#page=N` a sinistra, anteprima PDF TD a destra rigenerata al salvataggio, anomalie
+in giallo, checklist di coerenza, pannello dati editabile per anagrafica, settori/righe, esami, antibiogrammi, note; pulsanti Anteprima,
+Conferma, Conferma comunque, Scarta), Archivio (una riga per paziente con le tre icone e ricerca/filtri), Registro (tabella + XLSX),
+Impostazioni (cartella OneDrive informativa, genera anche PDF, retention, suffisso, template), Guida. Icona `referti` in Icons.jsx.
+**Privacy**: nessun nome di paziente nei log del server né nelle notifiche; audit della Suite con soli id e conteggi; retention dei PDF sorgente
+configurabile (job `referti:retention`). Dockerfile: `poppler-utils`, `tesseract-ocr`, `tesseract-ocr-ita`, `fonts-lato`.
+**Collaudo**: db dedicato, API (upload dei 4 PDF di prova di cui uno scartato, merge spezzato in 3, due microrganismi, PATCH, anteprima, coerenza
+fallita e superata, conferma, conferma comunque con suffisso, conferma verdi, archivio con i tre file scaricabili, registro ed export, badge,
+permessi VIEWER/QUALITA/LAB, OCR su PDF immagine), test `node --test server/test/referti-parsers.test.mjs` (parser, generatore, coerenza,
+trapianto), Playwright (docs/screens/referti-{inbox,scheda,archivio,registro,impostazioni,home-widget}.png).
+**Limiti e cose da verificare**: i PDF di prova sono sintetici (server/test/fixtures/referti/genera.py): **i parser vanno ricalibrati sui PDF
+reali** appena il CEO li fornisce (posizioni delle colonne, intestazioni, legenda, note); il **template della carta intestata del referto**
+(luglio 2026) va caricato dalle Impostazioni, finché manca si usa l'intestazione dell'offerta Service; l'archiviazione automatica nella
+cartella OneDrive via Microsoft Graph non è ancora attiva (i file si scaricano dall'Archivio); il ritaglio del PDF sorgente dei merge richiede
+`pdf-lib` (non installato: si restituisce il PDF intero); il font Lato va installato sull'immagine (fonts-lato nel Dockerfile) perché il PDF lo
+usi davvero; nessun invio al paziente o alla sede, nessuna importazione in StudioLAB, nessuna firma digitale.

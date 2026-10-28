@@ -86,6 +86,7 @@ export async function checklistXlsx(list, meta) {
       section = it.section;
       const r = ws.addRow([section]); r.getCell(1).font = { bold: true, color: { argb: 'FF1C505E' } }; ws.mergeCells(`A${r.number}:F${r.number}`);
     }
+    if (it.heading || (!it.text && it.code && it.code.length > 12)) { const hr = ws.addRow([it.text || it.code]); hr.getCell(1).font = { italic: true, color: { argb: 'FF5B6F75' } }; hr.alignment = { wrapText: true }; ws.mergeCells(`A${hr.number}:F${hr.number}`); continue; }
     const r = ws.addRow([it.code, it.text, it.applicability, it.answer, it.document, it.notes]);
     r.alignment = { vertical: 'top', wrapText: true };
     r.getCell(1).font = { bold: true };

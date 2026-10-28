@@ -54,6 +54,10 @@ export const MODULES = [
   // Cartella condivisa: documenti per chi ha il grant (open_to_all FALSE, richiesta del CEO: il widget lo vede solo chi è abilitato)
   { key: 'cartella', area: 'RETAIL_FLOW', name: 'Cartella condivisa', tagline: 'Documenti per tutti: cartelle, file in evidenza, novità', icon: 'folder', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: false,
     profiles: [P('ADMIN', 'Gestione'), P('VIEWER', 'Consultazione')] },
+  // Referti esterni (28/10/2026): referti dei laboratori esterni trascritti sul format TD. Solo personale di laboratorio: lo vede
+  // soltanto chi ha il grant (open_to_all FALSE). LAB elabora e conferma; QUALITA registro e impostazioni; VIEWER consultazione.
+  { key: 'referti', area: 'OPERATIONS', name: 'Referti esterni', tagline: 'Referti dei laboratori esterni trascritti sul format Toscana Diagnostica: DOCX e PDF, archivio e registro', icon: 'referti', kind: 'LEGACY', legacy_url: null, sort_order: 60, scope_type: null, open_to_all: false,
+    profiles: [P('LAB', 'Laboratorio'), P('QUALITA', 'Qualità'), P('VIEWER', 'Consultazione')] },
 
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,

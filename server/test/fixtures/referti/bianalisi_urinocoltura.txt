@@ -1,0 +1,58 @@
+BIANALISI S.p.A. Laboratorio Firenze
+Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi
+Referto R3YEA050123 del 05/10/2026                                             Accettazione A3YEA050123 del 02/10/2026
+ROSSI MARIA                                                                    F-16/04/1974 (anni 52) TOLAFI
+Analisi                                                         Risultati                               Intervalli di Riferimento
+
+MICROBIOLOGIA
+U - Urinocoltura (1)                                            Positivo
+Metodo: Colturale
+Materiale Urine
+Germe Isolato                                                   Escherichia coli
+Carica Batterica                                                10^5 UFC/mL
+Metodo: Colturale
+S = Sensibile a dosaggio standard (EUCAST)
+I = Sensibile ad esposizione aumentata (EUCAST)
+R = Resistente (EUCAST)
+MIC = Concentrazione Minima Inibente (mg/L)
+Materiale Urine
+Germe Isolato                                                   Escherichia coli
+Amoxicillina/Ac. Clavulanico                                    Sensibile - MIC <=4
+Ceﬁxime                                                         Resistente - MIC >16
+ESBL (Extended Spectrum Beta Lactamase)                         Negativo
+Ciproﬂoxacina                                                   Intermedio - MIC 0,25
+Fosfomicina                                                     Sensibile - MIC <=8
+Nitrofurantoina                                                 Sensibile - MIC <=16
+
+
+
+
+Pagina 1 di 2                                                                  Referto R3YEA050123 - ROSSI MARIA
+BIANALISI S.p.A. Laboratorio Firenze
+Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi
+Referto R3YEA050123 del 05/10/2026                                            Accettazione A3YEA050123 del 02/10/2026
+ROSSI MARIA                                                                   F-16/04/1974 (anni 52) TOLAFI
+Analisi                                                         Risultati                              Intervalli di Riferimento
+
+Trimetoprim/Sulfametossazolo                                    Resistente - MIC >4
+Gentamicina                                                     Sensibile - MIC <=2
+Esame batterioscopico urine                                     Sviluppo di un
+                                                                discreto
+                                                                numero di
+                                                                colonie
+Metodo: Microscopico
+
+MICROBIOLOGIA MOLECOLARE
+Trichomonas vaginalis PCR                                       Negativo                               Negativo
+Metodo: PCR Real Time
+Materiale Urine
+
+
+(1) Esame eseguito Bianalisi Verano Brianza (MB)
+Il presente documento annulla e sostituisce il referto R3YEA050100 del 05/10/2026
+
+
+
+
+Pagina 2 di 2                                                                 Referto R3YEA050123 - ROSSI MARIA
+

@@ -1,0 +1,80 @@
+/* Modulo Referti esterni: stili propri, isolati dal plugin Vite sotto .mod-referti (prefisso di classe rf-) */
+.rf-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-bottom: 16px; }
+@media (max-width: 1000px) { .rf-two { grid-template-columns: 1fr; } }
+.rf-two > * { min-width: 0; }
+.rf-table td { vertical-align: top; }
+.rf-table tr.click { cursor: pointer; }
+.rf-table tr.click:hover td { background: var(--hover); }
+.rf-table tr.rf-sostituita td { opacity: .6; }
+
+.rf-alert { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--teal-050); color: var(--ink); font-size: 13px; margin-bottom: 14px; }
+.rf-alert .ico { width: 18px; height: 18px; flex: none; color: var(--teal); margin-top: 1px; }
+.rf-alert.warn { background: #fff4d6; color: #5a3d00; }
+.rf-alert.warn .ico { color: #a35a00; }
+.rf-alert.ok { background: var(--green-100); color: #1d4d39; }
+.rf-alert.ok .ico { color: var(--green); }
+
+/* anomalie (gialle) e checklist */
+.rf-anomalie { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.rf-anomalie li { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; }
+.rf-anomalie .ico { width: 15px; height: 15px; flex: none; color: #a35a00; margin-top: 2px; }
+.rf-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rf-check li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; padding: 6px 10px; border-radius: 8px; }
+.rf-check li.ok { background: var(--green-100); color: #1d4d39; }
+.rf-check li.ko { background: #fde8e8; color: #7a1f1f; }
+.rf-check .ico { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+
+/* esito del caricamento */
+.rf-esito { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.rf-esito li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.rf-esito li .ico { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.rf-esito li.ok .ico { color: var(--green); }
+.rf-esito li.ko { background: #fde8e8; }
+.rf-esito li.ko .ico { color: var(--red); }
+
+/* scheda: anteprima affiancata */
+.rf-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 1100px) { .rf-split { grid-template-columns: 1fr; } }
+.rf-pane .bd.flush { padding: 0; }
+.rf-frame { width: 100%; height: 72vh; min-height: 520px; border: 0; display: block; background: #f3f4f6; }
+.rf-placeholder { height: 72vh; min-height: 520px; display: grid; place-items: center; align-content: center; gap: 12px; text-align: center; padding: 24px; color: var(--muted); font-size: 13px; }
+.rf-placeholder .ico { width: 36px; height: 36px; color: var(--teal); }
+.rf-placeholder > div { max-width: 380px; }
+
+/* pannello dati editabile */
+.rf-fs { border: 0; padding: 0; margin: 0; min-width: 0; }
+.rf-fs:disabled .rf-in { background: transparent; border-color: transparent; color: var(--ink); padding-left: 0; }
+.rf-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-bottom: 10px; }
+.rf-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+@media (max-width: 900px) { .rf-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rf-in { width: 100%; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); resize: vertical; }
+.rf-in:focus { outline: 2px solid var(--teal-200, #9ad7de); border-color: var(--teal); }
+.rf-settore { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; }
+.rf-settore-hd { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.rf-titolo { font-weight: 800; letter-spacing: .02em; color: var(--teal); max-width: 420px; }
+.rf-edit td { padding: 4px 6px; vertical-align: top; }
+.rf-edit th { font-size: 11px; }
+.rf-edit .rf-in + .rf-in { margin-top: 4px; }
+.rf-edit tr.tipo-legenda td, .rf-edit tr.tipo-testo td { background: var(--card-2); }
+.rf-edit tr.tipo-antibiotico td:first-child { padding-left: 18px; }
+.rf-add { gap: 6px; margin: 6px 0 10px; flex-wrap: wrap; }
+.rf-esame { border-left: 3px solid var(--teal-050); padding-left: 12px; margin: 10px 0 14px; }
+.rf-ab { background: var(--card-2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.rf-note textarea { min-height: 60px; }
+.rf-form { display: grid; gap: 12px; }
+.rf-switch { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; }
+
+/* archivio: tre icone */
+.rf-files { display: flex; gap: 6px; }
+.rf-fi { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); font-size: 11px; font-weight: 700; text-decoration: none; color: var(--ink); background: var(--card); }
+.rf-fi .ico { width: 16px; height: 16px; }
+.rf-fi.src .ico { color: var(--muted); }
+.rf-fi.docx .ico { color: #2b579a; }
+.rf-fi.pdf .ico { color: #c0392b; }
+.rf-fi:hover { background: var(--hover); }
+.rf-fi.off { opacity: .35; cursor: default; }
+
+/* guida */
+.rf-steps { padding-left: 20px; display: grid; gap: 8px; line-height: 1.5; }
+.rf-guide p { line-height: 1.55; }
+.rf-dett { min-width: 300px; max-width: 420px; white-space: normal; }

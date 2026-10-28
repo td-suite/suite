@@ -1,0 +1,37 @@
+Cerba HealthCare Toscana s.r.l. - Nuova Igea, Via Duccio di Buoninsegna 54 - 50143 Firenze
+Laboratorio analisi cliniche - Direttore Sanitario dott. P. Neri
+Paziente: GRASSI TIZIANA                                                              Nato il: 05/05/1955             Sesso: F
+Accettazione n° 26/001234                                                             Data Acc. 10/10/2026
+
+MICROBIOLOGIA
+URINOCOLTURA
+Metodo: Colturale                                        Materiale: Urine mitto intermedio
+Nuova descrizione dell'esame come da Nomenclatore 2025: Esame colturale delle urine
+Specie Microbiche                                                  Escherichia coli, Klebsiella pneumoniae
+Esito                                                              Positivo
+Carica Microbica Totale                                            100.000 UFC/ml
+Antibiogramma/Antimicogramma                                       Interpretazione secondo EUCAST 2025. Sono riportati solo gli
+                                                                   antibiotici con indicazione per le infezioni urinarie.
+
+Microrganismo #1: Escherichia coli                                            Microrganismo #2: Klebsiella pneumoniae
+Carica Batterica: 100.000 UFC/ml                                              Carica Batterica Totale: 100.000 UFC/ml
+R: Resistente I: Sensibile con aumentata esposizione al farmaco S: Sensibile
+ANTIBIOTICO                                                #1        MIC                          #2     MIC
+AMOXICILLINA/AC.CLAVULANICO                                    S           <=8                    R      >32
+CEFIXIME                                                       S           <=1                    S      <=1
+CIPROFLOXACINA                                                 S           <=0,25
+FOSFOMICINA                                                    S           <=16                   R      >128
+NITROFURANTOINA                                                S           <=16
+TRIMETOPRIM/SULFAMETOSSAZOLO                                   R           >4                     S      <=0,5
+
+ESAME MICROSCOPICO DIVERSI
+Metodo: Microscopico                                               Materiale: Urine mitto intermedio
+Cellule                                                            Rare cellule epiteliali
+Flogosi                                                            Presente
+Esame microscopico dopo colorazione di Gram                        Presenza di bacilli Gram negativi
+
+
+
+
+Pagina 1 di 1                                                                 Accettazione n° 26/001234 - GRASSI TIZIANA
+

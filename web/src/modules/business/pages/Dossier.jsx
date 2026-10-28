@@ -213,15 +213,17 @@ function ChecklistTab({ d, code, edit, onSaved }) {
         <thead><tr><th style={{ width: 70 }}>Req.</th><th style={{ width: '28%' }}>Testo del requisito</th><th style={{ width: 120 }}>Risposta</th><th>Documento / evidenza</th><th>Note e riferimenti SGI</th></tr></thead>
         <tbody>{vis.map(({ it, i }) => {
           const sec = it.section && it.section !== lastSection ? it.section : null; lastSection = it.section || lastSection;
+          // Righe introduttive del modello regionale (testo senza codice requisito): titolo di sezione, nessuna risposta richiesta
+          const heading = it.heading || (!it.text && it.code && it.code.length > 12);
           return (<React.Fragment key={i}>
             {sec && <tr><td colSpan={5} style={{ background: 'var(--teal-050)', fontWeight: 700, color: 'var(--teal)', fontSize: 12 }}>{sec}</td></tr>}
-            <tr>
+            {heading ? <tr><td colSpan={5} className="small" style={{ fontStyle: 'italic', color: 'var(--muted)' }}>{it.text || it.code}</td></tr> : <tr>
               <td className="strong mono">{it.code}</td>
               <td className="small">{it.text}{it.applicability && <div className="muted" style={{ marginTop: 4 }}>Applicabilità: {it.applicability}</div>}</td>
               <td>{it.code ? <select value={it.answer} disabled={!edit} onChange={(e) => set(i, 'answer', e.target.value)}><option value="">–</option>{['Sì', 'No', 'Non pertinente', 'In corso'].map((v) => <option key={v}>{v}</option>)}{it.answer && !['Sì', 'No', 'Non pertinente', 'In corso', ''].includes(it.answer) && <option>{it.answer}</option>}</select> : null}</td>
               <td><textarea value={it.document} disabled={!edit} onChange={(e) => set(i, 'document', e.target.value)} style={{ minHeight: 56, fontSize: 12 }} /></td>
               <td><textarea value={it.notes} disabled={!edit} onChange={(e) => set(i, 'notes', e.target.value)} style={{ minHeight: 56, fontSize: 12 }} /></td>
-            </tr>
+            </tr>}
           </React.Fragment>);
         })}</tbody>
       </table></div>

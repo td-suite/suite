@@ -51,6 +51,11 @@ const MODULES = {
     f: 'M15 18v9a4.5 4.5 0 0 0 9 0v-9zM35 22l9 17H26z',
     s: 'M13 5h13M15 5v22a4.5 4.5 0 0 0 9 0V5M15 15h9M35 22l9 17H26zM35 28.5v5M35 36.5v.3M7 44h30',
   },
+  // Referti esterni: referto trascritto e controllato (foglio con righe e spunta)
+  referti: {
+    f: 'M9 5h18l8 8v30H9z',
+    s: 'M9 5h18l8 8v30H9zM27 5v8h8M15 20h10M15 26h14M15 32h8M28 33l4 4 8-9',
+  },
   sgi: {
     f: 'M5 11h12l4 4h22v24H5z',
     s: 'M5 11h12l4 4h22v24H5zM5 19h38M12 27h8M39 30a5 5 0 1 1-10 0 5 5 0 0 1 10 0zM31.5 34 30 41M36.5 34 38 41M34 28.5l.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z',

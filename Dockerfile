@@ -1,4 +1,5 @@
-# Suite TD · build del front-end e runtime Node con LibreOffice (moduli Business, Finance, Contracts generano PDF dai DOCX)
+# Suite TD · build del front-end e runtime Node con LibreOffice (moduli Business, Finance, Contracts generano PDF dai DOCX);
+# poppler-utils (pdftotext/pdftoppm), tesseract (OCR italiano) e il font Lato servono a Referti esterni
 FROM node:22-bookworm-slim AS web
 WORKDIR /web
 COPY web/package*.json ./
@@ -9,7 +10,7 @@ RUN npm run build
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libreoffice-writer fonts-liberation fonts-dejavu-core wget ca-certificates \
+      libreoffice-writer fonts-liberation fonts-dejavu-core fonts-lato poppler-utils tesseract-ocr tesseract-ocr-ita wget ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY server/package*.json ./

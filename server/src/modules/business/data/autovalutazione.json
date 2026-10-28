@@ -4,13 +4,14 @@
   "title": "A – REQUISITI GENERALI",
   "items": [
    {
-    "code": "In questa sezione sono indicati solo i requisiti minimi necessari all’esercizio di un’attività sanitaria, resta fermo quanto disposto dalla normativa nazionale e regionale per gli altri ambiti di competenza.",
-    "text": "",
+    "code": "",
+    "text": "In questa sezione sono indicati solo i requisiti minimi necessari all’esercizio di un’attività sanitaria, resta fermo quanto disposto dalla normativa nazionale e regionale per gli altri ambiti di competenza.",
     "applicability": "",
     "answer": "",
     "document": "",
     "notes": "",
-    "section": null
+    "section": null,
+    "heading": true
    },
    {
     "code": "A.1",
@@ -775,13 +776,14 @@
     "section": "REQUISITI TECNOLOGICI"
    },
    {
-    "code": "IN CASO DI UTILIZZO DI EMOCOMPONENTI AUTOLOGHI PER USO NON TRASFUSIONALE (EuNT)",
-    "text": "",
+    "code": "",
+    "text": "IN CASO DI UTILIZZO DI EMOCOMPONENTI AUTOLOGHI PER USO NON TRASFUSIONALE (EuNT)",
     "applicability": "Strutture sanitarie, pubbliche o private, non dotate di Servizio Trasfusionale",
     "answer": "Non pertinente",
     "document": "*",
     "notes": "Toscana Diagnostica non utilizza emocomponenti autologhi per uso non trasfusionale (EuNT): sezione non pertinente.",
-    "section": "REQUISITI TECNOLOGICI"
+    "section": "REQUISITI TECNOLOGICI",
+    "heading": true
    },
    {
     "code": "B.24",
