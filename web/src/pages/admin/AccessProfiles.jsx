@@ -46,7 +46,7 @@ export function ProfilePicker({ label = 'Assegna profilo', onPick, className = '
         {profiles.data && !profiles.data.length && <div className="small muted" style={{ padding: 12 }}>Nessun profilo di accesso definito.</div>}
         {(profiles.data || []).map((p) => (
           <button key={p.id} type="button" className="item" role="menuitem" onClick={() => { setOpen(false); onPick(p); }}>
-            <Icon name="shield" /><span style={{ flex: 1 }}>{p.name}{p.is_default && <Badge tone="teal">Default</Badge>}<div className="tiny muted" style={{ fontWeight: 500 }}>{(p.items || []).length} widget</div></span>
+            <Icon name="shield" /><span style={{ flex: 1 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{p.name}{p.is_default && <Badge tone="teal">Default</Badge>}</span><div className="tiny muted" style={{ fontWeight: 500 }}>{(p.items || []).length} widget</div></span>
           </button>
         ))}
       </Popover>
@@ -83,7 +83,7 @@ export function AccessProfiles() {
           <thead><tr><th>Profilo</th><th>Widget inclusi</th><th>Utenti</th><th>Aggiornato</th><th></th></tr></thead>
           <tbody>{data.map((p) => (
             <tr key={p.id} className="click" onClick={() => setEdit(p)}>
-              <td><div className="strong">{p.name}{p.is_default && <Badge tone="teal" title="Applicato automaticamente a ogni nuovo utente">Default</Badge>}</div>{p.description && <div className="small muted">{p.description}</div>}</td>
+              <td><div className="strong" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{p.name}{p.is_default && <Badge tone="teal" title="Applicato automaticamente a ogni nuovo utente">Default</Badge>}</div>{p.description && <div className="small muted">{p.description}</div>}</td>
               <td><div className="small" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(p.items || []).map((it) => <span key={it.module_key} className="chip" title={profLabel(it.module_key, it.profile)}>{modName(it.module_key)} · {profLabel(it.module_key, it.profile)}</span>)}{!(p.items || []).length && <span className="faint">nessun widget</span>}</div></td>
               <td className="small nowrap">{p.users_count} utent{p.users_count === 1 ? 'e' : 'i'}</td>
               <td className="small nowrap">{fmtDateTime(p.updated_at)}</td>

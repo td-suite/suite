@@ -178,6 +178,7 @@ export function MboEditor({ value = [], onChange }) {
 
 // Dati del rapporto di lavoro subordinato (contratto) o della lettera di impegno (subset)
 export function EmploymentForm({ value: v, onChange, letter = false, sites = [] }) {
+  const roles = useApi('/job-roles');
   const s = set(v, onChange);
   const isDir = v.contract_type === 'DIRIGENTE';
   const [sim, setSim] = useState(null);
@@ -194,7 +195,13 @@ export function EmploymentForm({ value: v, onChange, letter = false, sites = [] 
         {isDir ? <Field label="Qualifica"><input value="Dirigente" disabled /></Field> : <Field label="Livello di ingresso"><select value={v.level || ''} onChange={(e) => s('level', e.target.value)}><option value="">–</option>{LEVELS.map((l) => <option key={l} value={l}>{LEVEL_LABEL[l]}</option>)}</select></Field>}
         {!isDir && <Field label="Qualifica"><input value={v.qualification || ''} placeholder={v.level === 'Q' ? 'Quadro' : 'Impiegato'} onChange={(e) => s('qualification', e.target.value)} /></Field>}
         {isDir && <Field label="Riporta a" help="Compare nella lettera: 'Lei riporterà …'"><input value={v.reports_to || ''} placeholder="al Presidente del Consiglio di Amministrazione della scrivente Società" onChange={(e) => s('reports_to', e.target.value)} /></Field>}
-        <Field label={isDir ? 'Ruolo e funzione' : 'Mansione'} className="span2"><input value={v.job_title || ''} onChange={(e) => s('job_title', e.target.value)} /></Field>
+        <Field label={isDir ? 'Ruolo e funzione' : 'Mansione'} className="span2" help="Dal catalogo Ruoli di Amministrazione (Amministrazione > Ruoli per aggiungerne o modificarne)">
+          <select value={v.job_title || ''} onChange={(e) => s('job_title', e.target.value)}>
+            <option value="">Scegli un ruolo</option>
+            {v.job_title && !(roles.data || []).some((r) => r.name === v.job_title) && <option value={v.job_title}>{v.job_title} (non in catalogo)</option>}
+            {(roles.data || []).map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
+          </select>
+        </Field>
         <Field label={letter ? 'Decorrenza: non oltre il' : 'Decorrenza (data assunzione)'}><input type="date" value={(letter ? v.start_by : v.start_date) || ''} onChange={(e) => s(letter ? 'start_by' : 'start_date', e.target.value)} /></Field>
         {letter && <Field label="Validità della proposta sino al"><input type="date" value={v.valid_until || ''} onChange={(e) => s('valid_until', e.target.value)} /></Field>}
         {!letter && (v.contract_type === 'TDET' || v.contract_type === 'APPRENDISTATO') && <Field label={v.contract_type === 'APPRENDISTATO' ? 'Fine periodo formativo' : 'Scadenza contratto'}><input type="date" value={v.end_date || ''} onChange={(e) => s('end_date', e.target.value)} /></Field>}

@@ -154,6 +154,8 @@ export async function upsertEmployment(c, id, e) {
   await c.query(`INSERT INTO employments (resource_id, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
     ON CONFLICT (resource_id) DO UPDATE SET ${cols.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, ...vals]);
   await syncDerived(c, id);
+  // Ruolo dell'anagrafica unica allineato alla mansione (catalogo Ruoli di Amministrazione), quando il nome coincide
+  if (data.job_title) await (c ? c.query.bind(c) : q)(`UPDATE public.people SET role_id = coalesce((SELECT r.id FROM public.job_roles r WHERE lower(r.name)=lower($2) LIMIT 1), role_id), updated_at=now() WHERE id=$1`, [id, data.job_title]);
 }
 
 export async function upsertLp(c, id, l) {

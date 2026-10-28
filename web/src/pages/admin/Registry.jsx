@@ -525,7 +525,7 @@ export function Roles({ embedded }) {
   const save = async (body) => { if (modal?.id) await api.put(`/job-roles/${modal.id}`, body); else await api.post('/job-roles', body); toast('Ruolo salvato'); reload(); };
   return (
     <div className={embedded ? '' : 'page'}>
-      {!embedded && <PageHead title="Ruoli" icon="grid" sub="Catalogo dei ruoli" />}
+      {!embedded && <PageHead title="Ruoli" icon="tag" sub="Catalogo dei ruoli: cosa fa una persona (es. Site Manager, Biologo, Direttore Tecnico). Lo usano la scheda Persona, gli incarichi dell'organigramma e la mansione nei Contratti del personale." />}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Cerca un ruolo" /><div className="spacer" /><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuovo ruolo</button></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}

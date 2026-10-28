@@ -7,7 +7,7 @@ import { UsersList, UserDetail } from './Users.jsx';
 import { AccessProfiles } from './AccessProfiles.jsx';
 import { Sites, Organizations, PeopleAdmin } from './Registry.jsx';
 import { Modules, Legacy, ApiKeys, Imports, Audit, Settings } from './System.jsx';
-import { Organization } from './Registry.jsx';
+import { Organization, Roles } from './Registry.jsx';
 import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
 import { Connectors } from './Connectors.jsx';
@@ -65,6 +65,7 @@ export default function Admin() {
       <Route path="people" element={<PeopleAdmin />} />
       <Route path="modules" element={<Modules />} />
       <Route path="organization" element={<Organization />} />
+      <Route path="roles" element={<Roles />} />
       <Route path="legacy" element={<Legacy />} />
       <Route path="connectors" element={<Connectors />} />
       <Route path="api-keys" element={<ApiKeys />} />

@@ -30,6 +30,9 @@ r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Catalogo dei ruoli dell'anagrafica unica (Amministrazione > Ruoli): la mansione del contratto si sceglie da qui
+r.get('/job-roles', ah(async (_req, res) => res.json(await many(`SELECT id, name, description FROM public.job_roles WHERE active ORDER BY sort_order, name`))));
+
 // ---------------- Aree e sedi ----------------
 r.get('/areas', ah(async (_req, res) => res.json(await many(`SELECT a.*, t.path, t.root_id, t.root_name, h.last_name || ' ' || h.first_name AS head_name,
   (SELECT count(*)::int FROM resources_v r WHERE r.status IN ('ATTIVO','IMPEGNO') AND (r.area_id=a.id OR r.id IN (SELECT person_id FROM person_areas WHERE area_id=a.id))) AS headcount,

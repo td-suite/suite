@@ -118,6 +118,7 @@ const UI = {
   comment: 'M4 5h16v11H9l-5 4z',
   teams: 'M3 7h11v10H3zM14 10h7v7h-7M9 15v-5M6.5 10h5M18 7.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
   mail: 'M3 6h18v12H3zM3 7l9 6 9-6',
+  tag: 'M3 3h8l10 10-8 8L3 11zM7 7h.01',
   phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z',
   menu: 'M4 7h16M4 12h16M4 17h16',
   back: 'M15 6l-6 6 6 6',
