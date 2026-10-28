@@ -13,6 +13,15 @@ import { eur, itDate, itDateTime } from '../format.js';
 // data di apertura della sede sono dell'anagrafica unica (docs/IMPOSTAZIONI.md): qui si leggono soltanto. La struttura
 // ospitante è una Legal entity dell'anagrafica (nome, P.IVA ed email vengono da lì).
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+// Giorni operativi in forma compatta: intervalli contigui (lun-sab), altrimenti elenco (lun, mer, ven)
+function daysLabel(mask = '') {
+  const on = DAYS.map((d, i) => (mask[i] === '1' ? d : null)).filter(Boolean);
+  if (!on.length) return 'nessun giorno';
+  if (on.length === 7) return 'tutti i giorni';
+  const idx = DAYS.map((d, i) => (mask[i] === '1' ? i : -1)).filter((i) => i >= 0);
+  const contiguous = idx.every((v, k) => k === 0 || v === idx[k - 1] + 1);
+  return contiguous && on.length > 2 ? `${on[0]}-${on[on.length - 1]}` : on.join(', ');
+}
 const ADMIN_SITES = '/admin/sites';
 const ADMIN_ORGS = '/admin/organizations';
 const defaults = { company_id: '', cash_float: 0, ownership: 'OSPITATA', expected_registers: 1, pos_terminals: '', float_reason: '', host_org_id: '', royalty_fixed_monthly: 0, royalty_pct: 0, royalty_base: 'TOTALE', royalty_vat_rate: 0, royalty_notes: '' };
@@ -68,21 +77,19 @@ export default function Sites() {
         </div>
       </div>
       {!data ? <Loading /> : !sorted.length ? <div className="card"><Empty>Nessuna sede di Toscana Diagnostica nell'anagrafica: le sedi si creano in <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link></Empty></div> : (
-        <div className="card"><div className="table-wrap"><table className="t">
-          <thead><tr><Th k="code">Codice</Th><Th k="name">Sede</Th>{sup && <Th k="company">Azienda</Th>}<th>Giorni operativi</th><th>Struttura ospitante</th><th>Canone</th><th className="num">Fondo cassa</th><th className="num">Utenti</th><th>Stato</th><th /></tr></thead>
+        <div className="card sites-table"><div className="table-wrap"><table className="t">
+          <thead><tr><Th k="code">Codice</Th><Th k="name">Sede</Th><th>Giorni</th><th>Ospitante e canone</th><th className="num">Fondo cassa</th><th className="num">Utenti</th><th>Stato</th><th /></tr></thead>
           <tbody>{sorted.map((s) => (
             <tr key={s.id} style={{ opacity: s.configured ? 1 : .7 }}>
-              <td className="mono">{s.code}</td><td><b>{s.name}</b><div className="small muted">{[s.address, s.city, s.province && `(${s.province})`].filter(Boolean).join(' ')}</div>{s.configured && (s.site_email ? <div className="small muted">{s.site_email}</div> : <div className="small red">email mancante in Amministrazione, Sedi</div>)}</td>
-              {sup && <td>{s.company_name || <span className="muted">–</span>}</td>}
-              {!s.configured ? <td colSpan={5} className="small muted">Impostazioni Cash non ancora definite: fondo cassa, casse attese, terminali POS e royalty si compilano con "Configura in Cash"</td> : <>
-              <td>{DAYS.map((d, i) => <span key={d} className="chip" style={{ opacity: s.operating_days[i] === '1' ? 1 : .3 }}>{d}</span>)}<div className="small muted">dal {itDate(s.start_date)}{!s.opened_at && <span title="Data di apertura non indicata in Amministrazione, Sedi: vale il giorno della configurazione in Cash"> (configurazione)</span>}</div>{s.hours_from_core ? Object.keys(s.hours || {}).length > 0 && <div className="small muted">{hoursSummary(s.hours)}</div> : <div className="small muted">orari non indicati in anagrafica: lun-sab</div>}</td>
-              <td>{s.ownership === 'PROPRIA' ? <Badge tone="teal">Sede di proprietà</Badge> : s.host_name || <span className="muted">–</span>}{s.host_email && <div className="small muted">{s.host_email}</div>}</td>
-              <td className="small">{s.ownership === 'PROPRIA' ? <span className="muted">nessuna royalty</span> : <>{Number(s.royalty_fixed_monthly) > 0 && <div>{eur(s.royalty_fixed_monthly)}/mese</div>}{Number(s.royalty_pct) > 0 && <div>{s.royalty_pct}% {s.royalty_base === 'TOTALE' ? 'sul totale' : s.royalty_base === 'CONTANTI_POS' ? 'su contanti e POS' : 'sui contanti'}</div>}{Number(s.royalty_fixed_monthly) > 0 || Number(s.royalty_pct) > 0 ? <div className="muted">IVA {s.royalty_vat_rate}%</div> : <span className="muted">nessuno</span>}</>}</td>
+              <td className="mono">{s.code}</td><td><b>{s.name}</b><div className="small muted">{[s.address, s.city, s.province && `(${s.province})`].filter(Boolean).join(' ')}</div>{s.configured && (s.site_email ? <div className="small muted">{s.site_email}</div> : <div className="small red" title="Email della sede mancante in Amministrazione, Sedi">email mancante</div>)}{sup && s.configured && s.company_name && <div className="small muted">{s.company_name}</div>}</td>
+              {!s.configured ? <td colSpan={4} className="small muted">Impostazioni Cash non ancora definite: fondo cassa, casse attese, terminali POS e royalty si compilano con "Configura in Cash"</td> : <>
+              <td className="days-cell" title={`${s.hours_from_core && Object.keys(s.hours || {}).length > 0 ? hoursSummary(s.hours) : 'Orari non indicati in Amministrazione, Sedi: vale lunedì-sabato'}${!s.opened_at ? '. Data di apertura non indicata in Amministrazione, Sedi: vale il giorno della configurazione in Cash' : ''}`}><div className="days">{daysLabel(s.operating_days)}</div><div className="small muted">dal {itDate(s.start_date)}{!s.opened_at && ' *'}</div></td>
+              <td>{s.ownership === 'PROPRIA' ? <Badge tone="teal">Sede di proprietà</Badge> : s.host_name || <span className="muted">–</span>}{s.host_email && <div className="small muted">{s.host_email}</div>}<div className="small">{s.ownership === 'PROPRIA' ? <span className="muted">nessuna royalty</span> : <>{Number(s.royalty_fixed_monthly) > 0 && <div>{eur(s.royalty_fixed_monthly)}/mese</div>}{Number(s.royalty_pct) > 0 && <div>{s.royalty_pct}% {s.royalty_base === 'TOTALE' ? 'sul totale' : s.royalty_base === 'CONTANTI_POS' ? 'su contanti e POS' : 'sui contanti'}</div>}{Number(s.royalty_fixed_monthly) > 0 || Number(s.royalty_pct) > 0 ? <div className="muted">IVA {s.royalty_vat_rate}%</div> : <span className="muted">nessuno</span>}</>}</div></td>
               <td className="num strong">{eur(s.cash_float)} <button className="btn link small" onClick={() => setHist(s)}>storico</button>{Number(s.expected_registers) > 1 && <div className="small muted">{s.expected_registers} casse</div>}</td>
               <td className="num">{s.users_count}</td>
               </>}
               <td>{s.active ? <Badge tone="green">Attiva</Badge> : <Badge tone="red">Disattiva</Badge>}{!s.configured && <div style={{ marginTop: 4 }}><Badge>Da configurare</Badge></div>}</td>
-              <td className="num"><button className="btn sm ghost" onClick={() => openEdit(s)}>{s.configured ? 'Impostazioni Cash' : 'Configura in Cash'}</button></td>
+              <td className="num"><button className="btn sm ghost" title={s.configured ? 'Impostazioni Cash della sede' : 'Configura la sede in Cash'} onClick={() => openEdit(s)}><Icon name="gear" size={15} />{s.configured ? 'Impostazioni' : 'Configura'}</button></td>
             </tr>))}</tbody>
         </table></div></div>
       )}

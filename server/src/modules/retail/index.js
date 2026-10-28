@@ -49,6 +49,15 @@ export default function mount(app) {
     req.user = { ...req.moduleUser, site_id: siteIds[0] ?? null, site_ids: siteIds };
     next();
   });
+  // Contatori di menu: richiami periodici scaduti, campagne in corso
+  r.get('/badges', async (_req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const rc = await one(`SELECT count(*) FILTER (WHERE due < CURRENT_DATE)::int AS overdue FROM (SELECT s.customer_id, p.id, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id IS NOT NULL AND p.periodicity_months IS NOT NULL GROUP BY s.customer_id, p.id) x`);
+      const ca = await one(`SELECT count(*)::int AS n FROM campaigns WHERE status='ATTIVA'`);
+      res.json({ richiami_scaduti: rc.overdue, campagne_attive: ca.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try { const st = await getModuleState(KEY); res.json({ mode: st.mode, last_copy_at: st.last_copy_at, user: publicUser(req.user) }); } catch (e) { next(e); }
   });

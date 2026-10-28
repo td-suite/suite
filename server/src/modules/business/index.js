@@ -23,6 +23,15 @@ export default function mount(app) {
   // l'app ragiona con il "suo" utente: la riga della tabella users dello schema business, con role = profilo del grant Suite
   r.use((req, _res, next) => { req.suiteUser = req.user; req.user = req.moduleUser; next(); });
 
+  // Contatori di menu: contratti in scadenza entro 60 giorni o scaduti ancora attivi, fascicoli in corso
+  r.get('/badges', async (_req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const c = await one(`SELECT count(*)::int AS n FROM contracts WHERE status IN ('FIRMATO','AUTORIZZATO','ATTIVO') AND end_date IS NOT NULL AND end_date <= CURRENT_DATE + 60`);
+      const f = await one(`SELECT count(*)::int AS n FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')`);
+      res.json({ contratti_in_scadenza: c.n, fascicoli_aperti: f.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try {
       const st = await getModuleState(KEY);

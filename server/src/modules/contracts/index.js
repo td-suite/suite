@@ -43,6 +43,18 @@ export default function mount(app) {
     next();
   });
 
+  // Contatori accanto alle voci di menu (richiesta del CEO: notifiche su tutti i widget)
+  r.get('/badges', async (_req, res, next) => {
+    try {
+      const { one } = await import('./db.js');
+      const { computeDeadlines } = await import('./lib/deadlines.js');
+      const { getSettings } = await import('./lib/payroll.js');
+      const deadlines = await computeDeadlines({ horizonDays: Number((await getSettings()).deadline_alert_days || 60) });
+      const cv = await one(`SELECT count(*)::int AS n FROM cv_box WHERE status='NUOVO'`);
+      const lettere = await one(`SELECT count(*)::int AS n FROM commitment_letters WHERE status IN ('BOZZA','INVIATA')`);
+      res.json({ scadenze: deadlines.filter((d) => d.days <= 30).length, cv_nuovi: cv.n, lettere_aperte: lettere.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try {
       const st = await getModuleState(KEY);

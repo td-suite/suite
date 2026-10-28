@@ -30,6 +30,14 @@ export default function mount(app) {
   // L'app ragiona con il "suo" utente: la riga della tabella users dello schema del modulo, con role = profilo del grant
   r.use((req, _res, next) => { req.suiteUser = req.user; req.user = req.moduleUser; next(); });
 
+  // Contatore di menu: attività con data di fine superata e non concluse (st < 3), sulle target con piano avviato
+  r.get('/badges', async (_req, res, next) => {
+    try {
+      const r = await one(`SELECT count(*)::int AS n FROM activities a JOIN org_ext e ON e.org_id=a.target_id
+        WHERE a.st < 3 AND a.fine ~ '^\\d{4}-\\d{2}-\\d{2}$' AND a.fine::date < CURRENT_DATE`);
+      res.json({ in_ritardo: r.n });
+    } catch (e) { next(e); }
+  });
   r.get('/state', async (req, res, next) => {
     try {
       const st = await getModuleState(KEY);

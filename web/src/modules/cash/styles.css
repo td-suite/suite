@@ -202,3 +202,13 @@ input.money { text-align: right; font-variant-numeric: tabular-nums; }
 
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--teal); }
+
+/* Sedi: tabella larga, colonne compatte e azioni sempre visibili */
+.days-cell { white-space: nowrap; }
+.days-cell .days { font-weight: 600; }
+table.t td:last-child { white-space: nowrap; }
+.sites-table table.t td, .sites-table table.t th { padding: 9px 10px; font-size: 13px; }
+.sites-table table.t td:nth-child(2) { min-width: 170px; }
+.sites-table .table-wrap { overflow-x: auto; scrollbar-gutter: stable; }
+.sites-table table.t th { white-space: normal; }
+.sites-table table.t td:nth-child(4) { max-width: 200px; }

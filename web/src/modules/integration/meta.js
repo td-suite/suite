@@ -7,7 +7,7 @@ export default {
   kicker: 'Finance',
   area: 'FINANCE',
   nav: [
-    { to: '', icon: 'home', label: 'Piano di integrazione', end: true },
+    { to: '', icon: 'home', label: 'Piano di integrazione', end: true, badge: 'in_ritardo' },
     { to: 'guida', icon: 'list', label: 'Guida all\'uso' },
     { group: 'Amministrazione', profiles: ['ADMIN'] },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },
