@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { q, one } from '../db.js';
 import { ah, audit, bad, notFound, parse, HttpError } from '../../../lib/util.js';
 import { requireLab } from '../lib/access.js';
-import { KEY, idOf, loadScheda, settings, generaPer, confermaScheda, registra, nomeBase } from '../lib/core.js';
+import { KEY, idOf, loadScheda, settings, generaPer, confermaScheda, eliminaScheda, registra, nomeBase } from '../lib/core.js';
 import { controllaCoerenza } from '../lib/coerenza.js';
 import { sendFile } from '../lib/storage.js';
 import { generaDocx, testoDocx } from '../lib/docgen.js';
@@ -94,6 +94,19 @@ r.post('/schede/:id/scarta', requireLab, ah(async (req, res) => {
   await registra('SCARTATA', { scheda_id: id, user_id: req.user.id, dettagli: { motivo } });
   await audit(req, 'REFERTI_SCARTO', { module: KEY, entity: 'scheda', entityId: id });
   res.json(await loadScheda(id));
+}));
+
+// Eliminazione di una scheda con i suoi file (Archivio; LAB o admin). Se confermata serve { force: true }: altrimenti 409.
+r.delete('/schede/:id', requireLab, ah(async (req, res) => {
+  const id = idOf(req.params.id, 'Scheda non trovata');
+  try {
+    const out = await eliminaScheda(id, req.user.id, { force: Boolean(req.body?.force) });
+    await audit(req, 'REFERTI_ELIMINA_SCHEDA', { module: KEY, entity: 'scheda', entityId: id, data: { stato: out.stato, file: out.file } });
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 409) return res.status(409).json({ error: e.message, code: 'CONFERMATE', confermate: 1, details: { confermate: 1 } });
+    throw e;
+  }
 }));
 
 // PDF sorgente di un'elaborazione (anteprima affiancata: iframe con #page=N)

@@ -7,7 +7,7 @@ import { SORGENTI } from '../lib/core.js';
 
 const r = Router();
 
-const AZIONI = { CARICATO: 'Caricamento', SCARTATO: 'PDF scartato', MODIFICATA: 'Correzione', CONFERMATA: 'Conferma', SOSTITUZIONE: 'Sostituzione del file precedente', SCARTATA: 'Scheda scartata', IMPOSTAZIONI: 'Impostazioni', TEMPLATE: 'Template carta intestata' };
+const AZIONI = { CARICATO: 'Caricamento', SCARTATO: 'PDF scartato', MODIFICATA: 'Correzione', CONFERMATA: 'Conferma', SOSTITUZIONE: 'Sostituzione del file precedente', SCARTATA: 'Scheda scartata', ELABORAZIONE_ELIMINATA: 'Elaborazione eliminata', SCHEDA_ELIMINATA: 'Scheda eliminata', IMPOSTAZIONI: 'Impostazioni', TEMPLATE: 'Template carta intestata' };
 
 function filtriData(params, from, to, col) {
   const w = [];
@@ -62,7 +62,8 @@ r.get('/registro.xlsx', ah(async (req, res) => {
   for (const x of rows) {
     const anomalie = Array.isArray(x.anomalie) ? x.anomalie.map((a) => a.testo).join('; ') : '';
     const d = x.dettagli || {};
-    const det = [d.motivo ? `Motivo: ${d.motivo}` : null, d.schede != null ? `Schede: ${d.schede}` : null, d.pagine != null ? `Pagine: ${d.pagine}` : null, d.forzata ? 'Conferma forzata (coerenza non superata)' : null,
+    const det = [d.motivo ? `Motivo: ${d.motivo}` : null, d.filename && !x.elaborazione_filename ? `File: ${d.filename}` : null, d.schede != null ? `Schede: ${d.schede}` : null, d.confermate ? `Confermate rimosse: ${d.confermate}` : null, d.file != null && x.azione.endsWith('ELIMINATA') ? `File eliminati: ${d.file}` : null,
+      Array.isArray(d.pazienti) && d.pazienti.length ? `Pazienti: ${d.pazienti.join(', ')}` : null, d.paziente ? `Paziente: ${d.paziente}` : null, d.pagine != null ? `Pagine: ${d.pagine}` : null, d.forzata ? 'Conferma forzata (coerenza non superata)' : null,
       d.suffisso ? 'Nome con suffisso' : null, d.sostituisce_scheda_id ? `Sostituisce la scheda ${d.sostituisce_scheda_id}` : null, d.pdf_sorgente_intero ? 'PDF sorgente intero (ritaglio non disponibile)' : null, d.ocr ? 'OCR' : null,
       Array.isArray(d.campi) ? `Campi: ${d.campi.join(', ')}` : null, d.template ? `Template: ${d.template}` : null].filter(Boolean).join(' · ');
     ws.addRow({ at: new Date(x.at).toLocaleString('it-IT', { timeZone: 'Europe/Rome' }), operatore: x.operatore || '', azione: x.azione_nome, sorgente: x.sorgente_nome || '', paziente: x.cognome_nome || '', acc: x.accettazione || '',

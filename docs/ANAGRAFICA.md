@@ -670,3 +670,54 @@ colonne, testo_sorgente senza testo esterno, anteprime con i 5 check superati, P
 senza luogo di nascita → ANAGRAFICA fallisce, 5 conferme, archivio con ricerca per luogo. Resta da verificare sui PDF reali la posizione
 e le etichette di luogo di nascita e indirizzo (le fixture sono sintetiche) e l'estensione della lista di righe esterne da scartare.
 
+## Referti esterni: riquadro come il modello del CEO e righe spurie (29/10/2026, seconda correzione)
+Il CEO ha provato il widget in produzione: nome = "PAZIENTE" (etichetta al posto di CHIARI STEFANIA), settore inventato MICROBIOLOGIA,
+righe spurie (TOSCANA DIAGNOSTICA S.R.L. del cliente, testata "Esame | Risultato U.M. Valori di Riferimento", firma digitale
+"28-10-2026 15.30 SN=… InfoCamere … Referto firmato da", diciture legali "I risultati di questo referto…", "Regolamento…"), luogo "-".
+Modello corretto: /tmp/claude-0/ref_user.pdf (riquadro PAZIENTE / nome / Data di nascita / Sesso / Accettazione n° / Data Acc.; settore
+FARMACI; riga "Carbamazepina | 10,6 µg/ml | 4,0 - 12,0" con Metodo/Materiale; nient'altro). La correzione del mattino aveva tolto i
+riferimenti di accettazione dal riquadro per un'interpretazione errata: rimessi.
+**Parser** (lib/parsers/common.js): `isEtichettaNome` + `nomeRigaSeguente` (il nome è la riga che segue PAZIENTE/Paziente o la stessa riga
+dopo i due punti, mai l'etichetta); `isTestataTabella` (segmenti tutti parole di testata); `isFirma` (Firma/Validato/Direttore,
+Firmato digitalmente, Referto firmato da, SN=, Emesso dall'Ente Certificatore, InfoCamere, data-ora+SN); `isDicituraLegale` (I risultati
+di questo referto, I dati personali, Regolamento, Il laboratorio dove sono state ottenute, GDPR, art.13, D.Lgs., Informativa);
+`isFineRiquadro` = piè | firma | dicitura legale: il riquadro dei risultati è ciò che sta tra l'intestazione paziente e la prima di
+queste righe, tolte le testate di tabella e le righe con la ragione sociale del laboratorio esterno o del cliente (Toscana Diagnostica
+e varianti, "Cliente:"). Intestazione cercata nelle prime 40 righe (prima 14). **Nessun settore predefinito** (corpo1.js,
+cerbaNuovaIgea.js): il settore iniziale ha titolo vuoto e prende il primo titolo maiuscolo isolato della sorgente; anomalia
+SETTORE_PRESUNTO eliminata. Sorgente ALTRO = corpo 1 a tre colonne con anomalia "sorgente non riconosciuta, verifica", non uno scarto;
+`stimaColonne` stima anche la colonna del riferimento (terzo segmento) quando manca la testata; variante B solo con codici Bianalisi.
+Anagrafica obbligatoria: cognome e nome, sesso, data di nascita, riferimento di accettazione; luogo di nascita e indirizzo facoltativi
+(colonne 002 mantenute). `rigaAnagrafica` del testo sorgente include i riferimenti di accettazione.
+**DOCX** (docgen.js): "PAZIENTE" 8,5 pt grigio sopra il nome 12 pt bold, Data di nascita (anni NN), Sesso, Accettazione n° + Data Acc.
+(A) oppure Referto + Accettazione con codice e data (B), Luogo di nascita e Indirizzo solo se valorizzati; titolo di settore solo se
+presente (corpo 1 e 2).
+**Coerenza** (coerenza.js): token anagrafici con i riferimenti di accettazione; ETICHETTE_TD con PAZIENTE/Accettazione n°/Data
+Acc./Referto/Accettazione; check ANAGRAFICA = nome, sesso, data, accettazione; TESTO_LAB_ESTERNO esclude le righe del riquadro
+"Accettazione n°:", "Data Acc.:", "Referto:", "Accettazione:" e le note del riquadro; nuovo check **RIGHE_SPURIE** (testate di tabella
+anche come testo compattato, firme, diciture legali, numeri di pagina, "Toscana Diagnostica" nel corpo).
+**Migrazione 003**: solo COMMENT corretti (i riferimenti stanno nel riquadro TD). **Web**: pannello scheda con i riferimenti di accettazione
+tra i dati del riquadro, luogo/indirizzo "(se presente)", settore senza titolo ammesso (placeholder), archivio con colonna Accettazione e
+luogo solo se presente; Guida aggiornata. **Fixture** `altro_farmaci.pdf` (genera.py): laboratorio esterno sconosciuto, "Cliente: TOSCANA
+DIAGNOSTICA S.R.L.", Paziente: CHIARI STEFANIA, 25/05/1965, F, accettazione 3370 del 27/10/2026, testata, FARMACI, Carbamazepina 10,6
+µg/ml 4,0 - 12,0, Metodo Immunochimico (KIMS), Materiale SIERO, firma digitale e diciture legali; test: nome corretto, solo FARMACI, una
+riga esame, riquadro con accettazione, DOCX con le sole righe attese, corpo senza titolo se la sorgente non ne ha, righe spurie
+forzate → RIGHE_SPURIE fallisce. Spec aggiornata in /tmp/claude-0/referti_spec.md e copiata in docs/REFERTI_ESTERNI_routine.md
+(tenerle allineate).
+
+## Referti esterni: riquadro definitivo ed eliminazione delle elaborazioni (29/10/2026)
+**Riquadro** (docgen.js, dal modello ref_user.pdf): "PAZIENTE" è il titolo del riquadro, 12 pt bold 004F5F; sotto il nome del paziente
+9 pt bold 5A6B70; poi le righe 8,5 pt Data di nascita, Sesso, Accettazione n°, Data Acc. (Bianalisi: Referto e Accettazione con codice e
+data); Luogo di nascita e Indirizzo solo se presenti. Spec §4 e docs/REFERTI_ESTERNI_routine.md allineati; test sugli stili XML.
+**Eliminazione** (richiesta del CEO: "permettimi di cancellare i file da elaborazioni recenti"): `DELETE /api/referti/elaborazioni/:id`
+(LAB o admin) elimina l'elaborazione con schede e file prodotti (cascata) e i blob (dropBlobs, anche del PDF sorgente); con referti
+confermati risponde 409 `CONFERMATE` con il conteggio finché il body non porta `force: true`. Registro del modulo: azione
+ELABORAZIONE_ELIMINATA (filename, pagine, sorgente, schede, confermate, file, forzata, pazienti: nel registro interno i nomi possono
+restare); audit della Suite REFERTI_ELIMINA_ELABORAZIONE con soli id e conteggi, niente nomi nei log. `DELETE /api/referti/schede/:id`
+(stessa regola, azione SCHEDA_ELIMINATA, audit REFERTI_ELIMINA_SCHEDA; l'elaborazione resta; i puntatori `sostituita_da` verso la
+scheda eliminata si azzerano). Web: cestino a fine riga in Inbox > Elaborazioni recenti con ConfirmModal ("Ci sono N referti
+confermati: verranno rimossi dall'archivio"; su 409 la finestra resta aperta e il secondo clic manda force), riga che sparisce e badge
+aggiornato subito (evento `suite:badges` ascoltato dalla Shell); in Archivio pulsante "Elimina" per singola scheda confermata;
+Registro con le due nuove azioni e dettagli. Collaudo su db dedicato (porta 3123): eliminazione senza force → 409, con force → ok,
+registro, badge; test 31/31, build Vite.
+

@@ -24,7 +24,7 @@ function nuovoStato() { return { settori: [], esami: [], antibiogrammi: [], note
 
 function parseCorpo2(righe, st, anomalie) {
   const settore = () => {
-    if (st.settore < 0) { st.settori.push({ titolo: 'MICROBIOLOGIA', righe: [] }); st.settore = st.settori.length - 1; anomalie.push(anomalia('SETTORE_PRESUNTO')); }
+    if (st.settore < 0) { st.settori.push({ titolo: '', righe: [] }); st.settore = st.settori.length - 1; }   // nessun settore predefinito: titolo solo se la sorgente lo ha
     return st.settore;
   };
   const esame = () => {

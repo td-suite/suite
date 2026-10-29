@@ -25,6 +25,7 @@ export default function Inbox() {
   const [busy, setBusy] = useState(false);
   const [esito, setEsito] = useState(null);
   const [verdi, setVerdi] = useState(null);
+  const [elimina, setElimina] = useState(null);     // { e, force }
   const lab = isLab(user);
 
   const carica = async (files) => {
@@ -51,6 +52,23 @@ export default function Inbox() {
       elab.reload(); bozze.reload();
     } catch (err) { toast(err, 'err'); }
     setBusy(false); setVerdi(null);
+  };
+
+  // Richiesta del CEO: cancellare i file da "Elaborazioni recenti". Con referti confermati il server risponde 409 e serve force.
+  const eliminaElab = async (e, force) => {
+    setBusy(true);
+    try {
+      const r = await api.del(`/elaborazioni/${e.id}`, { force });
+      toast(`"${e.filename}" eliminato: ${r.schede} ${r.schede === 1 ? 'scheda' : 'schede'} e ${r.file} file rimossi`);
+      setElimina(null); elab.reload(); bozze.reload();
+      window.dispatchEvent(new Event('suite:badges'));
+    } catch (err) {
+      setBusy(false);
+      // 409: referti confermati. La finestra resta aperta con il conteggio e il prossimo "Elimina" manda force: true
+      if (err.status === 409) { setElimina({ e, force: true, confermate: err.details?.confermate ?? e.n_confermate }); throw err; }
+      toast(err, 'err'); setElimina(null);
+    }
+    setBusy(false);
   };
 
   return (
@@ -106,11 +124,15 @@ export default function Inbox() {
                 <td><Badge tone={STATO_ELAB[e.stato]?.tone || 'grey'}>{STATO_ELAB[e.stato]?.label || e.stato}</Badge>{e.motivo_scarto && <div className="small muted" style={{ maxWidth: 320 }}>{e.motivo_scarto}</div>}</td>
                 <td className="small">{e.n_schede ? <>{e.n_schede} {e.n_schede === 1 ? 'scheda' : 'schede'}<div className="muted">{e.n_bozze ? `${e.n_bozze} da confermare` : ''}{e.n_bozze && e.n_confermate ? ', ' : ''}{e.n_confermate ? `${e.n_confermate} confermate` : ''}{e.n_scartate ? `, ${e.n_scartate} scartate` : ''}</div></> : <span className="muted">-</span>}</td>
                 <td className="small muted">{itDateTime(e.created_at)}<div>{e.uploaded_by_nome}</div></td>
-                <td className="actions">{lab && e.n_verdi > 0 && <button className="btn sm" disabled={busy} onClick={() => setVerdi(e)}><Icon name="check" />Conferma tutte le verdi ({e.n_verdi})</button>}</td>
+                <td className="actions">{lab && e.n_verdi > 0 && <button className="btn sm" disabled={busy} onClick={() => setVerdi(e)}><Icon name="check" />Conferma tutte le verdi ({e.n_verdi})</button>}
+                  {lab && <button className="btn sm ghost danger" title="Elimina il PDF con le sue schede e i file prodotti" disabled={busy} onClick={() => setElimina({ e, force: e.n_confermate > 0, confermate: e.n_confermate })}><Icon name="trash" /></button>}</td>
               </tr>))}</tbody>
           </table></div>)}
       </Card>
 
+      {elimina && <ConfirmModal title="Elimina l'elaborazione" danger confirmText="Elimina"
+        text={`"${elimina.e.filename}" verrà eliminato con ${elimina.e.n_schede || 0} ${elimina.e.n_schede === 1 ? 'scheda' : 'schede'} e i file prodotti.${elimina.confermate ? ` Ci sono ${elimina.confermate} ${elimina.confermate === 1 ? 'referto confermato' : 'referti confermati'}: verranno rimossi dall'archivio.` : ''} L'operazione resta nel registro.`}
+        onConfirm={() => eliminaElab(elimina.e, elimina.force)} onClose={() => setElimina(null)} />}
       {verdi && <ConfirmModal title="Conferma tutte le schede senza anomalie" text={`Verranno confermate ${verdi.n_verdi} schede di "${verdi.filename}" che non hanno anomalie: per ciascuna il controllo di coerenza viene eseguito e, se superato, si producono DOCX e PDF sul format TD. Le schede che non superano il controllo restano in bozza.`} confirmText="Conferma le verdi" onConfirm={() => confermaVerdi(verdi)} onClose={() => setVerdi(null)} />}
     </div>
   );

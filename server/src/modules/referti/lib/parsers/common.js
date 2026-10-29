@@ -12,14 +12,13 @@ export const ANOMALIE = {
   SOSTITUZIONE: 'Nota di sostituzione: il file precedente verrà sovrascritto',
   NOME_DOPPIO: 'Nome file già presente per un\'altra scheda',
   RIGA_NON_INTERPRETATA: 'Riga non interpretata',
-  SETTORE_PRESUNTO: 'Settore non indicato nella sorgente: impostato MICROBIOLOGIA',
-  SORGENTE_ALTRO: 'Sorgente non riconosciuta: trascrizione generica, verificare tutto',
+  SORGENTE_ALTRO: 'Sorgente non riconosciuta, verifica (trascrizione nel corpo 1 a tre colonne)',
 };
 export const anomalia = (codice, dettaglio) => ({ codice, testo: dettaglio ? `${ANOMALIE[codice] || codice}: ${dettaglio}` : (ANOMALIE[codice] || codice) });
 
 // Settori noti (titoli maiuscoli della sorgente). Qualunque altra riga maiuscola isolata è un titolo di settore nel corpo 1
 // e un titolo di esame nel corpo 2.
-export const SETTORI_NOTI = ['MICROBIOLOGIA', 'MICROBIOLOGIA MOLECOLARE', 'BIOLOGIA MOLECOLARE', 'ALLERGOLOGIA', 'ALLERGOLOGIA E INTOLLERANZE', 'CHIMICA CLINICA',
+export const SETTORI_NOTI = ['MICROBIOLOGIA', 'MICROBIOLOGIA MOLECOLARE', 'BIOLOGIA MOLECOLARE', 'ALLERGOLOGIA', 'ALLERGOLOGIA E INTOLLERANZE', 'CHIMICA CLINICA', 'FARMACI',
   'EMATOLOGIA', 'IMMUNOLOGIA', 'SIEROLOGIA', 'VIROLOGIA', 'PARASSITOLOGIA', 'MICOLOGIA', 'IMMUNOMETRIA', 'COAGULAZIONE', 'ESAMI DELLE URINE', 'TOSSICOLOGIA',
   'ENDOCRINOLOGIA', 'MARCATORI TUMORALI', 'AUTOIMMUNITÀ', 'AUTOIMMUNITA\'', 'GENETICA', 'ANATOMIA PATOLOGICA', 'CITOLOGIA'];
 
@@ -35,20 +34,38 @@ export const isLegenda = (s) => /^(S|I|R|MIC)\s*[=:]\s*\S/.test(compattaSpazi(s)
 // ("(1) Esame eseguito…", "annulla e sostituisce…") restano: isNota ha la precedenza.
 const RE_LAB = [
   /^(BIANALISI\b|Cerba\s+HealthCare|Rete\s+Diagnostica\s+Italiana|Nuova\s+Igea\b|Laboratorio\s+(di\s+)?analisi|Laboratorio\s+Firenze)/i,
+  /Toscana\s+Diagnostica\s*(S\.?\s?r\.?\s?l\.?)?/i,              // laboratorio cliente indicato nell'intestazione esterna (e sue varianti)
+  /^(Cliente|Committente|Destinatario|Mittente|Struttura\s+richiedente|Centro\s+prelievi)\b/i,
   /^(Il\s+)?(Direttore|Dirett\.|Responsabile)\b/i,
   /^(Medico\s+)?(richiedente|prescrittore|curante)\b/i, /^Reparto\b/i, /^Dott\.?(ssa)?\s/i, /^Dr\.?(ssa)?\s/i,
-  /^(Firma|Firmato|Validato|Refertato|Validazione|Refertazione)\b/i,
   /^Il\s+presente\s+(referto|documento|rapporto)\b/i, /^Documento\s+(firmato|informatico|sottoscritto)/i,   // (la nota "annulla e sostituisce" è esclusa a monte da isNota)
   /\b(P\.?\s?IVA|Partita\s+IVA|Cod(ice)?\.?\s*Fisc(ale)?\.?|C\.F\.)\s*:?\s*\d/i,
   /^(Tel\.?|Telefono|Fax|e-?mail|PEC|www\.)\b/i,
   /^(Referto|Accettazione)\s+n?[°o.]?\s*[A-Z0-9][A-Z0-9/.-]{3,}\s*(del\s+\d{2}\/\d{2}\/\d{4})?\s*[-–]\s*\S/i,   // piè "Referto R3YE… - COGNOME NOME"
   /^(Via|Viale|Piazza|P\.zza|Corso|Largo)\s.+\b\d{5}\b.*(Direttore|Tel|Fax|P\.?IVA)/i,
 ];
+// Righe di firma (anche digitale) e diciture legali/privacy: la prima di queste chiude il riquadro dei risultati
+const RE_FIRMA = [
+  /^(Firma|Firmato|Validato|Refertato|Validazione|Refertazione)\b/i, /Firmat[oa]\s+digitalmente/i, /Referto\s+firmato\s+da/i, /\bSN\s*=\s*\d+/i,
+  /Emesso\s+dall'?\s*Ente\s+Certificatore/i, /InfoCamere/i, /Qualified\s+Electronic\s+Signature/i, /^\d{2}[-/.]\d{2}[-/.]\d{4}\s+\d{1,2}[.:]\d{2}\b.*(SN|firm|cert)/i,
+  /^(Il\s+)?Direttore\b/i,
+];
+const RE_LEGALE = [
+  /^I\s+risultati\s+di\s+questo\s+referto/i, /^I\s+dati\s+personali/i, /^Regolamento\b/i, /^Il\s+laboratorio\s+dove\s+sono\s+state\s+ottenute/i,
+  /\bGDPR\b/i, /\bart\.?\s*13\b/i, /\bD\.?\s?Lgs\.?\s*\d/i, /^Informativa\b/i, /^Il\s+presente\s+(referto|documento|rapporto)\b/i,
+];
+export const isFirma = (s) => { const t = compattaSpazi(s); return Boolean(t) && !isNota(t) && RE_FIRMA.some((re) => re.test(t)); };
+export const isDicituraLegale = (s) => { const t = compattaSpazi(s); return Boolean(t) && !isNota(t) && RE_LEGALE.some((re) => re.test(t)); };
+// Testata di tabella (Esame | Risultato | U.M. | Valori di Riferimento, Analisi | Risultati | Intervalli di Riferimento… in qualunque combinazione)
+const PAROLE_TESTATA = /^(esam[ei]|analisi|test|descrizione|risultat[oi]|valor[ei]|esito|u\.?m\.?|unità|unita'?|unità di misura|um|valori di riferimento|intervalli di riferimento|intervallo di riferimento|riferimento|riferimenti|range|v\.?r\.?|note|metodo|metodica|precedent[ei]|\*)$/i;
+export const isTestataTabella = (s) => { const seg = segmenti(s).map((x) => compattaSpazi(x.testo)); return seg.length >= 2 && seg.every((x) => PAROLE_TESTATA.test(x)) && seg.some((x) => /risultat|riferimento|analisi|esam/i.test(x)); };
 export function isTestoLaboratorio(s) {
   const t = compattaSpazi(s);
   if (!t || isNota(t)) return false;
-  return RE_LAB.some((re) => re.test(t));
+  return RE_LAB.some((re) => re.test(t)) || isFirma(t) || isDicituraLegale(t) || isTestataTabella(s) || isPieDiPagina(s);
 }
+// Fine del riquadro dei risultati: prima riga di firma, dicitura legale o piè di pagina
+export const isFineRiquadro = (s) => isPieDiPagina(s) || isFirma(s) || isDicituraLegale(s);
 
 // Segmenti di una riga con la posizione di inizio (carattere), per assegnarli alle colonne del layout
 export function segmenti(riga) {
@@ -84,7 +101,8 @@ export function datiPaziente(righe, a) {
 
 // Riga anagrafica sintetica (dati del paziente estratti) che accompagna il testo del riquadro nel testo sorgente della scheda: serve al
 // controllo di coerenza (i numeri del riquadro anagrafico del DOCX — data, età, CAP, civico — devono esistere nella sorgente).
-export const rigaAnagrafica = (a) => [a.cognome_nome, a.sesso, a.data_nascita, a.eta != null && a.eta !== '' ? `(anni ${a.eta})` : '', a.luogo_nascita, a.indirizzo].filter(Boolean).join('  ');
+export const rigaAnagrafica = (a) => [a.cognome_nome, a.sesso, a.data_nascita, a.eta != null && a.eta !== '' ? `(anni ${a.eta})` : '', a.luogo_nascita, a.indirizzo,
+  a.accettazione_n, a.data_acc, a.referto_codice, a.referto_data, a.accettazione_codice, a.accettazione_data].filter(Boolean).join('  ');
 
 // Variante B (Bianalisi): "Referto R3YE… del gg/mm/aaaa", "Accettazione A3YE… del gg/mm/aaaa", "F-16/04/1974 (anni 52) TOLAFI"
 export function anagraficaB(righe) {
@@ -102,7 +120,8 @@ export function anagraficaB(righe) {
       const prima = r.slice(0, m.index).trim();
       const seg = segmenti(prima);
       let nome = seg.length ? seg[0].testo : '';
-      if (!nome) { for (let j = i - 1; j >= 0 && !nome; j--) { const s = segmenti(righe[j]); if (s.length && isMaiuscola(s[0].testo) && !/Referto|Accettazione|BIANALISI/i.test(s[0].testo)) nome = s[0].testo; } }
+      if (!nome) { for (let j = i - 1; j >= 0 && !nome; j--) { const s = segmenti(righe[j]); if (s.length && isMaiuscola(s[0].testo) && !/Referto|Accettazione|BIANALISI/i.test(s[0].testo) && !isEtichettaNome(s[0].testo)) nome = s[0].testo; } }
+      if (nome && isEtichettaNome(nome)) nome = nomeRigaSeguente(righe, i);
       a.cognome_nome = compattaSpazi(nome).toUpperCase();
     }
   }
@@ -110,13 +129,28 @@ export function anagraficaB(righe) {
 }
 
 // Variante A (Cerba RDI / Nuova Igea): "Paziente: …", "Nato il: gg/mm/aaaa", "Sesso: F", "Accettazione n° …", "Data Acc. gg/mm/aaaa"
+const RE_ETICHETTA_NOME = /^(Paziente|Cognome e nome|Cognome|Nome|Nominativo|Assistit[oa]|Intestatario)\s*:?$/i;
+export const isEtichettaNome = (s) => RE_ETICHETTA_NOME.test(compattaSpazi(s));
+// Prima riga utile dopo l'etichetta: il nome del paziente (maiuscolo, non una data, non un'altra etichetta)
+function nomeRigaSeguente(righe, i) {
+  for (let j = i + 1; j < Math.min(righe.length, i + 4); j++) {
+    const seg = segmenti(righe[j]); if (!seg.length) continue;
+    const t = seg[0].testo.replace(/^(Paziente|Nominativo)\s*:\s*/i, '');
+    if (isEtichettaNome(t) || RE_DATA.test(t) || /^(Sesso|Nat[oa]|Data|Accettazione|Luogo|Indirizzo|Residen)/i.test(t)) continue;
+    if (isMaiuscola(t)) return compattaSpazi(t).toUpperCase();
+    return '';
+  }
+  return '';
+}
 export function anagraficaA(righe) {
   const a = { variante: 'A' };
   datiPaziente(righe, a);
   for (let i = 0; i < righe.length; i++) {
     const r = righe[i];
     let m = r.match(/(?:Paziente|Cognome e nome|Nominativo|Assistit[oa])\s*:?\s+(.+?)(?:\s{2,}|\s+(?:Nat[oa] (?:il|a|in)|Data di nascita|Luogo di nascita|Sesso|Indirizzo|Residen|Accettazione|Data Acc)\b|$)/i);
-    if (m && !a.cognome_nome) a.cognome_nome = compattaSpazi(m[1]).toUpperCase();
+    if (m && !a.cognome_nome && !isEtichettaNome(m[1]) && !RE_DATA.test(m[1]) && !/^[FM]$/i.test(compattaSpazi(m[1]))) a.cognome_nome = compattaSpazi(m[1]).toUpperCase();
+    // etichetta "PAZIENTE" da sola (o seguita solo da data/sesso): il nome è nella riga che segue, mai l'etichetta
+    if (!a.cognome_nome && segmenti(r).length && isEtichettaNome(segmenti(r)[0].testo)) { const n = nomeRigaSeguente(righe, i); if (n) a.cognome_nome = n; }
     m = r.match(/(?:Nat[oa] il|Data di nascita|Nascita)\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
     if (m && !a.data_nascita) a.data_nascita = m[1];
     m = r.match(/Sesso\s*:?\s*([FM])\b/i);
@@ -128,7 +162,7 @@ export function anagraficaA(righe) {
     // Senza etichetta "Paziente": la riga che porta nascita e sesso inizia con il nome
     if (!a.cognome_nome && /\d{2}\/\d{2}\/\d{4}/.test(r) && /\b[FM]\b/.test(r) && !/Acc/i.test(r)) {
       const s = segmenti(r);
-      if (s.length && isMaiuscola(s[0].testo) && !RE_DATA.test(s[0].testo)) a.cognome_nome = compattaSpazi(s[0].testo).toUpperCase();
+      if (s.length && isMaiuscola(s[0].testo) && !RE_DATA.test(s[0].testo) && !isEtichettaNome(s[0].testo)) a.cognome_nome = compattaSpazi(s[0].testo).toUpperCase();
     }
   }
   return a;
@@ -136,9 +170,14 @@ export function anagraficaA(righe) {
 
 export const chiaveAnagrafica = (a) => (a.cognome_nome ? `${a.cognome_nome}|${a.accettazione_n || a.accettazione_codice || a.referto_codice || ''}` : '');
 
-// Campi obbligatori dell'anagrafica (cognome e nome, sesso, data e luogo di nascita); l'indirizzo è facoltativo
-export const CAMPI_ANAGRAFICA = { cognome_nome: 'cognome e nome', sesso: 'sesso', data_nascita: 'data di nascita', luogo_nascita: 'luogo di nascita' };
-export const campiMancanti = (a) => Object.entries(CAMPI_ANAGRAFICA).filter(([k]) => !String(a?.[k] || '').trim()).map(([, v]) => v);
+// Campi obbligatori dell'anagrafica (cognome e nome, sesso, data di nascita, riferimento di accettazione); luogo di nascita e indirizzo
+// si riportano solo se presenti nella sorgente (modello del CEO del 29/10/2026)
+export const CAMPI_ANAGRAFICA = { cognome_nome: 'cognome e nome', sesso: 'sesso', data_nascita: 'data di nascita' };
+export const campiMancanti = (a) => {
+  const out = Object.entries(CAMPI_ANAGRAFICA).filter(([k]) => !String(a?.[k] || '').trim()).map(([, v]) => v);
+  if (!['accettazione_n', 'accettazione_codice', 'referto_codice'].some((k) => String(a?.[k] || '').trim())) out.push('accettazione');
+  return out;
+};
 
 export function anomalieAnagrafica(a) {
   const out = [];
@@ -158,18 +197,19 @@ export const isSostituzione = (s) => /annulla e sostituisce/i.test(String(s || '
 // Restituisce { testa: [righe di intestazione], corpo: [righe del riquadro], testataColonne }
 export function separaIntestazione(righe, { testataColonne, fineIntestazione }) {
   let fine = -1;
-  for (let i = 0; i < Math.min(righe.length, 14); i++) {
-    if (testataColonne && testataColonne.test(righe[i])) { fine = i; break; }
+  const MAX = Math.min(righe.length, 40);
+  for (let i = 0; i < MAX; i++) {
+    if ((testataColonne && testataColonne.test(righe[i])) || isTestataTabella(righe[i])) { fine = i; break; }
   }
   if (fine < 0 && fineIntestazione) {
-    for (let i = 0; i < Math.min(righe.length, 14); i++) if (fineIntestazione.test(righe[i])) fine = i;
+    for (let i = 0; i < MAX; i++) if (fineIntestazione.test(righe[i])) fine = i;
   }
   const testa = righe.slice(0, fine + 1);
   let corpo = righe.slice(fine + 1);
-  // piè di pagina: dalla riga "Pagina N di M" (o dall'ultima riga che riporta accettazione/referto + nome) in poi
-  const idxPie = corpo.findIndex((r) => isPieDiPagina(r));
-  if (idxPie >= 0) corpo = corpo.slice(0, idxPie);
-  // righe del laboratorio esterno fuori dal riquadro: scartate (non trascritte né salvate)
+  // il riquadro finisce alla prima riga di firma, dicitura legale o piè di pagina ("Pagina N di M")
+  const idxFine = corpo.findIndex((r) => isFineRiquadro(r));
+  if (idxFine >= 0) corpo = corpo.slice(0, idxFine);
+  // altre righe del laboratorio esterno (ragione sociale esterna o del cliente, testate di tabella, contatti…): scartate, non trascritte né salvate
   corpo = corpo.filter((r) => !isTestoLaboratorio(r));
   // code vuote
   while (corpo.length && !corpo[corpo.length - 1].trim()) corpo.pop();

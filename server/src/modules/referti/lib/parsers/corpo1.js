@@ -26,22 +26,28 @@ function colonnaDi(seg, pos) {
   return 'nome';
 }
 
-// Senza testata: la colonna del risultato è la più frequente posizione del secondo segmento
+// Senza testata: la colonna del risultato è la più frequente posizione del secondo segmento; quella del riferimento la più
+// frequente posizione del terzo (se le righe a tre segmenti esistono)
 function stimaColonne(righe) {
-  const conta = new Map();
-  for (const r of righe) { const s = segmenti(r); if (s.length >= 2) conta.set(s[1].da, (conta.get(s[1].da) || 0) + 1); }
-  let best = null;
-  for (const [k, v] of conta) if (!best || v > best[1]) best = [k, v];
-  return best ? { ris: best[0], um: null, rif: null } : { ris: 40, um: null, rif: null };
+  const moda = (idx) => {
+    const conta = new Map();
+    for (const r of righe) { const s = segmenti(r); if (s.length > idx) conta.set(s[idx].da, (conta.get(s[idx].da) || 0) + 1); }
+    let best = null;
+    for (const [k, v] of conta) if (!best || v > best[1]) best = [k, v];
+    return best ? best[0] : null;
+  };
+  const ris = moda(1); const rif = moda(2);
+  return { ris: ris ?? 40, um: null, rif: rif != null && ris != null && rif > ris + 3 ? rif : null };
 }
 
-export function parseCorpo1(paginaRighe, { testata, settorePredefinito = 'MICROBIOLOGIA', anomalie, stato }) {
+export function parseCorpo1(paginaRighe, { testata, anomalie, stato }) {
   // stato: { settori, note, corrente (settore), ultimaRiga (per i valori spezzati), pos }
   const st = stato;
   if (!st.pos) st.pos = colonneDaTestata(testata) || stimaColonne(paginaRighe);
   const pos = st.pos;
+  // Nessun settore predefinito: il titolo esiste solo se la sorgente lo ha; altrimenti il corpo parte senza titolo (titolo vuoto)
   const settore = () => {
-    if (!st.corrente) { st.corrente = { titolo: settorePredefinito, righe: [] }; st.settori.push(st.corrente); anomalie.push(anomalia('SETTORE_PRESUNTO')); }
+    if (!st.corrente) { st.corrente = { titolo: '', righe: [] }; st.settori.push(st.corrente); }
     return st.corrente;
   };
   for (const raw of paginaRighe) {
@@ -52,9 +58,12 @@ export function parseCorpo1(paginaRighe, { testata, settorePredefinito = 'MICROB
     const testo = compattaSpazi(riga);
     // Note a piè del corpo
     if (isNota(testo)) { st.note.push(testo); if (isSostituzione(testo)) anomalie.push(anomalia('SOSTITUZIONE')); st.ultimaRiga = null; continue; }
-    // Titolo di settore: un solo segmento, maiuscolo, in prima colonna
+    // Titolo di settore: un solo segmento, maiuscolo, in prima colonna (FARMACI, MICROBIOLOGIA, CHIMICA CLINICA…). Se il settore
+    // corrente è quello iniziale senza titolo e ancora vuoto, prende questo titolo
     if (seg.length === 1 && colonnaDi(seg[0], pos) === 'nome' && isMaiuscola(seg[0].testo) && !isSottoriga(seg[0].testo) && !/^(ESBL|MIC)\b/.test(seg[0].testo)) {
-      st.corrente = { titolo: seg[0].testo.toUpperCase(), righe: [] }; st.settori.push(st.corrente); st.ultimaRiga = null; continue;
+      if (st.corrente && !st.corrente.titolo && !st.corrente.righe.length) st.corrente.titolo = seg[0].testo.toUpperCase();
+      else { st.corrente = { titolo: seg[0].testo.toUpperCase(), righe: [] }; st.settori.push(st.corrente); }
+      st.ultimaRiga = null; continue;
     }
     // Legenda EUCAST e simili (righe fisse)
     if (isLegenda(testo)) { settore().righe.push({ tipo: 'legenda', testo }); st.ultimaRiga = null; continue; }

@@ -46,15 +46,25 @@ const cell = (children, w, o = {}) => new TableCell({
 const table = (rows, widths, o = {}) => new Table({ rows, columnWidths: widths, width: { size: widths.reduce((a, b) => a + b, 0), type: WidthType.DXA }, layout: TableLayoutType.FIXED, borders: o.borders || NOB, alignment: o.align });
 const spacer = (h = 120) => new Paragraph({ children: [new TextRun({ text: '', size: 2 })], spacing: { before: 0, after: 0, line: h, lineRule: 'exact' } });
 
-// Riquadro anagrafico a destra (4479 twip): nome 12 pt bold; righe 8,5 pt Sesso, Data di nascita (con "(anni NN)" se disponibile),
-// Luogo di nascita, Indirizzo (solo se presente). Corretto il 29/10/2026 su indicazione del CEO: nessun codice di referto/accettazione
-// del laboratorio esterno e nessun riferimento al laboratorio esterno nel DOCX (restano solo nel registro interno).
+// Riquadro anagrafico a destra (4479 twip) come il modello del CEO (ref_user.pdf, 29/10/2026): titolo "PAZIENTE" 12 pt bold 004F5F,
+// sotto il nome del paziente 9 pt bold 5A6B70; righe 8,5 pt Data di nascita (con "(anni NN)" se disponibile), Sesso, poi Accettazione n° + Data Acc. (variante A)
+// oppure Referto + Accettazione con codice e data (variante B, Bianalisi); Luogo di nascita e Indirizzo SOLO se valorizzati (nessuna riga
+// vuota né trattino). Sotto il riquadro nessun riferimento al laboratorio esterno.
 function riquadroAnagrafico(a) {
   const riga = (label, value) => p([t(`${label}: `, { size: 17, color: C.etichetta }), t(value || '-', { size: 17, bold: true })], { after: 20, line: 240 });
-  const righe = [p(t(a.cognome_nome || 'PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 60, line: 276 })];
-  righe.push(riga('Sesso', a.sesso));
+  // "PAZIENTE" è il titolo del riquadro (12 pt bold 004F5F), sotto il nome del paziente (9 pt bold 5A6B70), poi le righe 8,5 pt
+  const righe = [p(t('PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 40, line: 276 })];
+  righe.push(p(t(a.cognome_nome || '-', { size: 18, bold: true, color: C.etichetta }), { after: 40, line: 240 }));
   righe.push(riga('Data di nascita', a.eta != null && a.eta !== '' ? `${a.data_nascita || '-'} (anni ${a.eta})` : a.data_nascita));
-  righe.push(riga('Luogo di nascita', a.luogo_nascita));
+  righe.push(riga('Sesso', a.sesso));
+  if (a.variante === 'B' || a.referto_codice || a.accettazione_codice) {
+    righe.push(riga('Referto', [a.referto_codice, a.referto_data ? `del ${a.referto_data}` : ''].filter(Boolean).join(' ')));
+    righe.push(riga('Accettazione', [a.accettazione_codice, a.accettazione_data ? `del ${a.accettazione_data}` : ''].filter(Boolean).join(' ')));
+  } else {
+    righe.push(riga('Accettazione n°', a.accettazione_n));
+    righe.push(riga('Data Acc.', a.data_acc));
+  }
+  if (a.luogo_nascita) righe.push(riga('Luogo di nascita', a.luogo_nascita));
   if (a.indirizzo) righe.push(riga('Indirizzo', a.indirizzo));
   return table([new TableRow({ children: [cell(righe, RIQUADRO, { fill: C.riquadro, margins: { top: 120, bottom: 120, left: 180, right: 180 },
     borders: { ...cellNOB, left: { style: BorderStyle.SINGLE, size: 24, color: C.accento } } })] })], [RIQUADRO], { align: AlignmentType.RIGHT });
@@ -88,7 +98,7 @@ const rigaSpan = (testo, o = {}) => new TableRow({ cantSplit: true, children: [c
 function corpo1(dati) {
   const out = [];
   for (const s of dati.settori || []) {
-    out.push(titoloSettore(s.titolo || 'ESAMI'));
+    if (s.titolo) out.push(titoloSettore(s.titolo));   // titolo di settore solo se la sorgente lo ha
     const rows = (s.righe || []).map((r) => {
       if (r.tipo === 'antibiotico') return rigaAntibiotico1(r);
       if (r.tipo === 'legenda') return rigaSpan(r.testo);
@@ -120,7 +130,7 @@ function corpo2(dati) {
   const esami = dati.esami || [];
   const ab = dati.antibiogrammi || [];
   (dati.settori || []).forEach((s, si) => {
-    out.push(titoloSettore(s.titolo || 'ESAMI'));
+    if (s.titolo) out.push(titoloSettore(s.titolo));
     esami.forEach((e, ei) => {
       if ((e.settore ?? 0) !== si) return;
       out.push(p(t(e.titolo, { size: 21, bold: true }), { before: 140, after: 20, keepNext: true }));

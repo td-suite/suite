@@ -5,7 +5,7 @@ import { many, one } from '../db.js';
 import { config } from '../config.js';
 import { ah, audit, bad, HttpError } from '../../../lib/util.js';
 import { requireLab } from '../lib/access.js';
-import { KEY, idOf, elaboraUpload, elaborazioneCon, confermaScheda, S_COLS, S_FROM } from '../lib/core.js';
+import { KEY, idOf, elaboraUpload, elaborazioneCon, confermaScheda, eliminaElaborazione, S_COLS, S_FROM } from '../lib/core.js';
 
 const r = Router();
 const MB = 1024 * 1024;
@@ -67,6 +67,19 @@ r.post('/elaborazioni/:id/conferma-verdi', requireLab, ah(async (req, res) => {
   }
   await audit(req, 'REFERTI_CONFERMA_VERDI', { module: KEY, entity: 'elaborazione', entityId: id, data: { confermate: confermate.length, non_coerenti: nonCoerenti.length } });
   res.json({ confermate: confermate.map((c) => ({ id: c.id, nome_file: c.nome_file, suffisso: c.suffisso })), non_coerenti: nonCoerenti });
+}));
+
+// Eliminazione di un'elaborazione con schede e file (LAB o admin). Con referti confermati serve { force: true }: altrimenti 409.
+r.delete('/elaborazioni/:id', requireLab, ah(async (req, res) => {
+  const id = idOf(req.params.id, 'Elaborazione non trovata');
+  try {
+    const out = await eliminaElaborazione(id, req.user.id, { force: Boolean(req.body?.force) });
+    await audit(req, 'REFERTI_ELIMINA_ELABORAZIONE', { module: KEY, entity: 'elaborazione', entityId: id, data: { schede: out.schede, confermate: out.confermate, file: out.file } });   // solo id e conteggi
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 409) return res.status(409).json({ error: e.message, code: 'CONFERMATE', confermate: e.details?.confermate || 0, details: { confermate: e.details?.confermate || 0 } });
+    throw e;
+  }
 }));
 
 // Schede in bozza di tutte le elaborazioni (Inbox)

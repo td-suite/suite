@@ -176,6 +176,40 @@ export async function confermaScheda(id, userId, { force = false } = {}) {
   return risultato;
 }
 
+// ---- Eliminazione (richiesta del CEO: "permettimi di cancellare i file da elaborazioni recenti")
+// Elaborazione con schede e file prodotti (anche i blob). Con schede confermate serve force: altrimenti 409 con il conteggio.
+// Nel registro del modulo resta un'azione ELABORAZIONE_ELIMINATA (filename, schede, file; i nomi dei pazienti possono restare nel
+// registro interno, mai nei log della Suite).
+export async function eliminaElaborazione(id, userId, { force = false } = {}) {
+  const e = await one('SELECT id, filename, blob_path, pagine, sorgente, stato FROM elaborazioni WHERE id=$1', [id]);
+  if (!e) throw notFound('Elaborazione non trovata');
+  const schede = await many('SELECT id, cognome_nome, stato, nome_file FROM schede WHERE elaborazione_id=$1 ORDER BY id', [id]);
+  const confermate = schede.filter((s) => s.stato === 'CONFERMATA');
+  if (confermate.length && !force) throw new HttpError(409, `Ci sono ${confermate.length} ${confermate.length === 1 ? 'referto confermato' : 'referti confermati'}: verranno rimossi dall'archivio. Conferma l'eliminazione per procedere`, { confermate: confermate.length, code: 'CONFERMATE' });
+  const file = await many('SELECT id, blob_path FROM file_prodotti WHERE scheda_id = ANY($1::int[]) OR elaborazione_id=$2', [schede.map((s) => s.id), id]);
+  await tx(async (c) => {
+    await registra('ELABORAZIONE_ELIMINATA', { elaborazione_id: id, user_id: userId, dettagli: { filename: e.filename, pagine: e.pagine, sorgente: e.sorgente, schede: schede.length, confermate: confermate.length, file: file.length, forzata: Boolean(confermate.length), pazienti: schede.map((s) => s.cognome_nome).filter(Boolean) } }, c);
+    await c.query('DELETE FROM elaborazioni WHERE id=$1', [id]);   // schede e file_prodotti in cascata
+  });
+  await dropBlobs([e.blob_path, ...file.map((f) => f.blob_path)]);
+  return { id, filename: e.filename, schede: schede.length, confermate: confermate.length, file: file.length };
+}
+
+// Singola scheda (dall'Archivio): con stato CONFERMATA serve force. L'elaborazione resta (il PDF di partenza può avere altre schede).
+export async function eliminaScheda(id, userId, { force = false } = {}) {
+  const s = await one('SELECT s.id, s.cognome_nome, s.stato, s.nome_file, s.elaborazione_id, e.filename FROM schede s JOIN elaborazioni e ON e.id=s.elaborazione_id WHERE s.id=$1', [id]);
+  if (!s) throw notFound('Scheda non trovata');
+  if (s.stato === 'CONFERMATA' && !force) throw new HttpError(409, 'Il referto è confermato: verrà rimosso dall\'archivio. Conferma l\'eliminazione per procedere', { confermate: 1, code: 'CONFERMATE' });
+  const file = await many('SELECT id, blob_path FROM file_prodotti WHERE scheda_id=$1', [id]);
+  await tx(async (c) => {
+    await registra('SCHEDA_ELIMINATA', { elaborazione_id: s.elaborazione_id, user_id: userId, dettagli: { filename: s.filename, nome_file: s.nome_file, paziente: s.cognome_nome, stato: s.stato, file: file.length, forzata: s.stato === 'CONFERMATA' } }, c);
+    await c.query('UPDATE schede SET sostituita_da=NULL WHERE sostituita_da=$1', [id]);
+    await c.query('DELETE FROM schede WHERE id=$1', [id]);
+  });
+  await dropBlobs(file.map((f) => f.blob_path));
+  return { id, stato: s.stato, file: file.length };
+}
+
 // Eliminazione dei contenuti oltre la retention (solo i PDF sorgente delle elaborazioni, i file prodotti restano)
 export async function applicaRetention() {
   const imp = await settings();

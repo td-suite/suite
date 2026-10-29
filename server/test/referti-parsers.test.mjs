@@ -9,10 +9,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elabora, rilevaSorgente, spezzaPerPaziente } from '../src/modules/referti/lib/parsers/index.js';
-import { segmenti, anagraficaA, anagraficaB, isTestoLaboratorio } from '../src/modules/referti/lib/parsers/common.js';
+import { segmenti, anagraficaA, anagraficaB, isTestoLaboratorio, isTestataTabella, isFirma, isDicituraLegale } from '../src/modules/referti/lib/parsers/common.js';
 import { pulisci, anagraficaAbbreviata } from '../src/modules/referti/lib/text.js';
 import { generaDocx, testoDocx, trapianta } from '../src/modules/referti/lib/docgen.js';
-import { controllaCoerenza, tokenRisultati, contaAntibiotici, testoLabEsterno } from '../src/modules/referti/lib/coerenza.js';
+import { controllaCoerenza, tokenRisultati, contaAntibiotici, testoLabEsterno, righeSpurie } from '../src/modules/referti/lib/coerenza.js';
 import { suffissoPer, nomeBase } from '../src/modules/referti/lib/core.js';
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'referti');
@@ -44,13 +44,24 @@ test('anagrafica variante A e B: dati completi del paziente (luogo di nascita, i
   // "TOLAFI" è un codice di sede, non il luogo di nascita
   const b2 = anagraficaB(['ROSSI MARIA        F-16/04/1974 (anni 52) TOLAFI']);
   assert.equal(b2.luogo_nascita, undefined);
+  // etichetta PAZIENTE da sola: il nome è la riga che segue, mai l'etichetta (caso reale del 29/10/2026)
+  const a3 = anagraficaA(['PAZIENTE', 'CHIARI STEFANIA', 'Data di nascita: 25/05/1965        Sesso: F', 'Accettazione n° 3370      Data Acc. 27/10/2026']);
+  assert.equal(a3.cognome_nome, 'CHIARI STEFANIA'); assert.equal(a3.accettazione_n, '3370'); assert.equal(a3.data_acc, '27/10/2026');
+  const a4 = anagraficaA(['PAZIENTE                 25/05/1965     F', 'CHIARI STEFANIA']);
+  assert.equal(a4.cognome_nome, 'CHIARI STEFANIA');
+  assert.equal(anagraficaA(['Paziente: CHIARI STEFANIA']).cognome_nome, 'CHIARI STEFANIA');
 });
 
 test('righe del laboratorio esterno fuori dal riquadro: riconosciute e scartate, note del riquadro conservate', () => {
   for (const r of ['BIANALISI S.p.A. Laboratorio Firenze', 'Cerba HealthCare Toscana s.r.l. - Nuova Igea', 'Direttore del laboratorio: dott.ssa L. Verdi', 'Medico richiedente: dott. G. Esposito',
     'Firma: Il Direttore del Laboratorio dott. M. Bianchi', 'Il presente referto non puo\' essere riprodotto parzialmente. Bianalisi S.p.A. - P.IVA 01234567890', 'Validato da: dott.ssa L. Verdi',
-    'Tel. 049 0000000 - Fax 049 0000001', 'Referto R3YEA050123 - ROSSI MARIA', 'Accettazione n° 26/001234 - GRASSI TIZIANA', 'Richiedente: Toscana Diagnostica S.r.l. (service)']) assert.ok(isTestoLaboratorio(r), r);
-  for (const r of ['(1) Esame eseguito Bianalisi Verano Brianza (MB)', 'Il presente documento annulla e sostituisce il referto R3YEA050100 del 05/10/2026', 'Germe Isolato        Escherichia coli', 'KPC test di conferma     Negativo', 'R: Resistente I: Intermedio S: Sensibile']) assert.ok(!isTestoLaboratorio(r), r);
+    'Tel. 049 0000000 - Fax 049 0000001', 'Referto R3YEA050123 - ROSSI MARIA', 'Accettazione n° 26/001234 - GRASSI TIZIANA', 'Richiedente: Toscana Diagnostica S.r.l. (service)',
+    'TOSCANA DIAGNOSTICA S.R.L.', 'Cliente: Toscana Diagnostica Srl', 'Esame        Risultato      U.M.      Valori di Riferimento', 'Analisi       Risultati       Intervalli di Riferimento',
+    '28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere Qualified Electronic Signature      Referto firmato da: GERINI LUCA', 'Referto firmato da: GERINI LUCA', 'Firmato digitalmente da ROSSI',
+    'I risultati di questo referto sono interpretabili solo dal medico curante', 'I dati personali sono trattati ai sensi del GDPR', 'Regolamento. Il laboratorio dove sono state ottenute le analisi', 'Il laboratorio dove sono state ottenute le analisi', 'Pagina 1 di 1']) assert.ok(isTestoLaboratorio(r), r);
+  assert.ok(isTestataTabella('Esame        Risultato      U.M.      Valori di Riferimento')); assert.ok(!isTestataTabella('Carbamazepina        10,6 µg/ml        4,0 - 12,0'));
+  assert.ok(isFirma('28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere')); assert.ok(isDicituraLegale('I risultati di questo referto sono interpretabili'));
+  for (const r of ['(1) Esame eseguito Bianalisi Verano Brianza (MB)', 'Il presente documento annulla e sostituisce il referto R3YEA050100 del 05/10/2026', 'Germe Isolato        Escherichia coli', 'KPC test di conferma     Negativo', 'R: Resistente I: Intermedio S: Sensibile', 'FARMACI', 'Carbamazepina        10,6 µg/ml        4,0 - 12,0', 'Metodo: Immunochimico (KIMS)']) assert.ok(!isTestoLaboratorio(r), r);
 });
 
 test('rilevamento della sorgente', () => {
@@ -91,8 +102,8 @@ test('Bianalisi: una scheda su 2 pagine, settori, antibiogramma testuale, valore
   assert.equal(d.conteggi.antibiotici_sorgente, 7);
   // riquadro isolato: testo_sorgente = riga anagrafica + riquadro, niente intestazione/piè del laboratorio esterno
   const ts = s.testo_sorgente;
-  assert.ok(ts.startsWith('ROSSI MARIA  F  16/04/1974  (anni 52)  PRATO (PO)  Via dei Mille 3, 50131 Firenze (FI)'));
-  for (const x of ['BIANALISI S.p.A', 'Via dei Laboratori', 'A3YEA050123', 'Referto R3YEA050123', 'Medico richiedente', 'Reparto', 'Firma', 'P.IVA', 'firmato digitalmente', 'Pagina 1 di 2', 'TOLAFI']) assert.ok(!ts.includes(x), `testo_sorgente non deve contenere "${x}"`);
+  assert.ok(ts.startsWith('ROSSI MARIA  F  16/04/1974  (anni 52)  PRATO (PO)  Via dei Mille 3, 50131 Firenze (FI)  R3YEA050123  05/10/2026  A3YEA050123  02/10/2026'));
+  for (const x of ['BIANALISI S.p.A', 'Via dei Laboratori', 'Referto R3YEA050123', 'Medico richiedente', 'Reparto', 'Firma', 'P.IVA', 'firmato digitalmente', 'Pagina 1 di 2', 'TOLAFI', 'Analisi  ']) assert.ok(!ts.includes(x), `testo_sorgente non deve contenere "${x}"`);
   for (const x of ['Carica Batterica', '10^5 UFC/mL', 'Sensibile - MIC <=4', '(1) Esame eseguito Bianalisi Verano Brianza (MB)', 'annulla e sostituisce il referto R3YEA050100']) assert.ok(ts.includes(x), `testo_sorgente deve contenere "${x}"`);
 });
 
@@ -107,7 +118,7 @@ test('Cerba RDI: merge spezzato in 3 pazienti, anagrafica abbreviata segnalata, 
   assert.equal(g.anagrafica.accettazione_n, '2026/0456781'); assert.equal(g.anagrafica.data_acc, '04/09/2026');   // solo registro interno
   assert.equal(g.anagrafica.luogo_nascita, 'FIRENZE (FI)'); assert.equal(g.anagrafica.indirizzo, 'Via Roma 12, 50123 Firenze (FI)');
   assert.equal(r.schede[1].dati.anagrafica.luogo_nascita, 'DHAKA (BANGLADESH)'); assert.equal(r.schede[1].dati.anagrafica.indirizzo, undefined);   // indirizzo assente: nessuna anomalia
-  for (const s of r.schede) for (const x of ['Rete Diagnostica', 'Direttore', 'Medico richiedente', 'Validato', 'P.IVA', 'Pagina 1 di 1', 'Accettazione n°']) assert.ok(!s.testo_sorgente.includes(x), `testo_sorgente non deve contenere "${x}"`);
+  for (const s of r.schede) for (const x of ['Rete Diagnostica', 'Direttore', 'Medico richiedente', 'Validato', 'P.IVA', 'Pagina 1 di 1', 'Accettazione n°', 'Esame  ', 'Valori di Riferimento']) assert.ok(!s.testo_sorgente.includes(x), `testo_sorgente non deve contenere "${x}"`);
   const kpc = g.settori[0].righe[0];
   assert.equal(kpc.nome, 'KPC test di conferma'); assert.equal(kpc.risultato, 'Negativo'); assert.equal(kpc.riferimento, 'Negativo');
   assert.deepEqual(kpc.sotto, ['Metodo: Colturale su terreno cromogeno', 'Materiale: T.AMIES', 'Sede Anatomica: rettale']);
@@ -165,17 +176,22 @@ test('generatore DOCX: anagrafica completa nel riquadro, nessun codice/testo del
       assert.equal(docx.subarray(0, 2).toString('latin1'), 'PK');
       const testo = testoDocx(docx);
       const a = s.dati.anagrafica;
-      assert.ok(testo.includes(a.cognome_nome));
-      assert.ok(testo.includes(`Sesso: ${a.sesso}`)); assert.ok(testo.includes(`Luogo di nascita: ${a.luogo_nascita}`));
+      // riquadro come il modello: "PAZIENTE" titolo del riquadro, sotto il nome, Data di nascita, Sesso, riferimenti di accettazione; luogo/indirizzo solo se presenti
+      const righe = testo.split('\n').filter(Boolean);
+      assert.equal(righe[0], 'PAZIENTE'); assert.equal(righe[1], a.cognome_nome);
+      assert.ok(testo.includes(`Sesso: ${a.sesso}`));
       assert.ok(testo.includes(a.eta != null ? `Data di nascita: ${a.data_nascita} (anni ${a.eta})` : `Data di nascita: ${a.data_nascita}`));
+      if (a.variante === 'B') { assert.ok(testo.includes(`Referto: ${a.referto_codice} del ${a.referto_data}`)); assert.ok(testo.includes(`Accettazione: ${a.accettazione_codice} del ${a.accettazione_data}`)); }
+      else { assert.ok(testo.includes(`Accettazione n°: ${a.accettazione_n}`)); assert.ok(testo.includes(`Data Acc.: ${a.data_acc}`)); }
+      if (a.luogo_nascita) assert.ok(testo.includes(`Luogo di nascita: ${a.luogo_nascita}`)); else assert.ok(!testo.includes('Luogo di nascita'), 'senza luogo la riga non compare');
       if (a.indirizzo) assert.ok(testo.includes(`Indirizzo: ${a.indirizzo}`)); else assert.ok(!testo.includes('Indirizzo:'), 'senza indirizzo la riga non compare');
-      // niente codici di accettazione/referto esterni né riferimenti al laboratorio esterno (le note del riquadro sono ammesse)
-      for (const k of ['accettazione_n', 'data_acc', 'referto_codice', 'accettazione_codice']) if (a[k]) assert.ok(!testo.includes(a[k]), `${name}: ${k} non deve comparire nel DOCX`);
-      for (const x of ['Accettazione', 'Data Acc', 'Referto:', 'BIANALISI S.p.A', 'Rete Diagnostica', 'Nuova Igea', 'Direttore', 'Medico richiedente', 'Pagina 1 di']) assert.ok(!testo.includes(x), `${name}: "${x}" non deve comparire nel DOCX`);
-      assert.deepEqual(testoLabEsterno(testo, s.dati.note), []);
+      assert.ok(!/: -$/m.test(testo), 'nessun trattino per campi vuoti');
+      // nessun riferimento al laboratorio esterno né righe spurie (le note del riquadro sono ammesse)
+      for (const x of ['BIANALISI S.p.A', 'Rete Diagnostica', 'Nuova Igea', 'Direttore', 'Medico richiedente', 'Pagina 1 di', 'Valori di Riferimento', 'Toscana Diagnostica']) assert.ok(!testo.includes(x), `${name}: "${x}" non deve comparire nel DOCX`);
+      assert.deepEqual(testoLabEsterno(testo, s.dati.note), []); assert.deepEqual(righeSpurie(testo, s.dati.note), []);
       const coe = controllaCoerenza({ datiOrig: s.dati, dati: s.dati, testoSorgente: s.testo_sorgente, testoDocx: testo });
       assert.ok(coe.ok, `${name}: ${JSON.stringify(coe.check.filter((c) => !c.ok))}`);
-      assert.deepEqual(coe.check.map((c) => c.codice), ['TOKEN_RISULTATI', 'N_ANTIBIOTICI', 'NUMERI_IN_PIU', 'ANAGRAFICA', 'TESTO_LAB_ESTERNO']);
+      assert.deepEqual(coe.check.map((c) => c.codice), ['TOKEN_RISULTATI', 'N_ANTIBIOTICI', 'NUMERI_IN_PIU', 'ANAGRAFICA', 'TESTO_LAB_ESTERNO', 'RIGHE_SPURIE']);
       assert.ok(tokenRisultati(s.dati).length > 5);
     }
   }
@@ -201,15 +217,57 @@ test('coerenza inversa: testo del laboratorio esterno forzato nel referto TD fa 
   // nota di sostituzione del riquadro (con codice R3YE) e nota "(1) Esame eseguito Bianalisi…": ammesse
   const bia = elabora({ pagine: pagine('bianalisi_urinocoltura') }).schede[0];
   assert.deepEqual(testoLabEsterno(testoDocx(await generaDocx(bia.dati)), bia.dati.note), []);
-  // anagrafica incompleta: senza luogo di nascita e sesso
+  // anagrafica incompleta: senza sesso e accettazione (il luogo di nascita è facoltativo: senza, nessuna anomalia)
   const mod3 = JSON.parse(JSON.stringify(orig.dati));
-  mod3.anagrafica.luogo_nascita = ''; mod3.anagrafica.sesso = '';
+  mod3.anagrafica.luogo_nascita = ''; mod3.anagrafica.sesso = ''; mod3.anagrafica.accettazione_n = '';
   coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod3, testoSorgente, testoDocx: testoDocx(await generaDocx(mod3)) });
   by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
-  assert.equal(by.ANAGRAFICA.ok, false); assert.deepEqual(by.ANAGRAFICA.dettagli, ['sesso', 'luogo di nascita']);
-  // anomalia del parser quando manca il luogo di nascita
-  const senza = elabora({ pagine: pg.map((p) => p.replace(/Luogo di nascita: .*?\([A-Z]+\)/, '')) });
-  assert.ok(senza.schede.every((s) => s.anomalie.some((x) => x.codice === 'ANAGRAFICA_INCOMPLETA' && /luogo di nascita/.test(x.testo))));
+  assert.equal(by.ANAGRAFICA.ok, false); assert.deepEqual(by.ANAGRAFICA.dettagli, ['sesso', 'accettazione']);
+  const senzaLuogo = elabora({ pagine: pg.map((p) => p.replace(/Luogo di nascita: .*?\([A-Z]+\)/, '')) });
+  assert.ok(senzaLuogo.schede.every((s) => !s.anomalie.some((x) => x.codice === 'ANAGRAFICA_INCOMPLETA')));
+  const senzaSesso = elabora({ pagine: pg.map((p) => p.replace(/Sesso: [FM]/g, '')) });
+  assert.ok(senzaSesso.schede.every((s) => s.anomalie.some((x) => x.codice === 'ANAGRAFICA_INCOMPLETA' && /sesso/.test(x.testo))));
+  // righe spurie forzate nel corpo: testata di tabella, firma digitale, dicitura legale
+  const mod4 = JSON.parse(JSON.stringify(orig.dati));
+  mod4.settori[0].righe.push({ tipo: 'testo', testo: 'Esame   Risultato   U.M.   Valori di Riferimento' }, { tipo: 'testo', testo: '28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere' }, { tipo: 'testo', testo: 'I risultati di questo referto sono interpretabili solo dal medico curante' });
+  coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod4, testoSorgente, testoDocx: testoDocx(await generaDocx(mod4)) });
+  by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
+  assert.equal(by.RIGHE_SPURIE.ok, false); assert.equal(by.RIGHE_SPURIE.dettagli.length, 3);
+  assert.match(by.RIGHE_SPURIE.dettagli[0], /testata/); assert.match(by.RIGHE_SPURIE.dettagli[1], /firma/); assert.match(by.RIGHE_SPURIE.dettagli[2], /dicitura legale/);
+});
+
+test('sorgente non riconosciuta (caso CHIARI STEFANIA / FARMACI del 29/10/2026): nome corretto, nessun settore inventato, una sola riga esame, riquadro con accettazione, DOCX senza righe spurie', async () => {
+  const pg = pagine('altro_farmaci');
+  assert.equal(rilevaSorgente(pg[0]), null);
+  const r = elabora({ pagine: pg });
+  assert.equal(r.sorgente, 'ALTRO'); assert.equal(r.motivo_scarto, null); assert.equal(r.schede.length, 1);   // non è uno scarto
+  const s = r.schede[0]; const d = s.dati;
+  assert.deepEqual(codici(s), ['SORGENTE_ALTRO']);
+  assert.equal(d.anagrafica.cognome_nome, 'CHIARI STEFANIA'); assert.equal(d.anagrafica.data_nascita, '25/05/1965'); assert.equal(d.anagrafica.sesso, 'F');
+  assert.equal(d.anagrafica.accettazione_n, '3370'); assert.equal(d.anagrafica.data_acc, '27/10/2026'); assert.equal(d.anagrafica.variante, 'A');
+  assert.equal(d.anagrafica.luogo_nascita, undefined); assert.equal(d.anagrafica.indirizzo, undefined);
+  assert.equal(d.corpo, 1);
+  assert.deepEqual(d.settori.map((x) => x.titolo), ['FARMACI']);          // solo il settore della sorgente, nessun MICROBIOLOGIA
+  assert.equal(d.settori[0].righe.length, 1);
+  assert.deepEqual(d.settori[0].righe[0], { tipo: 'esame', nome: 'Carbamazepina', risultato: '10,6 µg/ml', unita: '', riferimento: '4,0 - 12,0', sotto: ['Metodo: Immunochimico (KIMS)', 'Materiale: SIERO'] });
+  for (const x of ['TOSCANA DIAGNOSTICA', 'Valori di Riferimento', 'SN=', 'InfoCamere', 'GERINI', 'I risultati di questo referto', 'Regolamento', 'Pagina 1 di 1', 'SAN MARCO', 'P.IVA']) assert.ok(!s.testo_sorgente.includes(x), `testo_sorgente non deve contenere "${x}"`);
+  const testo = testoDocx(await generaDocx(d));
+  const righe = testo.split('\n').filter(Boolean);
+  assert.deepEqual(righe.slice(0, 6), ['PAZIENTE', 'CHIARI STEFANIA', 'Data di nascita: 25/05/1965', 'Sesso: F', 'Accettazione n°: 3370', 'Data Acc.: 27/10/2026']);
+  assert.deepEqual(righe.slice(6), ['FARMACI', 'Carbamazepina', 'Metodo: Immunochimico (KIMS)', 'Materiale: SIERO', '10,6 µg/ml', '4,0 - 12,0']);   // nient'altro
+  assert.ok(!testo.includes('Luogo di nascita') && !testo.includes('Indirizzo'));
+  const coe = controllaCoerenza({ datiOrig: d, dati: d, testoSorgente: s.testo_sorgente, testoDocx: testo });
+  assert.ok(coe.ok, JSON.stringify(coe.check.filter((c) => !c.ok)));
+  assert.equal(suffissoPer(d, 'SORGENTE'), 'Esterno');
+});
+
+test('senza titolo di settore nella sorgente il corpo parte senza titolo', async () => {
+  const pg = pagine('altro_farmaci').map((p) => p.replace(/^FARMACI\s*$/m, ''));
+  const s = elabora({ pagine: pg }).schede[0];
+  assert.deepEqual(s.dati.settori.map((x) => x.titolo), ['']);
+  assert.equal(s.dati.settori[0].righe.length, 1);
+  const righe = testoDocx(await generaDocx(s.dati)).split('\n').filter(Boolean);
+  assert.equal(righe[6], 'Carbamazepina');
 });
 
 test('coerenza: valore mancante, antibiotico in meno e numero in più vengono segnalati', async () => {
@@ -226,6 +284,16 @@ test('coerenza: valore mancante, antibiotico in meno e numero in più vengono se
   assert.equal(by.NUMERI_IN_PIU.ok, false); assert.ok(by.NUMERI_IN_PIU.dettagli.includes('999'));
   assert.equal(by.TOKEN_RISULTATI.ok, false); assert.ok(by.TOKEN_RISULTATI.dettagli.includes('>4'));   // MIC dell'antibiotico tolto
   assert.equal(by.ANAGRAFICA.ok, true);
+});
+
+test('riquadro anagrafico: "PAZIENTE" 12 pt bold 004F5F, nome 9 pt bold 5A6B70, righe 8,5 pt', async () => {
+  const PizZip = (await import('pizzip')).default;
+  const s = elabora({ pagine: pagine('altro_farmaci') }).schede[0];
+  const xml = new PizZip(await generaDocx(s.dati)).file('word/document.xml').asText();
+  const run = (testo) => { const i = xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) >= 0 ? xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) : xml.indexOf(`<w:t>${testo}</w:t>`); assert.ok(i > 0, testo); return xml.slice(xml.lastIndexOf('<w:r>', i), i); };
+  const paz = run('PAZIENTE'); assert.match(paz, /w:sz w:val="24"/); assert.match(paz, /<w:b\/>/); assert.match(paz, /w:color w:val="004F5F"/);
+  const nome = run('CHIARI STEFANIA'); assert.match(nome, /w:sz w:val="18"/); assert.match(nome, /<w:b\/>/); assert.match(nome, /w:color w:val="5A6B70"/);
+  const data = run('25/05/1965'); assert.match(data, /w:sz w:val="17"/);
 });
 
 test('trapianto OpenXML: header, footer e media del template restano, document.xml è quello generato', async () => {

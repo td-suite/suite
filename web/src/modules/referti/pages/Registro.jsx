@@ -8,8 +8,8 @@ import { Icon } from '../../../components/Icons.jsx';
 import { itDateTime } from '../format.js';
 import { SorgenteBadge } from './Inbox.jsx';
 
-const AZIONI = { CARICATO: 'Caricamento', SCARTATO: 'PDF scartato', MODIFICATA: 'Correzione', CONFERMATA: 'Conferma', SOSTITUZIONE: 'Sostituzione', SCARTATA: 'Scheda scartata', IMPOSTAZIONI: 'Impostazioni', TEMPLATE: 'Template' };
-const TONE = { CARICATO: 'blue', SCARTATO: 'red', MODIFICATA: 'amber', CONFERMATA: 'green', SOSTITUZIONE: 'mauve', SCARTATA: 'grey', IMPOSTAZIONI: 'teal', TEMPLATE: 'teal' };
+const AZIONI = { CARICATO: 'Caricamento', SCARTATO: 'PDF scartato', MODIFICATA: 'Correzione', CONFERMATA: 'Conferma', SOSTITUZIONE: 'Sostituzione', SCARTATA: 'Scheda scartata', ELABORAZIONE_ELIMINATA: 'Elaborazione eliminata', SCHEDA_ELIMINATA: 'Scheda eliminata', IMPOSTAZIONI: 'Impostazioni', TEMPLATE: 'Template' };
+const TONE = { CARICATO: 'blue', SCARTATO: 'red', MODIFICATA: 'amber', CONFERMATA: 'green', SOSTITUZIONE: 'mauve', SCARTATA: 'grey', ELABORAZIONE_ELIMINATA: 'red', SCHEDA_ELIMINATA: 'red', IMPOSTAZIONI: 'teal', TEMPLATE: 'teal' };
 
 function Dettagli({ r }) {
   const d = r.dettagli || {};
@@ -17,7 +17,9 @@ function Dettagli({ r }) {
   if (d.motivo) parti.push(`Motivo: ${d.motivo}`);
   if (d.schede != null) parti.push(`${d.schede} ${d.schede === 1 ? 'scheda' : 'schede'}, ${d.pagine} ${d.pagine === 1 ? 'pagina' : 'pagine'}`);
   if (d.ocr) parti.push('OCR');
-  if (d.forzata) parti.push('conferma forzata: controllo di coerenza non superato');
+  const eliminazione = r.azione === 'ELABORAZIONE_ELIMINATA' || r.azione === 'SCHEDA_ELIMINATA';
+  if (d.forzata && !eliminazione) parti.push('conferma forzata: controllo di coerenza non superato');
+  if (eliminazione) { if (d.confermate) parti.push(`${d.confermate} ${d.confermate === 1 ? 'referto confermato rimosso' : 'referti confermati rimossi'} dall'archivio`); if (d.file != null) parti.push(`${d.file} file eliminati`); if (Array.isArray(d.pazienti) && d.pazienti.length) parti.push(`pazienti: ${d.pazienti.join(', ')}`); if (d.paziente) parti.push(`paziente: ${d.paziente}`); if (d.nome_file) parti.push(d.nome_file); }
   if (d.suffisso) parti.push('nome con suffisso (esisteva già)');
   if (d.sostituisce_scheda_id) parti.push(`sostituisce la scheda n. ${d.sostituisce_scheda_id}`);
   if (d.pdf_sorgente_intero) parti.push('PDF sorgente intero');

@@ -23,13 +23,16 @@ export function sembraReferto(testo) {
   return Boolean(a.cognome_nome && (a.data_nascita || a.accettazione_n || a.referto_codice)) && /(Risultat|Esito|Negativo|Positivo|UFC|MIC)/i.test(testo);
 }
 
-// Parser generico per una sorgente non riconosciuta (corpo 1, anagrafica A o B): trascrive ciò che trova e segnala tutto
+// Parser generico per una sorgente non riconosciuta (sorgente ALTRO, anomalia "sorgente non riconosciuta, verifica"): non è uno scarto,
+// il corpo 1 a tre colonne (nome | valore con unità | riferimento) è il formato di default; nessun titolo di settore se la sorgente non lo ha
 const generico = {
   pagina(testo) {
     const righe = testo.split('\n');
     const { testa, corpo, testataColonne } = separaIntestazione(righe, { testataColonne: /Risultat/i, fineIntestazione: /Data\s*Acc|\(anni\s*\d+\)|Sesso|Indirizzo|Residen|Luogo\s+di\s+nascita|Nat[oa]\s+(a|in)\b/i });
     const base = testa.length ? testa : righe.slice(0, 10);
-    const anagrafica = { ...anagraficaA(base), ...Object.fromEntries(Object.entries(anagraficaB(base)).filter(([, v]) => v)) };
+    const b = anagraficaB(base);
+    const anagrafica = { ...anagraficaA(base), ...Object.fromEntries(Object.entries(b).filter(([k, v]) => v && k !== 'variante')) };
+    anagrafica.variante = b.referto_codice || b.accettazione_codice ? 'B' : 'A';   // variante B solo con i codici Referto/Accettazione di Bianalisi
     return { anagrafica, chiave: chiaveAnagrafica(anagrafica), corpo, testata: testataColonne };
   },
   scheda(pagine) {
@@ -40,7 +43,7 @@ const generico = {
     for (const p of pagine) {
       const pg = generico.pagina(p.testo);
       if (!anagrafica) anagrafica = pg.anagrafica; else for (const [k, v] of Object.entries(pg.anagrafica)) if (v && !anagrafica[k]) anagrafica[k] = v;
-      parseCorpo1(pg.corpo, { testata: pg.testata, anomalie, stato, settorePredefinito: 'ESAMI' });
+      parseCorpo1(pg.corpo, { testata: pg.testata, anomalie, stato });   // corpo 1 a tre colonne: formato di default per le sorgenti non riconosciute
       corpi.push(pg.corpo);
     }
     anagrafica = anagrafica || { variante: 'A' };

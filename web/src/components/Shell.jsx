@@ -161,7 +161,8 @@ export default function Shell() {
     let alive = true;
     const load = () => api.get(`/${badgeKey}/badges`, { silent: true }).then((b) => alive && setBadges(b || {})).catch(() => {});
     load(); const t = setInterval(load, 60_000);
-    return () => { alive = false; clearInterval(t); };
+    window.addEventListener('suite:badges', load);   // i moduli chiedono l'aggiornamento immediato (es. eliminazione di un'elaborazione)
+    return () => { alive = false; clearInterval(t); window.removeEventListener('suite:badges', load); };
   }, [badgeKey, loc.pathname]);
   // Scorciatoia: "/" apre la ricerca
   const navigate = useNavigate();

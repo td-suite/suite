@@ -201,6 +201,37 @@ def cerba_nuova_igea():
     c.save()
 
 
+# ---------------------------------------------------------------- Sorgente non riconosciuta (ALTRO, corpo 1): caso reale del 29/10/2026
+# Laboratorio esterno sconosciuto, cliente "TOSCANA DIAGNOSTICA S.R.L." nell'intestazione, etichetta PAZIENTE, testata di tabella,
+# settore FARMACI con una sola riga esame, firma digitale e diciture legali in coda: tutto cio' che non e' il riquadro va scartato.
+def altro_farmaci():
+    c = canvas.Canvas(os.path.join(HERE, 'altro_farmaci.pdf'), pagesize=A4)
+    p = Pagina(c)
+    p.riga([(40, 'LABORATORIO ANALISI CLINICHE SAN MARCO S.r.l.')], size=11, bold=True, dy=13)
+    p.riga([(40, 'Via delle Analisi 7 - 50122 Firenze (FI) - Tel. 055 0000002 - P.IVA 04567890123')], size=8, dy=12)
+    p.riga([(40, 'Cliente: TOSCANA DIAGNOSTICA S.R.L.'), (330, 'Codice cliente: 0451')], size=8, dy=14)
+    p.riga([(40, 'TOSCANA DIAGNOSTICA S.R.L.')], size=9, bold=True, dy=14)
+    p.riga([(40, 'Paziente: CHIARI STEFANIA')], size=9, bold=True, dy=12)
+    p.riga([(40, 'Data di nascita: 25/05/1965'), (330, 'Sesso: F')], size=9, dy=12)
+    p.riga([(40, 'Accettazione n° 3370'), (330, 'Data Acc. 27/10/2026')], size=9, dy=14)
+    p.riga([(40, 'Esame'), (250, 'Risultato'), (360, 'U.M.'), (420, 'Valori di Riferimento')], size=8, bold=True, dy=14)
+    p.c.line(40, p.y + 8, W - 40, p.y + 8)
+    p.vuota(4)
+    p.riga([(40, 'FARMACI')], size=10, bold=True, dy=14)
+    p.riga([(40, 'Carbamazepina'), (250, '10,6 \u00b5g/ml'), (420, '4,0 - 12,0')], size=9, bold=True)
+    p.riga([(40, 'Metodo: Immunochimico (KIMS)')], size=8)
+    p.riga([(40, 'Materiale: SIERO')], size=8)
+    p.vuota(16)
+    p.riga([(40, '28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere Qualified Electronic Signature'), (420, 'Referto firmato da: GERINI LUCA')], size=7, dy=11)
+    p.riga([(40, 'I risultati di questo referto sono interpretabili solo dal medico curante, che conosce il quadro clinico del paziente.')], size=7, dy=10)
+    p.riga([(40, 'I dati personali sono trattati ai sensi del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003, art.13.')], size=7, dy=10)
+    p.riga([(40, 'Regolamento. Il laboratorio dove sono state ottenute le analisi e\' accreditato secondo la norma UNI EN ISO 15189.')], size=7, dy=10)
+    p.c.setFont(FONT, 8)
+    p.c.drawString(40, 30, 'Pagina 1 di 1')
+    c.showPage()
+    c.save()
+
+
 # ---------------------------------------------------------------- Non referto: lettera commerciale
 def non_referto():
     c = canvas.Canvas(os.path.join(HERE, 'lettera_offerta.pdf'), pagesize=A4)
@@ -217,11 +248,11 @@ def non_referto():
 
 
 if __name__ == '__main__':
-    bianalisi(); cerba_rdi(); cerba_nuova_igea(); non_referto()
+    bianalisi(); cerba_rdi(); cerba_nuova_igea(); altro_farmaci(); non_referto()
     print('PDF di prova generati in', HERE)
     # Testo per i test senza poppler: stesso output di `pdftotext -layout` (form feed tra le pagine)
     import shutil, subprocess
     if shutil.which('pdftotext'):
-        for f in ('bianalisi_urinocoltura', 'merge_kpc_rdi', 'nuova_igea_urinocoltura', 'lettera_offerta'):
+        for f in ('bianalisi_urinocoltura', 'merge_kpc_rdi', 'nuova_igea_urinocoltura', 'altro_farmaci', 'lettera_offerta'):
             subprocess.run(['pdftotext', '-layout', '-enc', 'UTF-8', os.path.join(HERE, f + '.pdf'), os.path.join(HERE, f + '.txt')], check=True)
         print('Testo estratto (.txt) aggiornato')
