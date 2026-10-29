@@ -62,7 +62,7 @@ r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
 const siteSchema = z.object({
   code: z.string().min(2).max(40), name: z.string().min(2).max(250), short_name: z.string().max(120).nullable().optional(),
   kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
-  organization_id: z.number().int().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
+  organization_id: z.number().int().nullable().optional(), host_organization_id: z.number().int().nullable().optional(), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
   province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(), org_node: z.boolean().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
@@ -83,9 +83,9 @@ const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_h
 r.get('/sites', ah(async (req, res) => {
   const all = isAdmin(req.user) || req.query.all === '1';
   // Responsabile di sede: dall'organigramma (responsabile del nodo Sede collegato), mai testo libero
-  const rows = await many(`SELECT s.*, o.name AS organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
+  const rows = await many(`SELECT s.*, o.name AS organization_name, ho.name AS host_organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
       h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
-    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id
+    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
         JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
     ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
@@ -97,6 +97,15 @@ r.get('/sites', ah(async (req, res) => {
   }
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
 }));
+// Legal entity ospitante: fonte unica public.sites.host_organization_id; Cash (site_ext.host_org_id, royalties) resta allineato
+async function syncHostToCash(siteId, hostOrgId) {
+  if (hostOrgId === undefined) return;
+  if (hostOrgId != null && !(await one('SELECT 1 FROM organizations WHERE id=$1', [hostOrgId]))) throw bad('Legal entity ospitante inesistente');
+  if (!(await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`))?.ok) return;
+  // solo le sedi già configurate in Cash (site_ext esiste); le altre leggono il core dalla vista sites_v
+  await q(`UPDATE cash.site_ext SET host_org_id=$2, ownership = CASE WHEN $2::int IS NULL THEN 'PROPRIA' ELSE 'OSPITATA' END, updated_at=now() WHERE site_id=$1`, [siteId, hostOrgId])
+    .catch((e) => console.warn('[sites] allineamento Cash non riuscito:', e.message));
+}
 const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
 // Coordinate dall'indirizzo (pulsante nel form Sedi). Non salva: restituisce lat/lng da confermare nel form.
 r.post('/geocode', requireAdmin, ah(async (req, res) => {
@@ -115,6 +124,7 @@ r.post('/sites', requireAdmin, ah(async (req, res) => {
   const b = withHours(parse(siteSchema, req.body));
   const cols = Object.keys(b); const vals = Object.values(b);
   const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
+  await syncHostToCash(s.id, b.host_organization_id);
   await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}` });
   indexSite(s).catch(() => {});
   autoGeocodeSite(s, saveCoords);
@@ -128,6 +138,7 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   if (!sets.length) return res.json({ ok: true });
   const s = await one(`UPDATE sites SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
   if (!s) throw notFound();
+  if (b.host_organization_id !== undefined) await syncHostToCash(s.id, b.host_organization_id);
   await audit(req, 'SITE_UPDATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: b });
   indexSite(s).catch(() => {});
   autoGeocodeSite(s, saveCoords);
@@ -147,8 +158,7 @@ const orgSchema = z.object({
 });
 r.get('/organizations', ah(async (req, res) => {
   // hosted_sites_count: punti prelievo TD ospitati dalla Legal entity (cash.site_ext.host_org_id), se Cash è avviato
-  const cashReady = (await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`))?.ok;
-  const hosted = cashReady ? `(SELECT count(*)::int FROM cash.site_ext e JOIN sites hs ON hs.id=e.site_id WHERE e.host_org_id=o.id AND hs.active)` : '0';
+  const hosted = `(SELECT count(*)::int FROM sites hs WHERE hs.host_organization_id=o.id AND hs.active)`;
   const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count, ${hosted} AS hosted_sites_count FROM organizations o ORDER BY lower(o.name)`);
   // un accesso esterno (partner, cliente service) vede solo la propria Legal entity e le società del gruppo: mai l'elenco dei clienti
   const visibili = isExternal(req.user) ? rows.filter((o) => o.id === req.user.organization_id || ['GRUPPO', 'SOCIETA'].includes(o.kind)) : rows;

@@ -42,7 +42,7 @@ export function resolveExternalScopes(module, { orgId, hostedSiteIds = [], orgSi
   if (!orgId) return { scopes: [], warning: `${module.key}: l'utente esterno non ha una Legal entity, grant senza ambito` };
   if (module.key === 'cash') {
     const ids = uniq(hostedSiteIds);
-    return { scopes: ids.map((id) => ({ type: 'SITE', id })), warning: ids.length ? null : 'cash: la Legal entity non ospita nessun punto prelievi (site_ext.host_org_id): grant senza sedi, nessuna royalty visibile' };
+    return { scopes: ids.map((id) => ({ type: 'SITE', id })), warning: ids.length ? null : 'cash: la Legal entity non ospita nessun punto prelievi (Amministrazione > Sedi > Legal entity ospitante): grant senza sedi, nessuna royalty visibile' };
   }
   if (module.key === 'nc') {
     // il perimetro NC accetta lo scope ORG (perimetroSedi: chiave -org_id): tutte le NC della Legal entity e dei suoi punti SERVICE
@@ -70,12 +70,14 @@ export const RUBRICA_PUBLIC_SQL = `(EXISTS (SELECT 1 FROM org_units pu WHERE pu.
 
 // ---- Letture dall'anagrafica unica
 
-/** Sedi TD ospitate dalla Legal entity (cash.site_ext.host_org_id). Vuoto se Cash non è ancora avviato. */
+/** Sedi TD ospitate dalla Legal entity (public.sites.host_organization_id, con cash.site_ext.host_org_id come riserva). */
 export async function hostedSiteIds(orgId) {
   if (!orgId) return [];
   const ok = await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`);
-  if (!ok?.ok) return [];
-  const rows = await many(`SELECT e.site_id FROM cash.site_ext e JOIN sites s ON s.id = e.site_id WHERE e.host_org_id = $1 AND s.active ORDER BY e.site_id`, [orgId]);
+  // fonte: public.sites.host_organization_id (Amministrazione > Sedi > Legal entity ospitante); cash.site_ext.host_org_id come riserva
+  const rows = ok?.ok
+    ? await many(`SELECT s.id AS site_id FROM sites s LEFT JOIN cash.site_ext e ON e.site_id = s.id WHERE coalesce(s.host_organization_id, e.host_org_id) = $1 AND s.active ORDER BY s.id`, [orgId])
+    : await many(`SELECT s.id AS site_id FROM sites s WHERE s.host_organization_id = $1 AND s.active ORDER BY s.id`, [orgId]);
   return rows.map((r) => r.site_id);
 }
 

@@ -733,3 +733,6 @@ Tabella core `public.site_sgi_scores` (migrazione 029): `site_id` PK → sites O
 `summary` (giudizio troncato a 400), `synthesis_id` (audit.syntheses, senza FK tra schemi), `last_audit_at`, `computed_at`. La scrive il
 modulo audit alla sintesi di sede con Claude; la legge Retail Assistant in `GET /api/retail/structure/sites/:id/structure` (campo `sgi`)
 per il riquadro "Allineamento SGI" della scheda sede. Nessun altro modulo la modifica.
+
+## Sedi: Legal entity ospitante (29/10/2026)
+`public.sites.host_organization_id` → `organizations`: il partner che ospita la sede (es. G.B. Center per il Punto Prelievi di Quarrata, la cui Legal entity resta Toscana Diagnostica S.r.l.). Si imposta in Amministrazione > Sedi (campo "Legal entity ospitante") o da Cash > Sedi (Struttura ospitante): le due scritture si allineano a vicenda; la vista `cash.sites_v` legge `coalesce(sites.host_organization_id, site_ext.host_org_id)` e deriva `ownership`. È la stessa Legal entity con cui il partner accede alla Suite (profilo Partner ospitante): il suo perimetro Cash sono le sedi che lo hanno come ospitante (`lib/esterni.js hostedSiteIds`).

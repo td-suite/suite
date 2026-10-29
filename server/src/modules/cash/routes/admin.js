@@ -224,6 +224,8 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
     // upsert: la riga di site_ext nasce alla prima scrittura (docs/ANAGRAFICA.md), poi si aggiorna
     await c.query(`INSERT INTO site_ext (site_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')})
       ON CONFLICT (site_id) DO UPDATE SET ${cols.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, ...cols.map((k) => d[k])]);
+    // la Legal entity ospitante è dell'anagrafica unica (public.sites.host_organization_id): la stessa con cui il partner accede alla Suite
+    if (d.host_org_id !== undefined) await c.query('UPDATE public.sites SET host_organization_id=$2, updated_at=now() WHERE id=$1', [id, d.host_org_id]);
   });
   await audit(req, site ? 'SITE_UPDATE' : 'SITE_CONFIGURE', 'site', id, req.body);
   res.json({ ok: true, id });

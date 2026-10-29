@@ -17,7 +17,7 @@ come `is_external`.
 ## I due profili di sistema (`access_profiles.system = TRUE`, migrazione 031)
 | Profilo | Chiave | Per chi | Widget → profilo | Ambiti risolti dall'organizzazione |
 | --- | --- | --- | --- | --- |
-| **Partner ospitante** | `PARTNER_OSPITANTE` | PARTNER o CLIENTE che ospita punti prelievo TD | cash PARTNER, circolari VIEWER, rubrica LETTORE (+ Ticket, aperto a tutti) | cash: scope SITE = tutte le sedi con `cash.site_ext.host_org_id` = organizzazione |
+| **Partner ospitante** | `PARTNER_OSPITANTE` | PARTNER o CLIENTE che ospita punti prelievo TD | cash PARTNER, circolari VIEWER, rubrica LETTORE (+ Ticket, aperto a tutti) | cash: scope SITE = tutte le sedi con **Legal entity ospitante** = organizzazione (`public.sites.host_organization_id`, Amministrazione > Sedi; `cash.site_ext.host_org_id` resta allineato e fa da riserva) |
 | **Cliente service** | `CLIENTE_SERVICE` | CLIENTE con contratto service (sedi kind SERVICE collegate, o scelto a mano) | service LETTORE, sgi LETTORE, nc SEDE, circolari VIEWER, rubrica LETTORE (+ Ticket) | nc: scope ORG = organizzazione (il perimetro NC, `perimetroSedi`, accetta lo scope ORG: chiave `-org_id`, quindi tutte le NC della Legal entity e dei suoi punti SERVICE) |
 
 Il nome dei profili di sistema non si modifica e non si eliminano (`routes/accessProfiles.js`); gli item sì (il titolare può
