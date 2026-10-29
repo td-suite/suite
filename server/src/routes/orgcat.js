@@ -3,7 +3,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
-import { ah, bad, audit, parse, notFound } from '../lib/util.js';
+import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
+import { isExternal } from '../lib/esterni.js';
 import { requireAdmin } from '../lib/access.js';
 import { orgchartXlsx, orgchartPptx, orgchartPdf } from '../lib/orgchartExport.js';
 import { proposeGrantsForPerson, proposeGrantsForAll } from '../lib/grantRules.js';
@@ -49,7 +50,10 @@ const unitSchema = z.object({
   name: z.string().trim().min(2).max(160), kind: z.enum(['DIREZIONE', 'AREA', 'SEDE', 'REPARTO', 'FUNZIONE']).optional(), branch: z.enum(['LINEA', 'STAFF']).optional(),
   parent_id: z.number().int().nullable().optional(), site_id: z.number().int().nullable().optional(), head_person_id: z.number().int().nullable().optional(),
   phone_ext: z.string().max(10).nullable().optional(), description: z.string().max(600).nullable().optional(), sort_order: z.number().int().optional(), active: z.boolean().optional(),
+  public_contact: z.boolean().optional(),   // contatto pubblico: unità raggiungibile dagli accessi esterni (rubrica e ticket)
 });
+// Gli esterni non vedono l'organigramma: solo le unità con contatto pubblico (elenco piatto, per i ticket)
+const noExternal = (req, _res, next) => (isExternal(req.user) ? next(forbidden('Sezione non disponibile per gli accessi esterni')) : next());
 const UNIT_COLS = `u.*, s.code AS site_code, s.name AS site_name, pu.name AS parent_name,
   (SELECT count(*)::int FROM people x WHERE x.unit_id=u.id AND x.status='ATTIVO') AS people_count,
   (SELECT json_agg(json_build_object('id', op.id, 'person_id', op.person_id, 'role_id', op.role_id, 'is_head', op.is_head, 'sort_order', op.sort_order,
@@ -59,6 +63,7 @@ async function unitRows(where = '', params = []) {
   return many(`SELECT ${UNIT_COLS} FROM org_units u LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN org_units pu ON pu.id=u.parent_id ${where} ORDER BY u.sort_order, lower(u.name)`, params);
 }
 r.get('/org-units', ah(async (req, res) => {
+  if (isExternal(req.user)) return res.json(await many(`SELECT u.id, u.name, u.kind, u.parent_id, u.public_contact, org_unit_path(u.id) AS path FROM org_units u WHERE u.active AND u.public_contact ORDER BY u.sort_order, lower(u.name)`));
   await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   const all = req.query.all === '1'; const siteId = req.query.site_id ? Number(req.query.site_id) : null; const kind = req.query.kind || null;
   // con site_id: i reparti della sede più quelli senza sede (reparti di area, es. il Laboratorio), così la tendina "Reparto" li offre entrambi
@@ -122,7 +127,7 @@ r.delete('/org-positions/:id', requireAdmin, ah(async (req, res) => {
 }));
 
 // Organigramma: persone attive con sede, ruolo e responsabile (l'albero si costruisce sul responsabile; il raggruppamento per sede è della pagina)
-r.get('/org-chart', ah(async (_req, res) => {
+r.get('/org-chart', noExternal, ah(async (_req, res) => {
   await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   const units = await unitRows('WHERE u.active');
   const people = await many(`SELECT p.id, p.last_name, p.first_name, p.title, p.email, p.role_id, p.job_title, p.site_id, p.unit_id, u.name AS unit_name, p.manager_person_id, s.short_name AS site_name, s.name AS site_full_name,
@@ -190,7 +195,7 @@ r.post('/grant-rules/apply', requireAdmin, ah(async (req, res) => {
 }));
 
 // ---- Esportazioni dell'organigramma
-r.get('/org-chart/export.:fmt', ah(async (req, res) => {
+r.get('/org-chart/export.:fmt', noExternal, ah(async (req, res) => {
   let units = await unitRows('WHERE u.active');
   // da una sede, un'area o un reparto in giù (con la catena fino al vertice): per ASL, ispezioni, singole strutture
   const startId = Number(req.query.unit_id) || null;

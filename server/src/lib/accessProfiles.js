@@ -4,7 +4,12 @@
 // - replace: sostituisce tutti i grant dell'utente con quelli del profilo (solo su richiesta esplicita).
 // I grant nascono confermati (proposed FALSE, source PROFILE, profile_id); per i moduli con scope_type SITE lo scope è la sede della
 // persona (people.site_id, altrimenti users.site_id); senza sede il grant nasce senza scope e il rapporto lo segnala.
+// Utenti esterni (29/10/2026, lib/esterni.js): gli ambiti si risolvono dalla Legal entity dell'utente (Cash → sedi ospitate,
+// NC → la Legal entity, altri moduli per sede → le sedi dell'organizzazione) e si riallineano a ogni applicazione del profilo.
 import { one, many, tx } from '../db.js';
+import { config } from '../config.js';
+import { isInternal } from './audience.js';
+import { resolveExternalScopes, externalScopeContext } from './esterni.js';
 
 const isOwnerLevel = (u) => u?.level === 'OWNER';
 // Ordine di "forza" dei profili dei moduli (dal più basso): serve a non declassare un grant nato da un altro profilo di accesso
@@ -55,11 +60,29 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
 
   const ids = [...new Set((userIds || []).map(Number).filter(Number.isFinite))];
   for (const uid of ids) {
-    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, coalesce(p.site_id, u.site_id) AS site_id
-                           FROM users u LEFT JOIN people p ON p.id=u.person_id WHERE u.id=$1`, [uid]);
+    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, coalesce(p.site_id, u.site_id) AS site_id,
+                                coalesce(p.organization_id, u.organization_id) AS organization_id, o.kind AS organization_kind
+                           FROM users u LEFT JOIN people p ON p.id=u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id=$1`, [uid]);
     if (!u) { report.warnings.push(`Utente n. ${uid} inesistente: saltato`); continue; }
     if (u.level === 'OWNER' && !owner) { report.warnings.push(`${u.full_name}: il titolare lo modifica solo il titolare, saltato`); continue; }
     const row = { user_id: u.id, email: u.email, full_name: u.full_name, added: 0, updated: 0, kept: 0, removed: 0, warnings: [] };
+    // Esterno (Legal entity CLIENTE/PARTNER/... o dominio non aziendale): gli ambiti si risolvono dall'organizzazione, non dalla
+    // sede della persona (lib/esterni.js: Cash → sedi ospitate, NC → la Legal entity, altri → sedi dell'organizzazione)
+    const external = !isInternal({ ...u, internal_domains: config.autoInternalDomains });
+    const extCtx = external ? await externalScopeContext(u.organization_id) : null;
+    if (external && !u.organization_id) row.warnings.push('utente esterno senza Legal entity: i grant per sede nascono senza ambito');
+    // Ambiti del grant per un item del profilo: [{type, id}] (esterno: dall'organizzazione; interno: la sede della persona)
+    const scopesFor = (it) => {
+      const m = it.module;
+      if (external) {
+        const r = resolveExternalScopes(m, extCtx, it.scoped);
+        if (r.warning && it.scoped) row.warnings.push(r.warning);
+        return r.scopes;
+      }
+      if (m.scope_type === 'SITE' && u.site_id) return [{ type: 'SITE', id: u.site_id }];
+      if (m.scope_type === 'SITE' && !u.site_id && it.scoped) row.warnings.push(`${m.name} (${it.profile}): la persona non ha una sede, grant senza ambito`);
+      return [];
+    };
     await tx(async (c) => {
       const { rows: existing } = await c.query('SELECT id, module_key, profile, proposed, source, profile_id FROM grants WHERE user_id=$1', [u.id]);
       const have = Object.fromEntries(existing.map((g) => [g.module_key, g]));
@@ -74,14 +97,14 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
       }
       for (const it of items) {
         const m = it.module;
-        const siteScope = m.scope_type === 'SITE' && u.site_id ? u.site_id : null;
-        if (m.scope_type === 'SITE' && !u.site_id && it.scoped) row.warnings.push(`${m.name} (${it.profile}): la persona non ha una sede, grant senza ambito`);
+        const scopes = scopesFor(it);
+        const addScopes = async (gid) => { for (const s of scopes) await c.query(`INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [gid, s.type, s.id]); };
         const g = have[m.key];
         if (!g) {
           const { rows: [ng] } = await c.query(
             `INSERT INTO grants (user_id, module_key, profile, proposed, source, profile_id, created_by) VALUES ($1,$2,$3,FALSE,'PROFILE',$4,$5) RETURNING id`,
             [u.id, m.key, it.profile, profile.id, actorId]);
-          if (siteScope) await c.query(`INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,'SITE',$2) ON CONFLICT DO NOTHING`, [ng.id, siteScope]);
+          await addScopes(ng.id);
           row.added++;
           continue;
         }
@@ -96,8 +119,10 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
           continue;
         }
         if (g.profile === it.profile && !g.proposed) {
-          // stesso profilo: resta, agganciato a questo profilo di accesso se non ne aveva uno
+          // stesso profilo: resta, agganciato a questo profilo di accesso se non ne aveva uno; per un esterno gli ambiti
+          // dall'organizzazione si completano (un nuovo punto prelievi ospitato entra nel perimetro)
           if (g.profile_id == null) await c.query(`UPDATE grants SET source='PROFILE', profile_id=$2, updated_at=now() WHERE id=$1`, [g.id, profile.id]);
+          if (external) await addScopes(g.id);
           row.kept++;
           continue;
         }
@@ -107,9 +132,9 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
           continue;
         }
         await c.query(`UPDATE grants SET profile=$2, proposed=FALSE, source='PROFILE', profile_id=$3, updated_at=now() WHERE id=$1`, [g.id, it.profile, profile.id]);
-        if (siteScope) {
-          if (g.proposed || mode === 'replace') await c.query('DELETE FROM grant_scopes WHERE grant_id=$1', [g.id]);
-          await c.query(`INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,'SITE',$2) ON CONFLICT DO NOTHING`, [g.id, siteScope]);
+        if (scopes.length) {
+          if (g.proposed || mode === 'replace' || external) await c.query('DELETE FROM grant_scopes WHERE grant_id=$1', [g.id]);
+          await addScopes(g.id);
         }
         row.updated++;
       }
@@ -121,10 +146,15 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
   return report;
 }
 
-/** Applica il profilo predefinito (se esiste) a un utente appena nato, in modalità merge. Ritorna il rapporto o null. */
+/** Applica il profilo predefinito (se esiste) a un utente appena nato, in modalità merge. Ritorna il rapporto o null.
+ *  Gli utenti esterni (Legal entity CLIENTE/PARTNER/... o dominio non aziendale) ne sono esclusi: il Default è il pacchetto dei
+ *  membri della rete TD (cartella, room, retail...), gli esterni ricevono solo il profilo di sistema scelto nella scheda Legal entity. */
 export async function applyDefaultProfile(userId, actorId = null) {
   const d = await getDefaultProfile();
   if (!d) return null;
+  const u = await one(`SELECT u.id, u.email, u.level, o.kind AS organization_kind FROM users u LEFT JOIN people p ON p.id=u.person_id
+      LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id=$1`, [userId]);
+  if (u && !isInternal({ ...u, internal_domains: config.autoInternalDomains })) return { profile: { id: d.id, name: d.name }, mode: 'merge', users: 0, added: 0, updated: 0, kept: 0, removed: 0, warnings: ['utente esterno: il profilo Default non si applica (solo profili di sistema dalla scheda Legal entity)'], rows: [], skipped_external: true };
   return applyProfile(d.id, [userId], { actorId, mode: 'merge' });
 }
 
@@ -132,6 +162,8 @@ export async function applyDefaultProfile(userId, actorId = null) {
 export async function applyDefaultToAll(actorId = null) {
   const d = await getDefaultProfile();
   if (!d) throw Object.assign(new Error('Nessun profilo predefinito: segna un profilo come "predefinito per tutti i nuovi utenti"'), { status: 400 });
-  const rows = await many(`SELECT id FROM users WHERE status IN ('ACTIVE','PENDING') ORDER BY id`);
+  // esclusi gli esterni (vedi applyDefaultProfile)
+  const rows = await many(`SELECT u.id FROM users u LEFT JOIN people p ON p.id=u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
+    WHERE u.status IN ('ACTIVE','PENDING') AND (u.level IN ('OWNER','ADMIN') OR coalesce(o.kind,'') IN ('GRUPPO','SOCIETA') OR lower(split_part(u.email,'@',2)) = ANY($1::text[])) ORDER BY u.id`, [config.autoInternalDomains]);
   return applyProfile(d.id, rows.map((r) => r.id), { actorId, mode: 'merge' });
 }

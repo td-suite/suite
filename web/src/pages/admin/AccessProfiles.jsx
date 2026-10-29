@@ -83,13 +83,13 @@ export function AccessProfiles() {
           <thead><tr><th>Profilo</th><th>Widget inclusi</th><th>Utenti</th><th>Aggiornato</th><th></th></tr></thead>
           <tbody>{data.map((p) => (
             <tr key={p.id} className="click" onClick={() => setEdit(p)}>
-              <td><div className="strong" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{p.name}{p.is_default && <Badge tone="teal" title="Applicato automaticamente a ogni nuovo utente">Default</Badge>}</div>{p.description && <div className="small muted">{p.description}</div>}</td>
+              <td><div className="strong" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{p.name}{p.is_default && <Badge tone="teal" title="Applicato automaticamente a ogni nuovo utente">Default</Badge>}{p.system && <Badge tone="amber" title="Profilo di sistema per gli accessi esterni (scheda Legal entity): nome fisso, non eliminabile; gli ambiti si risolvono dalla Legal entity">Di sistema · esterni</Badge>}</div>{p.description && <div className="small muted">{p.description}</div>}</td>
               <td><div className="small" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(p.items || []).map((it) => <span key={it.module_key} className="chip" title={profLabel(it.module_key, it.profile)}>{modName(it.module_key)} · {profLabel(it.module_key, it.profile)}</span>)}{!(p.items || []).length && <span className="faint">nessun widget</span>}</div></td>
               <td className="small nowrap">{p.users_count} utent{p.users_count === 1 ? 'e' : 'i'}</td>
               <td className="small nowrap">{fmtDateTime(p.updated_at)}</td>
               <td className="actions" onClick={(e) => e.stopPropagation()}>
                 <button className="iconbtn" aria-label={owner ? 'Modifica' : 'Apri'} title={owner ? 'Modifica' : 'Apri'} onClick={() => setEdit(p)}><Icon name={owner ? 'edit' : 'eye'} /></button>
-                {owner && <button className="iconbtn danger" aria-label="Elimina" title="Elimina" onClick={() => setDel(p)}><Icon name="trash" /></button>}
+                {owner && !p.system && <button className="iconbtn danger" aria-label="Elimina" title="Elimina" onClick={() => setDel(p)}><Icon name="trash" /></button>}
               </td>
             </tr>
           ))}</tbody>
@@ -134,10 +134,10 @@ function ProfileModal({ profile, modules, readOnly, onClose, onSaved }) {
       footer={<><button className="btn ghost" onClick={onClose}>{readOnly ? 'Chiudi' : 'Annulla'}</button>{!readOnly && <button className="btn" form="pform" disabled={busy || !f.name.trim()}>{isNew ? 'Crea profilo' : 'Salva'}</button>}</>}>
       <form id="pform" onSubmit={save} className="col">
         <div className="form-grid">
-          <Field label="Nome" required><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required maxLength={80} disabled={readOnly} autoFocus={isNew} /></Field>
+          <Field label="Nome" required help={profile?.system ? 'Profilo di sistema per gli accessi esterni: il nome non si cambia' : undefined}><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required maxLength={80} disabled={readOnly || Boolean(profile?.system)} autoFocus={isNew} /></Field>
           <Field label="Descrizione"><input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={400} disabled={readOnly} /></Field>
         </div>
-        <label className="f inline" style={{ alignItems: 'center', gap: 10 }}><Switch checked={f.is_default} onChange={(v) => setF({ ...f, is_default: v })} disabled={readOnly} label="Profilo predefinito per tutti i nuovi utenti" /><span>Profilo predefinito per tutti i nuovi utenti<span className="help" style={{ display: 'block' }}>Viene applicato a ogni nuovo account. Un solo profilo può essere predefinito.</span></span></label>
+        <label className="f inline" style={{ alignItems: 'center', gap: 10 }}><Switch checked={f.is_default} onChange={(v) => setF({ ...f, is_default: v })} disabled={readOnly || Boolean(profile?.system)} label="Profilo predefinito per tutti i nuovi utenti" /><span>Profilo predefinito per tutti i nuovi utenti<span className="help" style={{ display: 'block' }}>Viene applicato a ogni nuovo account. Un solo profilo può essere predefinito.</span></span></label>
         <div className="small muted">{n} widget inclus{n === 1 ? 'o' : 'i'}. "Nessuno" toglie il widget dal profilo.</div>
         <div className="profile-items">
           {byArea.map(([area, list]) => (

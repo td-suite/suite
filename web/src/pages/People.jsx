@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { qs } from '../api.js';
-import { useAuth, isAdmin, hasModule } from '../auth.jsx';
+import { useAuth, isAdmin, isExternal, hasModule } from '../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, Avatar, Modal, useToast } from '../components/ui.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { PERSON_KIND, fmtDate } from '../format.js';
@@ -53,23 +53,25 @@ function List() {
   useEffect(() => setQ(qtext), [qtext]);
   useEffect(() => { const t = setTimeout(() => { if (q !== qtext) setSp((s) => { const n = new URLSearchParams(s); if (q) n.set('qtext', q); else n.delete('qtext'); return n; }, { replace: true }); }, 300); return () => clearTimeout(t); }, [q, qtext, setSp]);
   const setF = (k, v) => setSp((s) => { const n = new URLSearchParams(s); if (v) n.set(k, v); else n.delete(k); return n; });
+  const { user } = useAuth();
+  const external = isExternal(user);   // accesso esterno: il server restituisce solo i contatti pubblici (nome, ruolo, email, telefono ufficio)
   const { data, loading, error } = useApi(`/people${qs({ qtext, role_id, kind, site_id, unit_id })}`, [qtext, role_id, kind, site_id, unit_id]);
-  const roles = useApi('/job-roles');
-  const sites = useApi('/sites');
+  const roles = useApi(external ? null : '/job-roles');
+  const sites = useApi(external ? null : '/sites');
   return (
     <div className="page">
-      <PageHead title="Rubrica" icon="rubrica" sub="Chi fa cosa nella rete Toscana Diagnostica" />
+      <PageHead title={external ? 'Contatti di riferimento' : 'Rubrica'} icon="rubrica" sub={external ? 'Le persone di Toscana Diagnostica a cui puoi rivolgerti: direzione, qualità, back office, laboratorio, service' : 'Chi fa cosa nella rete Toscana Diagnostica'} />
       <div className="filters">
         <SearchInput value={q} onChange={setQ} placeholder="Cerca per nome, ruolo o email" autoFocus />
-        <Field label="Ruolo"><select value={role_id} onChange={(e) => setF('role_id', e.target.value)}><option value="">Tutti</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}{r.people_count ? ` (${r.people_count})` : ''}</option>)}</select></Field>
+        {!external && <><Field label="Ruolo"><select value={role_id} onChange={(e) => setF('role_id', e.target.value)}><option value="">Tutti</option>{(roles.data || []).map((r) => <option key={r.id} value={r.id}>{r.name}{r.people_count ? ` (${r.people_count})` : ''}</option>)}</select></Field>
         <Field label="Sede"><select value={site_id} onChange={(e) => setF('site_id', e.target.value)}><option value="">Tutte</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-        <Field label="Tipo"><select value={kind} onChange={(e) => setF('kind', e.target.value)}><option value="">Tutti</option>{Object.entries(PERSON_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <Field label="Tipo"><select value={kind} onChange={(e) => setF('kind', e.target.value)}><option value="">Tutti</option>{Object.entries(PERSON_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field></>}
       </div>
       {loading && <div className="people">{[1, 2, 3, 4].map((i) => <Card key={i}><Skeleton lines={3} /></Card>)}</div>}
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="users" title="Nessuna persona trovata">{qtext ? 'Prova con un nome o un ruolo diverso.' : 'La rubrica si popola dalle anagrafiche e dalle importazioni.'}</Empty>}
       {data?.length > 0 && <><div className="small muted mb">{data.length} person{data.length === 1 ? 'a' : 'e'}</div><div className="people">{data.map((p) => <PersonCard key={p.id} p={p} />)}</div></>}
-      {!qtext && !role_id && !kind && !site_id && !unit_id && <Switchboard />}
+      {!external && !qtext && !role_id && !kind && !site_id && !unit_id && <Switchboard />}
       {unit_id && data?.[0]?.unit_path && <div className="small muted" style={{ marginBottom: 8 }}>Persone di {data[0].unit_path}. <button className="linklike" onClick={() => setF('unit_id', '')}>Tutte</button></div>}
     </div>
   );
@@ -105,6 +107,33 @@ function Detail() {
   if (error?.status === 404) return <NotFound />;
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   const canEdit = isAdmin(user) || hasModule(user, 'rubrica', 'EDITOR');
+  if (p.external_view || isExternal(user)) {
+    // scheda ridotta per gli accessi esterni: nome, ruolo, unità, email e telefono ufficio
+    return (
+      <div className="page narrow">
+        <div className="crumb"><Link to="/people">Contatti di riferimento</Link><Icon name="chevron" /><span>{fullName(p)}</span></div>
+        <Card>
+          <div className="person-head">
+            <Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id || p.photo_file_id} size="xl" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1>{[p.title, fullName(p)].filter(Boolean).join(' ')}</h1>
+              <div className="role">{p.job_title || 'Toscana Diagnostica'}</div>
+              {p.unit_name && <div className="row tight mt"><Badge tone="mauve">{p.unit_name}</Badge></div>}
+            </div>
+            <div className="row tight">{p.email && <a className="btn ghost" href={`mailto:${p.email}`}><Icon name="mail" />Email</a>}</div>
+          </div>
+        </Card>
+        <Card title="Contatti" icon="phone" className="mt2">
+          <div className="contact-list">
+            {p.email && <div className="c"><Icon name="mail" /><div><div className="k">Email</div><a href={`mailto:${p.email}`}>{p.email}</a></div></div>}
+            {p.phone_office && <div className="c"><Icon name="phone" /><div><div className="k">Telefono ufficio</div><a href={`tel:${p.phone_office}`}>{p.phone_office}</a></div></div>}
+            {p.phone_ext && <div className="c"><Icon name="phone" /><div><div className="k">Interno centralino</div><div>{p.phone_ext}</div></div></div>}
+            {!p.email && !p.phone_office && !p.phone_ext && <div className="muted small">Nessun contatto d'ufficio registrato: apri un ticket alla sua unità.</div>}
+          </div>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="page narrow">
       <div className="crumb"><Link to="/people">Rubrica</Link><Icon name="chevron" /><span>{fullName(p)}</span></div>
@@ -270,11 +299,13 @@ function Roles() {
 }
 
 export default function People() {
+  const { user } = useAuth();
+  const external = isExternal(user);   // niente organigramma né ruoli per gli accessi esterni (anche il server li rifiuta)
   return (
     <Routes>
       <Route index element={<List />} />
-      <Route path="org-chart" element={<OrgChart />} />
-      <Route path="ruoli" element={<Roles />} />
+      <Route path="org-chart" element={external ? <NotFound /> : <OrgChart />} />
+      <Route path="ruoli" element={external ? <NotFound /> : <Roles />} />
       <Route path=":id" element={<Detail />} />
     </Routes>
   );

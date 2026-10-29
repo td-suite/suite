@@ -45,6 +45,8 @@ export function AuthProvider({ children }) {
 export const useAuth = () => useContext(AuthCtx);
 export const isOwner = (u) => u?.level === 'OWNER';
 export const isAdmin = (u) => u?.level === 'OWNER' || u?.level === 'ADMIN';
+// Accesso esterno (partner ospitante, cliente service): non appartiene alla rete TD; il server lo dice con is_external (lib/esterni.js)
+export const isExternal = (u) => Boolean(u) && !isAdmin(u) && (u.is_external === true || u.is_internal === false);
 // hasModule(u, 'comunicazione') → ha un grant qualsiasi; hasModule(u, 'comunicazione', 'PUBLISHER') → uno dei profili indicati
 export const hasModule = (u, key, ...profiles) => {
   const g = u?.grants?.[key];

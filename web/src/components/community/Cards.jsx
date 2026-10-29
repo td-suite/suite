@@ -137,16 +137,17 @@ export function FilesCard() {
   );
 }
 
-export function PeopleQuick() {
+// external: accesso esterno (partner, cliente service): la rubrica mostra solo i contatti di riferimento
+export function PeopleQuick({ external }) {
   const [q, setQ] = useState('');
   const navigate = useNavigate();
   return (
-    <Card title="Rubrica" icon="users">
+    <Card title={external ? 'Contatti di riferimento' : 'Rubrica'} icon="users">
       <form onSubmit={(e) => { e.preventDefault(); navigate(`/people?qtext=${encodeURIComponent(q.trim())}`); }} className="row tight">
-        <div className="search-input" style={{ flex: 1 }}><Icon name="search" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Trova un collega" aria-label="Trova un collega" /></div>
+        <div className="search-input" style={{ flex: 1 }}><Icon name="search" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={external ? 'Trova un referente' : 'Trova un collega'} aria-label={external ? 'Trova un referente' : 'Trova un collega'} /></div>
         <button className="btn" type="submit" aria-label="Cerca nella rubrica"><Icon name="arrowRight" /></button>
       </form>
-      <div className="small muted mt">Nome, ruolo, area o sede. Dalla scheda puoi scrivere su Teams o inviare un'email.</div>
+      <div className="small muted mt">{external ? 'Le persone di Toscana Diagnostica a cui rivolgerti: nome, ruolo, email e telefono ufficio.' : 'Nome, ruolo, area o sede. Dalla scheda puoi scrivere su Teams o inviare un\'email.'}</div>
     </Card>
   );
 }

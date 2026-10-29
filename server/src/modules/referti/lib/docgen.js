@@ -20,6 +20,7 @@ const C = { titolo: '004F5F', etichetta: '5A6B70', testo: '1A1A1A', linea: 'C9E1
 const W = 9638;                       // larghezza utile A4 con margini 2 cm
 const COL1 = [3969, 3061, 2608];      // corpo 1: esame | risultato | riferimento
 const COL2 = [4309, 3628, 1701];      // corpo 2: etichetta | valore | (unità)
+const COL2B = [4600, 5038];           // corpo 2 (modello Laboratorio): etichetta | valore con unità
 const COLAB = [4876, 1928, 1474];     // antibiogramma: antibiotico | S/I/R | MIC
 const RIQUADRO = 4479;
 // Margini canonici (twip): superiore 3,94 cm, altri 2 cm
@@ -53,8 +54,9 @@ const spacer = (h = 120) => new Paragraph({ children: [new TextRun({ text: '', s
 function riquadroAnagrafico(a) {
   const riga = (label, value) => p([t(`${label}: `, { size: 17, color: C.etichetta }), t(value || '-', { size: 17, bold: true })], { after: 20, line: 240 });
   // "PAZIENTE" è il titolo del riquadro (12 pt bold 004F5F), sotto il nome del paziente (9 pt bold 5A6B70), poi le righe 8,5 pt
-  const righe = [p(t('PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 40, line: 276 })];
-  righe.push(p(t(a.cognome_nome || '-', { size: 18, bold: true, color: C.etichetta }), { after: 40, line: 240 }));
+  // Modello della routine del Laboratorio (referti del 29/10/2026, STEFANI UGHETTA / SENSI ROMANA / DINE KATERINA): il titolo del riquadro
+  // è il nome del paziente, 12 pt bold 004F5F; sotto le righe 8,5 pt
+  const righe = [p(t(a.cognome_nome || 'PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 60, line: 276 })];
   righe.push(riga('Data di nascita', a.eta != null && a.eta !== '' ? `${a.data_nascita || '-'} (anni ${a.eta})` : a.data_nascita));
   righe.push(riga('Sesso', a.sesso));
   if (a.variante === 'B' || a.referto_codice || a.accettazione_codice) {
@@ -114,12 +116,17 @@ function corpo1(dati) {
 function antibiogramma(b) {
   const out = [];
   out.push(p(t(`Microrganismo #${b.n}${b.specie ? `: ${b.specie}` : ''}`, { size: 20, bold: true, color: C.titolo }), { before: 160, after: 40, keepNext: true }));
-  if (b.carica) out.push(p(t(`${b.carica_label || 'Carica Batterica'}: ${b.carica}`, { size: 19, bold: true }), { after: 40, keepNext: true }));
-  if (b.legenda) out.push(p(t(b.legenda, { size: 15, color: C.etichetta }), { after: 60, keepNext: true }));
-  const hdr = new TableRow({ tableHeader: true, cantSplit: true, children: ['Antibiotico', 'S / I / R', 'MIC'].map((h, i) => cell(p(t(h, { size: 17, bold: true, color: C.bianco }), { after: 0, line: 240, align: i ? AlignmentType.CENTER : AlignmentType.LEFT }), COLAB[i], { fill: C.titolo, margins: { top: 60, bottom: 60, left: 80, right: 80 } })) });
+  if (b.carica) out.push(p(t(`${b.carica_label || 'Carica Batterica'}: ${b.carica}`, { size: 19, bold: true }), { after: 80, keepNext: true }));
+  // testata come il modello del Laboratorio: legenda in corsivo nella prima colonna, specie + "#n" nella seconda, MIC nella terza
+  const hcell = (children, i) => cell(children, COLAB[i], { fill: C.titolo, margins: { top: 60, bottom: 60, left: 80, right: 80 }, valign: VerticalAlign.CENTER });
+  const hdr = new TableRow({ tableHeader: true, cantSplit: true, children: [
+    hcell(p(t(b.legenda || 'R: Resistente  I: Sensibile con aumentata esposizione al farmaco', { size: 14, italics: true, color: C.bianco }), { after: 0, line: 220 }), 0),
+    hcell([p(t(b.specie || 'Microrganismo', { size: 16, bold: true, color: C.bianco }), { after: 0, line: 220, align: AlignmentType.CENTER }), p(t(`#${b.n}`, { size: 16, bold: true, color: C.bianco }), { after: 0, line: 220, align: AlignmentType.CENTER })], 1),
+    hcell(p(t('MIC', { size: 16, bold: true, color: C.bianco }), { after: 0, line: 240, align: AlignmentType.CENTER }), 2),
+  ] });
   const rows = (b.righe || []).map((r, i) => new TableRow({ cantSplit: true, children: [
     cell(p(t(r.antibiotico, { size: 18 }), { after: 0, line: 240 }), COLAB[0], { fill: i % 2 ? C.riquadro : C.bianco, margins: { top: 40, bottom: 40, left: 80, right: 80 } }),
-    cell(p(t(r.sir || '', { size: 18, bold: true }), { after: 0, line: 240, align: AlignmentType.CENTER }), COLAB[1], { fill: i % 2 ? C.riquadro : C.bianco, margins: { top: 40, bottom: 40, left: 80, right: 80 } }),
+    cell(p(t(r.sir || '', { size: 18, bold: true, color: C.titolo }), { after: 0, line: 240, align: AlignmentType.CENTER }), COLAB[1], { fill: i % 2 ? C.riquadro : C.bianco, margins: { top: 40, bottom: 40, left: 80, right: 80 } }),
     cell(p(t(r.mic || '', { size: 18 }), { after: 0, line: 240, align: AlignmentType.CENTER }), COLAB[2], { fill: i % 2 ? C.riquadro : C.bianco, margins: { top: 40, bottom: 40, left: 80, right: 80 } }),
   ] }));
   out.push(table([hdr, ...rows], COLAB));
@@ -133,18 +140,20 @@ function corpo2(dati) {
     if (s.titolo) out.push(titoloSettore(s.titolo));
     esami.forEach((e, ei) => {
       if ((e.settore ?? 0) !== si) return;
-      out.push(p(t(e.titolo, { size: 21, bold: true }), { before: 140, after: 20, keepNext: true }));
-      const meta = [e.metodo ? `Metodo: ${e.metodo}` : null, e.materiale ? `Materiale: ${e.materiale}` : null, e.sede ? `Sede Anatomica: ${e.sede}` : null].filter(Boolean).join(' · ');
-      if (meta) out.push(p(t(meta, { size: 15, color: C.etichetta }), { after: 20, keepNext: true }));
-      if (e.nota) out.push(p(t(e.nota, { size: 15, color: C.etichetta }), { after: 40, keepNext: true }));
+      // titolo dell'esame in teal maiuscolo, Metodo / Materiale / nota ognuno sulla sua riga (modello della routine del Laboratorio)
+      out.push(p(t(e.titolo, { size: 21, bold: true, color: C.titolo, caps: true }), { before: 180, after: 20, keepNext: true }));
+      for (const m of [e.metodo ? `Metodo: ${e.metodo}` : null, e.materiale ? `Materiale: ${e.materiale}` : null, e.sede ? `Sede Anatomica: ${e.sede}` : null, e.nota || null].filter(Boolean)) {
+        out.push(p(t(m, { size: 15, color: C.etichetta }), { after: 0, line: 220, keepNext: true }));
+      }
+      if (e.campi?.length) out.push(spacer(100));
+      const sep = { ...cellNOB, bottom: { style: BorderStyle.SINGLE, size: 4, color: C.linea } };
       const rows = (e.campi || []).map((c) => (c.libero || !c.etichetta
-        ? new TableRow({ cantSplit: true, children: [cell(p(t(c.valore, { size: 19 }), { after: 0, line: 252 }), W, { span: 3 })] })
+        ? new TableRow({ cantSplit: true, children: [cell(p(t(c.valore, { size: 19 }), { after: 0, line: 252 }), W, { span: 2, borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } })] })
         : new TableRow({ cantSplit: true, children: [
-          cell(p(t(c.etichetta, { size: 19 }), { after: 0, line: 252 }), COL2[0]),
-          cell(p(t(c.valore, { size: 19, bold: true }), { after: 0, line: 252 }), COL2[1]),
-          cell(p(t(c.unita || '', { size: 17, color: C.etichetta }), { after: 0, line: 252 }), COL2[2]),
+          cell(p(t(c.etichetta, { size: 18 }), { after: 0, line: 252 }), COL2B[0], { borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } }),
+          cell(p(t(`${c.valore}${c.unita ? ` ${c.unita}` : ''}`, { size: 18, bold: true, color: C.titolo }), { after: 0, line: 252 }), COL2B[1], { borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } }),
         ] })));
-      if (rows.length) out.push(table(rows, COL2));
+      if (rows.length) out.push(table(rows, COL2B));
       for (const b of ab) if ((b.esame ?? 0) === ei) out.push(...antibiogramma(b));
     });
   });

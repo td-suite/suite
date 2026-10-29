@@ -16,6 +16,7 @@ import Stats from './pages/Stats.jsx';
 import Reconcile from './pages/Reconcile.jsx';
 import Royalty from './pages/Royalty.jsx';
 import SiteRoyalty from './pages/SiteRoyalty.jsx';
+import PartnerRoyalties from './pages/PartnerRoyalties.jsx';
 import Safe from './pages/Safe.jsx';
 import DepositsList from './pages/DepositsList.jsx';
 import Credits from './pages/Credits.jsx';
@@ -39,11 +40,13 @@ function Gate() {
   const reviewer = canReview(user);
   const finance = canFinance(user);
   if (partner) {
+    // Partner ospitante (accesso esterno): "Le tue royalties" come pagina di ingresso, report mensile e statistiche delle sole sedi ospitate
     return (
       <Routes>
+        <Route path="royalties" element={<PartnerRoyalties />} />
         <Route path="statistiche" element={<Stats />} />
         <Route path="canoni" element={<SiteRoyalty />} />
-        <Route path="*" element={<Navigate to={`${BASE}/canoni`} replace />} />
+        <Route path="*" element={<Navigate to={`${BASE}/royalties`} replace />} />
       </Routes>
     );
   }
@@ -62,6 +65,7 @@ function Gate() {
       <Route path="nc/:id" element={<NcDetail />} />
       <Route path="statistiche" element={<Stats />} />
       {admin && <Route path="canoni" element={<SiteRoyalty />} />}
+      {admin && <Route path="royalties" element={<PartnerRoyalties />} />}
       {admin && <Route path="riconciliazione" element={<Reconcile />} />}
       {sup && <Route path="controllo-mensile" element={<MonthlyCheck />} />}
       {sup && <Route path="royalty" element={<Royalty />} />}

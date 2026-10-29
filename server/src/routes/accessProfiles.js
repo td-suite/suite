@@ -67,6 +67,9 @@ r.put('/:id(\\d+)', requireOwner, ah(async (req, res) => {
   const cur = await one('SELECT * FROM access_profiles WHERE id=$1', [id]);
   if (!cur) throw notFound('Profilo di accesso inesistente');
   const b = parse(profileSchema.partial(), req.body);
+  // Profili di sistema (Partner ospitante, Cliente service): il nome non si cambia e non diventano predefiniti; gli item sì
+  if (cur.system && b.name && b.name.trim() !== cur.name) throw bad('Il nome di un profilo di sistema non si modifica');
+  if (cur.system && b.is_default) throw bad('Un profilo di sistema per gli esterni non può essere il predefinito di tutti gli utenti');
   if (b.name && await one('SELECT 1 FROM access_profiles WHERE lower(name)=lower($1) AND id<>$2', [b.name, id])) throw bad('Esiste già un profilo con questo nome');
   const items = b.items ? await validateItems(b.items) : null;
   const row = await tx(async (c) => {
@@ -86,6 +89,7 @@ r.delete('/:id(\\d+)', requireOwner, ah(async (req, res) => {
   const id = Number(req.params.id);
   const cur = await one('SELECT * FROM access_profiles WHERE id=$1', [id]);
   if (!cur) throw notFound('Profilo di accesso inesistente');
+  if (cur.system) throw bad('I profili di sistema per gli accessi esterni non si eliminano');
   const n = (await one('SELECT count(*)::int AS n FROM grants WHERE profile_id=$1', [id])).n;
   await q('DELETE FROM access_profiles WHERE id=$1', [id]);
   await audit(req, 'ACCESS_PROFILE_DELETED', { entity: 'access_profile', entityId: id, label: cur.name, data: { grants_detached: n } });

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth, isAdmin, canManageComm, hasModule } from '../auth.jsx';
+import { useAuth, isAdmin, isExternal, canManageComm, hasModule } from '../auth.jsx';
 import { api } from '../api.js';
 import { Icon } from './Icons.jsx';
 import { Avatar, Popover, useTheme, useToast, Empty } from './ui.jsx';
@@ -34,9 +34,10 @@ function sectionFor(pathname, user) {
     };
   }
   if (pathname.startsWith('/people')) {
+    // accessi esterni: solo l'elenco dei contatti pubblici (niente organigramma né ruoli)
     return {
-      key: 'people', kicker: 'People', title: 'Rubrica', color: AREA_COLORS.PEOPLE,
-      items: [
+      key: 'people', kicker: 'People', title: isExternal(user) ? 'Contatti' : 'Rubrica', color: AREA_COLORS.PEOPLE,
+      items: isExternal(user) ? [{ to: '/people', icon: 'users', label: 'Contatti di riferimento', end: true }] : [
         { to: '/people', icon: 'users', label: 'Elenco', end: true },
         { to: '/people/org-chart', icon: 'tree', label: 'Organigramma' },
         { to: '/people/ruoli', icon: 'grid', label: 'Ruoli' },

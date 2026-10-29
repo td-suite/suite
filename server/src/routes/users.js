@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { syncUserFromPerson } from '../lib/accounts.js';
-import { applyDefaultProfile } from '../lib/accessProfiles.js';
+import { applyDefaultProfile, applyProfile } from '../lib/accessProfiles.js';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
@@ -68,7 +68,8 @@ r.get('/users', requireAdmin, ah(async (req, res) => {
   const total = (await one(`SELECT count(*)::int AS n FROM users u ${w}`, params)).n;
   const rows = await many(
     `SELECT u.id, u.email, u.full_name, u.title, u.level, u.status, u.auth_provider, u.totp_enabled, u.last_login_at, u.created_at, u.site_id, u.organization_id, u.person_id,
-            o.name AS organization_name, s.name AS site_name, p.area AS person_area, p.job_title AS person_job_title, p.kind AS person_kind,
+            o.name AS organization_name, o.kind AS organization_kind, s.name AS site_name, p.area AS person_area, p.job_title AS person_job_title, p.kind AS person_kind,
+            (u.level = 'USER' AND coalesce(o.kind, '') NOT IN ('GRUPPO','SOCIETA') AND NOT (lower(split_part(u.email, '@', 2)) = ANY(${p(config.autoInternalDomains)}::text[]))) AS is_external,
             (SELECT json_agg(json_build_object('module_key', g.module_key, 'profile', g.profile, 'proposed', g.proposed) ORDER BY g.module_key) FROM grants g WHERE g.user_id=u.id) AS grants
        FROM users u LEFT JOIN organizations o ON o.id=u.organization_id LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN people p ON p.id=u.person_id
        ${w} ORDER BY lower(u.full_name) LIMIT ${p(Math.min(Number(pageSize), 200))} OFFSET ${p((Math.max(1, Number(page)) - 1) * Math.min(Number(pageSize), 200))}`, params);
@@ -97,17 +98,20 @@ r.get('/users/:id', requireAdmin, ah(async (req, res) => {
   res.json({ user: { ...publicUser(u), ...person, person_suggested, legacy_refs: u.legacy_refs, entra_oid: u.entra_oid, last_login_at: u.last_login_at, created_at: u.created_at }, grants, audit: audit_ });
 }));
 
-// ---- creazione: l'amministratore crea l'utente e, nello stesso passaggio, i grant per widget
-r.post('/users', requireAdmin, ah(async (req, res) => {
-  const b = parse(userSchema.extend({ grants: z.array(grantSchema).optional() }), req.body);
+// ---- creazione: l'amministratore crea l'utente e, nello stesso passaggio, i grant per widget.
+// La stessa funzione serve agli accessi esterni creati dalla scheda Legal entity (routes/esterni.js): origin 'LEGAL_ENTITY' nell'audit,
+// access_profile_id = profilo di accesso da applicare subito dopo (ambiti risolti dall'organizzazione per gli esterni).
+export const createUserSchema = userSchema.extend({ grants: z.array(grantSchema).optional(), origin: z.enum(['LEGAL_ENTITY']).optional(), access_profile_id: z.number().int().nullable().optional() });
+export async function createUserAccount(req, b) {
   if (b.level === 'OWNER') throw forbidden('Il livello titolare non è assegnabile');
   if (b.level === 'ADMIN' && !isOwner(req.user)) throw forbidden('Solo il titolare crea amministratori');
   const email = b.email.toLowerCase();
   if (await one('SELECT 1 FROM users WHERE lower(email)=$1', [email])) throw bad('Esiste già un utente con questa email');
   // Ogni utente è una persona dell'anagrafica: l'email deve corrispondere a una persona (Amministrazione > Persone o Contratti del personale)
-  const personRow = await one('SELECT id, first_name, last_name, site_id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [email]);
+  const personRow = await one('SELECT id, first_name, last_name, site_id, organization_id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [email]);
   if (!personRow) throw bad('Nessuna persona con questa email: crea prima la persona in Persone (o in Contratti del personale), poi l\'accesso');
   b.person_id = personRow.id; b.first_name = personRow.first_name; b.last_name = personRow.last_name; if (b.site_id == null) b.site_id = personRow.site_id;
+  if (b.organization_id == null) b.organization_id = personRow.organization_id;   // la Legal entity della persona (esterni)
   const internal = config.autoInternalDomains.includes(email.split('@')[1]);
   const provider = b.auth_provider || (internal ? 'ENTRA' : 'LOCAL');
   const plain = provider !== 'ENTRA' ? (b.password || genPassword()) : null;
@@ -131,7 +135,14 @@ r.post('/users', requireAdmin, ah(async (req, res) => {
   });
   // profilo di accesso predefinito (Default) dopo i grant indicati: aggiunge solo ciò che manca, non declassa quanto scelto qui
   const def = await applyDefaultProfile(u.id, req.user.id).catch((e) => { console.warn('[users] profilo predefinito:', e.message); return null; });
-  await audit(req, 'USER_CREATED', { entity: 'user', entityId: u.id, label: u.email, data: { level: u.level, provider, grants: (b.grants || []).map((g) => `${g.module_key}:${g.profile}`), default_profile: def ? { id: def.profile.id, added: def.added, updated: def.updated } : null } });
+  // profilo di accesso scelto (es. Partner ospitante / Cliente service dalla scheda Legal entity): applicato dopo il Default, in merge
+  let chosen = null;
+  if (b.access_profile_id) {
+    chosen = await applyProfile(b.access_profile_id, [u.id], { actorId: req.user.id, mode: 'merge' }).catch((e) => { console.warn('[users] profilo scelto:', e.message); return { error: e.message }; });
+  }
+  await audit(req, 'USER_CREATED', { entity: 'user', entityId: u.id, label: u.email, data: { level: u.level, provider, origin: b.origin || 'ADMIN', organization_id: u.organization_id, grants: (b.grants || []).map((g) => `${g.module_key}:${g.profile}`),
+    default_profile: def ? { id: def.profile.id, added: def.added, updated: def.updated } : null,
+    access_profile: chosen ? (chosen.error ? { id: b.access_profile_id, error: chosen.error } : { id: chosen.profile.id, name: chosen.profile.name, added: chosen.added, updated: chosen.updated, warnings: chosen.warnings }) : null } });
 
   let invited = false;
   if (b.send_invite !== false) {
@@ -140,7 +151,11 @@ r.post('/users', requireAdmin, ah(async (req, res) => {
     const out = await sendMail({ to: email, subject: 'Benvenuto in Suite TD', ref: `invite:${u.id}`, html: layout(`Benvenuto, ${b.full_name}`, `<p>È stato creato il tuo accesso a <b>Suite TD</b>, l'intranet e operating suite di Toscana Diagnostica.</p>${loginHint}`) });
     invited = out.ok;
   }
-  res.status(201).json({ id: u.id, invited, temporaryPassword: invited ? undefined : plain || undefined });
+  return { id: u.id, invited, temporaryPassword: invited ? undefined : plain || undefined, access_profile: chosen && !chosen.error ? { id: chosen.profile.id, name: chosen.profile.name, added: chosen.added, updated: chosen.updated, warnings: chosen.warnings } : null, access_profile_error: chosen?.error || null };
+}
+r.post('/users', requireAdmin, ah(async (req, res) => {
+  const b = parse(createUserSchema, req.body);
+  res.status(201).json(await createUserAccount(req, b));
 }));
 
 r.put('/users/:id', requireAdmin, ah(async (req, res) => {

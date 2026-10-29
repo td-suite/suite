@@ -104,7 +104,24 @@ async function seed() {
   };
   for (const [k, v] of Object.entries(defaults)) await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(v)]);
   await seedCentralino();
+  await seedPublicContact().catch((e) => console.warn('[seed] contatti pubblici', e.message));
   await seedGrantRules().then((n) => { if (n) console.log(`[seed] regole di accesso: ${n}`); }).catch((e) => console.warn('[seed] regole', e.message));
+}
+
+// Unità "contatto pubblico" per gli accessi esterni (docs/ACCESSI_ESTERNI.md): la migrazione 031 marca quelle già presenti; se
+// l'organigramma arriva dopo (file Organigramma), il seme si riapplica una volta sola non appena esistono unità corrispondenti.
+// Da lì in poi comanda solo Amministrazione > Organizzazione.
+export async function seedPublicContact() {
+  const done = await one(`SELECT 1 FROM app_settings WHERE key='esterni.public_contact_seeded'`);
+  if (done) return 0;
+  const r = await q(`UPDATE org_units SET public_contact = TRUE
+    WHERE NOT public_contact AND (kind = 'DIREZIONE'
+       OR lower(unaccent(name)) LIKE 'hsq%' OR lower(unaccent(name)) LIKE 'flow & back office%' OR lower(unaccent(name)) LIKE 'laboratorio di analisi%'
+       OR lower(unaccent(name)) LIKE 'service%' OR lower(unaccent(name)) IN ('b2b', 'service/b2b', 'service / b2b') OR lower(unaccent(name)) LIKE 'retail & communications%')`);
+  // il seme si considera fatto solo quando ha trovato almeno un'area o funzione (la sola Direzione nasce con la prima sede: troppo presto)
+  const any = await one(`SELECT 1 FROM org_units WHERE public_contact AND kind <> 'DIREZIONE' LIMIT 1`);
+  if (any) { await q(`INSERT INTO app_settings (key, value) VALUES ('esterni.public_contact_seeded', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify({ at: new Date().toISOString(), n: r.rowCount })]); if (r.rowCount) console.log(`[seed] contatti pubblici: ${r.rowCount} unità`); }
+  return r.rowCount;
 }
 
 if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {

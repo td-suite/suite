@@ -163,6 +163,15 @@ export function anagraficaA(righe) {
     if (!a.cognome_nome && /\d{2}\/\d{2}\/\d{4}/.test(r) && /\b[FM]\b/.test(r) && !/Acc/i.test(r)) {
       const s = segmenti(r);
       if (s.length && isMaiuscola(s[0].testo) && !RE_DATA.test(s[0].testo) && !isEtichettaNome(s[0].testo)) a.cognome_nome = compattaSpazi(s[0].testo).toUpperCase();
+      // layout Nuova Igea reale (PDF del 29/10/2026): il nome è da solo nella riga precedente ("DINE KATERINA   DINE KATERINA"),
+      // la riga "Data di nascita: … Sesso: F" segue
+      if (!a.cognome_nome) {
+        for (let j = i - 1; j >= Math.max(0, i - 3) && !a.cognome_nome; j--) {
+          const sj = segmenti(righe[j]); if (!sj.length) continue;
+          const n = sj[0].testo;
+          if (isMaiuscola(n) && !RE_DATA.test(n) && !isEtichettaNome(n) && !/\d/.test(n) && !isTestoLaboratorio(n) && !/^(Rev\.|Pagina)/i.test(n)) a.cognome_nome = compattaSpazi(n).toUpperCase();
+        }
+      }
     }
   }
   return a;

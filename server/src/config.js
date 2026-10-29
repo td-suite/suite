@@ -8,7 +8,7 @@ export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail
 // solo a importare i contenuti dall'app originale (Travaso moduli > Importa i contenuti)
 export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari', 'ticket', 'cartella', 'referti', 'audit'];
 // Moduli con l'importazione dei contenuti dall'app originale
-export const CONTENT_IMPORT_MODULES = ['room', 'integration'];
+export const CONTENT_IMPORT_MODULES = ['room', 'integration', 'orders'];
 
 export const config = {
   port: Number(env.PORT || 3000),

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { q, one, many, tx } from '../db.js';
 import { ah, parse, audit, notFound, forbidden, bad, HttpError } from '../../../lib/util.js';
 import { config } from '../config.js';
+import { isExternal } from '../../../lib/esterni.js';
 import { userContext, visibleSql, canSee, isGestore, seesName, unitHeadUserIds, assignableUsers, unitInfo } from '../lib/access.js';
 import { KEY, PRIORITA, STATO_LABEL, nextNumero, formatProtocollo, settings, slaDeadlines, evento, notifica, loadTicket, pubTicket, indexTicket, T_COLS, T_FROM } from '../lib/core.js';
 
@@ -32,17 +33,25 @@ const risp = async (req, res, id, extra = {}) => res.json({ ...pubTicket(await l
 // ---- Catalogo per i form: categorie, SLA, unità dell'organigramma con percorso, sedi TD e Legal entity, proposta "per conto di"
 r.get('/catalogo', ah(async (req, res) => {
   const ctx = await userContext(req);
-  const [categorie, sla, unita, sedi, orgs, s] = await Promise.all([
+  // Accessi esterni (29/10/2026): caselle destinatarie solo tra le unità con "contatto pubblico" (org_units.public_contact), categorie
+  // predefinite su altre caselle escluse, "per conto di" solo la propria Legal entity e le sedi del proprio perimetro
+  const external = isExternal(req.user);
+  const [categorie0, sla, unita, sedi0, orgs0, s] = await Promise.all([
     many('SELECT id, nome, descrizione, unit_id, priorita_default, riservata, sort_order FROM categorie WHERE attiva ORDER BY sort_order, nome'),
     many('SELECT * FROM sla ORDER BY priorita'),
-    many(`SELECT u.id, u.name, u.kind, u.parent_id, u.branch, u.sort_order, org_unit_path(u.id) AS path,
+    many(`SELECT u.id, u.name, u.kind, u.parent_id, u.branch, u.sort_order, u.public_contact, org_unit_path(u.id) AS path,
             EXISTS (SELECT 1 FROM public.org_positions op WHERE op.unit_id=u.id AND op.is_head) OR u.head_person_id IS NOT NULL AS has_head,
             (SELECT string_agg(p.last_name || ' ' || p.first_name, ', ' ORDER BY p.last_name) FROM public.org_positions op JOIN public.people p ON p.id=op.person_id WHERE op.unit_id=u.id AND op.is_head) AS responsabili
-          FROM public.org_units u WHERE u.active ORDER BY u.sort_order, u.name`),
-    many(`SELECT id, code, name, short_name, kind, city FROM public.sites WHERE active AND kind <> 'SERVICE' ORDER BY name`),
+          FROM public.org_units u WHERE u.active ${external ? 'AND u.public_contact' : ''} ORDER BY u.sort_order, u.name`),
+    many(`SELECT id, code, name, short_name, kind, city, organization_id FROM public.sites WHERE active AND kind <> 'SERVICE' ORDER BY name`),
     many(`SELECT id, code, name, kind FROM public.organizations WHERE active ORDER BY name`),
     settings(),
   ]);
+  const unitIds = new Set(unita.map((u) => u.id));
+  const categorie = external ? categorie0.filter((c) => !c.unit_id || unitIds.has(c.unit_id)) : categorie0;
+  const mySites = new Set((req.user.site_ids || []).map(Number));
+  const sedi = external ? sedi0.filter((x) => mySites.has(Number(x.id)) || (req.user.organization_id && Number(x.organization_id) === Number(req.user.organization_id))) : sedi0;
+  const orgs = external ? orgs0.filter((o) => Number(o.id) === Number(req.user.organization_id)) : orgs0;
   // proposta "per conto di": sede e legal entity della persona dell'utente (o dell'utente)
   const me = await one(`SELECT coalesce(p.site_id, u.site_id) AS site_id, coalesce(p.organization_id, u.organization_id, s.organization_id) AS org_id, p.unit_id
       FROM public.users u LEFT JOIN public.people p ON p.id=u.person_id LEFT JOIN public.sites s ON s.id=coalesce(p.site_id, u.site_id) WHERE u.id=$1`, [ctx.uid]);
@@ -50,7 +59,10 @@ r.get('/catalogo', ah(async (req, res) => {
 }));
 
 // Utenti assegnabili per una casella (afferenti alla casella o a una discendente)
-r.get('/unita/:id/utenti', ah(async (req, res) => res.json(await assignableUsers(idOf(req.params.id)))));
+r.get('/unita/:id/utenti', ah(async (req, res) => {
+  if (isExternal(req.user)) throw forbidden('Sezione non disponibile per gli accessi esterni');
+  res.json(await assignableUsers(idOf(req.params.id)));
+}));
 
 // ---- Elenco
 const listSchema = z.object({
@@ -120,6 +132,17 @@ r.post('/tickets', ah(async (req, res) => {
   if (!unitId) throw bad('Indica la casella destinataria: la categoria non ne ha una predefinita');
   const unit = await unitInfo(unitId);
   if (!unit || !unit.active) throw bad('Casella destinataria non valida');
+  if (isExternal(req.user)) {
+    // un esterno apre ticket solo verso le caselle con contatto pubblico, per conto della propria Legal entity o delle sue sedi
+    const pub = await one('SELECT public_contact FROM public.org_units WHERE id=$1', [unitId]);
+    if (!pub?.public_contact) throw forbidden('Gli accessi esterni aprono ticket solo verso le unità con contatto pubblico');
+    if (b.per_conto_org_id && Number(b.per_conto_org_id) !== Number(req.user.organization_id)) throw forbidden('Puoi aprire ticket solo per conto della tua Legal entity');
+    if (b.per_conto_site_id && !(req.user.site_ids || []).map(Number).includes(Number(b.per_conto_site_id))) {
+      const own = await one('SELECT 1 FROM public.sites WHERE id=$1 AND organization_id=$2', [b.per_conto_site_id, req.user.organization_id || -1]);
+      if (!own) throw forbidden('Puoi aprire ticket solo per conto delle sedi del tuo perimetro');
+    }
+    b.osservatori = [];
+  }
   if (b.per_conto_site_id && !(await one(`SELECT 1 FROM public.sites WHERE id=$1 AND active`, [b.per_conto_site_id]))) throw bad('Sede non valida');
   if (b.per_conto_org_id && !(await one(`SELECT 1 FROM public.organizations WHERE id=$1 AND active`, [b.per_conto_org_id]))) throw bad('Legal entity non valida');
   const riservato = Boolean(cat.riservata);
@@ -439,6 +462,7 @@ r.delete('/tickets/:id/osservatori', ah(async (req, res) => {
 
 // Ricerca utenti per osservatori/assegnazione (anagrafica unica, nessuna copia)
 r.get('/utenti', ah(async (req, res) => {
+  if (isExternal(req.user)) return res.json([]);   // nessuna ricerca sugli utenti della rete per gli esterni
   const s = String(req.query.q || '').trim();
   if (s.length < 2) return res.json([]);
   res.json(await many(`SELECT id, full_name, email FROM public.users WHERE status='ACTIVE' AND (lower(full_name) LIKE '%' || lower($1) || '%' OR lower(email) LIKE '%' || lower($1) || '%') ORDER BY full_name LIMIT 20`, [s]));

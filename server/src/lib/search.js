@@ -1,7 +1,8 @@
 // Suite TD · indice di ricerca unificato (tabella search_index, full-text italiano + trigram sul titolo).
 // Ogni voce porta il proprio perimetro di visibilità (audience) e il flag sensitive (mai passato a modelli esterni).
 import { q, many } from '../db.js';
-import { audienceSql } from './audience.js';
+import { audienceSql, isInternal } from './audience.js';
+import { RUBRICA_PUBLIC_SQL } from './esterni.js';
 
 const ALL = { type: 'ALL' };
 const INTERNAL = { type: 'INTERNAL' };
@@ -149,6 +150,15 @@ export async function search(user, qtext, kind = '') {
   const a = audienceSql(user, 's.audience', params);
   let kindSql = '';
   if (kind) { params.push(String(kind)); kindSql = `AND s.kind = $${params.length}`; }
+  // Accessi esterni (29/10/2026): persone solo delle unità con contatto pubblico, sedi solo del proprio perimetro (ambiti dei grant
+  // e sedi della Legal entity), niente Legal entity (audience INTERNAL già). Gli altri tipi seguono la loro audience.
+  if (!isInternal(user)) {
+    params.push((user.site_ids || []).map(Number)); const sitesP = `$${params.length}`;
+    params.push(user.organization_id ? Number(user.organization_id) : -1); const orgP = `$${params.length}`;
+    kindSql += ` AND (s.kind NOT IN ('person','site','org')
+      OR (s.kind = 'person' AND EXISTS (SELECT 1 FROM people p WHERE p.id::text = s.ref_id AND p.status = 'ATTIVO' AND ${RUBRICA_PUBLIC_SQL}))
+      OR (s.kind = 'site' AND EXISTS (SELECT 1 FROM sites st WHERE st.id::text = s.ref_id AND (st.id = ANY(${sitesP}::int[]) OR st.organization_id = ${orgP}))))`;
+  }
   const rows = await many(
     `WITH qq AS (SELECT plainto_tsquery('italian', $1) AS tsq, lower($1) AS lq)
      SELECT s.kind, s.ref_id, s.title, s.link, s.module_key, s.sensitive,

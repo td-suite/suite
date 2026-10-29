@@ -65,7 +65,7 @@ export function UsersList() {
               <td><Badge tone={u.level === 'USER' ? 'grey' : u.level === 'OWNER' ? 'teal' : 'blue'}>{LEVEL[u.level]}</Badge></td>
               <td><Badge tone={STATUS_TONE[u.status]}>{STATUS[u.status]}</Badge></td>
               <td className="small">{PROVIDER[u.auth_provider]}{u.totp_enabled && <div className="tiny muted">TOTP attivo</div>}</td>
-              <td className="small">{u.site_name || <span className="faint">nessuna sede</span>}{u.organization_name && <div className="tiny muted">{u.organization_name}</div>}</td>
+              <td className="small">{u.site_name || <span className="faint">nessuna sede</span>}{u.organization_name && <div className="tiny muted">{u.organization_name}{u.is_external && <> <Badge tone="amber">esterno</Badge></>}</div>}{!u.organization_name && u.is_external && <div><Badge tone="amber">esterno</Badge></div>}</td>
               <td className="small"><span>{active.length} modul{active.length === 1 ? 'o' : 'i'}</span>{proposed > 0 && <div><Badge tone="mauve">{proposed} propost{proposed === 1 ? 'a' : 'e'} da confermare</Badge></div>}</td>
               <td className="small nowrap">{u.last_login_at ? timeAgo(u.last_login_at) : <span className="faint">mai</span>}</td>
               <td className="actions" onClick={(e) => e.stopPropagation()}>{u.level !== 'OWNER' && (u.level !== 'ADMIN' || isOwner(me)) && <button className="iconbtn danger" aria-label="Elimina accesso" title="Elimina accesso" onClick={() => setConfirmDel(u)}><Icon name="trash" /></button>}</td>
@@ -249,7 +249,7 @@ export function UserDetail() {
                       <dl className="facts">
                         <dt>Cognome e nome</dt><dd>{u.last_name} {u.first_name}{u.person_title ? ` (${u.person_title})` : ''}</dd>
                         <dt>Sede</dt><dd>{u.site_code ? `${u.site_code} · ${u.site_name}` : <span className="muted">Nessuna</span>}</dd>
-                        <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}</dd>
+                        <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}{u.is_external && <> <Badge tone="amber">accesso esterno</Badge></>}</dd>
                         <dt>Afferisce a</dt><dd>{u.person_unit_path ? u.person_unit_path.replace(/^[^›]+› /, '') : <span className="muted">Non indicata</span>}</dd>
                         <dt>Ruolo</dt><dd>{u.person_role || u.person_job_title || <span className="muted">Non indicato</span>}</dd>
                         <dt>Telefono</dt><dd>{[u.person_phone_office, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null, u.person_phone ? `cell. ${u.person_phone}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>

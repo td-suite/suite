@@ -176,9 +176,9 @@ test('generatore DOCX: anagrafica completa nel riquadro, nessun codice/testo del
       assert.equal(docx.subarray(0, 2).toString('latin1'), 'PK');
       const testo = testoDocx(docx);
       const a = s.dati.anagrafica;
-      // riquadro come il modello: "PAZIENTE" titolo del riquadro, sotto il nome, Data di nascita, Sesso, riferimenti di accettazione; luogo/indirizzo solo se presenti
+      // riquadro come il modello del Laboratorio (29/10/2026): titolo del riquadro = nome del paziente, poi Data di nascita, Sesso, riferimenti di accettazione; luogo/indirizzo solo se presenti
       const righe = testo.split('\n').filter(Boolean);
-      assert.equal(righe[0], 'PAZIENTE'); assert.equal(righe[1], a.cognome_nome);
+      assert.equal(righe[0], a.cognome_nome);
       assert.ok(testo.includes(`Sesso: ${a.sesso}`));
       assert.ok(testo.includes(a.eta != null ? `Data di nascita: ${a.data_nascita} (anni ${a.eta})` : `Data di nascita: ${a.data_nascita}`));
       if (a.variante === 'B') { assert.ok(testo.includes(`Referto: ${a.referto_codice} del ${a.referto_data}`)); assert.ok(testo.includes(`Accettazione: ${a.accettazione_codice} del ${a.accettazione_data}`)); }
@@ -253,8 +253,8 @@ test('sorgente non riconosciuta (caso CHIARI STEFANIA / FARMACI del 29/10/2026):
   for (const x of ['TOSCANA DIAGNOSTICA', 'Valori di Riferimento', 'SN=', 'InfoCamere', 'GERINI', 'I risultati di questo referto', 'Regolamento', 'Pagina 1 di 1', 'SAN MARCO', 'P.IVA']) assert.ok(!s.testo_sorgente.includes(x), `testo_sorgente non deve contenere "${x}"`);
   const testo = testoDocx(await generaDocx(d));
   const righe = testo.split('\n').filter(Boolean);
-  assert.deepEqual(righe.slice(0, 6), ['PAZIENTE', 'CHIARI STEFANIA', 'Data di nascita: 25/05/1965', 'Sesso: F', 'Accettazione n°: 3370', 'Data Acc.: 27/10/2026']);
-  assert.deepEqual(righe.slice(6), ['FARMACI', 'Carbamazepina', 'Metodo: Immunochimico (KIMS)', 'Materiale: SIERO', '10,6 µg/ml', '4,0 - 12,0']);   // nient'altro
+  assert.deepEqual(righe.slice(0, 5), ['CHIARI STEFANIA', 'Data di nascita: 25/05/1965', 'Sesso: F', 'Accettazione n°: 3370', 'Data Acc.: 27/10/2026']);
+  assert.deepEqual(righe.slice(5), ['FARMACI', 'Carbamazepina', 'Metodo: Immunochimico (KIMS)', 'Materiale: SIERO', '10,6 µg/ml', '4,0 - 12,0']);   // nient'altro
   assert.ok(!testo.includes('Luogo di nascita') && !testo.includes('Indirizzo'));
   const coe = controllaCoerenza({ datiOrig: d, dati: d, testoSorgente: s.testo_sorgente, testoDocx: testo });
   assert.ok(coe.ok, JSON.stringify(coe.check.filter((c) => !c.ok)));
@@ -267,7 +267,7 @@ test('senza titolo di settore nella sorgente il corpo parte senza titolo', async
   assert.deepEqual(s.dati.settori.map((x) => x.titolo), ['']);
   assert.equal(s.dati.settori[0].righe.length, 1);
   const righe = testoDocx(await generaDocx(s.dati)).split('\n').filter(Boolean);
-  assert.equal(righe[6], 'Carbamazepina');
+  assert.equal(righe[5], 'Carbamazepina');
 });
 
 test('coerenza: valore mancante, antibiotico in meno e numero in più vengono segnalati', async () => {
@@ -286,13 +286,12 @@ test('coerenza: valore mancante, antibiotico in meno e numero in più vengono se
   assert.equal(by.ANAGRAFICA.ok, true);
 });
 
-test('riquadro anagrafico: "PAZIENTE" 12 pt bold 004F5F, nome 9 pt bold 5A6B70, righe 8,5 pt', async () => {
+test('riquadro anagrafico: nome del paziente 12 pt bold 004F5F come titolo, righe 8,5 pt', async () => {
   const PizZip = (await import('pizzip')).default;
   const s = elabora({ pagine: pagine('altro_farmaci') }).schede[0];
   const xml = new PizZip(await generaDocx(s.dati)).file('word/document.xml').asText();
   const run = (testo) => { const i = xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) >= 0 ? xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) : xml.indexOf(`<w:t>${testo}</w:t>`); assert.ok(i > 0, testo); return xml.slice(xml.lastIndexOf('<w:r>', i), i); };
-  const paz = run('PAZIENTE'); assert.match(paz, /w:sz w:val="24"/); assert.match(paz, /<w:b\/>/); assert.match(paz, /w:color w:val="004F5F"/);
-  const nome = run('CHIARI STEFANIA'); assert.match(nome, /w:sz w:val="18"/); assert.match(nome, /<w:b\/>/); assert.match(nome, /w:color w:val="5A6B70"/);
+  const nome = run('CHIARI STEFANIA'); assert.match(nome, /w:sz w:val="24"/); assert.match(nome, /<w:b\/>/); assert.match(nome, /w:color w:val="004F5F"/);
   const data = run('25/05/1965'); assert.match(data, /w:sz w:val="17"/);
 });
 
@@ -311,4 +310,73 @@ test('trapianto OpenXML: header, footer e media del template restano, document.x
   const tplBuf = fs.readFileSync(new URL('../src/modules/referti/templates/carta_intestata_default.docx', import.meta.url));
   const z2 = new PizZip(trapianta(docx, tplBuf));
   assert.match(z2.file('word/document.xml').asText(), /w:top="1417"/);
+});
+
+// Layout reale Nuova Igea (PDF del 29/10/2026, dati anonimizzati): nome da solo nella riga sopra "Data di nascita", "Carica Batterica" sulla
+// riga del microrganismo, intestazione di colonna con la specie (anche spezzata), legenda con "#1 MIC" in coda, titolo di esame a capo,
+// etichetta incollata al valore ("…di GramScarsi lattobacilli;"), tabella che prosegue a pagina 2 con la testata ripetuta
+const NI_P1 = `                                                            Cerba HealthCare Toscana s.r.l. - Nuova Igea
+                                                            Via Duccio di Buoninsegna 54 - 50143 - FIRENZE
+                                                            Rev. 2.16 del 13/08/2026
+
+ROSSI MARIA
+                                                            ROSSI MARIA
+Data di nascita: 03/02/1975                                 Sesso: F
+
+                                                            Accettazione n°: 1409
+                                                            Data Acc.: 24/10/2026                       130057473000
+
+                                                            TOSCANA DIAGNOSTICA S.R.L.
+
+                  Esame                                       Risultato                      U.M.      Valori di Riferimento
+MICROBIOLOGIA
+ESAME MICROBIOLOGICO DEL SECRETO
+VAGINALE
+Metodo: microscopico - colturale
+Materiale: T.VAGI.AMIES
+Nuova descrizione dell'esame come da Nomenclatore 2025
+
+  Esame microscopico dopo colorazione di GramScarsi lattobacilli;
+                                             Bacilli gram negativi
+
+  Specie Microbiche Isolate                                   Escherichia coli
+  Esito                                                       Esame colturale: POSITIVO
+
+                Microrganismo #1: Escherichia coli                                   Carica Batterica: 1.000.000 UFC/ml
+
+                                                                                   Escherichia
+                                                                                   coli
+                  R: Resistente I: Sensibile con aumentata esposizione al farmaco  #1        MIC
+                AMIKACINA                                                           S         <=4
+                CEFTAZIDIME                                                         R           8
+                                                                                                            Pagina 1 di 2
+`;
+const NI_P2 = `                                                            Cerba HealthCare Toscana s.r.l. - Nuova Igea
+ROSSI MARIA
+Data di nascita: 03/02/1975                                 Sesso: F
+                                                            Accettazione n°: 1409
+                                                            Data Acc.: 24/10/2026
+                  Esame                                       Risultato                      U.M.      Valori di Riferimento
+                Microrganismo #1: Escherichia coli
+                                                                                   Escherichia coli
+                  R: Resistente I: Sensibile con aumentata esposizione al farmaco  #1        MIC
+                MEROPENEM                                                           S       <=0,5
+      28-10-2026   15.51   SN=72817115868 Emesso dall'Ente Certificatore                  Referto firmato da: DOTT.SSA BIANCHI ANNA
+                                                                                                            Pagina 2 di 2
+`;
+test('Nuova Igea, layout reale del 29/10/2026: nome, carica, antibiogramma su due pagine, titolo a capo, etichetta incollata', async () => {
+  const s = elabora({ pagine: [NI_P1, NI_P2] }).schede[0];
+  const d = s.dati;
+  assert.equal(d.anagrafica.cognome_nome, 'ROSSI MARIA'); assert.equal(d.anagrafica.data_nascita, '03/02/1975'); assert.equal(d.anagrafica.sesso, 'F'); assert.equal(d.anagrafica.accettazione_n, '1409');
+  assert.deepEqual(d.settori.map((x) => x.titolo), ['MICROBIOLOGIA']);
+  assert.equal(d.esami.length, 1); assert.equal(d.esami[0].titolo, 'ESAME MICROBIOLOGICO DEL SECRETO VAGINALE');
+  assert.equal(d.esami[0].metodo, 'microscopico - colturale'); assert.equal(d.esami[0].materiale, 'T.VAGI.AMIES'); assert.match(d.esami[0].nota, /Nomenclatore 2025/);
+  assert.deepEqual(d.esami[0].campi.map((c) => [c.etichetta, c.valore]), [['Esame microscopico dopo colorazione di Gram', 'Scarsi lattobacilli; Bacilli gram negativi'], ['Specie Microbiche Isolate', 'Escherichia coli'], ['Esito', 'Esame colturale: POSITIVO']]);
+  assert.equal(d.antibiogrammi.length, 1);
+  const b = d.antibiogrammi[0];
+  assert.equal(b.specie, 'Escherichia coli'); assert.equal(b.carica, '1.000.000 UFC/ml'); assert.match(b.legenda, /^R: Resistente/); assert.ok(!/#1|MIC/.test(b.legenda));
+  assert.deepEqual(b.righe.map((r) => [r.antibiotico, r.sir, r.mic]), [['AMIKACINA', 'S', '<=4'], ['CEFTAZIDIME', 'R', '8'], ['MEROPENEM', 'S', '<=0,5']]);
+  assert.ok(!s.anomalie.some((a) => a.codice === 'RIGA_NON_INTERPRETATA' || a.codice === 'ANAGRAFICA_INCOMPLETA' || a.codice === 'CARICA_ASSENTE'), JSON.stringify(s.anomalie));
+  const testo = testoDocx(await generaDocx(d));
+  assert.equal(testo.split('\n').filter(Boolean)[0], 'ROSSI MARIA'); assert.ok(!testo.includes('PAZIENTE')); assert.ok(!testo.includes('Escherichia\ncoli')); assert.ok(!testo.includes('TOSCANA DIAGNOSTICA S.R.L.'));
 });

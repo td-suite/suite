@@ -18,6 +18,7 @@ import connectorsRoutes from './routes/connectors.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import accessProfilesRoutes from './routes/accessProfiles.js';
+import esterniRoutes from './routes/esterni.js';
 import coreRoutes from './routes/core.js';
 import ssoRoutes from './routes/sso.js';
 import communityRoutes from './routes/community.js';
@@ -105,6 +106,7 @@ app.use('/api', requireAuth);
 app.use('/api', ssoRoutes);
 app.use('/api', usersRoutes);
 app.use('/api/access-profiles', accessProfilesRoutes);   // profili di accesso: pacchetti di permessi (Amministrazione)
+app.use('/api', esterniRoutes);                          // accessi esterni dalle Legal entity (partner ospitanti, clienti service)
 app.use('/api', coreRoutes);
 app.use('/api', communityRoutes);
 app.use('/api', filesRoutes);

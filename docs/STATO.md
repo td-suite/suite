@@ -33,3 +33,6 @@ sintesi con Claude per sede (esito in `public.site_sgi_scores` → riquadro "All
 rete e per i partner, archivio con cestino ed export XLSX/PDF, PDF del singolo audit nello stile del modulo. Collaudo locale con db
 dedicato, test `audit-scoring.test.mjs`, screenshot `docs/screens/audit-*.png`. Da verificare con la chiave Anthropic reale. Dettagli in
 docs/AUDIT_SGI.md.
+
+## Ordini: catalogo articoli dall'app originale (29/10/2026)
+Amministrazione > Travaso moduli > Ordini e Magazzino > "Importa i contenuti dall'app originale": copia categorie, articoli e abbinamenti esame → articolo da orders.toscanadiagnostica.it (sorgente LEGACY_ORDERS_DATABASE_URL o Sorgenti legacy), ripetibile senza duplicati (legacy_import_map). Confezioni per struttura e giacenze non si importano: dipendono dalle strutture dell'app, che nella Suite sono sedi e Legal entity dell'anagrafica unica.

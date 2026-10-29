@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
-import { useAuth } from '../auth.jsx';
+import { useAuth, isExternal, hasModule } from '../auth.jsx';
 import { useApi, Skeleton, Badge, Empty } from '../components/ui.jsx';
 import { Icon, weatherIcon } from '../components/Icons.jsx';
 import Widget from '../components/Widget.jsx';
@@ -38,6 +38,7 @@ function useClock() {
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const external = isExternal(user);   // accesso esterno: niente composer in bacheca, niente organigramma, ricerca nel proprio perimetro
   const grantKeys = Object.keys(user?.grants || {}).sort().join(',');   // cambia quando un amministratore assegna o toglie un modulo
   const modules = useApi('/home/modules', [grantKeys, user?.level]);
   const home = useApi('/community/home');
@@ -101,10 +102,10 @@ export default function Home() {
 
           <form className="hero-search" onSubmit={submit} role="search">
             <Icon name="search" className="lead" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca in tutta Toscana Diagnostica: persone, sedi, circolari, procedure, moduli" aria-label="Cerca nella Suite" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={external ? 'Cerca: circolari, contatti di riferimento, le tue sedi' : 'Cerca in tutta Toscana Diagnostica: persone, sedi, circolari, procedure, moduli'} aria-label="Cerca nella Suite" />
             <button type="submit" className="btn primary"><Icon name="arrowRight" /><span>Cerca</span></button>
           </form>
-          <div className="hero-hint">Puoi chiedere in linguaggio naturale: "quali circolari devo ancora leggere?", "chi è il site manager di Calenzano?"</div>
+          <div className="hero-hint">{external ? 'Puoi chiedere in linguaggio naturale: "quali circolari devo ancora leggere?", "a chi scrivo per una non conformità?"' : 'Puoi chiedere in linguaggio naturale: "quali circolari devo ancora leggere?", "chi è il site manager di Calenzano?"'}</div>
 
           <div className="pulses">
             <Pulse icon="bell" value={notif.data?.unread} label="notifiche da leggere" to="/community" tone={notif.data?.unread ? 'hot' : ''} loading={notif.loading} />
@@ -146,12 +147,12 @@ export default function Home() {
           <div className="cg cg-3"><CalendarCard rows={h.events} loading={home.loading} unavailable={home.unavailable} /></div>
           <div className="cg cg-3"><NewsCard rows={h.news} loading={home.loading} unavailable={home.unavailable} /></div>
           <div className="cg cg-3"><WeatherCard data={weather} loading={home.loading} unavailable={home.unavailable} siteName={weatherSite} /></div>
-          <div className="cg cg-8"><Board limit={5} initialPosts={home.data && Array.isArray(h.posts) ? h.posts : undefined} /></div>
+          <div className="cg cg-8"><Board limit={5} readOnly={external} initialPosts={home.data && Array.isArray(h.posts) ? h.posts : undefined} /></div>
           <div className="cg cg-4 cg-stack">
             <QuoteCard quote={h.quote} loading={home.loading} unavailable={home.unavailable} />
-            <PeopleQuick />
-            <BirthdaysCard rows={h.birthdays} />
-            <FilesCard />
+            {(!external || hasModule(user, 'rubrica')) && <PeopleQuick external={external} />}
+            {!external && <BirthdaysCard rows={h.birthdays} />}
+            {!external && <FilesCard />}
           </div>
         </div>
       </div>

@@ -33,7 +33,7 @@ function parseCorpo2(righe, st, anomalie) {
   };
   for (const raw of righe) {
     const riga = raw.replace(/\s+$/, '');
-    if (!riga.trim()) { st.ultimoCampo = null; continue; }
+    if (!riga.trim()) { st.ultimoCampo = null; st.titoloAperto = false; continue; }
     if (isPieDiPagina(riga)) continue;
     const seg = segmenti(riga);
     const testo = compattaSpazi(riga);
@@ -45,12 +45,20 @@ function parseCorpo2(righe, st, anomalie) {
       esame();
       for (const s of seg) {
         const m = s.testo.match(RE_MICRO); if (!m) continue;
-        const b = { esame: st.esame, n: Number(m[1]), specie: compattaSpazi(m[2]), carica: '', carica_label: '', legenda: '', righe: [] };
-        st.antibiogrammi.push(b); st.blocchi.push(b);
+        const n = Number(m[1]); const specie = compattaSpazi(m[2]);
+        // stesso microrganismo ripetuto a pagina seguente (la tabella prosegue con la testata ripetuta): si continua il blocco esistente
+        const gia = st.antibiogrammi.find((x) => x.esame === st.esame && x.n === n && x.specie.toLowerCase() === specie.toLowerCase());
+        const b = gia || { esame: st.esame, n, specie, carica: '', carica_label: '', legenda: '', righe: [] };
+        if (!gia) st.antibiogrammi.push(b);
+        st.blocchi.push(b);
       }
       if (st.blocchi.length >= 2) anomalie.push(anomalia('DUE_MICRORGANISMI'));
+      // "Carica Batterica: 1.000.000 UFC/ml" sulla stessa riga del microrganismo (layout reale Nuova Igea)
+      seg.filter((s) => RE_CARICA.test(s.testo)).forEach((s, i) => { const m = s.testo.match(RE_CARICA); const b = st.blocchi[i] || st.blocchi[0]; b.carica_label = m[1]; b.carica = compattaSpazi(m[2]); });
       st.ultimoCampo = null; continue;
     }
+    // Intestazione di colonna con il solo nome della specie (anche spezzato su due righe: "Pseudomonas" / "aeruginosa"): non è un dato
+    if (st.blocchi.length && !st.inTabella && seg.length && seg.every((s) => st.blocchi.some((b) => b.specie && (b.specie.toLowerCase().includes(s.testo.toLowerCase()) || s.testo.toLowerCase().includes(b.specie.toLowerCase()))))) continue;
     // Carica Batterica (per blocco, nell'ordine)
     if (st.blocchi.length && seg.some((s) => RE_CARICA.test(s.testo))) {
       const car = seg.filter((s) => RE_CARICA.test(s.testo));
@@ -58,7 +66,15 @@ function parseCorpo2(righe, st, anomalie) {
       continue;
     }
     // Legenda della testata (copiare quella della sorgente)
-    if (st.blocchi.length && /^R\s*:\s*Resistente/i.test(testo)) { for (const b of st.blocchi) b.legenda = testo; continue; }
+    if (st.blocchi.length && /^R\s*:\s*Resistente/i.test(testo)) {
+      // la legenda può portare in coda le colonne "#1  MIC [#2  MIC]": è la testata della tabella (layout reale Nuova Igea)
+      const cols = [];
+      for (const s of seg) { if (/^#\s*\d+$/.test(s.testo)) cols.push({ sir: s.da, mic: null }); else if (/^MIC\b/i.test(s.testo) && cols.length) cols[cols.length - 1].mic = s.da; }
+      const legenda = compattaSpazi(seg.filter((s) => !/^#\s*\d+$/.test(s.testo) && !/^MIC\b/i.test(s.testo)).map((s) => s.testo).join(' '));
+      for (const b of st.blocchi) b.legenda = legenda;
+      if (cols.length) { st.colonneAb = cols; st.inTabella = true; }
+      continue;
+    }
     // Testata della tabella: ANTIBIOTICO  #1  MIC  [#2  MIC]  oppure  ANTIBIOTICO  S/I/R  MIC
     if (st.blocchi.length && seg.length && RE_TESTATA_AB.test(seg[0].testo)) {
       const cols = [];
@@ -66,8 +82,9 @@ function parseCorpo2(righe, st, anomalie) {
       st.colonneAb = cols.length ? cols : [{ sir: null, mic: null }];
       st.inTabella = true; continue;
     }
-    // Righe della tabella: nome | S | MIC | [S | MIC]
-    if (st.inTabella && st.blocchi.length && seg.length >= 2 && RE_SIR.test(seg[1].testo)) {
+    // Righe della tabella: nome | S | MIC | [S | MIC] (anche senza testata esplicita, se c'è un microrganismo aperto)
+    if (st.blocchi.length && seg.length >= 2 && RE_SIR.test(seg[1].testo)) {
+      st.inTabella = true;
       const nome = seg[0].testo;
       const valori = seg.slice(1);
       if (st.blocchi.length === 1 || !st.colonneAb || st.colonneAb.length < 2) {
@@ -89,12 +106,17 @@ function parseCorpo2(righe, st, anomalie) {
     // Fine tabella: qualunque altra riga
     if (st.inTabella && !(seg.length >= 2 && RE_SIR.test(seg[1].testo))) { st.inTabella = false; st.blocchi = []; }
 
-    // Titolo maiuscolo isolato: settore noto oppure titolo di esame
+    // Titolo maiuscolo isolato: settore noto oppure titolo di esame (un titolo lungo va a capo: la riga maiuscola che segue subito
+    // un titolo di esame ancora vuoto ne è la continuazione, es. "ESAME MICROBIOLOGICO DEL SECRETO" / "VAGINALE")
     if (seg.length === 1 && isMaiuscola(seg[0].testo) && !isSottoriga(seg[0].testo)) {
+      const cur = st.esame >= 0 ? st.esami[st.esame] : null;
       if (isSettoreNoto(seg[0].testo)) { st.settori.push({ titolo: seg[0].testo.toUpperCase(), righe: [] }); st.settore = st.settori.length - 1; st.esame = -1; }
+      else if (cur && st.titoloAperto && !cur.metodo && !cur.materiale && !cur.campi.length && seg[0].da <= 2) cur.titolo = `${cur.titolo} ${seg[0].testo.toUpperCase()}`;
       else { st.esami.push({ settore: settore(), titolo: seg[0].testo.toUpperCase(), metodo: '', materiale: '', sede: '', nota: '', campi: [] }); st.esame = st.esami.length - 1; }
+      st.titoloAperto = !isSettoreNoto(seg[0].testo);
       st.ultimoCampo = null; continue;
     }
+    st.titoloAperto = false;
     // Metodo / Materiale / Sede Anatomica / Nuova descrizione (anche due per riga)
     if (seg.length && isSottoriga(seg[0].testo)) {
       const e = esame();
@@ -105,6 +127,11 @@ function parseCorpo2(righe, st, anomalie) {
         if (k.startsWith('metodo')) e.metodo = m[2]; else if (k.startsWith('materiale') || k.startsWith('campione')) e.materiale = m[2]; else if (k.startsWith('sede')) e.sede = m[2]; else e.nota = compattaSpazi(`${e.nota} ${s.testo}`);
       }
       st.ultimoCampo = null; continue;
+    }
+    // Etichetta incollata al valore nel testo estratto ("Esame microscopico dopo colorazione di GramScarsi lattobacilli;")
+    if (seg.length === 1) {
+      const m = seg[0].testo.match(/^(.*\b(?:Gram|Giemsa|Ziehl[- ]Neelsen|Papanicolaou))([A-Z][a-zà-ü].*)$/);
+      if (m) { const e = esame(); const campo = { etichetta: compattaSpazi(m[1]), valore: compattaSpazi(m[2]) }; e.campi.push(campo); st.ultimoCampo = campo; st.posValore = seg[0].da + m[1].length; continue; }
     }
     // Coppia etichetta / valore
     if (seg.length >= 2) {

@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden, slugify, itDate, getSetting, HttpError } from '../lib/util.js';
 import { isAdmin, hasModule, canSeeSite } from '../lib/access.js';
 import { audienceSql, canSee, isInternal } from '../lib/audience.js';
+import { isExternal } from '../lib/esterni.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { normalizeAudience, audienceUsers, notify, ensureDailyQuote, nextProtocol } from '../lib/community.js';
 import { aiEnabled, generateQuotes, generateQuiz } from '../lib/claude.js';
@@ -107,6 +108,8 @@ r.get('/community/posts', ah(async (req, res) => {
 }));
 
 r.post('/community/posts', ah(async (req, res) => {
+  // Accessi esterni (29/10/2026): la bacheca è della rete TD, gli esterni leggono i post ALL ma non pubblicano
+  if (isExternal(req.user)) throw forbidden('La bacheca è riservata al personale della rete Toscana Diagnostica');
   const b = parse(z.object({ body: z.string().trim().min(1).max(5000), audience: audienceSchema.optional(), site_id: z.number().int().nullable().optional(), file_ids: z.array(z.number().int()).max(10).optional() }), req.body);
   // Regola del CEO (29/10/2026): salvo Owner, Admin e gestori del widget Comunicazione, un post di un membro di TD in bacheca è
   // visibile solo alla rete TD (audience INTERNAL), qualunque perimetro sia stato chiesto
@@ -745,7 +748,8 @@ r.get('/community/home', ah(async (req, res) => {
     const params = [u.id]; const a = audienceSql(u, 'p.audience', params);
     return many(`${POST_SELECT('$1')} WHERE p.deleted_at IS NULL AND (${a.sql} OR p.author_id=$1) ORDER BY p.pinned DESC, p.created_at DESC LIMIT 3`, params);
   })();
-  const birthdaysP = many(`SELECT p.id, p.last_name, p.first_name, p.job_title, s.name AS site_name FROM people p LEFT JOIN sites s ON s.id=p.site_id
+  // compleanni: dato della rete TD, non per gli accessi esterni
+  const birthdaysP = isExternal(u) ? Promise.resolve([]) : many(`SELECT p.id, p.last_name, p.first_name, p.job_title, s.name AS site_name FROM people p LEFT JOIN sites s ON s.id=p.site_id
                             WHERE p.status='ATTIVO' AND p.birth_date IS NOT NULL
                               AND to_char(p.birth_date, 'MM-DD') = to_char((now() AT TIME ZONE 'Europe/Rome')::date, 'MM-DD') ORDER BY p.last_name LIMIT 20`);
   const quoteP = ensureDailyQuote().catch(() => null);

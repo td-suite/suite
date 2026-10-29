@@ -125,7 +125,7 @@ export function Composer({ onPosted, siteId }) {
 }
 
 // Bacheca: limit → versione compatta (home); full → filtro sede e "carica altri"
-export default function Board({ limit, full, siteId, initialPosts }) {
+export default function Board({ limit, full, siteId, initialPosts, readOnly }) {
   const [posts, setPosts] = useState(initialPosts || null);
   const [error, setError] = useState(null);
   const [more, setMore] = useState(true);
@@ -146,7 +146,8 @@ export default function Board({ limit, full, siteId, initialPosts }) {
   const shown = limit && posts ? posts.slice(0, limit) : posts;
   return (
     <Card flush className="board">
-      {!isUnavailable(error) && <Composer onPosted={() => load()} siteId={siteId} />}
+      {!isUnavailable(error) && !readOnly && <Composer onPosted={() => load()} siteId={siteId} />}
+      {readOnly && <div className="small muted" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>Bacheca in sola lettura: le comunicazioni della rete Toscana Diagnostica rivolte anche ai partner e ai clienti.</div>}
       {loading && !posts && <div style={{ padding: 18 }}><Skeleton lines={3} /><Skeleton lines={2} /></div>}
       {isUnavailable(error) && <Coming what="La bacheca" />}
       {error && !isUnavailable(error) && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}

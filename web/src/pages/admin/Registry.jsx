@@ -5,6 +5,7 @@ import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, Search
 import { Icon } from '../../components/Icons.jsx';
 import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
 import SitesMap from '../../components/SitesMap.jsx';
+import { OrgAccessModal } from './OrgAccess.jsx';
 
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
 export function LegacyRefs({ refs }) {
@@ -183,6 +184,7 @@ export function Organizations() {
   const toast = useToast();
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null);
+  const [access, setAccess] = useState(null);   // sezione Accessi della Legal entity (utenti esterni collegati, nuovo accesso, riallineo)
   const rows = (data || []).filter((o) => !q || `${o.code || ''} ${o.name} ${o.city || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
@@ -200,15 +202,17 @@ export function Organizations() {
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}
         {data && !rows.length && <Empty icon="folder" title="Nessuna organizzazione" />}
-        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Nome</th><th>Tipo</th><th>P. IVA</th><th>Città</th><th>Sedi</th><th>Utenti</th><th></th></tr></thead><tbody>
+        {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Nome</th><th>Tipo</th><th>P. IVA</th><th>Città</th><th>Sedi</th><th>Accessi</th><th></th></tr></thead><tbody>
           {rows.map((o) => <tr key={o.id}>
             <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}</div></td>
-            <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td><td className="num">{o.users_count}</td>
+            <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td>
+            <td className="num"><button className="btn sm ghost" title="Accessi esterni della Legal entity" onClick={() => setAccess(o)}><Icon name="users" />{o.users_count}{o.hosted_sites_count > 0 && <Badge tone="amber" title="Ospita punti prelievo TD">{o.hosted_sites_count} ospitat{o.hosted_sites_count === 1 ? 'a' : 'e'}</Badge>}</button></td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`la legal entity ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { await api.del(`/organizations/${o.id}`); toast('Legal entity eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
       {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova legal entity'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+      {access && <OrgAccessModal org={access} onClose={() => setAccess(null)} onChanged={reload} />}
     </div>
   );
 }
@@ -405,7 +409,9 @@ function Units() {
     { key: 'branch', label: 'Collocazione', type: 'select', required: true, options: [{ value: 'LINEA', label: 'Pettine (area operativa)' }, { value: 'STAFF', label: 'Tecnostruttura (funzione di staff)' }], help: 'Come in Contratti del personale: la tecnostruttura sta in alto accanto al vertice, il pettine sotto' },
     { key: 'parent_id', label: 'Dipende da', type: 'select', options: unitOpts.filter((o) => o.value !== cur?.id), help: 'Vuoto solo per la Direzione' },
     { key: 'site_id', label: 'Sede dell\'anagrafica', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), help: 'Per i nodi Sede e per i reparti' },
-    { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
+    { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attiva', type: 'bool' },
+    { key: 'public_contact', label: 'Contatto pubblico', type: 'bool', default: false, help: 'Gli accessi esterni (partner ospitanti, clienti service) vedono in Rubrica le persone di questa unità e possono aprirle ticket' },
+    { key: 'description', label: 'Descrizione', type: 'textarea', wide: true },
   ];
   const save = async (body) => { const b = { ...body, parent_id: body.parent_id ? Number(body.parent_id) : null, site_id: body.site_id ? Number(body.site_id) : null }; delete b.head_person_id; if (modal?.id) await api.put(`/org-units/${modal.id}`, b); else await api.post('/org-units', b); toast('Unità salvata'); reload(); };
   return (
@@ -419,7 +425,7 @@ function Units() {
           {rows.map((u) => <tr key={u.id}>
             <td><div className="row tight" style={{ paddingLeft: u.depth * 18 }}>
               {u.hasKids ? <button className="iconbtn sm" aria-label={collapsed[u.id] ? 'Espandi' : 'Comprimi'} onClick={() => setCollapsed({ ...collapsed, [u.id]: !collapsed[u.id] })}><Icon name={collapsed[u.id] ? 'chevronRight' : 'chevronDown'} /></button> : <span style={{ width: 26, display: 'inline-block' }} />}
-              <div><div className="strong">{u.name}</div>{!u.active && <Badge tone="grey">Non attiva</Badge>}</div></div></td>
+              <div><div className="strong">{u.name}</div><div className="row tight">{!u.active && <Badge tone="grey">Non attiva</Badge>}{u.public_contact && <Badge tone="amber" title="Visibile agli accessi esterni in Rubrica e nei ticket">Contatto pubblico</Badge>}</div></div></div></td>
             <td className="small">{KINDS[u.kind]}{u.branch === 'STAFF' && <div className="faint">tecnostruttura</div>}</td>
             <td className="small">{u.site_code ? `${u.site_code} · ${u.site_name}` : ''}</td>
             <td className="small">{(u.positions || []).map((x) => <div key={x.id}>{x.is_head ? <b>{x.person_name}</b> : x.person_name}{x.role_name ? <span className="muted"> · {x.role_name}</span> : ''}</div>)}{!(u.positions || []).length && <span className="muted">Nessuno</span>}</td>

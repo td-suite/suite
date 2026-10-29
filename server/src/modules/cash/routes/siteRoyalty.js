@@ -8,6 +8,7 @@ import { Params, siteScope, assertSite } from '../lib/access.js';
 import { computeSiteRoyalty, BASE_LABEL } from '../lib/siteRoyalty.js';
 import { letterhead, ASSETS, C, M, W, CONTENT_TOP } from '../pdf/distinta.js';
 import { notifyRoyaltyConfirmed } from '../lib/alerts.js';
+import { notify } from '../../../lib/community.js';
 
 const r = Router();
 r.use((req, _res, next) => (['OPERATOR', 'CASSIERE', 'FINANCE'].includes(req.user.role) ? next(forbidden('Sezione riservata ad amministratori e partner')) : next()));
@@ -66,6 +67,32 @@ r.get('/summary', ah(async (req, res) => {
   res.json({ period, start, end, closed: end < todayRome(), rows, totals: { revenue: tot((x) => x.revenue.total), fixed: tot((x) => x.fixed), variable: tot((x) => x.variable), taxable: tot((x) => x.taxable), vat: tot((x) => x.vat), total: tot((x) => x.total) } });
 }));
 
+// "Le tue royalties" (accessi esterni, 29/10/2026): tabella mesi × sedi ospitate con i soli report confermati, leggibile da un
+// partner non addetto ai lavori (base di calcolo, quota fissa, percentuale, IVA, totale, data di conferma). Gli amministratori la
+// vedono per tutte le sedi ospitate del proprio perimetro. months: quanti mesi indietro (1-36, predefinito 12).
+r.get('/partner', ah(async (req, res) => {
+  const months = Math.min(36, Math.max(1, Number(req.query.months) || 12));
+  const P = new Params();
+  const where = [siteScope(req.user, P), "s.ownership = 'OSPITATA'", 's.configured'];
+  const sites = await many(`SELECT s.id, s.code, s.name, s.city, s.host_org_id, s.host_name, s.royalty_fixed_monthly, s.royalty_pct, s.royalty_base, s.royalty_vat_rate, c.name AS company_name
+    FROM sites_v s JOIN companies_v c ON c.id=s.company_id WHERE ${where.join(' AND ')} ORDER BY s.name`, P.values);
+  const periods = [];
+  const now = todayRome();
+  let [y, m] = [Number(now.slice(0, 4)), Number(now.slice(5, 7))];
+  // si parte dal mese scorso: il mese in corso non può avere un report confermato
+  for (let i = 0; i < months; i++) { m -= 1; if (m === 0) { m = 12; y -= 1; } periods.push(`${y}-${String(m).padStart(2, '0')}`); }
+  const st = sites.length ? await many(`SELECT * FROM site_royalty_statements WHERE cancelled_at IS NULL AND site_id = ANY($1::int[]) AND period = ANY($2::text[]) ORDER BY period DESC`, [sites.map((x) => x.id), periods]) : [];
+  const cells = {};
+  for (const x of st) {
+    cells[`${x.site_id}:${x.period}`] = { statement_id: x.id, base: Number(x.base), fixed: Number(x.fixed), variable: Number(x.variable), taxable: Number(x.taxable), vat: Number(x.vat), total: Number(x.total),
+      pct: x.terms?.pct ?? null, fixed_monthly: x.terms?.fixed_monthly ?? null, vat_rate: x.terms?.vat_rate ?? null, base_kind: x.terms?.base ?? null, reports: x.reports, confirmed_at: x.confirmed_at, status: 'CONFERMATO' };
+  }
+  const totals = {};
+  for (const p of periods) { const rows = st.filter((x) => x.period === p); totals[p] = { total: rows.reduce((a, x) => a + Number(x.total), 0), taxable: rows.reduce((a, x) => a + Number(x.taxable), 0), vat: rows.reduce((a, x) => a + Number(x.vat), 0), n: rows.length }; }
+  const grand = { total: st.reduce((a, x) => a + Number(x.total), 0), taxable: st.reduce((a, x) => a + Number(x.taxable), 0), vat: st.reduce((a, x) => a + Number(x.vat), 0), n: st.length };
+  res.json({ months, periods, labels: Object.fromEntries(periods.map((p) => [p, periodLabel(p)])), sites: sites.map((x) => ({ ...x, royalty_fixed_monthly: Number(x.royalty_fixed_monthly || 0), royalty_pct: Number(x.royalty_pct || 0), base_label: BASE_LABEL[x.royalty_base] || x.royalty_base })), cells, totals, grand, partner: req.user.role === 'PARTNER' });
+}));
+
 // Dettaglio di una sede
 r.get('/sites/:id', ah(async (req, res) => {
   const period = String(req.query.period || '');
@@ -98,6 +125,13 @@ r.post('/sites/:id/confirm', ah(async (req, res) => {
   [site.id, period, rev.cash, rev.pos, rev.transfer, k.base, k.fixed, k.variable, k.taxable, k.vat, k.total,
     JSON.stringify({ fixed_monthly: site.royalty_fixed_monthly, pct: site.royalty_pct, base: site.royalty_base, vat_rate: site.royalty_vat_rate, host_name: site.host_name, host_vat: site.host_vat }), rev.reports, req.user.id]);
   await audit(req, 'SITE_ROYALTY_CONFIRM', 'site', site.id, { period, total: k.total });
+  // notifica in app ai partner ospitanti della sede (utenti Suite con grant cash PARTNER e ambito sulla sede)
+  try {
+    const partners = await many(`SELECT DISTINCT u.id FROM public.users u JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'cash' AND g.profile = 'PARTNER' AND NOT g.proposed
+        JOIN public.grant_scopes gs ON gs.grant_id = g.id AND gs.scope_type = 'SITE' AND gs.scope_id = $1 WHERE u.status = 'ACTIVE'`, [site.id]);
+    if (partners.length) await notify(partners.map((x) => x.id), { kind: 'MODULO', module_key: 'cash', title: `Royalties di ${periodLabel(period)} confermate · ${site.name}`,
+      body: `Imponibile ${eur(k.taxable)}, IVA ${eur(k.vat)}, totale ${eur(k.total)}. Il report mensile è disponibile in Cash Management > Le tue royalties.`, link: `/cash/royalties?period=${period}` });
+  } catch (e) { console.warn('[cash] notifica partner:', e.message); }
   let mail = null;
   try {
     const built = await buildSiteRoyaltyPdf(req, null, { period, siteId: site.id });

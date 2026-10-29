@@ -18,6 +18,7 @@ import { geocodeAddress } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
 import { createMissingAccounts } from '../lib/accounts.js';
 import { seedGrantRules, proposeGrantsForAll } from '../lib/grantRules.js';
+import { seedPublicContact } from '../migrate.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -357,6 +358,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   const errors = out.errors.map((e) => ({ ...e, row: data[e.row]?.__row ?? e.row + 2 }));
   await audit(req, 'IMPORT_XLSX', { entity: 'ingest_batch', entityId: batch.id, label: `${d.title}: ${out.rows_ok} ok, ${out.rows_rejected} scartate`, data: { dataset, filename: req.file.originalname } });
   if (dataset === 'people' || dataset === 'orgchart') await applyCentralino().catch((e) => console.warn('[centralino]', e.message));
+  if (dataset === 'orgchart') await seedPublicContact().catch((e) => console.warn('[contatti pubblici]', e.message));   // unità raggiungibili dagli esterni, una volta sola
   let accounts = null;
   if (dataset === 'people') accounts = await createMissingAccounts({ actor: req.user, sendInvite: false }).catch((e) => { console.warn('[accounts]', e.message); return null; });
   if (dataset === 'people' || dataset === 'orgchart' || dataset === 'users') { await seedGrantRules().catch(() => {}); await proposeGrantsForAll(req.user.id).catch((e) => console.warn('[regole]', e.message)); }

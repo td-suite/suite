@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { api, qs } from '../api.js';
-import { useAuth, canManageComm } from '../auth.jsx';
+import { useAuth, canManageComm, isExternal } from '../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, Coming, ErrorBox, PageHead, Field, Modal, useToast, Tabs } from '../components/ui.jsx';
 import { Icon } from '../components/Icons.jsx';
 import Markdown from '../components/Markdown.jsx';
@@ -13,13 +13,14 @@ import { NotFound } from './Misc.jsx';
 
 // ---------- Bacheca completa ----------
 function BoardPage() {
+  const { user } = useAuth();
   const sites = useApi('/sites');
   const [site, setSite] = useState('');
   return (
     <div className="page narrow">
       <PageHead title="Bacheca" icon="comment" sub="Le novità e le conversazioni della rete Toscana Diagnostica"
         actions={<Field label="Sede"><select value={site} onChange={(e) => setSite(e.target.value)} style={{ minWidth: 200 }}><option value="">Tutte le sedi</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>} />
-      <Board full siteId={site} />
+      <Board full siteId={site} readOnly={isExternal(user)} />
     </div>
   );
 }

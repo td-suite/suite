@@ -10,9 +10,10 @@ import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
-import { ah, bad, audit, parse, notFound, readLog } from '../lib/util.js';
+import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
+import { isExternal, filterRubricaRow, RUBRICA_PUBLIC_SQL } from '../lib/esterni.js';
 
 const r = Router();
 
@@ -30,10 +31,11 @@ r.get('/home/modules', ah(async (req, res) => {
   const mods = await many('SELECT key, area, name, tagline, icon, kind, legacy_url, route, restricted, sort_order, scope_type, open_to_all FROM modules WHERE active ORDER BY area, sort_order');
   const u = req.user;
   const active = await activeModuleKeys();   // moduli travasati (MIRROR/LIVE): si aprono dentro la Suite
+  const external = isExternal(u);   // esterno (partner ospitante, cliente service): solo i widget con grant o aperti a tutti
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
-    if (m.kind === 'PUBLIC') return true;                 // vetrine pubbliche: sempre raggiungibili
-    if (m.open_to_all) return true;                       // moduli aperti a tutti gli utenti autenticati (Ticket)
+    if (m.kind === 'PUBLIC') return external ? Boolean(u.grants[m.key]) : true;   // vetrine pubbliche: sempre raggiungibili dagli interni
+    if (m.open_to_all) return true;                       // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
   }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : null), href: moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
   const areas = AREAS.map((a) => ({ ...a, modules: visible.filter((m) => m.area === a.key) })).filter((a) => a.modules.length);
@@ -87,6 +89,12 @@ r.get('/sites', ah(async (req, res) => {
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
         JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
     ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
+  // esterni: solo le sedi del proprio perimetro (ambiti dei grant e sedi della Legal entity), senza responsabile né note
+  if (isExternal(req.user)) {
+    const mine = new Set((req.user.site_ids || []).map(Number));
+    return res.json(rows.filter((s) => mine.has(Number(s.id)) || (req.user.organization_id && Number(s.organization_id) === Number(req.user.organization_id)))
+      .map((s) => ({ id: s.id, code: s.code, name: s.name, short_name: s.short_name, kind: s.kind, city: s.city, province: s.province, address: s.address, zip: s.zip, phone: s.phone, email: s.email, opening_hours: s.opening_hours, organization_id: s.organization_id, organization_name: s.organization_name, active: s.active })));
+  }
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
 }));
 const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
@@ -138,8 +146,13 @@ const orgSchema = z.object({
   bic: z.string().max(11).nullable().optional().transform((v) => (v ? v.replace(/\s+/g, '').toUpperCase() : v)), bank_name: z.string().max(160).nullable().optional(),
 });
 r.get('/organizations', ah(async (req, res) => {
-  const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count FROM organizations o ORDER BY lower(o.name)`);
-  res.json(isAdmin(req.user) ? rows : rows.map((o) => ({ id: o.id, kind: o.kind, code: o.code, name: o.name, city: o.city, province: o.province })));
+  // hosted_sites_count: punti prelievo TD ospitati dalla Legal entity (cash.site_ext.host_org_id), se Cash è avviato
+  const cashReady = (await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`))?.ok;
+  const hosted = cashReady ? `(SELECT count(*)::int FROM cash.site_ext e JOIN sites hs ON hs.id=e.site_id WHERE e.host_org_id=o.id AND hs.active)` : '0';
+  const rows = await many(`SELECT o.*, (SELECT count(*)::int FROM sites s WHERE s.organization_id=o.id) AS sites_count, (SELECT count(*)::int FROM users u WHERE u.organization_id=o.id) AS users_count, ${hosted} AS hosted_sites_count FROM organizations o ORDER BY lower(o.name)`);
+  // un accesso esterno (partner, cliente service) vede solo la propria Legal entity e le società del gruppo: mai l'elenco dei clienti
+  const visibili = isExternal(req.user) ? rows.filter((o) => o.id === req.user.organization_id || ['GRUPPO', 'SOCIETA'].includes(o.kind)) : rows;
+  res.json(isAdmin(req.user) ? rows : visibili.map((o) => ({ id: o.id, kind: o.kind, code: o.code, name: o.name, city: o.city, province: o.province })));
 }));
 r.post('/organizations', requireAdmin, ah(async (req, res) => {
   const b = parse(orgSchema, req.body);
@@ -189,10 +202,14 @@ r.get('/people', ah(async (req, res) => {
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
   if (unit_id) where.push(`(p.unit_id = ${p(Number(unit_id))} OR EXISTS (SELECT 1 FROM org_positions op WHERE op.person_id=p.id AND op.unit_id = ${p(Number(unit_id))}))`);
   if (status && !all) where.push(`p.status = ${p(status)}`);
+  // Esterni (partner ospitanti, clienti service): solo le persone attive delle unità con "contatto pubblico", e di ciascuna solo
+  // nome, ruolo, email e telefono ufficio (lib/esterni.js). Nessuna ricerca fuori da quel perimetro.
+  const external = isExternal(req.user);
+  if (external) { where.push(RUBRICA_PUBLIC_SQL); where.push(`p.status = 'ATTIVO'`); }
   const rows = await many(`SELECT ${RUBRICA_COLS}${isAdmin(req.user) ? `, ${PERSONAL_COLS}` : ''} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY lower(p.last_name), lower(p.first_name) LIMIT 1000`, params);
   // Dati personali minimi per chi non è amministratore: niente codice fiscale, niente date; telefoni visibili (rubrica aziendale)
-  res.json(rows);
+  res.json(external ? rows.map(filterRubricaRow) : rows);
 }));
 // Accesso dalla persona (amministratori): crea o aggancia l'utente, con password provvisoria per gli esterni
 r.post('/people/accounts/missing', requireAdmin, ah(async (req, res) => {
@@ -294,17 +311,26 @@ r.delete('/people/:id', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-r.get('/people/switchboard', ah(async (_req, res) => { res.json(await getSetting('community.switchboard', null)); }));
-r.get('/people/areas', ah(async (_req, res) => {
+// Centralino, aree e organigramma: non per gli esterni (vedono solo i contatti pubblici)
+const noExternal = (req, _res, next) => (isExternal(req.user) ? next(forbidden('Sezione non disponibile per gli accessi esterni')) : next());
+r.get('/people/switchboard', ah(async (req, res) => { res.json(isExternal(req.user) ? null : await getSetting('community.switchboard', null)); }));
+r.get('/people/areas', noExternal, ah(async (_req, res) => {
   res.json(await many(`SELECT area, count(*)::int AS n FROM people WHERE area IS NOT NULL AND status='ATTIVO' GROUP BY area ORDER BY area`));
 }));
-r.get('/people/org-chart', ah(async (_req, res) => {
+r.get('/people/org-chart', noExternal, ah(async (_req, res) => {
   const rows = await many(`SELECT ${RUBRICA_COLS} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.status='ATTIVO' ORDER BY lower(p.last_name)`);
   res.json(rows);
 }));
 r.get('/people/:id', ah(async (req, res) => {
   const row = await one(`SELECT ${RUBRICA_COLS}, ${PERSONAL_COLS}, p.legacy_refs, p.needs_review FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.id=$1`, [Number(req.params.id)]);
   if (!row) throw notFound();
+  if (isExternal(req.user)) {
+    // esterno: la scheda esiste solo se la persona è attiva in un'unità con contatto pubblico, e mostra i soli contatti d'ufficio
+    const ok = await one(`SELECT 1 FROM people p WHERE p.id=$1 AND p.status='ATTIVO' AND ${RUBRICA_PUBLIC_SQL}`, [row.id]);
+    if (!ok) throw notFound();
+    await readLog(req, { module: 'rubrica', entity: 'person', entityId: row.id });
+    return res.json({ ...filterRubricaRow(row), reports: [], positions: [], bio: null, external_view: true });
+  }
   if (!isAdmin(req.user)) { for (const k of ['legacy_refs', 'hired_at', 'terminated_at', 'sex', 'birth_date', 'birth_place', 'tax_code', 'vat_number', 'address', 'zip', 'city', 'province']) delete row[k]; }
   const reports = await many(`SELECT id, last_name, first_name, job_title FROM people WHERE people_manager(id)=$1 AND status='ATTIVO' ORDER BY last_name`, [row.id]);
   // Presentazione scritta dalla persona stessa nel proprio profilo Suite
