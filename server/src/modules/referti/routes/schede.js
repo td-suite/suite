@@ -19,7 +19,7 @@ const datiSchema = z.object({
   sorgente: z.string().max(40).optional(),
   variante: z.enum(['A', 'B']).optional(),
   corpo: z.coerce.number().int().min(1).max(2).optional(),
-  anagrafica: z.object({ cognome_nome: str, data_nascita: str, sesso: str, eta: z.union([z.number(), z.string(), z.null()]).optional(), accettazione_n: str, data_acc: str, referto_codice: str, referto_data: str, accettazione_codice: str, accettazione_data: str, variante: z.string().optional() }).passthrough(),
+  anagrafica: z.object({ cognome_nome: str, data_nascita: str, sesso: str, luogo_nascita: str, indirizzo: str, eta: z.union([z.number(), z.string(), z.null()]).optional(), accettazione_n: str, data_acc: str, referto_codice: str, referto_data: str, accettazione_codice: str, accettazione_data: str, variante: z.string().optional() }).passthrough(),
   settori: z.array(z.object({ titolo: str, righe: z.array(rigaSchema).default([]) }).passthrough()).default([]),
   esami: z.array(z.object({ settore: z.coerce.number().int().min(0).default(0), titolo: str, metodo: str, materiale: str, sede: str, nota: str, campi: z.array(z.object({ etichetta: str, valore: str, unita: str, libero: z.boolean().optional() }).passthrough()).default([]) }).passthrough()).default([]),
   antibiogrammi: z.array(z.object({ esame: z.coerce.number().int().min(0).default(0), n: z.coerce.number().int().min(1).default(1), specie: str, carica: str, carica_label: str, legenda: str, righe: z.array(z.object({ antibiotico: str, sir: str, mic: str }).passthrough()).default([]) }).passthrough()).default([]),
@@ -46,8 +46,8 @@ r.patch('/schede/:id', requireLab, ah(async (req, res) => {
   let nome = b.nome_file != null ? nomeFileSicuro(b.nome_file.replace(/\.(docx|pdf)$/i, '')) : cur.nome_file;
   if (!nome) nome = nomeBase(a.cognome_nome);
   if (b.dati && b.nome_file == null && cur.nome_file === nomeBase(cur.cognome_nome)) nome = nomeBase(a.cognome_nome);   // nome non personalizzato: segue il paziente
-  await q(`UPDATE schede SET dati=$2, cognome_nome=$3, data_nascita=$4, sesso=$5, accettazione=$6, data_acc=$7, referto_codice=$8, referto_data=$9, nome_file=$10, updated_at=now() WHERE id=$1`,
-    [id, JSON.stringify(dati), a.cognome_nome || '', a.data_nascita || null, a.sesso || null, a.accettazione_n || a.accettazione_codice || null, a.data_acc || a.accettazione_data || null, a.referto_codice || null, a.referto_data || null, nome]);
+  await q(`UPDATE schede SET dati=$2, cognome_nome=$3, data_nascita=$4, sesso=$5, luogo_nascita=$6, indirizzo=$7, accettazione=$8, data_acc=$9, referto_codice=$10, referto_data=$11, nome_file=$12, updated_at=now() WHERE id=$1`,
+    [id, JSON.stringify(dati), a.cognome_nome || '', a.data_nascita || null, a.sesso || null, a.luogo_nascita || null, a.indirizzo || null, a.accettazione_n || a.accettazione_codice || null, a.data_acc || a.accettazione_data || null, a.referto_codice || null, a.referto_data || null, nome]);
   await registra('MODIFICATA', { scheda_id: id, user_id: req.user.id, dettagli: { campi: Object.keys(b), nome_file: nome !== cur.nome_file ? nome : undefined } });
   res.json(await loadScheda(id));
 }));

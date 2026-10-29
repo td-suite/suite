@@ -16,15 +16,15 @@ function filtriData(params, from, to, col) {
   return w;
 }
 
-// GET /archivio?q=&from=&to=&sorgente=
+// GET /archivio?q=&from=&to=&sorgente=  (ricerca anche per luogo di nascita; accettazione/referto esterni solo come riferimento interno)
 r.get('/archivio', ah(async (req, res) => {
   const params = []; const w = [`s.stato='CONFERMATA'`];
   const qs = String(req.query.q || '').trim();
-  if (qs) { params.push(`%${qs}%`); w.push(`(s.cognome_nome ILIKE $${params.length} OR s.accettazione ILIKE $${params.length} OR s.referto_codice ILIKE $${params.length} OR s.nome_file ILIKE $${params.length})`); }
+  if (qs) { params.push(`%${qs}%`); w.push(`(s.cognome_nome ILIKE $${params.length} OR s.luogo_nascita ILIKE $${params.length} OR s.accettazione ILIKE $${params.length} OR s.referto_codice ILIKE $${params.length} OR s.nome_file ILIKE $${params.length})`); }
   if (typeof req.query.sorgente === 'string' && SORGENTI[req.query.sorgente]) { params.push(req.query.sorgente); w.push(`s.sorgente=$${params.length}`); }
   w.push(...filtriData(params, req.query.from, req.query.to, 's.confirmed_at'));
   params.push(Math.min(1000, Math.max(1, Number(req.query.limit) || 300)));
-  const rows = await many(`SELECT s.id, s.cognome_nome, s.sorgente, s.accettazione, s.data_acc, s.referto_codice, s.referto_data, s.nome_file, s.confirmed_at, s.sostituisce_id, s.sostituita_da, s.pagine,
+  const rows = await many(`SELECT s.id, s.cognome_nome, s.sesso, s.data_nascita, s.luogo_nascita, s.indirizzo, s.sorgente, s.accettazione, s.data_acc, s.referto_codice, s.referto_data, s.nome_file, s.confirmed_at, s.sostituisce_id, s.sostituita_da, s.pagine,
       u.full_name AS operatore, e.filename AS elaborazione_filename,
       (SELECT jsonb_agg(jsonb_build_object('id', f.id, 'kind', f.kind, 'filename', f.filename, 'size', f.size, 'intero', f.intero) ORDER BY CASE f.kind WHEN 'SORGENTE_PDF' THEN 0 WHEN 'DOCX' THEN 1 ELSE 2 END) FROM file_prodotti f WHERE f.scheda_id=s.id) AS file
     FROM schede s JOIN elaborazioni e ON e.id=s.elaborazione_id LEFT JOIN public.users u ON u.id=s.confirmed_by

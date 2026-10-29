@@ -1,12 +1,15 @@
 Cerba HealthCare
 Rete Diagnostica Italiana S.r.l. VIA DEL SANTO 145/147 LIMENA (PD)
+Tel. 049 0000000 - Fax 049 0000001 - P.IVA 02345678901
 Direttore del laboratorio: dott.ssa L. Verdi
-Paziente: GIANNINI PAOLA                                             Nato il: 12/03/1960               Sesso: F
-Accettazione n° 2026/0456781                                         Data Acc. 04/09/2026
-Esame                                           Risultato                  U.M.             Valori di Riferimento
+Paziente: GIANNINI PAOLA                                                             Nato il: 12/03/1960                 Sesso: F
+Luogo di nascita: FIRENZE (FI)                                                       Residenza: Via Roma 12, 50123 Firenze (FI)
+Accettazione n° 2026/0456781                                                         Data Acc. 04/09/2026
+Medico richiedente: dott. G. Esposito - Toscana Diagnostica
+Esame                                                         Risultato                       U.M.            Valori di Riferimento
 
 MICROBIOLOGIA
-KPC test di conferma                            Negativo                                    Negativo
+KPC test di conferma                                          Negativo                                        Negativo
 Metodo: Colturale su terreno cromogeno
 Materiale: T.AMIES
 Sede Anatomica: rettale
@@ -14,16 +17,23 @@ Sede Anatomica: rettale
 
 
 
-Pagina 1 di 1                                               Accettazione n° 2026/0456781 - GIANNINI PAOLA
+Validato da: dott.ssa L. Verdi - Documento firmato digitalmente ai sensi del D.Lgs. 82/2005 e s.m.i.
+Il presente referto e' riservato: non puo' essere riprodotto parzialmente. Rete Diagnostica Italiana S.r.l.
+
+
+Pagina 1 di 1                                                                Accettazione n° 2026/0456781 - GIANNINI PAOLA
 Cerba HealthCare
 Rete Diagnostica Italiana S.r.l. VIA DEL SANTO 145/147 LIMENA (PD)
+Tel. 049 0000000 - Fax 049 0000001 - P.IVA 02345678901
 Direttore del laboratorio: dott.ssa L. Verdi
-Paziente: BEGUM FATIMA                                               Nato il: 30/07/1988               Sesso: F
-Accettazione n° 2026/0456782                                         Data Acc. 04/09/2026
-Esame                                           Risultato                  U.M.             Valori di Riferimento
+Paziente: BEGUM FATIMA                                                               Nato il: 30/07/1988                 Sesso: F
+Luogo di nascita: DHAKA (BANGLADESH)
+Accettazione n° 2026/0456782                                                         Data Acc. 04/09/2026
+Medico richiedente: dott. G. Esposito - Toscana Diagnostica
+Esame                                                         Risultato                       U.M.            Valori di Riferimento
 
 MICROBIOLOGIA
-KPC test di conferma                            Negativo                                    Negativo
+KPC test di conferma                                          Negativo                                        Negativo
 Metodo: Colturale su terreno cromogeno
 Materiale: T.AMIES
 Sede Anatomica: rettale
@@ -31,16 +41,23 @@ Sede Anatomica: rettale
 
 
 
-Pagina 1 di 1                                               Accettazione n° 2026/0456782 - BEGUM FATIMA
+Validato da: dott.ssa L. Verdi - Documento firmato digitalmente ai sensi del D.Lgs. 82/2005 e s.m.i.
+Il presente referto e' riservato: non puo' essere riprodotto parzialmente. Rete Diagnostica Italiana S.r.l.
+
+
+Pagina 1 di 1                                                                Accettazione n° 2026/0456782 - BEGUM FATIMA
 Cerba HealthCare
 Rete Diagnostica Italiana S.r.l. VIA DEL SANTO 145/147 LIMENA (PD)
+Tel. 049 0000000 - Fax 049 0000001 - P.IVA 02345678901
 Direttore del laboratorio: dott.ssa L. Verdi
-Paziente: CRS LCN                                                    Nato il: 01/01/1950               Sesso: M
-Accettazione n° 2026/0456783                                         Data Acc. 04/09/2026
-Esame                                           Risultato                  U.M.             Valori di Riferimento
+Paziente: CRS LCN                                                                    Nato il: 01/01/1950                 Sesso: M
+Luogo di nascita: SESTO FIORENTINO (FI)                                              Residenza: Via di Pratignone 5, 50019 Sesto Fiorentino (FI)
+Accettazione n° 2026/0456783                                                         Data Acc. 04/09/2026
+Medico richiedente: dott. G. Esposito - Toscana Diagnostica
+Esame                                                         Risultato                       U.M.            Valori di Riferimento
 
 MICROBIOLOGIA
-KPC test di conferma                            Negativo                                    Negativo
+KPC test di conferma                                          Negativo                                        Negativo
 Metodo: Colturale su terreno cromogeno
 Materiale: T.AMIES
 Sede Anatomica: rettale
@@ -48,5 +65,9 @@ Sede Anatomica: rettale
 
 
 
-Pagina 1 di 1                                               Accettazione n° 2026/0456783 - CRS LCN
+Validato da: dott.ssa L. Verdi - Documento firmato digitalmente ai sensi del D.Lgs. 82/2005 e s.m.i.
+Il presente referto e' riservato: non puo' essere riprodotto parzialmente. Rete Diagnostica Italiana S.r.l.
+
+
+Pagina 1 di 1                                                                Accettazione n° 2026/0456783 - CRS LCN
 

@@ -1,12 +1,12 @@
 // Cerba HealthCare Toscana – Nuova Igea (Firenze) (variante A, corpo 2): blocchi esame (URINOCOLTURA, ESAME MICROSCOPICO DIVERSI…)
 // con Metodo/Materiale/Sede, coppie etichetta/valore, antibiogramma tabellare "Microrganismo #n: specie" + "Carica Batterica" +
 // legenda + righe "ANTIBIOTICO | S/I/R | MIC"; con due microrganismi le colonne affiancate "#1 MIC #2 MIC" diventano due tabelle.
-import { anagraficaA, anomalieAnagrafica, separaIntestazione, chiaveAnagrafica, segmenti, isMaiuscola, isSettoreNoto, isSottoriga, isNota, isSostituzione, anomalia, compattaSpazi, isPieDiPagina } from './common.js';
+import { anagraficaA, anomalieAnagrafica, separaIntestazione, chiaveAnagrafica, testoRiquadro, segmenti, isMaiuscola, isSettoreNoto, isSottoriga, isNota, isSostituzione, anomalia, compattaSpazi, isPieDiPagina } from './common.js';
 
 export const SORGENTE = 'CERBA_NUOVA_IGEA';
 export const riconosci = (testo) => /Nuova\s+Igea/i.test(testo) || /Duccio\s+di\s+Buoninsegna/i.test(testo) || /Cerba\s+HealthCare\s+Toscana/i.test(testo);
 
-const FINE_INTESTAZIONE = /Data\s*Acc/i;
+const FINE_INTESTAZIONE = /Data\s*Acc|Indirizzo|Residen|Domicilio|Luogo\s+di\s+nascita|Nat[oa]\s+(a|in)\b|Medico\s+richiedente/i;
 const RE_MICRO = /Microrganismo\s*#?\s*(\d+)\s*:?\s*(.*)$/i;
 const RE_CARICA = /^(Carica\s+(?:Batterica|Microbica|Fungina)(?:\s+Totale)?)\s*:?\s*(.*)$/i;
 const RE_SIR = /^[SIR]$/;
@@ -126,17 +126,20 @@ export function scheda(pagine) {
   const anomalie = [];
   const st = nuovoStato();
   let anagrafica = null;
+  const corpi = [];
   for (const p of pagine) {
     const pg = pagina(p.testo);
     if (!anagrafica) anagrafica = pg.anagrafica; else for (const [k, v] of Object.entries(pg.anagrafica)) if (v && !anagrafica[k]) anagrafica[k] = v;
     parseCorpo2(pg.corpo, st, anomalie);
+    corpi.push(pg.corpo);
   }
   anagrafica = anagrafica || { variante: 'A' };
   anomalie.unshift(...anomalieAnagrafica(anagrafica));
   for (const b of st.antibiogrammi) if (!b.carica) anomalie.push(anomalia('CARICA_ASSENTE', `microrganismo #${b.n}`));
-  // antibiotici nel testo grezzo: righe con un segmento S/I/R in seconda posizione (ogni colonna conta uno)
+  // antibiotici nel testo grezzo del riquadro: righe con un segmento S/I/R in seconda posizione (ogni colonna conta uno)
   let nAb = 0;
-  for (const p of pagine) for (const r of p.testo.split('\n')) { const s = segmenti(r); if (s.length >= 2 && RE_SIR.test(s[1].testo)) nAb += s.slice(1).filter((x) => RE_SIR.test(x.testo)).length; }
+  for (const r of corpi.flat()) { const s = segmenti(r); if (s.length >= 2 && RE_SIR.test(s[1].testo)) nAb += s.slice(1).filter((x) => RE_SIR.test(x.testo)).length; }
+  const testo_sorgente = testoRiquadro(anagrafica, corpi);   // solo riquadro risultati + riga anagrafica
   return { sorgente: SORGENTE, variante: 'A', corpo: 2, anagrafica, settori: st.settori, esami: st.esami, antibiogrammi: st.antibiogrammi, note: st.note, anomalie,
-    conteggi: { antibiotici_sorgente: nAb } };
+    conteggi: { antibiotici_sorgente: nAb }, testo_sorgente };
 }

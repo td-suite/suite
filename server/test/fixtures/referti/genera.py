@@ -3,6 +3,10 @@
 I layout imitano, per quanto descritto nella specifica (/tmp/claude-0/referti_spec.md), i referti di Bianalisi Firenze,
 Cerba RDI Limena (merge di 3 pazienti KPC) e Cerba Nuova Igea (urinocoltura con due microrganismi affiancati), piu' un
 PDF "non referto" (lettera commerciale). I dati dei pazienti sono inventati.
+Aggiornati il 29/10/2026 (indicazione del CEO): l'intestazione paziente porta anche luogo di nascita e indirizzo (con etichette
+diverse per sorgente: "Nata a"/"Indirizzo", "Luogo di nascita"/"Residenza", "Nato il … a"); intestazioni e pie' del laboratorio
+esterno sono realistici (direttore, medico richiedente, firma, diciture legali, P.IVA, contatti) e il parser deve scartarli:
+nel referto TD e in testo_sorgente resta solo il riquadro dei risultati.
 Esecuzione: python3 genera.py  (scrive i PDF accanto allo script). I parser vanno ricalibrati sui PDF reali."""
 import os
 from reportlab.lib.pagesizes import A4
@@ -48,12 +52,17 @@ def bianalisi():
         p.riga([(40, 'BIANALISI S.p.A. Laboratorio Firenze')], size=11, bold=True, dy=13)
         p.riga([(40, 'Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi')], size=8, dy=14)
         p.riga([(40, 'Referto R3YEA050123 del 05/10/2026'), (320, 'Accettazione A3YEA050123 del 02/10/2026')], size=9, dy=13)
-        p.riga([(40, 'ROSSI MARIA'), (320, 'F-16/04/1974 (anni 52) TOLAFI')], size=9, bold=True, dy=14)
+        p.riga([(40, 'ROSSI MARIA'), (320, 'F-16/04/1974 (anni 52) TOLAFI')], size=9, bold=True, dy=12)
+        p.riga([(40, 'Nata a: PRATO (PO)'), (320, 'Indirizzo: Via dei Mille 3, 50131 Firenze (FI)')], size=8, dy=12)
+        p.riga([(40, 'Medico richiedente: dott. G. Esposito'), (320, 'Reparto: Service Toscana Diagnostica')], size=8, dy=14)
         p.riga([(40, 'Analisi'), (260, 'Risultati'), (430, 'Intervalli di Riferimento')], size=8, bold=True, dy=14)
         p.c.line(40, p.y + 8, W - 40, p.y + 8)
         p.vuota(4)
     def pie(p, n, tot):
         p.c.setFont(FONT, 8)
+        if n == tot:
+            p.c.drawString(40, 70, 'Firma: Il Direttore del Laboratorio dott. M. Bianchi (documento firmato digitalmente ai sensi del D.Lgs. 82/2005)')
+            p.c.drawString(40, 58, 'Il presente referto non puo\' essere riprodotto parzialmente. Bianalisi S.p.A. - P.IVA 01234567890')
         p.c.drawString(40, 30, 'Pagina %d di %d' % (n, tot))
         p.c.drawString(320, 30, 'Referto R3YEA050123 - ROSSI MARIA')
 
@@ -107,17 +116,20 @@ def bianalisi():
 def cerba_rdi():
     c = canvas.Canvas(os.path.join(HERE, 'merge_kpc_rdi.pdf'), pagesize=A4)
     pazienti = [
-        ('GIANNINI PAOLA', '12/03/1960', 'F', '2026/0456781', '04/09/2026'),
-        ('BEGUM FATIMA', '30/07/1988', 'F', '2026/0456782', '04/09/2026'),
-        ('CRS LCN', '01/01/1950', 'M', '2026/0456783', '04/09/2026'),
+        ('GIANNINI PAOLA', '12/03/1960', 'F', '2026/0456781', '04/09/2026', 'FIRENZE (FI)', 'Via Roma 12, 50123 Firenze (FI)'),
+        ('BEGUM FATIMA', '30/07/1988', 'F', '2026/0456782', '04/09/2026', 'DHAKA (BANGLADESH)', ''),
+        ('CRS LCN', '01/01/1950', 'M', '2026/0456783', '04/09/2026', 'SESTO FIORENTINO (FI)', 'Via di Pratignone 5, 50019 Sesto Fiorentino (FI)'),
     ]
-    for i, (nome, nascita, sesso, acc, data) in enumerate(pazienti, start=1):
+    for i, (nome, nascita, sesso, acc, data, luogo, indirizzo) in enumerate(pazienti, start=1):
         p = Pagina(c)
         p.riga([(40, 'Cerba HealthCare')], size=12, bold=True, dy=13)
         p.riga([(40, 'Rete Diagnostica Italiana S.r.l. VIA DEL SANTO 145/147 LIMENA (PD)')], size=9, dy=12)
+        p.riga([(40, 'Tel. 049 0000000 - Fax 049 0000001 - P.IVA 02345678901')], size=8, dy=12)
         p.riga([(40, 'Direttore del laboratorio: dott.ssa L. Verdi')], size=8, dy=14)
         p.riga([(40, 'Paziente: ' + nome), (330, 'Nato il: ' + nascita), (460, 'Sesso: ' + sesso)], size=9, bold=True, dy=13)
-        p.riga([(40, 'Accettazione n° ' + acc), (330, 'Data Acc. ' + data)], size=9, dy=14)
+        p.riga([(40, 'Luogo di nascita: ' + luogo)] + ([(330, 'Residenza: ' + indirizzo)] if indirizzo else []), size=8, dy=12)
+        p.riga([(40, 'Accettazione n° ' + acc), (330, 'Data Acc. ' + data)], size=9, dy=12)
+        p.riga([(40, 'Medico richiedente: dott. G. Esposito - Toscana Diagnostica')], size=8, dy=14)
         p.riga([(40, 'Esame'), (250, 'Risultato'), (360, 'U.M.'), (420, 'Valori di Riferimento')], size=8, bold=True, dy=14)
         p.c.line(40, p.y + 8, W - 40, p.y + 8)
         p.vuota(4)
@@ -127,6 +139,8 @@ def cerba_rdi():
         p.riga([(40, 'Materiale: T.AMIES')], size=8)
         p.riga([(40, 'Sede Anatomica: rettale')], size=8)
         p.c.setFont(FONT, 8)
+        p.c.drawString(40, 70, 'Validato da: dott.ssa L. Verdi - Documento firmato digitalmente ai sensi del D.Lgs. 82/2005 e s.m.i.')
+        p.c.drawString(40, 58, 'Il presente referto e\' riservato: non puo\' essere riprodotto parzialmente. Rete Diagnostica Italiana S.r.l.')
         p.c.drawString(40, 30, 'Pagina 1 di 1')
         p.c.drawString(300, 30, 'Accettazione n° ' + acc + ' - ' + nome)
         c.showPage()
@@ -138,9 +152,11 @@ def cerba_nuova_igea():
     c = canvas.Canvas(os.path.join(HERE, 'nuova_igea_urinocoltura.pdf'), pagesize=A4)
     p = Pagina(c)
     p.riga([(40, 'Cerba HealthCare Toscana s.r.l. - Nuova Igea, Via Duccio di Buoninsegna 54 - 50143 Firenze')], size=9, bold=True, dy=13)
-    p.riga([(40, 'Laboratorio analisi cliniche - Direttore Sanitario dott. P. Neri')], size=8, dy=14)
-    p.riga([(40, 'Paziente: GRASSI TIZIANA'), (330, 'Nato il: 05/05/1955'), (460, 'Sesso: F')], size=9, bold=True, dy=13)
-    p.riga([(40, 'Accettazione n° 26/001234'), (330, 'Data Acc. 10/10/2026')], size=9, dy=14)
+    p.riga([(40, 'Laboratorio analisi cliniche - Direttore Sanitario dott. P. Neri - P.IVA 03456789012')], size=8, dy=14)
+    p.riga([(40, 'Paziente: GRASSI TIZIANA'), (330, 'Nato il: 05/05/1955 a FIRENZE (FI)'), (520, 'Sesso: F')], size=9, bold=True, dy=13)
+    p.riga([(40, 'Indirizzo: Via Pisana 120, 50143 Firenze (FI)')], size=8, dy=12)
+    p.riga([(40, 'Accettazione n° 26/001234'), (330, 'Data Acc. 10/10/2026')], size=9, dy=12)
+    p.riga([(40, 'Richiedente: Toscana Diagnostica S.r.l. (service)')], size=8, dy=14)
     p.c.line(40, p.y + 8, W - 40, p.y + 8)
     p.vuota(4)
     p.riga([(40, 'MICROBIOLOGIA')], size=10, bold=True, dy=14)
@@ -177,6 +193,8 @@ def cerba_nuova_igea():
     p.riga([(40, 'Flogosi'), (260, 'Presente')], size=9)
     p.riga([(40, 'Esame microscopico dopo colorazione di Gram'), (260, 'Presenza di bacilli Gram negativi')], size=9)
     p.c.setFont(FONT, 8)
+    p.c.drawString(40, 70, 'Firma: Il Direttore Sanitario dott. P. Neri (firmato digitalmente)')
+    p.c.drawString(40, 58, 'Cerba HealthCare Toscana s.r.l. - www.cerbahealthcare.it - Tel. 055 0000000')
     p.c.drawString(40, 30, 'Pagina 1 di 1')
     p.c.drawString(300, 30, 'Accettazione n° 26/001234 - GRASSI TIZIANA')
     c.showPage()

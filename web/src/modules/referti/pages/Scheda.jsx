@@ -1,5 +1,6 @@
-// Scheda: anteprima affiancata (PDF sorgente a sinistra, referto TD rigenerato a destra), pannello dati editabile (anagrafica,
-// settori ed esami, antibiogrammi, note), anomalie in giallo, checklist di coerenza, pulsanti Anteprima / Conferma / Conferma comunque / Scarta.
+// Scheda: anteprima affiancata (PDF sorgente a sinistra, referto TD rigenerato a destra), pannello dati editabile (anagrafica completa
+// del paziente: cognome e nome, sesso, data e luogo di nascita, indirizzo; riferimenti esterni solo per il registro interno; settori ed
+// esami, antibiogrammi, note), anomalie in giallo, checklist di coerenza, pulsanti Anteprima / Conferma / Conferma comunque / Scarta.
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, apiBase, base, useApi } from '../api.js';
@@ -20,7 +21,7 @@ export function Checklist({ coerenza }) {
       {coerenza.check.map((c) => (
         <li key={c.codice} className={c.ok ? 'ok' : 'ko'}>
           <Icon name={c.ok ? 'check' : 'alert'} /><div><div>{c.testo}</div>
-            {!c.ok && Array.isArray(c.dettagli) && c.dettagli.length > 0 && <div className="small muted">Mancano: {c.dettagli.join(', ')}</div>}</div>
+            {!c.ok && Array.isArray(c.dettagli) && c.dettagli.length > 0 && <div className="small muted">{c.codice === 'TESTO_LAB_ESTERNO' ? 'Trovato' : c.codice === 'NUMERI_IN_PIU' ? 'In più' : 'Mancano'}: {c.dettagli.join(', ')}</div>}</div>
         </li>))}
     </ul>
   );
@@ -127,21 +128,27 @@ export default function Scheda() {
 
       <Card title="Dati del referto" icon="edit" actions={editable && <span className="small muted">{dirty ? 'Modifiche non salvate' : 'Nessuna modifica'}</span>}>
         <fieldset className="rf-fs" disabled={!editable}>
+          <div className="rf-sub">Dati del paziente (nel riquadro anagrafico del referto TD): cognome e nome, sesso, data e luogo di nascita sono obbligatori; l'indirizzo compare solo se presente nella sorgente.</div>
           <div className="rf-grid4">
             <Field label="Cognome e nome (come in sorgente)"><In value={a.cognome_nome} onChange={(v) => upd((f) => { f.anagrafica.cognome_nome = v.toUpperCase(); })} /></Field>
-            <Field label="Data di nascita"><In value={a.data_nascita} onChange={(v) => upd((f) => { f.anagrafica.data_nascita = v; })} placeholder="gg/mm/aaaa" /></Field>
             <Field label="Sesso"><select className="rf-in" value={a.sesso || ''} onChange={(e) => upd((f) => { f.anagrafica.sesso = e.target.value; })}><option value="">-</option><option value="F">F</option><option value="M">M</option></select></Field>
-            {a.variante === 'B' ? <>
-              <Field label="Età (anni)"><In value={a.eta ?? ''} onChange={(v) => upd((f) => { f.anagrafica.eta = v; })} /></Field>
-              <Field label="Referto (codice)"><In value={a.referto_codice} onChange={(v) => upd((f) => { f.anagrafica.referto_codice = v; })} /></Field>
-              <Field label="Referto (data)"><In value={a.referto_data} onChange={(v) => upd((f) => { f.anagrafica.referto_data = v; })} /></Field>
-              <Field label="Accettazione (codice)"><In value={a.accettazione_codice} onChange={(v) => upd((f) => { f.anagrafica.accettazione_codice = v; })} /></Field>
-              <Field label="Accettazione (data)"><In value={a.accettazione_data} onChange={(v) => upd((f) => { f.anagrafica.accettazione_data = v; })} /></Field>
-            </> : <>
-              <Field label="Accettazione n°"><In value={a.accettazione_n} onChange={(v) => upd((f) => { f.anagrafica.accettazione_n = v; })} /></Field>
-              <Field label="Data Acc."><In value={a.data_acc} onChange={(v) => upd((f) => { f.anagrafica.data_acc = v; })} /></Field>
-            </>}
+            <Field label="Data di nascita"><In value={a.data_nascita} onChange={(v) => upd((f) => { f.anagrafica.data_nascita = v; })} placeholder="gg/mm/aaaa" /></Field>
+            <Field label="Età (anni, se indicata)"><In value={a.eta ?? ''} onChange={(v) => upd((f) => { f.anagrafica.eta = v; })} /></Field>
+            <Field label="Luogo di nascita"><In value={a.luogo_nascita} onChange={(v) => upd((f) => { f.anagrafica.luogo_nascita = v; })} placeholder="Comune (Prov.)" /></Field>
+            <Field label="Indirizzo (se presente)"><In value={a.indirizzo} onChange={(v) => upd((f) => { f.anagrafica.indirizzo = v; })} placeholder="Via, CAP, comune" /></Field>
             <Field label="Nome del file" help="Senza estensione: si producono .docx e .pdf. Se esiste già per un'altra scheda, alla conferma viene aggiunto un suffisso tra parentesi."><In value={nomeFile} onChange={(v) => { setNomeFile(v); setDirty(true); }} /></Field>
+          </div>
+          <div className="rf-sub">Riferimenti del laboratorio esterno: restano solo nel registro interno (tracciabilità ISO), non compaiono mai nel DOCX né nel PDF TD.</div>
+          <div className="rf-grid4">
+            {a.variante === 'B' ? <>
+              <Field label="Referto esterno (codice)"><In value={a.referto_codice} onChange={(v) => upd((f) => { f.anagrafica.referto_codice = v; })} /></Field>
+              <Field label="Referto esterno (data)"><In value={a.referto_data} onChange={(v) => upd((f) => { f.anagrafica.referto_data = v; })} /></Field>
+              <Field label="Accettazione esterna (codice)"><In value={a.accettazione_codice} onChange={(v) => upd((f) => { f.anagrafica.accettazione_codice = v; })} /></Field>
+              <Field label="Accettazione esterna (data)"><In value={a.accettazione_data} onChange={(v) => upd((f) => { f.anagrafica.accettazione_data = v; })} /></Field>
+            </> : <>
+              <Field label="Accettazione esterna n°"><In value={a.accettazione_n} onChange={(v) => upd((f) => { f.anagrafica.accettazione_n = v; })} /></Field>
+              <Field label="Data accettazione esterna"><In value={a.data_acc} onChange={(v) => upd((f) => { f.anagrafica.data_acc = v; })} /></Field>
+            </>}
           </div>
 
           {(form.settori || []).map((s, si) => (

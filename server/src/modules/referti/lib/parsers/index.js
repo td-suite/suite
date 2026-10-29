@@ -3,7 +3,7 @@
 import * as bianalisi from './bianalisi.js';
 import * as cerbaRdi from './cerbaRdi.js';
 import * as cerbaNuovaIgea from './cerbaNuovaIgea.js';
-import { anagraficaA, anagraficaB, anomalieAnagrafica, chiaveAnagrafica, separaIntestazione, anomalia } from './common.js';
+import { anagraficaA, anagraficaB, anomalieAnagrafica, chiaveAnagrafica, separaIntestazione, anomalia, testoRiquadro } from './common.js';
 import { parseCorpo1, contaAntibioticiTesto1 } from './corpo1.js';
 
 const PARSER = { BIANALISI: bianalisi, CERBA_RDI: cerbaRdi, CERBA_NUOVA_IGEA: cerbaNuovaIgea };
@@ -27,7 +27,7 @@ export function sembraReferto(testo) {
 const generico = {
   pagina(testo) {
     const righe = testo.split('\n');
-    const { testa, corpo, testataColonne } = separaIntestazione(righe, { testataColonne: /Risultat/i, fineIntestazione: /Data\s*Acc|\(anni\s*\d+\)|Sesso/i });
+    const { testa, corpo, testataColonne } = separaIntestazione(righe, { testataColonne: /Risultat/i, fineIntestazione: /Data\s*Acc|\(anni\s*\d+\)|Sesso|Indirizzo|Residen|Luogo\s+di\s+nascita|Nat[oa]\s+(a|in)\b/i });
     const base = testa.length ? testa : righe.slice(0, 10);
     const anagrafica = { ...anagraficaA(base), ...Object.fromEntries(Object.entries(anagraficaB(base)).filter(([, v]) => v)) };
     return { anagrafica, chiave: chiaveAnagrafica(anagrafica), corpo, testata: testataColonne };
@@ -36,15 +36,18 @@ const generico = {
     const anomalie = [anomalia('SORGENTE_ALTRO')];
     const stato = { settori: [], note: [], corrente: null, ultimaRiga: null, ultimoEsame: null, pos: null };
     let anagrafica = null;
+    const corpi = [];
     for (const p of pagine) {
       const pg = generico.pagina(p.testo);
       if (!anagrafica) anagrafica = pg.anagrafica; else for (const [k, v] of Object.entries(pg.anagrafica)) if (v && !anagrafica[k]) anagrafica[k] = v;
       parseCorpo1(pg.corpo, { testata: pg.testata, anomalie, stato, settorePredefinito: 'ESAMI' });
+      corpi.push(pg.corpo);
     }
     anagrafica = anagrafica || { variante: 'A' };
     anomalie.push(...anomalieAnagrafica(anagrafica));
+    const testo_sorgente = testoRiquadro(anagrafica, corpi);
     return { sorgente: 'ALTRO', variante: anagrafica.variante || 'A', corpo: 1, anagrafica, settori: stato.settori, esami: [], antibiogrammi: [], note: stato.note, anomalie,
-      conteggi: { antibiotici_sorgente: contaAntibioticiTesto1(pagine.map((p) => p.testo).join('\n')) } };
+      conteggi: { antibiotici_sorgente: contaAntibioticiTesto1(testo_sorgente) }, testo_sorgente };
   },
 };
 
@@ -66,7 +69,8 @@ export function spezzaPerPaziente(pagine, sorgente) {
   return gruppi.filter((g) => g.pagine.some((p) => p.testo.trim()));
 }
 
-// Elabora un PDF già estratto: { sorgente, schede: [{ pagine:[n], dati, anomalie }], motivo_scarto }
+// Elabora un PDF già estratto: { sorgente, schede: [{ pagine:[n], dati, anomalie, testo_sorgente }], motivo_scarto }.
+// testo_sorgente = riga anagrafica + riquadro dei risultati (mai l'intero testo del PDF).
 export function elabora({ pagine, ocr = false, ocr_lingua = null }) {
   const testoTutto = pagine.join('\n');
   let sorgente = null;
@@ -80,9 +84,10 @@ export function elabora({ pagine, ocr = false, ocr_lingua = null }) {
   const schede = gruppi.map((g) => {
     const dati = parser.scheda(g.pagine);
     const anomalie = [...dati.anomalie];
-    delete dati.anomalie;
+    const testo_sorgente = dati.testo_sorgente || '';
+    delete dati.anomalie; delete dati.testo_sorgente;
     if (ocr) anomalie.unshift(anomalia('OCR', ocr_lingua && ocr_lingua !== 'ita' ? `lingua ${ocr_lingua}, pacchetto italiano non installato` : undefined));
-    return { pagine: g.pagine.map((p) => p.n), dati, anomalie: dedup(anomalie) };
+    return { pagine: g.pagine.map((p) => p.n), dati, anomalie: dedup(anomalie), testo_sorgente };
   });
   return { sorgente: key, schede, motivo_scarto: null };
 }

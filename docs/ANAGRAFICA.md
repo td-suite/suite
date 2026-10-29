@@ -630,3 +630,43 @@ reali** appena il CEO li fornisce (posizioni delle colonne, intestazioni, legend
 cartella OneDrive via Microsoft Graph non è ancora attiva (i file si scaricano dall'Archivio); il ritaglio del PDF sorgente dei merge richiede
 `pdf-lib` (non installato: si restituisce il PDF intero); il font Lato va installato sull'immagine (fonts-lato nel Dockerfile) perché il PDF lo
 usi davvero; nessun invio al paziente o alla sede, nessuna importazione in StudioLAB, nessuna firma digitale.
+
+## Referti esterni: solo dati del paziente e riquadro dei risultati (29/10/2026)
+Indicazione del CEO, testuale: "Devi salvare esclusivamente i dati del paziente completi (cognome, nome, sesso, luogo e data di nascita
+ed eventualmente indirizzo se c'è) e solo il risultato dell'esame contenuto nel PDF, ovvero il contenuto del riquadro del PDF fornito.
+Questo c'era scritto nella routine ed abbiamo sempre fatto fino ad oggi. Correggi eventuali istruzioni errate." La spec td-referti-ext
+§3 e §4 riportava tra i campi da trascrivere i codici di referto/accettazione del laboratorio esterno e li metteva nel riquadro
+anagrafico del DOCX: istruzione errata, corretta nella spec con nota datata.
+**Parser** (lib/parsers): l'anagrafica estratta è cognome_nome, sesso, data_nascita (+ eta se c'è), **luogo_nascita** (nuovo: "Nato/a a",
+"Luogo di nascita", comune accanto alla data "Nato il … a …"; nei PDF Bianalisi il codice dopo l'età, es. "TOLAFI", è un codice di sede e
+non si legge) e **indirizzo** (nuovo, se presente: "Indirizzo", "Residenza", "Domicilio"). Il corpo è SOLO il riquadro dei risultati:
+`separaIntestazione` taglia intestazione e piè e scarta con `isTestoLaboratorio` ogni riga del laboratorio esterno (ragione sociale,
+direttore, medico/richiedente, firme, "documento firmato digitalmente", diciture legali, P.IVA, contatti, righe di piè "Referto R3YE… -
+NOME"); le note interne al riquadro ("(1) Esame eseguito…", "annulla e sostituisce…") restano. `schede.testo_sorgente` contiene solo la
+riga anagrafica sintetica (nome, sesso, data ed età, luogo, indirizzo) più il testo del riquadro, non l'intero PDF; il PDF intero resta
+come file di partenza (elaborazioni.data, richiesta precedente del CEO). Il conteggio degli antibiotici della sorgente si fa sul riquadro.
+**DOCX** (lib/docgen.js): riquadro anagrafico con nome 12 pt bold, poi Sesso, Data di nascita (con "(anni NN)" se disponibile), Luogo di
+nascita, Indirizzo (solo se presente). Tolte le righe Accettazione n°/Data Acc./Referto/Accettazione; nessun riferimento al laboratorio
+esterno nel documento. Corpo 1 / corpo 2 come prima, limitati al riquadro.
+**Dati e UI**: migrazione referti 002 aggiunge `schede.luogo_nascita` e `schede.indirizzo` (indice su lower(luogo_nascita)); la scheda
+mostra i campi del paziente (obbligatori: cognome e nome, sesso, data e luogo di nascita; indirizzo se presente) e, in un gruppo separato
+"riferimenti del laboratorio esterno", i codici di accettazione/referto con la dicitura che restano solo nel registro interno; l'archivio
+ha la colonna Nascita (sesso, data, luogo), cerca anche per luogo di nascita e mostra il riferimento esterno come "Rif. esterno".
+**Scelta documentata**: i codici di accettazione/referto del laboratorio esterno restano SOLO nel registro interno (`schede.accettazione`,
+`data_acc`, `referto_codice`, `referto_data`, registro ed export XLSX) come riferimento di tracciabilità ISO 9001 e per spezzare i PDF
+merge per paziente; mai nel DOCX né nel PDF TD. Anomalia "anagrafica incompleta: manca …" quando mancano sesso, data o luogo di nascita.
+**Coerenza** (lib/coerenza.js): i token provengono solo dal riquadro (più cognome e nome, data e luogo di nascita, indirizzo); le
+etichette TD escluse dal confronto dei numeri sono ora Sesso/Data di nascita/Luogo di nascita/Indirizzo; check ANAGRAFICA = cognome e
+nome, sesso, data e luogo di nascita; nuovo check inverso **TESTO_LAB_ESTERNO** che fallisce se nel testo del DOCX (tolte le note del
+riquadro) compaiono codici R3YE/A3YE, "Accettazione", "Data Acc.", "Referto <codice>", Bianalisi, Rete Diagnostica, Nuova Igea, Cerba,
+Limena, via del laboratorio, medico richiedente, direttore, firma digitale, P.IVA.
+**Fixture e test**: genera.py aggiornato (luogo di nascita e indirizzo con etichette diverse per sorgente; intestazioni e piè realistici
+del laboratorio esterno da scartare: direttore, medico richiedente, validazione/firma digitale, diciture legali, P.IVA, contatti); test
+nuovi per anagrafica completa, righe esterne scartate, riquadro isolato in testo_sorgente, DOCX senza codici/testi esterni, coerenza
+inversa (token esterno forzato → fallisce; note del riquadro ammesse), anagrafica incompleta.
+**Collaudo** (db dedicato, porta 3123): upload dei 4 PDF (3 elaborati, lettera scartata), schede con anagrafica completa salvata nelle
+colonne, testo_sorgente senza testo esterno, anteprime con i 5 check superati, PDF reso in PNG con il riquadro nuovo, PATCH con
+"Accettazione n° … - Rete Diagnostica Italiana" → TESTO_LAB_ESTERNO e NUMERI_IN_PIU falliscono e la conferma risponde 400 COERENZA,
+senza luogo di nascita → ANAGRAFICA fallisce, 5 conferme, archivio con ricerca per luogo. Resta da verificare sui PDF reali la posizione
+e le etichette di luogo di nascita e indirizzo (le fixture sono sintetiche) e l'estensione della lista di righe esterne da scartare.
+

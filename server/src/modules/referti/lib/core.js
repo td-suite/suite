@@ -87,15 +87,17 @@ export async function elaboraUpload(file, userId) {
   await tx(async (c) => {
     for (const s of r.schede) {
       const a = s.dati.anagrafica || {};
-      const testo = s.pagine.map((n) => estratto.pagine[n - 1] || '').join('\n');
+      // testo sorgente = riga anagrafica + riquadro dei risultati (indicazione del CEO 29/10/2026); il PDF intero resta in elaborazioni
+      const testo = s.testo_sorgente || '';
       const nome = nomeBase(a.cognome_nome);
       // il nome esiste già per un'altra scheda confermata: anomalia (il suffisso si decide alla conferma)
       const anomalie = [...s.anomalie];
       const doppio = (await c.query(`SELECT 1 FROM schede WHERE stato='CONFERMATA' AND lower(nome_file)=lower($1) AND sostituita_da IS NULL`, [nome])).rows[0];
       if (doppio) anomalie.push(anomalia('NOME_DOPPIO'));
-      const row = (await c.query(`INSERT INTO schede (elaborazione_id, pagine, sorgente, cognome_nome, data_nascita, sesso, accettazione, data_acc, referto_codice, referto_data, dati, dati_orig, testo_sorgente, anomalie, nome_file)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14) RETURNING id`,
-      [el.id, s.pagine, s.dati.sorgente, a.cognome_nome || '', a.data_nascita || null, a.sesso || null, a.accettazione_n || a.accettazione_codice || null, a.data_acc || a.accettazione_data || null,
+      // accettazione/referto esterni: solo colonne interne di tracciabilità (registro), mai nel DOCX
+      const row = (await c.query(`INSERT INTO schede (elaborazione_id, pagine, sorgente, cognome_nome, data_nascita, sesso, luogo_nascita, indirizzo, accettazione, data_acc, referto_codice, referto_data, dati, dati_orig, testo_sorgente, anomalie, nome_file)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16) RETURNING id`,
+      [el.id, s.pagine, s.dati.sorgente, a.cognome_nome || '', a.data_nascita || null, a.sesso || null, a.luogo_nascita || null, a.indirizzo || null, a.accettazione_n || a.accettazione_codice || null, a.data_acc || a.accettazione_data || null,
         a.referto_codice || null, a.referto_data || null, JSON.stringify(s.dati), testo, JSON.stringify(anomalie), nome])).rows[0];
       schede.push({ id: row.id, pagine: s.pagine, cognome_nome: a.cognome_nome || '', anomalie, stato: 'BOZZA' });
     }
@@ -106,7 +108,7 @@ export async function elaboraUpload(file, userId) {
 }
 
 // ---- Lettura
-export const S_COLS = `s.id, s.elaborazione_id, s.pagine, s.sorgente, s.cognome_nome, s.data_nascita, s.sesso, s.accettazione, s.data_acc, s.referto_codice, s.referto_data,
+export const S_COLS = `s.id, s.elaborazione_id, s.pagine, s.sorgente, s.cognome_nome, s.data_nascita, s.sesso, s.luogo_nascita, s.indirizzo, s.accettazione, s.data_acc, s.referto_codice, s.referto_data,
   s.anomalie, s.stato, s.nome_file, s.sostituisce_id, s.sostituita_da, s.confirmed_by, s.confirmed_at, s.created_at, s.updated_at,
   e.filename AS elaborazione_filename, e.pagine AS elaborazione_pagine, e.ocr, cu.full_name AS confirmed_by_nome`;
 export const S_FROM = `schede s JOIN elaborazioni e ON e.id=s.elaborazione_id LEFT JOIN public.users cu ON cu.id=s.confirmed_by`;

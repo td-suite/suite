@@ -1,7 +1,10 @@
-// Controllo di coerenza prima della conferma (specifica §5.4): tutti i token "risultato" della sorgente (valori, MIC, S/I/R, UFC,
-// classi) devono ricomparire nel testo del DOCX generato; stesso numero di antibiotici; nessun numero in più oltre a quelli
-// della sorgente. Esito come checklist [{ codice, ok, testo, dettagli }].
+// Controllo di coerenza prima della conferma (specifica §5.4, corretto il 29/10/2026 su indicazione del CEO): tutti i token "risultato"
+// del riquadro della sorgente (valori, MIC, S/I/R, UFC, classi) devono ricomparire nel testo del DOCX generato; stesso numero di
+// antibiotici; nessun numero in più oltre a quelli della sorgente (riquadro + riga anagrafica); anagrafica completa; controllo inverso:
+// nessun testo del laboratorio esterno nel DOCX (intestazioni, codici R3YE/A3YE, "Accettazione n°", nomi dei laboratori).
+// Esito come checklist [{ codice, ok, testo, dettagli }].
 import { pulisci, compattaSpazi } from './text.js';
+import { campiMancanti } from './parsers/common.js';
 
 const norm = (s) => compattaSpazi(pulisci(s)).toLowerCase().replace(/\s*([<>=:/,.-])\s*/g, '$1');
 const SIR = new Set(['s', 'i', 'r']);
@@ -24,8 +27,9 @@ export function tokenRisultati(dati) {
   for (const e of dati.esami || []) for (const c of e.campi || []) add(c.valore);
   for (const b of dati.antibiogrammi || []) { add(b.carica); for (const r of b.righe || []) { add(r.sir); add(r.mic); } }
   for (const n of dati.note || []) add(n);
+  // anagrafica: solo i dati del paziente (i codici di accettazione/referto esterni non vanno nel DOCX)
   const a = dati.anagrafica || {};
-  for (const k of ['cognome_nome', 'data_nascita', 'accettazione_n', 'data_acc', 'referto_codice', 'referto_data', 'accettazione_codice', 'accettazione_data']) if (a[k]) add(a[k]);
+  for (const k of ['cognome_nome', 'data_nascita', 'luogo_nascita', 'indirizzo']) if (a[k]) add(a[k]);
   return out;
 }
 
@@ -36,7 +40,25 @@ export const contaAntibiotici = (dati) => (dati.settori || []).reduce((n, s) => 
 const numeri = (s) => new Set((norm(s).match(/\d+(?:[.,]\d+)*/g) || []));
 
 // Etichette aggiunte dal generatore (non sono token della sorgente): si escludono dal confronto dei numeri
-const ETICHETTE_TD = ['Data di nascita', 'Sesso', 'Accettazione n°', 'Data Acc.', 'Referto', 'Accettazione', 'Antibiotico', 'S / I / R', 'MIC', 'Microrganismo', 'Metodo', 'Materiale', 'Sede Anatomica', 'anni'];
+const ETICHETTE_TD = ['Data di nascita', 'Sesso', 'Luogo di nascita', 'Indirizzo', 'Antibiotico', 'S / I / R', 'MIC', 'Microrganismo', 'Metodo', 'Materiale', 'Sede Anatomica', 'anni'];
+
+// Controllo inverso: testo del laboratorio esterno che non deve comparire nel DOCX. Le note interne al riquadro (es. "(1) Esame eseguito
+// Bianalisi Verano Brianza", "annulla e sostituisce il referto R3YE…") vengono tolte dal testo prima del controllo: fanno parte del riquadro.
+export const TESTI_LAB_ESTERNO = [
+  { re: /\bR3YE[A-Z0-9]*/i, nome: 'codice referto R3YE' }, { re: /\bA3YE[A-Z0-9]*/i, nome: 'codice accettazione A3YE' },
+  { re: /\bAccettazione\b/i, nome: '"Accettazione (n°)"' }, { re: /Data\s*Acc\b/i, nome: '"Data Acc."' },
+  { re: /\bReferto\s+[A-Z0-9]{6,}/i, nome: 'codice di referto esterno' },
+  { re: /\bBianalisi\b/i, nome: 'Bianalisi' }, { re: /Rete\s+Diagnostica/i, nome: 'Rete Diagnostica' }, { re: /Nuova\s+Igea/i, nome: 'Nuova Igea' }, { re: /\bCerba\b/i, nome: 'Cerba' },
+  { re: /\bLimena\b/i, nome: 'Limena' }, { re: /Duccio\s+di\s+Buoninsegna/i, nome: 'via del laboratorio esterno' },
+  { re: /Medico\s+richiedente/i, nome: 'medico richiedente' }, { re: /\bDirettore\b/i, nome: 'direttore' }, { re: /firmat[oa]\s+digitalmente/i, nome: 'firma digitale' }, { re: /P\.?\s?IVA/i, nome: 'partita IVA' },
+];
+export function testoLabEsterno(testoDocx, note = []) {
+  let txt = String(testoDocx || '');
+  for (const n of note || []) { const k = compattaSpazi(pulisci(n)); if (k) txt = txt.split('\n').filter((l) => compattaSpazi(pulisci(l)) !== k).join('\n'); }
+  const trovati = [];
+  for (const { re, nome } of TESTI_LAB_ESTERNO) { const m = txt.match(re); if (m) trovati.push(`${nome} ("${m[0]}")`); }
+  return trovati;
+}
 
 export function controllaCoerenza({ datiOrig, dati, testoSorgente, testoDocx }) {
   const docx = norm(testoDocx);
@@ -59,9 +81,11 @@ export function controllaCoerenza({ datiOrig, dati, testoSorgente, testoDocx }) 
   // l'età "(anni NN)" e il numero del microrganismo "#n" sono prodotti dal generatore ma vengono dalla sorgente
   const extra = [...numDocx].filter((n) => !numSorg.has(n) && !(dati.anagrafica?.eta != null && String(dati.anagrafica.eta) === n) && !(dati.antibiogrammi || []).some((b) => String(b.n) === n));
   check.push({ codice: 'NUMERI_IN_PIU', ok: extra.length === 0, testo: extra.length ? `Numeri nel referto TD assenti nella sorgente: ${extra.slice(0, 10).join(', ')}` : 'Nessun numero in più rispetto alla sorgente', dettagli: extra.slice(0, 40) });
-  // 4. anagrafica compilata
-  const a = dati.anagrafica || {};
-  const okAn = Boolean(a.cognome_nome && a.data_nascita && (a.accettazione_n || a.accettazione_codice || a.referto_codice));
-  check.push({ codice: 'ANAGRAFICA', ok: okAn, testo: okAn ? 'Anagrafica completa (cognome e nome, data di nascita, accettazione)' : 'Anagrafica incompleta: cognome e nome, data di nascita e accettazione sono obbligatori' });
+  // 4. anagrafica completa: cognome e nome, sesso, data e luogo di nascita (indirizzo facoltativo)
+  const campiVuoti = campiMancanti(dati.anagrafica || {});
+  check.push({ codice: 'ANAGRAFICA', ok: campiVuoti.length === 0, testo: campiVuoti.length ? `Anagrafica incompleta: manca ${campiVuoti.join(', ')}` : 'Anagrafica completa (cognome e nome, sesso, data e luogo di nascita)', dettagli: campiVuoti });
+  // 5. controllo inverso: nessun testo del laboratorio esterno nel DOCX
+  const esterni = testoLabEsterno(testoDocx, dati.note || []);
+  check.push({ codice: 'TESTO_LAB_ESTERNO', ok: esterni.length === 0, testo: esterni.length ? `Nel referto TD compare testo del laboratorio esterno: ${esterni.slice(0, 5).join(', ')}` : 'Nessun testo del laboratorio esterno nel referto TD (intestazioni, codici, nomi)', dettagli: esterni });
   return { ok: check.every((c) => c.ok), check };
 }

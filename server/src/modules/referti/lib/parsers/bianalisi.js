@@ -1,7 +1,7 @@
 // Bianalisi S.p.A. – Laboratorio Firenze (variante B, corpo 1): 1 paziente per PDF, 1–3 pagine.
 // Intestazione: "Referto R3YE… del gg/mm/aaaa", "Accettazione A3YE… del gg/mm/aaaa", "COGNOME NOME  F-16/04/1974 (anni 52) TOLAFI";
 // testata colonne "Analisi | Risultati | Intervalli di Riferimento".
-import { anagraficaB, anomalieAnagrafica, separaIntestazione, chiaveAnagrafica } from './common.js';
+import { anagraficaB, anomalieAnagrafica, separaIntestazione, chiaveAnagrafica, testoRiquadro } from './common.js';
 import { parseCorpo1, contaAntibioticiTesto1 } from './corpo1.js';
 
 export const SORGENTE = 'BIANALISI';
@@ -23,14 +23,17 @@ export function scheda(pagine) {
   const anomalie = [];
   const stato = { settori: [], note: [], corrente: null, ultimaRiga: null, ultimoEsame: null, pos: null };
   let anagrafica = null;
+  const corpi = [];
   for (const p of pagine) {
     const pg = pagina(p.testo);
     if (!anagrafica || (!anagrafica.cognome_nome && pg.anagrafica.cognome_nome)) anagrafica = { ...pg.anagrafica, ...(anagrafica || {}), ...pg.anagrafica };
     parseCorpo1(pg.corpo, { testata: pg.testata, anomalie, stato });
+    corpi.push(pg.corpo);
   }
   anagrafica = anagrafica || { variante: 'B' };
   anomalie.unshift(...anomalieAnagrafica(anagrafica));
-  const testo = pagine.map((p) => p.testo).join('\n');
+  // testo sorgente = solo il riquadro dei risultati (+ riga anagrafica); il conteggio degli antibiotici si fa su quello
+  const testo_sorgente = testoRiquadro(anagrafica, corpi);
   return { sorgente: SORGENTE, variante: 'B', corpo: 1, anagrafica, settori: stato.settori, esami: [], antibiogrammi: [], note: stato.note, anomalie,
-    conteggi: { antibiotici_sorgente: contaAntibioticiTesto1(testo) } };
+    conteggi: { antibiotici_sorgente: contaAntibioticiTesto1(testo_sorgente) }, testo_sorgente };
 }

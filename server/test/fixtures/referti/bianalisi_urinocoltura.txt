@@ -2,7 +2,9 @@ BIANALISI S.p.A. Laboratorio Firenze
 Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi
 Referto R3YEA050123 del 05/10/2026                                             Accettazione A3YEA050123 del 02/10/2026
 ROSSI MARIA                                                                    F-16/04/1974 (anni 52) TOLAFI
-Analisi                                                         Risultati                               Intervalli di Riferimento
+Nata a: PRATO (PO)                                                             Indirizzo: Via dei Mille 3, 50131 Firenze (FI)
+Medico richiedente: dott. G. Esposito                                          Reparto: Service Toscana Diagnostica
+Analisi                                                         Risultati                                      Intervalli di Riferimento
 
 MICROBIOLOGIA
 U - Urinocoltura (1)                                            Positivo
@@ -30,9 +32,11 @@ Nitrofurantoina                                                 Sensibile - MIC 
 Pagina 1 di 2                                                                  Referto R3YEA050123 - ROSSI MARIA
 BIANALISI S.p.A. Laboratorio Firenze
 Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi
-Referto R3YEA050123 del 05/10/2026                                            Accettazione A3YEA050123 del 02/10/2026
-ROSSI MARIA                                                                   F-16/04/1974 (anni 52) TOLAFI
-Analisi                                                         Risultati                              Intervalli di Riferimento
+Referto R3YEA050123 del 05/10/2026                                              Accettazione A3YEA050123 del 02/10/2026
+ROSSI MARIA                                                                     F-16/04/1974 (anni 52) TOLAFI
+Nata a: PRATO (PO)                                                              Indirizzo: Via dei Mille 3, 50131 Firenze (FI)
+Medico richiedente: dott. G. Esposito                                           Reparto: Service Toscana Diagnostica
+Analisi                                                         Risultati                                       Intervalli di Riferimento
 
 Trimetoprim/Sulfametossazolo                                    Resistente - MIC >4
 Gentamicina                                                     Sensibile - MIC <=2
@@ -43,7 +47,7 @@ Esame batterioscopico urine                                     Sviluppo di un
 Metodo: Microscopico
 
 MICROBIOLOGIA MOLECOLARE
-Trichomonas vaginalis PCR                                       Negativo                               Negativo
+Trichomonas vaginalis PCR                                       Negativo                                        Negativo
 Metodo: PCR Real Time
 Materiale Urine
 
@@ -54,5 +58,9 @@ Il presente documento annulla e sostituisce il referto R3YEA050100 del 05/10/202
 
 
 
-Pagina 2 di 2                                                                 Referto R3YEA050123 - ROSSI MARIA
+Firma: Il Direttore del Laboratorio dott. M. Bianchi (documento firmato digitalmente ai sensi del D.Lgs. 82/2005)
+Il presente referto non puo' essere riprodotto parzialmente. Bianalisi S.p.A. - P.IVA 01234567890
+
+
+Pagina 2 di 2                                                                   Referto R3YEA050123 - ROSSI MARIA
 
