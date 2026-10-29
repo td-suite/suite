@@ -601,6 +601,11 @@ const COUNTER_QUERIES = {
   ticket: { label: 'Ticket aperti', sql: `SELECT count(*)::int AS n FROM tickets WHERE stato NOT IN ('CHIUSO','ANNULLATO')` },
   circolari: { label: 'Circolari in bozza', sql: `SELECT count(*)::int AS n FROM circolari WHERE stato='BOZZA'` },
   cartella: { label: 'Documenti nuovi (7 giorni)', sql: `SELECT count(*)::int AS n FROM documenti WHERE created_at > now() - interval '7 days'` },
+  // Audit SGI: auto-audit del mese non ancora inviati dalle sedi struttura + auto-audit inviati da verificare
+  audit: { label: 'Auto-audit del mese mancanti e da verificare', sql: `SELECT (
+      (SELECT count(*) FROM sites_v s WHERE s.active AND s.kind IN ('PUNTO_PRELIEVI','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO','LABORATORIO')
+         AND NOT EXISTS (SELECT 1 FROM audits a WHERE a.kind='AUTO' AND a.site_id=s.id AND a.period=date_trunc('month', CURRENT_DATE)::date AND a.deleted_at IS NULL AND a.status <> 'BOZZA')) +
+      (SELECT count(*) FROM audits a WHERE a.kind='AUTO' AND a.status='INVIATO' AND a.deleted_at IS NULL))::int AS n` },
 };
 // Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
 const CORE_COUNTERS = {

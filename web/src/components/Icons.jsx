@@ -56,6 +56,11 @@ const MODULES = {
     f: 'M9 5h18l8 8v30H9z',
     s: 'M9 5h18l8 8v30H9zM27 5v8h8M15 20h10M15 26h14M15 32h8M28 33l4 4 8-9',
   },
+  // Audit SGI: clipboard con clip in alto, righe della checklist e spunta grande
+  audit: {
+    f: 'M9 9h30v34H9zM18 5h12v7H18z',
+    s: 'M9 9h30v34H9zM18 5h12v7H18zM16 20h7M16 27h5M16 34h7M27 29l4 4 8-9',
+  },
   sgi: {
     f: 'M5 11h12l4 4h22v24H5z',
     s: 'M5 11h12l4 4h22v24H5zM5 19h38M12 27h8M39 30a5 5 0 1 1-10 0 5 5 0 0 1 10 0zM31.5 34 30 41M36.5 34 38 41M34 28.5l.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z',

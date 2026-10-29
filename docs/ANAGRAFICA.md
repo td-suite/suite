@@ -721,3 +721,15 @@ aggiornato subito (evento `suite:badges` ascoltato dalla Shell); in Archivio pul
 Registro con le due nuove azioni e dettagli. Collaudo su db dedicato (porta 3123): eliminazione senza force → 409, con force → ok,
 registro, badge; test 31/31, build Vite.
 
+
+## Audit SGI: sedi, partner e allineamento al SGI (29/10/2026)
+Modulo nativo `audit` in HQS (docs/AUDIT_SGI.md). Nessuna anagrafica propria: gli audit puntano a `public.sites` (`site_id`, sedi con kind
+diverso da SERVICE; auto-audit mensile per PUNTO_PRELIEVI, CENTRO_DIAGNOSTICO, CENTRO_MEDICO, POLIAMBULATORIO, LABORATORIO) e a
+`public.organizations` (`organization_id`, partner ISO 37001: Legal entity con kind diverso da GRUPPO e SOCIETA). La vista `audit.sites_v`
+espone `manager_name`, `manager_email`, `manager_person_id` dal capo del nodo Sede dell'organigramma (stessa regola di room.sites_v e di
+Amministrazione > Sedi): è il site manager che compila l'auto-audit e riceve l'alert del 17, insieme a chi ha il grant SITE del modulo
+sulla sede. `audit.users` resta riga tecnica (moduleUser); conducted_by/verified_by/generated_by puntano lì.
+Tabella core `public.site_sgi_scores` (migrazione 029): `site_id` PK → sites ON DELETE CASCADE, `score` numeric 0-100, `level` A|B|C|D,
+`summary` (giudizio troncato a 400), `synthesis_id` (audit.syntheses, senza FK tra schemi), `last_audit_at`, `computed_at`. La scrive il
+modulo audit alla sintesi di sede con Claude; la legge Retail Assistant in `GET /api/retail/structure/sites/:id/structure` (campo `sgi`)
+per il riquadro "Allineamento SGI" della scheda sede. Nessun altro modulo la modifica.

@@ -8,7 +8,7 @@ import { one, many, tx } from '../db.js';
 
 const isOwnerLevel = (u) => u?.level === 'OWNER';
 // Ordine di "forza" dei profili dei moduli (dal più basso): serve a non declassare un grant nato da un altro profilo di accesso
-const RANK = ['VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'OPERATOR', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'SITE', 'OPERATOR', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const rank = (p) => RANK.indexOf(p);
 
 async function loadActor(actorId) {

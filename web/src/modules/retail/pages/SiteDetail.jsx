@@ -22,7 +22,9 @@ export default function SiteDetail() {
   useEffect(() => { if (d.data) { const s = d.data.site; setProfile({ surface_sqm: s.surface_sqm, rooms: s.rooms, boxes: s.boxes, parking: s.parking, accessibility: s.accessibility, services: s.services, commercial_description: s.commercial_description, catchment_cities: s.catchment_cities, sqm_waiting: s.sqm_waiting, notes: s.notes }); setHours(Array.from({ length: 7 }, (_, i) => { const h = d.data.hours.find((x) => x.weekday === i + 1); return { weekday: i + 1, closed: h ? h.closed : true, open1: h?.open1 || '', close1: h?.close1 || '', open2: h?.open2 || '', close2: h?.close2 || '', note: h?.note || '' }; })); } }, [d.data]);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data || !profile || !hours) return <div className="page"><Loading /></div>;
-  const { site, year, assets, operators, market, fte, can_edit } = d.data;
+  const { site, year, assets, operators, market, fte, can_edit, sgi } = d.data;
+  // Allineamento SGI (modulo Audit SGI): A verde, B teal, C ambra, D rosso
+  const SGI_LEVEL = { A: { label: 'Allineato', color: '#2f7d5b' }, B: { label: 'Sostanzialmente allineato', color: '#1C505E' }, C: { label: 'Parzialmente allineato', color: '#a35a00' }, D: { label: 'Critico', color: '#b3372f' } };
   const staffList = d.data.staff;
   const saveProfile = async () => { try { const b = { ...profile }; for (const k of ['surface_sqm', 'rooms', 'boxes', 'sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveHours = async () => { try { await api.put(`/structure/sites/${id}/hours`, { hours: hours.map((h) => ({ weekday: h.weekday, note: h.note || null })) }); toast('Note salvate'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
@@ -57,6 +59,18 @@ export default function SiteDetail() {
             <Field label="Indirizzo" className="span2"><input value={[site.address, site.zip, site.city, site.province && `(${site.province})`].filter(Boolean).join(' ')} disabled /></Field>
           </div>
           <p className="small muted" style={{ marginTop: 8 }}>Codice, nome, tipologia, indirizzo, contatti, site manager e stato attivo sono dell'anagrafica unica della Suite e si modificano in Amministrazione, Sedi.</p>
+        </Card>
+        <Card title="Allineamento SGI" actions={<Link className="btn sm ghost" to={`/audit/sedi/${id}`}>Apri gli audit della sede</Link>}>
+          {sgi && sgi.score != null ? (
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
+              <div style={{ fontSize: 44, fontWeight: 800, lineHeight: 1, color: SGI_LEVEL[sgi.level]?.color || 'var(--ink)' }}>{Number(sgi.score).toLocaleString('it-IT', { maximumFractionDigits: 1 })}<span style={{ fontSize: 18, fontWeight: 600 }}>%</span></div>
+              <div>
+                <div style={{ fontWeight: 800, color: SGI_LEVEL[sgi.level]?.color || 'var(--ink)' }}>{sgi.level ? `${sgi.level} · ${SGI_LEVEL[sgi.level]?.label || ''}` : 'Livello non disponibile'}</div>
+                <div className="small muted">Sintesi del {sgi.computed_at ? new Date(sgi.computed_at).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '–'}{sgi.last_audit_at ? ` · ultimo audit ${itDate(sgi.last_audit_at)}` : ''}</div>
+                {sgi.summary && <div className="small" style={{ marginTop: 6 }}>{sgi.summary}</div>}
+              </div>
+            </div>
+          ) : <Empty>Nessuna sintesi: avviala dal widget Audit SGI.</Empty>}
         </Card>
         <Card title="Profilo della struttura (Retail)" actions={can_edit && <button className="btn sm" onClick={saveProfile}>Salva</button>}>
           <div className="form-grid">

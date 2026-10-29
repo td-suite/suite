@@ -1,3 +1,4 @@
+import { isInternal } from '../lib/audience.js';
 import { displayName, splitName } from '../lib/util.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
@@ -22,7 +23,7 @@ export const publicUser = (u) => u && ({
   auth_provider: u.auth_provider, must_change_password: u.must_change_password, totp_enabled: u.totp_enabled, lang: u.lang,
   organization_id: u.organization_id, organization_name: u.organization_name, site_id: u.site_id, site_name: u.site_name, site_code: u.site_code,
   person_id: u.person_id, person_area: u.person_area, person_job_title: u.person_job_title, avatar_file_id: u.avatar_file_id, bio: u.bio,
-  notify_email: u.notify_email, grants: u.grants || {}, site_ids: u.site_ids || [], org_ids: u.org_ids || [],
+  notify_email: u.notify_email, is_internal: isInternal(u), grants: u.grants || {}, site_ids: u.site_ids || [], org_ids: u.org_ids || [],
   needs_totp: Boolean(config.requireTotpForAdmins && isAdmin(u) && !u.totp_enabled && u.auth_provider !== 'ENTRA'),
 });
 

@@ -6,7 +6,7 @@ import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden, slugify, itDate, getSetting, HttpError } from '../lib/util.js';
 import { isAdmin, hasModule, canSeeSite } from '../lib/access.js';
-import { audienceSql, canSee } from '../lib/audience.js';
+import { audienceSql, canSee, isInternal } from '../lib/audience.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { normalizeAudience, audienceUsers, notify, ensureDailyQuote, nextProtocol } from '../lib/community.js';
 import { aiEnabled, generateQuotes, generateQuiz } from '../lib/claude.js';
@@ -108,7 +108,10 @@ r.get('/community/posts', ah(async (req, res) => {
 
 r.post('/community/posts', ah(async (req, res) => {
   const b = parse(z.object({ body: z.string().trim().min(1).max(5000), audience: audienceSchema.optional(), site_id: z.number().int().nullable().optional(), file_ids: z.array(z.number().int()).max(10).optional() }), req.body);
-  const audience = checkAudienceChoice(req.user, normalizeAudience(b.audience || { type: 'ALL' }));
+  // Regola del CEO (29/10/2026): salvo Owner, Admin e gestori del widget Comunicazione, un post di un membro di TD in bacheca è
+  // visibile solo alla rete TD (audience INTERNAL), qualunque perimetro sia stato chiesto
+  const wanted = normalizeAudience(b.audience || { type: 'ALL' });
+  const audience = checkAudienceChoice(req.user, !canEdit(req.user) && isInternal(req.user) ? { type: 'INTERNAL' } : wanted);
   if (b.site_id && !canSeeSite(req.user, b.site_id)) throw forbidden('Non fai parte di questa sede');
   const fileIds = await checkFiles(b.file_ids, 'POST', req.user.id);
   const id = await tx(async (c) => {
@@ -233,7 +236,8 @@ r.get('/community/news', ah(async (req, res) => {
 r.get('/community/news/:slug', ah(async (req, res) => {
   const slug = String(req.params.slug).slice(0, 120);
   const n = await one(`SELECT n.*, u.full_name AS author_name, EXISTS (SELECT 1 FROM news_acks k WHERE k.news_id=n.id AND k.user_id=$2) AS acked,
-                              (SELECT count(*)::int FROM news_acks k WHERE k.news_id=n.id) AS acks_count
+                              (SELECT count(*)::int FROM news_acks k WHERE k.news_id=n.id) AS acks_count,
+                              (SELECT count(*)::int FROM news_comments c WHERE c.news_id=n.id AND c.deleted_at IS NULL) AS comments_count
                          FROM news n LEFT JOIN users u ON u.id=n.author_id WHERE n.slug=$1`, [slug, req.user.id]);
   if (!n) throw notFound('Contenuto non trovato');
   const editor = canEdit(req.user);
@@ -242,6 +246,40 @@ r.get('/community/news/:slug', ah(async (req, res) => {
   const mine = quiz ? await one('SELECT answers, score, total, at FROM news_quiz_answers WHERE news_id=$1 AND user_id=$2', [n.id, req.user.id]) : null;
   res.json({ ...n, files: await newsFiles(n.id), can_edit: editor, can_publish: canPublish(req.user),
     quiz: quiz ? { ...publicQuiz(quiz), answered: Boolean(mine), my: mine ? { ...mine, correct: quiz.questions.map((x) => x.answer) } : null } : null });
+}));
+
+// Commenti sotto gli articoli del Blog (solo kind BLOG: news e circolari non si commentano, richiesta del CEO 29/10/2026)
+async function loadBlogForComment(user, id) {
+  const n = await one('SELECT id, kind, title, slug, audience, status, author_id FROM news WHERE id=$1', [id]);
+  if (!n || (n.status !== 'PUBLISHED' && !canEdit(user)) || !canSee(user, n.audience)) throw notFound('Contenuto non trovato');
+  if (n.kind !== 'BLOG') throw bad('I commenti sono previsti solo per gli articoli del Blog');
+  return n;
+}
+r.get('/community/news/:id/comments', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  await loadBlogForComment(req.user, id);
+  res.json(await many(`SELECT c.id, c.body, c.created_at, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_file_id', u.avatar_file_id) AS author
+                        FROM news_comments c JOIN users u ON u.id=c.author_id WHERE c.news_id=$1 AND c.deleted_at IS NULL ORDER BY c.created_at`, [id]));
+}));
+r.post('/community/news/:id/comments', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const b = parse(z.object({ body: z.string().trim().min(1).max(2000) }), req.body);
+  const n = await loadBlogForComment(req.user, id);
+  const c = await one('INSERT INTO news_comments (news_id, author_id, body) VALUES ($1,$2,$3) RETURNING id, body, created_at', [id, req.user.id, b.body]);
+  await audit(req, 'BLOG_COMMENT_CREATED', { module: MODULE, entity: 'news', entityId: id, label: b.body.slice(0, 80) });
+  if (n.author_id && n.author_id !== req.user.id) {
+    await notify([n.author_id], { kind: 'INFO', module_key: MODULE, title: `${req.user.full_name} ha commentato il tuo articolo`, body: `${n.title}: ${b.body.slice(0, 160)}`, link: `/community/news/${n.slug}` });
+  }
+  res.status(201).json({ ...c, author: { id: req.user.id, full_name: req.user.full_name, avatar_file_id: req.user.avatar_file_id } });
+}));
+r.delete('/community/news-comments/:id', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const c = await one('SELECT c.id, c.author_id, c.news_id, n.author_id AS news_author FROM news_comments c JOIN news n ON n.id=c.news_id WHERE c.id=$1 AND c.deleted_at IS NULL', [id]);
+  if (!c) throw notFound('Commento non trovato');
+  if (c.author_id !== req.user.id && c.news_author !== req.user.id && !canEdit(req.user)) throw forbidden('Puoi eliminare solo i tuoi commenti');
+  await q('UPDATE news_comments SET deleted_at=now() WHERE id=$1', [id]);
+  await audit(req, 'BLOG_COMMENT_DELETED', { module: MODULE, entity: 'news', entityId: c.news_id, data: { comment_id: id } });
+  res.json({ ok: true });
 }));
 
 // Risposte al questionario della circolare: una sola volta per utente; restituisce punteggio e risposte corrette

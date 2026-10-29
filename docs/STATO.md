@@ -25,3 +25,11 @@ Ipotesi dichiarate: durata complessiva 4-6 mesi per avere tutti i moduli dentro;
 Otto moduli avviati vuoti e LIVE con "Avvia" (cash, room, nc, orders, retail, contracts, business, integration) sull'anagrafica unica;
 103 pagine interne dei moduli aperte senza errori (correzione: GROUP BY in Ordini > Rete). "Passa a LIVE" su un modulo già LIVE non dà
 più errore. Payments è già LIVE in produzione; Spedizioni resta a travaso classico (sorgente legacy, sync, travaso, confronto, LIVE).
+
+## 29/10/2026 · Audit SGI
+Nuovo widget nativo `audit` in HQS (richiesta del CEO): auto-audit mensili delle sedi compilati dal site manager con colonna parallela
+del verificatore e alert del 17, audit interni, audit di terze parti (PDF con testo estratto), audit ISO 37001 sui partner (Legal entity),
+sintesi con Claude per sede (esito in `public.site_sgi_scores` → riquadro "Allineamento SGI" nella scheda sede di Retail Assistant), per la
+rete e per i partner, archivio con cestino ed export XLSX/PDF, PDF del singolo audit nello stile del modulo. Collaudo locale con db
+dedicato, test `audit-scoring.test.mjs`, screenshot `docs/screens/audit-*.png`. Da verificare con la chiave Anthropic reale. Dettagli in
+docs/AUDIT_SGI.md.

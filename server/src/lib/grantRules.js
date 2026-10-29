@@ -17,6 +17,11 @@ const seedRules = [
   [null, null, null, true, 'cartella', 'VIEWER', 'ALL'], ['Retail & Communications Management', null, null, false, 'cartella', 'ADMIN', 'ALL'], ['HSQ Management', null, null, false, 'cartella', 'ADMIN', 'ALL'],
   // Referti esterni: solo il laboratorio elabora; HSQ Management vede registro e impostazioni (Qualità)
   ['Laboratorio di Analisi', null, null, false, 'referti', 'LAB', 'ALL'], ['HSQ Management', null, null, false, 'referti', 'QUALITA', 'ALL'],
+  // Audit SGI: HSQ Management conduce e verifica (Qualità); Retail & Communications e B2B (Service, MDL) sono auditor; il Site Manager
+  // compila l'auto-audit della propria sede (ambito sede); i responsabili di unità di una sede struttura come site manager
+  ['HSQ Management', null, null, false, 'audit', 'QUALITA', 'ALL'], ['Retail & Communications Management', null, null, false, 'audit', 'AUDITOR', 'ALL'], ['B2B', null, null, false, 'audit', 'AUDITOR', 'ALL'],
+  [null, 'Site Manager', null, false, 'audit', 'SITE', 'SITE'],
+  [null, null, 'PUNTO_PRELIEVI', true, 'audit', 'SITE', 'SITE'], [null, null, 'CENTRO_MEDICO', true, 'audit', 'SITE', 'SITE'], [null, null, 'CENTRO_DIAGNOSTICO', true, 'audit', 'SITE', 'SITE'],
   // pettine
   ['Laboratorio di Analisi', null, null, false, 'nc', 'LAB', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'orders', 'LAB', 'ALL'],
   ['B2B', null, null, false, 'business', 'OPERATOR', 'ALL'],
@@ -66,7 +71,7 @@ export async function rulesForPerson(personId) {
     ORDER BY r.sort_order, r.id`, [personId]);
 }
 
-const RANK = ['VIEWER', 'LETTORE', 'PROF', 'SEDE', 'OPERATOR', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['VIEWER', 'LETTORE', 'PROF', 'SEDE', 'SITE', 'OPERATOR', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const stronger = (a, b) => (RANK.indexOf(a) >= RANK.indexOf(b) ? a : b);
 
 /** Applica le regole a una persona con accesso: crea o aggiorna le PROPOSTE (mai i grant confermati). Ritorna quante proposte sono state scritte. */

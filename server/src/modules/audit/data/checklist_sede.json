@@ -1,0 +1,227 @@
+{
+  "code": "TD-AUD-SEDE",
+  "title": "Check list verifica interna sede (punto prelievi, centro medico, laboratorio)",
+  "rev": "1",
+  "rev_date": "2026-10-29",
+  "derived_from": "MOD002-SY Check list verifica interna punto prelievi rev. 5 del 20/02/2020 (adattata a Toscana Diagnostica)",
+  "answer_values": ["SI", "NO", "NC", "NA"],
+  "header_fields": [
+    { "key": "sede", "label": "Sede", "source": "site" },
+    { "key": "data", "label": "Data", "type": "date" },
+    { "key": "effettuato_da", "label": "Effettuato da (coordinatori / ASPP / site manager)", "type": "text" }
+  ],
+  "parts": [
+    {
+      "key": "FRONT",
+      "title": "Front office",
+      "sections": [
+        {
+          "key": "F1", "title": "Documentazione a disposizione del paziente", "hint": "Verificare esistenza del documento aggiornato e firma per presa visione",
+          "items": [
+            { "n": "1", "text": "Faldone pazienti (documentazione all'interno aggiornata)", "sub": [
+              { "key": "1a", "text": "Carta dei servizi", "rev": true },
+              { "key": "1b", "text": "Elenco prestazioni eseguite presso la sede (allegato 1)", "rev": true },
+              { "key": "1c", "text": "Elenco sedi e orari di apertura (allegato 2)", "rev": true },
+              { "key": "1d", "text": "Modalità di raccolta per il paziente multilingue", "rev": true },
+              { "key": "1e", "text": "Informativa e consenso pazienti", "rev": true },
+              { "key": "1f", "text": "Segnalazioni e reclami pazienti" }
+            ] },
+            { "n": "2", "text": "Informativa sulla privacy esposta e aggiornata", "rev": true },
+            { "n": "3", "text": "Brochure esami Toscana Diagnostica in espositori e totem; sul desk spazio sufficiente per gestire il paziente; nessun plexiglass che ostruisce la visuale tra accettazione e paziente" },
+            { "n": "4", "text": "Bacheca o altro", "sub": [
+              { "key": "4a", "text": "Indicazioni prestazioni ostetriche e modalità di prenotazione (ove applicabile)" },
+              { "key": "4b", "text": "Orari" },
+              { "key": "4c", "text": "S.Me.L., ragione sociale, nominativo Direttore di laboratorio / Direttore sanitario" }
+            ] },
+            { "n": "5", "text": "Regole regionali per l'esenzione da ticket (ove previsto)" },
+            { "n": "6", "text": "Tempi di attesa mensili aggiornati (ove previsto)" }
+          ]
+        },
+        {
+          "key": "F2", "title": "Cartellonistica", "hint": "Verificare esistenza e aggiornamento dei cartelli",
+          "items": [
+            { "n": "7", "group": "Interno", "text": "Identificazione locali e depositi pulito/sporco (sulle porte e sugli armadi)" },
+            { "n": "8", "group": "Interno", "text": "Cartello diritto di precedenza" },
+            { "n": "9", "group": "Esterno", "text": "Presenza insegna della Società" },
+            { "n": "10", "group": "Esterno", "text": "Presenza di vetrofanie della Società" },
+            { "n": "11", "group": "Esterno", "text": "Adesivo orario di apertura a norma (non scritto a mano)" }
+          ]
+        },
+        {
+          "key": "F3", "title": "Immagine della sede", "hint": "Verificare congruenza con le indicazioni aziendali",
+          "items": [
+            { "n": "12", "group": "Interno", "text": "Personale di accettazione", "sub": [
+              { "key": "12a", "text": "Utilizzo divisa aziendale" },
+              { "key": "12b", "text": "Presenza di cartellino identificativo aziendale" }
+            ] },
+            { "n": "13", "group": "Interno", "text": "Sala d'attesa e pulizia", "sub": [
+              { "key": "13a", "text": "Stato delle sedute/panche (integrazione o sostituzione necessaria?)" },
+              { "key": "13b", "text": "Stato dei muri (imbiancatura necessaria?)" },
+              { "key": "13c", "text": "Stato della decorazione (quadri, orologio, piante)" },
+              { "key": "13d", "text": "Stato dell'arredamento (nuovo, obsoleto)" },
+              { "key": "13e", "text": "Presenza di zerbino, portaombrelli, attaccapanni, cestini" },
+              { "key": "13f", "text": "Presenza di distributore d'acqua" },
+              { "key": "13g", "text": "Ordine e pulizia generale: pavimento, spogliatoi, deposito, box prelievi, accettazione, bagni" },
+              { "key": "13h", "text": "Confort: numeratore o monitor elimina code (specificare tipologia)" },
+              { "key": "13i", "text": "Confort: segnaletica o distanziatore per la distanza di cortesia" }
+            ] },
+            { "n": "14", "group": "Esterno", "text": "Struttura esterna", "sub": [
+              { "key": "14a", "text": "Pulizia: stato dei muri (murales, deterioramento)" },
+              { "key": "14b", "text": "Pulizia generale vetrate, marciapiedi" }
+            ] }
+          ]
+        },
+        {
+          "key": "F4", "title": "Documentazione e materiale di accettazione",
+          "items": [
+            { "n": "15", "text": "PC con connessione all'applicativo di accettazione e alla Suite/intranet" },
+            { "n": "16", "text": "Etichettatrice" },
+            { "n": "17", "text": "Stampanti" },
+            { "n": "18", "text": "POS" },
+            { "n": "19", "text": "Faldone accettazione (riportare il numero di revisione)", "sub": [
+              { "key": "19a", "text": "Procedura di gestione accettazione e consegna referti", "rev": true },
+              { "key": "19b", "text": "Accettazioni laboratorio analisi con etichette prenumerate", "rev": true },
+              { "key": "19c", "text": "Elenco sedi dotate di apparecchiature particolari", "rev": true },
+              { "key": "19d", "text": "Esame citologico urinario", "rev": true },
+              { "key": "19e", "text": "Esame citologico cervico vaginale", "rev": true },
+              { "key": "19f", "text": "Esame citologico espettorato", "rev": true },
+              { "key": "19g", "text": "Scheda accettazione consenso informato cariotipo", "rev": true },
+              { "key": "19h", "text": "Scheda di accettazione pazienti ambulatoriali", "rev": true },
+              { "key": "19i", "text": "Richiesta sostanze d'abuso con valenza medico legale", "rev": true },
+              { "key": "19j", "text": "Scheda raccolta dati e consenso informato bitest", "rev": true },
+              { "key": "19k", "text": "Scheda anamnestica test di Coombs", "rev": true },
+              { "key": "19l", "text": "Scheda anamnestica esami microbiologici", "rev": true },
+              { "key": "19m", "text": "Scheda anamnestica autoimmunità", "rev": true },
+              { "key": "19n", "text": "Consenso informato HIV", "rev": true },
+              { "key": "19o", "text": "Consenso informato soluzione di glucosio", "rev": true },
+              { "key": "19p", "text": "Altri (specificare)", "free": true, "repeat": 3 }
+            ] }
+          ]
+        },
+        {
+          "key": "F5", "title": "Attività amministrative e operative",
+          "items": [
+            { "n": "20", "text": "Corretta compilazione del registro accettazioni (REG015)" },
+            { "n": "21", "text": "Corretta procedura di gestione cassa e fondo cassa" },
+            { "n": "22", "text": "Il personale conosce gli ultimi aggiornamenti di circolari e procedure" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "BOX",
+      "title": "Box prelievo",
+      "sections": [
+        {
+          "key": "B1", "title": "Materiale e documentazione del prelevatore",
+          "items": [
+            { "n": "23", "text": "Poltrona" },
+            { "n": "24", "text": "Lettino ginecologico" },
+            { "n": "25", "text": "Materiale prelievi: scadenze provette, aghi, disinfettante, tamponi, vetrini (raccogliere evidenze)" },
+            { "n": "26", "text": "Cassetta/borsa di pronto soccorso" },
+            { "n": "27", "text": "AMBU (ove previsto)" },
+            { "n": "28", "text": "Defibrillatore (ove previsto)" },
+            { "n": "29", "text": "Strumentazione dedicata, solo se prevista (glucometro, centrifughe)" },
+            { "n": "30", "text": "Frigorifero" },
+            { "n": "31", "text": "Congelatore" },
+            { "n": "32", "text": "Termometro tarato" },
+            { "n": "33", "text": "DPI" },
+            { "n": "34", "text": "Contenitore rifiuti speciali" },
+            { "n": "35", "text": "Faldone box prelievo (riportare il numero di revisione)", "sub": [
+              { "key": "35a", "text": "Gestione attività di prelievo", "rev": true },
+              { "key": "35b", "text": "Prelievo, conservazione e trasporto campioni", "rev": true },
+              { "key": "35c", "text": "Descrizione provette vacutainer per tipologia esame", "rev": true },
+              { "key": "35d", "text": "Esami particolari", "rev": true },
+              { "key": "35e", "text": "Esecuzione controlli strumento dosaggio glicemia", "rev": true },
+              { "key": "35f", "text": "Dichiarazione di malore", "rev": true },
+              { "key": "35g", "text": "Campioni porta", "rev": true },
+              { "key": "35h", "text": "Catena di custodia accertamenti medico legali", "rev": true },
+              { "key": "35i", "text": "Controllo scadenza materiale prelievi cervico vaginali", "rev": true },
+              { "key": "35j", "text": "Controllo mensile validità scadenza materiale", "rev": true },
+              { "key": "35k", "text": "Contenuto cassetta di pronto soccorso", "rev": true },
+              { "key": "35l", "text": "Gestione pronto soccorso", "rev": true },
+              { "key": "35m", "text": "Gestione rischio biologico e sanificazione", "rev": true },
+              { "key": "35n", "text": "Gestione farmaci", "rev": true },
+              { "key": "35o", "text": "Altri (specificare)", "free": true, "repeat": 2 }
+            ] }
+          ]
+        },
+        {
+          "key": "B2", "title": "Immagine box prelievi", "hint": "Verificare congruenza con le indicazioni aziendali",
+          "items": [
+            { "n": "36", "text": "Personale infermieristico", "sub": [
+              { "key": "36a", "text": "Utilizzo divisa aziendale" },
+              { "key": "36b", "text": "Presenza di cartellino identificativo" },
+              { "key": "36c", "text": "Utilizzo camice" },
+              { "key": "36d", "text": "Utilizzo calzari" },
+              { "key": "36e", "text": "Corretto utilizzo guanti" },
+              { "key": "36f", "text": "Presenza di distributore d'acqua" }
+            ] },
+            { "n": "37", "text": "Locale", "sub": [
+              { "key": "37a", "text": "Cartellonistica" },
+              { "key": "37b", "text": "Ordine e pulizia generale" },
+              { "key": "37c", "text": "Stato dei muri" },
+              { "key": "37d", "text": "Stato dei pavimenti" }
+            ] }
+          ]
+        },
+        {
+          "key": "B3", "title": "Verifica compilazione registri",
+          "items": [
+            { "n": "38", "text": "Compilazione dei moduli di manutenzione strumenti (se presenti)" },
+            { "n": "39", "text": "Registro scadenze materiale prelievo" },
+            { "n": "40", "text": "Registro contenuto cassetta pronto soccorso e controllo scadenze" },
+            { "n": "41", "text": "Registro temperature" }
+          ]
+        },
+        {
+          "key": "B4", "title": "Verifica competenze del prelevatore",
+          "items": [
+            { "n": "42", "text": "Identificazione del paziente" },
+            { "n": "43", "text": "Condivisione con il front office dei dati relativi a porta, valori diuresi, eventuali recuperi provette" },
+            { "n": "44", "text": "Verifica del box prelievi a fine giornata per escludere giacenza di campioni" },
+            { "n": "45", "text": "Conoscenza di istruzioni di lavoro e procedure operative (corretta applicazione delle etichette su provette e campioni davanti al paziente)" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "SIC",
+      "title": "Sicurezza",
+      "sections": [
+        {
+          "key": "S1", "title": "Sicurezza",
+          "items": [
+            { "n": "Sic 1", "text": "Presenza estintore (almeno uno a polvere) e verifica data di manutenzione; estintore appeso o su piantana" },
+            { "n": "Sic 2", "text": "Presenza cartello estintore" },
+            { "n": "Sic 3", "text": "Uscite d'emergenza non ostruite, apertura verso l'esodo, facile apertura (no porte scorrevoli)" },
+            { "n": "Sic 4", "text": "Presenza cartello uscite d'emergenza" },
+            { "n": "Sic 5", "text": "Abbattimento barriere architettoniche, verifica percorso disabili (gradini, citofono: specificare nelle note)" },
+            { "n": "Sic 6", "text": "Presenza pedana mobile o fissa per l'accesso dei disabili (ove previsto)" },
+            { "n": "Sic 7", "text": "Presenza bagno per disabili: dimensioni porte idonee e accessibilità (nessun materiale stoccato che impedisca l'ingresso)" },
+            { "n": "Sic 8", "text": "Presenza e uso DPI (guanti rischio biologico, occhiali, mascherina, camice, anche per chi chiude i rifiuti)" },
+            { "n": "Sic 9", "text": "Cartellonistica via di fuga nei corridoi, nei box prelievo e nel front office" },
+            { "n": "Sic 10", "text": "Presenza della procedura di emergenza (planimetria di emergenza)" },
+            { "n": "Sic 11", "text": "Presenza cartello divieto di fumo con nominativo del controllore" },
+            { "n": "Sic 12", "text": "Gestione rifiuti: registri e formulari stampati, aggiornati e compilati correttamente; spazi e locali dedicati" },
+            { "n": "Sic 13", "text": "Presenza cartello zona stoccaggio rifiuti" },
+            { "n": "Sic 14", "text": "Verifica stato impiantistica (elettrica, idraulica)" },
+            { "n": "Sic 15", "text": "Quadri elettrici chiusi e non coperti da armadi o scaffali; cartello di divieto d'uso dell'acqua per incendi su impianti elettrici" },
+            { "n": "Sic 16", "text": "Postazione a videoterminale dell'accettista: sedia regolabile in altezza e inclinazione, spazio per la tastiera sul banco" },
+            { "n": "Sic 17", "text": "Scaffali (se presenti) ancorati e con cartello della portata" },
+            { "n": "Sic 18", "text": "Materiale per pulizie stoccato in apposito locale (non in bagno)" },
+            { "n": "Sic 19", "text": "Presenza armadietti per il cambio di prelevatori e infermieri" },
+            { "n": "Sic 20", "text": "Presenza DVR e valutazione rischio incendio (VRI); il personale sa dove recuperarli" },
+            { "n": "Sic 21", "text": "Contenitore per lo smaltimento di siringhe con ago" }
+          ]
+        }
+      ]
+    }
+  ],
+  "report": {
+    "title": "Audit report",
+    "hint": "Riportare le non conformità rilevate durante l'audit, descrivendo ove possibile le cause, la soluzione della non conformità e le eventuali azioni correttive proposte (es. materiali scaduti, mancato utilizzo DPI).",
+    "nc_columns": ["n", "descrizione", "cause", "soluzione", "azione_correttiva", "persona_riferimento", "entro"],
+    "observations_label": "Ulteriori eventuali osservazioni"
+  }
+}

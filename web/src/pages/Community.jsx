@@ -5,7 +5,7 @@ import { useAuth, canManageComm } from '../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, Coming, ErrorBox, PageHead, Field, Modal, useToast, Tabs } from '../components/ui.jsx';
 import { Icon } from '../components/Icons.jsx';
 import Markdown from '../components/Markdown.jsx';
-import Board from '../components/community/Board.jsx';
+import Board, { Comments } from '../components/community/Board.jsx';
 import { QuoteCard } from '../components/community/Cards.jsx';
 import CommunityManage from './CommunityManage.jsx';
 import { fmtDate, fmtDateTime, fmtTime, capitalize, NEWS_KIND, EVENT_KIND, SEVERITY } from '../format.js';
@@ -118,6 +118,12 @@ function Article() {
         <Markdown source={n.body} />
         {n.files?.length > 0 && <div className="mt2"><h3>Allegati</h3><div className="row tight mt">{n.files.map((f) => <a key={f.id} className="chip" href={`/api/files/${f.id}`}><Icon name="file" />{f.filename}</a>)}</div></div>}
         {n.quiz?.questions?.length > 0 && <Quiz news={n} onDone={reload} />}
+        {n.kind === 'BLOG' && (
+          <div className="mt2">
+            <h3>Commenti{n.comments_count ? ` (${n.comments_count})` : ''}</h3>
+            <Comments post={n} base={`/community/news/${n.id}`} delBase="/community/news-comments" canDelete={n.can_edit} />
+          </div>
+        )}
         {n.requires_ack && (
           <div className={`ackbox ${isAcked ? 'done' : ''}`}>
             <Icon name={isAcked ? 'check' : 'eye'} style={{ width: 26, height: 26, color: isAcked ? 'var(--green)' : 'var(--mauve-700)' }} />

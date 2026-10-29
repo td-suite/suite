@@ -5,18 +5,20 @@ import { Avatar, Card, Coming, Empty, ErrorBox, Skeleton, useToast, ConfirmModal
 import { Icon } from '../Icons.jsx';
 import { timeAgo, fmtBytes } from '../../format.js';
 
-function Comments({ post, onCount }) {
+// Commenti: dei post della bacheca (default) o degli articoli del Blog (base='/community/news/<id>', delBase='/community/news-comments')
+export function Comments({ post, onCount, base, delBase = '/community/comments', canDelete }) {
   const [rows, setRows] = useState(null);
   const [body, setBody] = useState('');
   const toast = useToast();
   const { user } = useAuth();
-  const load = useCallback(() => api.get(`/community/posts/${post.id}/comments`, { silent: true }).then(setRows).catch(() => setRows([])), [post.id]);
+  const root = base || `/community/posts/${post.id}`;
+  const load = useCallback(() => api.get(`${root}/comments`, { silent: true }).then(setRows).catch(() => setRows([])), [root]);
   useEffect(() => { load(); }, [load]);
   const send = async (e) => {
     e.preventDefault(); if (!body.trim()) return;
-    try { await api.post(`/community/posts/${post.id}/comments`, { body: body.trim() }); setBody(''); await load(); onCount?.(1); } catch (e2) { toast(e2, 'err'); }
+    try { await api.post(`${root}/comments`, { body: body.trim() }); setBody(''); await load(); onCount?.(1); } catch (e2) { toast(e2, 'err'); }
   };
-  const del = async (c) => { try { await api.del(`/community/comments/${c.id}`); await load(); onCount?.(-1); } catch (e2) { toast(e2, 'err'); } };
+  const del = async (c) => { try { await api.del(`${delBase}/${c.id}`); await load(); onCount?.(-1); } catch (e2) { toast(e2, 'err'); } };
   return (
     <div className="comments">
       {rows == null && <Skeleton lines={2} />}
@@ -24,7 +26,7 @@ function Comments({ post, onCount }) {
         <div key={c.id} className="cmt">
           <Avatar name={c.author?.full_name || c.author_name} fileId={c.author?.avatar_file_id} size="sm" />
           <div className="bub"><span className="n">{c.author?.full_name || c.author_name}</span><span className="w">{timeAgo(c.created_at)}</span><div>{c.body}</div></div>
-          {(isAdmin(user) || c.author?.id === user.id || c.author_id === user.id) && <button className="iconbtn danger" aria-label="Elimina commento" onClick={() => del(c)}><Icon name="trash" /></button>}
+          {(isAdmin(user) || canDelete || c.author?.id === user.id || c.author_id === user.id) && <button className="iconbtn danger" aria-label="Elimina commento" onClick={() => del(c)}><Icon name="trash" /></button>}
         </div>
       ))}
       <form className="cmt-form" onSubmit={send}><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Scrivi un commento" aria-label="Commento" /><button className="btn sm" disabled={!body.trim()}>Invia</button></form>
@@ -109,6 +111,7 @@ export function Composer({ onPosted, siteId }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} onFocus={() => setFocus(true)} placeholder={`Condividi qualcosa con i colleghi, ${user.first_name || user.full_name.split(' ')[0]}`} aria-label="Nuovo post" rows={focus || body ? 3 : 1} />
         {files.length > 0 && <div className="row tight mt">{files.map((f) => <span key={f.id} className="chip"><Icon name="image" />{f.filename}<button type="button" aria-label="Rimuovi allegato" onClick={() => setFiles((x) => x.filter((y) => y.id !== f.id))}><Icon name="x" /></button></span>)}</div>}
+        {(focus || body) && !canManageComm(user) && user.is_internal && <div className="tiny muted mt">Visibile alla rete Toscana Diagnostica (personale interno).</div>}
         {(focus || body) && (
           <div className="acts">
             {cfg.blobEnabled && <label className="btn sm ghost" style={{ cursor: 'pointer' }}><Icon name="image" />Immagine<input type="file" accept="image/*" hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} /></label>}

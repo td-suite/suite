@@ -1,0 +1,21 @@
+// Audit SGI dentro la Suite: voci di menu disegnate dalla Suite. Solo chi ha il grant entra nel modulo (open_to_all FALSE).
+// Profili: ADMIN, QUALITA, AUDITOR, SITE (ambito sede), VIEWER. I contatori arrivano da GET /api/audit/badges:
+// "miei" = auto-audit del mese da compilare (SITE) oppure mancanti + inviati da verificare (altri profili).
+export default {
+  key: 'audit',
+  title: 'Audit SGI',
+  kicker: 'HQS',
+  area: 'HQS',
+  nav: [
+    { to: '', icon: 'stats', label: 'Cruscotto', end: true },
+    { to: 'miei', icon: 'check', label: 'I miei audit', badge: 'miei' },
+    { to: 'sedi', icon: 'building', label: 'Sedi' },
+    { to: 'partner', icon: 'shield', label: 'Partner ISO 37001', profiles: ['QUALITA', 'AUDITOR', 'VIEWER'] },
+    { to: 'archivio', icon: 'folder', label: 'Archivio' },
+    { to: 'sintesi', icon: 'sparkle', label: 'Sintesi TD', profiles: ['QUALITA', 'AUDITOR', 'VIEWER'] },
+    { group: 'Impostazioni', profiles: ['QUALITA'] },
+    { to: 'impostazioni', icon: 'gear', label: 'Impostazioni', profiles: ['QUALITA'] },
+    { group: 'Aiuto' },
+    { to: 'guida', icon: 'info', label: 'Guida' },
+  ],
+};

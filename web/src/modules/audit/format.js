@@ -1,0 +1,20 @@
+// Etichette e formati del modulo Audit SGI
+export const KIND = { AUTO: { label: 'Auto-audit', breve: 'Auto', tone: 'blue' }, INTERNO: { label: 'Audit interno', breve: 'Interno', tone: 'teal' }, TERZI: { label: 'Terze parti', breve: 'Terzi', tone: 'mauve' }, LEGAL_ENTITY: { label: 'Partner ISO 37001', breve: 'Partner', tone: 'silk' } };
+export const STATUS = { BOZZA: { label: 'Bozza', tone: 'grey' }, INVIATO: { label: 'Inviato, da verificare', tone: 'amber' }, VERIFICATO: { label: 'Verificato', tone: 'green' }, CHIUSO: { label: 'Chiuso', tone: 'green' }, CARICATO: { label: 'Caricato', tone: 'blue' }, MANCANTE: { label: 'Da compilare', tone: 'red' } };
+export const LEVEL = { A: { label: 'Allineato', tone: 'green', color: 'var(--green, #2f7d5b)' }, B: { label: 'Sostanzialmente allineato', tone: 'teal', color: 'var(--teal, #1C505E)' }, C: { label: 'Parzialmente allineato', tone: 'amber', color: '#a35a00' }, D: { label: 'Critico', tone: 'red', color: 'var(--red, #b3372f)' } };
+export const URGENZA = { ALTA: { label: 'Alta', tone: 'red' }, MEDIA: { label: 'Media', tone: 'amber' }, BASSA: { label: 'Bassa', tone: 'teal' } };
+export const RISCHIO = { BASSO: { label: 'Basso', tone: 'green' }, MEDIO: { label: 'Medio', tone: 'amber' }, ALTO: { label: 'Alto', tone: 'red' } };
+export const ENTE = { CERTIFICATORE: 'Ente di certificazione', ASL: 'ASL / Regione', ISPETTIVO: 'Controllo ispettivo', ALTRO: 'Altro' };
+export const ESITO_TERZI = { CONFORME: 'Conforme', CONFORME_CON_RILIEVI: 'Conforme con rilievi', NON_CONFORME: 'Non conforme', ALTRO: 'Altro' };
+export const ESITO_LE = { IDONEO: 'Idoneo', IDONEO_CON_AZIONI: 'Idoneo con azioni', NON_IDONEO: 'Non idoneo' };
+export const RELAZIONE = { CLIENTE_SERVICE: 'Cliente service', PUNTO_PRELIEVO_CONVENZIONATO: 'Punto prelievo convenzionato', FORNITORE: 'Fornitore', LOCATORE: 'Locatore', PARTNER_COMMERCIALE: 'Partner commerciale', SOCIO: 'Socio', CONSULENTE: 'Consulente', MEDICINA_DEL_LAVORO: 'Medicina del lavoro', ALTRO: 'Altro' };
+export const SITE_KIND = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', SERVICE: 'Struttura service', HEADQUARTER: 'Sede direzionale', ALTRO: 'Altro' };
+export const ANS = { SI: 'Sì', NO: 'No', NC: 'NC', NA: 'N.A.' };
+export const levelOf = (s) => (s == null ? null : Number(s) >= 90 ? 'A' : Number(s) >= 75 ? 'B' : Number(s) >= 60 ? 'C' : 'D');
+export const pct = (v) => (v == null ? '–' : `${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 })}%`);
+export const itDate = (d) => (d ? new Date(d).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }) : '');
+export const itDateTime = (d) => (d ? new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome', dateStyle: 'short', timeStyle: 'short' }) : '');
+export const mese = (p) => (p ? new Date(String(p).slice(0, 10) + 'T12:00:00').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }) : '');
+export const dataAudit = (a) => (a.kind === 'AUTO' && a.period ? mese(a.period) : itDate(a.conducted_at || a.created_at));
+export const kb = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+export const soggetto = (a) => (a.kind === 'LEGAL_ENTITY' ? a.org_name : a.site_name) || '';

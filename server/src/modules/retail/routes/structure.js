@@ -23,20 +23,22 @@ r.get('/sites/:id/structure', ah(async (req, res) => {
   const id = Number(req.params.id);
   const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
   if (!site) throw notFound('Sede non trovata');
-  const [staff, hours, assets, year, ops, market] = await Promise.all([
+  const [staff, hours, assets, year, ops, market, sgi] = await Promise.all([
     many(`${PEOPLE} WHERE p.site_id=$1 AND p.status IN ('ATTIVO','IMPEGNO') ORDER BY (p.status='ATTIVO') DESC, coalesce(e.sort_order, 100), p.last_name, p.first_name`, [id]),
     many('SELECT weekday, note FROM site_hours WHERE site_id=$1 ORDER BY weekday', [id]),
     many('SELECT * FROM site_assets WHERE site_id=$1 ORDER BY active DESC, kind, name', [id]),
     one(`SELECT coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets, count(DISTINCT customer_id)::int AS customers, count(DISTINCT sale_date)::int AS days FROM sales WHERE site_id=$1 AND sale_date >= date_trunc('year', CURRENT_DATE)`, [id]),
     many(`SELECT operator AS label, coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets FROM sales WHERE site_id=$1 AND operator IS NOT NULL AND sale_date >= date_trunc('year', CURRENT_DATE) GROUP BY operator ORDER BY revenue DESC LIMIT 10`, [id]),
     many(`SELECT territory, metric, value, year, ateco, source FROM market_data WHERE territory_kind='COMUNE' AND lower(territory) = ANY($1) ORDER BY territory, metric, year DESC`, [[site.city, ...(site.catchment_cities || '').split(',')].map((x) => (x || '').trim().toLowerCase()).filter(Boolean)]),
+    // Allineamento SGI della sede: esito della sintesi del modulo Audit SGI (public.site_sgi_scores, migrazione core 029); null se manca
+    one('SELECT score, level, summary, computed_at, last_audit_at FROM public.site_sgi_scores WHERE site_id=$1', [id]).catch(() => null),
   ]);
   const fte = staff.filter((s) => s.active).reduce((a, s) => a + Number(s.weekly_hours || 0), 0) / 40;
   // Orari per giorno dall'anagrafica (fino a due fasce) + nota operativa Retail del giorno
   const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   const hj = site.hours_json || {};
   const hoursOut = DAYS.map((d, i) => { const r = Array.isArray(hj[d]) ? hj[d] : []; const n = hours.find((h) => h.weekday === i + 1); return { weekday: i + 1, closed: !r.length, open1: r[0]?.from || null, close1: r[0]?.to || null, open2: r[1]?.from || null, close2: r[1]?.to || null, note: n?.note || null }; });
-  res.json({ site, staff, hours: hoursOut, assets, year, operators: ops, market, fte: Math.round(fte * 10) / 10, can_edit: canEditSite(req.user, id) });
+  res.json({ site, staff, hours: hoursOut, assets, year, operators: ops, market, fte: Math.round(fte * 10) / 10, can_edit: canEditSite(req.user, id), sgi: sgi ? { score: sgi.score == null ? null : Number(sgi.score), level: sgi.level, summary: sgi.summary, computed_at: sgi.computed_at, last_audit_at: sgi.last_audit_at } : null });
 }));
 
 // Piano di lavoro Retail di una persona della sede (upsert su person_ext). Nome, ruolo contrattuale, contatti e sede si

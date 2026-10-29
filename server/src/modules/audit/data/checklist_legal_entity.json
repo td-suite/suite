@@ -1,0 +1,96 @@
+{
+  "code": "TD-AUD-LE",
+  "title": "Check list di due diligence e audit anticorruzione sui partner (ISO 37001)",
+  "rev": "1",
+  "rev_date": "2026-10-29",
+  "derived_from": "Proposta Suite TD in linea con ISO 37001:2025 (8.2 due diligence, 8.5 controlli anticorruzione nei confronti dei soci in affari, 8.6 impegni anticorruzione, 8.7 regali e ospitalità, 8.9 segnalazioni), con richiami al D.Lgs. 231/2001",
+  "answer_values": ["SI", "NO", "NC", "NA"],
+  "risk_values": ["BASSO", "MEDIO", "ALTO"],
+  "header_fields": [
+    { "key": "legal_entity", "label": "Legal entity (partner, socio in affari, fornitore, cliente service, locatore)", "source": "organization" },
+    { "key": "relazione", "label": "Natura della relazione", "type": "select", "options": ["CLIENTE_SERVICE", "PUNTO_PRELIEVO_CONVENZIONATO", "FORNITORE", "LOCATORE", "PARTNER_COMMERCIALE", "SOCIO", "CONSULENTE", "MEDICINA_DEL_LAVORO", "ALTRO"] },
+    { "key": "data", "label": "Data", "type": "date" },
+    { "key": "effettuato_da", "label": "Effettuato da (Qualità, Service, Retail, MDL Manager, AD)", "type": "text" },
+    { "key": "livello_rischio_iniziale", "label": "Livello di rischio iniziale della relazione", "type": "select", "options": ["BASSO", "MEDIO", "ALTO"] }
+  ],
+  "parts": [
+    {
+      "key": "LE",
+      "title": "Audit partner ISO 37001",
+      "sections": [
+        {
+          "key": "L1", "title": "Identità e due diligence (ISO 37001 8.2)", "hint": "Chi è il partner, chi lo controlla, quale esposizione al rischio corruzione",
+          "items": [
+            { "n": "1", "text": "Visura camerale aggiornata (meno di 6 mesi) acquisita e coerente con i dati contrattuali (ragione sociale, P.IVA, sede, oggetto sociale)" },
+            { "n": "2", "text": "Titolare effettivo identificato e documentato; assetto proprietario trasparente" },
+            { "n": "3", "text": "Verifica che amministratori e titolari effettivi non siano persone politicamente esposte (PEP) o, se lo sono, che il rischio sia stato valutato e approvato dalla Direzione" },
+            { "n": "4", "text": "Nessuna evidenza di procedimenti o condanne per corruzione, reati 231, frode o riciclaggio a carico della società o dei suoi vertici (casellario, carichi pendenti, fonti pubbliche)" },
+            { "n": "5", "text": "Assenza di conflitti di interesse tra il partner e persone di Toscana Diagnostica (parentele, partecipazioni, incarichi); dichiarazione acquisita" },
+            { "n": "6", "text": "Reputazione e stampa: nessuna notizia negativa rilevante non chiarita" },
+            { "n": "7", "text": "Regolarità contributiva e fiscale (DURC, certificazione dei carichi fiscali ove applicabile)" },
+            { "n": "8", "text": "Due diligence proporzionata al livello di rischio della relazione e ripetuta con la periodicità prevista (annuale per il rischio alto)" }
+          ]
+        },
+        {
+          "key": "L2", "title": "Governance e compliance del partner (8.5)",
+          "items": [
+            { "n": "9", "text": "Il partner ha adottato un Modello di organizzazione e gestione ex D.Lgs. 231/2001 e nominato un Organismo di Vigilanza" },
+            { "n": "10", "text": "Codice etico o di condotta formalizzato e comunicato al personale" },
+            { "n": "11", "text": "Politica anticorruzione adottata (o adesione a quella di Toscana Diagnostica)" },
+            { "n": "12", "text": "Canale di segnalazione (whistleblowing) attivo e conforme al D.Lgs. 24/2023" },
+            { "n": "13", "text": "Certificazioni possedute e in corso di validità (ISO 37001, ISO 9001, accreditamenti sanitari)", "rev": true },
+            { "n": "14", "text": "Formazione anticorruzione erogata alle persone che operano nel rapporto con Toscana Diagnostica" }
+          ]
+        },
+        {
+          "key": "L3", "title": "Rapporto contrattuale (8.5, 8.6)",
+          "items": [
+            { "n": "15", "text": "Contratto scritto, firmato e archiviato; oggetto, corrispettivo e durata chiari e proporzionati al servizio" },
+            { "n": "16", "text": "Clausola anticorruzione e clausola 231 (impegno al rispetto del Modello e del Codice etico di Toscana Diagnostica)" },
+            { "n": "17", "text": "Diritto di audit e di risoluzione in caso di violazione degli impegni anticorruzione" },
+            { "n": "18", "text": "Corrispettivi coerenti con il mercato e con l'attività svolta; nessun compenso, provvigione o sconto anomalo" },
+            { "n": "19", "text": "Nessun pagamento in contanti; conti correnti intestati al partner e nel paese di operatività; nessun pagamento a terzi non previsti dal contratto" },
+            { "n": "20", "text": "Subappalti e intermediari dichiarati e autorizzati" }
+          ]
+        },
+        {
+          "key": "L4", "title": "Flussi finanziari e operativi",
+          "items": [
+            { "n": "21", "text": "Fatture coerenti con il contratto, con le prestazioni rese e con la documentazione di supporto (campionamento)" },
+            { "n": "22", "text": "Note di credito, storni e rimborsi motivati e autorizzati" },
+            { "n": "23", "text": "Prezzi di trasferimento e listini (service di laboratorio, canoni, royalty) applicati come da contratto" },
+            { "n": "24", "text": "Nessun rapporto economico con la Pubblica Amministrazione mediato dal partner per conto di Toscana Diagnostica senza mandato scritto" }
+          ]
+        },
+        {
+          "key": "L5", "title": "Regali, ospitalità, sponsorizzazioni e rapporti con il settore sanitario (8.7)",
+          "items": [
+            { "n": "25", "text": "Nessun regalo, ospitalità o beneficio scambiato oltre i limiti della politica aziendale; registro omaggi tenuto" },
+            { "n": "26", "text": "Sponsorizzazioni, donazioni e contributi a eventi formativi tracciati e autorizzati, senza legame con prescrizioni o invii di pazienti" },
+            { "n": "27", "text": "Rapporti con medici, strutture pubbliche e ASL privi di compensi o utilità legati a volumi di invio (comparaggio)" },
+            { "n": "28", "text": "Autorizzazioni e requisiti sanitari del partner (ove operi in ambito sanitario) in corso di validità" }
+          ]
+        },
+        {
+          "key": "L6", "title": "Segnalazioni, incidenti e monitoraggio (8.9, 9.2)",
+          "items": [
+            { "n": "29", "text": "Nessuna segnalazione, reclamo o contenzioso rilevante in corso con il partner, o gestito e documentato" },
+            { "n": "30", "text": "Incidenti o sospetti di corruzione emersi nel periodo gestiti secondo la procedura e comunicati alla Funzione di conformità" },
+            { "n": "31", "text": "Esito del precedente audit: azioni correttive attuate nei tempi previsti" },
+            { "n": "32", "text": "Livello di rischio della relazione confermato o aggiornato al termine dell'audit" }
+          ]
+        }
+      ]
+    }
+  ],
+  "report": {
+    "title": "Esito e azioni",
+    "hint": "Riportare le criticità rilevate, il rischio residuo e le azioni richieste al partner o interne, con responsabile e scadenza.",
+    "nc_columns": ["n", "descrizione", "cause", "soluzione", "azione_correttiva", "persona_riferimento", "entro"],
+    "observations_label": "Osservazioni e rischio residuo",
+    "extra_fields": [
+      { "key": "livello_rischio_finale", "label": "Livello di rischio al termine dell'audit", "type": "select", "options": ["BASSO", "MEDIO", "ALTO"] },
+      { "key": "esito", "label": "Esito", "type": "select", "options": ["IDONEO", "IDONEO_CON_AZIONI", "NON_IDONEO"] }
+    ]
+  }
+}

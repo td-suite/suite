@@ -58,6 +58,10 @@ export const MODULES = [
   // soltanto chi ha il grant (open_to_all FALSE). LAB elabora e conferma; QUALITA registro e impostazioni; VIEWER consultazione.
   { key: 'referti', area: 'OPERATIONS', name: 'Referti esterni', tagline: 'Referti dei laboratori esterni trascritti sul format Toscana Diagnostica: DOCX e PDF, archivio e registro', icon: 'referti', kind: 'LEGACY', legacy_url: null, sort_order: 60, scope_type: null, open_to_all: false,
     profiles: [P('LAB', 'Laboratorio'), P('QUALITA', 'Qualità'), P('VIEWER', 'Consultazione')] },
+  // Audit SGI (29/10/2026): auto-audit mensili delle sedi (Site Manager, con verifica di Qualità/Retail/AD), audit interni, audit di
+  // terze parti, audit ISO 37001 sui partner, sintesi con Claude. Solo con grant (open_to_all FALSE); "AD" = Owner della Suite.
+  { key: 'audit', area: 'HQS', name: 'Audit SGI', tagline: 'Auto-audit mensili delle sedi, audit interni, audit di terze parti, audit ISO 37001 sui partner, sintesi con Claude', icon: 'audit', kind: 'LEGACY', legacy_url: null, sort_order: 15, scope_type: 'SITE', open_to_all: false,
+    profiles: [P('ADMIN', 'Amministratore'), P('QUALITA', 'Qualità'), P('AUDITOR', 'Auditor (Retail, Service, MDL)'), P('SITE', 'Site manager', true), P('VIEWER', 'Consultazione')] },
 
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,

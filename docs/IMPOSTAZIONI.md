@@ -96,3 +96,11 @@ da `getCompany()`.
 - Room: il professionista dal portale non modifica più da solo la residenza (è nell'anagrafica unica, scritta solo da
   Amministrazione > Persone o Contratti del personale).
 - Business `lab_reference` ha ancora come valore iniziale l'indirizzo del laboratorio nel form (campo del contratto).
+
+## Audit SGI (29/10/2026)
+Variabili d'ambiente (tutte facoltative): `AUDIT_AI_MOCK=1` sintesi simulata senza chiave Anthropic, costruita dai punteggi reali con
+testi standard, attiva solo con `NODE_ENV` diverso da production (per il collaudo; con la chiave configurata non ha effetto);
+`AUDIT_MAX_FILE_MB` (25) e `AUDIT_MAX_FILES` (10) limiti dei PDF di terze parti e delle evidenze; `AUDIT_TERZI_TEXT_MAX` (60000) caratteri
+di testo estratto conservati per PDF; `AUDIT_JOB_MINUTES` (60) intervallo del job `audit:alert17`. Impostazioni in app (`audit.app_settings`,
+Audit SGI > Impostazioni, profili QUALITA/ADMIN): `alert_day` (17), `reminder_every_days` (5). Sedi, Legal entity, persone e site manager
+vengono dall'anagrafica unica (nessuna doppia compilazione); i modelli di checklist sono del modulo (nuove revisioni in JSON).
