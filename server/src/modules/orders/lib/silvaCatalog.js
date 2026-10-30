@@ -8,6 +8,7 @@
 import { tx } from '../db.js';
 import { getConnector, saveConnector, logConnector } from '../../../lib/connectors.js';
 import { setSetting } from '../routes/integrations.js';
+import { interpreta, assicuraCategorie, CATEGORIE_INTERPRETATE } from './silvaClassify.js';
 
 const MODULE = 'orders';
 export const SILVA_DEFAULT_BASE = 'https://silva.cloud/portaleordini';
@@ -83,6 +84,7 @@ async function applicaModifiche(articoli, eliminati) {
   const { feedItem } = await import('../routes/integrations.js');
   const errors = [];
   return tx(async (c) => {
+    await assicuraCategorie(c);
     const feed = (await c.query(`INSERT INTO warehouse_feeds (source) VALUES ('API') RETURNING id`)).rows[0];
     let n = 0, newArticles = 0, removed = 0;
     for (const [i, raw] of articoli.entries()) {
@@ -91,10 +93,11 @@ async function applicaModifiche(articoli, eliminati) {
       const it = p.data;
       let art = (await c.query('SELECT id FROM articles WHERE silva_code=$1 OR (silva_code IS NULL AND code=$1)', [it.codice])).rows[0];
       if (!art) {
-        const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : 'MAGAZZINO';
-        art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, source, active, visible_all, visible_sedi, visible_service, sort)
-          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
-        [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null])).rows[0];
+        const interp = interpreta(it.descrizione, it.codice);
+        const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : interp.category_code;
+        art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, color, source, active, visible_all, visible_sedi, visible_service, sort)
+          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
+        [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null, interp.color])).rows[0];
         newArticles++;
       } else {
         await c.query('UPDATE articles SET silva_code=coalesce(silva_code,$2), gtin=coalesce(gtin,$3), updated_at=now() WHERE id=$1', [art.id, it.codice, it.barcode || null]);
@@ -169,4 +172,40 @@ export async function statoCatalogo() {
     last_sync_at: c.settings?.last_sync_at || null, last_sync_status: c.settings?.last_sync_status || null, last_sync_message: c.settings?.last_sync_message || null,
     key_expires_at: c.settings?.key_expires_at || null, sync_minutes: Number(c.settings?.sync_minutes) || 60,
   };
+}
+
+/** Reinterpreta categoria e colore degli articoli Silva ancora in MAGAZZINO (o tutti con force): non tocca gli articoli già spostati a mano. */
+export async function reinterpretaArticoli({ force = false } = {}) {
+  return tx(async (c) => {
+    await assicuraCategorie(c);
+    const rows = (await c.query(`SELECT id, code, silva_code, name, category_code FROM articles WHERE source='SILVA' ${force ? '' : "AND category_code='MAGAZZINO'"}`)).rows;
+    let changed = 0; const perCategoria = {};
+    for (const a of rows) {
+      const i = interpreta(a.name, a.silva_code || a.code);
+      perCategoria[i.category_code] = (perCategoria[i.category_code] || 0) + 1;
+      if (i.category_code !== a.category_code) { await c.query('UPDATE articles SET category_code=$2, color=$3, updated_at=now() WHERE id=$1', [a.id, i.category_code, i.color]); changed++; }
+    }
+    return { esaminati: rows.length, cambiati: changed, per_categoria: perCategoria };
+  });
+}
+
+/** Pulizia del catalogo caricato a mano (richiesta del CEO, 30/10/2026: "usiamo solo quello che importiamo da Silva"): gli articoli non Silva
+ *  senza riferimenti (righe d'ordine, confezioni, conte, abbinamenti esami) si eliminano; quelli referenziati si disattivano e si nascondono. */
+export async function pulisciNonSilva({ dryRun = false } = {}) {
+  return tx(async (c) => {
+    const rows = (await c.query(`SELECT a.id, a.code, a.name, a.source, a.active,
+        (SELECT count(*)::int FROM order_lines l WHERE l.article_id=a.id) AS righe,
+        (SELECT count(*)::int FROM packages p WHERE p.article_id=a.id) AS confezioni,
+        (SELECT count(*)::int FROM stock_count_lines s WHERE s.article_id=a.id) AS conte,
+        (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id) AS abbinamenti
+      FROM articles a WHERE a.source <> 'SILVA' ORDER BY a.code`)).rows;
+    const eliminati = []; const disattivati = [];
+    for (const a of rows) {
+      const ref = a.righe + a.confezioni + a.conte + a.abbinamenti;
+      if (ref === 0) { if (!dryRun) { await c.query('DELETE FROM warehouse_stock WHERE article_id=$1', [a.id]); await c.query('DELETE FROM articles WHERE id=$1', [a.id]); } eliminati.push({ id: a.id, code: a.code, name: a.name }); }
+      else { if (!dryRun && (a.active || true)) await c.query('UPDATE articles SET active=FALSE, visible_all=FALSE, visible_sedi=FALSE, visible_service=FALSE, updated_at=now() WHERE id=$1', [a.id]); disattivati.push({ id: a.id, code: a.code, name: a.name, riferimenti: ref }); }
+    }
+    if (!dryRun) await c.query(`DELETE FROM categories k WHERE k.code NOT IN ('MAGAZZINO', ${CATEGORIE_INTERPRETATE.map((x) => `'${x.code}'`).join(', ')}) AND NOT EXISTS (SELECT 1 FROM articles a WHERE a.category_code=k.code)`);
+    return { dryRun, eliminati, disattivati };
+  });
 }

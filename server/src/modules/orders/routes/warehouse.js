@@ -7,7 +7,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, getSetting, itDate } from '../lib/util.js';
 import { requireRole, OPS_ROLES } from '../lib/access.js';
 import { applyFeed } from './integrations.js';
-import { sincronizzaCatalogo, statoCatalogo } from '../lib/silvaCatalog.js';
+import { sincronizzaCatalogo, statoCatalogo, reinterpretaArticoli, pulisciNonSilva } from '../lib/silvaCatalog.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -23,6 +23,18 @@ r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
     FROM articles a JOIN categories c ON c.code=a.category_code ORDER BY c.sort, a.sort, a.code`);
   const feeds = await many('SELECT f.*, (SELECT count(*)::int FROM warehouse_stock w WHERE w.feed_id=f.id) AS rows FROM warehouse_feeds f ORDER BY f.received_at DESC LIMIT 20');
   res.json({ rows, feeds, last_feed_at: await getSetting('silva_last_feed_at', null), last_poll_at: await getSetting('silva_last_poll_at', null), silva: await statoCatalogo() });
+}));
+// Icone per interpretazione: categoria e colore dalla descrizione degli articoli Silva ancora in MAGAZZINO (force = tutti)
+r.post('/silva/reinterpreta', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const out = await reinterpretaArticoli({ force: Boolean(req.body?.force) });
+  await audit(req, 'SILVA_REINTERPRETA', 'warehouse', null, out);
+  res.json(out);
+}));
+// Pulizia del catalogo caricato a mano: solo il super amministratore; dry_run per vedere il piano
+r.post('/pulizia-non-silva', requireRole('SUPERADMIN'), ah(async (req, res) => {
+  const out = await pulisciNonSilva({ dryRun: Boolean(req.body?.dry_run) });
+  if (!out.dryRun) await audit(req, 'CATALOGO_PULIZIA_NON_SILVA', 'warehouse', null, { eliminati: out.eliminati.length, disattivati: out.disattivati.length });
+  res.json(out);
 }));
 // Lettura del catalogo Silva su richiesta (force = fotografia completa, altrimenti sole modifiche dal riferimento salvato)
 r.post('/silva/sync', requireRole(...OPS_ROLES), ah(async (req, res) => {

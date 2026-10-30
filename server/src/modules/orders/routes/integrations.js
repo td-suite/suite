@@ -2,6 +2,7 @@
 // Nessuna sessione: queste rotte sono montate prima del controllo di login.
 import { Router, text as textBody } from 'express';
 import { z } from 'zod';
+import { interpreta, assicuraCategorie } from '../lib/silvaClassify.js';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, parse, HttpError } from '../lib/util.js';
 import { config } from '../config.js';
@@ -43,6 +44,7 @@ export const feedItem = z.object({
 export async function applyFeed(items, source = 'API') {
   const errors = [];
   const result = await tx(async (c) => {
+    await assicuraCategorie(c);
     const feed = (await c.query('INSERT INTO warehouse_feeds (source) VALUES ($1) RETURNING id', [source])).rows[0];
     await c.query('UPDATE warehouse_stock SET current=FALSE WHERE current');
     let newArticles = 0, n = 0;
@@ -52,11 +54,13 @@ export async function applyFeed(items, source = 'API') {
       const it = p.data;
       let art = (await c.query('SELECT id FROM articles WHERE silva_code=$1 OR (silva_code IS NULL AND code=$1)', [it.codice])).rows[0];
       if (!art) {
-        // articolo nuovo dal magazzino: nasce nascosto, l'Area Operations decide a chi renderlo visibile
-        const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : 'MAGAZZINO';
-        art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, source, active, visible_all, visible_sedi, visible_service, sort)
-          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
-        [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null])).rows[0];
+        // articolo nuovo dal magazzino: nasce nascosto, l'Area Operations decide a chi renderlo visibile; categoria, icona e colore per
+        // interpretazione della descrizione (lib/silvaClassify.js) se il feed non indica una categoria esistente
+        const interp = interpreta(it.descrizione, it.codice);
+        const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : interp.category_code;
+        art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, color, source, active, visible_all, visible_sedi, visible_service, sort)
+          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
+        [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null, interp.color])).rows[0];
         newArticles++;
       } else {
         await c.query('UPDATE articles SET silva_code=coalesce(silva_code,$2), gtin=coalesce(gtin,$3), updated_at=now() WHERE id=$1', [art.id, it.codice, it.barcode || null]);

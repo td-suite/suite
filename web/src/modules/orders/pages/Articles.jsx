@@ -18,14 +18,30 @@ export default function Articles() {
     const b = { name: edit.name, unit: edit.unit, pack_size: Number(edit.pack_size), pack_label: edit.pack_label, color: edit.color || null, gtin: edit.gtin || null, silva_code: edit.silva_code || null, coverage_factor: Number(edit.coverage_factor), min_stock_packs: Number(edit.min_stock_packs || 0), lab_only: !!edit.lab_only, active: !!edit.active, category_code: edit.category_code, visible_all: !!edit.visible_all, visible_sedi: !!edit.visible_sedi, visible_service: !!edit.visible_service };
     try { if (edit.id) await api.put(`/articles/${edit.id}`, b); else await api.post('/articles', { code: edit.code, ...b }); toast('Articolo salvato'); setEdit(null); reload(); } catch (e) { setErr(e); }
   };
+  const [plan, setPlan] = useState(null);
+  const pulizia = async (dryRun) => {
+    setErr(null);
+    try {
+      const r = await api.post('/warehouse/pulizia-non-silva', { dry_run: dryRun });
+      if (dryRun) setPlan(r); else { toast(`Catalogo ripulito: ${r.eliminati.length} articoli eliminati, ${r.disattivati.length} disattivati perché usati in ordini o conte`); setPlan(null); reload(); }
+    } catch (e) { setErr(e); }
+  };
+  const reinterpreta = async () => { setErr(null); try { const r = await api.post('/warehouse/silva/reinterpreta', {}); toast(`Icone interpretate: ${r.cambiati} articoli ricollocati su ${r.esaminati}`); reload(); } catch (e) { setErr(e); } };
   let lastCat = null;
   return (
     <div className="page">
+      {plan && <Modal title="Pulizia del catalogo caricato a mano" onClose={() => setPlan(null)} footer={<><button className="btn ghost" onClick={() => setPlan(null)}>Annulla</button><button className="btn danger" onClick={() => pulizia(false)}>Conferma la pulizia</button></>}>
+        <p className="small">Restano solo gli articoli importati da Silva. Gli articoli caricati a mano senza riferimenti vengono eliminati; quelli usati in ordini, confezioni, conte o abbinamenti esami vengono disattivati e nascosti (lo storico resta leggibile).</p>
+        <div className="small"><b>{plan.eliminati.length}</b> da eliminare{plan.eliminati.length > 0 && <>: {plan.eliminati.slice(0, 60).map((a) => a.code).join(', ')}{plan.eliminati.length > 60 ? '…' : ''}</>}</div>
+        <div className="small" style={{ marginTop: 6 }}><b>{plan.disattivati.length}</b> da disattivare{plan.disattivati.length > 0 && <>: {plan.disattivati.slice(0, 60).map((a) => `${a.code} (${a.riferimenti})`).join(', ')}{plan.disattivati.length > 60 ? '…' : ''}</>}</div>
+      </Modal>}
       <div className="page-head">
-        <div><h1>Catalogo articoli</h1><div className="sub">Elenco chiuso del modulo TD-SGI-MOD252 sezione B: 48 articoli in 9 categorie. Confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui.</div></div>
+        <div><h1>Catalogo articoli</h1><div className="sub">Articoli del magazzino Silva (dall'API, con categoria e icona per interpretazione della descrizione). Confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui.</div></div>
+        {sup && <button className="btn ghost danger" title="Elimina o disattiva gli articoli non importati da Silva" onClick={() => pulizia(true)}>Pulisci il caricato a mano</button>}
+        {sup && <button className="btn ghost" title="Categoria, icona e colore dalla descrizione degli articoli Silva ancora in Altri articoli" onClick={reinterpreta}>Icone per interpretazione</button>}
         {sup && <button className="btn" onClick={() => setEdit({ code: '', category_code: 'PROVETTE', name: '', unit: 'n.', pack_size: 1, pack_label: '', color: '#71B1BD', gtin: '', silva_code: '', coverage_factor: 1.5, min_stock_packs: 0, lab_only: false, active: true, visible_all: true })}>+ Nuovo articolo</button>}
       </div>
-      <div className="alert warn" style={{ marginBottom: 14 }}>Le quantità per confezione sono un'ipotesi iniziale (provette 100, aghi 50, tamponi 50, Transbag 100, kit singoli): vanno validate con i dati del magazzino. Il codice articolo Silva collega l'articolo al feed del magazzino; il GTIN permette la lettura in carico e scarico. La visibilità si gestisce anche dalla pagina Magazzino Silva (fase 0).</div>
+      <div className="alert info" style={{ marginBottom: 14 }}>Le quantità arrivano dall'API Silva come giacenza fisica, senza conversione in confezioni; il confezionamento si imposta qui per articolo. Lotti, scadenze e GTIN non sono ancora valorizzati da Silva.</div>
       <ErrorBox error={err} />
       <Card flush>
         {!data ? <Loading /> : (
