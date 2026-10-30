@@ -5,6 +5,7 @@ import { graphConfigured, graphFetch, sendMail, adminEmails } from './mailer.js'
 import { parseKitEmail, htmlToText } from './parser.js';
 import { pollTracking } from './tracking.js';
 import { getSetting, itDate, todayRome } from './util.js';
+import { dropBlobs } from '../../../lib/moduleStorage.js';
 
 // ---- Casella in arrivo (Microsoft Graph, permesso applicativo Mail.Read o Mail.ReadWrite sulla casella) ----
 export async function pollInbox({ force = false } = {}) {
@@ -92,10 +93,18 @@ export async function runDailyAlerts({ force = false } = {}) {
 export async function anonymizeClosed() {
   const months = Number(await getSetting('retention_months', '12'));
   if (!months) return 0;
+  // con richiedente Legal entity restano la Legal entity (dato aziendale) e il tipo; referente, email e telefono si rimuovono
   const r = await q(`UPDATE orders SET patient_first_name = left(patient_first_name,1) || '.', patient_last_name = left(patient_last_name,1) || '.',
-      address1='[rimosso]', address2=NULL, phone=NULL, email=NULL, notes=NULL, anonymized_at=now(), updated_at=now()
+      address1='[rimosso]', address2=NULL, phone=NULL, email=NULL, notes=NULL, requester_contact=NULL, requester_email=NULL, requester_phone=NULL, anonymized_at=now(), updated_at=now()
     WHERE anonymized_at IS NULL AND status IN ('CLOSED','CANCELLED') AND coalesce(closed_at, cancelled_at) < now() - ($1 || ' months')::interval`, [String(months)]);
-  if (r.rowCount) await q(`UPDATE inbox_messages SET body_text='[rimosso per scadenza conservazione]', parsed=NULL WHERE status IN ('CONFIRMED','IGNORED') AND received_at < now() - ($1 || ' months')::interval AND body_text <> '[rimosso per scadenza conservazione]'`, [String(months)]);
+  if (r.rowCount) {
+    // messaggi elaborati o ignorati: via testo, righe lette, JSON della lettura assistita e file caricato (database o blob)
+    const old = await many(`SELECT id, blob_path FROM inbox_messages WHERE status IN ('CONFIRMED','IGNORED') AND received_at < now() - ($1 || ' months')::interval AND body_text <> '[rimosso per scadenza conservazione]'`, [String(months)]);
+    if (old.length) {
+      await q(`UPDATE inbox_messages SET body_text='[rimosso per scadenza conservazione]', parsed=NULL, extracted=NULL, data=NULL, blob_path=NULL, requester_match=NULL WHERE id = ANY($1::int[])`, [old.map((x) => x.id)]);
+      await dropBlobs('shipments', old.map((x) => x.blob_path));
+    }
+  }
   return r.rowCount;
 }
 

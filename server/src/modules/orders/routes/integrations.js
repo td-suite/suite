@@ -23,7 +23,7 @@ const requireKey = (kind, who) => (req, res, next) => {
   res.on('finish', () => log(res.statusCode < 400 ? 'OK' : String(res.statusCode), null));
   next();
 };
-async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, value]); }
+export async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, value]); }
 
 // =====================================================================================================================
 // Silva Group (gestore del magazzino)
@@ -34,7 +34,7 @@ r.get('/silva/ping', silvaKey(), ah(async (_req, res) => res.json({ ok: true, cl
 
 // Fase 0: feed delle giacenze di magazzino. Fotografia completa: gli articoli assenti nel feed risultano a quantità zero.
 // Corpo: { articoli: [ { codice, descrizione, barcode, lotto, scadenza (AAAA-MM-GG), quantita, unita, confezione, unitaPerConfezione } ] }
-const feedItem = z.object({
+export const feedItem = z.object({
   codice: z.string().min(1).max(40), descrizione: z.string().max(200).optional().nullable(), barcode: z.string().max(40).optional().nullable(),
   lotto: z.string().max(60).optional().nullable(), scadenza: z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional().nullable(),
   quantita: z.coerce.number().min(0).default(0), unita: z.string().max(40).optional().nullable(), confezione: z.string().max(120).optional().nullable(),

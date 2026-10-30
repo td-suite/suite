@@ -9,13 +9,33 @@ import { sendMail as suiteSendMail } from '../../../lib/mailer.js';
 
 export const graphConfigured = () => config.graph.enabled;
 export const mailConfigured = () => suite.mail.provider === 'graph';
+// Stato della casella in arrivo con il motivo preciso quando non legge: credenziali Graph assenti (ENTRA_* / GRAPH_* su Render),
+// oppure casella vuota. Il permesso Mail.Read si verifica con "Prova la casella" (testInbox).
+export const inboxReason = () => (!graphConfigured() ? 'graph_credentials' : !config.graph.inbox ? 'no_mailbox' : null);
 export const mailStatus = () => ({
   configured: mailConfigured(),
   mode: mailConfigured() ? 'microsoft365' : null,
   from: config.graph.sender || null,
   inbox: config.graph.inbox || null,
+  inboxSource: config.graph.inboxEnv ? 'env' : config.graph.inboxOverride ? 'setting' : 'default',
   inboxConfigured: graphConfigured() && Boolean(config.graph.inbox),
+  inboxReason: inboxReason(),
 });
+// Prova di lettura della casella (un messaggio): distingue casella inesistente (404), permesso Mail.Read mancante (403), credenziali errate (401)
+export async function testInbox() {
+  const reason = inboxReason();
+  if (reason === 'graph_credentials') return { ok: false, message: 'Credenziali Microsoft Graph assenti: su Render servono ENTRA_TENANT_ID, ENTRA_CLIENT_ID ed ENTRA_CLIENT_SECRET (o le GRAPH_*)' };
+  if (reason) return { ok: false, message: 'Casella da leggere non impostata' };
+  try {
+    const res = await graphFetch(`/users/${encodeURIComponent(config.graph.inbox)}/mailFolders/inbox/messages?$top=1&$select=id,receivedDateTime,subject`);
+    if (res.ok) { const j = await res.json(); const m = (j.value || [])[0]; return { ok: true, message: `Casella ${config.graph.inbox} leggibile${m ? `: ultimo messaggio "${(m.subject || '').slice(0, 60)}" del ${new Date(m.receivedDateTime).toLocaleString('it-IT')}` : ' (vuota)'}` }; }
+    const t = (await res.text()).slice(0, 200);
+    if (res.status === 404) return { ok: false, message: `La casella ${config.graph.inbox} non esiste nel tenant o non è una casella Exchange (${t})` };
+    if (res.status === 403) return { ok: false, message: `Permesso mancante: l'app registration della Suite deve avere il permesso applicativo Mail.Read (con consenso amministratore) e, se c'è una Application Access Policy, includere la casella ${config.graph.inbox} (${t})` };
+    if (res.status === 401) return { ok: false, message: `Credenziali Graph non valide o segreto scaduto (${t})` };
+    return { ok: false, message: `Graph ${res.status}: ${t}` };
+  } catch (e) { return { ok: false, message: `Errore di rete verso Microsoft Graph: ${e.message}` }; }
+}
 
 let graphToken = { value: null, exp: 0 };
 export async function getGraphToken() {

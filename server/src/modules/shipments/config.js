@@ -12,7 +12,11 @@ export const config = {
     clientId: suite.mail.graph.clientId,
     clientSecret: suite.mail.graph.clientSecret,
     sender: suite.mail.sender,                                  // le comunicazioni partono dalla casella della Suite
-    inbox: env.SHIPMENTS_GRAPH_INBOX || env.GRAPH_INBOX || '',  // casella shipments@ letta per le richieste in arrivo
+    // casella letta per le richieste in arrivo: variabile d'ambiente, altrimenti l'impostazione del modulo (inbox_address), altrimenti shipments@
+    inboxEnv: env.SHIPMENTS_GRAPH_INBOX || env.GRAPH_INBOX || '',
+    inboxDefault: 'shipments@toscanadiagnostica.it',
+    get inbox() { return this.inboxEnv || this.inboxOverride || this.inboxDefault; },
+    inboxOverride: '',
     pollMinutes: Number(env.GRAPH_POLL_MINUTES || 5),
     get enabled() { return Boolean(this.tenantId && this.clientId && this.clientSecret); },
   },

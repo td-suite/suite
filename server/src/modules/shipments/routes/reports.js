@@ -78,15 +78,17 @@ r.get('/quantitative', ah(async (req, res) => {
   res.json({ project, from, to, perMonth, byMode, times, bySite, open, stock });
 }));
 
-// Export CSV delle richieste del periodo
+// Export CSV delle richieste del periodo (con il richiedente: Legal entity, P.IVA e referente, riferimento per la fatturazione Lifestyle)
 r.get('/orders.csv', ah(async (req, res) => {
   const project = req.query.project || 'ENDEAVOR';
   const { from, to } = range(req);
   const rows = await many(`SELECT o.id, o.external_ref, o.order_type, m.code AS mode, o.status, o.patient_last_name, o.patient_first_name, o.city, o.province, o.zip, o.country, k.barcode,
+      o.requester_kind, ro.name AS requester_org, ro.vat_number AS requester_vat, o.requester_contact, o.requester_email, o.requester_phone,
       o.created_at, o.assigned_at, o.shipped_at, o.delivered_at, o.sample_received_at, o.sample_received_site, ls.awb_number, o.fee_sample_date AS lab_shipped_at, o.closed_at, o.cancelled_at, o.fee_shipping, o.fee_sample,
       (SELECT tracking_number FROM shipments s WHERE s.order_id=o.id AND s.direction='OUTBOUND' ORDER BY id DESC LIMIT 1) AS outbound_tracking,
       (SELECT tracking_number FROM shipments s WHERE s.order_id=o.id AND s.direction='RETURN' ORDER BY id DESC LIMIT 1) AS return_tracking
     FROM orders o LEFT JOIN kits k ON k.id=o.kit_id LEFT JOIN shipping_modes m ON m.id=o.shipping_mode_id LEFT JOIN lab_shipments ls ON ls.id=o.lab_shipment_id
+      LEFT JOIN public.organizations ro ON ro.id=o.requester_org_id
     WHERE o.project=$1 AND o.created_at::date BETWEEN $2 AND $3 ORDER BY o.id`, [project, from, to]);
   const cols = rows.length ? Object.keys(rows[0]) : ['id'];
   const fmt = (v) => (v == null ? '' : v instanceof Date ? v.toISOString() : String(v)).replace(/"/g, '""');

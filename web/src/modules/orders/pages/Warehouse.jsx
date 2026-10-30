@@ -17,16 +17,26 @@ export default function Warehouse() {
   const rows = useMemo(() => (data?.rows || []).filter((r) => (filter === 'STOCK' ? Number(r.qty) > 0 : filter === 'HIDDEN' ? !(r.visible_all || r.visible_sedi || r.visible_service) : filter === 'NEW' ? r.source === 'SILVA' : true) && (!search || `${r.code} ${r.silva_code || ''} ${r.name}`.toLowerCase().includes(search.toLowerCase()))), [data, filter, search]);
   const setVis = async (r, k, v) => { setErr(null); try { await api.put(`/warehouse/articles/${r.article_id}/visibility`, { [k]: v }); reload(); } catch (e) { setErr(e); } };
   const bulk = async (k, v) => { if (!sel.size) return; setErr(null); try { await api.put('/warehouse/visibility', { ids: [...sel], [k]: v }); toast(`${sel.size} articoli aggiornati`); setSel(new Set()); reload(); } catch (e) { setErr(e); } };
+  const [syncing, setSyncing] = useState(false);
+  const syncSilva = async (force) => {
+    setErr(null); setSyncing(true);
+    try { const r = await api.post('/warehouse/silva/sync', { force }); const e = r.esiti || []; toast(e.map((x) => x.error ? `${x.anno}: errore ${x.error}` : x.skipped ? `${x.anno}: ${x.skipped}` : `${x.anno}: ${x.mode === 'COMPLETO' ? 'catalogo completo' : 'modifiche'}, ${x.items ?? 0} articoli${x.newArticles ? `, ${x.newArticles} nuovi` : ''}${x.removed ? `, ${x.removed} eliminati` : ''}`).join(' · ') || 'Nessun anno da sincronizzare', e.some((x) => x.error) ? 'err' : 'ok'); reload(); }
+    catch (e) { setErr(e); }
+    setSyncing(false);
+  };
   const importFile = async (f) => { setErr(null); const fd = new FormData(); fd.append('file', f); try { const r = await api.upload('/warehouse/import', fd); toast(`Feed importato: ${r.items} righe, ${r.newArticles} articoli nuovi${r.errors.length ? `, ${r.errors.length} righe scartate` : ''}`); reload(); } catch (e) { setErr(e); } };
   const Chk = ({ r, k }) => <input type="checkbox" checked={!!r[k]} onChange={(e) => setVis(r, k, e.target.checked)} title={k === 'visible_all' ? 'Tutti' : k === 'visible_sedi' ? 'Punti prelievo e laboratorio' : 'Clienti Service'} />;
   return (
     <div className="page">
       <PhaseBanner n="0" title="Magazzino Silva: materiale a disposizione" desc="Il gestore del magazzino aggiorna le giacenze (articoli, lotti, scadenze, quantità). Qui l'Area Operations decide a chi rendere visibile ogni articolo nel catalogo: le strutture vedono solo l'articolo, mai quantità, lotti o scadenze." next="Fase 1: le strutture ordinano dal catalogo" />
       <div className="page-head">
-        <div><h1>Giacenze del magazzino</h1><div className="sub">{data?.last_feed_at ? `Ultimo aggiornamento dal fornitore: ${itDateTime(data.last_feed_at)}` : 'Nessun feed ricevuto: in attesa della chiamata del fornitore (o importa il file)'}{data?.last_poll_at ? ` · ultima lettura ordini: ${itDateTime(data.last_poll_at)}` : ''}</div></div>
+        <div><h1>Giacenze del magazzino</h1><div className="sub">{data?.last_feed_at ? `Ultimo aggiornamento dal fornitore: ${itDateTime(data.last_feed_at)}` : 'Nessun aggiornamento ricevuto: leggi il catalogo Silva o importa il file'}{data?.last_poll_at ? ` · ultima lettura ordini: ${itDateTime(data.last_poll_at)}` : ''}</div>
+          {data?.silva && <div className="small" style={{ marginTop: 4 }}>{data.silva.api_key ? <>API Silva attiva ({data.silva.base_url}) · anni {data.silva.years.join(', ')} · ogni {data.silva.sync_minutes} min{data.silva.last_sync_at ? <> · ultima lettura {itDateTime(data.silva.last_sync_at)} <Badge tone={data.silva.last_sync_status === 'OK' ? 'green' : 'red'}>{data.silva.last_sync_status || '–'}</Badge></> : ' · mai letta'}{data.silva.key_expires_at && <> · chiave valida fino al {itDate(data.silva.key_expires_at)}{(new Date(data.silva.key_expires_at) - Date.now()) < 30 * 86400000 && <Badge tone="red">{new Date(data.silva.key_expires_at) < Date.now() ? 'scaduta' : 'in scadenza'}: rinnovala su Silva e aggiornala in Connettori</Badge>}</>}{data.silva.last_sync_status === 'ERRORE' && data.silva.last_sync_message && <div className="red">{data.silva.last_sync_message}</div>}</> : <span className="muted">API Silva non attiva: inserisci la chiave X-API-KEY in Amministrazione › Connettori › Silva.</span>}</div>}</div>
         <div className="row">
           <Field label="Cerca"><input placeholder="Codice o descrizione" value={search} onChange={(e) => setSearch(e.target.value)} /></Field>
           <Field label="Mostra"><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="STOCK">Con giacenza</option><option value="ALL">Tutti gli articoli</option><option value="NEW">Creati dal feed</option><option value="HIDDEN">Non visibili a nessuno</option></select></Field>
+          {data?.silva?.api_key && <button className="btn" disabled={syncing} onClick={() => syncSilva(false)}><Icon name="refresh" size={16} />{syncing ? 'Lettura in corso' : 'Leggi da Silva'}</button>}
+          {data?.silva?.api_key && <button className="btn ghost" disabled={syncing} title="Fotografia completa del catalogo (ignora il riferimento salvato)" onClick={() => syncSilva(true)}>Catalogo completo</button>}
           <a className="btn ghost" href={`${API_BASE}/warehouse/import/template.xlsx`}><Icon name="download" size={16} />Modello</a>
           <label className="btn ghost"><Icon name="upload" size={16} />Importa feed<input type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && importFile(e.target.files[0])} /></label>
         </div>

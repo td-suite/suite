@@ -49,6 +49,30 @@ export const api = {
   upload: (u, formData, opts) => request('POST', u, formData, opts),
 };
 
+// Upload con avanzamento (XMLHttpRequest: fetch non espone il progresso dell'invio). onProgress riceve 0..1.
+export function uploadWithProgress(url, formData, onProgress) {
+  setBusy(1);
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `${API_BASE}${url}`);
+    x.withCredentials = true;
+    x.setRequestHeader('X-Requested-With', 'td-suite');
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+    x.onload = () => {
+      let data = x.responseText;
+      try { data = JSON.parse(x.responseText); } catch { /* testo */ }
+      if (x.status >= 200 && x.status < 300) resolve(data);
+      else {
+        if (x.status === 401) window.dispatchEvent(new Event('suite:unauthorized'));
+        reject(new ApiError(x.status, (data && data.error) || `Errore ${x.status}`, data?.code, data?.details));
+      }
+    };
+    x.onerror = () => reject(new ApiError(0, 'Connessione interrotta durante il caricamento'));
+    x.onloadend = () => setBusy(-1);
+    x.send(formData);
+  });
+}
+
 // Chiamate alle API della Suite (fuori dal modulo), es. la lingua del profilo
 export const suiteApi = {
   put: (u, b) => request('PUT', u, b, { absolute: true }),

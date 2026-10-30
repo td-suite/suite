@@ -9,6 +9,8 @@ import { normBarcode } from './kits.js';
 import { refreshOne, trackingUrl } from '../lib/tracking.js';
 import { sendMail } from '../lib/mailer.js';
 import { shippingSheet } from '../pdf/sheet.js';
+import { requesterIssue, shipNoticeRecipient, patientLabel } from '../lib/requestParse.js';
+import { INBOX_COLS, loadMessage, lifestyleReview } from './inbox.js';
 
 const r = Router();
 const PROJECT = z.enum(['ENDEAVOR', 'LIFESTYLE']);
@@ -17,7 +19,8 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const patientFields = {
   patient_title: opt(z.string().max(20)),
-  patient_first_name: z.string().trim().min(1).max(80),
+  // vuoto ammesso solo con richiedente Legal entity e kit senza paziente nominato (cognome = ragione sociale): vedi checkRequester
+  patient_first_name: z.string().trim().max(80).default(''),
   patient_last_name: z.string().trim().min(1).max(80),
   address1: z.string().trim().min(2).max(200),
   address2: opt(z.string().max(200)),
@@ -30,6 +33,15 @@ const patientFields = {
   lang: z.enum(['it', 'en']).default('it'),
   notes: opt(z.string().max(2000)),
 };
+// Richiedente (richiesta del CEO, 30/10/2026): PERSONA (il destinatario stesso) oppure LEGAL_ENTITY (public.organizations), con
+// referente, email e telefono a cui vanno fattura e comunicazioni. Il destinatario del kit resta nei campi patient_* e indirizzo.
+const requesterFields = {
+  requester_kind: z.enum(['PERSONA', 'LEGAL_ENTITY']).default('PERSONA'),
+  requester_org_id: z.number().int().positive().nullable().optional(),
+  requester_contact: opt(z.string().trim().max(120)),
+  requester_email: opt(z.string().trim().email().or(z.literal(''))),
+  requester_phone: opt(z.string().trim().max(40)),
+};
 const orderSchema = z.object({
   project: PROJECT,
   order_type: z.enum(['ENDEAVOR', 'KIT_ONLY', 'KIT_AND_EXAM']),
@@ -37,11 +49,25 @@ const orderSchema = z.object({
   shipping_mode_id: z.number().int().nullable().optional(),
   barcode: opt(z.string().max(60)),
   ...patientFields,
+  ...requesterFields,
 });
 
+// Coerenza del richiedente (lib/requestParse.js requesterIssue, messaggio nella lingua dell'utente) ed esistenza della Legal entity.
+// Con PERSONA i campi requester_* si azzerano: il richiedente è il destinatario.
+async function checkRequester(req, d) {
+  const issue = requesterIssue(d);
+  if (issue) throw badL(req, issue.it, issue.en);
+  if (d.requester_kind === 'LEGAL_ENTITY') {
+    if (!(await one('SELECT 1 FROM public.organizations WHERE id=$1', [d.requester_org_id]))) throw badL(req, 'Legal entity del richiedente non trovata', 'Requester legal entity not found');
+    if (d.requester_email === '') d.requester_email = null;
+  } else Object.assign(d, { requester_kind: 'PERSONA', requester_org_id: null, requester_contact: null, requester_email: null, requester_phone: null });
+  return d;
+}
+
 const ORDER_COLS = `SELECT o.*, k.barcode, k.status AS kit_status, m.code AS mode_code, m.name_it AS mode_it, m.name_en AS mode_en, m.outbound_service, m.return_service, m.price AS mode_price,
-    ls.awb_number, ls.status AS lab_status, u.full_name AS created_by_name`;
-const ORDER_FROM = `FROM orders o LEFT JOIN kits k ON k.id=o.kit_id LEFT JOIN shipping_modes m ON m.id=o.shipping_mode_id LEFT JOIN lab_shipments ls ON ls.id=o.lab_shipment_id LEFT JOIN users u ON u.id=o.created_by`;
+    ls.awb_number, ls.status AS lab_status, u.full_name AS created_by_name, ro.name AS requester_org_name, ro.vat_number AS requester_org_vat, ro.kind AS requester_org_kind`;
+const ORDER_FROM = `FROM orders o LEFT JOIN kits k ON k.id=o.kit_id LEFT JOIN shipping_modes m ON m.id=o.shipping_mode_id LEFT JOIN lab_shipments ls ON ls.id=o.lab_shipment_id LEFT JOIN users u ON u.id=o.created_by
+  LEFT JOIN public.organizations ro ON ro.id=o.requester_org_id`;
 const ORDER_SELECT = `${ORDER_COLS} ${ORDER_FROM}`;
 
 async function loadOrder(id) {
@@ -80,7 +106,8 @@ r.get('/', ah(async (req, res) => {
   if (req.query.order_type) where.push(`o.order_type = ${P.add(req.query.order_type)}`);
   if (req.query.lab_shipment_id) where.push(`o.lab_shipment_id = ${P.add(Number(req.query.lab_shipment_id))}`);
   if (req.query.awaiting_lab === '1') where.push(`o.status='SAMPLE_RECEIVED' AND o.lab_shipment_id IS NULL`);
-  if (req.query.q) { const s = P.add('%' + String(req.query.q).toUpperCase() + '%'); where.push(`(upper(o.external_ref) LIKE ${s} OR upper(k.barcode) LIKE ${s} OR upper(o.patient_last_name) LIKE ${s} OR upper(o.patient_first_name) LIKE ${s} OR upper(o.city) LIKE ${s})`); }
+  if (req.query.q) { const s = P.add('%' + String(req.query.q).toUpperCase() + '%'); where.push(`(upper(o.external_ref) LIKE ${s} OR upper(k.barcode) LIKE ${s} OR upper(o.patient_last_name) LIKE ${s} OR upper(o.patient_first_name) LIKE ${s} OR upper(o.city) LIKE ${s} OR upper(ro.name) LIKE ${s} OR upper(o.requester_contact) LIKE ${s})`); }
+  if (req.query.requester_org_id) where.push(`o.requester_org_id = ${P.add(Number(req.query.requester_org_id))}`);
   if (req.query.from) where.push(`o.created_at >= ${P.add(req.query.from)}::date`);
   if (req.query.to) where.push(`o.created_at < (${P.add(req.query.to)}::date + 1)`);
   const limit = Math.min(Number(req.query.limit || 300), 2000);
@@ -97,7 +124,7 @@ r.get('/counts', ah(async (req, res) => {
   const P = new Params();
   const where = req.query.project ? `WHERE project = ${P.add(req.query.project)}` : '';
   const st = await many(`SELECT project, order_type, status, count(*)::int AS n FROM orders ${where} GROUP BY project, order_type, status`, P.values);
-  const inbox = (await one(`SELECT count(*)::int AS n FROM inbox_messages WHERE status IN ('NEW','PARSED')`)).n;
+  const inbox = (await one(`SELECT count(*)::int AS n FROM inbox_messages WHERE status IN ('NEW','PARSED') ${req.query.project ? 'AND project=$1' : ''}`, req.query.project ? [req.query.project] : [])).n;
   const awaitingLab = (await one(`SELECT count(*)::int AS n FROM orders WHERE project='ENDEAVOR' AND status='SAMPLE_RECEIVED' AND lab_shipment_id IS NULL`)).n;
   res.json({ byStatus: st, inbox, awaitingLab });
 }));
@@ -108,6 +135,7 @@ r.get('/:id(\\d+)', ah(async (req, res) => res.json(await loadOrder(Number(req.p
 r.post('/', requireRole(...OPERATORS), ah(async (req, res) => {
   const d = parse(orderSchema, req.body);
   validateType(req, d);
+  await checkRequester(req, d);
   const mode = await modeFor(req, d);
   if (d.project === 'ENDEAVOR' && !mode) throw badL(req, 'Scegli la modalità di spedizione', 'Choose the shipping mode');
   if (d.external_ref && await one('SELECT 1 FROM orders WHERE upper(external_ref)=upper($1) AND status<>$2', [d.external_ref, 'CANCELLED'])) throw badL(req, `Riferimento ${d.external_ref} già presente`, `Reference ${d.external_ref} already exists`);
@@ -117,10 +145,12 @@ r.post('/', requireRole(...OPERATORS), ah(async (req, res) => {
 }));
 
 async function createOrder(c, req, d, mode, source, inboxId) {
-  const o = (await c.query(`INSERT INTO orders (project, order_type, external_ref, shipping_mode_id, patient_title, patient_first_name, patient_last_name, address1, address2, city, province, zip, country, phone, email, lang, notes, source, inbox_message_id, created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
-  [d.project, d.order_type, d.external_ref || null, mode?.id || null, d.patient_title, d.patient_first_name, d.patient_last_name, d.address1, d.address2, d.city, d.province, d.zip, d.country, d.phone, d.email || null, d.lang, d.notes, source, inboxId, req.user.id])).rows[0];
-  await logEvent(c, { orderId: o.id, event: 'CREATED', data: { source, ref: d.external_ref }, userId: req.user.id });
+  const o = (await c.query(`INSERT INTO orders (project, order_type, external_ref, shipping_mode_id, patient_title, patient_first_name, patient_last_name, address1, address2, city, province, zip, country, phone, email, lang, notes, source, inbox_message_id, created_by,
+      requester_kind, requester_org_id, requester_contact, requester_email, requester_phone)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+  [d.project, d.order_type, d.external_ref || null, mode?.id || null, d.patient_title, d.patient_first_name || '', d.patient_last_name, d.address1, d.address2, d.city, d.province, d.zip, d.country, d.phone, d.email || null, d.lang, d.notes, source, inboxId, req.user.id,
+    d.requester_kind || 'PERSONA', d.requester_org_id || null, d.requester_contact || null, d.requester_email || null, d.requester_phone || null])).rows[0];
+  await logEvent(c, { orderId: o.id, event: 'CREATED', data: { source, ref: d.external_ref, requester_org_id: d.requester_org_id || null }, userId: req.user.id });
   if (d.barcode) await assignKit(c, req, o, d.barcode);
   return o;
 }
@@ -141,7 +171,13 @@ r.put('/:id(\\d+)', requireRole(...OPERATORS), ah(async (req, res) => {
   const o = await one('SELECT * FROM orders WHERE id=$1', [Number(req.params.id)]);
   if (!o) throw notFound();
   if (['CLOSED', 'CANCELLED'].includes(o.status)) throw badL(req, 'Richiesta chiusa: non modificabile', 'Closed request: not editable');
-  const d = parse(z.object({ external_ref: opt(z.string().trim().max(60)), shipping_mode_id: z.number().int().nullable().optional(), ...patientFields }).partial(), req.body);
+  const d = parse(z.object({ external_ref: opt(z.string().trim().max(60)), shipping_mode_id: z.number().int().nullable().optional(), ...patientFields, ...requesterFields }).partial(), req.body);
+  // il richiedente si verifica sul risultato finale (valori nuovi sopra quelli salvati)
+  if (['requester_kind', 'requester_org_id', 'patient_first_name', 'patient_last_name'].some((k) => d[k] !== undefined)) {
+    const merged = await checkRequester(req, { ...o, ...d });
+    for (const k of ['requester_kind', 'requester_org_id', 'requester_contact', 'requester_email', 'requester_phone']) if (d[k] !== undefined || merged.requester_kind === 'PERSONA') d[k] = merged[k];
+  }
+  if (d.requester_email === '') d.requester_email = null;
   if (d.shipping_mode_id !== undefined && d.shipping_mode_id !== o.shipping_mode_id) {
     if (!['NEW', 'ASSIGNED'].includes(o.status)) throw badL(req, 'La modalità si cambia solo prima della spedizione', 'The shipping mode can be changed only before shipping');
     await modeFor(req, { project: o.project, shipping_mode_id: d.shipping_mode_id });
@@ -244,16 +280,22 @@ r.post('/:id(\\d+)/ship', requireRole(...OPERATORS), ah(async (req, res) => {
   });
   await audit(req, 'ORDER_SHIP', 'order', id, d);
   const o = await loadOrder(id);
-  // notifica al paziente (facoltativa, impostazione)
-  if ((await getSetting('notify_patient_on_ship', 'false')) === 'true' && o.email) {
+  // notifica al paziente (facoltativa, impostazione): al destinatario se ha un'email; se il richiedente è una Legal entity e il
+  // destinatario non ha email, al richiedente (referente / email della richiesta, altrimenti l'email della Legal entity)
+  if ((await getSetting('notify_patient_on_ship', 'false')) === 'true') {
     const out = o.shipments.find((s) => s.direction === 'OUTBOUND');
-    if (out) {
+    const to = shipNoticeRecipient(o, o.requester_kind === 'LEGAL_ENTITY' && !o.email ? (await one('SELECT email FROM public.organizations WHERE id=$1', [o.requester_org_id]))?.email : null);
+    if (out && to) {
       const en = o.lang === 'en';
-      await sendMail({ kind: 'PAZIENTE_INVIO', refKey: `PAZIENTE_INVIO:${o.id}`, orderId: o.id, to: o.email, lang: o.lang,
-        subject: en ? 'Your kit has been shipped' : 'Il tuo kit è stato spedito',
-        title: en ? 'Your kit is on its way' : 'Il tuo kit è in viaggio',
-        body: en ? `Dear ${o.patient_first_name},\n\nyour kit was handed to the courier SDA on ${itDate(dateOnly(o.shipped_at))}. Tracking number: ${out.tracking_number}\n${out.url}\n\nInside the envelope you will find the instructions and, where provided, the prepaid return label.`
-          : `Gentile ${o.patient_first_name},\n\nil tuo kit è stato affidato al corriere SDA il ${itDate(dateOnly(o.shipped_at))}. Numero di tracciamento: ${out.tracking_number}\n${out.url}\n\nNella busta trovi le istruzioni e, dove prevista, l'etichetta prepagata per il ritorno del campione.` });
+      const when = itDate(dateOnly(o.shipped_at));
+      const body = to.toRequester
+        ? (en ? `Dear ${to.greet},\n\nthe kit you requested${o.external_ref ? ` (order ${o.external_ref})` : ''} for ${patientLabel(o)}, ${o.city || ''}, was handed to the courier SDA on ${when}. Tracking number: ${out.tracking_number}\n${out.url}\n\nInside the envelope you will find the instructions and, where provided, the prepaid return label.`
+          : `Gentile ${to.greet},\n\nil kit da voi richiesto${o.external_ref ? ` (ordine ${o.external_ref})` : ''} per ${patientLabel(o)}, ${o.city || ''}, è stato affidato al corriere SDA il ${when}. Numero di tracciamento: ${out.tracking_number}\n${out.url}\n\nNella busta si trovano le istruzioni e, dove prevista, l'etichetta prepagata per il ritorno del campione.`)
+        : (en ? `Dear ${to.greet},\n\nyour kit was handed to the courier SDA on ${when}. Tracking number: ${out.tracking_number}\n${out.url}\n\nInside the envelope you will find the instructions and, where provided, the prepaid return label.`
+          : `Gentile ${to.greet},\n\nil tuo kit è stato affidato al corriere SDA il ${when}. Numero di tracciamento: ${out.tracking_number}\n${out.url}\n\nNella busta trovi le istruzioni e, dove prevista, l'etichetta prepagata per il ritorno del campione.`);
+      await sendMail({ kind: 'PAZIENTE_INVIO', refKey: `PAZIENTE_INVIO:${o.id}`, orderId: o.id, to: to.email, lang: o.lang,
+        subject: to.toRequester ? (en ? 'The kit you requested has been shipped' : 'Il kit richiesto è stato spedito') : (en ? 'Your kit has been shipped' : 'Il tuo kit è stato spedito'),
+        title: en ? 'The kit is on its way' : 'Il kit è in viaggio', body });
     }
   }
   // Email ad Affinity / Endeavor: sempre, con il codice SDA in oggetto e nel corpo (regola del CEO, 27/10/2026)
@@ -402,11 +444,12 @@ r.get('/:id(\\d+)/sheet.pdf', ah(async (req, res) => {
 r.get('/inbox', ah(async (req, res) => {
   const P = new Params();
   const where = [];
-  if (req.query.status) where.push(`status = ANY(${P.add(String(req.query.status).split(','))}::text[])`);
-  res.json(await many(`SELECT i.*, u.full_name AS processed_by_name FROM inbox_messages i LEFT JOIN users u ON u.id=i.processed_by ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY received_at DESC LIMIT 300`, P.values));
+  if (req.query.status) where.push(`i.status = ANY(${P.add(String(req.query.status).split(','))}::text[])`);
+  if (req.query.project) where.push(`i.project = ${P.add(String(req.query.project))}`);
+  res.json(await many(`SELECT ${INBOX_COLS}, u.full_name AS processed_by_name FROM inbox_messages i LEFT JOIN users u ON u.id=i.processed_by ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY received_at DESC LIMIT 300`, P.values));
 }));
 r.get('/inbox/:id(\\d+)', ah(async (req, res) => {
-  const m = await one('SELECT * FROM inbox_messages WHERE id=$1', [Number(req.params.id)]);
+  const m = await loadMessage(Number(req.params.id));
   if (!m) throw notFound();
   res.json(m);
 }));
@@ -421,18 +464,26 @@ r.post('/inbox/paste', requireRole(...OPERATORS), ah(async (req, res) => {
   res.status(201).json(row);
 }));
 r.post('/inbox/:id(\\d+)/reparse', requireRole(...OPERATORS), ah(async (req, res) => {
-  const m = await one('SELECT * FROM inbox_messages WHERE id=$1', [Number(req.params.id)]);
+  const m = await loadMessage(Number(req.params.id));
   if (!m) throw notFound();
+  // Lifestyle da documento: si rifanno righe e abbinamento dal JSON già letto (nessuna nuova chiamata al modello)
+  if (m.project === 'LIFESTYLE') {
+    if (!m.extracted) throw badL(req, 'Nessuna lettura del documento da rifare', 'No document reading to redo');
+    const rv = await lifestyleReview(m.extracted, m.avvisi || []);
+    await q(`UPDATE inbox_messages SET parsed=$2, requester_match=$3, avvisi=$4, status=CASE WHEN status IN ('NEW','PARSED','ERROR') THEN 'PARSED' ELSE status END, error=NULL WHERE id=$1`, [m.id, JSON.stringify(rv.parsed), rv.match ? JSON.stringify(rv.match) : null, JSON.stringify(rv.avvisi)]);
+    return res.json(await loadMessage(m.id));
+  }
   const modes = await many('SELECT * FROM shipping_modes WHERE active');
   const parsed = parseKitEmail(m.body_text || '', modes, { subject: m.subject || '', knownCodes: await many('SELECT barcode, status FROM kits') });
   await q(`UPDATE inbox_messages SET parsed=$2, status=CASE WHEN status IN ('NEW','PARSED','ERROR') THEN $3 ELSE status END, error=NULL WHERE id=$1`, [m.id, JSON.stringify(parsed), parsed.length ? 'PARSED' : 'NEW']);
-  res.json(await one('SELECT * FROM inbox_messages WHERE id=$1', [m.id]));
+  res.json(await loadMessage(m.id));
 }));
 // Rilegge tutte le email ancora da elaborare (dopo un carico a magazzino o un aggiornamento del riconoscitore)
 r.post('/inbox/reparse-all', requireRole(...OPERATORS), ah(async (req, res) => {
   const modes = await many('SELECT * FROM shipping_modes WHERE active');
   const knownCodes = await many('SELECT barcode, status FROM kits');
-  const msgs = await many(`SELECT id, subject, body_text FROM inbox_messages WHERE status IN ('NEW','PARSED','ERROR')`);
+  // solo Endeavor: le richieste Lifestyle da documento hanno la loro lettura (Rileggi sul singolo messaggio)
+  const msgs = await many(`SELECT id, subject, body_text FROM inbox_messages WHERE status IN ('NEW','PARSED','ERROR') AND project='ENDEAVOR'`);
   let recognized = 0;
   for (const m of msgs) {
     const parsed = parseKitEmail(m.body_text || '', modes, { subject: m.subject || '', knownCodes });
@@ -449,7 +500,7 @@ r.post('/inbox/:id(\\d+)/ignore', requireRole(...OPERATORS), ah(async (req, res)
 }));
 // Conferma: crea le richieste dai blocchi rivisti dall'operatore (uno o più kit per email)
 r.post('/inbox/:id(\\d+)/confirm', requireRole(...OPERATORS), ah(async (req, res) => {
-  const m = await one('SELECT * FROM inbox_messages WHERE id=$1', [Number(req.params.id)]);
+  const m = await one('SELECT id, source, project, status FROM inbox_messages WHERE id=$1', [Number(req.params.id)]);
   if (!m) throw notFound();
   if (!['NEW', 'PARSED', 'ERROR'].includes(m.status)) throw badL(req, 'Email già elaborata', 'Email already processed');
   const { items } = parse(z.object({ items: z.array(orderSchema).min(1).max(50) }), req.body);
@@ -457,10 +508,11 @@ r.post('/inbox/:id(\\d+)/confirm', requireRole(...OPERATORS), ah(async (req, res
   await tx(async (c) => {
     for (const d of items) {
       validateType(req, d);
+      await checkRequester(req, d);
       const mode = await modeFor(req, d);
       if (d.project === 'ENDEAVOR' && !mode) throw badL(req, `Scegli la modalità di spedizione per ${d.external_ref || d.patient_last_name}`, `Choose the shipping mode for ${d.external_ref || d.patient_last_name}`);
       if (d.external_ref && (await c.query('SELECT 1 FROM orders WHERE upper(external_ref)=upper($1) AND status<>$2', [d.external_ref, 'CANCELLED'])).rows.length) throw badL(req, `Riferimento ${d.external_ref} già presente`, `Reference ${d.external_ref} already exists`);
-      const o = await createOrder(c, req, d, mode, 'EMAIL', m.id);
+      const o = await createOrder(c, req, d, mode, m.source === 'UPLOAD' ? 'UPLOAD' : 'EMAIL', m.id);
       ids.push(o.id);
     }
     // order_ids è JSONB nella Suite (migrazione 004): si passa come JSON, non come array PostgreSQL

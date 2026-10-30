@@ -736,3 +736,50 @@ per il riquadro "Allineamento SGI" della scheda sede. Nessun altro modulo la mod
 
 ## Sedi: Legal entity ospitante (29/10/2026)
 `public.sites.host_organization_id` → `organizations`: il partner che ospita la sede (es. G.B. Center per il Punto Prelievi di Quarrata, la cui Legal entity resta Toscana Diagnostica S.r.l.). Si imposta in Amministrazione > Sedi (campo "Legal entity ospitante") o da Cash > Sedi (Struttura ospitante): le due scritture si allineano a vicenda; la vista `cash.sites_v` legge `coalesce(sites.host_organization_id, site_ext.host_org_id)` e deriva `ownership`. È la stessa Legal entity con cui il partner accede alla Suite (profilo Partner ospitante): il suo perimetro Cash sono le sedi che lo hanno come ospitante (`lib/esterni.js hostedSiteIds`).
+
+## Shipments: richieste Lifestyle da PDF o email e richiedente Legal entity (30/10/2026)
+Richiesta del CEO: in Shipments > Lifestyle > Richieste in arrivo si caricano PDF o email da cui leggere i dati della richiesta, e il
+richiedente del kit può essere una Legal entity.
+- **Richiedente** (migrazione `shipments/005_lifestyle_requester_upload.sql`): `orders.requester_kind` PERSONA (predefinito: il
+  richiedente è il destinatario, come finora) o LEGAL_ENTITY con `requester_org_id` → `public.organizations` (ON DELETE SET NULL),
+  `requester_contact` (referente), `requester_email`, `requester_phone`. Il destinatario del kit resta nei campi `patient_*` e
+  indirizzo. Kit ordinati da una Legal entity senza paziente nominato: `patient_last_name` = ragione sociale (o reparto) e
+  `patient_first_name` = '' (stringa vuota, colonne sempre NOT NULL: liste, etichette, foglio di spedizione, rendiconti e allarmi
+  concatenano nome e cognome e restano corretti). Regole in `routes/orders.js checkRequester` (pura in `lib/requestParse.js
+  requesterIssue`): LEGAL_ENTITY richiede la Legal entity esistente e un destinatario; PERSONA richiede nome e cognome e azzera i campi
+  requester_*. Il vincolo "LEGAL_ENTITY ⇒ org" non è un CHECK sul database perché impedirebbe di cancellare la Legal entity.
+- **Comunicazioni e fattura al richiedente**: l'email "kit spedito" (impostazione `notify_patient_on_ship`) va al destinatario se ha
+  un'email, altrimenti, con richiedente Legal entity, a `requester_email` o all'email della Legal entity (`lib/requestParse.js
+  shipNoticeRecipient`), con testo "il kit da voi richiesto per …". Il modulo non fattura Lifestyle (la rendicontazione economica è
+  solo Endeavor, verso Endeavor DNA): il riferimento per la fattura è il richiedente, esposto nella scheda richiesta (riquadro
+  Richiedente), nel foglio di spedizione ("richiesto da …"), nella ricerca e nell'export CSV delle richieste (requester_org,
+  requester_vat, referente, email, telefono). Le email ad Affinity (Endeavor) non cambiano.
+- **Upload** `POST /api/shipments/inbox/upload` (multipart `file`, fino a 10 file da 20 MB; `project` LIFESTYLE predefinito o
+  ENDEAVOR; profili SUPERADMIN/ADMIN): PDF (testo con `lib/pdftext.js`, OCR se scansione con avviso), email `.eml` (lettore semplice
+  in `lib/requestParse.js parseEml`: From/Subject/Date, parte text/plain o html, PDF allegati letti e accodati), `.txt`; `.msg` → 400
+  "salva l'email come .eml o PDF". Il file va nell'archivio a due vie (`lib/moduleStorage.js`, prefisso `shipments-richieste`) e in
+  `inbox_messages` (`source` UPLOAD accanto a GRAPH e PASTE già esistenti, `project`, filename/mime/size/sha256/data/blob_path,
+  `extracted`, `extracted_model`, `ocr`, `avvisi`, `requester_match`); si scarica da `GET /api/shipments/inbox/:id/file`. Un file
+  già caricato (stesso sha256) dà un avviso.
+- **Lettura assistita** (solo Lifestyle, `lib/requestReader.js`): `askJson` kind `shipments_lifestyle_request` (ai_log), prompt da
+  trascrittore fedele (null dove il testo non dice), maxTokens 2500, testo troncato a 40.000 caratteri con avviso. JSON: richiedente
+  {tipo, ragione_sociale, piva, cf, referente, email, telefono}, destinatario {titolo, nome, cognome, indirizzo1/2, cap, citta,
+  provincia, paese, telefono, email}, richiesta {tipo KIT_ONLY|KIT_AND_EXAM, quantita_kit, prodotto, riferimento_esterno, note,
+  lingua}, confidenza per campo con citazione. Senza chiave Anthropic: 400 "Intelligenza artificiale non configurata…" (il file non
+  viene salvato). Il richiedente si abbina con `matchOrg` (P.IVA, codice fiscale, nome anche simile) e la proposta porta il criterio;
+  se manca, "Crea Legal entity dal documento" (`POST /api/shipments/inbox/organizations { from_message_id }`) la crea kind CLIENTE,
+  `needs_review`, con P.IVA/CF/email/telefono letti (stessa logica dello Scadenziario di Payments: prima matchOrg, poi INSERT).
+  Le righe proposte (`parsed`) sono una per kit se `quantita_kit` > 1, con il riferimento esterno numerato (-1, -2…) perché il
+  riferimento è unico per richiesta. "Rileggi" rifà righe e abbinamento dal JSON già letto (nessuna nuova chiamata al modello);
+  "Rileggi tutte" resta solo Endeavor. Per Endeavor lo stesso upload passa il testo al riconoscitore delle email Affinity
+  (`parseKitEmail`), quindi funzionano anche il PDF o l'.eml di un'email "Kits to send out".
+- **Interfaccia**: pulsante "Carica PDF o email" (Lifestyle ed Endeavor) con trascinamento di più file e avanzamento; la revisione è
+  la stessa finestra delle email incollate, con in testa "Letto dal documento" (spilla verde/gialla/rossa per la confidenza,
+  citazione al passaggio del mouse), gli avvisi in giallo e la Legal entity proposta. L'operatore controlla e conferma: niente
+  salvataggio automatico. OrderForm ha in cima il blocco Richiedente (Persona / Legal entity con ricerca su
+  `GET /api/shipments/organizations?q=`, tutte le Legal entity attive tranne GRUPPO e SOCIETA). Le liste mostrano il richiedente.
+- **Conservazione**: alla pseudonimizzazione delle richieste chiuse si rimuovono anche referente/email/telefono del richiedente (la
+  Legal entity resta) e, dei messaggi elaborati, il file caricato (database o blob) e il JSON letto.
+- **Collaudo**: `SHIPMENTS_AI_MOCK=1` (solo con NODE_ENV diverso da production) sostituisce Claude con un estrattore a espressioni
+  regolari (`mockExtract`), segnalato negli avvisi. Test: `server/test/shipments-upload.test.mjs`. Schermate:
+  `docs/screens/shipments-lifestyle-{upload,revisione,richiedente}.png`.

@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { readOnlyGuard } from './lib/access.js';
 import { graphConfigured } from './lib/mailer.js';
 import { pollInbox, runDailyAlerts, anonymizeClosed } from './lib/jobs.js';
+import { one } from './db.js';
 import { pollTracking } from './lib/tracking.js';
 import adminRoutes from './routes/admin.js';
 import kitRoutes from './routes/kits.js';
@@ -15,6 +16,7 @@ import orderRoutes from './routes/orders.js';
 import labRoutes from './routes/lab.js';
 import reportRoutes from './routes/reports.js';
 import billingRoutes from './routes/billing.js';
+import inboxRoutes from './routes/inbox.js';
 
 const KEY = 'shipments';
 
@@ -52,6 +54,7 @@ export default function mount(app) {
   r.use(blockWritesInMirror);
   r.use(readOnlyGuard);
   r.use(adminRoutes);
+  r.use(inboxRoutes);          // /inbox/upload, /inbox/:id/file, /inbox/organizations, /organizations (richieste da documento)
   r.use('/kits', kitRoutes);
   r.use('/orders', orderRoutes);
   r.use('/lab', labRoutes);
@@ -65,7 +68,9 @@ export default function mount(app) {
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };
     return fn();
   };
-  // Lettura della casella shipments@: solo con le variabili Graph presenti (credenziali applicative e casella)
+  // Casella impostata dal modulo (Impostazioni > Email > Casella da leggere): caricata all'avvio, se lo schema c'è
+  getModuleState(KEY).then(async (st) => { if (!st.schema_ready) return; const r = await one(`SELECT value FROM app_settings WHERE key='inbox_address'`).catch(() => null); if (r?.value) config.graph.inboxOverride = r.value.trim(); }).catch(() => {});
+  // Lettura della casella shipments@ (predefinita, o quella impostata): solo con le credenziali Graph della Suite
   registerJob(`${KEY}:inbox`, Math.max(1, config.graph.pollMinutes), onlyLive(async () => {
     if (!graphConfigured() || !config.graph.inbox) return { skipped: 'graph_not_configured' };
     return pollInbox();

@@ -9,6 +9,8 @@ import { one } from './db.js';
 import { ah } from './lib/util.js';
 import { requireRole, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
+import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
+import { getConnector } from '../../lib/connectors.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
 import stockRoutes from './routes/stock.js';
@@ -112,6 +114,18 @@ export default function mount(app) {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };
     return (await runDailyAlerts()) || { skipped: 'not_due' };
+  });
+  // Catalogo e giacenze dall'API Silva (chiave X-API-KEY del connettore): completo la prima volta per anno, poi sole modifiche.
+  // Il job gira ogni 10 minuti e sincronizza quando è passato l'intervallo impostato nel connettore (sync_minutes, default 60).
+  registerJob(`${KEY}:silva-catalogo`, 10, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    const c = await getConnector('SILVA');
+    if (!c.enabled || !c.credentials?.api_key) return { skipped: 'silva_api_key_assente' };
+    const every = (Number(c.settings?.sync_minutes) || 60) * 60_000;
+    const last = c.settings?.last_sync_at ? new Date(c.settings.last_sync_at).getTime() : 0;
+    if (c.settings?.last_sync_status === 'OK' && Date.now() - last < every) return { skipped: 'not_due' };
+    return sincronizzaCatalogo();
   });
 }
 

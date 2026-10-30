@@ -4,9 +4,9 @@ import { api, API_BASE } from '../api.js';
 import { useAuth, canOperate } from '../auth.jsx';
 import { useT } from '../i18n.jsx';
 import { Card, Modal, Field, ErrorBox, Loading, PromptModal, Icon, useApi, useToast } from '../components/ui.jsx';
-import { StatusBadge, TrackBadge, KitBadge, OrderForm, BarcodeInput, useModes, useSettingsPublic, ModeOrType } from '../components/orders.jsx';
+import { StatusBadge, TrackBadge, KitBadge, OrderForm, BarcodeInput, useModes, useSettingsPublic, ModeOrType, orderPayload } from '../components/orders.jsx';
 import { eventLabel } from './Dashboard.jsx';
-import { eur, fdate, fdt, patientName, projectPath, today } from '../format.js';
+import { eur, fdate, fdt, patientName, requesterName, projectPath, today } from '../format.js';
 
 export default function OrderDetail({ project }) {
   const { id } = useParams();
@@ -38,11 +38,11 @@ export default function OrderDetail({ project }) {
         <div>
           <div className="small muted"><Link to={`/${p}/elenco`}>{t('nav.orders')}</Link> · {t(`proj.${project}`)}</div>
           <h1 className="row">{t('ord.title')} <span className="mono">{o.external_ref || `#${o.id}`}</span> <StatusBadge status={o.status} /></h1>
-          <div className="sub">{patientName(o)} · {[o.city, o.province].filter(Boolean).join(' ')} · <ModeOrType o={o} /> · {t(`ord.source.${o.source}`)} · {t('c.created')} {fdt(o.created_at)}{o.created_by_name ? ` (${o.created_by_name})` : ''}</div>
+          <div className="sub">{o.requester_kind === 'LEGAL_ENTITY' && <>{t('req.short')}: <b>{requesterName(o)}</b> · </>}{patientName(o)} · {[o.city, o.province].filter(Boolean).join(' ')} · <ModeOrType o={o} /> · {t(`ord.source.${o.source}`)} · {t('c.created')} {fdt(o.created_at)}{o.created_by_name ? ` (${o.created_by_name})` : ''}</div>
         </div>
         <div className="row">
           <a className="btn ghost" href={`${API_BASE}/orders/${o.id}/sheet.pdf?lang=${o.lang}`} target="_blank" rel="noreferrer"><Icon name="print" size={16} />{t('ord.sheet')}</a>
-          {op && !closed && <button className="btn ghost" onClick={() => open('edit', { ...o, email: o.email || '', shipping_mode_id: o.shipping_mode_id || '' })}>{t('c.edit')}</button>}
+          {op && !closed && <button className="btn ghost" onClick={() => open('edit', { ...o, email: o.email || '', shipping_mode_id: o.shipping_mode_id || '', requester_contact: o.requester_contact || '', requester_email: o.requester_email || '', requester_phone: o.requester_phone || '' })}>{t('c.edit')}</button>}
           {op && !['NEW', 'CLOSED'].includes(o.status) && !(o.status === 'SHIPPED_TO_LAB') && <button className="btn ghost" onClick={() => act(() => api.post(`/orders/${o.id}/undo`))}>{t('c.undo')}</button>}
           {op && !closed && o.status !== 'SHIPPED_TO_LAB' && <button className="btn danger" onClick={() => setModal('cancel')}>{t('ord.cancel')}</button>}
         </div>
@@ -57,8 +57,20 @@ export default function OrderDetail({ project }) {
         {op && ['SHIPPED', 'DELIVERED'].includes(o.status) && <button className="btn" onClick={() => open('sample', { received_at: today(), site: sites[0] || '' })}>{t('ord.sample')}</button>}
         {op && o.status === 'SAMPLE_RECEIVED' && project === 'ENDEAVOR' && <Link className="btn" to={`/${p}/laboratorio`}>{t('nav.lab')}</Link>}
       </div>
-      <div className="grid g3">
-        <Card title={t('ord.patient')}>
+      {o.requester_kind === 'LEGAL_ENTITY' && (
+        <Card title={t('req.title')} className="" >
+          <div className="row" style={{ gap: 18 }}>
+            <div className="row" style={{ gap: 8 }}><Icon name="building" size={18} /><span className="strong" style={{ fontSize: 16 }}>{requesterName(o) || '–'}</span><span className="pill">{t('req.LEGAL_ENTITY')}</span></div>
+            {o.requester_org_vat && <span className="small">P.IVA {o.requester_org_vat}</span>}
+            {o.requester_contact && <span className="small">{t('req.contact')}: <b>{o.requester_contact}</b></span>}
+            {o.requester_email && <span className="small">{t('c.email')}: {o.requester_email}</span>}
+            {o.requester_phone && <span className="small">{t('c.phone')}: {o.requester_phone}</span>}
+          </div>
+          <div className="small muted" style={{ marginTop: 6 }}>{t('req.billingNote')}</div>
+        </Card>
+      )}
+      <div className="grid g3" style={o.requester_kind === 'LEGAL_ENTITY' ? { marginTop: 16 } : undefined}>
+        <Card title={o.project === 'LIFESTYLE' ? t('req.recipientTitle') : t('ord.patient')}>
           <div className="strong" style={{ fontSize: 16 }}>{patientName(o)}</div>
           <div>{o.address1}{o.address2 ? `, ${o.address2}` : ''}</div>
           <div>{[o.zip, o.city, o.province && `(${o.province})`].filter(Boolean).join(' ')} · {o.country}</div>
@@ -142,7 +154,8 @@ export default function OrderDetail({ project }) {
         </Modal>
       )}
       {modal === 'edit' && (
-        <Modal title={t('c.edit')} wide onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" onClick={() => act(() => api.put(`/orders/${o.id}`, { external_ref: form.external_ref || null, shipping_mode_id: form.shipping_mode_id || null, patient_title: form.patient_title || null, patient_first_name: form.patient_first_name, patient_last_name: form.patient_last_name, address1: form.address1, address2: form.address2 || null, city: form.city, province: form.province || null, zip: form.zip || null, country: form.country, phone: form.phone || null, email: form.email || '', lang: form.lang, notes: form.notes || null }))}>{t('c.save')}</button></>}>
+        <Modal title={t('c.edit')} wide onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" onClick={() => act(() => { const x = orderPayload(form); return api.put(`/orders/${o.id}`, { external_ref: form.external_ref || null, shipping_mode_id: form.shipping_mode_id || null, patient_title: form.patient_title || null, patient_first_name: form.patient_first_name || '', patient_last_name: form.patient_last_name, address1: form.address1, address2: form.address2 || null, city: form.city, province: form.province || null, zip: form.zip || null, country: form.country, phone: form.phone || null, email: form.email || '', lang: form.lang, notes: form.notes || null,
+            ...(o.project === 'LIFESTYLE' ? { requester_kind: x.requester_kind, requester_org_id: x.requester_org_id, requester_contact: x.requester_contact, requester_email: x.requester_email, requester_phone: x.requester_phone } : {}) }); })}>{t('c.save')}</button></>}>
           <ErrorBox error={err} />
           <OrderForm value={form} onChange={setForm} project={project} modes={modes.data} showKit={false} lockMode={!['NEW', 'ASSIGNED'].includes(o.status)} />
         </Modal>

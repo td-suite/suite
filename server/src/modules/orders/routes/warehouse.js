@@ -7,6 +7,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, getSetting, itDate } from '../lib/util.js';
 import { requireRole, OPS_ROLES } from '../lib/access.js';
 import { applyFeed } from './integrations.js';
+import { sincronizzaCatalogo, statoCatalogo } from '../lib/silvaCatalog.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -21,7 +22,13 @@ r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
       (SELECT json_agg(json_build_object('lot', w.lot, 'expiry', w.expiry, 'qty', w.qty, 'barcode', w.barcode) ORDER BY w.expiry NULLS LAST) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current) AS lot_detail
     FROM articles a JOIN categories c ON c.code=a.category_code ORDER BY c.sort, a.sort, a.code`);
   const feeds = await many('SELECT f.*, (SELECT count(*)::int FROM warehouse_stock w WHERE w.feed_id=f.id) AS rows FROM warehouse_feeds f ORDER BY f.received_at DESC LIMIT 20');
-  res.json({ rows, feeds, last_feed_at: await getSetting('silva_last_feed_at', null), last_poll_at: await getSetting('silva_last_poll_at', null) });
+  res.json({ rows, feeds, last_feed_at: await getSetting('silva_last_feed_at', null), last_poll_at: await getSetting('silva_last_poll_at', null), silva: await statoCatalogo() });
+}));
+// Lettura del catalogo Silva su richiesta (force = fotografia completa, altrimenti sole modifiche dal riferimento salvato)
+r.post('/silva/sync', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const out = await sincronizzaCatalogo({ force: Boolean(req.body?.force) });
+  await audit(req, 'SILVA_CATALOG_SYNC', 'warehouse', null, out);
+  res.json(out);
 }));
 
 // Visibilità: a chi la struttura vede l'articolo nel catalogo (tutti, punti prelievo e laboratorio, clienti Service)

@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, badL, notFound, audit, parse } from '../lib/util.js';
 import { requireRole, Params } from '../lib/access.js';
-import { mailStatus, sendMail, emailLog } from '../lib/mailer.js';
+import { mailStatus, sendMail, emailLog, testInbox } from '../lib/mailer.js';
+import { config as shipConfig } from '../config.js';
 import { trackingStatus, pollTracking } from '../lib/tracking.js';
 import { pollInbox, runDailyAlerts } from '../lib/jobs.js';
 
@@ -63,7 +64,7 @@ r.put('/kit-types/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) 
 }));
 
 // ---------------- Impostazioni ----------------
-const SETTING_KEYS = ['sample_fee', 'billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'lab_consignee', 'return_address', 'td_sites', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'daily_alerts_enabled', 'notify_admins_email', 'retention_months', 'inbox_enabled'];
+const SETTING_KEYS = ['sample_fee', 'billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'lab_consignee', 'return_address', 'td_sites', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'daily_alerts_enabled', 'notify_admins_email', 'retention_months', 'inbox_enabled', 'inbox_address'];
 const PUBLIC_KEYS = ['td_sites', 'return_address', 'lab_consignee', 'sample_fee', 'billing_customer'];
 r.get('/settings/public', ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [PUBLIC_KEYS]);
@@ -84,9 +85,16 @@ r.put('/settings', requireRole('SUPERADMIN'), ah(async (req, res) => {
   for (const [k, v] of Object.entries(d)) {
     if (!SETTING_KEYS.includes(k)) throw bad(`Chiave non ammessa: ${k}`);
     await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [k, v]);
+    if (k === 'inbox_address') shipConfig.graph.inboxOverride = v.trim();
   }
   await audit(req, 'SETTINGS_UPDATE', 'settings', null, d);
   res.json({ ok: true });
+}));
+// Casella in arrivo: la modifica dell'indirizzo vale subito (config.graph.inboxOverride), la prova legge un messaggio via Graph
+r.post('/settings/test-inbox', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
+  const out = await testInbox();
+  await audit(req, 'INBOX_TEST', 'settings', null, { inbox: shipConfig.graph.inbox, ok: out.ok });
+  res.json(out);
 }));
 r.post('/settings/test-email', requireRole('SUPERADMIN'), ah(async (req, res) => {
   const { to } = parse(z.object({ to: z.string().email() }), req.body);

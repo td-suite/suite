@@ -16,6 +16,8 @@ export const LAB_TONE = { PREPARING: 'blue', SHIPPED: 'mauve', DELIVERED: 'green
 export const BILL_TONE = { OPEN: 'grey', CLOSED: 'blue', INVOICED: 'green' };
 export const modeName = (o, lang) => (o?.project === 'LIFESTYLE' || !o?.mode_code ? null : lang === 'en' ? o.mode_en : o.mode_it);
 export const patientName = (o) => [o.patient_title, o.patient_first_name, o.patient_last_name].filter(Boolean).join(' ');
+// Richiedente: la Legal entity (con il referente) oppure la persona destinataria stessa
+export const requesterName = (o) => (o?.requester_kind === 'LEGAL_ENTITY' ? (o.requester_org_name || o.requester_name || '') : patientName(o || {}));
 // Percorso del progetto dentro la Suite: le pagine compongono `/${projectPath(project)}/richieste/...` → /shipments/endeavor/richieste/...
 export const projectPath = (p) => `${BASE.slice(1)}/${p === 'LIFESTYLE' ? 'lifestyle' : 'endeavor'}`;
 export const projectOf = (slug) => (slug === 'lifestyle' ? 'LIFESTYLE' : 'ENDEAVOR');

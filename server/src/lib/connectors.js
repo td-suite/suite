@@ -12,7 +12,7 @@ export const CONNECTOR_KINDS = ['STUDIOLAB', 'GIPO', 'TUOTEMPO', 'SILVA'];
 export const AUTH_KINDS = ['API_KEY', 'BASIC', 'OAUTH2', 'NONE'];
 
 const env = process.env;
-const DEFAULT_BASE_URL = { STUDIOLAB: 'https://servicenet.toscanadiagnostica.it/API', TUOTEMPO: 'https://app.tuotempo.com/api/v3', GIPO: null, SILVA: null };
+const DEFAULT_BASE_URL = { STUDIOLAB: 'https://servicenet.toscanadiagnostica.it/API', TUOTEMPO: 'https://app.tuotempo.com/api/v3', GIPO: null, SILVA: 'https://silva.cloud/portaleordini' };
 const DEFAULT_NAME = { STUDIOLAB: 'StudioLAB ServiceNET (CB Sistemi)', GIPO: 'GIPO (Docplanner)', TUOTEMPO: 'TuoTempo (Docplanner)', SILVA: 'Silva Group (magazzino)' };
 
 // Ripiego sulle variabili d'ambiente dei moduli di origine (nc: LIS_*, orders: STUDIOLAB_* e SILVA_*)
@@ -219,8 +219,22 @@ export async function testConnector(kind) {
       const rows = Array.isArray(r.data?.return?.results) ? r.data.return.results : Array.isArray(r.data?.results) ? r.data.results : [];
       out = { ok: true, message: `Connessione riuscita: ${rows.length} tipologie (${r.ms} ms)` };
     } else if (kind === 'SILVA') {
-      if (!c.inbound_secrets.length) throw new Error('Segreto in ingresso non impostato: Silva non può chiamare le API');
-      out = { ok: true, message: `Configurazione valida: segreto in ingresso impostato, codice cliente ${c.settings.customer_code || 'non indicato'}. Silva interroga le API della Suite: nessuna chiamata in uscita da provare.` };
+      // API Silva v1 (30/10/2026): catalogo e giacenze in lettura con X-API-KEY; la prova legge il catalogo dell'anno configurato
+      if (c.credentials.api_key) {
+        const anno = String(c.settings.catalog_years || '').split(/[;,\s]+/).map(Number).find((n) => n >= 2000) || new Date().getFullYear();
+        endpoint = `${(c.base_url || DEFAULT_BASE_URL.SILVA).replace(/\/+$/, '')}/api/v1/catalogo?anno=${anno}`;
+        const r = await fetchJson(endpoint, { headers: { 'X-API-KEY': c.credentials.api_key }, timeoutMs: 60000 });
+        if (r.res.status === 401 || r.res.status === 403) throw new Error(`Silva rifiuta la chiave (${r.res.status}): verifica X-API-KEY e la sua scadenza`);
+        if (!r.res.ok) throw new Error(`Silva risponde ${r.res.status}: ${(r.data && (r.data.message || r.data.error || r.data.title)) || r.text.slice(0, 200) || r.res.statusText}`);
+        const n = Array.isArray(r.data?.articoli) ? r.data.articoli.length : null;
+        if (n == null) throw new Error('Risposta non nel formato previsto (manca "articoli")');
+        const upd = r.res.headers.get('x-catalog-updated-at');
+        const scad = c.settings.key_expires_at ? ` · chiave valida fino al ${new Date(c.settings.key_expires_at).toLocaleDateString('it-IT')}` : '';
+        out = { ok: true, message: `Catalogo ${anno} letto: ${n} articoli con giacenza${upd ? `, aggiornato al ${new Date(upd).toLocaleString('it-IT')}` : ''} (${r.ms} ms)${scad}${c.inbound_secrets.length ? '' : ' · segreto in ingresso non impostato (Silva non può ancora leggere gli ordini)'}` };
+      } else {
+        if (!c.inbound_secrets.length) throw new Error('Né chiave API Silva né segreto in ingresso impostati');
+        out = { ok: true, message: `Segreto in ingresso impostato, codice cliente ${c.settings.customer_code || 'non indicato'}. Chiave API Silva assente: il catalogo e le giacenze non vengono letti finché non la inserisci.` };
+      }
     } else {
       if (c.base_url) { try { new URL(c.base_url); } catch { throw new Error('Base URL non valida'); } }
       out = { ok: true, message: c.base_url ? `Configurazione valida (endpoint ${c.base_url}). GIPO non espone API documentate: i dati entrano con l'import da file e con le API di ingestione.` : 'Configurazione valida. GIPO non espone API documentate: i dati entrano con l\'import da file e con le API di ingestione.' };

@@ -104,3 +104,16 @@ testi standard, attiva solo con `NODE_ENV` diverso da production (per il collaud
 di testo estratto conservati per PDF; `AUDIT_JOB_MINUTES` (60) intervallo del job `audit:alert17`. Impostazioni in app (`audit.app_settings`,
 Audit SGI > Impostazioni, profili QUALITA/ADMIN): `alert_day` (17), `reminder_every_days` (5). Sedi, Legal entity, persone e site manager
 vengono dall'anagrafica unica (nessuna doppia compilazione); i modelli di checklist sono del modulo (nuove revisioni in JSON).
+
+## Shipments: casella in arrivo (30/10/2026)
+La casella letta per le richieste Endeavor è shipments@toscanadiagnostica.it per impostazione predefinita; si cambia in Shipments > Impostazioni > Email (`inbox_address`), salvo la variabile SHIPMENTS_GRAPH_INBOX su Render che ha la precedenza. La lettura parte solo con le credenziali Microsoft Graph della Suite (ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET o le GRAPH_*) e richiede sull'app registration il permesso applicativo Mail.Read con consenso amministratore (se esiste una Application Access Policy, deve includere la casella). "Prova la casella" legge un messaggio e dice esattamente cosa manca (credenziali, casella inesistente, permesso).
+
+## Shipments: richieste da PDF o email (30/10/2026)
+- La lettura assistita delle richieste Lifestyle usa la chiave Anthropic della Suite (Amministrazione > Impostazioni o
+  ANTHROPIC_API_KEY): senza chiave il caricamento Lifestyle risponde 400 "Intelligenza artificiale non configurata"; il caricamento
+  Endeavor (riconoscitore delle email Affinity) non ne ha bisogno. Ogni lettura è in ai_log con kind `shipments_lifestyle_request`.
+- `SHIPMENTS_AI_MOCK=1`: solo per collaudo e sviluppo, ignorata con NODE_ENV=production; sostituisce il modello con un estrattore a
+  espressioni regolari. Non impostarla su Render.
+- Limiti di caricamento: fino a 10 file per volta, 20 MB ciascuno (413 oltre), PDF/.eml/.txt; .msg non supportato (salvare come .eml
+  o PDF); testo letto fino a 40.000 caratteri. OCR dei PDF scansionati con le impostazioni condivise di lib/pdftext.js
+  (PDF_OCR_LANG, PDF_OCR_SOGLIA, PDFTOTEXT_BIN, TESSERACT_BIN). Archivio dei file: blob della Suite se configurato, altrimenti database.

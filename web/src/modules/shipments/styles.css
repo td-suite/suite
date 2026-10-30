@@ -32,6 +32,7 @@ h3 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacin
 .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .span2 { grid-column: span 2; }
+.span-all { grid-column: 1 / -1; }
 /* Barra di progetto (sostituisce il blocco progetto della sidebar dell'app) */
 .projbar { display: flex; align-items: center; gap: 12px; padding: 10px 32px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .projbar .pj { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13.5px; color: var(--ink); padding: 6px 12px; border-radius: 10px; background: var(--teal-050); }
@@ -72,6 +73,25 @@ table.t { width: 100%; border-collapse: collapse; }
 .b-mauve { background: var(--mauve-100); color: #6d3f8a; }
 .b-green { background: var(--green-100); color: var(--green); }
 .b-red { background: var(--red-100); color: var(--red); }
+.b-yellow { background: var(--silk); color: #6a5510; }
+/* Lettura assistita dei documenti (Richieste in arrivo, Lifestyle): campi letti con spilla di confidenza */
+.readbox { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--card); margin-bottom: 12px; }
+.readbox .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.readgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 16px; }
+.readgrid .rf { display: flex; gap: 8px; align-items: baseline; font-size: 13px; min-width: 0; }
+.readgrid .rf .k { color: var(--muted); font-size: 11.5px; font-weight: 650; white-space: nowrap; }
+.readgrid .rf .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conf { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; cursor: help; align-self: center; }
+.conf.alta { background: var(--green); } .conf.media { background: #d9b336; } .conf.bassa { background: var(--red); } .conf.none { background: var(--line); }
+.reqbox { border: 1px dashed var(--input-line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.orgpick { position: relative; }
+.orgpick .list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 260px; overflow: auto; }
+.orgpick .list button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: none; font: inherit; color: var(--ink); cursor: pointer; }
+.orgpick .list button:hover { background: var(--teal-050); }
+.uplist { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.uplist .uf { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.uplist .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--teal-050); overflow: hidden; }
+.uplist .bar i { display: block; height: 100%; background: var(--teal); transition: width .15s; }
 
 /* Forms */
 label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 650; color: var(--muted); }

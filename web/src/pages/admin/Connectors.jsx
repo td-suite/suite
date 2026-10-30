@@ -10,14 +10,14 @@ const DESC = {
   STUDIOLAB: 'LIS di laboratorio di CB Sistemi: API REST ServiceNET (chiave X-API-KEY) per Non conformità e Ordini, canali HL7 e push in ingresso con il segreto qui sotto. Alimenta anche le sedi dei clienti service (codice cliente).',
   GIPO: 'Gestionale di accettazione e prenotazione B2C (Docplanner). Nessuna API documentata: i dati entrano dall\'import da file di Retail e dalle API di ingestione della Suite.',
   TUOTEMPO: 'Prenotazione online (Docplanner): API v3 con api_key fissa per istanza, chiamate dagli IP statici in uscita di Render autorizzati da Docplanner. Usata da Retail per il catalogo prenotabile.',
-  SILVA: 'Gestore del magazzino. Non espone API: è Silva a interrogare le API di Ordini ogni 5 minuti con il segreto in ingresso qui sotto.',
+  SILVA: 'Gestore del magazzino. API Silva v1 (dal 30/10/2026): la Suite legge catalogo e giacenze con la chiave X-API-KEY qui sotto (completo la prima volta per anno, poi sole modifiche con riferimento per anno); Silva interroga le API di Ordini con il segreto in ingresso.',
 };
 const CRED_FIELDS = { API_KEY: [['api_key', 'Chiave API']], BASIC: [['user', 'Utente'], ['password', 'Password']], OAUTH2: [['client_id', 'Client ID'], ['client_secret', 'Client secret']], NONE: [] };
 const SETTINGS = {
   STUDIOLAB: [['client_code', 'Codice cliente (CodiceCliente)', 'Codice di Toscana Diagnostica su ServiceNET, di norma TD'], ['timeout_ms', 'Timeout chiamate (ms)', '']],
   TUOTEMPO: [['instance', 'Istanza (dbName)', 'es. tt_giponext_2313, una api_key per istanza'], ['lang', 'Lingua', 'it']],
   GIPO: [['client_code', 'Codice cliente', '']],
-  SILVA: [['customer_code', 'Codice cliente presso Silva', 'Compare negli ordini inviati al fornitore'], ['order_email', 'Email ordini (ripiego)', 'Casella a cui inviare l\'ordine in PDF se le API non sono in uso']],
+  SILVA: [['customer_code', 'Codice cliente presso Silva', 'Compare negli ordini inviati al fornitore'], ['order_email', 'Email ordini (ripiego)', 'Casella a cui inviare l\'ordine in PDF se le API non sono in uso'], ['catalog_years', 'Anni contabili da leggere', 'es. 2026 oppure 2026, 2027 (vuoto = anno corrente)'], ['sync_minutes', 'Intervallo di lettura (minuti)', 'predefinito 60'], ['key_expires_at', 'Scadenza della chiave (AAAA-MM-GG)', 'La chiave Silva vale 365 giorni: avviso in Magazzino 30 giorni prima']],
 };
 
 function ConnectorCard({ c, onChanged }) {
@@ -52,7 +52,7 @@ function ConnectorCard({ c, onChanged }) {
   const removeCreds = async () => { setBusy('save'); try { await api.put(`/connectors/${c.kind}`, { credentials: null }); toast('Credenziali rimosse'); onChanged(); } catch (e) { toast(e, 'err'); } setBusy(null); };
   const removeInbound = async () => { setBusy('save'); try { await api.put(`/connectors/${c.kind}`, { inbound_secret: null }); toast('Segreto in ingresso rimosso'); onChanged(); } catch (e) { toast(e, 'err'); } setBusy(null); };
   const needsInbound = c.kind === 'STUDIOLAB' || c.kind === 'SILVA';
-  const needsOutbound = c.kind !== 'SILVA';
+  const needsOutbound = true;   // anche Silva: chiave X-API-KEY per catalogo e giacenze (API v1)
   return (
     <Card title={c.name} icon="cloud" className="connector-card" actions={<div className="row tight"><Badge tone={tone}>{stateLabel}</Badge><Switch checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={`Abilita ${c.name}`} /></div>}>
       <p className="small muted" style={{ marginTop: 0 }}>{DESC[c.kind]}</p>
