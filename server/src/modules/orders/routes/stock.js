@@ -27,7 +27,7 @@ r.get('/', ah(async (req, res) => {
       (SELECT min(expiry) FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='RICEVUTO') AS next_expiry,
       (SELECT count(*)::int FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='IN_USO' AND p.used_at >= date_trunc('month', now() AT TIME ZONE 'Europe/Rome')) AS used_this_month,
       (SELECT count(*)::int FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='ATTESO') AS packs_incoming
-    FROM articles a JOIN categories c ON c.code=a.category_code WHERE a.active AND (a.visible_all OR ${s.kind === 'CLIENTE' ? 'a.visible_service' : 'a.visible_sedi'} OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) ORDER BY c.sort, a.sort`, [sid]);
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE a.active AND (a.source='SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source='SILVA' AND z.active) OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) AND (a.visible_all OR ${s.kind === 'CLIENTE' ? 'a.visible_service' : 'a.visible_sedi'} OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) ORDER BY c.sort, a.sort`, [sid]);
   for (const row of rows) {
     const p = cons.map.get(row.article_id);
     row.prod_packs_avg = p ? p.packs : null;

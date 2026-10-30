@@ -54,12 +54,12 @@ export async function applyFeed(items, source = 'API') {
       const it = p.data;
       let art = (await c.query('SELECT id FROM articles WHERE silva_code=$1 OR (silva_code IS NULL AND code=$1)', [it.codice])).rows[0];
       if (!art) {
-        // articolo nuovo dal magazzino: nasce nascosto, l'Area Operations decide a chi renderlo visibile; categoria, icona e colore per
+        // articolo nuovo dal magazzino: nasce ordinabile da tutti (il catalogo per gli ordini è il magazzino Silva), l'Area Operations può nasconderlo; categoria, icona e colore per
         // interpretazione della descrizione (lib/silvaClassify.js) se il feed non indica una categoria esistente
         const interp = interpreta(it.descrizione, it.codice);
         const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : interp.category_code;
         art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, color, source, active, visible_all, visible_sedi, visible_service, sort)
-          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
+          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,TRUE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
         [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null, interp.color])).rows[0];
         newArticles++;
       } else {

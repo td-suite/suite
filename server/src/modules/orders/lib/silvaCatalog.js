@@ -96,7 +96,7 @@ async function applicaModifiche(articoli, eliminati) {
         const interp = interpreta(it.descrizione, it.codice);
         const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : interp.category_code;
         art = (await c.query(`INSERT INTO articles (code, silva_code, category_code, name, unit, pack_size, pack_label, gtin, color, source, active, visible_all, visible_sedi, visible_service, sort)
-          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,FALSE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
+          VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,'SILVA',TRUE,TRUE,FALSE,FALSE,(SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`,
         [it.codice, cat, it.descrizione || it.codice, it.unita || 'n.', it.unitaPerConfezione || 1, it.confezione || (it.unitaPerConfezione ? `confezione da ${it.unitaPerConfezione}` : 'confezione'), it.barcode || null, interp.color])).rows[0];
         newArticles++;
       } else {

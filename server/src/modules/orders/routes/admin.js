@@ -90,11 +90,14 @@ export const visibleClause = (user, alias = 'a') => {
   const k = user.struttura_kind === 'CLIENTE' ? `${alias}.visible_service` : `${alias}.visible_sedi`;
   return `(${alias}.visible_all OR ${k})`;
 };
+// Il catalogo ordinabile è quello del magazzino Silva: quando esiste almeno un articolo Silva, gli articoli caricati a mano
+// (MOD252/MANUALE) escono da "Nuovo ordine" anche se ancora attivi (restano per lo storico e in Catalogo articoli con all=1)
+export const soloSilvaClause = (alias = 'a') => `(${alias}.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active))`;
 r.get('/articles', ah(async (req, res) => {
   const all = req.query.all === '1' && isOps(req.user);
   res.json(await many(`SELECT a.*, c.name AS category_name, c.icon,
       (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id AND m.active) AS mappings_count
-    FROM articles a JOIN categories c ON c.code=a.category_code WHERE ($1 OR a.active) AND ${visibleClause(req.user)} ORDER BY c.sort, a.sort, a.code`, [all]));
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE ($1 OR (a.active AND ${soloSilvaClause()})) AND ${visibleClause(req.user)} ORDER BY c.sort, a.sort, a.code`, [all]));
 }));
 
 const articleFields = {
