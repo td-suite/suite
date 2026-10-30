@@ -49,7 +49,16 @@ export default function mount(app) {
            AND NOT EXISTS (SELECT 1 FROM audits a WHERE a.kind='AUTO' AND a.site_id=s.id AND a.period=$2 AND a.deleted_at IS NULL AND a.status <> 'BOZZA')) AS mancanti,
         (SELECT count(*)::int FROM audits a WHERE a.kind='AUTO' AND a.status='INVIATO' AND a.deleted_at IS NULL ${limited ? 'AND a.site_id = ANY($3::int[])' : ''}) AS da_verificare`,
     limited ? [STRUCTURE_KINDS, period, mine] : [STRUCTURE_KINDS, period]);
-    res.json({ mancanti: x?.mancanti || 0, da_verificare: limited ? 0 : (x?.da_verificare || 0), miei: limited ? (x?.mancanti || 0) : (x?.mancanti || 0) + (x?.da_verificare || 0) });
+    // "I miei audit" conta solo ciò che compare in quella pagina: per il site manager gli auto-audit del mese da compilare; per gli altri
+    // gli inviati da verificare, gli audit propri in corso e gli auto-audit delle sedi di cui è responsabile. Le sedi senza auto-audit
+    // del mese (mancanti) stanno sul Piano degli Audit.
+    let miei = x?.mancanti || 0;
+    if (!limited) {
+      const y = await one(`SELECT count(*)::int AS n FROM audits a WHERE a.deleted_at IS NULL AND a.status NOT IN ('CHIUSO','VERIFICATO')
+        AND ((a.kind='AUTO' AND a.status='INVIATO') OR a.conducted_by=$1 OR a.created_by=$1 OR (a.kind='AUTO' AND a.period=$2 AND a.site_id = ANY($3::int[])))`, [req.moduleUser.id, period, mine]);
+      miei = y?.n || 0;
+    }
+    res.json({ mancanti: x?.mancanti || 0, da_verificare: limited ? 0 : (x?.da_verificare || 0), miei });
   }));
 
   r.use(blockWritesInMirror);
