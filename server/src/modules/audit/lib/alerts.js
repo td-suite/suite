@@ -14,7 +14,7 @@ export async function runAlert17({ today, dryRun = false } = {}) {
   const imp = await settings();
   const oggi = todayIt(today);
   const period = `${oggi.slice(0, 7)}-01`;
-  const sites = await many(`SELECT ${SITE_COLS} FROM sites_v s WHERE s.active AND s.kind = ANY($1) ORDER BY s.name`, [STRUCTURE_KINDS]);
+  const sites = await many(`SELECT ${SITE_COLS} FROM sites_v s WHERE s.in_esercizio AND s.kind = ANY($1) ORDER BY s.name`, [STRUCTURE_KINDS]);
   const audits = await many(`SELECT site_id, period, status FROM audits WHERE kind='AUTO' AND period=$1 AND deleted_at IS NULL`, [period]);
   const sent = await many(`SELECT site_id, period, sent_at, kind FROM alerts_sent WHERE period=$1 AND channel='SUITE'`, [period]);
   const todo = sitesToAlert({ today: oggi, settings: imp, sites, audits, sent, structureKinds: STRUCTURE_KINDS });

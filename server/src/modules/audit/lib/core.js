@@ -52,13 +52,21 @@ export async function templateById(id) {
 }
 
 // ---- Sedi e partner
-export const SITE_COLS = `s.id, s.code, s.name, s.short_name, s.kind, s.city, s.province, s.address, s.manager_name, s.manager_email, s.manager_person_id, s.active, s.organization_id`;
+export const SITE_COLS = `s.id, s.code, s.name, s.short_name, s.kind, s.city, s.province, s.address, s.manager_name, s.manager_email, s.manager_person_id, s.active, s.organization_id, s.opened_at, s.in_esercizio`;
 export async function siteById(id) {
   const s = await one(`SELECT ${SITE_COLS} FROM sites_v s WHERE s.id=$1`, [id]);
   if (!s) throw notFound('Sede non trovata');
   return s;
 }
 export const isStructure = (site) => STRUCTURE_KINDS.includes(site.kind);
+// Sede in esercizio nel mese: attiva e aperta (opened_at nulla o entro la fine del mese). Una sede che apre in futuro (es. COR dal
+// 2 gennaio 2027) non ha auto-audit, alert né conteggi finché non apre.
+export const inEsercizio = (site, period) => {
+  if (!site?.active) return false;
+  if (!site.opened_at) return true;
+  const p = period ? new Date(period) : new Date(); const fine = new Date(p.getFullYear(), p.getMonth() + 1, 0);
+  return new Date(site.opened_at) <= fine;
+};
 export async function orgById(id) {
   const o = await one(`SELECT id, kind, code, name, vat_number, city, province, active FROM public.organizations WHERE id=$1`, [id]);
   if (!o) throw notFound('Legal entity non trovata');
@@ -127,6 +135,7 @@ export async function getOrCreateAuto(siteId, period, moduleUserId) {
   const site = await siteById(siteId);
   if (!isStructure(site)) throw bad('L\'auto-audit mensile riguarda le sedi struttura (punti prelievo, centri medici e diagnostici, laboratorio)');
   const p = period || monthStart(new Date());
+  if (!inEsercizio(site, p)) throw bad(`La sede non è ancora in esercizio (apertura ${new Date(site.opened_at).toLocaleDateString('it-IT')}): l'auto-audit parte dal mese di apertura`);
   const ex = await one(`SELECT id FROM audits WHERE kind='AUTO' AND site_id=$1 AND period=$2 AND deleted_at IS NULL`, [siteId, p]);
   if (ex) return { id: ex.id, created: false };
   const t = await templateAttivo('SEDE');

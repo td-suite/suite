@@ -45,7 +45,7 @@ export default function mount(app) {
     const limited = limitedToSites(req);
     const mine = mySiteIds(req);
     const x = await one(`SELECT
-        (SELECT count(*)::int FROM sites_v s WHERE s.active AND s.kind = ANY($1) ${limited ? 'AND s.id = ANY($3::int[])' : ''}
+        (SELECT count(*)::int FROM sites_v s WHERE s.in_esercizio AND s.kind = ANY($1) ${limited ? 'AND s.id = ANY($3::int[])' : ''}
            AND NOT EXISTS (SELECT 1 FROM audits a WHERE a.kind='AUTO' AND a.site_id=s.id AND a.period=$2 AND a.deleted_at IS NULL AND a.status <> 'BOZZA')) AS mancanti,
         (SELECT count(*)::int FROM audits a WHERE a.kind='AUTO' AND a.status='INVIATO' AND a.deleted_at IS NULL ${limited ? 'AND a.site_id = ANY($3::int[])' : ''}) AS da_verificare`,
     limited ? [STRUCTURE_KINDS, period, mine] : [STRUCTURE_KINDS, period]);

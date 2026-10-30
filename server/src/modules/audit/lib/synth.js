@@ -163,7 +163,7 @@ const TD_FORMAT = `{"livello_allineamento": 0-100, "livello_lettera": "A|B|C|D",
 
 export async function sintesiTD({ userId, moduleUserId } = {}) {
   requireAi();
-  const sites = await many(`SELECT ${'s.id, s.name, s.kind, s.city'}, g.score AS sgi_score, g.level AS sgi_level, g.summary AS sgi_summary, g.computed_at FROM sites_v s LEFT JOIN public.site_sgi_scores g ON g.site_id=s.id WHERE s.active AND s.kind = ANY($1) ORDER BY s.sort_order, s.name`, [STRUCTURE_KINDS]);
+  const sites = await many(`SELECT ${'s.id, s.name, s.kind, s.city'}, g.score AS sgi_score, g.level AS sgi_level, g.summary AS sgi_summary, g.computed_at FROM sites_v s LEFT JOIN public.site_sgi_scores g ON g.site_id=s.id WHERE s.in_esercizio AND s.kind = ANY($1) ORDER BY s.sort_order, s.name`, [STRUCTURE_KINDS]);
   const rows = [];
   for (const s of sites) {
     const audits = await auditsForSite(s.id, { withText: false });

@@ -10,7 +10,7 @@ import { ah, audit, bad, parse, HttpError, forbidden, notFound } from '../../../
 import { estraiTesto } from '../../../lib/pdftext.js';
 import { sendFile } from '../../../lib/moduleStorage.js';
 import { requireAuditor, isAuditor, isQualita, isSite, mySiteIds, canSeeSite, limitedToSites } from '../lib/access.js';
-import { KEY, idOf, loadAudit, listAudits, getOrCreateAuto, createAudit, saveAudit, inviaAuto, confermaRisposteSede, chiudi, riapri, softDelete, addFile, removeFile, assertCanSee, canEditAnswers, canVerify, canDelete, siteById, isStructure, decorate, A_COLS, A_FROM } from '../lib/core.js';
+import { KEY, idOf, loadAudit, listAudits, getOrCreateAuto, createAudit, saveAudit, inviaAuto, confermaRisposteSede, chiudi, riapri, softDelete, addFile, removeFile, assertCanSee, canEditAnswers, canVerify, canDelete, siteById, isStructure, inEsercizio, decorate, A_COLS, A_FROM } from '../lib/core.js';
 import { monthStart } from '../lib/scoring.js';
 import { auditXlsx, auditPdf } from '../lib/export.js';
 
@@ -35,7 +35,7 @@ r.get('/audits/miei', ah(async (req, res) => {
   const period = monthStart(new Date());
   const correnti = [];
   for (const sid of mine) {
-    try { const s = await siteById(sid); if (s.active && isStructure(s)) { const { id } = await getOrCreateAuto(sid, period, req.moduleUser.id); correnti.push(id); } } catch { /* sede non struttura o non trovata */ }
+    try { const s = await siteById(sid); if (inEsercizio(s, period) && isStructure(s)) { const { id } = await getOrCreateAuto(sid, period, req.moduleUser.id); correnti.push(id); } } catch { /* sede non struttura o non trovata */ }
   }
   let rows;
   if (limitedToSites(req)) rows = await listAudits(req, { ...req.query, limit: 300 });

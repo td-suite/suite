@@ -131,3 +131,6 @@ dell'organigramma; righe in `alerts_sent`, notifica ed email nel registro). Test
   `grant_rules` è vuota (`seedGrantRules`): su un database già inizializzato vanno aggiunte da Amministrazione > Regole di accesso.
 - Nessun export DOCX (il brief chiede Excel e PDF); nessuna firma digitale; il cestino non ha una pagina di ripristino (si ripristina da
   database con `deleted_at = NULL`).
+
+## Sedi non ancora aperte (30/10/2026)
+Una sede struttura entra nel piano degli auto-audit solo quando è in esercizio: attiva e con data di apertura (Amministrazione > Sedi > Data di apertura) nulla o entro la fine del mese. Prima dell'apertura (es. COR Centro Radiologico dal 2 gennaio 2027) non si crea l'auto-audit, non parte l'alert del 17, non conta nei badge né nella sintesi TD; nel Piano degli Audit la sede mostra "apre il …". Vista `audit.sites_v`, colonna `in_esercizio` (migrazione 002).

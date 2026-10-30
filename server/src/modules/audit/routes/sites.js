@@ -6,7 +6,7 @@ import { one, many } from '../db.js';
 import { STRUCTURE_KINDS, INTERNAL_ORG_KINDS } from '../config.js';
 import { ah, forbidden } from '../../../lib/util.js';
 import { isAuditor, isQualita, isSite, mySiteIds, canSeeSite, limitedToSites } from '../lib/access.js';
-import { A_COLS, A_FROM, decorate, SITE_COLS, siteById, orgById, isStructure } from '../lib/core.js';
+import { A_COLS, A_FROM, decorate, SITE_COLS, siteById, orgById, isStructure, inEsercizio } from '../lib/core.js';
 import { ultimaSintesi } from '../lib/synth.js';
 import { monthStart, levelLabel, levelLetter } from '../lib/scoring.js';
 
@@ -30,7 +30,7 @@ r.get('/sites', ah(async (req, res) => {
     const corrente = lastOf(mine, (a) => a.kind === 'AUTO' && String(a.period).slice(0, 10) === period);
     const slim = (a) => (a ? { id: a.id, status: a.status, status_label: a.status_label, period: a.period, conducted_at: a.conducted_at, score: a.score, score_verifier: a.score_verifier, effective_score: a.effective_score, level: a.level, n_nc: a.n_nc, third_party: a.third_party } : null);
     return { ...s, structure: isStructure(s), sgi_level_label: levelLabel(s.sgi_level), n_audits: mine.length,
-      auto_corrente: slim(corrente), stato_mese: corrente ? corrente.status : (isStructure(s) ? 'MANCANTE' : null), ultimo_auto: slim(auto),
+      in_esercizio: inEsercizio(s, period), auto_corrente: slim(corrente), stato_mese: corrente ? corrente.status : (isStructure(s) ? (inEsercizio(s, period) ? 'MANCANTE' : 'NON_APERTA') : null), ultimo_auto: slim(auto),
       ultimo_interno: slim(lastOf(mine, (a) => a.kind === 'INTERNO')), ultimo_terzi: slim(lastOf(mine, (a) => a.kind === 'TERZI')),
       inviati_da_verificare: mine.filter((a) => a.kind === 'AUTO' && a.status === 'INVIATO').length };
   });
