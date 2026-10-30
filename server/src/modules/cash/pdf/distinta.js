@@ -63,7 +63,8 @@ export async function buildSlipPdf({ report, company, site, number, revision, pr
   const done = new Promise((res) => doc.on('end', () => res(Buffer.concat(chunks))));
 
   const bc = report.envelope_code ? await barcode(report.envelope_code) : null;
-  const copies = ['COPIA SEDE', 'COPIA IN BUSTA'];
+  // Una sola copia (richiesta del CEO, 30/10/2026): la distinta segue la busta; le due copie firmate sono quelle della catena di custodia
+  const copies = ['COPIA UNICA'];
 
   for (let ci = 0; ci < copies.length; ci++) {
     let y;
@@ -78,7 +79,7 @@ export async function buildSlipPdf({ report, company, site, number, revision, pr
     // Titolo
     doc.rect(M.left, y, W, 26).fill(C.teal);
     doc.font('B').fontSize(13).fillColor('#FFFFFF').text('DISTINTA DI VERSAMENTO INCASSO', M.left + 10, y + 7, { lineBreak: false });
-    doc.font('B').fontSize(8.5).fillColor(C.silk).text(`${copies[ci]} · ${ci + 1} di 2`, M.left, y + 9.5, { width: W - 10, align: 'right' });
+    doc.font('B').fontSize(8.5).fillColor(C.silk).text(copies.length > 1 ? `${copies[ci]} · ${ci + 1} di ${copies.length}` : copies[ci], M.left, y + 9.5, { width: W - 10, align: 'right' });
     y += 34;
 
     // Dati identificativi

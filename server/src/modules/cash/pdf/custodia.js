@@ -19,12 +19,14 @@ export async function buildCustodyPdf({ report, company, site, preparedBy, prepa
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res) => doc.on('end', () => res(Buffer.concat(chunks))));
 
+  // Due copie (richiesta del CEO, 30/10/2026): una resta in sede, una segue la busta
+  for (const copia of ['COPIA SEDE', 'COPIA IN BUSTA']) {
   doc.addPage();
   letterhead(doc, company);
   let y = CONTENT_TOP;
   doc.rect(M.left, y, W, 26).fill(C.teal);
   doc.font('B').fontSize(13).fillColor('#FFFFFF').text('CATENA DI CUSTODIA · BUSTA VALORI', M.left + 10, y + 7, { lineBreak: false });
-  doc.font('B').fontSize(8.5).fillColor(C.silk).text(`Rif. distinta ${report.slip_number || '-'}`, M.left, y + 9.5, { width: W - 10, align: 'right' });
+  doc.font('B').fontSize(8.5).fillColor(C.silk).text(`${copia} · Rif. distinta ${report.slip_number || '-'}`, M.left, y + 9.5, { width: W - 10, align: 'right' });
   y += 36;
 
   // Identificazione
@@ -89,6 +91,7 @@ export async function buildCustodyPdf({ report, company, site, preparedBy, prepa
   doc.font('R').fontSize(7.5).fillColor(C.grey).text(
     `Modulo generato dal sistema Cash Management il ${fullDT(new Date())}. ID rendiconto ${report.id}. Una copia firmata resta in sede, una segue la busta. ` +
     'Ogni passaggio di mano deve essere firmato: in assenza di firma la custodia resta in capo all\'ultimo firmatario.', M.left, noteY, { width: W });
+  }
   doc.end();
   return done;
 }

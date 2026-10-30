@@ -169,7 +169,8 @@ export function UserDetail() {
 
   const byArea = useMemo(() => {
     const m = {};
-    for (const mod of (mods.data || []).filter((x) => x.active !== false)) (m[mod.area] ||= []).push(mod);
+    // Amministrazione non è un grant: si apre con il livello Amministratore o Titolare dell'account (campo Livello), non con un widget
+    for (const mod of (mods.data || []).filter((x) => x.active !== false && x.key !== 'admin')) (m[mod.area] ||= []).push(mod);
     const order = ['DIREZIONE', 'FINANCE', 'RETAIL_FLOW', 'OPERATIONS', 'HQS', 'PEOPLE'];
     return Object.entries(m).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
   }, [mods.data]);
@@ -269,7 +270,7 @@ export function UserDetail() {
                 </>
               )}
               <div className="form-grid">
-                <Field label="Livello" help={!owner ? 'Solo il titolare cambia il livello' : undefined}><select value={f.level} onChange={set('level')} disabled={!owner}>{Object.entries(LEVEL).map(([k, v]) => <option key={k} value={k} disabled={k === 'OWNER' && !owner}>{v}</option>)}</select></Field>
+                <Field label="Livello" help={!owner ? 'Solo il titolare cambia il livello' : 'Amministratore apre il widget Amministrazione (utenti, anagrafiche, connettori, travaso)'}><select value={f.level} onChange={set('level')} disabled={!owner}>{Object.entries(LEVEL).map(([k, v]) => <option key={k} value={k} disabled={k === 'OWNER' && !owner}>{v}</option>)}</select></Field>
                 <Field label="Stato"><select value={f.status} onChange={set('status')} disabled={targetIsOwner}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                 <Field label="Metodo di accesso"><select value={f.auth_provider} onChange={set('auth_provider')}>{Object.entries(PROVIDER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                 <Field label="Lingua"><select value={f.lang} onChange={set('lang')}><option value="it">Italiano</option><option value="en">English</option></select></Field>

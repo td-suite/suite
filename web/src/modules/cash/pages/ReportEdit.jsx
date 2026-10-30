@@ -138,8 +138,8 @@ export default function ReportEdit() {
 
       <ErrorBox error={err} />
       {rep.status !== 'DRAFT' && <div className={`alert ${rep.status === 'DEPOSITED' ? 'ok' : 'info'}`} style={{ marginBottom: 14 }}>
-        {rep.status === 'CLOSED' && 'Busta registrata. Elabora la distinta e stampala in doppia copia: firmi entrambe, una va in busta prima di sigillarla, una resta in sede.'}
-        {rep.status === 'PROCESSED' && (reviewer ? 'Distinta pronta. Quando la logistica ti consegna la busta, registra qui l\'operazione logistica con il nome dell\'operatore.' : 'Distinta pronta. Stampa il modulo Catena di custodia e consegna busta e modulo alla logistica. Il seguito è a carico del cassiere o dell\'amministratore di sede.')}
+        {rep.status === 'CLOSED' && 'Busta registrata. Elabora la distinta e stampala (una copia): la firmi e va in busta prima di sigillarla. La Catena di custodia esce in due copie: una resta in sede, una segue la busta.'}
+        {rep.status === 'PROCESSED' && (reviewer ? 'Distinta pronta. Quando la logistica ti consegna la busta, registra qui l\'operazione logistica con il nome dell\'operatore.' : 'Distinta pronta. Stampa il modulo Catena di custodia (due copie: una resta in sede, una segue la busta) e consegna busta e modulo alla logistica. Il seguito è a carico del cassiere o dell\'amministratore di sede.')}
         {rep.status === 'PICKED_UP' && (reviewer ? 'Busta in cassaforte. Esegui il riconteggio e registra l\'importo verificato: chiude il ciclo del rendiconto.' : 'Busta in cassaforte, in attesa di riconteggio da parte del cassiere.')}
         {rep.status === 'VERIFIED' && `Verificato e in cassaforte${rep.verified_amount != null ? ` per ${eur(rep.verified_amount)}` : ''}. Disponibile per il prossimo versamento al portavalori.`}
         {rep.status === 'DEPOSITED' && <>Versato al portavalori con il versamento <b>{rep.deposit_number}</b>{rep.deposit_status ? ` (${rep.deposit_status.toLowerCase()})` : ''}.</>}

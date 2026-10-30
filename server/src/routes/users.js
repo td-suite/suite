@@ -46,6 +46,8 @@ function namesFrom(b) {
 }
 function assertCanGrant(req, module) {
   if (!module) throw notFound('Modulo inesistente');
+  // Amministrazione non si assegna come widget: l'accesso dipende dal livello dell'account (ADMIN, solo il titolare lo assegna)
+  if (module.key === 'admin') throw bad('Amministrazione non si assegna come widget: imposta il livello "Amministratore" nella scheda dell\'utente (solo il titolare della Suite può farlo)');
   if (module.restricted && !isOwner(req.user)) throw forbidden(`Il modulo "${module.name}" è riservato: solo il titolare della Suite può assegnarlo`);
 }
 function assertCanManage(req, target) {
