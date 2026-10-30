@@ -19,7 +19,7 @@ export default function Miei() {
   const altri = data.rows.filter((a) => !data.correnti.includes(a.id));
   return (
     <div className="page">
-      <PageHead title="I miei audit" icon="check" sub={site ? `Auto-audit del mese di ${mese(data.period)} della tua sede: compila tutte le voci, salva quando vuoi e poi invia a Qualità entro fine mese.` : 'Gli audit che hai in carico: auto-audit inviati dalle sedi da verificare, audit che conduci, audit delle sedi che gestisci.'} />
+      <PageHead title="I miei audit" icon="check" sub={site ? `Auto-audit del mese di ${mese(data.period)} della tua sede: compila tutte le voci, salva quando vuoi e poi invia a Qualità entro fine mese.` : 'Gli audit che hai in carico: auto-audit inviati dalle sedi da verificare, audit che conduci, auto-audit delle sedi di cui risulti responsabile nell\'organigramma (nodo Sede in Amministrazione > Organizzazione).'} />
       {correnti.length > 0 && <div className="grid au-two">{correnti.map((a) => (
         <Card key={a.id} title={`Auto-audit ${mese(a.period)} · ${a.site_name}`} icon="audit" actions={<StatusBadge s={a.status} />}>
           <div className="row" style={{ gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -42,7 +42,7 @@ export default function Miei() {
               <td className="actions"><Link className="btn sm ghost" to={`${base}/audit/${a.id}`}>{a.kind === 'AUTO' && a.status === 'INVIATO' && !site ? 'Verifica' : 'Apri'}</Link></td></tr>)}</tbody>
           </table></div>)}
       </Card>
-      {!site && <div className="small muted" style={{ marginTop: 10 }}>Gli audit interni e sui partner si creano dalle pagine <Link to={`${base}/sedi`}>Sedi</Link> e <Link to={`${base}/partner`}>Partner ISO 37001</Link>.</div>}
+      {!site && <div className="small muted" style={{ marginTop: 10 }}>Gli audit interni e sui partner si creano dalle pagine <Link to={`${base}/sedi`}>Piano degli Audit</Link> e <Link to={`${base}/partner`}>Audit Partner</Link>.</div>}
     </div>
   );
 }

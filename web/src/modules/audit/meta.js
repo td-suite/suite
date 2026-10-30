@@ -9,8 +9,8 @@ export default {
   nav: [
     { to: '', icon: 'stats', label: 'Cruscotto', end: true },
     { to: 'miei', icon: 'check', label: 'I miei audit', badge: 'miei' },
-    { to: 'sedi', icon: 'building', label: 'Sedi' },
-    { to: 'partner', icon: 'shield', label: 'Partner ISO 37001', profiles: ['QUALITA', 'AUDITOR', 'VIEWER'] },
+    { to: 'sedi', icon: 'building', label: 'Piano degli Audit' },
+    { to: 'partner', icon: 'shield', label: 'Audit Partner', profiles: ['QUALITA', 'AUDITOR', 'VIEWER'] },
     { to: 'archivio', icon: 'folder', label: 'Archivio' },
     { to: 'sintesi', icon: 'sparkle', label: 'Sintesi TD', profiles: ['QUALITA', 'AUDITOR', 'VIEWER'] },
     { group: 'Impostazioni', profiles: ['QUALITA'] },

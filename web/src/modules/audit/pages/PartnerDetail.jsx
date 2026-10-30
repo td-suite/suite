@@ -25,7 +25,7 @@ export default function PartnerDetail() {
   const nuovo = async () => { try { const r = await api.post('/audits', { kind: 'LEGAL_ENTITY', organization_id: Number(orgId) }); nav(`${base}/audit/${r.id}`); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title={org.name} icon="shield" crumb={<Link to={`${base}/partner`}>Partner ISO 37001</Link>} sub={`${org.kind}${org.vat_number ? ` · P.IVA ${org.vat_number}` : ''}${org.city ? ` · ${org.city}` : ''}`}
+      <PageHead title={org.name} icon="shield" crumb={<Link to={`${base}/partner`}>Audit Partner</Link>} sub={`${org.kind}${org.vat_number ? ` · P.IVA ${org.vat_number}` : ''}${org.city ? ` · ${org.city}` : ''}`}
         actions={<>{auditor && <button className="btn sm ghost" onClick={nuovo}><Icon name="plus" />Nuovo audit</button>}{auditor && <button className="btn sm" disabled={busy || !audits.length} onClick={gen}><Icon name="sparkle" />{sintesi ? 'Rigenera sintesi' : 'Genera sintesi'}</button>}</>} />
       <Sintesi sintesi={sintesi} scope="LEGAL_ENTITY" title="Sintesi ISO 37001 del partner" actions={auditor && <button className="btn sm" disabled={busy || !audits.length} onClick={gen}><Icon name="sparkle" />{sintesi ? 'Rigenera' : 'Genera con Claude'}</button>} />
       <Card title="Audit del partner" icon="clock" flush style={{ marginTop: 14 }}>

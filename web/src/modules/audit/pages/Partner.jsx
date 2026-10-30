@@ -27,7 +27,7 @@ export default function Partner() {
   const gen = async () => { setBusy(true); try { const r = await api.post('/sintesi/partners'); toast(`Sintesi complessiva generata: ${pct(r.score)} (${r.level})`); reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
   return (
     <div className="page">
-      <PageHead title="Partner ISO 37001" icon="shield" sub="Audit di due diligence e anticorruzione sui partner e soci in affari (Legal entity): clienti service, punti convenzionati, fornitori, locatori, consulenti. Condotti da Qualità, Service, Retail, MDL Manager, AD."
+      <PageHead title="Audit Partner" icon="shield" sub="Audit di due diligence e anticorruzione sui partner e soci in affari (Legal entity): clienti service, punti convenzionati, fornitori, locatori, consulenti. Condotti da Qualità, Service, Retail, MDL Manager, AD."
         actions={<>{auditor && <button className="btn sm" onClick={() => setNuovo(true)}><Icon name="plus" />Nuovo audit partner</button>}{auditor && <button className="btn sm ghost" disabled={busy || !data.rows.length} onClick={gen}><Icon name="sparkle" />{data.complessiva ? 'Rigenera sintesi complessiva' : 'Sintesi complessiva'}</button>}</>} />
       <div className="au-filters"><div style={{ minWidth: 320, flex: 1 }}><SearchInput value={text} onChange={setText} placeholder="Cerca una Legal entity (anche non ancora auditata)" /></div></div>
       <Card title={q ? 'Legal entity trovate' : 'Partner auditati'} icon="list" flush style={{ marginBottom: 14 }}>

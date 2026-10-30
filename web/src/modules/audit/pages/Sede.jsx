@@ -29,7 +29,7 @@ export default function Sede() {
   const ultimoAuto = audits.find((a) => a.kind === 'AUTO');
   return (
     <div className="page">
-      <PageHead title={site.name} icon="building" crumb={<Link to={`${base}/sedi`}>Sedi</Link>} sub={`${SITE_KIND[site.kind] || site.kind}${site.city ? ` · ${site.city}` : ''} · ${site.code}${site.manager_name ? ` · site manager ${site.manager_name}` : ''}`}
+      <PageHead title={site.name} icon="building" crumb={<Link to={`${base}/sedi`}>Piano degli Audit</Link>} sub={`${SITE_KIND[site.kind] || site.kind}${site.city ? ` · ${site.city}` : ''} · ${site.code}${site.manager_name ? ` · site manager ${site.manager_name}` : ''}`}
         actions={<>{auditor && <button className="btn sm ghost" onClick={nuovoInterno}><Icon name="plus" />Nuovo audit interno</button>}{auditor && <button className="btn sm ghost" onClick={() => setTerzi(true)}><Icon name="upload" />Carica terze parti</button>}{auditor && <button className="btn sm" disabled={busy || !audits.length} onClick={gen}><Icon name="sparkle" />{sintesi ? 'Rigenera sintesi' : 'Genera sintesi'}</button>}<Link className="btn sm ghost" to={`/retail/sedi/${id}`} title="Scheda della sede in Retail Assistant"><Icon name="external" />Retail Assistant</Link></>} />
       <div className="au-kpis">
         <Kpi accent label="Allineamento SGI" value={sgi?.score != null ? pct(sgi.score) : '–'} foot={sgi ? `${sgi.level ? `${sgi.level} · ` : ''}sintesi del ${itDateTime(sgi.computed_at)}` : 'nessuna sintesi'} />

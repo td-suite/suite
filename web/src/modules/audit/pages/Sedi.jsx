@@ -25,7 +25,7 @@ export default function Sedi() {
   const sintesi = async (s) => { setBusy(s.id); try { const r = await api.post(`/sintesi/sede/${s.id}`); toast(`Sintesi generata: ${pct(r.score)} (${r.level})`); reload(); } catch (e) { toast(e, 'err'); } setBusy(null); };
   return (
     <div className="page">
-      <PageHead title="Sedi" icon="building" sub={`Mese di ${mese(data.period)}: stato dell'auto-audit, ultimi audit e allineamento SGI per ogni sede. ${isSite(user) ? 'Vedi le sedi che gestisci.' : ''}`}
+      <PageHead title="Piano degli Audit" icon="building" sub={`Mese di ${mese(data.period)}: stato dell'auto-audit, ultimi audit e allineamento SGI per ogni sede. ${isSite(user) ? 'Vedi le sedi che gestisci.' : ''}`}
         actions={<div style={{ minWidth: 260 }}><SearchInput value={q} onChange={setQ} placeholder="Cerca sede" /></div>} />
       {!rows.length ? <Card><Empty icon="building" title="Nessuna sede">{isSite(user) ? 'Nessuna sede assegnata al tuo profilo: il grant Site manager porta l\'ambito della sede, oppure devi risultare responsabile della sede nell\'organigramma.' : 'Le sedi si caricano in Amministrazione > Sedi (tipo struttura: punti prelievo, centri medici e diagnostici, laboratorio).'}</Empty></Card> : (
         <div className="au-sites">{rows.map((s) => {
