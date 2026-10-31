@@ -12,3 +12,6 @@ export const itDateTime = (d) => (d ? new Date(d).toLocaleString('it-IT', { time
 export const kb = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
 export const pagineLabel = (p) => (Array.isArray(p) && p.length ? (p.length === 1 ? `pag. ${p[0]}` : `pagg. ${p[0]}-${p[p.length - 1]}`) : '');
 export const b64ToUrl = (b64, mime) => { const bin = atob(b64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return URL.createObjectURL(new Blob([arr], { type: mime })); };
+// Origine dell'elaborazione e stato dell'invio al mittente (casella template@, 31/10/2026)
+export const ORIGINE = { UPLOAD: { label: 'Caricato', tone: 'grey', icon: 'upload' }, CASELLA: { label: 'Casella', tone: 'teal', icon: 'mail' } };
+export const STATO_INVIO = { INVIATO: { label: 'Inviato', tone: 'green' }, REGISTRATO: { label: 'Registrato (posta in modalità registro)', breve: 'Registrato', tone: 'blue' }, FALLITO: { label: 'Invio non riuscito', breve: 'Non riuscito', tone: 'red' } };

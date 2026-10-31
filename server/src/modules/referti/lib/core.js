@@ -65,22 +65,27 @@ export async function risolviNomeFile(scheda, dati, imp) {
 }
 
 // ---- Caricamento ed elaborazione di un PDF: una elaborazione + N schede in BOZZA
-export async function elaboraUpload(file, userId) {
+// origine: { origine: 'UPLOAD' | 'CASELLA', graph_id, from_email, from_name, subject, received_at, message_id } (allegato di una mail
+// arrivata alla casella template@: lib/casella.js); userId NULL per la casella
+export async function elaboraUpload(file, userId, origine = {}) {
   const buf = file.buffer;
   if (!buf || buf.length < 5 || buf.subarray(0, 5).toString('latin1') !== '%PDF-') throw bad(`"${file.originalname}": non è un file PDF`);
   const stored = await storeBuffer('sorgenti', `${Date.now()}-${file.originalname}`, 'application/pdf', buf);
-  const el = await one(`INSERT INTO elaborazioni (filename, mime, size, sha256, data, blob_path, uploaded_by) VALUES ($1,'application/pdf',$2,$3,$4,$5,$6) RETURNING *`,
-    [String(file.originalname || 'referto.pdf').slice(0, 200), stored.size, stored.sha256, stored.data, stored.blob_path, userId]);
+  const o = origine || {};
+  const el = await one(`INSERT INTO elaborazioni (filename, mime, size, sha256, data, blob_path, uploaded_by, origine, graph_id, from_email, from_name, subject, received_at, message_id)
+    VALUES ($1,'application/pdf',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [String(file.originalname || 'referto.pdf').slice(0, 200), stored.size, stored.sha256, stored.data, stored.blob_path, userId || null, o.origine === 'CASELLA' ? 'CASELLA' : 'UPLOAD',
+      o.graph_id || null, o.from_email || null, o.from_name ? String(o.from_name).slice(0, 200) : null, o.subject ? String(o.subject).slice(0, 500) : null, o.received_at || null, o.message_id || null]);
   let estratto;
   try { estratto = await estraiTesto(buf); } catch (e) {
     await q(`UPDATE elaborazioni SET stato='SCARTATO', motivo_scarto=$2 WHERE id=$1`, [el.id, e.message]);
-    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId, dettagli: { motivo: e.message } });
+    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { motivo: e.message, origine: el.origine } });
     return { ...el, stato: 'SCARTATO', motivo_scarto: e.message, schede: [] };
   }
   const r = elabora(estratto);
   if (r.motivo_scarto) {
     await q(`UPDATE elaborazioni SET stato='SCARTATO', motivo_scarto=$2, pagine=$3, sorgente=$4, ocr=$5 WHERE id=$1`, [el.id, r.motivo_scarto, estratto.n_pagine, r.sorgente, estratto.ocr]);
-    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId, dettagli: { motivo: r.motivo_scarto, pagine: estratto.n_pagine } });
+    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { motivo: r.motivo_scarto, pagine: estratto.n_pagine, origine: el.origine } });
     return { ...el, stato: 'SCARTATO', motivo_scarto: r.motivo_scarto, pagine: estratto.n_pagine, sorgente: r.sorgente, schede: [] };
   }
   const schede = [];
@@ -102,26 +107,28 @@ export async function elaboraUpload(file, userId) {
       schede.push({ id: row.id, pagine: s.pagine, cognome_nome: a.cognome_nome || '', anomalie, stato: 'BOZZA' });
     }
     await c.query(`UPDATE elaborazioni SET stato='ELABORATO', pagine=$2, sorgente=$3, ocr=$4 WHERE id=$1`, [el.id, estratto.n_pagine, r.sorgente, estratto.ocr]);
-    await registra('CARICATO', { elaborazione_id: el.id, user_id: userId, dettagli: { schede: schede.length, pagine: estratto.n_pagine, sorgente: r.sorgente, ocr: estratto.ocr } }, c);
+    await registra('CARICATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { schede: schede.length, pagine: estratto.n_pagine, sorgente: r.sorgente, ocr: estratto.ocr, origine: el.origine, from_email: el.from_email || undefined } }, c);
   });
   return { ...el, stato: 'ELABORATO', pagine: estratto.n_pagine, sorgente: r.sorgente, ocr: estratto.ocr, schede };
 }
 
 // ---- Lettura
 export const S_COLS = `s.id, s.elaborazione_id, s.pagine, s.sorgente, s.cognome_nome, s.data_nascita, s.sesso, s.luogo_nascita, s.indirizzo, s.accettazione, s.data_acc, s.referto_codice, s.referto_data,
-  s.anomalie, s.stato, s.nome_file, s.sostituisce_id, s.sostituita_da, s.confirmed_by, s.confirmed_at, s.created_at, s.updated_at,
-  e.filename AS elaborazione_filename, e.pagine AS elaborazione_pagine, e.ocr, cu.full_name AS confirmed_by_nome`;
-export const S_FROM = `schede s JOIN elaborazioni e ON e.id=s.elaborazione_id LEFT JOIN public.users cu ON cu.id=s.confirmed_by`;
+  s.anomalie, s.stato, s.nome_file, s.sostituisce_id, s.sostituita_da, s.confirmed_by, s.confirmed_at, s.created_at, s.updated_at, s.versione, s.riaperta_at,
+  e.filename AS elaborazione_filename, e.pagine AS elaborazione_pagine, e.ocr, e.origine, e.from_email, e.from_name, e.subject, e.received_at, cu.full_name AS confirmed_by_nome,
+  ru.full_name AS riaperta_by_nome`;
+export const S_FROM = `schede s JOIN elaborazioni e ON e.id=s.elaborazione_id LEFT JOIN public.users cu ON cu.id=s.confirmed_by LEFT JOIN public.users ru ON ru.id=s.riaperta_by`;
 
 export async function loadScheda(id, { conDati = true } = {}) {
   const s = await one(`SELECT ${S_COLS}${conDati ? ', s.dati, s.dati_orig' : ''} FROM ${S_FROM} WHERE s.id=$1`, [id]);
   if (!s) throw notFound('Scheda non trovata');
-  s.file = await many(`SELECT id, kind, filename, mime, size, intero, created_at FROM file_prodotti WHERE scheda_id=$1 ORDER BY CASE kind WHEN 'SORGENTE_PDF' THEN 0 WHEN 'DOCX' THEN 1 ELSE 2 END`, [id]);
+  s.file = await many(`SELECT id, kind, filename, mime, size, sha256, intero, created_at FROM file_prodotti WHERE scheda_id=$1 ORDER BY CASE kind WHEN 'SORGENTE_PDF' THEN 0 WHEN 'DOCX' THEN 1 ELSE 2 END`, [id]);
+  s.invii = await many(`SELECT i.id, i.to_email, i.from_email, i.stato, i.errore, i.file_sha256, i.versione, i.automatico, i.at, u.full_name AS user_nome FROM invii i LEFT JOIN public.users u ON u.id=i.user_id WHERE i.scheda_id=$1 ORDER BY i.at DESC, i.id DESC`, [id]);
   return s;
 }
 
 export async function elaborazioneCon(id) {
-  const e = await one(`SELECT e.id, e.filename, e.size, e.pagine, e.sorgente, e.stato, e.motivo_scarto, e.ocr, e.uploaded_by, e.created_at, u.full_name AS uploaded_by_nome FROM elaborazioni e LEFT JOIN public.users u ON u.id=e.uploaded_by WHERE e.id=$1`, [id]);
+  const e = await one(`SELECT e.id, e.filename, e.size, e.pagine, e.sorgente, e.stato, e.motivo_scarto, e.ocr, e.uploaded_by, e.created_at, e.origine, e.from_email, e.from_name, e.subject, e.received_at, u.full_name AS uploaded_by_nome FROM elaborazioni e LEFT JOIN public.users u ON u.id=e.uploaded_by WHERE e.id=$1`, [id]);
   if (!e) throw notFound('Elaborazione non trovata');
   e.schede = await many(`SELECT ${S_COLS} FROM ${S_FROM} WHERE s.elaborazione_id=$1 ORDER BY s.id`, [id]);
   return e;
@@ -139,15 +146,23 @@ export async function generaPer(scheda, imp) {
 
 const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-// Conferma: controllo di coerenza (salvo force), file definitivi, nome con suffisso o sostituzione tracciata, registro
-export async function confermaScheda(id, userId, { force = false } = {}) {
+// Conferma: controllo di coerenza (salvo force), file definitivi, nome con suffisso o sostituzione tracciata, registro.
+// automatica: conferma della casella template@ (coerenza verde e nessuna anomalia, mai forzata): confirmed_by NULL, registro
+// CONFERMATA_AUTO. Riconferma dopo "Riapri": i file DOCX/PDF/sorgente della stessa scheda si rigenerano e sostituiscono i precedenti
+// (versione + 1, blob vecchi eliminati); la catena sostituisce_id/sostituita_da verso un'altra scheda resta quella della prima conferma.
+export async function confermaScheda(id, userId, { force = false, automatica = false } = {}) {
   const s = await one(`SELECT s.*, e.data AS e_data, e.blob_path AS e_blob_path, e.pagine AS e_pagine, e.filename AS e_filename, e.size AS e_size FROM schede s JOIN elaborazioni e ON e.id=s.elaborazione_id WHERE s.id=$1`, [id]);
   if (!s) throw notFound('Scheda non trovata');
   if (s.stato !== 'BOZZA') throw bad('La scheda non è in bozza');
+  if (automatica && (force || (s.anomalie || []).length)) throw bad('Conferma automatica non ammessa: la scheda ha anomalie');
   const imp = await settings();
   const gen = await generaPer(s, imp);
   if (!gen.coerenza.ok && !force) throw new HttpError(400, 'Il controllo di coerenza non è superato: correggi la scheda oppure conferma comunque', { coerenza: gen.coerenza });
-  const { nome, doppio, sostituisce } = await risolviNomeFile(s, s.dati, imp);
+  const riconferma = Boolean(s.riaperta_at);
+  const versione = riconferma ? Number(s.versione || 1) + 1 : Number(s.versione || 1);
+  const vecchi = riconferma ? await many('SELECT blob_path FROM file_prodotti WHERE scheda_id=$1 AND blob_path IS NOT NULL', [id]) : [];
+  let { nome, doppio, sostituisce } = await risolviNomeFile(s, s.dati, imp);
+  if (riconferma && s.sostituisce_id && !doppio) { doppio = s.sostituisce_id; sostituisce = true; }   // catena della prima conferma conservata
   const fileDocx = await storeBuffer('prodotti', `${id}-${nome}.docx`, MIME_DOCX, gen.docx);
   const filePdf = gen.pdf ? await storeBuffer('prodotti', `${id}-${nome}.pdf`, 'application/pdf', gen.pdf) : null;
   // PDF sorgente: ritaglio delle pagine della scheda (pdf-lib) se il PDF ha più pagine della scheda; altrimenti rimando al PDF intero
@@ -165,15 +180,31 @@ export async function confermaScheda(id, userId, { force = false } = {}) {
       [id, `${nome} (sorgente).pdf`, sorgente ? sorgente.size : s.e_size || 0, sorgente ? sorgente.sha256 : null, sorgente ? sorgente.data : null, sorgente ? sorgente.blob_path : null, sorgente ? null : s.elaborazione_id, !sorgente && serveRitaglio]);
     await c.query(`INSERT INTO file_prodotti (scheda_id, kind, filename, mime, size, sha256, data, blob_path) VALUES ($1,'DOCX',$2,$3,$4,$5,$6,$7)`, [id, `${nome}.docx`, MIME_DOCX, fileDocx.size, fileDocx.sha256, fileDocx.data, fileDocx.blob_path]);
     if (filePdf) await c.query(`INSERT INTO file_prodotti (scheda_id, kind, filename, mime, size, sha256, data, blob_path) VALUES ($1,'PDF',$2,'application/pdf',$3,$4,$5,$6)`, [id, `${nome}.pdf`, filePdf.size, filePdf.sha256, filePdf.data, filePdf.blob_path]);
-    await c.query(`UPDATE schede SET stato='CONFERMATA', nome_file=$2, sostituisce_id=$3, confirmed_by=$4, confirmed_at=now(), updated_at=now() WHERE id=$1`, [id, nome, sostituisce ? doppio : null, userId]);
-    if (sostituisce && doppio) {
+    await c.query(`UPDATE schede SET stato='CONFERMATA', nome_file=$2, sostituisce_id=$3, confirmed_by=$4, confirmed_at=now(), updated_at=now(), versione=$5, riaperta_at=NULL, riaperta_by=NULL WHERE id=$1`, [id, nome, sostituisce ? doppio : null, automatica ? null : userId, versione]);
+    if (sostituisce && doppio && !(riconferma && s.sostituisce_id === doppio)) {
       await c.query(`UPDATE schede SET sostituita_da=$2, updated_at=now() WHERE id=$1`, [doppio, id]);
-      await registra('SOSTITUZIONE', { scheda_id: id, user_id: userId, dettagli: { sostituisce_scheda_id: doppio, nome_file: nome } }, c);
+      await registra('SOSTITUZIONE', { scheda_id: id, user_id: automatica ? null : userId, dettagli: { sostituisce_scheda_id: doppio, nome_file: nome } }, c);
     }
-    await registra('CONFERMATA', { scheda_id: id, user_id: userId, dettagli: { nome_file: nome, forzata: !gen.coerenza.ok, coerenza_ok: gen.coerenza.ok, anomalie: (s.anomalie || []).length, pdf: Boolean(filePdf), suffisso: doppio && !sostituisce ? true : false, pdf_sorgente_intero: !sorgente && serveRitaglio, template: gen.template } }, c);
-    return { id, nome_file: nome, forzata: !gen.coerenza.ok, coerenza: gen.coerenza, sostituisce: sostituisce ? doppio : null, suffisso: Boolean(doppio && !sostituisce), pdf_sorgente_intero: !sorgente && serveRitaglio };
+    await registra(automatica ? 'CONFERMATA_AUTO' : 'CONFERMATA', { scheda_id: id, user_id: automatica ? null : userId, dettagli: { nome_file: nome, forzata: !gen.coerenza.ok, coerenza_ok: gen.coerenza.ok, anomalie: (s.anomalie || []).length, pdf: Boolean(filePdf), suffisso: doppio && !sostituisce ? true : false, pdf_sorgente_intero: !sorgente && serveRitaglio, template: gen.template, versione, riconferma: riconferma || undefined, automatica: automatica || undefined } }, c);
+    return { id, nome_file: nome, forzata: !gen.coerenza.ok, coerenza: gen.coerenza, sostituisce: sostituisce ? doppio : null, suffisso: Boolean(doppio && !sostituisce), pdf_sorgente_intero: !sorgente && serveRitaglio, versione, riconferma, pdf_sha256: filePdf?.sha256 || null };
   });
+  // file della versione precedente (blob): eliminati dopo la sostituzione
+  if (vecchi.length) await dropBlobs(vecchi.map((f) => f.blob_path));
   return risultato;
+}
+
+// ---- Riapertura di un referto emesso (richiesta del CEO del 31/10/2026: "permetti sempre di riaprire il referto emesso e di
+// modificarlo"): la scheda CONFERMATA (anche già inviata) torna BOZZA, i file prodotti restano scaricabili finché non si riconferma
+export async function riapriScheda(id, userId) {
+  const s = await one('SELECT id, stato, nome_file, versione FROM schede WHERE id=$1', [id]);
+  if (!s) throw notFound('Scheda non trovata');
+  if (s.stato !== 'CONFERMATA') throw bad('Si può riaprire solo un referto confermato');
+  const inviato = await one(`SELECT count(*)::int AS n FROM invii WHERE scheda_id=$1 AND stato IN ('INVIATO','REGISTRATO')`, [id]);
+  await tx(async (c) => {
+    await c.query(`UPDATE schede SET stato='BOZZA', riaperta_at=now(), riaperta_by=$2, updated_at=now() WHERE id=$1`, [id, userId]);
+    await registra('RIAPERTA', { scheda_id: id, user_id: userId, dettagli: { nome_file: s.nome_file, versione: s.versione, inviato: inviato.n > 0 } }, c);
+  });
+  return { id, versione: s.versione, inviato: inviato.n > 0 };
 }
 
 // ---- Eliminazione (richiesta del CEO: "permettimi di cancellare i file da elaborazioni recenti")

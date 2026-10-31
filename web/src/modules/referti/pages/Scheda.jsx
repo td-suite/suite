@@ -1,13 +1,15 @@
 // Scheda: anteprima affiancata (PDF sorgente a sinistra, referto TD rigenerato a destra), pannello dati editabile (riquadro anagrafico
 // come il modello TD: cognome e nome, data di nascita, sesso, accettazione; luogo di nascita e indirizzo se presenti; settori ed esami,
 // antibiogrammi, note), anomalie in giallo, checklist di coerenza, pulsanti Anteprima / Conferma / Conferma comunque / Scarta.
+// Referto emesso (31/10/2026): "Riapri" (torna in bozza, i file restano finché non si riconferma), mittente della mail della casella
+// template@ con lo stato degli invii, "Invia al mittente" e "Reinvia".
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, apiBase, base, useApi } from '../api.js';
 import { useAuth, isLab } from '../index.jsx';
 import { Card, Loading, Empty, PageHead, Badge, Field, useToast, ConfirmModal, PromptModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { itDateTime, pagineLabel, b64ToUrl } from '../format.js';
+import { itDateTime, pagineLabel, b64ToUrl, ORIGINE, STATO_INVIO } from '../format.js';
 import { SorgenteBadge, StatoBadge, Anomalie } from './Inbox.jsx';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -69,12 +71,23 @@ export default function Scheda() {
     try {
       await salva();
       const r = await api.post(`/schede/${id}/conferma`, { force });
-      toast(`Scheda confermata: ${r.nome_file}.docx${r.scheda?.file?.some((f) => f.kind === 'PDF') ? ' e .pdf' : ''}${r.suffisso ? ' (nome con suffisso: esisteva già un file con lo stesso nome)' : ''}${r.sostituisce ? ' (file precedente sostituito, tracciato nel registro)' : ''}`);
+      const inv = r.invio?.stato ? (r.invio.stato === 'FALLITO' ? ` · invio al mittente non riuscito: ${r.invio.errore}` : ` · inviato a ${r.invio.to}${r.invio.stato === 'REGISTRATO' ? ' (registro)' : ''}`) : r.invio?.motivo && r.riconferma ? ` · ${r.invio.motivo}` : '';
+      toast(`Scheda ${r.riconferma ? `riconfermata (versione ${r.versione}, file rigenerati)` : 'confermata'}: ${r.nome_file}.docx${r.scheda?.file?.some((f) => f.kind === 'PDF') ? ' e .pdf' : ''}${r.suffisso ? ' (nome con suffisso: esisteva già un file con lo stesso nome)' : ''}${r.sostituisce && !r.riconferma ? ' (file precedente sostituito, tracciato nel registro)' : ''}${inv}`, r.invio?.stato === 'FALLITO' ? 'err' : 'ok');
       reload();
     } catch (e) {
       if (e.code === 'COERENZA' || e.details?.coerenza || e.status === 400) { const c = e.details?.coerenza || null; if (c) setCoerenza(c); toast(e.message, 'err'); }
       else toast(e, 'err');
     }
+    setBusy(false);
+  };
+  const riapri = async () => {
+    setBusy(true); setModal(null);
+    try { await api.post(`/schede/${id}/riapri`); toast('Referto riaperto: modifica la scheda e riconfermalo. I file emessi restano in archivio fino alla nuova conferma.'); reload(); window.dispatchEvent(new Event('suite:badges')); } catch (e) { toast(e, 'err'); }
+    setBusy(false);
+  };
+  const invia = async (reinvia) => {
+    setBusy(true); setModal(null);
+    try { const r = await api.post(`/schede/${id}/invia`, { reinvia }); toast(r.stato === 'FALLITO' ? `Invio non riuscito: ${r.errore}` : `${reinvia ? 'Reinviato' : 'Inviato'} a ${r.to}${r.stato === 'REGISTRATO' ? ' (posta in modalità registro: nessun invio reale)' : ''}`, r.stato === 'FALLITO' ? 'err' : 'ok'); reload(); } catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
   const scarta = async (motivo) => {
@@ -90,8 +103,14 @@ export default function Scheda() {
   const sorgenteUrl = `${apiBase}/elaborazioni/${scheda.elaborazione_id}/pdf?inline=1#page=${pagina}&view=FitH`;
   const filePdf = scheda.file?.find((f) => f.kind === 'PDF');
   const fileDocx = scheda.file?.find((f) => f.kind === 'DOCX');
-  const destraUrl = scheda.stato === 'CONFERMATA' && filePdf ? `${apiBase}/file/${filePdf.id}?inline=1` : anteprima?.url;
+  const destraUrl = scheda.stato === 'CONFERMATA' && filePdf ? `${apiBase}/file/${filePdf.id}?inline=1` : anteprima?.url || (scheda.riaperta_at && filePdf ? `${apiBase}/file/${filePdf.id}?inline=1` : null);
   const corpo2 = Number(form.corpo) === 2;
+  const casella = scheda.origine === 'CASELLA';
+  const partiti = (scheda.invii || []).filter((i) => i.stato !== 'FALLITO');
+  const ultimoOk = partiti[0];
+  // reinvio da proporre: già partito e riconfermato dopo l'ultimo invio (file rigenerati)
+  const daReinviare = Boolean(ultimoOk && scheda.stato === 'CONFERMATA' && new Date(scheda.confirmed_at) > new Date(ultimoOk.at));
+  const pdfGiaInviato = Boolean(filePdf && partiti.some((i) => i.file_sha256 === filePdf.sha256 && i.to_email === (scheda.from_email || '').toLowerCase()));
 
   return (
     <div className="page rf-scheda">
@@ -104,8 +123,20 @@ export default function Scheda() {
           <button className="btn ghost danger" disabled={busy} onClick={() => setModal('scarta')}><Icon name="trash" />Scarta</button>
         </> : scheda.stato === 'CONFERMATA' ? <>
           {scheda.file?.map((f) => <a key={f.id} className="btn ghost" href={`${apiBase}/file/${f.id}`}><Icon name={f.kind === 'DOCX' ? 'doc' : 'pdf'} />{f.kind === 'SORGENTE_PDF' ? 'PDF di partenza' : f.kind === 'DOCX' ? 'DOCX' : 'PDF TD'}</a>)}
+          {lab && scheda.from_email && !pdfGiaInviato && <button className="btn" disabled={busy} onClick={() => setModal('invia')}><Icon name="mail" />{daReinviare ? 'Reinvia al mittente' : 'Invia al mittente'}</button>}
+          {lab && scheda.from_email && pdfGiaInviato && <button className="btn ghost" disabled={busy} onClick={() => setModal('reinvia')}><Icon name="mail" />Reinvia</button>}
+          {lab && <button className="btn ghost" disabled={busy} onClick={() => setModal('riapri')}><Icon name="edit" />Riapri</button>}
         </> : null} />
 
+      {scheda.riaperta_at && scheda.stato === 'BOZZA' && <div className="rf-alert warn"><Icon name="edit" className="ico" /><div><div className="strong">Referto riaperto il {itDateTime(scheda.riaperta_at)}{scheda.riaperta_by_nome ? ` da ${scheda.riaperta_by_nome}` : ''}</div><div className="small">I file della versione {scheda.versione} restano in archivio finché non riconfermi; alla conferma DOCX e PDF vengono rigenerati e sostituiti.{partiti.length ? ' Il referto era già stato inviato al mittente: dopo la conferma potrai reinviarlo.' : ''}</div></div></div>}
+      {(casella || scheda.invii?.length > 0) && (
+        <div className="rf-alert"><Icon name="mail" className="ico" /><div style={{ flex: 1 }}>
+          <div className="rf-mittente"><span className="strong">Dalla casella</span> <span>{scheda.from_name ? `${scheda.from_name} · ` : ''}{scheda.from_email || 'mittente sconosciuto'}</span>{scheda.subject && <span className="muted">"{scheda.subject}"</span>}{scheda.received_at && <span className="muted small">{itDateTime(scheda.received_at)}</span>}</div>
+          {scheda.invii?.length ? <ul className="rf-invii" style={{ marginTop: 6 }}>{scheda.invii.map((i) => (
+            <li key={i.id}><Badge tone={STATO_INVIO[i.stato]?.tone || 'grey'} dot={false}>{STATO_INVIO[i.stato]?.breve || STATO_INVIO[i.stato]?.label || i.stato}</Badge> <span>a {i.to_email}</span> <span className="muted small">{itDateTime(i.at)} · {i.automatico ? 'automatico' : i.user_nome || 'manuale'}{i.versione > 1 ? ` · versione ${i.versione}` : ''}</span>{i.errore && <span className="small rf-ko">{i.errore}</span>}</li>))}</ul>
+            : <div className="small muted" style={{ marginTop: 4 }}>{scheda.stato === 'CONFERMATA' ? 'Non ancora inviato al mittente.' : 'Alla conferma il PDF del referto partirà al mittente (se "Invia al mittente" è acceso nelle Impostazioni).'}</div>}
+          {daReinviare && <div className="small" style={{ marginTop: 4 }}><b>Riconfermato dopo l'ultimo invio:</b> il mittente ha ancora la versione precedente.</div>}
+        </div></div>)}
       {scheda.anomalie?.length > 0 && <div className="rf-alert warn"><Icon name="alert" className="ico" /><div><div className="strong">Casi da verificare ({scheda.anomalie.length})</div><Anomalie list={scheda.anomalie} /></div></div>}
       {scheda.stato === 'CONFERMATA' && scheda.file?.some((f) => f.kind === 'SORGENTE_PDF' && f.intero) && <div className="rf-alert"><Icon name="info" className="ico" /><span>Il PDF di partenza è il file intero caricato (più pazienti): il ritaglio alle sole pagine della scheda non è disponibile su questo server.</span></div>}
 
@@ -113,7 +144,7 @@ export default function Scheda() {
         <Card title={`PDF sorgente · ${pagineLabel(scheda.pagine)}`} icon="pdf" flush className="rf-pane">
           <iframe title="PDF sorgente" src={sorgenteUrl} className="rf-frame" />
         </Card>
-        <Card title={scheda.stato === 'CONFERMATA' ? 'Referto TD (PDF definitivo)' : 'Anteprima referto TD'} icon="file" flush className="rf-pane"
+        <Card title={scheda.stato === 'CONFERMATA' ? 'Referto TD (PDF definitivo)' : scheda.riaperta_at && !anteprima ? `Referto TD emesso (versione ${scheda.versione})` : 'Anteprima referto TD'} icon="file" flush className="rf-pane"
           actions={anteprima?.docxUrl && scheda.stato === 'BOZZA' ? <a className="btn sm ghost" href={anteprima.docxUrl} download={`${nomeFile || 'Referto'}.docx`}><Icon name="doc" />DOCX di anteprima</a> : fileDocx ? <a className="btn sm ghost" href={`${apiBase}/file/${fileDocx.id}`}><Icon name="doc" />DOCX</a> : null}>
           {destraUrl ? <iframe title="Referto TD" src={destraUrl} className="rf-frame" /> : (
             <div className="rf-placeholder"><Icon name="eye" /><div>{editable ? 'Genera l\'anteprima per vedere il referto sul format Toscana Diagnostica. Si rigenera a ogni salvataggio.' : scheda.stato === 'SCARTATA' ? 'Scheda scartata: nessun referto prodotto.' : 'Anteprima disponibile al personale di laboratorio.'}</div>{editable && <button className="btn" disabled={busy} onClick={generaAnteprima}><Icon name="eye" />Genera anteprima</button>}</div>)}
@@ -236,6 +267,9 @@ export default function Scheda() {
 
       {modal === 'conferma' && <ConfirmModal title="Conferma la scheda" text={`Vengono generati "${nomeFile || scheda.nome_file}.docx" e il PDF sul format Toscana Diagnostica dopo il controllo di coerenza. Se il controllo non è superato la conferma si ferma e compare la checklist.`} confirmText="Conferma" onConfirm={() => conferma(false)} onClose={() => setModal(null)} />}
       {modal === 'forza' && <ConfirmModal title="Conferma comunque" danger text="Il controllo di coerenza segnala differenze tra la sorgente e il referto TD. Confermando comunque, la forzatura viene tracciata nel registro. Procedere solo dopo il controllo visivo dell'anteprima." confirmText="Conferma comunque" onConfirm={() => conferma(true)} onClose={() => setModal(null)} />}
+      {modal === 'riapri' && <ConfirmModal title="Riapri il referto" text={`La scheda torna in bozza e potrai modificarla. I file emessi (DOCX e PDF) restano in archivio fino alla nuova conferma, che li rigenera e li sostituisce.${partiti.length ? ' Il referto è già stato inviato al mittente: dopo la riconferma potrai reinviarlo (non parte da solo).' : ''} L'operazione resta nel registro.`} confirmText="Riapri" onConfirm={riapri} onClose={() => setModal(null)} />}
+      {modal === 'invia' && <ConfirmModal title={daReinviare ? 'Reinvia al mittente' : 'Invia al mittente'} text={`Il PDF del referto "${scheda.nome_file}.pdf" parte dalla casella dei referti verso ${scheda.from_email}, con oggetto "Toscana Diagnostica · Referto ${scheda.cognome_nome}" e nessun dato clinico nel testo.`} confirmText="Invia" onConfirm={() => invia(daReinviare)} onClose={() => setModal(null)} />}
+      {modal === 'reinvia' && <ConfirmModal title="Reinvia al mittente" text={`Questo PDF è già stato inviato a ${scheda.from_email}. Reinviarlo comunque?`} confirmText="Reinvia" onConfirm={() => invia(true)} onClose={() => setModal(null)} />}
       {modal === 'scarta' && <PromptModal title="Scarta la scheda" label="Motivo (facoltativo)" placeholder="Es. referto già trascritto, PDF duplicato" confirmText="Scarta" minLength={0} onConfirm={scarta} onClose={() => setModal(null)} />}
     </div>
   );

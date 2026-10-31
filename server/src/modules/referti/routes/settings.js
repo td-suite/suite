@@ -10,13 +10,16 @@ import { KEY, settings, setSetting, templateAttivo, registra } from '../lib/core
 import { verificaTemplate } from '../lib/docgen.js';
 import { sha256 } from '../lib/storage.js';
 import { storageMode } from '../lib/storage.js';
+import { config } from '../config.js';
+import { casella } from '../lib/casella.js';
 
 const r = Router();
 
 async function stato() {
   const imp = await settings();
   const tpl = await templateAttivo();
-  return { ...imp, template: tpl ? { id: tpl.id, filename: tpl.filename, size: tpl.size, created_at: tpl.created_at } : null, storage: storageMode() };
+  const mb = await casella(imp);
+  return { ...imp, casella_indirizzo: mb.address, casella_source: mb.source, template: tpl ? { id: tpl.id, filename: tpl.filename, size: tpl.size, created_at: tpl.created_at } : null, storage: storageMode() };
 }
 
 r.get('/settings', requireQualita, ah(async (_req, res) => res.json(await stato())));
@@ -27,7 +30,12 @@ r.put('/settings', requireQualita, ah(async (req, res) => {
     genera_pdf: z.boolean().optional(),
     retention_giorni: z.coerce.number().int().min(0).max(3650).optional(),
     suffisso_predefinito: z.enum(['ESAME', 'SORGENTE', 'DATA']).optional(),
+    // casella template@ (REFERTI_MAILBOX prevale sull'indirizzo salvato)
+    casella_indirizzo: z.string().trim().toLowerCase().email('Indirizzo della casella non valido').max(200).optional(),
+    casella_lettura: z.boolean().optional(),
+    invio_mittente: z.boolean().optional(),
   }), req.body || {});
+  if (b.casella_indirizzo !== undefined && config.mailboxEnv) delete b.casella_indirizzo;   // impostata da variabile d'ambiente: sola lettura
   for (const [k, v] of Object.entries(b)) if (v !== undefined) await setSetting(k, v, req.user.id);
   await registra('IMPOSTAZIONI', { user_id: req.user.id, dettagli: { chiavi: Object.keys(b) } });
   await audit(req, 'REFERTI_IMPOSTAZIONI', { module: KEY, entity: 'impostazioni', label: Object.keys(b).join(', ') });

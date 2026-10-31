@@ -26,7 +26,9 @@ export const isMaiuscola = (s) => { const t = compattaSpazi(s); return t.length 
 export const isSettoreNoto = (s) => SETTORI_NOTI.includes(compattaSpazi(s).toUpperCase());
 export const isPieDiPagina = (s) => /^\s*Pagina\s+\d+\s+(di|\/)\s+\d+/i.test(s) || /^\s*Pag\.\s*\d+/i.test(s);
 export const isSottoriga = (s) => /^(Metodo|Materiale|Sede Anatomica|Sede|Campione|Nuova descrizione dell'esame)\b/i.test(compattaSpazi(s));
-export const isLegenda = (s) => /^(S|I|R|MIC)\s*[=:]\s*\S/.test(compattaSpazi(s)) || /^R:\s*Resistente/i.test(compattaSpazi(s));
+// Legenda dell'antibiogramma: "S = …", "MIC = …", "R: Resistente …" e, nei referti Bianalisi stampati senza colonne (caso RECCHIA del
+// 31/10/2026), "Interpretazione Eucast:", "Sensibile = Sensibile, dosaggio standard", "Intermedio = Sensibile, aumentata esposizione (…"
+export const isLegenda = (s) => { const t = compattaSpazi(s); return /^(S|I|R|MIC|Sensibile|Resistente|Intermedio)\s*[=:]\s*\S/.test(t) || /^R:\s*Resistente/i.test(t) || /^Interpretazione\s+(EUCAST|CLSI)\b/i.test(t); };
 
 // Testo del laboratorio esterno che NON fa parte del riquadro dei risultati (indicazione del CEO del 29/10/2026: si trascrive solo il
 // riquadro): intestazione e piè del laboratorio, direttore/medico/richiedente, firme, diciture legali, partita IVA, contatti, righe di

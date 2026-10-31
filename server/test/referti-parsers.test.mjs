@@ -306,10 +306,13 @@ test('trapianto OpenXML: header, footer e media del template restano, document.x
   assert.match(xml, /<w:headerReference/); assert.match(xml, /w:top="2233"/);     // margini canonici sul template predefinito
   assert.match(xml, /KPC test di conferma/);
   assert.equal((xml.match(/<w:sectPr/g) || []).length, 1);
-  // template "utente": margini del template conservati
+  // template "utente": margini del template conservati, ma il superiore non scende sotto 2233 (correzione del 31/10/2026: con 1417 il
+  // riquadro paziente si addossava all'intestazione, caso RECCHIA)
   const tplBuf = fs.readFileSync(new URL('../src/modules/referti/templates/carta_intestata_default.docx', import.meta.url));
-  const z2 = new PizZip(trapianta(docx, tplBuf));
-  assert.match(z2.file('word/document.xml').asText(), /w:top="1417"/);
+  const xml2 = new PizZip(trapianta(docx, tplBuf)).file('word/document.xml').asText();
+  assert.match(xml2, /w:top="2233"/); assert.doesNotMatch(xml2, /w:top="1417"/);
+  const pgMarTpl = new PizZip(tplBuf).file('word/document.xml').asText().match(/<w:pgMar\b[^>]*\/>/)[0];
+  assert.equal(xml2.match(/<w:pgMar\b[^>]*\/>/)[0], pgMarTpl.replace(/w:top="\d+"/, 'w:top="2233"'), 'gli altri margini del template restano');
 });
 
 // Layout reale Nuova Igea (PDF del 29/10/2026, dati anonimizzati): nome da solo nella riga sopra "Data di nascita", "Carica Batterica" sulla
@@ -379,4 +382,71 @@ test('Nuova Igea, layout reale del 29/10/2026: nome, carica, antibiogramma su du
   assert.ok(!s.anomalie.some((a) => a.codice === 'RIGA_NON_INTERPRETATA' || a.codice === 'ANAGRAFICA_INCOMPLETA' || a.codice === 'CARICA_ASSENTE'), JSON.stringify(s.anomalie));
   const testo = testoDocx(await generaDocx(d));
   assert.equal(testo.split('\n').filter(Boolean)[0], 'ROSSI MARIA'); assert.ok(!testo.includes('PAZIENTE')); assert.ok(!testo.includes('Escherichia\ncoli')); assert.ok(!testo.includes('TOSCANA DIAGNOSTICA S.R.L.'));
+});
+
+// Caso RECCHIA del 31/10/2026 (righe di recchia.pdf, uscita sbagliata della Suite, anonimizzate in bianalisi_senza_colonne.txt: nome e
+// date inventati): l'antibiogramma Bianalisi stampato senza colonne ("Amoxicillina/Acido clavulanico Resistente - MIC 16") diventa la
+// tabella teal del modello STEFANI; l'esame nel formato del modello (titolo, Metodo/Materiale, tabella etichetta/valore con Esito e Carica)
+test('Bianalisi senza colonne (caso RECCHIA): antibiotici riconosciuti, settore, ESBL, legenda; conteggi di coerenza', () => {
+  const r = elabora({ pagine: pagine('bianalisi_senza_colonne') });
+  assert.equal(r.sorgente, 'BIANALISI'); assert.equal(r.schede.length, 1);
+  const s = r.schede[0]; const d = s.dati;
+  assert.deepEqual(codici(s), [], JSON.stringify(s.anomalie));
+  assert.equal(d.anagrafica.cognome_nome, 'VERDI ANNA');
+  assert.deepEqual(d.settori.map((x) => x.titolo), ['MICROBIOLOGIA']);     // "Microbiologia" in minuscolo è un settore noto
+  const righe = d.settori[0].righe;
+  const ab = righe.filter((x) => x.tipo === 'antibiotico');
+  assert.equal(ab.length, 15); assert.equal(d.conteggi.antibiotici_sorgente, 15); assert.equal(contaAntibiotici(d), 15);
+  assert.deepEqual(ab[0], { tipo: 'antibiotico', nome: 'Amoxicillina/Acido clavulanico', esito: 'Resistente', mic: '16' });
+  assert.deepEqual(ab[ab.length - 1], { tipo: 'antibiotico', nome: 'Trimetoprim/Sulfametoxazolo', esito: 'Resistente', mic: '>160' });
+  assert.deepEqual(righe.find((x) => x.nome === 'Germe Isolato'), { tipo: 'esame', nome: 'Germe Isolato', risultato: 'Escherichia coli', unita: '', riferimento: '' });
+  assert.equal(righe.find((x) => x.nome === 'ESBL').descrizione, '(Extended Spectrum Beta Lactamase)');
+  assert.equal(righe.filter((x) => x.tipo === 'legenda').length, 4);
+  assert.match(righe.filter((x) => x.tipo === 'legenda')[3].testo, /^Intermedio = .*nel sito di infezione\)$/);   // legenda a capo ricomposta
+  assert.deepEqual(righe[0].sotto, ['Metodo: Colturale']); assert.equal(righe[0].riferimento, 'Negativa');
+});
+
+test('Bianalisi senza colonne: referto TD come il modello (esame, Microrganismo #1, tabella S/I/R, riquadro senza trattini), coerenza verde', async () => {
+  const PizZip = (await import('pizzip')).default;
+  const s = elabora({ pagine: pagine('bianalisi_senza_colonne') }).schede[0];
+  const docx = await generaDocx(s.dati);
+  const testo = testoDocx(docx);
+  const righe = testo.split('\n').filter(Boolean);
+  assert.deepEqual(righe.slice(0, 5), ['VERDI ANNA', 'Data di nascita: 12/03/1980 (anni 46)', 'Sesso: F', 'Referto: R3YEA070011 del 28/10/2026', 'Accettazione: A3YEA070011 del 27/10/2026']);
+  assert.deepEqual(righe.slice(5, 10), ['MICROBIOLOGIA', 'Urinocoltura', 'Metodo: Colturale', 'Materiale: URINE', 'Ricerca completa microrganismi e lieviti patogeni']);
+  for (const [et, val] of [['Esito', 'POSITIVA'], ['Carica batterica', '10^5 UFC/mL'], ['Germe Isolato', 'Escherichia coli'], ['ESBL (Extended Spectrum Beta Lactamase)', 'Negativo']]) {
+    const i = righe.indexOf(et); assert.ok(i > 0, et); assert.equal(righe[i + 1], val, et);
+  }
+  assert.ok(righe.includes('Riferimento: Negativa'));
+  const i = righe.indexOf('Microrganismo #1: Escherichia coli'); assert.ok(i > 0);
+  // testata con la legenda breve del modello; l'interpretazione Eucast per esteso come nota sotto la tabella
+  assert.equal(righe[i + 1], 'R: Resistente I: Sensibile con aumentata esposizione al farmaco');
+  assert.deepEqual(righe.slice(i + 2, i + 8), ['Escherichia coli', '#1', 'MIC', 'Amoxicillina/Acido clavulanico', 'R', '16']);
+  assert.ok(righe.some((l) => /^Interpretazione Eucast: Resistente · Sensibile = Sensibile, dosaggio standard · Intermedio = /.test(l)), 'nota Eucast sotto la tabella');
+  assert.ok(!righe.some((l) => /Sensibile - MIC|Resistente - MIC/.test(l)), 'nessuna riga di testo "… - MIC"');
+  assert.ok(!/: -$/m.test(testo) && !righe.includes('Antibiogramma'));
+  // tabella teal: testata 004F5F, righe alternate EAF5F7, colonne del modello (4876 / 1928 / 1474 twip)
+  const xml = new PizZip(docx).file('word/document.xml').asText();
+  assert.match(xml, /w:fill="004F5F"/); assert.match(xml, /w:fill="EAF5F7"/); assert.match(xml, /<w:gridCol w:w="4876"\/><w:gridCol w:w="1928"\/><w:gridCol w:w="1474"\/>/);
+  const coe = controllaCoerenza({ datiOrig: s.dati, dati: s.dati, testoSorgente: s.testo_sorgente, testoDocx: testo });
+  assert.ok(coe.ok, JSON.stringify(coe.check.filter((c) => !c.ok)));
+});
+
+test('riquadro paziente: nessuna riga vuota con "-", etichette del modello, spazio sopra il riquadro e margine superiore minimo', async () => {
+  const PizZip = (await import('pizzip')).default;
+  const { righeRiquadro, SPAZIO_RIQUADRO } = await import('../src/modules/referti/lib/docgen.js');
+  // Bianalisi senza codici (era "Referto: -" e "Accettazione: -" in RECCHIA): le righe non compaiono
+  assert.deepEqual(righeRiquadro({ variante: 'B', cognome_nome: 'VERDI ANNA', data_nascita: '12/03/1980', eta: 46, sesso: 'F' }), [['Data di nascita', '12/03/1980 (anni 46)'], ['Sesso', 'F']]);
+  assert.deepEqual(righeRiquadro({ variante: 'A', accettazione_n: '2792', data_acc: '26/10/2026', data_nascita: '20/11/1949', sesso: 'F' }).map((x) => x[0]), ['Data di nascita', 'Sesso', 'Accettazione n°', 'Data Acc.']);
+  assert.deepEqual(righeRiquadro({ referto_codice: 'R3YEA1', accettazione_data: '27/10/2026' }), [['Referto', 'R3YEA1'], ['Accettazione', 'del 27/10/2026']]);
+  assert.deepEqual(righeRiquadro({ data_nascita: '', sesso: '  ', eta: 52 }), []);
+  const d = elabora({ pagine: pagine('bianalisi_senza_colonne') }).schede[0].dati;
+  const senza = JSON.parse(JSON.stringify(d)); for (const k of ['referto_codice', 'referto_data', 'accettazione_codice', 'accettazione_data', 'sesso']) delete senza.anagrafica[k];
+  const docx = await generaDocx(senza);
+  const testo = testoDocx(docx);
+  assert.ok(!/(Referto|Accettazione|Sesso):/.test(testo)); assert.ok(!/: -$/m.test(testo) && !/:\s*$/m.test(testo));
+  const xml = new PizZip(docx).file('word/document.xml').asText();
+  // primo paragrafo del corpo: spazio fisso sopra il riquadro (staccato dall'intestazione come nel modello STEFANI)
+  assert.match(xml.slice(xml.indexOf('<w:body>'), xml.indexOf('<w:tbl>')), new RegExp(`w:line="${SPAZIO_RIQUADRO}"`));
+  assert.match(xml, /w:top="2233"/);
 });

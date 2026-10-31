@@ -22,7 +22,14 @@ export const config = {
   ocrSogliaCaratteri: Number(env.REFERTI_OCR_SOGLIA || 40),
   // Intervallo del lavoro di retention (minuti)
   jobMinutes: Number(env.REFERTI_JOB_MINUTES || 720),
+  // Casella in lettura (richiesta del CEO del 31/10/2026): i PDF che arrivano a template@ diventano elaborazioni e il referto
+  // riprodotto riparte da qui al mittente. REFERTI_MAILBOX, se impostata, prevale sull'impostazione del modulo.
+  mailboxEnv: (env.REFERTI_MAILBOX || '').trim().toLowerCase(),
+  // Intervallo della lettura della casella (minuti)
+  inboxMinutes: Number(env.REFERTI_INBOX_MINUTES || 10),
 };
+
+export const MAILBOX_DEFAULT = 'template@toscanadiagnostica.it';
 
 // Impostazioni del modulo (app_settings dello schema) con i valori predefiniti
 export const SETTINGS_DEFAULT = {
@@ -30,4 +37,7 @@ export const SETTINGS_DEFAULT = {
   genera_pdf: true,
   retention_giorni: 0,          // 0 = i PDF sorgente non vengono mai eliminati
   suffisso_predefinito: 'ESAME',   // ESAME | SORGENTE | DATA: come si compone il suffisso tra parentesi quando il nome file esiste già
+  casella_indirizzo: 'template@toscanadiagnostica.it',   // casella letta (REFERTI_MAILBOX prevale)
+  casella_lettura: true,        // "Leggi la casella": job referti:inbox ogni 10 minuti
+  invio_mittente: true,         // "Invia al mittente": acceso di default (richiesta del CEO del 31/10/2026)
 };

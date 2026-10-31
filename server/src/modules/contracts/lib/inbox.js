@@ -8,48 +8,18 @@ import { one, many, q } from '../db.js';
 import { config } from '../config.js';
 import { config as suite } from '../../../config.js';
 import { extractText, quickFacts, summarizeCv } from './cv.js';
+import { graphConfigured, graphToken, graph, resolveMailbox } from '../../../lib/graphInbox.js';
 
 const CV_MIMES = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 const cvExt = (n) => /\.(pdf|docx?|rtf|odt)$/i.test(n || '');
 const SKIP_NAMES = /^(image\d*|logo|firma|signature|outlook|banner)/i;
 
-export const graphConfigured = () => Boolean(suite.mail.graph.tenantId && suite.mail.graph.clientId && suite.mail.graph.clientSecret);
 async function setting(key, def = null) { const r = await one('SELECT value FROM app_settings WHERE key=$1', [key]); return r ? r.value : def; }
 async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, String(value ?? '')]); }
 
-// graphToken, graph e resolveMailbox sono esportati: li riusa la casella People (lib/peopleMail.js, lib/peopleInbox.js)
-let token = { value: null, exp: 0 };
-export async function graphToken() {
-  if (token.value && Date.now() < token.exp - 60_000) return token.value;
-  const g = suite.mail.graph;
-  const res = await fetch(`https://login.microsoftonline.com/${g.tenantId}/oauth2/v2.0/token`, {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: g.clientId, client_secret: g.clientSecret, scope: 'https://graph.microsoft.com/.default', grant_type: 'client_credentials' }),
-  });
-  const j = await res.json();
-  if (!res.ok || !j.access_token) throw new Error(`Token Microsoft non ottenuto: ${j.error_description || res.status}`);
-  token = { value: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
-  return j.access_token;
-}
-export async function graph(path, { headers = {} } = {}) {
-  const t = await graphToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}`, ConsistencyLevel: 'eventual', ...headers } });
-  if (!res.ok) throw Object.assign(new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 300)}`), { status: res.status });
-  return res.json();
-}
-
-// La casella si cerca per nome utente, poi per indirizzo (mail o proxyAddresses): l'id dell'oggetto è la chiave sicura per le
-// chiamate di posta, anche quando il nome utente è sul dominio .onmicrosoft.com o l'indirizzo è un alias
-export async function resolveMailbox(address) {
-  const a = address.trim();
-  // Leggere l'oggetto utente richiede User.Read.All (applicativo): se manca, si usa l'indirizzo così com'è
-  try { const u = await graph(`/users/${encodeURIComponent(a)}?$select=id,mail,userPrincipalName,displayName`); return { ...u, how: 'nome utente' }; }
-  catch (e) { if (/403|Authorization_RequestDenied|Insufficient/i.test(e.message)) return { id: a, mail: a, userPrincipalName: a, displayName: a, how: 'indirizzo (senza verifica: manca il permesso User.Read.All)' }; if (!/404/.test(e.message)) throw e; }
-  const j = await graph(`/users?$filter=mail eq '${a.replace(/'/g, "''")}' or proxyAddresses/any(x:x eq 'smtp:${a.replace(/'/g, "''")}')&$select=id,mail,userPrincipalName,displayName&$count=true`);
-  const u = (j.value || [])[0];
-  if (!u) throw new Error(`Microsoft non trova nessun utente o casella con indirizzo "${a}" nel tenant delle credenziali della Suite (tenant ${suite.mail.graph.tenantId.slice(0, 8)}…): verifica che la casella condivisa sia in questo tenant e che l'indirizzo sia quello principale o un alias.`);
-  return { ...u, how: 'indirizzo' };
-}
+// graphConfigured, graphToken, graph e resolveMailbox vengono dalla lib condivisa della Suite (lib/graphInbox.js, usata anche dalla
+// casella template@ dei Referti esterni) e restano esportati da qui: li riusa la casella People (lib/peopleMail.js, lib/peopleInbox.js)
+export { graphConfigured, graphToken, graph, resolveMailbox };
 
 // Diagnosi passo per passo (pulsante "Prova la casella")
 export async function testInbox() {

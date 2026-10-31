@@ -1,5 +1,6 @@
 // Modulo Referti esterni (area Operations, solo personale di laboratorio): referti PDF dei laboratori esterni (Bianalisi, Cerba RDI
 // Limena, Cerba Nuova Igea) trascritti sul format Toscana Diagnostica in DOCX e PDF, con archivio per paziente e registro.
+// Casella template@toscanadiagnostica.it in lettura (job referti:inbox) con invio automatico del referto al mittente (lib/casella.js).
 // Nativo, si avvia vuoto (FRESH_MODULES). Accesso solo con grant (open_to_all FALSE): profili LAB (elabora e conferma),
 // QUALITA (registro e impostazioni), VIEWER (consultazione); Owner e Admin della Suite sono ADMIN del modulo.
 import { Router } from 'express';
@@ -16,6 +17,8 @@ import elaborazioniRoutes from './routes/elaborazioni.js';
 import schedeRoutes from './routes/schede.js';
 import archivioRoutes from './routes/archivio.js';
 import settingsRoutes from './routes/settings.js';
+import casellaRoutes from './routes/casella.js';
+import { pollCasella } from './lib/casella.js';
 
 const KEY = 'referti';
 
@@ -38,9 +41,12 @@ export default function mount(app) {
   r.use(schedeRoutes);
   r.use(archivioRoutes);
   r.use(settingsRoutes);
+  r.use(casellaRoutes);
   app.use(`/api/${KEY}`, r);
 
   // Retention dei PDF sorgente (scheduler della Suite, disattivabile con DISABLE_SCHEDULER)
   const live = async () => (await getModuleState(KEY)).mode === 'LIVE';
   registerJob(`${KEY}:retention`, config.jobMinutes, async () => (await live() ? applicaRetention() : { skipped: true, reason: 'modulo non LIVE' }), { runAtStart: false });
+  // Casella template@ (richiesta del CEO del 31/10/2026): PDF in arrivo → elaborazioni, conferma e invio automatici al mittente
+  registerJob(`${KEY}:inbox`, config.inboxMinutes, async () => (await live() ? pollCasella() : { skipped: true, reason: 'modulo non LIVE' }), { runAtStart: false });
 }

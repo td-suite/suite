@@ -143,3 +143,14 @@ Application Access Policy, l'inclusione di people@. Migrazioni: contracts 019_pe
 
 ## Claude: modello e prova (31/10/2026)
 In Amministrazione > Impostazioni > Claude, oltre alla chiave, si imposta il modello in uso (`anthropic_model` in public.app_settings, prevale su ANTHROPIC_MODEL; predefinito claude-sonnet-4-5) e "Prova la configurazione" elenca i modelli disponibili per la chiave e fa una richiesta minima. Gli errori del servizio arrivano agli utenti in chiaro (422 AI_ERROR: chiave non valida, modello non disponibile, credito esaurito, risposta troncata) invece di "Errore interno del server".
+
+## Referti esterni: casella template@ (31/10/2026)
+Variabili d'ambiente (facoltative): `REFERTI_MAILBOX` casella letta e mittente dei referti riprodotti (predefinita
+template@toscanadiagnostica.it; se impostata prevale sull'impostazione del modulo, che in Impostazioni diventa in sola lettura);
+`REFERTI_INBOX_MINUTES` intervallo della lettura (10). Impostazioni in app (`referti.app_settings`, Referti esterni > Impostazioni,
+profili QUALITA e admin): `casella_indirizzo`, `casella_lettura` (true), `invio_mittente` (true: richiesta del CEO); stato interno
+`casella_since`, `casella_ultima_lettura`, `casella_errore`. Richiede sull'app registration della Suite i permessi applicativi Microsoft
+Graph **Mail.Read** e **Mail.Send** con consenso amministratore e, se c'è una Application Access Policy, l'inclusione di template@
+(altrimenti "Prova la casella" / "Prova l'invio" rispondono 403 con il motivo). Con `MAIL_PROVIDER=log` gli invii restano nel registro
+email (stato REGISTRATO). `POST /api/referti/inbox/simula` funziona solo con `NODE_ENV` diverso da production. Migrazione: referti
+004_casella_invii_riapertura.sql.

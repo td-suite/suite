@@ -79,3 +79,15 @@
 .rf-steps { padding-left: 20px; display: grid; gap: 8px; line-height: 1.5; }
 .rf-guide p { line-height: 1.55; }
 .rf-dett { min-width: 300px; max-width: 420px; white-space: normal; }
+
+/* Casella template@ e invio al mittente (31/10/2026) */
+.rf-two-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 1000px) { .rf-two-cols { grid-template-columns: 1fr; } }
+.rf-stato { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 16px; margin-bottom: 8px; }
+.rf-stato > div > div { margin-top: 2px; font-size: 13.5px; }
+.rf-ko { color: #a12a2a; }
+.rf-invii { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rf-invii li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.rf-mittente { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rf-origine { display: inline-flex; gap: 4px; align-items: center; }
+.rf-origine .ico, .rf-origine svg { width: 14px; height: 14px; }

@@ -6,7 +6,7 @@ import { api, base, useApi } from '../api.js';
 import { useAuth, isLab } from '../index.jsx';
 import { Card, Loading, Empty, PageHead, Badge, DropZone, useToast, ConfirmModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { SORGENTE, STATO_SCHEDA, STATO_ELAB, itDateTime, kb, pagineLabel } from '../format.js';
+import { SORGENTE, STATO_SCHEDA, STATO_ELAB, ORIGINE, itDateTime, kb, pagineLabel } from '../format.js';
 
 export const SorgenteBadge = ({ s }) => <Badge tone={SORGENTE[s]?.tone || 'grey'} dot={false}>{SORGENTE[s]?.breve || s || '-'}</Badge>;
 export const StatoBadge = ({ s }) => <Badge tone={STATO_SCHEDA[s]?.tone || 'grey'}>{STATO_SCHEDA[s]?.label || s}</Badge>;
@@ -73,7 +73,7 @@ export default function Inbox() {
 
   return (
     <div className="page">
-      <PageHead title="Inbox" icon="upload" sub="Carica i PDF dei laboratori esterni (Bianalisi Firenze, Cerba RDI Limena, Cerba Nuova Igea). Ogni paziente diventa una scheda da controllare e confermare: la conferma produce il DOCX e il PDF sul format Toscana Diagnostica." />
+      <PageHead title="Inbox" icon="upload" sub="Carica i PDF dei laboratori esterni (Bianalisi Firenze, Cerba RDI Limena, Cerba Nuova Igea) oppure inoltrali alla casella dei referti (template@): ogni paziente diventa una scheda da controllare e confermare. La conferma produce il DOCX e il PDF sul format Toscana Diagnostica; per le mail il PDF riparte al mittente." />
 
       {lab ? (
         <Card title="Carica referti" icon="upload">
@@ -102,7 +102,8 @@ export default function Inbox() {
             <thead><tr><th>Paziente</th><th>Sorgente</th><th>Accettazione / Referto</th><th>Pagine</th><th>Anomalie</th><th>Caricata</th><th></th></tr></thead>
             <tbody>{bozze.data.map((s) => (
               <tr key={s.id} className="click" onClick={() => nav(`${base}/schede/${s.id}`)}>
-                <td><div className="strong">{s.cognome_nome || <span className="muted">senza nome</span>}</div><div className="small muted">{s.data_nascita}{s.sesso ? ` · ${s.sesso}` : ''}</div></td>
+                <td><div className="strong">{s.cognome_nome || <span className="muted">senza nome</span>}</div><div className="small muted">{s.data_nascita}{s.sesso ? ` · ${s.sesso}` : ''}</div>
+                  {s.riaperta_at && <Badge tone="amber" dot={false}>Riaperto</Badge>}{s.origine === 'CASELLA' && <Badge tone="teal" dot={false} title={s.from_email || ''}>Dalla casella</Badge>}</td>
                 <td><SorgenteBadge s={s.sorgente} />{s.ocr && <> <Badge tone="amber" dot={false}>OCR</Badge></>}</td>
                 <td className="small">{s.accettazione || s.referto_codice || '-'}{s.data_acc || s.referto_data ? <div className="muted">{s.data_acc || s.referto_data}</div> : null}</td>
                 <td className="small">{pagineLabel(s.pagine)}<div className="muted ellipsis" style={{ maxWidth: 180 }} title={s.elaborazione_filename}>{s.elaborazione_filename}</div></td>
@@ -119,11 +120,12 @@ export default function Inbox() {
             <thead><tr><th>File</th><th>Sorgente</th><th>Stato</th><th>Schede</th><th>Caricato</th><th></th></tr></thead>
             <tbody>{elab.data.map((e) => (
               <tr key={e.id}>
-                <td><div className="strong ellipsis" style={{ maxWidth: 320 }} title={e.filename}>{e.filename}</div><div className="small muted">{kb(e.size)} · {e.pagine} {e.pagine === 1 ? 'pagina' : 'pagine'}{e.ocr ? ' · OCR' : ''}</div></td>
+                <td><div className="strong ellipsis" style={{ maxWidth: 320 }} title={e.filename}>{e.filename}</div><div className="small muted">{kb(e.size)} · {e.pagine} {e.pagine === 1 ? 'pagina' : 'pagine'}{e.ocr ? ' · OCR' : ''}</div>
+                  {e.origine === 'CASELLA' && <div className="small"><Badge tone={ORIGINE.CASELLA.tone} dot={false}>Casella</Badge> <span className="muted ellipsis" title={e.subject || ''}>{e.from_email || 'mittente sconosciuto'}</span></div>}</td>
                 <td><SorgenteBadge s={e.sorgente} /></td>
                 <td><Badge tone={STATO_ELAB[e.stato]?.tone || 'grey'}>{STATO_ELAB[e.stato]?.label || e.stato}</Badge>{e.motivo_scarto && <div className="small muted" style={{ maxWidth: 320 }}>{e.motivo_scarto}</div>}</td>
                 <td className="small">{e.n_schede ? <>{e.n_schede} {e.n_schede === 1 ? 'scheda' : 'schede'}<div className="muted">{e.n_bozze ? `${e.n_bozze} da confermare` : ''}{e.n_bozze && e.n_confermate ? ', ' : ''}{e.n_confermate ? `${e.n_confermate} confermate` : ''}{e.n_scartate ? `, ${e.n_scartate} scartate` : ''}</div></> : <span className="muted">-</span>}</td>
-                <td className="small muted">{itDateTime(e.created_at)}<div>{e.uploaded_by_nome}</div></td>
+                <td className="small muted">{itDateTime(e.created_at)}<div>{e.uploaded_by_nome || (e.origine === 'CASELLA' ? 'lettura automatica' : '')}</div></td>
                 <td className="actions">{lab && e.n_verdi > 0 && <button className="btn sm" disabled={busy} onClick={() => setVerdi(e)}><Icon name="check" />Conferma tutte le verdi ({e.n_verdi})</button>}
                   {lab && <button className="btn sm ghost danger" title="Elimina il PDF con le sue schede e i file prodotti" disabled={busy} onClick={() => setElimina({ e, force: e.n_confermate > 0, confermate: e.n_confermate })}><Icon name="trash" /></button>}</td>
               </tr>))}</tbody>

@@ -1,0 +1,46 @@
+BIANALISI S.p.A. Laboratorio Firenze
+Via dei Laboratori 12 - 50100 Firenze (FI) - Direttore: dott. M. Bianchi
+Referto R3YEA070011 del 28/10/2026                                             Accettazione A3YEA070011 del 27/10/2026
+VERDI ANNA                                                                     F-12/03/1980 (anni 46) TOLAFI
+Medico richiedente: dott. G. Esposito                                          Reparto: Service Toscana Diagnostica
+Analisi                                                         Risultati               Intervalli di Riferimento
+
+Microbiologia
+U - Urinocoltura POSITIVA Ricerca completa                                                  Negativa
+microrganismi e lieviti patogeni
+Metodo: Colturale
+
+Carica batterica                                                         10^5 UFC/mL
+Metodo: Colturale
+Materiale URINE
+Antibiogramma
+Interpretazione Eucast:
+Resistente
+Sensibile = Sensibile, dosaggio standard
+Intermedio = Sensibile, aumentata esposizione (l'esposizione dipende da dose, modalità ed intervallo
+di somministrazione dell'agente antimicrobico e dalla sua distribuzione nel sito di infezione)
+Germe Isolato Escherichia coli
+Amoxicillina/Acido clavulanico Resistente - MIC 16
+Ampicillina Resistente - MIC >16
+Cefalexina Sensibile - MIC 8
+Cefixime Sensibile - MIC <=0,25
+Cefpodoxime Sensibile - MIC <=0,25
+Ceftazidime Sensibile - MIC <=0,12
+Ceftriaxone Sensibile - MIC <=0,25
+Ertapenem Sensibile - MIC <=0,12
+Meropenem Sensibile - MIC <=0,25
+ESBL Negativo
+(Extended Spectrum Beta Lactamase)
+Amikacina Sensibile - MIC 2
+Gentamicina Sensibile - MIC <=1
+Ciprofloxacina Sensibile - MIC <=0,06
+Levofloxacina Sensibile - MIC <=0,12
+Nitrofurantoina Sensibile - MIC <=16
+Trimetoprim/Sulfametoxazolo Resistente - MIC >160
+
+
+Firma: Il Direttore del Laboratorio dott. M. Bianchi (documento firmato digitalmente ai sensi del D.Lgs. 82/2005)
+Il presente referto non puo' essere riprodotto parzialmente. Bianalisi S.p.A. - P.IVA 01234567890
+
+Pagina 1 di 1                                                                  Referto R3YEA070011 - VERDI ANNA
+

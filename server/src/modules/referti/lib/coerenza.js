@@ -6,6 +6,7 @@
 // legale nel corpo. Esito come checklist [{ codice, ok, testo, dettagli }].
 import { pulisci, compattaSpazi } from './text.js';
 import { campiMancanti, isTestataTabella, isFirma, isDicituraLegale, isPieDiPagina } from './parsers/common.js';
+import { sirDi } from './micro.js';
 
 const norm = (s) => compattaSpazi(pulisci(s)).toLowerCase().replace(/\s*([<>=:/,.-])\s*/g, '$1');
 const SIR = new Set(['s', 'i', 'r']);
@@ -23,7 +24,8 @@ export function tokenRisultati(dati) {
   const add = (v) => { for (const tk of tokenDi(v)) out.push(tk); };
   for (const s of dati.settori || []) for (const r of s.righe || []) {
     if (r.tipo === 'esame') { add(r.risultato); add(r.unita); add(r.riferimento); }
-    else if (r.tipo === 'antibiotico') { add(r.esito); add(r.mic); }
+    // esito come lettera S / I / R: nel referto TD l'antibiogramma Bianalisi è la tabella teal del modello (correzione del 31/10/2026)
+    else if (r.tipo === 'antibiotico') { add(sirDi(r.esito)); add(r.mic); }
   }
   for (const e of dati.esami || []) for (const c of e.campi || []) add(c.valore);
   for (const b of dati.antibiogrammi || []) { add(b.carica); for (const r of b.righe || []) { add(r.sir); add(r.mic); } }
@@ -102,7 +104,8 @@ export function controllaCoerenza({ datiOrig, dati, testoSorgente, testoDocx }) 
   check.push({ codice: 'N_ANTIBIOTICI', ok: nNow === atteso, testo: `Numero di antibiotici: ${nNow} nel referto TD, ${atteso} nella sorgente`, dettagli: { sorgente: atteso, scheda: nNow } });
   // 3. nessun numero in più nel DOCX rispetto alla sorgente
   const numSorg = numeri(testoSorgente || '');
-  const numDocx = numeri(testoDocx.split('\n').filter((l) => !ETICHETTE_TD.some((e) => norm(l).startsWith(norm(e)) && norm(l).length < 40)).join('\n'));
+  // "#n" del microrganismo (testata della tabella e "Microrganismo #n") è prodotto dal generatore: non è un numero della sorgente
+  const numDocx = numeri(testoDocx.replace(/#\d+/g, '#').split('\n').filter((l) => !ETICHETTE_TD.some((e) => norm(l).startsWith(norm(e)) && norm(l).length < 40)).join('\n'));
   // l'età "(anni NN)" e il numero del microrganismo "#n" sono prodotti dal generatore ma vengono dalla sorgente
   const extra = [...numDocx].filter((n) => !numSorg.has(n) && !(dati.anagrafica?.eta != null && String(dati.anagrafica.eta) === n) && !(dati.antibiogrammi || []).some((b) => String(b.n) === n));
   check.push({ codice: 'NUMERI_IN_PIU', ok: extra.length === 0, testo: extra.length ? `Numeri nel referto TD assenti nella sorgente: ${extra.slice(0, 10).join(', ')}` : 'Nessun numero in più rispetto alla sorgente', dettagli: extra.slice(0, 40) });

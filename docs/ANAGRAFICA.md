@@ -760,6 +760,50 @@ Registro con le due nuove azioni e dettagli. Collaudo su db dedicato (porta 3123
 registro, badge; test 31/31, build Vite.
 
 
+## Referti esterni: casella template@, invio al mittente, riapertura, riquadro e antibiogramma come il modello (31/10/2026)
+Richiesta del CEO: "metti in lettura la mail template@toscanadiagnostica.it. I PDF che arrivano mettili in lavorazione [...] continui
+a sbagliare il riquadro celeste del paziente [...] Una volta riprodotto il referto, invialo in automatico da template@ al mittente
+della mail [...] Permetti sempre di poter riaprire il referto emesso e di modificarlo, oltre che fare il download del word dall'archivio".
+- **Resa** (`lib/docgen.js`, modello STEFANI della routine del Laboratorio, confronto con l'uscita sbagliata RECCHIA): riquadro paziente
+  con le sole righe valorizzate (`righeRiquadro`: mai "Referto: -"), spazio fisso di 200 twip sopra il riquadro e margine superiore
+  minimo 2233 twip anche con il template caricato (`alzaMargineSuperiore`; gli altri margini del template restano). Corpo 1 Bianalisi:
+  blocco microbiologico reso come il modello (`lib/micro.js partiSettore`, funzione pura alla generazione, dati della scheda invariati):
+  esame con Metodo/Materiale e tabella etichetta/valore (Esito con Riferimento, Germe Isolato, Carica, ESBL), "Microrganismo #n" e
+  tabella teal (4876/1928/1474 twip) con S / I / R e MIC. Parser corpo 1: righe Bianalisi senza colonne (antibiotico, Germe Isolato,
+  ESBL con descrizione, legenda EUCAST a capo, "Antibiogramma", settore noto in minuscolo). Coerenza: esito dell'antibiotico confrontato
+  come lettera S/I/R; `#n` del microrganismo escluso dal controllo "numeri in più".
+- **Schema `referti`** (migrazione 004): `elaborazioni.origine` UPLOAD|CASELLA, `graph_id`, `from_email`, `from_name`, `subject`,
+  `received_at`, `message_id` (indice unico parziale su graph_id + sha256); `messaggi_casella` (ogni messaggio letto: esito IMPORTATO,
+  IGNORATO, DUPLICATO, `simulato`); `schede.versione`, `riaperta_at`, `riaperta_by`; `invii` (scheda, to_email, from_email, stato
+  INVIATO|REGISTRATO|FALLITO, message_id = `email_log:<id>`, errore, file_sha256, versione, automatico, user_id NULL se automatico).
+- **Casella** (`lib/casella.js`, lettura con la lib condivisa `server/src/lib/graphInbox.js`, estratta da contracts/lib/inbox.js che
+  ora la riesporta senza cambiare comportamento): job `referti:inbox` ogni `REFERTI_INBOX_MINUTES` (10) con modulo LIVE, interruttore
+  `casella_lettura` e Graph configurato (DISABLE_SCHEDULER lo ferma come gli altri). Cursore `casella_since` (prima lettura: 2 giorni),
+  `casella_ultima_lettura`, `casella_errore` (motivo leggibile). Per ogni messaggio nuovo: un'elaborazione per allegato PDF con il parser
+  di sempre; senza PDF → `messaggi_casella` IGNORATO e registro `CASELLA_IGNORATO`.
+- **Flusso automatico** (`lib/regoleInvio.js`, funzioni pure con test): coerenza verde e nessuna anomalia → `confermaScheda(…,
+  { automatica: true })` (confirmed_by NULL, registro `CONFERMATA_AUTO`) e invio; altrimenti BOZZA e notifica in app ai grant LAB del
+  modulo (in mancanza Owner/Admin) "Referto da verificare: <nome file>" con link alla scheda. Alla conferma manuale (e "Conferma tutte le
+  verdi") di una scheda CASELLA il PDF parte se `invio_mittente` è acceso e la scheda non è mai partita per quel destinatario.
+  "Invia al mittente" manuale (`POST /schede/:id/invia`) non rimanda lo stesso file (sha256) allo stesso indirizzo; "Reinvia"
+  (`{ reinvia: true }`) è l'azione esplicita. Mail: `lib/mailer.js sendMail({ from: template@, logSubject })`: oggetto vero
+  "Toscana Diagnostica · Referto COGNOME NOME" solo verso Graph; nel registro email e nel log del server "Referto (scheda N)".
+- **Riapertura** (`POST /schede/:id/riapri`, LAB): CONFERMATA → BOZZA con file conservati (l'archivio mostra la riga "Riaperto, in
+  modifica" con i file emessi), registro `RIAPERTA`; PATCH di nuovo ammesso; scarto bloccato su una scheda riaperta. Riconferma: file
+  rigenerati nella stessa scheda (versione + 1, blob vecchi eliminati), registro CONFERMATA con `versione` e `riconferma`; nessun
+  reinvio automatico: scheda e archivio propongono "Reinvia al mittente" (`da_reinviare`: confermata dopo l'ultimo invio). Scelta sulla
+  catena `sostituisce_id`/`sostituita_da`: resta quella della prima conferma (la riconferma non crea nuove sostituzioni verso sé stessa).
+- **API**: `GET /casella`, `POST /casella/prova`, `/casella/prova-invio`, `/casella/leggi` (QUALITA/admin), `POST /inbox/simula`
+  (multipart `file`, `from_email`, `from_name`, `subject`; solo `NODE_ENV` diverso da production, LAB), `PUT /settings` con
+  `casella_indirizzo`, `casella_lettura`, `invio_mittente`; `GET /archivio?origine=UPLOAD|CASELLA` con `origine`, `from_email`,
+  `ultimo_invio`, `da_reinviare`, `versione`, referti riaperti; registro con le azioni CONFERMATA_AUTO, RIAPERTA, INVIATO,
+  INVIO_FALLITO, CASELLA_IGNORATO.
+- **Web**: Impostazioni > "Casella dei referti da trasformare" (indirizzo, interruttori, Prova la casella, Prova l'invio, Leggi ora,
+  stato); Scheda con mittente, invii, "Riapri", "Invia al mittente", "Reinvia"; Archivio con filtro Origine, colonna Origine e invio,
+  DOCX/PDF, "Apri", "Reinvia"; Inbox con badge Casella e Riaperto. Screenshot docs/screens/referti-{impostazioni,scheda-invio,archivio}.png.
+- **Da verificare**: permessi Graph applicativi Mail.Read e Mail.Send sulla casella template@ (e inclusione nella Application Access
+  Policy, se presente); PDF sorgente di RECCHIA da chiedere al CEO per la verifica definitiva del parser Bianalisi senza colonne.
+
 ## Audit SGI: sedi, partner e allineamento al SGI (29/10/2026)
 Modulo nativo `audit` in HQS (docs/AUDIT_SGI.md). Nessuna anagrafica propria: gli audit puntano a `public.sites` (`site_id`, sedi con kind
 diverso da SERVICE; auto-audit mensile per PUNTO_PRELIEVI, CENTRO_DIAGNOSTICO, CENTRO_MEDICO, POLIAMBULATORIO, LABORATORIO) e a

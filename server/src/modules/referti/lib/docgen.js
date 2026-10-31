@@ -10,6 +10,7 @@ import {
 } from 'docx';
 import { docxToPdf } from '../../business/lib/docgen.js';
 import { pulisci } from './text.js';
+import { partiSettore } from './micro.js';
 
 const TPL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
 export const TEMPLATE_DEFAULT = path.join(TPL_DIR, 'carta_intestata_default.docx');
@@ -21,10 +22,16 @@ const W = 9638;                       // larghezza utile A4 con margini 2 cm
 const COL1 = [3969, 3061, 2608];      // corpo 1: esame | risultato | riferimento
 const COL2 = [4309, 3628, 1701];      // corpo 2: etichetta | valore | (unità)
 const COL2B = [4600, 5038];           // corpo 2 (modello Laboratorio): etichetta | valore con unità
-const COLAB = [4876, 1928, 1474];     // antibiogramma: antibiotico | S/I/R | MIC
+const COLAB = [4876, 1928, 1474];     // antibiogramma: antibiotico | S/I/R | MIC (come il modello STEFANI)
 const RIQUADRO = 4479;
 // Margini canonici (twip): superiore 3,94 cm, altri 2 cm
 export const PGMAR = { top: 2233, right: 1134, bottom: 1134, left: 1134 };
+// Riquadro paziente staccato dall'intestazione come nel modello (STEFANI, correzione del CEO del 31/10/2026 sul caso RECCHIA): il
+// margine superiore non scende mai sotto quello canonico, nemmeno con il template caricato dalle Impostazioni (l'intestazione con
+// immagini ancorate non sposta il corpo: con un margine di 2,5 cm il riquadro si addossava al logo), e sopra il riquadro c'è uno
+// spazio fisso. Bordo superiore del riquadro a ~4,3 cm dal bordo pagina, ~0,9 cm sotto i contatti dell'intestazione.
+export const TOP_MINIMO = PGMAR.top;
+export const SPAZIO_RIQUADRO = 200;
 
 const none = { style: BorderStyle.NONE, size: 0, color: 'auto' };
 const NOB = { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none };
@@ -47,27 +54,27 @@ const cell = (children, w, o = {}) => new TableCell({
 const table = (rows, widths, o = {}) => new Table({ rows, columnWidths: widths, width: { size: widths.reduce((a, b) => a + b, 0), type: WidthType.DXA }, layout: TableLayoutType.FIXED, borders: o.borders || NOB, alignment: o.align });
 const spacer = (h = 120) => new Paragraph({ children: [new TextRun({ text: '', size: 2 })], spacing: { before: 0, after: 0, line: h, lineRule: 'exact' } });
 
-// Riquadro anagrafico a destra (4479 twip) come il modello del CEO (ref_user.pdf, 29/10/2026): titolo "PAZIENTE" 12 pt bold 004F5F,
-// sotto il nome del paziente 9 pt bold 5A6B70; righe 8,5 pt Data di nascita (con "(anni NN)" se disponibile), Sesso, poi Accettazione n° + Data Acc. (variante A)
-// oppure Referto + Accettazione con codice e data (variante B, Bianalisi); Luogo di nascita e Indirizzo SOLO se valorizzati (nessuna riga
-// vuota né trattino). Sotto il riquadro nessun riferimento al laboratorio esterno.
+// Riquadro anagrafico a destra (4479 twip) come il modello della routine del Laboratorio (STEFANI UGHETTA, 29/10/2026): il titolo del
+// riquadro è il nome del paziente, 12 pt bold 004F5F; sotto le righe 8,5 pt (etichetta grigia, valore bold) Data di nascita (con
+// "(anni NN)" se disponibile), Sesso, Referto e Accettazione (codice e data, Bianalisi), Accettazione n°, Data Acc., Luogo di nascita,
+// Indirizzo. Una riga si stampa SOLO se il valore c'è (correzione del CEO del 31/10/2026: mai righe vuote con "-").
+export function righeRiquadro(a = {}) {
+  const v = (x) => String(x ?? '').trim();
+  const conData = (codice, data) => [v(codice), v(data) ? `del ${v(data)}` : ''].filter(Boolean).join(' ');
+  const out = [];
+  if (v(a.data_nascita)) out.push(['Data di nascita', v(a.eta) ? `${v(a.data_nascita)} (anni ${v(a.eta)})` : v(a.data_nascita)]);
+  if (v(a.sesso)) out.push(['Sesso', v(a.sesso)]);
+  if (v(a.referto_codice) || v(a.referto_data)) out.push(['Referto', conData(a.referto_codice, a.referto_data)]);
+  if (v(a.accettazione_codice) || v(a.accettazione_data)) out.push(['Accettazione', conData(a.accettazione_codice, a.accettazione_data)]);
+  if (v(a.accettazione_n)) out.push(['Accettazione n°', v(a.accettazione_n)]);
+  if (v(a.data_acc)) out.push(['Data Acc.', v(a.data_acc)]);
+  if (v(a.luogo_nascita)) out.push(['Luogo di nascita', v(a.luogo_nascita)]);
+  if (v(a.indirizzo)) out.push(['Indirizzo', v(a.indirizzo)]);
+  return out;
+}
 function riquadroAnagrafico(a) {
-  const riga = (label, value) => p([t(`${label}: `, { size: 17, color: C.etichetta }), t(value || '-', { size: 17, bold: true })], { after: 20, line: 240 });
-  // "PAZIENTE" è il titolo del riquadro (12 pt bold 004F5F), sotto il nome del paziente (9 pt bold 5A6B70), poi le righe 8,5 pt
-  // Modello della routine del Laboratorio (referti del 29/10/2026, STEFANI UGHETTA / SENSI ROMANA / DINE KATERINA): il titolo del riquadro
-  // è il nome del paziente, 12 pt bold 004F5F; sotto le righe 8,5 pt
-  const righe = [p(t(a.cognome_nome || 'PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 60, line: 276 })];
-  righe.push(riga('Data di nascita', a.eta != null && a.eta !== '' ? `${a.data_nascita || '-'} (anni ${a.eta})` : a.data_nascita));
-  righe.push(riga('Sesso', a.sesso));
-  if (a.variante === 'B' || a.referto_codice || a.accettazione_codice) {
-    righe.push(riga('Referto', [a.referto_codice, a.referto_data ? `del ${a.referto_data}` : ''].filter(Boolean).join(' ')));
-    righe.push(riga('Accettazione', [a.accettazione_codice, a.accettazione_data ? `del ${a.accettazione_data}` : ''].filter(Boolean).join(' ')));
-  } else {
-    righe.push(riga('Accettazione n°', a.accettazione_n));
-    righe.push(riga('Data Acc.', a.data_acc));
-  }
-  if (a.luogo_nascita) righe.push(riga('Luogo di nascita', a.luogo_nascita));
-  if (a.indirizzo) righe.push(riga('Indirizzo', a.indirizzo));
+  const riga = ([label, value]) => p([t(`${label}: `, { size: 17, color: C.etichetta }), t(value, { size: 17, bold: true })], { after: 20, line: 240 });
+  const righe = [p(t(a.cognome_nome || 'PAZIENTE', { size: 24, bold: true, color: C.titolo }), { after: 60, line: 276 }), ...righeRiquadro(a).map(riga)];
   return table([new TableRow({ children: [cell(righe, RIQUADRO, { fill: C.riquadro, margins: { top: 120, bottom: 120, left: 180, right: 180 },
     borders: { ...cellNOB, left: { style: BorderStyle.SINGLE, size: 24, color: C.accento } } })] })], [RIQUADRO], { align: AlignmentType.RIGHT });
 }
@@ -97,17 +104,25 @@ function rigaAntibiotico1(r) {
 }
 const rigaSpan = (testo, o = {}) => new TableRow({ cantSplit: true, children: [cell(p(t(testo, { size: o.size || 15, color: o.color || C.etichetta }), { after: 0, line: 220 }), W, { span: 3 })] });
 
+function tabella1(righe) {
+  const rows = righe.map((r) => {
+    if (r.tipo === 'antibiotico') return rigaAntibiotico1(r);
+    if (r.tipo === 'legenda') return rigaSpan(r.testo);
+    if (r.tipo === 'testo') return rigaSpan(r.testo, { size: 18, color: C.testo });
+    return rigaEsame1(r);
+  });
+  return rows.length ? [table(rows, COL1)] : [];
+}
+// Corpo 1: tabella a tre colonne; il blocco microbiologico con antibiogramma (Bianalisi) è reso come il modello del Laboratorio:
+// esame con Metodo/Materiale e tabella etichetta/valore, poi "Microrganismo #n" e tabella teal (lib/micro.js partiSettore)
 function corpo1(dati) {
   const out = [];
   for (const s of dati.settori || []) {
     if (s.titolo) out.push(titoloSettore(s.titolo));   // titolo di settore solo se la sorgente lo ha
-    const rows = (s.righe || []).map((r) => {
-      if (r.tipo === 'antibiotico') return rigaAntibiotico1(r);
-      if (r.tipo === 'legenda') return rigaSpan(r.testo);
-      if (r.tipo === 'testo') return rigaSpan(r.testo, { size: 18, color: C.testo });
-      return rigaEsame1(r);
-    });
-    if (rows.length) out.push(table(rows, COL1));
+    for (const parte of partiSettore(s.righe)) {
+      if (parte.tipo === 'righe') out.push(...tabella1(parte.righe));
+      else out.push(...esameModello(parte), ...parte.antibiogrammi.flatMap((b) => antibiogramma(b)));
+    }
   }
   return out;
 }
@@ -130,8 +145,33 @@ function antibiogramma(b) {
     cell(p(t(r.mic || '', { size: 18 }), { after: 0, line: 240, align: AlignmentType.CENTER }), COLAB[2], { fill: i % 2 ? C.riquadro : C.bianco, margins: { top: 40, bottom: 40, left: 80, right: 80 } }),
   ] }));
   out.push(table([hdr, ...rows], COLAB));
+  if (b.nota_legenda) out.push(p(t(b.nota_legenda, { size: 14, italics: true, color: C.etichetta }), { before: 60, after: 0, line: 220 }));
   return out;
 }
+// Esame come il modello della routine del Laboratorio: titolo in teal maiuscolo, Metodo / Materiale / Sede / nota ognuno sulla sua riga,
+// tabella etichetta/valore con filetto (valore bold teal; riferimento, se c'è, sotto il valore in grigio)
+function esameModello(e) {
+  const out = [];
+  if (e.titolo) out.push(p(t(e.titolo, { size: 21, bold: true, color: C.titolo, caps: true }), { before: 180, after: 20, keepNext: true }));
+  for (const m of [e.metodo ? `Metodo: ${e.metodo}` : null, e.materiale ? `Materiale: ${e.materiale}` : null, e.sede ? `Sede Anatomica: ${e.sede}` : null, ...(e.altre || []), e.nota || null].filter(Boolean)) {
+    out.push(p(t(m, { size: 15, color: C.etichetta }), { after: 0, line: 220, keepNext: true }));
+  }
+  if (e.campi?.length) out.push(spacer(100));
+  const sep = { ...cellNOB, bottom: { style: BorderStyle.SINGLE, size: 4, color: C.linea } };
+  const mar = { top: 70, bottom: 70, left: 60, right: 60 };
+  const rows = (e.campi || []).map((c) => {
+    if (c.libero || !c.etichetta) return new TableRow({ cantSplit: true, children: [cell(p(t(c.valore, { size: 19 }), { after: 0, line: 252 }), W, { span: 2, borders: sep, margins: mar })] });
+    const valore = [p(t(`${c.valore}${c.unita ? ` ${c.unita}` : ''}`, { size: 18, bold: true, color: C.titolo }), { after: 0, line: 252 })];
+    if (c.riferimento) valore.push(p(t(`Riferimento: ${c.riferimento}`, { size: 15, color: C.etichetta }), { after: 0, line: 220 }));
+    return new TableRow({ cantSplit: true, children: [
+      cell(p(t(c.etichetta, { size: 18 }), { after: 0, line: 252 }), COL2B[0], { borders: sep, margins: mar }),
+      cell(valore, COL2B[1], { borders: sep, margins: mar }),
+    ] });
+  });
+  if (rows.length) out.push(table(rows, COL2B));
+  return out;
+}
+
 function corpo2(dati) {
   const out = [];
   const esami = dati.esami || [];
@@ -140,20 +180,7 @@ function corpo2(dati) {
     if (s.titolo) out.push(titoloSettore(s.titolo));
     esami.forEach((e, ei) => {
       if ((e.settore ?? 0) !== si) return;
-      // titolo dell'esame in teal maiuscolo, Metodo / Materiale / nota ognuno sulla sua riga (modello della routine del Laboratorio)
-      out.push(p(t(e.titolo, { size: 21, bold: true, color: C.titolo, caps: true }), { before: 180, after: 20, keepNext: true }));
-      for (const m of [e.metodo ? `Metodo: ${e.metodo}` : null, e.materiale ? `Materiale: ${e.materiale}` : null, e.sede ? `Sede Anatomica: ${e.sede}` : null, e.nota || null].filter(Boolean)) {
-        out.push(p(t(m, { size: 15, color: C.etichetta }), { after: 0, line: 220, keepNext: true }));
-      }
-      if (e.campi?.length) out.push(spacer(100));
-      const sep = { ...cellNOB, bottom: { style: BorderStyle.SINGLE, size: 4, color: C.linea } };
-      const rows = (e.campi || []).map((c) => (c.libero || !c.etichetta
-        ? new TableRow({ cantSplit: true, children: [cell(p(t(c.valore, { size: 19 }), { after: 0, line: 252 }), W, { span: 2, borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } })] })
-        : new TableRow({ cantSplit: true, children: [
-          cell(p(t(c.etichetta, { size: 18 }), { after: 0, line: 252 }), COL2B[0], { borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } }),
-          cell(p(t(`${c.valore}${c.unita ? ` ${c.unita}` : ''}`, { size: 18, bold: true, color: C.titolo }), { after: 0, line: 252 }), COL2B[1], { borders: sep, margins: { top: 70, bottom: 70, left: 60, right: 60 } }),
-        ] })));
-      if (rows.length) out.push(table(rows, COL2B));
+      out.push(...esameModello(e));
       for (const b of ab) if ((b.esame ?? 0) === ei) out.push(...antibiogramma(b));
     });
   });
@@ -164,7 +191,7 @@ function corpo2(dati) {
 
 // Corpo completo (senza intestazione: la mette il template)
 function corpoDocumento(dati) {
-  const children = [riquadroAnagrafico(dati.anagrafica || {}), spacer(160)];
+  const children = [spacer(SPAZIO_RIQUADRO), riquadroAnagrafico(dati.anagrafica || {}), spacer(160)];
   children.push(...(Number(dati.corpo) === 2 ? corpo2(dati) : corpo1(dati)));
   if (dati.note?.length) {
     children.push(spacer(200));
@@ -188,6 +215,17 @@ function patchMargini(sectPr, mar) {
   return s;
 }
 
+// Template caricato: margini del template conservati, ma il superiore non scende sotto il minimo (il corpo non deve salire
+// sull'intestazione)
+export function alzaMargineSuperiore(sectPr, minimo) {
+  const m = sectPr.match(/<w:pgMar\b[^>]*\/>/);
+  if (!m) return sectPr.replace('</w:sectPr>', `<w:pgMar w:top="${minimo}" w:right="${PGMAR.right}" w:bottom="${PGMAR.bottom}" w:left="${PGMAR.left}" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`);
+  const top = Number((m[0].match(/w:top="(-?\d+)"/) || [])[1] || 0);
+  if (Math.abs(top) >= minimo) return sectPr;
+  const nuovo = /w:top="/.test(m[0]) ? m[0].replace(/w:top="-?\d+"/, `w:top="${minimo}"`) : m[0].replace('<w:pgMar', `<w:pgMar w:top="${minimo}"`);
+  return sectPr.replace(m[0], nuovo);
+}
+
 export function trapianta(generatoBuf, templateBuf, { margini = null } = {}) {
   const gen = new PizZip(generatoBuf);
   const tpl = new PizZip(templateBuf);
@@ -200,6 +238,7 @@ export function trapianta(generatoBuf, templateBuf, { margini = null } = {}) {
   let sect = sectPrOf(tplXml);
   if (!sect) throw new Error('Il template non ha le proprietà di sezione (sectPr): impossibile usarne intestazione e piè di pagina');
   if (margini) sect = patchMargini(sect, margini);
+  else sect = alzaMargineSuperiore(sect, TOP_MINIMO);
   const ns = new Map([...xmlnsOf(rootTag(tplXml)), ...xmlnsOf(rootTag(genXml))]);
   const ign = rootTag(tplXml).match(/\smc:Ignorable="([^"]*)"/);
   const root = `<w:document${[...ns].map(([k, v]) => ` ${k}="${v}"`).join('')}${ign && ns.has('xmlns:mc') ? ` mc:Ignorable="${ign[1]}"` : ''}>`;

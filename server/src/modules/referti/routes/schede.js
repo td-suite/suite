@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { q, one } from '../db.js';
 import { ah, audit, bad, notFound, parse, HttpError } from '../../../lib/util.js';
 import { requireLab } from '../lib/access.js';
-import { KEY, idOf, loadScheda, settings, generaPer, confermaScheda, eliminaScheda, registra, nomeBase } from '../lib/core.js';
+import { KEY, idOf, loadScheda, settings, generaPer, confermaScheda, eliminaScheda, registra, nomeBase, riapriScheda } from '../lib/core.js';
+import { dopoConferma, inviaAlMittente } from '../lib/casella.js';
 import { controllaCoerenza } from '../lib/coerenza.js';
 import { sendFile } from '../lib/storage.js';
 import { generaDocx, testoDocx } from '../lib/docgen.js';
@@ -76,8 +77,10 @@ r.post('/schede/:id/conferma', requireLab, ah(async (req, res) => {
   const force = Boolean(req.body?.force);
   try {
     const out = await confermaScheda(id, req.user.id, { force });
-    await audit(req, 'REFERTI_CONFERMA', { module: KEY, entity: 'scheda', entityId: id, data: { forzata: out.forzata, suffisso: out.suffisso, sostituisce: out.sostituisce } });
-    res.json({ ...out, scheda: await loadScheda(id) });
+    // scheda arrivata dalla casella: il PDF parte al mittente alla prima conferma (se "Invia al mittente" è acceso)
+    const invio = await dopoConferma(id, req.user.id);
+    await audit(req, 'REFERTI_CONFERMA', { module: KEY, entity: 'scheda', entityId: id, data: { forzata: out.forzata, suffisso: out.suffisso, sostituisce: out.sostituisce, versione: out.versione, invio: invio?.stato || null } });
+    res.json({ ...out, invio, scheda: await loadScheda(id) });
   } catch (e) {
     if (e instanceof HttpError && e.status === 400 && e.details?.coerenza) return res.status(400).json({ error: e.message, code: 'COERENZA', coerenza: e.details.coerenza });
     throw e;
@@ -86,14 +89,33 @@ r.post('/schede/:id/conferma', requireLab, ah(async (req, res) => {
 
 r.post('/schede/:id/scarta', requireLab, ah(async (req, res) => {
   const id = idOf(req.params.id, 'Scheda non trovata');
-  const cur = await one('SELECT id, stato FROM schede WHERE id=$1', [id]);
+  const cur = await one('SELECT id, stato, riaperta_at FROM schede WHERE id=$1', [id]);
   if (!cur) throw notFound('Scheda non trovata');
   inBozza(cur);
+  if (cur.riaperta_at) throw bad('Il referto è stato emesso e riaperto: riconfermalo, oppure eliminalo dall\'Archivio');
   const motivo = String(req.body?.motivo || '').trim().slice(0, 500);
   await q(`UPDATE schede SET stato='SCARTATA', updated_at=now() WHERE id=$1`, [id]);
   await registra('SCARTATA', { scheda_id: id, user_id: req.user.id, dettagli: { motivo } });
   await audit(req, 'REFERTI_SCARTO', { module: KEY, entity: 'scheda', entityId: id });
   res.json(await loadScheda(id));
+}));
+
+// Riapertura di un referto emesso (anche già inviato): torna BOZZA, i file prodotti restano finché non si riconferma
+r.post('/schede/:id/riapri', requireLab, ah(async (req, res) => {
+  const id = idOf(req.params.id, 'Scheda non trovata');
+  const out = await riapriScheda(id, req.user.id);
+  await audit(req, 'REFERTI_RIAPRI', { module: KEY, entity: 'scheda', entityId: id, data: { versione: out.versione, inviato: out.inviato } });
+  res.json({ ...out, scheda: await loadScheda(id) });
+}));
+
+// Invio manuale al mittente della mail ("Invia al mittente"; con { reinvia: true } è "Reinvia", azione esplicita)
+r.post('/schede/:id/invia', requireLab, ah(async (req, res) => {
+  const id = idOf(req.params.id, 'Scheda non trovata');
+  const reinvia = Boolean(req.body?.reinvia);
+  const out = await inviaAlMittente(id, { userId: req.user.id, esplicito: reinvia });
+  if (!out.stato) throw bad(`Invio non eseguito: ${out.motivo}`);
+  await audit(req, 'REFERTI_INVIO', { module: KEY, entity: 'scheda', entityId: id, data: { stato: out.stato, reinvio: reinvia } });   // solo id ed esito
+  res.json({ ...out, scheda: await loadScheda(id) });
 }));
 
 // Eliminazione di una scheda con i suoi file (Archivio; LAB o admin). Se confermata serve { force: true }: altrimenti 409.

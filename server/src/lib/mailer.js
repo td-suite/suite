@@ -31,13 +31,16 @@ export function layout(title, bodyHtml, { footer } = {}) {
   </div></body></html>`;
 }
 
-export async function sendMail({ to, cc = [], subject, html, text, ref, attachments = [], from = null }) {
-  // attachments: [{ filename, content (Buffer), contentType }]; from: casella mittente (predefinita config.mail.sender)
+export async function sendMail({ to, cc = [], subject, html, text, ref, attachments = [], from = null, logSubject = null }) {
+  // attachments: [{ filename, content (Buffer), contentType }]; from: casella mittente (predefinita config.mail.sender);
+  // logSubject: oggetto da scrivere nel registro email e nel log del server al posto di quello vero (es. i referti dei Referti esterni,
+  // il cui oggetto porta il nome del paziente: mai nei log)
   const toList = (Array.isArray(to) ? to : [to]).filter(Boolean);
   if (!toList.length) return { ok: false, skipped: true };
   const sender = String(from || config.mail.sender).trim();
-  const log = async (status, error) => (await q('INSERT INTO email_log (to_addr, subject, status, error, ref, from_addr) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [toList.join(', '), subject, status, error || null, ref || null, sender])).rows[0]?.id;
-  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.join(', ')} · ${subject}`); return { ok: true, logged: true, logId: id, from: sender }; }
+  const subjectLog = logSubject || subject;
+  const log = async (status, error) => (await q('INSERT INTO email_log (to_addr, subject, status, error, ref, from_addr) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [toList.join(', '), subjectLog, status, error || null, ref || null, sender])).rows[0]?.id;
+  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.join(', ')} · ${subjectLog}`); return { ok: true, logged: true, logId: id, from: sender }; }
   try {
     const tok = await graphToken();
     const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {

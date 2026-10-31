@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { ah, audit, bad, HttpError } from '../../../lib/util.js';
 import { requireLab } from '../lib/access.js';
 import { KEY, idOf, elaboraUpload, elaborazioneCon, confermaScheda, eliminaElaborazione, S_COLS, S_FROM } from '../lib/core.js';
+import { dopoConferma } from '../lib/casella.js';
 
 const r = Router();
 const MB = 1024 * 1024;
@@ -43,7 +44,7 @@ r.post('/elaborazioni', requireLab, conUpload, ah(async (req, res) => {
 r.get('/elaborazioni', ah(async (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
   const stato = typeof req.query.stato === 'string' && ['CARICATO', 'ELABORATO', 'SCARTATO'].includes(req.query.stato) ? req.query.stato : null;
-  const rows = await many(`SELECT e.id, e.filename, e.size, e.pagine, e.sorgente, e.stato, e.motivo_scarto, e.ocr, e.created_at, u.full_name AS uploaded_by_nome,
+  const rows = await many(`SELECT e.id, e.filename, e.size, e.pagine, e.sorgente, e.stato, e.motivo_scarto, e.ocr, e.created_at, u.full_name AS uploaded_by_nome, e.origine, e.from_email, e.from_name, e.subject, e.received_at,
       (SELECT count(*)::int FROM schede s WHERE s.elaborazione_id=e.id) AS n_schede,
       (SELECT count(*)::int FROM schede s WHERE s.elaborazione_id=e.id AND s.stato='BOZZA') AS n_bozze,
       (SELECT count(*)::int FROM schede s WHERE s.elaborazione_id=e.id AND s.stato='CONFERMATA') AS n_confermate,
@@ -62,11 +63,11 @@ r.post('/elaborazioni/:id/conferma-verdi', requireLab, ah(async (req, res) => {
   const verdi = await many(`SELECT id FROM schede WHERE elaborazione_id=$1 AND stato='BOZZA' AND jsonb_array_length(anomalie)=0 ORDER BY id`, [id]);
   const confermate = []; const nonCoerenti = [];
   for (const s of verdi) {
-    try { confermate.push(await confermaScheda(s.id, req.user.id)); }
+    try { const c = await confermaScheda(s.id, req.user.id); const invio = await dopoConferma(s.id, req.user.id); confermate.push({ ...c, invio }); }
     catch (e) { if (e instanceof HttpError && e.status === 400) nonCoerenti.push({ id: s.id, coerenza: e.details?.coerenza || null, errore: e.message }); else throw e; }
   }
   await audit(req, 'REFERTI_CONFERMA_VERDI', { module: KEY, entity: 'elaborazione', entityId: id, data: { confermate: confermate.length, non_coerenti: nonCoerenti.length } });
-  res.json({ confermate: confermate.map((c) => ({ id: c.id, nome_file: c.nome_file, suffisso: c.suffisso })), non_coerenti: nonCoerenti });
+  res.json({ confermate: confermate.map((c) => ({ id: c.id, nome_file: c.nome_file, suffisso: c.suffisso, invio: c.invio?.stato || null })), non_coerenti: nonCoerenti });
 }));
 
 // Eliminazione di un'elaborazione con schede e file (LAB o admin). Con referti confermati serve { force: true }: altrimenti 409.

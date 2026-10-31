@@ -1,9 +1,14 @@
 // Parser del "corpo 1" (tabella Nome esame | Risultato | [U.M.] | Riferimento): Bianalisi e Cerba RDI Limena.
 // Produce settori[] con righe di tipo esame, antibiotico (Bianalisi: "Sensibile - MIC <=4"), legenda, testo.
 // Difensivo: ogni riga non riconosciuta diventa una riga "testo" nel settore corrente con anomalia "riga non interpretata".
-import { segmenti, isMaiuscola, isSottoriga, isLegenda, isNota, isSostituzione, anomalia, compattaSpazi, isPieDiPagina } from './common.js';
+import { segmenti, isMaiuscola, isSettoreNoto, isSottoriga, isLegenda, isNota, isSostituzione, anomalia, compattaSpazi, isPieDiPagina } from './common.js';
 
 const RE_ANTIBIOTICO = /^(Sensibile|Resistente|Intermedio|S|I|R)\s*[-–:]\s*MIC\s*(.+)$/i;
+// Righe Bianalisi stampate senza colonne (pdftotext non separa nome e risultato: caso RECCHIA del 31/10/2026)
+const RE_ANTIBIOTICO_RIGA = /^(.+?)\s+(Sensibile|Resistente|Intermedio)\s*[-–:]\s*MIC\s*(.+)$/i;
+const RE_GERME_RIGA = /^(Germe\s+Isolato|Microrganismo\s+Isolato|Specie\s+Isolata)\s*:?\s+(.+)$/i;
+const RE_ESBL_RIGA = /^(ESBL(?:\s*\([^)]*\))?)\s*:?\s+(Negativ[oa]|Positiv[oa]|Assente|Presente)$/i;
+const RE_TITOLO_AB = /^(Antibiogramma|Antimicogramma)(\s*\/\s*Antimicogramma)?\s*:?$/i;
 const ESITO = { S: 'Sensibile', I: 'Intermedio', R: 'Resistente' };
 
 // Posizioni delle colonne dalla riga di testata ("Analisi … Risultati … Intervalli di Riferimento" / "Esame … Risultato … U.M. … Valori di Riferimento")
@@ -60,7 +65,8 @@ export function parseCorpo1(paginaRighe, { testata, anomalie, stato }) {
     if (isNota(testo)) { st.note.push(testo); if (isSostituzione(testo)) anomalie.push(anomalia('SOSTITUZIONE')); st.ultimaRiga = null; continue; }
     // Titolo di settore: un solo segmento, maiuscolo, in prima colonna (FARMACI, MICROBIOLOGIA, CHIMICA CLINICA…). Se il settore
     // corrente è quello iniziale senza titolo e ancora vuoto, prende questo titolo
-    if (seg.length === 1 && colonnaDi(seg[0], pos) === 'nome' && isMaiuscola(seg[0].testo) && !isSottoriga(seg[0].testo) && !/^(ESBL|MIC)\b/.test(seg[0].testo)) {
+    // ("Microbiologia" in minuscolo, come in RECCHIA, è comunque un settore noto)
+    if (seg.length === 1 && colonnaDi(seg[0], pos) === 'nome' && (isMaiuscola(seg[0].testo) || isSettoreNoto(seg[0].testo)) && !isSottoriga(seg[0].testo) && !/^(ESBL|MIC)\b/.test(seg[0].testo)) {
       if (st.corrente && !st.corrente.titolo && !st.corrente.righe.length) st.corrente.titolo = seg[0].testo.toUpperCase();
       else { st.corrente = { titolo: seg[0].testo.toUpperCase(), righe: [] }; st.settori.push(st.corrente); }
       st.ultimaRiga = null; continue;
@@ -86,6 +92,25 @@ export function parseCorpo1(paginaRighe, { testata, anomalie, stato }) {
       continue;
     }
     if (nome && !ris && !rif && !um) {
+      // Righe Bianalisi senza colonne: antibiotico "Amoxicillina/Acido clavulanico Resistente - MIC 16", "Germe Isolato Escherichia coli",
+      // "ESBL Negativo" (prima della ricomposizione del nome: non sono la continuazione di un esame)
+      const mab = nome.match(RE_ANTIBIOTICO_RIGA);
+      if (mab) {
+        const r = { tipo: 'antibiotico', nome: compattaSpazi(mab[1]), esito: ESITO[mab[2][0].toUpperCase()], mic: compattaSpazi(mab[3]) };
+        settore().righe.push(r); st.ultimaRiga = r; continue;
+      }
+      const mg = nome.match(RE_GERME_RIGA) || nome.match(RE_ESBL_RIGA);
+      if (mg) { const r = { tipo: 'esame', nome: compattaSpazi(mg[1]), risultato: compattaSpazi(mg[2]), unita: '', riferimento: '' }; settore().righe.push(r); st.ultimaRiga = r; st.ultimoEsame = r; continue; }
+      // "(Extended Spectrum Beta Lactamase)": descrizione della riga precedente
+      if (/^\([^()]+\)$/.test(nome) && st.ultimaRiga?.tipo === 'esame' && st.ultimaRiga.risultato) { st.ultimaRiga.descrizione = compattaSpazi(`${st.ultimaRiga.descrizione || ''} ${nome}`); continue; }
+      // Legenda a capo ("di somministrazione dell'agente antimicrobico…") o voce isolata ("Resistente") dopo una riga di legenda
+      const ultima = st.corrente?.righe?.[st.corrente.righe.length - 1];
+      if (ultima?.tipo === 'legenda' && (/^[a-zà-ü(]/.test(nome) || /^(Sensibile|Resistente|Intermedio)$/i.test(nome))) {
+        if (/^[a-zà-ü(]/.test(nome)) ultima.testo = compattaSpazi(`${ultima.testo} ${nome}`); else settore().righe.push({ tipo: 'legenda', testo: nome });
+        continue;
+      }
+      // Titolo "Antibiogramma" del blocco: riga di testo senza anomalia (la tabella teal la sostituisce nel referto TD)
+      if (RE_TITOLO_AB.test(nome)) { settore().righe.push({ tipo: 'testo', testo: nome }); st.ultimaRiga = null; continue; }
       // Testo in prima colonna senza risultato: descrizione dell'esame a capo oppure riga libera
       if (st.ultimaRiga && st.ultimaRiga.tipo === 'esame' && !st.ultimaRiga.risultato) { st.ultimaRiga.nome = compattaSpazi(`${st.ultimaRiga.nome} ${nome}`); continue; }
       settore().righe.push({ tipo: 'testo', testo: nome }); anomalie.push(anomalia('RIGA_NON_INTERPRETATA', nome.slice(0, 60))); st.ultimaRiga = null; continue;
