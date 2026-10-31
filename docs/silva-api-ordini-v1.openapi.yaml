@@ -1,0 +1,176 @@
+openapi: 3.0.3
+info:
+  title: Toscana Diagnostica · Suite TD — Ordini al magazzino Silva
+  version: "1.0"
+  description: >-
+    Trasmissione degli ordini approvati dalla Suite TD al gestionale Silva (POST /api/v1/ordini, esposto da Silva) e avanzamenti
+    comunicati da Silva alla Suite TD (presa in carico, spedizione, consegna). Autenticazione con header X-API-KEY: chiave Silva→TD per le
+    chiamate verso Silva, segreto in ingresso TD per le chiamate verso la Suite.
+servers:
+  - url: https://silva.cloud/portaleordini
+    description: Gestionale Silva (risorse del capitolo "Ordini", esposte da Silva)
+  - url: https://suite.toscanadiagnostica.it/api/orders/integrations/silva
+    description: Suite TD (avanzamenti, esposti da Toscana Diagnostica)
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+  schemas:
+    Destinazione:
+      type: object
+      required: [codice, codiceSede, nome, indirizzo, cap, citta, provincia, modalita]
+      properties:
+        codice: { type: string, description: Codice della destinazione come noto a Silva (codice Silva della struttura, altrimenti codice TD) }
+        codiceSede: { type: string, description: Codice TD della struttura }
+        nome: { type: string }
+        indirizzo: { type: string }
+        cap: { type: string }
+        citta: { type: string }
+        provincia: { type: string }
+        referente: { type: string, nullable: true }
+        telefono: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        noteConsegna: { type: string, nullable: true }
+        modalita: { type: string, enum: [CONSEGNA, RITIRO_PRESSO_TD] }
+    RigaOrdine:
+      type: object
+      required: [codiceArticolo, descrizione, confezioni, confezione, unitaPerConfezione, unitaTotali, unita]
+      properties:
+        codiceArticolo: { type: string, description: Codice articolo del catalogo Silva }
+        codiceSilva: { type: string, nullable: true }
+        gtin: { type: string, nullable: true }
+        descrizione: { type: string }
+        confezioni: { type: integer, minimum: 1, description: Quantità ordinata in confezioni }
+        confezione: { type: string, description: Descrizione della confezione }
+        unitaPerConfezione: { type: integer, minimum: 1 }
+        unitaTotali: { type: integer, description: confezioni × unitaPerConfezione }
+        unita: { type: string }
+        noteOperations: { type: string, nullable: true }
+    Ordine:
+      type: object
+      required: [numero, cliente, dataApprovazione, stato, urgenza, tipoDestinatario, origineDestinatario, destinazione, righe]
+      properties:
+        numero: { type: string, example: ORD-2026-0142 }
+        cliente: { type: string, example: TOSCANA-DIAGNOSTICA }
+        dataApprovazione: { type: string, format: date-time }
+        stato: { type: string, enum: [APPROVATO] }
+        urgenza: { type: string, enum: [ORDINARIA, URGENTE] }
+        motivoUrgenza: { type: string, nullable: true }
+        tipoDestinatario: { type: string, enum: [SEDE_TD, LABORATORIO_TD, CLIENTE_SERVICE] }
+        origineDestinatario: { type: string, enum: [SEDE, LEGAL_ENTITY] }
+        note: { type: string, nullable: true }
+        destinazione: { $ref: '#/components/schemas/Destinazione' }
+        righe:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RigaOrdine' }
+    RiscontroOrdine:
+      type: object
+      required: [numero]
+      properties:
+        numero: { type: string }
+        riferimento: { type: string, description: Identificativo o numero interno dell'ordine presso Silva }
+        ricevutoAl: { type: string, format: date-time }
+    StatoOrdineSilva:
+      type: object
+      properties:
+        numero: { type: string }
+        riferimento: { type: string }
+        stato: { type: string, enum: [RICEVUTO, IN_PREPARAZIONE, SPEDITO, CONSEGNATO, ANNULLATO] }
+        aggiornatoAl: { type: string, format: date-time }
+    Errore:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+        campo: { type: string }
+    EsitoAvanzamento:
+      type: object
+      properties:
+        status: { type: string, description: Nuovo stato dell'ordine nella Suite TD }
+        unknown: { type: array, items: { type: string }, description: Codici articolo non riconosciuti (solo per consegnato) }
+security:
+  - ApiKey: []
+paths:
+  /api/v1/ordini:
+    post:
+      summary: Trasmissione di un ordine approvato (Suite TD → Silva)
+      description: Idempotente sul numero d'ordine (header X-Idempotency-Key). Una ripetizione restituisce 200 o 409 senza creare doppioni.
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema: { type: string }
+          description: Numero d'ordine TD
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Ordine' }
+      responses:
+        '201': { description: Ordine ricevuto, content: { application/json: { schema: { $ref: '#/components/schemas/RiscontroOrdine' } } } }
+        '200': { description: Ordine già presente con lo stesso contenuto, content: { application/json: { schema: { $ref: '#/components/schemas/RiscontroOrdine' } } } }
+        '409': { description: Ordine già presente (trattato dalla Suite come ricevuto), content: { application/json: { schema: { $ref: '#/components/schemas/Errore' } } } }
+        '400': { description: Corpo non valido, content: { application/json: { schema: { $ref: '#/components/schemas/Errore' } } } }
+        '401': { description: Chiave assente o non valida }
+        '403': { description: Chiave non autorizzata al cliente }
+  /api/v1/ordini/{numero}:
+    get:
+      summary: "Stato dell'ordine presso Silva (facoltativo)"
+      parameters:
+        - { in: path, name: numero, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Stato, content: { application/json: { schema: { $ref: '#/components/schemas/StatoOrdineSilva' } } } }
+        '404': { description: Ordine sconosciuto }
+  /orders/{numero}/presa-in-carico:
+    post:
+      summary: "Avanzamento (Silva → Suite TD): presa in carico"
+      servers: [{ url: https://suite.toscanadiagnostica.it/api/orders/integrations/silva }]
+      parameters: [{ in: path, name: numero, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { riferimento: { type: string, nullable: true } } }
+      responses:
+        '200': { description: Ordine PRESO_IN_CARICO, content: { application/json: { schema: { $ref: '#/components/schemas/EsitoAvanzamento' } } } }
+        '404': { description: Numero sconosciuto }
+        '409': { description: Stato non ammesso }
+  /orders/{numero}/spedito:
+    post:
+      summary: "Avanzamento (Silva → Suite TD): spedizione"
+      servers: [{ url: https://suite.toscanadiagnostica.it/api/orders/integrations/silva }]
+      parameters: [{ in: path, name: numero, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { ddt: { type: string, nullable: true }, data: { type: string, format: date-time, nullable: true } } }
+      responses:
+        '200': { description: Ordine SPEDITO, content: { application/json: { schema: { $ref: '#/components/schemas/EsitoAvanzamento' } } } }
+  /orders/{numero}/consegnato:
+    post:
+      summary: "Avanzamento (Silva → Suite TD): consegna con righe, lotti, scadenze e codici a barre"
+      servers: [{ url: https://suite.toscanadiagnostica.it/api/orders/integrations/silva }]
+      parameters: [{ in: path, name: numero, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ddt: { type: string, nullable: true }
+                data: { type: string, format: date-time, nullable: true }
+                righe:
+                  type: array
+                  items:
+                    type: object
+                    required: [codiceArticolo, confezioni]
+                    properties:
+                      codiceArticolo: { type: string }
+                      confezioni: { type: integer, minimum: 0 }
+                      lotto: { type: string, nullable: true }
+                      scadenza: { type: string, format: date, nullable: true }
+                      barcodes: { type: array, items: { type: string }, description: Un codice per confezione, nell'ordine }
+      responses:
+        '200': { description: Ordine CONSEGNATO, content: { application/json: { schema: { $ref: '#/components/schemas/EsitoAvanzamento' } } } }

@@ -4,7 +4,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, itDate } from '../lib/util.js';
 import { requireRole, isOps, Params, assertStruttura, OPS_ROLES } from '../lib/access.js';
 import { nextOrderNumber, orderLines, enrichLines, assertStatus, ARTICLE_COLS, companyInfo } from '../lib/orders.js';
-import { emailOrder } from '../lib/silva.js';
+import { emailOrder, pushOrderToSilva } from '../lib/silva.js';
 import { ORDER_COLS, ORDER_JOINS as JOINS, event, markPicked, markShipped, markDelivered, markStored } from '../lib/orderflow.js';
 import { buildOrderPdf } from '../pdf/order.js';
 import { sendMail, opsEmails } from '../lib/mailer.js';
@@ -150,6 +150,8 @@ async function approve(req, id) {
   });
   await event(id, req.user.id, 'Approvato dall\'Area Operations: in attesa del magazzino', { packs: n.n });
   await audit(req, 'ORDER_APPROVE', 'order', id);
+  // fase 3: trasmissione in API al gestionale Silva (se il connettore ha la chiave); in caso di errore ritenta il job orders:silva-push
+  pushOrderToSilva(id, { actor: req.user.full_name }).catch((e) => console.warn('[orders] trasmissione Silva:', e.message));
   // PDF archiviato sull'ordine e inviato alla struttura
   const full = await fullDetail(req, id);
   const company = await companyInfo();
@@ -163,6 +165,13 @@ async function approve(req, id) {
 }
 r.post('/:id/approve', requireRole(...OPS_ROLES), ah(async (req, res) => res.json(await approve(req, req.params.id))));
 
+// Fase 3: ritrasmissione in API al gestionale Silva su richiesta dell'Area Operations
+r.post('/:id/silva-push', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const o = await loadOrder(req, req.params.id);
+  const out = await pushOrderToSilva(o.id, { actor: req.user.full_name });
+  await audit(req, 'ORDER_SILVA_PUSH', 'order', o.id, out);
+  res.json(out);
+}));
 // Ripiego quando il fornitore non legge le API: ordine PDF via email alla casella del magazzino
 async function emailToSupplier(req, id) {
   const o = await fullDetail(req, id);

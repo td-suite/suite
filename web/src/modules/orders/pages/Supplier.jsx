@@ -22,8 +22,9 @@ export default function Supplier() {
       <td>{o.struttura_name}<div className="small muted">{o.struttura_city}</div></td>
       <td className="num">{o.lines_count}</td><td className="num">{o.packs_total}</td>
       <td className="small muted">{itDateTime(o.approved_at)}</td>
-      <td className="small">{o.polled_at ? <>letto dal fornitore<div className="muted">{itDateTime(o.polled_at)}</div></> : <Badge tone="mauve">non ancora letto</Badge>}{o.silva_reference && <div className="mono small">rif. {o.silva_reference}</div>}</td>
+      <td className="small">{o.silva_send_status === 'INVIATO' ? <><Badge tone="green">trasmesso in API</Badge><div className="muted">{itDateTime(o.silva_sent_at)}</div></> : o.silva_send_status === 'ERRORE' ? <><Badge tone="red" title={o.silva_send_message}>trasmissione fallita</Badge><div className="muted" title={o.silva_send_message}>{o.silva_send_attempts} tentativi · ritenta ogni 5 min</div></> : o.polled_at ? <>letto dal fornitore<div className="muted">{itDateTime(o.polled_at)}</div></> : <Badge tone="mauve">non ancora trasmesso</Badge>}{o.silva_reference && <div className="mono small">rif. {o.silva_reference}</div>}</td>
       <td className="num" style={{ whiteSpace: 'nowrap' }}>
+        {o.status === 'APPROVATO' && o.silva_send_status !== 'INVIATO' && <><button className="btn sm ghost" title="Invia ora l'ordine in API al gestionale Silva" onClick={() => act(o, 'silva-push', {}, 'Trasmissione a Silva eseguita')}>Trasmetti a Silva</button>{' '}</>}
         {o.status === 'APPROVATO' && <><button className="btn sm ghost" onClick={() => setAsk({ o, kind: 'picked' })}>Preso in carico</button>{' '}<button className="btn sm ghost" title="Invia il PDF alla casella ordini del fornitore" onClick={() => act(o, 'email-supplier', {}, 'Email inviata al magazzino')}><Icon name="mail" size={14} /></button>{' '}</>}
         <button className="btn sm" onClick={() => setAsk({ o, kind: 'shipped' })}>Spedito</button>
       </td>
@@ -31,7 +32,7 @@ export default function Supplier() {
   );
   return (
     <div className="page">
-      <PhaseBanner n="3" title="Trasmissione al magazzino (Silva Group)" desc="Gli ordini approvati sono esposti sulle API che il fornitore interroga ogni 5 minuti: contenuto, sede di consegna, urgenza. Il fornitore comunica presa in carico, spedizione e consegna dalle stesse API; qui si registrano a mano se non lo fa." next="Fase 4: consegna alla struttura" />
+      <PhaseBanner n="3" title="Trasmissione al magazzino (Silva Group)" desc="All'approvazione l'ordine viene trasmesso in API al gestionale Silva (POST /api/v1/ordini, ritentativi automatici); in parallelo resta esposto sulle API che il fornitore può interrogare: contenuto, sede di consegna, urgenza. Il fornitore comunica presa in carico, spedizione e consegna dalle stesse API; qui si registrano a mano se non lo fa." next="Fase 4: consegna alla struttura" />
       <div className="page-head">
         <div><h1>Ordini al magazzino</h1><div className="sub">{s ? (s.inboundConfigured ? `Chiave API del fornitore attiva · ultima lettura degli ordini: ${s.last_poll_at ? itDateTime(s.last_poll_at) : 'mai'}` : 'Chiave API del fornitore non impostata (SILVA_INBOUND_KEY): gli ordini non sono leggibili dal fornitore') : ''}</div></div>
         <div className="row"><a className="btn ghost" href={`${API_BASE}/stats/export/orders.xlsx`}><Icon name="download" size={16} />Excel</a></div>

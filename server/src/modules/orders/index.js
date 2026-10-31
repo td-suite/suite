@@ -10,6 +10,7 @@ import { ah } from './lib/util.js';
 import { requireRole, isOps, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
+import { pushPendingOrders } from './lib/silva.js';
 import { getConnector } from '../../lib/connectors.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
@@ -122,6 +123,12 @@ export default function mount(app) {
   });
   // Catalogo e giacenze dall'API Silva (chiave X-API-KEY del connettore): completo la prima volta per anno, poi sole modifiche.
   // Il job gira ogni 10 minuti e sincronizza quando è passato l'intervallo impostato nel connettore (sync_minutes, default 60).
+  // Trasmissione in API degli ordini approvati non ancora ricevuti da Silva (ritentativi)
+  registerJob(`${KEY}:silva-push`, 5, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    return pushPendingOrders();
+  });
   registerJob(`${KEY}:silva-catalogo`, 10, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };
