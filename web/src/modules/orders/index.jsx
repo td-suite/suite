@@ -51,8 +51,8 @@ function Gate() {
       {ops && <Route path="fornitore" element={<Supplier />} />}
       {ops && <Route path="consegne" element={<Deliveries />} />}
       <Route path="ordini/:id" element={<OrderDetail />} />
-      {td && <Route path="carico" element={<LoadingPage />} />}
-      {td && <Route path="carico/:id" element={<LoadingPage />} />}
+      <Route path="carico" element={<LoadingPage />} />
+      <Route path="carico/:id" element={<LoadingPage />} />
       <Route path="scarico" element={<Unload />} />
       <Route path="giacenza" element={<Stock />} />
       {(ops || td) && <Route path="giacenze" element={<StockCounts />} />}

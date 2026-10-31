@@ -189,6 +189,17 @@ r.post('/:id/shipped', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const out = await markShipped(await loadOrder(req, req.params.id), { ddt: d.ddt, userId: req.user.id, actor: req.user.full_name });
   await audit(req, 'ORDER_SHIPPED', 'order', req.params.id, d); res.json(out);
 }));
+// Fase 5, arrivo registrato dalla struttura ricevente (richiesta del CEO, 31/10/2026: "la struttura ricevente carica quanto effettivamente
+// ricevuto"): se il magazzino non ha ancora segnato la consegna, la struttura (o Operations) la registra con le quantità approvate, poi
+// legge le confezioni effettivamente arrivate. Stati ammessi: APPROVATO, PRESO_IN_CARICO, SPEDITO.
+r.post('/:id/arrivato', ah(async (req, res) => {
+  const o = await loadOrder(req, req.params.id);
+  if (!canLoad(req, o)) throw forbidden();
+  if (!['APPROVATO', 'PRESO_IN_CARICO', 'SPEDITO'].includes(o.status)) throw bad(`L'ordine è ${o.status}: la consegna si registra solo per ordini approvati, presi in carico o spediti`);
+  const d = parse(z.object({ ddt: opt(z.string().max(80)) }), req.body || {});
+  const out = await markDelivered(o, { ddt: d.ddt, userId: req.user.id, actor: `${req.user.full_name} (struttura ricevente)` });
+  await audit(req, 'ORDER_DELIVERED', 'order', o.id, { ddt: d.ddt, by: 'struttura' }); res.json(out);
+}));
 r.post('/:id/delivered', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const d = parse(z.object({ ddt: opt(z.string().max(80)), lines: z.array(z.object({ article_code: z.string(), packs: z.coerce.number().int().min(0), lot: opt(z.string().max(60)), expiry: opt(z.string()) })).optional() }), req.body || {});
   const out = await markDelivered(await loadOrder(req, req.params.id), { ddt: d.ddt, lines: d.lines?.map((l) => ({ codiceArticolo: l.article_code, confezioni: l.packs, lotto: l.lot, scadenza: l.expiry })), userId: req.user.id, actor: req.user.full_name });
