@@ -13,7 +13,7 @@ import { CATEGORY_LABELS } from '../lib/seedData.js';
 import { computeDeadlines } from '../lib/deadlines.js';
 import { RECIPIENTS, DEFAULT_MAP, parseThresholds, parseEmailList } from '../lib/peopleRules.js';
 import { peopleStatus, setSetting, runReminders, testSend, testPeopleInbox } from '../lib/peopleMail.js';
-import { ingestMessage, pollPeopleInbox, approveMessage, rejectMessage, ignoreMessage } from '../lib/peopleInbox.js';
+import { ingestMessage, pollPeopleInbox, closeApprovedMessage, approveMessage, rejectMessage, ignoreMessage } from '../lib/peopleInbox.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });
@@ -124,6 +124,7 @@ const approveSchema = z.object({
   files: z.array(z.object({ id: z.number().int(), include: z.boolean().optional(), category: z.string().max(40).optional(), expires_at: z.string().regex(dateRe).nullable().optional() })).optional(),
 });
 r.post('/:id(\\d+)/approva', requireApprover, ah(async (req, res) => res.json(await approveMessage(req, Number(req.params.id), parse(approveSchema, req.body || {})))));
+r.post('/:id(\\d+)/chiudi-scadenza', requireApprover, ah(async (req, res) => res.json(await closeApprovedMessage(req, Number(req.params.id), parse(z.object({ deadline_key: z.string().max(60), note: z.string().max(1000).nullable().optional() }), req.body || {})))));
 r.post('/:id(\\d+)/rifiuta', requireApprover, ah(async (req, res) => res.json(await rejectMessage(req, Number(req.params.id), parse(z.object({ reason: z.string().max(1000) }), req.body || {})))));
 r.post('/:id(\\d+)/ignora', requireApprover, ah(async (req, res) => res.json(await ignoreMessage(req, Number(req.params.id), parse(z.object({ note: z.string().max(1000).nullable().optional() }), req.body || {})))));
 

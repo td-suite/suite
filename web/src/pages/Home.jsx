@@ -111,7 +111,7 @@ export default function Home() {
             <Pulse icon="bell" value={notif.data?.unread} label="notifiche da leggere" to="/community" tone={notif.data?.unread ? 'hot' : ''} loading={notif.loading} />
             <Pulse icon="news" value={h.circolari_da_leggere?.length} label="circolari da confermare" to="/community/news?kind=CIRCOLARE" tone={h.circolari_da_leggere?.length ? 'hot' : ''} loading={home.loading} />
             <Pulse icon="calendar" value={eventsToday} label={eventsToday === 1 ? 'evento oggi' : 'eventi oggi'} to="/community/calendar" loading={home.loading} />
-            <Pulse icon="comment" value={h.posts?.length} label="novità in bacheca" to="/community" loading={home.loading} />
+            <Pulse icon="comment" value={h.posts_nuovi ?? 0} label="novità in bacheca" to="/community" tone={h.posts_nuovi ? 'hot' : ''} loading={home.loading} />
             <Pulse icon="grid" value={totalWidgets} label={totalWidgets === 1 ? 'strumento attivo' : 'strumenti attivi'} loading={modules.loading} />
           </div>
         </div>

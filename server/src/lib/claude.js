@@ -43,14 +43,14 @@ function extractJson(text) {
   return JSON.parse(s.slice(start, end + 1));
 }
 
-async function call({ kind, system, user, maxTokens = 1200, userId, query, timeoutMs = 30_000 }) {
+async function call({ kind, system, user, maxTokens = 1200, userId, query, timeoutMs = 30_000, withMeta = false }) {
   const c = getClient();
   const model = config.anthropic.model;
   try {
     const res = await c.messages.create({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, { timeout: timeoutMs });
     const text = (res.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
-    await logAi({ kind, model, tokensIn: res.usage?.input_tokens, tokensOut: res.usage?.output_tokens, query, ok: true, userId });
-    return text;
+    await logAi({ kind, model, tokensIn: res.usage?.input_tokens, tokensOut: res.usage?.output_tokens, query: `${query || ''}${res.stop_reason === 'max_tokens' ? ' [troncata]' : ''}`, ok: true, userId });
+    return withMeta ? { text, stopReason: res.stop_reason } : text;
   } catch (e) {
     await logAi({ kind, model, query, ok: false, error: e.message, userId });
     if (e instanceof HttpError) throw e;
@@ -73,9 +73,22 @@ export function spiegaErrore(e, model) {
 }
 
 // Chiamata generica con risposta JSON, usata dai moduli (es. Circolari per strutturare le bozze). Mai dati sensibili.
+// Se la risposta è troncata (max_tokens) o non è JSON, un secondo tentativo con più spazio e l'istruzione esplicita "solo JSON".
+const SOLO_JSON = '\n\nRispondi esclusivamente con il JSON richiesto, senza testo prima o dopo e senza recinti di codice.';
 export async function askJson({ kind, system, user, maxTokens = 2000, userId, query, timeoutMs = 60_000 }) {
-  const text = await call({ kind, system, user, maxTokens, userId, query, timeoutMs });
-  try { return extractJson(text); } catch { throw Object.assign(new HttpError(422, 'Intelligenza artificiale: la risposta del modello non è un JSON leggibile (probabile risposta troncata: riprova o riduci il documento)'), { code: 'AI_ERROR' }); }
+  let r = await call({ kind, system, user, maxTokens, userId, query, timeoutMs, withMeta: true });
+  let parsed = null; let err = null;
+  try { parsed = r.stopReason === 'max_tokens' ? null : extractJson(r.text); } catch (e) { err = e; }
+  if (parsed === null) {
+    const bigger = Math.min(Math.max(maxTokens * 2, 4000), 16000);
+    r = await call({ kind, system, user: `${user}${SOLO_JSON}`, maxTokens: bigger, userId, query: `${query || ''} [secondo tentativo]`, timeoutMs: Math.max(timeoutMs, 120_000), withMeta: true });
+    try { parsed = extractJson(r.text); } catch (e) { err = e; }
+    if (parsed === null) {
+      const why = r.stopReason === 'max_tokens' ? 'risposta troncata anche con il doppio dello spazio: riduci il documento' : `il modello ha risposto con testo non interpretabile (${(err?.message || '').slice(0, 80)})`;
+      throw Object.assign(new HttpError(422, `Intelligenza artificiale: la risposta del modello non è un JSON leggibile (${why})`), { code: 'AI_ERROR' });
+    }
+  }
+  return parsed;
 }
 // Prova della configurazione: elenco dei modelli disponibili per la chiave e una richiesta minima con il modello impostato
 export async function testAi() {

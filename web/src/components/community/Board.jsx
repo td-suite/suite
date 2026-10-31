@@ -54,6 +54,13 @@ export function Post({ post, onChange }) {
   const pin = async () => { try { await api.put(`/community/posts/${p.id}/pin`, { pinned: !p.pinned }); setP({ ...p, pinned: !p.pinned }); onChange?.(); } catch (e) { toast(e, 'err'); } };
   const del = async () => { await api.del(`/community/posts/${p.id}`); onChange?.(); };
   const likes = p.reactions?.LIKE || 0, hearts = p.reactions?.HEART || 0;
+  const [who, setWho] = useState(null);           // elenco di chi ha reagito (null = chiuso)
+  const [whoLoading, setWhoLoading] = useState(false);
+  const toggleWho = async () => {
+    if (who) { setWho(null); return; }
+    setWhoLoading(true);
+    try { setWho(await api.get(`/community/posts/${p.id}/reactions`)); } catch (e) { toast(e, 'err'); } finally { setWhoLoading(false); }
+  };
   const images = (p.files || []).filter((f) => (f.mime || '').startsWith('image/'));
   const others = (p.files || []).filter((f) => !(f.mime || '').startsWith('image/'));
   return (
@@ -73,7 +80,16 @@ export function Post({ post, onChange }) {
         <button className={`react ${p.my_reaction === 'LIKE' ? 'on' : ''}`} onClick={() => react('LIKE')} aria-pressed={p.my_reaction === 'LIKE'}><Icon name="like" />{likes || ''} Mi piace</button>
         <button className={`react ${p.my_reaction === 'HEART' ? 'on' : ''}`} onClick={() => react('HEART')} aria-pressed={p.my_reaction === 'HEART'}><Icon name="heart" />{hearts || ''} Grazie</button>
         <button className={`react ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open}><Icon name="comment" />{p.comments_count || ''} Commenti</button>
+        {likes + hearts > 0 && <button className={`react who ${who ? 'on' : ''}`} onClick={toggleWho} aria-expanded={Boolean(who)} title="Chi ha reagito">{whoLoading ? '…' : `${likes + hearts} ${likes + hearts === 1 ? 'persona' : 'persone'}`}</button>}
       </div>
+      {who && (
+        <div className="who-list">
+          {[['LIKE', 'Mi piace', 'like'], ['HEART', 'Grazie', 'heart']].map(([k, label, icon]) => { const rows = who.filter((r) => r.kind === k); return rows.length ? (
+            <div key={k} className="grp"><div className="lbl"><Icon name={icon} />{label} · {rows.length}</div>
+              {rows.map((r) => <div key={r.user.id} className="u"><Avatar name={r.user.full_name} fileId={r.user.avatar_file_id} size={22} /><span>{r.user.full_name}</span><span className="faint">{timeAgo(r.at)}</span></div>)}
+            </div>) : null; })}
+        </div>
+      )}
       {open && <Comments post={p} onCount={(d) => setP((x) => ({ ...x, comments_count: Math.max(0, (x.comments_count || 0) + d) }))} />}
       {confirm && <ConfirmModal title="Eliminare il post?" text="Il post e i suoi commenti verranno rimossi dalla bacheca." confirmText="Elimina" danger onConfirm={del} onClose={() => setConfirm(false)} />}
     </article>

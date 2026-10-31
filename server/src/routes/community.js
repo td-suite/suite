@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
-import { ah, bad, audit, parse, notFound, forbidden, slugify, itDate, getSetting, HttpError } from '../lib/util.js';
+import { ah, bad, audit, parse, notFound, forbidden, slugify, itDate, getSetting, HttpError, readLog } from '../lib/util.js';
 import { isAdmin, hasModule, canSeeSite } from '../lib/access.js';
 import { audienceSql, canSee, isInternal } from '../lib/audience.js';
 import { isExternal } from '../lib/esterni.js';
@@ -104,7 +104,16 @@ r.get('/community/posts', ah(async (req, res) => {
   if (site_id) { params.push(site_id); where.push(`p.site_id = $${params.length}`); }
   params.push(limit);
   const rows = await many(`${POST_SELECT('$1')} WHERE ${where.join(' AND ')} ORDER BY ${before ? '' : 'p.pinned DESC, '}p.created_at DESC LIMIT $${params.length}`, params);
+  if (!before && !site_id) await readLog(req, { module: MODULE, entity: 'bacheca', entityId: 'visita' });
   res.json(rows);
+}));
+
+// Chi ha reagito a un post (nomi per tipo di reazione), visibile a chi vede il post
+r.get('/community/posts/:id/reactions', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  await loadPost(req.user, id);
+  res.json(await many(`SELECT r.kind, r.at, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_file_id', u.avatar_file_id) AS user
+                         FROM post_reactions r JOIN users u ON u.id=r.user_id WHERE r.post_id=$1 ORDER BY r.at DESC`, [id]));
 }));
 
 r.post('/community/posts', ah(async (req, res) => {
@@ -247,6 +256,11 @@ r.get('/community/news/:slug', ah(async (req, res) => {
   if (!editor && (n.status !== 'PUBLISHED' || !canSee(req.user, n.audience))) throw notFound('Contenuto non trovato');
   const quiz = await quizFor(n.id);
   const mine = quiz ? await one('SELECT answers, score, total, at FROM news_quiz_answers WHERE news_id=$1 AND user_id=$2', [n.id, req.user.id]) : null;
+  // Letta la news, la notifica "Nuova news/articolo" risulta letta (richiesta del CEO 31/10/2026). Le circolari con presa visione
+  // obbligatoria restano da leggere finché non si conferma la presa visione (vedi /ack).
+  if (n.status === 'PUBLISHED' && !(n.requires_ack && !n.acked)) {
+    await q(`UPDATE notifications SET read_at=coalesce(read_at, now()) WHERE user_id=$1 AND read_at IS NULL AND link=$2`, [req.user.id, `/community/news/${n.slug}`]).catch(() => {});
+  }
   res.json({ ...n, files: await newsFiles(n.id), can_edit: editor, can_publish: canPublish(req.user),
     quiz: quiz ? { ...publicQuiz(quiz), answered: Boolean(mine), my: mine ? { ...mine, correct: quiz.questions.map((x) => x.answer) } : null } : null });
 }));
@@ -748,14 +762,22 @@ r.get('/community/home', ah(async (req, res) => {
     const params = [u.id]; const a = audienceSql(u, 'p.audience', params);
     return many(`${POST_SELECT('$1')} WHERE p.deleted_at IS NULL AND (${a.sql} OR p.author_id=$1) ORDER BY p.pinned DESC, p.created_at DESC LIMIT 3`, params);
   })();
+  // "Novità in bacheca": post di altri pubblicati dopo l'ultima visita alla bacheca (home o pagina Bacheca); la visita di adesso viene registrata
+  const nuoviP = (async () => {
+    const params = [u.id]; const a = audienceSql(u, 'p.audience', params);
+    const r = await one(`SELECT count(*)::int AS n FROM posts p WHERE p.deleted_at IS NULL AND p.author_id <> $1 AND (${a.sql})
+                           AND p.created_at > coalesce((SELECT max(at) FROM read_log WHERE user_id=$1 AND entity='bacheca'), now() - interval '7 days')`, params);
+    await readLog(req, { module: MODULE, entity: 'bacheca', entityId: 'visita' });
+    return r.n;
+  })();
   // compleanni: dato della rete TD, non per gli accessi esterni
   const birthdaysP = isExternal(u) ? Promise.resolve([]) : many(`SELECT p.id, p.last_name, p.first_name, p.job_title, s.name AS site_name FROM people p LEFT JOIN sites s ON s.id=p.site_id
                             WHERE p.status='ATTIVO' AND p.birth_date IS NOT NULL
                               AND to_char(p.birth_date, 'MM-DD') = to_char((now() AT TIME ZONE 'Europe/Rome')::date, 'MM-DD') ORDER BY p.last_name LIMIT 20`);
   const quoteP = ensureDailyQuote().catch(() => null);
   const weatherP = weatherFor(u, null).catch(() => ({ unavailable: true }));
-  const [notices, news, circolari_da_leggere, events, posts, birthdays, quote, weather] = await Promise.all([noticesP, newsP, circP, eventsP, postsP, birthdaysP, quoteP, weatherP]);
-  res.json({ notices, news, circolari_da_leggere, events, quote: quoteView(quote), weather, posts, birthdays });
+  const [notices, news, circolari_da_leggere, events, posts, posts_nuovi, birthdays, quote, weather] = await Promise.all([noticesP, newsP, circP, eventsP, postsP, nuoviP, birthdaysP, quoteP, weatherP]);
+  res.json({ notices, news, circolari_da_leggere, events, quote: quoteView(quote), weather, posts, posts_nuovi, birthdays });
 }));
 
 // =====================================================================================================

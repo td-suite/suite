@@ -109,6 +109,8 @@ function MessageDetail({ id, onClose, onDone }) {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
+  const [fix, setFix] = useState(false);          // correzione della scadenza dopo l'approvazione
+  const [fixKey, setFixKey] = useState('');
   useEffect(() => {
     if (!d.data) return;
     const m = d.data.message;
@@ -127,6 +129,16 @@ function MessageDetail({ id, onClose, onDone }) {
       const r = await api.post(`/people-inbox/${id}/approva`, { resource_id: Number(v.resource_id), deadline_key: v.deadline_key || null, note: v.note || null, files: files.map((f) => ({ id: f.id, include: f.include, category: f.category, expires_at: f.expires_at || null })) });
       toast(`Approvato: ${r.attachments.length} allegat${r.attachments.length === 1 ? 'o' : 'i'} nel dossier${r.closure ? `, ${r.closure}` : ''}`);
       d.reload(); onDone();
+    } catch (e) { setErr(e); }
+    setBusy(false);
+  };
+  // Correzione dopo l'approvazione: abbina (o cambia) la scadenza e chiudila con gli allegati già nel dossier
+  const closeLater = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.post(`/people-inbox/${id}/chiudi-scadenza`, { deadline_key: fixKey });
+      toast(`Scadenza abbinata e chiusa${r.closure ? `: ${r.closure}` : ''}`);
+      setFix(false); d.reload(); onDone();
     } catch (e) { setErr(e); }
     setBusy(false);
   };
@@ -152,9 +164,22 @@ function MessageDetail({ id, onClose, onDone }) {
           {open ? <select value={v.deadline_key} disabled={!v.resource_id} onChange={(e) => { setV({ ...v, deadline_key: e.target.value }); assign({ deadline_key: e.target.value || null }); }}>
             <option value="">nessuna (solo upload nel dossier)</option>
             {deadlines.map((x) => <option key={x.key} value={x.key}>{itDate(x.due_date)} · {x.title} ({x.days < 0 ? `scaduta da ${-x.days} gg` : `tra ${x.days} gg`})</option>)}
-          </select> : <div>{m.deadline_key ? `TD-SCAD-${m.deadline_key}` : '–'}</div>}
+          </select> : <div>{m.deadline_key ? `TD-SCAD-${m.deadline_key}` : '–'}{m.status === 'APPROVATO' && m.resource_id && !fix && <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={() => { setFix(true); setFixKey(m.deadline_key || ''); }}>{m.deadline_key ? 'Cambia' : 'Abbina e chiudi'}</button>}</div>}
         </Field>
       </div>
+      {fix && (
+        <div className="alert info small" style={{ display: 'block', margin: '6px 0 10px' }}>
+          <div style={{ marginBottom: 6 }}><b>Correzione dopo l'approvazione.</b> Gli allegati sono già nel dossier di {m.last_name} {m.first_name}: scegli la scadenza da collegare e chiudere.</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={fixKey} onChange={(e) => setFixKey(e.target.value)} style={{ flex: 1, minWidth: 260 }}>
+              <option value="">scegli la scadenza</option>
+              {deadlines.map((x) => <option key={x.key} value={x.key}>{itDate(x.due_date)} · {x.title} ({x.state === 'CHIUSA' ? 'chiusa' : x.days < 0 ? `scaduta da ${-x.days} gg` : `tra ${x.days} gg`})</option>)}
+            </select>
+            <button className="btn" disabled={busy || !fixKey} onClick={closeLater}><Icon name="check" />Abbina e chiudi</button>
+            <button className="btn ghost" onClick={() => setFix(false)}>Annulla</button>
+          </div>
+        </div>
+      )}
       {v.deadline_key && (() => { const x = deadlines.find((y) => y.key === v.deadline_key); return x ? <div className="small" style={{ margin: '6px 0' }}><Badge tone={DEADLINE_STATE[x.state]}>{x.title} · {itDate(x.due_date)}</Badge> <span className="muted">TD-SCAD-{x.key}</span></div> : null; })()}
       <h3 style={{ margin: '14px 0 6px', fontSize: 15 }}>Allegati</h3>
       {d.data.files.map((f) => {

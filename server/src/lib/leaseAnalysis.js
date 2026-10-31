@@ -57,8 +57,11 @@ export async function extractText(buffer) {
 export async function analyzeText(text, { userId } = {}) {
   if (mockEnabled()) return { extracted: mockExtract(text), model: 'mock' };
   if (!aiEnabled()) throw bad(AI_NOT_CONFIGURED);
-  const user = `Testo del contratto di locazione (${text.length} caratteri):\n\n${text}`;
-  const extracted = await askJson({ kind: 'lease_contract', system: SYSTEM, user, maxTokens: 3000, userId, query: 'scadenziario: lettura contratto di affitto', timeoutMs: 120_000 });
+  // Contratti molto lunghi (allegati, planimetrie trascritte): oltre ~150k caratteri si passa la parte iniziale, dove stanno i dati utili
+  const MAX = 150_000;
+  const body = text.length > MAX ? `${text.slice(0, MAX)}\n\n[testo troncato: ${text.length - MAX} caratteri omessi]` : text;
+  const user = `Testo del contratto di locazione (${text.length} caratteri):\n\n${body}`;
+  const extracted = await askJson({ kind: 'lease_contract', system: SYSTEM, user, maxTokens: 6000, userId, query: 'scadenziario: lettura contratto di affitto', timeoutMs: 150_000 });
   if (!extracted || typeof extracted !== 'object' || Array.isArray(extracted)) throw bad('Risposta del modello non interpretabile');
   return { extracted, model: suite.anthropic.model };
 }

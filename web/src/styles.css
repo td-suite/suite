@@ -1009,3 +1009,10 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .conf-pin.alta { background: var(--green); }
 .conf-pin.media { background: #d9a400; }
 .conf-pin.bassa { background: var(--red); }
+
+/* Bacheca: chi ha reagito a un post */
+.post .acts .react.who { margin-left: auto; color: var(--muted); }
+.post .who-list { margin: 6px 0 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft, var(--panel)); display: grid; gap: 8px; font-size: 13px; }
+.post .who-list .lbl { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 4px; }
+.post .who-list .u { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.post .who-list .u .faint { margin-left: auto; font-size: 12px; }

@@ -180,6 +180,55 @@ async function personEmail(resourceId, fallback) {
  * Scadenza manuale (M<id>): deadlines.done = TRUE. Polizza RC: lp_contracts.insurance_expiry = nuova scadenza.
  * Le altre (prova, contratto ...): chiusura con nota in deadline_closures. Poi notifica in app ed email di conferma da people@.
  */
+// Chiusura della scadenza abbinata con gli allegati entrati nel dossier (usata all'approvazione e nella correzione successiva)
+async function applyClosure(c, { key, item, resourceId, inboxId, newIds, note, userId }) {
+  let how = null;
+  if (!item) return how;
+  const mA = key.match(/^A(\d+)$/); const mM = key.match(/^M(\d+)$/);
+  if (mA) {
+    const old = (await c.query('SELECT category FROM attachments WHERE id=$1 AND resource_id=$2', [Number(mA[1]), resourceId])).rows[0];
+    const repl = newIds.find((x) => x.category === old?.category) || newIds[0];
+    if (repl) {
+      await c.query('UPDATE attachments SET superseded_by=$3 WHERE id=$1 AND resource_id=$2', [Number(mA[1]), resourceId, repl.id]);
+      how = `allegato sostituito dal nuovo (${repl.expires_at ? `scadenza ${itDate(repl.expires_at)}` : 'senza scadenza'})`;
+    } else how = `chiusa con nota${note ? `: ${note}` : ''}`;
+  } else if (mM) {
+    await c.query('UPDATE deadlines SET done=TRUE WHERE id=$1 AND resource_id=$2', [Number(mM[1]), resourceId]);
+    how = 'scadenza manuale segnata come fatta';
+  } else if (item.type === 'DOCUMENTO' && /polizza/i.test(item.title)) {
+    const pol = newIds.find((x) => x.category === 'POLIZZA_RC' && x.expires_at);
+    if (pol) await c.query('UPDATE lp_contracts SET insurance_expiry=$2, updated_at=now() WHERE resource_id=$1', [resourceId, pol.expires_at]);
+    how = pol ? `polizza aggiornata con scadenza ${itDate(pol.expires_at)}` : 'polizza chiusa con nota (nuova scadenza non indicata)';
+  } else how = `chiusa con nota${note ? `: ${note}` : ''}`;
+  await c.query(`INSERT INTO deadline_closures (deadline_key, resource_id, inbox_id, note, closed_by) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (deadline_key) DO UPDATE SET inbox_id=EXCLUDED.inbox_id, note=EXCLUDED.note, closed_by=EXCLUDED.closed_by, closed_at=now()`, [key, resourceId, inboxId, [how, note].filter(Boolean).join(' · ').slice(0, 1000), userId]);
+  return how;
+}
+
+// Correzione dopo l'approvazione (richiesta del CEO 31/10/2026): un messaggio APPROVATO senza scadenza abbinata, o abbinato a quella
+// sbagliata, può essere collegato alla scadenza giusta della stessa persona; la chiusura avviene con gli allegati già nel dossier.
+export async function closeApprovedMessage(req, id, body) {
+  const row = await loadInbox(id);
+  if (row.status !== 'APPROVATO') throw bad('La correzione della scadenza è possibile solo sui messaggi approvati');
+  const resourceId = Number(row.resource_id);
+  if (!resourceId) throw bad('Il messaggio approvato non ha una persona abbinata');
+  const key = body.deadline_key || null;
+  if (!key) throw bad('Scegli la scadenza da chiudere');
+  const items = await computeDeadlines({ resourceId, includeClosed: true });
+  const item = items.find((i) => i.key === key);
+  if (!item) throw bad('La scadenza scelta non è tra quelle della persona');
+  const newIds = (await many('SELECT attachment_id AS id, approved_category AS category, approved_expires_at AS expires_at FROM people_inbox_files WHERE inbox_id=$1 AND attachment_id IS NOT NULL ORDER BY id', [id]))
+    .filter((x) => x.id);
+  const note = body.note ? String(body.note).slice(0, 1000) : row.note;
+  const how = await tx(async (c) => {
+    const h = await applyClosure(c, { key, item, resourceId, inboxId: id, newIds, note: body.note ? String(body.note).slice(0, 1000) : null, userId: req.user.id });
+    await c.query(`UPDATE people_inbox SET deadline_key=$2, match_method='MANUALE', note=$3 WHERE id=$1`, [id, key, note]);
+    return h;
+  });
+  await audit(req, 'PEOPLE_INBOX_CLOSE_LATER', 'people_inbox', id, { resource_id: resourceId, deadline_key: key, previous_key: row.deadline_key, closure: how });
+  return { ok: true, closure: how, deadline_key: key };
+}
+
 export async function approveMessage(req, id, body) {
   const row = await loadInbox(id);
   if (row.status !== 'DA_APPROVARE') throw bad(`Messaggio già ${row.status.toLowerCase().replace('_', ' ')}`);
@@ -214,25 +263,7 @@ export async function approveMessage(req, id, body) {
       await c.query('UPDATE people_inbox_files SET approved_category=$2, approved_expires_at=$3, include=TRUE, attachment_id=$4 WHERE id=$1', [f.id, f.category, f.expires_at, a.id]);
     }
     await c.query('UPDATE people_inbox_files SET include=FALSE WHERE inbox_id=$1 AND attachment_id IS NULL', [id]);
-    let how = null;
-    if (item) {
-      const mA = key.match(/^A(\d+)$/); const mM = key.match(/^M(\d+)$/);
-      if (mA) {
-        const old = (await c.query('SELECT category FROM attachments WHERE id=$1 AND resource_id=$2', [Number(mA[1]), resourceId])).rows[0];
-        const repl = newIds.find((x) => x.category === old?.category) || newIds[0];
-        await c.query('UPDATE attachments SET superseded_by=$3 WHERE id=$1 AND resource_id=$2', [Number(mA[1]), resourceId, repl.id]);
-        how = `allegato sostituito dal nuovo (${repl.expires_at ? `scadenza ${itDate(repl.expires_at)}` : 'senza scadenza'})`;
-      } else if (mM) {
-        await c.query('UPDATE deadlines SET done=TRUE WHERE id=$1 AND resource_id=$2', [Number(mM[1]), resourceId]);
-        how = 'scadenza manuale segnata come fatta';
-      } else if (item.type === 'DOCUMENTO' && /polizza/i.test(item.title)) {
-        const pol = newIds.find((x) => x.category === 'POLIZZA_RC' && x.expires_at);
-        if (pol) await c.query('UPDATE lp_contracts SET insurance_expiry=$2, updated_at=now() WHERE resource_id=$1', [resourceId, pol.expires_at]);
-        how = pol ? `polizza aggiornata con scadenza ${itDate(pol.expires_at)}` : 'polizza chiusa con nota (nuova scadenza non indicata)';
-      } else how = `chiusa con nota${note ? `: ${note}` : ''}`;
-      await c.query(`INSERT INTO deadline_closures (deadline_key, resource_id, inbox_id, note, closed_by) VALUES ($1,$2,$3,$4,$5)
-        ON CONFLICT (deadline_key) DO UPDATE SET inbox_id=EXCLUDED.inbox_id, note=EXCLUDED.note, closed_by=EXCLUDED.closed_by, closed_at=now()`, [key, resourceId, id, [how, note].filter(Boolean).join(' · ').slice(0, 1000), req.user.id]);
-    }
+    const how = await applyClosure(c, { key, item, resourceId, inboxId: id, newIds, note, userId: req.user.id });
     await c.query(`UPDATE people_inbox SET status='APPROVATO', resource_id=$2, deadline_key=$3, decided_by=$4, decided_at=now(), note=$5 WHERE id=$1`, [id, resourceId, key, req.user.id, note]);
     return { attachments: newIds, how };
   });
