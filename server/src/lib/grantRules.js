@@ -22,6 +22,10 @@ const seedRules = [
   ['HSQ Management', null, null, false, 'audit', 'QUALITA', 'ALL'], ['Retail & Communications Management', null, null, false, 'audit', 'AUDITOR', 'ALL'], ['B2B', null, null, false, 'audit', 'AUDITOR', 'ALL'],
   [null, 'Site Manager', null, false, 'audit', 'SITE', 'SITE'],
   [null, null, 'PUNTO_PRELIEVI', true, 'audit', 'SITE', 'SITE'], [null, null, 'CENTRO_MEDICO', true, 'audit', 'SITE', 'SITE'], [null, null, 'CENTRO_DIAGNOSTICO', true, 'audit', 'SITE', 'SITE'],
+  // Facility e Manutenzioni: Operations e Flow & Back Office gestiscono; HSQ consulta (report per le certificazioni); il Site Manager
+  // vede la propria sede, segnala i guasti e conferma i controlli di sede
+  ['Operations', null, null, false, 'facility', 'FACILITY', 'ALL'], ['Flow & Back Office Management', null, null, false, 'facility', 'FACILITY', 'ALL'],
+  ['HSQ Management', null, null, false, 'facility', 'VIEWER', 'ALL'], [null, 'Site Manager', null, false, 'facility', 'SITE', 'SITE'],
   // pettine
   ['Laboratorio di Analisi', null, null, false, 'nc', 'LAB', 'ALL'], ['Laboratorio di Analisi', null, null, false, 'orders', 'LAB', 'ALL'],
   ['B2B', null, null, false, 'business', 'OPERATOR', 'ALL'],
@@ -71,7 +75,7 @@ export async function rulesForPerson(personId) {
     ORDER BY r.sort_order, r.id`, [personId]);
 }
 
-const RANK = ['VIEWER', 'LETTORE', 'PROF', 'SEDE', 'SITE', 'OPERATOR', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['VIEWER', 'LETTORE', 'PROF', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const stronger = (a, b) => (RANK.indexOf(a) >= RANK.indexOf(b) ? a : b);
 
 /** Applica le regole a una persona con accesso: crea o aggiorna le PROPOSTE (mai i grant confermati). Ritorna quante proposte sono state scritte. */

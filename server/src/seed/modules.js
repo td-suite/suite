@@ -63,6 +63,12 @@ export const MODULES = [
   { key: 'audit', area: 'HQS', name: 'Audit SGI', tagline: 'Auto-audit mensili delle sedi, audit interni, audit di terze parti, audit ISO 37001 sui partner, sintesi con Claude', icon: 'audit', kind: 'LEGACY', legacy_url: null, sort_order: 15, scope_type: 'SITE', open_to_all: false,
     profiles: [P('ADMIN', 'Amministratore'), P('QUALITA', 'Qualità'), P('AUDITOR', 'Auditor (Retail, Service, MDL)'), P('SITE', 'Site manager', true), P('VIEWER', 'Consultazione')] },
 
+  // Facility e Manutenzioni (31/10/2026): immobili e contratti di affitto (canone da Payments), utenze ed energia (bollette in Payments),
+  // dispositivi dal Catalogo di Amministrazione con piano delle manutenzioni, interventi e segnalazioni guasti, scadenze normative.
+  // Solo con grant (open_to_all FALSE). FACILITY = Operations; MANUTENTORE anche fornitore esterno; SITE = site manager (ambito sede).
+  { key: 'facility', area: 'OPERATIONS', name: 'Facility e Manutenzioni', tagline: 'Immobili, utenze ed energia, dispositivi e manutenzioni programmate, scadenze normative', icon: 'facility', kind: 'LEGACY', legacy_url: null, sort_order: 70, scope_type: 'SITE', open_to_all: false,
+    profiles: [P('ADMIN', 'Amministratore'), P('FACILITY', 'Facility (gestione completa)'), P('MANUTENTORE', 'Manutentore'), P('SITE', 'Site manager', true), P('VIEWER', 'Consultazione (Qualità, HSQ)')] },
+
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti e profili, anagrafiche, importazioni, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,
     profiles: [P('ADMIN', 'Amministratore')] },

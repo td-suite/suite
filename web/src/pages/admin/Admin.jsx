@@ -11,6 +11,7 @@ import { Organization, Roles } from './Registry.jsx';
 import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
 import { Connectors } from './Connectors.jsx';
+import { AssetTypes } from './AssetTypes.jsx';
 
 function Overview() {
   const summary = useApi('/users/summary');
@@ -66,6 +67,7 @@ export default function Admin() {
       <Route path="modules" element={<Modules />} />
       <Route path="organization" element={<Organization />} />
       <Route path="roles" element={<Roles />} />
+      <Route path="asset-types" element={<AssetTypes />} />
       <Route path="legacy" element={<Legacy />} />
       <Route path="connectors" element={<Connectors />} />
       <Route path="api-keys" element={<ApiKeys />} />

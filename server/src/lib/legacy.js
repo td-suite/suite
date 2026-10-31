@@ -606,6 +606,10 @@ const COUNTER_QUERIES = {
       (SELECT count(*) FROM sites_v s WHERE s.in_esercizio AND s.kind IN ('PUNTO_PRELIEVI','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO','LABORATORIO')
          AND NOT EXISTS (SELECT 1 FROM audits a WHERE a.kind='AUTO' AND a.site_id=s.id AND a.period=date_trunc('month', CURRENT_DATE)::date AND a.deleted_at IS NULL AND a.status <> 'BOZZA')) +
       (SELECT count(*) FROM audits a WHERE a.kind='AUTO' AND a.status='INVIATO' AND a.deleted_at IS NULL))::int AS n` },
+  // Facility e Manutenzioni: scadenze del piano scadute + interventi URGENTE/ALTA aperti (stessa regola del badge del modulo)
+  facility: { label: 'Scadenze scadute e interventi urgenti', sql: `SELECT (
+      (SELECT count(*) FROM maintenance_plans WHERE status IN ('PIANIFICATA','SCADUTA') AND due_date < CURRENT_DATE) +
+      (SELECT count(*) FROM work_orders WHERE status <> 'CHIUSO' AND priority IN ('URGENTE','ALTA')))::int AS n` },
 };
 // Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
 const CORE_COUNTERS = {

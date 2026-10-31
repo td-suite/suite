@@ -71,6 +71,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/people', icon: 'user', label: 'Persone' },
         { to: '/admin/organization', icon: 'grid', label: 'Organizzazione' },
         { to: '/admin/roles', icon: 'tag', label: 'Ruoli' },
+        { to: '/admin/asset-types', icon: 'facility', label: 'Catalogo dispositivi' },
         { group: 'Dati' },
         { to: '/admin/legacy', icon: 'refresh', label: 'Sorgenti legacy' },
         { to: '/admin/connectors', icon: 'cloud', label: 'Connettori' },

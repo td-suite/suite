@@ -1,0 +1,83 @@
+/* Modulo Facility e Manutenzioni: stili propri, isolati dal plugin Vite sotto .mod-facility (prefisso di classe fa-) */
+.fa-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+.fa-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.fa-wide { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 1100px) { .fa-two, .fa-three, .fa-wide { grid-template-columns: 1fr; } }
+.fa-two > *, .fa-three > *, .fa-wide > * { min-width: 0; }
+.fa-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.fa-table { font-size: 13px; width: 100%; }
+.fa-table td { vertical-align: top; }
+.fa-table .badge { white-space: nowrap; }
+.fa-table tr.click { cursor: pointer; }
+.fa-table tr.click:hover td { background: var(--hover); }
+.fa-table td.num, .fa-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fa-table tr.late td:first-child { box-shadow: inset 3px 0 0 var(--red, #b3372f); }
+.fa-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.fa-filters > * { flex: 0 0 auto; }
+.fa-filters .search-input { min-width: 220px; }
+.fa-in { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); max-width: 100%; }
+.fa-in.w { width: 100%; }
+.fa-in:focus, .fa-note:focus { outline: 2px solid var(--teal-200, #9ad7de); border-color: var(--teal); }
+.fa-note { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); resize: vertical; }
+.fa-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; }
+.fa-grid.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fa-grid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .fa-grid, .fa-grid.g2, .fa-grid.g4 { grid-template-columns: 1fr; } }
+.fa-grid .f input, .fa-grid .f select, .fa-grid .f textarea { width: 100%; }
+
+.fa-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; font-size: 13px; }
+.fa-facts .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.fa-facts .v { font-weight: 600; }
+
+.fa-alert { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--teal-050); color: var(--ink); font-size: 13px; margin-bottom: 14px; }
+.fa-alert .ico { width: 18px; height: 18px; flex: none; color: var(--teal); margin-top: 1px; }
+.fa-alert.warn { background: #fff4d6; color: #5a3d00; }
+.fa-alert.warn .ico { color: #a35a00; }
+.fa-alert.ok { background: var(--green-100, #e3f3ea); color: #1d4d39; }
+.fa-alert.ok .ico { color: var(--green, #2f7d5b); }
+.fa-alert.err { background: #fde8e8; color: #7a1f1f; }
+.fa-alert.err .ico { color: var(--red, #b3372f); }
+
+.fa-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fa-list li { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--card-2, var(--bg)); }
+.fa-list li .t { font-weight: 600; }
+.fa-list li .m { font-size: 12px; color: var(--muted); }
+
+.fa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.fa-card .hd h2 { font-size: 15px; }
+.fa-card .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.fa-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 8px; border-radius: 99px; background: var(--card-2, var(--bg)); color: var(--ink); }
+.fa-chip .ico { width: 14px; height: 14px; color: var(--teal); }
+.fa-chip.red { background: #fde8e8; color: #7a1f1f; } .fa-chip.red .ico { color: var(--red, #b3372f); }
+.fa-chip.amber { background: #fff4d6; color: #5a3d00; } .fa-chip.amber .ico { color: #a35a00; }
+
+.fa-file { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.fa-file .ico { width: 16px; height: 16px; }
+.fa-plan { width: 100%; height: 380px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.fa-planimg { max-width: 100%; max-height: 380px; border: 1px solid var(--line); border-radius: 10px; display: block; }
+
+.fa-bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; min-width: 80px; }
+.fa-bar > i { display: block; height: 100%; border-radius: 99px; background: var(--teal); }
+.fa-bar > i.ok { background: var(--green, #2f7d5b); } .fa-bar > i.mid { background: var(--teal); } .fa-bar > i.low { background: #a35a00; }
+
+.fa-qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.fa-qr img { width: 150px; height: 150px; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 6px; }
+.fa-timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); display: grid; gap: 10px; }
+.fa-timeline li { position: relative; font-size: 13px; }
+.fa-timeline li::before { content: ''; position: absolute; left: -20px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--teal); border: 2px solid var(--card); }
+.fa-timeline li .m { font-size: 12px; color: var(--muted); }
+.fa-month { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--teal); padding: 12px 0 4px; }
+.fa-legend { font-size: 12px; color: var(--muted); }
+.fa-big { font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.fa-muted-box { padding: 10px 12px; border-radius: 10px; background: var(--card-2, var(--bg)); font-size: 13px; }
+@media print { .fa-noprint { display: none !important; } }
+/* filtri: i controlli restano della loro misura (la Suite allarga select e input al 100%) */
+.fa-filters select.fa-in, .fa-filters input.fa-in { width: auto; min-width: 150px; }
+.fa-filters .tabs { flex-basis: 100%; }
+/* tabelle larghe dentro le card: scorrono invece di uscire */
+.card .bd.flush { overflow-x: auto; }
+.fa-table input.fa-in, .fa-table select.fa-in { min-height: 30px; padding: 4px 6px; }
+/* piano: colonne allineate tra i gruppi dei mesi */
+.fa-fixed { table-layout: fixed; }
+.fa-fixed td:nth-child(1) { width: 110px; } .fa-fixed td:nth-child(2) { width: 40%; } .fa-fixed td:nth-child(3) { width: 16%; }
+.fa-fixed td:nth-child(4) { width: 20%; } .fa-fixed td:nth-child(5) { width: 130px; } .fa-fixed td:nth-child(6) { width: 90px; }

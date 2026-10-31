@@ -1,0 +1,32 @@
+// Etichette e formati del modulo Facility e Manutenzioni
+export const SITE_KIND = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', HEADQUARTER: 'Sede direzionale', ALTRO: 'Altro' };
+export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
+export const DOC_KINDS = { PLANIMETRIA: 'Planimetria', CONTRATTO: 'Contratto', CERTIFICAZIONE: 'Certificazione', VERBALE: 'Verbale', ALTRO: 'Altro' };
+export const OBL_KINDS = { CONTRATTUALE: 'Contrattuale', NORMATIVO: 'Normativo', ASSICURATIVO: 'Assicurativo' };
+export const PLAN_KIND = { CONTROLLO: 'Controllo', MANUTENZIONE: 'Manutenzione', VERIFICA_NORMATIVA: 'Verifica normativa', COLLAUDO: 'Collaudo' };
+export const STREAM = { SORVEGLIANZA: 'Sorveglianza di sede', CONTROLLO: 'Controllo periodico', MANUTENZIONE: 'Manutenzione', OBBLIGO: 'Obbligo dell\'immobile' };
+export const PERFORMER = { SEDE: 'Sede', MANUTENTORE: 'Manutentore', ENTE: 'Ente verificatore' };
+export const PLAN_STATUS = { PIANIFICATA: { label: 'Pianificata', tone: 'blue' }, SCADUTA: { label: 'Scaduta', tone: 'red' }, ESEGUITA: { label: 'Eseguita', tone: 'green' }, ANNULLATA: { label: 'Annullata', tone: 'grey' } };
+export const OUTCOME = { CONFORME: { label: 'Conforme', tone: 'green' }, CON_PRESCRIZIONI: { label: 'Con prescrizioni', tone: 'amber' }, NON_CONFORME: { label: 'Non conforme', tone: 'red' } };
+export const WO_STATUS = { APERTO: { label: 'Aperto', tone: 'red' }, ASSEGNATO: { label: 'Assegnato', tone: 'amber' }, IN_CORSO: { label: 'In corso', tone: 'blue' }, SOSPESO: { label: 'Sospeso', tone: 'mauve' }, CHIUSO: { label: 'Chiuso', tone: 'green' } };
+export const PRIORITY = { URGENTE: { label: 'Urgente', tone: 'red' }, ALTA: { label: 'Alta', tone: 'amber' }, MEDIA: { label: 'Media', tone: 'blue' }, BASSA: { label: 'Bassa', tone: 'grey' } };
+export const ASSET_STATUS = { IN_SERVIZIO: { label: 'In servizio', tone: 'green' }, FUORI_SERVIZIO: { label: 'Fuori servizio', tone: 'red' }, DISMESSO: { label: 'Dismesso', tone: 'grey' } };
+export const CATEGORY = { SICUREZZA_ANTINCENDIO: 'Sicurezza antincendio', SICUREZZA_LUOGHI: 'Sicurezza dei luoghi', IMPIANTI: 'Impianti', CLIMA_ENERGIA: 'Clima ed energia', ELETTROMEDICALE: 'Elettromedicali', DIAGNOSTICA_IMMAGINI: 'Diagnostica per immagini', LABORATORIO: 'Laboratorio', IT: 'IT', ARREDI: 'Arredi', EMERGENZA: 'Emergenza', IGIENE_AMBIENTE: 'Igiene e ambiente' };
+export const VECTOR = { ELETTRICO: 'Energia elettrica', GAS: 'Gas naturale', ACQUA: 'Acqua', TELERISCALDAMENTO: 'Teleriscaldamento', GASOLIO: 'Gasolio', ALTRO: 'Altro' };
+export const UNIT = { ELETTRICO: 'kWh', GAS: 'Smc', ACQUA: 'm3', TELERISCALDAMENTO: 'kWh', GASOLIO: 'l', ALTRO: '' };
+export const TRANSFER = { DA_AVVIARE: { label: 'Voltura da avviare', tone: 'red' }, IN_CORSO: { label: 'Voltura in corso', tone: 'amber' }, COMPLETATA: { label: 'Voltura completata', tone: 'green' }, NON_NECESSARIA: { label: 'Intestata', tone: 'grey' } };
+export const BENCH = { SOTTO: { label: 'sotto la fascia', tone: 'green' }, NELLA_FASCIA: { label: 'nella fascia', tone: 'teal' }, SOPRA: { label: 'sopra la fascia', tone: 'red' } };
+export const TARGET = { RAGGIUNTO: { label: 'Raggiunto', tone: 'green' }, IN_LINEA: { label: 'In linea', tone: 'teal' }, FUORI_LINEA: { label: 'Fuori linea', tone: 'red' }, NESSUN_DATO: { label: 'Dati insufficienti', tone: 'grey' } };
+export const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+
+export const itDate = (d) => (d ? new Date(String(d).length === 10 ? `${d}T12:00:00Z` : d).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }) : '');
+export const itDateTime = (d) => (d ? new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome', dateStyle: 'short', timeStyle: 'short' }) : '');
+export const num = (v, d = 0) => (v == null || v === '' ? '–' : Number(v).toLocaleString('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d }));
+export const eur = (v) => (v == null ? '–' : Number(v).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }));
+export const pct = (v) => (v == null ? '–' : `${v > 0 ? '+' : ''}${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 })}%`);
+export const meseLabel = (k) => (k ? `${MESI[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}` : '');
+export const kb = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+export const giorni = (d) => (d == null ? '' : d < 0 ? `scaduta da ${-d} g` : d === 0 ? 'oggi' : `tra ${d} g`);
+export const ore = (h) => (h == null ? '–' : h < 48 ? `${num(h, 1)} h` : `${num(h / 24, 1)} g`);
+export const thisYear = () => new Date().getFullYear();
+export const ogni = (m) => (m == null ? '' : Number(m) === 1 ? 'ogni mese' : `ogni ${m} mesi`);

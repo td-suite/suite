@@ -61,6 +61,11 @@ const MODULES = {
     f: 'M9 9h30v34H9zM18 5h12v7H18z',
     s: 'M9 9h30v34H9zM18 5h12v7H18zM16 20h7M16 27h5M16 34h7M27 29l4 4 8-9',
   },
+  // Facility e Manutenzioni: edificio con finestre e porta, chiave inglese davanti in basso a destra
+  facility: {
+    f: 'M5 9h21v33H5zM41.5 22.5l-3.4 3.4 1 2.6 2.6 1 3.4-3.4a6 6 0 0 1-8 7L29 41a2.6 2.6 0 0 1-3.7-3.7l8.1-8.1a6 6 0 0 1 7-8z',
+    s: 'M5 42V9h21v13M2 42h22M10 15h4M17 15h4M10 22h4M10 29h4M13 42v-7h5M41.5 22.5l-3.4 3.4 1 2.6 2.6 1 3.4-3.4a6 6 0 0 1-8 7L29 41a2.6 2.6 0 0 1-3.7-3.7l8.1-8.1a6 6 0 0 1 7-8z',
+  },
   sgi: {
     f: 'M5 11h12l4 4h22v24H5z',
     s: 'M5 11h12l4 4h22v24H5zM5 19h38M12 27h8M39 30a5 5 0 1 1-10 0 5 5 0 0 1 10 0zM31.5 34 30 41M36.5 34 38 41M34 28.5l.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z',
@@ -169,6 +174,9 @@ const UI = {
   dots: 'M5 12h.01M12 12h.01M19 12h.01',
   ticket: 'M3 8V6h18v2a2 2 0 0 0 0 4v2H3v-2a2 2 0 0 0 0-4zM3 14v4h18v-4M9 6v2M9 10v1M9 13v1M9 16v2M13 11h5',
   star: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z',
+  bolt: 'M13 2.5 4.5 13.5H11l-1 8 8.5-11H12z',
+  wrench: 'M20.5 7.5a5 5 0 0 1-6.6 4.9L6.6 19.7a2 2 0 0 1-2.8-2.8l7.3-7.3A5 5 0 0 1 16.5 3.5l-2.6 2.6.6 2.4 2.4.6z',
+  qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 18.5v1.5M18.5 14H20M6.5 6.5h1M16.5 6.5h1M6.5 16.5h1',
 };
 
 export const MODULE_ICONS = Object.keys(MODULES);

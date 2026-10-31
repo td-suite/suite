@@ -117,3 +117,15 @@ La casella letta per le richieste Endeavor è shipments@toscanadiagnostica.it pe
 - Limiti di caricamento: fino a 10 file per volta, 20 MB ciascuno (413 oltre), PDF/.eml/.txt; .msg non supportato (salvare come .eml
   o PDF); testo letto fino a 40.000 caratteri. OCR dei PDF scansionati con le impostazioni condivise di lib/pdftext.js
   (PDF_OCR_LANG, PDF_OCR_SOGLIA, PDFTOTEXT_BIN, TESSERACT_BIN). Archivio dei file: blob della Suite se configurato, altrimenti database.
+
+## Facility e Manutenzioni (31/10/2026)
+Variabili d'ambiente (facoltative): `FACILITY_AI_MOCK=1` analisi dei consumi simulata senza chiave Anthropic, attiva solo con `NODE_ENV`
+diverso da production (collaudo; non impostarla su Render); `FACILITY_MAX_FILE_MB` (25) e `FACILITY_MAX_FILES` (10) limiti di documenti,
+planimetrie, rapportini e foto delle segnalazioni (413 oltre); `FACILITY_JOB_MINUTES` (1440) intervallo del job `facility:scadenze`. La
+planimetria pubblicata in Room Planning ha un limite di 20 MB (Room avvisa già oltre 3,8 MB). Impostazioni in app (`facility.app_settings`,
+Facility e Manutenzioni > Impostazioni, profili FACILITY/ADMIN): `sla_hours` (URGENTE 24, ALTA 72, MEDIA 240, BASSA 720), `co2_factors` e
+`kwh_factors` per vettore (indicativi), `reminder_days` (30, 7, 0), `anomaly_pct` (20), `activity_source` (AUTO, RETAIL, CASH, MANUALE),
+`notify_site_managers`. Nessun dato chiesto due volte: sedi, Legal entity ospitante, persone e site manager dall'anagrafica; contratti di
+affitto, utenze e bollette da Payments; il Catalogo dispositivi è in Amministrazione. Dati del modulo: superficie, catasto, APE, ore di
+apertura (proprietà dell'immobile, non dell'anagrafica sede), estensione energetica delle utenze, letture, attività manuale, obiettivi.
+

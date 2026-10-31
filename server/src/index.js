@@ -29,6 +29,7 @@ import legacyRoutes from './routes/legacy.js';
 import travasoRoutes from './routes/travaso.js';
 import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
+import assetTypesRoutes from './routes/assetTypes.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
@@ -115,6 +116,7 @@ app.use('/api', legacyRoutes);
 app.use('/api', travasoRoutes);
 app.use('/api', importRoutes);
 app.use('/api', orgcatRoutes);
+app.use('/api', assetTypesRoutes);                       // Catalogo dispositivi (Amministrazione > Anagrafiche)
 app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));

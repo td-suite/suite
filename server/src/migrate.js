@@ -10,6 +10,7 @@ import { pool, one, q } from './db.js';
 import { config, LEGACY_KEYS } from './config.js';
 import { MODULES } from './seed/modules.js';
 import { QUOTES } from './seed/quotes.js';
+import { ASSET_TYPES_SEED } from './seed/assetTypes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, 'migrations');
@@ -66,7 +67,7 @@ async function seed() {
   }
 
   // Sorgenti legacy: una riga per app, abilitata se la URL è configurata
-  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)', ticket: 'Ticket (nativo, senza sorgente)', cartella: 'Cartella condivisa (nativo, senza sorgente)', referti: 'Referti esterni (nativo, senza sorgente)', audit: 'Audit SGI (nativo, senza sorgente)' };
+  const labels = { cash: 'Cash Management', orders: 'Orders Management', shipments: 'Shipments', room: 'Room Planning', nc: 'Non conformità', retail: 'Retail Assistant', business: 'Business', finance: 'Finance', integration: 'Integration', contracts: 'Contracts (People)', circolari: 'Circolari (nativo, senza sorgente)', ticket: 'Ticket (nativo, senza sorgente)', cartella: 'Cartella condivisa (nativo, senza sorgente)', referti: 'Referti esterni (nativo, senza sorgente)', audit: 'Audit SGI (nativo, senza sorgente)', facility: 'Facility e Manutenzioni (nativo, senza sorgente)' };
   for (const k of LEGACY_KEYS) {
     await q(`INSERT INTO legacy_sources (key, label, enabled) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET enabled=EXCLUDED.enabled`, [k, labels[k], Boolean(config.legacy[k])]);
   }
@@ -103,9 +104,27 @@ async function seed() {
     'sso.bar': { showHome: true },
   };
   for (const [k, v] of Object.entries(defaults)) await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(v)]);
+  await seedAssetTypes().catch((e) => console.warn('[seed] catalogo dispositivi', e.message));
   await seedCentralino();
   await seedPublicContact().catch((e) => console.warn('[seed] contatti pubblici', e.message));
   await seedGrantRules().then((n) => { if (n) console.log(`[seed] regole di accesso: ${n}`); }).catch((e) => console.warn('[seed] regole', e.message));
+}
+
+// Catalogo dispositivi (public.asset_types, migrazione 033): seed di benchmark una volta sola. Da lì in poi il catalogo lo governa
+// Amministrazione > Anagrafiche > Catalogo dispositivi (le voci eliminate o modificate non tornano).
+export async function seedAssetTypes() {
+  if (await one(`SELECT 1 FROM app_settings WHERE key='facility.asset_types_seeded'`)) return 0;
+  let n = 0;
+  for (const t of ASSET_TYPES_SEED) {
+    const r = await q(`INSERT INTO asset_types (code, name, category, description, surveillance_months, check_interval_months, check_kind, maintenance_interval_months,
+        legal_reference, requires_certified_vendor, applies_to_kinds, benchmark_note, active, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (code) DO NOTHING`,
+    [t.code, t.name, t.category, t.description, t.surveillance_months, t.check_interval_months, t.check_kind, t.maintenance_interval_months, t.legal_reference,
+      t.requires_certified_vendor, t.applies_to_kinds, t.benchmark_note, t.active, t.sort]);
+    n += r.rowCount;
+  }
+  await q(`INSERT INTO app_settings (key, value) VALUES ('facility.asset_types_seeded', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify({ at: new Date().toISOString(), n })]);
+  if (n) console.log(`[seed] catalogo dispositivi: ${n} voci (benchmark da confermare con RSPP e Qualità)`);
+  return n;
 }
 
 // Unità "contatto pubblico" per gli accessi esterni (docs/ACCESSI_ESTERNI.md): la migrazione 031 marca quelle già presenti; se

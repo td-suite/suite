@@ -45,3 +45,14 @@ effettiva apertura (public.sites.opened_at; start_date per le Legal entity), pia
 (packages INIZIALE) con annullamento solo SUPERADMIN, PDF e badge (aperture entro 60 giorni senza Giacenza 0). Migrazione
 orders/009_dotazione_avvio.sql, test orders-startup.test.mjs, schermate docs/screens/orders-dotazione-*.png. Dettagli in
 docs/ANAGRAFICA.md (sezione Ordini).
+
+## 31/10/2026 · Facility e Manutenzioni
+Nuovo widget nativo `facility` in OPERATIONS (richiesta del CEO): Catalogo dispositivi in Amministrazione (public.asset_types, migrazione
+033, 46 voci di benchmark da confermare con RSPP e Qualità), immobili delle sedi con canone e scadenze dal contratto di Payments, obblighi di
+controllo, documenti e planimetria pubblicata in Room Planning (room.struttura_blobs), utenze e bollette scritte nello Scadenziario
+strutture di Payments, energy management (consumi, costi, CO2, kWh/m2, per accettazione e per ora, anno su anno, anomalie, classifica tra
+sedi, obiettivi, fasce indicative, analisi con Claude, rapporti PDF/XLSX), dispositivi con QR e piano delle scadenze rigenerato alla
+chiusura, interventi con SLA e segnalazione guasti del site manager, KPI, job `facility:scadenze` con promemoria 30/7/0 giorni.
+Collaudo locale su db proprio (116 controlli API), test `facility.test.mjs`, schermate `docs/screens/facility-*.png`. Da confermare i
+benchmark e da provare l'analisi con la chiave Anthropic reale. Dettagli in docs/FACILITY.md.
+

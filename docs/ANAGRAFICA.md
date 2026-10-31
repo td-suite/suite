@@ -821,3 +821,21 @@ richiedente del kit può essere una Legal entity.
 - **Collaudo**: `SHIPMENTS_AI_MOCK=1` (solo con NODE_ENV diverso da production) sostituisce Claude con un estrattore a espressioni
   regolari (`mockExtract`), segnalato negli avvisi. Test: `server/test/shipments-upload.test.mjs`. Schermate:
   `docs/screens/shipments-lifestyle-{upload,revisione,richiedente}.png`.
+
+## Facility e Manutenzioni: Catalogo dispositivi e relazioni tra schemi (31/10/2026)
+Modulo nativo `facility` in OPERATIONS (docs/FACILITY.md). Tabella core nuova `public.asset_types` (migrazione 033): Catalogo dispositivi
+sotto manutenzione, gestito in Amministrazione > Anagrafiche > Catalogo dispositivi (Owner e Admin; lettura per tutti con
+`GET /api/asset-types`), seed di 46 voci di benchmark "da confermare con RSPP e Qualità" seminato una volta sola. Colonne: code UNIQUE,
+name, category, description, surveillance_months (sorveglianza di sede), check_interval_months con check_kind (CONTROLLO o
+VERIFICA_NORMATIVA), maintenance_interval_months, legal_reference, requires_certified_vendor, applies_to_kinds TEXT[], benchmark_note,
+active, sort. `facility.assets.asset_type_code` e `facility.property_obligations.asset_type_code` → `asset_types.code` (ON UPDATE CASCADE;
+un tipo in uso non si elimina, si disattiva).
+Nessuna anagrafica propria nel modulo: `facility.properties.site_id` (UNIQUE), `assets.site_id`, `maintenance_plans.site_id`,
+`work_orders.site_id`, `activity_metrics.site_id`, `energy_targets.site_id` → `public.sites`; locatore, manutentore e fornitore →
+`public.organizations`; `work_orders.assigned_user_id` → `public.users`. Riferimenti logici senza FK tra schemi (verificati dal codice):
+`properties.lease_id` → `finance.lease_contracts.id`, `utility_meta.utility_id` e `meter_readings.utility_id` → `finance.utilities.id`.
+Scritture fuori dallo schema del modulo: `finance.utilities` e `finance.utility_bills` (utenze e bollette create da Facility, Payments è la
+fonte unica e le mette nello scadenziario) e `room.struttura_blobs` (planimetria: Facility è la fonte, Room la mostra; `site_ext` di Room
+non si tocca). Letture: `finance.lease_contracts`/`lease_steps` (canone, scatti, scadenza), `retail.sales` (accettazioni per sede e mese),
+`cash.cash_reports` (giorni con rendiconto), `public.sites.host_organization_id` (Legal entity ospitante: immobile OSPITATA).
+
