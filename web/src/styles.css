@@ -989,3 +989,15 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .quizbox .opt.ok { background: rgba(31,139,76,.12); }
 .quizbox .opt.ko { background: rgba(192,57,43,.10); }
 .quizbox .opt input { margin-top: 3px; }
+
+/* Amministrazione > Sedi: titolo di godimento, contratto in PDF letto da Claude, spilla di confidenza (come lo Scadenziario di Payments) */
+.form-grid .form-section { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.form-grid .form-section h3 { margin: 0 0 2px; font-size: 15px; }
+.pdf-box { border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg); display: flex; flex-direction: column; gap: 4px; }
+.pdf-box .ico { width: 20px; height: 20px; flex: none; }
+.lease-payments { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
+.lease-payments .ico { width: 18px; height: 18px; flex: none; }
+.conf-pin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-left: 5px; cursor: help; box-shadow: 0 0 0 2px var(--card, #fff); }
+.conf-pin.alta { background: var(--green); }
+.conf-pin.media { background: #d9a400; }
+.conf-pin.bassa { background: var(--red); }

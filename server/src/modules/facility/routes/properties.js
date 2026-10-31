@@ -10,7 +10,7 @@ import { ah, audit, bad, parse, HttpError, forbidden, notFound } from '../../../
 import { storeBuffer, sendFile, dropBlobs } from '../../../lib/moduleStorage.js';
 import { buildEvents } from '../../finance/lib/schedule.js';
 import { requireFacility, assertSite, canSeeSite, limitedToSites, mySiteIds, isFacility, vendorScope, isManutentore } from '../lib/access.js';
-import { KEY, idOf, settings, siteById, ensureProperties, propertyBySite, leaseInfo, financeLive, syncObligationPlan, todayRome } from '../lib/core.js';
+import { KEY, idOf, settings, siteById, ensureProperties, propertyBySite, leaseInfo, financeLive, syncObligationPlan, todayRome, REGISTRY_COLS, registryBySite } from '../lib/core.js';
 import { publishPlanToRoom, roomPlanStatus, isPdf, isRoomImage } from '../lib/room.js';
 import { siteEnergySummary } from '../lib/energy.js';
 import { addDays } from '../lib/calc.js';
@@ -37,14 +37,15 @@ r.get('/immobili', ah(async (req, res) => {
   // manutentore esterno: solo le sedi dove la sua Legal entity ha dispositivi o interventi
   const vs = vendorScope(req);
   if (vs) { params.push(vs.orgId); w += ` AND (s.id IN (SELECT site_id FROM assets WHERE vendor_org_id=$${params.length}) OR s.id IN (SELECT site_id FROM work_orders WHERE vendor_org_id=$${params.length}))`; }
-  const rows = await many(`SELECT pr.*, s.code, s.name, s.kind, s.city, s.address, s.manager_name, s.host_organization_id, ho.name AS host_name, lo.name AS landlord_name,
+  // titolo di godimento, canone e locatore: dall'anagrafica Sedi (public.sites), non dall'immobile
+  const rows = await many(`SELECT pr.*, s.code, s.name, s.kind, s.city, s.address, s.manager_name, s.host_organization_id, ho.name AS host_name, lo.name AS landlord_name, ${REGISTRY_COLS},
       (SELECT count(*)::int FROM property_documents d WHERE d.property_id=pr.id AND d.kind='PLANIMETRIA') AS n_planimetrie,
       (SELECT max(d.published_room_at) FROM property_documents d WHERE d.property_id=pr.id AND d.kind='PLANIMETRIA') AS published_room_at,
       (SELECT count(*)::int FROM assets a WHERE a.site_id=s.id AND a.status <> 'DISMESSO') AS n_assets,
       (SELECT count(*)::int FROM work_orders w WHERE w.site_id=s.id AND w.status <> 'CHIUSO') AS n_wo_open,
       (SELECT count(*)::int FROM maintenance_plans p WHERE p.site_id=s.id AND p.status IN ('PIANIFICATA','SCADUTA') AND p.due_date < CURRENT_DATE) AS n_overdue,
       (SELECT count(*)::int FROM property_obligations o WHERE o.property_id=pr.id AND o.active) AS n_obblighi
-    FROM sites_v s JOIN properties pr ON pr.site_id=s.id LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id LEFT JOIN public.organizations lo ON lo.id=pr.landlord_org_id
+    FROM sites_v s JOIN public.sites ps ON ps.id=s.id JOIN properties pr ON pr.site_id=s.id LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id LEFT JOIN public.organizations lo ON lo.id=ps.lease_landlord_org_id
     WHERE ${w} ORDER BY s.sort_order, s.name`, params);
   const fin = await financeLive();
   const out = [];
@@ -67,9 +68,9 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
   const imp = await settings();
   const today = todayRome();
   const year = Number(String(today).slice(0, 4));
-  const [host, landlord, li, obligations, documents, assets, wos, room] = await Promise.all([
+  const [host, registry, li, obligations, documents, assets, wos, room] = await Promise.all([
     site.host_organization_id ? one('SELECT id, name, kind, vat_number, city FROM public.organizations WHERE id=$1', [site.host_organization_id]) : null,
-    prop.landlord_org_id ? one('SELECT id, name, kind, vat_number, city FROM public.organizations WHERE id=$1', [prop.landlord_org_id]) : null,
+    registryBySite(siteId),
     leaseInfo(siteId, prop.lease_id),
     many(`SELECT o.*, t.name AS asset_type_name, (SELECT row_to_json(x) FROM (SELECT p.id, p.due_date, p.status FROM maintenance_plans p WHERE p.obligation_id=o.id AND p.status IN ('PIANIFICATA','SCADUTA') ORDER BY p.due_date LIMIT 1) x) AS next_plan,
       (SELECT max(p.done_at) FROM maintenance_plans p WHERE p.obligation_id=o.id AND p.status='ESEGUITA') AS last_done
@@ -91,14 +92,15 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
   }
   const energy = li.available ? await siteEnergySummary(siteId, imp, year) : { available: false };
   const planimetria = documents.find((d) => d.kind === 'PLANIMETRIA') || null;
-  res.json({ site, property: { ...prop, tenure_label: TENURE[prop.tenure] }, host, landlord, lease: li, obligations, documents, planimetria, room, assets, work_orders: wos, utilities, next_bills: nextBills, energy,
+  // registry: titolo di godimento, canone con IVA, durata, garanzie e locatore dall'anagrafica Sedi (si modificano in Amministrazione > Sedi)
+  const landlord = registry?.lease_landlord_org_id ? { id: registry.lease_landlord_org_id, name: registry.landlord_name, vat_number: registry.landlord_vat, city: registry.landlord_city } : null;
+  res.json({ site, property: { ...prop, tenure: registry?.tenure || 'LOCAZIONE', tenure_label: TENURE[registry?.tenure || 'LOCAZIONE'] }, registry, host, landlord, lease: li, obligations, documents, planimetria, room, assets, work_orders: wos, utilities, next_bills: nextBills, energy,
     finance: li.available, can_edit: isFacility(req), labels: { tenure: TENURE, doc_kinds: DOC_KINDS, obligation_kinds: OBLIGATION_KINDS } });
 }));
 
+// Titolo di godimento e locatore non sono più qui: si modificano in Amministrazione > Sedi (fonte unica)
 const propSchema = z.object({
-  tenure: z.enum(Object.keys(TENURE)).optional(),
   lease_id: z.coerce.number().int().positive().nullable().optional().or(z.literal('').transform(() => null)),
-  landlord_org_id: z.coerce.number().int().positive().nullable().optional().or(z.literal('').transform(() => null)),
   surface_sqm: optNum(0, 1_000_000), floors: optNum(-5, 200), rooms: optNum(0, 10_000),
   cadastral: z.object({ foglio: optText(40), particella: optText(40), sub: optText(40), categoria: optText(40), rendita: optText(40) }).partial().optional(),
   energy_class: optText(10), ape_valid_until: optDate, heating_type: optText(200), cooling_type: optText(200), year_built: optNum(1000, 2100),
@@ -112,7 +114,6 @@ r.put('/immobili/:siteId', requireFacility, ah(async (req, res) => {
     const l = await one('SELECT site_id FROM finance.lease_contracts WHERE id=$1', [b.lease_id]);
     if (!l || l.site_id !== siteId) throw bad('Il contratto di affitto indicato non è di questa sede in Payments');
   }
-  if (b.landlord_org_id && !await one('SELECT 1 FROM public.organizations WHERE id=$1', [b.landlord_org_id])) throw bad('Legal entity inesistente');
   const cols = Object.keys(b).filter((k) => b[k] !== undefined);
   if (cols.length) await q(`UPDATE properties SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now(), updated_by=$${cols.length + 2} WHERE id=$1`,
     [prop.id, ...cols.map((k) => (k === 'cadastral' ? JSON.stringify(b[k]) : b[k])), req.moduleUser.id]);
@@ -211,6 +212,16 @@ r.delete('/documenti/:id', requireFacility, ah(async (req, res) => {
   }
   await audit(req, 'FACILITY_DOCUMENTO_ELIMINATO', { module: KEY, entity: 'document', entityId: d.id, data: { site_id: d.site_id, kind: d.kind } });
   res.json({ ok: true, room });
+}));
+
+// Contratto di locazione in PDF caricato in Amministrazione > Sedi (sola lettura; non per i manutentori)
+r.get('/immobili/:siteId/contratto-pdf', ah(async (req, res) => {
+  const siteId = idOf(req.params.siteId, 'Sede non trovata');
+  assertSite(req, siteId);
+  if (isManutentore(req)) throw forbidden('Il contratto della sede non è disponibile per i manutentori');
+  const d = await one(`SELECT filename, mime, data, blob_path FROM public.site_documents WHERE site_id=$1 AND kind='CONTRATTO_LOCAZIONE' ORDER BY created_at DESC LIMIT 1`, [siteId]);
+  if (!d) throw notFound('Nessun contratto in PDF per questa sede');
+  await sendFile(res, d, { inline: true });
 }));
 
 // Contratti di affitto della sede in Payments (per collegare l'immobile)

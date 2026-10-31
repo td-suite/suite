@@ -14,6 +14,12 @@ import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
 import { isExternal, filterRubricaRow, RUBRICA_PUBLIC_SQL } from '../lib/esterni.js';
+import multer from 'multer';
+import { storeBuffer, sendFile, dropBlobs } from '../lib/moduleStorage.js';
+import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
+import { aiEnabled } from '../lib/claude.js';
+import { siteToLease, registryLease, tenureIssue, normalizeLeaseFields, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
+import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
 
 const r = Router();
 
@@ -59,6 +65,10 @@ r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
 }));
 
 // ---- Sedi
+const numOrNull = (v) => (v === undefined ? undefined : v === null || v === '' ? null : Number(v));
+const money = z.preprocess(numOrNull, z.number().min(0).max(100_000_000).nullable().optional());
+const smallInt = (max) => z.preprocess(numOrNull, z.number().int().min(0).max(max).nullable().optional());
+const isoDate = z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional());
 const siteSchema = z.object({
   code: z.string().min(2).max(40), name: z.string().min(2).max(250), short_name: z.string().max(120).nullable().optional(),
   kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
@@ -67,6 +77,14 @@ const siteSchema = z.object({
   email: z.string().email().nullable().optional(), org_node: z.boolean().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
   opened_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),   // data di apertura della sede (letta da Cash e Retail)
+  // Titolo di godimento e locazione (fonte unica: Payments e Facility leggono da qui, lib/leaseSync.js)
+  tenure: z.enum(['PROPRIETA', 'LOCAZIONE', 'COMODATO', 'OSPITATA']).optional(),
+  rent_amount: money, rent_period: z.enum(['MESE', 'TRIMESTRE', 'SEMESTRE', 'ANNO']).optional(),
+  rent_vat: z.preprocess((v) => (v === '' ? null : v), z.enum(['PIU_IVA', 'ESENTE', 'IVA_INCLUSA']).nullable().optional()), rent_vat_rate: z.preprocess(numOrNull, z.number().min(0).max(100).nullable().optional()),
+  lease_start: isoDate, lease_years: smallInt(99), lease_renewal_years: smallInt(99), lease_notice_months: smallInt(60), lease_end: isoDate,
+  lease_landlord_org_id: z.preprocess(numOrNull, z.number().int().nullable().optional()),
+  lease_registration: z.preprocess((v) => (v === '' ? null : v), z.enum(['IMPOSTA_ANNUALE', 'UNICA_SOLUZIONE', 'CEDOLARE_SECCA', 'DA_REGISTRARE']).nullable().optional()),
+  guarantee_bank_amount: money, guarantee_insurance_amount: money, deposit_amount: money, guarantee_notes: z.string().max(2000).nullable().optional(),
 });
 
 // Orari strutturati → testo riassuntivo (es. "Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00"), giorni consecutivi uguali raggruppati
@@ -83,9 +101,10 @@ const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_h
 r.get('/sites', ah(async (req, res) => {
   const all = isAdmin(req.user) || req.query.all === '1';
   // Responsabile di sede: dall'organigramma (responsabile del nodo Sede collegato), mai testo libero
-  const rows = await many(`SELECT s.*, o.name AS organization_name, ho.name AS host_organization_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
+  const rows = await many(`SELECT s.*, o.name AS organization_name, ho.name AS host_organization_name, lo.name AS lease_landlord_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
+      (SELECT json_build_object('id', d.id, 'filename', d.filename, 'size', d.size, 'model', d.model, 'created_at', d.created_at) FROM site_documents d WHERE d.site_id=s.id AND d.kind='CONTRATTO_LOCAZIONE' ORDER BY d.created_at DESC LIMIT 1) AS lease_document,
       h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
-    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id
+    FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id LEFT JOIN organizations lo ON lo.id=s.lease_landlord_org_id
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
         JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
     ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
@@ -95,7 +114,9 @@ r.get('/sites', ah(async (req, res) => {
     return res.json(rows.filter((s) => mine.has(Number(s.id)) || (req.user.organization_id && Number(s.organization_id) === Number(req.user.organization_id)))
       .map((s) => ({ id: s.id, code: s.code, name: s.name, short_name: s.short_name, kind: s.kind, city: s.city, province: s.province, address: s.address, zip: s.zip, phone: s.phone, email: s.email, opening_hours: s.opening_hours, organization_id: s.organization_id, organization_name: s.organization_name, active: s.active })));
   }
-  res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, legacy_refs: undefined, notes: undefined })));
+  // canone, garanzie e contratto: solo agli amministratori (Payments e Facility li leggono con i propri permessi)
+  const hide = Object.fromEntries([...LEASE_SITE_KEYS.filter((k) => k !== 'tenure'), 'lease_landlord_name', 'lease_document'].map((k) => [k, undefined]));
+  res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, ...hide, legacy_refs: undefined, notes: undefined })));
 }));
 // Legal entity ospitante: fonte unica public.sites.host_organization_id; Cash (site_ext.host_org_id, royalties) resta allineato
 async function syncHostToCash(siteId, hostOrgId) {
@@ -120,29 +141,119 @@ r.post('/sites/geocode-missing', requireAdmin, ah(async (req, res) => {
   (async () => { for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await saveCoords(s.id, g); } catch (e) { console.warn('[geocode]', s.id, e.message); } } })();
   res.json({ queued: rows.length });
 }));
+// Titolo di godimento: proposto dalla Legal entity ospitante, coerente con essa, campi della locazione ripuliti secondo il titolo
+async function leaseBlock(b, cur = {}) {
+  const touched = [...LEASE_SITE_KEYS, 'host_organization_id'].some((k) => b[k] !== undefined);
+  if (!touched) return b;
+  const merged = { ...cur, ...Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) };
+  if (b.tenure === undefined) {   // titolo non indicato: segue la Legal entity ospitante
+    if (b.host_organization_id && cur.host_organization_id !== b.host_organization_id) merged.tenure = 'OSPITATA';
+    else if (b.host_organization_id === null && cur.tenure === 'OSPITATA') merged.tenure = 'LOCAZIONE';
+    else merged.tenure = cur.tenure || (merged.host_organization_id ? 'OSPITATA' : 'LOCAZIONE');
+  }
+  const issue = tenureIssue(merged);
+  if (issue) throw bad(issue);
+  if (merged.lease_landlord_org_id && !(await one('SELECT 1 FROM organizations WHERE id=$1', [merged.lease_landlord_org_id]))) throw bad('Locatore inesistente: scegli una Legal entity dell\'anagrafica');
+  if (b.lease_end === undefined && (b.lease_start !== undefined || b.lease_years !== undefined)) merged.lease_end = null;   // ricalcolata
+  const norm = normalizeLeaseFields(merged);
+  for (const k of LEASE_SITE_KEYS) if (norm[k] !== undefined) b[k] = norm[k];
+  return b;
+}
+const LEASE_CHANGE = ['rent_amount', 'rent_period'];
+
 r.post('/sites', requireAdmin, ah(async (req, res) => {
-  const b = withHours(parse(siteSchema, req.body));
+  const b = await leaseBlock(withHours(parse(siteSchema, req.body)));
   const cols = Object.keys(b); const vals = Object.values(b);
   const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
   await syncHostToCash(s.id, b.host_organization_id);
-  await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}` });
+  const lease_sync = s.tenure === 'LOCAZIONE' && s.rent_amount != null ? await siteToLease(s.id, { rentChanged: true }).catch((e) => ({ status: 'error', reason: e.message })) : null;
+  await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: lease_sync ? { lease_sync } : undefined });
   indexSite(s).catch(() => {});
   autoGeocodeSite(s, saveCoords);
   await ensureSiteNodes().catch(() => {});
-  res.status(201).json(s);
+  res.status(201).json({ ...s, lease_sync });
 }));
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
-  const b = withHours(parse(siteSchema.partial(), req.body));
+  const cur = await one('SELECT * FROM sites WHERE id=$1', [Number(req.params.id)]);
+  if (!cur) throw notFound();
+  const b = await leaseBlock(withHours(parse(siteSchema.partial(), req.body)), cur);
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });
   const s = await one(`UPDATE sites SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
   if (!s) throw notFound();
   if (b.host_organization_id !== undefined) await syncHostToCash(s.id, b.host_organization_id);
-  await audit(req, 'SITE_UPDATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: b });
+  // Payments: contratto della sede creato o aggiornato dall'anagrafica (gli scatti successivi registrati in Payments restano)
+  const leaseTouched = LEASE_SITE_KEYS.some((k) => b[k] !== undefined);
+  const rentChanged = LEASE_CHANGE.some((k) => b[k] !== undefined && String(b[k] ?? '') !== String(cur[k] ?? ''));
+  const lease_sync = leaseTouched ? await siteToLease(s.id, { rentChanged }).catch((e) => ({ status: 'error', reason: e.message })) : null;
+  await audit(req, 'SITE_UPDATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: { ...b, lease_sync: lease_sync || undefined } });
   indexSite(s).catch(() => {});
   autoGeocodeSite(s, saveCoords);
-  res.json(s);
+  res.json({ ...s, lease_sync });
+}));
+
+// ---- Contratto di locazione in PDF della sede (fonte unica del file: public.site_documents) letto con Claude
+const uploadPdf = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+const SITE_DOC_COLS = 'id, site_id, kind, filename, mime, size, sha256, (extracted IS NOT NULL) AS analyzed, extracted_at, model, ocr, created_at';
+async function siteOr404(id) { const s = await one('SELECT id, code, name FROM sites WHERE id=$1', [id]); if (!s) throw notFound('Sede non trovata'); return s; }
+const pdfOnly = (req, res, next) => uploadPdf.single('file')(req, res, (e) => (e ? next(e.code === 'LIMIT_FILE_SIZE' ? bad('File troppo grande (massimo 20 MB)') : bad(e.message)) : next()));
+// Carica il PDF, estrae il testo, chiede a Claude i dati del contratto e restituisce la proposta dei campi della sede. Niente salvataggio
+// dei campi: l'utente controlla nel form e salva (al salvataggio il PDF viene collegato anche al contratto di Payments).
+r.post('/sites/:id/lease-document', requireAdmin, pdfOnly, ah(async (req, res) => {
+  const site = await siteOr404(Number(req.params.id));
+  if (!req.file) throw bad('Carica il contratto in PDF (campo "file")');
+  if (!(req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(req.file.originalname))) throw bad('Formato ammesso: PDF');
+  if (!mockEnabled() && !aiEnabled()) throw bad(AI_NOT_CONFIGURED);
+  const text = await extractText(req.file.buffer);
+  const avvisi = [...text.avvisi];
+  const { extracted, model } = await analyzeText(text.text, { userId: req.user.id });
+  const stored = await storeBuffer('sites', 'contratti', req.file.originalname, 'application/pdf', req.file.buffer);
+  const doc = await one(`INSERT INTO site_documents (site_id, kind, filename, mime, size, sha256, data, blob_path, extracted, extracted_at, model, text_chars, ocr, uploaded_by)
+    VALUES ($1,'CONTRATTO_LOCAZIONE',$2,'application/pdf',$3,$4,$5,$6,$7,now(),$8,$9,$10,$11) RETURNING ${SITE_DOC_COLS}`,
+  [site.id, req.file.originalname, stored.size, stored.sha256, stored.data, stored.blob_path, JSON.stringify(extracted), model, text.chars, text.ocr, req.user.id]);
+  const p = await buildProposal(extracted, { avvisi });
+  // avviso sui campi a bassa confidenza con i nomi del form Sedi (quello di buildProposal usa i campi di Payments)
+  const LABEL = { rent_amount: 'canone', rent_period: 'periodicità', rent_vat: 'IVA', rent_vat_rate: 'aliquota IVA', lease_start: 'decorrenza', lease_years: 'durata', lease_renewal_years: 'rinnovo', lease_notice_months: 'preavviso', lease_end: 'fine del primo periodo', lease_landlord_org_id: 'locatore', lease_registration: 'registrazione', guarantee_bank_amount: 'fideiussione bancaria', guarantee_insurance_amount: 'fideiussione assicurativa', deposit_amount: 'caparra / deposito' };
+  const low = Object.entries(p.site_confidence || {}).filter(([, c]) => c.level === 'bassa').map(([k]) => LABEL[k] || k);
+  for (let i = avvisi.length - 1; i >= 0; i--) if (/^Campi letti con bassa confidenza/.test(avvisi[i])) avvisi.splice(i, 1);
+  if (low.length) avvisi.push(`Campi letti con bassa confidenza, da verificare sul contratto: ${low.join(', ')}`);
+  if (p.site_id && p.site_id !== site.id) avvisi.push(`L'immobile del contratto sembra la sede ${p.site_label} (${p.site_how}), non ${site.name}: controlla di aver aperto la sede giusta`);
+  if (model === 'mock') avvisi.unshift('Lettura di prova (FINANCE_AI_MOCK): estrattore a espressioni regolari, non il modello Anthropic');
+  await audit(req, 'SITE_LEASE_DOCUMENT', { entity: 'site', entityId: site.id, label: `${site.code} ${site.name}`, data: { document_id: doc.id, filename: doc.filename, size: doc.size, model, ocr: text.ocr, chars: text.chars } });
+  res.status(201).json({ document_id: doc.id, document: doc, extracted, avvisi, model, pages: text.pages, ocr: text.ocr, text_chars: text.chars,
+    proposta: { fields: p.site_fields, confidence: p.site_confidence, landlord: { id: p.landlord_org_id, label: p.landlord_label, how: p.landlord_how, read: extracted?.locatore?.ragione_sociale || null }, initial_steps: p.initial_steps } });
+}));
+async function siteDoc(req) {
+  const siteId = Number(req.params.id);
+  const docId = req.query.doc ? Number(req.query.doc) : null;
+  const d = await one(`SELECT * FROM site_documents WHERE site_id=$1 AND kind='CONTRATTO_LOCAZIONE' ${docId ? 'AND id=$2' : ''} ORDER BY created_at DESC LIMIT 1`, docId ? [siteId, docId] : [siteId]);
+  if (!d) throw notFound('Nessun contratto in PDF per questa sede');
+  return d;
+}
+r.get('/sites/:id/lease-document', requireAdmin, ah(async (req, res) => { await sendFile(res, await siteDoc(req), { inline: req.query.download !== '1' }); }));
+r.delete('/sites/:id/lease-document', requireAdmin, ah(async (req, res) => {
+  const d = await siteDoc(req);
+  await q('DELETE FROM site_documents WHERE id=$1', [d.id]);   // in Payments il collegamento (finance.lease_documents) cade in cascata
+  await dropBlobs('sites', [d.blob_path]);
+  await audit(req, 'SITE_LEASE_DOCUMENT_DELETED', { entity: 'site', entityId: d.site_id, data: { document_id: d.id, filename: d.filename } });
+  res.json({ ok: true });
+}));
+// Legal entity del locatore letto nel PDF (esistente per P.IVA/CF/nome, altrimenti creata da rivedere)
+r.post('/sites/:id/lease-document/landlord', requireAdmin, ah(async (req, res) => {
+  const d = await siteDoc(req);
+  if (!d.extracted?.locatore) throw bad('Il documento non ha dati del locatore');
+  const o = await landlordOrg(d.extracted.locatore, { source: 'Amministrazione > Sedi' });
+  if (!o.existing) { await audit(req, 'ORG_CREATED', { entity: 'organization', entityId: o.id, label: o.name, data: { from_site_document: d.id } }); indexOrg(o).catch(() => {}); }
+  res.status(o.existing ? 200 : 201).json(o);
+}));
+// Contratto di Payments collegato alla sede (per la scheda Sedi): canone vigente, scatti, documenti
+r.get('/sites/:id/lease', requireAdmin, ah(async (req, res) => {
+  const l = await registryLease(Number(req.params.id));
+  if (!l) return res.json({ lease: null });
+  const steps = await many('SELECT valid_from, amount, reason, notes FROM finance.lease_steps WHERE lease_id=$1 ORDER BY valid_from', [l.id]);
+  const cur = stepAt(steps, fParse(new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' })));
+  res.json({ lease: { id: l.id, registry_sync: l.registry_sync, kind: l.kind, start_date: l.start_date, period_months: l.period_months, landlord: l.landlord_label, istat: l.istat, current_amount: cur ? Number(cur.amount) : null, steps } });
 }));
 // Unione di due sedi duplicate: la sorgente confluisce nella destinazione (riferimenti legacy, utenti, persone)
 

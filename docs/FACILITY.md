@@ -42,10 +42,17 @@ CLIMA_ENERGIA, ELETTROMEDICALE, DIAGNOSTICA_IMMAGINI, LABORATORIO, IT, ARREDI, E
 dell'ente), `maintenance_interval_months`, legal_reference, requires_certified_vendor, applies_to_kinds TEXT[], benchmark_note, active, sort).
 Schema `facility` (nessuna anagrafica propria):
 - `users` riga tecnica (moduleUser); `sites_v` sedi non SERVICE con il site manager dall'organigramma.
-- `properties` un immobile per sede (`site_id` UNIQUE → public.sites), tenure PROPRIETA | LOCAZIONE | COMODATO | OSPITATA, `lease_id` =
-  finance.lease_contracts.id (riferimento logico: se vuoto vale il contratto attivo della sede; se indicato si verifica che sia della sede),
-  landlord_org_id, superficie, piani, locali, catasto (JSON), classe e scadenza APE, riscaldamento, raffrescamento, anno, giorni e ore di
-  apertura settimanali, note. Creati al volo per le sedi attive non SERVICE (OSPITATA se la sede ha la Legal entity ospitante).
+- `properties` un immobile per sede (`site_id` UNIQUE → public.sites), `lease_id` = finance.lease_contracts.id (riferimento logico: se
+  vuoto vale il contratto attivo della sede collegato all'anagrafica; se indicato si verifica che sia della sede), superficie, piani,
+  locali, catasto (JSON), classe e scadenza APE, riscaldamento, raffrescamento, anno, giorni e ore di apertura settimanali, note. Creati
+  al volo per le sedi attive non SERVICE. Titolo di godimento (PROPRIETA | LOCAZIONE | COMODATO | OSPITATA), canone con IVA, durata,
+  garanzie, locatore e contratto in PDF NON sono dell'immobile: si leggono dall'anagrafica Sedi (`public.sites.tenure` e colonne della
+  locazione, `public.site_documents`; docs/ANAGRAFICA.md "Sedi: titolo di godimento e locazione"). Migrazione 002 (31/10/2026): tolte
+  `properties.tenure` e `properties.landlord_org_id` (prima l'immobile nasceva LOCAZIONE per ogni sede senza ospitante e Montemurlo,
+  Poggio a Caiano, Calenzano risultavano in locazione); i valori scelti a mano in Facility (proprietà o comodato di una sede non
+  ospitata, locatore diverso dall'ospitante) sono passati in anagrafica. La scheda mostra titolo, canone, IVA, garanzie, locatore, PDF
+  (`GET /api/facility/immobili/:siteId/contratto-pdf`, non per i manutentori) e il contratto Payments collegato, con il pulsante
+  "Modifica in Amministrazione > Sedi" (`/admin/sites?sede=<id>` apre il form della sede); nel form "Dati dell'immobile" il titolo non c'è più.
 - `property_obligations` obblighi CONTRATTUALE | NORMATIVO | ASSICURATIVO con periodicità, prima scadenza, responsabile, tipo di dispositivo
   collegato, costo stimato; `property_documents` (PLANIMETRIA, CONTRATTO, CERTIFICAZIONE, VERBALE, ALTRO; file a due vie con
   lib/moduleStorage.js; `valid_until`; `published_room_at`).

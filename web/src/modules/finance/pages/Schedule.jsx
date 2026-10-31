@@ -18,7 +18,22 @@ const REGISTRATION = { IMPOSTA_ANNUALE: 'Imposta annuale', UNICA_SOLUZIONE: 'Uni
 const UTILITY_KIND = { ENERGIA: 'Energia elettrica', GAS: 'Gas', ACQUA: 'Acqua', TARI: 'TARI', TELEFONIA: 'Telefonia / Internet', CONDOMINIO: 'Condominio', VIGILANZA: 'Vigilanza', PULIZIE: 'Pulizie', ALTRO: 'Altro' };
 const TRANSFER = { DA_AVVIARE: 'Da avviare', IN_CORSO: 'In corso', COMPLETATA: 'Completata', NON_NECESSARIA: 'Non necessaria' };
 const TRANSFER_TONE = { DA_AVVIARE: 'red', IN_CORSO: 'mauve', COMPLETATA: 'green', NON_NECESSARIA: 'grey' };
-const STEP_REASON = { INIZIALE: 'Iniziale', ISTAT: 'ISTAT', RINEGOZIAZIONE: 'Rinegoziazione', ALTRO: 'Altro' };
+const STEP_REASON = { INIZIALE: 'Iniziale', ISTAT: 'ISTAT', RINEGOZIAZIONE: 'Rinegoziazione', ALTRO: 'Altro', ANAGRAFICA: 'Da anagrafica Sedi' };
+const VAT_LABEL = { PIU_IVA: 'più IVA', ESENTE: 'esente IVA', IVA_INCLUSA: 'IVA inclusa' };
+const RENT_PERIOD = { MESE: 'al mese', TRIMESTRE: 'al trimestre', SEMESTRE: 'al semestre', ANNO: 'all\'anno' };
+// Riquadro "Dati dall'anagrafica Sedi (Amministrazione)": titolo, canone con IVA e garanzie del contratto collegato (fonte unica)
+function RegistryInfo({ g, siteId }) {
+  if (!g) return null;
+  const gar = [g.guarantee_bank_amount != null && `fideiussione bancaria ${eur(g.guarantee_bank_amount)}`, g.guarantee_insurance_amount != null && `fideiussione assicurativa ${eur(g.guarantee_insurance_amount)}`, g.deposit_amount != null && `caparra / deposito ${eur(g.deposit_amount)}`].filter(Boolean);
+  return (
+    <div className="registry-info small" title="Canone, durata, locatore e garanzie si modificano in Amministrazione > Sedi; gli scatti ISTAT e le rinegoziazioni restano qui in Payments">
+      <b>Dati dall'anagrafica Sedi (Amministrazione)</b>{' '}
+      {g.rent_amount != null ? `canone ${eur(g.rent_amount)} ${RENT_PERIOD[g.rent_period] || ''}${g.rent_vat ? `, ${VAT_LABEL[g.rent_vat]}${g.rent_vat !== 'ESENTE' && g.rent_vat_rate != null ? ` ${Number(g.rent_vat_rate).toLocaleString('it-IT')}%` : ''}` : ''}` : 'canone non indicato'}
+      {gar.length ? ` · garanzie: ${gar.join(', ')}` : ' · nessuna garanzia indicata'}
+      {' · '}<a href={`/admin/sites?sede=${siteId}`}>modifica in Sedi</a>
+    </div>
+  );
+}
 const PERIOD = { 1: 'Mensile', 2: 'Bimestrale', 3: 'Trimestrale', 4: 'Quadrimestrale', 6: 'Semestrale', 12: 'Annuale' };
 const PER_SHORT = { 1: 'mese', 2: 'bimestre', 3: 'trimestre', 4: 'quadrimestre', 6: 'semestre', 12: 'anno' };
 const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
@@ -229,7 +244,7 @@ function Dossier({ site, leases, utilities, events, canWrite, open, onChanged })
           <tbody>{leases.map((l) => (
             <React.Fragment key={l.id}>
               <tr>
-                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div><LeaseDocs lease={l} canWrite={canWrite} onChanged={onChanged} />{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
+                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div><RegistryInfo g={l.registry} siteId={l.site_id} /><LeaseDocs lease={l} canWrite={canWrite} onChanged={onChanged} />{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
                 <td>{LEASE_KIND[l.kind] || l.kind}<div className="small muted">dal {itDate(l.start_date)}{l.first_term_years ? ` · ${l.first_term_years} anni` : ''}{l.renewal_years ? ` + ${l.renewal_years}` : ''}</div></td>
                 <td className="num"><b>{l.current_amount != null ? eur(l.current_amount) : <span className="muted">non indicata</span>}</b><div className="small muted">/{PER_SHORT[l.period_months] || 'rata'}{l.auto_pay ? ' · automatico' : ''}{l.current_step_from ? ` · dal ${itDate(l.current_step_from)}` : ''}</div></td>
                 <td>{l.end_date ? <>{itDate(l.end_date)}{l.expired ? <div className="small red">scaduto</div> : l.renewals ? <div className="small muted">rinnovato {l.renewals} {l.renewals === 1 ? 'volta' : 'volte'}</div> : null}</> : <span className="muted">–</span>}</td>
@@ -712,7 +727,7 @@ function LeaseDocs({ lease, canWrite, onChanged }) {
   const del = async (d) => { if (!window.confirm(`Eliminare il documento ${d.filename}?`)) return; try { await api.del(`/scadenziario/documenti/${d.id}`); toast('Documento eliminato'); onChanged?.(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <div className="lease-docs small">
-      {docs.map((d) => <span key={d.id} className="doc-chip" title={`${d.filename} · ${Math.round(d.size / 1024)} KB${d.analyzed ? ' · letto con Claude' : ''}`}><Icon name="file" size={13} /><a href={fileUrl(`/scadenziario/documenti/${d.id}`)} target="_blank" rel="noreferrer">{d.filename.length > 28 ? `${d.filename.slice(0, 25)}…` : d.filename}</a>{d.analyzed && <span className="muted" title="Letto con Claude">AI</span>}{canWrite && <button type="button" className="iconbtn" title="Elimina" onClick={() => del(d)}>✕</button>}</span>)}
+      {docs.map((d) => <span key={d.id} className="doc-chip" title={`${d.filename} · ${Math.round(d.size / 1024)} KB${d.analyzed ? ' · letto con Claude' : ''}`}><Icon name="file" size={13} /><a href={fileUrl(`/scadenziario/documenti/${d.id}`)} target="_blank" rel="noreferrer">{d.filename.length > 28 ? `${d.filename.slice(0, 25)}…` : d.filename}</a>{d.analyzed && <span className="muted" title="Letto con Claude">AI</span>}{d.from_registry && <span className="muted" title="Caricato in Amministrazione > Sedi: si sostituisce da lì">Sedi</span>}{canWrite && !d.from_registry && <button type="button" className="iconbtn" title="Elimina" onClick={() => del(d)}>✕</button>}</span>)}
       {canWrite && <><input ref={inputRef} type="file" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} /><button type="button" className="btn link small" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? 'Caricamento…' : docs.length ? '+ documento' : '+ Aggiungi documento'}</button></>}
     </div>
   );

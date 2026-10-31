@@ -66,16 +66,22 @@ export async function siteById(id) {
   if (!s) throw notFound('Sede non trovata (le strutture dei clienti service non sono gestite da Facility)');
   return s;
 }
-// Immobili mancanti creati al volo per tutte le sedi attive non SERVICE: OSPITATA se la sede ha una Legal entity ospitante,
-// altrimenti LOCAZIONE (il caso più comune nella rete, modificabile nella scheda)
+// Immobili mancanti creati al volo per tutte le sedi attive non SERVICE. Titolo di godimento, canone, garanzie e locatore NON sono
+// dell'immobile: si leggono dall'anagrafica Sedi (public.sites, Amministrazione > Sedi; migrazione 002 e REGISTRY_COLS)
 export async function ensureProperties() {
-  await q(`INSERT INTO properties (site_id, tenure, landlord_org_id)
-    SELECT s.id, CASE WHEN s.host_organization_id IS NOT NULL THEN 'OSPITATA' ELSE 'LOCAZIONE' END, s.host_organization_id
-      FROM public.sites s WHERE s.active AND s.kind <> 'SERVICE' ON CONFLICT (site_id) DO NOTHING`);
+  await q(`INSERT INTO properties (site_id) SELECT s.id FROM public.sites s WHERE s.active AND s.kind <> 'SERVICE' ON CONFLICT (site_id) DO NOTHING`);
+}
+// Titolo di godimento e locazione dall'anagrafica (fonte unica)
+export const REGISTRY_COLS = `ps.tenure, ps.rent_amount, ps.rent_period, ps.rent_vat, ps.rent_vat_rate, ps.lease_start, ps.lease_years, ps.lease_renewal_years, ps.lease_notice_months, ps.lease_end,
+  ps.lease_landlord_org_id, ps.lease_registration, ps.guarantee_bank_amount, ps.guarantee_insurance_amount, ps.deposit_amount, ps.guarantee_notes`;
+export async function registryBySite(siteId) {
+  return one(`SELECT ${REGISTRY_COLS}, lo.name AS landlord_name, lo.vat_number AS landlord_vat, lo.city AS landlord_city,
+      (SELECT json_build_object('id', d.id, 'filename', d.filename, 'size', d.size, 'created_at', d.created_at) FROM public.site_documents d WHERE d.site_id=ps.id AND d.kind='CONTRATTO_LOCAZIONE' ORDER BY d.created_at DESC LIMIT 1) AS lease_document
+    FROM public.sites ps LEFT JOIN public.organizations lo ON lo.id=ps.lease_landlord_org_id WHERE ps.id=$1`, [siteId]);
 }
 export async function propertyBySite(siteId) {
   await siteById(siteId);
-  await q(`INSERT INTO properties (site_id, tenure, landlord_org_id) SELECT s.id, CASE WHEN s.host_organization_id IS NOT NULL THEN 'OSPITATA' ELSE 'LOCAZIONE' END, s.host_organization_id FROM public.sites s WHERE s.id=$1 ON CONFLICT (site_id) DO NOTHING`, [siteId]);
+  await q(`INSERT INTO properties (site_id) VALUES ($1) ON CONFLICT (site_id) DO NOTHING`, [siteId]);
   return one('SELECT * FROM properties WHERE site_id=$1', [siteId]);
 }
 
@@ -84,7 +90,8 @@ export async function leaseInfo(siteId, leaseId = null) {
   if (!(await financeLive())) return { available: false, lease: null };
   let l = leaseId ? await one(`SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_label FROM finance.lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id WHERE l.id=$1`, [leaseId]) : null;
   if (l && l.site_id !== siteId) l = null;                                  // riferimento non coerente con la sede: ignorato
-  if (!l) l = await one(`SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_label FROM finance.lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id WHERE l.site_id=$1 AND l.active ORDER BY l.start_date DESC LIMIT 1`, [siteId]);
+  if (!l) l = await one(`SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_label FROM finance.lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id WHERE l.site_id=$1 AND l.active
+    ORDER BY ${(await one(`SELECT 1 FROM information_schema.columns WHERE table_schema='finance' AND table_name='lease_contracts' AND column_name='registry_sync'`)) ? 'l.registry_sync DESC, ' : ''}l.start_date DESC LIMIT 1`, [siteId]);
   if (!l) return { available: true, lease: null };
   const steps = await many('SELECT valid_from, amount, reason, pct FROM finance.lease_steps WHERE lease_id=$1 ORDER BY valid_from', [l.id]);
   const T = fParse(todayRome());

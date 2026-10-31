@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../../api.js';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs, ConfirmModal } from '../../components/ui.jsx';
@@ -44,29 +44,43 @@ function HoursEditor({ value, onChange }) {
   );
 }
 
+// Spilla di confidenza accanto a un campo letto da Claude nel PDF: verde alta, gialla media, rossa bassa; citazione al passaggio del mouse
+const CONF_LABEL = { alta: 'confidenza alta', media: 'confidenza media', bassa: 'confidenza bassa' };
+export function ConfPin({ c }) {
+  if (!c) return null;
+  return <span className={`conf-pin ${c.level}`} title={`Letto nel PDF, ${CONF_LABEL[c.level] || c.level}${c.quote ? `: "${c.quote}"` : ''}`} aria-label={CONF_LABEL[c.level] || c.level} />;
+}
+
+// Campi: { key, label, type, options, help, when(f) per mostrarlo solo in certi casi, onSet(valore, f) → altri campi da aggiornare }.
+// type 'section' = titolo di sezione, 'custom' = render(f, patch, item) a tutta larghezza. f._conf = confidenza dei campi letti dal PDF.
 function EditModal({ title, fields, item, onSave, onClose, extra }) {
   const toast = useToast();
-  const [f, setF] = useState(() => Object.fromEntries(fields.map((x) => [x.key, x.type === 'date' && item?.[x.key] ? String(item[x.key]).slice(0, 10) : item?.[x.key] ?? (x.type === 'bool' ? (x.default ?? true) : x.type === 'hours' ? null : '')])));
+  const [f, setF] = useState(() => Object.fromEntries(fields.filter((x) => !['section', 'custom'].includes(x.type)).map((x) => [x.key, x.type === 'date' && item?.[x.key] ? String(item[x.key]).slice(0, 10) : item?.[x.key] ?? (x.init !== undefined ? x.init : x.type === 'bool' ? (x.default ?? true) : x.type === 'hours' ? null : '')])));
   const [busy, setBusy] = useState(false);
+  const patch = (p) => setF((cur) => ({ ...cur, ...p }));
+  // valore di un campo con eventuale effetto sugli altri (es. Legal entity ospitante → titolo Ospitata)
+  const setVal = (x, val) => setF((cur) => ({ ...cur, [x.key]: val, ...(x.onSet ? x.onSet(val, { ...cur, [x.key]: val }) : {}) }));
+  const shown = (x) => !x.when || x.when(f);
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
     const body = {};
-    for (const x of fields) { if (x.type === 'action' || x.type === 'static') continue; const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : x.type === 'hours' ? (v && Object.values(v).some((r) => r?.length) ? Object.fromEntries(Object.entries(v).filter(([, r]) => r?.length).map(([d, r]) => [d, r.filter((x) => x.from && x.to)])) : null) : v === '' ? null : v; }
+    for (const x of fields) { if (['action', 'static', 'section', 'custom'].includes(x.type) || x.local) continue; const v = f[x.key]; body[x.key] = x.type === 'bool' ? Boolean(v) : x.type === 'number' ? (v === '' ? null : Number(v)) : x.type === 'hours' ? (v && Object.values(v).some((r) => r?.length) ? Object.fromEntries(Object.entries(v).filter(([, r]) => r?.length).map(([d, r]) => [d, r.filter((x) => x.from && x.to)])) : null) : v === '' ? null : v; }
     try { await onSave(body); onClose(); } catch (e2) { toast(e2, 'err'); }
     setBusy(false);
   };
   return (
     <Modal title={title} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" form="eform" disabled={busy}>Salva</button></>}>
       <form id="eform" onSubmit={save} className="form-grid">
-        {fields.map((x) => (
-          <Field key={x.key} label={x.label} help={x.help} required={x.required} className={x.full ? 'span-all' : x.wide ? 'span2' : ''}>
+        {fields.filter(shown).map((x) => x.type === 'section' ? <div key={x.key} className="span-all form-section"><h3>{x.label}</h3>{x.help && <div className="small muted">{x.help}</div>}</div>
+          : x.type === 'custom' ? <div key={x.key} className="span-all">{x.render(f, patch, item)}</div> : (
+          <Field key={x.key} label={<>{x.label}<ConfPin c={f._conf?.[x.key]} /></>} help={typeof x.help === 'function' ? x.help(f) : x.help} required={x.required} className={x.full ? 'span-all' : x.wide ? 'span2' : ''}>
             {x.type === 'static' ? <div className="static-val">{x.value(item)}</div>
               : x.type === 'action' ? <div style={{ paddingTop: 2 }}><button type="button" className="btn ghost" disabled={busy} onClick={async () => { setBusy(true); try { await x.run(f, (patch) => setF((cur) => ({ ...cur, ...patch }))); } catch (e2) { toast(e2, 'err'); } setBusy(false); }}><Icon name={x.icon || 'refresh'} />{x.button}</button>{x.help2 && <div className="small muted mt">{x.help2}</div>}</div>
               : x.type === 'hours' ? <HoursEditor value={f[x.key]} onChange={(val) => setF({ ...f, [x.key]: val })} />
-              : x.type === 'select' ? <select value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value, ...(x.resets ? Object.fromEntries(x.resets.map((k) => [k, ''])) : {}) })}>{!x.required && <option value="">Nessuno</option>}{(x.optionsFor ? x.optionsFor(f) : x.options).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+              : x.type === 'select' ? <select value={f[x.key] ?? ''} onChange={(e) => { setVal(x, e.target.value); if (x.resets) patch(Object.fromEntries(x.resets.map((k) => [k, '']))); }}>{!x.required && <option value="">{x.empty || 'Nessuno'}</option>}{(x.optionsFor ? x.optionsFor(f) : x.options).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
               : x.type === 'bool' ? <div style={{ paddingTop: 6 }}><Switch checked={f[x.key]} onChange={(v) => setF({ ...f, [x.key]: v })} label={x.label} /></div>
                 : x.type === 'textarea' ? <textarea value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} style={{ minHeight: 60 }} />
-                  : <input type={x.type === 'number' ? 'number' : x.type || 'text'} step={x.step} value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} required={x.required} maxLength={x.max} />}
+                  : <input type={x.type === 'number' ? 'number' : x.type || 'text'} step={x.step} min={x.min} placeholder={typeof x.placeholder === 'function' ? x.placeholder(f) : x.placeholder} value={f[x.key] ?? ''} onChange={(e) => setVal(x, e.target.value)} required={x.required} maxLength={x.max} />}
           </Field>
         ))}
       </form>
@@ -115,6 +129,94 @@ function SitePhotos({ site, onClose }) {
   );
 }
 
+// ---------- Titolo di godimento e locazione della sede (fonte unica per Payments e Facility) ----------
+export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
+const RENT_PERIOD = { MESE: 'al mese', TRIMESTRE: 'al trimestre', SEMESTRE: 'al semestre', ANNO: 'all\'anno' };
+const PERIOD_N = { MESE: 12, TRIMESTRE: 4, SEMESTRE: 2, ANNO: 1 };
+const RENT_VAT = { PIU_IVA: 'Più IVA', ESENTE: 'Esente IVA (art. 10 DPR 633/72)', IVA_INCLUSA: 'IVA inclusa' };
+const REGISTRATION = { IMPOSTA_ANNUALE: 'Imposta di registro annuale', UNICA_SOLUZIONE: 'Registro in unica soluzione', CEDOLARE_SECCA: 'Cedolare secca', DA_REGISTRARE: 'Da registrare' };
+const eurIt = (v) => (v == null || v === '' ? '–' : Number(v).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }));
+// Fine del primo periodo: decorrenza + anni (come il server, lib/leaseSync.js)
+export function leaseEndOf(start, years) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start || '')) || !(Number(years) > 0)) return '';
+  const [y, m, d] = String(start).split('-').map(Number);
+  const ty = y + Number(years); const last = new Date(Date.UTC(ty, m, 0)).getUTCDate();
+  return `${ty}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+const RENT_PERIOD_OPT = { MESE: 'Mensile', TRIMESTRE: 'Trimestrale', SEMESTRE: 'Semestrale', ANNO: 'Annuale' };
+
+// Riepilogo del canone: annuo e con IVA
+function RentSummary({ f }) {
+  if (f.rent_amount === '' || f.rent_amount == null) return null;
+  const year = Number(f.rent_amount) * (PERIOD_N[f.rent_period] || 12);
+  const rate = Number(f.rent_vat_rate || 22);
+  const vat = f.rent_vat === 'PIU_IVA' ? year * rate / 100 : 0;
+  return <div className="small muted">Canone annuo {eurIt(year)}{f.rent_vat === 'PIU_IVA' ? ` + IVA ${rate}% (${eurIt(vat)}) = ${eurIt(year + vat)}` : f.rent_vat === 'IVA_INCLUSA' ? ` IVA ${rate}% inclusa` : f.rent_vat === 'ESENTE' ? ', esente IVA' : ''}</div>;
+}
+
+// Riquadro "Carica il contratto in PDF": Claude legge locatore, canone, durata e garanzie e precompila i campi (si controlla e si salva)
+function LeasePdfBox({ site, f, patch, onOrgCreated }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const [doc, setDoc] = useState(site?.lease_document || null);
+  const inputRef = React.useRef(null);
+  if (!site?.id) return <div className="pdf-box small muted"><Icon name="file" />Salva la sede: poi puoi caricare il contratto di locazione in PDF e farlo leggere a Claude.</div>;
+  const read = async (file) => {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { toast('Carica un file PDF', 'err'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await api.upload(`/sites/${site.id}/lease-document`, fd);
+      // i campi letti sostituiscono quelli del form (null = non letto, il form resta com'è); l'utente controlla e salva
+      const read = Object.fromEntries(Object.entries(r.proposta?.fields || {}).filter(([k, v]) => v != null && v !== '' && k in f).map(([k, v]) => [k, typeof v === 'number' ? String(v) : v]));
+      patch({ ...read, _conf: r.proposta?.confidence || {} });
+      setRes(r); setDoc(r.document);
+      toast('Contratto letto: controlla i campi con la spilla e salva');
+    } catch (e) { toast(e, 'err'); }
+    setBusy(false); if (inputRef.current) inputRef.current.value = '';
+  };
+  const createOrg = async () => {
+    setBusy(true);
+    try { const o = await api.post(`/sites/${site.id}/lease-document/landlord`); patch({ lease_landlord_org_id: String(o.id) }); onOrgCreated?.(); toast(o.existing ? `Locatore già in anagrafica: ${o.name}` : `Legal entity ${o.name} creata (da rivedere in Legal entity)`); setRes((x) => ({ ...x, proposta: { ...x.proposta, landlord: { ...x.proposta.landlord, id: o.id, label: o.name, how: o.existing ? o.how : 'creata dal contratto' } } })); }
+    catch (e) { toast(e, 'err'); }
+    setBusy(false);
+  };
+  const L = res?.proposta?.landlord;
+  return (
+    <div className="pdf-box">
+      <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+        <Icon name="file" />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <b>Carica il contratto in PDF</b>
+          <div className="small muted">Claude legge locatore, canone, IVA, durata e garanzie e precompila i campi: controlli e salvi tu. Il PDF resta qui ed è lo stesso che vede Payments.{busy ? ' Lettura in corso…' : ''}</div>
+          {doc && <div className="small" style={{ marginTop: 4 }}><a href={`/api/sites/${site.id}/lease-document?doc=${doc.id}`} target="_blank" rel="noreferrer"><Icon name="file" />{doc.filename}</a> <span className="muted">· {Math.round(doc.size / 1024)} KB{doc.model ? ` · letto ${doc.model === 'mock' ? 'in prova' : 'con Claude'}` : ''}</span></div>}
+        </div>
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => read(e.target.files?.[0])} />
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" />{busy ? 'Lettura…' : doc ? 'Carica un altro PDF' : 'Scegli il PDF'}</button>
+      </div>
+      {res && <div className="small" style={{ marginTop: 8 }}>
+        Locatore: {L?.id ? <><b>{L.label}</b> <span className="muted">({L.how})</span></> : <><span className="red">{L?.read ? `${L.read}: non in anagrafica` : 'non letto'}</span> {L?.read && <button type="button" className="btn sm ghost" disabled={busy} onClick={createOrg}>Crea Legal entity dal contratto</button>}</>}
+        {res.avvisi?.length > 0 && <div className="alert warn" style={{ marginTop: 6, flexDirection: 'column', gap: 2 }}>{res.avvisi.map((a, i) => <div key={i}>{a}</div>)}</div>}
+      </div>}
+    </div>
+  );
+}
+
+// Contratto collegato nello Scadenziario strutture di Payments: canone vigente e scatti (gli scatti ISTAT restano di Payments)
+function PaymentsLeaseBox({ site, f }) {
+  const { data } = useApi(site?.id ? `/sites/${site.id}/lease` : null);
+  const L = data?.lease;
+  return (
+    <div className="small muted lease-payments">
+      <Icon name="finance-sign" />
+      {L ? <span>Collegato al contratto n. {L.id} dello Scadenziario strutture di Payments{L.current_amount != null ? `: rata vigente ${eurIt(L.current_amount)}` : ''}{L.steps?.length > 1 ? ` (${L.steps.length} scatti: ${L.steps.map((x) => `${x.valid_from.split('-').reverse().join('/')} ${eurIt(x.amount)}`).join(', ')})` : ''}. Le modifiche al canone qui aggiornano lo scatto iniziale; gli scatti ISTAT si registrano in Payments.</span>
+        : <span>{f.rent_amount !== '' && f.lease_start ? 'Al salvataggio il contratto viene creato nello Scadenziario strutture di Payments (se Payments è avviato), con il canone come scatto iniziale e il PDF collegato.' : 'Con canone e decorrenza, al salvataggio il contratto nasce anche nello Scadenziario strutture di Payments: non va reinserito.'}</span>}
+    </div>
+  );
+}
+
 // ---------- Sedi ----------
 export function Sites() {
   const { data, loading, error, reload } = useApi('/sites?all=1');
@@ -127,6 +229,12 @@ export function Sites() {
   const [tab, setTab] = useState('td');
   const [showMap, setShowMap] = useState(true);
   const [focusId, setFocusId] = useState(null);
+  // ?sede=<id>: apre direttamente il form della sede (rimando "Modifica in Amministrazione > Sedi" da Facility)
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('sede'));
+    const s0 = id && (data || []).find((x) => x.id === id);
+    if (s0) { setModal(s0); window.history.replaceState(null, '', window.location.pathname); }
+  }, [data]);
   const norm = (x) => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const isService = (s) => s.kind === 'SERVICE';
   const all = data || [];
@@ -134,16 +242,46 @@ export function Sites() {
   const fields = [
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
-    { key: 'host_organization_id', label: 'Legal entity ospitante', type: 'select', options: (orgs.data || []).filter((o) => !['GRUPPO', 'SOCIETA'].includes(o.kind)).map((o) => ({ value: o.id, label: o.name })), help: 'Il partner che ospita la sede (es. G.B. Center per il Punto Prelievi di Quarrata): è la Legal entity con cui accede alla Suite e vede le royalties in Cash. Vuoto per le sedi proprie.' },
+    { key: 'host_organization_id', label: 'Legal entity ospitante', type: 'select', options: (orgs.data || []).filter((o) => !['GRUPPO', 'SOCIETA'].includes(o.kind)).map((o) => ({ value: o.id, label: o.name })), help: 'Il partner che ospita la sede (es. G.B. Center per il Punto Prelievi di Quarrata): è la Legal entity con cui accede alla Suite e vede le royalties in Cash. Vuoto per le sedi proprie.',
+      onSet: (v, f) => (v ? { tenure: 'OSPITATA' } : f.tenure === 'OSPITATA' ? { tenure: 'LOCAZIONE' } : {}) },
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'opened_at', label: 'Data di apertura', type: 'date', help: 'Primo giorno di attività della sede: la leggono Cash (da quando attende il rendiconto) e Retail (scheda sede).' },
+    // Titolo di godimento e locazione: fonte unica letta da Payments (Scadenziario strutture) e da Facility (Immobili)
+    { key: '_tit', type: 'section', label: 'Titolo di godimento', help: 'Proprietà, locazione, comodato o ospitata. Payments e Facility lo leggono da qui: canone e contratto non vanno reinseriti altrove.' },
+    { key: 'tenure', label: 'Titolo di godimento', type: 'select', required: true, init: 'LOCAZIONE', options: opts(TENURE), help: (f) => (f.tenure === 'OSPITATA' && !f.host_organization_id ? 'Ospitata richiede la Legal entity ospitante (campo sopra)' : f.host_organization_id && f.tenure !== 'OSPITATA' ? 'C\'è una Legal entity ospitante: di norma la sede è Ospitata' : f.tenure === 'OSPITATA' ? 'Nessun canone TD: la sede è nei locali della Legal entity ospitante' : null) },
+    { key: '_pdf', type: 'custom', when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), render: (f, patch, it) => <LeasePdfBox site={it} f={f} patch={patch} onOrgCreated={orgs.reload} /> },
+    { key: 'rent_amount', label: 'Canone (importo della rata)', type: 'number', step: '0.01', min: 0, when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'rent_period', label: 'Periodicità della rata', type: 'select', required: true, init: 'MESE', options: opts(RENT_PERIOD_OPT), when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'rent_vat', label: 'IVA', type: 'select', empty: 'Non indicata', options: opts(RENT_VAT), when: (f) => f.tenure === 'LOCAZIONE', onSet: (v, f) => (v && v !== 'ESENTE' && !f.rent_vat_rate ? { rent_vat_rate: '22' } : {}) },
+    { key: 'rent_vat_rate', label: 'Aliquota IVA %', type: 'number', step: '0.01', min: 0, init: 22, when: (f) => ['PIU_IVA', 'IVA_INCLUSA'].includes(f.rent_vat) },
+    { key: '_rent', type: 'custom', when: (f) => f.tenure === 'LOCAZIONE', render: (f) => <RentSummary f={f} /> },
+    { key: 'lease_start', label: 'Decorrenza', type: 'date', when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), onSet: (v, f) => ({ lease_end: leaseEndOf(v, f.lease_years) || f.lease_end }) },
+    { key: 'lease_years', label: 'Durata (anni)', type: 'number', min: 0, when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), onSet: (v, f) => ({ lease_end: leaseEndOf(f.lease_start, v) || f.lease_end }) },
+    { key: 'lease_renewal_years', label: 'Rinnovo tacito (anni)', type: 'number', min: 0, when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), help: '0 = nessun rinnovo automatico' },
+    { key: 'lease_notice_months', label: 'Preavviso disdetta (mesi)', type: 'number', min: 0, when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure) },
+    { key: 'lease_end', label: 'Fine del primo periodo', type: 'date', when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), help: 'Calcolata da decorrenza e durata se resta vuota' },
+    { key: 'lease_landlord_org_id', label: 'Locatore (Legal entity)', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })), when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), help: (f) => (f.tenure === 'COMODATO' ? 'Il comodante' : 'Se manca, crealo in Legal entity o dal PDF') },
+    { key: 'lease_registration', label: 'Registrazione', type: 'select', empty: 'Non indicata', options: opts(REGISTRATION), when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: '_gar', type: 'section', label: 'Garanzie fornite al locatore', when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'guarantee_bank_amount', label: 'Fideiussione bancaria (importo)', type: 'number', step: '0.01', min: 0, when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'guarantee_insurance_amount', label: 'Fideiussione assicurativa (importo)', type: 'number', step: '0.01', min: 0, when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'deposit_amount', label: 'Caparra / deposito cauzionale', type: 'number', step: '0.01', min: 0, when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: 'guarantee_notes', label: 'Note sulle garanzie', type: 'textarea', wide: true, when: (f) => f.tenure === 'LOCAZIONE' },
+    { key: '_pay', type: 'custom', when: (f) => f.tenure === 'LOCAZIONE', render: (f, _p, it) => <PaymentsLeaseBox site={it} f={f} /> },
+    { key: '_pos', type: 'section', label: 'Posizione e organigramma' },
     { key: 'lat', label: 'Latitudine', type: 'number', step: 'any' }, { key: 'lng', label: 'Longitudine', type: 'number', step: 'any' },
     { key: '_geo', label: 'Coordinate', type: 'action', button: 'Trova dall\'indirizzo', icon: 'pin', help: 'Da via, civico, CAP e città (OpenStreetMap). Se restano vuote, la Suite le completa da sola al salvataggio.', run: async (f, patch) => { const g = await api.post('/geocode', { address: f.address || null, zip: f.zip || null, city: f.city || null, province: f.province || null }); patch({ lat: g.lat, lng: g.lng }); toast(g.precision === 'civico' ? `Trovato al civico: ${g.label}` : g.precision === 'via' ? `Trovata la via (civico non riconosciuto): ${g.label}` : `Trovata solo la città: ${g.label}`, g.precision === 'citta' ? 'warn' : undefined); } },
     { key: 'sort_order', label: 'Ordine', type: 'number' },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
-  const save = async (body) => { const b = { ...body, organization_id: body.organization_id ? Number(body.organization_id) : null, host_organization_id: body.host_organization_id ? Number(body.host_organization_id) : null }; if (modal?.id) await api.put(`/sites/${modal.id}`, b); else await api.post('/sites', b); toast('Sede salvata'); reload(); };
+  const save = async (body) => {
+    const b = { ...body, organization_id: body.organization_id ? Number(body.organization_id) : null, host_organization_id: body.host_organization_id ? Number(body.host_organization_id) : null, lease_landlord_org_id: body.lease_landlord_org_id ? Number(body.lease_landlord_org_id) : null };
+    const r = modal?.id ? await api.put(`/sites/${modal.id}`, b) : await api.post('/sites', b);
+    const ls = r?.lease_sync;
+    toast(ls?.status === 'ok' ? `Sede salvata · ${ls.created ? 'contratto creato' : 'contratto aggiornato'} nello Scadenziario di Payments` : ls?.status === 'error' ? `Sede salvata, ma Payments non è stato aggiornato: ${ls.reason}` : ls?.reason && /chiudilo/.test(ls.reason) ? `Sede salvata. ${ls.reason}` : 'Sede salvata', ls?.status === 'error' ? 'warn' : undefined);
+    reload();
+  };
   return (
     <div className="page">
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<><button className="btn ghost" title="Ricava latitudine e longitudine dall'indirizzo per le sedi che non le hanno" onClick={async () => { try { const r = await api.post('/sites/geocode-missing'); toast(r.queued ? `${r.queued} sedi in coda: coordinate pronte tra circa ${Math.max(5, r.queued * 2)} secondi` : 'Tutte le sedi hanno già le coordinate'); setTimeout(reload, Math.min(60000, Math.max(5000, r.queued * 2500))); } catch (e) { toast(e, 'err'); } }}><Icon name="pin" />Completa coordinate</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button></>} />
@@ -167,7 +305,7 @@ export function Sites() {
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
             <td><div className="strong">{s.name}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
-            <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.address && <div>{s.address}</div>}<span className="muted">{[s.zip, s.city].filter(Boolean).join(' ')}{s.province ? ` (${s.province})` : ''}</span>{s.lat != null && s.lng != null ? <button className="linklike small" style={{ display: 'block' }} onClick={() => { setShowMap(true); setFocusId(s.id); }}>Sulla mappa</button> : <div className="faint small">Senza coordinate</div>}</td><td className="small">{s.organization_name}{s.host_organization_name && <div className="faint">ospitata da {s.host_organization_name}</div>}</td><td className="small">{s.manager_name ? <Link to={`/people/${s.manager_person_id}`}>{s.manager_name}</Link> : <span className="faint">da assegnare</span>}</td><td className="num">{s.users_count}</td>
+            <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.address && <div>{s.address}</div>}<span className="muted">{[s.zip, s.city].filter(Boolean).join(' ')}{s.province ? ` (${s.province})` : ''}</span>{s.lat != null && s.lng != null ? <button className="linklike small" style={{ display: 'block' }} onClick={() => { setShowMap(true); setFocusId(s.id); }}>Sulla mappa</button> : <div className="faint small">Senza coordinate</div>}</td><td className="small">{s.organization_name}{s.host_organization_name && <div className="faint">ospitata da {s.host_organization_name}</div>}<div><Badge tone={s.tenure === 'PROPRIETA' ? 'green' : s.tenure === 'OSPITATA' ? 'mauve' : s.tenure === 'COMODATO' ? 'grey' : 'blue'}>{TENURE[s.tenure] || s.tenure}</Badge>{s.tenure === 'LOCAZIONE' && s.rent_amount != null && <span className="faint"> {eurIt(s.rent_amount)} {RENT_PERIOD[s.rent_period] || ''}</span>}</div></td><td className="small">{s.manager_name ? <Link to={`/people/${s.manager_person_id}`}>{s.manager_name}</Link> : <span className="faint">da assegnare</span>}</td><td className="num">{s.users_count}</td>
             <td className="small muted">{(s.photo_file_ids || []).length ? `${s.photo_file_ids.length} / 3` : ''}</td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { await api.del(`/sites/${s.id}`); toast('Sede eliminata'); reload(); }} /></td>
           </tr>)}

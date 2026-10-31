@@ -15,9 +15,10 @@ import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../../../lib/modul
 import { extractText, analyzeText, buildProposal, mockEnabled, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
 import { aiEnabled } from '../../../lib/claude.js';
 import { matchOrg } from '../../../lib/anagraficaMatch.js';
+import { leaseToSite } from '../../../lib/leaseSync.js';
 
 const uploadPdf = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
-const DOC_COLS = 'id, lease_id, filename, mime, size, sha256, (extracted IS NOT NULL) AS analyzed, extracted_at, model, ocr, uploaded_by, created_at';
+const DOC_COLS = 'id, lease_id, filename, mime, size, sha256, (extracted IS NOT NULL) AS analyzed, extracted_at, model, ocr, uploaded_by, created_at, site_document_id, (site_document_id IS NOT NULL) AS from_registry';
 
 const r = Router();
 const requireWrite = requireManage;
@@ -260,7 +261,10 @@ r.post('/leases/:id/documenti', requireWrite, uploadPdf.single('file'), ah(async
   res.status(201).json(doc);
 }));
 r.get('/documenti/:id', ah(async (req, res) => {
-  const f = await one('SELECT * FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
+  let f = await one('SELECT * FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
+  if (!f) throw notFound('Documento non trovato');
+  // contratto caricato in Amministrazione > Sedi: il file è uno solo, in public.site_documents
+  if (f.site_document_id) f = await one('SELECT filename, mime, data, blob_path FROM public.site_documents WHERE id=$1', [f.site_document_id]);
   if (!f) throw notFound('Documento non trovato');
   await sendFile(res, f, { inline: req.query.download !== '1' });
 }));
@@ -270,8 +274,9 @@ r.get('/documenti/:id/lettura', ah(async (req, res) => {
   res.json({ ...f, proposta: f.extracted ? await buildProposal(f.extracted, { avvisi: [] }) : null });
 }));
 r.delete('/documenti/:id', requireWrite, ah(async (req, res) => {
-  const f = await one('SELECT id, lease_id, filename, blob_path FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
+  const f = await one('SELECT id, lease_id, filename, blob_path, site_document_id FROM lease_documents WHERE id=$1', [Number(req.params.id)]);
   if (!f) throw notFound('Documento non trovato');
+  if (f.site_document_id) throw bad('Il contratto è stato caricato in Amministrazione > Sedi: si sostituisce o si elimina da lì');
   if (f.lease_id) await getLease(req, f.lease_id);
   await q('DELETE FROM lease_documents WHERE id=$1', [f.id]);
   await dropBlobs('finance', [f.blob_path]);
@@ -339,12 +344,22 @@ function decorateLease(l, steps, today) {
     kind_label: LEASE_KIND_LABEL[l.kind] || l.kind, registration_label: l.registration ? REGISTRATION_LABEL[l.registration] : null };
 }
 
+// Dati dall'anagrafica Sedi (Amministrazione) per i contratti collegati (registry_sync): titolo, canone con IVA, garanzie
+const REGISTRY_COLS = `s.id AS site_id, s.tenure, s.rent_amount, s.rent_period, s.rent_vat, s.rent_vat_rate, s.lease_start, s.lease_years, s.lease_renewal_years, s.lease_end,
+  s.guarantee_bank_amount, s.guarantee_insurance_amount, s.deposit_amount, s.guarantee_notes, s.lease_landlord_org_id, o.name AS landlord_name`;
+async function registryOf(siteIds) {
+  if (!siteIds.length) return new Map();
+  const rows = await many(`SELECT ${REGISTRY_COLS} FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.lease_landlord_org_id WHERE s.id = ANY($1::int[])`, [siteIds]);
+  return new Map(rows.map((x) => [x.site_id, x]));
+}
+
 r.get('/leases', ah(async (req, res) => {
   const siteIds = await scopedSiteIds(req);
   const data = await loadScheduleData(siteIds, { includeInactive: req.query.all === '1' });
   const today = todayRome();
   const docs = data.leases.length ? await many(`SELECT ${DOC_COLS} FROM lease_documents WHERE lease_id = ANY($1::int[]) ORDER BY created_at`, [data.leases.map((l) => l.id)]) : [];
-  res.json(data.leases.map((l) => ({ ...decorateLease(l, data.steps, today), site_name: siteName(data.sites, l.site_id), documents: docs.filter((d) => d.lease_id === l.id) })));
+  const reg = await registryOf([...new Set(data.leases.filter((l) => l.registry_sync).map((l) => l.site_id))]);
+  res.json(data.leases.map((l) => ({ ...decorateLease(l, data.steps, today), site_name: siteName(data.sites, l.site_id), documents: docs.filter((d) => d.lease_id === l.id), registry: l.registry_sync ? reg.get(l.site_id) || null : null })));
 }));
 
 r.get('/leases/:id', ah(async (req, res) => {
@@ -352,7 +367,8 @@ r.get('/leases/:id', ah(async (req, res) => {
   const steps = await many('SELECT s.*, u.full_name AS created_by_name FROM lease_steps s LEFT JOIN users u ON u.id=s.created_by WHERE s.lease_id=$1 ORDER BY s.valid_from', [l.id]);
   const site = await one('SELECT id, code, name FROM public.sites WHERE id=$1', [l.site_id]);
   const documents = await many(`SELECT ${DOC_COLS} FROM lease_documents WHERE lease_id=$1 ORDER BY created_at`, [l.id]);
-  res.json({ ...decorateLease(l, steps, todayRome()), site_name: site?.name, documents });
+  const registry = l.registry_sync ? (await registryOf([l.site_id])).get(l.site_id) || null : null;
+  res.json({ ...decorateLease(l, steps, todayRome()), site_name: site?.name, documents, registry });
 }));
 
 r.post('/leases', requireWrite, ah(async (req, res) => {
@@ -374,8 +390,10 @@ r.post('/leases', requireWrite, ah(async (req, res) => {
     if (doc) await c.query('UPDATE lease_documents SET lease_id=$2 WHERE id=$1', [doc.id, l.id]);
     return l;
   });
-  await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount, steps: steps.length, document_id: doc?.id || null });
-  res.status(201).json(row);
+  // anagrafica Sedi: una sede che non era in locazione diventa LOCAZIONE con canone, locatore e durata del contratto (lib/leaseSync.js)
+  const registry = await leaseToSite(row.id).catch((e) => ({ status: 'error', reason: e.message }));
+  await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount, steps: steps.length, document_id: doc?.id || null, registry: registry.status });
+  res.status(201).json({ ...row, registry_sync_result: registry });
 }));
 
 r.put('/leases/:id', requireWrite, ah(async (req, res) => {
@@ -399,8 +417,9 @@ r.put('/leases/:id', requireWrite, ah(async (req, res) => {
       await c.query('UPDATE lease_steps SET valid_from=$2 WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM lease_steps x WHERE x.lease_id=$3 AND x.valid_from=$2 AND x.id<>$1)', [ini.id, start, l.id]);
     }
   });
-  await audit(req, 'LEASE_UPDATE', 'lease', l.id, d);
-  res.json(await one('SELECT * FROM lease_contracts WHERE id=$1', [l.id]));
+  const registry = await leaseToSite(l.id).catch((e) => ({ status: 'error', reason: e.message }));
+  await audit(req, 'LEASE_UPDATE', 'lease', l.id, { ...d, registry: registry.status });
+  res.json({ ...(await one('SELECT * FROM lease_contracts WHERE id=$1', [l.id])), registry_sync_result: registry });
 }));
 
 r.delete('/leases/:id', requireWrite, ah(async (req, res) => {
@@ -418,7 +437,7 @@ r.delete('/leases/:id', requireWrite, ah(async (req, res) => {
 const stepSchema = z.object({
   valid_from: DATE,
   amount: money,
-  reason: z.enum(['INIZIALE', 'ISTAT', 'RINEGOZIAZIONE', 'ALTRO']).default('ALTRO'),
+  reason: z.enum(['INIZIALE', 'ISTAT', 'RINEGOZIAZIONE', 'ALTRO', 'ANAGRAFICA']).default('ALTRO'),
   pct: opt(z.coerce.number().min(-100).max(999)),
   notes: optText(500),
 });
@@ -440,6 +459,8 @@ r.put('/steps/:id', requireWrite, ah(async (req, res) => {
   if (d.valid_from && d.valid_from !== s.valid_from && await one('SELECT 1 FROM lease_steps WHERE lease_id=$1 AND valid_from=$2', [l.id, d.valid_from])) throw bad('Esiste già uno scatto con questa data');
   const cols = Object.keys(d).filter((k) => d[k] !== undefined);
   if (cols.length) await q(`UPDATE lease_steps SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')} WHERE id=$1`, [s.id, ...cols.map((k) => d[k])]);
+  // lo scatto iniziale è il canone dell'anagrafica Sedi: si riallinea la sede (solo per il contratto collegato, vedi lib/leaseSync.js)
+  if (s.reason === 'INIZIALE' || d.reason === 'INIZIALE') await leaseToSite(l.id).catch((e) => console.warn('[scadenziario] allineamento anagrafica:', e.message));
   await audit(req, 'LEASE_STEP_UPDATE', 'lease', l.id, { step_id: s.id, ...d });
   res.json(await one('SELECT * FROM lease_steps WHERE id=$1', [s.id]));
 }));

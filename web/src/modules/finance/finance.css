@@ -414,3 +414,5 @@ table.t.diff th { position: static; }
 .lease-docs { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 4px; }
 .doc-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--teal-050); border-radius: 6px; padding: 1px 6px; }
 .doc-chip .iconbtn { padding: 0 2px; font-size: 11px; }
+/* Contratto collegato all'anagrafica Sedi (Amministrazione): dati di sola lettura qui, si modificano in Sedi */
+.registry-info { margin-top: 4px; padding: 4px 8px; border-left: 3px solid var(--teal, #1c505e); background: var(--card-2, #f8fbfb); border-radius: 0 6px 6px 0; }

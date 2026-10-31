@@ -1,14 +1,22 @@
+// Titolo di godimento, canone con IVA, garanzie, locatore e contratto in PDF: dall'anagrafica Sedi (Amministrazione), fonte unica; qui
+// solo lettura con il rimando al form. Rata vigente e scatti: dal contratto collegato nello Scadenziario di Payments.
 // Scheda dell'immobile: dati immobiliari, contratto e canone da Payments (o Legal entity ospitante), planimetria con pubblicazione in
 // Room Planning, documenti, obblighi di controllo, utenze con volture e prossime bollette, dispositivi, interventi aperti, consumi dell'anno
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, base, useApi } from '../api.js';
+import { api, base, useApi, apiBase } from '../api.js';
 import { Card, Loading, Empty, PageHead, Badge, Modal, Field, useToast, DropZone, ConfirmModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { Alert, Transfer, AssetStatus, Outcome, Priority, WoStatus, Bench, docUrl, FileLink } from '../components/bits.jsx';
 import { MonthlyCompare } from '../components/Charts.jsx';
 import PdfPreview from '../components/PdfPreview.jsx';
 import { SITE_KIND, TENURE, DOC_KINDS, OBL_KINDS, VECTOR, CATEGORY, num, eur, pct, itDate, itDateTime, kb, ogni } from '../format.js';
+
+const PERIOD_LABEL = { MESE: 'al mese', TRIMESTRE: 'al trimestre', SEMESTRE: 'al semestre', ANNO: 'all\'anno' };
+const PERIOD_N = { MESE: 12, TRIMESTRE: 4, SEMESTRE: 2, ANNO: 1 };
+const VAT_LABEL = { PIU_IVA: 'più IVA', ESENTE: 'esente IVA', IVA_INCLUSA: 'IVA inclusa' };
+const REG_LABEL = { IMPOSTA_ANNUALE: 'imposta di registro annuale', UNICA_SOLUZIONE: 'registro in unica soluzione', CEDOLARE_SECCA: 'cedolare secca', DA_REGISTRARE: 'da registrare' };
+const vatText = (R) => (R.rent_vat ? `${VAT_LABEL[R.rent_vat]}${R.rent_vat !== 'ESENTE' && R.rent_vat_rate != null ? ` ${num(R.rent_vat_rate)}%` : ''}` : 'IVA non indicata');
 
 export default function Immobile() {
   const { siteId } = useParams();
@@ -20,7 +28,8 @@ export default function Immobile() {
   const [del, setDel] = useState(null);
   if (error) return <div className="page"><Empty icon="alert" title="Errore">{error.message}</Empty></div>;
   if (!d && loading) return <div className="page"><Loading /></div>;
-  const p = d.property; const s = d.site; const L = d.lease?.lease;
+  const p = d.property; const s = d.site; const L = d.lease?.lease; const R = d.registry || {};
+  const editSite = `/admin/sites?sede=${s.id}`;
   const can = d.can_edit;
   const plan = d.planimetria;
   const publish = async () => { try { const r = await api.post(`/documenti/${plan.id}/pubblica-room`); toast(r.published ? 'Planimetria pubblicata in Room Planning' : r.reason, r.published ? undefined : 'err'); reload(); } catch (e) { toast(e, 'err'); } };
@@ -44,20 +53,32 @@ export default function Immobile() {
           </div>
           {p.notes && <div className="fa-muted-box" style={{ marginTop: 12 }}>{p.notes}</div>}
         </Card>
-        <Card title="Contratto e canone" icon="finance-sign" actions={d.finance && <a className="btn sm ghost" href={`/finance/scadenziario?site_id=${s.id}`}>{L ? 'Apri in Payments' : 'Crea in Payments'}</a>}>
-          {!d.finance ? <Alert tone="warn" icon="alert">Payments non avviato: il canone si legge dallo Scadenziario strutture di Payments.</Alert> : L ? <>
+        <Card title="Titolo e canone" icon="finance-sign" actions={<a className="btn sm ghost" href={editSite} title="Titolo di godimento, canone, garanzie e contratto si modificano nell'anagrafica Sedi"><Icon name="edit" />Modifica in Amministrazione &gt; Sedi</a>}>
+          <div className="fa-facts">
+            <div><div className="k">Titolo</div><div className="v"><Badge tone={p.tenure === 'PROPRIETA' ? 'green' : p.tenure === 'OSPITATA' ? 'mauve' : 'blue'} dot={false}>{TENURE[p.tenure]}</Badge></div></div>
+            {p.tenure === 'OSPITATA' && <div><div className="k">Ospitata da</div><div className="v">{d.host?.name || '–'}</div>{d.host?.city && <div className="small muted">{d.host.city}</div>}</div>}
+            {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">{p.tenure === 'COMODATO' ? 'Comodante' : 'Locatore'}</div><div className="v">{d.landlord?.name || L?.landlord || '–'}</div>{d.landlord?.vat_number && <div className="small muted">P.IVA {d.landlord.vat_number}</div>}</div>}
+            {p.tenure === 'LOCAZIONE' && <div><div className="k">Canone (anagrafica)</div><div className="fa-big">{R.rent_amount != null ? eur(R.rent_amount) : '–'}</div>{R.rent_amount != null && <div className="small muted">{PERIOD_LABEL[R.rent_period] || ''} · {vatText(R)} · {eur(Number(R.rent_amount) * (PERIOD_N[R.rent_period] || 12))} l'anno</div>}</div>}
+            {L && <div><div className="k">Rata vigente (Payments)</div><div className="v">{eur(L.rent)}</div><div className="small muted">ogni {L.period_months === 1 ? 'mese' : `${L.period_months} mesi`}{L.istat ? ' · ISTAT' : ''}</div></div>}
+            {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">Decorrenza · durata</div><div className="v">{itDate(R.lease_start || L?.start_date) || '–'}</div><div className="small muted">{R.lease_years ? `${R.lease_years} anni` : ''}{R.lease_renewal_years ? ` + ${R.lease_renewal_years}` : ''}{R.lease_notice_months != null ? ` · preavviso ${R.lease_notice_months} mesi` : ''}</div></div>}
+            {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">Scadenza</div><div className="v" style={{ color: L?.expired ? 'var(--red)' : undefined }}>{itDate(L?.end_date || R.lease_end) || '–'}</div>{L?.renewals > 0 && <div className="small muted">{L.renewals} rinnovi taciti</div>}{R.lease_registration && <div className="small muted">{REG_LABEL[R.lease_registration]}</div>}</div>}
+          </div>
+          {p.tenure === 'LOCAZIONE' && <>
+            <div className="small strong" style={{ margin: '12px 0 6px' }}>Garanzie fornite al locatore</div>
             <div className="fa-facts">
-              <div><div className="k">Canone vigente</div><div className="fa-big">{eur(L.rent)}</div><div className="small muted">ogni {L.period_months === 1 ? 'mese' : `${L.period_months} mesi`} · {eur(L.rent_annual)} l'anno</div></div>
-              <div><div className="k">Locatore</div><div className="v">{L.landlord || '–'}</div></div>
-              <div><div className="k">Decorrenza</div><div className="v">{itDate(L.start_date)}</div></div>
-              <div><div className="k">Scadenza</div><div className="v" style={{ color: L.expired ? 'var(--red)' : undefined }}>{itDate(L.end_date) || '–'}</div>{L.renewals > 0 && <div className="small muted">{L.renewals} rinnovi taciti</div>}</div>
-              <div><div className="k">Preavviso</div><div className="v">{L.notice_months != null ? `${L.notice_months} mesi` : '–'}</div></div>
-              <div><div className="k">ISTAT · deposito</div><div className="v">{L.istat ? 'sì' : 'no'} · {L.deposit ? eur(L.deposit) : '–'}</div></div>
+              <div><div className="k">Fideiussione bancaria</div><div className="v">{R.guarantee_bank_amount != null ? eur(R.guarantee_bank_amount) : '–'}</div></div>
+              <div><div className="k">Fideiussione assicurativa</div><div className="v">{R.guarantee_insurance_amount != null ? eur(R.guarantee_insurance_amount) : '–'}</div></div>
+              <div><div className="k">Caparra / deposito</div><div className="v">{R.deposit_amount != null ? eur(R.deposit_amount) : '–'}</div></div>
             </div>
-            {L.steps?.length > 1 && <div className="small muted" style={{ marginTop: 10 }}>Scatti: {L.steps.map((x) => `${itDate(x.valid_from)} ${eur(x.amount)}`).join(' · ')}{L.next_step ? ` · prossimo il ${itDate(L.next_step.valid_from)}` : ''}</div>}
-          </> : p.tenure === 'OSPITATA' || d.host ? <div className="small">Sede ospitata da <b>{d.host?.name || 'Legal entity'}</b>{d.host?.city ? ` (${d.host.city})` : ''}: nessun contratto di affitto TD. La Legal entity ospitante si imposta in Amministrazione &gt; Sedi.</div>
-            : <Empty compact icon="finance-sign" title="Nessun contratto di affitto in Payments">Il contratto con canone, scatti e scadenze si registra nello Scadenziario strutture di Payments e compare qui da solo.</Empty>}
-          {d.landlord && !L && <div className="small muted" style={{ marginTop: 8 }}>Locatore indicato in Facility: {d.landlord.name}</div>}
+            {R.guarantee_notes && <div className="fa-muted-box" style={{ marginTop: 8 }}>{R.guarantee_notes}</div>}
+          </>}
+          <div className="small" style={{ marginTop: 10, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            {R.lease_document && <a className="fa-file" href={`${apiBase}/immobili/${s.id}/contratto-pdf`} target="_blank" rel="noreferrer"><Icon name="pdf" />{R.lease_document.filename}</a>}
+            {p.tenure === 'LOCAZIONE' && (!d.finance ? <span className="muted">Payments non avviato: la rata vigente e le scadenze si leggono dallo Scadenziario quando è attivo.</span>
+              : L ? <span className="muted"><a href={`/finance/scadenziario?site_id=${s.id}`}>Contratto n. {L.id} nello Scadenziario di Payments</a>{L.steps?.length > 1 ? ` · scatti: ${L.steps.map((x) => `${itDate(x.valid_from)} ${eur(x.amount)}`).join(' · ')}` : ''}{L.next_step ? ` · prossimo il ${itDate(L.next_step.valid_from)}` : ''}</span>
+                : <span className="muted">Nessun contratto in Payments: nasce da solo quando in Amministrazione &gt; Sedi ci sono canone e decorrenza.</span>)}
+            {p.tenure === 'OSPITATA' && <span className="muted">Nessun contratto di affitto TD: la Legal entity ospitante si imposta in Amministrazione &gt; Sedi.</span>}
+          </div>
         </Card>
       </div>
 
@@ -131,7 +152,7 @@ export default function Immobile() {
 function EditModal({ d, onClose, onDone }) {
   const toast = useToast();
   const p = d.property;
-  const [f, setF] = useState({ tenure: p.tenure, surface_sqm: p.surface_sqm ?? '', floors: p.floors ?? '', rooms: p.rooms ?? '', energy_class: p.energy_class || '', ape_valid_until: p.ape_valid_until || '', heating_type: p.heating_type || '', cooling_type: p.cooling_type || '',
+  const [f, setF] = useState({ surface_sqm: p.surface_sqm ?? '', floors: p.floors ?? '', rooms: p.rooms ?? '', energy_class: p.energy_class || '', ape_valid_until: p.ape_valid_until || '', heating_type: p.heating_type || '', cooling_type: p.cooling_type || '',
     year_built: p.year_built ?? '', occupancy_days_week: p.occupancy_days_week ?? '', opening_hours_week: p.opening_hours_week ?? '', notes: p.notes || '', cadastral: { foglio: '', particella: '', sub: '', categoria: '', ...(p.cadastral || {}) }, lease_id: p.lease_id || '' });
   const { data: leases } = useApi(`/immobili/${d.site.id}/contratti`);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -140,7 +161,6 @@ function EditModal({ d, onClose, onDone }) {
   return (
     <Modal wide title={`Dati dell'immobile · ${d.site.name}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Salva</button></>}>
       <div className="fa-grid">
-        <Field label="Titolo di godimento"><select className="fa-in" value={f.tenure} onChange={set('tenure')}>{Object.entries(TENURE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label="Superficie (m2)"><input className="fa-in" type="number" min="0" value={f.surface_sqm} onChange={set('surface_sqm')} /></Field>
         <Field label="Contratto di affitto in Payments" help="Vuoto = contratto attivo della sede"><select className="fa-in" value={f.lease_id} onChange={set('lease_id')}><option value="">Automatico</option>{(leases?.rows || []).map((l) => <option key={l.id} value={l.id}>{l.landlord || 'Locatore'} · dal {itDate(l.start_date)}{l.active ? '' : ' (cessato)'}</option>)}</select></Field>
         <Field label="Piani"><input className="fa-in" type="number" value={f.floors} onChange={set('floors')} /></Field>

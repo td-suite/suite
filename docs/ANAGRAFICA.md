@@ -837,5 +837,59 @@ Nessuna anagrafica propria nel modulo: `facility.properties.site_id` (UNIQUE), `
 Scritture fuori dallo schema del modulo: `finance.utilities` e `finance.utility_bills` (utenze e bollette create da Facility, Payments è la
 fonte unica e le mette nello scadenziario) e `room.struttura_blobs` (planimetria: Facility è la fonte, Room la mostra; `site_ext` di Room
 non si tocca). Letture: `finance.lease_contracts`/`lease_steps` (canone, scatti, scadenza), `retail.sales` (accettazioni per sede e mese),
-`cash.cash_reports` (giorni con rendiconto), `public.sites.host_organization_id` (Legal entity ospitante: immobile OSPITATA).
+`cash.cash_reports` (giorni con rendiconto), `public.sites.host_organization_id` e `public.sites.tenure` con le colonne della locazione
+(titolo di godimento, canone, garanzie, locatore: vedi la sezione seguente).
 
+
+## Sedi: titolo di godimento, locazione e garanzie, fonte unica per Payments e Facility (31/10/2026)
+Richiesta del CEO: in Amministrazione > Sedi il canone (con IVA se dovuta), le garanzie date al locatore (fideiussione bancaria,
+fideiussione assicurativa, caparra con importi) e il contratto di locazione in PDF letto con l'API Anthropic; "questo elemento mettilo a
+disposizione di payments per lo scadenziario pagamenti (in modo da non replicare l'azione!!!)"; Facility leggeva male ospitata/locazione.
+- **Colonne di `public.sites`** (migrazione 034): `tenure` PROPRIETA | LOCAZIONE | COMODATO | OSPITATA (NOT NULL, default LOCAZIONE),
+  `rent_amount` (importo della rata), `rent_period` MESE | TRIMESTRE | SEMESTRE | ANNO, `rent_vat` PIU_IVA | ESENTE | IVA_INCLUSA,
+  `rent_vat_rate` (default 22), `lease_start`, `lease_years`, `lease_renewal_years`, `lease_notice_months`, `lease_end` (fine del primo
+  periodo, calcolata da decorrenza e durata se vuota), `lease_landlord_org_id` → organizations (locatore o comodante), `lease_registration`
+  (stessi valori di Payments), `guarantee_bank_amount`, `guarantee_insurance_amount`, `deposit_amount` (caparra o deposito cauzionale),
+  `guarantee_notes`. Recupero: OSPITATA dove c'è `host_organization_id`; LOCAZIONE con i dati del contratto (rata dello scatto iniziale,
+  periodicità, decorrenza, durata, locatore, deposito, registrazione) dove Payments ha un contratto attivo; le altre restano LOCAZIONE da
+  verificare (`needs_review` non toccato). Le colonne della locazione arrivano solo agli amministratori da `GET /api/sites`.
+- **Coerenza** (server, `lib/leaseSync.js`): OSPITATA richiede la Legal entity ospitante (400 altrimenti); se si indica l'ospitante e il
+  titolo non è nel corpo, la sede diventa OSPITATA (il form lo propone); togliendo l'ospitante a una sede OSPITATA torna LOCAZIONE.
+  Proprietà e ospitata non hanno canone, durata né garanzie (i campi si svuotano), il comodato tiene durata e comodante.
+- **PDF del contratto, fonte unica del file**: `public.site_documents` (site_id, kind CONTRATTO_LOCAZIONE | ALTRO, filename, mime, size,
+  sha256, data bytea o blob_path con `lib/moduleStorage.js` prefisso `sites`, extracted JSONB, extracted_at, model, text_chars, ocr,
+  uploaded_by). Scelta: tabella core e non `finance.lease_documents`, perché l'anagrafica deve funzionare anche con Payments spento;
+  Payments vede lo stesso file con una riga `finance.lease_documents` senza byte e `site_document_id` → site_documents (migrazione finance
+  004, ON DELETE CASCADE): download da Payments servito da site_documents, eliminazione da Payments rifiutata ("si sostituisce o si elimina
+  da Amministrazione > Sedi"). I PDF caricati direttamente nello Scadenziario restano in `finance.lease_documents` come prima.
+  Endpoint (amministratori): `POST /api/sites/:id/lease-document` (multipart `file`, PDF fino a 20 MB: salva, estrae il testo con OCR se
+  serve, chiede a Claude il JSON e restituisce `{ document_id, document, extracted, proposta: { fields, confidence, landlord,
+  initial_steps }, avvisi }`; senza chiave Anthropic 400 con il messaggio standard, FINANCE_AI_MOCK=1 fuori produzione usa l'estrattore di
+  prova), `GET /api/sites/:id/lease-document[?doc=]` (inline, `download=1` per scaricare), `DELETE /api/sites/:id/lease-document[?doc=]`,
+  `POST /api/sites/:id/lease-document/landlord` (Legal entity del locatore letto: esistente per P.IVA/CF/nome o creata PARTNER
+  `needs_review`), `GET /api/sites/:id/lease` (contratto Payments collegato con rata vigente e scatti).
+- **Lettura con Claude condivisa**: `server/src/lib/leaseAnalysis.js` (spostato da `modules/finance/lib/leaseAnalysis.js`, che ora lo
+  riesporta: Payments invariato). Il prompt chiede in più `canone.iva_aliquota` e `garanzie` { fideiussione_bancaria, fideiussione_
+  assicurativa, caparra } con importo e citazione (fideiussione di tipo non specificato = bancaria con nota); l'estrattore di prova legge
+  le stesse garanzie. `siteFieldsFromExtract` mappa il JSON sulle colonne della sede con la confidenza per campo; nel form ogni campo letto
+  ha la spilla verde/gialla/rossa con la citazione al passaggio del mouse; l'utente controlla e salva (niente salvataggio automatico).
+- **Payments senza doppio inserimento** (`lib/leaseSync.js`, usata da `routes/core.js` e da `modules/finance/routes/schedule.js`):
+  `siteToLease` al salvataggio di una sede in LOCAZIONE con canone e decorrenza crea o aggiorna `finance.lease_contracts` della sede
+  (colonna `registry_sync`, al massimo un contratto collegato attivo per sede; uno già esistente viene adottato): locatore, decorrenza,
+  durata, rinnovo, preavviso, periodicità (MESE 1, TRIMESTRE 3, SEMESTRE 6, ANNO 12), deposito = caparra, registrazione, tipologia dalla
+  durata, ISTAT dal PDF, note "Dati dall'anagrafica Sedi (Amministrazione)". Scatti: senza scatti crea l'INIZIALE (con le rate iniziali
+  ridotte lette nel PDF come scatti ALTRO, come lo Scadenziario); senza scatti dopo l'iniziale aggiorna l'INIZIALE; con scatti successivi
+  registrati in Payments (ISTAT, rinegoziazioni) non li tocca e, solo se il canone è cambiato in Sedi, aggiunge uno scatto dalla data di
+  oggi con motivo `ANAGRAFICA` (nuovo valore ammesso in `lease_steps.reason`). Collega a Payments i PDF della sede. La risposta di
+  POST/PUT /api/sites porta `lease_sync` { status ok | skip | error, reason, lease_id, created, step }. Se la sede smette di essere in
+  locazione il contratto Payments resta attivo (avviso: va chiuso nello Scadenziario).
+  `leaseToSite` è il verso opposto: un contratto creato o modificato in Payments (e la modifica dello scatto iniziale) porta la sede a
+  LOCAZIONE con canone dallo scatto iniziale (bimestrale = mensile con importo / 2), locatore, durata, deposito e registrazione; vale per il
+  contratto collegato o, se la sede non ne ha, per quello nuovo (un secondo contratto della stessa sede, es. il box, non tocca
+  l'anagrafica). Antirimbalzo: le due funzioni girano in un contesto AsyncLocalStorage con l'origine (CORE o FINANCE) e non si richiamano.
+  In Payments la scheda del contratto collegato mostra "Dati dall'anagrafica Sedi (Amministrazione)" (canone con IVA e garanzie, link al
+  form) e il PDF della sede con l'etichetta "Sedi".
+- **Facility legge** `public.sites.tenure` e le colonne della locazione (docs/FACILITY.md): Montemurlo, Poggio a Caiano, Calenzano risultano
+  Ospitata; la scheda immobile mostra canone, IVA, garanzie, locatore, PDF e contratto Payments, con "Modifica in Amministrazione > Sedi".
+- Test: `server/test/lease-sync.test.mjs` (fine del primo periodo, periodo ↔ periodicità, fusione della proposta, coerenza titolo /
+  ospitante, piano degli scatti, garanzie lette dal PDF di prova).
