@@ -39,7 +39,7 @@ export default function LoadingPage() {
             <div className="table-wrap"><table className="t"><thead><tr><th>Ordine</th><th>Struttura</th><th>Stato</th><th className="num">Confezioni approvate</th><th>Aggiornato</th><th /></tr></thead>
               <tbody>{inArrivo.map((o) => <tr key={o.id} className="click" onClick={() => nav(`${BASE}/carico/${o.id}`)}><td className="mono strong">{o.number}</td><td className="small">{o.struttura_name}</td><td><Badge tone={STATUS[o.status]?.tone}>{STATUS[o.status]?.label || o.status}</Badge></td><td className="num">{o.packs_total ?? '–'}</td><td className="small muted">{itDateTime(o.updated_at)}</td><td className="num"><button className="btn sm" onClick={(e) => { e.stopPropagation(); nav(`${BASE}/carico/${o.id}`); }}>È arrivato</button></td></tr>)}</tbody></table></div>
           )}
-          <div className="inner small muted">Se il materiale è arrivato prima che il magazzino segnasse la consegna, apri l'ordine e registra la consegna: poi carichi le confezioni effettivamente ricevute.</div>
+          <div className="alert info small" style={{ margin: 14 }}><Icon name="info" size={16} /><span>Se il materiale è arrivato prima che il magazzino segnasse la consegna, apri l'ordine e registra la consegna: poi carichi le confezioni effettivamente ricevute.</span></div>
         </Card>
       </>)}
     </div>
