@@ -1,4 +1,6 @@
 import React, { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth, isOps } from '../auth.jsx';
 import { api } from '../api.js';
 import { useApi, Loading, Empty, Card, Icon, useToast, ErrorBox, Modal, Field } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
@@ -9,21 +11,32 @@ import { itDate, itDateTime } from '../format.js';
 // Fase 6 · Scarico: ad ogni utilizzo si legge il codice a barre della confezione prelevata; la giacenza scende
 export default function Unload() {
   const toast = useToast();
+  const { user } = useAuth();
+  const ops = isOps(user);
+  // Area Operations: scarica per conto di una struttura (selettore, come in Giacenza per struttura); le strutture lavorano sulla propria
+  const [sp, setSp] = useSearchParams();
+  const sid = ops ? sp.get('struttura_id') || '' : '';
+  const strutture = useApi(ops ? '/strutture' : null);
+  const q = () => (ops && sid ? `?struttura_id=${sid}` : '');
+  const withSid = (body) => (ops && sid ? { ...body, struttura_id: Number(sid) } : body);
   const [code, setCode] = useState('');
   const [err, setErr] = useState(null);
   const [last, setLast] = useState(null);
   const [pick, setPick] = useState(false);
-  const log = useApi('/stock/unloads');
-  const stock = useApi('/stock');
+  const log = useApi(ops && !sid ? null : `/stock/unloads${q()}`, [sid]);
+  const stock = useApi(ops && !sid ? null : `/stock${q()}`, [sid]);
   const inputRef = useRef(null);
   const use = async (body, label) => {
     setErr(null);
-    try { const r = await api.post('/stock/use', body); const u = r.used[0]; setLast({ ...u, label: label || stock.data?.rows.find((x) => x.article_id === u.article_id)?.article_name, remaining: r.remaining }); toast(`Scaricata: restano ${r.remaining} confezioni`); setCode(''); log.reload(); stock.reload(); inputRef.current?.focus(); } catch (e) { setErr(e); setCode(''); inputRef.current?.focus(); }
+    try { const r = await api.post('/stock/use', withSid(body)); const u = r.used[0]; setLast({ ...u, label: label || stock.data?.rows.find((x) => x.article_id === u.article_id)?.article_name, remaining: r.remaining }); toast(`Scaricata: restano ${r.remaining} confezioni`); setCode(''); log.reload(); stock.reload(); inputRef.current?.focus(); } catch (e) { setErr(e); setCode(''); inputRef.current?.focus(); }
   };
-  const undo = async (id) => { setErr(null); try { await api.post('/stock/unuse', { package_id: id }); toast('Scarico annullato'); log.reload(); stock.reload(); } catch (e) { setErr(e); } };
+  const undo = async (id) => { setErr(null); try { await api.post('/stock/unuse', withSid({ package_id: id })); toast('Scarico annullato'); log.reload(); stock.reload(); } catch (e) { setErr(e); } };
   return (
     <div className="page">
       <PhaseBanner n="6" title="Scarico del materiale" desc="Ogni volta che prelevi una confezione dal magazzino interno per metterla in uso, leggi il suo codice a barre: esce dalla giacenza, che resta sempre aggiornata. Esce prima la confezione con la scadenza più vicina." next="Fase 7: giacenza reale entro il 15 del mese" />
+      {ops && <div className="row mb"><Field label="Struttura"><select value={sid} onChange={(e) => setSp(e.target.value ? { struttura_id: e.target.value } : {})}><option value="">Scegli la struttura…</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'CLIENTE' ? ' · cliente' : ''}</option>)}</select></Field></div>}
+      {ops && !sid && <div className="alert info mb"><Icon name="info" size={18} /><span>Scegli la struttura per cui registrare lo scarico: il registro e la giacenza sono i suoi.</span></div>}
+      {(!ops || sid) && <>
       <div className="scanbox mb">
         <form className="row" onSubmit={(e) => { e.preventDefault(); if (code.trim()) use({ code: code.trim() }); }}>
           <input ref={inputRef} className="mono" placeholder="Leggi il codice a barre della confezione prelevata" value={code} onChange={(e) => setCode(e.target.value)} style={{ flex: 1, minWidth: 280 }} autoFocus />
@@ -40,6 +53,7 @@ export default function Unload() {
             <tbody>{log.data.map((p) => <tr key={p.id}><td className="small muted">{itDateTime(p.used_at)}</td><td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt color={p.color} size={26} /><div>{p.article_name}<div className="small muted">{p.pack_label}</div></div></div></td><td className="mono small">{p.lot || '–'}</td><td className="small">{itDate(p.expiry) || '–'}</td><td className="num">{p.remaining}</td><td className="small">{p.used_by_name}</td><td className="num">{Date.now() - new Date(p.used_at) < 86400000 && <button className="btn sm ghost" onClick={() => undo(p.id)}>Annulla</button>}</td></tr>)}</tbody></table></div>
         )}
       </Card>
+      </>}
       {pick && (
         <Modal title="Scarico senza lettura del codice" onClose={() => setPick(false)}>
           <div className="small muted" style={{ marginBottom: 10 }}>Scegli l'articolo: esce la confezione con la scadenza più vicina.</div>

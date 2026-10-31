@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api, qs, API_BASE } from '../api.js';
+import { api, qs, API_BASE, BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
 import { useApi, Field, Loading, ErrorBox, Card, Badge, Icon, Modal, useToast, StrutturaOptions } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
@@ -54,7 +54,7 @@ export default function Stock() {
             <ScanButton onCode={(c) => use({ code: c })} />
             <label className="f inline small" style={{ marginLeft: 'auto' }}><input type="checkbox" checked={onlyStock} onChange={(e) => setOnlyStock(e.target.checked)} />Solo articoli movimentati</label>
           </form>
-          <div className="small muted" style={{ marginTop: 8 }}>{data.struttura.kind === 'CLIENTE' ? 'In alternativa usa il pulsante sulla riga dell\'articolo: esce la confezione con la scadenza più vicina.' : 'La pagina dedicata è Scarico materiale (fase 6), con il registro degli scarichi.'}</div>
+          <div className="small muted" style={{ marginTop: 8 }}>{data.struttura.kind === 'CLIENTE' ? 'In alternativa usa il pulsante sulla riga dell\'articolo: esce la confezione con la scadenza più vicina.' : <>La pagina dedicata è <Link to={`${BASE}/scarico${sid ? `?struttura_id=${sid}` : ''}`}>6 · Scarico materiale</Link>, con il registro degli scarichi.</>}</div>
         </Card>
         <Card flush>
           <div className="table-wrap"><table className="t">

@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, getSetting, todayRome } from '../lib/util.js';
 import { requireRole, isOps, Params, assertStruttura, OPS_ROLES } from '../lib/access.js';
-import { ARTICLE_COLS, stockByArticle, openStockCount, stockCountDetail, proposeQty, nextOrderNumber, enrichLines } from '../lib/orders.js';
+import { ARTICLE_COLS, stockByArticle, openStockCount, stockCountDetail, proposeQty, nextOrderNumber, enrichLines, caricoIniziale } from '../lib/orders.js';
+import { clausolaVisibilita } from '../lib/dotazione.js';
 import { consumptionByArticle } from '../lib/studiolab.js';
 import { sendMail, opsEmails } from '../lib/mailer.js';
 
@@ -27,7 +28,7 @@ r.get('/', ah(async (req, res) => {
       (SELECT min(expiry) FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='RICEVUTO') AS next_expiry,
       (SELECT count(*)::int FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='IN_USO' AND p.used_at >= date_trunc('month', now() AT TIME ZONE 'Europe/Rome')) AS used_this_month,
       (SELECT count(*)::int FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id AND p.status='ATTESO') AS packs_incoming
-    FROM articles a JOIN categories c ON c.code=a.category_code WHERE a.active AND (a.source='SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source='SILVA' AND z.active) OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) AND (a.visible_all OR ${s.kind === 'CLIENTE' ? 'a.visible_service' : 'a.visible_sedi'} OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) ORDER BY c.sort, a.sort`, [sid]);
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE a.active AND (a.source='SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source='SILVA' AND z.active) OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) AND (${clausolaVisibilita(s)} OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) ORDER BY c.sort, a.sort`, [sid]);
   for (const row of rows) {
     const p = cons.map.get(row.article_id);
     row.prod_packs_avg = p ? p.packs : null;
@@ -93,13 +94,7 @@ r.post('/initial', ah(async (req, res) => {
   const sid = targetStruttura(req);
   await assertStruttura(req.user, sid);
   const d = parse(z.object({ lines: z.array(z.object({ article_id: z.coerce.number().int(), qty: z.coerce.number().int().min(0).max(5000), lot: opt(z.string().max(60)), expiry: opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)) })).min(1), note: opt(z.string().max(300)) }), req.body);
-  let n = 0;
-  await tx(async (c) => {
-    for (const l of d.lines) for (let i = 0; i < l.qty; i++) {
-      await c.query("INSERT INTO packages (struttura_id, article_id, seq, status, origin, lot, expiry, received_at, received_by, note) VALUES ($1,$2,$3,'RICEVUTO','INIZIALE',$4,$5,now(),$6,$7)", [sid, l.article_id, i + 1, l.lot, l.expiry, req.user.id, d.note]);
-      n++;
-    }
-  });
+  const n = await tx((c) => caricoIniziale(c, { strutturaId: sid, lines: d.lines, userId: req.user.id, note: d.note }));
   await audit(req, 'STOCK_INITIAL', 'struttura', sid, { packages: n });
   res.status(201).json({ packages: n });
 }));

@@ -64,24 +64,31 @@ r.get('/:id', ah(async (req, res) => {
 r.post('/', ah(async (req, res) => {
   const d = parse(z.object({ struttura_id: opt(z.coerce.number().int()), lines: lineSchema, submit: z.boolean().optional(), ...headSchema }), req.body);
   const strutturaId = isOps(req.user) ? d.struttura_id : req.user.struttura_id;
-  if (!strutturaId) throw bad('Sede obbligatoria');
-  const s = await assertStruttura(req.user, strutturaId);
-  if (!s.active) throw bad('Sede disattivata');
-  if (d.urgent && !d.urgent_reason) throw bad('Motivare la richiesta urgente');
-  if (!d.lines.some((l) => l.qty > 0)) throw bad('Il carrello è vuoto');
-  const origin = isOps(req.user) ? 'OPERATIONS' : 'CLIENTE';
-  const id = await tx(async (c) => {
-    const number = await nextOrderNumber(c);
-    const row = await c.query(`INSERT INTO orders (number, struttura_id, kind, origin, status, urgent, urgent_reason, notes, client_ref, requested_by)
-      VALUES ($1,$2,$3,$4,'BOZZA',$5,$6,$7,$8,$9) RETURNING id`, [number, s.id, s.kind, origin, Boolean(d.urgent), d.urgent_reason, d.notes, d.client_ref, req.user.id]);
-    await saveLines(c, row.rows[0].id, d.lines);
-    return row.rows[0].id;
-  });
-  await event(id, req.user.id, 'Creato');
-  await audit(req, 'ORDER_CREATE', 'order', id, { struttura: s.code, lines: d.lines.length });
+  const { id } = await creaOrdine(req, { ...d, strutturaId });
   if (d.submit) await submit(req, id);
   res.status(201).json({ id });
 }));
+
+// Creazione di un ordine in BOZZA per una struttura (carrello e Dotazione di avvio, routes/dotazione.js): controlli di
+// perimetro, numerazione, righe con articoli attivi, evento e audit. Ritorna { id, number }.
+export async function creaOrdine(req, { strutturaId, lines, notes = null, urgent = false, urgent_reason = null, client_ref = null, eventLabel = 'Creato' }) {
+  if (!strutturaId) throw bad('Sede obbligatoria');
+  const s = await assertStruttura(req.user, strutturaId);
+  if (!s.active) throw bad('Sede disattivata');
+  if (urgent && !urgent_reason) throw bad('Motivare la richiesta urgente');
+  if (!lines.some((l) => l.qty > 0)) throw bad('Il carrello è vuoto');
+  const origin = isOps(req.user) ? 'OPERATIONS' : 'CLIENTE';
+  const out = await tx(async (c) => {
+    const number = await nextOrderNumber(c);
+    const row = await c.query(`INSERT INTO orders (number, struttura_id, kind, origin, status, urgent, urgent_reason, notes, client_ref, requested_by)
+      VALUES ($1,$2,$3,$4,'BOZZA',$5,$6,$7,$8,$9) RETURNING id`, [number, s.id, s.kind, origin, Boolean(urgent), urgent_reason, notes, client_ref, req.user.id]);
+    await saveLines(c, row.rows[0].id, lines);
+    return { id: row.rows[0].id, number };
+  });
+  await event(out.id, req.user.id, eventLabel);
+  await audit(req, 'ORDER_CREATE', 'order', out.id, { struttura: s.code, lines: lines.length });
+  return out;
+}
 
 r.put('/:id', ah(async (req, res) => {
   const o = await loadOrder(req, req.params.id);

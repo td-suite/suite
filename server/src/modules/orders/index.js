@@ -7,7 +7,7 @@ import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../l
 import { registerJob } from '../../lib/jobs.js';
 import { one } from './db.js';
 import { ah } from './lib/util.js';
-import { requireRole, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
+import { requireRole, isOps, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
 import { getConnector } from '../../lib/connectors.js';
@@ -18,6 +18,7 @@ import productionRoutes from './routes/production.js';
 import statsRoutes from './routes/stats.js';
 import warehouseRoutes from './routes/warehouse.js';
 import integrationRoutes from './routes/integrations.js';
+import dotazioneRoutes, { badgeDotazione } from './routes/dotazione.js';
 // Importazione del catalogo articoli dall'app originale (Amministrazione > Travaso moduli > Importa i contenuti)
 export { legacyMatch, legacyImport } from './lib/legacyImport.js';
 
@@ -26,7 +27,7 @@ const KEY = 'orders';
 // Utente come lo vede il front-end dell'app: riga users del modulo + profilo Suite + sede di appartenenza (anagrafica unica)
 const publicUser = (u) => ({
   id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, struttura_id: u.struttura_id ?? null,
-  struttura_name: u.struttura_name || null, struttura_code: u.struttura_code || null, struttura_kind: u.struttura_kind || null, struttura_origin: u.struttura_origin || null, stock_deadline_day: u.stock_deadline_day ?? null,
+  struttura_name: u.struttura_name || null, struttura_code: u.struttura_code || null, struttura_kind: u.struttura_kind || null, struttura_origin: u.struttura_origin || null, struttura_site_kind: u.struttura_site_kind || null, stock_deadline_day: u.stock_deadline_day ?? null,
   is_referente: Boolean(u.is_referente), active: true, auth_provider: 'SUITE', totp_enabled: false, must_change_password: false,
   suite_user_id: u.suite_user_id, suite_level: u.suite_level, person_id: u.person_id ?? null, site_ids: u.site_ids || [],
 });
@@ -51,8 +52,9 @@ async function resolveStruttura(req, _res, next) {
       u.struttura_id = sid;
     }
     if (u.struttura_id != null) {
-      const s = await one('SELECT name, code, kind, origin, stock_deadline_day FROM strutture_v WHERE id=$1', [u.struttura_id]);
-      if (s) { u.struttura_name = s.name; u.struttura_code = s.code; u.struttura_kind = s.kind; u.struttura_origin = s.origin; u.stock_deadline_day = s.stock_deadline_day; }
+      const s = await one('SELECT name, code, kind, origin, site_kind, stock_deadline_day FROM strutture_v WHERE id=$1', [u.struttura_id]);
+      // site_kind (tipo di sede dell'anagrafica) sceglie la colonna di visibilità degli articoli (quattro tipologie, lib/dotazione.js)
+      if (s) { u.struttura_name = s.name; u.struttura_code = s.code; u.struttura_kind = s.kind; u.struttura_origin = s.origin; u.struttura_site_kind = s.site_kind; u.stock_deadline_day = s.stock_deadline_day; }
       else u.struttura_id = null;
     }
     req.suiteUser = req.user;
@@ -90,7 +92,9 @@ export default function mount(app) {
       const { one } = await import('./db.js');
       const r = await one(`SELECT count(*) FILTER (WHERE status='INVIATO')::int AS verifica FROM orders`);
       const d = await one(`SELECT count(*)::int AS n FROM issues WHERE status='APERTA'`).catch(() => ({ n: 0 }));
-      res.json({ verifica: r.verifica, difformita: d.n });
+      // Dotazione di avvio: sedi e Legal entity che aprono entro 60 giorni (o già aperte) senza Giacenza 0 registrata (solo Area Operations)
+      const dotazione = isOps(req.user) ? await badgeDotazione().catch(() => 0) : 0;
+      res.json({ verifica: r.verifica, difformita: d.n, dotazione });
     } catch (e) { next(e); }
   });
   r.get('/state', ah(async (req, res) => {
@@ -106,6 +110,7 @@ export default function mount(app) {
   r.use('/production', productionRoutes);
   r.use('/stats', statsRoutes);
   r.use('/warehouse', warehouseRoutes);
+  r.use('/dotazione', dotazioneRoutes);
   r.post('/alerts/run', requireRole(...OPS_ROLES), ah(async (_req, res) => res.json(await runDailyAlerts({ force: true }))));
   app.use(`/api/${KEY}`, r);
 

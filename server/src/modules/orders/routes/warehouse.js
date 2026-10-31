@@ -1,4 +1,5 @@
-// Fase 0 · Magazzino Silva: giacenze del fornitore (lotti, scadenze, quantità) e visibilità degli articoli per tipo di struttura
+// Fase 0 · Magazzino Centrale (il magazzino del fornitore Silva, letto dall'API Silva): giacenze (lotti, scadenze, quantità) e
+// visibilità degli articoli per tipologia di struttura (Punti Prelievo, Centro Polidiagnostico, Laboratorio di Analisi, Service, Tutti)
 import { Router } from 'express';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
@@ -15,7 +16,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 // Giacenze correnti del magazzino per articolo, con i lotti
 r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   const rows = await many(`SELECT a.id AS article_id, a.code, a.silva_code, a.name, a.category_code, c.name AS category_name, c.icon, a.color, a.unit, a.pack_size, a.pack_label, a.gtin, a.source, a.active,
-      a.visible_all, a.visible_sedi, a.visible_service,
+      a.visible_all, a.visible_sedi, a.visible_poli, a.visible_lab, a.visible_service,
       coalesce((SELECT sum(w.qty) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current),0)::numeric AS qty,
       (SELECT min(w.expiry) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS next_expiry,
       (SELECT count(*)::int FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS lots,
@@ -43,19 +44,21 @@ r.post('/silva/sync', requireRole(...OPS_ROLES), ah(async (req, res) => {
   res.json(out);
 }));
 
-// Visibilità: a chi la struttura vede l'articolo nel catalogo (tutti, punti prelievo e laboratorio, clienti Service)
+// Visibilità: quali strutture vedono l'articolo nel catalogo (tutti, punti prelievo, centri polidiagnostici, laboratorio, clienti Service)
+const VIS = ['visible_all', 'visible_sedi', 'visible_poli', 'visible_lab', 'visible_service'];
+const visFields = Object.fromEntries(VIS.map((k) => [k, z.boolean().optional()]));
 r.put('/articles/:id/visibility', requireRole(...OPS_ROLES), ah(async (req, res) => {
-  const d = parse(z.object({ visible_all: z.boolean().optional(), visible_sedi: z.boolean().optional(), visible_service: z.boolean().optional(), active: z.boolean().optional() }), req.body);
+  const d = parse(z.object({ ...visFields, active: z.boolean().optional() }), req.body);
   const cols = Object.keys(d);
   if (!cols.length) throw bad('Nessun dato');
-  const row = await one(`UPDATE articles SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(',')}, updated_at=now() WHERE id=$1 RETURNING id, code, visible_all, visible_sedi, visible_service, active`, [req.params.id, ...cols.map((c) => d[c])]);
+  const row = await one(`UPDATE articles SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(',')}, updated_at=now() WHERE id=$1 RETURNING id, code, ${VIS.join(', ')}, active`, [req.params.id, ...cols.map((c) => d[c])]);
   if (!row) throw bad('Articolo inesistente');
   await audit(req, 'ARTICLE_VISIBILITY', 'article', row.id, d);
   res.json(row);
 }));
 r.put('/visibility', requireRole(...OPS_ROLES), ah(async (req, res) => {
-  const d = parse(z.object({ ids: z.array(z.coerce.number().int()).min(1), visible_all: z.boolean().optional(), visible_sedi: z.boolean().optional(), visible_service: z.boolean().optional() }), req.body);
-  const cols = ['visible_all', 'visible_sedi', 'visible_service'].filter((k) => d[k] !== undefined);
+  const d = parse(z.object({ ids: z.array(z.coerce.number().int()).min(1), ...visFields }), req.body);
+  const cols = VIS.filter((k) => d[k] !== undefined);
   if (!cols.length) throw bad('Nessun dato');
   await q(`UPDATE articles SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(',')}, updated_at=now() WHERE id = ANY($1)`, [d.ids, ...cols.map((c) => d[c])]);
   await audit(req, 'ARTICLE_VISIBILITY_BULK', 'article', d.ids.join(','), d);

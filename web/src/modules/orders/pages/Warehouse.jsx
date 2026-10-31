@@ -5,7 +5,16 @@ import { ProductArt } from '../components/art.jsx';
 import { PhaseBanner } from '../components/phase.jsx';
 import { itDate, itDateTime, dec } from '../format.js';
 
-// Fase 0 · Magazzino Silva: giacenze del fornitore (lotti, scadenze, quantità) e visibilità degli articoli
+// Fase 0 · Magazzino Centrale (gestito dal fornitore Silva, letto dall'API Silva): giacenze (lotti, scadenze, quantità) e visibilità
+// degli articoli per tipologia di struttura: Tutti, Punti Prelievo, Centro Polidiagnostico, Laboratorio di Analisi, Service
+const VIS = [
+  { k: 'visible_all', label: 'Tutti', title: 'Visibile a tutte le strutture' },
+  { k: 'visible_sedi', label: 'Punti Prelievo', title: 'Punti prelievo' },
+  { k: 'visible_poli', label: 'Centro Polidiagnostico', title: 'Centri diagnostici, poliambulatori e centri medici' },
+  { k: 'visible_lab', label: 'Laboratorio di Analisi', title: 'Laboratorio di analisi' },
+  { k: 'visible_service', label: 'Service', title: 'Clienti service e Legal entity' },
+];
+const visibile = (r) => VIS.some((v) => r[v.k]);
 export default function Warehouse() {
   const toast = useToast();
   const { data, reload } = useApi('/warehouse');
@@ -14,7 +23,7 @@ export default function Warehouse() {
   const [filter, setFilter] = useState('STOCK');
   const [detail, setDetail] = useState(null);
   const [sel, setSel] = useState(new Set());
-  const rows = useMemo(() => (data?.rows || []).filter((r) => (filter === 'STOCK' ? Number(r.qty) > 0 : filter === 'HIDDEN' ? !(r.visible_all || r.visible_sedi || r.visible_service) : filter === 'NEW' ? r.source === 'SILVA' : true) && (!search || `${r.code} ${r.silva_code || ''} ${r.name}`.toLowerCase().includes(search.toLowerCase()))), [data, filter, search]);
+  const rows = useMemo(() => (data?.rows || []).filter((r) => (filter === 'STOCK' ? Number(r.qty) > 0 : filter === 'HIDDEN' ? !visibile(r) : filter === 'NEW' ? r.source === 'SILVA' : true) && (!search || `${r.code} ${r.silva_code || ''} ${r.name}`.toLowerCase().includes(search.toLowerCase()))), [data, filter, search]);
   const setVis = async (r, k, v) => { setErr(null); try { await api.put(`/warehouse/articles/${r.article_id}/visibility`, { [k]: v }); reload(); } catch (e) { setErr(e); } };
   const bulk = async (k, v) => { if (!sel.size) return; setErr(null); try { await api.put('/warehouse/visibility', { ids: [...sel], [k]: v }); toast(`${sel.size} articoli aggiornati`); setSel(new Set()); reload(); } catch (e) { setErr(e); } };
   const [syncing, setSyncing] = useState(false);
@@ -25,12 +34,12 @@ export default function Warehouse() {
     setSyncing(false);
   };
   const importFile = async (f) => { setErr(null); const fd = new FormData(); fd.append('file', f); try { const r = await api.upload('/warehouse/import', fd); toast(`Feed importato: ${r.items} righe, ${r.newArticles} articoli nuovi${r.errors.length ? `, ${r.errors.length} righe scartate` : ''}`); reload(); } catch (e) { setErr(e); } };
-  const Chk = ({ r, k }) => <input type="checkbox" checked={!!r[k]} onChange={(e) => setVis(r, k, e.target.checked)} title={k === 'visible_all' ? 'Tutti' : k === 'visible_sedi' ? 'Punti prelievo e laboratorio' : 'Clienti Service'} />;
+  const Chk = ({ r, k }) => <input type="checkbox" checked={!!r[k]} onChange={(e) => setVis(r, k, e.target.checked)} title={VIS.find((v) => v.k === k)?.title} />;
   return (
     <div className="page">
-      <PhaseBanner n="0" title="Magazzino Silva: materiale a disposizione" desc="Il gestore del magazzino aggiorna le giacenze (articoli, lotti, scadenze, quantità). Qui l'Area Operations decide a chi rendere visibile ogni articolo nel catalogo: le strutture vedono solo l'articolo, mai quantità, lotti o scadenze." next="Fase 1: le strutture ordinano dal catalogo" />
+      <PhaseBanner n="0" title="Magazzino Centrale: materiale a disposizione" desc="Il magazzino centrale (gestito da Silva, letto dall'API Silva) aggiorna le giacenze: articoli, lotti, scadenze, quantità. Qui l'Area Operations decide a quali tipologie di struttura rendere visibile ogni articolo nel catalogo: le strutture vedono solo l'articolo, mai quantità, lotti o scadenze." next="Fase 1: le strutture ordinano dal catalogo" />
       <div className="page-head">
-        <div><h1>Giacenze del magazzino</h1><div className="sub">{data?.last_feed_at ? `Ultimo aggiornamento dal fornitore: ${itDateTime(data.last_feed_at)}` : 'Nessun aggiornamento ricevuto: leggi il catalogo Silva o importa il file'}{data?.last_poll_at ? ` · ultima lettura ordini: ${itDateTime(data.last_poll_at)}` : ''}</div>
+        <div><h1>Magazzino Centrale</h1><div className="sub">{data?.last_feed_at ? `Ultimo aggiornamento dal fornitore: ${itDateTime(data.last_feed_at)}` : 'Nessun aggiornamento ricevuto: leggi il catalogo Silva o importa il file'}{data?.last_poll_at ? ` · ultima lettura ordini: ${itDateTime(data.last_poll_at)}` : ''}</div>
           {data?.silva && <div className="small" style={{ marginTop: 4 }}>{data.silva.api_key ? <>API Silva attiva ({data.silva.base_url}) · anni {data.silva.years.join(', ')} · ogni {data.silva.sync_minutes} min{data.silva.last_sync_at ? <> · ultima lettura {itDateTime(data.silva.last_sync_at)} <Badge tone={data.silva.last_sync_status === 'OK' ? 'green' : 'red'}>{data.silva.last_sync_status || '–'}</Badge></> : ' · mai letta'}{data.silva.key_expires_at && <> · chiave valida fino al {itDate(data.silva.key_expires_at)}{(new Date(data.silva.key_expires_at) - Date.now()) < 30 * 86400000 && <Badge tone="red">{new Date(data.silva.key_expires_at) < Date.now() ? 'scaduta' : 'in scadenza'}: rinnovala su Silva e aggiornala in Connettori</Badge>}</>}{data.silva.last_sync_status === 'ERRORE' && data.silva.last_sync_message && <div className="red">{data.silva.last_sync_message}</div>}</> : <span className="muted">API Silva non attiva: inserisci la chiave X-API-KEY in Amministrazione › Connettori › Silva.</span>}</div>}</div>
         <div className="row">
           <Field label="Cerca"><input placeholder="Codice o descrizione" value={search} onChange={(e) => setSearch(e.target.value)} /></Field>
@@ -42,20 +51,20 @@ export default function Warehouse() {
         </div>
       </div>
       <ErrorBox error={err} />
-      {sel.size > 0 && <div className="alert info" style={{ marginBottom: 12 }}><div className="row"><b>{sel.size} selezionati:</b><button className="btn sm ghost" onClick={() => bulk('visible_all', true)}>Visibili a tutti</button><button className="btn sm ghost" onClick={() => bulk('visible_sedi', true)}>Visibili ai punti prelievo</button><button className="btn sm ghost" onClick={() => bulk('visible_service', true)}>Visibili ai Service</button><button className="btn sm danger" onClick={async () => { await bulk('visible_all', false); }}>Togli "tutti"</button><button className="btn sm link" onClick={() => setSel(new Set())}>Annulla selezione</button></div></div>}
+      {sel.size > 0 && <div className="alert info" style={{ marginBottom: 12 }}><div className="row"><b>{sel.size} selezionati:</b>{VIS.map((v) => <button key={v.k} className="btn sm ghost" onClick={() => bulk(v.k, true)}>{v.k === 'visible_all' ? 'Visibili a tutti' : `+ ${v.label}`}</button>)}<button className="btn sm danger" onClick={async () => { await bulk('visible_all', false); }}>Togli "tutti"</button><button className="btn sm link" onClick={() => setSel(new Set())}>Annulla selezione</button></div></div>}
       <Card flush>
         {!data ? <Loading /> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th>Codice Silva</th><th className="num">Giacenza magazzino</th><th className="num">Lotti</th><th>Prima scadenza</th><th title="Visibile a tutti">Tutti</th><th title="Punti prelievo e laboratorio">Punti prelievo</th><th title="Clienti Service">Service</th><th /></tr></thead>
+            <thead><tr><th><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th>Codice Silva</th><th className="num">Giacenza magazzino</th><th className="num">Lotti</th><th>Prima scadenza</th>{VIS.map((v) => <th key={v.k} title={v.title} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 92 }}>{v.label}</th>)}<th /></tr></thead>
             <tbody>{rows.map((r) => (
-              <tr key={r.article_id} className={!(r.visible_all || r.visible_sedi || r.visible_service) ? 'warnrow' : ''}>
+              <tr key={r.article_id} className={!visibile(r) ? 'warnrow' : ''}>
                 <td><input type="checkbox" checked={sel.has(r.article_id)} onChange={(e) => { const s = new Set(sel); e.target.checked ? s.add(r.article_id) : s.delete(r.article_id); setSel(s); }} /></td>
                 <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt icon={r.icon} color={r.color} size={30} /><div><div className="strong">{r.name}{r.source === 'SILVA' && <> <Badge tone="mauve">dal feed</Badge></>}</div><div className="small muted">{r.pack_label} · <span className="mono">{r.code}</span></div></div></div></td>
                 <td className="mono small">{r.silva_code || <span className="muted">–</span>}</td>
                 <td className="num strong">{dec(r.qty, 0)} <span className="small muted">{r.unit}</span></td>
                 <td className="num">{r.lots}</td>
                 <td className="small">{r.next_expiry ? itDate(r.next_expiry) : '–'}</td>
-                <td><Chk r={r} k="visible_all" /></td><td><Chk r={r} k="visible_sedi" /></td><td><Chk r={r} k="visible_service" /></td>
+                {VIS.map((v) => <td key={v.k} style={{ textAlign: 'center' }}><Chk r={r} k={v.k} /></td>)}
                 <td className="num"><button className="btn sm ghost" onClick={() => setDetail(r)}>Lotti</button></td>
               </tr>))}</tbody>
           </table>{!rows.length && <div className="empty">Nessun articolo per questo filtro</div>}</div>

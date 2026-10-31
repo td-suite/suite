@@ -4,6 +4,9 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Field, Loading, ErrorBox, Badge, Modal, Card, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 
+// Visibilità a quattro tipologie di struttura più "Tutti" (stesse colonne del Magazzino Centrale)
+const VIS = [['visible_all', 'Tutti'], ['visible_sedi', 'Punti Prelievo'], ['visible_poli', 'Centro Polidiagnostico'], ['visible_lab', 'Laboratorio di Analisi'], ['visible_service', 'Service']];
+
 // Catalogo articoli: elenco chiuso del MOD252 (48 voci). Il confezionamento è un'ipotesi da validare: si modifica qui.
 export default function Articles() {
   const { user } = useAuth();
@@ -15,7 +18,7 @@ export default function Articles() {
   const [err, setErr] = useState(null);
   const save = async () => {
     setErr(null);
-    const b = { name: edit.name, unit: edit.unit, pack_size: Number(edit.pack_size), pack_label: edit.pack_label, color: edit.color || null, gtin: edit.gtin || null, silva_code: edit.silva_code || null, coverage_factor: Number(edit.coverage_factor), min_stock_packs: Number(edit.min_stock_packs || 0), lab_only: !!edit.lab_only, active: !!edit.active, category_code: edit.category_code, visible_all: !!edit.visible_all, visible_sedi: !!edit.visible_sedi, visible_service: !!edit.visible_service };
+    const b = { name: edit.name, unit: edit.unit, pack_size: Number(edit.pack_size), pack_label: edit.pack_label, color: edit.color || null, gtin: edit.gtin || null, silva_code: edit.silva_code || null, coverage_factor: Number(edit.coverage_factor), min_stock_packs: Number(edit.min_stock_packs || 0), lab_only: !!edit.lab_only, active: !!edit.active, category_code: edit.category_code, ...Object.fromEntries(VIS.map(([k]) => [k, !!edit[k]])) };
     try { if (edit.id) await api.put(`/articles/${edit.id}`, b); else await api.post('/articles', { code: edit.code, ...b }); toast('Articolo salvato'); setEdit(null); reload(); } catch (e) { setErr(e); }
   };
   const [plan, setPlan] = useState(null);
@@ -36,7 +39,7 @@ export default function Articles() {
         <div className="small" style={{ marginTop: 6 }}><b>{plan.disattivati.length}</b> da disattivare{plan.disattivati.length > 0 && <>: {plan.disattivati.slice(0, 60).map((a) => `${a.code} (${a.riferimenti})`).join(', ')}{plan.disattivati.length > 60 ? '…' : ''}</>}</div>
       </Modal>}
       <div className="page-head">
-        <div><h1>Catalogo articoli</h1><div className="sub">Articoli del magazzino Silva (dall'API, con categoria e icona per interpretazione della descrizione). Confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui.</div></div>
+        <div><h1>Catalogo articoli</h1><div className="sub">Articoli del Magazzino Centrale (letti dall'API Silva, con categoria e icona per interpretazione della descrizione). Confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui.</div></div>
         {sup && <button className="btn ghost danger" title="Elimina o disattiva gli articoli non importati da Silva" onClick={() => pulizia(true)}>Pulisci il caricato a mano</button>}
         {sup && <button className="btn ghost" title="Categoria, icona e colore dalla descrizione degli articoli Silva ancora in Altri articoli" onClick={reinterpreta}>Icone per interpretazione</button>}
         {sup && <button className="btn" onClick={() => setEdit({ code: '', category_code: 'PROVETTE', name: '', unit: 'n.', pack_size: 1, pack_label: '', color: '#71B1BD', gtin: '', silva_code: '', coverage_factor: 1.5, min_stock_packs: 0, lab_only: false, active: true, visible_all: true })}>+ Nuovo articolo</button>}
@@ -46,14 +49,14 @@ export default function Articles() {
       <Card flush>
         {!data ? <Loading /> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th /><th>Codice</th><th>Articolo</th><th>Unità del modulo</th><th className="num">Unità/conf.</th><th>Confezione</th><th>GTIN</th><th>Visibile a</th><th className="num">Fattore</th><th className="num">Soglia</th><th className="num">Correlazioni</th><th>Stato</th><th /></tr></thead>
+            <thead><tr><th /><th>Codice</th><th>Articolo</th><th>Unità del modulo</th><th className="num">Unità/conf.</th><th>Confezione</th><th>GTIN</th>{VIS.map(([k, l]) => <th key={k} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 84 }}>{l}</th>)}<th className="num">Fattore</th><th className="num">Soglia</th><th className="num">Correlazioni</th><th>Stato</th><th /></tr></thead>
             <tbody>{data.map((a) => { const catRow = a.category_code !== lastCat ? (lastCat = a.category_code, true) : false; return [
-              catRow && <tr key={`c${a.category_code}`}><td colSpan={13} style={{ background: 'var(--teal-050)', color: 'var(--teal)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{a.category_name}</td></tr>,
+              catRow && <tr key={`c${a.category_code}`}><td colSpan={17} style={{ background: 'var(--teal-050)', color: 'var(--teal)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{a.category_name}</td></tr>,
               <tr key={a.id}>
                 <td><ProductArt icon={a.icon} color={a.color} size={34} /></td>
                 <td className="mono">{a.code}</td><td className="strong">{a.name}{a.source === 'SILVA' && <> <Badge tone="mauve">dal feed Silva</Badge></>}</td><td className="small">{a.unit}</td>
                 <td className="num">{a.pack_size}</td><td className="small">{a.pack_label}</td><td className="mono small">{a.gtin || '–'}</td>
-                <td className="small">{a.visible_all ? 'tutti' : [a.visible_sedi && 'punti prelievo', a.visible_service && 'Service'].filter(Boolean).join(', ') || <Badge tone="red">nessuno</Badge>}</td>
+                {VIS.map(([k, l]) => <td key={k} style={{ textAlign: 'center' }} title={l}>{a[k] ? <span className="green strong">✓</span> : <span className="muted">–</span>}</td>)}
                 <td className="num">{Number(a.coverage_factor).toLocaleString('it-IT')}</td><td className="num">{a.min_stock_packs || '–'}</td><td className="num">{a.mappings_count}</td>
                 <td>{a.active ? <Badge tone="green">Attivo</Badge> : <Badge tone="red">Disattivo</Badge>}</td>
                 <td className="num"><button className="btn sm ghost" onClick={() => setEdit({ ...a, gtin: a.gtin || '', color: a.color || '' })}>Modifica</button></td>
@@ -79,7 +82,7 @@ export default function Articles() {
             <Field label="Soglia di scorta (conf.)" help="Sotto questa giacenza compare l'avviso"><input type="number" min="0" value={edit.min_stock_packs} onChange={(e) => setEdit({ ...edit, min_stock_packs: e.target.value })} /></Field>
           </div>
           <div className="small strong muted" style={{ marginTop: 12 }}>Visibilità nel catalogo (fase 0)</div>
-          <div className="row"><label className="f inline"><input type="checkbox" checked={!!edit.visible_all} onChange={(e) => setEdit({ ...edit, visible_all: e.target.checked })} />Tutti</label><label className="f inline"><input type="checkbox" checked={!!edit.visible_sedi} onChange={(e) => setEdit({ ...edit, visible_sedi: e.target.checked })} />Punti prelievo e laboratorio</label><label className="f inline"><input type="checkbox" checked={!!edit.visible_service} onChange={(e) => setEdit({ ...edit, visible_service: e.target.checked })} />Clienti Service</label></div>
+          <div className="row">{VIS.map(([k, l]) => <label key={k} className="f inline"><input type="checkbox" checked={!!edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.checked })} />{l}</label>)}</div>
           <label className="f inline" style={{ marginTop: 6 }}><input type="checkbox" checked={!!edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} />Articolo attivo</label>
         </Modal>
       )}

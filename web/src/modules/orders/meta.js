@@ -12,7 +12,9 @@ export default {
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Flusso ordini', profiles: OPS },
-    { to: 'magazzino', icon: 'folder', label: '0 · Magazzino Silva', profiles: OPS },
+    { to: 'magazzino', icon: 'folder', label: '0 · Magazzino Centrale', profiles: OPS },
+    // Dotazione di avvio delle sedi: modelli per tipologia, sedi e Legal entity con data di apertura e Giacenza 0 (badge: aperture entro 60 giorni senza Giacenza 0)
+    { to: 'dotazione', icon: 'building', label: '0b · Dotazione di avvio sedi', badge: 'dotazione', profiles: OPS },
     { to: 'catalogo', icon: 'plus', label: '1 · Nuovo ordine per una struttura', profiles: OPS },
     { to: 'verifica', icon: 'check', label: '2 · Verifica richieste', badge: 'verifica', profiles: OPS },
     { to: 'fornitore', icon: 'send', label: '3 · Trasmissione al magazzino', profiles: OPS },
@@ -23,6 +25,7 @@ export default {
     { to: 'rete', icon: 'grid', label: 'Scorte della rete', profiles: OPS },
     { to: 'giacenze', icon: 'calendar', label: '7 · Giacenze mensili', profiles: OPS },
     { to: 'giacenza', icon: 'orders', label: 'Giacenza per struttura', profiles: OPS },
+    { to: 'scarico', icon: 'send', label: '6 · Scarico materiale', profiles: OPS },
     { to: 'produzione', icon: 'stats', label: 'Produzione StudioLab', profiles: OPS },
     { to: 'correlazioni', icon: 'tree', label: 'Correlazione esami e materiali', profiles: OPS },
     { group: 'Anagrafiche', profiles: OPS },

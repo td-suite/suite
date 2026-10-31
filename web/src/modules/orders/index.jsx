@@ -8,6 +8,8 @@ import { ToastProvider } from './components/ui.jsx';
 import { BASE } from './api.js';
 import Dashboard from './pages/Dashboard.jsx';
 import Warehouse from './pages/Warehouse.jsx';
+import Dotazione from './pages/Dotazione.jsx';
+import DotazioneSede from './pages/DotazioneSede.jsx';
 import Catalog from './pages/Catalog.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
@@ -41,6 +43,8 @@ function Gate() {
     <Routes>
       <Route index element={<Dashboard />} />
       {ops && <Route path="magazzino" element={<Warehouse />} />}
+      {ops && <Route path="dotazione" element={<Dotazione />} />}
+      {ops && <Route path="dotazione/sedi/:id" element={<DotazioneSede />} />}
       <Route path="catalogo" element={(ops || kind === 'CLIENTE') ? <Catalog /> : <Navigate to={BASE} replace />} />
       <Route path="ordini" element={<Orders />} />
       {ops && <Route path="verifica" element={<Orders verify />} />}
@@ -49,7 +53,7 @@ function Gate() {
       <Route path="ordini/:id" element={<OrderDetail />} />
       {td && <Route path="carico" element={<LoadingPage />} />}
       {td && <Route path="carico/:id" element={<LoadingPage />} />}
-      {td && <Route path="scarico" element={<Unload />} />}
+      <Route path="scarico" element={<Unload />} />
       <Route path="giacenza" element={<Stock />} />
       {(ops || td) && <Route path="giacenze" element={<StockCounts />} />}
       {(ops || td) && <Route path="giacenze/:id" element={<StockCount />} />}

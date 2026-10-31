@@ -36,3 +36,12 @@ docs/AUDIT_SGI.md.
 
 ## Ordini: catalogo articoli dall'app originale (29/10/2026)
 Amministrazione > Travaso moduli > Ordini e Magazzino > "Importa i contenuti dall'app originale": copia categorie, articoli e abbinamenti esame → articolo da orders.toscanadiagnostica.it (sorgente LEGACY_ORDERS_DATABASE_URL o Sorgenti legacy), ripetibile senza duplicati (legacy_import_map). Confezioni per struttura e giacenze non si importano: dipendono dalle strutture dell'app, che nella Suite sono sedi e Legal entity dell'anagrafica unica.
+
+## 31/10/2026 · Ordini: Magazzino Centrale e Dotazione di avvio sedi
+Richiesta del CEO: "Magazzino Silva" rinominato Magazzino Centrale; visibilità degli articoli a quattro tipologie (Punti Prelievo,
+Centro Polidiagnostico, Laboratorio di Analisi, Service, più Tutti; colonne nuove visible_poli e visible_lab dal tipo di sede); nuova
+sezione "0b · Dotazione di avvio sedi" con modelli per tipologia (quattro, Legal entity comprese), sedi e Legal entity con data di
+effettiva apertura (public.sites.opened_at; start_date per le Legal entity), piano per struttura, ordine facoltativo, Giacenza 0
+(packages INIZIALE) con annullamento solo SUPERADMIN, PDF e badge (aperture entro 60 giorni senza Giacenza 0). Migrazione
+orders/009_dotazione_avvio.sql, test orders-startup.test.mjs, schermate docs/screens/orders-dotazione-*.png. Dettagli in
+docs/ANAGRAFICA.md (sezione Ordini).

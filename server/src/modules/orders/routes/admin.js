@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, getSetting } from '../lib/util.js';
 import { requireRole, isOps, Params, OPS_ROLES } from '../lib/access.js';
+import { clausolaVisibilita } from '../lib/dotazione.js';
 import { mailStatus, sendMail } from '../lib/mailer.js';
 import { companyInfo } from '../lib/orders.js';
 import { studiolabStatus } from '../lib/studiolab.js';
@@ -84,13 +85,14 @@ r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
 // ---------------- Catalogo ----------------
 r.get('/categories', ah(async (_req, res) => res.json(await many('SELECT * FROM categories ORDER BY sort'))));
 
-// Catalogo: l'Area Operations vede tutto (con ?all=1 anche i disattivati); le strutture solo gli articoli resi visibili al loro tipo (fase 0)
+// Catalogo: l'Area Operations vede tutto (con ?all=1 anche i disattivati); le strutture solo gli articoli resi visibili alla loro
+// tipologia (fase 0, quattro colonne): la colonna si sceglie dal tipo di sede dell'anagrafica (site_kind) della struttura
+// dell'utente, risolto in index.js (resolveStruttura): Punto Prelievi, Centro Polidiagnostico, Laboratorio di Analisi, Service.
 export const visibleClause = (user, alias = 'a') => {
   if (isOps(user)) return 'TRUE';
-  const k = user.struttura_kind === 'CLIENTE' ? `${alias}.visible_service` : `${alias}.visible_sedi`;
-  return `(${alias}.visible_all OR ${k})`;
+  return clausolaVisibilita({ site_kind: user.struttura_site_kind, origin: user.struttura_origin, kind: user.struttura_kind }, alias);
 };
-// Il catalogo ordinabile è quello del magazzino Silva: quando esiste almeno un articolo Silva, gli articoli caricati a mano
+// Il catalogo ordinabile è quello del Magazzino Centrale (articoli letti dall'API Silva): quando esiste almeno un articolo Silva, gli articoli caricati a mano
 // (MOD252/MANUALE) escono da "Nuovo ordine" anche se ancora attivi (restano per lo storico e in Catalogo articoli con all=1)
 export const soloSilvaClause = (alias = 'a') => `(${alias}.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active))`;
 r.get('/articles', ah(async (req, res) => {
@@ -103,7 +105,7 @@ r.get('/articles', ah(async (req, res) => {
 const articleFields = {
   name: z.string().min(2).max(200), unit: z.string().min(1).max(60), pack_size: z.coerce.number().int().min(1), pack_label: z.string().min(1).max(120),
   color: opt(z.string().max(12)), gtin: opt(z.string().max(32)), silva_code: opt(z.string().max(40)), coverage_factor: z.coerce.number().min(0).max(12).optional(),
-  visible_all: z.boolean().optional(), visible_sedi: z.boolean().optional(), visible_service: z.boolean().optional(),
+  visible_all: z.boolean().optional(), visible_sedi: z.boolean().optional(), visible_poli: z.boolean().optional(), visible_lab: z.boolean().optional(), visible_service: z.boolean().optional(),
   min_stock_packs: z.coerce.number().int().min(0).optional(), lab_only: z.boolean().optional(), active: z.boolean().optional(), category_code: z.string().optional(),
 };
 r.post('/articles', requireRole('SUPERADMIN'), ah(async (req, res) => {

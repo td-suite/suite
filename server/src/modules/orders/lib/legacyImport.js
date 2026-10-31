@@ -76,6 +76,8 @@ export async function legacyImport({ legacyQueryLong, dryRun }) {
       if (dryRun) { artId.set(a.id, -a.id); stats.articles.copied++; continue; }
       const vals = artCols.map((col) => a[col]);
       const r = await c.query(`INSERT INTO articles (${artCols.join(', ')}) VALUES (${artCols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals);
+      // l'app originale ha solo "Punti prelievo e laboratorio" (visible_sedi): vale anche per Centro Polidiagnostico e Laboratorio
+      if (artCols.includes('visible_sedi')) await c.query('UPDATE articles SET visible_poli=visible_sedi, visible_lab=visible_sedi WHERE id=$1', [r.rows[0].id]);
       artId.set(a.id, r.rows[0].id); await ricorda('articles', a.id, r.rows[0].id); stats.articles.copied++;
     }
     // abbinamenti esame → articolo

@@ -239,6 +239,44 @@ Strutture: elenco unico con filtro Tipo (Sede TD / Legal entity), punti di conse
 giacenze mensili, produzione) offrono le due origini in due gruppi. Intestazione dei PDF: `company` dell'app se presente,
 altrimenti la Legal entity TD dall'anagrafica (`companyInfo`).
 
+## Ordini: Magazzino Centrale e Dotazione di avvio delle sedi (31/10/2026)
+Richiesta del CEO. "Magazzino Silva" si chiama ora **Magazzino Centrale** (menu "0 · Magazzino Centrale"; il fornitore resta citato
+dove serve: catalogo e giacenze letti dall'API Silva). Migrazione orders/009_dotazione_avvio.sql.
+- **Visibilità a quattro tipologie**: le caselle del Magazzino Centrale e del Catalogo articoli sono Tutti (`visible_all`), Punti
+  Prelievo (`visible_sedi`), Centro Polidiagnostico (`visible_poli`, nuova), Laboratorio di Analisi (`visible_lab`, nuova), Service
+  (`visible_service`); le due nuove partono da `visible_sedi` (prima valeva "punti prelievo e laboratorio"), anche per gli articoli
+  importati dall'app originale. La colonna si sceglie dal tipo di sede dell'anagrafica della struttura (`strutture_v.site_kind`,
+  risolto in `resolveStruttura` come `struttura_site_kind`): PUNTO_PRELIEVI → visible_sedi; CENTRO_DIAGNOSTICO, POLIAMBULATORIO,
+  CENTRO_MEDICO → visible_poli; LABORATORIO → visible_lab; Legal entity e punti SERVICE → visible_service; per Direzione/Altro decide
+  il ruolo nel flusso (CLIENTE/LAB/SEDE). Funzioni in `lib/dotazione.js` (`colonnaVisibilita`, `clausolaVisibilita`), usate da
+  `GET /articles`, dalla giacenza per struttura e dalla giacenza mensile. Gli articoli Silva nascono con `visible_all` TRUE.
+- **Dotazione di avvio sedi** (menu "0b · Dotazione di avvio sedi", solo Area Operations, badge = sedi e Legal entity con apertura
+  entro 60 giorni o già aperte senza Giacenza 0). Due schede:
+  a) *Modelli per tipologia*: quattro tipologie fisse (`startup_templates`: PUNTO_PRELIEVI "Punto Prelievi", POLIDIAGNOSTICO "Centro
+     Polidiagnostico" per CENTRO_DIAGNOSTICO/POLIAMBULATORIO/CENTRO_MEDICO, LABORATORIO "Laboratorio di Analisi", SERVICE "Cliente
+     service / Legal entity") con l'elenco completo del materiale (`startup_template_lines`: articolo attivo del catalogo Silva,
+     confezioni > 0, note; UNIQUE per tipologia e articolo). Ricerca per codice o descrizione, modifica e rimozione, "Copia da
+     un'altra tipologia" (aggiungi i mancanti o sostituisci), esportazione XLSX.
+  b) *Sedi e Legal entity*: sedi struttura dell'anagrafica (`strutture_v` origin SITE con site_kind PUNTO_PRELIEVI,
+     CENTRO_DIAGNOSTICO, POLIAMBULATORIO, CENTRO_MEDICO, LABORATORIO) e Legal entity clienti service e partner (origin ORG,
+     tipologia SERVICE). Data di effettiva apertura: per la sede `public.sites.opened_at`, modificabile qui (scrittura sul core
+     con audit `SITE_UPDATED` nel registro della Suite e `DOTAZIONE_APERTURA` nel modulo); per la Legal entity la data di avvio
+     del rapporto in `startup_loads.start_date` (organizations non ha una data di apertura). Stato: NON_PIANIFICATA (nessun piano),
+     PIANIFICATA, CONSEGNATA (= Giacenza 0 registrata), totale confezioni, ordine collegato.
+  Tabelle: `startup_loads` (una per struttura, `struttura_id` della vista come nel resto del modulo: > 0 sede, < 0 Legal entity, con
+  `site_id`/`org_id` generati e FK reali; kind, status, start_date, planned_at/by, order_id, delivered_at/by, note) e
+  `startup_load_lines` (articolo, packs_planned, packs_delivered, lot, expiry, note). Flusso della scheda `dotazione/sedi/:id`:
+  "Genera dal modello" copia le righe della tipologia → si adattano alla struttura (aggiungi, togli, quantità, lotto e scadenza
+  facoltativi) → "Salva piano" (PIANIFICATA) → facoltativo "Crea ordine al Magazzino Centrale" (ordine in BOZZA del modulo con le
+  righe pianificate e nota "Dotazione di avvio", tramite `creaOrdine` di routes/orders.js; 409 se c'è già un ordine non annullato)
+  → "Registra la Giacenza 0": per ogni riga `packs_delivered` confezioni in `packages` con origin `INIZIALE`, stato `RICEVUTO`,
+  `received_at` = data scelta (default data di apertura, altrimenti oggi), `received_by` l'utente, nota "Dotazione di avvio" e
+  `packages.startup_load_id` (stessa funzione `caricoIniziale` di `POST /stock/initial`); stato CONSEGNATA, non ripetibile (409).
+  "Annulla Giacenza 0" (solo SUPERADMIN) toglie le confezioni INIZIALE del carico ancora RICEVUTO (quelle già messe in uso restano)
+  e riporta il piano a PIANIFICATA. Dopo la registrazione la Giacenza per struttura mostra le confezioni. Stampa PDF
+  (`pdf/dotazione.js`, pdfkit: elenco con la grafica degli articoli, quantità, lotto, scadenza, casella di spunta, firme per
+  ricevuta). Audit su ogni scrittura (`DOTAZIONE_*`). API sotto `/api/orders/dotazione` (modelli, sedi, articoli).
+
 ## Non conformità: sedi invianti = sedi TD e Legal entity (26/10/2026)
 Decisione di Francesco Epifani. In Non conformità la "sede inviante" ha due origini nell'anagrafica unica, con la convenzione di
 Ordini: le sedi TD (`public.sites`, `kind <> 'SERVICE'`, impostazioni in `nc.site_ext`) e le Legal entity (`public.organizations`:

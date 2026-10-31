@@ -54,7 +54,7 @@ export async function applyFeed(items, source = 'API') {
       const it = p.data;
       let art = (await c.query('SELECT id FROM articles WHERE silva_code=$1 OR (silva_code IS NULL AND code=$1)', [it.codice])).rows[0];
       if (!art) {
-        // articolo nuovo dal magazzino: nasce ordinabile da tutti (il catalogo per gli ordini è il magazzino Silva), l'Area Operations può nasconderlo; categoria, icona e colore per
+        // articolo nuovo dal magazzino: nasce ordinabile da tutti (il catalogo per gli ordini è il Magazzino Centrale, gestito da Silva), l'Area Operations può nasconderlo; categoria, icona e colore per
         // interpretazione della descrizione (lib/silvaClassify.js) se il feed non indica una categoria esistente
         const interp = interpreta(it.descrizione, it.codice);
         const cat = it.categoria && (await c.query('SELECT 1 FROM categories WHERE code=$1', [it.categoria])).rowCount ? it.categoria : interp.category_code;

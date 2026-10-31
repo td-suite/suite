@@ -166,7 +166,7 @@ export default function OrderDetail() {
       {cancel && <PromptModal title={`Annullare l'ordine ${o.number}?`} label="Motivazione" confirmText="Annulla ordine" danger onClose={() => setCancel(false)} onConfirm={async (reason) => { await api.post(`/orders/${o.id}/cancel`, { reason }); toast('Ordine annullato'); reload(); }} />}
       {approveAsk && (
         <Modal title="Approvare e trasmettere al fornitore?" onClose={() => setApproveAsk(false)} footer={<><button className="btn ghost" onClick={() => setApproveAsk(false)}>Indietro</button><button className="btn" onClick={() => saveVerify(true)}>Approva</button></>}>
-          <p>{totalApproved} confezioni approvate in {lines.filter((l) => Number(val(l, 'qty_approved') || 0) > 0).length} articoli. L'ordine passa alla fase 3: viene esposto sulle API che il magazzino Silva legge ogni 5 minuti; la struttura riceve il PDF per email.</p>
+          <p>{totalApproved} confezioni approvate in {lines.filter((l) => Number(val(l, 'qty_approved') || 0) > 0).length} articoli. L'ordine passa alla fase 3: viene esposto sulle API che il Magazzino Centrale (Silva) legge ogni 5 minuti; la struttura riceve il PDF per email.</p>
         </Modal>
       )}
       {issue && (

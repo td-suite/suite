@@ -4,6 +4,7 @@ import { getCompany } from '../../../lib/company.js';
 import { one, many, q } from '../db.js';
 import { bad, getSetting } from './util.js';
 import { consumptionByArticle } from './studiolab.js';
+import { clausolaVisibilita } from './dotazione.js';
 
 export const ARTICLE_COLS = `a.code AS article_code, a.name AS article_name, a.category_code, a.unit, a.pack_size, a.pack_label, a.color, a.gtin, a.coverage_factor`;
 
@@ -106,11 +107,11 @@ export async function openStockCount(strutturaId, monthIso) {
   let c = await one('SELECT * FROM stock_counts WHERE struttura_id=$1 AND month=$2', [strutturaId, month]);
   if (c && c.status === 'CONFERMATO') return c.id;
   if (!c) c = await one('INSERT INTO stock_counts (struttura_id, month) VALUES ($1,$2) RETURNING *', [strutturaId, month]);
-  const s = await one('SELECT kind FROM strutture_v WHERE id=$1', [strutturaId]);
+  const s = await one('SELECT kind, origin, site_kind FROM strutture_v WHERE id=$1', [strutturaId]);
   const stock = await stockByArticle(strutturaId);
   const last = await lastOrderByArticle(strutturaId);
-  // elenco della struttura: articoli visibili al suo tipo più quelli che ha comunque movimentato
-  const arts = await many(`SELECT id FROM articles a WHERE a.active AND (a.visible_all OR ${s.kind === 'CLIENTE' ? 'a.visible_service' : 'a.visible_sedi'}
+  // elenco della struttura: articoli visibili alla sua tipologia (quattro colonne, lib/dotazione.js) più quelli che ha comunque movimentato
+  const arts = await many(`SELECT id FROM articles a WHERE a.active AND (${clausolaVisibilita(s)}
     OR EXISTS (SELECT 1 FROM packages p WHERE p.struttura_id=$1 AND p.article_id=a.id)) ORDER BY a.sort`, [strutturaId]);
   for (const a of arts) {
     const sys = stock.get(a.id)?.packs || 0;
@@ -120,6 +121,19 @@ export async function openStockCount(strutturaId, monthIso) {
     [c.id, a.id, last.get(a.id)?.qty || 0, sys]);
   }
   return c.id;
+}
+
+// Carico iniziale (prima giacenza): una confezione RICEVUTO con origin 'INIZIALE' per ogni unità di ogni riga, nella transazione
+// del chiamante. La usano POST /stock/initial e la Giacenza 0 della Dotazione di avvio (receivedAt = data scelta, startupLoadId =
+// carico di avvio, così l'annullamento toglie solo quelle confezioni). Ritorna il numero di confezioni create.
+export async function caricoIniziale(client, { strutturaId, lines, userId, note = null, receivedAt = null, startupLoadId = null }) {
+  let n = 0;
+  for (const l of lines) for (let i = 0; i < (Number(l.qty) || 0); i++) {
+    await client.query(`INSERT INTO packages (struttura_id, article_id, seq, status, origin, lot, expiry, received_at, received_by, note, startup_load_id)
+      VALUES ($1,$2,$3,'RICEVUTO','INIZIALE',$4,$5,coalesce($6::timestamptz, now()),$7,$8,$9)`, [strutturaId, l.article_id, i + 1, l.lot || null, l.expiry || null, receivedAt, userId, note, startupLoadId]);
+    n++;
+  }
+  return n;
 }
 
 export function assertStatus(order, ...allowed) {
