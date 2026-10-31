@@ -46,7 +46,7 @@ r.get('/dashboard', ah(async (req, res) => {
   if (!isManutentore(req)) {
     await ensureProperties();
     senzaPlanimetria = await many(`SELECT s.id, s.name, s.kind FROM sites_v s JOIN facility.properties p ON p.site_id=s.id WHERE s.active ${ids ? 'AND s.id = ANY($1::int[])' : ''}
-      AND NOT EXISTS (SELECT 1 FROM property_documents d WHERE d.property_id=p.id AND d.kind='PLANIMETRIA') ORDER BY s.sort_order, s.name`, ids ? [ids] : []);
+      AND NOT EXISTS (SELECT 1 FROM public.site_documents d WHERE d.site_id=s.id AND d.kind='PLANIMETRIA') ORDER BY s.sort_order, s.name`, ids ? [ids] : []);
   }
   res.json({ today, year, kpi, scadenze, interventi, anomalie, energia, senza_planimetria: senzaPlanimetria, finance: fin, room: await roomReady(), ruolo: { facility: isFacility(req), site: isSite(req), manutentore: isManutentore(req) } });
 }));

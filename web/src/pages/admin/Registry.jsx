@@ -204,6 +204,74 @@ function LeasePdfBox({ site, f, patch, onOrgCreated }) {
   );
 }
 
+// Riquadro "Planimetria": fonte unica per tutta la Suite (public.site_documents kind PLANIMETRIA). La più recente è la corrente, va in
+// Room Planning e Facility la mostra nella scheda dell'immobile; le precedenti restano come storico. Si salva subito, senza il form.
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+const isPdfPlan = (d) => /pdf/.test(d?.mime || '') || /\.pdf$/i.test(d?.filename || '');
+function SitePlanBox({ site, onChange }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState(site?.planimetria || null);
+  const [list, setList] = useState(null);
+  const [del, setDel] = useState(null);
+  const inputRef = React.useRef(null);
+  const loadList = React.useCallback(async () => { if (site?.id) { try { setList((await api.get(`/sites/${site.id}/planimetria?list=1`)).rows); } catch { setList([]); } } }, [site?.id]);
+  useEffect(() => { if (site?.planimetria) loadList(); }, [loadList, site?.planimetria]);
+  if (!site?.id) return <div className="pdf-box small muted"><Icon name="image" />Salva la sede: poi puoi caricare la planimetria (PDF o immagine), che diventa disponibile in Room Planning e Facility.</div>;
+  const url = (d) => `/api/sites/${site.id}/planimetria?doc=${d.id}`;
+  const roomMsg = (r) => (r?.published ? 'pubblicata in Room Planning' : r?.reason || '');
+  const upload = async (file) => {
+    if (!file) return;
+    if (!/\.(pdf|png|jpe?g|webp)$/i.test(file.name) && !/^(application\/pdf|image\/(png|jpeg|webp))$/.test(file.type)) { toast('Carica un PDF o un\'immagine PNG, JPEG o WebP', 'err'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await api.upload(`/sites/${site.id}/planimetria`, fd);
+      setPlan(r.document); await loadList(); onChange?.();
+      toast(`Planimetria caricata${roomMsg(r.room) ? `: ${roomMsg(r.room)}` : ''}`, r.room?.published ? undefined : 'warn');
+    } catch (e) { toast(e, 'err'); }
+    setBusy(false); if (inputRef.current) inputRef.current.value = '';
+  };
+  const remove = async (d) => {
+    const r = await api.del(`/sites/${site.id}/planimetria?doc=${d.id}`);
+    const rows = (await api.get(`/sites/${site.id}/planimetria?list=1`)).rows;
+    setList(rows); setPlan(rows[0] || null); onChange?.();
+    toast(!r.deleted.was_current ? 'Versione eliminata dallo storico' : rows[0] ? `Planimetria eliminata: torna corrente la versione del ${fmtDate(rows[0].created_at)}${r.room?.published ? ', ripubblicata in Room Planning' : ''}` : 'Planimetria eliminata, tolta anche da Room Planning');
+  };
+  const older = (list || []).filter((d) => !d.current);
+  return (
+    <div className="pdf-box plan-box">
+      <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+        <Icon name="image" />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <b>Planimetria</b>
+          <div className="small muted">PDF o immagine (PNG, JPEG, WebP, fino a 25 MB). È la stessa per tutta la Suite: va in Room Planning per posizionare gli ambulatori e Facility la mostra nella scheda dell'immobile.{busy ? ' Caricamento…' : ''}</div>
+        </div>
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" />{busy ? 'Caricamento…' : plan ? 'Carica nuova versione' : 'Carica planimetria'}</button>
+      </div>
+      {plan && <div className="plan-current">
+        {!isPdfPlan(plan) && <a href={url(plan)} target="_blank" rel="noreferrer" className="plan-thumb"><img src={url(plan)} alt="Planimetria" /></a>}
+        <div className="small" style={{ flex: 1, minWidth: 200 }}>
+          <div><a href={url(plan)} target="_blank" rel="noreferrer"><Icon name={isPdfPlan(plan) ? 'pdf' : 'image'} />{plan.filename}</a> <span className="muted">· {Math.round(plan.size / 1024)} KB · corrente dal {fmtDate(plan.created_at)}</span></div>
+          <div className="row tight" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+            {plan.published_room_at ? <Badge tone="green">Disponibile in Room Planning e Facility</Badge> : <Badge tone="amber">In Facility; Room Planning non aggiornato</Badge>}
+            {isPdfPlan(plan) && <a className="small" href={url(plan)} target="_blank" rel="noreferrer">Anteprima</a>}
+            <button type="button" className="linklike small red" disabled={busy} onClick={() => setDel(plan)}>Elimina</button>
+          </div>
+          {!plan.published_room_at && <div className="small muted" style={{ marginTop: 4 }}>Room Planning non è avviato o non ha accettato il file: la pubblicazione si ripete al prossimo caricamento o dalla scheda dell'immobile in Facility.</div>}
+        </div>
+      </div>}
+      {older.length > 0 && <details className="small" style={{ marginTop: 6 }}>
+        <summary>Storico: {older.length} {older.length === 1 ? 'versione precedente' : 'versioni precedenti'}</summary>
+        <ul className="plan-history">{older.map((d) => <li key={d.id}><a href={url(d)} target="_blank" rel="noreferrer">{d.filename}</a> <span className="muted">· {fmtDate(d.created_at)}{d.uploaded_by_name ? ` · ${d.uploaded_by_name}` : ''}{d.source ? ` · da ${d.source}` : ''}</span> <button type="button" className="linklike small red" disabled={busy} onClick={() => setDel(d)}>Elimina</button></li>)}</ul>
+      </details>}
+      {del && <ConfirmModal title="Eliminare la planimetria?" danger confirmText="Elimina" onConfirm={() => remove(del)} onClose={() => setDel(null)}
+        text={del.id === plan?.id ? (older.length ? `"${del.filename}" è la corrente: torna corrente la versione precedente, che viene ripubblicata in Room Planning.` : `"${del.filename}" è l'unica planimetria: viene tolta anche da Room Planning e da Facility.`) : `Eliminare dallo storico "${del.filename}"? La corrente non cambia.`} />}
+    </div>
+  );
+}
+
 // Contratto collegato nello Scadenziario strutture di Payments: canone vigente e scatti (gli scatti ISTAT restano di Payments)
 function PaymentsLeaseBox({ site, f }) {
   const { data } = useApi(site?.id ? `/sites/${site.id}/lease` : null);
@@ -250,6 +318,7 @@ export function Sites() {
     // Titolo di godimento e locazione: fonte unica letta da Payments (Scadenziario strutture) e da Facility (Immobili)
     { key: '_tit', type: 'section', label: 'Titolo di godimento', help: 'Proprietà, locazione, comodato o ospitata. Payments e Facility lo leggono da qui: canone e contratto non vanno reinseriti altrove.' },
     { key: 'tenure', label: 'Titolo di godimento', type: 'select', required: true, init: 'LOCAZIONE', options: opts(TENURE), help: (f) => (f.tenure === 'OSPITATA' && !f.host_organization_id ? 'Ospitata richiede la Legal entity ospitante (campo sopra)' : f.host_organization_id && f.tenure !== 'OSPITATA' ? 'C\'è una Legal entity ospitante: di norma la sede è Ospitata' : f.tenure === 'OSPITATA' ? 'Nessun canone TD: la sede è nei locali della Legal entity ospitante' : null) },
+    { key: '_plan', type: 'custom', render: (_f, _p, it) => <SitePlanBox site={it} onChange={reload} /> },
     { key: '_pdf', type: 'custom', when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), render: (f, patch, it) => <LeasePdfBox site={it} f={f} patch={patch} onOrgCreated={orgs.reload} /> },
     { key: 'rent_amount', label: 'Canone (importo della rata)', type: 'number', step: '0.01', min: 0, when: (f) => f.tenure === 'LOCAZIONE' },
     { key: 'rent_period', label: 'Periodicità della rata', type: 'select', required: true, init: 'MESE', options: opts(RENT_PERIOD_OPT), when: (f) => f.tenure === 'LOCAZIONE' },
@@ -304,7 +373,7 @@ export function Sites() {
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Indirizzo</th><th>Legal entity</th><th>Responsabile</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
-            <td><div className="strong">{s.name}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
+            <td><div className="strong">{s.name}{s.planimetria && <a className="plan-ico" href={`/api/sites/${s.id}/planimetria`} target="_blank" rel="noreferrer" title={`Planimetria: ${s.planimetria.filename}${s.planimetria.published_room_at ? ' (in Room Planning e Facility)' : ''}`} aria-label="Planimetria"><Icon name="image" /></a>}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
             <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.address && <div>{s.address}</div>}<span className="muted">{[s.zip, s.city].filter(Boolean).join(' ')}{s.province ? ` (${s.province})` : ''}</span>{s.lat != null && s.lng != null ? <button className="linklike small" style={{ display: 'block' }} onClick={() => { setShowMap(true); setFocusId(s.id); }}>Sulla mappa</button> : <div className="faint small">Senza coordinate</div>}</td><td className="small">{s.organization_name}{s.host_organization_name && <div className="faint">ospitata da {s.host_organization_name}</div>}<div><Badge tone={s.tenure === 'PROPRIETA' ? 'green' : s.tenure === 'OSPITATA' ? 'mauve' : s.tenure === 'COMODATO' ? 'grey' : 'blue'}>{TENURE[s.tenure] || s.tenure}</Badge>{s.tenure === 'LOCAZIONE' && s.rent_amount != null && <span className="faint"> {eurIt(s.rent_amount)} {RENT_PERIOD[s.rent_period] || ''}</span>}</div></td><td className="small">{s.manager_name ? <Link to={`/people/${s.manager_person_id}`}>{s.manager_name}</Link> : <span className="faint">da assegnare</span>}</td><td className="num">{s.users_count}</td>
             <td className="small muted">{(s.photo_file_ids || []).length ? `${s.photo_file_ids.length} / 3` : ''}</td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { await api.del(`/sites/${s.id}`); toast('Sede eliminata'); reload(); }} /></td>

@@ -1,13 +1,13 @@
 // Titolo di godimento, canone con IVA, garanzie, locatore e contratto in PDF: dall'anagrafica Sedi (Amministrazione), fonte unica; qui
 // solo lettura con il rimando al form. Rata vigente e scatti: dal contratto collegato nello Scadenziario di Payments.
-// Scheda dell'immobile: dati immobiliari, contratto e canone da Payments (o Legal entity ospitante), planimetria con pubblicazione in
-// Room Planning, documenti, obblighi di controllo, utenze con volture e prossime bollette, dispositivi, interventi aperti, consumi dell'anno
+// Scheda dell'immobile: dati immobiliari, contratto e canone da Payments (o Legal entity ospitante), planimetria dell'anagrafica Sedi
+// (fonte unica per tutta la Suite: caricarla da qui o da Amministrazione > Sedi è la stessa cosa) pubblicata in Room Planning, documenti, obblighi di controllo, utenze con volture e prossime bollette, dispositivi, interventi aperti, consumi dell'anno
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, base, useApi, apiBase } from '../api.js';
 import { Card, Loading, Empty, PageHead, Badge, Modal, Field, useToast, DropZone, ConfirmModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { Alert, Transfer, AssetStatus, Outcome, Priority, WoStatus, Bench, docUrl, FileLink } from '../components/bits.jsx';
+import { Alert, Transfer, AssetStatus, Outcome, Priority, WoStatus, Bench, FileLink } from '../components/bits.jsx';
 import { MonthlyCompare } from '../components/Charts.jsx';
 import PdfPreview from '../components/PdfPreview.jsx';
 import { SITE_KIND, TENURE, DOC_KINDS, OBL_KINDS, VECTOR, CATEGORY, num, eur, pct, itDate, itDateTime, kb, ogni } from '../format.js';
@@ -24,6 +24,7 @@ export default function Immobile() {
   const { data: d, loading, error, reload } = useApi(`/immobili/${siteId}`);
   const [edit, setEdit] = useState(false);
   const [upload, setUpload] = useState(null);      // tipo di documento da caricare
+  const [planUp, setPlanUp] = useState(false);     // caricamento di una nuova versione della planimetria
   const [obl, setObl] = useState(null);            // obbligo in modifica ({} = nuovo)
   const [del, setDel] = useState(null);
   if (error) return <div className="page"><Empty icon="alert" title="Errore">{error.message}</Empty></div>;
@@ -32,7 +33,8 @@ export default function Immobile() {
   const editSite = `/admin/sites?sede=${s.id}`;
   const can = d.can_edit;
   const plan = d.planimetria;
-  const publish = async () => { try { const r = await api.post(`/documenti/${plan.id}/pubblica-room`); toast(r.published ? 'Planimetria pubblicata in Room Planning' : r.reason, r.published ? undefined : 'err'); reload(); } catch (e) { toast(e, 'err'); } };
+  const planUrl = (id) => `${apiBase}/immobili/${s.id}/planimetria?doc=${id}`;
+  const publish = async () => { try { const r = await api.post(`/immobili/${s.id}/planimetria/pubblica-room`); toast(r.published ? 'Planimetria pubblicata in Room Planning' : r.reason, r.published ? undefined : 'err'); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
       <PageHead title={s.name} icon="building" crumb={<Link to={`${base}/immobili`}>Immobili</Link>}
@@ -83,13 +85,16 @@ export default function Immobile() {
       </div>
 
       <div className="fa-two">
-        <Card title="Planimetria" icon="image" actions={<>{can && <button className="btn sm ghost" onClick={() => setUpload('PLANIMETRIA')}><Icon name="upload" />{plan ? 'Sostituisci' : 'Carica'}</button>}{can && plan && <button className="btn sm ghost" onClick={publish} disabled={!d.room.room}><Icon name="refresh" />Pubblica in Room Planning</button>}</>}>
-          {!plan ? <Empty compact icon="image" title="Nessuna planimetria">Carica il PDF o l'immagine della planimetria: diventa disponibile in Room Planning per posizionare gli ambulatori.</Empty> : <>
-            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <Card title="Planimetria" icon="image" actions={<>{can && <button className="btn sm ghost" onClick={() => setPlanUp(true)}><Icon name="upload" />{plan ? 'Nuova versione' : 'Carica'}</button>}{can && plan && <button className="btn sm ghost" onClick={publish} disabled={!d.room.room}><Icon name="refresh" />Pubblica in Room Planning</button>}</>}>
+          {!plan ? <Empty compact icon="image" title="Nessuna planimetria">La planimetria della sede è una sola per tutta la Suite: si carica qui o in Amministrazione &gt; Sedi (PDF o immagine) e diventa disponibile in Room Planning per posizionare gli ambulatori.</Empty> : <>
+            <div className="row" style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
               {plan.published_room_at && d.room.has_plan ? <Badge tone="green">Disponibile in Room Planning dal {itDateTime(plan.published_room_at)}</Badge> : d.room.room ? <Badge tone="amber">Non ancora pubblicata in Room Planning</Badge> : <Badge tone="grey">Room Planning non avviato</Badge>}
-              <FileLink f={plan} doc /> <span className="small muted">{kb(plan.size)} · {itDate(plan.created_at)}</span>
+              <a className="fa-file" href={planUrl(plan.id)} target="_blank" rel="noreferrer"><Icon name={/pdf/.test(plan.mime) ? 'pdf' : 'image'} />{plan.filename}</a> <span className="small muted">{kb(plan.size)} · {itDate(plan.created_at)}{plan.uploaded_by_name ? ` · ${plan.uploaded_by_name}` : ''}</span>
             </div>
-            {/pdf/.test(plan.mime) ? <PdfPreview url={docUrl(plan.id)} /> : <img className="fa-planimg" src={docUrl(plan.id)} alt="Planimetria" />}
+            <div className="small muted" style={{ marginBottom: 10 }}>
+              Dall'anagrafica Sedi{plan.source ? ` (caricata da ${plan.source})` : ''}{(d.planimetrie?.length || 0) > 1 ? ` · ${d.planimetrie.length - 1} ${d.planimetrie.length === 2 ? 'versione precedente' : 'versioni precedenti'}` : ''} · <a href={editSite}>storico in Amministrazione &gt; Sedi</a>{d.room.room && <> · <a href={`/room/sedi/${s.id}`}>apri in Room Planning</a></>}
+            </div>
+            {/pdf/.test(plan.mime) ? <PdfPreview url={planUrl(plan.id)} /> : <img className="fa-planimg" src={planUrl(plan.id)} alt="Planimetria" />}
           </>}
         </Card>
         <Card title="Documenti" icon="folder" flush actions={can && <button className="btn sm ghost" onClick={() => setUpload('CERTIFICAZIONE')}><Icon name="upload" />Carica</button>}>
@@ -141,9 +146,10 @@ export default function Immobile() {
       </div>
 
       {edit && <EditModal d={d} onClose={() => setEdit(false)} onDone={() => { setEdit(false); reload(); }} />}
+      {planUp && <PlanUploadModal siteId={s.id} hasPlan={Boolean(plan)} onClose={() => setPlanUp(false)} onDone={() => { setPlanUp(false); reload(); }} />}
       {upload && <UploadModal siteId={s.id} kind={upload} onClose={() => setUpload(null)} onDone={() => { setUpload(null); reload(); }} />}
       {obl && <ObligationModal siteId={s.id} obl={obl} onClose={() => setObl(null)} onDone={() => { setObl(null); reload(); }} />}
-      {del && <ConfirmModal title="Elimina documento" danger text={`Eliminare "${del.title || del.filename}"?${del.kind === 'PLANIMETRIA' && del.published_room_at ? ' In Room Planning va la planimetria più recente rimasta.' : ''}`} confirmText="Elimina"
+      {del && <ConfirmModal title="Elimina documento" danger text={`Eliminare "${del.title || del.filename}"?`} confirmText="Elimina"
         onConfirm={async () => { try { await api.del(`/documenti/${del.id}`); toast('Documento eliminato'); setDel(null); reload(); } catch (e) { toast(e, 'err'); } }} onClose={() => setDel(null)} />}
     </div>
   );
@@ -184,6 +190,27 @@ function EditModal({ d, onClose, onDone }) {
   );
 }
 
+// Nuova versione della planimetria: va nell'anagrafica Sedi (public.site_documents), diventa la corrente per tutta la Suite e va in Room
+function PlanUploadModal({ siteId, hasPlan, onClose, onDone }) {
+  const toast = useToast();
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (!file) return toast('Scegli il file', 'err');
+    const fd = new FormData(); fd.append('file', file, file.name);
+    setBusy(true);
+    try { const r = await api.upload(`/immobili/${siteId}/planimetria`, fd); toast(r.room?.published ? 'Planimetria caricata e pubblicata in Room Planning' : `Planimetria caricata. ${r.room?.reason || ''}`); onDone(); } catch (e) { toast(e, 'err'); }
+    setBusy(false);
+  };
+  return (
+    <Modal title={hasPlan ? 'Nuova versione della planimetria' : 'Carica la planimetria'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !file} onClick={go}>{busy ? 'Caricamento' : 'Carica'}</button></>}>
+      <DropZone multiple={false} onFiles={(xs) => setFile(xs[0])} accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" compact><Icon name="upload" /><div className="small">PDF o immagine PNG, JPEG, WebP (fino a 25 MB)</div></DropZone>
+      {file && <ul className="fa-list" style={{ marginTop: 8 }}><li><span>{file.name} <span className="muted small">{kb(file.size)}</span></span><button className="iconbtn" onClick={() => setFile(null)}><Icon name="x" /></button></li></ul>}
+      <div className="small muted" style={{ marginTop: 8 }}>La planimetria è quella dell'anagrafica Sedi, unica per tutta la Suite: la nuova versione diventa la corrente anche in Amministrazione &gt; Sedi e sostituisce quella di Room Planning della sede (le posizioni degli ambulatori restano). Le versioni precedenti restano nello storico.</div>
+    </Modal>
+  );
+}
+
 function UploadModal({ siteId, kind: k0, onClose, onDone }) {
   const toast = useToast();
   const [f, setF] = useState({ kind: k0, title: '', valid_until: '', notes: '' });
@@ -193,19 +220,18 @@ function UploadModal({ siteId, kind: k0, onClose, onDone }) {
     if (!files.length) return toast('Scegli il file', 'err');
     const fd = new FormData(); for (const [kk, v] of Object.entries(f)) if (v) fd.append(kk, v); for (const x of files) fd.append('file', x, x.name);
     setBusy(true);
-    try { const r = await api.upload(`/immobili/${siteId}/documenti`, fd); toast(r.room ? (r.room.published ? 'Planimetria caricata e pubblicata in Room Planning' : `Planimetria caricata. ${r.room.reason}`) : 'Documento caricato'); onDone(); } catch (e) { toast(e, 'err'); }
+    try { await api.upload(`/immobili/${siteId}/documenti`, fd); toast('Documento caricato'); onDone(); } catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
   return (
     <Modal title="Carica documento" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={go}>{busy ? 'Caricamento' : 'Carica'}</button></>}>
       <div className="fa-grid g2">
         <Field label="Tipo"><select className="fa-in" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{Object.entries(DOC_KINDS).map(([kk, v]) => <option key={kk} value={kk}>{v}</option>)}</select></Field>
-        <Field label="Titolo"><input className="fa-in" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={f.kind === 'PLANIMETRIA' ? 'es. Piano terra' : 'es. APE, CPI, dichiarazione di conformità'} /></Field>
-        {f.kind !== 'PLANIMETRIA' && <Field label="Valido fino al"><input className="fa-in" type="date" value={f.valid_until} onChange={(e) => setF({ ...f, valid_until: e.target.value })} /></Field>}
+        <Field label="Titolo"><input className="fa-in" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="es. APE, CPI, dichiarazione di conformità" /></Field>
+        <Field label="Valido fino al"><input className="fa-in" type="date" value={f.valid_until} onChange={(e) => setF({ ...f, valid_until: e.target.value })} /></Field>
       </div>
-      <div style={{ marginTop: 10 }}><DropZone multiple={f.kind !== 'PLANIMETRIA'} onFiles={(xs) => setFiles(f.kind === 'PLANIMETRIA' ? xs.slice(0, 1) : [...files, ...xs])} accept={f.kind === 'PLANIMETRIA' ? '.pdf,.png,.jpg,.jpeg,.webp' : undefined} compact><Icon name="upload" /><div className="small">{f.kind === 'PLANIMETRIA' ? 'PDF o immagine della planimetria (va in Room Planning)' : 'Trascina qui i file (fino a 25 MB ciascuno)'}</div></DropZone></div>
+      <div style={{ marginTop: 10 }}><DropZone onFiles={(xs) => setFiles([...files, ...xs])} compact><Icon name="upload" /><div className="small">Trascina qui i file (fino a 25 MB ciascuno)</div></DropZone></div>
       {files.length > 0 && <ul className="fa-list" style={{ marginTop: 8 }}>{files.map((x, i) => <li key={i}><span>{x.name} <span className="muted small">{kb(x.size)}</span></span><button className="iconbtn" onClick={() => setFiles(files.filter((_, j) => j !== i))}><Icon name="x" /></button></li>)}</ul>}
-      {f.kind === 'PLANIMETRIA' && <div className="small muted" style={{ marginTop: 8 }}>Facility è la fonte della planimetria: la più recente sostituisce quella di Room Planning della sede (le posizioni degli ambulatori restano).</div>}
     </Modal>
   );
 }

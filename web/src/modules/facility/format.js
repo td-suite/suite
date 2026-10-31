@@ -1,7 +1,7 @@
 // Etichette e formati del modulo Facility e Manutenzioni
 export const SITE_KIND = { LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', HEADQUARTER: 'Sede direzionale', ALTRO: 'Altro' };
 export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
-export const DOC_KINDS = { PLANIMETRIA: 'Planimetria', CONTRATTO: 'Contratto', CERTIFICAZIONE: 'Certificazione', VERBALE: 'Verbale', ALTRO: 'Altro' };
+export const DOC_KINDS = { CONTRATTO: 'Contratto', CERTIFICAZIONE: 'Certificazione', VERBALE: 'Verbale', ALTRO: 'Altro' };
 export const OBL_KINDS = { CONTRATTUALE: 'Contrattuale', NORMATIVO: 'Normativo', ASSICURATIVO: 'Assicurativo' };
 export const PLAN_KIND = { CONTROLLO: 'Controllo', MANUTENZIONE: 'Manutenzione', VERIFICA_NORMATIVA: 'Verifica normativa', COLLAUDO: 'Collaudo' };
 export const STREAM = { SORVEGLIANZA: 'Sorveglianza di sede', CONTROLLO: 'Controllo periodico', MANUTENZIONE: 'Manutenzione', OBBLIGO: 'Obbligo dell\'immobile' };

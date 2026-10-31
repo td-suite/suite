@@ -1,5 +1,5 @@
 // Modulo Facility e Manutenzioni (area OPERATIONS). Richiesta del CEO del 31/10/2026: facility management e gestione delle manutenzioni.
-// Immobili delle sedi (contratti di affitto e canone da Payments, planimetria pubblicata in Room Planning, obblighi di controllo),
+// Immobili (contratti di affitto e canone da Payments, planimetria dall'anagrafica Sedi pubblicata in Room Planning, obblighi di controllo),
 // utenze e bollette scritte nello Scadenziario strutture di Payments (finance), energy management per sede e di rete (consumi, costi,
 // CO2, intensità a parità di attività, anno su anno, anomalie, obiettivi, report per le certificazioni, analisi con Claude),
 // dispositivi dal Catalogo di Amministrazione (public.asset_types) con piano delle scadenze, interventi e segnalazioni guasti, KPI.

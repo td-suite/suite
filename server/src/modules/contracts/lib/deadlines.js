@@ -1,20 +1,25 @@
 // Calendario delle scadenze: documenti del dossier, contratti, lettere di impegno, MBO, scadenze manuali
+// Ogni scadenza ha una chiave stabile (`key`, lib/peopleRules.js deadlineKey) usata dai richiami di people@ come [TD-SCAD-<chiave>].
+// Escluse: gli allegati sostituiti da un rinnovo (attachments.superseded_by) e le scadenze chiuse all'approvazione della casella
+// People (deadline_closures), salvo includeClosed.
 import { many } from '../db.js';
 import { CATEGORY_LABELS } from './seedData.js';
+import { deadlineKey } from './peopleRules.js';
 
 const addDays = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const today = () => new Date().toISOString().slice(0, 10);
 export const TERMINATION_LABELS = { DIMISSIONI: 'Dimissioni', LICENZIAMENTO: 'Licenziamento', SCADENZA_TERMINE: 'Scadenza del termine', RISOLUZIONE_CONSENSUALE: 'Risoluzione consensuale', PENSIONAMENTO: 'Pensionamento', FINE_INCARICO: 'Fine incarico professionale', RECESSO: 'Recesso dall\'incarico', ALTRO: 'Altro' };
 
-export async function computeDeadlines({ resourceId = null, horizonDays = 365 } = {}) {
+export async function computeDeadlines({ resourceId = null, horizonDays = 365, today: todayIso = null, includeClosed = false } = {}) {
   const P = resourceId ? [resourceId] : [];
   const where = resourceId ? 'r.id = $1' : "r.status IN ('ATTIVO','IMPEGNO')";
   const items = [];
   const base = (r) => ({ resource_id: r.id, resource_name: `${r.last_name} ${r.first_name}`, kind: r.kind });
 
-  // Allegati con scadenza
-  const att = await many(`SELECT a.id, a.category, a.filename, a.expires_at, r.id, r.last_name, r.first_name, r.kind FROM attachments a JOIN resources_v r ON r.id=a.resource_id WHERE a.expires_at IS NOT NULL AND ${where}`, P);
-  for (const a of att) items.push({ ...base(a), type: 'DOCUMENTO', title: `Scadenza ${CATEGORY_LABELS[a.category] || a.category}`, detail: a.filename, due_date: a.expires_at, ref: { attachment_id: a.id } });
+  // Allegati con scadenza. a.id con alias: nella riga "id" è quello della persona (r.id viene dopo e lo sovrascriveva, così
+  // ref.attachment_id era l'id della persona); la chiave TD-SCAD A<id> deve essere quella dell'allegato.
+  const att = await many(`SELECT a.id AS attachment_id, a.category, a.filename, a.expires_at, r.id, r.last_name, r.first_name, r.kind FROM attachments a JOIN resources_v r ON r.id=a.resource_id WHERE a.expires_at IS NOT NULL AND a.superseded_by IS NULL AND ${where}`, P);
+  for (const a of att) items.push({ ...base(a), type: 'DOCUMENTO', title: `Scadenza ${CATEGORY_LABELS[a.category] || a.category}`, detail: a.filename, due_date: a.expires_at, ref: { attachment_id: a.attachment_id } });
 
   // Cessazioni programmate (decorrenza futura)
   const term = await many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.terminated_at, r.termination_reason FROM resources_v r WHERE r.terminated_at IS NOT NULL AND r.terminated_at >= CURRENT_DATE AND ${where}`, P);
@@ -51,10 +56,12 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365 } 
   const man = await many(`SELECT d.*, r.last_name, r.first_name, r.kind FROM deadlines d LEFT JOIN resources_v r ON r.id=d.resource_id WHERE NOT d.done AND ${resourceId ? 'd.resource_id=$1' : 'TRUE'}`, P);
   for (const d of man) items.push({ resource_id: d.resource_id, resource_name: d.resource_id ? `${d.last_name} ${d.first_name}` : null, kind: d.kind, type: 'MANUALE', title: d.title, detail: d.notes, due_date: d.due_date, ref: { deadline_id: d.id } });
 
-  const t = today();
+  const t = todayIso || today();
   const limit = addDays(t, horizonDays);
+  const closed = includeClosed ? new Set() : new Set((await many('SELECT deadline_key FROM deadline_closures')).map((x) => x.deadline_key));
   return items
-    .filter((i) => i.due_date && (resourceId || i.due_date <= limit))
+    .map((i) => ({ ...i, key: deadlineKey(i) }))
+    .filter((i) => i.due_date && !closed.has(i.key) && (resourceId || i.due_date <= limit))
     .map((i) => ({ ...i, days: Math.round((new Date(`${i.due_date}T12:00:00Z`) - new Date(`${t}T12:00:00Z`)) / 86400000) }))
     .filter((i) => !(i.days < 0 && ['PROVA', 'RAL', 'MBO', 'IMPEGNO'].includes(i.type)))
     .map((i) => ({ ...i, state: i.days < 0 ? 'SCADUTA' : i.days <= 30 ? 'IMMINENTE' : i.days <= 90 ? 'PROSSIMA' : 'PIANIFICATA' }))

@@ -893,3 +893,74 @@ disposizione di payments per lo scadenziario pagamenti (in modo da non replicare
   Ospitata; la scheda immobile mostra canone, IVA, garanzie, locatore, PDF e contratto Payments, con "Modifica in Amministrazione > Sedi".
 - Test: `server/test/lease-sync.test.mjs` (fine del primo periodo, periodo ↔ periodicità, fusione della proposta, coerenza titolo /
   ospitante, piano degli scatti, garanzie lette dal PDF di prova).
+
+## Sedi: planimetria, fonte unica per tutta la Suite (31/10/2026)
+Richiesta del CEO: "Da dove carico il PDF della planimetria su Amministrazione/Sedi? Per poi metterlo a disposizione di tutta la SUITE?".
+Prima la planimetria si caricava solo nella scheda dell'immobile di Facility (`facility.property_documents`), che la pubblicava in Room.
+- **Fonte unica**: `public.site_documents` con kind `PLANIMETRIA` (migrazione 036: kind ammessi CONTRATTO_LOCAZIONE | PLANIMETRIA | ALTRO,
+  colonne nuove `published_room_at` e `source` = da dove è stata caricata). PDF o immagine PNG, JPEG, WebP fino a 25 MB, file a due vie
+  con `lib/moduleStorage.js` (prefisso `sites-planimetrie` nel blob). La corrente è la più recente della sede; le precedenti restano come
+  storico scaricabile.
+- **Logica condivisa** `server/src/lib/roomPlan.js` (spostata da `modules/facility/lib/room.js`, che non c'è più): `storePlan` (salva e
+  pubblica), `publishPlanToRoom`, `publishCurrentPlan`, `deletePlan`, `currentPlan`, `listPlans`, `planFile`, `roomPlanStatus`. Amministrazione
+  e Facility chiamano la stessa `storePlan`: da qualunque punto la si carichi la planimetria è una sola.
+- **Pubblicazione in Room Planning** a ogni nuova planimetria, se Room è avviato (MIRROR/LIVE con `room.struttura_blobs`): PDF → `planPdf`
+  (si toglie `planImg`), immagine → `planImg` (si toglie `planPdf`), data URL base64 in `room.struttura_blobs` della sede (struttura_id =
+  public.sites.id). `site_ext` (marker degli ambulatori, versione) e cronologia di Room non si toccano. `published_room_at` resta solo sulla
+  versione pubblicata. Room spento: la planimetria resta in anagrafica e si pubblica al caricamento successivo o con "Pubblica in Room
+  Planning" dalla scheda Facility. Limite di pubblicazione 20 MB.
+- **Endpoint core**: `POST /api/sites/:id/planimetria` (amministratori, multipart `file`; risposta `{ document, room: { published, kind |
+  reason } }`), `GET /api/sites/:id/planimetria` (file inline, `?doc=<id>` per una versione precedente, `?download=1`, `?list=1` per
+  l'elenco delle versioni con `current`; per tutti gli utenti interni, 403 agli esterni), `DELETE /api/sites/:id/planimetria[?doc=<id>]`
+  (amministratori; eliminando la corrente diventa corrente la precedente e viene ripubblicata in Room, se non ne restano si tolgono i blob
+  di Room; eliminando una versione dello storico Room non cambia; il file nel blob si toglie solo se nessun'altra riga lo usa).
+  `GET /api/sites` porta agli amministratori `planimetria: { id, filename, mime, size, created_at, published_room_at, versions }`.
+  Audit `SITE_PLANIMETRIA`, `SITE_PLANIMETRIA_DELETED` (e `FACILITY_PLANIMETRIA` dal modulo).
+- **Form Sedi**: riquadro "Planimetria" sotto il titolo di godimento (per ogni titolo): carica PDF o immagine (si salva subito, senza il
+  pulsante Salva del form), versione corrente con nome, peso, data, miniatura per le immagini e "Anteprima" per i PDF, badge "Disponibile
+  in Room Planning e Facility", storico delle versioni precedenti con autore e provenienza, eliminazione con conferma. Nella tabella Sedi
+  un'icona accanto al nome quando la planimetria c'è (apre la corrente).
+- **Facility legge** la planimetria da qui (scheda immobile, elenco Immobili, cruscotto "Immobili senza planimetria") e la carica con la
+  stessa funzione (`POST /api/facility/immobili/:siteId/planimetria`); le planimetrie già caricate in Facility sono passate in
+  `public.site_documents` con la migrazione facility/003 (docs/FACILITY.md).
+
+## Contratti del personale: casella People, richiami e approvazione (31/10/2026)
+Richiesta del CEO: richiami automatici sulle scadenze inviati da people@toscanadiagnostica.it ai diretti destinatari; lettura
+automatica della casella people@ per recepire i documenti a supporto della chiusura; CEO o HR Manager verificano e approvano upload e
+chiusura. Nessun dato chiesto due volte: persone ed email dall'anagrafica unica (`resources_v` / `public.people`, account Suite
+`public.users.person_id`), scadenze da `computeDeadlines`, categorie dal dossier (`CATEGORY_LABELS`).
+- **Casella** (Contracts > Impostazioni, profili ADMIN e HR): indirizzo (predefinito people@toscanadiagnostica.it; la variabile
+  `CONTRACTS_PEOPLE_MAILBOX` ha la precedenza), interruttori "Invia i richiami ai destinatari" (spento all'installazione: va acceso dopo
+  la "Prova l'invio") e "Leggi la casella" (acceso), giorni di anticipo (60, 30, 7, 0), copia a HR (vuota = utenti con profilo HR sul
+  modulo), destinatario per tipo di scadenza (PERSONA con copia a HR, HR, NESSUNO), "Prova l'invio", "Prova la casella", stato.
+- **Identificativo TD-SCAD**: ogni scadenza ha una chiave stabile (`lib/peopleRules.js` `deadlineKey`): `A<id>` allegato del dossier,
+  `M<id>` scadenza manuale, altrimenti `<tipo><id persona>-<AAAAMMGG>-<4 caratteri>` (D documento/polizza, C contratto, P prova, R RAL,
+  B MBO, L lettera). Sta nel soggetto e nel corpo come `[TD-SCAD-<chiave>]`: la risposta della persona si abbina da sola.
+- **Richiami** (job `contracts:richiami`, ogni 60 minuti, modulo LIVE): per ogni scadenza entro la soglia più alta, la soglia raggiunta
+  più piccola, una sola volta (`deadline_reminders`, UNIQUE chiave + soglia; dopo un errore o senza destinatario si riprova il giorno
+  dopo). Scoperta a 20 giorni riceve solo il richiamo dei 30; scaduta da oltre 30 giorni nessun richiamo (niente raffica al primo
+  avvio); nessun richiamo se un documento per quella scadenza è già in approvazione. Destinatario: DOCUMENTO (attestati, certificati,
+  idoneità, polizza, identità, permessi) alla persona con copia a HR; PROVA, CONTRATTO, MANUALE, IMPEGNO a HR; MBO, RAL e cessazioni
+  sempre a HR. Persona senza email: a HR. Soggetto "Toscana Diagnostica · promemoria: <titolo> entro il <data> [TD-SCAD-...]", corpo con
+  cosa fare e "rispondi a questa email allegando il documento aggiornato: verrà preso in carico automaticamente". Mittente people@ via
+  Graph (`lib/mailer.js` con il nuovo parametro `from`, mittente in `email_log.from_addr`, migrazione core 035); con
+  `MAIL_PROVIDER=log` resta nel registro. Registro in Casella People > Registro dei richiami e nella scheda della persona (Scadenze).
+- **Lettura** (job `contracts:people-inbox`, ogni 10 minuti, modulo LIVE): messaggi con allegati PDF, Word o immagini → `people_inbox`
+  (graph_id UNIQUE, DA_APPROVARE) e `people_inbox_files` (archivio a due vie: blob o database). Abbinamento: TD-SCAD, poi email del
+  mittente (anagrafica o account Suite, solo se unica), poi nome completo nel soggetto, poi intestatario letto dal documento; con la
+  persona ma senza TD-SCAD si propone l'unica scadenza documentale della stessa categoria. Proposta per file con Claude (`askJson` kind
+  `contracts_people_doc`; in ai_log solo id del messaggio e numero del file): categoria, scadenza, intestatario, confidenza, citazione
+  (mai dati sanitari). Il testo estratto non si salva; nei log solo id e conteggi. Nessun upload automatico.
+- **Approvazione** (Contracts > Casella People, badge "da approvare"; CEO = OWNER della Suite, HR Manager = profilo HR o ADMIN; VIEWER
+  403): persona e scadenza modificabili, per ogni allegato anteprima, categoria e scadenza. "Approva" carica nel dossier
+  (`attachments.inbox_id` = provenienza, visibile nella scheda con mittente e data) e chiude la scadenza: allegato del dossier →
+  il vecchio è sostituito (`attachments.superseded_by`, esce dal calendario); manuale → `deadlines.done`; polizza RC →
+  `lp_contracts.insurance_expiry` = nuova scadenza; prova, contratto e altre → nota in `deadline_closures` (escluse dal calendario).
+  Notifica in app alla persona se ha un account ed email di conferma da people@. "Rifiuta" con motivo (email alla persona con cosa
+  manca), "Ignora" (spam). Tutto nel registro attività del modulo (PEOPLE_INBOX_APPROVE / REJECT / IGNORE / ASSIGN, PEOPLE_SETTINGS_UPDATE).
+- **Permessi Microsoft Graph** sull'app registration della Suite (applicativi, consenso amministratore): **Mail.Read** per leggere
+  people@ e **Mail.Send** per scrivere da people@; se esiste una Application Access Policy (oggi limita Mail.Send a suite@) deve
+  includere anche people@. "Prova la casella" legge i ruoli del token e un messaggio e dice cosa manca; "Prova l'invio" manda un'email.
+- Collaudo: `POST /api/contracts/people-inbox/simula` (solo con NODE_ENV diverso da production) simula l'arrivo di un messaggio con
+  allegati; `POST /api/contracts/people-inbox/richiami/esegui` con `{ "oggi": "AAAA-MM-GG" }` forza la data (solo fuori produzione).
+  Test: `server/test/contracts-people.test.mjs`. Schermate: docs/screens/contracts-people-{impostazioni,casella,approva}.png.

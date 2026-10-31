@@ -1,5 +1,6 @@
 // Modulo Contracts (Contratti del Personale): voci di navigazione disegnate dalla Suite (la sidebar dell'app non si porta).
-// Le voci di inserimento sono riservate ai profili che scrivono (ADMIN, HR); Impostazioni e Registro al solo ADMIN.
+// Le voci di inserimento sono riservate ai profili che scrivono (ADMIN, HR); Registro al solo ADMIN. Impostazioni: ADMIN tutto,
+// HR solo la sezione Casella People. Casella People (documenti da approvare): ADMIN e HR (il titolare della Suite entra come ADMIN).
 export default {
   key: 'contracts',
   title: 'Contratti del Personale',
@@ -10,6 +11,7 @@ export default {
     { to: 'risorse/nuova', icon: 'plus', label: 'Nuova persona', profiles: ['ADMIN', 'HR'] },
     { to: 'risorse', icon: 'users', label: 'Elenco persone', end: true },
     { to: 'scadenze', icon: 'calendar', label: 'Calendario delle scadenze', badge: 'scadenze' },
+    { to: 'casella-people', icon: 'mail', label: 'Casella People', badge: 'people_da_approvare', profiles: ['ADMIN', 'HR'] },
     { group: 'Scouting' },
     { to: 'scouting/cv', icon: 'import', label: 'CV Box', badge: 'cv_nuovi' },
     { to: 'scouting/lettere/nuova', icon: 'mail', label: 'Lettere di impegno', profiles: ['ADMIN', 'HR'] },
@@ -22,8 +24,8 @@ export default {
     { group: 'Liberi professionisti' },
     { to: 'lp/nuovo', icon: 'plus', label: 'Nuovo professionista', profiles: ['ADMIN', 'HR'] },
     { to: 'lp', icon: 'user', label: 'Elenco LP', end: true },
-    { group: 'Amministrazione', profiles: ['ADMIN'] },
-    { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e import', profiles: ['ADMIN'] },
+    { group: 'Amministrazione', profiles: ['ADMIN', 'HR'] },
+    { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e import', profiles: ['ADMIN', 'HR'] },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },
   ],
 };

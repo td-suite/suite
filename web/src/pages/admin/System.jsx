@@ -371,7 +371,8 @@ function Integrations() {
   };
   return (
     <Card title="Integrazioni" icon="key">
-      {row('anthropic', 'Claude (Anthropic)', 'Ricerca in linguaggio naturale, frasi del giorno, riassunti. Chiave API sk-ant-...')}
+      {row('anthropic', 'Claude (Anthropic)', 'Ricerca in linguaggio naturale, frasi del giorno, riassunti, lettura dei contratti e dei referti. Chiave API sk-ant-...')}
+      <AiModelBox />
       {row('azure_blob', 'Azure Blob Storage', 'Cartelle personali, allegati, copertine. Stringa di connessione dello storage account.')}
       {open === 'anthropic' && <CredentialModal title="Chiave API Anthropic" help="Dalla console Anthropic, inizia con sk-ant-" placeholder="sk-ant-..." statusUrl="/integrations" statusKey="anthropic" saveUrl="/integrations/anthropic" field="value" onClose={() => setOpen(null)} onSaved={reload} />}
       {open === 'azure_blob' && <CredentialModal title="Stringa di connessione Azure Blob" help="Portale Azure, storage account, Chiavi di accesso, key1, Stringa di connessione" placeholder="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net" statusUrl="/integrations" statusKey="azure_blob" saveUrl="/integrations/azure_blob" field="value" onClose={() => setOpen(null)} onSaved={reload} />}
@@ -426,6 +427,31 @@ export function Settings() {
           </form>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// Modello Anthropic in uso e prova della configurazione: elenca i modelli disponibili per la chiave e fa una richiesta minima.
+// Se un widget mostra "Intelligenza artificiale: modello non disponibile", qui si sceglie un modello valido e si riprova.
+function AiModelBox() {
+  const toast = useToast();
+  const st = useApi('/integrations');
+  const [model, setModel] = React.useState('');
+  const [res, setRes] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { if (st.data?.anthropic?.model && !model) setModel(st.data.anthropic.model); }, [st.data]);
+  const prova = async () => { setBusy(true); try { const r = await api.post('/integrations/anthropic/test'); setRes(r); toast(r.message, r.ok ? 'ok' : 'err'); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const salva = async () => { try { await api.put('/integrations/anthropic/model', { model: model.trim() }); toast('Modello salvato'); st.reload(); } catch (e) { toast(e, 'err'); } };
+  if (!st.data?.anthropic?.set) return null;
+  return (
+    <div className="card" style={{ padding: 14, marginTop: 10 }}>
+      <div className="row" style={{ alignItems: 'end', gap: 10 }}>
+        <Field label="Modello Claude in uso" help="Identificativo del modello (es. claude-sonnet-4-5). Prevale sulla variabile ANTHROPIC_MODEL di Render."><input value={model} onChange={(e) => setModel(e.target.value)} list="ai-models" style={{ minWidth: 280 }} /></Field>
+        <datalist id="ai-models">{(res?.models || []).map((m) => <option key={m} value={m} />)}</datalist>
+        <button className="btn ghost" disabled={busy} onClick={prova}>{busy ? 'Prova in corso' : 'Prova la configurazione'}</button>
+        <button className="btn" onClick={salva} disabled={!model.trim() || model.trim() === st.data.anthropic.model}>Salva modello</button>
+      </div>
+      {res && <div className={`alert ${res.ok ? 'ok' : 'err'} small`} style={{ marginTop: 10 }}><span>{res.message}{res.models?.length ? ` · modelli disponibili per la chiave: ${res.models.join(', ')}` : ''}</span></div>}
     </div>
   );
 }

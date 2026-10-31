@@ -47,6 +47,7 @@
 .fa-card .hd h2 { font-size: 15px; }
 .fa-card .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .fa-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 8px; border-radius: 99px; background: var(--card-2, var(--bg)); color: var(--ink); }
+.fa-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 99px; font-size: 11px; line-height: 16px; text-align: center; background: color-mix(in srgb, currentColor 14%, transparent); }
 .fa-chip .ico { width: 14px; height: 14px; color: var(--teal); }
 .fa-chip.red { background: #fde8e8; color: #7a1f1f; } .fa-chip.red .ico { color: var(--red, #b3372f); }
 .fa-chip.amber { background: #fff4d6; color: #5a3d00; } .fa-chip.amber .ico { color: #a35a00; }

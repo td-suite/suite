@@ -62,7 +62,7 @@ export const config = {
   // Anthropic (ricerca in linguaggio naturale, frase del giorno, riassunti). Mai dati sensibili
   anthropic: {
     apiKey: env.ANTHROPIC_API_KEY || '',
-    model: env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
+    model: env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',   // modificabile in Amministrazione > Impostazioni > Claude (prevale il valore salvato)
     get enabled() { return Boolean(this.apiKey); },
   },
 

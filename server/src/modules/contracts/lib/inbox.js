@@ -17,8 +17,9 @@ export const graphConfigured = () => Boolean(suite.mail.graph.tenantId && suite.
 async function setting(key, def = null) { const r = await one('SELECT value FROM app_settings WHERE key=$1', [key]); return r ? r.value : def; }
 async function setSetting(key, value) { await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, String(value ?? '')]); }
 
+// graphToken, graph e resolveMailbox sono esportati: li riusa la casella People (lib/peopleMail.js, lib/peopleInbox.js)
 let token = { value: null, exp: 0 };
-async function graphToken() {
+export async function graphToken() {
   if (token.value && Date.now() < token.exp - 60_000) return token.value;
   const g = suite.mail.graph;
   const res = await fetch(`https://login.microsoftonline.com/${g.tenantId}/oauth2/v2.0/token`, {
@@ -30,16 +31,16 @@ async function graphToken() {
   token = { value: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
   return j.access_token;
 }
-async function graph(path) {
+export async function graph(path, { headers = {} } = {}) {
   const t = await graphToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}`, ConsistencyLevel: 'eventual' } });
-  if (!res.ok) throw new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { authorization: `Bearer ${t}`, ConsistencyLevel: 'eventual', ...headers } });
+  if (!res.ok) throw Object.assign(new Error(`Graph ${res.status}: ${(await res.text()).slice(0, 300)}`), { status: res.status });
   return res.json();
 }
 
 // La casella si cerca per nome utente, poi per indirizzo (mail o proxyAddresses): l'id dell'oggetto è la chiave sicura per le
 // chiamate di posta, anche quando il nome utente è sul dominio .onmicrosoft.com o l'indirizzo è un alias
-async function resolveMailbox(address) {
+export async function resolveMailbox(address) {
   const a = address.trim();
   // Leggere l'oggetto utente richiede User.Read.All (applicativo): se manca, si usa l'indirizzo così com'è
   try { const u = await graph(`/users/${encodeURIComponent(a)}?$select=id,mail,userPrincipalName,displayName`); return { ...u, how: 'nome utente' }; }

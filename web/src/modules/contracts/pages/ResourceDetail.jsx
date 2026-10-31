@@ -26,7 +26,7 @@ export default function ResourceDetail() {
   const costs = seesCosts(user);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data) return <div className="page"><Loading /></div>;
-  const { resource: r, employment: e, lp, letters, documents, attachments, deadlines, checklist, payroll, category_labels: CL } = d.data;
+  const { resource: r, employment: e, lp, letters, documents, attachments, deadlines, checklist, payroll, reminders = [], category_labels: CL } = d.data;
   const isEmp = r.kind === 'DIPENDENTE';
   const cats = checklist.map((c) => ({ value: c.category, label: c.label }));
 
@@ -184,9 +184,9 @@ export default function ResourceDetail() {
                 return (
                   <tr key={a.id}>
                     <td><Badge tone={a.signed ? 'green' : 'grey'}>{CL[a.category] || a.category}</Badge>{a.signed && <span className="small muted"> firmato</span>}</td>
-                    <td><div className="strong">{a.filename}</div><div className="small muted">{bytes(a.size)}{a.notes ? ` · ${a.notes}` : ''}</div></td>
+                    <td><div className="strong">{a.filename}</div><div className="small muted">{bytes(a.size)}{a.notes ? ` · ${a.notes}` : ''}</div>{a.inbox_id && <div className="small"><Badge tone="blue">dalla casella People</Badge> <span className="muted">{a.inbox_from} · {itDateTime(a.inbox_received_at)}</span></div>}{a.superseded_by && <div className="small"><Badge>sostituito da un rinnovo</Badge></div>}</td>
                     <td>{itDate(a.issued_at)}</td>
-                    <td>{exp ? <Badge tone={tone}>{itDate(exp)}</Badge> : <span className="muted">–</span>}</td>
+                    <td>{exp ? <Badge tone={a.superseded_by ? 'grey' : tone}>{itDate(exp)}</Badge> : <span className="muted">–</span>}</td>
                     <td className="small muted">{itDateTime(a.uploaded_at)}<br />{a.uploaded_by_name}</td>
                     <td className="num">
                       {['application/pdf', 'image/png', 'image/jpeg'].includes(a.mime) && <button className="btn sm ghost" onClick={() => setPreview({ url: `${API_BASE}/resources/${id}/attachments/${a.id}/download?inline=1`, title: a.filename, mime: a.mime })}>Anteprima</button>}{' '}
@@ -228,7 +228,16 @@ export default function ResourceDetail() {
         <Card title="Scadenze della risorsa" actions={writer && <button className="btn sm" onClick={() => setModal('deadline')}>+ Scadenza manuale</button>} flush>
           {!deadlines.length ? <Empty>Nessuna scadenza calcolata o inserita</Empty> : (
             <table className="t"><thead><tr><th>Data</th><th>Scadenza</th><th>Tipo</th><th className="num">Stato</th></tr></thead>
-              <tbody>{deadlines.map((x, i) => <tr key={i}><td>{itDate(x.due_date)}</td><td><div className="strong">{x.title}</div><div className="small muted">{x.detail}</div></td><td><Badge>{x.type}</Badge></td><td className="num"><Badge tone={DEADLINE_STATE[x.state]}>{x.days < 0 ? `scaduta da ${-x.days} gg` : `tra ${x.days} gg`}</Badge>{x.ref?.deadline_id && writer && <button className="btn sm link" style={{ marginLeft: 8 }} onClick={async () => { await api.put(`/resources/${id}/deadlines/${x.ref.deadline_id}`, { done: true }); d.reload(); }}>Fatto</button>}</td></tr>)}</tbody></table>
+              <tbody>{deadlines.map((x, i) => <tr key={x.key || i}><td>{itDate(x.due_date)}</td><td><div className="strong">{x.title}</div><div className="small muted">{x.detail}</div></td><td><Badge>{x.type}</Badge></td><td className="num"><Badge tone={DEADLINE_STATE[x.state]}>{x.days < 0 ? `scaduta da ${-x.days} gg` : `tra ${x.days} gg`}</Badge>{x.ref?.deadline_id && writer && <button className="btn sm link" style={{ marginLeft: 8 }} onClick={async () => { await api.put(`/resources/${id}/deadlines/${x.ref.deadline_id}`, { done: true }); d.reload(); }}>Fatto</button>}</td></tr>)}</tbody></table>
+          )}
+        </Card>
+      )}
+
+      {tab === 'scadenze' && (
+        <Card title="Richiami inviati dalla casella People" className="mt" flush actions={<span className="small muted">ogni scadenza e soglia di anticipo una volta sola</span>}>
+          {!reminders.length ? <Empty>Nessun richiamo inviato a questa persona</Empty> : (
+            <table className="t"><thead><tr><th>Inviato</th><th>Scadenza</th><th>Anticipo</th><th>Destinatari</th><th className="num">Esito</th></tr></thead>
+              <tbody>{reminders.map((x) => <tr key={x.id}><td className="small">{itDateTime(x.sent_at)}</td><td><div className="strong">{x.title}</div><div className="small muted">{itDate(x.due_date)} · TD-SCAD-{x.deadline_key}</div></td><td>{x.days_before === 0 ? 'il giorno stesso' : `${x.days_before} gg prima`}</td><td className="small">{x.recipient === 'HR' ? 'HR' : 'persona'}: {x.to_email || '–'}{x.cc_email ? ` · copia ${x.cc_email}` : ''}</td><td className="num"><Badge tone={{ INVIATO: 'green', REGISTRATO: 'blue', FALLITO: 'red', SENZA_DESTINATARIO: 'amber' }[x.status]}>{x.status.toLowerCase().replace('_', ' ')}</Badge></td></tr>)}</tbody></table>
           )}
         </Card>
       )}

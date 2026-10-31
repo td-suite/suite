@@ -54,8 +54,9 @@ Schema `facility` (nessuna anagrafica propria):
   (`GET /api/facility/immobili/:siteId/contratto-pdf`, non per i manutentori) e il contratto Payments collegato, con il pulsante
   "Modifica in Amministrazione > Sedi" (`/admin/sites?sede=<id>` apre il form della sede); nel form "Dati dell'immobile" il titolo non c'è più.
 - `property_obligations` obblighi CONTRATTUALE | NORMATIVO | ASSICURATIVO con periodicità, prima scadenza, responsabile, tipo di dispositivo
-  collegato, costo stimato; `property_documents` (PLANIMETRIA, CONTRATTO, CERTIFICAZIONE, VERBALE, ALTRO; file a due vie con
-  lib/moduleStorage.js; `valid_until`; `published_room_at`).
+  collegato, costo stimato; `property_documents` (CONTRATTO, CERTIFICAZIONE, VERBALE, ALTRO; file a due vie con
+  lib/moduleStorage.js; `valid_until`). La planimetria non è più un documento dell'immobile: sta nell'anagrafica Sedi
+  (`public.site_documents` kind PLANIMETRIA, sotto "Room Planning").
 - `assets` dispositivi (sede, tipo → asset_types.code ON UPDATE CASCADE, codice interno generato `<sede>-<tipo>-NNN`, marca, modello,
   matricola, locale, installazione, garanzia, manutentore = Legal entity, contratto, stato IN_SERVIZIO | FUORI_SERVIZIO | DISMESSO,
   periodicità proprie facoltative, prossime date, ultimo esito, `qr_code` token casuale).
@@ -85,13 +86,23 @@ Schema `facility` (nessuna anagrafica propria):
 - **Obblighi con costo**: alla chiusura di una scadenza di obbligo con costo (o costo stimato) Facility avvisa in app i profili Payments
   CEO, CFO, SUPPORT ("Costo da pagare ..."). Non crea l'istanza con `lib/requestCreate.js`: serve beneficiario con IBAN e fattura del
   fornitore, che Facility non conosce; l'istanza la crea Payments (scelta documentata).
-- **Room Planning (room)**: Facility è la fonte della planimetria. La PLANIMETRIA più recente caricata nella scheda dell'immobile si
-  scrive in `room.struttura_blobs` della stessa sede (chiave `struttura_id` = public.sites.id dalla migrazione room/005): PDF → `planPdf`
-  (e si toglie `planImg`, la vecchia resa che Room rigenera), immagine → `planImg` (e si toglie `planPdf`), come data URL base64 (il brief
-  diceva `planImage`: nel codice di Room il tipo è `planImg`). Non si toccano `site_ext` (marker degli ambulatori, versione) né la
-  cronologia: Room continua a funzionare e mostra la planimetria (`GET /api/room/strutture/:id/blob/planPdf`, `hasPlanPdf`). Room non
-  avviato: la pubblicazione si salta e si ripete con "Pubblica in Room Planning". Eliminando la planimetria pubblicata va in Room la più
-  recente rimasta; se non ne restano Room conserva l'ultima. Limite di pubblicazione 20 MB (Room avvisa già oltre 3,8 MB).
+- **Planimetria e Room Planning (room)** (aggiornato il 31/10/2026, "planimetria su Amministrazione/Sedi a disposizione di tutta la
+  SUITE"): la fonte unica è l'anagrafica Sedi, `public.site_documents` kind PLANIMETRIA (docs/ANAGRAFICA.md "Sedi: planimetria"); Facility
+  non è più la fonte. La logica è in `server/src/lib/roomPlan.js` (spostata da `modules/facility/lib/room.js`): la planimetria si carica
+  da Amministrazione > Sedi o dalla scheda dell'immobile (`POST /api/facility/immobili/:siteId/planimetria`, profilo FACILITY, stessa
+  `storePlan`), la più recente è la corrente e va in `room.struttura_blobs` della stessa sede (chiave `struttura_id` = public.sites.id
+  dalla migrazione room/005): PDF → `planPdf` (e si toglie `planImg`, la vecchia resa che Room rigenera), immagine → `planImg` (e si
+  toglie `planPdf`), come data URL base64. Non si toccano `site_ext` (marker degli ambulatori, versione) né la cronologia: Room mostra la
+  planimetria dell'anagrafica (`GET /api/room/strutture/:id/blob/planPdf`, `hasPlanPdf`). Room non avviato: la pubblicazione si salta e
+  si ripete con "Pubblica in Room Planning" (`POST /api/facility/immobili/:siteId/planimetria/pubblica-room`). La scheda mostra la
+  corrente con anteprima (pdf.js o immagine, `GET /api/facility/immobili/:siteId/planimetria[?doc=]`), provenienza, numero di versioni
+  precedenti, link allo storico in Amministrazione > Sedi e a Room (`/room/sedi/:id`). Storico ed eliminazione solo in Amministrazione >
+  Sedi (eliminando la corrente torna corrente e si ripubblica in Room la precedente; se non ne restano Room perde la planimetria).
+  Elenco Immobili (`n_planimetrie`, `published_room_at`) e cruscotto "Immobili senza planimetria" contano su `public.site_documents`.
+  Migrazione facility/003: le planimetrie di `property_documents` passano in `public.site_documents` (stessi byte o stesso percorso nel
+  blob, data, autore, `published_room_at` solo sulla più recente, `source` = 'migrazione Facility'; idempotente su sede + nome + impronta),
+  poi vengono tolte da `property_documents` e il kind PLANIMETRIA esce dal vincolo. Limite di pubblicazione 20 MB (Room avvisa già oltre
+  3,8 MB), di caricamento 25 MB.
 - **Retail / Cash**: attività per sede e mese. Retail: `retail.sales` → accettazioni = numeri di accettazione distinti (`external_ref`),
   prestazioni = somma delle quantità. Cash: `cash.cash_reports` non in bozza → giorni con rendiconto. Impostazione `activity_source` AUTO
   (Retail, poi Cash, poi manuale), RETAIL, CASH, MANUALE; le righe MANUALE non vengono sovrascritte.
@@ -153,7 +164,8 @@ precisione; le periodicità che dipendono da carica, potenza o fabbricante lo di
 
 ## API principali (/api/facility)
 state, badges (`scadute`, `urgenti`), dashboard, kpi; immobili, immobili/:siteId (GET, PUT), immobili/:siteId/obblighi, obblighi/:id,
-immobili/:siteId/documenti (multipart), documenti/:id (GET, DELETE), documenti/:id/pubblica-room, immobili/:siteId/contratti; utenze (GET,
+immobili/:siteId/documenti (multipart), documenti/:id (GET, DELETE), immobili/:siteId/planimetria (POST multipart, GET `?doc=`),
+immobili/:siteId/planimetria/pubblica-room, immobili/:siteId/contratti; utenze (GET,
 POST), utenze/:id (GET, PUT), utenze/:id/bollette, bollette/:id, utenze/:id/letture, letture/:id, organizations; energia, energia/attivita
 (GET, PUT), energia/attivita/sync, energia/obiettivi, energia/analisi; catalogo, dispositivi (GET, POST), dispositivi/:id (GET, PUT,
 DELETE), dispositivi/qr/:token, dispositivi/:id/qr.png|svg, etichette.pdf; piano, piano/:id (GET, PUT), piano/:id/chiudi (multipart),
@@ -180,6 +192,12 @@ PDF/XLSX; permessi (SITE 403 su sede altrui e Impostazioni, VIEWER 403 in scritt
 data forzata: promemoria, nessun doppio allo stesso giorno, scadute a dicembre; badge e contatore della Home. Test
 `server/test/facility.test.mjs` (13), build Vite, schermate `docs/screens/facility-{cruscotto,immobile,energia,piano,dispositivo,
 catalogo-admin}.png` a 1400x900, nessun errore JavaScript sulle 20 pagine aperte.
+
+## Immobili: filtro per titolo di godimento (31/10/2026)
+Richiesta del CEO: "In Facility/Immobili, inserisci filtro su Locazione/Ospitata/...". Accanto alla ricerca una fila di pulsanti
+Tutti / Proprietà / Locazione / Comodato / Ospitata con il conteggio per voce (calcolato sulla ricerca in corso; una voce a zero è
+disattivata). Il titolo è quello dell'anagrafica Sedi (`public.sites.tenure`). Stato nel query string: `?titolo=LOCAZIONE` e `?q=`
+(il link all'elenco filtrato si condivide e il filtro resta tornando dalla scheda). Il badge del comodato è grigio, come in Sedi.
 
 ## Da verificare / non fatto
 - Benchmark del catalogo, SLA, fattori CO2 e fasce di intensità: da confermare con RSPP, Qualità e i dati reali della rete.

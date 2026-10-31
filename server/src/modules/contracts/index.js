@@ -1,6 +1,8 @@
 // Modulo Contracts (Contratti del Personale, People): dipendenti e liberi professionisti, dossier con allegati, CCNL e
 // minimi tabellari, simulatore busta paga, generazione DOCX/PDF di contratti, MBO, lettere di impegno e contratti LP,
 // organigramma generato dai ruoli, scadenze, CV Box, caricamento massivo e pacchetto iniziale.
+// Casella People (people@toscanadiagnostica.it, routes/people.js): richiami automatici sulle scadenze ai diretti destinatari e
+// lettura della casella con i documenti a supporto della chiusura, che il CEO o l'HR Manager approvano prima dell'upload nel dossier.
 // Travasato dall'app contracts.toscanadiagnostica.it: il codice delle route è quello dell'app, cambiano solo accesso
 // (sessione e grant della Suite) e montaggio sotto /api/contracts.
 // MODULO RISERVATO: entra solo chi ha il grant contracts oppure il titolare della Suite (OWNER). Un ADMIN Suite senza grant
@@ -18,6 +20,8 @@ import { publicUser } from './lib/access.js';
 import { applyDueTerminations } from './lib/termination.js';
 import { ensureSeed } from './lib/seed.js';
 import { pollRecruitingInbox } from './lib/inbox.js';
+import { runReminders } from './lib/peopleMail.js';
+import { pollPeopleInbox } from './lib/peopleInbox.js';
 import adminRoutes from './routes/admin.js';
 import resourceRoutes from './routes/resources.js';
 import documentRoutes from './routes/documents.js';
@@ -26,6 +30,7 @@ import ccnlRoutes from './routes/ccnl.js';
 import orgRoutes from './routes/org.js';
 import statsRoutes from './routes/stats.js';
 import importRoutes from './routes/imports.js';
+import peopleRoutes from './routes/people.js';
 
 const KEY = 'contracts';
 
@@ -52,7 +57,8 @@ export default function mount(app) {
       const deadlines = await computeDeadlines({ horizonDays: Number((await getSettings()).deadline_alert_days || 60) });
       const cv = await one(`SELECT count(*)::int AS n FROM cv_box WHERE status='NUOVO'`);
       const lettere = await one(`SELECT count(*)::int AS n FROM commitment_letters WHERE status IN ('BOZZA','INVIATA')`);
-      res.json({ scadenze: deadlines.filter((d) => d.days <= 30).length, cv_nuovi: cv.n, lettere_aperte: lettere.n });
+      const people = await one(`SELECT count(*)::int AS n FROM people_inbox WHERE status='DA_APPROVARE'`);
+      res.json({ scadenze: deadlines.filter((d) => d.days <= 30).length, cv_nuovi: cv.n, lettere_aperte: lettere.n, people_da_approvare: people.n });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {
@@ -76,6 +82,7 @@ export default function mount(app) {
   r.use('/org', orgRoutes);
   r.use('/stats', statsRoutes);
   r.use('/import', importRoutes);
+  r.use('/people-inbox', peopleRoutes);   // casella People: impostazioni, richiami, messaggi da approvare
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
   // Errori propri del modulo (multer, duplicati): il resto lo gestisce l'error handler della Suite
@@ -99,6 +106,18 @@ export default function mount(app) {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
     return pollRecruitingInbox();
+  }, { runAtStart: true });
+  // Casella People: richiami sulle scadenze dal mittente people@ (ogni 60 minuti; ogni scadenza e soglia una volta sola)
+  registerJob(`${KEY}:richiami`, 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
+    return runReminders();
+  });
+  // Casella People: ogni 10 minuti i messaggi con allegati entrano in "Casella People" da approvare (nessun upload automatico)
+  registerJob(`${KEY}:people-inbox`, 10, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
+    return pollPeopleInbox();
   }, { runAtStart: true });
   registerJob(`${KEY}:cessazioni`, 24 * 60, async () => {
     const st = await getModuleState(KEY);

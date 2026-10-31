@@ -20,6 +20,7 @@ import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_N
 import { aiEnabled } from '../lib/claude.js';
 import { siteToLease, registryLease, tenureIssue, normalizeLeaseFields, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
 import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
+import { storePlan, listPlans, planFile, deletePlan, PLAN_MAX_BYTES } from '../lib/roomPlan.js';
 
 const r = Router();
 
@@ -103,6 +104,9 @@ r.get('/sites', ah(async (req, res) => {
   // Responsabile di sede: dall'organigramma (responsabile del nodo Sede collegato), mai testo libero
   const rows = await many(`SELECT s.*, o.name AS organization_name, ho.name AS host_organization_name, lo.name AS lease_landlord_name, (SELECT count(*)::int FROM users u WHERE u.site_id=s.id AND u.status='ACTIVE') AS users_count,
       (SELECT json_build_object('id', d.id, 'filename', d.filename, 'size', d.size, 'model', d.model, 'created_at', d.created_at) FROM site_documents d WHERE d.site_id=s.id AND d.kind='CONTRATTO_LOCAZIONE' ORDER BY d.created_at DESC LIMIT 1) AS lease_document,
+      (SELECT json_build_object('id', d.id, 'filename', d.filename, 'mime', d.mime, 'size', d.size, 'created_at', d.created_at, 'published_room_at', d.published_room_at,
+         'versions', (SELECT count(*)::int FROM site_documents v WHERE v.site_id=s.id AND v.kind='PLANIMETRIA'))
+         FROM site_documents d WHERE d.site_id=s.id AND d.kind='PLANIMETRIA' ORDER BY d.created_at DESC, d.id DESC LIMIT 1) AS planimetria,
       h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
     FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id LEFT JOIN organizations lo ON lo.id=s.lease_landlord_org_id
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
@@ -114,17 +118,24 @@ r.get('/sites', ah(async (req, res) => {
     return res.json(rows.filter((s) => mine.has(Number(s.id)) || (req.user.organization_id && Number(s.organization_id) === Number(req.user.organization_id)))
       .map((s) => ({ id: s.id, code: s.code, name: s.name, short_name: s.short_name, kind: s.kind, city: s.city, province: s.province, address: s.address, zip: s.zip, phone: s.phone, email: s.email, opening_hours: s.opening_hours, organization_id: s.organization_id, organization_name: s.organization_name, active: s.active })));
   }
-  // canone, garanzie e contratto: solo agli amministratori (Payments e Facility li leggono con i propri permessi)
-  const hide = Object.fromEntries([...LEASE_SITE_KEYS.filter((k) => k !== 'tenure'), 'lease_landlord_name', 'lease_document'].map((k) => [k, undefined]));
+  // canone, garanzie, contratto e metadati della planimetria: solo agli amministratori (Payments e Facility li leggono con i propri permessi;
+  // il file della planimetria lo scarica ogni utente interno da GET /sites/:id/planimetria)
+  const hide = Object.fromEntries([...LEASE_SITE_KEYS.filter((k) => k !== 'tenure'), 'lease_landlord_name', 'lease_document', 'planimetria'].map((k) => [k, undefined]));
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, ...hide, legacy_refs: undefined, notes: undefined })));
 }));
 // Legal entity ospitante: fonte unica public.sites.host_organization_id; Cash (site_ext.host_org_id, royalties) resta allineato
-async function syncHostToCash(siteId, hostOrgId) {
-  if (hostOrgId === undefined) return;
+// Cash legge il titolo di godimento dall'anagrafica: Ospitata = struttura ospitante con royalties (ownership OSPITATA), tutto il resto
+// (proprietà, locazione, comodato) = sede propria (ownership PROPRIA). Fonte unica: Amministrazione > Sedi. Qui si allinea cash.site_ext
+// per le sedi già configurate in Cash; le altre leggono il core dalla vista cash.sites_v.
+async function syncHostToCash(siteId, hostOrgId, tenure) {
+  if (hostOrgId === undefined && tenure === undefined) return;
   if (hostOrgId != null && !(await one('SELECT 1 FROM organizations WHERE id=$1', [hostOrgId]))) throw bad('Legal entity ospitante inesistente');
   if (!(await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`))?.ok) return;
-  // solo le sedi già configurate in Cash (site_ext esiste); le altre leggono il core dalla vista sites_v
-  await q(`UPDATE cash.site_ext SET host_org_id=$2, ownership = CASE WHEN $2::int IS NULL THEN 'PROPRIA' ELSE 'OSPITATA' END, updated_at=now() WHERE site_id=$1`, [siteId, hostOrgId])
+  const cur = await one('SELECT host_organization_id, tenure FROM sites WHERE id=$1', [siteId]);
+  const host = hostOrgId !== undefined ? hostOrgId : cur?.host_organization_id ?? null;
+  const ten = tenure !== undefined ? tenure : cur?.tenure;
+  const ownership = ten === 'OSPITATA' || (ten == null && host != null) ? 'OSPITATA' : 'PROPRIA';
+  await q(`UPDATE cash.site_ext SET host_org_id=$2, ownership=$3, updated_at=now() WHERE site_id=$1`, [siteId, ownership === 'OSPITATA' ? host : null, ownership])
     .catch((e) => console.warn('[sites] allineamento Cash non riuscito:', e.message));
 }
 const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
@@ -165,7 +176,7 @@ r.post('/sites', requireAdmin, ah(async (req, res) => {
   const b = await leaseBlock(withHours(parse(siteSchema, req.body)));
   const cols = Object.keys(b); const vals = Object.values(b);
   const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
-  await syncHostToCash(s.id, b.host_organization_id);
+  await syncHostToCash(s.id, b.host_organization_id, s.tenure);
   const lease_sync = s.tenure === 'LOCAZIONE' && s.rent_amount != null ? await siteToLease(s.id, { rentChanged: true }).catch((e) => ({ status: 'error', reason: e.message })) : null;
   await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: lease_sync ? { lease_sync } : undefined });
   indexSite(s).catch(() => {});
@@ -182,7 +193,7 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   if (!sets.length) return res.json({ ok: true });
   const s = await one(`UPDATE sites SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
   if (!s) throw notFound();
-  if (b.host_organization_id !== undefined) await syncHostToCash(s.id, b.host_organization_id);
+  if (b.host_organization_id !== undefined || b.tenure !== undefined) await syncHostToCash(s.id, b.host_organization_id, s.tenure);
   // Payments: contratto della sede creato o aggiornato dall'anagrafica (gli scatti successivi registrati in Payments restano)
   const leaseTouched = LEASE_SITE_KEYS.some((k) => b[k] !== undefined);
   const rentChanged = LEASE_CHANGE.some((k) => b[k] !== undefined && String(b[k] ?? '') !== String(cur[k] ?? ''));
@@ -254,6 +265,32 @@ r.get('/sites/:id/lease', requireAdmin, ah(async (req, res) => {
   const steps = await many('SELECT valid_from, amount, reason, notes FROM finance.lease_steps WHERE lease_id=$1 ORDER BY valid_from', [l.id]);
   const cur = stepAt(steps, fParse(new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' })));
   res.json({ lease: { id: l.id, registry_sync: l.registry_sync, kind: l.kind, start_date: l.start_date, period_months: l.period_months, landlord: l.landlord_label, istat: l.istat, current_amount: cur ? Number(cur.amount) : null, steps } });
+}));
+
+// ---- Planimetria della sede: fonte unica per tutta la Suite (public.site_documents kind PLANIMETRIA, lib/roomPlan.js). La corrente è la
+// più recente; a ogni caricamento va in Room Planning (se avviato) e Facility la mostra nella scheda dell'immobile.
+const uploadPlan = multer({ storage: multer.memoryStorage(), limits: { fileSize: PLAN_MAX_BYTES, files: 1 } });
+const planOnly = (req, res, next) => uploadPlan.single('file')(req, res, (e) => (e ? next(e.code === 'LIMIT_FILE_SIZE' ? bad(`File troppo grande (massimo ${PLAN_MAX_BYTES / 1024 / 1024} MB)`) : bad(e.message)) : next()));
+r.post('/sites/:id/planimetria', requireAdmin, planOnly, ah(async (req, res) => {
+  const site = await siteOr404(Number(req.params.id));
+  if (!req.file) throw bad('Carica la planimetria in PDF o come immagine (campo "file")');
+  const out = await storePlan(site.id, req.file, { userId: req.user.id, source: 'Amministrazione > Sedi' });
+  await audit(req, 'SITE_PLANIMETRIA', { entity: 'site', entityId: site.id, label: `${site.code} ${site.name}`, data: { document_id: out.document.id, filename: out.document.filename, size: out.document.size, room: out.room?.published || false } });
+  res.status(201).json(out);
+}));
+// File inline (corrente o ?doc=id) oppure ?list=1 per l'elenco delle versioni. Lettura per tutti gli utenti interni (non gli esterni).
+r.get('/sites/:id/planimetria', ah(async (req, res) => {
+  if (isExternal(req.user)) throw forbidden('Planimetria non disponibile per gli accessi esterni');
+  const site = await siteOr404(Number(req.params.id));
+  if (req.query.list === '1') return res.json({ site_id: site.id, rows: await listPlans(site.id) });
+  const d = await planFile(site.id, req.query.doc ? Number(req.query.doc) : null);
+  await sendFile(res, d, { inline: req.query.download !== '1' });
+}));
+r.delete('/sites/:id/planimetria', requireAdmin, ah(async (req, res) => {
+  const site = await siteOr404(Number(req.params.id));
+  const out = await deletePlan(site.id, req.query.doc ? Number(req.query.doc) : null);
+  await audit(req, 'SITE_PLANIMETRIA_DELETED', { entity: 'site', entityId: site.id, label: `${site.code} ${site.name}`, data: { document_id: out.deleted.id, filename: out.deleted.filename, was_current: out.deleted.was_current, room_republished: out.room?.republished_id || null } });
+  res.json({ ok: true, ...out });
 }));
 // Unione di due sedi duplicate: la sorgente confluisce nella destinazione (riferimenti legacy, utenti, persone)
 

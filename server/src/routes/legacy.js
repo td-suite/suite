@@ -4,7 +4,9 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { LEGACY_KEYS } from '../config.js';
-import { ah, bad, audit, parse, notFound, forbidden } from '../lib/util.js';
+import { ah, bad, audit, parse, notFound, forbidden, setSetting } from '../lib/util.js';
+import { config } from '../config.js';
+import { testAi } from '../lib/claude.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { FRESH_MODULES, CONTENT_IMPORT_MODULES } from '../config.js';
 import { listSources, syncSource, syncAll, getCockpit, getCounters, sourceEnabled, resetSource, legacyQuery } from '../lib/legacy.js';
@@ -53,7 +55,17 @@ r.put('/legacy/sources/:key/credential', requireOwner, ah(async (req, res) => {
 
 // Integrazioni: chiave Anthropic e Azure Blob (solo titolare)
 r.get('/integrations', requireOwner, ah(async (_req, res) => {
-  res.json({ anthropic: await secretStatus('anthropic_api_key'), azure_blob: await secretStatus('azure_storage_connection_string') });
+  res.json({ anthropic: { ...(await secretStatus('anthropic_api_key')), model: config.anthropic.model }, azure_blob: await secretStatus('azure_storage_connection_string') });
+}));
+// Prova della configurazione Claude: modelli disponibili per la chiave e una richiesta minima con il modello impostato
+r.post('/integrations/anthropic/test', requireOwner, ah(async (_req, res) => res.json(await testAi())));
+// Modello Anthropic usato dalla Suite (salvato in public.settings, prevale sulla variabile ANTHROPIC_MODEL)
+r.put('/integrations/anthropic/model', requireOwner, ah(async (req, res) => {
+  const { model } = parse(z.object({ model: z.string().trim().min(3).max(80).regex(/^[a-z0-9.-]+$/i) }), req.body);
+  await setSetting('anthropic_model', model);
+  config.anthropic.model = model;
+  await audit(req, 'INTEGRATION_MODEL_SET', { entity: 'integration', entityId: 'anthropic', data: { model } });
+  res.json({ ok: true, model });
 }));
 r.put('/integrations/:name', requireOwner, ah(async (req, res) => {
   const map = { anthropic: 'anthropic_api_key', azure_blob: 'azure_storage_connection_string' };

@@ -1,6 +1,7 @@
 // Immobili: elenco delle sedi dell'anagrafica (immobili creati al volo), scheda con dati immobiliari, canone e scadenze dal contratto di
-// Payments, Legal entity ospitante o locatore, obblighi di controllo, documenti con planimetria pubblicata in Room Planning, utenze della
-// sede con stato della voltura e prossime bollette, dispositivi, interventi aperti, consumi dell'anno e indicatori.
+// Payments, Legal entity ospitante o locatore, obblighi di controllo, documenti, planimetria dell'anagrafica (public.site_documents kind
+// PLANIMETRIA, fonte unica con Amministrazione > Sedi, lib/roomPlan.js) pubblicata in Room Planning, utenze della sede con stato della
+// voltura e prossime bollette, dispositivi, interventi aperti, consumi dell'anno e indicatori.
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -11,7 +12,7 @@ import { storeBuffer, sendFile, dropBlobs } from '../../../lib/moduleStorage.js'
 import { buildEvents } from '../../finance/lib/schedule.js';
 import { requireFacility, assertSite, canSeeSite, limitedToSites, mySiteIds, isFacility, vendorScope, isManutentore } from '../lib/access.js';
 import { KEY, idOf, settings, siteById, ensureProperties, propertyBySite, leaseInfo, financeLive, syncObligationPlan, todayRome, REGISTRY_COLS, registryBySite } from '../lib/core.js';
-import { publishPlanToRoom, roomPlanStatus, isPdf, isRoomImage } from '../lib/room.js';
+import { storePlan, currentPlan, listPlans, planFile, publishCurrentPlan, roomPlanStatus, PLAN_MAX_BYTES } from '../../../lib/roomPlan.js';
 import { siteEnergySummary } from '../lib/energy.js';
 import { addDays } from '../lib/calc.js';
 
@@ -39,8 +40,8 @@ r.get('/immobili', ah(async (req, res) => {
   if (vs) { params.push(vs.orgId); w += ` AND (s.id IN (SELECT site_id FROM assets WHERE vendor_org_id=$${params.length}) OR s.id IN (SELECT site_id FROM work_orders WHERE vendor_org_id=$${params.length}))`; }
   // titolo di godimento, canone e locatore: dall'anagrafica Sedi (public.sites), non dall'immobile
   const rows = await many(`SELECT pr.*, s.code, s.name, s.kind, s.city, s.address, s.manager_name, s.host_organization_id, ho.name AS host_name, lo.name AS landlord_name, ${REGISTRY_COLS},
-      (SELECT count(*)::int FROM property_documents d WHERE d.property_id=pr.id AND d.kind='PLANIMETRIA') AS n_planimetrie,
-      (SELECT max(d.published_room_at) FROM property_documents d WHERE d.property_id=pr.id AND d.kind='PLANIMETRIA') AS published_room_at,
+      (SELECT count(*)::int FROM public.site_documents d WHERE d.site_id=s.id AND d.kind='PLANIMETRIA') AS n_planimetrie,
+      (SELECT max(d.published_room_at) FROM public.site_documents d WHERE d.site_id=s.id AND d.kind='PLANIMETRIA') AS published_room_at,
       (SELECT count(*)::int FROM assets a WHERE a.site_id=s.id AND a.status <> 'DISMESSO') AS n_assets,
       (SELECT count(*)::int FROM work_orders w WHERE w.site_id=s.id AND w.status <> 'CHIUSO') AS n_wo_open,
       (SELECT count(*)::int FROM maintenance_plans p WHERE p.site_id=s.id AND p.status IN ('PIANIFICATA','SCADUTA') AND p.due_date < CURRENT_DATE) AS n_overdue,
@@ -68,7 +69,7 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
   const imp = await settings();
   const today = todayRome();
   const year = Number(String(today).slice(0, 4));
-  const [host, registry, li, obligations, documents, assets, wos, room] = await Promise.all([
+  const [host, registry, li, obligations, documents, assets, wos, room, planimetria, planimetrie] = await Promise.all([
     site.host_organization_id ? one('SELECT id, name, kind, vat_number, city FROM public.organizations WHERE id=$1', [site.host_organization_id]) : null,
     registryBySite(siteId),
     leaseInfo(siteId, prop.lease_id),
@@ -79,6 +80,8 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
     many(`SELECT a.id, a.code, a.name, a.asset_type_code, t.name AS type_name, t.category, a.location, a.status, a.next_check_due, a.next_maintenance_due, a.last_outcome FROM assets a JOIN public.asset_types t ON t.code=a.asset_type_code WHERE a.site_id=$1 AND a.status <> 'DISMESSO' ORDER BY t.category, a.code`, [siteId]),
     many(`SELECT w.id, w.code, w.title, w.priority, w.status, w.opened_at, w.due_at FROM work_orders w WHERE w.site_id=$1 AND w.status <> 'CHIUSO' ORDER BY w.opened_at DESC`, [siteId]),
     roomPlanStatus(siteId),
+    currentPlan(siteId),   // planimetria dell'anagrafica (Amministrazione > Sedi o caricata da qui: è la stessa)
+    listPlans(siteId),
   ]);
   // utenze della sede da Payments con stato della voltura e prossime bollette attese (calcolo dello scadenziario di Payments)
   let utilities = null, nextBills = [];
@@ -91,10 +94,9 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
     nextBills = buildEvents({ utilities: act, bills, from: today, to: addDays(today, 120), today }).filter((e) => e.kind === 'bolletta' && !e.done).slice(0, 8);
   }
   const energy = li.available ? await siteEnergySummary(siteId, imp, year) : { available: false };
-  const planimetria = documents.find((d) => d.kind === 'PLANIMETRIA') || null;
   // registry: titolo di godimento, canone con IVA, durata, garanzie e locatore dall'anagrafica Sedi (si modificano in Amministrazione > Sedi)
   const landlord = registry?.lease_landlord_org_id ? { id: registry.lease_landlord_org_id, name: registry.landlord_name, vat_number: registry.landlord_vat, city: registry.landlord_city } : null;
-  res.json({ site, property: { ...prop, tenure: registry?.tenure || 'LOCAZIONE', tenure_label: TENURE[registry?.tenure || 'LOCAZIONE'] }, registry, host, landlord, lease: li, obligations, documents, planimetria, room, assets, work_orders: wos, utilities, next_bills: nextBills, energy,
+  res.json({ site, property: { ...prop, tenure: registry?.tenure || 'LOCAZIONE', tenure_label: TENURE[registry?.tenure || 'LOCAZIONE'] }, registry, host, landlord, lease: li, obligations, documents, planimetria, planimetrie, room, assets, work_orders: wos, utilities, next_bills: nextBills, energy,
     finance: li.available, can_edit: isFacility(req), labels: { tenure: TENURE, doc_kinds: DOC_KINDS, obligation_kinds: OBLIGATION_KINDS } });
 }));
 
@@ -161,27 +163,48 @@ r.delete('/obblighi/:id', requireFacility, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---- Documenti (planimetria pubblicata in Room Planning)
+// ---- Planimetria: la stessa dell'anagrafica Sedi (public.site_documents). Caricarla da qui equivale a caricarla da Amministrazione >
+// Sedi: diventa la corrente per tutta la Suite e va in Room Planning. Versioni precedenti ed eliminazione: in Amministrazione > Sedi.
+const uploadPlan = multer({ storage: multer.memoryStorage(), limits: { fileSize: PLAN_MAX_BYTES, files: 1 } }).single('file');
+const planUpload = (req, res, next) => uploadPlan(req, res, (e) => (!e ? next() : next(e.code === 'LIMIT_FILE_SIZE' ? new HttpError(413, `File troppo grande (massimo ${PLAN_MAX_BYTES / MB} MB)`) : bad(e.message))));
+r.post('/immobili/:siteId/planimetria', requireFacility, planUpload, ah(async (req, res) => {
+  const siteId = idOf(req.params.siteId, 'Sede non trovata');
+  await siteById(siteId);
+  if (!req.file) throw bad('Nessun file ricevuto (campo "file")');
+  const out = await storePlan(siteId, req.file, { userId: req.user.id, source: 'Facility' });
+  await audit(req, 'FACILITY_PLANIMETRIA', { module: KEY, entity: 'site', entityId: siteId, data: { document_id: out.document.id, room: out.room?.published || false } });
+  res.status(201).json(out);
+}));
+r.get('/immobili/:siteId/planimetria', ah(async (req, res) => {
+  const siteId = idOf(req.params.siteId, 'Sede non trovata');
+  assertSite(req, siteId);
+  const d = await planFile(siteId, req.query.doc ? idOf(req.query.doc, 'Versione non trovata') : null);
+  await sendFile(res, d, { inline: req.query.download !== '1' });
+}));
+r.post('/immobili/:siteId/planimetria/pubblica-room', requireFacility, ah(async (req, res) => {
+  const siteId = idOf(req.params.siteId, 'Sede non trovata');
+  const out = await publishCurrentPlan(siteId);
+  await audit(req, 'FACILITY_PLANIMETRIA_ROOM', { module: KEY, entity: 'site', entityId: siteId, data: { published: out.published } });
+  res.json(out);
+}));
+
+// ---- Documenti dell'immobile (contratti, certificazioni, verbali; la planimetria è dell'anagrafica, sopra)
 r.post('/immobili/:siteId/documenti', requireFacility, conUpload, ah(async (req, res) => {
   const siteId = idOf(req.params.siteId, 'Sede non trovata');
   const prop = await propertyBySite(siteId);
   const b = parse(z.object({ kind: z.enum(Object.keys(DOC_KINDS)).default('ALTRO'), title: optText(200), valid_until: optDate, notes: optText(2000) }), req.body || {});
   const files = req.files || [];
   if (!files.length) throw bad('Nessun file ricevuto (campo "file")');
-  if (b.kind === 'PLANIMETRIA') for (const f of files) if (!isPdf(f.mimetype, f.originalname) && !isRoomImage(f.mimetype, f.originalname)) throw bad(`"${f.originalname}": la planimetria va caricata in PDF o come immagine PNG, JPEG o WebP`);
   const out = [];
   for (const f of files) {
     const stored = await storeBuffer(KEY, 'documenti', `${prop.id}-${Date.now()}-${f.originalname}`, f.mimetype, f.buffer);
     const row = await one(`INSERT INTO property_documents (property_id, kind, title, filename, mime, size, sha256, data, blob_path, valid_until, notes, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING id, property_id, kind, title, filename, mime, size, valid_until, created_at`,
     [prop.id, b.kind, b.title || null, String(f.originalname || 'documento').slice(0, 200), f.mimetype || 'application/octet-stream', stored.size, stored.sha256, stored.data, stored.blob_path, b.valid_until || null, b.notes || null, req.moduleUser.id]);
-    out.push({ ...row, buffer: f.buffer });
+    out.push(row);
   }
-  // la planimetria più recente va in Room Planning
-  let room = null;
-  if (b.kind === 'PLANIMETRIA') { const last = out[out.length - 1]; room = await publishPlanToRoom(last, last.buffer); }
-  await audit(req, 'FACILITY_DOCUMENTO', { module: KEY, entity: 'property', entityId: prop.id, data: { site_id: siteId, kind: b.kind, file: out.length, room: room?.published || false } });
-  res.status(201).json({ documents: out.map(({ buffer, ...d }) => d), room });
+  await audit(req, 'FACILITY_DOCUMENTO', { module: KEY, entity: 'property', entityId: prop.id, data: { site_id: siteId, kind: b.kind, file: out.length } });
+  res.status(201).json({ documents: out });
 }));
 async function docWithSite(id) {
   const d = await one('SELECT d.*, p.site_id FROM property_documents d JOIN properties p ON p.id=d.property_id WHERE d.id=$1', [id]);
@@ -193,25 +216,12 @@ r.get('/documenti/:id', ah(async (req, res) => {
   if (!canSeeSite(req, d.site_id)) throw forbidden('Documento di un\'altra sede');
   await sendFile(res, d, { inline: req.query.inline === '1' });
 }));
-r.post('/documenti/:id/pubblica-room', requireFacility, ah(async (req, res) => {
-  const d = await docWithSite(idOf(req.params.id, 'Documento non trovato'));
-  if (d.kind !== 'PLANIMETRIA') throw bad('In Room Planning si pubblica solo la planimetria');
-  const out = await publishPlanToRoom(d);
-  await audit(req, 'FACILITY_PLANIMETRIA_ROOM', { module: KEY, entity: 'document', entityId: d.id, data: { site_id: d.site_id, published: out.published } });
-  res.json(out);
-}));
 r.delete('/documenti/:id', requireFacility, ah(async (req, res) => {
   const d = await docWithSite(idOf(req.params.id, 'Documento non trovato'));
   await q('DELETE FROM property_documents WHERE id=$1', [d.id]);
   await dropBlobs(KEY, [d.blob_path]);
-  // se era la planimetria pubblicata, in Room va la più recente rimasta (se non ne restano, Room conserva l'ultima pubblicata: la si toglie da Room Planning)
-  let room = null;
-  if (d.kind === 'PLANIMETRIA' && d.published_room_at) {
-    const next = await one(`SELECT * FROM property_documents WHERE property_id=$1 AND kind='PLANIMETRIA' ORDER BY created_at DESC LIMIT 1`, [d.property_id]);
-    if (next) room = await publishPlanToRoom(next);
-  }
   await audit(req, 'FACILITY_DOCUMENTO_ELIMINATO', { module: KEY, entity: 'document', entityId: d.id, data: { site_id: d.site_id, kind: d.kind } });
-  res.json({ ok: true, room });
+  res.json({ ok: true });
 }));
 
 // Contratto di locazione in PDF caricato in Amministrazione > Sedi (sola lettura; non per i manutentori)

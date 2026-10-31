@@ -16,12 +16,14 @@ import Payroll from './pages/Payroll.jsx';
 import Deadlines from './pages/Deadlines.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
+import PeopleInbox, { canApprove } from './pages/PeopleInbox.jsx';
 import './contracts.css';
 
 export default function Module({ moduleKey, mode, moduleUser }) {
   const user = moduleUser;
   const writer = canWrite(user);
   const admin = isAdmin(user);
+  const approver = canApprove(user);
   return (
     <ToastProvider>
       <AuthProvider user={user}>
@@ -37,13 +39,14 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="dipendenti" element={<Resources key="emp" kind="DIPENDENTE" />} />
             <Route path="lp" element={<Resources key="lp" kind="LP" />} />
             <Route path="scadenze" element={<Deadlines />} />
+            {approver && <Route path="casella-people" element={<PeopleInbox />} />}
             <Route path="scouting/cv" element={<CvBox />} />
             {writer && <Route path="scouting/lettere/nuova" element={<NewResource key="letter" letterMode />} />}
             <Route path="scouting/lettere" element={<Letters />} />
             <Route path="scouting/lettere/:id" element={<LetterDetail />} />
             <Route path="ccnl" element={<Ccnl />} />
             <Route path="busta-paga" element={<Payroll />} />
-            {admin && <Route path="impostazioni" element={<Settings />} />}
+            {writer && <Route path="impostazioni" element={<Settings />} />}
             {admin && <Route path="audit" element={<Audit />} />}
             <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
           </Routes>

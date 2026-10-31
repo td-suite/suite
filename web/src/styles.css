@@ -998,6 +998,14 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .lease-payments { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
 .lease-payments .ico { width: 18px; height: 18px; flex: none; }
 .conf-pin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-left: 5px; cursor: help; box-shadow: 0 0 0 2px var(--card, #fff); }
+/* Planimetria della sede (fonte unica per Room Planning e Facility) */
+.plan-box .plan-current { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; flex-wrap: wrap; }
+.plan-box .plan-thumb img { display: block; width: 120px; height: 84px; object-fit: contain; background: var(--card, #fff); border: 1px solid var(--line); border-radius: 8px; }
+.plan-box .plan-history { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.plan-box summary { cursor: pointer; color: var(--muted, inherit); }
+.linklike.red { color: var(--red); }
+.plan-ico { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--muted, var(--blue)); }
+.plan-ico .ico { width: 14px; height: 14px; }
 .conf-pin.alta { background: var(--green); }
 .conf-pin.media { background: #d9a400; }
 .conf-pin.bassa { background: var(--red); }

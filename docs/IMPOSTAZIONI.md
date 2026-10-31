@@ -129,3 +129,17 @@ Facility e Manutenzioni > Impostazioni, profili FACILITY/ADMIN): `sla_hours` (UR
 affitto, utenze e bollette da Payments; il Catalogo dispositivi è in Amministrazione. Dati del modulo: superficie, catasto, APE, ore di
 apertura (proprietà dell'immobile, non dell'anagrafica sede), estensione energetica delle utenze, letture, attività manuale, obiettivi.
 
+
+## Contracts: casella People (31/10/2026)
+Variabili d'ambiente (facoltative): `CONTRACTS_PEOPLE_MAILBOX` casella dei richiami e dei documenti in arrivo (predefinita
+people@toscanadiagnostica.it; se impostata prevale sull'impostazione del modulo, che in Impostazioni diventa in sola lettura);
+`CONTRACTS_AI_MOCK=1` lettura simulata dei documenti in arrivo (categoria, scadenza, intestatario per parole chiave), attiva solo con
+`NODE_ENV` diverso da production: per collaudo e sviluppo, non impostarla su Render. Impostazioni in app (`contracts.app_settings`,
+Contracts > Impostazioni, profili ADMIN e HR): `people_mailbox`, `people_send_enabled` (false all'installazione), `people_read_enabled`
+(true), `people_reminder_days` (60,30,7,0), `people_hr_cc` (vuota = utenti con profilo HR sul modulo), `people_reminder_map` (JSON tipo →
+PERSONA / HR / NESSUNO); stato interno `people_inbox_since`, `people_inbox_last`, `people_inbox_error`, `people_send_last`,
+`people_send_error`. Richiede sull'app registration della Suite Mail.Read e Mail.Send (applicativi) sulla casella people@ e, con una
+Application Access Policy, l'inclusione di people@. Migrazioni: contracts 019_people_inbox.sql, core 035_email_log_mittente.sql.
+
+## Claude: modello e prova (31/10/2026)
+In Amministrazione > Impostazioni > Claude, oltre alla chiave, si imposta il modello in uso (`anthropic_model` in public.app_settings, prevale su ANTHROPIC_MODEL; predefinito claude-sonnet-4-5) e "Prova la configurazione" elenca i modelli disponibili per la chiave e fa una richiesta minima. Gli errori del servizio arrivano agli utenti in chiaro (422 AI_ERROR: chiave non valida, modello non disponibile, credito esaurito, risposta troncata) invece di "Errore interno del server".

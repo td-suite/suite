@@ -297,7 +297,12 @@ r.get('/:id', ah(async (req, res) => {
   const lp = await one('SELECT * FROM lp_contracts WHERE resource_id=$1', [id]);
   const letters = await many('SELECT c.*, ws.name AS work_site_name FROM commitment_letters c LEFT JOIN public.sites ws ON ws.id=c.work_site_id WHERE c.resource_id=$1 ORDER BY c.created_at DESC', [id]);
   const documents = await many('SELECT g.id, g.kind, g.ref_id, g.version, g.title, g.generated_at, (g.pdf IS NOT NULL) AS has_pdf, coalesce(g.data->\'_missing\', \'[]\'::jsonb) AS missing, u.full_name AS generated_by_name FROM generated_documents g LEFT JOIN users u ON u.id=g.generated_by WHERE g.resource_id=$1 ORDER BY g.generated_at DESC', [id]);
-  const attachments = await many('SELECT a.id, a.category, a.filename, a.mime, a.size, a.issued_at, a.expires_at, a.signed, a.notes, a.uploaded_at, u.full_name AS uploaded_by_name FROM attachments a LEFT JOIN users u ON u.id=a.uploaded_by WHERE a.resource_id=$1 ORDER BY a.category, a.uploaded_at DESC', [id]);
+  // Provenienza degli allegati arrivati dalla casella People (mittente e data) e allegato sostituito da un rinnovo
+  const attachments = await many(`SELECT a.id, a.category, a.filename, a.mime, a.size, a.issued_at, a.expires_at, a.signed, a.notes, a.uploaded_at, a.superseded_by, a.inbox_id,
+      pi.from_email AS inbox_from, pi.received_at AS inbox_received_at, u.full_name AS uploaded_by_name
+    FROM attachments a LEFT JOIN users u ON u.id=a.uploaded_by LEFT JOIN people_inbox pi ON pi.id=a.inbox_id WHERE a.resource_id=$1 ORDER BY a.category, a.uploaded_at DESC`, [id]);
+  const reminders = await many(`SELECT id, deadline_key, deadline_type, title, due_date, days_before, recipient, to_email, cc_email, from_email, channel, status, error, sent_at
+    FROM deadline_reminders WHERE resource_id=$1 ORDER BY sent_at DESC LIMIT 50`, [id]);
   const deadlines = await computeDeadlines({ resourceId: id });
   const checklist = await missingDocuments(id, row.kind);
   let payroll = null;
@@ -310,7 +315,7 @@ r.get('/:id', ah(async (req, res) => {
   // Aree di cui la persona è referente (Impostazioni > Modifica area): è il dato che alimenta l'organigramma
   const org_units = await many(`SELECT t.id, t.name, t.path, a.kind, t.level FROM areas a JOIN areas_tree t ON t.id=a.id WHERE a.head_person_id=$1 ORDER BY t.sort_path`, [id]);
   await readLog(req, 'resource', id);   // audit di lettura della Suite: dati contrattuali riservati
-  res.json({ resource: res_, employment, lp, letters, documents, attachments, deadlines, checklist, payroll, org_units, category_labels: CATEGORY_LABELS });
+  res.json({ resource: res_, employment, lp, letters, documents, attachments, deadlines, checklist, payroll, org_units, reminders, category_labels: CATEGORY_LABELS });
 }));
 
 // Lettura di un contratto/MBO/UNILAV già esistente: restituisce i dati per precompilare il percorso di inserimento

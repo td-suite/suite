@@ -45,7 +45,7 @@ export default function Cruscotto() {
         </Card>
         <Card title="Immobili senza planimetria" icon="building" flush actions={<Link className="btn sm ghost" to={`${base}/immobili`}>Immobili</Link>}>
           {!d.senza_planimetria.length ? <Empty compact icon="check" title="Tutti gli immobili hanno la planimetria" /> : <ul className="fa-list" style={{ padding: 12 }}>{d.senza_planimetria.map((s) => <li key={s.id}><span><span className="t">{s.name}</span><div className="m">{SITE_KIND[s.kind] || s.kind}</div></span><Link className="btn sm ghost" to={`${base}/immobili/${s.id}`}>Carica</Link></li>)}</ul>}
-          {!d.room && <div className="small muted" style={{ padding: '0 12px 12px' }}>Room Planning non è avviato: le planimetrie restano in Facility e si pubblicano quando Room sarà attivo.</div>}
+          {!d.room && <div className="small muted" style={{ padding: '0 12px 12px' }}>Room Planning non è avviato: le planimetrie restano nell'anagrafica Sedi e si pubblicano quando Room sarà attivo.</div>}
         </Card>
       </div>}
       {k.costi_per_sede.length > 0 && <Card title={`Costi di manutenzione ${d.year}`} icon="stats" flush>

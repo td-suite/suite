@@ -54,14 +54,41 @@ async function call({ kind, system, user, maxTokens = 1200, userId, query, timeo
   } catch (e) {
     await logAi({ kind, model, query, ok: false, error: e.message, userId });
     if (e instanceof HttpError) throw e;
-    throw new HttpError(502, 'Il servizio di intelligenza artificiale non ha risposto');
+    // L'errore di Anthropic arriva all'utente in chiaro (4xx, non mascherato dal gestore dei 5xx): modello inesistente, chiave non valida,
+    // credito esaurito, limite di richieste, timeout. Senza questo l'utente vedeva solo "Errore interno del server".
+    throw Object.assign(new HttpError(422, `Intelligenza artificiale: ${spiegaErrore(e, model)}`), { code: 'AI_ERROR' });
   }
+}
+export function spiegaErrore(e, model) {
+  const st = e?.status || e?.statusCode;
+  const msg = e?.error?.error?.message || e?.error?.message || e?.message || String(e);
+  if (st === 401) return 'chiave API non valida o revocata (Amministrazione > Impostazioni > Claude)';
+  if (st === 403) return `accesso negato dal servizio: ${msg}`;
+  if (st === 404 || /model/i.test(msg) && /not found|does not exist|invalid/i.test(msg)) return `modello "${model}" non disponibile per questa chiave: imposta un modello valido in Amministrazione > Impostazioni > Claude (${msg})`;
+  if (st === 429) return 'limite di richieste o credito esaurito sul conto Anthropic';
+  if (st === 400) return `richiesta rifiutata dal servizio: ${msg}`;
+  if (e?.name === 'APIConnectionTimeoutError' || /timeout|timed out/i.test(msg)) return 'nessuna risposta dal servizio entro il tempo massimo: riprova';
+  if (st >= 500) return `servizio Anthropic non disponibile (${st})`;
+  return msg;
 }
 
 // Chiamata generica con risposta JSON, usata dai moduli (es. Circolari per strutturare le bozze). Mai dati sensibili.
 export async function askJson({ kind, system, user, maxTokens = 2000, userId, query, timeoutMs = 60_000 }) {
   const text = await call({ kind, system, user, maxTokens, userId, query, timeoutMs });
-  try { return extractJson(text); } catch { throw new HttpError(502, 'Risposta del modello non interpretabile'); }
+  try { return extractJson(text); } catch { throw Object.assign(new HttpError(422, 'Intelligenza artificiale: la risposta del modello non è un JSON leggibile (probabile risposta troncata: riprova o riduci il documento)'), { code: 'AI_ERROR' }); }
+}
+// Prova della configurazione: elenco dei modelli disponibili per la chiave e una richiesta minima con il modello impostato
+export async function testAi() {
+  if (!aiEnabled()) return { ok: false, message: 'Chiave Anthropic non impostata' };
+  const c = getClient(); const model = config.anthropic.model;
+  let models = [];
+  try { const l = await c.models.list({ limit: 50 }); models = (l.data || []).map((m) => m.id); } catch (e) { return { ok: false, message: `Chiave rifiutata o servizio non raggiungibile: ${spiegaErrore(e, model)}`, models: [] }; }
+  try {
+    const t0 = Date.now();
+    const res = await c.messages.create({ model, max_tokens: 20, messages: [{ role: 'user', content: 'Rispondi solo: OK' }] }, { timeout: 30_000 });
+    const text = (res.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    return { ok: true, message: `Modello ${model} risponde (${Date.now() - t0} ms): "${text.trim().slice(0, 40)}"`, model, models };
+  } catch (e) { return { ok: false, message: spiegaErrore(e, model), model, models }; }
 }
 
 // Frasi del giorno ispirate ai valori aziendali: positive, mai banali, massimo 180 caratteri, in italiano

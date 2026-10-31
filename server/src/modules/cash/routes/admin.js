@@ -226,6 +226,9 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
       ON CONFLICT (site_id) DO UPDATE SET ${cols.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, ...cols.map((k) => d[k])]);
     // la Legal entity ospitante è dell'anagrafica unica (public.sites.host_organization_id): la stessa con cui il partner accede alla Suite
     if (d.host_org_id !== undefined) await c.query('UPDATE public.sites SET host_organization_id=$2, updated_at=now() WHERE id=$1', [id, d.host_org_id]);
+    // titolo di godimento dell'anagrafica allineato: OSPITATA ↔ struttura ospitante; PROPRIA su una sede ospitata la riporta a Locazione (da completare in Sedi)
+    if (d.ownership === 'OSPITATA') await c.query(`UPDATE public.sites SET tenure='OSPITATA', updated_at=now() WHERE id=$1 AND tenure IS DISTINCT FROM 'OSPITATA'`, [id]);
+    else if (d.ownership === 'PROPRIA') await c.query(`UPDATE public.sites SET tenure='LOCAZIONE', updated_at=now() WHERE id=$1 AND tenure='OSPITATA'`, [id]);
   });
   await audit(req, site ? 'SITE_UPDATE' : 'SITE_CONFIGURE', 'site', id, req.body);
   res.json({ ok: true, id });

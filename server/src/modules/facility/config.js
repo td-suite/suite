@@ -54,7 +54,8 @@ export const SETTINGS_DEFAULT = {
 };
 
 export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
-export const DOC_KINDS = { PLANIMETRIA: 'Planimetria', CONTRATTO: 'Contratto', CERTIFICAZIONE: 'Certificazione', VERBALE: 'Verbale', ALTRO: 'Altro' };
+// La planimetria non è un documento dell'immobile: sta nell'anagrafica Sedi (public.site_documents, lib/roomPlan.js)
+export const DOC_KINDS = { CONTRATTO: 'Contratto', CERTIFICAZIONE: 'Certificazione', VERBALE: 'Verbale', ALTRO: 'Altro' };
 export const OBLIGATION_KINDS = { CONTRATTUALE: 'Contrattuale', NORMATIVO: 'Normativo', ASSICURATIVO: 'Assicurativo' };
 export const PLAN_KINDS = { CONTROLLO: 'Controllo', MANUTENZIONE: 'Manutenzione', VERIFICA_NORMATIVA: 'Verifica normativa', COLLAUDO: 'Collaudo' };
 export const PLAN_STATUS = { PIANIFICATA: 'Pianificata', ESEGUITA: 'Eseguita', SCADUTA: 'Scaduta', ANNULLATA: 'Annullata' };

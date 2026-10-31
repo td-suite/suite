@@ -54,6 +54,8 @@ function apply(name, value) {
 
 // All'avvio: per ogni credenziale senza variabile d'ambiente, carica il valore salvato nel database
 export async function loadSecrets() {
+  // modello Anthropic scelto in Amministrazione (prevale sulla variabile ANTHROPIC_MODEL)
+  try { const m = await q(`SELECT value FROM app_settings WHERE key='anthropic_model'`); const v = m.rows[0]?.value; if (typeof v === 'string' && v.trim()) config.anthropic.model = v.trim(); } catch { /* tabella non ancora pronta */ }
   const rows = await q(`SELECT key, value FROM app_settings WHERE key LIKE 'secret:%'`);
   for (const r of rows.rows) {
     const name = r.key.slice(7);
