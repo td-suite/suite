@@ -182,7 +182,7 @@ export default function Shell() {
             <div className="sect"><div className="k">{section.kicker}</div><div className="t"><i style={{ background: section.color }} />{section.title}</div></div>
             <nav>
               {section.items.filter((it) => !it.flag || badges[it.flag] > 0).map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
-                : it.href ? <a key={it.href} href={it.href} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
+                : it.href ? <a key={it.href} href={it.href} className={it.evidenza ? 'evid' : undefined} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link></div>

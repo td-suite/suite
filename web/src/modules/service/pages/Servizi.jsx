@@ -12,7 +12,7 @@ import { Piede, StatoDati, Ico } from './comuni.jsx';
 import { useServizio } from '../index.jsx';
 
 // icone di menu.json → icone del sito (shell.js)
-const ICONE = { book: 'book', list: 'list', folder: 'folder', star: 'star', shield: 'shield', link: 'link' };
+const ICONE = { book: 'book', list: 'list', folder: 'folder', star: 'star', shield: 'shield', link: 'link', doc: 'doc' };
 const ico = (v) => ICONE[v?.icon] || 'link';
 const esterno = (href) => /^https?:/.test(href) || href.startsWith('/go/');
 /** La voce apre una scheda nuova? (widget abilitati e siti esterni) */
@@ -29,7 +29,7 @@ function Voce({ v }) {
       <div className="go">{nuova && <Ico n="external" s={20} />}</div>
     </div>
   );
-  if (nuova) return <a className="card linkbox" href={v.href} target="_blank" rel="noopener">{corpo}</a>;
+  if (nuova) return <a className={`card linkbox${v.evidenza ? ' evid' : ''}`} href={v.href} target="_blank" rel="noopener">{corpo}</a>;
   const to = v.tipo === 'interno' ? `${base}/${v.to}` : `${base}/servizi/${v.id}`;
   return <Link className={`card linkbox${v.tipo === 'widget' ? ' voce-off' : ''}`} to={to}>{corpo}</Link>;
 }
