@@ -18,7 +18,7 @@ export function Modules() {
   const toggle = async (m) => { try { await api.put(`/modules/${m.key}`, { active: !m.active }); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title="Moduli" icon="grid" sub="Catalogo dei widget della Suite: applicazioni legacy, moduli nativi e vetrine pubbliche" />
+      <PageHead title="Moduli" icon="grid" sub="Catalogo dei widget della Suite: applicazioni legacy, moduli nativi e vetrine pubbliche" actions={<VersioneSuite />} />
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={5} /></div>}
         {error && <div style={{ padding: 16 }}><ErrorBox error={error} /></div>}

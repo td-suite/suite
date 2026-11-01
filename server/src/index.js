@@ -1,4 +1,5 @@
 // Suite TD · server (Express). Intranet e Operating Suite di Toscana Diagnostica
+import { APP_VERSION } from './version.js';
 import express from 'express';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
@@ -102,7 +103,7 @@ app.use('/api', (req, _res, next) => {
 
 app.use(loadUser);
 app.get('/api/health', async (_req, res) => {
-  try { await pool.query('SELECT 1'); res.json({ ok: true, app: config.appName, version: process.env.APP_VERSION || '0.1.0', entra: config.entra.enabled, blob: config.blob.enabled, ai: config.anthropic.enabled, mail: config.mail.provider, jobs: listJobs().length }); }
+  try { await pool.query('SELECT 1'); res.json({ ok: true, app: config.appName, version: APP_VERSION, entra: config.entra.enabled, blob: config.blob.enabled, ai: config.anthropic.enabled, mail: config.mail.provider, jobs: listJobs().length }); }
   catch { res.status(503).json({ ok: false }); }
 });
 app.use('/api/auth', authRoutes);
