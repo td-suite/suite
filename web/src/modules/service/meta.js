@@ -36,6 +36,7 @@ export default {
     { href: '/service/servizi/ordine-materiale', blank: true, icon: 'folder', label: 'Ordine del materiale' },
     { to: 'servizi/promozioni', icon: 'star', label: 'Check-up e promozioni mensili', paginaHome: false },
     { href: '/service/servizi/portale-nc', blank: true, icon: 'shield', label: 'Portale NC' },
+    { href: 'https://referti.toscanadiagnostica.it/', blank: true, icon: 'doc', label: 'Referti di Laboratorio' },
     { to: 'contatti', icon: 'users', label: 'Contatti' },
     { group: 'Scorciatoie' },
     { href: '/service/doc/TD-SGI-IDL011', blank: true, icon: 'doc', label: 'Prelievo e trasporto campioni' },

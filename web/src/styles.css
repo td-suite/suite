@@ -1028,3 +1028,18 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .post .who-list .lbl { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 4px; }
 .post .who-list .u { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 .post .who-list .u .faint { margin-left: auto; font-size: 12px; }
+
+/* Home del Cliente service: due pulsanti grandi (Portale Service, Rubrica) */
+.cliente-home .hero { min-height: calc(100vh - 58px); display: flex; align-items: center; }
+.cliente-home .hero-inner { padding: 48px 32px; gap: 28px; }
+.cliente-home .hello.center { text-align: center; }
+.cliente-azioni { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; }
+.cliente-azione { display: flex; align-items: center; gap: 18px; width: min(460px, 100%); padding: 24px 26px; border-radius: 20px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #fff; text-decoration: none; transition: transform .15s, background .15s; }
+.cliente-azione:hover { background: rgba(255,255,255,.15); transform: translateY(-2px); text-decoration: none; }
+.cliente-azione:hover .t, .cliente-azione:hover .s { text-decoration: none; }
+.cliente-azione.primaria { background: #71B1BD; color: #01212C; border-color: transparent; }
+.cliente-azione.primaria:hover { background: #86c0ca; }
+.cliente-azione > .ico { width: 44px; height: 44px; flex: none; }
+.cliente-azione .t { font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+.cliente-azione .s { font-size: 13.5px; opacity: .85; margin-top: 4px; line-height: 1.35; }
+.cliente-azione .go { width: 22px; height: 22px; margin-left: auto; flex: none; opacity: .8; }

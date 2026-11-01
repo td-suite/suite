@@ -108,8 +108,17 @@ export function moduloDaHref(href, suiteHosts = []) {
  * Ogni voce: { id, label, icon, descrizione, tipo: 'interno'|'widget'|'esterno'|'segnaposto', to?, href?, blank, modulo?, accessibile,
  * box?, modulo_sgi? }. Per tipo widget, se l'utente non vede il modulo la voce resta (accessibile false) con il motivo.
  */
+// Voci aggiunte dal CEO (01/11/2026) che non stanno ancora in menu.json del sito: "Referti di Laboratorio" → portale referti, scheda nuova.
+// Se un giorno menu.json le include, la voce del sito prevale (stesso id) e questa non viene duplicata.
+export const VOCI_AGGIUNTE = [
+  { id: 'referti', label: 'Referti di Laboratorio', icon: 'doc', href: 'https://referti.toscanadiagnostica.it/', blank: true,
+    descrizione: 'Il portale dei referti del Laboratorio di Analisi: consultazione e download dei referti per i laboratori e le strutture clienti.' },
+];
+
 export function mappaVoci(voci = [], moduli = new Map(), { suiteHosts = [] } = {}) {
-  return (voci || []).filter((v) => v && v.id).map((v) => {
+  const presenti = new Set((voci || []).filter((v) => v && v.id).map((v) => v.id));
+  const tutte = [...(voci || []), ...VOCI_AGGIUNTE.filter((v) => !presenti.has(v.id))];
+  return tutte.filter((v) => v && v.id).map((v) => {
     const base = { id: v.id, label: v.label || v.id, icon: v.icon || 'link', descrizione: v.descrizione || '', box: v.box || null, modulo_sgi: v.modulo || null };
     const r = RIMAPPA[v.id] || (v.href ? (() => { const m = moduloDaHref(v.href, suiteHosts); return m ? { tipo: 'widget', modulo: m } : null; })() : null);
     if (r?.tipo === 'interno') return { ...base, tipo: 'interno', to: r.to, blank: false, accessibile: true };

@@ -35,8 +35,45 @@ function useClock() {
   return now;
 }
 
+// Home del Cliente service (richiesta del CEO, 01/11/2026): due soli pulsanti grandi, Portale Service e Rubrica. Gli altri strumenti
+// (Circolari, Ordini, NC, Ticket, Referti) li apre da dentro il Portale, da "Il mio spazio" e dai Servizi. Vale solo per gli accessi
+// esterni riconosciuti come Cliente service (user.cliente_service); Partner ospitanti e personale TD hanno la Home completa.
+function ClienteHome({ user }) {
+  const now = useClock();
+  const rubrica = hasModule(user, 'rubrica');
+  return (
+    <div className="home cliente-home">
+      <section className="hero" aria-label="Benvenuto">
+        <div className="hero-inner">
+          <div className="hello center">
+            <h1>{greeting(now)}, {user.first_name || firstName(user.full_name)}</h1>
+            <div className="date">{user.organization_name ? `${user.organization_name} · ` : ''}{capitalize(fmtDateLong(now))}</div>
+          </div>
+          <div className="cliente-azioni">
+            <Link to="/service" className="cliente-azione primaria">
+              <Icon name="service" />
+              <div><div className="t">Portale Service</div><div className="s">Il tuo spazio: non conformità, ordini, circolari, ticket, referti, preparazioni e documenti</div></div>
+              <Icon name="arrowRight" className="go" />
+            </Link>
+            {rubrica && <Link to="/people" className="cliente-azione">
+              <Icon name="users" />
+              <div><div className="t">Rubrica</div><div className="s">I contatti di riferimento di Toscana Diagnostica</div></div>
+              <Icon name="arrowRight" className="go" />
+            </Link>}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function Home() {
   const { user } = useAuth();
+  if (user?.cliente_service) return <ClienteHome user={user} />;
+  return <HomeCompleta user={user} />;
+}
+
+function HomeCompleta({ user }) {
   const navigate = useNavigate();
   const external = isExternal(user);   // accesso esterno: niente composer in bacheca, niente organigramma, ricerca nel proprio perimetro
   const grantKeys = Object.keys(user?.grants || {}).sort().join(',');   // cambia quando un amministratore assegna o toglie un modulo

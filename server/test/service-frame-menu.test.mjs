@@ -57,7 +57,8 @@ const MODULI = new Map([
 
 test('voci Servizi: Vademecum interno, Circolari/Ordini/NC ai widget, Check-up segnaposto', () => {
   const v = Object.fromEntries(mappaVoci(VOCI_OGGI, MODULI).map((x) => [x.id, x]));
-  assert.deepEqual(Object.keys(v), ['vademecum', 'circolari', 'ordine-materiale', 'promozioni', 'portale-nc']);
+  assert.deepEqual(Object.keys(v), ['vademecum', 'circolari', 'ordine-materiale', 'promozioni', 'portale-nc', 'referti']);
+  assert.deepEqual([v.referti.tipo, v.referti.href, v.referti.blank], ['esterno', 'https://referti.toscanadiagnostica.it/', true], 'Referti di Laboratorio aggiunta dal CEO, scheda nuova');
   assert.equal(v.vademecum.tipo, 'interno'); assert.equal(v.vademecum.to, 'vademecum');
   assert.deepEqual([v.circolari.tipo, v.circolari.modulo, v.circolari.href, v.circolari.accessibile], ['widget', 'circolari', '/circolari', true]);
   assert.deepEqual([v['ordine-materiale'].tipo, v['ordine-materiale'].modulo, v['ordine-materiale'].accessibile], ['widget', 'orders', false], 'senza accesso al widget la voce resta con il motivo');
@@ -76,7 +77,7 @@ test('voci Servizi dopo il patch del sito: href verso la Suite o verso le app TD
     { label: 'senza id' },
   ];
   const v = mappaVoci(dopo, MODULI, { suiteHosts: ['suite.toscanadiagnostica.it'] });
-  assert.equal(v.length, 4, 'voci senza id scartate');
+  assert.equal(v.length, 5, 'voci senza id scartate; Referti di Laboratorio aggiunta in coda');
   assert.deepEqual([v[0].tipo, v[0].modulo], ['widget', 'circolari']);
   assert.deepEqual([v[1].tipo, v[1].modulo, v[1].href, v[1].accessibile], ['widget', 'ticket', '/ticket', false], 'modulo non tra quelli noti: href diretto, accesso da verificare');
   assert.deepEqual([v[2].tipo, v[2].blank], ['esterno', true]);
