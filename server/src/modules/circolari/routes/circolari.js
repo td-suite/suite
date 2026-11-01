@@ -162,9 +162,21 @@ r.get('/circolari/:id', ah(async (req, res) => {
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   const invii = await many('SELECT i.id, i.lista_id, l.nome AS lista_nome, i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at FROM invii i LEFT JOIN liste l ON l.id=i.lista_id WHERE i.circolare_id=$1 ORDER BY i.inviato_at DESC', [c.id]);
   const letture = (await one('SELECT count(*)::int AS n FROM letture WHERE circolare_id=$1', [c.id])).n;
+  const presa = await one('SELECT at FROM prese_visione WHERE circolare_id=$1 AND user_id=$2', [c.id, req.user.suite_user_id]);
   const revisioni = c.numero ? await many(`SELECT id, revisione, protocollo, stato, published_at, titolo FROM circolari WHERE anno=$1 AND numero=$2 ORDER BY revisione`, [c.anno, c.numero]) : [];
   const names = await nomi([c.created_by, c.published_by, c.updated_by, ...invii.map((i) => i.inviato_da)]);
-  res.json({ ...c, created_by_name: names[c.created_by] || null, published_by_name: names[c.published_by] || null, updated_by_name: names[c.updated_by] || null, public_url: c.stato === 'BOZZA' ? null : publicUrl(c), orientamento_previsto: effectiveOrientation(c), invii: invii.map((i) => ({ ...i, inviato_da_name: names[i.inviato_da] || null })), letture, revisioni });
+  res.json({ ...c, created_by_name: names[c.created_by] || null, published_by_name: names[c.published_by] || null, updated_by_name: names[c.updated_by] || null, public_url: c.stato === 'BOZZA' ? null : publicUrl(c), orientamento_previsto: effectiveOrientation(c), invii: invii.map((i) => ({ ...i, inviato_da_name: names[i.inviato_da] || null })), letture, revisioni, presa_visione_at: presa?.at || null });
+}));
+
+// ---- Presa visione dell'utente (circolari pubblicate del suo perimetro): una sola volta, idempotente
+r.post('/circolari/:id/presa-visione', ah(async (req, res) => {
+  const c = await load(req.params.id);
+  if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
+  if (c.stato !== 'PUBBLICATA') throw bad('La presa visione si conferma solo sulle circolari pubblicate in vigore');
+  const ins = await one('INSERT INTO prese_visione (circolare_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING at', [c.id, req.user.suite_user_id]);
+  if (ins) await audit(req, 'CIRCOLARE_PRESA_VISIONE', { module: KEY, entity: 'circolare', entityId: c.id, label: `${c.protocollo} · ${c.titolo}` });
+  const at = ins?.at || (await one('SELECT at FROM prese_visione WHERE circolare_id=$1 AND user_id=$2', [c.id, req.user.suite_user_id]))?.at;
+  res.json({ ok: true, presa_visione_at: at });
 }));
 
 // ---- Modifica (solo bozze)

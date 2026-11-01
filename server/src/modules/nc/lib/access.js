@@ -23,5 +23,9 @@ export const isLab = (u) => ['ADMIN', 'QUALITA', 'LAB'].includes(u?.role);
 export const isSede = (u) => u?.role === 'SEDE';
 export const isInternal = (u) => INTERNAL_ROLES.includes(u?.role);
 
+// Perimetro SQL di un utente SEDE (alias n = nc): solo le NC delle sue sedi, già comunicate (sent_at) e non annullate.
+// Usato dall'elenco delle NC e da "Il mio spazio" del Portale Service. p(v) registra il parametro e restituisce il segnaposto.
+export const perimetroSedeSql = (sedi, p) => [`n.sede_id = ANY(${p(sedi || [])}::int[])`, `n.stato <> 'ANNULLATA'`, 'n.sent_at IS NOT NULL'];
+
 // Una NC è visibile a un utente SEDE solo se appartiene a una delle sue sedi
 export const canSeeSede = (u, sedeId) => isInternal(u) || (isSede(u) && (u.sedi || []).includes(Number(sedeId)));

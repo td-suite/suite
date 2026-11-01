@@ -10,12 +10,11 @@ import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, getModuleState } from '../../lib/modules.js';
 import { registerJob, runJob } from '../../lib/jobs.js';
 import { startFresh } from '../../lib/travaso.js';
-import { HttpError } from '../../lib/util.js';
+import { montaLinkStabili } from '../../lib/specchioPortale.js';
 import { one } from './db.js';
 import { KEY, config } from './config.js';
 import routes from './routes/service.js';
-import { specchio, indice, leggiFile } from './lib/specchio.js';
-import { risolviLink } from './lib/regole.js';
+import { specchio, specchioService } from './lib/specchio.js';
 import { inviaFile } from './lib/invio.js';
 
 const OPZIONI = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'EDITOR', openToAll: true, defaultRole: 'LETTORE' } };
@@ -28,24 +27,10 @@ export default function mount(app) {
 
   // Link stabili sotto il dominio della Suite: /service/p/<shortcut>, /service/m/<codice>, /service/doc/<codice> consegnano il PDF
   // senza redirect (come il sito di origine); prestazione sconosciuta o con più preparazioni → elenco nella pagina del modulo.
-  for (const tipo of ['p', 'm', 'doc']) {
-    app.get(`/${KEY}/${tipo}/:codice`, async (req, res, next) => {
-      if (!req.user) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
-      try {
-        const st = await getModuleState(KEY);
-        const idx = st.mode === 'LIVE' ? await indice() : null;
-        if (!idx) return res.redirect(`/${KEY}`);
-        const esito = risolviLink(tipo, req.params.codice, idx);
-        if (!esito) return res.redirect(`/${KEY}?nontrovato=${encodeURIComponent(req.params.codice)}`);
-        if (esito.elenco) return res.redirect(`/${KEY}?codice=${encodeURIComponent(esito.elenco)}`);
-        const { file, da } = await leggiFile(esito.file);
-        await inviaFile(res, file, { da });
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 404) return res.redirect(`/${KEY}?nontrovato=${encodeURIComponent(req.params.codice)}`);
-        next(e);
-      }
-    });
-  }
+  montaLinkStabili(app, {
+    key: KEY, base: `/${KEY}`, specchio: specchioService, invia: inviaFile,
+    urlElenco: (c) => `/${KEY}?codice=${encodeURIComponent(c)}`, urlNonTrovato: (c) => `/${KEY}?nontrovato=${encodeURIComponent(c)}`,
+  });
 
   // Specchio del sito ogni 6 ore (scheduler della Suite, disattivabile con DISABLE_SCHEDULER)
   registerJob(`${KEY}:specchio`, config.specchioMinuti, async () => {

@@ -27,7 +27,11 @@ export const MODULES = [
   // ---- HQS
   { key: 'nc', area: 'HQS', name: 'Non conformità', tagline: 'NC preanalitiche in cinque fasi, dialogo con le sedi', icon: 'nc', kind: 'LEGACY', legacy_url: 'https://nc.toscanadiagnostica.it', sort_order: 30, scope_type: 'SITE',
     profiles: [P('ADMIN', 'Amministratore'), P('QUALITA', 'Qualità'), P('LAB', 'Laboratorio'), P('SEDE', 'Sede o cliente', true), P('VIEWER', 'Sola lettura')] },
-  { key: 'sgi', area: 'HQS', name: 'SGI Management', tagline: 'Procedure, moduli, informative, preparazioni agli esami', icon: 'sgi', kind: 'PUBLIC', legacy_url: 'https://sgi.toscanadiagnostica.it', sort_order: 10,
+  // SGI Management (01/11/2026): da vetrina esterna a modulo nativo, copia conforme del sito pubblico sgi.toscanadiagnostica.it (specchio
+  // di sola lettura, docs/SGI_PORTALE.md), come il Portale Service. Aperto a tutti gli autenticati (SGI pubblico per decisione AD
+  // 01/10/2026): LETTORE implicito; EDITOR = origine e credenziali, aggiornamento, ZIP del repo e cache. La migrazione core 038 porta la
+  // riga di produzione a NATIVE con legacy_url NULL (il seme non azzera legacy_url).
+  { key: 'sgi', area: 'HQS', name: 'SGI Management', tagline: 'Procedure, moduli, informative, preparazioni agli esami', icon: 'sgi', kind: 'NATIVE', legacy_url: null, route: '/sgi', sort_order: 10, open_to_all: true,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Gestione documenti')] },
   // Portale Service (01/11/2026): da vetrina esterna a modulo nativo, copia conforme del sito pubblico service.toscanadiagnostica.it
   // (specchio di sola lettura, docs/SERVICE_PORTALE.md). Aperto a tutti gli autenticati, clienti service compresi (sito pubblico per

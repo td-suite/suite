@@ -7,7 +7,7 @@ import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../l
 import { registerJob } from '../../lib/jobs.js';
 import { one } from './db.js';
 import { ah } from './lib/util.js';
-import { requireRole, isOps, OPS_ROLES, STRUTTURA_ROLES, strutturaKeyOfSite } from './lib/access.js';
+import { requireRole, isOps, OPS_ROLES, strutturaDiUtente } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
 import { pushPendingOrders } from './lib/silva.js';
@@ -24,6 +24,8 @@ import dotazioneRoutes, { badgeDotazione } from './routes/dotazione.js';
 export { legacyMatch, legacyImport } from './lib/legacyImport.js';
 
 const KEY = 'orders';
+// Opzioni dell'utente del modulo (moduleUser): usate anche dal Portale Service per "Il mio spazio"
+export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'SUPERADMIN' } };
 
 // Utente come lo vede il front-end dell'app: riga users del modulo + profilo Suite + sede di appartenenza (anagrafica unica)
 const publicUser = (u) => ({
@@ -41,17 +43,7 @@ const publicUser = (u) => ({
 async function resolveStruttura(req, _res, next) {
   try {
     const u = req.moduleUser;
-    u.struttura_id = null;
-    if (STRUTTURA_ROLES.includes(u.role)) {
-      let sid = u.site_ids?.[0] ?? null;
-      if (sid != null) {
-        const site = await one('SELECT id, kind, organization_id FROM public.sites WHERE id=$1', [sid]);
-        sid = strutturaKeyOfSite(site);
-      }
-      if (sid == null && req.user.org_ids?.length) sid = -req.user.org_ids[0];
-      if (sid == null && u.role === 'LAB') sid = (await one("SELECT id FROM strutture_v WHERE kind='LAB' AND active AND NOT delivery_point ORDER BY configured DESC, sort_order, id LIMIT 1"))?.id ?? null;
-      u.struttura_id = sid;
-    }
+    u.struttura_id = await strutturaDiUtente(u, req.user);
     if (u.struttura_id != null) {
       const s = await one('SELECT name, code, kind, origin, site_kind, stock_deadline_day FROM strutture_v WHERE id=$1', [u.struttura_id]);
       // site_kind (tipo di sede dell'anagrafica) sceglie la colonna di visibilità degli articoli (quattro tipologie, lib/dotazione.js)
@@ -85,7 +77,7 @@ export function mountPublic(app) {
 export default function mount(app) {
   // ---- Route dell'app, con l'utente della Suite
   const r = Router();
-  r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'SUPERADMIN' } }));
+  r.use(requireAuth, requireModuleReady(KEY, OPZIONI_UTENTE));
   r.use(resolveStruttura);
   // Contatori per la sidebar della Suite (voci di menu con badge in meta.js)
   r.get('/badges', async (req, res, next) => {

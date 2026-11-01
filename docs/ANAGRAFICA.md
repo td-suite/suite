@@ -302,8 +302,8 @@ solo per il fondo cassa). Integration: target = Legal entity TARGET (org_ext). B
 su Legal entity e/o sede TD. Room: tutte le persone attive con filtri e flag pianificazione (person_ext.planning_excluded, azione
 "Escludi non sanitari"). Ordini e NC: struttura = sede TD (id > 0) o Legal entity (id < 0) con colonne generate e FK reali, punti SERVICE
 sotto la loro Legal entity. Organigramma: la sezione di Contratti del personale rimanda alla Rubrica, che parte da sede, area o persona
-(catena dal vertice + sottoalbero; esportazioni con ?unit_id). SGI si apre in una scheda nuova; il Portale Service dal 01/11/2026 è un
-modulo nativo (`/service`, docs/SERVICE_PORTALE.md). Le migrazioni dei
+(catena dal vertice + sottoalbero; esportazioni con ?unit_id). Dal 01/11/2026 il Portale Service e SGI Management sono moduli
+nativi (`/service`, docs/SERVICE_PORTALE.md; `/sgi`, docs/SGI_PORTALE.md), specchi di sola lettura dei siti pubblici. Le migrazioni dei
 moduli si applicano all'avvio del server (applyModuleMigrations), non solo al travaso.
 
 ## Circolari (26/10/2026)
@@ -1019,3 +1019,14 @@ ZIP del repository come ripiego), con i PDF in cache a richiesta. Si attiva da s
 Le voci Servizi Circolari, Ordine del materiale e Portale NC aprono i widget della Suite; il Vademecum incorpora il Vademecum online o,
 se vietato, mostra il PDF dello specchio con il pulsante in nuova scheda. Il profilo di sistema Cliente service riceve Ordini e Magazzino
 (CLIENTE) con la migrazione core 037. Dettagli: docs/SERVICE_PORTALE.md.
+
+## SGI Management: copia conforme del sito pubblico (01/11/2026)
+Richiesta del CEO: "Vorrei fare poi la stessa cosa con SGI! Perfettamente!". Il widget HQS "SGI Management" (chiave `sgi`) passa da
+vetrina esterna (kind PUBLIC, legacy_url https://sgi.toscanadiagnostica.it) a modulo nativo (route `/sgi`, kind NATIVE, legacy_url NULL,
+aperto a tutti gli autenticati: il SGI è pubblico per decisione AD 01/10/2026) con la migrazione core 038, senza toccare profili e grant
+(LETTORE implicito; EDITOR per le Impostazioni, già proposto per l'area HQS; il profilo di sistema Cliente service ha sgi LETTORE). Nessuna
+anagrafica propria e nessun travaso: è lo **specchio di sola lettura** di sgi.toscanadiagnostica.it (job `sgi:specchio` ogni 6 ore,
+"Aggiorna adesso", ZIP del repository come ripiego, credenziali HTTP Basic se il sito è protetto), con i PDF in cache a richiesta e i link
+stabili `/sgi/doc|m|p/…`. Si attiva da solo all'avvio (FRESH_MODULES). Contatore della home: documenti attivi (= meta.n_docs), visibile a
+chiunque veda il widget. Dal Portale Service un documento presente anche nello specchio SGI rimanda alla scheda SGI. Dettagli:
+docs/SGI_PORTALE.md.

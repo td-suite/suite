@@ -57,8 +57,8 @@ la stessa regola); nella scheda utente "accesso esterno" accanto alla Legal enti
 badge "Di sistema · esterni".
 
 ## Cosa vede un esterno
-- **Home**: solo le card dei widget per cui ha un grant o aperti a tutti (Ticket, Circolari, Portale Service dal 01/11/2026); il portale
-  PUBLIC SGI compare solo con il grant (`/home/modules`). Bacheca in sola lettura: niente composer (anche il server rifiuta
+- **Home**: solo le card dei widget per cui ha un grant o aperti a tutti (Ticket, Circolari, Portale Service e SGI Management dal 01/11/2026,
+  entrambi nativi e aperti a tutti: `/home/modules`). Bacheca in sola lettura: niente composer (anche il server rifiuta
   `POST /community/posts` con 403); i post ALL restano visibili come oggi, i post INTERNAL no (audience). Niente compleanni
   (`/community/home` li omette), niente Cartella personale, niente organigramma.
 - **Rubrica** (profilo LETTORE): solo le persone ATTIVE delle unità con **contatto pubblico** (`org_units.public_contact`, afferenza
@@ -81,8 +81,15 @@ badge "Di sistema · esterni".
   con grant cash PARTNER sulla sede (link `/cash/royalties?period=AAAA-MM`, mese evidenziato), oltre all'email alla struttura ospitante.
 - **NC (SEDE con scope ORG)**: come oggi per il profilo SEDE: solo le NC inviate alla propria Legal entity, dialogo e risposte.
 - **Circolari**: perimetro per segmento già esistente (docs/CIRCOLARI.md): Legal entity PARTNER → Partner, CLIENTE → Clienti service.
-- **Portale Service e SGI**: restano collegamenti ai portali esistenti (`/go/<key>` → SSO verso l'app legacy se il segreto è
-  configurato, altrimenti il solo link): l'account del portale è separato finché non c'è SSO. Limite dichiarato.
+- **Portale Service e SGI**: dal 01/11/2026 sono moduli nativi della Suite (`/service`, `/sgi`), copie conformi in sola lettura dei siti
+  pubblici (docs/SERVICE_PORTALE.md, docs/SGI_PORTALE.md): l'esterno li consulta con il proprio account, senza Impostazioni (403).
+- **Cliente service: Il mio spazio** (dal 01/11/2026, docs/SERVICE_PORTALE.md): nel Portale Service la pagina di atterraggio (`/service`) è
+  "Il mio spazio": NC aperte della Legal entity e dei suoi punti SERVICE, ordini in corso con fase, ultime circolari Clienti service con presa
+  visione, ticket aperti dall'utente, letti dai widget con i loro perimetri (`GET /api/service/mio-spazio`); "Apri in <widget>" apre il widget
+  in una scheda nuova per agire. Solo per il Cliente service riconosciuto con certezza (`clienteService`/`riconosciClienteService` in
+  `lib/esterni.js`: esterno, Legal entity CLIENTE, grant dal profilo di sistema Cliente service, almeno una sede SERVICE attiva); il Partner
+  ospitante, il CLIENTE senza punti SERVICE e gli interni non hanno la voce e ricevono 404 "Non disponibile". `/api/auth/me` espone
+  `cliente_service`. Nel widget Circolari la presa visione per utente ("Confermo la presa visione") alimenta il conteggio "da leggere".
 
 ## Contatto pubblico (`org_units.public_contact`)
 Flag sulle unità dell'organigramma, impostabile in Amministrazione > Organizzazione > Unità e incarichi (interruttore "Contatto
@@ -100,7 +107,7 @@ Default escluso), `routes/esterni.js` (accessi della Legal entity), `routes/user
 (`is_external`), `migrate.js` (`seedPublicContact`), `routes/importxlsx.js`. Web: `pages/admin/OrgAccess.jsx`, `Registry.jsx`,
 `Users.jsx`, `AccessProfiles.jsx`, `People.jsx`, `Home.jsx`, `Community.jsx`, `components/Shell.jsx`, `community/Board.jsx`,
 `community/Cards.jsx`, `auth.jsx` (`isExternal`), `modules/cash/{meta.js,index.jsx,pages/PartnerRoyalties.jsx}`.
-Test: `server/test/esterni.test.mjs`. Schermate: `docs/screens/esterni-*.png`.
+Test: `server/test/esterni.test.mjs`, `server/test/service-mio-spazio.test.mjs` (riconoscimento del Cliente service). Schermate: `docs/screens/esterni-*.png`.
 
 ## Collaudo (29/10/2026, db dedicato, porta 3126)
 Legal entity PARTNER "Farmacia Rossi" che ospita Calenzano (`site_ext.host_org_id`), report di settembre confermato; accesso esterno
@@ -119,7 +126,7 @@ Playwright: `esterni-{legal-entity-accessi,legal-entity-crea-accesso,partner-hom
 admin-unita-contatto-pubblico,admin-utenti,admin-profili}.png`.
 
 ## Limiti e cose da verificare
-- Portale Service e SGI: link ai portali esistenti (SSO solo se configurato il segreto del modulo); nessun contenuto dentro la Suite.
+- Portale Service e SGI: dal 01/11/2026 specchi nativi dei siti pubblici dentro la Suite (prima: link ai portali esistenti).
 - Lo stato di pagamento delle royalties non esiste in Cash: la pagina lo dichiara; se serve, va aggiunto a `site_royalty_statements`.
 - Il perimetro Cash del partner dipende da `site_ext.host_org_id`: va compilata la Struttura ospitante in Cash > Sedi per ogni corner.
 - L'invito email va verificato con la posta reale (in locale il provider è "log").

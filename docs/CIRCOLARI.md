@@ -44,7 +44,9 @@ PDF con `soffice` (presente nell'immagine Docker; in locale può mancare: resta 
 
 ## Schema `circolari`
 `users` (riga tecnica del modulo), `circolari` (scheda, `corpo` JSONB, `corpo_testo`, `docx`/`pdf` BYTEA, `pub_token`, `fts`),
-`liste`, `invii`, `letture` (solo conteggio delle aperture dal QR), `impostazioni`. Unicità `(anno, numero, revisione)`.
+`liste`, `invii`, `letture` (solo conteggio delle aperture dal QR), `prese_visione` (dal 01/11/2026: presa visione per utente
+della Suite, `POST /api/circolari/circolari/:id/presa-visione` sulle pubblicate del proprio perimetro; la legge "Il mio spazio" del Portale
+Service, docs/SERVICE_PORTALE.md), `impostazioni`. Unicità `(anno, numero, revisione)`.
 
 ## Profili
 ADMIN (tutto), PUBBLICATORE (pubblica, invia, revisiona, annulla, liste), REDATTORE (bozze, anteprime, ristrutturazione),

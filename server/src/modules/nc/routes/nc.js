@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, notFound, audit, parse, forbidden, HttpError, diff } from '../lib/util.js';
-import { requireLab, requireQualita, isSede, isLab, isQualita, canSeeSede } from '../lib/access.js';
+import { requireLab, requireQualita, isSede, isLab, isQualita, canSeeSede, perimetroSedeSql } from '../lib/access.js';
 import { getSettings } from '../lib/settings.js';
 import { NC_COLS, NC_FROM, loadNc, viewFor, nextCodice, slaDue, checkRicorrenza, addMessaggio, assertVersion, emit, inviaAllaSede, bloccaSuLis, sbloccaSuLis, apriSegnalazioneLis, commentaSegnalazioneLis, risolviSegnalazioneLis, APERTE, STATO_LABEL } from '../lib/nc.js';
 import * as mail from '../lib/mail.js';
@@ -27,7 +27,7 @@ const who = (req) => req.user?.full_name || req.user?.email;
 function buildWhere(req) {
   const { stato, sede, macro, tipo, gravita, from, to, q: text, ricorrenti, scadute, aperte } = req.query;
   const w = [], p = [];
-  if (isSede(req.user)) { p.push(req.user.sedi || []); w.push(`n.sede_id = ANY($${p.length}::int[])`); w.push(`n.stato <> 'ANNULLATA'`); w.push('n.sent_at IS NOT NULL'); }   // la sede vede solo le NC che le sono state comunicate
+  if (isSede(req.user)) w.push(...perimetroSedeSql(req.user.sedi, (v) => { p.push(v); return `$${p.length}`; }));   // la sede vede solo le NC che le sono state comunicate
   if (stato) { p.push(String(stato).split(',')); w.push(`n.stato = ANY($${p.length}::text[])`); }
   if (aperte === '1') { p.push(APERTE); w.push(`n.stato = ANY($${p.length}::text[])`); }
   if (sede) { p.push(Number(sede)); w.push(`n.sede_id = $${p.length}`); }

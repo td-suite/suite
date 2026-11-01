@@ -10,12 +10,13 @@ import { many } from '../../../db.js';
 import { ah, audit, bad, parse, forbidden, notFound, HttpError } from '../../../lib/util.js';
 import { activeModuleKeys, moduleHref, getModuleState } from '../../../lib/modules.js';
 import { isAdmin } from '../../../lib/access.js';
-import { isExternal } from '../../../lib/esterni.js';
+import { isExternal, clienteService } from '../../../lib/esterni.js';
 import { config as suite } from '../../../config.js';
 import { KEY, config, ORIGINE_DEFAULT } from '../config.js';
 import { CHIAVI, mappaVoci, valutaIncorporamento } from '../lib/regole.js';
 import { origine, setImpostazione, statoSpecchio, contenuto, conteggi, statoCache, svuotaCache, specchio, provaOrigine, importaZip, leggiFile, vademecumDisponibile } from '../lib/specchio.js';
 import { inviaFile } from '../lib/invio.js';
+import { mioSpazio } from '../lib/mioSpazio.js';
 
 const r = Router();
 export const isEditor = (req) => ['EDITOR', 'ADMIN'].includes(req.moduleUser?.role);
@@ -23,16 +24,27 @@ const requireEditor = (req, _res, next) => (isEditor(req) ? next() : next(forbid
 
 r.get('/state', ah(async (req, res) => {
   const st = await getModuleState(KEY);
+  const cs = await clienteService(req.user);
   const s = await statoSpecchio();
   const n = await conteggi();
   const o = await origine();
   res.json({
     mode: st.mode,
-    user: { id: req.user.id, email: req.user.email, full_name: req.user.full_name, role: req.moduleUser.role, editor: isEditor(req), esterno: isExternal(req.user) },
+    user: { id: req.user.id, email: req.user.email, full_name: req.user.full_name, role: req.moduleUser.role, editor: isEditor(req), esterno: isExternal(req.user), cliente_service: Boolean(cs) },
     specchio: { caricato: Boolean(s.build), build: s.build, reg006_rev: s.reg006_rev, reg006_data: s.reg006_data, fonte: s.fonte, ultima_lettura: s.ultima_lettura, ultimo_cambio: s.ultimo_cambio, ultimo_errore: s.ultimo_errore, ultimo_errore_at: s.ultimo_errore_at },
     conteggi: { n_pdf: n.n_pdf, n_prestazioni: n.n_prestazioni, n_prep_collegate: n.n_prep_collegate },
     origine: o.url,
   });
+}));
+
+// ---- "Il mio spazio" (richiesta del CEO, 01/11/2026): solo per l'accesso esterno Cliente service (lib/esterni.js, riconoscimento con
+// certezza: esterno, Legal entity CLIENTE con sedi SERVICE, grant dal profilo di sistema Cliente service). A tutti gli altri, interni e
+// Partner ospitanti compresi, 404 "Non disponibile" senza alcun dato. Cache per utente di 60 s (?rinnova=1 per rileggere subito).
+r.get('/mio-spazio', ah(async (req, res) => {
+  const cs = await clienteService(req.user);
+  if (!cs) throw notFound('Non disponibile');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.json(await mioSpazio(req.user, cs, { rinnova: req.query.rinnova === '1' }));
 }));
 
 // JSON dello specchio così come sono sul sito (sola lettura). ETag = sha del contenuto: il browser riusa fulltext.json (1,5 MB)
@@ -88,6 +100,23 @@ r.get('/vademecum/embeddabile', ah(async (req, res) => {
   }
   const pdf = v.consentito ? null : await vademecumDisponibile();
   res.json({ url, consentito: v.consentito, motivo: v.motivo, status: v.status, intestazioni: v.intestazioni, verificato_at: new Date(v.at).toISOString(), pdf });
+}));
+
+// ---- Newsletter di Agorà: il form Brevo (blog.json → newsletter.brevo_url) si può incorporare? Stessa prova del Vademecum, cache 1 ora.
+// Se no (intestazioni che lo vietano, sito che non risponde) la pagina mostra subito campo e-mail + "Iscriviti" (mai un riquadro vuoto).
+r.get('/newsletter/embeddabile', ah(async (req, res) => {
+  const blog = await contenuto('blog');
+  const url = blog?.json?.newsletter?.brevo_url || null;
+  if (!url || !/^https?:\/\//i.test(url)) return res.json({ url: null, consentito: false, motivo: 'brevo_url assente in blog.json' });
+  const suiteOrigin = `${req.protocol}://${req.get('host')}`;
+  const ck = `${url}|${suiteOrigin}`;
+  let v = provaCache.get(ck);
+  if (!v || Date.now() - v.at > config.provaFrameCacheMs) {
+    const risposta = await provaFrame(url);
+    v = { at: Date.now(), ...valutaIncorporamento(risposta, suiteOrigin, url) };
+    provaCache.set(ck, v);
+  }
+  res.json({ url, consentito: v.consentito, motivo: v.motivo, verificato_at: new Date(v.at).toISOString() });
 }));
 
 // ---- File dello specchio (PDF e loghi): dalla cache, altrimenti dal sito di origine e poi in cache

@@ -88,3 +88,17 @@ export function useStato() {
   }, []);
   return s;
 }
+
+// Collegamento con il widget SGI Management (Portale SGI): i codici dei documenti presenti nello specchio SGI. Se il widget non è
+// raggiungibile (non attivo, specchio vuoto) l'insieme resta vuoto e il rimando non compare. Una lettura per sessione di pagina.
+let codiciSgiP = null;
+export function useCodiciSgi() {
+  const [s, setS] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    if (!codiciSgiP) codiciSgiP = api.get('/sgi/codici', { silent: true }).then((r) => new Set(r?.codici || [])).catch(() => new Set());
+    codiciSgiP.then((x) => vivo && setS(x));
+    return () => { vivo = false; };
+  }, []);
+  return s;
+}

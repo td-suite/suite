@@ -98,6 +98,71 @@ Vademecum dallo specchio** (`vademecum/…`: campo `pdf` della voce in `menu.jso
 La CSP della Suite ammette negli iframe `https://*.toscanadiagnostica.it`, `https://*.sibforms.com` (newsletter) e l'origine di
 `SERVICE_VADEMECUM_URL`.
 
+## Il mio spazio (solo Clienti service, 01/11/2026)
+Richiesta del CEO: "la terza mi piace molto! Ma va limitata esclusivamente ai clienti SERVICE e non ad altri (Legal Entity con tipo:
+cliente)". Pagina del portale che riunisce, letti dai widget della Suite senza uscire dal portale, ciò che riguarda quel cliente; il
+cliente apre il widget (scheda nuova) solo per agire.
+
+**Chi la vede.** Solo l'accesso esterno **Cliente service** riconosciuto con certezza nel server (`clienteService` e la regola pura
+`riconosciClienteService` in `server/src/lib/esterni.js`), tutte e quattro le condizioni: utente esterno (`isExternal`), Legal entity di
+tipo CLIENTE, almeno un grant confermato nato dal profilo di sistema `CLIENTE_SERVICE`, almeno una sede SERVICE attiva della Legal entity
+(il contratto service). Esclusi: Partner ospitanti (anche se la Legal entity è CLIENTE), CLIENTE senza punti SERVICE (anche con il profilo
+applicato a mano), personale TD, Owner e Admin. Il front-end lo riceve come `cliente_service` in `/api/auth/me` e in `/api/service/state`.
+- Menu (`meta.js`): voce "Il mio spazio" in cima, sopra Preparazioni e documenti (`when: cliente_service`); per tutti gli altri non esiste.
+- Atterraggio: per il Cliente service `/service` è Il mio spazio; Preparazioni e documenti è `/service/preparazioni`. I link stabili e la
+  ricerca (`/service?codice=`, `?nontrovato=`, `?q=`) aprono sempre Preparazioni e documenti. `/service/mio-spazio` per gli altri →
+  home del portale.
+
+**Cosa legge** (`GET /api/service/mio-spazio`, una risposta, `lib/mioSpazio.js`; regole pure in `lib/mioSpazioRegole.js`):
+| Sezione | Contenuto | Perimetro (riusato dal modulo) | Link |
+| --- | --- | --- | --- |
+| Non conformità | NC aperte (APERTA, INVIATA_SEDE, RISPOSTA_SEDE, IN_TRATTAMENTO) comunicate e non annullate: numero, data, tipo, gravità, stato, sede, oltre termine; conteggi per stato | `perimetroSedi` (scope ORG = Legal entity; punti SERVICE → Legal entity) + `perimetroSedeSql` (nc/lib/access.js, lo stesso dell'elenco NC); solo profilo SEDE | `/nc/nc/:id`, `/nc/nc` |
+| Ordini | ordini in corso: fasi 1-5 non concluse (`faseOrdine`: CHIUSO e ANNULLATO conclusi; per un CLIENTE anche CONSEGNATO): numero, data, fase, struttura; conteggi per fase | `strutturaDiUtente` (orders/lib/access.js, la stessa del middleware del modulo): la Legal entity; solo profili di struttura | `/orders/ordini/:id`, `/orders/ordini` |
+| Circolari | ultime 10 pubblicate del segmento Clienti service con protocollo, titolo, data, presa visione sì/no; conteggio da leggere | `perimetro`/`filtro` di circolari/lib/visibilita.js + segmento CLIENTI_SERVICE | `/circolari/:id`, `/circolari/archivio` |
+| Ticket | ticket aperti dall'utente non chiusi né annullati: numero, oggetto, stato, data; conteggio | `userContext`/`visibleSql` del modulo + richiedente = l'utente | `/ticket/:id`, `/ticket/miei` |
+Per ogni sezione l'utente del modulo si costruisce con la stessa funzione e le stesse opzioni del modulo (`moduleUser` +
+`OPZIONI_UTENTE` esportate da `nc`, `orders`, `circolari`, `ticket`); modulo non avviato o grant assente → `{ disponibile: false, motivo }`
+(il riquadro KPI mostra "–", mai uno 0 inventato); una sezione in errore non fa cadere le altre. Cache per utente di 60 s (`?rinnova=1`,
+pulsante "Aggiorna"). A chiunque non sia Cliente service: **404 "Non disponibile"**, nessun dato.
+
+**Presa visione delle circolari.** Il modulo Circolari contava solo le aperture dal QR: dal 01/11/2026 ha la presa visione per utente
+(`circolari/migrations/002_presa_visione.sql`, tabella `prese_visione`, `POST /api/circolari/circolari/:id/presa-visione`, solo
+circolari PUBBLICATE del perimetro dell'utente, audit `CIRCOLARE_PRESA_VISIONE`; il dettaglio riporta `presa_visione_at`). Nel widget, sulla
+circolare pubblicata, chi non è in redazione vede "Confermo la presa visione" o il badge con la data.
+
+**Pagina** (`pages/MioSpazio.jsx`, classi del sito): fascia `.hero` con nome della Legal entity e pillole dei punti SERVICE; quattro
+`.card.kpi` cliccabili (NC aperte, Ordini in corso, Circolari da leggere, Ticket aperti); quattro sezioni `.card` con tabella `.t` compatta,
+badge di stato e, per sezione e per riga, "Apri in <widget>" / "Apri" (`target="_blank" rel="noopener"`); stato vuoto esplicito ("Nessuna
+non conformità aperta.", "Nessun ordine in corso.", ...); widget non disponibile → avviso con il contatto service@.
+
+**Isolamento** (requisito principale). Nessuna regola di accesso riscritta: solo i perimetri dei moduli, la Legal entity dal server, la cache
+per id utente. Collaudo 01/11/2026 con due clienti reali (sotto): ciascuno vede solo i propri dati in tutte e quattro le sezioni; i dettagli
+dell'altro nei widget restano 404/403.
+
+## Home della Suite: i portali in una scheda nuova per il personale TD (01/11/2026)
+Richiesta del CEO: "se uno clicca sul widget portale service dall'interno dell'azienda la apri in _blank e selezioni la pagina del service
+che vuoi vedere! In modo da controllarne i contenuti." Per gli utenti **non esterni** la card Portale Service in Home apre `/service` in
+una **scheda nuova**; il pulsante in alto a sinistra della card ("Apri pagina…") elenca le pagine del portale, ognuna in scheda nuova:
+Preparazioni e documenti, Certificazioni, VEQ, Agorà, Tutti i servizi, Vademecum, Contatti, Impostazioni (solo EDITOR, Owner e Admin).
+Le pagine vengono dal menu del modulo (`meta.js`, voci con `to`, filtrate come la barra laterale da `vociModulo` in
+`web/src/modules/registry.js`; `paginaHome: false` esclude la voce, es. Check-up e promozioni, segnaposto). Il comportamento si attiva con
+`homeSchedaNuova: true` nel `meta.js` del modulo: **SGI Management** lo ha con lo stesso codice (nessuna duplicazione:
+`components/Widget.jsx`). Per gli esterni la card si comporta come prima (stessa scheda, nessun menu).
+
+**Collaudo (01/11/2026, db dedicato `suite_spazio_t`, porta 3137, specchio da server statico).** Due CLIENTI con sedi SERVICE (Laboratorio
+Alfa con due punti, Centro Beta con uno), un PARTNER con punto prelievi ospitato, un CLIENTE senza sedi SERVICE con profilo Cliente
+service, una persona TD interna; accessi esterni creati dalla scheda Legal entity (`external-access`); NC, ordini, circolari (Clienti
+service, Partner, bozza, superata), ticket per entrambi i clienti, per il partner, per la sede TD e per l'interno. API (42 verifiche): A vede
+NC 0001-0003 (non la chiusa, l'annullata, quella non inviata, quella di Beta o della sede TD), ordini 0001-0004 con fase, circolari
+001-003 con presa visione su 001 (2 da leggere), ticket 0001-0002, KPI 3/4/2/2, nessun nome o numero di Beta, cache alla seconda lettura;
+B vede solo NC 0007, ordini 0007-0008, 3 circolari tutte da leggere, ticket 0004, nessun dato di Alfa; i dettagli di A nei widget per B
+404/403; Partner, CLIENTE senza service, personale TD e titolare: 404 "Non disponibile" e `cliente_service = false`; modulo Ticket spento →
+sezione `disponibile: false`, KPI "–". Playwright (25 verifiche): atterraggio di A su Il mio spazio, voce in cima, KPI, "Apri in Non
+conformità" e "Apri" del ticket in scheda nuova (`context.on('page')`), Preparazioni su `/service/preparazioni`, card in Home dell'esterno
+nella stessa scheda; B solo Centro Beta; Partner e interno senza voce e `/service/mio-spazio` → home del portale; Home dell'interno: card
+Portale Service e SGI in scheda nuova, menu pagine, Certificazioni in scheda nuova, Impostazioni solo per il titolare. Schermate
+`docs/screens/service-mio-spazio.png`, `docs/screens/home-card-portale.png`.
+
 ## Accesso e profili
 Modulo nativo (`kind NATIVE`, route `/service`, `open_to_all TRUE`): la migrazione core 037 aggiorna la riga di produzione (prima PUBLIC con
 `legacy_url`), senza toccare profili e grant. Tutti gli autenticati entrano come **LETTORE** (implicito); **EDITOR** (profilo già seminato,
@@ -133,7 +198,12 @@ endpoint `/api/vademecum/embeddabile` in `app.py`), README con la sezione "Copia
 
 ## File
 Server: `server/src/modules/service/` (`index.js` mount, link stabili, job, afterStart; `config.js`; `db.js`; `lib/regole.js` regole pure;
-`lib/specchio.js` specchio, ZIP, cache; `lib/invio.js`; `routes/service.js`; `migrations/001_init.sql`), core `migrations/037_service_nativo.sql`,
+`lib/specchio.js` parametri dello specchio, conteggi, Vademecum; dal 01/11/2026 la meccanica comune con SGI Management è in
+`server/src/lib/specchioPortale.js` e `server/src/lib/specchioRegole.js`, docs/SGI_PORTALE.md; `lib/invio.js`; `routes/service.js`; `migrations/001_init.sql`), core `migrations/037_service_nativo.sql`,
 `config.js` (LEGACY_KEYS e FRESH_MODULES), `seed/modules.js`, `lib/legacy.js` (contatore), `index.js` (CSP frame-src). Web:
-`web/src/modules/service/` (meta.js, index.jsx, dati.js, pages/, styles.css). Test: `server/test/service-link.test.mjs`,
-`server/test/service-frame-menu.test.mjs`. Schermate: `docs/screens/service-{home,vademecum,servizi,impostazioni}.png`.
+`web/src/modules/service/` (meta.js, index.jsx, dati.js, pages/, styles.css). Il mio spazio: `server/src/modules/service/lib/{mioSpazio,mioSpazioRegole}.js`, `lib/esterni.js`
+(`clienteService`), `routes/auth.js` (`cliente_service`), `modules/{nc,orders,circolari,ticket}/index.js` (`OPZIONI_UTENTE`), `nc/lib/access.js`
+(`perimetroSedeSql`), `orders/lib/access.js` (`strutturaDiUtente`), `circolari/migrations/002_presa_visione.sql`, `circolari/routes/circolari.js`;
+web `modules/service/pages/MioSpazio.jsx`, `modules/registry.js` (`vociModulo`), `components/{Widget,Shell}.jsx`, `styles.css` (`.widget-pages`),
+`modules/circolari/pages/Circolare.jsx`, `modules/sgi/meta.js`. Test: `server/test/service-link.test.mjs`,
+`server/test/service-frame-menu.test.mjs`, `server/test/service-mio-spazio.test.mjs`. Schermate: `docs/screens/service-{home,vademecum,servizi,impostazioni,mio-spazio}.png`, `docs/screens/home-card-portale.png`.

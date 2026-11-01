@@ -155,6 +155,20 @@ variabile perché la sua origine entra nella CSP della Suite all'avvio); `SERVIC
 (`service.impostazioni`, profilo EDITOR e amministratori): `origine`. Stato interno in `service.stato` (build, REG006, fonte, ultima
 lettura, ultimo cambiamento, ultimo errore). Migrazioni: service 001_init.sql, core 037_service_nativo.sql.
 
+## SGI Management: specchio del sito pubblico (01/11/2026)
+Il modulo `sgi` (widget HQS "SGI Management") è la copia conforme di sgi.toscanadiagnostica.it (docs/SGI_PORTALE.md), con la stessa
+meccanica del Portale Service (`server/src/lib/specchioPortale.js`): nessun contenuto si compila nella Suite. Variabili d'ambiente
+(facoltative): `SGI_PORTAL_URL` origine dello specchio (predefinita https://sgi.toscanadiagnostica.it; se impostata prevale sull'origine
+salvata in SGI Management > Impostazioni, che diventa in sola lettura); `SGI_PORTAL_USER` e `SGI_PORTAL_PASSWORD` credenziali HTTP Basic
+dell'origine, da impostare solo se sul sito è attiva `SGI_PASSWORD` (utente predefinito `sgi`, come il sito; se la password è impostata
+qui prevalgono su quelle salvate in app, che diventano in sola lettura); `SGI_SPECCHIO_MINUTES` intervallo del job `sgi:specchio` (360);
+`SGI_TIMEOUT_MS` (30000) timeout delle letture (fulltext.json pesa circa 6 MB); `SGI_ZIP_MAX_MB` (400) limite dello ZIP del repository
+(circa 105 MB compresso); `SGI_FILE_MAX_MB` (60) limite di un singolo PDF. Impostazioni in app (`sgi.impostazioni`, profilo EDITOR e
+amministratori): `origine`, `utente` e `password` dell'origine. La password è cifrata AES-256-GCM con `lib/secrets.js` (CREDENTIALS_KEY,
+in sua assenza la chiave derivata da SESSION_SECRET, come le altre credenziali della Suite): l'API restituisce solo "impostata sì/no",
+il registro attività solo l'operazione e l'utente, i messaggi d'errore solo l'URL e il codice HTTP. Stato interno in `sgi.stato`.
+Migrazioni: sgi 001_init.sql, core 038_sgi_nativo.sql.
+
 ## Referti esterni: casella template@ (31/10/2026)
 Variabili d'ambiente (facoltative): `REFERTI_MAILBOX` casella letta e mittente dei referti riprodotti (predefinita
 template@toscanadiagnostica.it; se impostata prevale sull'impostazione del modulo, che in Impostazioni diventa in sola lettura);

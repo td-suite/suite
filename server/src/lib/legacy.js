@@ -612,9 +612,11 @@ const COUNTER_QUERIES = {
       (SELECT count(*) FROM work_orders WHERE status <> 'CHIUSO' AND priority IN ('URGENTE','ALTA')))::int AS n` },
   // Portale Service: documenti PDF pubblicati nello specchio del sito (= meta.n_pdf); nessun numero se lo specchio è vuoto
   service: { label: 'Documenti PDF pubblicati', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
+  // SGI Management (Portale SGI): documenti attivi nello specchio del sito (= meta.n_docs); nessun numero se lo specchio è vuoto
+  sgi: { label: 'Documenti attivi', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
 };
 // Contatori informativi dei moduli aperti a tutti (contenuti pubblici): visibili a chiunque veda il widget, senza grant
-const OPEN_COUNTERS = ['service'];
+const OPEN_COUNTERS = ['service', 'sgi'];
 // Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
 const CORE_COUNTERS = {
   comunicazione: { label: 'Contenuti in bozza e avvisi attivi', sql: `SELECT ((SELECT count(*) FROM news WHERE status='DRAFT') + (SELECT count(*) FROM notices WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at >= now())))::int AS n` },

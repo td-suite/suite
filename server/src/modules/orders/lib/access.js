@@ -38,3 +38,21 @@ export async function assertStruttura(user, strutturaId) {
 
 // La struttura della Legal entity a cui appartiene una sede SERVICE (chiave negativa), altrimenti la sede stessa
 export const strutturaKeyOfSite = (site) => (site?.kind === 'SERVICE' && site.organization_id ? -site.organization_id : site?.id ?? null);
+
+/**
+ * Struttura dell'utente per i profili di struttura (CLIENTE, SEDE, LAB): la sede dell'ambito del grant Suite (moduleUser.site_ids[0];
+ * un punto SERVICE porta alla sua Legal entity, chiave -organization_id), altrimenti la Legal entity dell'ambito ORG (suiteUser.org_ids[0]),
+ * per LAB senza ambito il laboratorio configurato. null per i profili Operations e per chi non ha assegnazione.
+ * Usata dal middleware del modulo e da "Il mio spazio" del Portale Service.
+ */
+export async function strutturaDiUtente(moduleUser, suiteUser) {
+  if (!STRUTTURA_ROLES.includes(moduleUser?.role)) return null;
+  let sid = moduleUser.site_ids?.[0] ?? null;
+  if (sid != null) {
+    const site = await one('SELECT id, kind, organization_id FROM public.sites WHERE id=$1', [sid]);
+    sid = strutturaKeyOfSite(site);
+  }
+  if (sid == null && suiteUser?.org_ids?.length) sid = -suiteUser.org_ids[0];
+  if (sid == null && moduleUser.role === 'LAB') sid = (await one("SELECT id FROM strutture_v WHERE kind='LAB' AND active AND NOT delivery_point ORDER BY configured DESC, sort_order, id LIMIT 1"))?.id ?? null;
+  return sid;
+}

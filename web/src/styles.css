@@ -145,6 +145,7 @@ button { font: inherit; }
 .side a.active { background: var(--teal); color: #fff; }
 .side a .count { margin-left: auto; background: var(--mauve); color: var(--jet); font-size: 11px; font-weight: 800; border-radius: 10px; padding: 0 7px; }
 .side .ico { width: 18px; height: 18px; opacity: .92; }
+.side a .ico.ext { width: 14px; height: 14px; margin-left: auto; opacity: .6; flex: none; }   /* voce che si apre in una nuova scheda (blank) */
 .side .foot { flex: none; padding: 14px 14px 18px; border-top: 1px solid rgba(113, 177, 189, .18); }
 .side .foot a { color: #fff; font-weight: 700; }
 .main { flex: 1; min-width: 0; }
@@ -449,6 +450,17 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .widget.live .counter { animation: counterin .5s ease; }
 @keyframes counterin { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 .widget .counter.sk { background: var(--teal-050); min-width: 36px; box-shadow: none; }
+/* Card dei portali (Service, SGI) per il personale TD: si aprono in una scheda nuova; il pulsante in alto a sinistra apre il menu "Apri pagina…" */
+.widget-wrap { position: relative; display: flex; }
+.widget-wrap > .widget { width: 100%; }
+.tiles .widget-wrap > .widget { width: 100%; }
+.widget-pages { position: absolute; top: 10px; left: 10px; z-index: 2; width: 30px; height: 30px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.widget-pages:hover, .widget-pages:focus-visible, .widget-pages[aria-expanded="true"] { color: var(--area, var(--teal)); border-color: var(--area, var(--teal)); outline: none; }
+.widget-pages .ico { width: 16px; height: 16px; }
+.menu-pop.widget-pop { top: 44px; left: 8px; right: auto; min-width: 260px; max-height: 420px; overflow-y: auto; }
+.menu-pop.widget-pop .who .name { font-size: 13.5px; }
+.menu-pop.widget-pop a { font-size: 13px; padding: 9px 14px; }
+.menu-pop.widget-pop a .ext { margin-left: auto; width: 13px; height: 13px; color: var(--faint); }
 .widget.DIREZIONE .counter { color: var(--silk); }
 .section-title { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; }
 .section-title.center { justify-content: center; margin: 10px 0 18px; }

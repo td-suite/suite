@@ -48,6 +48,8 @@ export default function Circolare() {
   };
   const revisione = async () => { setBusy(true); try { const r = await api.post(`/circolari/${id}/revisione`); toast(`Revisione ${r.revisione} in bozza`); nav(`${base}/${r.id}`); } catch (e) { toast(e, 'err'); } setBusy(false); };
   const elimina = async () => { try { await api.del(`/circolari/${id}`); toast('Bozza eliminata'); nav(`${base}/bozze`); } catch (e) { toast(e, 'err'); } };
+  // Presa visione dell'utente (circolari pubblicate del suo perimetro): la conta "Il mio spazio" del Portale Service
+  const presaVisione = async () => { setBusy(true); try { await api.post(`/circolari/${id}/presa-visione`); toast('Presa visione registrata'); await reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
   const annulla = async (motivo) => { try { await api.post(`/circolari/${id}/annulla`, { motivo }); toast('Circolare annullata'); setModal(null); reload(); } catch (e) { toast(e, 'err'); } };
 
   if (error) return <div className="page"><Empty icon="alert" title="Circolare non trovata">{error.message}</Empty></div>;
@@ -64,6 +66,9 @@ export default function Circolare() {
           {edit && <button className="btn ghost" disabled={busy || !dirty} onClick={() => salva()}><Icon name="check" />Salva</button>}
           {edit && <button className="btn ghost" disabled={busy} onClick={anteprima}><Icon name="eye" />Anteprima impaginata</button>}
           {bozza && canPublish(user) && <button className="btn" disabled={busy} onClick={() => setModal('pubblica')}><Icon name="send" />Pubblica</button>}
+          {c.stato === 'PUBBLICATA' && !canEdit(user) && (c.presa_visione_at
+            ? <Badge tone="green">Presa visione il {itDateTime(c.presa_visione_at)}</Badge>
+            : <button className="btn" disabled={busy} onClick={presaVisione}><Icon name="check" />Confermo la presa visione</button>)}
           {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn" disabled={busy} onClick={() => setModal('invia')}><Icon name="mail" />Invia</button>}
           {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn ghost" disabled={busy} onClick={() => setModal('revisione')}><Icon name="refresh" />Nuova revisione</button>}
           {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn danger" disabled={busy} onClick={() => setModal('annulla')}><Icon name="x" />Annulla</button>}

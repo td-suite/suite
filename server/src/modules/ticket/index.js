@@ -18,11 +18,13 @@ import adminRoutes from './routes/admin.js';
 import reportRoutes from './routes/reports.js';
 
 const KEY = 'ticket';
+// Opzioni dell'utente del modulo (moduleUser): usate anche dal Portale Service per "Il mio spazio"
+export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', openToAll: true, defaultRole: 'UTENTE' } };
 
 export default function mount(app) {
   const r = Router();
   // openToAll: nessun 403 senza grant, ruolo implicito UTENTE; Owner e Admin della Suite sono ADMIN del modulo
-  r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', openToAll: true, defaultRole: 'UTENTE' } }));
+  r.use(requireAuth, requireModuleReady(KEY, OPZIONI_UTENTE));
   r.get('/state', ah(async (req, res) => {
     const st = await getModuleState(KEY);
     const ctx = await userContext(req);

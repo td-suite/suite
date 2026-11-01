@@ -22,6 +22,8 @@ import statsRoutes from './routes/stats.js';
 import adminRoutes from './routes/admin.js';
 
 const KEY = 'nc';
+// Opzioni dell'utente del modulo (moduleUser): usate anche dal Portale Service per "Il mio spazio" (stesso ruolo, stesso perimetro)
+export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', insert: { status: 'ACTIVE', auth_provider: 'ENTRA' } } };
 
 // Stessa forma dell'utente che il front-end dell'app si aspetta da /auth/me
 export const publicUser = (u) => ({
@@ -39,7 +41,7 @@ export default function mount(app) {
 
   const r = Router();
   // Gli utenti Suite che entrano per la prima volta nascono ACTIVE nella tabella users del modulo (l'app li filtra così per le notifiche)
-  r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', insert: { status: 'ACTIVE', auth_provider: 'ENTRA' } } }));
+  r.use(requireAuth, requireModuleReady(KEY, OPZIONI_UTENTE));
   // L'app ragiona con il suo utente: la riga users dello schema nc, con il ruolo = profilo del grant Suite e sedi = scope del grant (public.sites)
   r.use(ah(async (req, _res, next) => {
     req.suiteUser = req.user;

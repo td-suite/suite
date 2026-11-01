@@ -54,6 +54,38 @@ export function resolveExternalScopes(module, { orgId, hostedSiteIds = [], orgSi
   return { scopes: ids.map((id) => ({ type: 'SITE', id })), warning: null };
 }
 
+/**
+ * Cliente service riconosciuto con certezza (richiesta del CEO, 01/11/2026: "Il mio spazio" solo ai clienti SERVICE, non ad altri).
+ * Funzione pura sui dati già letti; servono tutte e quattro le condizioni:
+ * - accesso esterno (isExternal: non Owner/Admin, non Legal entity del gruppo, non dominio aziendale);
+ * - Legal entity di tipo CLIENTE (un PARTNER non lo è mai, anche se ospita punti prelievo);
+ * - almeno un grant confermato nato dal profilo di sistema CLIENTE_SERVICE (l'accesso è stato creato come Cliente service);
+ * - contratto service: la Legal entity ha almeno una sede SERVICE attiva nell'anagrafica (un CLIENTE senza punti SERVICE no,
+ *   anche se qualcuno gli ha applicato il profilo Cliente service a mano).
+ * profiliSistema: chiavi dei profili di sistema da cui nascono i grant dell'utente (es. ['CLIENTE_SERVICE'], ['PARTNER_OSPITANTE']).
+ */
+export function riconosciClienteService({ esterno, orgKind, profiliSistema = [], sediService = 0 }) {
+  return Boolean(esterno) && orgKind === 'CLIENTE' && (profiliSistema || []).includes(PROFILO_CLIENTE) && Number(sediService) > 0;
+}
+
+/**
+ * Lettura per il riconoscimento del Cliente service: Legal entity dell'utente (della persona, altrimenti dell'utente), sedi SERVICE
+ * attive e profili di sistema dei grant confermati. Ritorna { org: {id, name, code, kind}, sedi_service: [...] } oppure null.
+ * u: utente idratato (hydrateUser), serve per isExternal.
+ */
+export async function clienteService(u) {
+  if (!u?.id || !isExternal(u)) return null;
+  const x = await one(`SELECT o.id, o.name, o.code, o.kind,
+      coalesce((SELECT array_agg(DISTINCT ap.system_key) FROM grants g JOIN access_profiles ap ON ap.id = g.profile_id
+         WHERE g.user_id = u.id AND NOT g.proposed AND ap.system AND ap.system_key IS NOT NULL), '{}') AS profili
+    FROM users u LEFT JOIN people p ON p.id = u.person_id JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
+    WHERE u.id = $1`, [u.id]);
+  if (!x || x.kind !== 'CLIENTE') return null;
+  const sedi = await many(`SELECT id, code, name, city, studiolab_code FROM sites WHERE organization_id = $1 AND kind = 'SERVICE' AND active ORDER BY name`, [x.id]);
+  if (!riconosciClienteService({ esterno: true, orgKind: x.kind, profiliSistema: x.profili, sediService: sedi.length })) return null;
+  return { org: { id: x.id, name: x.name, code: x.code, kind: x.kind }, sedi_service: sedi };
+}
+
 /** Campi della scheda persona visibili a un esterno in Rubrica: nome, ruolo, email e telefono ufficio. Niente altro. */
 export const RUBRICA_EXTERNAL_FIELDS = ['id', 'last_name', 'first_name', 'title', 'job_title', 'unit_name', 'email', 'phone_office', 'phone_ext', 'avatar_file_id', 'photo_file_id'];
 export function filterRubricaRow(row) {

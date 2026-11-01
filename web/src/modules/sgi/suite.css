@@ -1,0 +1,56 @@
+/* Portale SGI · adattamenti alla cornice della Suite (dopo sito.css, isolati anch'essi sotto .mod-sgi).
+   1) radice del modulo: colori del sito anche con la Suite in tema scuro;
+   2) proprietà degli stili globali della Suite (styles.css) che il sito non imposta e che altrimenti "passerebbero" nelle pagine;
+   3) regole del tema scuro della Suite più specifiche di quelle del sito: si ripristinano i valori del sito;
+   4) pezzi che esistono solo nella Suite (visore dei PDF, Scrivi alla Qualità, Impostazioni). */
+
+/* 1) Radice: il contenuto del portale resta chiaro come il sito, anche con la Suite in tema scuro */
+:root {
+  color-scheme: light;
+  min-height: calc(100vh - var(--topbar-h));
+  /* variabili della Suite usate dai suoi componenti (caricamento, avvisi): valori del tema chiaro */
+  --teal-100: #d5e4e8; --blue-200: #bfdde3; --silk-700: #6a5510; --mauve-700: #6d3f8a;
+  --faint: #8a9ca1; --line-soft: #edf2f3; --card-2: #fafcfc; --hover: #f4f8f9; --input: #ffffff; --input-line: #c9d7da;
+  --amber: #9a5b00; --amber-100: #fdf1d3; --shadow-lg: 0 10px 30px rgba(1, 33, 44, .14); --ico-bg: #ffffff;
+}
+
+/* 2) Stili globali della Suite che il sito non ha */
+p { margin: 1em 0; }
+button { font: revert; }
+input::placeholder { color: revert; }
+.kpi { display: block; }
+.kpi .val { letter-spacing: normal; }
+.t th { white-space: normal; }
+.table-wrap table { min-width: 0; }
+.badge { line-height: inherit; }
+.btn { transition: none; }
+.btn:active { transform: none; }
+.btn.sm { border-radius: 9px; }
+.iconbtn { display: revert; place-items: normal; }
+.filters label.f { flex: 0 1 auto; max-width: none; }
+.tile.area { grid-column: auto; margin: 0; }   /* .area della home della Suite (riquadri delle aree) */
+.empty { display: revert; flex-direction: initial; align-items: initial; gap: normal; }
+.card > .hd h2 { display: block; }
+.page-head h1 { display: block; }
+
+/* 3) Tema scuro della Suite: le sue regole su a, .b-blue, .chip, .btn.ghost, .alert.info sono più specifiche di quelle del sito.
+   Le stesse regole del sito con un prefisso più forte (.mod-sgi.mod), valide anche in tema chiaro. */
+.mod-sgi.mod a { color: var(--teal); }
+.mod-sgi.mod a.btn { color: #fff; }
+.mod-sgi.mod .btn.ghost { color: var(--teal); }
+.mod-sgi.mod a.tile { color: inherit; }
+.mod-sgi.mod a.iconbtn { color: var(--muted); }
+.mod-sgi.mod a.iconbtn:hover { color: var(--teal); }
+.mod-sgi.mod .b-blue { color: #1f6573; }
+.mod-sgi.mod .chip { color: var(--teal); }
+.mod-sgi.mod .alert.info { color: #174f5a; }
+
+/* 4) Solo nella Suite */
+/* Visore dei PDF (Indice REG006, Mappa concettuale, Politica integrata): sul sito sono scorciatoie che aprono il PDF */
+.viewer { background: #525659; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); }
+.viewer iframe { display: block; width: 100%; height: calc(100vh - var(--topbar-h) - 260px); min-height: 560px; border: 0; background: #fff; }
+/* Impostazioni */
+.kv { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid #edf2f3; font-size: 13px; }
+.kv:last-of-type { border-bottom: 0; }
+.cred { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .kv, .cred { grid-template-columns: 1fr; } }

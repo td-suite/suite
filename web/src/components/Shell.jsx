@@ -5,14 +5,13 @@ import { api } from '../api.js';
 import { Icon } from './Icons.jsx';
 import { Avatar, Popover, useTheme, useToast, Empty } from './ui.jsx';
 import { timeAgo, AREA_COLORS } from '../format.js';
-import { moduleFor } from '../modules/registry.js';
+import { moduleFor, vociModulo } from '../modules/registry.js';
 
 // Sezioni con sidebar: la chiave è il prefisso del percorso
 function sectionFor(pathname, user) {
   const mod = moduleFor(pathname);
   if (mod) {
-    const profile = user?.grants?.[mod.key]?.profile;
-    const raw = (mod.nav || []).filter((i) => !i.profiles || (isAdmin(user) && !i.onlyProfiles) || i.profiles.includes(profile))
+    const raw = vociModulo(mod, user)
       .map((i) => (i.group ? i : { ...i, to: `/${mod.key}${i.to ? `/${i.to}` : ''}` }));
     // niente intestazioni di gruppo senza voci sotto
     const items = raw.filter((i, idx) => !i.group || raw.slice(idx + 1).some((n, j) => !n.group && !raw.slice(idx + 1, idx + 1 + j).some((x) => x.group)));
@@ -183,7 +182,7 @@ export default function Shell() {
             <div className="sect"><div className="k">{section.kicker}</div><div className="t"><i style={{ background: section.color }} />{section.title}</div></div>
             <nav>
               {section.items.filter((it) => !it.flag || badges[it.flag] > 0).map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
-                : it.href ? <a key={it.href} href={it.href} target={it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener"><Icon name={it.icon} />{it.label}</a>
+                : it.href ? <a key={it.href} href={it.href} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link></div>

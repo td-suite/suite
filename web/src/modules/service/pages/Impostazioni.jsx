@@ -8,7 +8,7 @@ import { api } from '../../../api.js';
 import { fmtBytes, fmtDateTime } from '../../../format.js';
 import { svuotaDati, svuotaStato } from '../dati.js';
 
-function Riga({ k, children }) { return <div className="sv-kv"><span className="muted">{k}</span><span>{children ?? '–'}</span></div>; }
+function Riga({ k, children }) { return <div className="kv"><span className="muted">{k}</span><span>{children ?? '–'}</span></div>; }
 
 export default function Impostazioni() {
   const imp = useApi('/service/impostazioni');
@@ -25,7 +25,7 @@ export default function Impostazioni() {
     try { const r = await fn(); setEsito({ titolo, ...r }); } catch (e) { setEsito({ titolo, ok: false, message: e.message }); }
     setBusy(false); dopo();
   };
-  if (!d) return <div className="page">{imp.error ? <div className="sv-alert warn"><Icon name="alert" className="ico" /><div>{imp.error.message}</div></div> : <Loading />}</div>;
+  if (!d) return <div className="page">{imp.error ? <div className="alert warn"><Icon name="alert" /><div>{imp.error.message}</div></div> : <Loading />}</div>;
   const s = d.specchio; const n = d.conteggi; const m = n.meta || {};
   const uguale = (a, b) => a != null && b != null && Number(a) === Number(b);
   const caricaZip = (files) => {
@@ -36,15 +36,15 @@ export default function Impostazioni() {
     run(`ZIP ${f.name}`, async () => { const r = await api.upload('/service/zip', fd); return { ok: true, message: `Specchio sostituito dallo ZIP: pubblicazione del ${r.build}; ${r.file} file in cache (${fmtBytes(r.bytes)})${r.vademecum_pdf ? `; Vademecum: ${r.vademecum_pdf}` : ''}.` }; });
   };
   return (
-    <div className="page sv-page">
+    <div className="page">
       <PageHead title="Impostazioni" icon="gear" sub="Il Portale Service della Suite è la copia conforme del sito pubblico: i contenuti si aggiornano sul sito (routine RSGI, build\aggiorna_service.bat) e la Suite li specchia. Qui si gestiscono solo origine, aggiornamento e cache." />
-      {esito && <div className={`sv-alert ${esito.ok ? 'ok' : 'warn'}`}><Icon name={esito.ok ? 'check' : 'alert'} className="ico" /><div><div className="strong">{esito.titolo}</div><div className="small">{esito.message}</div></div></div>}
-      <div className="grid g2 sv-top">
+      {esito && <div className={`alert ${esito.ok ? 'ok' : 'warn'}`}><Icon name={esito.ok ? 'check' : 'alert'} /><div><div className="strong">{esito.titolo}</div><div className="small">{esito.message}</div></div></div>}
+      <div className="grid g2" style={{ alignItems: 'start' }}>
         <Card title="Origine dello specchio" icon="external" actions={<button className="btn sm" disabled={busy || d.origine_fonte === 'env'} onClick={() => run('Origine salvata', async () => { const r = await api.put('/service/impostazioni', { origine: origine.trim() || null }); return { ok: true, message: `Origine in uso: ${r.origine}` }; })}>Salva</button>}>
           <Field label="Indirizzo del sito" help={d.origine_fonte === 'env' ? 'Impostato dalla variabile d\'ambiente SERVICE_PORTAL_URL: si cambia su Render.' : `Vuoto = ${d.origine_predefinita}. Serve un sito con /api/meta e /data/*.json (es. l'indirizzo onrender.com del servizio).`}>
             <input type="url" value={d.origine_fonte === 'env' ? d.origine : origine} disabled={d.origine_fonte === 'env'} placeholder={d.origine_predefinita} onChange={(e) => setOrigine(e.target.value)} />
           </Field>
-          <div className="sv-actions start">
+          <div className="row">
             <button className="btn ghost" disabled={busy} onClick={() => run('Prova l\'origine', () => api.post('/service/impostazioni/prova', d.origine_fonte === 'env' || !origine.trim() ? {} : { origine: origine.trim() }))}><Icon name="search" />Prova l'origine</button>
             <button className="btn" disabled={busy} onClick={() => run('Aggiorna adesso', async () => { const r = await api.post('/service/aggiorna'); return { ok: true, message: r.cambiato ? `Specchio aggiornato (${r.motivi.join(', ')}): pubblicazione del ${r.build}${r.cache_svuotata ? `; cache svuotata (${r.cache_svuotata} file)` : ''}.` : `Nessun cambiamento: la pubblicazione del ${r.build} è già nella Suite.` }; })}><Icon name="refresh" />Aggiorna adesso</button>
           </div>
@@ -58,10 +58,10 @@ export default function Impostazioni() {
           <Riga k="Ultimo cambiamento">{s.ultimo_cambio ? `${fmtDateTime(s.ultimo_cambio)} · ${(s.ultimi_motivi || []).join(', ')}` : null}</Riga>
           <Riga k="Documenti PDF">{n.n_pdf != null ? <>{n.n_pdf} {uguale(n.n_pdf, m.n_pdf) ? <Badge tone="green" dot={false}>= meta.json</Badge> : <Badge tone="amber" dot={false}>meta.json: {m.n_pdf ?? '–'}</Badge>}</> : null}</Riga>
           <Riga k="Prestazioni">{n.n_prestazioni != null ? <>{n.n_prestazioni} {uguale(n.n_prestazioni, m.n_prestazioni) ? <Badge tone="green" dot={false}>= meta.json</Badge> : <Badge tone="amber" dot={false}>meta.json: {m.n_prestazioni ?? '–'}</Badge>}</> : null}</Riga>
-          {s.ultimo_errore && <div className="sv-alert warn" style={{ marginTop: 10 }}><Icon name="alert" className="ico" /><div><div className="strong">Ultimo errore · {fmtDateTime(s.ultimo_errore_at)}</div><div className="small">{s.ultimo_errore}</div></div></div>}
+          {s.ultimo_errore && <div className="alert warn" style={{ marginTop: 10 }}><Icon name="alert" /><div><div className="strong">Ultimo errore · {fmtDateTime(s.ultimo_errore_at)}</div><div className="small">{s.ultimo_errore}</div></div></div>}
         </Card>
       </div>
-      <div className="grid g2 mt sv-top">
+      <div className="grid g2 mt" style={{ alignItems: 'start' }}>
         <Card title="ZIP del repository (ripiego)" icon="zip">
           <p className="small muted" style={{ marginTop: 0 }}>Se il sito non risponde dalla rete della Suite, o per il primo caricamento: su GitHub, repository <span className="mono">td-service-portale</span> → Code → Download ZIP, poi trascinalo qui. La Suite legge i JSON da <span className="mono">data/</span> e i PDF da <span className="mono">docs/</span>, <span className="mono">stampabili/</span>, <span className="mono">certificati/</span>, <span className="mono">vademecum/</span> (stessa pipeline dello specchio) e sostituisce lo specchio. Massimo {d.zip_max_mb} MB.</p>
           <DropZone onFiles={caricaZip} accept=".zip" multiple={false} compact><Icon name="upload" /><div className="small">Trascina qui lo ZIP del repository oppure clicca per sceglierlo</div></DropZone>

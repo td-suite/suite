@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import { ah, bad, audit, parse, HttpError } from '../lib/util.js';
 import { hydrateUser, isAdmin } from '../lib/access.js';
 import { beginLogin, completeLogin } from '../lib/entra.js';
+import { clienteService } from '../lib/esterni.js';
 
 const r = Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 25, standardHeaders: true, legacyHeaders: false, message: { error: 'Troppi tentativi. Riprova tra qualche minuto.' } });
@@ -46,7 +47,8 @@ r.get('/me', ah(async (req, res) => {
   if (req.session?.totpPending && req.session.userId) {
     return res.json({ user: null, totpRequired: true, authMethod: 'LOCAL' });
   }
-  if (req.user) return res.json({ user: publicUser(req.user), authMethod: req.session.authMethod, pending: false });
+  // cliente_service: accesso esterno riconosciuto come Cliente service (lib/esterni.js): il front-end mostra "Il mio spazio" nel Portale Service
+  if (req.user) return res.json({ user: { ...publicUser(req.user), cliente_service: Boolean(await clienteService(req.user).catch(() => null)) }, authMethod: req.session.authMethod, pending: false });
   if (req.pendingUser) return res.json({ user: publicUser(req.pendingUser), authMethod: req.session.authMethod, pending: true });
   res.status(401).json({ error: 'Non autenticato' });
 }));

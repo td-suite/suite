@@ -16,6 +16,8 @@ import { perimetro } from './lib/visibilita.js';
 import { aiEnabled } from '../../lib/claude.js';
 
 const KEY = 'circolari';
+// Opzioni dell'utente del modulo (moduleUser): usate anche dal Portale Service per "Il mio spazio"
+export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', openToAll: true, defaultRole: 'VIEWER' } };
 
 export const publicUser = (u) => ({ id: u.id, email: u.email, full_name: u.full_name, first_name: u.first_name || null, last_name: u.last_name || null, role: u.role, suite_user_id: u.suite_user_id, suite_level: u.suite_level });
 
@@ -25,7 +27,7 @@ export function mountPublic(app) { app.use(`/api/${KEY}/pub`, publicRoutes); }
 export default function mount(app) {
   const r = Router();
   // openToAll: chiunque sia autenticato entra come VIEWER; il perimetro di lettura lo calcola lib/visibilita.js dall'anagrafica unica
-  r.use(requireAuth, requireModuleReady(KEY, { roleColumn: 'role', extraColumns: { defaultAdminRole: 'ADMIN', openToAll: true, defaultRole: 'VIEWER' } }));
+  r.use(requireAuth, requireModuleReady(KEY, OPZIONI_UTENTE));
   r.use((req, _res, next) => { req.suiteUser = req.user; req.user = req.moduleUser; next(); });
   r.get('/state', ah(async (req, res) => {
     const st = await getModuleState(KEY);

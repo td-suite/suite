@@ -56,3 +56,11 @@ chiusura, interventi con SLA e segnalazione guasti del site manager, KPI, job `f
 Collaudo locale su db proprio (116 controlli API), test `facility.test.mjs`, schermate `docs/screens/facility-*.png`. Da confermare i
 benchmark e da provare l'analisi con la chiave Anthropic reale. Dettagli in docs/FACILITY.md.
 
+## 01/11/2026 · SGI Management nativo (copia conforme di sgi.toscanadiagnostica.it)
+Richiesta del CEO: "Vorrei fare poi la stessa cosa con SGI! Perfettamente!". Modulo `sgi` (widget HQS SGI Management, `/sgi`, aperto a
+tutti, EDITOR per le Impostazioni) sul modello del Portale Service: specchio di sola lettura del sito (job `sgi:specchio` ogni 6 ore,
+Aggiorna adesso, ZIP del repo, PDF in cache, link stabili `/sgi/doc|m|p`), credenziali HTTP Basic cifrate per l'origine protetta,
+cruscotto con ricerca full-text, riquadri, famiglie e aree, Ultime emissioni, Documenti cardine, Versioni stampabili, Indice REG006,
+Mappa concettuale e Politica nel visualizzatore, Preparazioni, Scrivi alla Qualità. Meccanica dello specchio estratta in
+`lib/specchioPortale.js` e `lib/specchioRegole.js`, usata anche dal Portale Service (test invariati). Migrazione core 038. Collaudo locale
+su db proprio con origini finte (anche protetta), test `sgi-*.test.mjs`, schermate `docs/screens/sgi-*.png`. Dettagli in docs/SGI_PORTALE.md.
