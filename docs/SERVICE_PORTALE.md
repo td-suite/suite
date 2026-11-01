@@ -164,6 +164,52 @@ nella stessa scheda; B solo Centro Beta; Partner e interno senza voce e `/servic
 Portale Service e SGI in scheda nuova, menu pagine, Certificazioni in scheda nuova, Impostazioni solo per il titolare. Schermate
 `docs/screens/service-mio-spazio.png`, `docs/screens/home-card-portale.png`.
 
+## Vista come Legal entity (personale TD, 01/11/2026)
+Richiesta del CEO: "la versione deve essere sempre quella nuova; se ci clicca un utente di TD, fai scegliere con quale legal entity
+visualizzare, altrimenti versione standard come Toscana Diagnostica S.r.l.; se clicca un cliente service, ha il suo portale."
+
+**Selettore.** Per gli utenti non esterni il portale ha in alto una barra sottile (`pages/VistaCome.jsx`, classi del sito più `.vista-bar`
+in `suite.css`): "Visualizza come: Toscana Diagnostica S.r.l. (standard) | <Legal entity…>" con ricerca per nome, codice e città.
+L'elenco (`GET /api/service/clienti`, solo non esterni: id, nome, sedi SERVICE, accessi esterni; `elencoClientiService` in
+`lib/esterni.js`) sono le Legal entity CLIENTE attive con almeno una sede SERVICE attiva, le stesse che il server riconosce come clienti
+service (`legalEntityClienteService`). La scelta sta nel query string `?org=<id>` (link condivisibile tra colleghi) e in sessionStorage
+(`vista.js`: resta mentre si naviga nel portale, solo in quella scheda); `?scegli=1` apre il selettore.
+- **Con una Legal entity scelta**: "Il mio spazio" di quella Legal entity in cima al menu e come atterraggio su `/service` (Preparazioni e
+  documenti passa a `/service/preparazioni`, come per il cliente), intestato con il nome della Legal entity e la dicitura "Vista del
+  personale TD: come la vede il cliente"; la barra diventa color seta con "Torna alla versione standard". Il resto del portale è identico.
+- **Senza scelta**: versione standard di oggi (Toscana Diagnostica S.r.l.), senza Il mio spazio.
+- **Cliente service**: nessuna barra; ha il suo portale. Partner e altri esterni: nessuna barra, versione standard.
+
+**Server.** `GET /api/service/mio-spazio?org_id=<id>`: il parametro vale solo per gli utenti non esterni (`orgRichiesta`); per gli esterni è
+ignorato e vale la loro Legal entity (il cliente service vede solo la sua, il partner riceve 404). La Legal entity deve essere un cliente
+service valido (`organizzazioneClienteService`), altrimenti 404 senza dati. `mioSpazioVista` (lib/mioSpazio.js) usa le stesse letture del
+cliente parametrizzate sull'organizzazione: il cliente è "visto" dal modulo come un ambito ORG sulla Legal entity (`perimetroSedi`,
+`strutturaDiUtente`), e ogni sezione rispetta i grant dell'utente TD (`sezioneVistaNegata`): senza il grant del widget la sezione è
+`{ disponibile: false, motivo: 'widget non assegnato' }` (Ticket e Circolari, aperti a tutti, contano solo con un grant esplicito); Owner e
+Admin vedono tutto. In più vale il perimetro dell'utente nel widget: profilo NC Sede → solo le sue sedi; profili Ordini di struttura → solo
+la propria struttura; Ticket → `visibleSql` dell'utente (un responsabile vede solo i ticket delle sue caselle).
+- NC e Ordini: gli stessi del cliente. Circolari: Clienti service pubblicate; la presa visione è il **conteggio dei lettori** tra gli accessi
+  esterni della Legal entity ("1 su 2 accessi"), mai quella dell'utente TD; "da leggere" = circolari senza alcun lettore della Legal
+  entity. Ticket: aperti (non chiusi né annullati) dagli accessi esterni della Legal entity, con il richiedente.
+- Cache 60 s per utente e Legal entity. Audit leggero: ogni vista è registrata nel `read_log` (utente, modulo `service`, entity
+  `mio_spazio_vista`, id della Legal entity), senza dati.
+
+**Home.** La card Portale Service del personale TD apre la versione standard in scheda nuova; il menu "Apri pagina…" ha in cima
+"Visualizza come Legal entity…" (`paginaHomeExtra` in `meta.js`) che apre `/service?scegli=1` in scheda nuova con il selettore aperto. La
+card SGI Management non cambia.
+
+**Collaudo (01/11/2026, db `suite_spazio2_t`, porta 3138, specchio su 7050).** Stessi dati del collaudo di Il mio spazio più un utente TD con
+il solo grant Circolari. API (29 verifiche, più le 42 del collaudo precedente ripetute): elenco clienti service = Alfa e Beta (non Partner, non
+il CLIENTE senza sedi SERVICE); il titolare senza `org_id` 404, come Alfa vede NC 0001-0003, ordini 0001-0004, circolari con "1 su 1" lettori
+su 001 e 2 senza lettori, ticket di Anna con il richiedente, niente di Beta; come Beta solo i dati di Beta (la presa visione di Anna non conta);
+`org_id` di Partner, CLIENTE senza service, inesistente → 404; `read_log` con le viste di Alfa e Beta e nessuna per le rifiutate; utente con
+solo Circolari: Circolari leggibile, NC/Ordini/Ticket "widget non assegnato", KPI –/–/2/–; utente Ticket RESPONSABILE senza caselle: 0
+ticket; Anna con `?org_id=Beta` vede Alfa, Bruno con `?org_id=Alfa` vede Beta, `/service/clienti` 404 per gli esterni, il partner 404.
+Playwright (23 verifiche): barra standard, ricerca e scelta di Alfa (`?org=1`), intestazione, voce in cima, KPI, lettori; la vista resta
+navigando; cambio su Beta; ritorno allo standard; link `?org=1` aperto da un collega; utente con solo Circolari; cliente senza barra e
+`?org` ignorato; Home: clic sulla card → standard in scheda nuova, prima voce del menu "Visualizza come Legal entity…" → selettore aperto in
+scheda nuova. Schermata `docs/screens/service-vista-come.png`.
+
 ## Accesso e profili
 Modulo nativo (`kind NATIVE`, route `/service`, `open_to_all TRUE`): la migrazione core 037 aggiorna la riga di produzione (prima PUBLIC con
 `legacy_url`), senza toccare profili e grant. Tutti gli autenticati entrano come **LETTORE** (implicito); **EDITOR** (profilo già seminato,
@@ -205,6 +251,6 @@ Server: `server/src/modules/service/` (`index.js` mount, link stabili, job, afte
 `web/src/modules/service/` (meta.js, index.jsx, dati.js, pages/, styles.css). Il mio spazio: `server/src/modules/service/lib/{mioSpazio,mioSpazioRegole}.js`, `lib/esterni.js`
 (`clienteService`), `routes/auth.js` (`cliente_service`), `modules/{nc,orders,circolari,ticket}/index.js` (`OPZIONI_UTENTE`), `nc/lib/access.js`
 (`perimetroSedeSql`), `orders/lib/access.js` (`strutturaDiUtente`), `circolari/migrations/002_presa_visione.sql`, `circolari/routes/circolari.js`;
-web `modules/service/pages/MioSpazio.jsx`, `modules/registry.js` (`vociModulo`), `components/{Widget,Shell}.jsx`, `styles.css` (`.widget-pages`),
+web `modules/service/pages/{MioSpazio,VistaCome}.jsx`, `modules/service/vista.js`, `modules/registry.js` (`vociModulo`), `components/{Widget,Shell}.jsx`, `styles.css` (`.widget-pages`),
 `modules/circolari/pages/Circolare.jsx`, `modules/sgi/meta.js`. Test: `server/test/service-link.test.mjs`,
-`server/test/service-frame-menu.test.mjs`, `server/test/service-mio-spazio.test.mjs`. Schermate: `docs/screens/service-{home,vademecum,servizi,impostazioni,mio-spazio}.png`, `docs/screens/home-card-portale.png`.
+`server/test/service-frame-menu.test.mjs`, `server/test/service-mio-spazio.test.mjs`. Schermate: `docs/screens/service-{home,vademecum,servizi,impostazioni,mio-spazio,vista-come}.png`, `docs/screens/home-card-portale.png`.

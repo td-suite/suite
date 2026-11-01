@@ -69,21 +69,51 @@ export function riconosciClienteService({ esterno, orgKind, profiliSistema = [],
 }
 
 /**
+ * Legal entity cliente service valida (funzione pura): tipo CLIENTE, attiva, almeno una sede SERVICE attiva (il contratto service).
+ * È la condizione sull'organizzazione di riconosciClienteService e vale anche per la "Vista come Legal entity" del personale TD.
+ */
+export function legalEntityClienteService({ kind, active = true, sediService = 0 } = {}) {
+  return kind === 'CLIENTE' && active !== false && Number(sediService) > 0;
+}
+
+/** Legal entity cliente service per id: { org: {id, name, code, kind}, sedi_service: [...] } oppure null se non è un cliente service valido. */
+export async function organizzazioneClienteService(orgId) {
+  const id = Number(orgId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const o = await one('SELECT id, name, code, kind, active FROM organizations WHERE id = $1', [id]);
+  if (!o) return null;
+  const sedi = await many(`SELECT id, code, name, city, studiolab_code FROM sites WHERE organization_id = $1 AND kind = 'SERVICE' AND active ORDER BY name`, [id]);
+  if (!legalEntityClienteService({ kind: o.kind, active: o.active, sediService: sedi.length })) return null;
+  return { org: { id: o.id, name: o.name, code: o.code, kind: o.kind }, sedi_service: sedi };
+}
+
+/** Elenco delle Legal entity cliente service (per il selettore "Visualizza come" del personale TD): sedi SERVICE e accessi esterni. */
+export async function elencoClientiService() {
+  return many(`SELECT o.id, o.name, o.code, o.city,
+      (SELECT count(*)::int FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) AS sedi_service,
+      (SELECT count(DISTINCT u.id)::int FROM users u LEFT JOIN people p ON p.id = u.person_id
+        WHERE coalesce(p.organization_id, u.organization_id) = o.id AND u.level = 'USER' AND u.status IN ('ACTIVE','PENDING')) AS accessi_esterni
+    FROM organizations o
+   WHERE o.kind = 'CLIENTE' AND o.active AND EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active)
+   ORDER BY lower(o.name)`);
+}
+
+/**
  * Lettura per il riconoscimento del Cliente service: Legal entity dell'utente (della persona, altrimenti dell'utente), sedi SERVICE
  * attive e profili di sistema dei grant confermati. Ritorna { org: {id, name, code, kind}, sedi_service: [...] } oppure null.
  * u: utente idratato (hydrateUser), serve per isExternal.
  */
 export async function clienteService(u) {
   if (!u?.id || !isExternal(u)) return null;
-  const x = await one(`SELECT o.id, o.name, o.code, o.kind,
+  const x = await one(`SELECT o.id, o.kind,
       coalesce((SELECT array_agg(DISTINCT ap.system_key) FROM grants g JOIN access_profiles ap ON ap.id = g.profile_id
          WHERE g.user_id = u.id AND NOT g.proposed AND ap.system AND ap.system_key IS NOT NULL), '{}') AS profili
     FROM users u LEFT JOIN people p ON p.id = u.person_id JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
     WHERE u.id = $1`, [u.id]);
-  if (!x || x.kind !== 'CLIENTE') return null;
-  const sedi = await many(`SELECT id, code, name, city, studiolab_code FROM sites WHERE organization_id = $1 AND kind = 'SERVICE' AND active ORDER BY name`, [x.id]);
-  if (!riconosciClienteService({ esterno: true, orgKind: x.kind, profiliSistema: x.profili, sediService: sedi.length })) return null;
-  return { org: { id: x.id, name: x.name, code: x.code, kind: x.kind }, sedi_service: sedi };
+  if (!x || x.kind !== 'CLIENTE' || !(x.profili || []).includes(PROFILO_CLIENTE)) return null;
+  const cs = await organizzazioneClienteService(x.id);
+  if (!cs || !riconosciClienteService({ esterno: true, orgKind: cs.org.kind, profiliSistema: x.profili, sediService: cs.sedi_service.length })) return null;
+  return cs;
 }
 
 /** Campi della scheda persona visibili a un esterno in Rubrica: nome, ruolo, email e telefono ufficio. Niente altro. */

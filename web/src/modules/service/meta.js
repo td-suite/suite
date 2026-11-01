@@ -8,7 +8,12 @@
 // server, lib/esterni.js): è in cima al menu ed è la pagina di atterraggio (/service); per lui Preparazioni e documenti è /service/preparazioni.
 // Per tutti gli altri la voce non esiste. homeSchedaNuova: per il personale TD la card in Home apre il portale in una scheda nuova con il
 // menu "Apri pagina…" (voci con `to`, tranne paginaHome: false): il personale controlla i contenuti, non ci lavora dentro.
-const clienteService = (u) => Boolean(u?.cliente_service);
+// Vista come Legal entity (01/11/2026): il personale TD che ha scelto una Legal entity cliente service nel selettore "Visualizza come"
+// vede il portale come quel cliente: "Il mio spazio" in cima e atterraggio su /service (vista.js). paginaHomeExtra: voci in cima al menu
+// "Apri pagina…" della card in Home.
+import { inVistaCome } from './vista.js';
+
+const clienteService = (u) => Boolean(u?.cliente_service) || inVistaCome(u);
 export default {
   key: 'service',
   title: 'Portale Service',
@@ -16,6 +21,7 @@ export default {
   area: 'HQS',
   openToAll: true,
   homeSchedaNuova: true,
+  paginaHomeExtra: [{ label: 'Visualizza come Legal entity…', icon: 'users', href: '/service?scegli=1' }],
   nav: [
     { to: '', icon: 'home', label: 'Il mio spazio', end: true, when: clienteService },
     { to: 'preparazioni', icon: 'heart', label: 'Preparazioni e documenti', when: clienteService, paginaHome: false },

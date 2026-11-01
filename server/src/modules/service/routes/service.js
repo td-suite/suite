@@ -7,16 +7,17 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { many } from '../../../db.js';
-import { ah, audit, bad, parse, forbidden, notFound, HttpError } from '../../../lib/util.js';
+import { ah, audit, bad, parse, forbidden, notFound, HttpError, readLog } from '../../../lib/util.js';
 import { activeModuleKeys, moduleHref, getModuleState } from '../../../lib/modules.js';
 import { isAdmin } from '../../../lib/access.js';
-import { isExternal, clienteService } from '../../../lib/esterni.js';
+import { isExternal, clienteService, organizzazioneClienteService, elencoClientiService } from '../../../lib/esterni.js';
 import { config as suite } from '../../../config.js';
 import { KEY, config, ORIGINE_DEFAULT } from '../config.js';
 import { CHIAVI, mappaVoci, valutaIncorporamento } from '../lib/regole.js';
 import { origine, setImpostazione, statoSpecchio, contenuto, conteggi, statoCache, svuotaCache, specchio, provaOrigine, importaZip, leggiFile, vademecumDisponibile } from '../lib/specchio.js';
 import { inviaFile } from '../lib/invio.js';
-import { mioSpazio } from '../lib/mioSpazio.js';
+import { mioSpazio, mioSpazioVista } from '../lib/mioSpazio.js';
+import { orgRichiesta } from '../lib/mioSpazioRegole.js';
 
 const r = Router();
 export const isEditor = (req) => ['EDITOR', 'ADMIN'].includes(req.moduleUser?.role);
@@ -40,11 +41,28 @@ r.get('/state', ah(async (req, res) => {
 // ---- "Il mio spazio" (richiesta del CEO, 01/11/2026): solo per l'accesso esterno Cliente service (lib/esterni.js, riconoscimento con
 // certezza: esterno, Legal entity CLIENTE con sedi SERVICE, grant dal profilo di sistema Cliente service). A tutti gli altri, interni e
 // Partner ospitanti compresi, 404 "Non disponibile" senza alcun dato. Cache per utente di 60 s (?rinnova=1 per rileggere subito).
+// Vista come Legal entity (01/11/2026): il personale TD (utenti non esterni) passa ?org_id=<Legal entity cliente service> e legge "Il mio
+// spazio" di quel cliente, sezione per sezione nei limiti dei propri grant (lib/mioSpazio.js, mioSpazioVista); Legal entity non cliente
+// service → 404. Per gli esterni org_id è ignorato: vale la loro Legal entity. La vista si registra nel read_log (utente, Legal entity).
 r.get('/mio-spazio', ah(async (req, res) => {
+  const rinnova = req.query.rinnova === '1';
+  res.setHeader('Cache-Control', 'private, no-store');
+  const orgId = orgRichiesta({ esterno: isExternal(req.user), orgId: req.query.org_id });
+  if (orgId != null) {
+    const org = await organizzazioneClienteService(orgId);
+    if (!org) throw notFound('Non disponibile');
+    await readLog(req, { module: KEY, entity: 'mio_spazio_vista', entityId: orgId });
+    return res.json(await mioSpazioVista(req.user, org, { rinnova }));
+  }
   const cs = await clienteService(req.user);
   if (!cs) throw notFound('Non disponibile');
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.json(await mioSpazio(req.user, cs, { rinnova: req.query.rinnova === '1' }));
+  res.json(await mioSpazio(req.user, cs, { rinnova }));
+}));
+
+// Legal entity cliente service per il selettore "Visualizza come" (solo personale TD): id, nome, sedi SERVICE, accessi esterni
+r.get('/clienti', ah(async (req, res) => {
+  if (isExternal(req.user)) throw notFound('Non disponibile');
+  res.json(await elencoClientiService());
 }));
 
 // JSON dello specchio così come sono sul sito (sola lettura). ETag = sha del contenuto: il browser riusa fulltext.json (1,5 MB)

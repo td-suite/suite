@@ -4,8 +4,8 @@
 // - mapping delle fasi degli ordini a "in corso".
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { riconosciClienteService, isExternal, PROFILO_CLIENTE, PROFILO_PARTNER } from '../src/lib/esterni.js';
-import { faseOrdine, statiOrdiniInCorso, conteggiPer, componiKpi, FASI_ORDINE } from '../src/modules/service/lib/mioSpazioRegole.js';
+import { riconosciClienteService, legalEntityClienteService, isExternal, PROFILO_CLIENTE, PROFILO_PARTNER } from '../src/lib/esterni.js';
+import { faseOrdine, statiOrdiniInCorso, conteggiPer, componiKpi, FASI_ORDINE, orgRichiesta, sezioneVistaNegata } from '../src/modules/service/lib/mioSpazioRegole.js';
 
 const DOM = ['toscanadiagnostica.it'];
 
@@ -65,4 +65,28 @@ test('conteggiPer e componiKpi: conteggi dalle sezioni, null (non 0) per le sezi
   });
   assert.deepEqual(kpi, { nc_aperte: 3, ordini_in_corso: 0, circolari_da_leggere: 4, ticket_aperti: null });
   assert.deepEqual(componiKpi({}), { nc_aperte: null, ordini_in_corso: null, circolari_da_leggere: null, ticket_aperti: null });
+});
+
+// ---- Vista come Legal entity (personale TD)
+test('orgRichiesta: solo un utente non esterno passa org_id; per un esterno è ignorato', () => {
+  assert.equal(orgRichiesta({ esterno: false, orgId: '12' }), 12);
+  assert.equal(orgRichiesta({ esterno: false, orgId: 7 }), 7);
+  assert.equal(orgRichiesta({ esterno: true, orgId: '12' }), null);
+  for (const v of [undefined, null, '', '0', '-3', 'abc', '1.5', 'drop table']) assert.equal(orgRichiesta({ esterno: false, orgId: v }), null, String(v));
+});
+
+test('legalEntityClienteService: CLIENTE attiva con almeno una sede SERVICE; altrimenti no (404)', () => {
+  assert.equal(legalEntityClienteService({ kind: 'CLIENTE', active: true, sediService: 1 }), true);
+  assert.equal(legalEntityClienteService({ kind: 'CLIENTE', sediService: 3 }), true);
+  assert.equal(legalEntityClienteService({ kind: 'CLIENTE', active: true, sediService: 0 }), false);
+  assert.equal(legalEntityClienteService({ kind: 'CLIENTE', active: false, sediService: 2 }), false);
+  for (const k of ['PARTNER', 'GRUPPO', 'SOCIETA', 'FORNITORE', 'ALTRO', null]) assert.equal(legalEntityClienteService({ kind: k, sediService: 2 }), false);
+  assert.equal(legalEntityClienteService(), false);
+});
+
+test('sezioneVistaNegata: senza grant "widget non assegnato"; con grant o Owner/Admin la sezione si legge', () => {
+  assert.deepEqual(sezioneVistaNegata({ admin: false, grant: undefined }), { disponibile: false, motivo: 'widget non assegnato' });
+  assert.equal(sezioneVistaNegata({ admin: false, grant: { profile: 'VIEWER' } }), null);
+  assert.equal(sezioneVistaNegata({ admin: true }), null);
+  assert.deepEqual(componiKpi({ nc: sezioneVistaNegata({}), circolari: { disponibile: true, totale: 3, da_leggere: 1 } }), { nc_aperte: null, ordini_in_corso: null, circolari_da_leggere: 1, ticket_aperti: null });
 });

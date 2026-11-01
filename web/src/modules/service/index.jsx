@@ -1,6 +1,6 @@
 // Modulo Portale Service: route relative a /service dentro la cornice della Suite. Pagine riscritte in React sui JSON del sito
 // (specchio di sola lettura); i PDF arrivano da /api/service/file/... e i link stabili /service/p|m|doc/... li serve il server.
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import './sito.css';
 import './suite.css';
@@ -13,6 +13,8 @@ import Servizi, { Servizio } from './pages/Servizi.jsx';
 import Vademecum from './pages/Vademecum.jsx';
 import Impostazioni from './pages/Impostazioni.jsx';
 import MioSpazio from './pages/MioSpazio.jsx';
+import VistaCome from './pages/VistaCome.jsx';
+import { vistaCorrente, salvaVista } from './vista.js';
 import { base } from './dati.js';
 
 const Ctx = createContext({ user: null });
@@ -25,23 +27,36 @@ function LinkStabile() {
   return null;
 }
 
-// Atterraggio (/service): per il Cliente service "Il mio spazio"; per tutti gli altri Preparazioni e documenti. I link stabili e la
-// ricerca (/service?codice=…, ?nontrovato=…, ?q=…) portano sempre a Preparazioni e documenti.
-function Atterraggio({ clienteService }) {
+// Atterraggio (/service): per il Cliente service, e per il personale TD in vista come Legal entity, "Il mio spazio"; per tutti gli altri
+// Preparazioni e documenti. I link stabili e la ricerca (/service?codice=…, ?nontrovato=…, ?q=…) portano sempre a Preparazioni e documenti.
+function Atterraggio({ conSpazio }) {
   const [params] = useSearchParams();
   const ricerca = ['codice', 'nontrovato', 'q'].some((k) => params.has(k));
-  return clienteService && !ricerca ? <MioSpazio /> : <Home />;
+  return conSpazio && !ricerca ? <MioSpazio /> : <Home />;
 }
 
 export default function Module({ moduleUser }) {
+  const loc = useLocation();
+  // Vista come Legal entity (solo personale TD): dal query string ?org= o da sessionStorage; si riallinea a ogni cambio di indirizzo
+  const td = Boolean(moduleUser) && !moduleUser.esterno;
+  const [vista, setVista] = useState(() => (td ? vistaCorrente() : null));
+  useEffect(() => {
+    if (!td) return;
+    const v = vistaCorrente();
+    if (new URLSearchParams(loc.search).has('org')) salvaVista(v);
+    setVista((x) => (x?.id === v?.id && (x?.name || null) === (v?.name || null) ? x : v));
+  }, [td, loc.search, loc.pathname]);
   if (!moduleUser) return null;
+  // "Il mio spazio": il Cliente service sempre; il personale TD solo con una Legal entity scelta
+  const conSpazio = Boolean(moduleUser.cliente_service) || (td && Boolean(vista));
   return (
-    <Ctx.Provider value={{ user: moduleUser }}>
+    <Ctx.Provider value={{ user: moduleUser, vista: td ? vista : null }}>
+      {td && <VistaCome vista={vista} onScelta={setVista} />}
       <Routes>
-        <Route path="" element={<Atterraggio clienteService={Boolean(moduleUser.cliente_service)} />} />
+        <Route path="" element={<Atterraggio conSpazio={conSpazio} />} />
         <Route path="preparazioni" element={<Home />} />
-        {/* "Il mio spazio" esiste solo per il Cliente service: per gli altri la route porta alla home del portale */}
-        <Route path="mio-spazio" element={moduleUser.cliente_service ? <MioSpazio /> : <Navigate to={base} replace />} />
+        {/* "Il mio spazio" esiste solo per il Cliente service (e per il personale TD in vista come): per gli altri porta alla home del portale */}
+        <Route path="mio-spazio" element={conSpazio ? <MioSpazio /> : <Navigate to={base} replace />} />
         <Route path="certificazioni" element={<Certificazioni />} />
         <Route path="veq" element={<Veq />} />
         <Route path="agora" element={<Agora />} />

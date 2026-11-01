@@ -25,7 +25,8 @@ export default function Widget({ module: m, areaColor, areaKey, counter, counter
   // 01/11/2026: "il personale controlla i contenuti dei portali, non ci lavora dentro"). Per gli esterni la card resta com'è.
   const schedaNuova = !legacy && Boolean(meta?.homeSchedaNuova) && !isExternal(user);
   const href = m.href || m.route || '/';
-  const pagine = schedaNuova ? paginePortale(meta, user) : [];
+  // in cima le voci extra del modulo (Portale Service: "Visualizza come Legal entity…"), poi le pagine del menu
+  const pagine = schedaNuova ? [...(meta.paginaHomeExtra || []), ...paginePortale(meta, user)] : [];
   const open = () => {
     if (legacy) window.open(m.href || `/go/${m.key}`, '_blank', 'noopener');   // le app esterne si aprono in una scheda nuova: la Suite resta
     else if (schedaNuova) window.open(href, '_blank', 'noopener');

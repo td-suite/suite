@@ -41,3 +41,25 @@ export function componiKpi({ nc, ordini, circolari, ticket } = {}) {
   const v = (s, k) => (s?.disponibile ? Number(s[k] || 0) : null);
   return { nc_aperte: v(nc, 'totale'), ordini_in_corso: v(ordini, 'totale'), circolari_da_leggere: v(circolari, 'da_leggere'), ticket_aperti: v(ticket, 'totale') };
 }
+
+// ---- Vista come Legal entity (personale TD, 01/11/2026)
+
+/**
+ * Legal entity richiesta con ?org_id=: solo un utente NON esterno può sceglierla; per un esterno il parametro è ignorato (vale la sua
+ * Legal entity). Ritorna l'id (intero positivo) oppure null.
+ */
+export function orgRichiesta({ esterno, orgId } = {}) {
+  if (esterno) return null;
+  if (orgId == null || orgId === '') return null;
+  const n = Number(orgId);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Nella vista del personale TD ogni sezione rispetta i grant dell'utente sui widget: serve il grant del modulo (Ticket e Circolari, aperti
+ * a tutti, qui contano solo con un grant esplicito); Owner e Admin vedono tutto. Ritorna null se la sezione si può leggere, altrimenti
+ * la sezione non disponibile.
+ */
+export function sezioneVistaNegata({ admin, grant } = {}) {
+  return admin || grant ? null : { disponibile: false, motivo: 'widget non assegnato' };
+}
