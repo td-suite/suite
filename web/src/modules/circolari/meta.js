@@ -7,6 +7,9 @@ export default {
   title: 'Circolari',
   kicker: 'Comunicazione',
   area: 'RETAIL_FLOW',
+  // Aperto a tutti gli account (seme open_to_all, server con openToAll): senza questo flag la cornice dei moduli rifiutava chi non ha il
+  // grant, anche se la card è in home e la voce "Circolari e aggiornamenti" del Portale Service vi porta (01/11/2026)
+  openToAll: true,
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Circolari' },

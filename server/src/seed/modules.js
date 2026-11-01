@@ -29,7 +29,11 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('QUALITA', 'Qualità'), P('LAB', 'Laboratorio'), P('SEDE', 'Sede o cliente', true), P('VIEWER', 'Sola lettura')] },
   { key: 'sgi', area: 'HQS', name: 'SGI Management', tagline: 'Procedure, moduli, informative, preparazioni agli esami', icon: 'sgi', kind: 'PUBLIC', legacy_url: 'https://sgi.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Gestione documenti')] },
-  { key: 'service', area: 'HQS', name: 'Portale Service', tagline: 'Certificazioni, VEQ, documenti per i laboratori clienti', icon: 'service', kind: 'PUBLIC', legacy_url: 'https://service.toscanadiagnostica.it', sort_order: 20,
+  // Portale Service (01/11/2026): da vetrina esterna a modulo nativo, copia conforme del sito pubblico service.toscanadiagnostica.it
+  // (specchio di sola lettura, docs/SERVICE_PORTALE.md). Aperto a tutti gli autenticati, clienti service compresi (sito pubblico per
+  // decisione AD 13/10/2026): LETTORE implicito; EDITOR = origine, aggiornamento, ZIP del repo e cache. La migrazione core 037 porta la
+  // riga di produzione a NATIVE con legacy_url NULL (il seme non azzera legacy_url).
+  { key: 'service', area: 'HQS', name: 'Portale Service', tagline: 'Preparazioni, documenti, certificazioni, VEQ per i laboratori clienti', icon: 'service', kind: 'NATIVE', legacy_url: null, route: '/service', sort_order: 20, open_to_all: true,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Gestione contenuti')] },
 
   // ---- People

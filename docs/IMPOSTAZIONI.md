@@ -144,6 +144,17 @@ Application Access Policy, l'inclusione di people@. Migrazioni: contracts 019_pe
 ## Claude: modello e prova (31/10/2026)
 In Amministrazione > Impostazioni > Claude, oltre alla chiave, si imposta il modello in uso (`anthropic_model` in public.app_settings, prevale su ANTHROPIC_MODEL; predefinito claude-sonnet-4-5) e "Prova la configurazione" elenca i modelli disponibili per la chiave e fa una richiesta minima. Gli errori del servizio arrivano agli utenti in chiaro (422 AI_ERROR: chiave non valida, modello non disponibile, credito esaurito, risposta troncata) invece di "Errore interno del server".
 
+## Portale Service: specchio del sito pubblico (01/11/2026)
+Il modulo `service` è la copia conforme di service.toscanadiagnostica.it (docs/SERVICE_PORTALE.md): nessun contenuto si compila nella
+Suite, i dati arrivano dal sito. Variabili d'ambiente (facoltative): `SERVICE_PORTAL_URL` origine dello specchio (predefinita
+https://service.toscanadiagnostica.it; se impostata prevale sull'origine salvata in Portale Service > Impostazioni, che diventa in sola
+lettura); `SERVICE_VADEMECUM_URL` Vademecum online da incorporare (predefinito https://referti.toscanadiagnostica.it/vademecum; solo da
+variabile perché la sua origine entra nella CSP della Suite all'avvio); `SERVICE_SPECCHIO_MINUTES` intervallo del job `service:specchio`
+(360); `SERVICE_TIMEOUT_MS` (20000) e `SERVICE_FRAME_TIMEOUT_MS` (8000) timeout delle letture e della verifica dell'iframe;
+`SERVICE_ZIP_MAX_MB` (200) limite dello ZIP del repository; `SERVICE_FILE_MAX_MB` (60) limite di un singolo PDF. Impostazioni in app
+(`service.impostazioni`, profilo EDITOR e amministratori): `origine`. Stato interno in `service.stato` (build, REG006, fonte, ultima
+lettura, ultimo cambiamento, ultimo errore). Migrazioni: service 001_init.sql, core 037_service_nativo.sql.
+
 ## Referti esterni: casella template@ (31/10/2026)
 Variabili d'ambiente (facoltative): `REFERTI_MAILBOX` casella letta e mittente dei referti riprodotti (predefinita
 template@toscanadiagnostica.it; se impostata prevale sull'impostazione del modulo, che in Impostazioni diventa in sola lettura);

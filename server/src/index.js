@@ -33,6 +33,7 @@ import assetTypesRoutes from './routes/assetTypes.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
+import { config as serviceConfig } from './modules/service/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,6 +53,11 @@ if (canonicalHost && process.env.CANONICAL_REDIRECT !== 'false') {
   });
 }
 
+// Iframe ammessi oltre alla Suite: il Vademecum online incorporato dal Portale Service (SERVICE_VADEMECUM_URL, predefinito
+// referti.toscanadiagnostica.it), gli altri siti TD e il form della newsletter Brevo della pagina Agorà
+const frameExtra = ['https://*.toscanadiagnostica.it', 'https://*.sibforms.com'];
+try { const o = new URL(serviceConfig.vademecumUrl).origin; if (!frameExtra.includes(o)) frameExtra.push(o); } catch { /* URL non valida: resta il predefinito */ }
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -61,7 +67,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com'],
-      frameSrc: ["'self'", 'blob:'],
+      frameSrc: ["'self'", 'blob:', ...frameExtra],
       objectSrc: ["'self'", 'blob:'],
       formAction: ["'self'", 'https://login.microsoftonline.com', 'https://*.toscanadiagnostica.it'],
       manifestSrc: ["'self'"],

@@ -18,7 +18,7 @@ come `is_external`.
 | Profilo | Chiave | Per chi | Widget → profilo | Ambiti risolti dall'organizzazione |
 | --- | --- | --- | --- | --- |
 | **Partner ospitante** | `PARTNER_OSPITANTE` | PARTNER o CLIENTE che ospita punti prelievo TD | cash PARTNER, circolari VIEWER, rubrica LETTORE (+ Ticket, aperto a tutti) | cash: scope SITE = tutte le sedi con **Legal entity ospitante** = organizzazione (`public.sites.host_organization_id`, Amministrazione > Sedi; `cash.site_ext.host_org_id` resta allineato e fa da riserva) |
-| **Cliente service** | `CLIENTE_SERVICE` | CLIENTE con contratto service (sedi kind SERVICE collegate, o scelto a mano) | service LETTORE, sgi LETTORE, nc SEDE, circolari VIEWER, rubrica LETTORE (+ Ticket) | nc: scope ORG = organizzazione (il perimetro NC, `perimetroSedi`, accetta lo scope ORG: chiave `-org_id`, quindi tutte le NC della Legal entity e dei suoi punti SERVICE) |
+| **Cliente service** | `CLIENTE_SERVICE` | CLIENTE con contratto service (sedi kind SERVICE collegate, o scelto a mano) | service LETTORE, sgi LETTORE, nc SEDE, circolari VIEWER, rubrica LETTORE, orders CLIENTE (dal 01/11/2026, migrazione 037: "Ordine del materiale" del Portale Service apre Ordini) (+ Ticket) | nc: scope ORG = organizzazione (il perimetro NC, `perimetroSedi`, accetta lo scope ORG: chiave `-org_id`, quindi tutte le NC della Legal entity e dei suoi punti SERVICE) |
 
 Il nome dei profili di sistema non si modifica e non si eliminano (`routes/accessProfiles.js`); gli item sì (il titolare può
 aggiungere o togliere widget). Il profilo proposto nella scheda Legal entity (`proposeProfileKey`): sedi ospitate → Partner
@@ -57,8 +57,8 @@ la stessa regola); nella scheda utente "accesso esterno" accanto alla Legal enti
 badge "Di sistema · esterni".
 
 ## Cosa vede un esterno
-- **Home**: solo le card dei widget per cui ha un grant o aperti a tutti (Ticket, Circolari); i portali PUBLIC (SGI, Portale Service)
-  compaiono solo con il grant (`/home/modules`). Bacheca in sola lettura: niente composer (anche il server rifiuta
+- **Home**: solo le card dei widget per cui ha un grant o aperti a tutti (Ticket, Circolari, Portale Service dal 01/11/2026); il portale
+  PUBLIC SGI compare solo con il grant (`/home/modules`). Bacheca in sola lettura: niente composer (anche il server rifiuta
   `POST /community/posts` con 403); i post ALL restano visibili come oggi, i post INTERNAL no (audience). Niente compleanni
   (`/community/home` li omette), niente Cartella personale, niente organigramma.
 - **Rubrica** (profilo LETTORE): solo le persone ATTIVE delle unità con **contatto pubblico** (`org_units.public_contact`, afferenza

@@ -302,7 +302,8 @@ solo per il fondo cassa). Integration: target = Legal entity TARGET (org_ext). B
 su Legal entity e/o sede TD. Room: tutte le persone attive con filtri e flag pianificazione (person_ext.planning_excluded, azione
 "Escludi non sanitari"). Ordini e NC: struttura = sede TD (id > 0) o Legal entity (id < 0) con colonne generate e FK reali, punti SERVICE
 sotto la loro Legal entity. Organigramma: la sezione di Contratti del personale rimanda alla Rubrica, che parte da sede, area o persona
-(catena dal vertice + sottoalbero; esportazioni con ?unit_id). SGI e Portale Service si aprono in una scheda nuova. Le migrazioni dei
+(catena dal vertice + sottoalbero; esportazioni con ?unit_id). SGI si apre in una scheda nuova; il Portale Service dal 01/11/2026 è un
+modulo nativo (`/service`, docs/SERVICE_PORTALE.md). Le migrazioni dei
 moduli si applicano all'avvio del server (applyModuleMigrations), non solo al travaso.
 
 ## Circolari (26/10/2026)
@@ -595,7 +596,8 @@ erano definiti solo per gli otto moduli travasati (NC, Ordini, Cash, Payments, I
 Aggiunti Business (contratti in scadenza entro 60 giorni e fascicoli aperti), Retail (richiami scaduti), Ticket (ticket aperti), Circolari
 (bozze), Cartella (documenti nuovi negli ultimi 7 giorni) e Comunicazione (contenuti in bozza e avvisi attivi, letti nel core). Il
 contatore di Integration ora segue lo schema della Suite (target = Legal entity, data di fine sull'attività) e conserva la query legacy per
-l'app di origine. Cache di 5 minuti, visibilità per grant come prima; SGI e Portale Service sono portali esterni e non hanno contatore.
+l'app di origine. Cache di 5 minuti, visibilità per grant come prima; SGI è un portale esterno e non ha contatore. Il Portale Service
+(nativo dal 01/11/2026) ha il contatore "Documenti PDF pubblicati", visibile a tutti (contenuto pubblico, `OPEN_COUNTERS`).
 
 ## Room Planning: responsabile di sede dall'organigramma (28/10/2026)
 Segnalazione del CEO: la tabella delle sedi e la scheda non riportavano responsabile e email indicati in Amministrazione. Room leggeva
@@ -1008,3 +1010,12 @@ chiusura. Nessun dato chiesto due volte: persone ed email dall'anagrafica unica 
 - Collaudo: `POST /api/contracts/people-inbox/simula` (solo con NODE_ENV diverso da production) simula l'arrivo di un messaggio con
   allegati; `POST /api/contracts/people-inbox/richiami/esegui` con `{ "oggi": "AAAA-MM-GG" }` forza la data (solo fuori produzione).
   Test: `server/test/contracts-people.test.mjs`. Schermate: docs/screens/contracts-people-{impostazioni,casella,approva}.png.
+
+## Portale Service: copia conforme del sito pubblico (01/11/2026)
+Richiesta del CEO: inglobare il Portale Service nella Suite continuando ad aggiornare il sito separato. Modulo nativo `service` (area HQS,
+route `/service`, aperto a tutti gli autenticati, clienti service esterni compresi; EDITOR per le Impostazioni) senza anagrafiche proprie
+e senza travaso: è lo **specchio di sola lettura** di service.toscanadiagnostica.it (job `service:specchio` ogni 6 ore, "Aggiorna adesso",
+ZIP del repository come ripiego), con i PDF in cache a richiesta. Si attiva da solo all'avvio (FRESH_MODULES) ed esegue il primo specchio.
+Le voci Servizi Circolari, Ordine del materiale e Portale NC aprono i widget della Suite; il Vademecum incorpora il Vademecum online o,
+se vietato, mostra il PDF dello specchio con il pulsante in nuova scheda. Il profilo di sistema Cliente service riceve Ordini e Magazzino
+(CLIENTE) con la migrazione core 037. Dettagli: docs/SERVICE_PORTALE.md.

@@ -610,7 +610,11 @@ const COUNTER_QUERIES = {
   facility: { label: 'Scadenze scadute e interventi urgenti', sql: `SELECT (
       (SELECT count(*) FROM maintenance_plans WHERE status IN ('PIANIFICATA','SCADUTA') AND due_date < CURRENT_DATE) +
       (SELECT count(*) FROM work_orders WHERE status <> 'CHIUSO' AND priority IN ('URGENTE','ALTA')))::int AS n` },
+  // Portale Service: documenti PDF pubblicati nello specchio del sito (= meta.n_pdf); nessun numero se lo specchio è vuoto
+  service: { label: 'Documenti PDF pubblicati', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
 };
+// Contatori informativi dei moduli aperti a tutti (contenuti pubblici): visibili a chiunque veda il widget, senza grant
+const OPEN_COUNTERS = ['service'];
 // Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
 const CORE_COUNTERS = {
   comunicazione: { label: 'Contenuti in bozza e avvisi attivi', sql: `SELECT ((SELECT count(*) FROM news WHERE status='DRAFT') + (SELECT count(*) FROM notices WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at >= now())))::int AS n` },
@@ -638,7 +642,7 @@ export async function getCounters(user) {
   const out = {};
   for (const [k, v] of Object.entries(all)) {
     if (k === 'contracts') { if (user?.grants?.contracts) out[k] = v; continue; }
-    if (user?.grants?.[k] || admin) out[k] = v;
+    if (user?.grants?.[k] || admin || OPEN_COUNTERS.includes(k)) out[k] = v;
   }
   return out;
 }
