@@ -146,8 +146,9 @@ una **scheda nuova**; il pulsante in alto a sinistra della card ("Apri pagina…
 Preparazioni e documenti, Certificazioni, VEQ, Agorà, Tutti i servizi, Vademecum, Contatti, Impostazioni (solo EDITOR, Owner e Admin).
 Le pagine vengono dal menu del modulo (`meta.js`, voci con `to`, filtrate come la barra laterale da `vociModulo` in
 `web/src/modules/registry.js`; `paginaHome: false` esclude la voce, es. Check-up e promozioni, segnaposto). Il comportamento si attiva con
-`homeSchedaNuova: true` nel `meta.js` del modulo: **SGI Management** lo ha con lo stesso codice (nessuna duplicazione:
-`components/Widget.jsx`). Per gli esterni la card si comporta come prima (stessa scheda, nessun menu).
+`homeSchedaNuova: true` nel `meta.js` del modulo. **Solo il Portale Service** lo ha: SGI Management resta dentro la Suite (il CEO non lo
+ha mai chiesto per SGI; una prima versione lo aveva esteso per errore, corretto in v0.40.2). Per gli esterni la card si comporta come
+prima (stessa scheda, nessun menu).
 
 **Collaudo (01/11/2026, db dedicato `suite_spazio_t`, porta 3137, specchio da server statico).** Due CLIENTI con sedi SERVICE (Laboratorio
 Alfa con due punti, Centro Beta con uno), un PARTNER con punto prelievi ospitato, un CLIENTE senza sedi SERVICE con profilo Cliente

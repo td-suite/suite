@@ -8,7 +8,6 @@ export default {
   area: 'HQS',
   openToAll: true,
   // per il personale TD la card in Home apre il portale in una scheda nuova con il menu "Apri pagina…" (come il Portale Service)
-  homeSchedaNuova: true,
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto documentale', end: true },
     { to: 'preparazioni', icon: 'heart', label: 'Preparazioni agli esami' },
