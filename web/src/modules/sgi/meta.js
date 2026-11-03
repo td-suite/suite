@@ -11,6 +11,7 @@ export default {
   nav: [
     { to: '', icon: 'home', label: 'Cruscotto documentale', end: true },
     { to: 'preparazioni', icon: 'heart', label: 'Preparazioni agli esami' },
+    { to: 'vademecum', icon: 'doc', label: 'Vademecum degli esami' },   // Vademecum online incorporato, come nel Portale Service (CEO 03/11/2026)
     { group: 'Scorciatoie' },
     { to: 'ultime', icon: 'clock', label: 'Ultime emissioni' },
     { to: 'cardine', icon: 'star', label: 'Documenti cardine' },

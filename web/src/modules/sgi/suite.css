@@ -54,3 +54,8 @@ input::placeholder { color: revert; }
 .kv:last-of-type { border-bottom: 0; }
 .cred { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 760px) { .kv, .cred { grid-template-columns: 1fr; } }
+
+/* Vademecum degli esami (stessa resa del Portale Service) */
+.viewer .nopdf { padding: 40px; text-align: center; color: #fff; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tools .searchbox { flex: 1 1 320px; }

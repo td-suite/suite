@@ -7,6 +7,7 @@ import './suite.css';
 import Cruscotto from './pages/Cruscotto.jsx';
 import Visore from './pages/Visore.jsx';
 import Preparazioni from './pages/Preparazioni.jsx';
+import Vademecum from './pages/Vademecum.jsx';
 import Contatti from './pages/Contatti.jsx';
 import Impostazioni from './pages/Impostazioni.jsx';
 import { base } from './dati.js';
@@ -34,6 +35,7 @@ export default function Module({ moduleUser }) {
         <Route path="mappa" element={<Visore tipo="mappa" />} />
         <Route path="politica" element={<Visore tipo="politica" />} />
         <Route path="preparazioni" element={<Preparazioni />} />
+        <Route path="vademecum" element={<Vademecum />} />
         <Route path="contatti" element={<Contatti />} />
         {moduleUser.editor && <Route path="impostazioni" element={<Impostazioni />} />}
         <Route path="p/:codice" element={<LinkStabile />} />
