@@ -189,3 +189,35 @@ export function daParser(v = {}) {
   blocchi.push(...note, { tipo: 'spacer' });
   return { anagrafica, blocchi, sorgente: SORGENTI_AMMESSE.includes(v.sorgente) ? v.sorgente : 'ALTRO', note_anomalie: [] };
 }
+
+
+// ---------------------------------------------------------------- note sui laboratori esecutori (vietate)
+// Disposizione del CEO (04/11/2026): la normativa della Regione Toscana sulla pubblicità sanitaria vieta di nominare nel referto TD il
+// centro che ha eseguito l'esame. Le note "(1) Esame eseguito Bianalisi Verano Brianza (MB)", "(RDI) Test eseguiti in RDI - ..." e simili
+// vengono tolte, e con loro i rimandi "(1)", "(RDI)" in coda ai nomi degli esami. Vale per qualunque modo di lettura (Claude, riserva,
+// correzione), così anche una trascrizione che le riporta viene ripulita prima dell'anteprima.
+const RE_NOTA_LAB = /^\s*\((?:\d+|[A-Z]{2,5})\)\s*(?:esam[ei]|test|analisi|determinazion[ei])\s+esegui/i;
+const RE_NOTA_LAB_2 = /\besegui[tt]\w*\s+(?:presso|in|da|dal|dalla|c\/o)\s+(?:bianalisi|cerba|rdi\b|rete diagnostica|nuova igea|synlab|lifebrain|laboratorio)/i;
+const RE_RIMANDO = /\s*\((?:\d{1,2}|RDI|BA|CERBA|NI)\)\s*$/i;
+export const isNotaLaboratorio = (t) => RE_NOTA_LAB.test(String(t || '')) || RE_NOTA_LAB_2.test(String(t || ''));
+export const senzaRimando = (t) => String(t || '').replace(RE_RIMANDO, '');
+export function senzaRimandiLaboratorio(dati) {
+  if (!dati || !Array.isArray(dati.blocchi)) return dati;
+  const blocchi = [];
+  for (const b of dati.blocchi) {
+    if (b.tipo === 'paragrafo') {
+      const righe = String(b.testo || '').split('\n').filter((r) => !isNotaLaboratorio(r));
+      if (!righe.length) continue;
+      blocchi.push({ ...b, testo: righe.join('\n') });
+    } else if (b.tipo === 'tabella1') {
+      blocchi.push({ ...b, righe: (b.righe || []).map((r) => ({ ...r, nome: senzaRimando(r.nome) })) });
+    } else if (b.tipo === 'esame2') {
+      blocchi.push({ ...b, nome: senzaRimando(b.nome) });
+    } else if (b.tipo === 'tabella2') {
+      blocchi.push({ ...b, righe: (b.righe || []).map((r) => ({ ...r, etichetta: senzaRimando(r.etichetta) })) });
+    } else if (b.tipo === 'titolo_esame') {
+      blocchi.push({ ...b, testo: senzaRimando(b.testo) });
+    } else blocchi.push(b);
+  }
+  return { ...dati, blocchi };
+}

@@ -15,7 +15,7 @@ import { aiEnabled, askJsonDocument } from '../../../lib/claude.js';
 import { HttpError } from '../../../lib/util.js';
 import { config } from '../config.js';
 import { elabora, analisiSorgente, rilevaSorgente } from './parsers/index.js';
-import { rispostaLetturaSchema, datiSchema, validaDati, anomalieAutomatiche, daParser, colonneAnagrafica, SORGENTI_AMMESSE } from './blocchi.js';
+import { rispostaLetturaSchema, datiSchema, validaDati, anomalieAutomatiche, daParser, colonneAnagrafica, SORGENTI_AMMESSE, senzaRimandiLaboratorio } from './blocchi.js';
 import { compattaSpazi } from './text.js';
 
 export const mockAttivo = () => config.aiMock;
@@ -137,7 +137,8 @@ CORPO 2 (Cerba Nuova Igea): blocchi "esame2" + "tabella2" + "antibiogramma"
 - Sequenza dei blocchi di un referto Nuova Igea: settore, esame2, tabella2, spacer, antibiogramma (#1), [spacer, antibiogramma #2], spacer. Senza antibiogramma: settore, esame2, tabella2, spacer, spacer. Esami aggiuntivi dopo l'antibiogramma: spacer, esame2, tabella2 per ciascuno, poi le note e lo spacer finale.
 
 NOTE E CHIUSURA
-- Note a piè del riquadro dei risultati come "paragrafo" stile small dopo l'ultima tabella: la prima con before 120, le successive con before 40, after 0 ("(1) Esame eseguito Bianalisi Verano Brianza (MB)", "(RDI) Test eseguiti in RDI - ...", "Il presente documento annulla e sostituisce il referto R3YE... del gg/mm/aaaa": quest'ultima va sempre riportata).
+- Note a piè del riquadro dei risultati come "paragrafo" stile small dopo l'ultima tabella: la prima con before 120, le successive con before 40, after 0. Va SEMPRE riportata la frase "Il presente documento annulla e sostituisce il referto R3YE... del gg/mm/aaaa".
+- VIETATO (normativa della Regione Toscana sulla pubblicità sanitaria, disposizione del CEO 04/11/2026): le note che indicano il laboratorio o il centro che ha eseguito l'esame NON si trascrivono MAI: "(1) Esame eseguito Bianalisi Verano Brianza (MB)", "(RDI) Test eseguiti in RDI - RETE DIAGNOSTICA ITALIANA ...", "Esame eseguito presso ...", e simili. Di conseguenza anche i rimandi "(1)", "(2)", "(RDI)" in coda ai nomi degli esami o degli allergeni vanno tolti (es. "S - f3 Merluzzo (Gadus morhua) (1)" → "S - f3 Merluzzo (Gadus morhua)", "COLTURA PER NEISS. GONORRHOEAE (RDI)" → "COLTURA PER NEISS. GONORRHOEAE"). Il referto TD non deve nominare nessun altro laboratorio.
 - Ogni referto termina con un blocco { "tipo": "spacer" }.
 
 PDF UNITI (merge) E PDF CHE NON SONO REFERTI
@@ -233,7 +234,7 @@ function completa(estratto, { pagine, dati }, modo) {
   if (!pg.length) pg = Array.from({ length: n }, (_, i) => i + 1);
   const src = sorgenteScheda(estratto, pg, dati);
   const sorgente = rilevaSorgente(pg.map((x) => estratto.pagine[x - 1] || '').join('\n')) || (SORGENTI_AMMESSE.includes(dati.sorgente) ? dati.sorgente : null) || src.sorgente || 'ALTRO';
-  const d = { ...dati, sorgente, nome_file: nomeFileDi(dati.anagrafica?.cognome_nome), note_anomalie: dati.note_anomalie || [] };
+  const d = senzaRimandiLaboratorio({ ...dati, sorgente, nome_file: nomeFileDi(dati.anagrafica?.cognome_nome), note_anomalie: dati.note_anomalie || [] });
   const anomalie = anomalieAutomatiche(d, { ocr: estratto.ocr, ocrLingua: estratto.ocr_lingua, modo });
   return { pagine: pg, dati: d, anomalie: dedup(anomalie), testo_sorgente: src.testo_sorgente, antibiotici_sorgente: src.antibiotici_sorgente, colonne: colonneAnagrafica(d.anagrafica) };
 }

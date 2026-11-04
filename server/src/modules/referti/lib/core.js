@@ -9,7 +9,7 @@ import { anomalia } from './parsers/common.js';
 import { generaDocx, generaPdf, testoDocx, TEMPLATE_DEFAULT_NOME } from './formatTD.js';
 import { controllaCoerenza } from './coerenza.js';
 import { leggiReferto, correggiScheda } from './lettura.js';
-import { isSchemaBlocchi, colonneAnagrafica, anomalieAutomatiche, primoEsame, testiParagrafi, validaDati } from './blocchi.js';
+import { isSchemaBlocchi, colonneAnagrafica, anomalieAutomatiche, primoEsame, testiParagrafi, validaDati, senzaRimandiLaboratorio } from './blocchi.js';
 import { storeBuffer, readBuffer, dropBlobs } from './storage.js';
 import { nomeFileSicuro, compattaSpazi } from './text.js';
 
@@ -238,7 +238,8 @@ export const daRielaborare = (scheda) => Boolean(scheda.da_rielaborare || !isSch
 export async function generaPer(scheda, imp) {
   if (daRielaborare(scheda)) throw bad('Scheda del motore precedente: usa "Rielabora dal PDF" per rileggerla con il nuovo motore');
   const tpl = await templateAttivo();
-  const docx = await generaDocx(scheda.dati, { template: tpl ? Buffer.from(tpl.data) : null });
+  // le note sui laboratori esecutori e i rimandi "(1)"/"(RDI)" non entrano mai nel referto TD (anche dopo modifiche manuali)
+  const docx = await generaDocx(senzaRimandiLaboratorio(scheda.dati), { template: tpl ? Buffer.from(tpl.data) : null });
   const coerenza = coerenzaDi(scheda, docx);
   const pdf = imp.genera_pdf === false ? null : await generaPdf(docx);
   return { docx, pdf, coerenza, template: tpl ? tpl.filename : TEMPLATE_DEFAULT_NOME };

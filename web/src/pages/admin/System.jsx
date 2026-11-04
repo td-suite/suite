@@ -8,6 +8,12 @@ import { fmtDateTime, timeAgo, AREA_NAMES, AREA_COLORS } from '../../format.js';
 import { LegacyRefs } from './Registry.jsx';
 
 // ---------- Moduli ----------
+// Versione in esecuzione (da /api/health): per sapere quale consegna gira davvero in produzione
+function VersioneSuite() {
+  const h = useApi('/health');
+  return <span className="small muted" title="Versione della Suite in esecuzione">Suite {h.data?.version || '…'}</span>;
+}
+
 export function Modules() {
   const { user } = useAuth();
   const { data, loading, error, reload } = useApi('/modules');

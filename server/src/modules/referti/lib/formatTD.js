@@ -208,7 +208,20 @@ export function partiTemplate(templateBuf) {
   const is = src.lastIndexOf('<w:sectPr');
   if (ib < 0) throw new Error('Template DOCX non valido: manca word/document.xml con <w:body>');
   if (is < 0 || is < ib) throw new Error('Il template non ha le proprietà di sezione (sectPr): impossibile usarne intestazione e piè di pagina');
-  return { zip, head: src.slice(0, ib + '<w:body>'.length), sect: src.slice(is) };
+  return { zip, head: src.slice(0, ib + '<w:body>'.length), sect: margineMinimo(src.slice(is)) };
+}
+
+// Margine superiore minimo 2232 twip (3,94 cm, come il template del progetto): l'intestazione TD è fatta di immagini ancorate che
+// non spingono il corpo in basso, quindi con un template caricato dalle Impostazioni che ha un margine più basso (es. 2 cm) il
+// riquadro del paziente finisce sopra i contatti (segnalazione del CEO, 04/11/2026). Gli altri margini restano quelli del template.
+export const TOP_MIN = 2232;
+export function margineMinimo(sect) {
+  return sect.replace(/<w:pgMar\b([^>]*)\/>/, (m, attrs) => {
+    const top = Number((attrs.match(/w:top="(-?\d+)"/) || [])[1]);
+    if (Number.isFinite(top) && top >= TOP_MIN) return m;
+    const a = Number.isFinite(top) ? attrs.replace(/w:top="-?\d+"/, `w:top="${TOP_MIN}"`) : `${attrs} w:top="${TOP_MIN}"`;
+    return `<w:pgMar${a}/>`;
+  });
 }
 
 const templateDefault = () => fs.readFileSync(TEMPLATE_DEFAULT);

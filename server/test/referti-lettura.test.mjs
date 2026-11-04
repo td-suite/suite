@@ -98,8 +98,17 @@ test('lettura simulata dei tre PDF uniti Nuova Igea: tre schede, anomalie corret
     assert.ok(coe.ok, `${nome}: ${JSON.stringify(coe.check.filter((c) => !c.ok))}`);
     if (conPacchetto) {
       const atteso = fs.readFileSync(path.join(DOCX_DIR, `Referto - ${nome}.docx`));
-      assert.equal(testoDocx(await generaDocx(s.dati)), testoDocx(atteso), `${nome}: testo del DOCX`);
-      assert.equal(documentXml(s.dati), documentXmlDi(atteso), `${nome}: document.xml`);
+      if (nome === 'DINE KATERINA') {
+        // disposizione del CEO 04/11/2026: la nota "(RDI) Test eseguiti in RDI ..." e il rimando "(RDI)" nel nome dell'esame non si
+        // trascrivono (pubblicità sanitaria vietata dalla Regione Toscana): il referto del progetto li aveva, il nostro no
+        const tOut = testoDocx(await generaDocx(s.dati));
+        assert.ok(!/Test eseguiti in RDI|\(RDI\)/.test(tOut), 'nessun riferimento a RDI');
+        const tAtt = testoDocx(atteso).split('\n').filter((r) => !/Test eseguiti in RDI/.test(r)).join('\n').replace(/ \(RDI\)/g, '');
+        assert.equal(tOut, tAtt, `${nome}: testo del DOCX senza la nota RDI`);
+      } else {
+        assert.equal(testoDocx(await generaDocx(s.dati)), testoDocx(atteso), `${nome}: testo del DOCX`);
+        assert.equal(documentXml(s.dati), documentXmlDi(atteso), `${nome}: document.xml`);
+      }
     }
   }
 });
