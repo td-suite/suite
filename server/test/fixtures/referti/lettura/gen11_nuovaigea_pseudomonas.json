@@ -1,0 +1,126 @@
+{
+ "descrizione": "gen11.py: Nuova Igea, urinocoltura Pseudomonas aeruginosa; PDF sorgente merge di 1 pagina",
+ "atteso_docx": "Referto - SENSI ROMANA.docx",
+ "riconosci": [
+  "SENSI ROMANA",
+  "Accettazione n°: 2803"
+ ],
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "SENSI ROMANA",
+      "righe": [
+       [
+        "Data di nascita",
+        "18/03/1941"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "2803"
+       ],
+       [
+        "Data Acc.",
+        "26/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "MICROBIOLOGIA"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "URINOCOLTURA",
+       "metodo": [
+        "Metodo: Ricerca Batteri e Lieviti",
+        "Materiale: URINE"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Specie Microbiche",
+         "valore": "Pseudomonas aeruginosa"
+        },
+        {
+         "etichetta": "Esito",
+         "valore": "Esame colturale: POSITIVO"
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Pseudomonas aeruginosa",
+       "n": 1,
+       "carica": "1.000.000 UFC/ml",
+       "carica_lbl": "Carica Batterica",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "CEFTAZIDIME",
+         "I",
+         "4"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "I",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "I",
+         "2"
+        ],
+        [
+         "LEVOFLOXACINA",
+         "I",
+         "1"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "S",
+         "2"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "I",
+         "4/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - SENSI ROMANA",
+     "sorgente": "CERBA_NUOVA_IGEA",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

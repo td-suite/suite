@@ -1,0 +1,276 @@
+{
+ "descrizione": "gen9.py: Nuova Igea, urinocoltura con due microrganismi (due tabelle, carica Totale per #2)",
+ "atteso_docx": "Referto - GRASSI TIZIANA.docx",
+ "riconosci": null,
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "GRASSI TIZIANA",
+      "righe": [
+       [
+        "Data di nascita",
+        "28/05/1952"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "2960"
+       ],
+       [
+        "Data Acc.",
+        "14/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "MICROBIOLOGIA"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "URINOCOLTURA",
+       "metodo": [
+        "Metodo: Ricerca Batteri e Lieviti",
+        "Materiale: URINE"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Specie Microbiche",
+         "valore": "Escherichia coli.\nKlebsiella pneumoniae probabile ESBL+"
+        },
+        {
+         "etichetta": "Esito",
+         "valore": "Esame colturale: POSITIVO"
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Escherichia coli",
+       "n": 1,
+       "carica": "1.000.000 UFC/ml",
+       "carica_lbl": "Carica Batterica",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMPICILLINA",
+         "R",
+         ">8"
+        ],
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "AMOXICILLINA-CLAVULANATO",
+         "R",
+         ">32/2"
+        ],
+        [
+         "CEFTAZIDIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFALEXINA",
+         "S",
+         "8"
+        ],
+        [
+         "CEFTRIAXONE",
+         "S",
+         "<=1"
+        ],
+        [
+         "CEFUROXIME",
+         "I",
+         "4"
+        ],
+        [
+         "ERTAPENEM",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "FOSFOMICINA C/G6P",
+         "S",
+         "<=8"
+        ],
+        [
+         "NITROFURANTOINA",
+         "S",
+         "<=16"
+        ],
+        [
+         "GENTAMICINA",
+         "R",
+         ">4"
+        ],
+        [
+         "LEVOFLOXACINA",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "R",
+         ">4"
+        ],
+        [
+         "TRIMETOPRIM-SULFAMETOXAZOLO",
+         "R",
+         ">2/38"
+        ],
+        [
+         "TEMOCILLINA",
+         "I",
+         "8"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "S",
+         "8/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Klebsiella pneumoniae ssp pneumoniae",
+       "n": 2,
+       "carica": "1.000.000 UFC/ml",
+       "carica_lbl": "Carica Batterica Totale",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMPICILLINA",
+         "R",
+         ">8"
+        ],
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "AMOXICILLINA-CLAVULANATO",
+         "R",
+         ">32/2"
+        ],
+        [
+         "CEFTAZIDIME",
+         "R",
+         "2"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFALEXINA",
+         "R",
+         "8"
+        ],
+        [
+         "CEFTRIAXONE",
+         "R",
+         "<=1"
+        ],
+        [
+         "CEFUROXIME",
+         "R",
+         "4"
+        ],
+        [
+         "ERTAPENEM",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "R",
+         "<=0,5"
+        ],
+        [
+         "GENTAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "LEVOFLOXACINA",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "TRIMETOPRIM-SULFAMETOXAZOLO",
+         "S",
+         "<=0,5/9,5"
+        ],
+        [
+         "TEMOCILLINA",
+         "I",
+         "8"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "R",
+         ">16/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - GRASSI TIZIANA",
+     "sorgente": "CERBA_NUOVA_IGEA",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

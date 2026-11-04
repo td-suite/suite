@@ -1,0 +1,65 @@
+{
+ "descrizione": "gen8.py: Cerba RDI, IgE singolo allergene (corpo 1, classi come riferimento)",
+ "atteso_docx": "Referto - GAMBINO SANDY.docx",
+ "riconosci": null,
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "GAMBINO SANDY",
+      "righe": [
+       [
+        "Data di nascita",
+        "30/04/1991"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "3213"
+       ],
+       [
+        "Data Acc.",
+        "15/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "ALLERGOLOGIA"
+      },
+      {
+       "tipo": "tabella1",
+       "righe": [
+        {
+         "nome": "Gambero (Pandalus borealis, Penaeus monodon)",
+         "risultato": "<0.10",
+         "riferimento": "Classe 0: 0.10-0.34\nClasse 1: 0.35-0.69\nClasse 2: 0.70-3.49\nClasse 3: 3.50-17.4\nClasse 4: 17.5-52.4\nClasse 5: 52.5-99.9\nClasse 6: >=100",
+         "bold_name": true,
+         "small": [
+          "Metodo: chemiluminescenza",
+          "Materiale: SIERO"
+         ],
+         "unit": "kU/l"
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - GAMBINO SANDY",
+     "sorgente": "CERBA_RDI",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

@@ -43,6 +43,7 @@ function extractJson(text) {
   return JSON.parse(s.slice(start, end + 1));
 }
 
+// user: testo del messaggio oppure array di blocchi di contenuto (es. documento PDF + testo, askJsonDocument)
 async function call({ kind, system, user, maxTokens = 1200, userId, query, timeoutMs = 30_000, withMeta = false }) {
   const c = getClient();
   const model = config.anthropic.model;
@@ -50,7 +51,7 @@ async function call({ kind, system, user, maxTokens = 1200, userId, query, timeo
     const res = await c.messages.create({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, { timeout: timeoutMs });
     const text = (res.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
     await logAi({ kind, model, tokensIn: res.usage?.input_tokens, tokensOut: res.usage?.output_tokens, query: `${query || ''}${res.stop_reason === 'max_tokens' ? ' [troncata]' : ''}`, ok: true, userId });
-    return withMeta ? { text, stopReason: res.stop_reason } : text;
+    return withMeta ? { text, stopReason: res.stop_reason, usage: { input: res.usage?.input_tokens ?? null, output: res.usage?.output_tokens ?? null }, model } : text;
   } catch (e) {
     await logAi({ kind, model, query, ok: false, error: e.message, userId });
     if (e instanceof HttpError) throw e;
@@ -89,6 +90,34 @@ export async function askJson({ kind, system, user, maxTokens = 2000, userId, qu
     }
   }
   return parsed;
+}
+
+// Come askJson, ma il messaggio porta un PDF come documento (blocco { type: 'document', source: { type: 'base64', media_type:
+// 'application/pdf', data } }) seguito dal testo dell'istruzione (Referti esterni: lettura del referto e "Chiedi una correzione").
+// Stesso secondo tentativo di askJson (risposta troncata o non JSON → più spazio e "solo JSON"). Restituisce { json, usage, model,
+// tentativi }: usage = token di ingresso e uscita sommati sui tentativi (per i log del modulo, che non riportano dati del paziente).
+// query finisce in ai_log: il chiamante passa solo identificativi tecnici, mai nomi.
+export async function askJsonDocument({ kind, system, user, pdfBase64, maxTokens = 16000, timeoutMs = 180_000, userId, query }) {
+  if (!pdfBase64) throw new HttpError(400, 'PDF mancante per la lettura');
+  const content = (testo) => [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } }, { type: 'text', text: testo }];
+  const usage = { input: 0, output: 0 };
+  const somma = (r) => { usage.input += r.usage?.input || 0; usage.output += r.usage?.output || 0; };
+  let r = await call({ kind, system, user: content(user), maxTokens, userId, query, timeoutMs, withMeta: true });
+  somma(r);
+  let parsed = null; let err = null; let tentativi = 1;
+  try { parsed = r.stopReason === 'max_tokens' ? null : extractJson(r.text); } catch (e) { err = e; }
+  if (parsed === null) {
+    tentativi = 2;
+    const bigger = Math.min(Math.max(maxTokens * 2, 4000), 16000);
+    r = await call({ kind, system, user: content(`${user}${SOLO_JSON}`), maxTokens: bigger, userId, query: `${query || ''} [secondo tentativo]`, timeoutMs: Math.max(timeoutMs, 120_000), withMeta: true });
+    somma(r);
+    try { parsed = extractJson(r.text); } catch (e) { err = e; }
+    if (parsed === null) {
+      const why = r.stopReason === 'max_tokens' ? 'risposta troncata anche al secondo tentativo: il PDF ha troppi referti, caricali separati' : `il modello ha risposto con testo non interpretabile (${(err?.message || '').slice(0, 80)})`;
+      throw Object.assign(new HttpError(422, `Intelligenza artificiale: la risposta del modello non è un JSON leggibile (${why})`), { code: 'AI_ERROR' });
+    }
+  }
+  return { json: parsed, usage, model: r.model || config.anthropic.model, tentativi };
 }
 // Prova della configurazione: elenco dei modelli disponibili per la chiave e una richiesta minima con il modello impostato
 export async function testAi() {

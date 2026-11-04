@@ -95,6 +95,22 @@ export function elabora({ pagine, ocr = false, ocr_lingua = null }) {
   return { sorgente: key, schede, motivo_scarto: null };
 }
 
+// Motore del 03/11/2026: la lettura la fa Claude (lib/lettura.js); i parser servono ancora per il testo del riquadro dei risultati
+// delle pagine di una scheda (controllo di coerenza: schede.testo_sorgente) e per il conteggio indipendente degli antibiotici della
+// sorgente. pagine: [{ n, testo }]. Restituisce { sorgente, testo_riquadro: [righe], antibiotici_sorgente }.
+export function analisiSorgente(pagine, sorgenteNota = null) {
+  let sorgente = sorgenteNota && PARSER[sorgenteNota] ? sorgenteNota : null;
+  if (!sorgente) for (const p of pagine) { sorgente = rilevaSorgente(p.testo); if (sorgente) break; }
+  const parser = PARSER[sorgente] || generico;
+  try {
+    const d = parser.scheda(pagine);
+    const righe = String(d.testo_sorgente || '').split('\n');
+    return { sorgente: sorgente || 'ALTRO', testo_riquadro: righe.slice(1), antibiotici_sorgente: d.conteggi?.antibiotici_sorgente ?? null };
+  } catch {
+    return { sorgente: sorgente || 'ALTRO', testo_riquadro: pagine.map((p) => p.testo).join('\n').split('\n'), antibiotici_sorgente: null };
+  }
+}
+
 const dedup = (arr) => { const seen = new Set(); return arr.filter((a) => { const k = `${a.codice}|${a.testo}`; if (seen.has(k)) return false; seen.add(k); return true; }); };
 
 export { PARSER };

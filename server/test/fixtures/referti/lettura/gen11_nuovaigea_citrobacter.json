@@ -1,0 +1,165 @@
+{
+ "descrizione": "gen11.py: Nuova Igea, urinocoltura Citrobacter koseri con nota interpretativa; PDF sorgente merge di 1 pagina",
+ "atteso_docx": "Referto - STEFANI UGHETTA.docx",
+ "riconosci": [
+  "STEFANI UGHETTA",
+  "Accettazione n°: 2792"
+ ],
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "STEFANI UGHETTA",
+      "righe": [
+       [
+        "Data di nascita",
+        "20/11/1949"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "2792"
+       ],
+       [
+        "Data Acc.",
+        "26/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "MICROBIOLOGIA"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "URINOCOLTURA",
+       "metodo": [
+        "Metodo: Ricerca Batteri e Lieviti",
+        "Materiale: URINE"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Specie Microbiche",
+         "valore": "Citrobacter koseri"
+        },
+        {
+         "etichetta": "Esito",
+         "valore": "Esame colturale: POSITIVO"
+        },
+        {
+         "etichetta": "Antibiogramma/Antimicogramma",
+         "valore": "Amoxicillina/Clavulanato iv. Per un'infezione da Enterobacterales originata nelle vie urinarie, una MIC per amoxicillina-acido clavulanico orale <=8 mcg/ml deve essere considerata sensibile, maggiore esposizione (I)."
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Citrobacter koseri",
+       "n": 1,
+       "carica": "1.000.000 UFC/ml",
+       "carica_lbl": "Carica Batterica",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMPICILLINA",
+         "R",
+         ">8"
+        ],
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "AMOXICILLINA-CLAVULANATO",
+         "S",
+         "<=2/2"
+        ],
+        [
+         "CEFTAZIDIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFALEXINA",
+         "S",
+         "8"
+        ],
+        [
+         "CEFTRIAXONE",
+         "S",
+         "<=1"
+        ],
+        [
+         "ERTAPENEM",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "GENTAMICINA",
+         "S",
+         "2"
+        ],
+        [
+         "LEVOFLOXACINA",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "S",
+         "2"
+        ],
+        [
+         "TRIMETOPRIM-SULFAMETOXAZOLO",
+         "S",
+         "<=0,5/9,5"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "S",
+         "<=2/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - STEFANI UGHETTA",
+     "sorgente": "CERBA_NUOVA_IGEA",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

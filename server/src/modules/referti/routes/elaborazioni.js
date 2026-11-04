@@ -28,7 +28,7 @@ r.post('/elaborazioni', requireLab, conUpload, ah(async (req, res) => {
     if (!/\.pdf$/i.test(f.originalname || '')) { out.push({ filename: f.originalname, stato: 'SCARTATO', motivo_scarto: 'Solo file PDF', schede: [] }); continue; }
     try {
       const e = await elaboraUpload(f, req.user.id);
-      out.push({ id: e.id, filename: e.filename, stato: e.stato, motivo_scarto: e.motivo_scarto || null, pagine: e.pagine, sorgente: e.sorgente, ocr: e.ocr || false,
+      out.push({ id: e.id, filename: e.filename, stato: e.stato, motivo_scarto: e.motivo_scarto || null, pagine: e.pagine, sorgente: e.sorgente, ocr: e.ocr || false, lettura: e.lettura || null,
         schede: (e.schede || []).map((s) => ({ id: s.id, pagine: s.pagine, cognome_nome: s.cognome_nome, anomalie: s.anomalie, stato: s.stato })) });
     } catch (e) {
       if (e instanceof HttpError) { out.push({ filename: f.originalname, stato: 'SCARTATO', motivo_scarto: e.message, schede: [] }); continue; }

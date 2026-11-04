@@ -1030,3 +1030,13 @@ anagrafica propria e nessun travaso: è lo **specchio di sola lettura** di sgi.t
 stabili `/sgi/doc|m|p/…`. Si attiva da solo all'avvio (FRESH_MODULES). Contatore della home: documenti attivi (= meta.n_docs), visibile a
 chiunque veda il widget. Dal Portale Service un documento presente anche nello specchio SGI rimanda alla scheda SGI. Dettagli:
 docs/SGI_PORTALE.md.
+
+## Referti esterni: nuovo motore, lettura con Claude e generatore del progetto (03/11/2026)
+Richiesta del CEO: "Dobbiamo completamente cambiare il funzionamento di Referti Esterni [...] in un progetto dedicato direttamente su
+prompt fa referti perfetti" e "includi 'chiedi una correzione'". Le sezioni precedenti su `lib/docgen.js` e `lib/micro.js` sono
+storiche: quei file non ci sono più. Ora il PDF lo legge Claude (`lib/lettura.js`, PDF come documento + testo pdftotext, regole della
+routine nel prompt di sistema), il JSON della scheda è a blocchi e rispecchia le chiamate del generatore (`lib/blocchi.js`), il DOCX
+lo scrive `lib/formatTD.js`, porting fedele di gen.py + gen3.py sul template "Format TD (BARONI VERA)": a parità di dati DOCX
+identico byte per byte ai referti del progetto. "Chiedi una correzione" con storico delle versioni (`scheda_versioni`) e "Annulla
+l'ultima correzione"; parser a mano solo come riserva senza chiave; mock `REFERTI_AI_MOCK=1` per test e collaudo. Dettaglio in
+`docs/REFERTI_ESTERNI_routine.md`, variabili in `docs/IMPOSTAZIONI.md`.

@@ -132,9 +132,10 @@ r.post('/counts/:id/extras', ah(async (req, res) => {
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
   if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
-  const d = parse(z.object({ article_id: opt(z.coerce.number().int()), name: opt(z.string().max(200)), qty: z.coerce.number().int().min(0).max(99999), note: opt(z.string().max(300)) }), req.body);
+  const d = parse(z.object({ article_id: opt(z.coerce.number().int()), name: opt(z.string().max(200)), qty: z.coerce.number().int().min(0).max(99999), note: opt(z.string().max(300)),
+    lot: opt(z.string().max(120)), expiry: opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)) }), req.body);
   if (!d.article_id && !d.name) throw bad('Indica un articolo del catalogo o una descrizione');
-  const row = await one('INSERT INTO stock_count_extras (count_id, article_id, name, qty, note) VALUES ($1,$2,$3,$4,$5) RETURNING id', [c.id, d.article_id, d.name, d.qty, d.note]);
+  const row = await one('INSERT INTO stock_count_extras (count_id, article_id, name, qty, note, lot, expiry) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [c.id, d.article_id, d.name, d.qty, d.note, d.lot || null, d.expiry || null]);
   res.status(201).json(row);
 }));
 r.delete('/counts/:id/extras/:eid', ah(async (req, res) => {
@@ -161,8 +162,13 @@ r.put('/counts/:id', ah(async (req, res) => {
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
   if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
-  const d = parse(z.object({ lines: z.array(z.object({ article_id: z.coerce.number().int(), counted_qty: z.coerce.number().int().min(0).max(99999) })) }), req.body);
-  for (const l of d.lines) await q('UPDATE stock_count_lines SET counted_qty=$3 WHERE count_id=$1 AND article_id=$2', [c.id, l.article_id, l.counted_qty]);
+  const dataOpt = z.preprocess((v) => (v === '' || v == null ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable());
+  const d = parse(z.object({ lines: z.array(z.object({ article_id: z.coerce.number().int(), counted_qty: z.coerce.number().int().min(0).max(99999),
+    lot: z.preprocess((v) => (v == null ? null : String(v).trim().slice(0, 120) || null), z.string().nullable()).optional(), expiry: dataOpt.optional() })) }), req.body);
+  for (const l of d.lines) {
+    await q(`UPDATE stock_count_lines SET counted_qty=$3, lot=CASE WHEN $4 THEN $5 ELSE lot END, expiry=CASE WHEN $6 THEN $7::date ELSE expiry END WHERE count_id=$1 AND article_id=$2`,
+      [c.id, l.article_id, l.counted_qty, l.lot !== undefined, l.lot ?? null, l.expiry !== undefined, l.expiry ?? null]);
+  }
   await q('UPDATE stock_counts SET updated_at=now() WHERE id=$1', [c.id]);
   res.json({ ok: true });
 }));

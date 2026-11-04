@@ -91,3 +91,31 @@
 .rf-mittente { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .rf-origine { display: inline-flex; gap: 4px; align-items: center; }
 .rf-origine .ico, .rf-origine svg { width: 14px; height: 14px; }
+
+/* Motore del 03/11/2026: editor per blocchi, "Chiedi una correzione", versioni, "Prova la lettura" */
+.rf-blocco { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: var(--card); }
+.rf-blocco-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.rf-blocco-tipo { font-size: 11.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--teal); }
+.rf-blocco-az { display: inline-flex; gap: 2px; }
+.rf-blocco-ana { border-left: 3px solid var(--teal); background: var(--teal-050); }
+.rf-b-settore { border-left: 3px solid #42B2BF; }
+.rf-b-antibiogramma { border-left: 3px solid #004F5F; }
+.rf-b-spacer { padding: 6px 12px; background: var(--card-2); }
+.rf-b-spacer .rf-blocco-hd { margin-bottom: 2px; }
+.rf-su { transform: rotate(-90deg); }
+.rf-giu { transform: rotate(90deg); }
+.rf-par { display: grid; gap: 6px; }
+.rf-par-opt { gap: 14px; flex-wrap: wrap; }
+.rf-par-opt label { display: inline-flex; align-items: center; gap: 6px; }
+.rf-par-opt .rf-in { width: auto; }
+.rf-num { width: 80px !important; }
+.rf-edit td.center { text-align: center; vertical-align: middle; }
+/* editor per blocchi: l'altezza dei campi segue il numero di righe del testo (attributo rows), non il minimo globale di 90px */
+.rf-fs textarea.rf-in { min-height: 40px; resize: vertical; }
+.rf-nuovo { align-items: center; margin-top: 12px; }
+.rf-correzione textarea { min-height: 54px; }
+.rf-versioni { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.rf-versioni li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.rf-istr { font-style: italic; }
+.rf-prova-json { max-height: 420px; overflow: auto; font-size: 11.5px; background: var(--card-2); padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+.rf-prova-frame { width: 100%; height: 620px; border: 0; background: #f3f4f6; border-radius: 8px; }

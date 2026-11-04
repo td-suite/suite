@@ -27,6 +27,13 @@ export const config = {
   mailboxEnv: (env.REFERTI_MAILBOX || '').trim().toLowerCase(),
   // Intervallo della lettura della casella (minuti)
   inboxMinutes: Number(env.REFERTI_INBOX_MINUTES || 10),
+  // Lettura del PDF con Claude (motore del 03/11/2026): spazio di risposta e tempo massimo di una lettura o di una correzione
+  letturaMaxTokens: Number(env.REFERTI_AI_MAX_TOKENS || 16000),
+  letturaTimeoutMs: Number(env.REFERTI_AI_TIMEOUT_MS || 180_000),
+  // REFERTI_AI_MOCK=1 (solo con NODE_ENV diverso da production): lettura e correzione simulate con i JSON attesi delle fixture
+  // (server/test/fixtures/referti/lettura), per i test e il collaudo senza chiave Anthropic. Non impostarla su Render.
+  get aiMock() { return env.REFERTI_AI_MOCK === '1' && env.NODE_ENV !== 'production'; },
+  aiMockDir: env.REFERTI_AI_MOCK_DIR || '',
 };
 
 export const MAILBOX_DEFAULT = 'template@toscanadiagnostica.it';

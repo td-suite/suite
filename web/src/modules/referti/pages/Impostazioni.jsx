@@ -1,11 +1,14 @@
 // Impostazioni (Qualità o amministratore): cartella OneDrive di destinazione (per ora informativa), genera anche PDF,
-// retention dei PDF sorgente, regola del suffisso, template DOCX della carta intestata; casella template@ (31/10/2026): indirizzo,
+// retention dei PDF sorgente, regola del suffisso, template DOCX del referto (predefinito "Format TD (BARONI VERA)" del progetto, o uno
+// caricato); "Prova la lettura" (motore del 03/11/2026): un PDF di prova con il JSON e l'anteprima, senza creare schede; casella template@ (31/10/2026): indirizzo,
 // "Leggi la casella", "Invia al mittente", "Prova la casella", "Prova l'invio", "Leggi ora" e stato (ultima lettura, ultimo invio).
 import React, { useEffect, useState } from 'react';
 import { api, apiBase, useApi } from '../api.js';
 import { Card, Field, PageHead, Loading, Switch, useToast, Badge, DropZone, ConfirmModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { itDateTime, kb } from '../format.js';
+import { itDateTime, kb, b64ToUrl, LETTURA } from '../format.js';
+import { Checklist } from './Scheda.jsx';
+import { Anomalie } from './Inbox.jsx';
 
 export default function Impostazioni() {
   const toast = useToast();
@@ -16,6 +19,19 @@ export default function Impostazioni() {
   const cas = useApi('/casella');
   const [prova, setProva] = useState(null);          // { titolo, ok, message, steps }
   const [provaTo, setProvaTo] = useState('');
+  const [lettura, setLettura] = useState(null);      // esito di "Prova la lettura": { modo, schede: [{ dati, anomalie, coerenza, url }] }
+  const [schedaProva, setSchedaProva] = useState(0);
+  const provaLettura = async (files) => {
+    const f = files[0]; if (!f) return;
+    if (!/\.pdf$/i.test(f.name)) return toast('Serve un file PDF', 'err');
+    const fd = new FormData(); fd.append('file', f, f.name);
+    setBusy(true); setLettura(null);
+    try {
+      const r = await api.upload('/settings/prova-lettura', fd);
+      setLettura({ ...r, filename: f.name, schede: r.schede.map((s) => ({ ...s, url: s.pdf ? b64ToUrl(s.pdf, 'application/pdf') : null })) }); setSchedaProva(0);
+    } catch (e) { toast(e, 'err'); }
+    setBusy(false);
+  };
   useEffect(() => { if (imp.data) setForm({ ...imp.data }); }, [imp.data]);
   const salvaCasella = () => run(async () => { await api.put('/settings', { ...(form.casella_source === 'env' ? {} : { casella_indirizzo: form.casella_indirizzo }), casella_lettura: Boolean(form.casella_lettura), invio_mittente: Boolean(form.invio_mittente) }); cas.reload(); }, 'Casella salvata');
   const prove = async (titolo, fn) => { setBusy(true); setProva(null); try { const r = await fn(); setProva({ titolo, ...r }); } catch (e) { setProva({ titolo, ok: false, message: e.message }); } setBusy(false); cas.reload(); };
@@ -25,7 +41,7 @@ export default function Impostazioni() {
     const f = files[0]; if (!f) return;
     if (!/\.docx$/i.test(f.name)) return toast('Il template deve essere un file Word (.docx)', 'err');
     const fd = new FormData(); fd.append('file', f, f.name);
-    run(() => api.upload('/settings/template', fd), 'Template caricato: da ora i referti usano la sua carta intestata');
+    run(() => api.upload('/settings/template', fd), 'Template caricato: da ora i referti usano la sua intestazione e il suo piè di pagina');
   };
   if (!form) return <div className="page"><Loading /></div>;
   return (
@@ -49,19 +65,40 @@ export default function Impostazioni() {
             <div className="small muted">Archivio dei file: {form.storage === 'blob' ? 'Azure Blob Storage della Suite' : 'database della Suite (Azure Blob non configurato)'}.</div>
           </div>
         </Card>
-        <Card title="Carta intestata (template DOCX)" icon="doc">
+        <Card title="Template del referto (format TD)" icon="doc">
           <div className="rf-form">
             {form.template ? (
-              <div className="rf-alert ok"><Icon name="check" className="ico" /><div><div className="strong">{form.template.filename}</div><div className="small">{kb(form.template.size)} · caricato il {itDateTime(form.template.created_at)}. Intestazione, piè di pagina e impostazioni di pagina dei referti vengono da questo file.</div>
-                <div className="row" style={{ marginTop: 8 }}><a className="btn sm ghost" href={`${apiBase}/settings/template`}><Icon name="download" />Scarica</a><button className="btn sm ghost danger" disabled={busy} onClick={() => setRimuovi(true)}><Icon name="trash" />Torna alla predefinita</button></div></div></div>
+              <div className="rf-alert ok"><Icon name="check" className="ico" /><div><div className="strong">{form.template.filename}</div><div className="small">{kb(form.template.size)} · caricato il {itDateTime(form.template.created_at)}. Intestazione, piè di pagina e margini dei referti vengono da questo file; il corpo resta quello del generatore del progetto.</div>
+                <div className="row" style={{ marginTop: 8 }}><a className="btn sm ghost" href={`${apiBase}/settings/template`}><Icon name="download" />Scarica</a><button className="btn sm ghost danger" disabled={busy} onClick={() => setRimuovi(true)}><Icon name="trash" />Torna al predefinito</button></div></div></div>
             ) : (
-              <div className="rf-alert warn"><Icon name="alert" className="ico" /><div><div className="strong">Carta intestata predefinita</div><div className="small">È in uso l'intestazione dei documenti Service della Suite (logo e contatti TD). Carica qui il template del referto (es. "Referto - BARONI VERA.docx", carta intestata luglio 2026): il generatore userà intestazione, piè di pagina e margini del file caricato.</div></div></div>
+              <div className="rf-alert ok"><Icon name="check" className="ico" /><div><div className="strong">Predefinito: {form.template_predefinito || 'Format TD (BARONI VERA)'}</div><div className="small">Il template del progetto dedicato (carta intestata TD con logo, contatti e piè di pagina a 3 righe): i referti escono identici a quelli prodotti dal progetto.</div>
+                <div className="row" style={{ marginTop: 8 }}><a className="btn sm ghost" href={`${apiBase}/settings/template-predefinito`}><Icon name="download" />Scarica il predefinito</a></div></div></div>
             )}
-            <DropZone onFiles={caricaTemplate} accept=".docx" multiple={false} compact><Icon name="upload" /><div className="small">Trascina qui il template .docx oppure clicca per sceglierlo</div></DropZone>
-            <div className="small muted">Il contenuto del template viene ignorato: contano solo intestazione, piè di pagina (con numero di pagina) e impostazioni di sezione. Il corpo del referto è generato dal modulo secondo il format canonico TD (font Lato, tabelle senza bordi).</div>
+            <DropZone onFiles={caricaTemplate} accept=".docx" multiple={false} compact><Icon name="upload" /><div className="small">Carica un altro template .docx (trascinalo qui o clicca)</div></DropZone>
+            <div className="small muted">Del template contano solo l'inizio del documento fino al corpo e le proprietà di sezione (intestazione, piè di pagina con numero di pagina, margini): il corpo viene sostituito con quello generato. Serve un word/document.xml con &lt;w:body&gt; e &lt;w:sectPr&gt;.</div>
           </div>
         </Card>
       </div>
+      <Card title="Prova la lettura" icon="sparkle">
+        <div className="rf-two-cols">
+          <div className="rf-form">
+            <div className="small">Carica un PDF di prova: viene letto come in Inbox ({LETTURA[form.lettura?.modo]?.label || form.lettura?.nome || 'lettura'}) e qui compaiono il JSON della scheda, le anomalie, il controllo di coerenza e l'anteprima del referto. <b>Non si crea nessuna scheda</b> e nulla viene salvato.</div>
+            {form.lettura?.modo === 'RISERVA' && <div className="rf-alert warn"><Icon name="alert" className="ico" /><div className="small">Chiave Anthropic non configurata (Amministrazione &gt; Impostazioni &gt; Claude): la lettura usa il parser di riserva.</div></div>}
+            {form.lettura?.modo === 'MOCK' && <div className="rf-alert"><Icon name="info" className="ico" /><div className="small">REFERTI_AI_MOCK attiva: lettura simulata con i JSON di collaudo, non il modello.</div></div>}
+            <DropZone onFiles={provaLettura} accept="application/pdf,.pdf" multiple={false} compact><Icon name="upload" /><div className="small">{busy ? 'Lettura in corso' : 'Trascina qui il PDF di prova oppure clicca'}</div></DropZone>
+            {lettura && (lettura.non_referto ? <div className="rf-alert warn"><Icon name="x" className="ico" /><div><div className="strong">{lettura.filename}: non è un referto</div><div className="small">{lettura.motivo}</div></div></div> : <>
+              <div className="small"><b>{lettura.filename}</b> · {lettura.modo_nome} · {lettura.pagine} {lettura.pagine === 1 ? 'pagina' : 'pagine'} · {lettura.schede.length} {lettura.schede.length === 1 ? 'scheda' : 'schede'} · {Math.round((lettura.ms || 0) / 100) / 10} s{lettura.errore_claude ? ` · lettura con Claude non riuscita: ${lettura.errore_claude}` : ''}</div>
+              {lettura.schede.length > 1 && <select className="rf-in" value={schedaProva} onChange={(e) => setSchedaProva(Number(e.target.value))}>{lettura.schede.map((s, i) => <option key={i} value={i}>{s.dati.anagrafica.cognome_nome || `Scheda ${i + 1}`} · pagg. {s.pagine.join(', ')}</option>)}</select>}
+              {lettura.schede[schedaProva] && <>
+                <Anomalie list={lettura.schede[schedaProva].anomalie} />
+                <Checklist coerenza={lettura.schede[schedaProva].coerenza} />
+                <pre className="rf-prova-json">{JSON.stringify(lettura.schede[schedaProva].dati, null, 1)}</pre>
+              </>}
+            </>)}
+          </div>
+          <div>{lettura?.schede?.[schedaProva]?.url ? <iframe title="Anteprima della prova" className="rf-prova-frame" src={lettura.schede[schedaProva].url} /> : <div className="rf-placeholder" style={{ height: 300, minHeight: 300 }}><Icon name="eye" /><div>L'anteprima del referto compare qui.</div></div>}</div>
+        </div>
+      </Card>
       <Card title="Casella dei referti da trasformare" icon="mail" actions={<button className="btn sm" disabled={busy} onClick={salvaCasella}>Salva</button>}>
         <div className="rf-two-cols">
           <div className="rf-form">
@@ -105,9 +142,9 @@ export default function Impostazioni() {
             <tr><td><Badge tone="teal" dot={false}>Cerba RDI</Badge> Rete Diagnostica Italiana (Limena)</td><td className="small">Intestazione "Rete Diagnostica Italiana S.r.l. VIA DEL SANTO 145/147 LIMENA"; "Accettazione n°" e "Data Acc."</td><td className="small">PDF unito con più pazienti, una pagina ciascuno (es. KPC): spezzato per paziente</td></tr>
             <tr><td><Badge tone="mauve" dot={false}>Nuova Igea</Badge> Cerba HealthCare Toscana – Nuova Igea</td><td className="small">Intestazione "Cerba HealthCare Toscana s.r.l. - Nuova Igea, Via Duccio di Buoninsegna 54"; "Accettazione n°" e "Data Acc."</td><td className="small">Blocchi esame con etichetta/valore; antibiogramma tabellare, anche con due microrganismi affiancati (#1 MIC #2 MIC)</td></tr>
           </tbody></table>
-        <div className="small muted" style={{ marginTop: 8 }}>I PDF senza intestazione nota e senza anagrafica riconoscibile vengono scartati. I PDF senza testo estraibile passano dall'OCR (italiano) con l'anomalia "verifica manuale obbligatoria".</div>
+        <div className="small muted" style={{ marginTop: 8 }}>La lettura la fa Claude sul PDF (con il testo estratto come aiuto): i PDF che non sono referti vengono scartati con il motivo. I PDF senza testo estraibile passano anche dall'OCR (italiano) con l'anomalia "verifica manuale obbligatoria". Senza chiave Anthropic si usano i parser di riserva, che riconoscono le tre sorgenti dall'intestazione.</div>
       </Card>
-      {rimuovi && <ConfirmModal title="Torna alla carta intestata predefinita" text="Il template caricato viene disattivato: i prossimi referti useranno l'intestazione predefinita della Suite. I referti già prodotti non cambiano." confirmText="Disattiva il template" danger onConfirm={() => run(() => api.del('/settings/template'), 'Template disattivato').then(() => setRimuovi(false))} onClose={() => setRimuovi(false)} />}
+      {rimuovi && <ConfirmModal title="Torna al template predefinito" text={`Il template caricato viene disattivato: i prossimi referti useranno il predefinito ${form.template_predefinito || 'Format TD (BARONI VERA)'}. I referti già prodotti non cambiano.`} confirmText="Disattiva il template" danger onConfirm={() => run(() => api.del('/settings/template'), 'Template disattivato').then(() => setRimuovi(false))} onClose={() => setRimuovi(false)} />}
     </div>
   );
 }

@@ -13,6 +13,9 @@ export const ANOMALIE = {
   NOME_DOPPIO: 'Nome file già presente per un\'altra scheda',
   RIGA_NON_INTERPRETATA: 'Riga non interpretata',
   SORGENTE_ALTRO: 'Sorgente non riconosciuta, verifica (trascrizione nel corpo 1 a tre colonne)',
+  // motore del 03/11/2026 (lettura con Claude)
+  PARSER_RISERVA: 'Letta con il parser di riserva (chiave Anthropic assente): verifica ogni valore con la sorgente',
+  NOTA_LETTURA: 'Segnalazione della lettura',
 };
 export const anomalia = (codice, dettaglio) => ({ codice, testo: dettaglio ? `${ANOMALIE[codice] || codice}: ${dettaglio}` : (ANOMALIE[codice] || codice) });
 

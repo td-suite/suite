@@ -1,13 +1,15 @@
-// Funzioni comuni del modulo Referti esterni: impostazioni, registro, nome del file, elaborazione di un PDF caricato,
-// generazione e conferma di una scheda. Privacy: nessun nome di paziente nei log del server; l'audit della Suite riceve solo id e conteggi.
+// Funzioni comuni del modulo Referti esterni: impostazioni, registro, nome del file, elaborazione di un PDF caricato (lettura con
+// Claude, lib/lettura.js), versioni dei dati della scheda ("Chiedi una correzione"), generazione (lib/formatTD.js, porting del generatore
+// del progetto) e conferma. Privacy: nessun nome di paziente nei log del server; l'audit della Suite riceve solo id e conteggi.
 import { q, one, many, tx } from '../db.js';
 import { KEY, SORGENTI, SETTINGS_DEFAULT } from '../config.js';
 import { notFound, bad, HttpError } from '../../../lib/util.js';
 import { estraiTesto, ritagliaPagine } from './pdf.js';
-import { elabora } from './parsers/index.js';
 import { anomalia } from './parsers/common.js';
-import { generaDocx, generaPdf, testoDocx } from './docgen.js';
+import { generaDocx, generaPdf, testoDocx, TEMPLATE_DEFAULT_NOME } from './formatTD.js';
 import { controllaCoerenza } from './coerenza.js';
+import { leggiReferto, correggiScheda } from './lettura.js';
+import { isSchemaBlocchi, colonneAnagrafica, anomalieAutomatiche, primoEsame, testiParagrafi, validaDati } from './blocchi.js';
 import { storeBuffer, readBuffer, dropBlobs } from './storage.js';
 import { nomeFileSicuro, compattaSpazi } from './text.js';
 
@@ -39,11 +41,11 @@ export const nomeBase = (cognomeNome) => nomeFileSicuro(`Referto - ${compattaSpa
 
 // Suffisso descrittivo: primo esame (es. "KPC"), sorgente (es. "Bianalisi"), oppure data di accettazione
 export function suffissoPer(dati, modo = 'ESAME') {
-  const a = dati.anagrafica || {};
+  const col = colonneAnagrafica(dati.anagrafica || {});
   const breve = { BIANALISI: 'Bianalisi', CERBA_RDI: 'Cerba RDI', CERBA_NUOVA_IGEA: 'Nuova Igea', ALTRO: 'Esterno' }[dati.sorgente] || 'Esterno';
   if (modo === 'SORGENTE') return breve;
-  if (modo === 'DATA') return (a.data_acc || a.referto_data || a.accettazione_data || '').replace(/\//g, '-') || breve;
-  const primo = Number(dati.corpo) === 2 ? dati.esami?.[0]?.titolo : (dati.settori || []).flatMap((s) => s.righe || []).find((r) => r.tipo === 'esame')?.nome;
+  if (modo === 'DATA') return (col.data_acc || col.referto_data || '').replace(/\//g, '-') || breve;
+  const primo = primoEsame(dati);
   if (!primo) return breve;
   let s = compattaSpazi(primo).replace(/^\w\s*-\s*/, '').replace(/\(\d+\)/g, '').replace(/\s+(test|di conferma|colturale|PCR).*$/i, '').trim();
   if (/^urinocoltura$/i.test(s)) s = 'Urinocoltura';
@@ -56,7 +58,7 @@ export async function risolviNomeFile(scheda, dati, imp) {
   const base = scheda.nome_file || nomeBase(dati.anagrafica?.cognome_nome);
   const altra = await one(`SELECT id FROM schede WHERE id<>$1 AND stato='CONFERMATA' AND lower(nome_file)=lower($2) AND sostituita_da IS NULL ORDER BY id DESC LIMIT 1`, [scheda.id, base]);
   if (!altra) return { nome: base, doppio: null };
-  const sostituisce = (dati.note || []).some((n) => /annulla e sostituisce/i.test(n));
+  const sostituisce = testiParagrafi(dati).some((n) => /annulla\s+e\s+sostituisce/i.test(n));
   if (sostituisce) return { nome: base, doppio: altra.id, sostituisce: true };
   let nome = `${base} (${suffissoPer(dati, imp.suffisso_predefinito)})`;
   let k = 2;
@@ -82,39 +84,134 @@ export async function elaboraUpload(file, userId, origine = {}) {
     await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { motivo: e.message, origine: el.origine } });
     return { ...el, stato: 'SCARTATO', motivo_scarto: e.message, schede: [] };
   }
-  const r = elabora(estratto);
-  if (r.motivo_scarto) {
-    await q(`UPDATE elaborazioni SET stato='SCARTATO', motivo_scarto=$2, pagine=$3, sorgente=$4, ocr=$5 WHERE id=$1`, [el.id, r.motivo_scarto, estratto.n_pagine, r.sorgente, estratto.ocr]);
-    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { motivo: r.motivo_scarto, pagine: estratto.n_pagine, origine: el.origine } });
-    return { ...el, stato: 'SCARTATO', motivo_scarto: r.motivo_scarto, pagine: estratto.n_pagine, sorgente: r.sorgente, schede: [] };
+  const r = await leggiReferto({ buffer: buf, estratto, rif: `elaborazione ${el.id}`, userId });
+  const sorgenteEl = r.schede?.[0]?.dati?.sorgente || 'ALTRO';
+  if (r.non_referto || !r.schede?.length) {
+    const motivo = (/^Il PDF\b/i.test(r.motivo || '') ? r.motivo : `Il PDF non è un referto di laboratorio: ${r.motivo || 'nessun paziente riconosciuto'}`).slice(0, 500);
+    await q(`UPDATE elaborazioni SET stato='SCARTATO', motivo_scarto=$2, pagine=$3, sorgente=$4, ocr=$5 WHERE id=$1`, [el.id, motivo, estratto.n_pagine, 'ALTRO', estratto.ocr]);
+    await registra('SCARTATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { motivo, pagine: estratto.n_pagine, origine: el.origine, lettura: r.modo } });
+    return { ...el, stato: 'SCARTATO', motivo_scarto: motivo, pagine: estratto.n_pagine, sorgente: 'ALTRO', lettura: r.modo, schede: [] };
   }
   const schede = [];
   await tx(async (c) => {
     for (const s of r.schede) {
-      const a = s.dati.anagrafica || {};
-      // testo sorgente = riga anagrafica + riquadro dei risultati (indicazione del CEO 29/10/2026); il PDF intero resta in elaborazioni
-      const testo = s.testo_sorgente || '';
-      const nome = nomeBase(a.cognome_nome);
-      // il nome esiste già per un'altra scheda confermata: anomalia (il suffisso si decide alla conferma)
-      const anomalie = [...s.anomalie];
-      const doppio = (await c.query(`SELECT 1 FROM schede WHERE stato='CONFERMATA' AND lower(nome_file)=lower($1) AND sostituita_da IS NULL`, [nome])).rows[0];
-      if (doppio) anomalie.push(anomalia('NOME_DOPPIO'));
-      // accettazione/referto esterni: solo colonne interne di tracciabilità (registro), mai nel DOCX
-      const row = (await c.query(`INSERT INTO schede (elaborazione_id, pagine, sorgente, cognome_nome, data_nascita, sesso, luogo_nascita, indirizzo, accettazione, data_acc, referto_codice, referto_data, dati, dati_orig, testo_sorgente, anomalie, nome_file)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16) RETURNING id`,
-      [el.id, s.pagine, s.dati.sorgente, a.cognome_nome || '', a.data_nascita || null, a.sesso || null, a.luogo_nascita || null, a.indirizzo || null, a.accettazione_n || a.accettazione_codice || null, a.data_acc || a.accettazione_data || null,
-        a.referto_codice || null, a.referto_data || null, JSON.stringify(s.dati), testo, JSON.stringify(anomalie), nome])).rows[0];
-      schede.push({ id: row.id, pagine: s.pagine, cognome_nome: a.cognome_nome || '', anomalie, stato: 'BOZZA' });
+      const row = await inserisciScheda(c, el.id, s, r.modo, userId);
+      schede.push({ id: row.id, pagine: s.pagine, cognome_nome: s.colonne.cognome_nome, anomalie: row.anomalie, stato: 'BOZZA' });
     }
-    await c.query(`UPDATE elaborazioni SET stato='ELABORATO', pagine=$2, sorgente=$3, ocr=$4 WHERE id=$1`, [el.id, estratto.n_pagine, r.sorgente, estratto.ocr]);
-    await registra('CARICATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { schede: schede.length, pagine: estratto.n_pagine, sorgente: r.sorgente, ocr: estratto.ocr, origine: el.origine, from_email: el.from_email || undefined } }, c);
+    await c.query(`UPDATE elaborazioni SET stato='ELABORATO', pagine=$2, sorgente=$3, ocr=$4 WHERE id=$1`, [el.id, estratto.n_pagine, sorgenteEl, estratto.ocr]);
+    await registra('CARICATO', { elaborazione_id: el.id, user_id: userId || null, dettagli: { schede: schede.length, pagine: estratto.n_pagine, sorgente: sorgenteEl, ocr: estratto.ocr, origine: el.origine, from_email: el.from_email || undefined, lettura: r.modo, ms: r.ms, token: r.usage || undefined } }, c);
   });
-  return { ...el, stato: 'ELABORATO', pagine: estratto.n_pagine, sorgente: r.sorgente, ocr: estratto.ocr, schede };
+  return { ...el, stato: 'ELABORATO', pagine: estratto.n_pagine, sorgente: sorgenteEl, ocr: estratto.ocr, lettura: r.modo, schede };
+}
+
+// Nome già usato da un'altra scheda confermata: anomalia (il suffisso si decide alla conferma)
+async function anomalieConNome(c, schedaId, dati, base) {
+  const nome = nomeBase(colonneAnagrafica(dati.anagrafica).cognome_nome);
+  const doppio = (await c.query(`SELECT 1 FROM schede WHERE stato='CONFERMATA' AND lower(nome_file)=lower($1) AND sostituita_da IS NULL AND id<>$2`, [nome, schedaId || 0])).rows[0];
+  return doppio ? [...base, anomalia('NOME_DOPPIO')] : base;
+}
+
+// Inserimento di una scheda letta (versione 1, origine LETTURA)
+async function inserisciScheda(c, elaborazioneId, s, modo, userId) {
+  const col = s.colonne;
+  const anomalie = await anomalieConNome(c, null, s.dati, s.anomalie);
+  const row = (await c.query(`INSERT INTO schede (elaborazione_id, pagine, sorgente, cognome_nome, data_nascita, sesso, luogo_nascita, indirizzo, accettazione, data_acc, referto_codice, referto_data, dati, dati_orig, testo_sorgente, anomalie, nome_file, lettura, antibiotici_sorgente)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16,$17,$18) RETURNING id`,
+  [elaborazioneId, s.pagine, s.dati.sorgente, col.cognome_nome || '', col.data_nascita, col.sesso, col.luogo_nascita, col.indirizzo, col.accettazione, col.data_acc, col.referto_codice, col.referto_data,
+    JSON.stringify(s.dati), s.testo_sorgente || '', JSON.stringify(anomalie), nomeBase(col.cognome_nome), modo, s.antibiotici_sorgente ?? null])).rows[0];
+  await c.query(`INSERT INTO scheda_versioni (scheda_id, n, dati, origine, user_id) VALUES ($1,1,$2,'LETTURA',$3)`, [row.id, JSON.stringify(s.dati), userId || null]);
+  return { id: row.id, anomalie };
+}
+
+// ---- Versioni dei dati ("Chiedi una correzione", modifiche manuali, rielaborazione)
+export async function versioni(schedaId) {
+  return many(`SELECT v.id, v.n, v.origine, v.istruzione, v.at, u.full_name AS user_nome FROM scheda_versioni v LEFT JOIN public.users u ON u.id=v.user_id WHERE v.scheda_id=$1 ORDER BY v.n DESC`, [schedaId]);
+}
+
+// Nuovi dati della scheda: colonne di ricerca riallineate, anomalie ricalcolate, nome file che segue il paziente se non personalizzato,
+// nuova versione (salvo nuovaVersione false: ripristino di una versione esistente). opzioni: { origine, istruzione, userId, nomeFile, nuovaVersione }
+export async function aggiornaDati(id, dati, { origine = 'MANUALE', istruzione = null, userId = null, nomeFile = undefined, nuovaVersione = true } = {}) {
+  return tx(async (c) => {
+    const cur = (await c.query('SELECT s.*, e.ocr FROM schede s JOIN elaborazioni e ON e.id=s.elaborazione_id WHERE s.id=$1 FOR UPDATE OF s', [id])).rows[0];
+    if (!cur) throw notFound('Scheda non trovata');
+    const col = colonneAnagrafica(dati.anagrafica);
+    let nome = nomeFile != null ? nomeFileSicuro(String(nomeFile).replace(/\.(docx|pdf)$/i, '')) : cur.nome_file;
+    if (!nome) nome = nomeBase(col.cognome_nome);
+    if (nomeFile == null && cur.nome_file === nomeBase(cur.cognome_nome)) nome = nomeBase(col.cognome_nome);   // nome non personalizzato: segue il paziente
+    const d = { ...dati, sorgente: cur.dati?.sorgente || cur.sorgente, nome_file: nomeBase(col.cognome_nome) };
+    const anomalie = await anomalieConNome(c, id, d, anomalieAutomatiche(d, { ocr: cur.ocr, modo: cur.lettura || 'CLAUDE' }));
+    const n = Number((await c.query('SELECT coalesce(max(n),0)::int AS n FROM scheda_versioni WHERE scheda_id=$1', [id])).rows[0].n) + (nuovaVersione ? 1 : 0);
+    await c.query(`UPDATE schede SET dati=$2, cognome_nome=$3, data_nascita=$4, sesso=$5, luogo_nascita=$6, indirizzo=$7, accettazione=$8, data_acc=$9, referto_codice=$10, referto_data=$11, nome_file=$12, anomalie=$13, updated_at=now() WHERE id=$1`,
+      [id, JSON.stringify(d), col.cognome_nome || '', col.data_nascita, col.sesso, col.luogo_nascita, col.indirizzo, col.accettazione, col.data_acc, col.referto_codice, col.referto_data, nome, JSON.stringify(anomalie)]);
+    if (nuovaVersione) await c.query(`INSERT INTO scheda_versioni (scheda_id, n, dati, origine, istruzione, user_id) VALUES ($1,$2,$3,$4,$5,$6)`, [id, n, JSON.stringify(d), origine, istruzione ? String(istruzione).slice(0, 2000) : null, userId || null]);
+    return { n, nome_file: nome, anomalie };
+  });
+}
+
+// PDF da mandare a Claude per una scheda: le sole pagine della scheda (pdf-lib, se disponibile), altrimenti il PDF intero
+async function pdfScheda(s) {
+  const e = await one('SELECT data, blob_path, pagine FROM elaborazioni WHERE id=$1', [s.elaborazione_id]);
+  const buf = e ? await readBuffer(e) : null;
+  if (!buf) return { buffer: null, intero: false };
+  if (Number(e.pagine || 0) > (s.pagine || []).length) { const rit = await ritagliaPagine(buf, s.pagine); if (rit) return { buffer: rit, intero: false }; return { buffer: buf, intero: true }; }
+  return { buffer: buf, intero: false };
+}
+
+// "Chiedi una correzione" (LAB, scheda in BOZZA, anche dopo Riapri): istruzione → JSON corretto → nuova versione CORREZIONE
+export async function chiediCorrezione(id, istruzione, userId) {
+  const testo = compattaSpazi(istruzione);
+  if (testo.length < 3) throw bad('Scrivi cosa correggere');
+  if (testo.length > 2000) throw bad('Istruzione troppo lunga (massimo 2000 caratteri)');
+  const s = await one('SELECT id, stato, dati, elaborazione_id, pagine, da_rielaborare FROM schede WHERE id=$1', [id]);
+  if (!s) throw notFound('Scheda non trovata');
+  if (s.stato !== 'BOZZA') throw bad('La scheda non è in bozza: riaprila per correggerla');
+  if (s.da_rielaborare || !isSchemaBlocchi(s.dati)) throw bad('Scheda del motore precedente: rielaborala dal PDF prima di chiedere una correzione');
+  const pdf = await pdfScheda(s);
+  const istr = pdf.intero && (s.pagine || []).length ? `${testo}\n(La scheda riguarda le pagine ${s.pagine.join(', ')} del PDF allegato.)` : testo;
+  const out = await correggiScheda({ buffer: pdf.buffer, dati: s.dati, istruzione: istr, rif: `scheda ${id}`, userId });
+  const v = await aggiornaDati(id, out.dati, { origine: 'CORREZIONE', istruzione: testo, userId });
+  await registra('CORREZIONE_AI', { scheda_id: id, user_id: userId, dettagli: { istruzione: testo.slice(0, 500), versione: v.n, lettura: out.modo, token: out.usage || undefined } });
+  return { versione: v.n, modo: out.modo };
+}
+
+// "Annulla l'ultima correzione": si toglie l'ultima versione CORREZIONE e si torna ai dati della versione precedente (ripetibile:
+// più correzioni di seguito si annullano una alla volta; l'annullamento resta nel registro)
+export async function annullaCorrezione(id, userId) {
+  const s = await one('SELECT id, stato FROM schede WHERE id=$1', [id]);
+  if (!s) throw notFound('Scheda non trovata');
+  if (s.stato !== 'BOZZA') throw bad('La scheda non è in bozza');
+  const [ultima, prec] = await many('SELECT id, n, origine, dati, istruzione FROM scheda_versioni WHERE scheda_id=$1 ORDER BY n DESC LIMIT 2', [id]);
+  if (!ultima || ultima.origine !== 'CORREZIONE' || !prec) throw bad('Non c\'è una correzione da annullare (l\'ultima modifica non è una correzione richiesta a Claude)');
+  await q('DELETE FROM scheda_versioni WHERE id=$1', [ultima.id]);
+  await aggiornaDati(id, prec.dati, { userId, nuovaVersione: false });
+  await registra('CORREZIONE_ANNULLATA', { scheda_id: id, user_id: userId, dettagli: { versione_annullata: ultima.n, istruzione: String(ultima.istruzione || '').slice(0, 500) } });
+  return { versione: ultima.n, ripristinata: prec.n };
+}
+
+// "Rielabora dal PDF": nuova lettura delle pagine della scheda (schede del motore precedente, o rilettura voluta dall'operatore)
+export async function rielaboraScheda(id, userId) {
+  const s = await one('SELECT s.id, s.stato, s.pagine, s.elaborazione_id, s.cognome_nome, e.data AS e_data, e.blob_path AS e_blob_path FROM schede s JOIN elaborazioni e ON e.id=s.elaborazione_id WHERE s.id=$1', [id]);
+  if (!s) throw notFound('Scheda non trovata');
+  if (s.stato !== 'BOZZA') throw bad('La scheda non è in bozza: riaprila per rielaborarla');
+  const buf = await readBuffer({ data: s.e_data, blob_path: s.e_blob_path });
+  if (!buf) throw bad('Il PDF sorgente non è più disponibile (retention): la scheda non si può rielaborare');
+  const estratto = await estraiTesto(buf);
+  const r = await leggiReferto({ buffer: buf, estratto, rif: `rielaborazione scheda ${id}`, userId });
+  if (r.non_referto || !r.schede?.length) throw bad(`La nuova lettura non ha trovato un referto: ${r.motivo || 'nessun paziente'}`);
+  const stesse = (x) => (x.pagine || []).some((p) => (s.pagine || []).includes(p));
+  const nuova = r.schede.find(stesse) || r.schede.find((x) => compattaSpazi(x.colonne.cognome_nome).toUpperCase() === compattaSpazi(s.cognome_nome).toUpperCase()) || (r.schede.length === 1 ? r.schede[0] : null);
+  if (!nuova) throw bad('Nella nuova lettura non si trova il paziente di questa scheda: verifica il PDF');
+  await q(`UPDATE schede SET dati_orig=$2, testo_sorgente=$3, antibiotici_sorgente=$4, lettura=$5, pagine=$6, da_rielaborare=FALSE, sorgente=$7 WHERE id=$1`,
+    [id, JSON.stringify(nuova.dati), nuova.testo_sorgente || '', nuova.antibiotici_sorgente ?? null, r.modo, nuova.pagine, nuova.dati.sorgente]);
+  const v = await aggiornaDati(id, nuova.dati, { origine: 'LETTURA', istruzione: 'Rielaborazione dal PDF', userId });
+  await registra('RIELABORATA', { scheda_id: id, user_id: userId, dettagli: { versione: v.n, lettura: r.modo, pagine: nuova.pagine.length, ms: r.ms } });
+  return { versione: v.n, lettura: r.modo };
 }
 
 // ---- Lettura
 export const S_COLS = `s.id, s.elaborazione_id, s.pagine, s.sorgente, s.cognome_nome, s.data_nascita, s.sesso, s.luogo_nascita, s.indirizzo, s.accettazione, s.data_acc, s.referto_codice, s.referto_data,
   s.anomalie, s.stato, s.nome_file, s.sostituisce_id, s.sostituita_da, s.confirmed_by, s.confirmed_at, s.created_at, s.updated_at, s.versione, s.riaperta_at,
+  s.lettura, s.da_rielaborare, s.antibiotici_sorgente,
   e.filename AS elaborazione_filename, e.pagine AS elaborazione_pagine, e.ocr, e.origine, e.from_email, e.from_name, e.subject, e.received_at, cu.full_name AS confirmed_by_nome,
   ru.full_name AS riaperta_by_nome`;
 export const S_FROM = `schede s JOIN elaborazioni e ON e.id=s.elaborazione_id LEFT JOIN public.users cu ON cu.id=s.confirmed_by LEFT JOIN public.users ru ON ru.id=s.riaperta_by`;
@@ -123,6 +220,7 @@ export async function loadScheda(id, { conDati = true } = {}) {
   const s = await one(`SELECT ${S_COLS}${conDati ? ', s.dati, s.dati_orig' : ''} FROM ${S_FROM} WHERE s.id=$1`, [id]);
   if (!s) throw notFound('Scheda non trovata');
   s.file = await many(`SELECT id, kind, filename, mime, size, sha256, intero, created_at FROM file_prodotti WHERE scheda_id=$1 ORDER BY CASE kind WHEN 'SORGENTE_PDF' THEN 0 WHEN 'DOCX' THEN 1 ELSE 2 END`, [id]);
+  s.versioni = await versioni(id);
   s.invii = await many(`SELECT i.id, i.to_email, i.from_email, i.stato, i.errore, i.file_sha256, i.versione, i.automatico, i.at, u.full_name AS user_nome FROM invii i LEFT JOIN public.users u ON u.id=i.user_id WHERE i.scheda_id=$1 ORDER BY i.at DESC, i.id DESC`, [id]);
   return s;
 }
@@ -135,14 +233,17 @@ export async function elaborazioneCon(id) {
 }
 
 // ---- Generazione (anteprima e conferma)
+// Scheda del motore precedente (JSON senza blocchi): non si genera, va riletta dal PDF
+export const daRielaborare = (scheda) => Boolean(scheda.da_rielaborare || !isSchemaBlocchi(scheda.dati));
 export async function generaPer(scheda, imp) {
+  if (daRielaborare(scheda)) throw bad('Scheda del motore precedente: usa "Rielabora dal PDF" per rileggerla con il nuovo motore');
   const tpl = await templateAttivo();
   const docx = await generaDocx(scheda.dati, { template: tpl ? Buffer.from(tpl.data) : null });
-  const testo = testoDocx(docx);
-  const coerenza = controllaCoerenza({ datiOrig: scheda.dati_orig, dati: scheda.dati, testoSorgente: scheda.testo_sorgente, testoDocx: testo });
+  const coerenza = coerenzaDi(scheda, docx);
   const pdf = imp.genera_pdf === false ? null : await generaPdf(docx);
-  return { docx, pdf, coerenza, template: tpl ? tpl.filename : 'predefinito' };
+  return { docx, pdf, coerenza, template: tpl ? tpl.filename : TEMPLATE_DEFAULT_NOME };
 }
+export const coerenzaDi = (scheda, docx) => controllaCoerenza({ dati: scheda.dati, testoSorgente: scheda.testo_sorgente, testoDocx: testoDocx(docx), antibioticiSorgente: scheda.antibiotici_sorgente });
 
 const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -196,15 +297,16 @@ export async function confermaScheda(id, userId, { force = false, automatica = f
 // ---- Riapertura di un referto emesso (richiesta del CEO del 31/10/2026: "permetti sempre di riaprire il referto emesso e di
 // modificarlo"): la scheda CONFERMATA (anche già inviata) torna BOZZA, i file prodotti restano scaricabili finché non si riconferma
 export async function riapriScheda(id, userId) {
-  const s = await one('SELECT id, stato, nome_file, versione FROM schede WHERE id=$1', [id]);
+  const s = await one('SELECT id, stato, nome_file, versione, dati FROM schede WHERE id=$1', [id]);
   if (!s) throw notFound('Scheda non trovata');
   if (s.stato !== 'CONFERMATA') throw bad('Si può riaprire solo un referto confermato');
+  const vecchioMotore = !isSchemaBlocchi(s.dati);   // referto emesso con il motore precedente: si rilegge dal PDF
   const inviato = await one(`SELECT count(*)::int AS n FROM invii WHERE scheda_id=$1 AND stato IN ('INVIATO','REGISTRATO')`, [id]);
   await tx(async (c) => {
-    await c.query(`UPDATE schede SET stato='BOZZA', riaperta_at=now(), riaperta_by=$2, updated_at=now() WHERE id=$1`, [id, userId]);
-    await registra('RIAPERTA', { scheda_id: id, user_id: userId, dettagli: { nome_file: s.nome_file, versione: s.versione, inviato: inviato.n > 0 } }, c);
+    await c.query(`UPDATE schede SET stato='BOZZA', riaperta_at=now(), riaperta_by=$2, updated_at=now(), da_rielaborare=$3 WHERE id=$1`, [id, userId, vecchioMotore]);
+    await registra('RIAPERTA', { scheda_id: id, user_id: userId, dettagli: { nome_file: s.nome_file, versione: s.versione, inviato: inviato.n > 0, da_rielaborare: vecchioMotore || undefined } }, c);
   });
-  return { id, versione: s.versione, inviato: inviato.n > 0 };
+  return { id, versione: s.versione, inviato: inviato.n > 0, da_rielaborare: vecchioMotore };
 }
 
 // ---- Eliminazione (richiesta del CEO: "permettimi di cancellare i file da elaborazioni recenti")

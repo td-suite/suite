@@ -9,6 +9,7 @@ const r = Router();
 
 const AZIONI = { CARICATO: 'Caricamento', SCARTATO: 'PDF scartato', MODIFICATA: 'Correzione', CONFERMATA: 'Conferma', CONFERMATA_AUTO: 'Conferma automatica (casella)', SOSTITUZIONE: 'Sostituzione del file precedente', SCARTATA: 'Scheda scartata',
   RIAPERTA: 'Referto riaperto', INVIATO: 'Invio al mittente', INVIO_FALLITO: 'Invio al mittente non riuscito', CASELLA_IGNORATO: 'Mail senza PDF ignorata',
+  CORREZIONE_AI: 'Correzione chiesta a Claude', CORREZIONE_ANNULLATA: 'Correzione annullata', RIELABORATA: 'Rielaborata dal PDF',
   ELABORAZIONE_ELIMINATA: 'Elaborazione eliminata', SCHEDA_ELIMINATA: 'Scheda eliminata', IMPOSTAZIONI: 'Impostazioni', TEMPLATE: 'Template carta intestata' };
 
 function filtriData(params, from, to, col) {
@@ -73,7 +74,7 @@ r.get('/registro.xlsx', ah(async (req, res) => {
     const det = [d.motivo ? `Motivo: ${d.motivo}` : null, d.filename && !x.elaborazione_filename ? `File: ${d.filename}` : null, d.schede != null ? `Schede: ${d.schede}` : null, d.confermate ? `Confermate rimosse: ${d.confermate}` : null, d.file != null && x.azione.endsWith('ELIMINATA') ? `File eliminati: ${d.file}` : null,
       Array.isArray(d.pazienti) && d.pazienti.length ? `Pazienti: ${d.pazienti.join(', ')}` : null, d.paziente ? `Paziente: ${d.paziente}` : null, d.pagine != null ? `Pagine: ${d.pagine}` : null, d.forzata ? 'Conferma forzata (coerenza non superata)' : null,
       d.suffisso ? 'Nome con suffisso' : null, d.sostituisce_scheda_id ? `Sostituisce la scheda ${d.sostituisce_scheda_id}` : null, d.pdf_sorgente_intero ? 'PDF sorgente intero (ritaglio non disponibile)' : null, d.ocr ? 'OCR' : null,
-      Array.isArray(d.campi) ? `Campi: ${d.campi.join(', ')}` : null, d.template ? `Template: ${d.template}` : null, d.versione > 1 ? `Versione ${d.versione}` : null,
+      Array.isArray(d.campi) ? `Campi: ${d.campi.join(', ')}` : null, d.istruzione ? `Istruzione: ${d.istruzione}` : null, d.lettura ? `Lettura: ${d.lettura}` : null, d.template ? `Template: ${d.template}` : null, d.versione > 1 ? `Versione ${d.versione}` : null,
       d.to_email ? `A: ${d.to_email}` : null, d.stato && x.azione.startsWith('INVI') ? `Esito: ${d.stato}` : null, d.automatico ? 'Automatico' : null, d.errore ? `Errore: ${d.errore}` : null,
       d.origine === 'CASELLA' ? `Dalla casella${d.from_email ? ` (${d.from_email})` : ''}` : null].filter(Boolean).join(' · ');
     ws.addRow({ at: new Date(x.at).toLocaleString('it-IT', { timeZone: 'Europe/Rome' }), operatore: x.operatore || '', azione: x.azione_nome, sorgente: x.sorgente_nome || '', paziente: x.cognome_nome || '', acc: x.accettazione || '',

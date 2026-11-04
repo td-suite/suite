@@ -1,0 +1,239 @@
+{
+ "descrizione": "gen11.py: Nuova Igea, secreto vaginale senza carica, esami aggiuntivi RDI dopo l antibiogramma e nota (RDI); PDF sorgente merge di 2 pagine",
+ "atteso_docx": "Referto - DINE KATERINA.docx",
+ "riconosci": [
+  "DINE KATERINA",
+  "Accettazione n°: 1409"
+ ],
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1,
+     2
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "DINE KATERINA",
+      "righe": [
+       [
+        "Data di nascita",
+        "03/02/1975"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "1409"
+       ],
+       [
+        "Data Acc.",
+        "24/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "MICROBIOLOGIA"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "ESAME MICROBIOLOGICO DEL SECRETO VAGINALE",
+       "metodo": [
+        "Metodo: microscopico - colturale",
+        "Materiale: T.VAGI.AMIES",
+        "Nuova descrizione dell'esame come da Nomenclatore 2025"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Esame microscopico dopo colorazione di Gram",
+         "valore": "Scarsi lattobacilli;\nBacilli gram negativi"
+        },
+        {
+         "etichetta": "Specie Microbiche Isolate",
+         "valore": "Escherichia coli"
+        },
+        {
+         "etichetta": "Ricerca Trichomonas vaginalis",
+         "valore": "Negativa"
+        },
+        {
+         "etichetta": "Ricerca Lieviti",
+         "valore": "Negativa"
+        },
+        {
+         "etichetta": "Ricerca Streptococcus Agalactiae",
+         "valore": "Negativa"
+        },
+        {
+         "etichetta": "Esito",
+         "valore": "Esame colturale: POSITIVO"
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Escherichia coli",
+       "n": 1,
+       "carica": "",
+       "carica_lbl": "Carica Batterica",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "AZTREONAM",
+         "S",
+         "<=1"
+        ],
+        [
+         "AMOXICILLINA-CLAVULANATO",
+         "R",
+         ">32/2"
+        ],
+        [
+         "CEFTAZIDIME",
+         "R",
+         "8"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "S",
+         "<=0,25"
+        ],
+        [
+         "CEFTRIAXONE",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "CEFTOLOZANO-TAZOBACTAM",
+         "S",
+         "<=1/4"
+        ],
+        [
+         "CEFTAZIDIME-AVIBACTAM",
+         "S",
+         "<=0,25/4"
+        ],
+        [
+         "ERTAPENEM",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "S",
+         "<=1"
+        ],
+        [
+         "GENTAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "IMIPENEM",
+         "S",
+         "<=0,25"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "TRIMETOPRIM-SULFAMETOXAZOLO",
+         "R",
+         ">2/38"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "S",
+         "<=4/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "COLTURA PER NEISS. GONORRHOEAE (RDI)",
+       "metodo": [
+        "Metodo: colturale",
+        "Materiale: T.AMIES",
+        "Sede Anatomica: CERVICALE"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Esito",
+         "valore": "Negativa",
+         "riferimento": "Negativa"
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "RICERCA MYCOPLASMI",
+       "metodo": [
+        "Metodo: colturale",
+        "Materiale: T.CERV.AMIES 2"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Mycoplasma Hominis",
+         "valore": "Negativo",
+         "riferimento": "Negativo"
+        },
+        {
+         "etichetta": "Ureaplasma Urealyticum",
+         "valore": "Negativo",
+         "riferimento": "Negativo"
+        }
+       ]
+      },
+      {
+       "tipo": "paragrafo",
+       "testo": "(RDI) Test eseguiti in RDI - RETE DIAGNOSTICA ITALIANA - Via del Santo 147 - 35010 LIMENA (PD) - C.F. 04296540281",
+       "stile": "small",
+       "before": 120,
+       "after": 0
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - DINE KATERINA",
+     "sorgente": "CERBA_NUOVA_IGEA",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

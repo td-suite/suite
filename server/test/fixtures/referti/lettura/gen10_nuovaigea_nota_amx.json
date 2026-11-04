@@ -1,0 +1,182 @@
+{
+ "descrizione": "gen10.py: Nuova Igea, urinocoltura con nota interpretativa Antibiogramma/Antimicogramma",
+ "atteso_docx": "Referto - SARSI MARIA CRISTINA.docx",
+ "riconosci": null,
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "SARSI MARIA CRISTINA",
+      "righe": [
+       [
+        "Data di nascita",
+        "16/09/1962"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Accettazione n°",
+        "2446"
+       ],
+       [
+        "Data Acc.",
+        "21/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "MICROBIOLOGIA"
+      },
+      {
+       "tipo": "esame2",
+       "nome": "URINOCOLTURA",
+       "metodo": [
+        "Metodo: Ricerca Batteri e Lieviti",
+        "Materiale: URINE"
+       ]
+      },
+      {
+       "tipo": "tabella2",
+       "righe": [
+        {
+         "etichetta": "Specie Microbiche",
+         "valore": "Escherichia coli"
+        },
+        {
+         "etichetta": "Esito",
+         "valore": "Esame colturale: POSITIVO"
+        },
+        {
+         "etichetta": "Antibiogramma/Antimicogramma",
+         "valore": "Amoxicillina/Clavulanato iv. Per un'infezione da Enterobacterales originata nelle vie urinarie, una MIC per amoxicillina-acido clavulanico orale <=8 mcg/ml deve essere considerata sensibile, maggiore esposizione (I)."
+        }
+       ]
+      },
+      {
+       "tipo": "spacer"
+      },
+      {
+       "tipo": "antibiogramma",
+       "specie": "Escherichia coli",
+       "n": 1,
+       "carica": "1.000.000 UFC/ml",
+       "carica_lbl": "Carica Batterica",
+       "legenda": "R: Resistente   I: Sensibile con aumentata esposizione al farmaco",
+       "righe": [
+        [
+         "AMPICILLINA",
+         "S",
+         "<=2"
+        ],
+        [
+         "AMIKACINA",
+         "S",
+         "<=4"
+        ],
+        [
+         "AMOXICILLINA-CLAVULANATO",
+         "S",
+         "4/2"
+        ],
+        [
+         "CEFTAZIDIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "CIPROFLOXACINA",
+         "I",
+         "0,5"
+        ],
+        [
+         "CEFALEXINA",
+         "S",
+         "8"
+        ],
+        [
+         "CEFTRIAXONE",
+         "S",
+         "<=1"
+        ],
+        [
+         "CEFUROXIME",
+         "I",
+         "4"
+        ],
+        [
+         "ERTAPENEM",
+         "S",
+         "<=0,125"
+        ],
+        [
+         "CEFEPIME",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "FOSFOMICINA C/G6P",
+         "S",
+         "<=8"
+        ],
+        [
+         "NITROFURANTOINA",
+         "S",
+         "32"
+        ],
+        [
+         "GENTAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "LEVOFLOXACINA",
+         "I",
+         "1"
+        ],
+        [
+         "MEROPENEM",
+         "S",
+         "<=0,5"
+        ],
+        [
+         "TOBRAMICINA",
+         "S",
+         "<=1"
+        ],
+        [
+         "TRIMETOPRIM-SULFAMETOXAZOLO",
+         "S",
+         "<=0,5/9,5"
+        ],
+        [
+         "TEMOCILLINA",
+         "I",
+         "16"
+        ],
+        [
+         "PIPERACILLINA-TAZOBACTAM",
+         "S",
+         "<=2/4"
+        ]
+       ]
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - SARSI MARIA CRISTINA",
+     "sorgente": "CERBA_NUOVA_IGEA",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

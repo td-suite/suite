@@ -1,0 +1,102 @@
+{
+ "descrizione": "gen9.py: Bianalisi, IgE specifiche FEIA (variante B, titolo esame, valori di riferimento, nota (1))",
+ "atteso_docx": "Referto - GAMBINO SANDY (Bianalisi IgE).docx",
+ "riconosci": null,
+ "risposta": {
+  "schede": [
+   {
+    "pagine": [
+     1
+    ],
+    "dati": {
+     "anagrafica": {
+      "cognome_nome": "GAMBINO SANDY",
+      "righe": [
+       [
+        "Data di nascita",
+        "30/04/1991 (anni 35)"
+       ],
+       [
+        "Sesso",
+        "F"
+       ],
+       [
+        "Referto",
+        "R3YEA160591 del 16/10/2026"
+       ],
+       [
+        "Accettazione",
+        "A3YEA141067 del 15/10/2026"
+       ]
+      ]
+     },
+     "blocchi": [
+      {
+       "tipo": "settore",
+       "titolo": "ALLERGOLOGIA E INTOLLERANZE"
+      },
+      {
+       "tipo": "titolo_esame",
+       "testo": "IgE specifiche per singoli allergeni"
+      },
+      {
+       "tipo": "paragrafo",
+       "testo": "Valori di Riferimento:\n< 0.10 non rilevabile. Non esclude la presenza di sensibilizzazione all'allergene testato.\n0.10 - 0.34 Concentrazione molto bassa.\nClasse 0: < 0.35 kU/L\nClasse 1: 0.35-0.70 kU/L\nClasse 2: 0.70-3.5 kU/L\nClasse 3: 3.5-17.5 kU/L\nClasse 4: 17.5-50.0 kU/L\nClasse 5: 50.0-100.0 kU/L\nClasse 6: > 100.0 kU/L",
+       "stile": "small",
+       "before": 0,
+       "after": 120
+      },
+      {
+       "tipo": "tabella1",
+       "righe": [
+        {
+         "nome": "S - f3 Merluzzo (Gadus morhua) (1)",
+         "risultato": "<0.1",
+         "riferimento": "",
+         "bold_name": true,
+         "small": [
+          "Metodo: FEIA"
+         ],
+         "unit": "kU/L"
+        },
+        {
+         "nome": "S - f13 Arachide (Arachis hypogaea) (1)",
+         "risultato": "0.13 *",
+         "riferimento": "",
+         "bold_name": true,
+         "small": [
+          "Metodo: FEIA"
+         ],
+         "unit": "kU/L"
+        },
+        {
+         "nome": "S - f49 Mela (Malus x domestica) (1)",
+         "risultato": "<0.1",
+         "riferimento": "",
+         "bold_name": true,
+         "small": [
+          "Metodo: FEIA"
+         ],
+         "unit": "kU/L"
+        }
+       ]
+      },
+      {
+       "tipo": "paragrafo",
+       "testo": "(1) Esame eseguito Bianalisi Verano Brianza (MB)",
+       "stile": "small",
+       "before": 120,
+       "after": 0
+      },
+      {
+       "tipo": "spacer"
+      }
+     ],
+     "nome_file": "Referto - GAMBINO SANDY (Bianalisi IgE)",
+     "sorgente": "BIANALISI",
+     "note_anomalie": []
+    }
+   }
+  ]
+ }
+}

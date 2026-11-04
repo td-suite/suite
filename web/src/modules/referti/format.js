@@ -15,3 +15,10 @@ export const b64ToUrl = (b64, mime) => { const bin = atob(b64); const arr = new 
 // Origine dell'elaborazione e stato dell'invio al mittente (casella template@, 31/10/2026)
 export const ORIGINE = { UPLOAD: { label: 'Caricato', tone: 'grey', icon: 'upload' }, CASELLA: { label: 'Casella', tone: 'teal', icon: 'mail' } };
 export const STATO_INVIO = { INVIATO: { label: 'Inviato', tone: 'green' }, REGISTRATO: { label: 'Registrato (posta in modalità registro)', breve: 'Registrato', tone: 'blue' }, FALLITO: { label: 'Invio non riuscito', breve: 'Non riuscito', tone: 'red' } };
+// Motore del 03/11/2026: come è stata letta la scheda e origine delle versioni dei dati ("Chiedi una correzione")
+export const LETTURA = {
+  CLAUDE: { label: 'Letta con Claude', tone: 'teal', correzione: 'Claude rilegge il PDF di partenza e la scheda.' },
+  MOCK: { label: 'Lettura simulata', tone: 'blue', correzione: 'Lettura simulata (REFERTI_AI_MOCK): la correzione è simulata, solo per il collaudo.' },
+  RISERVA: { label: 'Parser di riserva', tone: 'amber', correzione: 'Senza chiave Anthropic la correzione con Claude non è disponibile: correggi i campi qui sotto.' },
+};
+export const ORIGINE_VERSIONE = { LETTURA: { label: 'Lettura', tone: 'teal' }, CORREZIONE: { label: 'Correzione', tone: 'mauve' }, MANUALE: { label: 'Modifica manuale', tone: 'grey' } };

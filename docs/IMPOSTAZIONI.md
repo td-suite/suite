@@ -179,3 +179,17 @@ Graph **Mail.Read** e **Mail.Send** con consenso amministratore e, se c'è una A
 (altrimenti "Prova la casella" / "Prova l'invio" rispondono 403 con il motivo). Con `MAIL_PROVIDER=log` gli invii restano nel registro
 email (stato REGISTRATO). `POST /api/referti/inbox/simula` funziona solo con `NODE_ENV` diverso da production. Migrazione: referti
 004_casella_invii_riapertura.sql.
+
+## Referti esterni: lettura con Claude e "Chiedi una correzione" (03/11/2026)
+Il PDF del laboratorio esterno lo legge Claude con la chiave e il modello della Suite (`ANTHROPIC_API_KEY`, Amministrazione >
+Impostazioni > Claude: nessuna chiave propria del modulo); il DOCX lo scrive il porting del generatore del progetto sul template
+predefinito "Format TD (BARONI VERA)" (`server/src/modules/referti/templates/formatTD_BARONI_VERA.docx`) o su quello caricato in
+Referti esterni > Impostazioni. Variabili d'ambiente (facoltative): `REFERTI_AI_MAX_TOKENS` spazio di risposta di una lettura o di una
+correzione (16000); `REFERTI_AI_TIMEOUT_MS` tempo massimo (180000). **`REFERTI_AI_MOCK=1`** (solo con `NODE_ENV` diverso da
+production, ignorata in produzione: non impostarla su Render) simula lettura e correzione con i JSON attesi delle fixture
+`server/test/fixtures/referti/lettura/*.json` (`REFERTI_AI_MOCK_DIR` per un'altra cartella): serve ai test e al collaudo senza chiave.
+Senza chiave Anthropic e senza mock la lettura usa i parser di riserva (anomalia "parser di riserva" nella scheda) e "Chiedi una
+correzione" risponde 400. Test di parità con i referti del progetto: `REFERTI_PACCHETTO` (cartella del pacchetto "Referti EXT su
+format TD", predefinita /home/claude/referti-pacchetto) e `REFERTI_PDF_SORGENTI` (cartella dei PDF sorgente dei tre merge Nuova Igea);
+se mancano, quei confronti vengono saltati. Migrazione: referti 005_lettura_claude_versioni.sql (schede.lettura,
+antibiotici_sorgente, da_rielaborare; tabella scheda_versioni; bozze del motore precedente marcate da rielaborare).

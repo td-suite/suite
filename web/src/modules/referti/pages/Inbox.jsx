@@ -1,14 +1,16 @@
-// Inbox: caricamento dei PDF (trascinamento multiplo), elaborazioni recenti con le schede trovate (stato, anomalie),
-// "Conferma tutte le verdi" per elaborazione, elenco delle schede da confermare.
+// Inbox: caricamento dei PDF (trascinamento multiplo; lettura con Claude, motore del 03/11/2026), elaborazioni recenti con le schede
+// trovate (stato, anomalie), "Conferma tutte le verdi" per elaborazione, elenco delle schede da confermare (parser di riserva e schede
+// del motore precedente da rielaborare in evidenza).
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, base, useApi } from '../api.js';
 import { useAuth, isLab } from '../index.jsx';
 import { Card, Loading, Empty, PageHead, Badge, DropZone, useToast, ConfirmModal } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { SORGENTE, STATO_SCHEDA, STATO_ELAB, ORIGINE, itDateTime, kb, pagineLabel } from '../format.js';
+import { SORGENTE, STATO_SCHEDA, STATO_ELAB, ORIGINE, LETTURA, itDateTime, kb, pagineLabel } from '../format.js';
 
 export const SorgenteBadge = ({ s }) => <Badge tone={SORGENTE[s]?.tone || 'grey'} dot={false}>{SORGENTE[s]?.breve || s || '-'}</Badge>;
+export const LetturaBadge = ({ l }) => (LETTURA[l] ? <Badge tone={LETTURA[l].tone} dot={false} title={l === 'RISERVA' ? 'Chiave Anthropic assente o lettura con Claude non riuscita: verifica ogni valore' : ''}>{LETTURA[l].label}</Badge> : null);
 export const StatoBadge = ({ s }) => <Badge tone={STATO_SCHEDA[s]?.tone || 'grey'}>{STATO_SCHEDA[s]?.label || s}</Badge>;
 export function Anomalie({ list, compact }) {
   if (!list?.length) return <Badge tone="green" dot={false}>Nessuna anomalia</Badge>;
@@ -79,7 +81,7 @@ export default function Inbox() {
         <Card title="Carica referti" icon="upload">
           <DropZone onFiles={carica} accept="application/pdf,.pdf" multiple>
             <Icon name="upload" />
-            <div>{busy ? 'Elaborazione in corso: estrazione del testo e lettura dei referti' : 'Trascina qui i PDF dei referti (anche più file e PDF uniti con più pazienti) oppure clicca per sceglierli'}</div>
+            <div>{busy ? 'Lettura in corso: Claude legge il PDF e trascrive i referti sul format TD (può servire un minuto per PDF)' : 'Trascina qui i PDF dei referti (anche più file e PDF uniti con più pazienti) oppure clicca per sceglierli'}</div>
             <div className="small muted">Massimo 20 PDF per volta, 20 MB ciascuno. I PDF che non sono referti vengono scartati con un messaggio.</div>
           </DropZone>
           {esito && (
@@ -88,7 +90,7 @@ export default function Inbox() {
                 <li key={i} className={e.stato === 'SCARTATO' ? 'ko' : 'ok'}>
                   <Icon name={e.stato === 'SCARTATO' ? 'x' : 'check'} />
                   <div>
-                    <div className="strong">{e.filename} {e.sorgente && <SorgenteBadge s={e.sorgente} />} {e.ocr && <Badge tone="amber" dot={false}>OCR</Badge>}</div>
+                    <div className="strong">{e.filename} {e.sorgente && <SorgenteBadge s={e.sorgente} />} {e.ocr && <Badge tone="amber" dot={false}>OCR</Badge>} <LetturaBadge l={e.lettura} /></div>
                     {e.stato === 'SCARTATO' ? <div className="small">{e.motivo_scarto}</div> : <div className="small">{e.pagine} {e.pagine === 1 ? 'pagina' : 'pagine'}, {e.schede.length} {e.schede.length === 1 ? 'scheda' : 'schede'}: {e.schede.map((s) => <Link key={s.id} to={`${base}/schede/${s.id}`}>{s.cognome_nome || 'paziente'}{s.anomalie?.length ? ` (${s.anomalie.length})` : ''}</Link>).reduce((acc, x, j) => (j ? [...acc, ', ', x] : [x]), [])}</div>}
                   </div>
                 </li>))}
@@ -103,8 +105,8 @@ export default function Inbox() {
             <tbody>{bozze.data.map((s) => (
               <tr key={s.id} className="click" onClick={() => nav(`${base}/schede/${s.id}`)}>
                 <td><div className="strong">{s.cognome_nome || <span className="muted">senza nome</span>}</div><div className="small muted">{s.data_nascita}{s.sesso ? ` · ${s.sesso}` : ''}</div>
-                  {s.riaperta_at && <Badge tone="amber" dot={false}>Riaperto</Badge>}{s.origine === 'CASELLA' && <Badge tone="teal" dot={false} title={s.from_email || ''}>Dalla casella</Badge>}</td>
-                <td><SorgenteBadge s={s.sorgente} />{s.ocr && <> <Badge tone="amber" dot={false}>OCR</Badge></>}</td>
+                  {s.riaperta_at && <Badge tone="amber" dot={false}>Riaperto</Badge>}{s.da_rielaborare && <Badge tone="red" dot={false} title="Scheda del motore precedente: rielaborala dal PDF">Da rielaborare</Badge>}{s.origine === 'CASELLA' && <Badge tone="teal" dot={false} title={s.from_email || ''}>Dalla casella</Badge>}</td>
+                <td><SorgenteBadge s={s.sorgente} />{s.ocr && <> <Badge tone="amber" dot={false}>OCR</Badge></>}{s.lettura === 'RISERVA' && <> <LetturaBadge l={s.lettura} /></>}</td>
                 <td className="small">{s.accettazione || s.referto_codice || '-'}{s.data_acc || s.referto_data ? <div className="muted">{s.data_acc || s.referto_data}</div> : null}</td>
                 <td className="small">{pagineLabel(s.pagine)}<div className="muted ellipsis" style={{ maxWidth: 180 }} title={s.elaborazione_filename}>{s.elaborazione_filename}</div></td>
                 <td><Anomalie list={s.anomalie} compact /></td>

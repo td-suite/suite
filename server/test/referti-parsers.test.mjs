@@ -1,7 +1,7 @@
-// Referti esterni: test dei parser (Bianalisi, Cerba RDI merge, Cerba Nuova Igea, non referto), del generatore DOCX e del controllo
-// di coerenza (compreso il controllo inverso "nessun testo del laboratorio esterno nel DOCX" e l'anagrafica completa con luogo di
-// nascita e indirizzo, correzione del 29/10/2026). I PDF di prova sono sintetici (test/fixtures/referti/genera.py): i parser vanno
-// ricalibrati sui PDF reali.
+// Referti esterni: test dei parser a mano (Bianalisi, Cerba RDI merge, Cerba Nuova Igea, non referto). Dal motore del 03/11/2026 la
+// lettura la fa Claude (lib/lettura.js) e i parser sono SOLO la riserva senza chiave Anthropic: la loro uscita passa da daParser
+// (lib/blocchi.js) al JSON a blocchi del generatore format TD (lib/formatTD.js). Qui anche la resa della riserva e il controllo di
+// coerenza sul nuovo JSON. I PDF di prova sono sintetici (test/fixtures/referti/genera.py).
 // Il testo (.txt) è l'uscita di `pdftotext -layout`, così i test girano anche senza poppler. Esecuzione: node --test server/test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,8 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { elabora, rilevaSorgente, spezzaPerPaziente } from '../src/modules/referti/lib/parsers/index.js';
 import { segmenti, anagraficaA, anagraficaB, isTestoLaboratorio, isTestataTabella, isFirma, isDicituraLegale } from '../src/modules/referti/lib/parsers/common.js';
 import { pulisci, anagraficaAbbreviata } from '../src/modules/referti/lib/text.js';
-import { generaDocx, testoDocx, trapianta } from '../src/modules/referti/lib/docgen.js';
-import { controllaCoerenza, tokenRisultati, contaAntibiotici, testoLabEsterno, righeSpurie } from '../src/modules/referti/lib/coerenza.js';
+import { generaDocx, testoDocx } from '../src/modules/referti/lib/formatTD.js';
+import { controllaCoerenza, testoLabEsterno, righeSpurie } from '../src/modules/referti/lib/coerenza.js';
+import { daParser, validaDati, contaAntibiotici } from '../src/modules/referti/lib/blocchi.js';
 import { suffissoPer, nomeBase } from '../src/modules/referti/lib/core.js';
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'referti');
@@ -150,7 +151,7 @@ test('Cerba Nuova Igea: corpo 2, due microrganismi affiancati separati, #2 senza
   assert.equal(d.esami[1].campi.length, 3);
   assert.deepEqual(codici(s), ['DUE_MICRORGANISMI']);
   assert.equal(d.conteggi.antibiotici_sorgente, 10);
-  assert.equal(contaAntibiotici(d), 10);
+  assert.equal(contaAntibiotici(daParser(d)), 10);
 });
 
 test('OCR: anomalia "verifica manuale obbligatoria" in testa', () => {
@@ -158,161 +159,113 @@ test('OCR: anomalia "verifica manuale obbligatoria" in testa', () => {
   assert.equal(codici(r.schede[0])[0], 'OCR');
 });
 
-test('nome del file e suffisso', () => {
+test('nome del file e suffisso (JSON a blocchi)', () => {
   const r = elabora({ pagine: pagine('merge_kpc_rdi') });
   assert.equal(nomeBase('GIANNINI PAOLA'), 'Referto - GIANNINI PAOLA');
-  assert.equal(suffissoPer(r.schede[0].dati, 'ESAME'), 'KPC');
-  assert.equal(suffissoPer(r.schede[0].dati, 'SORGENTE'), 'Cerba RDI');
-  assert.equal(suffissoPer(r.schede[0].dati, 'DATA'), '04-09-2026');
-  assert.equal(suffissoPer(elabora({ pagine: pagine('nuova_igea_urinocoltura') }).schede[0].dati, 'ESAME'), 'Urinocoltura');
+  const d = daParser(r.schede[0].dati);
+  assert.equal(suffissoPer(d, 'ESAME'), 'KPC');
+  assert.equal(suffissoPer(d, 'SORGENTE'), 'Cerba RDI');
+  assert.equal(suffissoPer(d, 'DATA'), '04-09-2026');
+  assert.equal(suffissoPer(daParser(elabora({ pagine: pagine('nuova_igea_urinocoltura') }).schede[0].dati), 'ESAME'), 'Urinocoltura');
 });
 
-test('generatore DOCX: anagrafica completa nel riquadro, nessun codice/testo del laboratorio esterno, coerenza superata (anche inversa)', async () => {
-  for (const name of ['bianalisi_urinocoltura', 'nuova_igea_urinocoltura', 'merge_kpc_rdi']) {
-    const pg = pagine(name);
-    const r = elabora({ pagine: pg });
-    for (const s of r.schede) {
-      const docx = await generaDocx(s.dati);
-      assert.equal(docx.subarray(0, 2).toString('latin1'), 'PK');
-      const testo = testoDocx(docx);
+// Riserva: uscita del parser → JSON a blocchi → DOCX del generatore → coerenza
+const riserva = (name, pg = pagine(name)) => elabora({ pagine: pg }).schede.map((s) => ({ ...s, blocchi: daParser(s.dati) }));
+const coerenza = async (s, dati = s.blocchi) => { const testo = testoDocx(await generaDocx(dati)); return { testo, coe: controllaCoerenza({ dati, testoSorgente: s.testo_sorgente, testoDocx: testo, antibioticiSorgente: s.dati.conteggi?.antibiotici_sorgente ?? null }) }; };
+const per = (coe) => Object.fromEntries(coe.check.map((c) => [c.codice, c]));
+
+test('parser di riserva → blocchi: schema valido, riquadro come il modello, nessun testo del laboratorio esterno, coerenza verde', async () => {
+  for (const name of ['bianalisi_urinocoltura', 'nuova_igea_urinocoltura', 'merge_kpc_rdi', 'bianalisi_senza_colonne', 'altro_farmaci']) {
+    for (const s of riserva(name)) {
+      const v = validaDati(s.blocchi);
+      assert.ok(v.ok, `${name}: ${v.errore}`);
+      const { testo, coe } = await coerenza(s);
       const a = s.dati.anagrafica;
-      // riquadro come il modello del Laboratorio (29/10/2026): titolo del riquadro = nome del paziente, poi Data di nascita, Sesso, riferimenti di accettazione; luogo/indirizzo solo se presenti
       const righe = testo.split('\n').filter(Boolean);
       assert.equal(righe[0], a.cognome_nome);
-      assert.ok(testo.includes(`Sesso: ${a.sesso}`));
-      assert.ok(testo.includes(a.eta != null ? `Data di nascita: ${a.data_nascita} (anni ${a.eta})` : `Data di nascita: ${a.data_nascita}`));
-      if (a.variante === 'B') { assert.ok(testo.includes(`Referto: ${a.referto_codice} del ${a.referto_data}`)); assert.ok(testo.includes(`Accettazione: ${a.accettazione_codice} del ${a.accettazione_data}`)); }
-      else { assert.ok(testo.includes(`Accettazione n°: ${a.accettazione_n}`)); assert.ok(testo.includes(`Data Acc.: ${a.data_acc}`)); }
-      if (a.luogo_nascita) assert.ok(testo.includes(`Luogo di nascita: ${a.luogo_nascita}`)); else assert.ok(!testo.includes('Luogo di nascita'), 'senza luogo la riga non compare');
-      if (a.indirizzo) assert.ok(testo.includes(`Indirizzo: ${a.indirizzo}`)); else assert.ok(!testo.includes('Indirizzo:'), 'senza indirizzo la riga non compare');
-      assert.ok(!/: -$/m.test(testo), 'nessun trattino per campi vuoti');
-      // nessun riferimento al laboratorio esterno né righe spurie (le note del riquadro sono ammesse)
-      for (const x of ['BIANALISI S.p.A', 'Rete Diagnostica', 'Nuova Igea', 'Direttore', 'Medico richiedente', 'Pagina 1 di', 'Valori di Riferimento', 'Toscana Diagnostica']) assert.ok(!testo.includes(x), `${name}: "${x}" non deve comparire nel DOCX`);
-      assert.deepEqual(testoLabEsterno(testo, s.dati.note), []); assert.deepEqual(righeSpurie(testo, s.dati.note), []);
-      const coe = controllaCoerenza({ datiOrig: s.dati, dati: s.dati, testoSorgente: s.testo_sorgente, testoDocx: testo });
+      assert.ok(testo.includes(`Sesso:  ${a.sesso}`));
+      assert.ok(testo.includes(a.eta != null ? `Data di nascita:  ${a.data_nascita} (anni ${a.eta})` : `Data di nascita:  ${a.data_nascita}`));
+      if (a.variante === 'B') assert.ok(testo.includes(`Referto:  ${a.referto_codice} del ${a.referto_data}`));
+      else assert.ok(testo.includes(`Accettazione n°:  ${a.accettazione_n}`) && testo.includes(`Data Acc.:  ${a.data_acc}`));
+      assert.ok(!/:\s+-$/m.test(testo), 'nessun trattino per campi vuoti');
+      for (const x of ['BIANALISI S.p.A', 'Rete Diagnostica', 'Direttore', 'Medico richiedente', 'Pagina 1 di', 'Toscana Diagnostica']) assert.ok(!testo.includes(x), `${name}: "${x}" non deve comparire nel DOCX`);
       assert.ok(coe.ok, `${name}: ${JSON.stringify(coe.check.filter((c) => !c.ok))}`);
-      assert.deepEqual(coe.check.map((c) => c.codice), ['TOKEN_RISULTATI', 'N_ANTIBIOTICI', 'NUMERI_IN_PIU', 'ANAGRAFICA', 'TESTO_LAB_ESTERNO', 'RIGHE_SPURIE']);
-      assert.ok(tokenRisultati(s.dati).length > 5);
+      assert.deepEqual(coe.check.map((c) => c.codice), ['TOKEN_RISULTATI', 'VALORI_IN_SORGENTE', 'N_ANTIBIOTICI', 'NUMERI_IN_PIU', 'ANAGRAFICA', 'TESTO_LAB_ESTERNO', 'RIGHE_SPURIE']);
+      assert.equal(s.blocchi.blocchi[s.blocchi.blocchi.length - 1].tipo, 'spacer', 'ogni referto chiude con lo spacer');
     }
   }
 });
 
-test('coerenza inversa: testo del laboratorio esterno forzato nel referto TD fa fallire il controllo; anagrafica incompleta segnalata', async () => {
-  const pg = pagine('merge_kpc_rdi');
-  const orig = elabora({ pagine: pg }).schede[0];
-  const testoSorgente = orig.testo_sorgente;
-  // codice di accettazione esterno infilato in una riga del riquadro
-  const mod = JSON.parse(JSON.stringify(orig.dati));
-  mod.settori[0].righe.push({ tipo: 'testo', testo: 'Accettazione n° 2026/0456781 - Rete Diagnostica Italiana' });
-  let coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod, testoSorgente, testoDocx: testoDocx(await generaDocx(mod)) });
-  let by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
-  assert.equal(coe.ok, false); assert.equal(by.TESTO_LAB_ESTERNO.ok, false);
+test('coerenza inversa sul JSON a blocchi: testo del laboratorio esterno, codici R3YE e righe spurie nel corpo fanno fallire il controllo; note a piè ammesse', async () => {
+  const s = riserva('merge_kpc_rdi')[0];
+  const mod = JSON.parse(JSON.stringify(s.blocchi));
+  const t1 = mod.blocchi.find((b) => b.tipo === 'tabella1');
+  t1.righe.push({ nome: 'Accettazione n° 2026/0456781 - Rete Diagnostica Italiana', risultato: '', riferimento: '', bold_name: false, small: [], unit: '' });
+  let by = per((await coerenza(s, mod)).coe);
+  assert.equal(by.TESTO_LAB_ESTERNO.ok, false);
   assert.ok(by.TESTO_LAB_ESTERNO.dettagli.some((d) => /Accettazione/.test(d)) && by.TESTO_LAB_ESTERNO.dettagli.some((d) => /Rete Diagnostica/.test(d)));
-  // codice R3YE nel nome di un esame
-  const mod2 = JSON.parse(JSON.stringify(orig.dati));
-  mod2.settori[0].righe[0].nome = 'KPC test di conferma R3YEA050123';
-  coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod2, testoSorgente, testoDocx: testoDocx(await generaDocx(mod2)) });
-  by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
+  const mod2 = JSON.parse(JSON.stringify(s.blocchi));
+  mod2.blocchi.find((b) => b.tipo === 'tabella1').righe[0].nome = 'KPC test di conferma R3YEA050123';
+  by = per((await coerenza(s, mod2)).coe);
   assert.equal(by.TESTO_LAB_ESTERNO.ok, false); assert.match(by.TESTO_LAB_ESTERNO.dettagli[0], /R3YE/);
-  // nota di sostituzione del riquadro (con codice R3YE) e nota "(1) Esame eseguito Bianalisi…": ammesse
-  const bia = elabora({ pagine: pagine('bianalisi_urinocoltura') }).schede[0];
-  assert.deepEqual(testoLabEsterno(testoDocx(await generaDocx(bia.dati)), bia.dati.note), []);
-  // anagrafica incompleta: senza sesso e accettazione (il luogo di nascita è facoltativo: senza, nessuna anomalia)
-  const mod3 = JSON.parse(JSON.stringify(orig.dati));
-  mod3.anagrafica.luogo_nascita = ''; mod3.anagrafica.sesso = ''; mod3.anagrafica.accettazione_n = '';
-  coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod3, testoSorgente, testoDocx: testoDocx(await generaDocx(mod3)) });
-  by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
+  // nota a piè con codice R3YE o nome del laboratorio: ammessa (paragrafo copiato dalla sorgente)
+  const bia = riserva('bianalisi_urinocoltura')[0];
+  const testoBia = testoDocx(await generaDocx(bia.blocchi));
+  assert.deepEqual(testoLabEsterno(testoBia, bia.blocchi), []);
+  // righe spurie forzate nel corpo
+  const mod4 = JSON.parse(JSON.stringify(s.blocchi));
+  mod4.blocchi.find((b) => b.tipo === 'tabella1').righe.push(...['Esame   Risultato   U.M.   Valori di Riferimento', '28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere', 'I risultati di questo referto sono interpretabili solo dal medico curante'].map((nome) => ({ nome, risultato: '', riferimento: '', bold_name: false, small: [], unit: '' })));
+  const sp = righeSpurie(testoDocx(await generaDocx(mod4)), mod4);
+  assert.equal(sp.length, 3); assert.match(sp[0], /testata/); assert.match(sp[1], /firma/); assert.match(sp[2], /dicitura legale/);
+  // anagrafica incompleta: senza sesso e accettazione
+  const mod3 = JSON.parse(JSON.stringify(s.blocchi));
+  mod3.anagrafica.righe = mod3.anagrafica.righe.filter(([e]) => !['Sesso', 'Accettazione n°'].includes(e));
+  by = per((await coerenza(s, mod3)).coe);
   assert.equal(by.ANAGRAFICA.ok, false); assert.deepEqual(by.ANAGRAFICA.dettagli, ['sesso', 'accettazione']);
-  const senzaLuogo = elabora({ pagine: pg.map((p) => p.replace(/Luogo di nascita: .*?\([A-Z]+\)/, '')) });
-  assert.ok(senzaLuogo.schede.every((s) => !s.anomalie.some((x) => x.codice === 'ANAGRAFICA_INCOMPLETA')));
-  const senzaSesso = elabora({ pagine: pg.map((p) => p.replace(/Sesso: [FM]/g, '')) });
-  assert.ok(senzaSesso.schede.every((s) => s.anomalie.some((x) => x.codice === 'ANAGRAFICA_INCOMPLETA' && /sesso/.test(x.testo))));
-  // righe spurie forzate nel corpo: testata di tabella, firma digitale, dicitura legale
-  const mod4 = JSON.parse(JSON.stringify(orig.dati));
-  mod4.settori[0].righe.push({ tipo: 'testo', testo: 'Esame   Risultato   U.M.   Valori di Riferimento' }, { tipo: 'testo', testo: '28-10-2026 15.30 SN=4918597, Emesso dall\'Ente Certificatore: InfoCamere' }, { tipo: 'testo', testo: 'I risultati di questo referto sono interpretabili solo dal medico curante' });
-  coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod4, testoSorgente, testoDocx: testoDocx(await generaDocx(mod4)) });
-  by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
-  assert.equal(by.RIGHE_SPURIE.ok, false); assert.equal(by.RIGHE_SPURIE.dettagli.length, 3);
-  assert.match(by.RIGHE_SPURIE.dettagli[0], /testata/); assert.match(by.RIGHE_SPURIE.dettagli[1], /firma/); assert.match(by.RIGHE_SPURIE.dettagli[2], /dicitura legale/);
 });
 
-test('sorgente non riconosciuta (caso CHIARI STEFANIA / FARMACI del 29/10/2026): nome corretto, nessun settore inventato, una sola riga esame, riquadro con accettazione, DOCX senza righe spurie', async () => {
+test('coerenza: valore cambiato, antibiotico in meno e numero in più vengono segnalati', async () => {
+  const s = riserva('nuova_igea_urinocoltura')[0];
+  const mod = JSON.parse(JSON.stringify(s.blocchi));
+  const ab = mod.blocchi.find((b) => b.tipo === 'antibiogramma');
+  const tolto = ab.righe.pop();                                                 // un antibiotico in meno
+  mod.blocchi.find((b) => b.tipo === 'tabella2').righe[0].valore += ' 999';     // numero inventato
+  const { coe } = await coerenza(s, mod);
+  const by = per(coe);
+  assert.equal(coe.ok, false);
+  assert.equal(by.N_ANTIBIOTICI.ok, false); assert.equal(by.N_ANTIBIOTICI.dettagli.scheda, contaAntibiotici(s.blocchi) - 1);
+  assert.equal(by.NUMERI_IN_PIU.ok, false); assert.ok(by.NUMERI_IN_PIU.dettagli.includes('999'));
+  assert.equal(by.VALORI_IN_SORGENTE.ok, false); assert.ok(by.VALORI_IN_SORGENTE.dettagli.includes('999'));
+  assert.equal(by.TOKEN_RISULTATI.ok, false); assert.ok(by.TOKEN_RISULTATI.dettagli.includes(tolto[2]), `MIC dell'antibiotico tolto (${tolto[2]})`);
+  assert.equal(by.ANAGRAFICA.ok, true);
+});
+
+test('sorgente non riconosciuta (caso CHIARI STEFANIA / FARMACI del 29/10/2026): nome corretto, solo il settore della sorgente, una riga esame, riquadro con accettazione', async () => {
   const pg = pagine('altro_farmaci');
   assert.equal(rilevaSorgente(pg[0]), null);
   const r = elabora({ pagine: pg });
   assert.equal(r.sorgente, 'ALTRO'); assert.equal(r.motivo_scarto, null); assert.equal(r.schede.length, 1);   // non è uno scarto
   const s = r.schede[0]; const d = s.dati;
   assert.deepEqual(codici(s), ['SORGENTE_ALTRO']);
-  assert.equal(d.anagrafica.cognome_nome, 'CHIARI STEFANIA'); assert.equal(d.anagrafica.data_nascita, '25/05/1965'); assert.equal(d.anagrafica.sesso, 'F');
-  assert.equal(d.anagrafica.accettazione_n, '3370'); assert.equal(d.anagrafica.data_acc, '27/10/2026'); assert.equal(d.anagrafica.variante, 'A');
-  assert.equal(d.anagrafica.luogo_nascita, undefined); assert.equal(d.anagrafica.indirizzo, undefined);
-  assert.equal(d.corpo, 1);
-  assert.deepEqual(d.settori.map((x) => x.titolo), ['FARMACI']);          // solo il settore della sorgente, nessun MICROBIOLOGIA
-  assert.equal(d.settori[0].righe.length, 1);
+  assert.equal(d.anagrafica.cognome_nome, 'CHIARI STEFANIA'); assert.equal(d.anagrafica.accettazione_n, '3370'); assert.equal(d.anagrafica.data_acc, '27/10/2026');
+  assert.deepEqual(d.settori.map((x) => x.titolo), ['FARMACI']);
   assert.deepEqual(d.settori[0].righe[0], { tipo: 'esame', nome: 'Carbamazepina', risultato: '10,6 µg/ml', unita: '', riferimento: '4,0 - 12,0', sotto: ['Metodo: Immunochimico (KIMS)', 'Materiale: SIERO'] });
   for (const x of ['TOSCANA DIAGNOSTICA', 'Valori di Riferimento', 'SN=', 'InfoCamere', 'GERINI', 'I risultati di questo referto', 'Regolamento', 'Pagina 1 di 1', 'SAN MARCO', 'P.IVA']) assert.ok(!s.testo_sorgente.includes(x), `testo_sorgente non deve contenere "${x}"`);
-  const testo = testoDocx(await generaDocx(d));
-  const righe = testo.split('\n').filter(Boolean);
-  assert.deepEqual(righe.slice(0, 5), ['CHIARI STEFANIA', 'Data di nascita: 25/05/1965', 'Sesso: F', 'Accettazione n°: 3370', 'Data Acc.: 27/10/2026']);
-  assert.deepEqual(righe.slice(5), ['FARMACI', 'Carbamazepina', 'Metodo: Immunochimico (KIMS)', 'Materiale: SIERO', '10,6 µg/ml', '4,0 - 12,0']);   // nient'altro
-  assert.ok(!testo.includes('Luogo di nascita') && !testo.includes('Indirizzo'));
-  const coe = controllaCoerenza({ datiOrig: d, dati: d, testoSorgente: s.testo_sorgente, testoDocx: testo });
-  assert.ok(coe.ok, JSON.stringify(coe.check.filter((c) => !c.ok)));
-  assert.equal(suffissoPer(d, 'SORGENTE'), 'Esterno');
+  const b = daParser(d);
+  assert.deepEqual(b.anagrafica.righe, [['Data di nascita', '25/05/1965'], ['Sesso', 'F'], ['Accettazione n°', '3370'], ['Data Acc.', '27/10/2026']]);
+  assert.deepEqual(b.blocchi.map((x) => x.tipo), ['settore', 'tabella1', 'spacer']);
+  const righe = testoDocx(await generaDocx(b)).split('\n').filter(Boolean);
+  assert.deepEqual(righe, ['CHIARI STEFANIA', 'Data di nascita:  25/05/1965', 'Sesso:  F', 'Accettazione n°:  3370', 'Data Acc.:  27/10/2026', 'FARMACI', 'Carbamazepina', 'Metodo: Immunochimico (KIMS)', 'Materiale: SIERO', '10,6 µg/ml', '4,0 - 12,0']);
+  assert.equal(suffissoPer(b, 'SORGENTE'), 'Esterno');
 });
 
 test('senza titolo di settore nella sorgente il corpo parte senza titolo', async () => {
   const pg = pagine('altro_farmaci').map((p) => p.replace(/^FARMACI\s*$/m, ''));
   const s = elabora({ pagine: pg }).schede[0];
   assert.deepEqual(s.dati.settori.map((x) => x.titolo), ['']);
-  assert.equal(s.dati.settori[0].righe.length, 1);
-  const righe = testoDocx(await generaDocx(s.dati)).split('\n').filter(Boolean);
-  assert.equal(righe[5], 'Carbamazepina');
-});
-
-test('coerenza: valore mancante, antibiotico in meno e numero in più vengono segnalati', async () => {
-  const pg = pagine('nuova_igea_urinocoltura');
-  const orig = elabora({ pagine: pg }).schede[0];
-  const mod = JSON.parse(JSON.stringify(orig.dati));
-  mod.antibiogrammi[0].righe.pop();                 // un antibiotico in meno
-  mod.esami[0].campi[1].valore = 'Positivo 999';    // numero inventato
-  const docx = await generaDocx(mod);
-  const coe = controllaCoerenza({ datiOrig: orig.dati, dati: mod, testoSorgente: orig.testo_sorgente, testoDocx: testoDocx(docx) });
-  assert.equal(coe.ok, false);
-  const by = Object.fromEntries(coe.check.map((c) => [c.codice, c]));
-  assert.equal(by.N_ANTIBIOTICI.ok, false); assert.equal(by.N_ANTIBIOTICI.dettagli.scheda, 9);
-  assert.equal(by.NUMERI_IN_PIU.ok, false); assert.ok(by.NUMERI_IN_PIU.dettagli.includes('999'));
-  assert.equal(by.TOKEN_RISULTATI.ok, false); assert.ok(by.TOKEN_RISULTATI.dettagli.includes('>4'));   // MIC dell'antibiotico tolto
-  assert.equal(by.ANAGRAFICA.ok, true);
-});
-
-test('riquadro anagrafico: nome del paziente 12 pt bold 004F5F come titolo, righe 8,5 pt', async () => {
-  const PizZip = (await import('pizzip')).default;
-  const s = elabora({ pagine: pagine('altro_farmaci') }).schede[0];
-  const xml = new PizZip(await generaDocx(s.dati)).file('word/document.xml').asText();
-  const run = (testo) => { const i = xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) >= 0 ? xml.indexOf(`<w:t xml:space="preserve">${testo}</w:t>`) : xml.indexOf(`<w:t>${testo}</w:t>`); assert.ok(i > 0, testo); return xml.slice(xml.lastIndexOf('<w:r>', i), i); };
-  const nome = run('CHIARI STEFANIA'); assert.match(nome, /w:sz w:val="24"/); assert.match(nome, /<w:b\/>/); assert.match(nome, /w:color w:val="004F5F"/);
-  const data = run('25/05/1965'); assert.match(data, /w:sz w:val="17"/);
-});
-
-test('trapianto OpenXML: header, footer e media del template restano, document.xml è quello generato', async () => {
-  const PizZip = (await import('pizzip')).default;
-  const pg = pagine('merge_kpc_rdi');
-  const s = elabora({ pagine: pg }).schede[0];
-  const docx = await generaDocx(s.dati);
-  const z = new PizZip(docx);
-  assert.ok(z.file('word/header1.xml')); assert.ok(z.file('word/footer1.xml')); assert.ok(z.file('word/media/image1.png'));
-  const xml = z.file('word/document.xml').asText();
-  assert.match(xml, /<w:headerReference/); assert.match(xml, /w:top="2233"/);     // margini canonici sul template predefinito
-  assert.match(xml, /KPC test di conferma/);
-  assert.equal((xml.match(/<w:sectPr/g) || []).length, 1);
-  // template "utente": margini del template conservati, ma il superiore non scende sotto 2233 (correzione del 31/10/2026: con 1417 il
-  // riquadro paziente si addossava all'intestazione, caso RECCHIA)
-  const tplBuf = fs.readFileSync(new URL('../src/modules/referti/templates/carta_intestata_default.docx', import.meta.url));
-  const xml2 = new PizZip(trapianta(docx, tplBuf)).file('word/document.xml').asText();
-  assert.match(xml2, /w:top="2233"/); assert.doesNotMatch(xml2, /w:top="1417"/);
-  const pgMarTpl = new PizZip(tplBuf).file('word/document.xml').asText().match(/<w:pgMar\b[^>]*\/>/)[0];
-  assert.equal(xml2.match(/<w:pgMar\b[^>]*\/>/)[0], pgMarTpl.replace(/w:top="\d+"/, 'w:top="2233"'), 'gli altri margini del template restano');
+  const b = daParser(s.dati);
+  assert.deepEqual(b.blocchi.map((x) => x.tipo), ['tabella1', 'spacer']);
+  assert.equal(testoDocx(await generaDocx(b)).split('\n').filter(Boolean)[5], 'Carbamazepina');
 });
 
 // Layout reale Nuova Igea (PDF del 29/10/2026, dati anonimizzati): nome da solo nella riga sopra "Data di nascita", "Carica Batterica" sulla
@@ -380,73 +333,43 @@ test('Nuova Igea, layout reale del 29/10/2026: nome, carica, antibiogramma su du
   assert.equal(b.specie, 'Escherichia coli'); assert.equal(b.carica, '1.000.000 UFC/ml'); assert.match(b.legenda, /^R: Resistente/); assert.ok(!/#1|MIC/.test(b.legenda));
   assert.deepEqual(b.righe.map((r) => [r.antibiotico, r.sir, r.mic]), [['AMIKACINA', 'S', '<=4'], ['CEFTAZIDIME', 'R', '8'], ['MEROPENEM', 'S', '<=0,5']]);
   assert.ok(!s.anomalie.some((a) => a.codice === 'RIGA_NON_INTERPRETATA' || a.codice === 'ANAGRAFICA_INCOMPLETA' || a.codice === 'CARICA_ASSENTE'), JSON.stringify(s.anomalie));
-  const testo = testoDocx(await generaDocx(d));
-  assert.equal(testo.split('\n').filter(Boolean)[0], 'ROSSI MARIA'); assert.ok(!testo.includes('PAZIENTE')); assert.ok(!testo.includes('Escherichia\ncoli')); assert.ok(!testo.includes('TOSCANA DIAGNOSTICA S.R.L.'));
+  // riserva → blocchi del corpo 2 come il generatore del progetto (legenda con tre spazi tra le voci)
+  const bl = daParser(d);
+  assert.deepEqual(bl.blocchi.map((x) => x.tipo), ['settore', 'esame2', 'tabella2', 'spacer', 'antibiogramma', 'spacer']);
+  assert.deepEqual(bl.blocchi[1].metodo, ['Metodo: microscopico - colturale', 'Materiale: T.VAGI.AMIES', "Nuova descrizione dell'esame come da Nomenclatore 2025"]);
+  assert.equal(bl.blocchi[4].legenda, 'R: Resistente   I: Sensibile con aumentata esposizione al farmaco');
+  const testo = testoDocx(await generaDocx(bl));
+  assert.equal(testo.split('\n').filter(Boolean)[0], 'ROSSI MARIA'); assert.ok(!testo.includes('TOSCANA DIAGNOSTICA S.R.L.'));
 });
 
-// Caso RECCHIA del 31/10/2026 (righe di recchia.pdf, uscita sbagliata della Suite, anonimizzate in bianalisi_senza_colonne.txt: nome e
-// date inventati): l'antibiogramma Bianalisi stampato senza colonne ("Amoxicillina/Acido clavulanico Resistente - MIC 16") diventa la
-// tabella teal del modello STEFANI; l'esame nel formato del modello (titolo, Metodo/Materiale, tabella etichetta/valore con Esito e Carica)
+// Caso RECCHIA del 31/10/2026 (righe di recchia.pdf anonimizzate in bianalisi_senza_colonne.txt): il parser riconosce gli antibiotici
+// stampati senza colonne. Resa dal 03/11/2026: come i referti Bianalisi del progetto (AUDIBERTI, BOATWNGHT, PENG), l'antibiogramma
+// resta nella tabella del corpo 1, una riga per antibiotico "Resistente - MIC 16", con la legenda Eucast sotto la riga Antibiogramma.
 test('Bianalisi senza colonne (caso RECCHIA): antibiotici riconosciuti, settore, ESBL, legenda; conteggi di coerenza', () => {
   const r = elabora({ pagine: pagine('bianalisi_senza_colonne') });
   assert.equal(r.sorgente, 'BIANALISI'); assert.equal(r.schede.length, 1);
   const s = r.schede[0]; const d = s.dati;
   assert.deepEqual(codici(s), [], JSON.stringify(s.anomalie));
   assert.equal(d.anagrafica.cognome_nome, 'VERDI ANNA');
-  assert.deepEqual(d.settori.map((x) => x.titolo), ['MICROBIOLOGIA']);     // "Microbiologia" in minuscolo è un settore noto
+  assert.deepEqual(d.settori.map((x) => x.titolo), ['MICROBIOLOGIA']);
   const righe = d.settori[0].righe;
   const ab = righe.filter((x) => x.tipo === 'antibiotico');
-  assert.equal(ab.length, 15); assert.equal(d.conteggi.antibiotici_sorgente, 15); assert.equal(contaAntibiotici(d), 15);
+  assert.equal(ab.length, 15); assert.equal(d.conteggi.antibiotici_sorgente, 15);
   assert.deepEqual(ab[0], { tipo: 'antibiotico', nome: 'Amoxicillina/Acido clavulanico', esito: 'Resistente', mic: '16' });
-  assert.deepEqual(ab[ab.length - 1], { tipo: 'antibiotico', nome: 'Trimetoprim/Sulfametoxazolo', esito: 'Resistente', mic: '>160' });
-  assert.deepEqual(righe.find((x) => x.nome === 'Germe Isolato'), { tipo: 'esame', nome: 'Germe Isolato', risultato: 'Escherichia coli', unita: '', riferimento: '' });
   assert.equal(righe.find((x) => x.nome === 'ESBL').descrizione, '(Extended Spectrum Beta Lactamase)');
   assert.equal(righe.filter((x) => x.tipo === 'legenda').length, 4);
-  assert.match(righe.filter((x) => x.tipo === 'legenda')[3].testo, /^Intermedio = .*nel sito di infezione\)$/);   // legenda a capo ricomposta
-  assert.deepEqual(righe[0].sotto, ['Metodo: Colturale']); assert.equal(righe[0].riferimento, 'Negativa');
+  assert.match(righe.filter((x) => x.tipo === 'legenda')[3].testo, /^Intermedio = .*nel sito di infezione\)$/);
 });
 
-test('Bianalisi senza colonne: referto TD come il modello (esame, Microrganismo #1, tabella S/I/R, riquadro senza trattini), coerenza verde', async () => {
-  const PizZip = (await import('pizzip')).default;
-  const s = elabora({ pagine: pagine('bianalisi_senza_colonne') }).schede[0];
-  const docx = await generaDocx(s.dati);
-  const testo = testoDocx(docx);
-  const righe = testo.split('\n').filter(Boolean);
-  assert.deepEqual(righe.slice(0, 5), ['VERDI ANNA', 'Data di nascita: 12/03/1980 (anni 46)', 'Sesso: F', 'Referto: R3YEA070011 del 28/10/2026', 'Accettazione: A3YEA070011 del 27/10/2026']);
-  assert.deepEqual(righe.slice(5, 10), ['MICROBIOLOGIA', 'Urinocoltura', 'Metodo: Colturale', 'Materiale: URINE', 'Ricerca completa microrganismi e lieviti patogeni']);
-  for (const [et, val] of [['Esito', 'POSITIVA'], ['Carica batterica', '10^5 UFC/mL'], ['Germe Isolato', 'Escherichia coli'], ['ESBL (Extended Spectrum Beta Lactamase)', 'Negativo']]) {
-    const i = righe.indexOf(et); assert.ok(i > 0, et); assert.equal(righe[i + 1], val, et);
-  }
-  assert.ok(righe.includes('Riferimento: Negativa'));
-  const i = righe.indexOf('Microrganismo #1: Escherichia coli'); assert.ok(i > 0);
-  // testata con la legenda breve del modello; l'interpretazione Eucast per esteso come nota sotto la tabella
-  assert.equal(righe[i + 1], 'R: Resistente I: Sensibile con aumentata esposizione al farmaco');
-  assert.deepEqual(righe.slice(i + 2, i + 8), ['Escherichia coli', '#1', 'MIC', 'Amoxicillina/Acido clavulanico', 'R', '16']);
-  assert.ok(righe.some((l) => /^Interpretazione Eucast: Resistente · Sensibile = Sensibile, dosaggio standard · Intermedio = /.test(l)), 'nota Eucast sotto la tabella');
-  assert.ok(!righe.some((l) => /Sensibile - MIC|Resistente - MIC/.test(l)), 'nessuna riga di testo "… - MIC"');
-  assert.ok(!/: -$/m.test(testo) && !righe.includes('Antibiogramma'));
-  // tabella teal: testata 004F5F, righe alternate EAF5F7, colonne del modello (4876 / 1928 / 1474 twip)
-  const xml = new PizZip(docx).file('word/document.xml').asText();
-  assert.match(xml, /w:fill="004F5F"/); assert.match(xml, /w:fill="EAF5F7"/); assert.match(xml, /<w:gridCol w:w="4876"\/><w:gridCol w:w="1928"\/><w:gridCol w:w="1474"\/>/);
-  const coe = controllaCoerenza({ datiOrig: s.dati, dati: s.dati, testoSorgente: s.testo_sorgente, testoDocx: testo });
+test('Bianalisi senza colonne: riserva resa come i referti Bianalisi del progetto (righe "Resistente - MIC 16" nella tabella del corpo 1), coerenza verde', async () => {
+  const s = riserva('bianalisi_senza_colonne')[0];
+  const b = s.blocchi;
+  assert.deepEqual(b.anagrafica.righe, [['Data di nascita', '12/03/1980 (anni 46)'], ['Sesso', 'F'], ['Referto', 'R3YEA070011 del 28/10/2026'], ['Accettazione', 'A3YEA070011 del 27/10/2026']]);
+  assert.deepEqual(b.blocchi.map((x) => x.tipo), ['settore', 'tabella1', 'spacer']);
+  const t = b.blocchi[1].righe;
+  assert.equal(contaAntibiotici(b), 15);
+  assert.deepEqual(t.find((x) => x.nome === 'Amoxicillina/Acido clavulanico'), { nome: 'Amoxicillina/Acido clavulanico', risultato: 'Resistente - MIC 16', riferimento: '', bold_name: false, small: [], unit: '' });
+  assert.equal(t.find((x) => x.nome.startsWith('ESBL')).nome, 'ESBL\n(Extended Spectrum Beta Lactamase)');
+  const { coe } = await coerenza(s);
   assert.ok(coe.ok, JSON.stringify(coe.check.filter((c) => !c.ok)));
-});
-
-test('riquadro paziente: nessuna riga vuota con "-", etichette del modello, spazio sopra il riquadro e margine superiore minimo', async () => {
-  const PizZip = (await import('pizzip')).default;
-  const { righeRiquadro, SPAZIO_RIQUADRO } = await import('../src/modules/referti/lib/docgen.js');
-  // Bianalisi senza codici (era "Referto: -" e "Accettazione: -" in RECCHIA): le righe non compaiono
-  assert.deepEqual(righeRiquadro({ variante: 'B', cognome_nome: 'VERDI ANNA', data_nascita: '12/03/1980', eta: 46, sesso: 'F' }), [['Data di nascita', '12/03/1980 (anni 46)'], ['Sesso', 'F']]);
-  assert.deepEqual(righeRiquadro({ variante: 'A', accettazione_n: '2792', data_acc: '26/10/2026', data_nascita: '20/11/1949', sesso: 'F' }).map((x) => x[0]), ['Data di nascita', 'Sesso', 'Accettazione n°', 'Data Acc.']);
-  assert.deepEqual(righeRiquadro({ referto_codice: 'R3YEA1', accettazione_data: '27/10/2026' }), [['Referto', 'R3YEA1'], ['Accettazione', 'del 27/10/2026']]);
-  assert.deepEqual(righeRiquadro({ data_nascita: '', sesso: '  ', eta: 52 }), []);
-  const d = elabora({ pagine: pagine('bianalisi_senza_colonne') }).schede[0].dati;
-  const senza = JSON.parse(JSON.stringify(d)); for (const k of ['referto_codice', 'referto_data', 'accettazione_codice', 'accettazione_data', 'sesso']) delete senza.anagrafica[k];
-  const docx = await generaDocx(senza);
-  const testo = testoDocx(docx);
-  assert.ok(!/(Referto|Accettazione|Sesso):/.test(testo)); assert.ok(!/: -$/m.test(testo) && !/:\s*$/m.test(testo));
-  const xml = new PizZip(docx).file('word/document.xml').asText();
-  // primo paragrafo del corpo: spazio fisso sopra il riquadro (staccato dall'intestazione come nel modello STEFANI)
-  assert.match(xml.slice(xml.indexOf('<w:body>'), xml.indexOf('<w:tbl>')), new RegExp(`w:line="${SPAZIO_RIQUADRO}"`));
-  assert.match(xml, /w:top="2233"/);
 });
