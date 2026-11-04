@@ -294,3 +294,12 @@ pre.mail { white-space: pre-wrap; font: 12.5px/1.45 var(--mono); background: var
 .card .inner.fee label.f.inline { gap: 14px; font-weight: 700; color: var(--ink); }
 .card .inner.fee input { width: 120px; }
 .filters label.f { min-width: 150px; }
+
+/* Immagazzinamento: la tabella dei lotti sta in una card da un terzo di pagina */
+.table-wrap .lots-t, .lots-t { width: 100%; min-width: 0; table-layout: fixed; }
+.lots-t th { white-space: normal; line-height: 1.2; padding: 8px 10px; }
+.lots-t td { padding: 8px 10px; overflow-wrap: anywhere; }
+.lots-t th:nth-child(1), .lots-t td:nth-child(1) { width: 36%; }
+.lots-t th:nth-child(3), .lots-t td:nth-child(3) { width: 22%; white-space: nowrap; }
+.lots-t th:nth-child(4), .lots-t td:nth-child(4) { width: 44px; }
+.grid > * { min-width: 0; }

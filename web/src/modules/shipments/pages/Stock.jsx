@@ -55,12 +55,14 @@ export default function Stock({ project }) {
       <div className="grid g3">
         <Card title={t('stock.lots')} flush>
           {!summary.data ? <Loading /> : !summary.data.lots.length ? <Empty>{t('c.none')}</Empty> : (
-            <table className="t"><thead><tr><th>{t('stock.receivedAt')}</th><th>{t('stock.reference')}</th><th className="num">{t('stock.kits')}</th><th /></tr></thead>
+            // tabella stretta (un terzo della pagina): intestazioni che vanno a capo e scorrimento orizzontale di riserva, così non
+            // invade la card dei kit (segnalazione del CEO, 04/11/2026)
+            <div className="table-wrap"><table className="t lots-t"><thead><tr><th>{t('stock.receivedAt')}</th><th>{t('stock.referenceShort')}</th><th className="num">{t('stock.kits')}</th><th /></tr></thead>
               <tbody>{summary.data.lots.map((l) => (
                 <tr key={l.id} className={`click ${lotId === String(l.id) ? 'sel' : ''}`} onClick={() => { setLotId(lotId === String(l.id) ? '' : String(l.id)); setStatus(''); }}>
                   <td>{fdate(l.received_at)}<div className="small muted">{l.supplier}</div></td><td className="small">{l.reference || '–'}{l.notes && <div className="muted">{l.notes}</div>}</td><td className="num"><b>{l.in_stock}</b> / {l.kits}</td>
-                  <td className="num">{op && <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); setErr(null); setForm({ lot_id: l.id, codes: '' }); setModal('lot'); }}>+</button>}</td>
-                </tr>))}</tbody></table>
+                  <td className="num">{op && <button className="btn sm ghost" title={t('stock.new')} onClick={(e) => { e.stopPropagation(); setErr(null); setForm({ lot_id: l.id, codes: '' }); setModal('lot'); }}>+</button>}</td>
+                </tr>))}</tbody></table></div>
           )}
         </Card>
         <Card title={t('stock.kits')} className="span2" flush>
