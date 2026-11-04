@@ -11,6 +11,7 @@ import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { FRESH_MODULES, CONTENT_IMPORT_MODULES } from '../config.js';
 import { listSources, syncSource, syncAll, getCockpit, getCounters, sourceEnabled, resetSource, legacyQuery } from '../lib/legacy.js';
 import { setSecret, secretStatus, onSecretChange } from '../lib/secrets.js';
+import { listJobs, runJob } from '../lib/jobs.js';
 import { requireOwner } from '../lib/access.js';
 import * as blobLib from '../lib/blob.js';
 import * as claudeLib from '../lib/claude.js';
@@ -168,3 +169,13 @@ r.get('/ingest-batches/:id', requireAdmin, ah(async (req, res) => {
 }));
 
 export default r;
+
+// ---- Lavori di sfondo (caselle email, specchi dei portali, richiami, retention): stato e avvio manuale, solo amministratori.
+// Serve a vedere se la lettura automatica gira davvero in produzione (segnalazione del CEO 04/11/2026).
+r.get('/jobs', requireAdmin, ah(async (_req, res) => res.json({ scheduler: !config.disableScheduler, jobs: listJobs() })));
+r.post('/jobs/:name/run', requireAdmin, ah(async (req, res) => {
+  const name = String(req.params.name);
+  const out = await runJob(name).catch((e) => ({ error: e.message }));
+  await audit(req, 'JOB_RUN', { module: 'admin', entity: 'job', label: name });
+  res.json({ ok: !out?.error, result: out });
+}));

@@ -14,6 +14,33 @@ function VersioneSuite() {
   return <span className="small muted" title="Versione della Suite in esecuzione">Suite {h.data?.version || '…'}</span>;
 }
 
+// Lavori di sfondo: lettura delle caselle (Shipments, People, Referti, CV Box), specchi dei portali, richiami, retention.
+// Mostra l'ultima esecuzione, l'esito e l'errore; "Esegui ora" lancia il lavoro subito. Se lo scheduler è spento (DISABLE_SCHEDULER)
+// la Suite non legge nulla da sola: qui si vede.
+function LavoriDiSfondo() {
+  const j = useApi('/jobs');
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+  const run = async (name) => { setBusy(name); try { const r = await api.post(`/jobs/${encodeURIComponent(name)}/run`); toast(r.ok ? `${name}: eseguito` : `${name}: ${r.result?.error || 'errore'}`, r.ok ? undefined : 'err'); j.reload(); } catch (e) { toast(e, 'err'); } setBusy(null); };
+  const ago = (iso) => { if (!iso) return 'mai'; const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'adesso' : m < 60 ? `${m} min fa` : m < 1440 ? `${Math.round(m / 60)} h fa` : new Date(iso).toLocaleString('it-IT'); };
+  return (
+    <Card title="Lavori di sfondo" className="mt" flush actions={j.data && <Badge tone={j.data.scheduler ? 'green' : 'red'}>{j.data.scheduler ? 'Scheduler attivo' : 'Scheduler spento (DISABLE_SCHEDULER)'}</Badge>}>
+      {!j.data ? <div style={{ padding: 18 }}><Skeleton lines={4} /></div> : (
+        <div className="table-wrap"><table className="t">
+          <thead><tr><th>Lavoro</th><th>Ogni</th><th>Ultima esecuzione</th><th>Esito</th><th /></tr></thead>
+          <tbody>{j.data.jobs.map((x) => (
+            <tr key={x.name}>
+              <td className="strong">{x.name}</td>
+              <td className="small">{x.minutes} min</td>
+              <td className="small">{x.running ? <Badge tone="teal">in corso</Badge> : ago(x.last)}</td>
+              <td className="small">{x.lastError ? <span className="red">{x.lastError}</span> : x.lastResult ? <span className="muted">{typeof x.lastResult === 'object' ? JSON.stringify(x.lastResult).slice(0, 120) : String(x.lastResult).slice(0, 120)}</span> : <span className="faint">–</span>}</td>
+              <td className="num"><button className="btn sm ghost" disabled={busy === x.name || x.running} onClick={() => run(x.name)}>Esegui ora</button></td>
+            </tr>))}</tbody>
+        </table></div>)}
+    </Card>
+  );
+}
+
 export function Modules() {
   const { user } = useAuth();
   const { data, loading, error, reload } = useApi('/modules');
@@ -40,6 +67,7 @@ export function Modules() {
           </tr>)}
         </tbody></table></div>}
       </Card>
+      <LavoriDiSfondo />
       {edit && <ModuleModal m={edit} onClose={() => setEdit(null)} onSaved={reload} />}
       {secret && (
         <Modal title={`Segreto SSO · ${secret.name}`} onClose={() => setSecret(null)}>
