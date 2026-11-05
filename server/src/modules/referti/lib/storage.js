@@ -2,6 +2,7 @@
 // configurato (lib/blob.js), altrimenti nel database (colonna bytea). Stesso schema a due vie di business/lib/storage.js.
 import { createHash } from 'node:crypto';
 import * as blob from '../../../lib/blob.js';
+import { servFile } from '../../../lib/servFile.js';
 
 export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 export const storageMode = () => (blob.isEnabled() ? 'blob' : 'db');
@@ -27,21 +28,9 @@ export async function readBuffer(f) {
   return null;
 }
 
-const dispo = (filename, inline) => `${inline ? 'inline' : 'attachment'}; filename="${String(filename).replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-
+// Invio dei file (PDF sorgente caricati dai laboratori, DOCX e PDF prodotti): regola unica di lib/servFile.js
 export async function sendFile(res, f, { inline = false } = {}) {
-  res.setHeader('Content-Type', f.mime || 'application/octet-stream');
-  res.setHeader('Content-Disposition', dispo(f.filename, inline));
-  res.setHeader('Cache-Control', 'private, max-age=0, no-cache');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (f.data) { res.setHeader('Content-Length', String(f.data.length)); return res.send(f.data); }
-  if (f.blob_path) {
-    const { stream, size } = await blob.getBlobStream(f.blob_path);
-    if (size) res.setHeader('Content-Length', size);
-    stream.pipe(res);
-    return undefined;
-  }
-  return res.status(404).json({ error: 'Contenuto del file non disponibile' });
+  return servFile(res, f, { inline, cache: 'private, max-age=0, no-cache' });
 }
 
 export async function dropBlobs(paths) {

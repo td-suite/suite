@@ -1,7 +1,7 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
 import { getCompany, COMPANY_FIELDS } from '../lib/company.js';
-import { ensureUserForPerson, autoAccountForPerson, createMissingAccounts } from '../lib/accounts.js';
+import { ensureUserForPerson, autoAccountForPerson, createMissingAccounts, syncUserFromPerson } from '../lib/accounts.js';
 import { syncPositionFromPerson, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
@@ -13,7 +13,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
-import { isExternal, filterRubricaRow, RUBRICA_PUBLIC_SQL } from '../lib/esterni.js';
+import { isExternal, filterRubricaRow, RUBRICA_PUBLIC_SQL, realignOrgPerimeters } from '../lib/esterni.js';
 import multer from 'multer';
 import { storeBuffer, sendFile, dropBlobs } from '../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
@@ -49,9 +49,14 @@ r.get('/home/modules', ah(async (req, res) => {
   res.json({ areas });
 }));
 
+// Catalogo dei moduli (L7): completo agli amministratori; agli altri interni senza URL delle app e configurazione SSO; agli esterni
+// solo i moduli che hanno (grant) o aperti a tutti, con nome, icona e profili (servono a mostrare "I miei moduli")
 r.get('/modules', ah(async (req, res) => {
   const rows = await many('SELECT * FROM modules ORDER BY area, sort_order');
-  res.json(rows.map((m) => ({ ...m, sso_secret: undefined, sso_configured: Boolean(m.sso_secret) })));
+  if (isAdmin(req.user)) return res.json(rows.map((m) => ({ ...m, sso_secret: undefined, sso_configured: Boolean(m.sso_secret) })));
+  const pub = (m) => ({ key: m.key, area: m.area, name: m.name, tagline: m.tagline, icon: m.icon, kind: m.kind, profiles: m.profiles, open_to_all: m.open_to_all, active: m.active, sort_order: m.sort_order });
+  const esterno = isExternal(req.user);
+  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || m.open_to_all)).map(pub));
 }));
 r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
   const b = parse(z.object({ name: z.string().min(2).optional(), tagline: z.string().nullable().optional(), legacy_url: z.string().url().nullable().optional(),
@@ -335,14 +340,17 @@ r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
 // ---- Persone e rubrica (modulo "rubrica"; i dati contrattuali restano in Contracts: qui solo chi è, dove, cosa fa)
 const personSchema = z.object({
   kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
-  last_name: z.string().min(1), first_name: z.string().min(1), title: z.string().max(20).nullable().optional(), sex: z.enum(['F', 'M']).nullable().optional(),
-  email: z.string().email().nullable().optional(), phone: z.string().nullable().optional(), phone_office: z.string().nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().nullable().optional(),
+  last_name: z.string().trim().min(1).max(120), first_name: z.string().trim().min(1).max(120), title: z.string().max(20).nullable().optional(),   // max: L12 sex: z.enum(['F', 'M']).nullable().optional(),
+  email: z.string().email().max(200).nullable().optional(), phone: z.string().max(40).nullable().optional(), phone_office: z.string().max(40).nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().max(160).nullable().optional(),
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), no_manager: z.boolean().optional(), site_id: z.number().int().nullable().optional(),
   organization_id: z.number().int().nullable().optional(), tax_code: z.string().max(16).nullable().optional(), needs_review: z.boolean().optional(),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), birth_place: z.string().max(120).nullable().optional(), vat_number: z.string().max(20).nullable().optional(),
   address: z.string().max(250).nullable().optional(), zip: z.string().max(10).nullable().optional(), city: z.string().max(120).nullable().optional(), province: z.string().max(4).nullable().optional(),
   hired_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), terminated_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
+// Rubrica completa (cellulare personale compreso) solo con il widget Rubrica o agli amministratori (M10)
+const senzaRubrica = (u) => !isAdmin(u) && !u?.grants?.rubrica;
+const senzaCellulare = (row) => (row ? { ...row, phone: null } : row);
 const PERSONAL_COLS = 'p.sex, p.birth_date, p.birth_place, p.tax_code, p.vat_number, p.address, p.zip, p.city, p.province, p.hired_at, p.terminated_at';
 const RUBRICA_COLS = `p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.phone_ext, p.area, p.job_title, p.role_id, p.unit_id, (SELECT name FROM org_units ou WHERE ou.id=p.unit_id) AS unit_name, org_unit_path(p.unit_id) AS unit_path, p.discipline, people_manager(p.id) AS manager_person_id, p.manager_person_id AS manager_override_id, p.no_manager, people_manager_auto(p.id) AS manager_auto_id, (SELECT ma.last_name || ' ' || ma.first_name FROM people ma WHERE ma.id = people_manager_auto(p.id)) AS manager_auto_name, p.site_id, p.organization_id, p.photo_file_id,
   s.name AS site_name, s.city AS site_city, o.name AS organization_name, (SELECT mm.last_name || ' ' || mm.first_name FROM people mm WHERE mm.id = people_manager(p.id)) AS manager_name,
@@ -367,7 +375,8 @@ r.get('/people', ah(async (req, res) => {
   const rows = await many(`SELECT ${RUBRICA_COLS}${isAdmin(req.user) ? `, ${PERSONAL_COLS}` : ''} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY lower(p.last_name), lower(p.first_name) LIMIT 1000`, params);
   // Dati personali minimi per chi non è amministratore: niente codice fiscale, niente date; telefoni visibili (rubrica aziendale)
-  res.json(external ? rows.map(filterRubricaRow) : rows);
+  // solo a chi ha il widget Rubrica: senza grant restano i contatti d'ufficio, mai il cellulare personale (debug pre-produzione, M10)
+  res.json(external ? rows.map(filterRubricaRow) : senzaRubrica(req.user) ? rows.map(senzaCellulare) : rows);
 }));
 // Accesso dalla persona (amministratori): crea o aggancia l'utente, con password provvisoria per gli esterni
 r.post('/people/accounts/missing', requireAdmin, ah(async (req, res) => {
@@ -477,7 +486,7 @@ r.get('/people/areas', noExternal, ah(async (_req, res) => {
 }));
 r.get('/people/org-chart', noExternal, ah(async (_req, res) => {
   const rows = await many(`SELECT ${RUBRICA_COLS} FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.status='ATTIVO' ORDER BY lower(p.last_name)`);
-  res.json(rows);
+  res.json(senzaRubrica(_req.user) ? rows.map(senzaCellulare) : rows);
 }));
 r.get('/people/:id', ah(async (req, res) => {
   const row = await one(`SELECT ${RUBRICA_COLS}, ${PERSONAL_COLS}, p.legacy_refs, p.needs_review FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN people m ON m.id=p.manager_person_id WHERE p.id=$1`, [Number(req.params.id)]);
@@ -494,7 +503,7 @@ r.get('/people/:id', ah(async (req, res) => {
   // Presentazione scritta dalla persona stessa nel proprio profilo Suite
   const bio = row.user_id ? (await one('SELECT bio FROM users WHERE id=$1', [row.user_id]))?.bio || null : null;
   await readLog(req, { module: 'rubrica', entity: 'person', entityId: row.id });
-  res.json({ ...row, reports, bio });
+  res.json({ ...(senzaRubrica(req.user) && row.id !== req.user.person_id ? senzaCellulare(row) : row), reports, bio });
 }));
 r.post('/people', requireAdmin, ah(async (req, res) => {
   const b = await resolveCatalog(parse(personSchema, req.body));
@@ -507,8 +516,18 @@ r.post('/people', requireAdmin, ah(async (req, res) => {
   await applyCentralino(row.id);
   res.status(201).json(row);
 }));
+// Campi che il profilo Rubrica "Aggiornamento schede" (EDITOR) può cambiare (debug pre-produzione, A2): solo i dati di rubrica.
+// Legal entity, tipo, stato, sede, email e dati personali restano agli amministratori.
+const RUBRICA_EDITABILI = ['title', 'phone', 'phone_office', 'phone_ext', 'job_title', 'role_id', 'unit_id', 'unit', 'area', 'discipline'];
 r.put('/people/:id', ah(async (req, res) => {
-  if (!isAdmin(req.user) && !hasModule(req.user, 'rubrica', 'EDITOR')) throw bad('Operazione riservata');
+  const admin = isAdmin(req.user);
+  if (!admin && !hasModule(req.user, 'rubrica', 'EDITOR')) throw forbidden('Operazione riservata');
+  if (!admin) {
+    const fuori = Object.keys(req.body || {}).filter((k) => !RUBRICA_EDITABILI.includes(k));
+    if (fuori.length) throw forbidden(`Con il profilo Rubrica "Aggiornamento schede" si modificano solo telefoni, interno, ruolo, reparto e titolo: ${fuori.join(', ')} li cambia un amministratore`);
+  }
+  const prima = await one('SELECT id, organization_id FROM people WHERE id=$1', [Number(req.params.id)]);
+  if (!prima) throw notFound();
   const b = await resolveCatalog(parse(personSchema.partial(), req.body));
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
@@ -517,7 +536,17 @@ r.put('/people/:id', ah(async (req, res) => {
   if (!row) throw notFound();
   await audit(req, 'PERSON_UPDATED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}`, data: b });
   indexPersonById(row.id).catch(() => {});
-  if (isAdmin(req.user)) autoAccountForPerson(row.id, req.user);
+  if (admin) autoAccountForPerson(row.id, req.user);
+  // Legal entity cambiata (solo amministratori): gli accessi esterni collegati restano esterni (users.is_external) e i loro ambiti si
+  // ricalcolano dalla nuova Legal entity (A2)
+  if (b.organization_id !== undefined && Number(b.organization_id) !== Number(prima.organization_id)) {
+    await syncUserFromPerson(row.id);
+    const esterni = await many(`SELECT id, email FROM users WHERE person_id=$1 AND is_external`, [row.id]);
+    if (esterni.length && row.organization_id) {
+      const rep = await realignOrgPerimeters(row.organization_id, { actorId: req.user.id }).catch((e) => ({ error: e.message }));
+      await audit(req, 'EXTERNAL_PERIMETERS_REALIGNED', { entity: 'person', entityId: row.id, label: `${row.last_name} ${row.first_name}: Legal entity cambiata, ${esterni.length} accessi esterni ricalcolati`, data: { from: prima.organization_id, to: row.organization_id, users: esterni.map((u) => u.id), changed: rep?.changed ?? null, error: rep?.error } });
+    }
+  }
   if (b.unit_id !== undefined || b.role_id !== undefined) await syncPositionFromPerson(row);
   if (b.phone_ext !== undefined) await applyCentralino(row.id);
   res.json(row);

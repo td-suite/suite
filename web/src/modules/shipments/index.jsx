@@ -1,6 +1,7 @@
 // Modulo Shipments dentro la Suite: le pagine dell'app di origine con percorsi relativi al modulo (/shipments/...).
 // La sidebar dell'app non c'è più (le voci sono in meta.js, le disegna la Suite); resta una barra di progetto in testa alle pagine.
 import React, { useEffect } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, canOperate, isEndeavor } from './auth.jsx';
 import { LangProvider, useT, LangToggle } from './i18n.jsx';
@@ -51,16 +52,16 @@ function ProjectShell({ proj }) {
           <Route path="richieste/:id" element={<OrderDetail project={project} />} />
           <Route path="magazzino" element={<Stock project={project} />} />
           <Route path="invio" element={<Shipping project={project} orderType={project === 'LIFESTYLE' ? 'KIT_ONLY' : null} />} />
-          {project === 'LIFESTYLE' && <Route path="invio-esame" element={<Shipping project={project} orderType="KIT_AND_EXAM" />} />}
+          <Route path="invio-esame" element={project === 'LIFESTYLE' ? <Shipping project={project} orderType="KIT_AND_EXAM" /> : <Forbidden />} />
           <Route path="ricezione" element={<Returns project={project} />} />
-          {project === 'ENDEAVOR' && <Route path="laboratorio" element={<Lab project={project} />} />}
-          {project === 'ENDEAVOR' && <Route path="laboratorio/:id" element={<Lab project={project} />} />}
+          <Route path="laboratorio" element={project === 'ENDEAVOR' ? <Lab project={project} /> : <Forbidden />} />
+          <Route path="laboratorio/:id" element={project === 'ENDEAVOR' ? <Lab project={project} /> : <Forbidden />} />
           <Route path="elenco" element={<Orders project={project} />} />
           <Route path="rendicontazione" element={<Quantitative project={project} />} />
-          {project === 'ENDEAVOR' && <Route path="rendiconto" element={<Billing project={project} />} />}
-          {op && <Route path="impostazioni" element={<Settings />} />}
-          {(op || user.role === 'VIEWER') && <Route path="audit" element={<Audit />} />}
-          {(op || user.role === 'VIEWER') && <Route path="email" element={<Emails />} />}
+          <Route path="rendiconto" element={project === 'ENDEAVOR' ? <Billing project={project} /> : <Forbidden />} />
+          <Route path="impostazioni" element={op ? <Settings /> : <Forbidden />} />
+          <Route path="audit" element={(op || user.role === 'VIEWER') ? <Audit /> : <Forbidden />} />
+          <Route path="email" element={(op || user.role === 'VIEWER') ? <Emails /> : <Forbidden />} />
           <Route path="*" element={<Navigate to={base} replace />} />
         </>}
       </Routes>

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApi, Loading, ErrorBox, Card, Kpi } from '../components/ui.jsx';
-import * as XLSX from 'xlsx';
 import { mkDoc, table, section } from '../lib/exports.js';
 import { oreTxt, eur, meseTxt } from '../lib/personale.js';
 
@@ -9,7 +8,8 @@ export default function Statistiche() {
   const [dal, setDal] = useState(`${y}-01-01`); const [al, setAl] = useState(new Date().toISOString().slice(0, 10));
   const { data, error } = useApi(`/personale/statistiche?dal=${dal}&al=${al}`, [dal, al]);
   const Bar = ({ v, max }) => <div className="stat-bar"><div style={{ width: `${max ? Math.min(100, v / max * 100) : 0}%` }} /></div>;
-  const xlsx = () => {
+  const xlsx = async () => {
+    const XLSX = await import('xlsx');   // SheetJS solo al clic (M8)
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.perSede.map((s) => ({ Sede: s.sede, Ore: s.ore, Costo: s.costo, Presenze: s.presenze, Professionisti: s.professionisti }))), 'Per sede');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.perProf.map((p) => ({ Professionista: p.nome, Profilo: p.profilo, Ore: p.ore, Costo: p.costo, Presenze: p.presenze, Sedi: p.sedi }))), 'Per professionista');
@@ -17,8 +17,8 @@ export default function Statistiche() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.perMese.map((m) => ({ Mese: m.mese, 'Ore presenze': m.ore, 'Ore turni': m.oreTurni, 'Turni scoperti': m.turniScoperti, Costo: m.costo }))), 'Per mese');
     XLSX.writeFile(wb, `Statistiche_personale_${dal}_${al}.xlsx`);
   };
-  const pdf = () => {
-    const doc = mkDoc('Statistiche personale sanitario', `dal ${dal} al ${al}`); let yy = 28;
+  const pdf = async () => {
+    const doc = await mkDoc('Statistiche personale sanitario', `dal ${dal} al ${al}`); let yy = 28;
     yy = section(doc, 'Totali', yy); yy = table(doc, ['Ore presenze', 'Ore turni', 'Copertura', 'Turni scoperti', 'Costo orario', 'Fissi mensili', 'Professionisti attivi'], [[oreTxt(data.totali.orePresenze), oreTxt(data.totali.oreTurni), data.totali.copertura != null ? data.totali.copertura + '%' : '—', String(data.totali.turniScoperti), eur(data.totali.costo), eur(data.totali.fissiMensili), String(data.totali.professionisti)]], yy) + 8;
     yy = section(doc, 'Per sede', yy); yy = table(doc, ['Sede', 'Ore', 'Costo', 'Presenze', 'Professionisti'], data.perSede.map((s) => [s.sede, oreTxt(s.ore), eur(s.costo), String(s.presenze), String(s.professionisti)]), yy) + 8;
     yy = section(doc, 'Per profilo', yy); yy = table(doc, ['Profilo', 'Ore', 'Costo', 'Professionisti'], data.perProfilo.map((s) => [s.profilo, oreTxt(s.ore), eur(s.costo), String(s.professionisti)]), yy) + 8;

@@ -1,6 +1,7 @@
 // Modulo Portale SGI (widget SGI Management): route relative a /sgi dentro la cornice della Suite. Pagine riscritte in React sui JSON
 // del sito (specchio di sola lettura); i PDF arrivano da /api/sgi/file/... e i link stabili /sgi/doc|m|p/... li serve il server.
 import React, { createContext, useContext, useEffect } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './sito.css';
 import './suite.css';
@@ -37,7 +38,7 @@ export default function Module({ moduleUser }) {
         <Route path="preparazioni" element={<Preparazioni />} />
         <Route path="vademecum" element={<Vademecum />} />
         <Route path="contatti" element={<Contatti />} />
-        {moduleUser.editor && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="impostazioni" element={moduleUser.editor ? <Impostazioni /> : <Forbidden />} />
         <Route path="p/:codice" element={<LinkStabile />} />
         <Route path="m/:codice" element={<LinkStabile />} />
         <Route path="doc/:codice" element={<LinkStabile />} />

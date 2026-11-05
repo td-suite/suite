@@ -435,6 +435,48 @@ function CompanyEditor({ value, onSave }) {
   );
 }
 
+// Informative (05/11/2026): URL e versioni di Privacy e Informativa IA, conteggio delle prese d'atto, registro CSV. Cambiare una
+// versione fa riaccettare quel documento a tutti al prossimo accesso (o al primo aggiornamento del profilo, entro un minuto).
+function InformativeBox() {
+  const toast = useToast();
+  const { refresh } = useAuth();
+  const st = useApi('/consensi/riepilogo');
+  const [f, setF] = useState(null);
+  const [conferma, setConferma] = useState(false);
+  const base = (d) => ({ privacy_url: d.documenti[0].url, privacy_versione: d.documenti[0].versione, ia_url: d.documenti[1].url, ia_versione: d.documenti[1].versione });
+  useEffect(() => { if (st.data) setF(base(st.data)); }, [st.data]);
+  if (!st.data || !f) return <Card title="Informative" icon="shield"><Skeleton /></Card>;
+  const prima = base(st.data);
+  const dirty = JSON.stringify(f) !== JSON.stringify(prima);
+  const versioniCambiate = f.privacy_versione.trim() !== prima.privacy_versione || f.ia_versione.trim() !== prima.ia_versione;
+  const salva = async () => {
+    await api.put('/consensi/impostazioni', Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim()])));
+    toast('Informative salvate'); st.reload(); refresh();
+  };
+  const [p, ia] = st.data.documenti;
+  const riga = (d) => <div className="small"><span className="strong">{d.titolo}</span>: versione {d.versione}{d.data ? ` del ${fmtDateTime(d.data)}` : ''} · <span className="green">{d.accettato} hanno preso atto</span> · <span className={d.da_accettare ? 'amber' : 'muted'}>{d.da_accettare} no</span></div>;
+  return (
+    <Card title="Informative" icon="shield" actions={<a className="btn sm ghost" href="/api/consensi/export.csv" download><Icon name="download" />Esporta CSV</a>}>
+      <p className="small muted" style={{ marginTop: 0 }}>Privacy e uso dell'intelligenza artificiale: tutti gli utenti (personale, clienti service, partner) ne prendono atto al primo accesso. Se cambi una versione, quel documento va riaccettato da tutti. L'informativa IA della Suite è la pagina <a href="/informativa-ia" target="_blank" rel="noopener noreferrer">/informativa-ia</a>; quando sarà pubblicata sul sito puoi mettere qui il link esterno.</p>
+      <div className="form-grid">
+        <Field label="Privacy Policy · URL" className="span-2"><input value={f.privacy_url} onChange={(e) => setF({ ...f, privacy_url: e.target.value })} aria-label="URL della Privacy Policy" /></Field>
+        <Field label="Privacy · versione"><input value={f.privacy_versione} onChange={(e) => setF({ ...f, privacy_versione: e.target.value })} aria-label="Versione della Privacy Policy" /></Field>
+        <Field label="Informativa IA · URL" className="span-2" help="Percorso della Suite (/informativa-ia) o link https://"><input value={f.ia_url} onChange={(e) => setF({ ...f, ia_url: e.target.value })} aria-label="URL dell'informativa IA" /></Field>
+        <Field label="Informativa IA · versione"><input value={f.ia_versione} onChange={(e) => setF({ ...f, ia_versione: e.target.value })} aria-label="Versione dell'informativa IA" /></Field>
+      </div>
+      <div className="col" style={{ gap: 4, marginTop: 12 }}>
+        <div className="small"><span className="strong">{st.data.tutti}</span> utenti attivi su {st.data.attivi} hanno preso atto di entrambe le informative nella versione corrente{st.data.mancano ? `, ${st.data.mancano} ancora no` : ''}.</div>
+        {riga(p)}{riga(ia)}
+      </div>
+      <div className="row between" style={{ marginTop: 10 }}>
+        <span className="small muted">{versioniCambiate ? 'Hai cambiato una versione: al salvataggio tutti dovranno riaccettare quel documento.' : ''}</span>
+        <button className="btn sm" disabled={!dirty} onClick={() => (versioniCambiate ? setConferma(true) : salva().catch((e) => toast(e, 'err')))}>Salva</button>
+      </div>
+      {conferma && <ConfirmModal title="Nuova versione delle informative" text="Tutti gli utenti dovranno prendere atto di nuovo del documento con la versione cambiata, al prossimo accesso. Confermi?" confirmText="Salva e chiedi di riaccettare" onConfirm={salva} onClose={() => setConferma(false)} />}
+    </Card>
+  );
+}
+
 export function Settings() {
   const { data, loading, error, reload } = useApi('/settings');
   const toast = useToast();
@@ -449,7 +491,8 @@ export function Settings() {
       <div className="col">
         {isOwner(me) && <Integrations />}
         {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /></Card>}
-        {data && Object.entries(data).filter(([k]) => k !== 'company').sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+        {data && <InformativeBox />}
+        {data && Object.entries(data).filter(([k]) => k !== 'company' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
             {k === 'community.values' ? <ValuesEditor value={v} onSave={(nv) => save(k, nv)} /> : <JsonEditor k={k} value={v} onSave={(nv) => save(k, nv)} />}
           </Card>

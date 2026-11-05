@@ -75,7 +75,11 @@ l'amministratore), SLA P1 4/24, P2 8/72, P3 48/240, P4 120/720, impostazioni.
 
 ## Profili
 ADMIN (tutto, Impostazioni), RESPONSABILE (responsabile di unità: cosmetico, vedi sopra), VIEWER (consultazione di tutto, riservati
-esclusi), UTENTE implicito (apre e segue i propri ticket, osserva).
+esclusi), UTENTE (solo inserimento: apre e segue i propri ticket, osserva; è anche il ruolo implicito di chi non ha il grant).
+Dal 05/11/2026 (decisione del CEO, debug pre-produzione A3) il profilo di accesso Default dei dipendenti dà Ticket UTENTE, non più
+RESPONSABILE: il ruolo di responsabile nasce dalle regole sui responsabili di unità. La migrazione 040 ha riallineato i grant già nati
+dal Default (solo quelli con profile_id del Default e valore RESPONSABILE; i grant assegnati a mano restano), con audit
+GRANT_REALIGNED_DEFAULT. Le pagine riservate (Gestione, Impostazioni) aperte da URL mostrano "Sezione non abilitata".
 
 ## Collaudo locale (26/10/2026)
 Istanza su :3107, titolare + due utenti locali di prova (responsabile di Core Lab e utente semplice, rimossi alla fine). 95 controlli

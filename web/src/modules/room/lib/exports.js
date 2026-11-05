@@ -1,12 +1,16 @@
 // Esportazioni PDF/XLSX di rete: agenda dello specialista, proposta di collaborazione, calendario reale, report direzione
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+// jsPDF, jspdf-autotable e SheetJS si scaricano solo al primo export (debug pre-produzione M8): le funzioni sono asincrone
+let jsPDF = null, autoTable = null, XLSX = null;
+async function caricaPdf() {
+  if (!jsPDF) { const [a, b] = await Promise.all([import('jspdf'), import('jspdf-autotable')]); jsPDF = a.jsPDF; autoTable = b.default; }
+}
+async function caricaXlsx() { if (!XLSX) XLSX = await import('xlsx'); }
 import { TD_LOGO, durTxt } from '../planner/planner.jsx';
 import { DAYS, DAYS_S, m2t, itDate } from './network.js';
 
 const P = [28, 80, 94], INK = [1, 33, 44];
-export function mkDoc(title, sub) {
+export async function mkDoc(title, sub) {
+  await caricaPdf();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   doc.setFillColor(...P); doc.rect(0, 0, 297, 4, 'F');
   try { doc.addImage(TD_LOGO, 'PNG', 12, 9, 44, 10, undefined, 'FAST'); } catch { /* logo assente */ }
@@ -19,8 +23,8 @@ export const section = (doc, text, y) => { if (y > 180) { doc.addPage(); y = 14;
 export const pdfBase64 = (doc) => doc.output('datauristring').split(',')[1];
 const safe = (s) => String(s || '').replace(/[^\w]+/g, '_');
 
-export function pdfAgendaSpecialista(x) {
-  const doc = mkDoc(`Agenda settimanale · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · ${x.nSedi} sedi · ${durTxt(x.ore)}/settimana`);
+export async function pdfAgendaSpecialista(x) {
+  const doc = await mkDoc(`Agenda settimanale · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · ${x.nSedi} sedi · ${durTxt(x.ore)}/settimana`);
   const rows = x.sessioni.filter((q) => q.room).map((q) => [DAYS[q.d], `${m2t(q.s)}–${m2t(q.e)}`, q.sede, q.room, q.ruolo === 'titolare' ? (q.disciplina || '') : q.ruolo, q.slots != null ? String(q.slots) : '', q.note || '']);
   let y = table(doc, ['Giorno', 'Orario', 'Sede', 'Ambulatorio', 'Attività', 'Slot', 'Note'], rows.length ? rows : [['—', '', 'Nessuna sessione pianificata', '', '', '', '']], 28);
   const un = x.sessioni.filter((q) => !q.room);
@@ -28,8 +32,8 @@ export function pdfAgendaSpecialista(x) {
   return { doc, filename: `Agenda_${safe(x.nome)}.pdf` };
 }
 
-export function pdfProposta(x, sim, windows, intro) {
-  const doc = mkDoc(`Proposta di collaborazione · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · spazi disponibili nelle sedi del network`);
+export async function pdfProposta(x, sim, windows, intro) {
+  const doc = await mkDoc(`Proposta di collaborazione · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · spazi disponibili nelle sedi del network`);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
   const lines = doc.splitTextToSize(intro, 270); doc.text(lines, 12, 30);
   let y = 30 + lines.length * 4.5 + 4;
@@ -42,8 +46,8 @@ export function pdfProposta(x, sim, windows, intro) {
   return { doc, filename: `Proposta_${safe(x.nome)}.pdf` };
 }
 
-export function pdfPianoDisponibilita(x, sim, intro) {
-  const doc = mkDoc(`Piano delle disponibilità nelle nostre strutture · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · impegni attuali e spazi liberi compatibili nelle sedi Toscana Diagnostica`);
+export async function pdfPianoDisponibilita(x, sim, intro) {
+  const doc = await mkDoc(`Piano delle disponibilità nelle nostre strutture · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · impegni attuali e spazi liberi compatibili nelle sedi Toscana Diagnostica`);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
   const lines = doc.splitTextToSize(intro, 270); doc.text(lines, 12, 30);
   let y = 30 + lines.length * 4.5 + 4;
@@ -55,8 +59,8 @@ export function pdfPianoDisponibilita(x, sim, intro) {
   return { doc, filename: `Piano_disponibilita_${safe(x.nome)}.pdf` };
 }
 
-export function pdfCalendario(week, label) {
-  const doc = mkDoc(`Calendario · ${label}`, `settimana dal ${itDate(week.mondayISO)} al ${itDate(week.sundayISO)}`);
+export async function pdfCalendario(week, label) {
+  const doc = await mkDoc(`Calendario · ${label}`, `settimana dal ${itDate(week.mondayISO)} al ${itDate(week.sundayISO)}`);
   let y = 28;
   const STATO = { ok: '', assente: 'ASSENTE', sostituita: 'sostituzione', extra: 'extra', chiusa: 'SEDE CHIUSA' };
   for (const g of week.giorni) {
@@ -79,9 +83,9 @@ export function reportDirezione(net) {
   const tot = rows.reduce((t, r) => ({ amb: t.amb + r.s.ambulatori.length, med: t.med + r.med, sess: t.sess + r.sess, slots: t.slots + r.slots, free: t.free + r.free, busy: t.busy + r.busy, avail: t.avail + r.avail, alte: t.alte + r.alte.length }), { amb: 0, med: 0, sess: 0, slots: 0, free: 0, busy: 0, avail: 0, alte: 0 });
   return { rows, tot, util: tot.avail ? Math.round(100 * tot.busy / tot.avail) : 0 };
 }
-export function pdfReportDirezione(net) {
+export async function pdfReportDirezione(net) {
   const { rows, tot, util } = reportDirezione(net);
-  const doc = mkDoc('Report consolidato del network', `${rows.length} sedi · ${tot.amb} ambulatori · ${tot.med} medici · utilizzo medio ${util}% · ${durTxt(tot.free)} libere/settimana`);
+  const doc = await mkDoc('Report consolidato del network', `${rows.length} sedi · ${tot.amb} ambulatori · ${tot.med} medici · utilizzo medio ${util}% · ${durTxt(tot.free)} libere/settimana`);
   let y = table(doc, ['Sede', 'Responsabile', 'Ambulatori', 'Medici', 'Sessioni/sett.', 'Slot/sett.', 'Utilizzo', 'Ore libere', 'Criticità alte'],
     [...rows.map((r) => [r.label, r.s.siteManager || '', r.s.ambulatori.length, r.med, r.sess, r.slots, `${r.util}%`, durTxt(r.free), r.alte.length]), ['TOTALE', '', tot.amb, tot.med, tot.sess, tot.slots, `${util}%`, durTxt(tot.free), tot.alte]], 28,
     { didParseCell: (h) => { if (h.section === 'body' && h.row.index === rows.length) h.cell.styles.fontStyle = 'bold'; } });
@@ -96,7 +100,8 @@ export function pdfReportDirezione(net) {
   table(doc, ['Nome', 'Tipo', 'Discipline / profilo', 'Sedi', 'Ore/sett.'], net.specialisti.filter((x) => !x.attivita).map((x) => [x.nome, x.tipo, x.discipline.join(', ') || x.profili.join(', '), x.sedi.map((z) => z.sede).filter((v, i, a) => a.indexOf(v) === i).join('; '), durTxt(x.ore)]), y);
   return { doc, filename: `Report_Direzione_${new Date().toISOString().slice(0, 10)}.pdf` };
 }
-export function xlsxReportDirezione(net) {
+export async function xlsxReportDirezione(net) {
+  await caricaXlsx();
   const { rows, tot, util } = reportDirezione(net);
   const wb = XLSX.utils.book_new();
   const sheet = (name, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);

@@ -5,6 +5,7 @@ import { useAuth, canEdit } from '../auth.jsx';
 import { Card, Loading, Empty, Badge, PageHead, Field, Pager, SearchInput } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { STATO, SEGMENTO, itDate } from '../format.js';
+import { sanitizeSnippet } from '../../../format.js';   // solo <b> dal server, il resto come testo (L6)
 
 export default function Archivio({ preset = {}, title = 'Archivio e ricerca' }) {
   const { user } = useAuth();
@@ -38,7 +39,7 @@ export default function Archivio({ preset = {}, title = 'Archivio e ricerca' }) 
             <tbody>{data.rows.map((c) => (
               <tr key={c.id} className="click" onClick={() => nav(`${base}/${c.id}`)}>
                 <td className="circ-prot">{c.protocollo || <span className="muted" style={{ fontWeight: 500 }}>bozza</span>}{c.revisione > 0 && c.protocollo && <div className="small muted">rev. {c.revisione}</div>}</td>
-                <td style={{ minWidth: 320 }}><div className="strong">{c.titolo}</div><div className="small muted">{c.tipo} · {c.linea}{c.sorgente_nome ? ` · da ${c.sorgente_nome}` : ''}</div>{c.snippet && <div className="circ-snippet" dangerouslySetInnerHTML={{ __html: c.snippet }} />}</td>
+                <td style={{ minWidth: 320 }}><div className="strong">{c.titolo}</div><div className="small muted">{c.tipo} · {c.linea}{c.sorgente_nome ? ` · da ${c.sorgente_nome}` : ''}</div>{c.snippet && <div className="circ-snippet" dangerouslySetInnerHTML={{ __html: sanitizeSnippet(c.snippet) }} />}</td>
                 <td className="small">{SEGMENTO[c.segmento] || c.segmento}</td>
                 <td className="small" style={{ whiteSpace: 'nowrap' }}>{itDate(c.data)}</td>
                 <td><Badge tone={STATO[c.stato].tone}>{STATO[c.stato].label}</Badge></td>

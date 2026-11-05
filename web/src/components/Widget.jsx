@@ -43,7 +43,7 @@ export default function Widget({ module: m, areaColor, areaKey, counter, counter
       <div className="name">{m.name}</div>
       {hasCounter && counter.label ? <div className="tag live">{counter.label}</div> : <div className="tag">{m.module_mode === 'MIRROR' ? 'In collaudo nella Suite' : m.tagline}</div>}
       <div className="bottom">
-        {(profileLabel || m.profile) ? <span className="prof">{profileLabel || m.profile}</span> : <span />}
+        {(profileLabel || m.profile) ? <span className="prof" title={profileLabel || m.profile}>{profileLabel || m.profile}</span> : <span />}
         {(legacy || schedaNuova) && <span className="ext" title={legacy ? 'Apre l\'applicazione in una scheda nuova' : 'Si apre in una scheda nuova'}><Icon name="external" /></span>}
       </div>
     </button>

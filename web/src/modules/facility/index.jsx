@@ -1,5 +1,6 @@
 // Modulo Facility e Manutenzioni: route relative a /facility dentro la cornice della Suite
 import React, { createContext, useContext } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { base } from './api.js';
 import './styles.css';
@@ -32,18 +33,18 @@ export default function Module({ moduleUser, mode }) {
     <AuthCtx.Provider value={{ user, mode }}>
       <Routes>
         <Route path="" element={<Cruscotto />} />
-        {noMaint && <Route path="immobili" element={<Immobili />} />}
-        {noMaint && <Route path="immobili/:siteId" element={<Immobile />} />}
+        <Route path="immobili" element={noMaint ? <Immobili /> : <Forbidden />} />
+        <Route path="immobili/:siteId" element={noMaint ? <Immobile /> : <Forbidden />} />
         <Route path="dispositivi" element={<Dispositivi />} />
         <Route path="dispositivi/:id" element={<Dispositivo />} />
         <Route path="qr/:token" element={<QrRedirect />} />
         <Route path="piano" element={<Piano />} />
         <Route path="interventi" element={<Interventi />} />
         <Route path="interventi/:id" element={<Intervento />} />
-        {noMaint && <Route path="utenze" element={<Utenze />} />}
-        {noMaint && <Route path="energia" element={<Energia />} />}
+        <Route path="utenze" element={noMaint ? <Utenze /> : <Forbidden />} />
+        <Route path="energia" element={noMaint ? <Energia /> : <Forbidden />} />
         <Route path="report" element={<Report />} />
-        {isFacility(user) && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="impostazioni" element={isFacility(user) ? <Impostazioni /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path="*" element={<Navigate to={base} replace />} />
       </Routes>

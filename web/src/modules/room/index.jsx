@@ -1,6 +1,7 @@
 // Modulo Room Planning: le pagine dell'app di origine dentro la cornice della Suite (route relative a /room).
 // Login, onboarding, utenti e profilo personale non si portano: li gestisce la Suite.
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './auth.jsx';
 import { base } from './api.js';
@@ -55,15 +56,15 @@ export default function Module({ moduleUser }) {
             <Route path="calendario" element={<Calendario />} />
             <Route path="sedi" element={<Sedi />} />
             <Route path="sedi/:id" element={<SedePage />} />
-            {gest && <Route path="professionisti" element={<Professionisti />} />}
+            <Route path="professionisti" element={gest ? <Professionisti /> : <Forbidden />} />
             <Route path="turni" element={<Turni />} />
             <Route path="presenze" element={<Presenze />} />
-            {gest && <Route path="rendiconti" element={<Rendiconti />} />}
+            <Route path="rendiconti" element={gest ? <Rendiconti /> : <Forbidden />} />
             <Route path="fabbisogno" element={<Fabbisogno />} />
             <Route path="bacheca" element={<Bacheca />} />
-            {gest && <Route path="statistiche" element={<Statistiche />} />}
-            {admin && <Route path="impostazioni" element={<Settings />} />}
-            {admin && <Route path="audit" element={<Audit />} />}
+            <Route path="statistiche" element={gest ? <Statistiche /> : <Forbidden />} />
+            <Route path="impostazioni" element={admin ? <Settings /> : <Forbidden />} />
+            <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
             <Route path="*" element={<Navigate to={base} replace />} />
           </>}
         </Routes>

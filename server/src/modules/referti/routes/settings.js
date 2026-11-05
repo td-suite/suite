@@ -36,7 +36,7 @@ r.put('/settings', requireQualita, ah(async (req, res) => {
   const b = parse(z.object({
     onedrive_folder: z.string().trim().max(500).optional(),
     genera_pdf: z.boolean().optional(),
-    retention_giorni: z.coerce.number().int().min(0).max(3650).optional(),
+    retention_mesi: z.coerce.number().int().min(0).max(120).optional(),   // conservazione dei PDF sorgente (L15)
     suffisso_predefinito: z.enum(['ESAME', 'SORGENTE', 'DATA']).optional(),
     // casella template@ (REFERTI_MAILBOX prevale sull'indirizzo salvato)
     casella_indirizzo: z.string().trim().toLowerCase().email('Indirizzo della casella non valido').max(200).optional(),

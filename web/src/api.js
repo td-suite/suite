@@ -33,7 +33,7 @@ async function doRequest(method, url, body, isForm) {
   if (!res.ok) {
     const err = new ApiError(res.status, (data && data.error) || `Errore ${res.status}`, data?.code, data?.details);
     if (res.status === 401 && !url.startsWith('/auth/')) window.dispatchEvent(new Event('suite:unauthorized'));
-    if (res.status === 403 && ['PENDING', 'PASSWORD_CHANGE_REQUIRED', 'TOTP_REQUIRED'].includes(data?.code)) window.dispatchEvent(new CustomEvent('suite:authstate', { detail: data.code }));
+    if (res.status === 403 && ['PENDING', 'PASSWORD_CHANGE_REQUIRED', 'TOTP_REQUIRED', 'CONSENSI_RICHIESTI'].includes(data?.code)) window.dispatchEvent(new CustomEvent('suite:authstate', { detail: data.code }));
     throw err;
   }
   return data;

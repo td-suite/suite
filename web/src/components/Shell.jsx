@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, isAdmin, isExternal, canManageComm, hasModule } from '../auth.jsx';
 import { api } from '../api.js';
@@ -6,6 +6,7 @@ import { Icon } from './Icons.jsx';
 import { Avatar, Popover, useTheme, useToast, Empty } from './ui.jsx';
 import { timeAgo, AREA_COLORS } from '../format.js';
 import { moduleFor, vociModulo } from '../modules/registry.js';
+import InformativeIcone from './Informative.jsx';
 
 // Sezioni con sidebar: la chiave è il prefisso del percorso
 function sectionFor(pathname, user) {
@@ -185,11 +186,11 @@ export default function Shell() {
                 : it.href ? <a key={it.href} href={it.href} className={it.evidenza ? 'evid' : undefined} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
-            <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link></div>
+            <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link><InformativeIcone variant="barra" /></div>
           </aside>
         </>}
         <main className="main" id="main">
-          <Outlet />
+          <Suspense fallback={<div className="page" aria-busy="true" />}><Outlet /></Suspense>
         </main>
       </div>
     </div>

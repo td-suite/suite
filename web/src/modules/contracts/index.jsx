@@ -1,6 +1,7 @@
 // Modulo Contracts dentro la cornice della Suite: solo il contenuto (.page), le voci di menu sono in meta.js.
 // Login, Onboarding, Utenti e Profilo dell'app non si portano: li fa la Suite.
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, canWrite, isAdmin } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
@@ -31,23 +32,23 @@ export default function Module({ moduleKey, mode, moduleUser }) {
           <Routes>
             <Route path="" element={<Dashboard />} />
             <Route path="organigramma" element={<Navigate to="/people/org-chart" replace />} />
-            {writer && <Route path="risorse/nuova" element={<NewResource key="new" />} />}
-            {writer && <Route path="dipendenti/nuovo" element={<NewResource key="emp" kind="DIPENDENTE" />} />}
-            {writer && <Route path="lp/nuovo" element={<NewResource key="lp" kind="LP" />} />}
+            <Route path="risorse/nuova" element={writer ? <NewResource key="new" /> : <Forbidden />} />
+            <Route path="dipendenti/nuovo" element={writer ? <NewResource key="emp" kind="DIPENDENTE" /> : <Forbidden />} />
+            <Route path="lp/nuovo" element={writer ? <NewResource key="lp" kind="LP" /> : <Forbidden />} />
             <Route path="risorse" element={<Resources key="all" />} />
             <Route path="risorse/:id" element={<ResourceDetail />} />
             <Route path="dipendenti" element={<Resources key="emp" kind="DIPENDENTE" />} />
             <Route path="lp" element={<Resources key="lp" kind="LP" />} />
             <Route path="scadenze" element={<Deadlines />} />
-            {approver && <Route path="casella-people" element={<PeopleInbox />} />}
+            <Route path="casella-people" element={approver ? <PeopleInbox /> : <Forbidden />} />
             <Route path="scouting/cv" element={<CvBox />} />
-            {writer && <Route path="scouting/lettere/nuova" element={<NewResource key="letter" letterMode />} />}
+            <Route path="scouting/lettere/nuova" element={writer ? <NewResource key="letter" letterMode /> : <Forbidden />} />
             <Route path="scouting/lettere" element={<Letters />} />
             <Route path="scouting/lettere/:id" element={<LetterDetail />} />
             <Route path="ccnl" element={<Ccnl />} />
             <Route path="busta-paga" element={<Payroll />} />
-            {writer && <Route path="impostazioni" element={<Settings />} />}
-            {admin && <Route path="audit" element={<Audit />} />}
+            <Route path="impostazioni" element={writer ? <Settings /> : <Forbidden />} />
+            <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
             <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
           </Routes>
         </div>

@@ -5,13 +5,27 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { one, many, q } from '../db.js';
 import { config } from '../config.js';
-import { displayName, normName, audit } from './util.js';
+import { displayName, normName, audit, getSetting } from './util.js';
 import { sendMail, layout } from './mailer.js';
 import { AREA_GRANT_PROPOSALS } from '../seed/modules.js';
 import { proposeGrantsForPerson } from './grantRules.js';
 import { applyDefaultProfile } from './accessProfiles.js';
 
 const genPassword = () => `${crypto.randomBytes(9).toString('base64url')}A1!`;
+
+// Account automatico solo per i domini aziendali (decisione del CEO del 05/11/2026, debug pre-produzione M9): elenco configurabile in
+// app_settings 'accounts.domini_automatici' (predefinito: i domini interni, AUTO_INTERNAL_DOMAINS). Per le altre email (medici, fornitori,
+// candidati, partner e clienti) nessun account nasce da solo: lo si crea dal pulsante "Crea accesso" della Legal entity, da Utenti o
+// dalla scheda persona. Vale per Persone, Contratti del personale e importazioni XLSX.
+export async function dominiAutomatici() {
+  const v = await getSetting('accounts.domini_automatici', null).catch(() => null);
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : config.autoInternalDomains;
+  return list.map((d) => String(d).trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
+}
+export const dominioDi = (email) => String(email || '').split('@')[1]?.toLowerCase() || '';
+export async function accountAutomatico(email) {
+  return (await dominiAutomatici()).includes(dominioDi(email));
+}
 
 export async function proposeGrantsFromArea(userId, area, createdBy) {
   if (!area) return 0;
@@ -57,6 +71,7 @@ export async function ensureUserForPerson(personId, opts = {}) {
      VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$8,$9,$10,$11) RETURNING *`,
     [email, full, p.first_name, p.last_name, level, provider, p.site_id, p.id, plain ? await bcrypt.hash(plain, 12) : null, Boolean(plain), actor?.id || null]);
   await syncUserFromPerson(p.id);
+  await marcaEsterno(u.id);
   const proposals = await proposeGrantsForPerson(p.id, actor?.id);
   // ogni nuovo account parte col profilo di accesso predefinito (Default), in merge: le proposte restano, i grant mancanti nascono confermati
   const def = await applyDefaultProfile(u.id, actor?.id).catch((e) => { console.warn('[accounts] profilo predefinito:', e.message); return null; });
@@ -71,6 +86,21 @@ export async function ensureUserForPerson(personId, opts = {}) {
   return { user: u, created: true, provider, temporaryPassword: plain };
 }
 
+/**
+ * Marca come esterno (users.is_external, debug pre-produzione A2) l'accesso che nasce esterno: livello USER, email fuori dai domini
+ * aziendali e Legal entity (della persona o dell'utente) non del gruppo. Il segno non si toglie mai da qui: un esterno torna interno
+ * solo da Amministrazione > Utenti (scelta esplicita, con audit). Ritorna true se l'utente è (o era già) esterno.
+ */
+export async function marcaEsterno(userId) {
+  const r = await one(`UPDATE users u SET is_external = TRUE, updated_at = now()
+      FROM users x LEFT JOIN people p ON p.id = x.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, x.organization_id)
+     WHERE u.id = x.id AND u.id = $1 AND NOT u.is_external AND u.level = 'USER'
+       AND coalesce(o.kind, '') NOT IN ('GRUPPO','SOCIETA') AND NOT (lower(split_part(u.email, '@', 2)) = ANY($2::text[]))
+     RETURNING u.id`, [userId, config.autoInternalDomains]);
+  if (r) return true;
+  return Boolean((await one('SELECT is_external FROM users WHERE id=$1', [userId]))?.is_external);
+}
+
 /** Sede, legal entity, nomi, titolo e telefono dell'utente vengono dalla persona: una sola anagrafica, nessuna copia da compilare. */
 export async function syncUserFromPerson(personId) {
   await q(`UPDATE users u SET first_name=p.first_name, last_name=p.last_name, full_name=p.last_name || ' ' || p.first_name, title=p.title, phone=p.phone,
@@ -78,18 +108,26 @@ export async function syncUserFromPerson(personId) {
     FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`, [personId]);
 }
 
-/** Da chiamare quando una persona cambia: se è attiva con email e non ha accesso, l'accesso nasce da solo (senza bloccare il chiamante). */
+/** Da chiamare quando una persona cambia: se è attiva con un'email di un dominio automatico e non ha accesso, l'accesso nasce da solo
+ *  (senza bloccare il chiamante). Per le altre email nessun account automatico (M9). */
 export function autoAccountForPerson(personId, actor) {
   syncUserFromPerson(personId).catch((e) => console.warn('[accounts] sync', e.message));
   proposeGrantsForPerson(personId, actor?.id).catch((e) => console.warn('[accounts] regole', e.message));
-  ensureUserForPerson(personId, { actor, onlyIfActive: true }).catch((e) => { if (!/email|stato/.test(e.message)) console.warn('[accounts]', e.message); });
+  (async () => {
+    const p = await one('SELECT email FROM people WHERE id=$1', [personId]);
+    if (!p?.email || !(await accountAutomatico(p.email))) return;
+    await ensureUserForPerson(personId, { actor, onlyIfActive: true });
+  })().catch((e) => { if (!/email|stato/.test(e.message)) console.warn('[accounts]', e.message); });
 }
 
-/** Accessi mancanti: ogni persona ATTIVA con email ha un account. Microsoft 365 per i domini aziendali (nessun invito necessario);
- *  credenziali locali per gli altri, invito via email solo se richiesto (sendInvite). Ritorna il riepilogo. */
+/** Accessi mancanti: ogni persona ATTIVA con un'email dei domini automatici (M9) ha un account (Microsoft 365 per i domini aziendali).
+ *  Le persone con altre email non ricevono un account in blocco: si contano in skipped_other_domains (accesso dalla Legal entity o da
+ *  Utenti). Ritorna il riepilogo. */
 export async function createMissingAccounts({ actor = null, sendInvite = false } = {}) {
-  const rows = await many(`SELECT p.id FROM people p WHERE p.status='ATTIVO' AND p.email IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id=p.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(p.email)) ORDER BY p.last_name`);
-  const out = { created: 0, entra: 0, local: 0, errors: [] };
+  const domini = await dominiAutomatici();
+  const all = await many(`SELECT p.id, p.email FROM people p WHERE p.status='ATTIVO' AND p.email IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id=p.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(p.email)) ORDER BY p.last_name`);
+  const rows = all.filter((r) => domini.includes(dominioDi(r.email)));
+  const out = { created: 0, entra: 0, local: 0, errors: [], skipped_other_domains: all.length - rows.length };
   for (const r of rows) {
     try { const res = await ensureUserForPerson(r.id, { actor, sendInvite, onlyIfActive: true }); if (res.created) { out.created++; out[res.provider === 'ENTRA' ? 'entra' : 'local']++; } }
     catch (e) { out.errors.push(`${r.id}: ${e.message}`); }

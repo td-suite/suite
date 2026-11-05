@@ -2,9 +2,12 @@
 // audience: {"type":"ALL"} | {"type":"INTERNAL"} | {"type":"SITES","ids":[..]} | {"type":"ORGS","ids":[..]} | {"type":"MODULE","key":"cash"} | {"type":"USERS","ids":[..]}
 // Un utente interno è chi appartiene a Toscana Diagnostica (organizzazione GRUPPO/SOCIETA) o ha email del dominio aziendale.
 
+// users.is_external (debug pre-produzione, A2): un accesso nato esterno resta esterno anche se la persona viene spostata su una Legal entity
+// del gruppo o riceve un'email aziendale; torna interno solo con una scelta esplicita in Amministrazione > Utenti.
 export function isInternal(u) {
   if (!u) return false;
   if (u.level === 'OWNER' || u.level === 'ADMIN') return true;
+  if (u.is_external === true) return false;
   if (u.organization_kind === 'GRUPPO' || u.organization_kind === 'SOCIETA') return true;
   return (u.internal_domains || []).some((d) => u.email.toLowerCase().endsWith('@' + d));
 }

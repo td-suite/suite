@@ -1,6 +1,8 @@
 import { one, many } from '../db.js';
 import { config } from '../config.js';
 import { HttpError, forbidden } from './util.js';
+import { isInternal } from './audience.js';
+import { configConsensi, accettatiDa, documentiDaAccettare } from './consensi.js';
 
 // Livelli: OWNER (Francesco: tutto, unico ad assegnare i moduli riservati) · ADMIN (crea utenti, assegna moduli non riservati, anagrafiche) · USER
 // L'accesso a un modulo è dato da un grant (modulo → profilo, con eventuali ambiti). I profili sono quelli del modulo.
@@ -9,7 +11,8 @@ export async function hydrateUser(id) {
   const u = await one(
     `SELECT u.*, o.kind AS organization_kind, o.name AS organization_name, s.name AS site_name, s.code AS site_code, s.kind AS site_kind,
             p.kind AS person_kind, p.area AS person_area, p.job_title AS person_job_title, p.title AS person_title, p.phone AS person_phone, p.phone_ext AS person_phone_ext,
-            jr.name AS person_role, ou.name AS person_unit, org_unit_path(p.unit_id) AS person_unit_path, p.phone_office AS person_phone_office
+            jr.name AS person_role, ou.name AS person_unit, org_unit_path(p.unit_id) AS person_unit_path, p.phone_office AS person_phone_office,
+            coalesce(p.organization_id, u.organization_id) AS eff_organization_id, s.id AS eff_site_id, s.organization_id AS site_organization_id, s.host_organization_id AS site_host_organization_id
        FROM users u
        LEFT JOIN people p ON p.id = u.person_id
        LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
@@ -25,6 +28,17 @@ export async function hydrateUser(id) {
        LEFT JOIN grant_scopes gs ON gs.grant_id = g.id
       WHERE g.user_id = $1 AND g.proposed = FALSE AND m.active
       GROUP BY g.id, m.area, m.kind, m.restricted`, [id]);
+  u.internal_domains = config.autoInternalDomains;
+  // Esterni (debug pre-produzione, B3): il perimetro viene sempre dalla Legal entity. La sede dell'utente conta solo se è della sua
+  // Legal entity o ne è ospitata; altrimenti (sede scritta a mano, sede di un altro cliente) non apre nulla: né sedi, né segmenti
+  // delle Circolari, né audience SITES.
+  if (!isInternal(u) && (u.site_id || u.site_kind)) {
+    const org = Number(u.eff_organization_id) || null;
+    const ok = org && (Number(u.site_organization_id) === org || Number(u.site_host_organization_id) === org);
+    // la sede che conta è quella della scheda persona (la stessa della join), non una copia diversa sull'utente
+    if (ok) u.site_id = u.eff_site_id;
+    else { u.site_id = null; u.site_kind = null; u.site_name = null; u.site_code = null; }
+  }
   u.grants = {};
   const siteIds = new Set(u.site_id ? [u.site_id] : []);
   const orgIds = new Set(u.organization_id ? [u.organization_id] : []);
@@ -34,7 +48,6 @@ export async function hydrateUser(id) {
   }
   u.site_ids = [...siteIds];
   u.org_ids = [...orgIds];
-  u.internal_domains = config.autoInternalDomains;
   return u;
 }
 
@@ -60,7 +73,24 @@ export function requireAuth(req, _res, next) {
     return next(Object.assign(new HttpError(403, 'Cambio password obbligatorio'), { code: 'PASSWORD_CHANGE_REQUIRED' }));
   }
   if (req.session.totpPending) return next(Object.assign(new HttpError(403, 'Verifica a due fattori richiesta'), { code: 'TOTP_REQUIRED' }));
-  next();
+  // Presa d'atto di Privacy e Informativa IA anche lato server (debug pre-produzione, L14): finché manca, le API rispondono 403
+  // CONSENSI_RICHIESTI, salvo autenticazione (/api/auth), presa d'atto stessa (/api/consensi), stato e pagine pubbliche (montate prima)
+  if (req.consensiVerificati || /^\/api\/(auth|consensi)(\/|$)/.test(req.originalUrl)) return next();
+  verificaConsensi(req).then((mancanti) => {
+    if (mancanti.length) return next(Object.assign(new HttpError(403, 'Prima di continuare leggi e accetta le informative (Privacy e Informativa IA)'), { code: 'CONSENSI_RICHIESTI', details: { documenti: mancanti } }));
+    req.consensiVerificati = true;
+    next();
+  }, next);
+}
+
+// Documenti ancora da accettare; con tutto accettato la sessione ricorda la versione corrente e non rilegge il database
+async function verificaConsensi(req) {
+  const cfg = await configConsensi();
+  const chiave = Object.values(cfg).map((d) => `${d.documento}:${d.versione}`).join('|');
+  if (req.session.consensiOk === chiave) return [];
+  const mancanti = documentiDaAccettare(cfg, await accettatiDa(req.user.id));
+  if (!mancanti.length) req.session.consensiOk = chiave;
+  return mancanti;
 }
 
 export const isOwner = (u) => u?.level === 'OWNER';

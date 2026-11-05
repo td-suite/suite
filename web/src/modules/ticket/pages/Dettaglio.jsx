@@ -72,7 +72,7 @@ export default function Dettaglio() {
             </div>
             {p.commenta && (
               <div className="tk-compose">
-                <textarea rows={3} value={testo} onChange={(e) => setTesto(e.target.value)} placeholder={interno ? 'Nota interna: visibile solo ai gestori della casella' : chiuso ? 'Il ticket è chiuso: puoi ancora lasciare un commento' : 'Scrivi un commento'} maxLength={10000} />
+                <textarea rows={3} aria-label={interno ? 'Nota interna' : 'Commento'} value={testo} onChange={(e) => setTesto(e.target.value)} placeholder={interno ? 'Nota interna: visibile solo ai gestori della casella' : chiuso ? 'Il ticket è chiuso: puoi ancora lasciare un commento' : 'Scrivi un commento'} maxLength={10000} />
                 <div className="row between">
                   {p.nota_interna ? <label className="tk-check"><input type="checkbox" checked={interno} onChange={(e) => setInterno(e.target.checked)} /> Nota interna (il richiedente non la vede)</label> : <span />}
                   <button className="btn" disabled={busy || !testo.trim()} onClick={commenta}><Icon name="send" />{interno ? 'Salva nota' : 'Invia'}</button>

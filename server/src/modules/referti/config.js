@@ -42,7 +42,9 @@ export const MAILBOX_DEFAULT = 'template@toscanadiagnostica.it';
 export const SETTINGS_DEFAULT = {
   onedrive_folder: 'OneDrive - Toscana Diagnostica S.r.l\\Laboratorio di Analisi\\EXT - Referti Microbiologia\\',
   genera_pdf: true,
-  retention_giorni: 0,          // 0 = i PDF sorgente non vengono mai eliminati
+  // Conservazione dei PDF sorgente (debug pre-produzione L15, decisione del CEO del 05/11/2026): 24 mesi, poi restano la scheda e i file
+  // prodotti. 0 = mai eliminati. Si cambia in Referti esterni > Impostazioni.
+  retention_mesi: 24,
   suffisso_predefinito: 'ESAME',   // ESAME | SORGENTE | DATA: come si compone il suffisso tra parentesi quando il nome file esiste già
   casella_indirizzo: 'template@toscanadiagnostica.it',   // casella letta (REFERTI_MAILBOX prevale)
   casella_lettura: true,        // "Leggi la casella": job referti:inbox ogni 10 minuti

@@ -27,7 +27,7 @@ export async function audienceUsers(audience) {
   let cond = 'TRUE';
   switch (a.type) {
     case 'INTERNAL':
-      cond = `(${admin} OR o.kind IN ('GRUPPO','SOCIETA') OR lower(split_part(u.email,'@',2)) = ANY(${p(config.autoInternalDomains)}::text[]))`; break;
+      cond = `(${admin} OR (NOT u.is_external AND (o.kind IN ('GRUPPO','SOCIETA') OR lower(split_part(u.email,'@',2)) = ANY(${p(config.autoInternalDomains)}::text[]))))`; break;   // is_external: A2
     case 'SITES': {
       const ids = a.ids.map(Number);
       cond = `(${admin} OR u.site_id = ANY(${p(ids)}::int[]) OR EXISTS (SELECT 1 FROM grants g JOIN grant_scopes gs ON gs.grant_id=g.id WHERE g.user_id=u.id AND NOT g.proposed AND gs.scope_type='SITE' AND gs.scope_id = ANY(${p(ids)}::int[])))`; break;

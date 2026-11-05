@@ -130,7 +130,7 @@ export function Composer({ onPosted, siteId }) {
         {(focus || body) && !canManageComm(user) && user.is_internal && <div className="tiny muted mt">Visibile alla rete Toscana Diagnostica (personale interno).</div>}
         {(focus || body) && (
           <div className="acts">
-            {cfg.blobEnabled && <label className="btn sm ghost" style={{ cursor: 'pointer' }}><Icon name="image" />Immagine<input type="file" accept="image/*" hidden onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} /></label>}
+            {cfg.blobEnabled && <label className="btn sm ghost" style={{ cursor: 'pointer' }}><Icon name="image" />Immagine<input type="file" accept="image/*" hidden aria-label="Aggiungi un'immagine" onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} /></label>}
             <button className="btn sm ghost" type="button" onClick={() => { setBody(''); setFiles([]); setFocus(false); }}>Annulla</button>
             <button className="btn sm" type="button" disabled={busy || !body.trim()} onClick={publish}><Icon name="send" />Pubblica</button>
           </div>

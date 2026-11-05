@@ -1,14 +1,22 @@
 /* Room Planning · motore di pianificazione e interfaccia struttura.
    Codice portato dalla versione artifact (v8) senza modifiche funzionali: solo import ESM al posto dei globali. */
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-// jspdf-autotable v5 non estende più il prototipo: lo ripristiniamo per il codice esistente (doc.autoTable / doc.lastAutoTable)
-if (!jsPDF.API.autoTable) jsPDF.API.autoTable = function (opts) { autoTable(this, opts); return this; };
+// SheetJS e jsPDF si scaricano solo al primo export (debug pre-produzione M8: niente librerie pesanti nel caricamento del modulo)
+let XLSX = null;
+let jsPDF = null;
+const caricaXlsx = async () => { if (!XLSX) XLSX = await import('xlsx'); return XLSX; };
+async function caricaPdf() {
+  if (!jsPDF) {
+    const [{ jsPDF: J }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+    // jspdf-autotable v5 non estende più il prototipo: lo ripristiniamo per il codice esistente (doc.autoTable / doc.lastAutoTable)
+    if (!J.API.autoTable) J.API.autoTable = function (opts) { autoTable(this, opts); return this; };
+    jsPDF = J;
+  }
+  return jsPDF;
+}
 
 function dl(name, wb) { XLSX.writeFile(wb, name); }
 function savePdf(doc, name) { doc.save(name); }
@@ -21,7 +29,8 @@ function aoaSheet(wb, name, aoa, widths) {
   }));
   XLSX.utils.book_append_sheet(wb, ws, name);
 }
-function exportDeskXLSX(str, plan) {
+async function exportDeskXLSX(str, plan) {
+  await caricaXlsx();
   const wb = XLSX.utils.book_new();
   plan.deskWeeks.forEach((wk, i) => {
     const sfx = plan.deskWeeks.length > 1 ? ' ' + wk.label.replace('Settimana ', 'sett. ') : '';
@@ -40,7 +49,8 @@ function exportDeskXLSX(str, plan) {
   aoaSheet(wb, 'Monte ore', mh, [28, 16, 18, 12]);
   dl('Desk_' + safeName(str) + '.xlsx', wb);
 }
-function exportAssXLSX(str, plan) {
+async function exportAssXLSX(str, plan) {
+  await caricaXlsx();
   const wb = XLSX.utils.book_new();
   const aoa = [['Struttura', str.denominazione], ['Assegnazione medici agli ambulatori'], [], ['Giorno', 'Dalle', 'Alle', 'Ambulatorio', 'Medico', 'Disciplina', 'Supporto sanitario', 'Durata prestazione (min)', 'Slot']];
   plan.assigns.forEach(a => aoa.push([DAYS[a.d], m2t(a.s), m2t(a.e), plan.byId[a.roomId].nome, plan.byId[a.medId].nome, medDiscTxt(plan.byId[a.medId]), a.sanId ? plan.byId[a.sanId].nome : '', +plan.byId[a.medId].durataPrestazione || '', a.slots != null ? a.slots : '']));
@@ -57,7 +67,8 @@ function exportAssXLSX(str, plan) {
   aoaSheet(wb, 'Non allocati', na, [26, 14, 8, 8, 60]);
   dl('Ambulatori_' + safeName(str) + '.xlsx', wb);
 }
-function exportFreeXLSX(str, plan) {
+async function exportFreeXLSX(str, plan) {
+  await caricaXlsx();
   const wb = XLSX.utils.book_new();
   const aoa = [['Struttura', str.denominazione], ['Spazi liberi settimanali (proponibili a nuovi medici)', 'Aggiornato: ' + plan.generated], [], ['Giorno', 'Ambulatorio', 'Dalle', 'Alle', 'Durata', 'Attrezzature presenti']];
   plan.free.forEach(f => aoa.push([DAYS[f.d], plan.byId[f.roomId].nome, m2t(f.s), m2t(f.e), durTxt(f.e - f.s), plan.byId[f.roomId].attrezzature.join(', ')]));
@@ -86,6 +97,7 @@ function loadImg(src) {
   });
 }
 async function mkPdf(str, title, brand) {
+  await caricaPdf();
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',

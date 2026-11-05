@@ -4,7 +4,8 @@ import { api, qs } from '../../api.js';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, useToast, Modal, Switch, Tabs, ConfirmModal } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
-import SitesMap from '../../components/SitesMap.jsx';
+// mappa delle sedi (leaflet) a richiesta: non entra nel chunk dell'Amministrazione né in quello della Rubrica (M8)
+const SitesMap = React.lazy(() => import('../../components/SitesMap.jsx'));
 import { OrgAccessModal } from './OrgAccess.jsx';
 
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
@@ -358,7 +359,7 @@ export function Sites() {
       {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente, indirizzo o città' : 'Codice, nome, indirizzo o città'} /><div className="spacer" /><button className={`btn ghost sm${showMap ? ' active' : ''}`} onClick={() => setShowMap((v) => !v)}><Icon name="pin" />{showMap ? 'Nascondi mappa' : 'Mappa'}</button></div>
       {showMap && <Card flush style={{ marginBottom: 14 }}>
-        <SitesMap sites={rows} kinds={SITE_KIND} focusId={focusId} />
+        <React.Suspense fallback={<div className="small muted">Caricamento della mappa…</div>}><SitesMap sites={rows} kinds={SITE_KIND} focusId={focusId} /></React.Suspense>
         <div className="row tight small muted" style={{ padding: '8px 14px', flexWrap: 'wrap', gap: 12 }}>
           <span>{rows.filter((s) => s.lat != null && s.lng != null).length} su {rows.length} sedi con coordinate</span>
           {rows.some((s) => s.lat == null || s.lng == null) && <span>Per le altre usa "Completa coordinate".</span>}
@@ -632,7 +633,7 @@ function Units() {
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Unità</th><th>Tipo</th><th>Sede</th><th>Incarichi</th><th>Interno</th><th></th></tr></thead><tbody>
           {rows.map((u) => <tr key={u.id}>
             <td><div className="row tight" style={{ paddingLeft: u.depth * 18 }}>
-              {u.hasKids ? <button className="iconbtn sm" aria-label={collapsed[u.id] ? 'Espandi' : 'Comprimi'} onClick={() => setCollapsed({ ...collapsed, [u.id]: !collapsed[u.id] })}><Icon name={collapsed[u.id] ? 'chevronRight' : 'chevronDown'} /></button> : <span style={{ width: 26, display: 'inline-block' }} />}
+              {u.hasKids ? <button className="iconbtn sm" aria-label={collapsed[u.id] ? 'Espandi' : 'Comprimi'} onClick={() => setCollapsed({ ...collapsed, [u.id]: !collapsed[u.id] })}><Icon name={collapsed[u.id] ? 'chevron' : 'chevronDown'} /></button> : <span style={{ width: 26, display: 'inline-block' }} />}
               <div><div className="strong">{u.name}</div><div className="row tight">{!u.active && <Badge tone="grey">Non attiva</Badge>}{u.public_contact && <Badge tone="amber" title="Visibile agli accessi esterni in Rubrica e nei ticket">Contatto pubblico</Badge>}</div></div></div></td>
             <td className="small">{KINDS[u.kind]}{u.branch === 'STAFF' && <div className="faint">tecnostruttura</div>}</td>
             <td className="small">{u.site_code ? `${u.site_code} · ${u.site_name}` : ''}</td>

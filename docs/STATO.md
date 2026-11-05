@@ -64,3 +64,29 @@ cruscotto con ricerca full-text, riquadri, famiglie e aree, Ultime emissioni, Do
 Mappa concettuale e Politica nel visualizzatore, Preparazioni, Scrivi alla Qualità. Meccanica dello specchio estratta in
 `lib/specchioPortale.js` e `lib/specchioRegole.js`, usata anche dal Portale Service (test invariati). Migrazione core 038. Collaudo locale
 su db proprio con origini finte (anche protetta), test `sgi-*.test.mjs`, schermate `docs/screens/sgi-*.png`. Dettagli in docs/SGI_PORTALE.md.
+
+## 05/11/2026 · Correzioni del debug pre-produzione (v0.45.0 + correzioni, non ancora versionate)
+Chiusi i problemi del rapporto di debug (B1-B3, A1-A3, M1-M10, L1-L16; L18 non è un difetto del prodotto) con l'autorizzazione del CEO.
+Punti di architettura: `lib/servFile.js` serve tutti i file caricati dagli utenti (tipo dall'estensione e dalla firma, in linea solo PDF e
+immagini raster, nosniff e sandbox); `lib/errori.js` è il gestore unico degli errori (SQLSTATE 22 → 400, nessun codice SQLSTATE nelle
+risposte, NUL tolti dai corpi JSON); `users.is_external` (migrazione 040) rende stabile lo stato di accesso esterno; `requireAuth` verifica
+anche la presa d'atto delle informative; il profilo Default dà Cartella in consultazione e Ticket in solo inserimento (profilo UTENTE);
+account automatico solo per i domini di `app_settings 'accounts.domini_automatici'`. Test d'integrazione in `server/test/perimetri.test.mjs`
+e `sessione.test.mjs` con `test/helpers/suiteTest.mjs` (servono `DATABASE_URL_TEST`, altrimenti saltati con messaggio).
+Restano aperti: zod 4 (cambia la semantica di `.partial()` con `.default()`), react-router 7 (major), SheetJS dalla CDN ufficiale
+(non raggiungibile dall'ambiente di sviluppo). Rapporto completo: `RAPPORTO_VERIFICA.md` del collaudo.
+
+## Checklist per un nuovo ambiente (L17)
+1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
+2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di
+   td-business: in produzione senza chiave le credenziali dei portali di Business sono disattivate (mai la chiave di sviluppo).
+3. Entra (`ENTRA_*`), posta (`GRAPH_*`, altrimenti `MAIL_PROVIDER=log`: le password provvisorie tornano all'amministratore), Azure Blob
+   (`AZURE_STORAGE_*`, senza le rotte `/api/files` rispondono 503), Anthropic (facoltativa).
+4. Primo avvio: migrazioni core e seed del titolare (`SEED_OWNER_*`, cambio password obbligatorio e presa d'atto delle informative).
+5. Moduli FRESH: Amministrazione > Travaso moduli > Avvia. **Payments (finance) e Spedizioni (shipments) non sono FRESH**: in un ambiente
+   nuovo rispondono "Sorgente non collegata" finché non si collega il database dell'app originale (`LEGACY_FINANCE_DATABASE_URL`,
+   `LEGACY_SHIPMENTS_DATABASE_URL`) e si fa il travaso; fino ad allora le loro API rispondono 503 "Modulo non ancora travasato".
+6. Impostazioni da verificare: `accounts.domini_automatici` (predefinito: i domini di `AUTO_INTERNAL_DOMAINS`), profilo Default
+   (Amministrazione > Profili di accesso), conservazione dei PDF dei referti esterni (Referti esterni > Impostazioni, 24 mesi), versioni
+   delle informative (Impostazioni > Informative).
+7. Il set dimostrativo di Retail in produzione si carica o rimuove solo dal titolare, scrivendo il testo di conferma.

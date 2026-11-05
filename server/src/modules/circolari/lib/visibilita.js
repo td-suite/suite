@@ -13,6 +13,7 @@ const REDAZIONE = new Set(['ADMIN', 'PUBBLICATORE', 'REDATTORE']);
 export function isInterno(su) {
   if (!su) return false;
   if (su.level === 'OWNER' || su.level === 'ADMIN') return true;
+  if (su.is_external === true) return false;   // accesso nato esterno: resta esterno (debug pre-produzione, A2)
   if (su.person_kind === 'ESTERNO') return false;
   const orgOk = !su.organization_kind || GRUPPO.has(su.organization_kind);
   return orgOk && (!su.person_kind || INTERNI.has(su.person_kind));

@@ -12,6 +12,7 @@ import { pool } from './db.js';
 import { migrate } from './migrate.js';
 import { loadUser, requireAuth } from './lib/access.js';
 import { HttpError } from './lib/util.js';
+import { gestoreErrori, togliNul } from './lib/errori.js';
 import { startScheduler, listJobs } from './lib/jobs.js';
 import { loadSecrets } from './lib/secrets.js';
 import { loadConnectors } from './lib/connectors.js';
@@ -31,6 +32,7 @@ import travasoRoutes from './routes/travaso.js';
 import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
 import assetTypesRoutes from './routes/assetTypes.js';
+import consensiRoutes from './routes/consensi.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
@@ -82,6 +84,9 @@ app.use('/api/ingest', express.json({ limit: '60mb' }), ingestRoutes);
 await mountModulesPublic(app);   // canali macchina dei moduli (StudioLAB, Silva, HL7)
 
 app.use(express.json({ limit: '30mb' }));   // le planimetrie PDF di Room viaggiano in base64 nel PUT della sede
+// Caratteri NUL (\u0000) nei testi JSON: PostgreSQL non li accetta nei campi di testo (SQLSTATE 22021, prima un 500). Si tolgono da
+// chiavi e valori prima delle rotte (debug pre-produzione, M1)
+app.use(togliNul);
 
 const PgStore = pgSession(session);
 app.use(session({
@@ -102,15 +107,22 @@ app.use('/api', (req, _res, next) => {
 });
 
 app.use(loadUser);
-app.get('/api/health', async (_req, res) => {
-  try { await pool.query('SELECT 1'); res.json({ ok: true, app: config.appName, version: APP_VERSION, entra: config.entra.enabled, blob: config.blob.enabled, ai: config.anthropic.enabled, mail: config.mail.provider, jobs: listJobs().length }); }
-  catch { res.status(503).json({ ok: false }); }
+// Stato del servizio (L7): senza sessione solo ok (controllo del load balancer); con sessione anche la versione; la configurazione
+// (Entra, Blob, AI, posta, lavori) solo agli amministratori
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    if (!req.user) return res.json({ ok: true });
+    if (!['OWNER', 'ADMIN'].includes(req.user.level)) return res.json({ ok: true, app: config.appName, version: APP_VERSION });
+    res.json({ ok: true, app: config.appName, version: APP_VERSION, entra: config.entra.enabled, blob: config.blob.enabled, ai: config.anthropic.enabled, mail: config.mail.provider, jobs: listJobs().length });
+  } catch { res.status(503).json({ ok: false }); }
 });
 app.use('/api/auth', authRoutes);
 app.use('/api/public', communityRoutes.public || ((_req, _res, next) => next()));   // vetrine pubbliche (blog, preparazioni) senza login
 
 // Lancio moduli legacy: GET navigabile, deve passare per la sessione
 app.use('/api', requireAuth);
+app.use('/api/consensi', consensiRoutes);              // presa d'atto di Privacy e Informativa IA (al primo accesso e a ogni nuova versione)
 app.use('/api', ssoRoutes);
 app.use('/api', usersRoutes);
 app.use('/api/access-profiles', accessProfilesRoutes);   // profili di accesso: pacchetti di permessi (Amministrazione)
@@ -147,12 +159,7 @@ if (fs.existsSync(webDir)) {
   app.get('*', (_req, res) => res.sendFile(path.join(webDir, 'index.html')));
 }
 
-app.use((err, req, res, _next) => {
-  const status = err.status || (err.type === 'entity.too.large' ? 413 : 500);
-  if (status >= 500 && err.code !== 'MODULE_OFF') console.error(`[${req.method} ${req.originalUrl}]`, err);
-  if (err.code === '23505') return res.status(409).json({ error: 'Elemento duplicato' });
-  res.status(status).json({ error: status >= 500 ? 'Errore interno del server' : err.message, code: err.code, details: err.details, current: err.current });
-});
+app.use(gestoreErrori);
 
 async function start() {
   const deadline = Date.now() + 150_000;

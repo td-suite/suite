@@ -86,7 +86,7 @@ export default function mount(app) {
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
   // Errori propri dell'app (duplicati, dimensione allegati) con i messaggi dell'app
   r.use((err, req, res, next) => {
-    if (err.code === '23505') return res.status(409).json({ error: err.constraint === 'users_signer_uq' ? 'Esiste già un utente attivo con questo profilo di firma (CEO o CFO): un solo firmatario per ruolo' : 'Elemento duplicato', code: err.code });
+    if (err.code === '23505') return res.status(409).json({ error: err.constraint === 'users_signer_uq' ? 'Esiste già un utente attivo con questo profilo di firma (CEO o CFO): un solo firmatario per ruolo' : 'Elemento duplicato' });
     if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `File troppo grande (max ${config.maxUploadMb} MB)` });
     if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ error: 'Troppi file in un solo caricamento (massimo 10)' });
     next(err);

@@ -175,9 +175,9 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload, persona }) {
             <div className="row small" style={{ marginTop: 6, gap: 14 }}><span><b>{durTxt(x.ore)}</b>/settimana</span><span><b>{x.sessioni.filter((q) => q.room).length}</b> sessioni</span><span>sedi: {sedeList.map((n, i) => <span key={n} className="chip" style={{ background: colorOf[x.sedi.find((z) => z.sede === n)?.sedeId] + '22' }}>{n}</span>)}</span></div>
           </div>
           <div className="row">
-            <button className="btn ghost sm" onClick={() => { const { doc, filename } = pdfAgendaSpecialista(x); doc.save(filename); }}>Scarica PDF agenda</button>
+            <button className="btn ghost sm" onClick={async () => { const { doc, filename } = await pdfAgendaSpecialista(x); doc.save(filename); }}>Scarica PDF agenda</button>
             {canEdit && <button className="btn sm ghost" onClick={() => setMail({ kind: 'agenda' })}>Invia l'agenda al professionista</button>}
-            <button className="btn ghost sm" onClick={() => { const p = pianoOf(net, x); const { doc, filename } = pdfPianoDisponibilita(x, p, pianoText(x, p)); doc.save(filename); }}>Scarica PDF piano disponibilità</button>
+            <button className="btn ghost sm" onClick={async () => { const p = pianoOf(net, x); const { doc, filename } = await pdfPianoDisponibilita(x, p, pianoText(x, p)); doc.save(filename); }}>Scarica PDF piano disponibilità</button>
             {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'piano', sim: pianoOf(net, x) })}>Invia al professionista il piano delle disponibilità</button>}
           </div>
         </div>
@@ -223,7 +223,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload, persona }) {
             <button className="btn sm ghost" onClick={() => setWin((w) => ({ ...w, [d]: [...(w[d] || []), { from: '09:00', to: '13:00' }] }))}>+ fascia</button>
           </div>))}</div>
         <div className="row" style={{ marginTop: 12 }}><button className="btn" onClick={run}>Calcola la proposta</button>
-          {sim && sim.proposte.length > 0 && <><button className="btn ghost" onClick={() => { const { doc, filename } = pdfProposta(x, sim, win, introText(x, sim)); doc.save(filename); }}>Scarica PDF proposta</button>{canEdit && <button className="btn" onClick={() => setMail({ kind: 'proposta' })}>Invia la proposta via email</button>}</>}
+          {sim && sim.proposte.length > 0 && <><button className="btn ghost" onClick={async () => { const { doc, filename } = await pdfProposta(x, sim, win, introText(x, sim)); doc.save(filename); }}>Scarica PDF proposta</button>{canEdit && <button className="btn" onClick={() => setMail({ kind: 'proposta' })}>Invia la proposta via email</button>}</>}
         </div>
         {sim && sim.proposte.length > 0 && (
           <div style={{ marginTop: 14 }}>
@@ -254,7 +254,7 @@ function MailModal({ x, kind, email, onClose, build, defaults, toast }) {
   const send = async () => {
     setBusy(true);
     try {
-      const { doc, filename } = build();
+      const { doc, filename } = await build();
       const r = await api.post('/comms/invia', { kind: kind === 'agenda' ? 'AGENDA_MEDICO' : kind === 'piano' ? 'PIANO_DISPONIBILITA' : 'PROPOSTA', to: to.split(/[;,]/).map((s) => s.trim()).filter(Boolean), subject, body, attachment: { filename, base64: pdfBase64(doc) } });
       if (r.status === 'INVIATA') { toast('Email inviata'); onClose(); } else toast(r.status === 'NON_CONFIGURATA' ? 'Invio email non configurato: la comunicazione è stata registrata ma non spedita' : `Invio non riuscito: ${r.error}`, 'err');
     } catch (e) { toast(e.message, 'err'); }
@@ -287,7 +287,7 @@ function BulkModal({ net, list, ambito, onClose, toast }) {
     const p = { done: 0, tot: targets.length, ok: 0, ko: 0, log: [] }; setProg({ ...p });
     for (const x of targets) {
       try {
-        const sim = pianoOf(net, x); const { doc, filename } = pdfPianoDisponibilita(x, sim, pianoText(x, sim));
+        const sim = pianoOf(net, x); const { doc, filename } = await pdfPianoDisponibilita(x, sim, pianoText(x, sim));
         const r = await api.post('/comms/invia', { kind: 'PIANO_DISPONIBILITA', to: [x.email], subject, body: pianoText(x, sim), attachment: { filename, base64: pdfBase64(doc) } });
         if (r.status === 'INVIATA') p.ok++; else { p.ko++; p.log.push(`${x.nome}: ${r.status === 'NON_CONFIGURATA' ? 'invio non configurato (registrata)' : r.error || r.status}`); }
       } catch (e) { p.ko++; p.log.push(`${x.nome}: ${e.message}`); }

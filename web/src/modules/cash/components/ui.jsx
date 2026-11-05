@@ -116,11 +116,24 @@ export function PromptModal({ title, label, placeholder, confirmText = 'Conferma
   );
 }
 
+// "." e "," valgono entrambi come separatore dei centesimi (richiesta del CEO, 05/11/2026): l'ULTIMO separatore seguito da 1-2 cifre è
+// quello decimale; gli altri sono separatori delle migliaia. "12.50" = "12,50" = 12,50; "1.234,56" = "1,234.56" = 1234,56; "1.234" = 1234.
+export function parseImporto(t) {
+  const s = String(t || '').trim();
+  if (!s) return NaN;
+  const neg = s.startsWith('-');
+  const body = s.replace(/[^\d.,]/g, '');
+  const m = body.match(/^(.*?)([.,])(\d{1,2})$/);
+  let n;
+  if (m) n = Number(m[1].replace(/[.,]/g, '') + '.' + m[3]);
+  else n = Number(body.replace(/[.,]/g, ''));
+  return neg ? -n : n;
+}
 export function MoneyInput({ value, onChange, disabled, ...rest }) {
   // mostra il valore in formato italiano, accetta virgola o punto
   const [txt, setTxt] = useState(value == null || value === '' ? '' : String(value).replace('.', ','));
   useEffect(() => {
-    const cur = Number(String(txt).replace(/\./g, '').replace(',', '.'));
+    const cur = parseImporto(txt);
     if (value !== '' && value != null && Number(value) !== cur) setTxt(String(value).replace('.', ','));
     if ((value === '' || value == null) && txt !== '') setTxt('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +144,7 @@ export function MoneyInput({ value, onChange, disabled, ...rest }) {
         const t = e.target.value.replace(/[^\d.,-]/g, '');
         setTxt(t);
         if (t === '') return onChange('');
-        const n = Number(t.replace(/\./g, '').replace(',', '.'));
+        const n = parseImporto(t);
         if (Number.isFinite(n)) onChange(Math.round(n * 100) / 100);
       }} />
   );

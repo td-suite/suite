@@ -157,7 +157,7 @@ export async function externalScopeContext(orgId) {
 
 /** Legal entity dell'utente come la vede l'anagrafica: quella della persona, altrimenti quella dell'utente. */
 export async function userOrganization(userId) {
-  const u = await one(`SELECT u.id, u.email, u.level, coalesce(p.organization_id, u.organization_id) AS organization_id, o.kind AS organization_kind
+  const u = await one(`SELECT u.id, u.email, u.level, u.is_external, coalesce(p.organization_id, u.organization_id) AS organization_id, o.kind AS organization_kind
       FROM users u LEFT JOIN people p ON p.id = u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id = $1`, [userId]);
   return u || null;
 }

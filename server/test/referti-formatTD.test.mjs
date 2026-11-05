@@ -36,7 +36,7 @@ function diffDocx(a, b) {
   return out;
 }
 
-test('istanze gen8-gen11: DOCX identico ai referti del progetto (document.xml byte per byte e tutti i file del template)', { skip: !conPacchetto && 'pacchetto del progetto assente (REFERTI_PACCHETTO)' }, async () => {
+test('istanze gen8-gen11: DOCX identico ai referti del progetto (document.xml byte per byte e tutti i file del template)', { skip: !conPacchetto && 'pacchetto non disponibile (REFERTI_PACCHETTO): test saltato' }, async () => {
   const fx = fixture();
   assert.equal(fx.length, 7);
   for (const f of fx) {
@@ -52,7 +52,7 @@ test('istanze gen8-gen11: DOCX identico ai referti del progetto (document.xml by
   }
 });
 
-test('i 28 referti del progetto: lettura inversa → JSON a blocchi → generatore → stesso document.xml', { skip: !conPacchetto && 'pacchetto del progetto assente (REFERTI_PACCHETTO)' }, () => {
+test('i 28 referti del progetto: lettura inversa → JSON a blocchi → generatore → stesso document.xml', { skip: !conPacchetto && 'pacchetto non disponibile (REFERTI_PACCHETTO): test saltato' }, () => {
   const files = fs.readdirSync(DOCX_DIR).filter((f) => f.endsWith('.docx'));
   assert.equal(files.length, 28);
   const tipi = new Set();

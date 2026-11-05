@@ -164,8 +164,8 @@ export async function loadDemo() {
   // Prestazioni
   const prodIds = {};
   for (const p of DEMO_PRODUCTS) {
-    const row = await one(`INSERT INTO products(code, description, line_id, specialty, price, cost, duration_min, periodicity_months, is_package, source)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'DEMO') ON CONFLICT ((upper(code))) DO UPDATE SET description=EXCLUDED.description RETURNING id, code`,
+    const row = await one(`INSERT INTO products(code, description, line_id, specialty, price, cost, duration_min, periodicity_months, is_package, source, demo)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'DEMO',TRUE) ON CONFLICT ((upper(code))) DO UPDATE SET description=EXCLUDED.description RETURNING id, code`,
       [p[0], p[1], lines[p[2]], p[3], p[4], p[5], p[6], p[7], p[2] === 'PAC']);
     prodIds[row.code] = { id: row.id, line: p[2], price: p[4], code: p[0] };
   }
@@ -192,8 +192,8 @@ export async function loadDemo() {
     const [m, name, claim, body, theme, codes, dtype, dval] = p;
     const start = new Date(Date.UTC(year, m - 1, 1)); const end = new Date(Date.UTC(year, m, 0));
     const status = end < today ? 'CONCLUSA' : start <= today ? 'ATTIVA' : m <= today.getMonth() + 3 ? 'APPROVATA' : 'BOZZA';
-    const row = await one(`INSERT INTO promotions(year, month, name, theme, claim, claim_short, body, target, channel_scope, discount_type, discount_value, start_date, end_date, product_ids, push_plan, materials, kpi_target, status, promo_code)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'B2C',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+    const row = await one(`INSERT INTO promotions(year, month, name, theme, claim, claim_short, body, target, channel_scope, discount_type, discount_value, start_date, end_date, product_ids, push_plan, materials, kpi_target, status, promo_code, demo)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'B2C',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,TRUE) RETURNING id`,
       [year, m, name, theme, claim, claim.split(' ').slice(0, 3).join(' '), body, m === 3 || m === 10 ? 'Donne 40-69' : m === 9 ? 'Uomini over 50' : 'Adulti 30-70', dtype, dval, iso(start), iso(end),
         JSON.stringify(codes.map((c) => prodIds[c]?.id).filter(Boolean)),
         JSON.stringify([
@@ -222,8 +222,8 @@ export async function loadDemo() {
   for (const c of campDefs) {
     const [name, channel, objective, s, e, budget, spent, code, pm] = c;
     const status = new Date(e) < today ? 'CONCLUSA' : new Date(s) <= today ? 'ATTIVA' : 'PIANIFICATA';
-    const row = await one(`INSERT INTO campaigns(name, channel, objective, start_date, end_date, budget, spent, promo_code, status, impressions, clicks, leads, bookings, promotion_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, promo_code, start_date, end_date, channel`,
+    const row = await one(`INSERT INTO campaigns(name, channel, objective, start_date, end_date, budget, spent, promo_code, status, impressions, clicks, leads, bookings, promotion_id, demo)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE) RETURNING id, promo_code, start_date, end_date, channel`,
       [name, channel, objective, s, e, budget, spent, code, status, ['META', 'GOOGLE'].includes(channel) ? Math.round(80000 + r() * 400000) : null, ['META', 'GOOGLE', 'EMAIL'].includes(channel) ? Math.round(1500 + r() * 9000) : null, Math.round(30 + r() * 300), null, pm ? promoIds[pm] : null]);
     campaigns.push(row);
   }
@@ -237,16 +237,16 @@ export async function loadDemo() {
     const age = Math.max(1, Math.min(94, Math.round(18 + Math.abs(r() + r() + r() - 1.5) * 50)));
     const birth = new Date(Date.UTC(today.getFullYear() - age, Math.floor(r() * 12), 1 + Math.floor(r() * 28)));
     const home = siteByCode[pick(r, area[4])] || pick(r, sites);
-    const row = await one(`INSERT INTO customers(kind, source, external_id, last_name, first_name, sex, birth_date, tax_code, email, phone, city, province, zip, home_site_id, acquisition_channel, marketing_consent)
-      VALUES ('B2C',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+    const row = await one(`INSERT INTO customers(kind, source, external_id, last_name, first_name, sex, birth_date, tax_code, email, phone, city, province, zip, home_site_id, acquisition_channel, marketing_consent, demo)
+      VALUES ('B2C',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE) RETURNING id`,
       [r() < 0.3 ? 'TUOTEMPO' : 'GIPO', `D${100000 + i}`, pick(r, LAST), sex === 'F' ? pick(r, FIRST_F) : pick(r, FIRST_M), sex, iso(birth), fakeCf(r, i), r() < 0.7 ? `demo${i}@example.org` : null, r() < 0.85 ? `3${String(Math.floor(r() * 1e9)).padStart(9, '0')}` : null, area[0], area[1], area[2], home.id, weighted(r, CHANNELS_B2C), r() < 0.62]);
     customers.push({ id: row.id, sex, age, home, area });
   }
   // Clienti B2B
   const b2b = [];
   for (const [i, b] of B2B.entries()) {
-    const row = await one(`INSERT INTO customers(kind, source, external_id, company_name, vat_number, sector, b2b_type, city, province, employees, contact_name, email, acquisition_channel)
-      VALUES ('B2B','STUDIOLAB',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'CONVENZIONE') RETURNING id`,
+    const row = await one(`INSERT INTO customers(kind, source, external_id, company_name, vat_number, sector, b2b_type, city, province, employees, contact_name, email, acquisition_channel, demo)
+      VALUES ('B2B','STUDIOLAB',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'CONVENZIONE',TRUE) RETURNING id`,
       [`S${500 + i}`, b[0], `0${String(1000000000 + Math.floor(r() * 8999999999)).slice(0, 11)}`, b[1], b[2], b[3], b[4], b[5], `${pick(r, FIRST_F)} ${pick(r, LAST)}`, `hr${i}@example.org`]);
     b2b.push({ id: row.id, type: b[2], employees: b[5] });
   }
@@ -306,7 +306,8 @@ export async function loadDemo() {
       const nB = 2 + Math.floor(r() * 4);
       for (let k = 0; k < nB; k++) {
         const b = pick(r, b2b);
-        const site = pick(r, sites.filter((s) => s.kind !== 'PUNTO_PRELIEVI'));
+        const nonPP = sites.filter((s) => s.kind !== 'PUNTO_PRELIEVI');
+        const site = pick(r, nonPP.length ? nonPP : sites);   // rete di soli punti prelievo: le vendite B2B vanno su quelli
         const extRef = `B${ref++}`;
         const isMdl = b.type === 'AZIENDA';
         const list = isMdl ? MDL : LAB;
@@ -337,8 +338,8 @@ export async function loadDemo() {
       const x = r();
       const status = x < compliance ? 'INSTALLATO' : x < compliance + 0.15 ? 'DA_SOSTITUIRE' : x < compliance + 0.25 ? 'NON_CONFORME' : 'DA_INSTALLARE';
       const isPromo = /promo del mese/i.test(st.material);
-      await q(`INSERT INTO exposure_items(site_id, zone_id, standard_id, material, format, quantity, promotion_id, content, valid_from, valid_to, status, checked_at, checked_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      await q(`INSERT INTO exposure_items(site_id, zone_id, standard_id, material, format, quantity, promotion_id, content, valid_from, valid_to, status, checked_at, checked_by, demo)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,TRUE)`,
         [s.id, st.zone_id, st.id, st.material, st.format, st.quantity, isPromo ? curPromo : null, isPromo ? promoDefs[today.getMonth()][2] : null, isPromo ? iso(new Date(Date.UTC(year, today.getMonth(), 1))) : null, isPromo ? iso(new Date(Date.UTC(year, today.getMonth() + 1, 0))) : null, status, status === 'DA_INSTALLARE' ? null : iso(new Date(today.getTime() - Math.floor(r() * 45) * 86400000)), status === 'DA_INSTALLARE' ? null : 'Site manager']);
     }
   }
@@ -348,13 +349,13 @@ export async function loadDemo() {
     // Le fasce di apertura sono dell'anagrafica unica (public.sites.opening_hours_json): qui solo la nota operativa per giorno
     for (let wd = 1; wd <= 6; wd++) {
       if (wd === 6 && s.kind === 'LABORATORIO') continue;
-      await q('INSERT INTO site_hours(site_id, weekday, note) VALUES ($1,$2,$3) ON CONFLICT (site_id, weekday) DO UPDATE SET note=EXCLUDED.note', [s.id, wd, 'prelievi 7:30-10:30']);
+      await q('INSERT INTO site_hours(site_id, weekday, note, demo) VALUES ($1,$2,$3,TRUE) ON CONFLICT (site_id, weekday) DO UPDATE SET note=EXCLUDED.note', [s.id, wd, 'prelievi 7:30-10:30']);
     }
     const assets = s.kind === 'CENTRO_DIAGNOSTICO' ? [['RM', 'Risonanza magnetica 1,5 T', 1], ['TC', 'TC 64 strati', 1], ['MAMMOGRAFO', 'Mammografo con tomosintesi', 1], ['ECOGRAFO', 'Ecografo', 2], ['RX', 'Radiologia digitale', 1], ['MOC', 'Densitometro DEXA', 1], ['BOX_PRELIEVO', 'Box prelievo', 2], ['AMBULATORIO', 'Ambulatorio', 3], ['MONITOR', 'Monitor sala attesa', 1]]
       : s.kind === 'POLIAMBULATORIO' ? [['ECOGRAFO', 'Ecografo', 2], ['AMBULATORIO', 'Ambulatorio', 4 + Math.floor(r() * 4)], ['BOX_PRELIEVO', 'Box prelievo', 2], ['MONITOR', 'Monitor sala attesa', 1]]
       : s.kind === 'PUNTO_PRELIEVI' ? [['BOX_PRELIEVO', 'Box prelievo', 1 + Math.floor(r() * 2)], ['AMBULATORIO', 'Ambulatorio', 1]]
       : s.kind === 'LABORATORIO' ? [['ALTRO', 'Linea analitica chimica-immunometria', 1], ['ALTRO', 'Ematologia', 1], ['ALTRO', 'Microbiologia', 1], ['ALTRO', 'Biologia molecolare', 1]] : [];
-    for (const [k, nm, qty] of assets) await q('INSERT INTO site_assets(site_id, kind, name, quantity) VALUES ($1,$2,$3,$4)', [s.id, k, nm, qty]);
+    for (const [k, nm, qty] of assets) await q('INSERT INTO site_assets(site_id, kind, name, quantity, demo) VALUES ($1,$2,$3,$4,TRUE)', [s.id, k, nm, qty]);
     await q(`INSERT INTO site_ext (site_id, surface_sqm, rooms, boxes, parking, accessibility, catchment_cities) VALUES ($1,$2,$3,$4,$5,$6,$7)
       ON CONFLICT (site_id) DO UPDATE SET surface_sqm=EXCLUDED.surface_sqm, rooms=EXCLUDED.rooms, boxes=EXCLUDED.boxes, parking=EXCLUDED.parking, accessibility=EXCLUDED.accessibility, catchment_cities=EXCLUDED.catchment_cities, updated_at=now()`, [s.id, s.kind === 'PUNTO_PRELIEVI' ? 60 + Math.floor(r() * 60) : 180 + Math.floor(r() * 400), assets.find((a) => a[0] === 'AMBULATORIO')?.[2] || 1, assets.find((a) => a[0] === 'BOX_PRELIEVO')?.[2] || 0, pick(r, ['Parcheggio privato 8 posti', 'Strisce blu in zona', 'Parcheggio pubblico a 100 m', 'Nessun parcheggio dedicato']), 'Accesso senza barriere, ascensore', (AREAS.find((a) => a[4].includes(s.code)) || AREAS[0])[0]]);
   }
@@ -362,27 +363,38 @@ export async function loadDemo() {
   const { plannedDays } = await import('./calendar.js');
   const lineRows = await many('SELECT id FROM product_lines');
   for (let m = 1; m <= 12; m++) {
-    await q('INSERT INTO working_days(year, month, site_id, planned) VALUES ($1,$2,NULL,$3) ON CONFLICT DO NOTHING', [year, m, plannedDays(year, m, { saturday: true })]);
-    for (const s of sites) await q('INSERT INTO working_days(year, month, site_id, planned) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [year, m, s.id, plannedDays(year, m, { saturday: s.kind !== 'LABORATORIO' })]);
+    await q('INSERT INTO working_days(year, month, site_id, planned, demo) VALUES ($1,$2,NULL,$3,TRUE) ON CONFLICT DO NOTHING', [year, m, plannedDays(year, m, { saturday: true })]);
+    for (const s of sites) await q('INSERT INTO working_days(year, month, site_id, planned, demo) VALUES ($1,$2,$3,$4,TRUE) ON CONFLICT DO NOTHING', [year, m, s.id, plannedDays(year, m, { saturday: s.kind !== 'LABORATORIO' })]);
     const actualLine = await many(`SELECT p.line_id, sum(s.net_amount) AS v, count(DISTINCT s.external_ref)::int AS t FROM sales s JOIN products p ON p.id=s.product_id WHERE date_part('year', s.sale_date)=$1 AND date_part('month', s.sale_date)=$2 GROUP BY p.line_id`, [year, m]);
     const refMonth = m >= today.getMonth() + 1 ? Math.max(1, today.getMonth()) : m; // mese corrente e futuri: dal mese pieno precedente
     const refLine = refMonth === m ? actualLine : await many(`SELECT p.line_id, sum(s.net_amount) AS v, count(DISTINCT s.external_ref)::int AS t FROM sales s JOIN products p ON p.id=s.product_id WHERE date_part('year', s.sale_date)=$1 AND date_part('month', s.sale_date)=$2 GROUP BY p.line_id`, [year, refMonth]);
-    for (const l of lineRows) { const a = refLine.find((x) => x.line_id === l.id); const f = 0.92 + r() * 0.2; await q('INSERT INTO budgets(year, month, line_id, site_id, amount, tickets) VALUES ($1,$2,$3,NULL,$4,$5) ON CONFLICT DO NOTHING', [year, m, l.id, Math.round(Number(a?.v || 0) * f), Math.round(Number(a?.t || 0) * f)]); }
+    for (const l of lineRows) { const a = refLine.find((x) => x.line_id === l.id); const f = 0.92 + r() * 0.2; await q('INSERT INTO budgets(year, month, line_id, site_id, amount, tickets, demo) VALUES ($1,$2,$3,NULL,$4,$5,TRUE) ON CONFLICT DO NOTHING', [year, m, l.id, Math.round(Number(a?.v || 0) * f), Math.round(Number(a?.t || 0) * f)]); }
     const refSite = await many(`SELECT s.site_id, sum(s.net_amount) AS v, count(DISTINCT s.external_ref)::int AS t FROM sales s WHERE date_part('year', s.sale_date)=$1 AND date_part('month', s.sale_date)=$2 GROUP BY s.site_id`, [year, refMonth]);
-    for (const s of sites) { const a = refSite.find((x) => x.site_id === s.id); const f = 0.92 + r() * 0.2; await q('INSERT INTO budgets(year, month, line_id, site_id, amount, tickets) VALUES ($1,$2,NULL,$3,$4,$5) ON CONFLICT DO NOTHING', [year, m, s.id, Math.round(Number(a?.v || 0) * f), Math.round(Number(a?.t || 0) * f)]); }
+    for (const s of sites) { const a = refSite.find((x) => x.site_id === s.id); const f = 0.92 + r() * 0.2; await q('INSERT INTO budgets(year, month, line_id, site_id, amount, tickets, demo) VALUES ($1,$2,NULL,$3,$4,$5,TRUE) ON CONFLICT DO NOTHING', [year, m, s.id, Math.round(Number(a?.v || 0) * f), Math.round(Number(a?.t || 0) * f)]); }
   }
   return { customers: customers.length + b2b.length, products: Object.keys(prodIds).length, sales: n };
 }
 
+// Rimozione del set dimostrativo (debug pre-produzione, A1): si cancellano SOLO le righe marcate come demo (colonna demo, migrazione
+// 009, o vendite con source DEMO). Campagne, promozioni, clienti, orari, dotazioni, budget e note reali non si toccano mai.
+// L'ordine rispetta le chiavi esterne: prima le vendite e le esposizioni, poi campagne, promozioni, clienti e prestazioni.
 export async function clearDemo() {
+  const out = {};
   await tx(async (c) => {
-    await c.query("DELETE FROM sales WHERE source='DEMO'");
-    await c.query("DELETE FROM exposure_items");
-    await c.query("DELETE FROM customers WHERE source IN ('GIPO','TUOTEMPO','STUDIOLAB') AND external_id LIKE 'D%' OR external_id LIKE 'S%'");
-    await c.query("DELETE FROM campaigns");
-    await c.query("DELETE FROM promotions");
-    await c.query("DELETE FROM products WHERE source='DEMO'");
-    await c.query('DELETE FROM site_hours'); await c.query('DELETE FROM site_assets'); await c.query('DELETE FROM budgets'); await c.query('DELETE FROM working_days'); await c.query('DELETE FROM variance_notes');
+    const del = async (k, sql) => { out[k] = (await c.query(sql)).rowCount; };
+    await del('sales', "DELETE FROM sales WHERE source='DEMO'");
+    await del('exposure_items', 'DELETE FROM exposure_items WHERE demo');
+    await c.query('UPDATE campaigns SET promotion_id=NULL WHERE NOT demo AND promotion_id IN (SELECT id FROM promotions WHERE demo)');
+    await del('campaigns', 'DELETE FROM campaigns WHERE demo');
+    await c.query('UPDATE exposure_items SET promotion_id=NULL WHERE promotion_id IN (SELECT id FROM promotions WHERE demo)');
+    await del('promotions', 'DELETE FROM promotions WHERE demo');
+    await del('customers', 'DELETE FROM customers WHERE demo');
+    await del('products', "DELETE FROM products WHERE (demo OR source='DEMO') AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.product_id=products.id)");
+    await del('site_hours', 'DELETE FROM site_hours WHERE demo');
+    await del('site_assets', 'DELETE FROM site_assets WHERE demo');
+    await del('budgets', 'DELETE FROM budgets WHERE demo');
+    await del('working_days', 'DELETE FROM working_days WHERE demo');
   });
   await refreshCustomerStats();
+  return out;
 }

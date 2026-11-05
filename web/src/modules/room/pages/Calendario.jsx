@@ -36,8 +36,8 @@ export default function Calendario() {
       <div className="page-head">
         <div><h1>Calendario</h1><div className="sub">La settimana-tipo applicata alle date reali: assenze, sostituzioni, chiusure e sessioni extra. È il controllo operativo di ciò che accade davvero in ogni sede.</div></div>
         <div className="row">
-          {week && (view === 'giorno' ? <button className="btn ghost" onClick={() => { const g = week.giorni.find((x) => x.iso === day); const { doc } = pdfCalendario({ ...week, giorni: g ? [g] : [], mondayISO: day, sundayISO: day }, label); doc.save(`Calendario_${day}_${label.replace(/[^\w]+/g, '_')}.pdf`); }}>Scarica PDF giornata</button>
-            : <button className="btn ghost" onClick={() => { const { doc, filename } = pdfCalendario(week, label); doc.save(filename); }}>Scarica PDF settimana</button>)}
+          {week && (view === 'giorno' ? <button className="btn ghost" onClick={async () => { const g = week.giorni.find((x) => x.iso === day); const { doc } = await pdfCalendario({ ...week, giorni: g ? [g] : [], mondayISO: day, sundayISO: day }, label); doc.save(`Calendario_${day}_${label.replace(/[^\w]+/g, '_')}.pdf`); }}>Scarica PDF giornata</button>
+            : <button className="btn ghost" onClick={async () => { const { doc, filename } = await pdfCalendario(week, label); doc.save(filename); }}>Scarica PDF settimana</button>)}
           {canEdit && <button className="btn" onClick={() => setModal({ evento: { kind: 'ASSENZA', dal: monday, al: monday } })}>+ Assenza / chiusura / extra</button>}
         </div>
       </div>

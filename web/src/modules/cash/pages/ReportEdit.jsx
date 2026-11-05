@@ -290,7 +290,7 @@ export default function ReportEdit() {
               {rep.status === 'PROCESSED' && <>
                 {reviewer && Number(rep.cash_to_deposit) > 0 && <button className="btn lg" style={{ background: 'var(--blue)', color: 'var(--jet)' }} onClick={() => setModal('pickup')}>Registra operazione logistica →</button>}
                 {reviewer && Number(rep.cash_to_deposit) === 0 && <button className="btn lg" style={{ background: 'var(--silk)', color: 'var(--jet)' }} onClick={() => setModal('verify')}>Chiudi con verifica (nessun contante)</button>}
-                <button className="btn ghost" style={{ color: '#fff', background: 'transparent', borderColor: 'rgba(255,255,255,.3)' }} onClick={openCustody}>Stampa catena di custodia</button>
+                <button className="btn lg" style={{ background: 'var(--silk)', color: 'var(--jet)' }} onClick={openCustody}>Stampa catena di custodia</button>
                 <button className="btn ghost" style={{ color: '#fff', background: 'transparent', borderColor: 'rgba(255,255,255,.3)' }} onClick={openPdf}>Ristampa distinta</button>
               </>}
               {reviewer && rep.status === 'PICKED_UP' && (
@@ -330,7 +330,7 @@ export default function ReportEdit() {
         </div>
       </div>
 
-      {modal === 'envelope' && <EnvelopeModal rep={{ ...rep, cash_to_deposit: t.deposit }} onClose={() => setModal(null)} onDone={async () => { setModal(null); toast('Busta registrata'); await reload(); }} />}
+      {modal === 'envelope' && <EnvelopeModal rep={{ ...rep, cash_to_deposit: t.deposit, receipts: form.receipts.filter((x) => Number(x.amount) > 0), transfers: form.transfers.filter((x) => Number(x.amount) > 0 || x.cro) }} onClose={() => setModal(null)} onDone={async () => { setModal(null); toast('Busta registrata'); await reload(); }} />}
       {modal === 'pickup' && <PickupModal id={id} onClose={() => setModal(null)} onDone={async () => { setModal(null); toast('Operazione logistica registrata'); await reload(); }} />}
       {modal === 'verify' && <VerifyModal rep={rep} onClose={() => setModal(null)} onDone={async (diff) => { setModal(null); toast(diff ? 'Verificato: aperta non conformità per la differenza' : 'Verificato, in cassaforte'); await reload(); }} />}
       {modal === 'undo' && <PromptModal title={`Annulla: ${STATUS_LABELS[rep.status]}`} label={`Il rendiconto torna al passaggio precedente. Motivazione (resta nel tracciamento)`} confirmText="Annulla passaggio" danger minLength={5}
@@ -352,17 +352,36 @@ function EnvelopeModal({ rep, onClose, onDone }) {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const needs = rep.cash_to_deposit > 0;
+  // Conferme prima di registrare (richiesta del CEO, 05/11/2026): dati corretti; nessun POS / nessun bonifico se non inseriti;
+  // giornata a 0 euro se non c'è alcun incasso. Il PDF della chiusura cassa del gestionale è obbligatorio.
+  const nPos = (rep.receipts || []).length, nTr = (rep.transfers || []).length;
+  const zero = Number(rep.cash_to_deposit) === 0 && nPos === 0 && nTr === 0;
+  const [ck, setCk] = useState({ dati: false, pos: false, bon: false, zero: false });
+  const okConferme = ck.dati && (nPos > 0 || ck.pos) && (nTr > 0 || ck.bon) && (!zero || ck.zero);
   const go = async () => {
     setBusy(true); setErr(null);
-    try { await api.post(`/reports/${rep.id}/envelope`, needs ? { code, confirm } : {}); onDone(); } catch (e) { setErr(e); }
+    try { await api.post(`/reports/${rep.id}/envelope`, { ...(needs ? { code, confirm } : {}), conferma_dati: ck.dati, conferma_no_pos: ck.pos, conferma_no_bonifici: ck.bon, conferma_zero: ck.zero }); onDone(); } catch (e) { setErr(e); }
     setBusy(false);
   };
   return (
-    <Modal title={needs ? 'Registra la busta Mondialpol' : 'Chiusura senza versamento'} onClose={onClose} footer={<>
+    <Modal title={needs ? 'Registra la busta Mondialpol' : zero ? 'Chiusura della giornata a 0 euro' : 'Chiusura senza versamento'} onClose={onClose} footer={<>
       <button className="btn ghost" onClick={onClose}>Annulla</button>
-      <button className="btn" disabled={busy || (needs && (!code || !confirm))} onClick={go}>Registra</button>
+      <button className="btn" disabled={busy || !okConferme || !rep.has_system_pdf || (needs && (!code || !confirm))} onClick={go}>Registra</button>
     </>}>
       <ErrorBox error={err} />
+      {!rep.has_system_pdf && <div className="alert warn" style={{ marginBottom: 12 }}><b>Manca il PDF della chiusura cassa del gestionale (GIPO).</b> Caricalo nella sezione "Chiusura cassa del gestionale" prima di registrare: è obbligatorio.</div>}
+      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div className="small muted" style={{ marginBottom: 6 }}>Riepilogo da confermare</div>
+        <div className="line"><span>Contante da versare</span><b>{eur(rep.cash_to_deposit)}</b></div>
+        <div className="line"><span>Scontrini POS</span><b>{nPos} {nPos === 1 ? 'scontrino' : 'scontrini'}</b></div>
+        <div className="line"><span>Bonifici</span><b>{nTr} {nTr === 1 ? 'bonifico' : 'bonifici'}</b></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+          <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.dati} onChange={(e) => setCk({ ...ck, dati: e.target.checked })} /><span>Confermo che i dati inseriti (contanti, scontrini, bonifici) sono corretti e corrispondono alla chiusura del gestionale.</span></label>
+          {nPos === 0 && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.pos} onChange={(e) => setCk({ ...ck, pos: e.target.checked })} /><span>Non ho inserito scontrini POS: confermo che nella giornata non ci sono stati incassi POS.</span></label>}
+          {nTr === 0 && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.bon} onChange={(e) => setCk({ ...ck, bon: e.target.checked })} /><span>Non ho inserito bonifici: confermo che nella giornata non ci sono stati bonifici.</span></label>}
+          {zero && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.zero} onChange={(e) => setCk({ ...ck, zero: e.target.checked })} /><span>Confermo la chiusura della giornata a 0 euro: nessun incasso.</span></label>}
+        </div>
+      </div>
       {needs ? <>
         <div className="alert warn" style={{ marginBottom: 14 }}>Inserisci in busta <b>{eur(rep.cash_to_deposit)}</b>, sigillala e leggi il codice a barre. Il codice va inserito due volte: con il lettore basta una seconda scansione.</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -377,7 +396,7 @@ function EnvelopeModal({ rep, onClose, onDone }) {
           </Field>
           {code && confirm && code !== confirm && <div className="small red">I due codici non coincidono</div>}
         </div>
-      </> : <div className="alert info">Nessun contante da versare oltre il fondo cassa: il rendiconto si chiude senza busta.</div>}
+      </> : <div className="alert info">{zero ? 'Giornata senza incassi: il rendiconto si chiude a 0 euro, senza busta.' : 'Nessun contante da versare oltre il fondo cassa: il rendiconto si chiude senza busta.'}</div>}
     </Modal>
   );
 }

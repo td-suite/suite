@@ -65,7 +65,8 @@ export async function indexNotice(n) {
 export async function indexPerson(p) {
   if (!p) return;
   if (p.status !== 'ATTIVO') { await removeFromIndex('person', p.id); return; }
-  const body = [p.job_title, p.discipline, p.area, p.site_name, p.email, p.phone_office || p.phone].filter(Boolean).join(' · ');
+  // mai il cellulare personale nell'indice (audience ALL: lo leggerebbero anche gli esterni e chi non ha la Rubrica, M10)
+  const body = [p.job_title, p.discipline, p.area, p.site_name, p.email, p.phone_office].filter(Boolean).join(' · ');
   await upsertIndex({ kind: 'person', ref_id: p.id, module_key: 'rubrica', title: `${p.last_name} ${p.first_name}`, body, link: `/people/${p.id}`, audience: ALL, sensitive: false });
 }
 const PERSON_SQL = `SELECT p.id, p.status, p.last_name, p.first_name, p.job_title, p.discipline, p.area, p.email, p.phone, p.phone_office, s.name AS site_name

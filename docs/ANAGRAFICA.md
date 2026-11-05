@@ -1040,3 +1040,29 @@ lo scrive `lib/formatTD.js`, porting fedele di gen.py + gen3.py sul template "Fo
 identico byte per byte ai referti del progetto. "Chiedi una correzione" con storico delle versioni (`scheda_versioni`) e "Annulla
 l'ultima correzione"; parser a mano solo come riserva senza chiave; mock `REFERTI_AI_MOCK=1` per test e collaudo. Dettaglio in
 `docs/REFERTI_ESTERNI_routine.md`, variabili in `docs/IMPOSTAZIONI.md`.
+
+## Consensi: presa d'atto di Privacy e Informativa IA (05/11/2026)
+Richiesta del CEO: "Abbiamo da sistemare due elementi: Privacy e AI Act [...] Quando fai il login la prima volta, approvare il contenuto
+dei due documenti (dei quali esponiamo solo il link) e andare avanti". Vale per **tutti** gli utenti (personale, clienti service,
+partner ospitanti) ed è legata all'utente, non alla persona. Tabella core `consensi` (migrazione 039): una riga per utente, documento
+(`PRIVACY` | `IA`) e versione, con data e ora, IP e user agent; `UNIQUE (user_id, documento, versione)`, lo storico delle versioni resta.
+- Flusso: login → eventuale cambio password → schermata "Prima di iniziare" (pages/PresaAtto.jsx) con i due link in scheda nuova,
+  versione e data di ciascuno, una sola casella e "Continua" → Home. `/api/auth/me` restituisce `consensi_da_accettare` (vuoto se tutto
+  accettato nella versione corrente) e `informative` (URL e versione). Accettando si registrano solo i documenti non ancora accettati
+  nella versione corrente (audit `CONSENSO_ACCETTATO`). Il blocco è nel front-end, come per la presa d'atto in genere: le API restano
+  servite (il cambio password invece è bloccato anche lato server).
+- Nuova versione: cambiare `consensi.privacy_versione` o `consensi.ia_versione` (Amministrazione > Impostazioni > Informative) fa
+  ripresentare la schermata a tutti, con il distintivo "Aggiornata" sul documento cambiato; chi è già dentro la vede al primo
+  aggiornamento del profilo (entro un minuto).
+- Sempre raggiungibili: due icone discrete (scudo = privacy, "IA" = informativa IA) fisse in basso a sinistra della Home completa e della
+  Home del Cliente service, e nel piede della barra laterale di ogni sezione.
+- Informativa IA: pagina pubblica della Suite `/informativa-ia` (anche senza login e con la presa d'atto in sospeso), testo in
+  `web/src/pages/informativaIATesto.js`, fonte unica anche del DOCX da pubblicare sul sito (`node server/scripts/informativaIA-docx.mjs
+  <uscita.docx>`). **Il testo è una bozza da far rivedere al consulente privacy** prima della messa in produzione; se cambia nella
+  sostanza si aggiornano VERSIONE e DATA nel file e la versione in Impostazioni. Il testo descrive anche l'unica eccezione alla conferma
+  umana oggi presente nella Suite: i referti esterni della casella template@ confermati e inviati in automatico quando il controllo di
+  coerenza è verde e non ci sono anomalie (interruttore `invio_mittente` di Referti esterni).
+- API: `GET /api/consensi/stato`, `POST /api/consensi/accetta { documenti }`; Owner/Admin: `GET /api/consensi/riepilogo` (utenti attivi,
+  quanti hanno preso atto di entrambe, conteggi per documento), `PUT /api/consensi/impostazioni` (URL https:// o percorso /..., versioni;
+  audit `CONSENSI_IMPOSTAZIONI`), `GET /api/consensi/export.csv` (registro di tutte le prese d'atto, separatore ";", audit
+  `CONSENSI_EXPORT`). Test: server/test/consensi.test.mjs.

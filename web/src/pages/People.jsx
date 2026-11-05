@@ -6,18 +6,21 @@ import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, Search
 import { Icon } from '../components/Icons.jsx';
 import { PERSON_KIND, fmtDate } from '../format.js';
 import { api } from '../api.js';
-import { NotFound } from './Misc.jsx';
+import { NotFound, Forbidden } from './Misc.jsx';
 import { PersonPositionsModal } from './admin/Registry.jsx';
 
 const fullName = (p) => [p.last_name, p.first_name].filter(Boolean).join(' ');   // Cognome Nome, ovunque nella Suite
 const teamsUrl = (email) => `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
 
+// Card cliccabile senza <a> annidati (L16, validateDOMNesting): il contenitore naviga, il nome è il link accessibile
 function PersonCard({ p }) {
+  const navigate = useNavigate();
+  const apri = () => navigate(`/people/${p.id}`);
   return (
-    <Link to={`/people/${p.id}`} className="card person">
+    <div className="card person" role="group" onClick={apri} style={{ cursor: 'pointer' }}>
       <Avatar name={`${p.first_name} ${p.last_name}`} fileId={p.avatar_file_id || p.photo_file_id} size="lg" />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div className="n">{fullName(p)}</div>
+        <div className="n"><Link to={`/people/${p.id}`} onClick={(e) => e.stopPropagation()} style={{ color: 'inherit' }}>{fullName(p)}</Link></div>
         <div className="r">{[p.job_title, p.discipline].filter(Boolean).join(' · ') || PERSON_KIND[p.kind] || ''}</div>
         <div className="s">{p.unit_name && <Badge tone="mauve">{p.unit_name}</Badge>}{p.site_name && <span><Icon name="pin" style={{ width: 12, height: 12, marginRight: 3 }} />{p.site_name}</span>}</div>
         <div className="c">
@@ -27,7 +30,7 @@ function PersonCard({ p }) {
           {p.email && <a href={teamsUrl(p.email)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}><Icon name="teams" />Teams</a>}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -79,7 +82,10 @@ function List() {
 
 function EditPersonModal({ p, onClose, onSaved }) {
   const toast = useToast();
-  const [f, setF] = useState({ phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', email: p.email || '', discipline: p.discipline || '' });
+  const { user } = useAuth();
+  // l'email (collega persona e accesso) la cambia solo un amministratore: il profilo Rubrica "Aggiornamento schede" tocca i soli recapiti
+  const admin = isAdmin(user);
+  const [f, setF] = useState({ phone: p.phone || '', phone_office: p.phone_office || '', phone_ext: p.phone_ext || '', discipline: p.discipline || '', ...(admin ? { email: p.email || '' } : {}) });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async (e) => { e.preventDefault(); try { await api.put(`/people/${p.id}`, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (k === 'role_id' || k === 'unit_id') ? (v ? Number(v) : null) : (v || null)]))); toast('Scheda aggiornata'); onSaved(); onClose(); } catch (e2) { toast(e2, 'err'); } };
   return (
@@ -88,7 +94,7 @@ function EditPersonModal({ p, onClose, onSaved }) {
         <Field label="Sede"><input value={p.site_name || ''} disabled title="La sede si cambia in Amministrazione" /></Field>
         <div className="span-all small muted">Incarichi, reparto e ruolo si gestiscono con il pulsante Incarichi della card Organizzazione.</div>
         <Field label="Disciplina"><input value={f.discipline} onChange={set('discipline')} /></Field>
-        <Field label="Email"><input type="email" value={f.email} onChange={set('email')} /></Field>
+        <Field label="Email">{admin ? <input type="email" value={f.email} onChange={set('email')} /> : <input type="email" value={p.email || ''} disabled title="L'email si cambia in Amministrazione" />}</Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} /></Field>
         <Field label="Interno centralino"><input value={f.phone_ext} onChange={set('phone_ext')} maxLength={10} placeholder="101" /></Field>
         <Field label="Cellulare"><input value={f.phone} onChange={set('phone')} /></Field>
@@ -304,8 +310,8 @@ export default function People() {
   return (
     <Routes>
       <Route index element={<List />} />
-      <Route path="org-chart" element={external ? <NotFound /> : <OrgChart />} />
-      <Route path="ruoli" element={external ? <NotFound /> : <Roles />} />
+      <Route path="org-chart" element={external ? <Forbidden /> : <OrgChart />} />
+      <Route path="ruoli" element={external ? <Forbidden /> : <Roles />} />
       <Route path=":id" element={<Detail />} />
     </Routes>
   );

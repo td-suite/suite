@@ -33,6 +33,19 @@ sedi e il rapporto lo segnala ("non ospita nessun punto prelievi"). Un esterno s
 **Il profilo Default non si applica agli esterni** (`applyDefaultProfile`, `applyDefaultToAll`): è il pacchetto dei membri della
 rete (Cartella condivisa, Room, Retail...); un partner riceve solo il profilo di sistema scelto.
 
+**Un esterno resta esterno** (debug pre-produzione del 05/11/2026, A2 e B3): `users.is_external` (migrazione 040) si accende alla
+creazione dell'accesso dalla Legal entity o di un accesso con email non aziendale e Legal entity non del gruppo, e non si spegne
+cambiando la Legal entity o l'email della persona: solo un amministratore lo toglie da Amministrazione > Utenti (audit
+USER_MARKED_INTERNAL). Quando un amministratore cambia la Legal entity della persona, gli ambiti dei grant si ricalcolano dalla nuova
+Legal entity (audit EXTERNAL_PERIMETERS_REALIGNED); l'editor della Rubrica non cambia Legal entity, tipo, stato, email e dati personali.
+Il perimetro di un esterno viene sempre dalla Legal entity: la sede della persona conta solo se è della Legal entity o ne è ospitata, e
+il profilo personale (`PUT /api/auth/me`) non accetta sede, Legal entity, livello o ruoli.
+
+**Account automatici** (M9): una persona attiva riceve l'account da sola solo se l'email è di un dominio di
+`app_settings 'accounts.domini_automatici'` (predefinito: i domini aziendali). Per medici, fornitori, candidati, partner e clienti con
+altre email l'accesso si crea dal pulsante "Crea accesso" della Legal entity, da Amministrazione > Utenti o dalla scheda persona; vale
+anche per Contratti del personale, importazioni XLSX e "Crea gli accessi mancanti" (che conta a parte le email escluse).
+
 ## Come si crea un accesso (Amministrazione > Legal entity > colonna Accessi)
 La finestra "Accessi · <Legal entity>" mostra gli utenti collegati (`users.organization_id` o `people.organization_id`) con widget,
 perimetro e profilo di provenienza, le sedi ospitate e le sedi SERVICE, il profilo proposto, le persone della Legal entity senza accesso.

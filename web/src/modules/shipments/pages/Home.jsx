@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { BASE } from '../api.js';
 import { useT, LangToggle } from '../i18n.jsx';
 import { Icon, useApi } from '../components/ui.jsx';
 
@@ -19,14 +20,14 @@ export default function Home() {
         <div className="row"><span className="small muted">{t('c.lang')}</span><LangToggle persist /></div>
       </div>
       <div className="projects">
-        <Link to="endeavor" className="pcard">
+        <Link to={`${BASE}/endeavor`} className="pcard">
           <div className="ic"><Icon name="dna" /></div>
           <h2>{t('proj.ENDEAVOR')}</h2>
           <p>{t('proj.ENDEAVOR.desc')}</p>
           <div className="kpis"><div><b>{stockN(se)}</b><span>{t('home.stock')}</span></div><div><b>{openN(e)}</b><span>{t('home.open_req')}</span></div>{e.data?.inbox ? <div><b>{e.data.inbox}</b><span>{t('dash.inbox').toLowerCase()}</span></div> : null}</div>
           <div className="go">{t('home.open')} →</div>
         </Link>
-        <Link to="lifestyle" className="pcard ls">
+        <Link to={`${BASE}/lifestyle`} className="pcard ls">
           <div className="ic"><Icon name="heart" /></div>
           <h2>{t('proj.LIFESTYLE')}</h2>
           <p>{t('proj.LIFESTYLE.desc')}</p>

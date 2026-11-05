@@ -236,7 +236,7 @@ export function DropZone({ onFiles, accept, multiple = true, children, compact }
       onClick={() => ref.current?.click()} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && ref.current?.click()}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); const fs = [...e.dataTransfer.files]; if (fs.length) onFiles(multiple ? fs : fs.slice(0, 1)); }}>
-      <input ref={ref} type="file" hidden accept={accept} multiple={multiple} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = ''; }} />
+      <input ref={ref} type="file" hidden aria-label="Scegli i file da caricare" accept={accept} multiple={multiple} onChange={(e) => { const fs = [...e.target.files]; if (fs.length) onFiles(fs); e.target.value = ''; }} />
       {children || <><Icon name="upload" /><div className={compact ? 'small' : ''}>Trascina qui i file oppure clicca per sceglierli</div></>}
     </div>
   );

@@ -1,5 +1,6 @@
 // Modulo Business dentro la cornice della Suite: solo il contenuto (.page), le voci di menu sono in meta.js
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, isAdmin, isManager, canEditDossier } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
@@ -31,16 +32,16 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="sedi" element={<Contracts kind="SEDE" />} />
             <Route path="fascicoli" element={<Dossiers />} />
             <Route path="contratti" element={<Contracts />} />
-            {isManager(user) && <Route path="contratti/nuovo/:kind" element={<ContractForm />} />}
-            {isManager(user) && <Route path="contratti/:id/modifica" element={<ContractForm />} />}
+            <Route path="contratti/nuovo/:kind" element={isManager(user) ? <ContractForm /> : <Forbidden />} />
+            <Route path="contratti/:id/modifica" element={isManager(user) ? <ContractForm /> : <Forbidden />} />
             <Route path="contratti/:id" element={<ContractDetail />} />
             <Route path="contratti/:id/fascicolo" element={<ContractDossierRedirect moduleKey={moduleKey} />} />
-            {canEditDossier(user) && <Route path="fascicoli/nuovo" element={<DossierForm />} />}
+            <Route path="fascicoli/nuovo" element={canEditDossier(user) ? <DossierForm /> : <Forbidden />} />
             <Route path="fascicoli/:id" element={<Dossier />} />
             <Route path="organizzazioni" element={<Organizations />} />
             <Route path="partner" element={<Navigate to={`/${moduleKey}/organizzazioni`} replace />} />
-            {admin && <Route path="impostazioni" element={<Settings />} />}
-            {admin && <Route path="audit" element={<Audit />} />}
+            <Route path="impostazioni" element={admin ? <Settings /> : <Forbidden />} />
+            <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
             <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
           </Routes>
         </div>

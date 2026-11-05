@@ -1,6 +1,7 @@
 // Modulo Portale Service: route relative a /service dentro la cornice della Suite. Pagine riscritte in React sui JSON del sito
 // (specchio di sola lettura); i PDF arrivano da /api/service/file/... e i link stabili /service/p|m|doc/... li serve il server.
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import './sito.css';
 import './suite.css';
@@ -65,7 +66,7 @@ export default function Module({ moduleUser }) {
         <Route path="servizi" element={<Servizi />} />
         <Route path="servizi/:id" element={<Servizio />} />
         <Route path="vademecum" element={<Vademecum />} />
-        {moduleUser.editor && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="impostazioni" element={moduleUser.editor ? <Impostazioni /> : <Forbidden />} />
         <Route path="p/:codice" element={<LinkStabile />} />
         <Route path="m/:codice" element={<LinkStabile />} />
         <Route path="doc/:codice" element={<LinkStabile />} />

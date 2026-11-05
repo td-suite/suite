@@ -58,8 +58,10 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('PUBBLICATORE', 'Pubblicazione e invio'), P('REDATTORE', 'Redazione bozze'), P('VIEWER', 'Consultazione')] },
   // Ticket: aperto a tutti gli utenti autenticati (open_to_all: widget in home e accesso senza grant, ruolo implicito UTENTE)
   { key: 'ticket', area: 'HQS', name: 'Ticket', tagline: 'Richieste e segnalazioni ai responsabili: SLA, cronologia, statistiche', icon: 'ticket', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: true,
-    profiles: [P('ADMIN', 'Amministratore'), P('RESPONSABILE', 'Responsabile di unità'), P('VIEWER', 'Consultazione')] },
-  // Cartella condivisa: documenti per chi ha il grant (open_to_all FALSE, richiesta del CEO: il widget lo vede solo chi è abilitato)
+    // UTENTE (05/11/2026, debug pre-produzione A3): solo inserimento, apre ticket e vede i propri; è il profilo del Default dei dipendenti
+    profiles: [P('ADMIN', 'Amministratore'), P('RESPONSABILE', 'Responsabile di unità'), P('VIEWER', 'Consultazione'), P('UTENTE', 'Inserimento (apre ticket e vede i propri)')] },
+  // Cartella condivisa: documenti per chi ha il grant (open_to_all FALSE, richiesta del CEO: il widget lo vede solo chi è abilitato).
+  // Il profilo Default dei dipendenti dà la sola Consultazione (VIEWER); la Gestione (ADMIN) a Retail & Communications e HSQ (A3)
   { key: 'cartella', area: 'RETAIL_FLOW', name: 'Cartella condivisa', tagline: 'Documenti per tutti: cartelle, file in evidenza, novità', icon: 'folder', kind: 'LEGACY', legacy_url: null, sort_order: 50, scope_type: null, open_to_all: false,
     profiles: [P('ADMIN', 'Gestione'), P('VIEWER', 'Consultazione')] },
   // Referti esterni (28/10/2026): referti dei laboratori esterni trascritti sul format TD. Solo personale di laboratorio: lo vede

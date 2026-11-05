@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
-import { ah, bad, notFound, audit, parse } from '../lib/util.js';
+import { ah, bad, notFound, audit, parse, forbidden } from '../lib/util.js';
 import { requireRole, requireWrite } from '../lib/access.js';
 import { config } from '../config.js';
 import { loadDemo, clearDemo } from '../lib/demo.js';
@@ -23,7 +23,7 @@ export async function getSettings() {
 r.get('/settings', ah(async (_req, res) => {
   const s = await getSettings();
   const counts = await one(`SELECT (SELECT count(*)::int FROM sales) AS sales, (SELECT count(*)::int FROM customers) AS customers, (SELECT count(*)::int FROM products) AS products, (SELECT count(*)::int FROM sales WHERE source='DEMO') AS demo_sales`);
-  res.json({ settings: s, entraEnabled: config.entra.enabled, aiEnabled: Boolean(config.anthropicKey), maxUploadMb: config.maxUploadMb, counts });
+  res.json({ settings: s, entraEnabled: config.entra.enabled, aiEnabled: Boolean(config.anthropicKey), maxUploadMb: config.maxUploadMb, counts, demo_protetta: process.env.NODE_ENV === 'production', conferma_demo: CONFERMA_DEMO });
 }));
 
 r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
@@ -36,17 +36,26 @@ r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Set dimostrativo
+// Set dimostrativo (debug pre-produzione, A1). Con NODE_ENV=production le due operazioni sono spente, salvo conferma esplicita del
+// titolare della Suite con il testo digitato (campo "conferma"); in sviluppo basta il profilo ADMIN del modulo.
+export const CONFERMA_DEMO = { load: 'CARICA DATI DIMOSTRATIVI', clear: 'RIMUOVI DATI DIMOSTRATIVI' };
+function demoAmmessa(req, op) {
+  if (process.env.NODE_ENV !== 'production') return;
+  if (req.suiteUser?.level !== 'OWNER') throw forbidden('In produzione il set dimostrativo lo gestisce solo il titolare della Suite');
+  if (String(req.body?.conferma || '').trim().toUpperCase() !== CONFERMA_DEMO[op]) throw bad(`Per confermare scrivi esattamente: ${CONFERMA_DEMO[op]}`);
+}
 r.post('/demo/load', requireRole('ADMIN'), ah(async (req, res) => {
+  demoAmmessa(req, 'load');
   if ((await one('SELECT count(*)::int AS n FROM sales')).n > 0) throw bad('Il database contiene già vendite: il set dimostrativo si carica solo su database vuoto (oppure rimuovilo prima)');
   const out = await loadDemo();
   await audit(req, 'DEMO_LOAD', 'demo', null, out);
   res.json(out);
 }));
 r.post('/demo/clear', requireRole('ADMIN'), ah(async (req, res) => {
-  await clearDemo();
-  await audit(req, 'DEMO_CLEAR', 'demo', null);
-  res.json({ ok: true });
+  demoAmmessa(req, 'clear');
+  const eliminati = await clearDemo();   // solo le righe marcate demo
+  await audit(req, 'DEMO_CLEAR', 'demo', null, eliminati);
+  res.json({ ok: true, eliminati });
 }));
 
 // ---------------- Sedi ----------------

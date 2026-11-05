@@ -193,3 +193,22 @@ correzione" risponde 400. Test di parità con i referti del progetto: `REFERTI_P
 format TD", predefinita /home/claude/referti-pacchetto) e `REFERTI_PDF_SORGENTI` (cartella dei PDF sorgente dei tre merge Nuova Igea);
 se mancano, quei confronti vengono saltati. Migrazione: referti 005_lettura_claude_versioni.sql (schede.lettura,
 antibiotici_sorgente, da_rielaborare; tabella scheda_versioni; bozze del motore precedente marcate da rielaborare).
+
+## Informative: Privacy e uso dell'intelligenza artificiale (05/11/2026)
+Chiavi in `public.app_settings` (migrazione core 039_consensi.sql), modificabili solo dal riquadro "Informative" di Amministrazione >
+Impostazioni (Owner/Admin; nascoste dall'elenco JSON generico): `consensi.privacy_url` (predefinito
+https://www.toscanadiagnostica.it/documents/Privacy-Cookie-Policy.pdf), `consensi.privacy_versione` ('2026-11'), `consensi.ia_url`
+('/informativa-ia', la pagina pubblica della Suite; si sostituisce con il link del sito quando il CEO pubblica il DOCX), `consensi.ia_versione`
+('1.0'). Cambiare una versione = tutti riaccettano quel documento; la data mostrata accanto alla versione è quella dell'ultimo
+salvataggio della chiave. Nessuna variabile d'ambiente e nessun mock: la presa d'atto non usa Claude. Il riquadro mostra quanti utenti
+attivi hanno preso atto e quanti no ed esporta il CSV del registro. Il testo dell'informativa IA (`web/src/pages/informativaIATesto.js`)
+va rivisto dal consulente privacy; il DOCX si rigenera con `node server/scripts/informativaIA-docx.mjs <uscita.docx>`. Dettagli in
+docs/ANAGRAFICA.md, sezione Consensi.
+
+## Impostazioni aggiunte dal debug pre-produzione (05/11/2026)
+- `accounts.domini_automatici` (app_settings, elenco JSON di domini): l'account nasce da solo solo per le persone con email di questi
+  domini (predefinito: `AUTO_INTERNAL_DOMAINS`). Si modifica con `PUT /api/settings/accounts.domini_automatici` (amministratori).
+- Referti esterni > Impostazioni > Conservazione dei PDF sorgente: `retention_mesi` (predefinito 24, 0 = mai eliminati), al posto dei
+  giorni; il job `referti:retention` elimina i PDF sorgente più vecchi, restano la scheda e i file prodotti.
+- Retail > Impostazioni > Set dimostrativo: le righe del set sono marcate (`demo`, migrazione retail 009); "Rimuovi" toglie solo quelle.
+  In produzione caricamento e rimozione li fa solo il titolare, scrivendo il testo di conferma.

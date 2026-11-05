@@ -1,5 +1,6 @@
 // Modulo Cartella condivisa: route relative a /cartella dentro la cornice della Suite
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, isAdmin } from './auth.jsx';
 import { base } from './api.js';
@@ -24,9 +25,9 @@ export default function Module({ moduleUser }) {
         <Route path="recenti" element={<Elenco preset="recenti" />} />
         <Route path="cerca" element={<Cerca />} />
         <Route path="doc/:id" element={<Documento />} />
-        {isAdmin(user) && <Route path="gestione" element={<Sfoglia manage />} />}
-        {isAdmin(user) && <Route path="gestione/c/:id" element={<Sfoglia manage />} />}
-        {isAdmin(user) && <Route path="gestione/cronologia" element={<Cronologia />} />}
+        <Route path="gestione" element={isAdmin(user) ? <Sfoglia manage /> : <Forbidden />} />
+        <Route path="gestione/c/:id" element={isAdmin(user) ? <Sfoglia manage /> : <Forbidden />} />
+        <Route path="gestione/cronologia" element={isAdmin(user) ? <Cronologia /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path="*" element={<Navigate to={base} replace />} />
       </Routes>

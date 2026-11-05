@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { Field, ErrorBox, Card, Logo } from '../components/ui.jsx';
 import { Icon } from '../components/Icons.jsx';
+import { percorsoInterno } from '../format.js';
 
 const MsLogo = () => <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect x="11" y="1" width="9" height="9" fill="#7fba00" /><rect x="1" y="11" width="9" height="9" fill="#00a4ef" /><rect x="11" y="11" width="9" height="9" fill="#ffb900" /></svg>;
 
@@ -45,7 +46,7 @@ const ERRORS = {
 export function Login() {
   const { refresh, cfg } = useAuth();
   const [sp] = useSearchParams();
-  const next = sp.get('next') || '/';
+  const next = percorsoInterno(sp.get('next') || '/');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState(() => { const e = sp.get('error'); return e ? new Error(ERRORS[e] || decodeURIComponent(e)) : null; });

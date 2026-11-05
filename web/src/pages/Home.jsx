@@ -5,6 +5,7 @@ import { useAuth, isExternal, hasModule } from '../auth.jsx';
 import { useApi, Skeleton, Badge, Empty } from '../components/ui.jsx';
 import { Icon, weatherIcon } from '../components/Icons.jsx';
 import Widget from '../components/Widget.jsx';
+import PiedeSito from '../components/PiedeSito.jsx';
 import Board from '../components/community/Board.jsx';
 import { CircolariCard, NewsCard, CalendarCard, WeatherCard, QuoteCard, FilesCard, PeopleQuick, BirthdaysCard } from '../components/community/Cards.jsx';
 import { greeting, firstName, fmtDateLong, capitalize, SEVERITY, areaColor } from '../format.js';
@@ -63,6 +64,7 @@ function ClienteHome({ user }) {
           </div>
         </div>
       </section>
+      <PiedeSito />
     </div>
   );
 }
@@ -193,6 +195,8 @@ function HomeCompleta({ user }) {
           </div>
         </div>
       </div>
+      {/* Piè di pagina come il sito: dati aziendali, orari, social e gli allegati Privacy e Informativa IA */}
+      <PiedeSito />
     </div>
   );
 }

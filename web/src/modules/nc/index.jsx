@@ -1,6 +1,7 @@
 // Modulo Non conformità: le pagine dell'app di origine dentro la cornice della Suite (route relative a /nc).
 // Login, onboarding, utenti e profilo non si portano: li gestisce la Suite. Le preferenze di notifica restano (pagina Notifiche).
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, isLab, isSede, isQualita, isInternal } from './auth.jsx';
 import { base } from './api.js';
@@ -28,18 +29,18 @@ export default function Module({ moduleUser }) {
         <LiveProvider user={user}>
           <Routes>
             <Route path="" element={<Dashboard />} />
-            {isLab(user) && <Route path="desk" element={<Desk />} />}
-            {isLab(user) && <Route path="desk/:id" element={<Desk />} />}
-            {isSede(user) && <Route path="accettazioni" element={<Desk readOnly />} />}
+            <Route path="desk" element={isLab(user) ? <Desk /> : <Forbidden />} />
+            <Route path="desk/:id" element={isLab(user) ? <Desk /> : <Forbidden />} />
+            <Route path="accettazioni" element={isSede(user) ? <Desk readOnly /> : <Forbidden />} />
             <Route path="nc" element={<NcList />} />
-            {isLab(user) && <Route path="nc/oltre-sla" element={<NcList preset={{ stato: 'INVIATA_SEDE', scadute: '1' }} title="Oltre SLA" />} />}
-            {isQualita(user) && <Route path="nc/da-verificare" element={<NcList preset={{ stato: 'CHIUSA' }} title="Da verificare" />} />}
+            <Route path="nc/oltre-sla" element={isLab(user) ? <NcList preset={{ stato: 'INVIATA_SEDE', scadute: '1' }} title="Oltre SLA" /> : <Forbidden />} />
+            <Route path="nc/da-verificare" element={isQualita(user) ? <NcList preset={{ stato: 'CHIUSA' }} title="Da verificare" /> : <Forbidden />} />
             <Route path="nc/:id" element={<NcDetail />} />
             <Route path="statistiche" element={<Stats />} />
-            {isInternal(user) && <Route path="sedi" element={<Sedi />} />}
-            {isQualita(user) && <Route path="tipi" element={<Tipi />} />}
-            {isQualita(user) && <Route path="audit" element={<Audit />} />}
-            {isQualita(user) && <Route path="impostazioni" element={<Settings />} />}
+            <Route path="sedi" element={isInternal(user) ? <Sedi /> : <Forbidden />} />
+            <Route path="tipi" element={isQualita(user) ? <Tipi /> : <Forbidden />} />
+            <Route path="audit" element={isQualita(user) ? <Audit /> : <Forbidden />} />
+            <Route path="impostazioni" element={isQualita(user) ? <Settings /> : <Forbidden />} />
             <Route path="guida" element={<Guide />} />
             <Route path="notifiche" element={<Notifiche />} />
             <Route path="*" element={<Navigate to={base} replace />} />

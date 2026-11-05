@@ -3,7 +3,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { syncUserFromPerson } from '../lib/accounts.js';
+import { syncUserFromPerson, marcaEsterno } from '../lib/accounts.js';
 import { applyDefaultProfile, applyProfile } from '../lib/accessProfiles.js';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
@@ -71,7 +71,7 @@ r.get('/users', requireAdmin, ah(async (req, res) => {
   const rows = await many(
     `SELECT u.id, u.email, u.full_name, u.title, u.level, u.status, u.auth_provider, u.totp_enabled, u.last_login_at, u.created_at, u.site_id, u.organization_id, u.person_id,
             o.name AS organization_name, o.kind AS organization_kind, s.name AS site_name, p.area AS person_area, p.job_title AS person_job_title, p.kind AS person_kind,
-            (u.level = 'USER' AND coalesce(o.kind, '') NOT IN ('GRUPPO','SOCIETA') AND NOT (lower(split_part(u.email, '@', 2)) = ANY(${p(config.autoInternalDomains)}::text[]))) AS is_external,
+            (u.level = 'USER' AND (u.is_external OR (coalesce(o.kind, '') NOT IN ('GRUPPO','SOCIETA') AND NOT (lower(split_part(u.email, '@', 2)) = ANY(${p(config.autoInternalDomains)}::text[]))))) AS is_external,
             (SELECT json_agg(json_build_object('module_key', g.module_key, 'profile', g.profile, 'proposed', g.proposed) ORDER BY g.module_key) FROM grants g WHERE g.user_id=u.id) AS grants
        FROM users u LEFT JOIN organizations o ON o.id=u.organization_id LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN people p ON p.id=u.person_id
        ${w} ORDER BY lower(u.full_name) LIMIT ${p(Math.min(Number(pageSize), 200))} OFFSET ${p((Math.max(1, Number(page)) - 1) * Math.min(Number(pageSize), 200))}`, params);
@@ -97,7 +97,7 @@ r.get('/users/:id', requireAdmin, ah(async (req, res) => {
   // controllo del collegamento: esiste una persona con la stessa email diversa da quella collegata?
   const byEmail = await one('SELECT id, last_name, first_name FROM people WHERE lower(email)=lower($1) ORDER BY id LIMIT 1', [u.email]);
   const person_suggested = byEmail && byEmail.id !== u.person_id ? byEmail : null;
-  res.json({ user: { ...publicUser(u), ...person, person_suggested, legacy_refs: u.legacy_refs, entra_oid: u.entra_oid, last_login_at: u.last_login_at, created_at: u.created_at }, grants, audit: audit_ });
+  res.json({ user: { ...publicUser(u), ...person, external_flag: u.is_external === true, person_suggested, legacy_refs: u.legacy_refs, entra_oid: u.entra_oid, last_login_at: u.last_login_at, created_at: u.created_at }, grants, audit: audit_ });
 }));
 
 // ---- creazione: l'amministratore crea l'utente e, nello stesso passaggio, i grant per widget.
@@ -135,6 +135,9 @@ export async function createUserAccount(req, b) {
     }
     return u;
   });
+  // accesso nato esterno (Legal entity non del gruppo, email non aziendale): resta esterno (debug pre-produzione, A2)
+  if (b.origin === 'LEGAL_ENTITY') await q('UPDATE users SET is_external=TRUE WHERE id=$1 AND level=$2', [u.id, 'USER']);
+  else await marcaEsterno(u.id);
   // profilo di accesso predefinito (Default) dopo i grant indicati: aggiunge solo ciò che manca, non declassa quanto scelto qui
   const def = await applyDefaultProfile(u.id, req.user.id).catch((e) => { console.warn('[users] profilo predefinito:', e.message); return null; });
   // profilo di accesso scelto (es. Partner ospitante / Cliente service dalla scheda Legal entity): applicato dopo il Default, in merge
@@ -151,9 +154,10 @@ export async function createUserAccount(req, b) {
     const loginHint = provider === 'ENTRA' ? `<p>Accedi con il tuo account Microsoft 365 aziendale: <a href="${config.baseUrl}">${config.baseUrl}</a></p>`
       : `<p>Le tue credenziali:</p><p><b>Email</b>: ${email}<br><b>Password provvisoria</b>: <code>${plain}</code></p><p>Al primo accesso ti verrà chiesto di scegliere una password personale. Ti consigliamo di attivare la verifica a due fattori dal tuo profilo.</p><p><a href="${config.baseUrl}/login" style="background:#1C505E;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block">Entra in Suite TD</a></p>`;
     const out = await sendMail({ to: email, subject: 'Benvenuto in Suite TD', ref: `invite:${u.id}`, html: layout(`Benvenuto, ${b.full_name}`, `<p>È stato creato il tuo accesso a <b>Suite TD</b>, l'intranet e operating suite di Toscana Diagnostica.</p>${loginHint}`) });
-    invited = out.ok;
+    // con la posta in modalità registro (MAIL_PROVIDER=log) l'email non parte davvero: la password provvisoria torna all'amministratore (L13)
+    invited = out.ok && !out.logged;
   }
-  return { id: u.id, invited, temporaryPassword: invited ? undefined : plain || undefined, access_profile: chosen && !chosen.error ? { id: chosen.profile.id, name: chosen.profile.name, added: chosen.added, updated: chosen.updated, warnings: chosen.warnings } : null, access_profile_error: chosen?.error || null };
+  return { id: u.id, invited, mail_log: config.mail.provider !== 'graph', temporaryPassword: invited ? undefined : plain || undefined, access_profile: chosen && !chosen.error ? { id: chosen.profile.id, name: chosen.profile.name, added: chosen.added, updated: chosen.updated, warnings: chosen.warnings } : null, access_profile_error: chosen?.error || null };
 }
 r.post('/users', requireAdmin, ah(async (req, res) => {
   const b = parse(createUserSchema, req.body);
@@ -164,13 +168,14 @@ r.put('/users/:id', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const target = await one('SELECT * FROM users WHERE id=$1', [id]);
   assertCanManage(req, target);
-  const b = parse(userSchema.partial().omit({ password: true, send_invite: true }), req.body);
+  const b = parse(userSchema.partial().omit({ password: true, send_invite: true }).extend({ is_external: z.boolean().optional() }), req.body);
   if (b.level && b.level !== target.level) {
     if (!isOwner(req.user)) throw forbidden('Solo il titolare cambia il livello degli utenti');
     if (b.level === 'OWNER' || target.level === 'OWNER') throw forbidden('Il livello titolare non si assegna né si rimuove');
   }
   if (b.email && b.email.toLowerCase() !== target.email && await one('SELECT 1 FROM users WHERE lower(email)=$1 AND id<>$2', [b.email.toLowerCase(), id])) throw bad('Email già in uso');
-  const fields = ['email', 'first_name', 'last_name', 'full_name', 'title', 'phone', 'level', 'status', 'auth_provider', 'organization_id', 'site_id', 'person_id', 'lang'];
+  // is_external: un accesso esterno torna interno solo con questa scelta esplicita (debug pre-produzione, A2), registrata in audit
+  const fields = ['email', 'first_name', 'last_name', 'full_name', 'title', 'phone', 'level', 'status', 'auth_provider', 'organization_id', 'site_id', 'person_id', 'lang', 'is_external'];
   // Anagrafica unica: se l'utente è una persona, nomi, titolo, telefono, sede e legal entity vengono dalla scheda persona (non si compilano qui)
   const personId = b.person_id !== undefined ? b.person_id : target.person_id;
   if (personId) for (const k of ['first_name', 'last_name', 'full_name', 'title', 'phone', 'organization_id', 'site_id']) delete b[k];
@@ -180,6 +185,7 @@ r.put('/users/:id', requireAdmin, ah(async (req, res) => {
   if (sets.length) await q(`UPDATE users SET ${sets.join(', ')}, updated_at=now() WHERE id=$1`, params);
   if (personId) await syncUserFromPerson(personId);
   await audit(req, 'USER_UPDATED', { entity: 'user', entityId: id, label: target.email, data: b });
+  if (b.is_external !== undefined && b.is_external !== target.is_external) await audit(req, b.is_external ? 'USER_MARKED_EXTERNAL' : 'USER_MARKED_INTERNAL', { entity: 'user', entityId: id, label: target.email });
   res.json({ ok: true });
 }));
 
@@ -192,7 +198,7 @@ r.post('/users/:id/reset-password', requireAdmin, ah(async (req, res) => {
   await q('UPDATE users SET password_hash=$2, must_change_password=TRUE, failed_logins=0, locked_until=NULL, updated_at=now() WHERE id=$1', [id, await bcrypt.hash(plain, 12)]);
   await audit(req, 'USER_PASSWORD_RESET', { entity: 'user', entityId: id, label: target.email });
   const out = await sendMail({ to: target.email, subject: 'Suite TD · nuova password provvisoria', ref: `reset:${id}`, html: layout('Nuova password provvisoria', `<p>Ciao ${target.full_name},</p><p>un amministratore ha reimpostato la tua password: <code>${plain}</code></p><p>Al prossimo accesso dovrai sceglierne una nuova.</p>`) });
-  res.json({ ok: true, temporaryPassword: out.ok ? undefined : plain });
+  res.json({ ok: true, temporaryPassword: out.ok && !out.logged ? undefined : plain, mail_log: Boolean(out.logged) });   // L13
 }));
 
 r.post('/users/:id/reset-totp', requireAdmin, ah(async (req, res) => {

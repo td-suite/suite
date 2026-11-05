@@ -137,7 +137,7 @@ r.post('/sites/:id/photos', upload.single('file'), ah(async (req, res) => {
 r.get('/photos/:id', ah(async (req, res) => {
   const p = await one('SELECT filename, mime, data FROM exposure_photos WHERE id=$1', [Number(req.params.id)]);
   if (!p) throw notFound();
-  res.setHeader('Content-Type', p.mime); res.setHeader('Content-Disposition', `inline; filename="${p.filename}"`); res.send(p.data);
+  await servFile(res, p, { inline: true });   // solo immagini raster in linea: un SVG o un file non immagine si scarica (lib/servFile.js)
 }));
 r.delete('/photos/:id', ah(async (req, res) => {
   const p = await one('SELECT site_id FROM exposure_photos WHERE id=$1', [Number(req.params.id)]);

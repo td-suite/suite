@@ -347,10 +347,10 @@ export async function eliminaScheda(id, userId, { force = false } = {}) {
 // Eliminazione dei contenuti oltre la retention (solo i PDF sorgente delle elaborazioni, i file prodotti restano)
 export async function applicaRetention() {
   const imp = await settings();
-  const giorni = Number(imp.retention_giorni || 0);
-  if (!giorni) return { skipped: true, reason: 'retention disattivata' };
-  const rows = await many(`SELECT id, blob_path FROM elaborazioni WHERE created_at < now() - make_interval(days => $1) AND (data IS NOT NULL OR blob_path IS NOT NULL)`, [giorni]);
-  if (!rows.length) return { eliminati: 0 };
+  const mesi = Number(imp.retention_mesi ?? 24);
+  if (!mesi) return { skipped: true, reason: 'retention disattivata (0 mesi nelle Impostazioni)' };
+  const rows = await many(`SELECT id, blob_path FROM elaborazioni WHERE created_at < now() - make_interval(months => $1) AND (data IS NOT NULL OR blob_path IS NOT NULL)`, [mesi]);
+  if (!rows.length) return { eliminati: 0, mesi };
   await dropBlobs(rows.map((r) => r.blob_path));
   await q(`UPDATE elaborazioni SET data=NULL, blob_path=NULL WHERE id = ANY($1::int[])`, [rows.map((r) => r.id)]);
   return { eliminati: rows.length };

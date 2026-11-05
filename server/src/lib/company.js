@@ -22,6 +22,17 @@ export const DEFAULT_COMPANY = {
   website: 'www.toscanadiagnostica.it',
   health_director: 'prof. Gian Luigi Taddei',
   footer: '',
+  // Piè di pagina della Home come il sito (richiesta del CEO, 05/11/2026): dati dal sito www.toscanadiagnostica.it
+  sdi_code: 'M5UXCR1',
+  health_authorization: 'Autorizzazione Sanitaria n. 12 del 12/06/2026 rilasciata dal Comune di Sesto Fiorentino',
+  booking_hours: 'Lun – Ven: dalle 7:30 alle 19:00\nSabato: dalle 7:30 alle 12:30',
+  support_hours: 'Lun – Ven: dalle 7:30 alle 19:00\nSabato: dalle 7:30 alle 12:00',
+  support_phone: '055 776511',
+  support_email: 'supporto.clienti@toscanadiagnostica.it',
+  social_facebook: '',
+  social_instagram: '',
+  social_linkedin: '',
+  service_charter_url: '',
 };
 
 // Etichette e aiuto per l'editor di Amministrazione (stesso ordine della scheda)
@@ -33,6 +44,13 @@ export const COMPANY_FIELDS = [
   ['phone', 'Telefono', ''], ['fax', 'Fax', ''], ['email', 'Email', ''], ['pec', 'PEC', ''], ['website', 'Sito web', ''],
   ['health_director', 'Direttore Sanitario', 'Con il titolo, es. prof. Gian Luigi Taddei.'],
   ['footer', 'Piè di pagina della carta intestata', 'Testo libero su più righe. Se vuoto viene composto dagli altri campi.'],
+  ['sdi_code', 'Codice SDI', 'Codice destinatario per la fatturazione elettronica (piè di pagina della Home).'],
+  ['health_authorization', 'Autorizzazione sanitaria', 'Es. Autorizzazione Sanitaria n. 12 del 12/06/2026 rilasciata dal Comune di Sesto Fiorentino.'],
+  ['booking_hours', 'Orari prenotazione telefonica', 'Una riga per fascia (piè di pagina della Home).'],
+  ['support_hours', 'Orari supporto clienti', 'Una riga per fascia (piè di pagina della Home).'],
+  ['support_phone', 'Telefono supporto clienti', ''], ['support_email', 'Email supporto clienti', ''],
+  ['social_facebook', 'Facebook (URL)', 'Vuoto = icona nascosta.'], ['social_instagram', 'Instagram (URL)', 'Vuoto = icona nascosta.'], ['social_linkedin', 'LinkedIn (URL)', 'Vuoto = icona nascosta.'],
+  ['service_charter_url', 'Carta dei servizi (URL)', 'Link al PDF sul sito; vuoto = voce nascosta.'],
 ];
 
 // Indirizzo completo "Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)"

@@ -21,7 +21,7 @@ export default function Guida() {
         <p>Tipi ammessi: {(l?.estensioni || ['pdf', 'docx', 'xlsx', 'pptx', 'png', 'jpg', 'webp', 'txt', 'csv', 'md']).join(', ')}; dimensione massima {l?.max_file_mb || 50} MB per file. Ogni operazione resta nella Cronologia del modulo e nell'audit della Suite.</p>
       </Card>
       <Card title="Chi ha accesso" icon="shield">
-        <p>Il modulo è riservato a chi ha il grant: profilo <b>Consultazione</b> (VIEWER) per leggere e scaricare, <b>Gestione</b> (ADMIN) per amministrare. Le regole di accesso iniziali propongono la consultazione a tutti i responsabili di unità e la gestione a Retail & Communications Management e HSQ Management; l'amministratore della Suite assegna gli altri accessi da Amministrazione > Utenti.</p>
+        <p>Il modulo è riservato a chi ha il grant: profilo <b>Consultazione</b> (VIEWER) per leggere e scaricare, <b>Gestione</b> (ADMIN) per amministrare. Il profilo di accesso Default dei dipendenti dà la sola <b>Consultazione</b>; le regole di accesso iniziali propongono la consultazione a tutti i responsabili di unità e la gestione a Retail &amp; Communications Management e HSQ Management; l'amministratore della Suite assegna gli altri accessi da Amministrazione &gt; Utenti.</p>
         <p>Non caricare documenti con dati di pazienti o dati personali: la cartella è visibile a tutte le persone abilitate.</p>
       </Card>
     </div>

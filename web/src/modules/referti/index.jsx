@@ -1,5 +1,6 @@
 // Modulo Referti esterni: route relative a /referti dentro la cornice della Suite
 import React, { createContext, useContext } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { base } from './api.js';
 import './styles.css';
@@ -24,7 +25,7 @@ export default function Module({ moduleUser }) {
         <Route path="" element={<Inbox />} />
         <Route path="archivio" element={<Archivio />} />
         <Route path="registro" element={<Registro />} />
-        {isQualita(user) && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="impostazioni" element={isQualita(user) ? <Impostazioni /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path="schede/:id" element={<Scheda />} />
         <Route path="*" element={<Navigate to={base} replace />} />

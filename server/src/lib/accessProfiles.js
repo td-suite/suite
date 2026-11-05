@@ -13,7 +13,7 @@ import { resolveExternalScopes, externalScopeContext } from './esterni.js';
 
 const isOwnerLevel = (u) => u?.level === 'OWNER';
 // Ordine di "forza" dei profili dei moduli (dal più basso): serve a non declassare un grant nato da un altro profilo di accesso
-const RANK = ['VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['UTENTE', 'VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const rank = (p) => RANK.indexOf(p);
 
 async function loadActor(actorId) {
@@ -60,7 +60,7 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
 
   const ids = [...new Set((userIds || []).map(Number).filter(Number.isFinite))];
   for (const uid of ids) {
-    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, coalesce(p.site_id, u.site_id) AS site_id,
+    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, u.is_external, coalesce(p.site_id, u.site_id) AS site_id,
                                 coalesce(p.organization_id, u.organization_id) AS organization_id, o.kind AS organization_kind
                            FROM users u LEFT JOIN people p ON p.id=u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id=$1`, [uid]);
     if (!u) { report.warnings.push(`Utente n. ${uid} inesistente: saltato`); continue; }
@@ -152,7 +152,7 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
 export async function applyDefaultProfile(userId, actorId = null) {
   const d = await getDefaultProfile();
   if (!d) return null;
-  const u = await one(`SELECT u.id, u.email, u.level, o.kind AS organization_kind FROM users u LEFT JOIN people p ON p.id=u.person_id
+  const u = await one(`SELECT u.id, u.email, u.level, u.is_external, o.kind AS organization_kind FROM users u LEFT JOIN people p ON p.id=u.person_id
       LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id=$1`, [userId]);
   if (u && !isInternal({ ...u, internal_domains: config.autoInternalDomains })) return { profile: { id: d.id, name: d.name }, mode: 'merge', users: 0, added: 0, updated: 0, kept: 0, removed: 0, warnings: ['utente esterno: il profilo Default non si applica (solo profili di sistema dalla scheda Legal entity)'], rows: [], skipped_external: true };
   return applyProfile(d.id, [userId], { actorId, mode: 'merge' });
@@ -164,6 +164,6 @@ export async function applyDefaultToAll(actorId = null) {
   if (!d) throw Object.assign(new Error('Nessun profilo predefinito: segna un profilo come "predefinito per tutti i nuovi utenti"'), { status: 400 });
   // esclusi gli esterni (vedi applyDefaultProfile)
   const rows = await many(`SELECT u.id FROM users u LEFT JOIN people p ON p.id=u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
-    WHERE u.status IN ('ACTIVE','PENDING') AND (u.level IN ('OWNER','ADMIN') OR coalesce(o.kind,'') IN ('GRUPPO','SOCIETA') OR lower(split_part(u.email,'@',2)) = ANY($1::text[])) ORDER BY u.id`, [config.autoInternalDomains]);
+    WHERE u.status IN ('ACTIVE','PENDING') AND (u.level IN ('OWNER','ADMIN') OR (NOT u.is_external AND (coalesce(o.kind,'') IN ('GRUPPO','SOCIETA') OR lower(split_part(u.email,'@',2)) = ANY($1::text[])))) ORDER BY u.id`, [config.autoInternalDomains]);
   return applyProfile(d.id, rows.map((r) => r.id), { actorId, mode: 'merge' });
 }

@@ -9,14 +9,14 @@ import { LEVEL, PROVIDER, AREA_NAMES, AREA_COLORS } from '../format.js';
 export default function Profile() {
   const { user, refresh, authMethod, cfg } = useAuth();
   const toast = useToast();
-  const sites = useApi('/sites');
   const mods = useApi('/modules');
-  const [f, setF] = useState({ phone: user.phone || '', title: user.title || '', bio: user.bio || '', site_id: user.site_id || '', lang: user.lang || 'it', notify_email: user.notify_email !== false });
+  // la sede principale viene dalla scheda persona e si cambia in Amministrazione (il profilo non allarga il perimetro, debug B3)
+  const [f, setF] = useState({ phone: user.phone || '', title: user.title || '', bio: user.bio || '', lang: user.lang || 'it', notify_email: user.notify_email !== false });
   const [busy, setBusy] = useState(false);
-  useEffect(() => setF({ phone: user.phone || '', title: user.title || '', bio: user.bio || '', site_id: user.site_id || '', lang: user.lang || 'it', notify_email: user.notify_email !== false }), [user]);
+  useEffect(() => setF({ phone: user.phone || '', title: user.title || '', bio: user.bio || '', lang: user.lang || 'it', notify_email: user.notify_email !== false }), [user]);
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
-    try { await api.put('/auth/me', { phone: f.phone || null, title: f.title || null, bio: f.bio || null, site_id: f.site_id ? Number(f.site_id) : null, lang: f.lang, notify_email: Boolean(f.notify_email) }); await refresh(); toast('Profilo aggiornato'); } catch (e2) { toast(e2, 'err'); }
+    try { await api.put('/auth/me', { phone: f.phone || null, title: f.title || null, bio: f.bio || null, lang: f.lang, notify_email: Boolean(f.notify_email) }); await refresh(); toast('Profilo aggiornato'); } catch (e2) { toast(e2, 'err'); }
     setBusy(false);
   };
   const uploadAvatar = async (file) => {
@@ -53,7 +53,7 @@ export default function Profile() {
               <div className="form-grid">
                 <Field label="Titolo" help="Dott., Dott.ssa, Ing."><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={20} /></Field>
                 <Field label="Telefono"><input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
-                <Field label="Sede principale"><select value={f.site_id} onChange={(e) => setF({ ...f, site_id: e.target.value })}><option value="">Nessuna</option>{(sites.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` · ${s.city}` : ''}</option>)}</select></Field>
+                <Field label="Sede principale" help="Dalla scheda persona: la cambia l'Amministrazione"><input value={user.site_name || 'Nessuna'} disabled aria-label="Sede principale" /></Field>
                 <Field label="Lingua"><select value={f.lang} onChange={(e) => setF({ ...f, lang: e.target.value })}><option value="it">Italiano</option><option value="en">English</option></select></Field>
               </div>
               <Field label="Presentazione" help={`Visibile nella rubrica · ${f.bio.length} / 4000 caratteri`}><textarea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value.slice(0, 4000) })} style={{ minHeight: 160 }} /></Field>
@@ -117,12 +117,14 @@ function TotpModal({ setup, onClose, onDone }) {
 
 function DisableTotpModal({ onClose, onDone }) {
   const toast = useToast();
-  const [pw, setPw] = useState(''); const [err, setErr] = useState(null);
-  const go = async (e) => { e.preventDefault(); try { await api.post('/auth/totp/disable', { password: pw }); toast('Verifica in due passaggi disattivata'); onDone(); onClose(); } catch (e2) { setErr(e2); } };
+  const [pw, setPw] = useState(''); const [code, setCode] = useState(''); const [err, setErr] = useState(null);
+  // servono la password e il codice attuale dell'app: con la sola password il secondo fattore non si spegne (debug B2)
+  const go = async (e) => { e.preventDefault(); try { await api.post('/auth/totp/disable', { password: pw, code }); toast('Verifica in due passaggi disattivata'); onDone(); onClose(); } catch (e2) { setErr(e2); } };
   return (
     <Modal title="Disattiva la verifica in due passaggi" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn danger" form="dtform">Disattiva</button></>}>
       <ErrorBox error={err} />
-      <form id="dtform" onSubmit={go}><Field label="Conferma con la tua password"><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></Field></form>
+      <form id="dtform" onSubmit={go} className="col"><Field label="Conferma con la tua password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus /></Field>
+        <Field label="Codice attuale dell'app di autenticazione"><input className="code-input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d]/g, '').slice(0, 6))} placeholder="000000" required /></Field></form>
     </Modal>
   );
 }

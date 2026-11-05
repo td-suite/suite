@@ -1,6 +1,7 @@
 // Modulo Retail Assistant: le pagine dell'app di origine dentro la cornice della Suite (route relative a /retail).
 // Login, onboarding, utenti e profilo personale non si portano: li gestisce la Suite.
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, canWrite, isAdmin } from './auth.jsx';
 import { base } from './api.js';
@@ -42,7 +43,7 @@ export default function Module({ moduleUser }) {
           <Route path="richiami" element={<Recalls />} />
           <Route path="prodotti" element={<Products />} />
           <Route path="vendite" element={<Sales />} />
-          {writer && <Route path="import" element={<Import />} />}
+          <Route path="import" element={writer ? <Import /> : <Forbidden />} />
           <Route path="campagne" element={<Campaigns />} />
           <Route path="campagne/:id" element={<CampaignDetail />} />
           <Route path="promozioni" element={<Promotions />} />
@@ -52,9 +53,9 @@ export default function Module({ moduleUser }) {
           <Route path="sedi" element={<Sites />} />
           <Route path="sedi/:id" element={<SiteDetail />} />
           <Route path="budget" element={<Budget />} />
-          {admin && <Route path="connettori" element={<Connectors />} />}
-          {admin && <Route path="impostazioni" element={<Settings />} />}
-          {admin && <Route path="audit" element={<Audit />} />}
+          <Route path="connettori" element={admin ? <Connectors /> : <Forbidden />} />
+          <Route path="impostazioni" element={admin ? <Settings /> : <Forbidden />} />
+          <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
           <Route path="*" element={<Navigate to={base} replace />} />
         </Routes>
       </ToastProvider>

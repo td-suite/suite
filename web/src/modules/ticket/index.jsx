@@ -1,5 +1,6 @@
 // Modulo Ticket: route relative a /ticket dentro la cornice della Suite
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, isAdmin, isGestore } from './auth.jsx';
 import { base } from './api.js';
@@ -21,10 +22,10 @@ export default function Module({ moduleUser }) {
         <Route path="" element={<Cruscotto />} />
         <Route path="nuovo" element={<Nuovo />} />
         <Route path="miei" element={<Lista preset="miei" />} />
-        {isGestore(user) && <Route path="gestione" element={<Lista preset="gestione" />} />}
+        <Route path="gestione" element={isGestore(user) ? <Lista preset="gestione" /> : <Forbidden />} />
         <Route path="archivio" element={<Lista preset="archivio" />} />
         <Route path="statistiche" element={<Statistiche />} />
-        {isAdmin(user) && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="impostazioni" element={isAdmin(user) ? <Impostazioni /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path=":id" element={<Dettaglio />} />
         <Route path="*" element={<Navigate to={base} replace />} />

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { servFile } from '../../../lib/servFile.js';
 import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
@@ -71,7 +72,7 @@ r.get('/companies/:id/logo', ah(async (req, res) => {
   assertCompany(req.user, id);
   const c = await one('SELECT logo, logo_mime FROM org_ext WHERE org_id=$1', [id]);
   if (!c?.logo) throw notFound();
-  res.type(c.logo_mime).set('Cache-Control', 'private, max-age=300').send(c.logo);
+  await servFile(res, { filename: 'logo', data: c.logo, mime: c.logo_mime }, { inline: true });   // tipo dalla firma (lib/servFile.js)
 }));
 
 // ---------------- Sedi ----------------

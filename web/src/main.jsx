@@ -7,7 +7,8 @@ import App from './App.jsx';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* flag di React Router v7 attivati ora (L16): transizioni di stato e link relativi dentro le route /modulo/* come in v7 */}
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,

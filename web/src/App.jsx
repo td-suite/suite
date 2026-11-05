@@ -1,20 +1,26 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, isAdmin, hasModule } from './auth.jsx';
+import { percorsoInterno } from './format.js';
 import { ToastProvider, BusyBar } from './components/ui.jsx';
-import Shell from './components/Shell.jsx';
 import { Login, Forgot, Reset, Totp, ChangePassword, Pending } from './pages/Auth.jsx';
-import Home from './pages/Home.jsx';
-import Search from './pages/Search.jsx';
-import Community from './pages/Community.jsx';
-import People from './pages/People.jsx';
-import Cockpit from './pages/Cockpit.jsx';
-import Files from './pages/Files.jsx';
-import Profile from './pages/Profile.jsx';
-import Admin from './pages/admin/Admin.jsx';
 import { NotFound, ErrorPage, Forbidden } from './pages/Misc.jsx';
-import ModuleFrame from './components/ModuleFrame.jsx';
 import { moduleKeys } from './modules/registry.js';
+
+// Pagine caricate a richiesta (debug pre-produzione M8): la pagina di login scarica solo l'avvio, l'accesso e i componenti di base;
+// Shell, Home e tutte le altre pagine (con grafici, mappe, export) arrivano dopo l'accesso, ciascuna nel proprio chunk
+const Shell = lazy(() => import('./components/Shell.jsx'));
+const Home = lazy(() => import('./pages/Home.jsx'));
+const PresaAtto = lazy(() => import('./pages/PresaAtto.jsx'));
+const InformativaIA = lazy(() => import('./pages/InformativaIA.jsx'));
+const Search = lazy(() => import('./pages/Search.jsx'));
+const Community = lazy(() => import('./pages/Community.jsx'));
+const People = lazy(() => import('./pages/People.jsx'));
+const Cockpit = lazy(() => import('./pages/Cockpit.jsx'));
+const Files = lazy(() => import('./pages/Files.jsx'));
+const Profile = lazy(() => import('./pages/Profile.jsx'));
+const Admin = lazy(() => import('./pages/admin/Admin.jsx'));
+const ModuleFrame = lazy(() => import('./components/ModuleFrame.jsx'));
 
 class ErrorBoundary extends React.Component {
   constructor(p) { super(p); this.state = { error: null }; }
@@ -30,6 +36,8 @@ function Guard({ ok, children }) { return ok ? children : <Forbidden />; }
 function Gate() {
   const { loading, user, pending, totpRequired, mustChangePassword, cfg } = useAuth();
   const loc = useLocation();
+  // Informativa IA: pagina pubblica, prima di ogni controllo (si apre anche senza login e durante la presa d'atto)
+  if (loc.pathname === '/informativa-ia') return <Suspense fallback={<Splash />}><InformativaIA /></Suspense>;
   if (loading) return <Splash />;
   if (totpRequired) return <Totp />;
   if (!user) {
@@ -44,10 +52,13 @@ function Gate() {
   }
   if (pending) return <Pending />;
   if (mustChangePassword) return <ChangePassword />;
+  // Presa d'atto di Privacy e Informativa IA: al primo accesso e quando cambia la versione di una delle due (pages/PresaAtto.jsx)
+  if (user.consensi_da_accettare?.length) return <Suspense fallback={<Splash />}><PresaAtto /></Suspense>;
   const admin = isAdmin(user);
   return (
+    <Suspense fallback={<Splash />}>
     <Routes>
-      <Route path="/login" element={<Navigate to={new URLSearchParams(loc.search).get('next') || '/'} replace />} />
+      <Route path="/login" element={<Navigate to={percorsoInterno(new URLSearchParams(loc.search).get('next') || '/')} replace />} />
       <Route element={<Shell />}>
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
@@ -62,6 +73,7 @@ function Gate() {
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 

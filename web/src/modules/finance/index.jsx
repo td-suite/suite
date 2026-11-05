@@ -1,6 +1,7 @@
 // Modulo Finance (Payments) dentro la Suite: solo il contenuto delle pagine dell'app (la cornice, la sidebar e l'accesso
 // sono della Suite). Percorsi relativi a /finance. Login, Onboarding, Utenti e Profilo dell'app non sono portati.
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { FinanceAuthProvider, canManage, isAdmin } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
@@ -25,8 +26,8 @@ export default function Module({ moduleUser }) {
       <ToastProvider>
         <Routes>
           <Route path="" element={<Dashboard />} />
-          {manager && <Route path="istanze/nuova" element={<RequestForm />} />}
-          {manager && <Route path="istanze/:id/modifica" element={<RequestForm />} />}
+          <Route path="istanze/nuova" element={manager ? <RequestForm /> : <Forbidden />} />
+          <Route path="istanze/:id/modifica" element={manager ? <RequestForm /> : <Forbidden />} />
           <Route path="istanze" element={<Requests />} />
           <Route path="da-firmare" element={<Requests preset={{ mine: '1' }} />} />
           <Route path="in-firma" element={<Requests preset={{ status: 'IN_FIRMA' }} />} />
@@ -36,8 +37,8 @@ export default function Module({ moduleUser }) {
           <Route path="firma/:token" element={<Sign />} />
           <Route path="beneficiari" element={<Beneficiaries />} />
           <Route path="scadenziario" element={<Schedule />} />
-          {(admin || user?.role === 'SUPPORT') && <Route path="impostazioni" element={<Settings />} />}
-          {admin && <Route path="audit" element={<Audit />} />}
+          <Route path="impostazioni" element={(admin || user?.role === 'SUPPORT') ? <Settings /> : <Forbidden />} />
+          <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
           <Route path="*" element={<Navigate to={base} replace />} />
         </Routes>
       </ToastProvider>

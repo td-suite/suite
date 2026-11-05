@@ -9,7 +9,9 @@ import { config } from '../config.js';
 import { ah, bad, audit, parse, notFound, forbidden, HttpError } from '../lib/util.js';
 import { isAdmin, hasModule, requireAdmin } from '../lib/access.js';
 import { canSee } from '../lib/audience.js';
+import { isExternal } from '../lib/esterni.js';
 import * as blob from '../lib/blob.js';
+import { servFile } from '../lib/servFile.js';
 
 const r = Router();
 const MB = 1024 * 1024;
@@ -136,7 +138,15 @@ async function canRead(user, f) {
   if (f.owner_user_id === user.id) return true;
   switch (f.scope) {
     case 'AVATAR': return true;
-    case 'SITE': return true;   // foto delle sedi: visibili a tutti gli utenti
+    case 'SITE': {
+      // foto delle sedi (cartella "site:<id>"): tutti gli interni; gli esterni solo per le sedi del proprio perimetro (M6)
+      if (!isExternal(user)) return true;
+      const siteId = Number(String(f.folder || '').replace(/^site:/, ''));
+      if (!Number.isInteger(siteId)) return false;
+      if ((user.site_ids || []).map(Number).includes(siteId)) return true;
+      const orgId = Number(user.eff_organization_id || user.organization_id) || null;
+      return Boolean(orgId && await one('SELECT 1 FROM sites WHERE id=$1 AND (organization_id=$2 OR host_organization_id=$2)', [siteId, orgId]));
+    }
     case 'PERSONAL': return false;
     case 'POST': {
       const posts = await many('SELECT p.audience FROM post_files pf JOIN posts p ON p.id=pf.post_id WHERE pf.file_id=$1 AND p.deleted_at IS NULL', [f.id]);
@@ -147,21 +157,25 @@ async function canRead(user, f) {
       const news = await many(`SELECT n.audience, n.status FROM news n WHERE n.cover_file_id=$1 OR n.id IN (SELECT news_id FROM news_files WHERE file_id=$1)`, [f.id]);
       return news.some((n) => n.status === 'PUBLISHED' && canSee(user, n.audience));
     }
-    case 'DOC': return true;
+    case 'DOC': {
+      // documenti caricati dalla redazione e dagli editor SGI (M6): la lettura segue il contenuto che li usa. Gli interni li leggono;
+      // un esterno solo se il file compare (file:<id> o /api/files/<id>) in una notizia pubblicata o in un post che può vedere
+      if (!isExternal(user)) return true;
+      const rif = [`%file:${f.id})%`, `%/api/files/${f.id}%`];
+      const news = await many(`SELECT n.audience FROM news n WHERE n.status='PUBLISHED' AND (n.body LIKE $1 OR n.body LIKE $2 OR n.cover_file_id=$3)`, [...rif, f.id]);
+      if (news.some((n) => canSee(user, n.audience))) return true;
+      const posts = await many(`SELECT p.audience FROM posts p WHERE p.deleted_at IS NULL AND (p.body LIKE $1 OR p.body LIKE $2)`, rif);
+      return posts.some((p) => canSee(user, p.audience));
+    }
     default: return false;
   }
 }
 
+// File dell'archivio (Azure Blob): regola unica di lib/servFile.js. inlineOnly (avatar, foto) chiede la visualizzazione in linea,
+// che vale comunque solo per PDF e immagini raster: un SVG o un HTML caricato come immagine si scarica, con nosniff e sandbox
 export async function streamFile(res, f, { inlineOnly = false } = {}) {
-  const { stream, mime, size } = await blob.getBlobStream(f.blob_path);
-  const inline = inlineOnly || /^(image\/|application\/pdf|text\/plain|video\/|audio\/)/.test(f.mime);
-  res.setHeader('Content-Type', f.mime || mime);
-  if (size != null) res.setHeader('Content-Length', String(size)); else if (f.size) res.setHeader('Content-Length', String(f.size));
-  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${f.filename.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
-  res.setHeader('Cache-Control', 'private, max-age=300');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  stream.on('error', (e) => { console.error('[files] stream', e.message); if (!res.headersSent) res.status(502).end(); else res.end(); });
-  stream.pipe(res);
+  const inline = inlineOnly || /^(image\/|application\/pdf)/.test(f.mime || '');
+  await servFile(res, { filename: f.filename, blob_path: f.blob_path, mime: f.mime, size: f.size }, { inline, cache: 'private, max-age=300' });
 }
 
 r.get('/files/:id', blob.requireBlob, ah(async (req, res) => {

@@ -27,7 +27,7 @@ export default function Dashboard() {
   return (
     <div className="page">
       <div className="page-head"><div><h1>Cruscotto</h1><div className="sub">Ciao {(user.first_name || user.full_name.split(' ').slice(-1)[0])}: lo stato della pianificazione di tutte le sedi, ricalcolato adesso sui dati condivisi.</div></div>
-        {net && <div className="row"><button className="btn ghost" onClick={() => { const { doc, filename } = pdfReportDirezione(net); doc.save(filename); }}>Report direzione PDF</button><button className="btn ghost" onClick={() => xlsxReportDirezione(net)}>Report direzione Excel</button></div>}
+        {net && <div className="row"><button className="btn ghost" onClick={async () => { const { doc, filename } = await pdfReportDirezione(net); doc.save(filename); }}>Report direzione PDF</button><button className="btn ghost" onClick={() => xlsxReportDirezione(net)}>Report direzione Excel</button></div>}
       </div>
       <ErrorBox error={error} />
       {over.length > 0 && <div className="alert err" style={{ marginBottom: 14 }}>Sopra la soglia di {crit.data.soglia} criticità alte: {over.map((s) => <span key={s.id} className="chip" style={{ background: '#fff', cursor: 'pointer' }} onClick={() => nav(`${base}/sedi/${s.id}`)}>{s.denominazione}{s.nomeSede ? ' · ' + s.nomeSede : ''} ({s.alte})</span>)}{user.role === 'ADMIN' && <span className="small"> · soglia e avvisi email in Impostazioni</span>}</div>}

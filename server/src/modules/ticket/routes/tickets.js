@@ -7,6 +7,7 @@ import { q, one, many, tx } from '../db.js';
 import { ah, parse, audit, notFound, forbidden, bad, HttpError } from '../../../lib/util.js';
 import { config } from '../config.js';
 import { isExternal } from '../../../lib/esterni.js';
+import { servFile } from '../../../lib/servFile.js';
 import { userContext, visibleSql, canSee, isGestore, seesName, unitHeadUserIds, assignableUsers, unitInfo } from '../lib/access.js';
 import { KEY, PRIORITA, STATO_LABEL, nextNumero, formatProtocollo, settings, slaDeadlines, evento, notifica, loadTicket, pubTicket, indexTicket, T_COLS, T_FROM } from '../lib/core.js';
 
@@ -410,6 +411,7 @@ r.post('/tickets/:id/allegati', (req, res, next) => upload(req, res, (e) => (e ?
   const { t, ctx } = await visibile(req, req.params.id);
   if (!aperto(t)) throw bad('Il ticket è chiuso');
   if (!req.file) throw bad('Nessun file');
+  if (!req.file.size) throw bad('Il file è vuoto (0 byte): scegli il file corretto');   // L12
   const ext = extOf(req.file.originalname);
   if (!config.allowedExt.includes(ext)) throw bad(`Tipo di file non ammesso (${config.allowedExt.join(', ')})`);
   if (t.n_allegati >= config.maxFilesPerTicket) throw bad(`Massimo ${config.maxFilesPerTicket} allegati per ticket`);
@@ -430,9 +432,8 @@ r.get('/tickets/:id/allegati/:aid', ah(async (req, res) => {
   const a = await one('SELECT a.*, cm.interno FROM allegati a LEFT JOIN commenti cm ON cm.id=a.commento_id WHERE a.id=$1 AND a.ticket_id=$2', [idOf(req.params.aid), t.id]);
   if (!a) throw notFound('Allegato non trovato');
   if (a.interno && !isGestore(ctx, t)) throw forbidden('Allegato di una nota interna');
-  res.setHeader('Content-Type', a.mime);
-  res.setHeader('Content-Disposition', `${req.query.dl ? 'attachment' : 'inline'}; filename="${encodeURIComponent(a.filename)}"`);
-  res.send(a.data);
+  // tipo dall'estensione e dalla firma, mai quello dichiarato dal client; in linea solo PDF e immagini (lib/servFile.js)
+  await servFile(res, a, { inline: !req.query.dl, cache: 'private, max-age=300' });
 }));
 
 // ---- Osservatori (mai sui riservati)

@@ -78,13 +78,9 @@ r.get('/documenti/:id/versioni', ah(async (req, res) => {
 async function segnaLettura(docId, userId) {
   await q('INSERT INTO letture (documento_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [docId, userId]);
 }
-function invia(res, { nome, mime, data, size }, inline) {
-  res.setHeader('Content-Type', mime);
-  res.setHeader('Content-Length', String(size ?? data.length));
-  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${String(nome).replace(/["\\\r\n]/g, '')}"; filename*=UTF-8''${encodeURIComponent(nome)}`);
-  res.setHeader('Cache-Control', 'private, max-age=0, no-cache');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.send(data);
+// Tipo dal nome e dalla firma del file, in linea solo PDF e immagini raster, nosniff e sandbox (lib/servFile.js)
+function invia(res, { nome, mime, data }, inline) {
+  return servFile(res, { filename: nome, data, mime }, { inline, cache: 'private, max-age=0, no-cache' });
 }
 // Nome del file scaricato: nome mostrato con l'estensione originale, se manca
 function nomeFile(d) {
@@ -96,20 +92,20 @@ r.get('/documenti/:id/download', ah(async (req, res) => {
   const d = await one('SELECT id, nome, filename, mime, size, data FROM documenti WHERE id=$1', [idOf(req.params.id, 'Documento non trovato')]);
   if (!d) throw notFound('Documento non trovato');
   await segnaLettura(d.id, uid(req));
-  invia(res, { ...d, nome: nomeFile(d) }, false);
+  await invia(res, { ...d, nome: nomeFile(d) }, false);
 }));
 r.get('/documenti/:id/anteprima', ah(async (req, res) => {
   const d = await one('SELECT id, nome, filename, mime, size, data FROM documenti WHERE id=$1', [idOf(req.params.id, 'Documento non trovato')]);
   if (!d) throw notFound('Documento non trovato');
   if (!isPreviewable(d.mime)) throw bad('Anteprima disponibile solo per PDF e immagini');
   await segnaLettura(d.id, uid(req));
-  invia(res, { ...d, nome: nomeFile(d) }, true);
+  await invia(res, { ...d, nome: nomeFile(d) }, true);
 }));
 // Versione precedente
 r.get('/documenti/:id/versioni/:v/download', ah(async (req, res) => {
   const v = await one('SELECT v.id, v.versione, v.filename, v.mime, v.size, v.data FROM versioni v WHERE v.documento_id=$1 AND v.versione=$2', [idOf(req.params.id, 'Documento non trovato'), idOf(req.params.v, 'Versione non trovata')]);
   if (!v) throw notFound('Versione non trovata');
-  invia(res, { ...v, nome: v.filename }, false);
+  await invia(res, { ...v, nome: v.filename }, false);
 }));
 
 export default r;

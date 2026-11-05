@@ -83,8 +83,7 @@ r.get('/cv/:id/download', ah(async (req, res) => {
   const c = await one('SELECT filename, mime, data FROM cv_box WHERE id=$1', [Number(req.params.id)]);
   if (!c?.data) throw notFound();
   await readLog(req, 'cv', req.params.id);
-  const inline = req.query.inline === '1' && c.mime === 'application/pdf';
-  res.set('Content-Type', c.mime).set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(c.filename)}`).send(c.data);
+  await servFile(res, c, { inline: req.query.inline === '1' });   // lib/servFile.js
 }));
 
 r.delete('/cv/:id', requireWrite, ah(async (req, res) => {

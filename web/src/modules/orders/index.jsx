@@ -2,6 +2,7 @@
 // La sidebar dell'app non c'è più (le voci sono in meta.js, le disegna la Suite); Login, Onboarding, Utenti e Profilo
 // non si portano (li gestisce la Suite). Il layout shell/side/main è rimosso: il modulo rende solo il contenuto (.page).
 import React, { useEffect } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, isOps } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
@@ -42,30 +43,30 @@ function Gate() {
   return (
     <Routes>
       <Route index element={<Dashboard />} />
-      {ops && <Route path="magazzino" element={<Warehouse />} />}
-      {ops && <Route path="dotazione" element={<Dotazione />} />}
-      {ops && <Route path="dotazione/sedi/:id" element={<DotazioneSede />} />}
+      <Route path="magazzino" element={ops ? <Warehouse /> : <Forbidden />} />
+      <Route path="dotazione" element={ops ? <Dotazione /> : <Forbidden />} />
+      <Route path="dotazione/sedi/:id" element={ops ? <DotazioneSede /> : <Forbidden />} />
       <Route path="catalogo" element={(ops || kind === 'CLIENTE') ? <Catalog /> : <Navigate to={BASE} replace />} />
       <Route path="ordini" element={<Orders />} />
-      {ops && <Route path="verifica" element={<Orders verify />} />}
-      {ops && <Route path="fornitore" element={<Supplier />} />}
-      {ops && <Route path="consegne" element={<Deliveries />} />}
+      <Route path="verifica" element={ops ? <Orders verify /> : <Forbidden />} />
+      <Route path="fornitore" element={ops ? <Supplier /> : <Forbidden />} />
+      <Route path="consegne" element={ops ? <Deliveries /> : <Forbidden />} />
       <Route path="ordini/:id" element={<OrderDetail />} />
       <Route path="carico" element={<LoadingPage />} />
       <Route path="carico/:id" element={<LoadingPage />} />
       <Route path="scarico" element={<Unload />} />
       <Route path="giacenza" element={<Stock />} />
-      {(ops || td) && <Route path="giacenze" element={<StockCounts />} />}
-      {(ops || td) && <Route path="giacenze/:id" element={<StockCount />} />}
-      {(ops || td) && <Route path="produzione" element={<Production />} />}
+      <Route path="giacenze" element={(ops || td) ? <StockCounts /> : <Forbidden />} />
+      <Route path="giacenze/:id" element={(ops || td) ? <StockCount /> : <Forbidden />} />
+      <Route path="produzione" element={(ops || td) ? <Production /> : <Forbidden />} />
       <Route path="difformita" element={<Issues />} />
-      {ops && <Route path="rete" element={<NetworkStock />} />}
-      {ops && <Route path="correlazioni" element={<Mappings />} />}
-      {ops && <Route path="strutture" element={<Strutture />} />}
-      {ops && <Route path="articoli" element={<Articles />} />}
-      {ops && <Route path="invii" element={<EmailLog />} />}
-      {ops && <Route path="audit" element={<Audit />} />}
-      {sup && <Route path="impostazioni" element={<Settings />} />}
+      <Route path="rete" element={ops ? <NetworkStock /> : <Forbidden />} />
+      <Route path="correlazioni" element={ops ? <Mappings /> : <Forbidden />} />
+      <Route path="strutture" element={ops ? <Strutture /> : <Forbidden />} />
+      <Route path="articoli" element={ops ? <Articles /> : <Forbidden />} />
+      <Route path="invii" element={ops ? <EmailLog /> : <Forbidden />} />
+      <Route path="audit" element={ops ? <Audit /> : <Forbidden />} />
+      <Route path="impostazioni" element={sup ? <Settings /> : <Forbidden />} />
       <Route path="*" element={<Navigate to={BASE} replace />} />
     </Routes>
   );

@@ -181,9 +181,21 @@ r.post('/:id/envelope', countOnly, ah(async (req, res) => {
   if (rep.status !== 'DRAFT') throw bad('Busta già registrata');
   if (Number(rep.cash_to_deposit) < 0) throw bad(`Il contante contato è inferiore al fondo cassa di ${eur(-rep.cash_to_deposit)}: verifica il conteggio o apri una non conformità`);
   const needsEnvelope = Number(rep.cash_to_deposit) > 0;
+  // Richiesta del CEO (05/11/2026): prima di registrare la distinta l'operatore conferma che i dati sono corretti e, se non ha
+  // inserito POS o bonifici, che è corretto così; il PDF della chiusura cassa del gestionale (GIPO) è obbligatorio; la giornata
+  // può chiudere a 0 euro (nessun incasso) con la conferma esplicita.
+  const nPos = (await one('SELECT count(*)::int AS n, coalesce(sum(amount),0)::numeric AS tot FROM pos_receipts WHERE report_id=$1', [rep.id]));
+  const nTr = (await one('SELECT count(*)::int AS n, coalesce(sum(amount),0)::numeric AS tot FROM bank_transfers WHERE report_id=$1', [rep.id]));
+  const conf = parse(z.object({ conferma_dati: z.boolean().optional(), conferma_no_pos: z.boolean().optional(), conferma_no_bonifici: z.boolean().optional(), conferma_zero: z.boolean().optional() }).passthrough(), req.body || {});
+  if (!rep.system_pdf) throw bad('Carica prima il PDF della chiusura cassa del gestionale (GIPO): è obbligatorio per registrare la distinta');
+  if (!conf.conferma_dati) throw bad('Conferma che i dati inseriti sono corretti');
+  if (nPos.n === 0 && !conf.conferma_no_pos) throw bad('Nessuno scontrino POS inserito: conferma che nella giornata non ci sono stati incassi POS');
+  if (nTr.n === 0 && !conf.conferma_no_bonifici) throw bad('Nessun bonifico inserito: conferma che nella giornata non ci sono stati bonifici');
+  const giornataZero = Number(rep.cash_to_deposit) === 0 && nPos.n === 0 && nTr.n === 0;
+  if (giornataZero && !conf.conferma_zero) throw bad('Giornata a 0 euro: conferma la chiusura senza incassi');
   let code = null;
   if (needsEnvelope) {
-    const d = parse(z.object({ code: z.string().trim(), confirm: z.string().trim() }), req.body);
+    const d = parse(z.object({ code: z.string().trim(), confirm: z.string().trim() }).passthrough(), req.body);
     code = d.code.toUpperCase();
     if (!ENVELOPE_RE.test(code)) throw bad('Codice busta non valido: 6-40 caratteri, lettere, numeri o trattino');
     if (code !== d.confirm.toUpperCase()) throw bad('I due codici busta non coincidono');
@@ -192,7 +204,8 @@ r.post('/:id/envelope', countOnly, ah(async (req, res) => {
   }
   await tx(async (c) => {
     await c.query(`UPDATE cash_reports SET status='CLOSED', envelope_code=$2, envelope_at=now(), envelope_by=$3, updated_at=now() WHERE id=$1`, [rep.id, code, req.user.id]);
-    await event(c, rep.id, 'BUSTA_REGISTRATA', code ? `Busta Mondialpol ${code}, importo ${eur(rep.cash_to_deposit)}` : 'Nessun contante da versare', req.user.id);
+    await event(c, rep.id, 'BUSTA_REGISTRATA', code ? `Busta Mondialpol ${code}, importo ${eur(rep.cash_to_deposit)}` : (giornataZero ? 'Giornata chiusa a 0 euro (nessun incasso)' : 'Nessun contante da versare'), req.user.id);
+    await event(c, rep.id, 'CONFERMA_DATI', `Dati confermati dall'operatore${nPos.n === 0 ? '; nessun POS confermato' : ''}${nTr.n === 0 ? '; nessun bonifico confermato' : ''}`, req.user.id);
   });
   await audit(req, 'REPORT_ENVELOPE', 'report', rep.id, { code });
   res.json(await fullReport(rep.id));

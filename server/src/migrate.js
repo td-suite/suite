@@ -102,12 +102,29 @@ async function seed() {
     'community.weather_default': { city: 'Sesto Fiorentino', lat: 43.8325, lng: 11.2010 },
     'search.ai_enabled': true,
     'sso.bar': { showHome: true },
+    // M9 (debug pre-produzione): l'account nasce da solo solo per le persone con un'email di questi domini (lib/accounts.js)
+    'accounts.domini_automatici': config.autoInternalDomains,
   };
   for (const [k, v] of Object.entries(defaults)) await q(`INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [k, JSON.stringify(v)]);
+  await seedUtentiEsterni().catch((e) => console.warn('[seed] utenti esterni', e.message));
   await seedAssetTypes().catch((e) => console.warn('[seed] catalogo dispositivi', e.message));
   await seedCentralino();
   await seedPublicContact().catch((e) => console.warn('[seed] contatti pubblici', e.message));
   await seedGrantRules().then((n) => { if (n) console.log(`[seed] regole di accesso: ${n}`); }).catch((e) => console.warn('[seed] regole', e.message));
+}
+
+// users.is_external (migrazione 040, debug pre-produzione A2): valore iniziale per gli utenti già presenti, una volta sola, con la stessa
+// regola di lib/audience.js (livello USER, Legal entity non del gruppo, email fuori dai domini aziendali). Da lì in poi il segno lo
+// mettono la creazione degli accessi e lo toglie solo Amministrazione > Utenti.
+export async function seedUtentiEsterni() {
+  if (await one(`SELECT 1 FROM app_settings WHERE key='utenti.is_external_seeded'`)) return 0;
+  const r = await q(`UPDATE users u SET is_external = TRUE
+      FROM users x LEFT JOIN people p ON p.id = x.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, x.organization_id)
+     WHERE u.id = x.id AND NOT u.is_external AND u.level = 'USER' AND coalesce(o.kind, '') NOT IN ('GRUPPO','SOCIETA')
+       AND NOT (lower(split_part(u.email, '@', 2)) = ANY($1::text[]))`, [config.autoInternalDomains]);
+  await q(`INSERT INTO app_settings (key, value) VALUES ('utenti.is_external_seeded', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify({ at: new Date().toISOString(), n: r.rowCount })]);
+  if (r.rowCount) console.log(`[seed] accessi esterni marcati: ${r.rowCount}`);
+  return r.rowCount;
 }
 
 // Catalogo dispositivi (public.asset_types, migrazione 033): seed di benchmark una volta sola. Da lì in poi il catalogo lo governa

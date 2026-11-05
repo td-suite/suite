@@ -1,5 +1,6 @@
 // Modulo Circolari: route relative a /circolari dentro la cornice della Suite
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, canEdit, canPublish } from './auth.jsx';
 import { base } from './api.js';
@@ -19,9 +20,9 @@ export default function Module({ moduleUser }) {
       <Routes>
         <Route path="" element={<Cruscotto />} />
         <Route path="archivio" element={<Archivio />} />
-        {canEdit(user) && <Route path="bozze" element={<Archivio preset={{ stato: 'BOZZA' }} title="Bozze" />} />}
-        {canEdit(user) && <Route path="nuova" element={<Nuova />} />}
-        {canPublish(user) && <Route path="liste" element={<Liste />} />}
+        <Route path="bozze" element={canEdit(user) ? <Archivio preset={{ stato: 'BOZZA' }} title="Bozze" /> : <Forbidden />} />
+        <Route path="nuova" element={canEdit(user) ? <Nuova /> : <Forbidden />} />
+        <Route path="liste" element={canPublish(user) ? <Liste /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path=":id" element={<Circolare />} />
         <Route path="*" element={<Navigate to={base} replace />} />

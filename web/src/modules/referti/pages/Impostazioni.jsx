@@ -36,7 +36,7 @@ export default function Impostazioni() {
   const salvaCasella = () => run(async () => { await api.put('/settings', { ...(form.casella_source === 'env' ? {} : { casella_indirizzo: form.casella_indirizzo }), casella_lettura: Boolean(form.casella_lettura), invio_mittente: Boolean(form.invio_mittente) }); cas.reload(); }, 'Casella salvata');
   const prove = async (titolo, fn) => { setBusy(true); setProva(null); try { const r = await fn(); setProva({ titolo, ...r }); } catch (e) { setProva({ titolo, ok: false, message: e.message }); } setBusy(false); cas.reload(); };
   const run = async (fn, ok) => { setBusy(true); try { await fn(); if (ok) toast(ok); imp.reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
-  const salva = () => run(() => api.put('/settings', { onedrive_folder: form.onedrive_folder, genera_pdf: Boolean(form.genera_pdf), retention_giorni: Number(form.retention_giorni) || 0, suffisso_predefinito: form.suffisso_predefinito }), 'Impostazioni salvate');
+  const salva = () => run(() => api.put('/settings', { onedrive_folder: form.onedrive_folder, genera_pdf: Boolean(form.genera_pdf), retention_mesi: form.retention_mesi === '' ? 24 : Number(form.retention_mesi), suffisso_predefinito: form.suffisso_predefinito }), 'Impostazioni salvate');
   const caricaTemplate = (files) => {
     const f = files[0]; if (!f) return;
     if (!/\.docx$/i.test(f.name)) return toast('Il template deve essere un file Word (.docx)', 'err');
@@ -53,7 +53,7 @@ export default function Impostazioni() {
             <Field label="Cartella OneDrive di destinazione" help="Per ora solo informativa: l'archiviazione automatica su OneDrive (Microsoft Graph) non è ancora attiva; i file si scaricano dall'Archivio."><input value={form.onedrive_folder || ''} onChange={(e) => setForm({ ...form, onedrive_folder: e.target.value })} /></Field>
             <label className="rf-switch"><Switch checked={Boolean(form.genera_pdf)} onChange={(v) => setForm({ ...form, genera_pdf: v })} label="Genera anche il PDF" /><span>Genera anche il PDF del referto TD alla conferma (oltre al DOCX)</span></label>
             <div className="rf-grid2">
-              <Field label="Retention dei PDF sorgente (giorni)" help="0 = i PDF caricati non vengono mai eliminati. Oltre il termine resta la scheda con i file prodotti."><input type="number" min={0} max={3650} value={form.retention_giorni} onChange={(e) => setForm({ ...form, retention_giorni: e.target.value })} /></Field>
+              <Field label="Conservazione dei PDF sorgente (mesi)" help="Predefinito 24 mesi; 0 = i PDF caricati non vengono mai eliminati. Oltre il termine restano la scheda e i file prodotti."><input type="number" min={0} max={120} value={form.retention_mesi ?? 24} onChange={(e) => setForm({ ...form, retention_mesi: e.target.value })} /></Field>
               <Field label="Suffisso quando il nome del file esiste già" help='Es. "Referto - CELIN PATRIZIA (KPC).docx".'>
                 <select value={form.suffisso_predefinito || 'ESAME'} onChange={(e) => setForm({ ...form, suffisso_predefinito: e.target.value })}>
                   <option value="ESAME">Nome del primo esame (es. KPC, Urinocoltura)</option>

@@ -81,7 +81,8 @@ test('prompt di sistema: regole della specifica e un esempio completo per ciascu
   for (const nome of ['GAMBINO', 'GRASSI', 'DINE', 'SENSI', 'STEFANI', 'SARSI', 'AUDIBERTI', 'CELIN']) assert.ok(!PROMPT_SISTEMA.includes(nome), nome);
 });
 
-test('lettura simulata dei tre PDF uniti Nuova Igea: tre schede, anomalie corrette, coerenza verde, DOCX identici ai referti del progetto', { skip: !conMerge && 'PDF sorgente o pdftotext assenti (REFERTI_PDF_SORGENTI)' }, async () => {
+test('lettura simulata dei tre PDF uniti Nuova Igea: tre schede, anomalie corrette, coerenza verde, DOCX identici ai referti del progetto', { skip: !conMerge && 'pacchetto non disponibile (PDF sorgente o pdftotext, REFERTI_PDF_SORGENTI): test saltato' }, async (t) => {
+  if (!conPacchetto) t.diagnostic('pacchetto non disponibile (REFERTI_PACCHETTO): confronto con i DOCX del progetto saltato');
   assert.equal(fixtureLettura().filter((f) => f.riconosci).length, 3);
   const attese = { 'DINE KATERINA': { pagine: [1, 2], anomalie: ['CARICA_ASSENTE'], antibiotici: 16 }, 'STEFANI UGHETTA': { pagine: [1], anomalie: [], antibiotici: 15 }, 'SENSI ROMANA': { pagine: [1], anomalie: [], antibiotici: 8 } };
   for (const [nome, file] of Object.entries(MERGE)) {
@@ -113,7 +114,8 @@ test('lettura simulata dei tre PDF uniti Nuova Igea: tre schede, anomalie corret
   }
 });
 
-test('parser di riserva sugli stessi PDF (senza Claude): una scheda per PDF con l\'anomalia "parser di riserva"; STEFANI e SENSI già identici al progetto', { skip: !conMerge && 'PDF sorgente o pdftotext assenti' }, async () => {
+test('parser di riserva sugli stessi PDF (senza Claude): una scheda per PDF con l\'anomalia "parser di riserva"; STEFANI e SENSI già identici al progetto', { skip: !conMerge && 'pacchetto non disponibile (PDF sorgente o pdftotext): test saltato' }, async (t) => {
+  if (!conPacchetto) t.diagnostic('pacchetto non disponibile (REFERTI_PACCHETTO): confronto con i DOCX del progetto saltato');
   for (const [nome, file] of Object.entries(MERGE)) {
     const r = await leggi(path.join(SORGENTI, file), '0');
     assert.equal(r.modo, 'RISERVA'); assert.equal(r.schede.length, 1);
@@ -125,12 +127,12 @@ test('parser di riserva sugli stessi PDF (senza Claude): una scheda per PDF con 
   }
 });
 
-test('PDF che non è un referto (lettera di offerta): non_referto con motivo, nessuna scheda', { skip: !haPoppler && 'pdftotext assente' }, async () => {
+test('PDF che non è un referto (lettera di offerta): non_referto con motivo, nessuna scheda', { skip: !haPoppler && 'pdftotext non disponibile: test saltato' }, async () => {
   const r = await leggi(path.join(HERE, 'fixtures', 'referti', 'lettera_offerta.pdf'));
   assert.equal(r.non_referto, true); assert.equal(r.schede.length, 0); assert.match(r.motivo, /non è un referto/);
 });
 
-test('"Chiedi una correzione" simulata: solo la modifica richiesta, il resto invariato; la coerenza segnala il valore assente dalla sorgente', { skip: !conMerge && 'PDF sorgente o pdftotext assenti' }, async () => {
+test('"Chiedi una correzione" simulata: solo la modifica richiesta, il resto invariato; la coerenza segnala il valore assente dalla sorgente', { skip: !conMerge && 'pacchetto non disponibile (PDF sorgente o pdftotext): test saltato' }, async () => {
   const s = (await leggi(path.join(SORGENTI, MERGE['SENSI ROMANA']))).schede[0];
   const nuovo = mockCorrezione(s.dati, 'cambia la carica in 100.000 UFC/ml');
   const ab = nuovo.blocchi.find((b) => b.tipo === 'antibiogramma');

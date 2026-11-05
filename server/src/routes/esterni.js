@@ -78,7 +78,7 @@ r.post('/organizations/:id/external-access', requireAdmin, ah(async (req, res) =
     email, first_name: person.first_name, last_name: person.last_name, level: 'USER', status: 'ACTIVE', auth_provider: 'LOCAL',
     organization_id: id, person_id: person.id, lang: 'it', send_invite: b.send_invite !== false, origin: 'LEGAL_ENTITY', access_profile_id: profile.id,
   });
-  await q('UPDATE users SET organization_id=$2 WHERE id=$1', [out.id, id]);
+  await q('UPDATE users SET organization_id=$2, is_external=TRUE WHERE id=$1', [out.id, id]);   // resta esterno (A2)
   await audit(req, 'EXTERNAL_ACCESS_CREATED', { entity: 'organization', entityId: id, label: `${org.name} → ${email} (${profile.name})`, data: { user_id: out.id, person_id: person.id, person_created: personCreated, profile_key: b.profile_key, invited: out.invited } });
   res.status(201).json({ ...out, person_id: person.id, person_created: personCreated, profile: { id: profile.id, name: profile.name, key: profile.system_key } });
 }));

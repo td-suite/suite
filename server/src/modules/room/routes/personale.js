@@ -176,8 +176,7 @@ r.get('/professionisti/:id/accesso', gest, ah(async (req, res) => {
 // Documenti del professionista (binari in tabella, max 8 MB ciascuno)
 r.get('/professionisti/:id/docs/:docId', gest, ah(async (req, res) => {
   const d = await one('SELECT * FROM professionista_docs WHERE id=$1 AND person_id=$2', [req.params.docId, req.params.id]); if (!d) throw notFound();
-  res.setHeader('Content-Type', d.mime); res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(d.nome)}"`);
-  res.send(Buffer.from(d.data, 'base64'));
+  await servFile(res, { filename: d.nome, data: Buffer.from(d.data, 'base64'), mime: d.mime }, { inline: false });   // lib/servFile.js
 }));
 r.post('/professionisti/:id/docs', gest, ah(async (req, res) => {
   const d = parse(z.object({ tipo: z.enum(DOC_TIPI), nome: z.string().min(1).max(200), mime: z.string().min(3).max(100), base64: z.string().min(4), scadenza: date.optional().nullable().or(z.literal('')), note: z.string().max(500).optional().nullable() }), req.body);

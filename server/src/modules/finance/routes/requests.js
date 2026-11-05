@@ -213,14 +213,10 @@ export const filesRouter = Router();
 filesRouter.get('/attachments/:id', ah(async (req, res) => {
   const a = await one('SELECT filename, mime, data FROM request_attachments WHERE id=$1', [Number(req.params.id)]);
   if (!a) throw notFound();
-  res.setHeader('Content-Type', a.mime);
-  res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="${encodeURIComponent(a.filename)}"`);
-  res.send(a.data);
+  await servFile(res, a, { inline: !req.query.download });   // tipo dal nome e dalla firma, mai quello dichiarato (lib/servFile.js)
 }));
 filesRouter.get('/documents/:id', ah(async (req, res) => {
   const d = await one('SELECT filename, mime, data FROM generated_documents WHERE id=$1', [Number(req.params.id)]);
   if (!d) throw notFound();
-  res.setHeader('Content-Type', d.mime);
-  res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="${encodeURIComponent(d.filename)}"`);
-  res.send(d.data);
+  await servFile(res, d, { inline: !req.query.download });
 }));

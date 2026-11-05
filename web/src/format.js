@@ -19,6 +19,13 @@ export function timeAgo(d) {
   return fmtDate(d);
 }
 
+// Ritorno dopo il login (?next=): solo percorsi interni della Suite. "//host", "/\\host", schemi e caratteri di controllo portano
+// alla Home (open redirect di React Router 6 con la barra rovesciata, debug pre-produzione M7; stessa regola del server, M4)
+export function percorsoInterno(next) {
+  if (typeof next !== 'string' || !next.startsWith('/') || next.length > 2000) return '/';
+  if (/^\/[\/\\]/.test(next) || /[\u0000-\u001f\\]/.test(next)) return '/';
+  try { const u = new URL(next, 'http://suite.invalid'); return u.origin === 'http://suite.invalid' ? u.pathname + u.search + u.hash : '/'; } catch { return '/'; }
+}
 export const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 
 export function greeting(date = new Date()) {

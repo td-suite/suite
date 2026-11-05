@@ -1,5 +1,6 @@
 // Spedizione dei campioni al laboratorio Endeavor DNA (FedEx, lettera di vettura fornita da Endeavor)
 import { Router } from 'express';
+import { servFile } from '../../../lib/servFile.js';
 import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
@@ -113,7 +114,7 @@ r.post('/:id(\\d+)/awb', requireRole(...OPERATORS), upload.single('file'), ah(as
 r.get('/:id(\\d+)/awb', ah(async (req, res) => {
   const l = await one('SELECT awb_file, awb_file_name, awb_file_mime FROM lab_shipments WHERE id=$1', [Number(req.params.id)]);
   if (!l?.awb_file) throw notFound();
-  res.type(l.awb_file_mime).set('Content-Disposition', `inline; filename="${l.awb_file_name}"`).send(l.awb_file);
+  await servFile(res, { filename: l.awb_file_name, data: l.awb_file, mime: l.awb_file_mime }, { inline: true });   // tipo dal nome e dalla firma
 }));
 
 r.post('/:id(\\d+)/ship', requireRole(...OPERATORS), ah(async (req, res) => {

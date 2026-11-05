@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { servFile } from '../../../lib/servFile.js';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
@@ -411,6 +412,7 @@ r.post('/nc/:id/allegati', ah(async (req, res) => {
   const a = parse(allegatoSchema, req.body);
   const buf = Buffer.from(a.base64, 'base64');
   if (buf.length > MAX_FILE) throw bad('Allegato troppo grande (max 6 MB)');
+  if (!buf.length) throw bad('Allegato vuoto (0 byte)');   // L12
   const row = await one('INSERT INTO nc_allegati (nc_id, nome_file, mime, dimensione, contenuto, caricato_da) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nome_file, mime, dimensione, created_at', [nc.id, a.nome, a.mime, buf.length, buf, req.user.id]);
   await audit(req, 'NC_ATTACHMENT', { entity: 'nc_allegato', entityId: row.id, ncId: nc.id, label: `${nc.codice} · ${a.nome}` });
   res.status(201).json(row);
@@ -419,8 +421,8 @@ r.get('/nc/:id/allegati/:aid', ah(async (req, res) => {
   const nc = await getVisible(req, req.params.id);
   const a = await one('SELECT * FROM nc_allegati WHERE id=$1 AND nc_id=$2', [Number(req.params.aid), nc.id]);
   if (!a) throw notFound('Allegato non trovato');
-  res.set({ 'Content-Type': a.mime, 'Content-Disposition': `${req.query.download ? 'attachment' : 'inline'}; filename="${encodeURIComponent(a.nome_file)}"`, 'Cache-Control': 'private, max-age=600' });
-  res.send(a.contenuto);
+  // tipo dall'estensione e dalla firma, mai il mime dichiarato nel JSON; in linea solo PDF e immagini (lib/servFile.js)
+  await servFile(res, { filename: a.nome_file, data: a.contenuto, mime: a.mime }, { inline: !req.query.download, cache: 'private, max-age=600' });
 }));
 r.delete('/nc/:id/allegati/:aid', requireLab, ah(async (req, res) => {
   const nc = await getVisible(req, req.params.id);

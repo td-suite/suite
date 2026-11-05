@@ -137,7 +137,7 @@ function GrantRow({ module: m, grant, onChange, canAssign, sites, orgs }) {
 }
 
 // ---------- Dettaglio / nuovo ----------
-const EMPTY_USER = { email: '', full_name: '', first_name: '', last_name: '', person_id: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', person_id: '', lang: 'it', password: '', send_invite: true };
+const EMPTY_USER = { email: '', full_name: '', first_name: '', last_name: '', person_id: '', title: '', phone: '', level: 'USER', status: 'ACTIVE', auth_provider: 'ENTRA', organization_id: '', site_id: '', lang: 'it', password: '', send_invite: true };
 
 export function UserDetail() {
   const { id } = useParams();
@@ -210,6 +210,8 @@ export function UserDetail() {
   const confirmAll = async () => { try { await api.post(`/users/${id}/grants/confirm-all`); toast('Proposte confermate'); detail.reload(); } catch (e) { toast(e, 'err'); } };
   const resetPassword = async () => { const r = await api.post(`/users/${id}/reset-password`); toast('Password reimpostata'); if (r.temporaryPassword) setResult(r); };
   const resetTotp = async () => { await api.post(`/users/${id}/reset-totp`); toast('Verifica in due passaggi azzerata'); detail.reload(); };
+  // accesso esterno stabile (users.is_external, debug A2): lo toglie solo un amministratore, con scelta esplicita
+  const setEsterno = async (v) => { try { await api.put(`/users/${id}`, { is_external: v }); toast(v ? 'Accesso segnato come esterno' : 'Accesso reso interno'); detail.reload(); } catch (e) { toast(e, 'err'); } };
   const setStatus = async (status) => { await api.put(`/users/${id}`, { status }); toast(status === 'DISABLED' ? 'Utente disattivato' : 'Utente attivato'); detail.reload(); };
 
   if (!isNew && detail.loading) return <div className="page"><Skeleton lines={6} /></div>;
@@ -250,7 +252,9 @@ export function UserDetail() {
                       <dl className="facts">
                         <dt>Cognome e nome</dt><dd>{u.last_name} {u.first_name}{u.person_title ? ` (${u.person_title})` : ''}</dd>
                         <dt>Sede</dt><dd>{u.site_code ? `${u.site_code} · ${u.site_name}` : <span className="muted">Nessuna</span>}</dd>
-                        <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}{u.is_external && <> <Badge tone="amber">accesso esterno</Badge></>}</dd>
+                        <dt>Legal entity</dt><dd>{u.organization_name || <span className="muted">Nessuna</span>}{u.is_external && <> <Badge tone="amber">accesso esterno</Badge></>}{u.level === 'USER' && (u.external_flag
+                          ? <> <button className="btn ghost sm" title="L'accesso resta esterno anche se cambia la Legal entity: toglilo solo se la persona è davvero della rete TD" onClick={() => setConfirm({ title: 'Rendere interno questo accesso?', text: 'L\'accesso vedrà i contenuti riservati alla rete TD (rubrica completa, post e notizie interne). Procedi solo se la persona è un dipendente o collaboratore di Toscana Diagnostica.', confirmText: 'Rendi interno', danger: true, go: () => setEsterno(false) })}>Rendi interno</button></>
+                          : <> <button className="btn ghost sm" onClick={() => setEsterno(true)}>Segna come esterno</button></>)}</dd>
                         <dt>Afferisce a</dt><dd>{u.person_unit_path ? u.person_unit_path.replace(/^[^›]+› /, '') : <span className="muted">Non indicata</span>}</dd>
                         <dt>Ruolo</dt><dd>{u.person_role || u.person_job_title || <span className="muted">Non indicato</span>}</dd>
                         <dt>Telefono</dt><dd>{[u.person_phone_office, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null, u.person_phone ? `cell. ${u.person_phone}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>

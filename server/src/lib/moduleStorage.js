@@ -4,6 +4,7 @@
 // per non lasciare orfani nell'archivio. `prefix` è il modulo (business, finance): i percorsi nel blob diventano "<prefix>-<scope>/...".
 import crypto from 'node:crypto';
 import * as blob from './blob.js';
+import { servFile } from './servFile.js';
 
 export const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 export const storageMode = () => (blob.isEnabled() ? 'blob' : 'db');
@@ -17,16 +18,10 @@ export async function storeBuffer(prefix, scope, filename, mime, buf) {
   return { data: null, blob_path: path, size: buf.length, sha256: digest };
 }
 
+// Invio di un documento caricato da un utente: regola unica di lib/servFile.js (tipo dal nome e dalla firma, mai quello dichiarato;
+// in linea solo PDF e immagini raster; nosniff e sandbox)
 export async function sendFile(res, f, { inline = false } = {}) {
-  res.setHeader('Content-Type', f.mime || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
-  if (f.blob_path) {
-    const { stream, size } = await blob.getBlobStream(f.blob_path);
-    if (size) res.setHeader('Content-Length', size);
-    stream.pipe(res);
-    return;
-  }
-  res.send(f.data);
+  return servFile(res, f, { inline, cache: 'private, max-age=300' });
 }
 
 // Cancella dal blob i percorsi indicati (dopo la DELETE sul database); gli errori non bloccano

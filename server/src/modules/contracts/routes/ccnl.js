@@ -59,7 +59,7 @@ r.post('/documents', requireRole('ADMIN'), upload.single('file'), ah(async (req,
 r.get('/documents/:id/download', ah(async (req, res) => {
   const d = await one('SELECT filename, mime, data FROM ccnl_documents WHERE id=$1', [Number(req.params.id)]);
   if (!d) throw notFound();
-  res.set('Content-Type', d.mime).set('Content-Disposition', `${req.query.inline === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(d.filename)}`).send(d.data);
+  await servFile(res, d, { inline: req.query.inline === '1' });   // lib/servFile.js
 }));
 r.delete('/documents/:id', requireRole('ADMIN'), ah(async (req, res) => { await q('DELETE FROM ccnl_documents WHERE id=$1', [Number(req.params.id)]); res.json({ ok: true }); }));
 

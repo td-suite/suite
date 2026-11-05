@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { useApi, Card, Field, Loading, Badge, useToast, ConfirmModal } from '../components/ui.jsx';
+import { useApi, Card, Field, Loading, Badge, useToast, PromptModal } from '../components/ui.jsx';
 import { num } from '../format.js';
 
 const GROUPS = [
@@ -45,8 +45,9 @@ export default function Settings() {
           </tbody></table>
         </Card>
       </div>
-      {confirm === 'load' && <ConfirmModal title="Carica set dimostrativo" text="Vengono inseriti clienti, prestazioni, vendite, promozioni, campagne ed esposizione dimostrativi. Procedere?" confirmText="Carica" onClose={() => setConfirm(null)} onConfirm={async () => { const r = await api.post('/demo/load'); toast(`Demo caricata: ${num(r.sales)} righe di vendita`); d.reload(); }} />}
-      {confirm === 'clear' && <ConfirmModal danger title="Rimuovi dati dimostrativi" text="Vengono eliminati vendite, clienti, prestazioni, promozioni, campagne ed esposizione del set dimostrativo. I dati importati dai gestionali restano." confirmText="Rimuovi" onClose={() => setConfirm(null)} onConfirm={async () => { await api.post('/demo/clear'); toast('Dati dimostrativi rimossi'); d.reload(); }} />}
+      {/* conferma con testo digitato (debug pre-produzione, A1): in produzione la richiede il server ed è riservata al titolare */}
+      {confirm === 'load' && <PromptModal title="Carica set dimostrativo" label={`Vengono inseriti clienti, prestazioni, vendite, promozioni, campagne ed esposizione dimostrativi, marcati come demo. Per confermare scrivi: ${d.data.conferma_demo?.load || 'CARICA DATI DIMOSTRATIVI'}`} confirmText="Carica" help={d.data.demo_protetta ? 'Installazione di produzione: operazione riservata al titolare della Suite.' : undefined} onClose={() => setConfirm(null)} onConfirm={async (testo) => { const r = await api.post('/demo/load', { conferma: testo }); toast(`Demo caricata: ${num(r.sales)} righe di vendita`); d.reload(); }} />}
+      {confirm === 'clear' && <PromptModal title="Rimuovi dati dimostrativi" label={`Vengono eliminate solo le righe marcate come demo (vendite, clienti, prestazioni, promozioni, campagne, esposizione, orari, dotazioni, budget). I dati reali e quelli importati dai gestionali restano. Per confermare scrivi: ${d.data.conferma_demo?.clear || 'RIMUOVI DATI DIMOSTRATIVI'}`} confirmText="Rimuovi" help={d.data.demo_protetta ? 'Installazione di produzione: operazione riservata al titolare della Suite.' : undefined} onClose={() => setConfirm(null)} onConfirm={async (testo) => { await api.post('/demo/clear', { conferma: testo }); toast('Dati dimostrativi rimossi'); d.reload(); }} />}
     </div>
   );
 }

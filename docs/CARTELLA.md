@@ -52,6 +52,9 @@ in_evidenza, evidenza_fino DATE, caricato_da_user_id → public.users, versione;
 ## Profili e accesso
 ADMIN "Gestione" (crea cartelle, carica, rinomina, sposta, elimina, mette in evidenza, nuove versioni) e VIEWER "Consultazione".
 Owner e Admin della Suite sono ADMIN del modulo. Senza grant: 403 su ogni rotta e widget assente in `GET /home/modules`.
+Dal 05/11/2026 (decisione del CEO, debug pre-produzione A3) il profilo di accesso Default dei dipendenti dà la sola Consultazione
+(VIEWER); la migrazione 040 ha riportato a VIEWER i grant ADMIN nati dal Default (non quelli assegnati a mano), con audit
+GRANT_REALIGNED_DEFAULT. I file si servono con `lib/servFile.js`: in linea solo PDF e immagini, il resto si scarica.
 Regole di accesso iniziali (`lib/grantRules.js`, seminate solo su `grant_rules` vuota): tutti i responsabili di unità → VIEWER;
 Retail & Communications Management → ADMIN; HSQ Management → ADMIN. In produzione vanno aggiunte a mano da Amministrazione >
 Organizzazione > Regole di accesso.

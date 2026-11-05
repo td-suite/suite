@@ -1,4 +1,5 @@
 import React from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ModuleAuthProvider, isAdmin } from './auth.jsx';
 import Plan from './pages/Plan.jsx';
@@ -16,8 +17,8 @@ export default function Module({ moduleKey, mode, moduleUser }) {
       <Routes>
         <Route path="/" element={<Plan mode={mode} moduleKey={moduleKey} />} />
         <Route path="guida" element={<Guide />} />
-        {admin && <Route path="audit" element={<Audit />} />}
-        {admin && <Route path="snapshot" element={<Snapshots />} />}
+        <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
+        <Route path="snapshot" element={admin ? <Snapshots /> : <Forbidden />} />
         <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
       </Routes>
     </ModuleAuthProvider>

@@ -1,5 +1,6 @@
 // Modulo Audit SGI: route relative a /audit dentro la cornice della Suite
 import React, { createContext, useContext } from 'react';
+import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { base } from './api.js';
 import './styles.css';
@@ -33,11 +34,11 @@ export default function Module({ moduleUser, mode }) {
         <Route path="audit/:id" element={<Compila />} />
         <Route path="sedi" element={<Sedi />} />
         <Route path="sedi/:id" element={<Sede />} />
-        {!isSite(user) && <Route path="partner" element={<Partner />} />}
-        {!isSite(user) && <Route path="partner/:orgId" element={<PartnerDetail />} />}
+        <Route path="partner" element={!isSite(user) ? <Partner /> : <Forbidden />} />
+        <Route path="partner/:orgId" element={!isSite(user) ? <PartnerDetail /> : <Forbidden />} />
         <Route path="archivio" element={<Archivio />} />
-        {!isSite(user) && <Route path="sintesi" element={<SintesiTD />} />}
-        {isQualita(user) && <Route path="impostazioni" element={<Impostazioni />} />}
+        <Route path="sintesi" element={!isSite(user) ? <SintesiTD /> : <Forbidden />} />
+        <Route path="impostazioni" element={isQualita(user) ? <Impostazioni /> : <Forbidden />} />
         <Route path="guida" element={<Guida />} />
         <Route path="*" element={<Navigate to={base} replace />} />
       </Routes>

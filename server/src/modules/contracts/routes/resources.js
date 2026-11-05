@@ -573,8 +573,7 @@ r.get('/:id/attachments/:aid/download', ah(async (req, res) => {
   const a = await one('SELECT filename, mime, data FROM attachments WHERE id=$1 AND resource_id=$2', [Number(req.params.aid), Number(req.params.id)]);
   if (!a) throw notFound();
   await readLog(req, 'attachment', req.params.aid);
-  const inline = req.query.inline === '1' && ['application/pdf', 'image/png', 'image/jpeg'].includes(a.mime);
-  res.set('Content-Type', a.mime).set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(a.filename)}`).send(a.data);
+  await servFile(res, a, { inline: req.query.inline === '1' });   // in linea solo PDF e immagini verificati (lib/servFile.js)
 }));
 
 r.delete('/:id/attachments/:aid', requireWrite, ah(async (req, res) => {

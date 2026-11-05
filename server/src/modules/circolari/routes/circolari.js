@@ -113,8 +113,9 @@ r.get('/circolari/riepilogo', ah(async (req, res) => {
   const anni = await many(`SELECT anno, count(*)::int AS n FROM circolari WHERE anno IS NOT NULL${and} GROUP BY anno ORDER BY anno DESC`, params);
   const stati = await many(`SELECT stato, count(*)::int AS n FROM circolari WHERE TRUE${and} GROUP BY stato`, params);
   const ultime = await many(`SELECT ${LIST_COLS} FROM circolari WHERE stato='PUBBLICATA'${and} ORDER BY published_at DESC LIMIT 5`, params);
-  const invii = await one(`SELECT count(*)::int AS n, coalesce(sum(n_inviati),0)::int AS inviati FROM invii`);
-  const letture = await one(`SELECT count(*)::int AS n FROM letture`);
+  // conteggi globali di invii e letture solo per chi vede tutte le circolari (interni e redazione), mai agli esterni (L8)
+  const invii = per.tutte ? await one(`SELECT count(*)::int AS n, coalesce(sum(n_inviati),0)::int AS inviati FROM invii`) : { n: 0, inviati: 0 };
+  const letture = per.tutte ? await one(`SELECT count(*)::int AS n FROM letture`) : { n: 0 };
   res.json({ anni, stati: Object.fromEntries(stati.map((s) => [s.stato, s.n])), ultime, invii, letture: letture.n });
 }));
 
