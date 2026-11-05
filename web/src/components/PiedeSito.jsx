@@ -23,8 +23,9 @@ export default function PiedeSito() {
   return (
     <footer className="piede-sito" aria-label="Dati aziendali">
       <div className="piede-sito-inner">
-        <div className="col azienda">
-          <div className="logo"><img src="/logo-dark.svg" alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /><span className="brand">{c.legal_name || 'Toscana Diagnostica S.r.l.'}</span></div>
+        <div className="blocco azienda">
+          <div className="logo"><img src="/logo-dark.svg" alt="Toscana Diagnostica" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div>
+          <div className="small brand">{c.legal_name || 'Toscana Diagnostica S.r.l.'}</div>
           <div className="small">{[c.address, [c.zip, c.city].filter(Boolean).join(' ') + (c.province ? ` (${c.province})` : '')].filter(Boolean).join(', ')}</div>
           <div className="small">{c.vat && <>P.IVA: {c.vat}</>}{c.tax_code && <> – C.F.: {c.tax_code}</>}</div>
           <div className="small">{c.rea && <>REA {c.rea}</>}{c.sdi_code && <> – Codice SDI: {c.sdi_code}</>}</div>
@@ -35,15 +36,15 @@ export default function PiedeSito() {
           {c.health_director && <div className="small mt">Direttore Sanitario: {c.health_director}</div>}
           {c.health_authorization && <div className="small">{c.health_authorization}</div>}
         </div>
-        <div className="col orari">
+        <div className="blocco orari">
           <div className="h">Prenotazione Telefonica</div>
           {righe(c.booking_hours).map((r) => <div key={r} className="small">{r}</div>)}
-          <div className="h mt">Supporto Clienti</div>
+          <div className="h gap">Supporto Clienti</div>
           {righe(c.support_hours).map((r) => <div key={r} className="small">{r}</div>)}
           {c.support_phone && <a className="pill" href={`tel:${String(c.support_phone).replace(/\s/g, '')}`}><Ico d={<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />} />{c.support_phone}</a>}
           {c.support_email && <a className="pill" href={`mailto:${c.support_email}`}>{c.support_email}</a>}
         </div>
-        <div className="col social">
+        <div className="blocco social">
           <div className="h">Social network</div>
           <div className="icone">{social.length ? social.map((k) => <a key={k} href={c[`social_${k}`]} target="_blank" rel="noopener noreferrer" title={SOCIAL[k].label} aria-label={SOCIAL[k].label}><Ico d={SOCIAL[k].d} size={18} /></a>) : <span className="small muted">Link ai profili da impostare in Amministrazione</span>}</div>
           <nav className="allegati" aria-label="Documenti">

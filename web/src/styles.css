@@ -1091,22 +1091,23 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 :root[data-theme="dark"] .gate .logo.logo-l { display: block; } :root[data-theme="dark"] .gate .logo.logo-d { display: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gate .logo.logo-l { display: block; } :root:not([data-theme="light"]) .gate .logo.logo-d { display: none; } }
 
-/* Piè di pagina della Home come il sito */
+/* Piè di pagina della Home come il sito www.toscanadiagnostica.it: righe compatte, un rigo vuoto tra i gruppi */
 .piede-sito { background: var(--card); border-top: 1px solid var(--line); color: var(--ink); margin-top: 28px; }
-.piede-sito-inner { max-width: 1180px; margin: 0 auto; padding: 34px 32px 38px; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 32px; }
-.piede-sito .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.piede-sito .logo img { height: 34px; width: auto; }
-.piede-sito .brand { font-weight: 800; font-size: 15px; }
-.piede-sito .small { font-size: 13.5px; line-height: 1.6; color: var(--muted); }
-.piede-sito .small b { color: var(--ink); }
-.piede-sito .mt { margin-top: 12px; }
-.piede-sito .h { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
-.piede-sito .h.mt { margin-top: 18px; }
-.piede-sito .pill { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; margin-top: 10px; color: var(--ink); text-decoration: none; font-size: 14px; width: fit-content; min-width: 240px; }
+.piede-sito-inner { max-width: 1180px; margin: 0 auto; padding: 36px 32px 40px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 40px; }
+.piede-sito .logo { margin-bottom: 18px; }
+.piede-sito .logo img { height: 38px; width: auto; display: block; }
+.piede-sito .small { font-size: 14px; line-height: 1.7; margin: 0; color: var(--ink); }
+.piede-sito .small.brand { font-weight: 800; }
+.piede-sito .small b { font-weight: 800; }
+.piede-sito .small a { color: var(--ink); }
+.piede-sito .mt { margin-top: 1.7em; }
+.piede-sito .h { font-weight: 800; font-size: 15px; line-height: 1.7; }
+.piede-sito .h.gap { margin-top: 1.7em; }
+.piede-sito .pill { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; margin-top: 14px; color: var(--ink); text-decoration: none; font-size: 14px; width: fit-content; min-width: 250px; }
 .piede-sito .pill:hover { background: var(--hover); text-decoration: none; }
-.piede-sito .icone { display: flex; gap: 10px; margin: 6px 0 16px; }
-.piede-sito .icone a { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--ink); }
+.piede-sito .icone { display: flex; gap: 12px; margin: 8px 0 22px; }
+.piede-sito .icone a { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--ink); }
 .piede-sito .icone a:hover { background: var(--hover); }
-.piede-sito .allegati { display: flex; flex-direction: column; gap: 10px; }
-.piede-sito .allegati a { color: var(--ink); font-weight: 700; font-size: 14px; }
-@media (max-width: 900px) { .piede-sito-inner { grid-template-columns: 1fr; gap: 22px; padding: 26px 16px 30px; } }
+.piede-sito .allegati { display: flex; flex-direction: column; gap: 14px; }
+.piede-sito .allegati a { color: var(--ink); font-weight: 700; font-size: 14px; line-height: 1.4; }
+@media (max-width: 900px) { .piede-sito-inner { grid-template-columns: 1fr; gap: 26px; padding: 26px 16px 30px; } }
