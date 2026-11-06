@@ -18,7 +18,7 @@ export default function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
+          <h1>Panoramica contratti</h1>
           <div className="sub">Contratti B2B di Toscana Diagnostica: proposte, sottoscrizioni, fascicoli di autorizzazione dei punti prelievo, listini e accessi ai portali. Clicca su un numero per aprire l'elenco.</div>
         </div>
         <div className="row">

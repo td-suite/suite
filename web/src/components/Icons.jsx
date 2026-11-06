@@ -14,6 +14,11 @@ const GEAR = (() => {
 })();
 
 const MODULES = {
+  // Business Hub (06/11/2026): rete di nodi intorno a un centro (clienti, contratti, contatti che convergono)
+  'business-hub': {
+    f: 'M17 24a7 7 0 1 0 14 0a7 7 0 1 0 -14 0',
+    s: 'M17 24a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M6 10a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M34 10a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M6 38a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M34 38a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M13 13l6 6M35 13l-6 6M13 35l6-6M35 35l-6-6M21 24h6M24 21v6',
+  },
   'contracts-b2b': {
     f: 'M11 6h17l8 8v28H11z',
     s: 'M11 6h17l8 8v28H11zM28 6v8h8M17 20h12M17 26h8M39 33a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0zM31 37.5 29 44M36 37.5 38 44M24 40h-6',

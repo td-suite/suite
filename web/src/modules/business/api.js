@@ -58,3 +58,17 @@ export const qs = (o) => {
 
 // Link di download dei file (contratti e fascicoli): sempre sotto /api/business
 export const fileUrl = (route, id, inline) => `${API_BASE}/${route}/${id}${inline ? '?inline=1' : ''}`;
+
+// Scaricamento di un file prodotto da una POST (export XLSX e PDF del Business Hub): blob → download nel browser
+export async function scarica(url, body, fallback = 'export') {
+  setBusy(1);
+  try {
+    const res = await fetch(`${API_BASE}${url}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'td-suite', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) { let m = `Errore ${res.status}`; try { m = (await res.json()).error || m; } catch { /* */ } throw new ApiError(res.status, m); }
+    const blob = await res.blob();
+    const name = (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallback;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    return name;
+  } finally { setBusy(-1); }
+}

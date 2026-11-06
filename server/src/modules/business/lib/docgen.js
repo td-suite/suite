@@ -19,7 +19,46 @@ export function renderDocx(template, data) {
   const zip = new PizZip(fs.readFileSync(path.join(TPL_DIR, template)));
   const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, nullGetter: () => '' });
   doc.render(data);
-  return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const out = doc.getZip();
+  // Lettere di offerta e contratto del punto prelievi: l'intestazione della carta TD è fatta di immagini ancorate che non spingono il
+  // corpo, e con il margine superiore di 2,5 cm del template il testo delle pagine successive alla prima finiva sopra i contatti
+  // (visto nel Pacchetto di benvenuto, 06/11/2026). Margine superiore minimo 3,94 cm, come per i referti (referti/lib/formatTD.js).
+  if (Object.values(CONTRACT_TEMPLATE).includes(template)) {
+    const xml = out.file('word/document.xml').asText();
+    out.file('word/document.xml', intestazioniRipetute(margineSuperioreMinimo(xml)));
+  }
+  return out.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+// Prima riga delle tabelle con l'intestazione petrolio (fill 1B505F) come riga d'intestazione ripetuta: LibreOffice non lascia più
+// l'intestazione da sola in fondo alla pagina (es. "Voce | Modalità" delle condizioni di vendita) e la ripete se la tabella continua
+// keepNext nel pPr del paragrafo, dopo l'eventuale pStyle (ordine dello schema OOXML)
+const conKeepNext = (para) => {
+  if (/<w:keepNext\/>/.test(para)) return para;
+  if (/<w:pPr>\s*<w:pStyle\b[^>]*\/>/.test(para)) return para.replace(/(<w:pPr>\s*<w:pStyle\b[^>]*\/>)/, '$1<w:keepNext/>');
+  if (/<w:pPr>/.test(para)) return para.replace('<w:pPr>', '<w:pPr><w:keepNext/>');
+  return para.replace(/^(<w:p\b[^>]*>)/, '$1<w:pPr><w:keepNext/></w:pPr>');
+};
+export function intestazioniRipetute(xml) {
+  // il titolo subito prima della tabella resta con la tabella (es. "Condizioni di vendita" non più da solo in fondo alla pagina)
+  const conTitoli = String(xml).replace(/<w:p\b((?:(?!<w:p\b)[\s\S])*?)<\/w:p>(?=<w:tbl>(?:(?!<\/w:tr>)[\s\S])*?w:fill="1B505F")/g,
+    conKeepNext);
+  // se tra il titolo e la tabella c'è un paragrafo vuoto (come nelle offerte) anche il titolo prima di lui resta con la tabella
+  const conVuoti = conTitoli.replace(/<w:p\b((?:(?!<w:p\b)[\s\S])*?)<\/w:p>(?=<w:p\b[^>]*><w:pPr>(?:(?!<\/w:p>)[\s\S])*?<w:keepNext\/>(?:(?!<\/w:p>)[\s\S])*?<\/w:pPr><\/w:p><w:tbl>)/g,
+    conKeepNext);
+  return conVuoti.replace(/<w:tbl>([\s\S]*?)<\/w:tbl>/g, (tbl) => {
+    const m = tbl.match(/<w:tr\b[^>]*>[\s\S]*?<\/w:tr>/);
+    if (!m || !/w:fill="1B505F"/i.test(m[0]) || /<w:tblHeader\/>/.test(m[0])) return tbl;
+    const riga = /<w:trPr>/.test(m[0]) ? m[0].replace('<w:trPr>', '<w:trPr><w:tblHeader/>') : m[0].replace(/^(<w:tr\b[^>]*>)/, '$1<w:trPr><w:tblHeader/></w:trPr>');
+    return tbl.replace(m[0], riga);
+  });
+}
+export const TOP_MIN_TWIP = 2232;
+export function margineSuperioreMinimo(xml) {
+  return String(xml).replace(/<w:pgMar\b([^>]*)\/>/g, (m, attrs) => {
+    const top = Number((attrs.match(/w:top="(-?\d+)"/) || [])[1]);
+    if (Number.isFinite(top) && top >= TOP_MIN_TWIP) return m;
+    return `<w:pgMar${Number.isFinite(top) ? attrs.replace(/w:top="-?\d+"/, `w:top="${TOP_MIN_TWIP}"`) : `${attrs} w:top="${TOP_MIN_TWIP}"`}/>`;
+  });
 }
 
 // Dati comuni da Impostazioni: società, legale rappresentante, direttore sanitario, sicurezza
@@ -166,6 +205,31 @@ export function docxToPdf(docxBuffer) {
     const pdf = fs.readFileSync(out);
     fs.rmSync(dir, { recursive: true, force: true });
     return pdf;
+  };
+  const p = queue.then(job, job);
+  queue = p.catch(() => {});
+  return p;
+}
+
+// Più DOCX in una sola esecuzione di LibreOffice (stessa coda): l'avvio pesa più della conversione, il Pacchetto di benvenuto ne
+// converte una decina alla volta. Restituisce i PDF nello stesso ordine.
+export function docxToPdfBatch(buffers) {
+  const job = async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdb-'));
+    try {
+      const inputs = buffers.map((b, i) => { const f = path.join(dir, `d${String(i).padStart(3, '0')}.docx`); fs.writeFileSync(f, b); return f; });
+      const profile = path.join(os.tmpdir(), 'tdb-lo-profile');
+      await new Promise((resolve, reject) => {
+        execFile(config.sofficeBin, [`-env:UserInstallation=file://${profile}`, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', dir, ...inputs],
+          { timeout: 300_000, env: { ...process.env, HOME: process.env.HOME || os.tmpdir() } },
+          (err, _stdout, stderr) => (err ? reject(new Error(`Conversione PDF fallita: ${stderr || err.message}`)) : resolve()));
+      });
+      return inputs.map((f) => {
+        const out = f.replace(/\.docx$/, '.pdf');
+        if (!fs.existsSync(out)) throw new Error('Conversione PDF fallita: file non prodotto');
+        return fs.readFileSync(out);
+      });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   };
   const p = queue.then(job, job);
   queue = p.catch(() => {});

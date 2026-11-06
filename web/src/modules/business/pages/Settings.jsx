@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, useToast } from '../components/ui.jsx';
+import { HubCaselle, ImportDb, AccountDaContratti } from '../components/HubImpostazioni.jsx';
+import { PacchettoModelli } from '../components/Pacchetto.jsx';
 
 const GROUPS = [
+  { title: 'Business Hub (soglie)', note: 'Stallo: account nelle fasi 1-6 senza avanzamenti da più giorni della soglia (cruscotto, pipeline, vista DB). Ordini: un ordine del cliente in attesa di approvazione oltre la soglia avvisa l\'owner dell\'account.', fields: [['hub_stallo_giorni', 'Giorni senza avanzamento per lo stallo'], ['hub_ordini_giorni', 'Giorni di attesa di un ordine prima dell\'avviso']] },
   { title: 'Società (intestazioni e firme dei documenti)', note: 'Ragione sociale, sede legale, P.IVA, codice fiscale, capitale, telefono, fax e PEC vengono dai Dati aziendali della Suite (Amministrazione, Impostazioni) e qui sono in sola lettura.', fields: [['company_name', 'Ragione sociale'], ['company_legal_address', 'Sede legale (come compare nei contratti)'], ['company_city', 'Città di sottoscrizione'], ['company_prov', 'Provincia'], ['company_vat', 'Partita IVA'], ['company_tax_code', 'Codice fiscale'], ['company_capital', 'Capitale sociale (DVR)'], ['company_phone', 'Telefono'], ['company_fax', 'Fax'], ['company_pec', 'PEC'], ['lab_address', 'Indirizzo del Laboratorio di Analisi (collegamento funzionale)']] },
   { title: 'Legale rappresentante (Modello 5, dichiarazioni, DVR e DUVRI)', note: 'I dati anagrafici compaiono solo nei documenti generati; restano nel database dell’app e non nel registro attività.', fields: [['lr_name', 'Nome e cognome'], ['lr_title', 'Titolo (dott.)'], ['lr_role', 'Ruolo (in inglese, firme delle offerte)'], ['lr_role_it', 'Ruolo (in italiano, atti e dichiarazioni)'], ['lr_birth_place', 'Luogo di nascita'], ['lr_birth_date', 'Data di nascita (gg/mm/aaaa)'], ['lr_residence', 'Residenza (comune, via, civico)'], ['lr_tax_code', 'Codice fiscale'], ['lr_phone', 'Recapito telefonico'], ['lr_email', 'E-mail']] },
   { title: 'Direttore Sanitario (Modello 6)', fields: [['ds_name', 'Nome e cognome'], ['ds_title', 'Titolo (prof., dott.)'], ['ds_birth_place', 'Luogo di nascita'], ['ds_birth_date', 'Data di nascita (gg/mm/aaaa)'], ['ds_residence', 'Residenza'], ['ds_tax_code', 'Codice fiscale'], ['ds_phone', 'Telefono'], ['ds_email', 'E-mail'], ['ds_weekly_hours', 'Impegno orario settimanale (ore)'], ['ds_degree', 'Laurea (titolo, ateneo, data)', 'wide'], ['ds_specialization', 'Specializzazione (titolo, ateneo, data)', 'wide'], ['ds_registration', 'Iscrizione all’Ordine (provincia, numero, data)', 'wide']] },
@@ -20,7 +23,7 @@ export default function Settings() {
   const d = cfg.data;
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Impostazioni</h1><div className="sub">Dati che compaiono nei documenti generati, prefissi di protocollo, testi predefiniti, stato dei servizi.</div></div><button className="btn" onClick={save}>Salva impostazioni</button></div>
+      <div className="page-head"><div><h1>Impostazioni</h1><div className="sub">Business Hub (soglie, caselle di linea, import del DB Opportunità), dati che compaiono nei documenti generati, prefissi di protocollo, testi predefiniti, stato dei servizi.</div></div><button className="btn" onClick={save}>Salva impostazioni</button></div>
       <Card title="Stato dei servizi">
         <table className="t"><tbody>
           <tr><td>Accesso e utenti</td><td><Badge tone="green">gestiti dalla Suite TD (profili del modulo)</Badge></td></tr>
@@ -30,6 +33,10 @@ export default function Settings() {
           <tr><td>Archivio dei documenti</td><td>{d.storage === 'blob' ? <Badge tone="green">Azure Blob Storage (nel database solo i metadati)</Badge> : <Badge tone="mauve">database: configura AZURE_STORAGE_CONNECTION_STRING per i fascicoli e i pacchetti di caricamento</Badge>}</td></tr>
         </tbody></table>
       </Card>
+      <HubCaselle f={f} setF={setF} />
+      <PacchettoModelli />
+      <ImportDb />
+      <AccountDaContratti />
       <ImportPack storage={d.storage} />
       {GROUPS.map((g) => (
         <Card key={g.title} title={g.title} className="mt">

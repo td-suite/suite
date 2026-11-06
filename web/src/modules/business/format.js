@@ -43,7 +43,7 @@ export const STATUS = {
 export const DOSSIER_STATUS = { IN_CORSO: { label: 'In preparazione', tone: 'blue' }, PRESENTATO: { label: 'Presentato al Comune', tone: 'mauve' }, AUTORIZZATO: { label: 'Autorizzato', tone: 'green' } };
 export const DOC_STATUS = { MANCANTE: { label: 'Mancante', tone: 'red' }, GENERATO: { label: 'Generato, da firmare', tone: 'blue' }, COMPILATO: { label: 'Compilato', tone: 'blue' }, CARICATO: { label: 'Caricato', tone: 'green' }, NON_APPLICABILE: { label: 'Non applicabile', tone: 'grey' } };
 export const FILE_CAT = { GENERATO_DOCX: 'Documento generato (DOCX)', GENERATO_PDF: 'Documento generato (PDF)', FIRMATO: 'Contratto firmato', LISTINO_XLSX: 'Listino (XLSX)', LISTINO_PDF: 'Listino (PDF)', PLANIMETRIA: 'Planimetria', ASSICURAZIONE: 'Assicurazione', ALTRO: 'Altro' };
-export const EVENT = { CREATO: 'Creato', MODIFICATO: 'Modificato', GENERATO: 'Proposta generata', FIRMATO: 'Firmato', ALLEGATO: 'File caricato', ALLEGATO_RIMOSSO: 'File rimosso', ATTIVO: 'Attivato', CESSATO: 'Cessato', ANNULLATO: 'Annullato', AUTORIZZATO: 'Autorizzato', CREDENZIALI: 'Credenziali', CREDENZIALI_VISUALIZZATE: 'Password visualizzata', FASCICOLO_GENERATO: 'Fascicolo: generato', FASCICOLO_CARICATO: 'Fascicolo: caricato', FASCICOLO_RIMOSSO: 'Fascicolo: rimosso' };
+export const EVENT = { CREATO: 'Creato', MODIFICATO: 'Modificato', GENERATO: 'Proposta generata', FIRMATO: 'Firmato', ALLEGATO: 'File caricato', ALLEGATO_RIMOSSO: 'File rimosso', ATTIVO: 'Attivato', CESSATO: 'Cessato', ANNULLATO: 'Annullato', AUTORIZZATO: 'Autorizzato', CREDENZIALI: 'Credenziali', CREDENZIALI_VISUALIZZATE: 'Password visualizzata', FASCICOLO_GENERATO: 'Fascicolo: generato', FASCICOLO_CARICATO: 'Fascicolo: caricato', FASCICOLO_RIMOSSO: 'Fascicolo: rimosso', REVISIONE: 'Nuova revisione', STATO_MANUALE: 'Stato cambiato a mano', IMPORTATO: 'Importato' };
 // Etichetta di controparte e sede TD di un contratto o di un fascicolo (una delle due può mancare)
 export const partyLabel = (x) => [x.org_name, x.site_name].filter(Boolean).join(' · ') || '–';
 export const DAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
@@ -51,3 +51,27 @@ export const FEE_VAT = { PIU_IVA: 'oltre IVA', IVA_INCLUSA: 'IVA inclusa', ESENT
 export const FEE_PERIOD = { MESE: 'al mese', TRIMESTRE: 'a trimestre', ANNO: 'all’anno', UNA_TANTUM: 'una tantum' };
 export const FEE_BASE = { PUNTO_PRELIEVI: 'fatturato del Punto Prelievi', CENTRO_DIAGNOSTICO: 'fatturato del Centro Diagnostico (Medicina Specialistica, Diagnostica per Immagini)', POLIAMBULATORIO: 'fatturato dell’attività poliambulatoriale', ALTRO: 'altra base (testo libero)' };
 export const FEE_KIND = { PERCENT: '% sul fatturato', FIXED: 'Importo fisso', MINIMUM: 'Minimo garantito', TEXT: 'Condizione in testo libero' };
+
+// ---------------- Business Hub (06/11/2026) ----------------
+// Fasi del percorso commerciale: 0 = prospect censito (nessuna data), 1..7; la 7 richiede il cliente attivo (lo dice il CEO)
+export const FASI = [
+  { n: 0, label: 'Prospect censito', short: 'Censiti', tone: 'grey' },
+  { n: 1, label: 'Lead', short: '1. Lead', tone: 'grey' },
+  { n: 2, label: 'Primo contatto', short: '2. Primo contatto', tone: 'blue' },
+  { n: 3, label: 'Sopralluogo', short: '3. Sopralluogo', tone: 'blue' },
+  { n: 4, label: 'Offerta inviata', short: '4. Offerta inviata', tone: 'mauve' },
+  { n: 5, label: 'In negoziazione', short: '5. Negoziazione', tone: 'mauve' },
+  { n: 6, label: 'Contratto firmato', short: '6. Contratto firmato', tone: 'green' },
+  { n: 7, label: 'Attivo / Starting', short: '7. Attivo', tone: 'teal' },
+];
+export const LINEE = { SRV: { label: 'Service di Laboratorio', short: 'Service', tone: 'blue' }, PP: { label: 'Punti Prelievo', short: 'Punti prelievo', tone: 'teal' }, MDL: { label: 'Medicina del Lavoro', short: 'MDL', tone: 'mauve' } };
+export const PRIORITA = { ALTA: { label: 'Alta', tone: 'red' }, MEDIA: { label: 'Media', tone: 'mauve' }, BASSA: { label: 'Bassa', tone: 'grey' } };
+export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', EMAIL_IN: 'Email ricevuta', EMAIL_OUT: 'Email inviata', INCONTRO: 'Incontro', SOPRALLUOGO: 'Sopralluogo', NOTA: 'Nota', OFFERTA: 'Offerta', CRITICITA: 'Criticità', SISTEMA: 'Sistema', PACCHETTO: 'Pacchetto di benvenuto' };
+export const ORIGINE_CRITICITA = { LABORATORIO: 'Laboratorio', CLIENTE: 'Cliente', LOGISTICA: 'Logistica', AMMINISTRAZIONE: 'Amministrazione', ALTRO: 'Altro' };
+export const GRAVITA = { BASSA: { label: 'Bassa', tone: 'grey' }, MEDIA: { label: 'Media', tone: 'blue' }, ALTA: { label: 'Alta', tone: 'mauve' }, CRITICA: { label: 'Critica', tone: 'red' } };
+export const NC_STATO = { APERTA: 'Aperta', INVIATA_SEDE: 'Inviata alla sede', RISPOSTA_SEDE: 'Risposta della sede', IN_TRATTAMENTO: 'In trattamento', CHIUSA: 'Chiusa', VERIFICATA: 'Verificata', ANNULLATA: 'Annullata' };
+export const ORDINE_STATO = { INVIATO: 'Inviato, da approvare', APPROVATO: 'Approvato', PRESO_IN_CARICO: 'Preso in carico', SPEDITO: 'Spedito', CONSEGNATO: 'Consegnato', IMMAGAZZINATO: 'Immagazzinato', CHIUSO: 'Chiuso', ANNULLATO: 'Annullato' };
+export const EMAIL_STATO = { INVIATO: { label: 'Inviato', tone: 'green' }, REGISTRATO: { label: 'Registrato (posta in modalità registro)', tone: 'blue' }, FALLITO: { label: 'Fallito', tone: 'red' }, RICEVUTO: { label: 'Ricevuto', tone: 'teal' } };
+export const eurK = (n) => (n == null || n === '' ? '–' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0, useGrouping: 'always' }).format(Number(n)));
+export const pctSconto = (n) => (n == null || n === '' ? '–' : `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(Number(n) * 100)}%`);
+export const giorni = (n) => (n == null ? '–' : `${n} gg`);

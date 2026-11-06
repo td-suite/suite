@@ -40,7 +40,7 @@ export async function sendMail({ to, cc = [], subject, html, text, ref, attachme
   const sender = String(from || config.mail.sender).trim();
   const subjectLog = logSubject || subject;
   const log = async (status, error) => (await q('INSERT INTO email_log (to_addr, subject, status, error, ref, from_addr) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [toList.join(', '), subjectLog, status, error || null, ref || null, sender])).rows[0]?.id;
-  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.join(', ')} · ${subjectLog}`); return { ok: true, logged: true, logId: id, from: sender }; }
+  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.length} destinatari${cc.length ? ` (+${cc.length} in copia)` : ''} · ${subjectLog}`); return { ok: true, logged: true, logId: id, from: sender }; }
   try {
     const tok = await graphToken();
     const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {

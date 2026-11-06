@@ -46,11 +46,14 @@ export default function ContractForm() {
   if (!f) return <div className="page">{existing.error ? <ErrorBox error={existing.error} /> : <Loading />}</div>;
   const setD = (path, v) => setF((x) => { const d = structuredClone(x.data); let o = d; const ks = path.split('.'); for (const k of ks.slice(0, -1)) o = o[k]; o[ks.at(-1)] = v; return { ...x, data: d }; });
   const d = f.data;
+  // contratto oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO): la modifica è una nuova revisione dell'Admin, con il motivo
+  const revisione = Boolean(id && existing.data && !['BOZZA', 'PROPOSTA'].includes(existing.data.status));
 
   const save = async () => {
     setErr(null);
     try {
-      const body = { kind, org_id: f.org_id ? Number(f.org_id) : null, site_id: f.site_id ? Number(f.site_id) : null, title: f.title || null, proposal_date: f.proposal_date, start_date: f.start_date || null, end_date: f.end_date || null, notes: f.notes || null, data: cleanData(kind, d) };
+      if (revisione && (f.motivo_revisione || '').trim().length < 5) throw new Error('Indica il motivo della revisione (almeno 5 caratteri)');
+      const body = { motivo_revisione: revisione ? f.motivo_revisione : undefined, kind, org_id: f.org_id ? Number(f.org_id) : null, site_id: f.site_id ? Number(f.site_id) : null, title: f.title || null, proposal_date: f.proposal_date, start_date: f.start_date || null, end_date: f.end_date || null, notes: f.notes || null, data: cleanData(kind, d) };
       if (!body.org_id && !body.site_id) throw new Error('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
       if ((kind === 'PP' || kind === 'SEDE') && !body.site_id) throw new Error('Seleziona la sede TD dall’anagrafica');
       const r = id ? await api.put(`/contracts/${id}`, body) : await api.post('/contracts', body);
@@ -74,6 +77,10 @@ export default function ContractForm() {
         <div className="row"><button className="btn ghost" onClick={() => nav(-1)}>Annulla</button><button className="btn" onClick={save}>Salva</button></div>
       </div>
       <ErrorBox error={err} />
+      {revisione && <div className="alert warn" style={{ marginBottom: 14 }}>
+        <strong>Nuova revisione v{existing.data.version + 1}</strong> di un contratto in stato {existing.data.status}: la versione attuale (v{existing.data.version}) resta nello storico delle revisioni con il motivo, lo stato non cambia e il documento si rigenera dalla scheda con il nuovo numero di versione.
+        <Field label="Motivo della revisione (obbligatorio)" className="mt"><input value={f.motivo_revisione || ''} onChange={(e) => setF({ ...f, motivo_revisione: e.target.value })} placeholder="Es. listino aggiornato, nuove condizioni concordate il …" /></Field>
+      </div>}
       <PartyCards orgs={partners.data} sites={sites.data} orgId={f.org_id} siteId={f.site_id} onOrg={(v) => setF({ ...f, org_id: v })} onSite={(v) => setF({ ...f, site_id: v })} org={partner} site={site}
         orgTitle={{ PP: 'Controparte: struttura ospitante (Legal entity)', SEDE: 'Controparte: locatore (Legal entity)', SRV: 'Controparte: cliente del service (Legal entity)', MDL: 'Controparte: cliente (Legal entity)' }[kind]}
         siteTitle={{ PP: 'Sede TD del Punto Prelievi', SEDE: 'Sede TD in locazione', SRV: 'Sede TD di riferimento', MDL: 'Sede TD di riferimento' }[kind]}

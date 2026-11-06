@@ -5,6 +5,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireAdmin, requireManager } from '../lib/access.js';
 import { getSettings, DEFAULT_SETTINGS, CORE_KEYS } from '../lib/rules.js';
+import { emailValida } from '../lib/hub.js';
 import { config } from '../config.js';
 import { pdfAvailable } from '../lib/docgen.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
@@ -23,7 +24,13 @@ r.get('/settings', ah(async (_req, res) => {
 r.put('/settings', requireAdmin, ah(async (req, res) => {
   const body = req.body || {};
   for (const k of Object.keys(body)) {
+    if (/^hub_(since|ultima_lettura|errore)_/.test(k)) continue;   // stato interno delle caselle del Business Hub: non si scrive da qui
+    if (/^pacchetto\./.test(k)) continue;   // modelli del Pacchetto di benvenuto: si salvano con PUT /hub/pacchetto/modelli
     if (!(k in DEFAULT_SETTINGS)) throw bad(`Impostazione sconosciuta: ${k}`);
+    const v = String(body[k] ?? '').trim();
+    if (/^hub_casella_/.test(k) && v && !emailValida(v)) throw bad(`Indirizzo della casella non valido: ${v}`);
+    if (/^hub_cc_/.test(k) && v.split(/[,;\s]+/).filter(Boolean).some((x) => !emailValida(x))) throw bad(`Copie fisse ${k.slice(-3).replace('_', '')}: c'è un indirizzo non valido`);
+    if (['hub_stallo_giorni', 'hub_ordini_giorni'].includes(k) && !/^\d{1,3}$/.test(v)) throw bad('Le soglie del Business Hub sono numeri di giorni');
     if (CORE_KEYS.includes(k)) continue;   // dati aziendali: si modificano in Amministrazione > Impostazioni > Dati aziendali
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }

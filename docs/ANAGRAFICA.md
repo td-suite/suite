@@ -222,6 +222,29 @@ per id proprio (`/api/business/dossiers/:id`, `/business/fascicoli/:id`; il vecc
 possono nascere anche senza contratto su una sede TD ("Nuovo fascicolo": senza controparte atto di condivisione e DUVRI sono
 esclusi). `GET /api/business/sites` esclude le sedi SERVICE e riporta contratti e fascicoli collegati.
 
+## Business Hub: account sulle Legal entity, prospect e strutture dei gruppi (06/11/2026)
+Decisione del CEO: il widget "Contratti B2C/B2B" diventa **Business Hub** (chiave `business` invariata), la centrale di registrazione
+del business (docs/BUSINESS_HUB.md). Il CRM non ha anagrafica propria: un **account** (`business.accounts`) per Legal entity
+(`public.organizations`) e linea (SRV, PP, MDL; `UNIQUE (organization_id, linea)`), con referenti (`business.contatti`, collegati a
+`public.people` della stessa Legal entity quando la persona c'è: nessuna copia). Ragione sociale, indirizzo, email, PEC, telefono e P.IVA
+restano della Legal entity; nell'account stanno solo i dati commerciali (fasi, priorità, fornitore attuale, valori economici).
+- **Prospect**: la Suite non ha un tipo di Legal entity per i potenziali clienti (`TARGET` è riservato alle società da acquisire di
+  Integration). I prospect sono Legal entity `CLIENTE` con `accounts.prospect = TRUE`; il flag si toglie quando il CEO conferma il cliente
+  attivo.
+- **Import del DB Opportunità** (Business Hub > Impostazioni): ogni riga non abbinata diventa una Legal entity CLIENTE con indirizzo,
+  città, provincia, email/PEC, telefono e `legacy_refs.db_opportunita` = ID della riga (array di ID per i gruppi). Abbinamento a quelle
+  esistenti: righe già importate, contratti dei pacchetti ("Cliente Pipeline" = `data.pipeline.cliente`, controparti con
+  `legacy_refs.business_pack`), email o PEC, ragione sociale normalizzata (con la città se ambigua), somiglianza ≥ 90%; tra 72% e 90% è
+  un dubbio da decidere a mano nella Prova. Più righe che finiscono sulla stessa Legal entity confluiscono in un solo account: mai due
+  Legal entity per la stessa struttura.
+- **Più sedi, una Legal entity**: righe con lo stesso "Gruppo / Ente Gestore" (non generico: "istituto religioso", "gestione privata in
+  convenzione", "Misericordia", "Pubblica Assistenza" ... non accorpano) o con la stessa ragione sociale normalizzata diventano UNA Legal
+  entity (nome del gruppo) e UN account; le strutture restano nell'elenco `accounts.sedi` (nome, indirizzo, città, contatti, valori della
+  riga). Scelta: **non** si creano `public.sites` di tipo SERVICE per i prospect, perché una sede SERVICE diventa punto di consegna in
+  Ordini e sede inviante in NC; la sede si crea in Amministrazione > Sedi quando la struttura parte davvero.
+- I contratti e i fascicoli restano agganciati alla Legal entity (`contracts.org_id`, `dossiers.org_id`) e si vedono nella scheda account
+  come "di cui".
+
 ## Ordini: strutture = sedi TD e Legal entity (26/10/2026)
 Decisione di Francesco Epifani. In Ordini e Magazzino la "struttura" (chi ordina e riceve materiale) ha due origini nell'anagrafica
 unica: le sedi TD (`public.sites`, `kind <> 'SERVICE'`, impostazioni in `orders.site_ext`) e le Legal entity (`public.organizations`:

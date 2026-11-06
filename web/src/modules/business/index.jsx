@@ -1,4 +1,4 @@
-// Modulo Business dentro la cornice della Suite: solo il contenuto (.page), le voci di menu sono in meta.js
+// Modulo Business Hub dentro la cornice della Suite: solo il contenuto (.page), le voci di menu sono in meta.js
 import React from 'react';
 import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
@@ -15,6 +15,12 @@ import Organizations from './pages/Organizations.jsx';
 import Dossiers from './pages/Dossiers.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
+import HubCruscotto from './pages/HubCruscotto.jsx';
+import Pipeline from './pages/Pipeline.jsx';
+import Clienti from './pages/Clienti.jsx';
+import Opportunita from './pages/Opportunita.jsx';
+import Account from './pages/Account.jsx';
+import EmailDaAssegnare from './pages/EmailDaAssegnare.jsx';
 import './business.css';
 
 export default function Module({ moduleKey, mode, moduleUser }) {
@@ -25,7 +31,13 @@ export default function Module({ moduleKey, mode, moduleUser }) {
       <AuthProvider user={user}>
         <div className="biz" data-mode={mode}>
           <Routes>
-            <Route path="" element={<Dashboard />} />
+            <Route path="" element={<HubCruscotto />} />
+            <Route path="pipeline" element={<Pipeline />} />
+            <Route path="clienti" element={<Clienti />} />
+            <Route path="db-opportunita" element={<Opportunita />} />
+            <Route path="account/:id" element={<Account />} />
+            <Route path="email" element={<EmailDaAssegnare />} />
+            <Route path="contratti-panoramica" element={<Dashboard />} />
             <Route path="punti-prelievo" element={<Contracts kind="PP" />} />
             <Route path="service" element={<Contracts kind="SRV" />} />
             <Route path="medicina-del-lavoro" element={<Contracts kind="MDL" />} />

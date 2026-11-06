@@ -54,6 +54,18 @@ export const DEFAULT_SETTINGS = {
   // Testi
   dirty_clean_default: 'che gli stessi sono localizzati all’interno della stanza in cui avvengono le prestazioni sanitarie.',
   duvri_costs_default: 'Non sono stati identificati rischi di interferenza, pertanto i costi sono pari a 0 Euro.',
+  // Business Hub (06/11/2026): soglie, caselle di linea (service@, network@, mdl@; BUSINESS_MAILBOX_* prevale) e copie fisse delle email
+  hub_stallo_giorni: '45',
+  hub_ordini_giorni: '3',
+  hub_casella_SRV: 'service@toscanadiagnostica.it',
+  hub_casella_PP: 'network@toscanadiagnostica.it',
+  hub_casella_MDL: 'mdl@toscanadiagnostica.it',
+  hub_lettura_SRV: 'true',
+  hub_lettura_PP: 'true',
+  hub_lettura_MDL: 'true',
+  hub_cc_SRV: 'francesco.epifani@toscanadiagnostica.it, rosetta.greco@toscanadiagnostica.it',
+  hub_cc_PP: 'francesco.epifani@toscanadiagnostica.it, silvia.sansoni@toscanadiagnostica.it',
+  hub_cc_MDL: 'francesco.epifani@toscanadiagnostica.it, angelica.corradi@toscanadiagnostica.it',
 };
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura

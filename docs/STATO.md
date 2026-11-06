@@ -76,6 +76,13 @@ e `sessione.test.mjs` con `test/helpers/suiteTest.mjs` (servono `DATABASE_URL_TE
 Restano aperti: zod 4 (cambia la semantica di `.partial()` con `.default()`), react-router 7 (major), SheetJS dalla CDN ufficiale
 (non raggiungibile dall'ambiente di sviluppo). Rapporto completo: `RAPPORTO_VERIFICA.md` del collaudo.
 
+## 06/11/2026 · Business Hub (v0.47.0)
+Il widget "Contratti B2C/B2B" diventa **Business Hub** (richiesta del CEO; chiave `business` invariata): CRM a fasi per Legal entity e
+linea con diario dei contatti, referenti, criticità, feed da NC, Ordini, Ticket, Circolari e Portale, caselle service@/network@/mdl@ in
+lettura e invio con copie fisse, cliente attivo impostato solo dal CEO o da un Admin del modulo, import del DB Opportunità del CEO con
+abbinamento a contratti e Legal entity esistenti, vista navigabile con export XLSX e PDF, proposte modificabili anche dopo la firma con
+revisioni (caso AgapeLab). Migrazioni business 008 e core 041. Dettagli e numeri del collaudo in docs/BUSINESS_HUB.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

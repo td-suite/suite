@@ -19,6 +19,10 @@ export default function ContractDetail() {
   if (!c) return <div className="page"><Loading /></div>;
   const edit = canEditKind(user, c.kind);
   const editable = ['BOZZA', 'PROPOSTA'].includes(c.status);
+  // Business Hub (06/11/2026): oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO, anche i contratti caricati dai pacchetti) la proposta la
+  // modifica l'Admin del modulo con una nuova revisione; i documenti delle versioni precedenti restano
+  const revisionabile = !editable && isAdmin(user) && !['CESSATO', 'ANNULLATO'].includes(c.status);
+  const daRigenerare = revisionabile && c.kind !== 'SEDE' && !c.files.some((f) => f.category === 'GENERATO_DOCX' && f.version === c.version);
   const d = c.data || {}; const p = c.org || {}; const site = c.site || {};  // controparte e sede TD: una delle due può mancare
   const files = (cat) => c.files.filter((f) => f.category === cat);
   const act = async (fn, msg) => { try { const r = await fn(); if (r?.pdfError) setPdfErr(r.pdfError); q.reload(); if (msg) toast(msg); } catch (e) { toast(e.message, 'err'); } };
@@ -36,8 +40,12 @@ export default function ContractDetail() {
           <div className="sub">{c.org ? `Controparte ${p.name} · ${[p.street, p.city, p.prov ? `(${p.prov})` : ''].filter(Boolean).join(', ')}` : 'Nessuna controparte'}{c.site ? ` · sede TD ${site.name}${site.city ? ` (${site.city})` : ''}` : ''} · {c.kind === 'SEDE' ? 'contratto del' : 'proposta del'} {itDate(c.proposal_date)}{c.signed_at ? ` · firmato il ${itDate(c.signed_at)}` : ''}</div>
         </div>
         <div className="row">
+          {c.account_id && <Link className="btn ghost" to={`${BASE}/account/${c.account_id}`}>Account nel Business Hub</Link>}
           {edit && editable && <Link className="btn ghost" to={`${BASE}/contratti/${c.id}/modifica`}><Icon name="edit" />Modifica</Link>}
+          {revisionabile && <Link className="btn ghost" to={`${BASE}/contratti/${c.id}/modifica`} title="Modifica della proposta con una nuova revisione (storico conservato)"><Icon name="edit" />Modifica (nuova revisione)</Link>}
           {edit && editable && c.kind !== 'SEDE' && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), c.protocol ? 'Documento rigenerato' : 'Proposta protocollata e generata')}><Icon name="file" />{c.protocol ? 'Rigenera DOCX e PDF' : 'Genera proposta (DOCX e PDF)'}</button>}
+          {daRigenerare && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), `Documento della revisione v${c.version} generato`)}><Icon name="file" />Genera documento v{c.version}</button>}
+          {(isAdmin(user) || user.suite_level === 'OWNER') && <button className="btn ghost" onClick={() => setModal({ type: 'stato', status: c.status, motivo: '' })}>Cambia stato</button>}
           {c.dossier && <Link className="btn dark" to={`${BASE}/fascicoli/${c.dossier.id}`}><Icon name="folder" />Fascicolo autorizzazione</Link>}
         </div>
       </div>
@@ -54,8 +62,8 @@ export default function ContractDetail() {
         ) : <Card title="Documento della proposta" actions={genPdf && <a className="btn sm ghost" href={`${API_BASE}/contract-files/${genPdf.id}?inline=1`} target="_blank" rel="noreferrer"><Icon name="eye" />Anteprima PDF</a>}>
           {genDocx || genPdf ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[genDocx, genPdf].filter(Boolean).map((f) => <div key={f.id} className="row"><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{bytes(f.size)} · {itDateTime(f.created_at)}</span></div>)}
-              <div className="small muted">Documento generato dal format aziendale con i dati della scheda. Si stampa, si firma con la controparte e si carica qui sotto la copia sottoscritta. Ogni rigenerazione sostituisce la versione precedente (v{c.version}).</div>
+              {[...files('GENERATO_DOCX'), ...files('GENERATO_PDF')].sort((x, y) => (y.version || 0) - (x.version || 0)).map((f) => <div key={f.id} className="row"><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">v{f.version || 1} · {bytes(f.size)} · {itDateTime(f.created_at)}</span></div>)}
+              <div className="small muted">Documento generato dal format aziendale con i dati della scheda. Si stampa, si firma con la controparte e si carica qui sotto la copia sottoscritta. {editable ? `Ogni rigenerazione sostituisce la versione precedente (v${c.version}).` : `Versione corrente v${c.version}: dopo una revisione i documenti delle versioni precedenti restano tra gli allegati.`}</div>
             </div>
           ) : <div className="muted">Nessun documento ancora generato. {edit ? 'Completa i dati e premi "Genera proposta".' : ''}</div>}
         </Card>}
@@ -132,6 +140,10 @@ export default function ContractDetail() {
         <Card title="Altri documenti" actions={edit && <UploadButton label="Carica" multiple onFiles={(fl) => uploadFiles('ALTRO', fl)} />}>
           {files('ALTRO').length ? files('ALTRO').map((f) => <div key={f.id} className="row" style={{ marginBottom: 6 }}><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{f.label && f.label !== f.filename ? `${f.label} · ` : ''}{bytes(f.size)} · {itDateTime(f.created_at)}</span>{edit && <button className="iconbtn" title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>) : <div className="muted">Visure, polizze, corrispondenza, integrazioni.</div>}
         </Card>
+        <Card title="Revisioni della proposta">
+          {c.revisions?.length ? <ul className="timeline">{c.revisions.map((r) => <li key={r.id}><div className="ev">v{r.version} → v{r.version + 1} ({r.status})</div><div className="small muted">{itDateTime(r.at)} · {r.user_name || '–'} · {r.motivo}</div><div className="small muted">Prima della revisione: {[r.snapshot?.title, r.snapshot?.start_date && `dal ${itDate(r.snapshot.start_date)}`, r.snapshot?.end_date && `al ${itDate(r.snapshot.end_date)}`].filter(Boolean).join(' · ')}</div></li>)}</ul>
+            : <div className="muted small">Nessuna revisione. {revisionabile ? 'Con "Modifica (nuova revisione)" la versione attuale resta nello storico e il documento si rigenera con un nuovo numero di versione.' : ''}</div>}
+        </Card>
         <Card title="Cronologia">
           <ul className="timeline">{c.events.map((e) => <li key={e.id}><div className="ev">{EVENT[e.kind] || e.kind}</div><div className="small muted">{itDateTime(e.at)} · {e.user_name || 'sistema'}{e.note ? ` · ${e.note}` : ''}</div></li>)}</ul>
         </Card>
@@ -143,6 +155,13 @@ export default function ContractDetail() {
         {['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(c.status) && <button className="btn ghost" onClick={() => setModal({ type: 'cease' })}>Cessazione</button>}
       </div>}
 
+      {modal?.type === 'stato' && <Modal title="Cambia stato del contratto" onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>Annulla</button><button className="btn" disabled={modal.status === c.status || modal.motivo.trim().length < 5} onClick={() => act(async () => { await api.post(`/contracts/${c.id}/stato-manuale`, { status: modal.status, motivo: modal.motivo }); setModal(null); }, 'Stato aggiornato')}>Cambia stato</button></>}>
+        <div className="form-grid">
+          <Field label="Nuovo stato"><select value={modal.status} onChange={(e) => setModal({ ...modal, status: e.target.value })}>{['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO', 'ANNULLATO'].map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+          <Field label="Motivazione (obbligatoria)" className="span2"><textarea value={modal.motivo} onChange={(e) => setModal({ ...modal, motivo: e.target.value })} /></Field>
+        </div>
+        <div className="small muted" style={{ marginTop: 8 }}>Riservato all'Admin del modulo. Il cambio resta nella cronologia con la motivazione. Il cliente attivo dell'account non cambia: lo conferma il CEO nel Business Hub.</div>
+      </Modal>}
       {modal?.type === 'delfile' && <ConfirmModal danger title="Rimuovi file" text={`Rimuovere ${modal.f.filename}?`} confirmText="Rimuovi" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/contracts/${c.id}/files/${modal.f.id}`); q.reload(); }} />}
       {modal?.type === 'delete' && <ConfirmModal danger title="Elimina bozza" text="La bozza e i file collegati verranno eliminati." confirmText="Elimina" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/contracts/${c.id}`); nav(`${BASE}/${KIND[c.kind].path}`); }} />}
       {modal?.type === 'cancel' && <PromptModal danger title="Annulla contratto" label="Motivazione" confirmText="Annulla contratto" onClose={() => setModal(null)} onConfirm={async (reason) => { await api.post(`/contracts/${c.id}/status`, { status: 'ANNULLATO', reason }); q.reload(); }} />}

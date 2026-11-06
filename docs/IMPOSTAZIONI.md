@@ -63,6 +63,8 @@ da `getCompany()`.
 | business | org_ext | legal_rep, signer, signer_role, contatti commerciali/service/procurement, condizioni di pagamento, portale, note | SPECIFICO | Dati del contratto. |
 | business | Impostazioni | company_name, company_legal_address, company_city, company_prov, company_vat, company_tax_code, company_capital, company_phone, company_fax, company_pec, ds_name, ds_title | CABLATO -> core | Sovrascritti da `getCompany()` in `getSettings()`, in sola lettura nella pagina, ignorati dal PUT. |
 | business | Impostazioni | lab_address, lr_*, ds_* (altri), rspp, rls, mc, protocolli, testi | SPECIFICO | Legale rappresentante, titoli del DS, sicurezza, contratti. |
+| business | Impostazioni (Business Hub) | hub_stallo_giorni, hub_ordini_giorni, hub_casella_*, hub_lettura_*, hub_cc_* | SPECIFICO | Soglie del CRM e caselle di linea (06/11/2026, docs/BUSINESS_HUB.md). |
+| business | accounts | anagrafica commerciale del DB Opportunità (tipologia, segmento, fornitore, priorità, fasi, valori) | SPECIFICO | Ragione sociale, indirizzo, email, PEC e telefono restano della Legal entity (`public.organizations`). |
 | finance | Impostazioni | company_name | CABLATO -> core | `legal_name`; in sola lettura. |
 | finance | Impostazioni | soglie, titoli, testi, mail_cc, prefisso | SPECIFICO | Poteri di firma. |
 | finance | Impostazioni (Scadenziario strutture, 28/10/2026) | schedule_alert_days (7), schedule_istat_pct (1.5), schedule_utility_growth_pct (0), schedule_notify_roles (CEO,CFO,SUPPORT) | SPECIFICO | Anticipo degli avvisi in app, ipotesi di rivalutazione ISTAT e di crescita delle utenze per la previsione, profili Payments che ricevono gli avvisi. Sedi e Legal entity (locatori, fornitori, IBAN) vengono dall'anagrafica unica; i beneficiari dall'anagrafica Payments: nessun dato ridigitato. Migrazione finance 002. |
@@ -212,3 +214,17 @@ docs/ANAGRAFICA.md, sezione Consensi.
   giorni; il job `referti:retention` elimina i PDF sorgente più vecchi, restano la scheda e i file prodotti.
 - Retail > Impostazioni > Set dimostrativo: le righe del set sono marcate (`demo`, migrazione retail 009); "Rimuovi" toglie solo quelle.
   In produzione caricamento e rimozione li fa solo il titolare, scrivendo il testo di conferma.
+
+## Business Hub: caselle di linea e soglie (06/11/2026)
+Variabili d'ambiente (facoltative): `BUSINESS_MAILBOX_SRV` (predefinita service@toscanadiagnostica.it), `BUSINESS_MAILBOX_PP`
+(network@toscanadiagnostica.it), `BUSINESS_MAILBOX_MDL` (mdl@toscanadiagnostica.it): casella letta e mittente delle email ai clienti della
+linea; se impostate prevalgono sull'indirizzo salvato in Business Hub > Impostazioni, che diventa in sola lettura. `BUSINESS_INBOX_MINUTES`
+intervallo del job `business:inbox` (10); `BUSINESS_AVVISI_MINUTES` intervallo del job `business:avvisi` (30). Impostazioni in app
+(`business.app_settings`, Business Hub > Impostazioni, Admin del modulo): `hub_casella_SRV|PP|MDL`, `hub_lettura_SRV|PP|MDL` ('true'),
+`hub_cc_SRV|PP|MDL` (copie fisse su ogni email inviata dal widget: SRV francesco.epifani@ e rosetta.greco@, PP francesco.epifani@ e
+silvia.sansoni@, MDL francesco.epifani@ e angelica.corradi@, precisazione del CEO del 06/11/2026), `hub_stallo_giorni` (45),
+`hub_ordini_giorni` (3); stato interno `hub_since_*`, `hub_ultima_lettura_*`, `hub_errore_*` (ignorato dal PUT). Richiede sull'app
+registration della Suite **Mail.Read** e **Mail.Send** applicativi con consenso amministratore e, se c'è una Application Access Policy,
+l'inclusione delle tre caselle. Con `MAIL_PROVIDER=log` gli invii restano nel registro email (esito REGISTRATO).
+`POST /api/business/inbox/simula` funziona solo con `NODE_ENV` diverso da production. Migrazioni: business 008_business_hub.sql, core
+041_business_hub.sql.

@@ -5,7 +5,7 @@ const P = (key, label, scoped = false) => ({ key, label, scoped });
 export const MODULES = [
   // ---- Aree: DIREZIONE, FINANCE, RETAIL_FLOW, OPERATIONS, HQS, PEOPLE (ordine deciso da Francesco il 24/10/2026)
   // ---- (i commenti di area sotto sono storici: l'area effettiva è nel campo area)
-  { key: 'business', area: 'RETAIL_FLOW', name: 'Contratti B2C/B2B', tagline: 'Punti prelievo, locazioni, service, medicina del lavoro', icon: 'contracts-b2b', kind: 'LEGACY', legacy_url: 'https://business.toscanadiagnostica.it', sort_order: 10,
+  { key: 'business', area: 'RETAIL_FLOW', name: 'Business Hub', tagline: 'Pipeline, clienti, contratti, contatti e criticità: la centrale del business', icon: 'business-hub', kind: 'LEGACY', legacy_url: 'https://business.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('ADMIN', 'Amministratore'), P('SERVICE', 'Service'), P('RETAIL', 'Retail'), P('MDL', 'Medicina del Lavoro'), P('HQS', 'HQS'), P('VIEWER', 'Sola lettura')] },
   { key: 'finance', area: 'FINANCE', name: 'Payments', tagline: 'Firma congiunta CEO e CFO, poteri per importo', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },

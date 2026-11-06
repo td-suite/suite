@@ -366,10 +366,10 @@ function EnvelopeModal({ rep, onClose, onDone }) {
   return (
     <Modal title={needs ? 'Registra la busta Mondialpol' : zero ? 'Chiusura della giornata a 0 euro' : 'Chiusura senza versamento'} onClose={onClose} footer={<>
       <button className="btn ghost" onClick={onClose}>Annulla</button>
-      <button className="btn" disabled={busy || !okConferme || !rep.has_system_pdf || (needs && (!code || !confirm))} onClick={go}>Registra</button>
+      <button className="btn" disabled={busy || !okConferme || (!rep.has_system_pdf && !(zero && ck.zero)) || (needs && (!code || !confirm))} onClick={go}>Registra</button>
     </>}>
       <ErrorBox error={err} />
-      {!rep.has_system_pdf && <div className="alert warn" style={{ marginBottom: 12 }}><b>Manca il PDF della chiusura cassa del gestionale (GIPO).</b> Caricalo nella sezione "Chiusura cassa del gestionale" prima di registrare: è obbligatorio.</div>}
+      {!rep.has_system_pdf && !(zero && ck.zero) && <div className="alert warn" style={{ marginBottom: 12 }}><b>Manca il PDF della chiusura cassa del gestionale (GIPO).</b> Caricalo nella sezione "Chiusura cassa del gestionale" prima di registrare: è obbligatorio{zero ? ', salvo cassa a zero confermata qui sotto' : ''}.</div>}
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div className="small muted" style={{ marginBottom: 6 }}>Riepilogo da confermare</div>
         <div className="line"><span>Contante da versare</span><b>{eur(rep.cash_to_deposit)}</b></div>

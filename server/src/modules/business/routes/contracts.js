@@ -129,6 +129,8 @@ export async function loadContract(id) {
   c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
   const cred = await one('SELECT portal_url, username, notes, updated_at, (password_enc IS NOT NULL) AS has_password FROM portal_credentials WHERE contract_id=$1', [id]);
   c.credentials = cred;
+  c.account_id = c.org_id && ['PP', 'SRV', 'MDL'].includes(c.kind) ? (await one('SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2', [c.org_id, c.kind]))?.id || null : null;
+  c.revisions = await many('SELECT r.id, r.version, r.status, r.motivo, r.at, r.snapshot, u.full_name AS user_name FROM contract_revisions r LEFT JOIN users u ON u.id=r.user_id WHERE r.contract_id=$1 ORDER BY r.at DESC', [id]);
   return c;
 }
 
@@ -160,6 +162,11 @@ r.get('/:id', ah(async (req, res) => res.json(await loadContract(Number(req.para
 export function validateData(kind, data) {
   return parse(DATA_SCHEMA[kind], data || {});
 }
+// Chiavi di contracts.data fuori dallo schema del form (es. data.pipeline e data.censimento dei pacchetti del 28/10/2026)
+export function datiNonDelForm(kind, data) {
+  const noti = new Set(Object.keys(DATA_SCHEMA[kind]?.shape || {}));
+  return Object.fromEntries(Object.entries(data || {}).filter(([k]) => !noti.has(k)));
+}
 
 r.post('/', ah(async (req, res) => {
   const d = parse(contractSchema, req.body);
@@ -187,20 +194,35 @@ r.post('/', ah(async (req, res) => {
 r.put('/:id', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
-  if (!editable(c.status)) throw bad('Il contratto è già firmato: per modificare i termini crea una nuova proposta');
+  // Business Hub (06/11/2026): oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO, anche i contratti caricati dai pacchetti come AgapeLab)
+  // la proposta la modifica solo un Admin del modulo, con una NUOVA REVISIONE: la versione precedente resta nello storico
+  // (contract_revisions) con il motivo, i documenti già generati non si cancellano. Cessati e annullati non si modificano.
+  let revisione = null;
+  if (!editable(c.status)) {
+    if (!isAdmin(req.user)) throw bad('Il contratto è già firmato: la proposta la modifica un Admin del modulo con una nuova revisione');
+    if (['CESSATO', 'ANNULLATO'].includes(c.status)) throw bad('Un contratto cessato o annullato non si modifica');
+    revisione = String(req.body?.motivo_revisione || '').trim();
+    if (revisione.length < 5) throw bad('Indica il motivo della revisione (almeno 5 caratteri)');
+  }
   const d = parse(contractSchema.partial().omit({ kind: true }), req.body);
-  const data = d.data !== undefined ? validateData(c.kind, d.data) : c.data;
+  // le chiavi di data che il form non conosce (pipeline e censimento dei pacchetti di caricamento) restano: zod le scarterebbe
+  const data = d.data !== undefined ? { ...datiNonDelForm(c.kind, c.data), ...validateData(c.kind, d.data) } : c.data;
   const orgId = d.org_id !== undefined ? d.org_id : c.org_id;
   const siteId = d.site_id !== undefined ? d.site_id : c.site_id;
   if (!orgId && !siteId) throw bad('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
   await checkOrg(orgId);
   await checkSite(c.kind, siteId, req.user);
+  if (revisione) {
+    await q('INSERT INTO contract_revisions (contract_id, version, status, snapshot, motivo, user_id) VALUES ($1,$2,$3,$4,$5,$6)',
+      [c.id, c.version, c.status, JSON.stringify({ title: c.title, org_id: c.org_id, site_id: c.site_id, proposal_date: c.proposal_date, start_date: c.start_date, end_date: c.end_date, notes: c.notes, data: c.data }), revisione, req.user.id]);
+    await q('UPDATE contracts SET version=version+1 WHERE id=$1', [c.id]);
+  }
   await q(`UPDATE contracts SET org_id=$2, site_id=$9, title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
     [c.id, orgId || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data), siteId || null]);
   // il fascicolo del contratto segue controparte e sede del contratto
   await q('UPDATE dossiers SET org_id=$2, site_id=$3, updated_at=now() WHERE contract_id=$1 AND (org_id IS DISTINCT FROM $2 OR site_id IS DISTINCT FROM $3)', [c.id, orgId || null, siteId || null]);
-  await addEvent(c.id, 'MODIFICATO', req.user.id);
-  await audit(req, 'CONTRACT_UPDATE', 'contract', c.id);
+  await addEvent(c.id, revisione ? 'REVISIONE' : 'MODIFICATO', req.user.id, revisione ? `Revisione v${c.version + 1}: ${revisione}` : null, revisione ? { version: c.version + 1 } : null);
+  await audit(req, revisione ? 'CONTRACT_REVISION' : 'CONTRACT_UPDATE', 'contract', c.id, revisione ? { version: c.version + 1, motivo: revisione } : undefined);
   res.json(await loadContract(c.id));
 }));
 
@@ -214,11 +236,19 @@ r.post('/:id/generate', ah(async (req, res) => {
   let c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
   if (c.kind === 'SEDE') throw bad('Per le sedi in locazione il contratto lo predispone il locatore: carica il contratto firmato');
-  if (!editable(c.status)) throw bad('Il documento è già stato sottoscritto: non si rigenera');
+  // oltre la proposta: solo l'Admin, sulla revisione appena salvata; i documenti delle versioni precedenti restano
+  const revisione = !editable(c.status);
+  if (revisione) {
+    if (!isAdmin(req.user)) throw bad('Il documento è già stato sottoscritto: lo rigenera un Admin del modulo dopo una nuova revisione');
+    if (['CESSATO', 'ANNULLATO'].includes(c.status)) throw bad('Un contratto cessato o annullato non si rigenera');
+    if (c.files.some((f) => f.category === 'GENERATO_DOCX' && f.version === c.version)) throw bad(`Il documento della versione ${c.version} esiste già: per cambiare i termini salva prima una nuova revisione con "Modifica"`);
+  }
   const s = await getSettings();
   const errors = completenessErrors(c);
   if (errors.length) throw bad(`Dati incompleti. ${errors.join(' ')}`);
-  await tx(async (client) => {
+  if (revisione) {
+    if (!c.protocol) await tx(async (client) => { const protocol = await nextProtocol(c.kind, Number(String(c.proposal_date).slice(0, 4)), s, client); await client.query('UPDATE contracts SET protocol=$2 WHERE id=$1', [c.id, protocol]); });
+  } else await tx(async (client) => {
     if (!c.protocol) {
       const protocol = await nextProtocol(c.kind, Number(String(c.proposal_date).slice(0, 4)), s, client);
       await client.query('UPDATE contracts SET protocol=$2 WHERE id=$1', [c.id, protocol]);
@@ -241,7 +271,7 @@ r.post('/:id/generate', ah(async (req, res) => {
   if (await pdfAvailable()) {
     try { await ins('GENERATO_PDF', `${base}.pdf`, 'application/pdf', await docxToPdf(docx)); } catch (e) { pdfError = e.message; }
   } else pdfError = 'LibreOffice non disponibile: generato solo il DOCX';
-  await addEvent(c.id, 'GENERATO', req.user.id, pdfError, { protocol: c.protocol, version: c.version });
+  await addEvent(c.id, 'GENERATO', req.user.id, [revisione ? `Revisione v${c.version} (stato ${c.status} invariato, versioni precedenti conservate)` : null, pdfError].filter(Boolean).join(' · ') || null, { protocol: c.protocol, version: c.version, revisione });
   await audit(req, 'CONTRACT_GENERATE', 'contract', c.id, { protocol: c.protocol, version: c.version });
   res.json({ ...(await loadContract(c.id)), pdfError });
 }));
@@ -333,6 +363,21 @@ r.post('/:id/status', ah(async (req, res) => {
     cancelled_at = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN now() ELSE cancelled_at END, cancel_reason = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN $4 ELSE cancel_reason END, updated_at=now() WHERE id=$1`, [c.id, status, date, reason]);
   await addEvent(c.id, status, req.user.id, reason);
   await audit(req, `CONTRACT_${status}`, 'contract', c.id, { reason });
+  res.json(await loadContract(c.id));
+}));
+
+// Cambio di stato manuale (Business Hub, 06/11/2026): Admin del modulo o Owner della Suite, qualunque stato, con motivazione.
+// Non tocca il cliente attivo dell'account (lo dice solo il CEO dalla scheda account).
+r.post('/:id/stato-manuale', ah(async (req, res) => {
+  const c = await loadContract(Number(req.params.id));
+  if (!(isAdmin(req.user) || req.suiteUser?.level === 'OWNER')) throw bad('Il cambio di stato manuale è riservato all\'Admin del modulo');
+  const { status, motivo } = parse(z.object({ status: z.enum(['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO', 'ANNULLATO']), motivo: z.string().trim().min(5, 'motivazione di almeno 5 caratteri').max(1000) }), req.body);
+  if (status === c.status) throw bad('Il contratto è già in questo stato');
+  if (status === 'AUTORIZZATO' && !['PP', 'SEDE'].includes(c.kind)) throw bad('Lo stato Autorizzato riguarda punti prelievo e sedi');
+  await q(`UPDATE contracts SET status=$2, cancelled_at = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN coalesce(cancelled_at, now()) ELSE NULL END,
+    cancel_reason = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN $3 ELSE NULL END, updated_at=now() WHERE id=$1`, [c.id, status, motivo]);
+  await addEvent(c.id, 'STATO_MANUALE', req.user.id, `${c.status} → ${status}: ${motivo}`, { da: c.status, a: status });
+  await audit(req, 'CONTRACT_STATUS_MANUAL', 'contract', c.id, { da: c.status, a: status, motivo });
   res.json(await loadContract(c.id));
 }));
 

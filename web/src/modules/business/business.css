@@ -351,3 +351,68 @@ label.btn { cursor: pointer; }
 @media (max-width: 860px) { .g2, .g3, .g4, .g5 { grid-template-columns: minmax(0, 1fr); } }
 .card > .bd { overflow-x: auto; }
 .t td { overflow-wrap: anywhere; }
+
+/* ---------------- Business Hub (06/11/2026) ---------------- */
+.mt { margin-top: 14px; }
+.page.wide { max-width: none; }
+.click-card { cursor: pointer; }
+.click-card .kpi { height: 100%; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* funnel del cruscotto */
+.funnel { display: flex; flex-direction: column; gap: 6px; }
+.funnel .frow { display: grid; grid-template-columns: 150px 1fr 44px 96px; gap: 10px; align-items: center; padding: 3px 4px; border-radius: 8px; cursor: pointer; }
+.funnel .frow:hover { background: #f6fafb; }
+.funnel .fl { font-size: 12.5px; font-weight: 700; color: var(--jet); }
+.funnel .fb { height: 14px; background: var(--teal-050); border-radius: 6px; overflow: hidden; }
+.funnel .fb i { display: block; height: 100%; border-radius: 6px; background: var(--teal); }
+.funnel .fb i.t-grey { background: #b8c6ca; } .funnel .fb i.t-blue { background: var(--blue); } .funnel .fb i.t-mauve { background: #b48ad0; } .funnel .fb i.t-green { background: var(--green); } .funnel .fb i.t-teal { background: var(--teal); }
+.funnel .fn { font-weight: 750; } .funnel .fe { font-size: 12px; color: var(--muted); }
+/* pipeline a colonne */
+.kanban { display: grid; grid-template-columns: 170px repeat(7, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.kcol { background: #eef3f4; border: 1px solid var(--line); border-radius: 12px; min-height: 240px; display: flex; flex-direction: column; max-height: calc(100vh - 250px); }
+.kcol.over { outline: 2px dashed var(--teal); background: var(--teal-050); }
+.kcol.k0.chiusa { min-height: 120px; }
+.kcol .khd { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.kcol .kt { font-size: 12.5px; font-weight: 750; color: var(--jet); }
+.kcol .kn { margin-left: 6px; font-size: 11.5px; font-weight: 700; background: #fff; border-radius: 999px; padding: 1px 7px; color: var(--teal); }
+.kcol .kbody { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.kcard { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; cursor: grab; box-shadow: 0 1px 2px rgba(1, 33, 44, .05); }
+.kcard:hover { border-color: var(--blue); }
+.kcard.stallo { border-left: 3px solid var(--red); }
+.kcard .kname { font-weight: 750; font-size: 13px; color: var(--jet); line-height: 1.25; }
+.kcard .kmeta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.kcard .kbadges { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
+.kcard .kbadges .badge { font-size: 10.5px; padding: 2px 7px; }
+.kcard .kfoot { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+/* scheda account */
+.steps.hub .s { flex-direction: row; align-items: center; }
+.steps.hub .s span { display: flex; flex-direction: column; line-height: 1.2; }
+.steps.hub .s small { font-weight: 600; font-size: 11px; color: var(--muted); }
+.hubhead .kpi select { height: 32px; }
+.tabs.scroll { overflow-x: auto; flex-wrap: nowrap; }
+.tabs.scroll button { white-space: nowrap; }
+.tabs .tcount { margin-left: 6px; font-size: 11px; background: var(--teal-050); color: var(--teal); border-radius: 999px; padding: 1px 7px; }
+.diario { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.diario li { border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: 10px; padding: 10px 12px; background: #fff; }
+.diario li.t-SISTEMA { border-left-color: #b8c6ca; background: #fbfcfc; }
+.diario li.t-CRITICITA { border-left-color: var(--red); }
+.diario li.t-EMAIL_IN, .diario li.t-EMAIL_OUT { border-left-color: var(--teal); }
+.diario .dh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.diario .dt { white-space: pre-wrap; margin-top: 6px; font-size: 13.5px; }
+/* vista DB Opportunità */
+.dbopp table.t { width: max-content; min-width: 100%; }
+.dbopp .t th, .dbopp .t td { padding: 6px 9px; font-size: 12.5px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbopp .t thead tr:first-child th { top: 0; z-index: 2; }
+.dbopp .t thead tr.fil th { top: 34px; z-index: 2; padding: 4px 6px; }
+.dbopp .t thead tr.fil input, .dbopp .t thead tr.fil select { height: 26px; font-size: 12px; padding: 0 6px; min-width: 80px; }
+.dbopp .t th.suite { color: var(--teal); }
+.colsel { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 14px; }
+@media (max-width: 860px) { .funnel .frow { grid-template-columns: 110px 1fr 36px; } .funnel .fe { display: none; } }
+
+/* Pacchetto di benvenuto (scheda account) */
+.pk-sez { list-style: none; margin: 0; padding: 0; }
+.pk-sez li { padding: 7px 0; border-bottom: 1px solid var(--line, #e3eaec); }
+.pk-sez li.off .strong { color: var(--muted, #7a8a8f); }
+.pk-pdf { width: 100%; height: 720px; border: 0; display: block; background: #f3f5f6; }
+.t tr.sel td { background: rgba(66, 178, 191, .08); }
+@media (max-width: 860px) { .pk-pdf { height: 480px; } }

@@ -187,12 +187,13 @@ r.post('/:id/envelope', countOnly, ah(async (req, res) => {
   const nPos = (await one('SELECT count(*)::int AS n, coalesce(sum(amount),0)::numeric AS tot FROM pos_receipts WHERE report_id=$1', [rep.id]));
   const nTr = (await one('SELECT count(*)::int AS n, coalesce(sum(amount),0)::numeric AS tot FROM bank_transfers WHERE report_id=$1', [rep.id]));
   const conf = parse(z.object({ conferma_dati: z.boolean().optional(), conferma_no_pos: z.boolean().optional(), conferma_no_bonifici: z.boolean().optional(), conferma_zero: z.boolean().optional() }).passthrough(), req.body || {});
-  if (!rep.system_pdf) throw bad('Carica prima il PDF della chiusura cassa del gestionale (GIPO): è obbligatorio per registrare la distinta');
+  const giornataZero = Number(rep.cash_to_deposit) === 0 && nPos.n === 0 && nTr.n === 0;
+  if (giornataZero && !conf.conferma_zero) throw bad('Giornata a 0 euro: conferma la chiusura senza incassi');
+  // Con la cassa a zero confermata il PDF del gestionale non serve (CEO, 06/11/2026): non c'è chiusura da riscontrare
+  if (!giornataZero && !rep.system_pdf) throw bad('Carica prima il PDF della chiusura cassa del gestionale (GIPO): è obbligatorio per registrare la distinta');
   if (!conf.conferma_dati) throw bad('Conferma che i dati inseriti sono corretti');
   if (nPos.n === 0 && !conf.conferma_no_pos) throw bad('Nessuno scontrino POS inserito: conferma che nella giornata non ci sono stati incassi POS');
   if (nTr.n === 0 && !conf.conferma_no_bonifici) throw bad('Nessun bonifico inserito: conferma che nella giornata non ci sono stati bonifici');
-  const giornataZero = Number(rep.cash_to_deposit) === 0 && nPos.n === 0 && nTr.n === 0;
-  if (giornataZero && !conf.conferma_zero) throw bad('Giornata a 0 euro: conferma la chiusura senza incassi');
   let code = null;
   if (needsEnvelope) {
     const d = parse(z.object({ code: z.string().trim(), confirm: z.string().trim() }).passthrough(), req.body);
