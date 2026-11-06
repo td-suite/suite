@@ -32,7 +32,12 @@ export default function Contracts({ kind }) {
     <div className="page">
       <div className="page-head">
         <div><h1>{kind ? KIND[kind].label : 'Tutti i contratti'}</h1><div className="sub">{kind ? SUB[kind] : 'Punti prelievo, service di laboratorio e medicina del lavoro in un unico elenco.'}</div></div>
-        {kind && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>{kind === 'SEDE' ? '+ Nuova sede' : '+ Nuova proposta'}</Link>}
+        <div className="row" style={{ gap: 8 }}>
+          {/* Menu del CEO (06/11/2026): i fascicoli si aprono dai Punti Prelievo; cruscotto e pipeline della linea dalle sue pagine */}
+          {kind === 'PP' && <><Link className="btn ghost" to={`${BASE}/punti-prelievo`}><Icon name="pin" />Punti Prelievo</Link><Link className="btn ghost" to={`${BASE}/fascicoli`}><Icon name="folder" />Fascicoli autorizzazione</Link></>}
+          {['PP', 'MDL'].includes(kind) && <><Link className="btn ghost" to={`${BASE}?linea=${kind}`}>Cruscotto {kind === 'PP' ? 'Punti Prelievo' : 'MDL'}</Link><Link className="btn ghost" to={`${BASE}/pipeline?linea=${kind}`}>Pipeline {kind === 'PP' ? 'Punti Prelievo' : 'MDL'}</Link></>}
+          {kind && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>{kind === 'SEDE' ? '+ Nuova sede' : '+ Nuova proposta'}</Link>}
+        </div>
       </div>
       <div className="filters">
         <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="controparte, sede TD, protocollo…" style={{ minWidth: 260 }} /></Field>

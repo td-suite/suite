@@ -13,7 +13,8 @@ function sectionFor(pathname, user) {
   const mod = moduleFor(pathname);
   if (mod) {
     const raw = vociModulo(mod, user)
-      .map((i) => (i.group ? i : { ...i, to: `/${mod.key}${i.to ? `/${i.to}` : ''}` }));
+      // una voce con "?" (es. Cruscotto e Pipeline del Business Hub filtrati su una linea) porta il filtro nell'indirizzo
+      .map((i) => (i.group ? i : { ...i, to: `/${mod.key}${i.to ? (i.to.startsWith('?') ? i.to : `/${i.to}`) : ''}` }));
     // niente intestazioni di gruppo senza voci sotto
     const items = raw.filter((i, idx) => !i.group || raw.slice(idx + 1).some((n, j) => !n.group && !raw.slice(idx + 1, idx + 1 + j).some((x) => x.group)));
     return { key: mod.key, kicker: mod.kicker || 'Suite TD', title: mod.title || mod.key, color: AREA_COLORS[mod.area] || 'var(--teal)', items };

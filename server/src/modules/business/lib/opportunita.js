@@ -302,12 +302,14 @@ export function fasiDaContratto(c) {
   return { phase_dates: out, fonte: 'date del contratto' };
 }
 export async function accountDaContratti(userId, { dryRun = false } = {}) {
-  const rows = await many(`SELECT c.id, c.kind, c.org_id, c.status, c.protocol, c.title, c.proposal_date, c.signed_at, c.start_date, c.data, o.name AS org_name
-    FROM contracts c JOIN public.organizations o ON o.id=c.org_id
-    WHERE c.kind IN ('PP','SRV','MDL') AND c.status NOT IN ('ANNULLATO') AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.organization_id=c.org_id AND a.linea=c.kind)
+  // Punti Prelievo (06/11/2026): un account per punto, cioè per Legal entity e sede del contratto (pp_site_id); le altre linee per Legal entity
+  const rows = await many(`SELECT c.id, c.kind, c.org_id, c.site_id, c.status, c.protocol, c.title, c.proposal_date, c.signed_at, c.start_date, c.data, o.name AS org_name, s.kind AS site_kind
+    FROM contracts c JOIN public.organizations o ON o.id=c.org_id LEFT JOIN public.sites s ON s.id=c.site_id
+    WHERE c.kind IN ('PP','SRV','MDL') AND c.status NOT IN ('ANNULLATO') AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.linea=c.kind
+      AND ((a.organization_id=c.org_id AND (c.kind <> 'PP' OR a.pp_site_id IS NULL OR a.pp_site_id IS NOT DISTINCT FROM c.site_id)) OR (c.kind='PP' AND c.site_id IS NOT NULL AND a.pp_site_id=c.site_id)))
     ORDER BY c.org_id, c.kind, c.created_at`);
   const perChiave = new Map();
-  for (const c of rows) { const k = `${c.org_id}:${c.kind}`; if (!perChiave.has(k)) perChiave.set(k, []); perChiave.get(k).push(c); }
+  for (const c of rows) { const k = `${c.org_id}:${c.kind}${c.kind === 'PP' ? `:${c.site_id || 0}` : ''}`; if (!perChiave.has(k)) perChiave.set(k, []); perChiave.get(k).push(c); }
   const out = [];
   for (const list of perChiave.values()) {
     const c = list.find((x) => ['ATTIVO', 'FIRMATO', 'AUTORIZZATO'].includes(x.status)) || list[0];
@@ -315,14 +317,16 @@ export async function accountDaContratti(userId, { dryRun = false } = {}) {
     out.push({ org_id: c.org_id, org_name: c.org_name, linea: c.kind, contratti: list.map((x) => ({ id: x.id, protocol: x.protocol, status: x.status })), fase: faseEffettiva(pd, false), fonte });
     if (dryRun) continue;
     const p = c.data?.pipeline || {};
-    const id = (await one(`INSERT INTO accounts (organization_id, linea, prospect, fase_corrente, phase_dates, fatturato_fy_atteso, fatturato_2026, sconto_medio, prezzo_medio_esame, volume_fy_atteso, stato_cartella, created_by, import_key)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (organization_id, linea) DO NOTHING RETURNING id`,
+    const ppSite = c.kind === 'PP' && c.site_kind === 'PUNTO_PRELIEVI' ? c.site_id : null;
+    const ik = `contratti:${c.org_id}:${c.kind}${ppSite ? `:${ppSite}` : ''}`;
+    const id = (await one(`INSERT INTO accounts (organization_id, linea, prospect, fase_corrente, phase_dates, fatturato_fy_atteso, fatturato_2026, sconto_medio, prezzo_medio_esame, volume_fy_atteso, stato_cartella, created_by, import_key, pp_site_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING RETURNING id`,
     [c.org_id, c.kind, !list.some((x) => ['ATTIVO', 'FIRMATO', 'AUTORIZZATO'].includes(x.status)), faseEffettiva(pd, false), JSON.stringify(pd),
       p.fatturato_fy_atteso_eur ?? null, p.fatturato_2026_da_starting_eur ?? null, p.sconto_medio_pct_vs_listino ?? null, p.prezzo_medio_eur ?? null, p.volume_fy_atteso_esami_anno ?? null, p.stato_cartella ?? null,
-      userId, `contratti:${c.org_id}:${c.kind}`]))?.id;
+      userId, ik, ppSite]))?.id;
     if (!id) continue;
     await addActivity(id, { tipo: 'SISTEMA', oggetto: 'Account creato dai contratti esistenti', contract_id: c.id,
-      testo: testo([`Contratti della Legal entity su questa linea: ${list.map((x) => `${x.protocol || `#${x.id}`} (${x.status})`).join(', ')}.`, `Fasi da: ${fonte}.`]), dati: { import_key: `contratti:${c.org_id}:${c.kind}` } }, userId);
+      testo: testo([`Contratti della Legal entity su questa linea: ${list.map((x) => `${x.protocol || `#${x.id}`} (${x.status})`).join(', ')}.`, `Fasi da: ${fonte}.`]), dati: { import_key: ik } }, userId);
     if (list.some((x) => x.status === 'ATTIVO') || pd[7]) {
       await addActivity(id, { tipo: 'SISTEMA', oggetto: 'Cliente attivo: da confermare dal CEO', esito: 'DA_CONFERMARE', contract_id: c.id,
         testo: `Il contratto ${c.protocol || `#${c.id}`} è in stato ${c.status}${pd[7] ? ` e la pipeline indica Attivo / Starting dal ${pd[7]}` : ''}: il cliente attivo lo imposta il CEO dalla scheda account.`, dati: { import_key: `contratti:attivo:${c.org_id}:${c.kind}`, da_confermare: true } }, userId);

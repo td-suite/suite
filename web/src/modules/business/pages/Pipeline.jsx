@@ -48,7 +48,7 @@ export default function Pipeline() {
         <div className="kbody">
           {vis.map((a) => (
             <div key={a.id} className={`kcard ${a.stallo ? 'stallo' : ''}`} draggable onDragStart={() => setDrag(a.id)} onDragEnd={() => { setDrag(null); setOver(null); }} onClick={() => nav(`${BASE}/account/${a.id}`)}>
-              <div className="kname">{a.org_name}</div>
+              <div className="kname">{a.org_name}</div>{a.punto_nome && a.punto_nome !== a.org_name ? <div className="small muted">{a.punto_nome}</div> : null}
               <div className="kmeta">{[a.citta, a.prov && `(${a.prov})`].filter(Boolean).join(' ')}{a.n_sedi > 0 ? ` · ${a.n_sedi} strutture` : ''}</div>
               <div className="kbadges">
                 <Badge tone={LINEE[a.linea].tone}>{LINEE[a.linea].short}</Badge>

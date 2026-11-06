@@ -13,7 +13,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
-import { isExternal, filterRubricaRow, RUBRICA_PUBLIC_SQL, realignOrgPerimeters } from '../lib/esterni.js';
+import { isExternal, esternoInAttesa, filterRubricaRow, RUBRICA_PUBLIC_SQL, realignOrgPerimeters } from '../lib/esterni.js';
 import multer from 'multer';
 import { storeBuffer, sendFile, dropBlobs } from '../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
@@ -39,14 +39,15 @@ r.get('/home/modules', ah(async (req, res) => {
   const u = req.user;
   const active = await activeModuleKeys();   // moduli travasati (MIRROR/LIVE): si aprono dentro la Suite
   const external = isExternal(u);   // esterno (partner ospitante, cliente service): solo i widget con grant o aperti a tutti
+  const inAttesa = esternoInAttesa(u);   // accesso di un prospect prima della firma: nessun widget, nemmeno quelli aperti a tutti
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
     if (m.kind === 'PUBLIC') return external ? Boolean(u.grants[m.key]) : true;   // vetrine pubbliche: sempre raggiungibili dagli interni
-    if (m.open_to_all) return true;                       // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
+    if (m.open_to_all) return !inAttesa;                  // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
   }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : null), href: moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
   const areas = AREAS.map((a) => ({ ...a, modules: visible.filter((m) => m.area === a.key) })).filter((a) => a.modules.length);
-  res.json({ areas });
+  res.json({ areas, in_attesa_contratto: inAttesa || undefined });
 }));
 
 // Catalogo dei moduli (L7): completo agli amministratori; agli altri interni senza URL delle app e configurazione SSO; agli esterni
@@ -56,7 +57,8 @@ r.get('/modules', ah(async (req, res) => {
   if (isAdmin(req.user)) return res.json(rows.map((m) => ({ ...m, sso_secret: undefined, sso_configured: Boolean(m.sso_secret) })));
   const pub = (m) => ({ key: m.key, area: m.area, name: m.name, tagline: m.tagline, icon: m.icon, kind: m.kind, profiles: m.profiles, open_to_all: m.open_to_all, active: m.active, sort_order: m.sort_order });
   const esterno = isExternal(req.user);
-  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || m.open_to_all)).map(pub));
+  const inAttesa = esternoInAttesa(req.user);
+  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || (m.open_to_all && !inAttesa))).map(pub));
 }));
 r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
   const b = parse(z.object({ name: z.string().min(2).optional(), tagline: z.string().nullable().optional(), legacy_url: z.string().url().nullable().optional(),

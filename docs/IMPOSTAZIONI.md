@@ -64,6 +64,8 @@ da `getCompany()`.
 | business | Impostazioni | company_name, company_legal_address, company_city, company_prov, company_vat, company_tax_code, company_capital, company_phone, company_fax, company_pec, ds_name, ds_title | CABLATO -> core | Sovrascritti da `getCompany()` in `getSettings()`, in sola lettura nella pagina, ignorati dal PUT. |
 | business | Impostazioni | lab_address, lr_*, ds_* (altri), rspp, rls, mc, protocolli, testi | SPECIFICO | Legale rappresentante, titoli del DS, sicurezza, contratti. |
 | business | Impostazioni (Business Hub) | hub_stallo_giorni, hub_ordini_giorni, hub_casella_*, hub_lettura_*, hub_cc_* | SPECIFICO | Soglie del CRM e caselle di linea (06/11/2026, docs/BUSINESS_HUB.md). |
+| business | Impostazioni (Business Hub) | hub_pp_dest_*, hub_pp_dotazione_elenco | SPECIFICO | Processo Punti Prelievo: destinatari interni dell'avvio del punto prelievi ed elenco della dotazione (06/11/2026). |
+| cash | Impostazioni | default_cash_float | SPECIFICO | Fondo cassa predefinito di una sede nuova, letto dal Business Hub per l'email all'amministrazione quando la sede non è ancora configurata in Cash (06/11/2026). |
 | business | accounts | anagrafica commerciale del DB Opportunità (tipologia, segmento, fornitore, priorità, fasi, valori) | SPECIFICO | Ragione sociale, indirizzo, email, PEC e telefono restano della Legal entity (`public.organizations`). |
 | finance | Impostazioni | company_name | CABLATO -> core | `legal_name`; in sola lettura. |
 | finance | Impostazioni | soglie, titoli, testi, mail_cc, prefisso | SPECIFICO | Poteri di firma. |
@@ -228,3 +230,35 @@ registration della Suite **Mail.Read** e **Mail.Send** applicativi con consenso 
 l'inclusione delle tre caselle. Con `MAIL_PROVIDER=log` gli invii restano nel registro email (esito REGISTRATO).
 `POST /api/business/inbox/simula` funziona solo con `NODE_ENV` diverso da production. Migrazioni: business 008_business_hub.sql, core
 041_business_hub.sql.
+
+## Business Hub: processo Service (06/11/2026)
+Impostazioni in app (`business.app_settings`, Business Hub > Impostazioni > "processo Service", Admin del modulo, "Salva impostazioni"):
+`hub_offerta_validita_giorni` (60, validità proposta nell'offerta economica), `hub_b2b_token_giorni` (60, validità del collegamento alla
+form online, rinnovabile dalla scheda account), `hub_dest_contrattualizzazione` (francesco.epifani@ e rosetta.greco@: email "Avvenuta
+contrattualizzazione"), `hub_dest_laboratorio` (laboratorio@ e valentina.zezza@: email "Nuovo cliente contrattualizzato"),
+`hub_giorni_lavorativi` (250: volumi giornalieri = volume FY atteso / giorni, se l'account non ha "Volumi giornalieri attesi"),
+`hub_richiamo_attivo` ('false': interruttore generale del richiamo dei prospect, lo accende il CEO), `hub_richiamo_giorni` (60: il CEO
+ha scritto "ogni 60 mesi", inteso come **ogni 60 giorni, modificabile**), `hub_richiamo_limite` (20 invii al giorno),
+`hub_richiamo_recapiti` (francesco.epifani@ e rosetta.greco@: nome, ruolo e telefono si leggono dall'anagrafica; il primo è l'indirizzo
+"a cui scrivere" oltre a service@). Stato interno `hub_richiamo_ultimo_giorno` (ignorato dal PUT).
+Con le route dedicate (Admin del modulo): `flusso.modelli` (JSON, solo i testi modificati: oggetto e testo del kit di proposta, della
+email interna, del benvenuto al cliente, dell'email al laboratorio, del richiamo, lettera di presentazione del pacchetto;
+`GET|PUT /api/business/hub/flusso/modelli`, "Ripristina i testi predefiniti"), `b2b.allegati` (JSON per linea: allegati del contratto
+richiesti nella form, titolo e obbligatorio; il contratto firmato c'è sempre; `GET|PUT /api/business/hub/b2b/allegati`),
+`listino.mapping` (mapping delle colonne del listino StudioLAB scelto a video, `DELETE /api/business/hub/listino/mapping` lo azzera).
+Job `business:richiamo-prospect` (controllo ogni ora, invio una volta al giorno dopo le 9 ora di Roma, solo con l'interruttore acceso e
+il modulo LIVE). Migrazione: business 010_service_flow.sql.
+
+## Business Hub: processo Punti Prelievo (06/11/2026)
+Impostazioni in app (`business.app_settings`, Business Hub > Impostazioni > "processo Punti Prelievo", Admin del modulo, "Salva
+impostazioni"; indirizzi separati da virgola, validati): `hub_pp_dest_conferma` (francesco.epifani@ e silvia.sansoni@: b) "Contratto punto
+prelievi firmato"), `hub_pp_dest_avvio` (laboratorio@ e valentina.zezza@: c) "Avvio del nuovo punto prelievi"), `hub_pp_dest_dotazione`
+(valentina.zezza@: e) dotazione), `hub_pp_dest_amministrazione` (amministrazione@: f) fondo cassa e POS), `hub_pp_dest_rifiuti`
+(iacopo.cupelli@: g) rifiuti speciali), `hub_pp_dotazione_elenco` (una voce per riga: "Acquisto di un PC fisso", "Ordine della stampante
+RICOH", "Boccione Culligan"; va nell'oggetto e nel testo dell'email della dotazione, senza prezzi né fornitori). Mittente sempre la
+casella della linea (`hub_casella_PP`, network@) con le copie fisse `hub_cc_PP`; l'invito con la password provvisoria parte senza copie.
+I testi sono nei modelli `flusso.modelli` (schede "PP ·": contratto al partner, credenziali e benvenuto al partner, contratto firmato
+interna, avvio al laboratorio, dotazione, fondo cassa e POS, rifiuti speciali) con i segnaposto; gli allegati richiesti nella form del
+partner sono in `b2b.allegati` (linea PP). Cash > Impostazioni: `default_cash_float` (vuoto = "da definire"), usato solo se la sede
+del punto non è configurata in Cash. Job `business:avvio-pp` (ogni 30 minuti, modulo LIVE): riprende i passi in attesa della sede o della
+data; i passi non riusciti aspettano "Riprova". Migrazione: business 011_pp_flow.sql.

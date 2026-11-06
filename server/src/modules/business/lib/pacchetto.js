@@ -21,10 +21,12 @@ export const SEZIONI = [
   { key: 'indice', titolo: 'Indice', fissa: true },
   { key: 'lettera', titolo: 'Lettera di benvenuto' },
   { key: 'offerta', titolo: 'Lettera di offerta' },
+  { key: 'listino', titolo: 'Offerta economica', linee: ['SRV'] },          // dal listino StudioLAB del cliente (processo Service, 06/11/2026)
   { key: 'portale', titolo: 'Il Portale Service e i servizi digitali', linee: ['SRV'] },
   { key: 'network', titolo: 'La rete Toscana Diagnostica', linee: ['PP'] },
   { key: 'mdl', titolo: 'La Medicina del Lavoro', linee: ['MDL'] },
   { key: 'credenziali', titolo: 'Accesso al Portale' },
+  { key: 'studiolab', titolo: 'Credenziali StudioLAB', linee: ['SRV'] },    // portale dei referti (contratto della linea o Legal entity)
   { key: 'avvio', titolo: 'I primi 30-60-90 giorni' },
   { key: 'referente', titolo: 'Il vostro referente dedicato' },
   { key: 'diversi', titolo: 'Cosa ci rende diversi' },
@@ -42,14 +44,27 @@ export function titoloOfferta(linea, tipo) {
   return 'Lettera di offerta';
 }
 
+// Varianti (processo Service, 06/11/2026): BENVENUTO (il pacchetto di sempre), KIT (kit di proposta: lettera di presentazione e invito,
+// offerta, credenziali Suite e StudioLAB), PROSPECT (richiamo periodico: presentazione senza credenziali né offerta)
+export const VARIANTI = ['BENVENUTO', 'KIT', 'PROSPECT'];
+const SOLO_CLIENTE = ['offerta', 'listino', 'credenziali', 'studiolab', 'avvio', 'checklist'];
+
 /**
  * Composizione del pacchetto: [{ key, titolo, inclusa, fissa, motivo }] per le sezioni della linea, nell'ordine di stampa.
- * scelte: { [key]: false } per escludere (le fisse restano); disp: { offerta: 'PDF'|'ECONOMICA'|null } (null = nessuna offerta
- * generata né dati della proposta: la sezione si omette con il motivo).
+ * scelte: { [key]: false } per escludere (le fisse restano); disp: { offerta: 'PDF'|'ECONOMICA'|null (null = nessuna offerta generata
+ * né dati della proposta: la sezione si omette con il motivo), listino: offerta economica dal listino sì/no, studiolab: credenziali
+ * StudioLAB sì/no (assente = come prima: le credenziali del portale referti restano nella pagina degli accessi), variante }.
  */
 export function componiSezioni(linea, scelte = {}, disp = {}) {
+  const variante = VARIANTI.includes(disp.variante) ? disp.variante : 'BENVENUTO';
   return sezioniLinea(linea).map((s) => {
     const out = { key: s.key, titolo: s.titolo, fissa: Boolean(s.fissa), inclusa: true, motivo: null };
+    if (variante === 'PROSPECT' && SOLO_CLIENTE.includes(s.key)) { out.inclusa = false; out.motivo = 'Versione di presentazione per i prospect: senza offerta né credenziali'; return out; }
+    if (variante === 'PROSPECT' && s.key === 'referente' && disp.owner === false) { out.inclusa = false; out.motivo = 'Nessun owner assegnato all\'account: i contatti sono nella lettera'; return out; }
+    if (s.key === 'listino' && !disp.listino) { out.inclusa = false; out.motivo = 'Nessuna offerta economica generata dal listino StudioLAB del cliente'; return out; }
+    if (s.key === 'studiolab' && !disp.studiolab) { out.inclusa = false; out.motivo = disp.studiolab === undefined ? 'Credenziali StudioLAB nella pagina degli accessi' : 'Nessuna credenziale StudioLAB registrata (contratto della linea o Legal entity)'; return out; }
+    if (s.key === 'offerta' && disp.offerta === 'ECONOMICA' && disp.listino) { out.inclusa = false; out.motivo = 'Sostituita dall\'offerta economica dal listino StudioLAB'; return out; }
+    if (s.key === 'lettera' && variante !== 'BENVENUTO') out.titolo = 'Lettera di presentazione';
     if (s.key === 'offerta') {
       out.titolo = titoloOfferta(linea, disp.offerta);
       if (!disp.offerta) { out.inclusa = false; out.motivo = 'Nessuna lettera di offerta generata per il contratto dell\'account e nessun dato della proposta (listino, sconto, prezzo medio, volume)'; return out; }

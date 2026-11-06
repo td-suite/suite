@@ -129,7 +129,9 @@ export async function loadContract(id) {
   c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
   const cred = await one('SELECT portal_url, username, notes, updated_at, (password_enc IS NOT NULL) AS has_password FROM portal_credentials WHERE contract_id=$1', [id]);
   c.credentials = cred;
-  c.account_id = c.org_id && ['PP', 'SRV', 'MDL'].includes(c.kind) ? (await one('SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2', [c.org_id, c.kind]))?.id || null : null;
+  // Punti Prelievo: l'account del punto con la stessa sede, poi quello senza sede della Legal entity
+  c.account_id = c.org_id && ['PP', 'SRV', 'MDL'].includes(c.kind) ? (await one(`SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2
+    ORDER BY CASE WHEN $2='PP' AND pp_site_id IS NOT DISTINCT FROM $3::int THEN 0 WHEN pp_site_id IS NULL THEN 1 ELSE 2 END, id LIMIT 1`, [c.org_id, c.kind, c.site_id || null]))?.id || null : null;
   c.revisions = await many('SELECT r.id, r.version, r.status, r.motivo, r.at, r.snapshot, u.full_name AS user_name FROM contract_revisions r LEFT JOIN users u ON u.id=r.user_id WHERE r.contract_id=$1 ORDER BY r.at DESC', [id]);
   return c;
 }

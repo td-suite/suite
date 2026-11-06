@@ -23,11 +23,19 @@ import hubRoutes from './routes/hub.js';
 import opportunitaRoutes from './routes/opportunita.js';
 import caselleRoutes from './routes/caselle.js';
 import pacchettoRoutes from './routes/pacchetto.js';
+import listinoRoutes from './routes/listino.js';
+import processoRoutes from './routes/processo.js';
+import { mountB2b } from './routes/b2b.js';
+import { eseguiRichiamo } from './lib/richiamo.js';
 import { registerJob } from '../../lib/jobs.js';
 import { pollCaselle } from './lib/caselle.js';
 import { inviaAvvisi } from './lib/avvisi.js';
+import { riprendiAvvii } from './lib/puntoPrelievi.js';
 
 const KEY = 'business';
+
+// Form online pubblica del processo Service (/api/business/b2b/<token>): prima della sessione, senza login (routes/b2b.js)
+export function mountPublic(app) { mountB2b(app); }
 
 export default function mount(app) {
   const r = Router();
@@ -45,7 +53,8 @@ export default function mount(app) {
       const f = await one(`SELECT count(*)::int AS n FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')`);
       const e = await one(`SELECT count(*)::int AS n FROM email_in WHERE stato='DA_ASSEGNARE'`);
       const k = await one(`SELECT count(DISTINCT x.account_id)::int AS n FROM activities x JOIN accounts a ON a.id=x.account_id WHERE x.esito='DA_CONFERMARE' AND NOT a.cliente_attivo`);
-      res.json({ contratti_in_scadenza: c.n, fascicoli_aperti: f.n, email_da_assegnare: e.n, da_confermare: k.n });
+      const v = await one(`SELECT count(DISTINCT account_id)::int AS n FROM documenti WHERE da_verificare AND account_id IS NOT NULL`);
+      res.json({ contratti_in_scadenza: c.n, fascicoli_aperti: f.n, email_da_assegnare: e.n, da_confermare: k.n, da_verificare: v.n });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {
@@ -69,6 +78,8 @@ export default function mount(app) {
   r.use('/hub', hubRoutes);      // CRM: account, fasi, cliente attivo, diario, referenti, criticità, documenti, email, cruscotto
   r.use('/hub', opportunitaRoutes); // vista DB Opportunità con export, import del file del CEO
   r.use('/hub', pacchettoRoutes);   // Pacchetto di benvenuto: composizione, generazione del PDF unico, modelli dei testi
+  r.use('/hub', listinoRoutes);     // Listino StudioLAB per cliente (versioni) e Offerta economica in PDF
+  r.use('/hub', processoRoutes);    // processo Service: kit di proposta, form online, contrattualizzazione, clienti, richiamo dei prospect
   r.use(caselleRoutes);          // /hub/caselle (stato e prove), /inbox/simula (collaudo)
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
@@ -85,4 +96,8 @@ export default function mount(app) {
   const live = async () => (await getModuleState(KEY)).mode === 'LIVE';
   registerJob(`${KEY}:inbox`, config.inboxMinutes, async () => (await live() ? pollCaselle() : { skipped: true, reason: 'modulo non LIVE' }));
   registerJob(`${KEY}:avvisi`, config.avvisiMinutes, async () => (await live() ? inviaAvvisi() : { skipped: true, reason: 'modulo non LIVE' }));
+  // Richiamo dei prospect: controllo ogni ora, invio una volta al giorno dopo le 9 e solo con l'interruttore acceso (lib/richiamo.js)
+  registerJob(`${KEY}:richiamo-prospect`, 60, async () => (await live() ? eseguiRichiamo() : { skipped: true, reason: 'modulo non LIVE' }));
+  // Punti Prelievo: ripresa dei passi dell'avvio in attesa della sede o della data (mai i non riusciti, che aspettano "Riprova")
+  registerJob(`${KEY}:avvio-pp`, 30, async () => (await live() ? riprendiAvvii() : { skipped: true, reason: 'modulo non LIVE' }));
 }

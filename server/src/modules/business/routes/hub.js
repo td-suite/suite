@@ -30,7 +30,8 @@ function richiediLinea(req, linea) { if (!puoLinea(req, linea)) throw forbidden(
 
 export const ACCOUNT_SELECT = `SELECT a.*, o.name AS org_name, o.kind AS org_kind, o.code AS org_code, o.vat_number, o.address AS org_address, o.zip AS org_zip,
     coalesce(o.city, a.sedi->0->>'citta') AS citta, coalesce(o.province, a.sedi->0->>'prov') AS prov, o.email AS org_email, o.pec AS org_pec, o.phone AS org_phone, o.active AS org_active,
-    uo.full_name AS owner_name, ua.full_name AS attivo_da_name, jsonb_array_length(a.sedi) AS n_sedi
+    uo.full_name AS owner_name, ua.full_name AS attivo_da_name, jsonb_array_length(a.sedi) AS n_sedi,
+    CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome
   FROM accounts a JOIN public.organizations o ON o.id=a.organization_id
   LEFT JOIN public.users uo ON uo.id=a.owner_user_id LEFT JOIN public.users ua ON ua.id=a.attivo_da_user`;
 
@@ -73,6 +74,7 @@ r.get('/accounts', ah(async (req, res) => {
   const rows = await many(`SELECT a.id, a.organization_id, o.name AS org_name, a.linea, a.prospect, a.gruppo, a.tipologia, a.segmento_lab, coalesce(o.city, a.sedi->0->>'citta') AS citta,
       coalesce(o.province, a.sedi->0->>'prov') AS prov, a.priorita, a.fase_corrente, a.phase_dates, a.owner_user_id, uo.full_name AS owner_name, a.prossima_azione, a.data_prossima_azione,
       a.fatturato_fy_atteso, a.fatturato_2026, a.cliente_attivo, a.attivo_dal, jsonb_array_length(a.sedi) AS n_sedi, a.fornitore_attuale, a.situazione_fornitore, a.updated_at,
+      CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome,
       (SELECT count(*)::int FROM contracts c WHERE c.org_id=a.organization_id AND c.kind=a.linea AND c.status<>'ANNULLATO') AS n_contratti,
       (SELECT max(x.at) FROM activities x WHERE x.account_id=a.id AND x.tipo<>'SISTEMA') AS ultimo_contatto,
       (SELECT count(*)::int FROM criticita k WHERE k.account_id=a.id AND k.chiusa_at IS NULL) AS criticita_aperte,
@@ -107,7 +109,7 @@ r.get('/accounts/:id', ah(async (req, res) => {
       FROM contracts c LEFT JOIN public.sites s ON s.id=c.site_id WHERE c.org_id=$1 ORDER BY (c.kind=$2) DESC, c.created_at DESC`, [a.organization_id, a.linea]),
     many(`SELECT d.id, d.status, coalesce(d.title, c.title, s.name) AS title, d.submitted_at, d.authorized_at, d.authorization_ref, s.name AS site_name, c.protocol
       FROM dossiers d LEFT JOIN contracts c ON c.id=d.contract_id LEFT JOIN public.sites s ON s.id=d.site_id WHERE d.org_id=$1 ORDER BY d.created_at DESC`, [a.organization_id]),
-    many(`SELECT d.id, d.categoria, d.filename, d.mime, d.size, d.created_at, d.activity_id, u.full_name AS uploaded_by_name FROM documenti d LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.account_id=$1 ORDER BY d.created_at DESC`, [a.id]),
+    many(`SELECT d.id, d.categoria, d.filename, d.mime, d.size, d.created_at, d.activity_id, d.etichetta, d.da_verificare, u.full_name AS uploaded_by_name FROM documenti d LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.account_id=$1 ORDER BY d.created_at DESC`, [a.id]),
     many(`SELECT x.*, u.full_name AS user_name, c.protocol AS contract_protocol,
         (SELECT json_agg(json_build_object('id', d.id, 'filename', d.filename, 'size', d.size)) FROM documenti d WHERE d.activity_id=x.id) AS allegati
       FROM activities x LEFT JOIN users u ON u.id=x.user_id LEFT JOIN contracts c ON c.id=x.contract_id WHERE x.account_id=$1 ORDER BY x.at DESC, x.id DESC LIMIT 500`, [a.id]),
@@ -115,7 +117,7 @@ r.get('/accounts/:id', ah(async (req, res) => {
   ]);
   res.json({ ...arricchisci(a, stallo), contatti, persone, criticita, contratti, fascicoli, documenti, attivita, altri_account: altri,
     puo_modificare: puoLinea(req, a.linea), puo_attivo: isCeoOAdmin(req), puo_criticita: puoLinea(req, a.linea) || req.user.role === 'HQS',
-    casella: casella(a.linea, await getSettings()).address, soglia_stallo: stallo });
+    casella: casella(a.linea, await getSettings()).address, soglia_stallo: stallo, da_verificare: documenti.filter((d) => d.da_verificare).length });
 }));
 
 // Feed dagli altri widget (sola lettura)
@@ -144,9 +146,13 @@ const accountFields = {
   prossima_azione: optStr(500).optional(), data_prossima_azione: optDate.optional(), sconto_medio: optNum.optional(), volume_fy_atteso: optNum.optional(),
   prezzo_medio_esame: optNum.optional(), fatturato_fy_atteso: optNum.optional(), fatturato_2026: optNum.optional(), fatturato_2027: optNum.optional(),
   note: optStr(5000).optional(), fonte_censimento: optStr(500).optional(),
+  // processo Service: volumi giornalieri attesi (email al laboratorio), data di avvio prevista, esclusione dal richiamo dei prospect
+  volumi_giornalieri_attesi: optNum.optional(), data_avvio_prevista: optDate.optional(), non_contattare: z.boolean().optional(),
 };
 const createSchema = z.object({
   linea: z.enum(['SRV', 'PP', 'MDL']), organization_id: optInt.optional(),
+  // Punti Prelievo: un account per punto (sede TD collegata o nome finché la sede non c'è, tipo previsto flagship/corner)
+  pp_site_id: optInt.optional(), pp_nome: optStr(200).optional(), pp_tipo_previsto: z.preprocess((v) => (v === '' ? null : v), z.enum(['FLAGSHIP', 'CORNER']).nullable()).optional(),
   nuova_org: z.object({ name: z.string().trim().min(2).max(200), city: optStr(120), province: optStr(4), email: optStr(160), phone: optStr(60), address: optStr(200), vat_number: optStr(20) }).optional(),
   ...accountFields,
 });
@@ -165,12 +171,20 @@ r.post('/accounts', ah(async (req, res) => {
       [o.name, o.city, o.province, o.email, o.phone, o.address, o.vat_number, 'Creata dal Business Hub (prospect)']);
     orgId = row.id; indexOrg(row).catch(() => {});
   } else if (!(await one('SELECT 1 FROM public.organizations WHERE id=$1', [orgId]))) throw bad('Legal entity non trovata');
-  if (await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [orgId, d.linea])) throw bad('Questa Legal entity ha già un account su questa linea');
+  if (d.linea !== 'PP' && await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [orgId, d.linea])) throw bad('Questa Legal entity ha già un account su questa linea');
+  if (d.linea === 'PP') {
+    if (d.pp_site_id) {
+      const sd = await one('SELECT kind FROM public.sites WHERE id=$1', [d.pp_site_id]);
+      if (sd?.kind !== 'PUNTO_PRELIEVI') throw bad('Collega una sede di tipo Punto prelievi');
+      if (await one('SELECT 1 FROM accounts WHERE pp_site_id=$1', [d.pp_site_id])) throw bad('Questa sede ha già il suo punto prelievi nel Business Hub');
+    }
+    if (await one(`SELECT 1 FROM accounts WHERE organization_id=$1 AND linea='PP' AND coalesce(pp_site_id,0)=coalesce($2::int,0) AND lower(coalesce(pp_nome,''))=lower(coalesce($3::text,''))`, [orgId, d.pp_site_id || null, d.pp_nome || null])) throw bad('Questa Legal entity ha già un punto prelievi con questa sede o questo nome: indica il nome del nuovo punto');
+  } else { delete d.pp_site_id; delete d.pp_nome; delete d.pp_tipo_previsto; }
   const { linea, organization_id: _o, nuova_org: _n, ...fields } = d;
   const cols = Object.keys(fields).filter((k) => fields[k] !== undefined);
   const row = await one(`INSERT INTO accounts (organization_id, linea, created_by${cols.map((c) => `, ${c}`).join('')}) VALUES ($1,$2,$3${cols.map((_, i) => `, $${i + 4}`).join('')}) RETURNING id`,
     [orgId, linea, req.user.id, ...cols.map((c) => fields[c])]);
-  await addActivity(row.id, { tipo: 'SISTEMA', oggetto: 'Account creato', testo: `Linea ${LINEE[linea].label}` }, req.user.id);
+  await addActivity(row.id, { tipo: 'SISTEMA', oggetto: 'Account creato', testo: `Linea ${LINEE[linea].label}${linea === 'PP' && (d.pp_nome || d.pp_site_id) ? ' (punto prelievi)' : ''}` }, req.user.id);
   await audit(req, 'HUB_ACCOUNT_CREATE', 'account', row.id, { linea, org_id: orgId });
   res.status(201).json({ id: row.id });
 }));
@@ -428,7 +442,7 @@ r.post('/accounts/:id/email/invia', ah(async (req, res) => {
 // Registro invii (tutte le email partite dal Business Hub)
 r.get('/invii', ah(async (req, res) => {
   const linea = String(req.query.linea || '');
-  res.json(await many(`SELECT x.id, x.at, x.account_id, o.name AS org_name, a.linea, x.oggetto, x.email_from, x.email_to, x.email_cc, x.email_stato, x.email_errore, x.email_message_id, u.full_name AS user_name,
+  res.json(await many(`SELECT x.id, x.at, x.account_id, o.name AS org_name, a.linea, x.oggetto, x.sottotipo, x.email_from, x.email_to, x.email_cc, x.email_stato, x.email_errore, x.email_message_id, u.full_name AS user_name,
       jsonb_array_length(coalesce(x.dati->'allegati', '[]'::jsonb)) AS n_allegati
     FROM activities x JOIN accounts a ON a.id=x.account_id JOIN public.organizations o ON o.id=a.organization_id LEFT JOIN users u ON u.id=x.user_id
     WHERE x.tipo='EMAIL_OUT' AND x.email_stato IS NOT NULL AND ($1='' OR a.linea=$1) ORDER BY x.at DESC LIMIT 500`, [linea]));
@@ -491,7 +505,10 @@ r.get('/cruscotto', ah(async (req, res) => {
   const email = await many(`SELECT id, linea, received_at, from_email, from_name, subject, come FROM email_in WHERE stato='DA_ASSEGNARE' AND ($1::text IS NULL OR linea=$1) ORDER BY received_at DESC LIMIT 20`, [linea]);
   const nEmail = (await one(`SELECT count(*)::int AS n FROM email_in WHERE stato='DA_ASSEGNARE' AND ($1::text IS NULL OR linea=$1)`, [linea])).n;
   const pipe = acc.filter((a) => a.fase_corrente >= 1 && a.fase_corrente <= 6);
+  // Punti Prelievo: avvii con passi da completare (con "Riprova") e flagship con l'autorizzazione rilasciata ancora da avviare
+  const pp = !linea || linea === 'PP' ? await (await import('../lib/puntoPrelievi.js')).promemoriaPP() : null;
   res.json({
+    pp,
     linea, soglia_stallo: stallo, soglia_ordini: ordini,
     kpi: { account: acc.length, prospect: acc.filter((a) => a.fase_corrente === 0).length, in_pipeline: pipe.length, attivi: attivi.length, fatturato_pipeline: Math.round(pipe.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0)),
       fatturato_attivi: Math.round(attivi.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0)), stalli: stalli.length, criticita: criticita.length, email_da_assegnare: nEmail, da_confermare: da_confermare.length },

@@ -20,7 +20,7 @@ export const ROLE_HELP = {
   VIEWER: 'Sola lettura su tutte le sezioni.',
 };
 export const KIND = {
-  PP: { label: 'Punti Prelievo', one: 'Punto Prelievi', doc: 'Contratto di appalto', tone: 'teal', path: 'punti-prelievo' },
+  PP: { label: 'Punti Prelievo', one: 'Punto Prelievi', doc: 'Contratto di appalto', tone: 'teal', path: 'contratti-pp' },   // elenco dei contratti PP (la pagina Punti Prelievo è l'elenco dei punti)
   SRV: { label: 'Service di Laboratorio', one: 'Service di Laboratorio', doc: 'Lettera di offerta (MOD230)', tone: 'blue', path: 'service' },
   MDL: { label: 'Medicina del Lavoro', one: 'Medicina del Lavoro', doc: 'Lettera di offerta (MOD231)', tone: 'mauve', path: 'medicina-del-lavoro' },
   SEDE: { label: 'Sedi TD in locazione', one: 'Sede TD in locazione', doc: 'Contratto di locazione del locatore', tone: 'green', path: 'sedi' },
@@ -66,7 +66,21 @@ export const FASI = [
 ];
 export const LINEE = { SRV: { label: 'Service di Laboratorio', short: 'Service', tone: 'blue' }, PP: { label: 'Punti Prelievo', short: 'Punti prelievo', tone: 'teal' }, MDL: { label: 'Medicina del Lavoro', short: 'MDL', tone: 'mauve' } };
 export const PRIORITA = { ALTA: { label: 'Alta', tone: 'red' }, MEDIA: { label: 'Media', tone: 'mauve' }, BASSA: { label: 'Bassa', tone: 'grey' } };
-export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', EMAIL_IN: 'Email ricevuta', EMAIL_OUT: 'Email inviata', INCONTRO: 'Incontro', SOPRALLUOGO: 'Sopralluogo', NOTA: 'Nota', OFFERTA: 'Offerta', CRITICITA: 'Criticità', SISTEMA: 'Sistema', PACCHETTO: 'Pacchetto di benvenuto' };
+export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', EMAIL_IN: 'Email ricevuta', EMAIL_OUT: 'Email inviata', INCONTRO: 'Incontro', SOPRALLUOGO: 'Sopralluogo', NOTA: 'Nota', OFFERTA: 'Offerta', CRITICITA: 'Criticità', SISTEMA: 'Sistema', PACCHETTO: 'Pacchetto',
+  // processo Service (06/11/2026): ogni evento ha il suo tipo
+  LISTINO: 'Listino caricato', OFFERTA_ECONOMICA: 'Offerta economica', ACCESSO: 'Accesso alla Suite', KIT: 'Kit di proposta', FORM_B2B: 'Form online', CONTRATTO_FIRMATO: 'Contratto firmato', ATTIVAZIONE: 'Attivazione servizi',
+  // processo Punti Prelievo (06/11/2026): passi dell'avvio del punto prelievi
+  AVVIO: 'Avvio punto prelievi' };
+// Sottotipi delle email del processo (diario e registro invii)
+export const SOTTOTIPO = { KIT_PROPOSTA: 'Kit di proposta', CONTRATTUALIZZAZIONE: 'Avvenuta contrattualizzazione', BENVENUTO: 'Benvenuto al cliente', NUOVO_CLIENTE_LAB: 'Nuovo cliente al laboratorio',
+  RICHIAMO: 'Richiamo prospect', INVITO_SUITE: 'Invito alla Suite', RISPOSTA_KIT: 'Risposta del cliente',
+  CONTRATTO_PARTNER: 'Contratto al partner', BENVENUTO_PARTNER: 'Credenziali e benvenuto al partner', CONFERMA_PP: 'Contratto firmato (interna)', AVVIO_PP: 'Avvio al laboratorio',
+  DOTAZIONE_PP: 'Dotazione', FONDO_CASSA_PP: 'Fondo cassa e POS', RIFIUTI_PP: 'Rifiuti speciali', PRIMO_ORDINE: 'Primo ordine standard',
+  CREDENZIALI: 'a) Credenziali al partner', CONFERMA: 'b) Conferma interna', AVVIO_LAB: 'c) Avvio al laboratorio', DOTAZIONE: 'e) Dotazione', FONDO_CASSA: 'f) Fondo cassa e POS', RIFIUTI: 'g) Rifiuti speciali' };
+// Punti Prelievo: tipo del punto e stato dei passi dell'avvio
+export const TIPO_PUNTO = { FLAGSHIP: { label: 'Flagship', tone: 'blue', long: 'Flagship (sede TD in locazione o di proprietà)' }, CORNER: { label: 'Corner', tone: 'teal', long: 'Corner (sede del partner ospitante)' } };
+export const STATO_PASSO = { OK: { label: 'fatto', tone: 'green' }, FALLITO: { label: 'non riuscito', tone: 'red' }, ATTESA_DATA: { label: 'in attesa della data', tone: 'mauve' }, ATTESA_SEDE: { label: 'in attesa della sede', tone: 'mauve' }, DA_FARE: { label: 'da fare', tone: 'grey' }, NON_PREVISTO: { label: 'non previsto', tone: 'grey' } };
+export const TONO_ATTIVITA = (t) => (t === 'SISTEMA' ? 'grey' : t === 'CRITICITA' ? 'red' : t.startsWith('EMAIL') ? 'teal' : ['PACCHETTO', 'KIT', 'OFFERTA_ECONOMICA', 'LISTINO'].includes(t) ? 'mauve' : ['CONTRATTO_FIRMATO', 'ATTIVAZIONE', 'FORM_B2B', 'AVVIO'].includes(t) ? 'green' : 'blue');
 export const ORIGINE_CRITICITA = { LABORATORIO: 'Laboratorio', CLIENTE: 'Cliente', LOGISTICA: 'Logistica', AMMINISTRAZIONE: 'Amministrazione', ALTRO: 'Altro' };
 export const GRAVITA = { BASSA: { label: 'Bassa', tone: 'grey' }, MEDIA: { label: 'Media', tone: 'blue' }, ALTA: { label: 'Alta', tone: 'mauve' }, CRITICA: { label: 'Critica', tone: 'red' } };
 export const NC_STATO = { APERTA: 'Aperta', INVIATA_SEDE: 'Inviata alla sede', RISPOSTA_SEDE: 'Risposta della sede', IN_TRATTAMENTO: 'In trattamento', CHIUSA: 'Chiusa', VERIFICATA: 'Verificata', ANNULLATA: 'Annullata' };

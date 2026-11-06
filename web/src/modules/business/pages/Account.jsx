@@ -8,27 +8,33 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Pacchetto from '../components/Pacchetto.jsx';
+import Listino from '../components/Listino.jsx';
+import Proposta from '../components/Proposta.jsx';
+import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
-  itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today,
+  itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, SOTTOTIPO, TONO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today,
 } from '../format.js';
 
-const SCHEDE = [['diario', 'Diario'], ['referenti', 'Referenti'], ['criticita', 'Criticità'], ['ordini', 'Ordini'], ['nc', 'Non conformità'], ['ticket', 'Ticket'], ['circolari', 'Circolari'],
+// "Listino e offerta" e "Proposta e contratto": processo Service da prospect a cliente (06/11/2026), components/Listino.jsx e Proposta.jsx
+const SCHEDE = [['diario', 'Diario'], ['referenti', 'Referenti'], ['listino', 'Listino e offerta'], ['proposta', 'Proposta e contratto'], ['criticita', 'Criticità'], ['ordini', 'Ordini'], ['nc', 'Non conformità'], ['ticket', 'Ticket'], ['circolari', 'Circolari'],
   ['portale', 'Portale'], ['contratti', 'Contratti'], ['fascicoli', 'Fascicoli'], ['documenti', 'Documenti'], ['email', 'Email'], ['pacchetto', 'Pacchetto di benvenuto'], ['economici', 'Dati economici'], ['commerciali', 'Dati commerciali']];
+// Linea Punti Prelievo (06/11/2026): al posto di listino e proposta del Service la scheda "Punto prelievi" (components/PuntoPrelievi.jsx)
+const schedeDi = (linea) => (linea === 'PP' ? [SCHEDE[0], SCHEDE[1], ['punto', 'Punto prelievi'], ...SCHEDE.slice(4)] : SCHEDE);
 
 export default function Account() {
   const { id } = useParams();
   const toast = useToast();
   const q = useApi(`/hub/accounts/${id}`);
   const owners = useApi('/hub/utenti');
-  const [tab, setTab] = useState('diario');
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('scheda') || 'diario');
   const [modal, setModal] = useState(null);
   const a = q.data;
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!a) return <div className="page"><Loading /></div>;
   const edit = a.puo_modificare;
   const act = async (fn, msg) => { try { await fn(); if (msg) toast(msg); q.reload(); } catch (e) { toast(e.message, 'err'); } };
-  const conta = { diario: a.attivita.length, referenti: a.contatti.length, criticita: a.criticita.filter((k) => !k.chiusa_at).length, contratti: a.contratti.length, fascicoli: a.fascicoli.length, documenti: a.documenti.length, email: a.attivita.filter((x) => x.tipo.startsWith('EMAIL')).length };
+  const conta = { proposta: a.da_verificare || 0, punto: a.da_verificare || 0, diario: a.attivita.length, referenti: a.contatti.length, criticita: a.criticita.filter((k) => !k.chiusa_at).length, contratti: a.contratti.length, fascicoli: a.fascicoli.length, documenti: a.documenti.length, email: a.attivita.filter((x) => x.tipo.startsWith('EMAIL')).length };
   const daConfermare = !a.cliente_attivo && a.attivita.some((x) => x.esito === 'DA_CONFERMARE');
   return (
     <div className="page">
@@ -42,6 +48,7 @@ export default function Account() {
             {a.stallo && <Badge tone="red">stallo: {a.giorni_da_avanzamento} giorni</Badge>}
           </div>
           <h1>{a.org_name}</h1>
+          {a.linea === 'PP' && a.punto_nome && a.punto_nome !== a.org_name && <div className="strong" style={{ marginTop: -4 }}>Punto prelievi {a.punto_nome}</div>}
           <div className="sub">{[a.gruppo && a.gruppo !== a.org_name ? `Gruppo ${a.gruppo}` : null, a.tipologia, [a.org_address, a.citta, a.prov && `(${a.prov})`].filter(Boolean).join(' '), a.n_sedi ? `${a.n_sedi} strutture` : null].filter(Boolean).join(' · ')}</div>
         </div>
         <div className="row">
@@ -81,10 +88,13 @@ export default function Account() {
         </div>
       </div>
 
-      <div className="tabs scroll" style={{ marginTop: 16 }}>{SCHEDE.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{conta[k] ? <span className="tcount">{conta[k]}</span> : null}</button>)}</div>
+      <div className="tabs scroll" style={{ marginTop: 16 }}>{schedeDi(a.linea).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{conta[k] ? <span className="tcount">{conta[k]}</span> : null}</button>)}</div>
 
       {tab === 'diario' && <Diario a={a} onChange={q.reload} />}
       {tab === 'referenti' && <Referenti a={a} onChange={q.reload} />}
+      {tab === 'listino' && <Listino a={a} onChange={q.reload} />}
+      {tab === 'proposta' && <Proposta a={a} onChange={q.reload} vaiA={setTab} />}
+      {tab === 'punto' && a.linea === 'PP' && <PuntoPrelievi a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'criticita' && <Criticita a={a} onChange={q.reload} />}
       {tab === 'ordini' && <FeedOrdini a={a} />}
       {tab === 'nc' && <FeedNc a={a} />}
@@ -127,7 +137,7 @@ function Diario({ a, onChange }) {
       {l.length ? <ul className="diario">{l.map((x) => (
         <li key={x.id} className={`t-${x.tipo}`}>
           <div className="dh">
-            <Badge tone={x.tipo === 'SISTEMA' ? 'grey' : x.tipo === 'CRITICITA' ? 'red' : x.tipo.startsWith('EMAIL') ? 'teal' : x.tipo === 'PACCHETTO' ? 'mauve' : 'blue'}>{TIPO_ATTIVITA[x.tipo]}</Badge>
+            <Badge tone={TONO_ATTIVITA(x.tipo)}>{TIPO_ATTIVITA[x.tipo] || x.tipo}</Badge>{x.sottotipo && SOTTOTIPO[x.sottotipo] && <Badge tone="silk">{SOTTOTIPO[x.sottotipo]}</Badge>}
             <span className="strong">{x.oggetto || ''}</span>
             {x.esito && <Badge tone={x.esito === 'DA_CONFERMARE' || x.esito === 'DA_VERIFICARE' ? 'mauve' : x.esito === 'FALLITO' ? 'red' : 'grey'}>{x.esito.replace(/_/g, ' ').toLowerCase()}</Badge>}
             <span className="spacer" />
@@ -343,6 +353,8 @@ function Fascicoli({ a }) {
 }
 
 // ---------------- Documenti ----------------
+const CAT_DOC = { EMAIL: 'allegato di un\'email ricevuta', ALLEGATO: 'allegato del diario', PACCHETTO: 'pacchetto', LISTINO: 'listino StudioLAB', OFFERTA_ECONOMICA: 'offerta economica', MOD173: 'anagrafica clienti B2B (MOD173)',
+  CONTRATTO_FIRMATO: 'contratto firmato', ALLEGATO_CONTRATTO: 'allegato del contratto', OFFERTA: 'offerta', VERBALE: 'verbale', ALTRO: 'altro' };
 function Documenti({ a, onChange }) {
   const toast = useToast();
   const up = async (l) => { try { const fd = new FormData(); fd.append('categoria', 'ALTRO'); for (const x of l) fd.append('files', x); await api.upload(`/hub/accounts/${a.id}/documenti`, fd); toast('Documenti caricati'); onChange(); } catch (e) { toast(e.message, 'err'); } };
@@ -350,7 +362,7 @@ function Documenti({ a, onChange }) {
   return (
     <div className="grid g2">
       <Card title="Documenti dell'account" actions={a.puo_modificare && <UploadButton label="Carica" multiple onFiles={up} />} flush>
-        {a.documenti.length ? <table className="t"><tbody>{a.documenti.map((d) => <tr key={d.id}><td><a href={`${API_BASE}/hub/documenti/${d.id}`}><Icon name="download" />{d.filename}</a><div className="small muted">{d.categoria === 'EMAIL' ? 'allegato di un\'email ricevuta' : d.categoria === 'ALLEGATO' ? 'allegato del diario' : d.categoria === 'PACCHETTO' ? 'pacchetto di benvenuto' : d.categoria.toLowerCase()} · {bytes(d.size)} · {itDateTime(d.created_at)}{d.uploaded_by_name ? ` · ${d.uploaded_by_name}` : ''}</div></td>
+        {a.documenti.length ? <table className="t"><tbody>{a.documenti.map((d) => <tr key={d.id}><td><a href={`${API_BASE}/hub/documenti/${d.id}`}><Icon name="download" />{d.filename}</a><div className="small muted">{d.da_verificare && <Badge tone="mauve">da verificare</Badge>} {d.etichetta || CAT_DOC[d.categoria] || d.categoria.toLowerCase()} · {bytes(d.size)} · {itDateTime(d.created_at)}{d.uploaded_by_name ? ` · ${d.uploaded_by_name}` : ''}</div></td>
           <td style={{ width: 1 }}>{a.puo_modificare && d.categoria !== 'EMAIL' && <button className="iconbtn" onClick={async () => { await api.del(`/hub/documenti/${d.id}`); onChange(); }}><Icon name="trash" /></button>}</td></tr>)}</tbody></table> : <Empty>Nessun documento</Empty>}
       </Card>
       <Card title="Documenti dei contratti (di cui)" flush>

@@ -14,6 +14,12 @@ export const PROFILO_CLIENTE = 'CLIENTE_SERVICE';
 
 /** Esterno = utente autenticato che non appartiene alla rete TD (vedi isInternal). Owner e Admin non sono mai esterni. */
 export const isExternal = (u) => Boolean(u) && !isInternal(u);
+/**
+ * Esterno senza alcun grant confermato: l'accesso creato dal Business Hub per un prospect prima della firma del contratto (processo
+ * Service, richiesta del CEO del 06/11/2026: "gli offre il portale service (prima no!)"). Non vede nessun widget, nemmeno quelli
+ * aperti a tutti (Portale Service, SGI, Circolari, Ticket): i servizi arrivano con il profilo Cliente service applicato alla firma.
+ */
+export const esternoInAttesa = (u) => isExternal(u) && !Object.keys(u?.grants || {}).length;
 
 /**
  * Profilo di sistema proposto per una Legal entity: dal tipo e dalle sedi collegate.

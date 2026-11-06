@@ -6,6 +6,7 @@ import pg from 'pg';
 import { config } from '../config.js';
 import { one, many, q } from '../db.js';
 import { HttpError, forbidden } from './util.js';
+import { esternoInAttesa } from './esterni.js';
 
 const pools = {};
 export function modulePool(key) {
@@ -48,6 +49,8 @@ export async function moduleUser(key, suiteUser, { roleColumn = 'role', extraCol
   const isSuiteAdmin = suiteUser.level === 'OWNER' || suiteUser.level === 'ADMIN';
   // openToAll (es. Ticket): chiunque sia autenticato entra con il ruolo implicito defaultRole, senza grant
   if (!grant && !isSuiteAdmin && !extraColumns.openToAll) throw forbidden('Modulo non assegnato');
+  // accesso esterno senza grant (prospect prima della firma, processo Service del Business Hub): nemmeno i moduli aperti a tutti
+  if (!grant && !isSuiteAdmin && esternoInAttesa(suiteUser)) throw forbidden('Accesso in attivazione: i servizi della Suite si attivano con la firma del contratto');
   const role = grant?.profile || (isSuiteAdmin ? extraColumns.defaultAdminRole || 'ADMIN' : extraColumns.defaultRole || 'ADMIN');
   let row = await db.one('SELECT * FROM users WHERE lower(email)=lower($1)', [suiteUser.email]);
   if (!row) {

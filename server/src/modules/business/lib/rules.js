@@ -66,6 +66,24 @@ export const DEFAULT_SETTINGS = {
   hub_cc_SRV: 'francesco.epifani@toscanadiagnostica.it, rosetta.greco@toscanadiagnostica.it',
   hub_cc_PP: 'francesco.epifani@toscanadiagnostica.it, silvia.sansoni@toscanadiagnostica.it',
   hub_cc_MDL: 'francesco.epifani@toscanadiagnostica.it, angelica.corradi@toscanadiagnostica.it',
+  // Processo Service (06/11/2026): offerta economica, form online, comunicazioni della contrattualizzazione, richiamo dei prospect
+  hub_offerta_validita_giorni: '60',
+  hub_b2b_token_giorni: '60',
+  hub_dest_contrattualizzazione: 'francesco.epifani@toscanadiagnostica.it, rosetta.greco@toscanadiagnostica.it',
+  hub_dest_laboratorio: 'laboratorio@toscanadiagnostica.it, valentina.zezza@toscanadiagnostica.it',
+  hub_giorni_lavorativi: '250',
+  hub_richiamo_attivo: 'false',
+  hub_richiamo_giorni: '60',
+  hub_richiamo_limite: '20',
+  hub_richiamo_recapiti: 'francesco.epifani@toscanadiagnostica.it, rosetta.greco@toscanadiagnostica.it',
+  // Processo Punti Prelievo (06/11/2026): destinatari interni dell'avvio del punto prelievi (predefiniti quelli indicati dal CEO) ed
+  // elenco della dotazione da chiedere (una voce per riga). Mittente sempre network@ con le copie fisse della linea.
+  hub_pp_dest_conferma: 'francesco.epifani@toscanadiagnostica.it, silvia.sansoni@toscanadiagnostica.it',
+  hub_pp_dest_avvio: 'laboratorio@toscanadiagnostica.it, valentina.zezza@toscanadiagnostica.it',
+  hub_pp_dest_dotazione: 'valentina.zezza@toscanadiagnostica.it',
+  hub_pp_dest_amministrazione: 'amministrazione@toscanadiagnostica.it',
+  hub_pp_dest_rifiuti: 'iacopo.cupelli@toscanadiagnostica.it',
+  hub_pp_dotazione_elenco: 'Acquisto di un PC fisso\nOrdine della stampante RICOH\nBoccione Culligan',
 };
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura

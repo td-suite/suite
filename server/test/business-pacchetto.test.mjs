@@ -17,7 +17,7 @@ import { margineSuperioreMinimo, intestazioniRipetute } from '../src/modules/bus
 const chiavi = (l) => l.map((x) => x.key);
 
 test('sezioni per linea: SRV completo, PP con la rete senza vademecum né portale, MDL con la medicina del lavoro', () => {
-  assert.deepEqual(chiavi(sezioniLinea('SRV')), ['copertina', 'indice', 'lettera', 'offerta', 'portale', 'credenziali', 'avvio', 'referente', 'diversi', 'checklist', 'vademecum']);
+  assert.deepEqual(chiavi(sezioniLinea('SRV')), ['copertina', 'indice', 'lettera', 'offerta', 'listino', 'portale', 'credenziali', 'studiolab', 'avvio', 'referente', 'diversi', 'checklist', 'vademecum']);
   const pp = chiavi(sezioniLinea('PP'));
   assert.ok(pp.includes('network') && !pp.includes('vademecum') && !pp.includes('portale') && !pp.includes('mdl'));
   const mdl = chiavi(sezioniLinea('MDL'));

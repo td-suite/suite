@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, useToast } from '../components/ui.jsx';
 import { HubCaselle, ImportDb, AccountDaContratti } from '../components/HubImpostazioni.jsx';
 import { PacchettoModelli } from '../components/Pacchetto.jsx';
+import { ProcessoService, ProcessoPuntiPrelievo, FlussoModelli, B2bAllegati } from '../components/ProcessoImpostazioni.jsx';
 
 const GROUPS = [
   { title: 'Business Hub (soglie)', note: 'Stallo: account nelle fasi 1-6 senza avanzamenti da più giorni della soglia (cruscotto, pipeline, vista DB). Ordini: un ordine del cliente in attesa di approvazione oltre la soglia avvisa l\'owner dell\'account.', fields: [['hub_stallo_giorni', 'Giorni senza avanzamento per lo stallo'], ['hub_ordini_giorni', 'Giorni di attesa di un ordine prima dell\'avviso']] },
@@ -34,6 +35,10 @@ export default function Settings() {
         </tbody></table>
       </Card>
       <HubCaselle f={f} setF={setF} />
+      <ProcessoService f={f} setF={setF} />
+      <ProcessoPuntiPrelievo f={f} setF={setF} />
+      <FlussoModelli />
+      <B2bAllegati />
       <PacchettoModelli />
       <ImportDb />
       <AccountDaContratti />

@@ -268,7 +268,9 @@ r.put('/users/:id/cash-float', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req
 }));
 
 // ---------------- Impostazioni (creditore SEPA) ----------------
-const SETTINGS_KEYS = ['creditor_name', 'creditor_iban', 'creditor_bic', 'creditor_id', 'royalty_invoice_prefix', 'pickup_alert_days', 'daily_alert_hour', 'daily_alert_enabled', 'daily_summary_admins', 'closing_alert_delay_minutes'];
+// default_cash_float: fondo cassa predefinito di una sede nuova (06/11/2026), letto dal Business Hub per l'email all'amministrazione
+// all'avvio di un punto prelievi non ancora configurato in Cash; vuoto = da definire
+const SETTINGS_KEYS = ['creditor_name', 'creditor_iban', 'creditor_bic', 'creditor_id', 'royalty_invoice_prefix', 'pickup_alert_days', 'daily_alert_hour', 'daily_alert_enabled', 'daily_summary_admins', 'closing_alert_delay_minutes', 'default_cash_float'];
 
 r.get('/settings', requireRole('SUPERADMIN'), ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [SETTINGS_KEYS]);
@@ -287,6 +289,7 @@ r.put('/settings', requireRole('SUPERADMIN'), ah(async (req, res) => {
     closing_alert_delay_minutes: z.string().regex(/^\d{1,3}$/).optional(),
     daily_alert_enabled: z.enum(['true', 'false']).optional(),
     daily_summary_admins: z.enum(['true', 'false']).optional(),
+    default_cash_float: z.string().trim().transform((v) => v.replace(',', '.')).refine((v) => v === '' || (/^\d{1,6}(\.\d{1,2})?$/.test(v)), 'Fondo cassa predefinito: un importo in euro (es. 150 o 150,00)').optional(),
   }), req.body);
   for (const [k, v] of Object.entries(d)) {
     await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, v]);

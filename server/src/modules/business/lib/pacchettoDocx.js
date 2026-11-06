@@ -44,11 +44,11 @@ export function p(content, o = {}) {
   return `<w:p><w:pPr>${ppr}<w:rPr>${FONT}<w:sz w:val="${o.run?.sz || 20}"/></w:rPr></w:pPr>${runs}</w:p>`;
 }
 export const vuoto = (h = 120) => `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="${Math.max(20, h)}" w:lineRule="exact"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="2"/></w:rPr></w:r></w:p>`;
-const bordo = (lato, colore, sz = 4, space = 0) => `<w:${lato} w:val="single" w:sz="${sz}" w:space="${space}" w:color="${colore}"/>`;
-const nil = (lato) => `<w:${lato} w:val="nil"/>`;
+export const bordo = (lato, colore, sz = 4, space = 0) => `<w:${lato} w:val="single" w:sz="${sz}" w:space="${space}" w:color="${colore}"/>`;
+export const nil = (lato) => `<w:${lato} w:val="nil"/>`;
 
 /** Cella: { w, fill, borders (xml), mar [t,l,b,r], vAlign, span } */
-function cella(contenuto, o = {}) {
+export function cella(contenuto, o = {}) {
   const mar = o.mar || [80, 120, 80, 120];
   return `<w:tc><w:tcPr><w:tcW w:type="dxa" w:w="${o.w}"/>${o.span ? `<w:gridSpan w:val="${o.span}"/>` : ''}`
     + `<w:tcBorders>${o.borders || [nil('top'), nil('left'), nil('bottom'), nil('right')].join('')}</w:tcBorders>`
@@ -57,7 +57,7 @@ function cella(contenuto, o = {}) {
     + `${o.vAlign ? `<w:vAlign w:val="${o.vAlign}"/>` : ''}</w:tcPr>${contenuto || p('')}</w:tc>`;
 }
 /** Tabella: widths (twip), righe = [[{ c, ...opzioni cella }]], o: { cantSplit, header } */
-function tabella(widths, righe, o = {}) {
+export function tabella(widths, righe, o = {}) {
   const tot = widths.reduce((a, b) => a + b, 0);
   return `<w:tbl><w:tblPr><w:tblW w:type="dxa" w:w="${tot}"/><w:jc w:val="${o.jc || 'left'}"/><w:tblLayout w:type="fixed"/>`
     + '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>'
@@ -79,8 +79,8 @@ export function testata(occhiello, titolo, sottotitolo) {
     sottotitolo ? p(r(sottotitolo, { sz: 21, color: C.grigio }), { after: 280, line: 300 }) : '',
   ].join('');
 }
-const titoletto = (t, o = {}) => p(r(t, { b: true, sz: 22, color: C.scuro }), { before: o.before ?? 240, after: 100, keepNext: true });
-const testo = (t, o = {}) => p(r(t, { sz: o.sz || 20, color: o.color || C.testo, i: o.i }), { after: o.after ?? 120, line: o.line || 300, jc: o.jc || 'both' });
+export const titoletto = (t, o = {}) => p(r(t, { b: true, sz: 22, color: C.scuro }), { before: o.before ?? 240, after: 100, keepNext: true });
+export const testo = (t, o = {}) => p(r(t, { sz: o.sz || 20, color: o.color || C.testo, i: o.i }), { after: o.after ?? 120, line: o.line || 300, jc: o.jc || 'both' });
 
 /** Scheda: titolo e testo su fondo chiaro con filetto a sinistra. */
 function scheda(titolo, corpo, o = {}) {
@@ -90,9 +90,9 @@ function scheda(titolo, corpo, o = {}) {
     ...paras,
   ].join('');
 }
-const BORDO_SCHEDA = [nil('top'), bordo('left', C.accento, 24), nil('bottom'), nil('right')].join('');
+export const BORDO_SCHEDA = [nil('top'), bordo('left', C.accento, 24), nil('bottom'), nil('right')].join('');
 /** Griglia di schede a due colonne con spazio tra le colonne e tra le righe. items: [{ titolo, corpo }] */
-function griglia(items, { colonne = 2, gap = 280 } = {}) {
+export function griglia(items, { colonne = 2, gap = 280 } = {}) {
   const w = Math.floor((LARGHEZZA - gap * (colonne - 1)) / colonne);
   const widths = []; for (let i = 0; i < colonne; i++) { widths.push(w); if (i < colonne - 1) widths.push(gap); }
   const righe = [];
@@ -109,11 +109,11 @@ function griglia(items, { colonne = 2, gap = 280 } = {}) {
   return tabella(widths, righe);
 }
 /** Riquadro su tutta la larghezza (fondo chiaro o scuro). */
-function riquadro(contenuto, { fill = C.chiaro, scuro = false, mar = [200, 260, 200, 260] } = {}) {
+export function riquadro(contenuto, { fill = C.chiaro, scuro = false, mar = [200, 260, 200, 260] } = {}) {
   return tabella([LARGHEZZA], [[{ c: contenuto, w: LARGHEZZA, fill: scuro ? C.scuro : fill, borders: scuro ? '' : BORDO_SCHEDA, mar }]]);
 }
 /** Tabella dati con intestazione petrolio. cols: [{ t, w }], righe: [[testo]] */
-function tabellaDati(cols, righe, { sz = 18 } = {}) {
+export function tabellaDati(cols, righe, { sz = 18 } = {}) {
   const head = cols.map((c) => ({ c: p(r(c.t, { b: true, sz: 16, color: C.bianco }), { line: 240 }), w: c.w, fill: C.medio, mar: [90, 120, 90, 120] }));
   const body = righe.map((riga, i) => riga.map((v, j) => ({
     c: [].concat(v).map((x) => (String(x).startsWith('<w:') ? x : p(r(x, { sz, color: C.testo, b: j === 0 && cols[0].b }), { line: 252 }))).join(''),
@@ -121,7 +121,7 @@ function tabellaDati(cols, righe, { sz = 18 } = {}) {
   })));
   return tabella(cols.map((c) => c.w), [head, ...body], { header: true });
 }
-const elencoPuntato = (voci, o = {}) => voci.map((v) => p([r('•', { b: true, color: C.accento, sz: o.sz || 18 }), r(`\t${v}`, { sz: o.sz || 18 })],
+export const elencoPuntato = (voci, o = {}) => voci.map((v) => p([r('•', { b: true, color: C.accento, sz: o.sz || 18 }), r(`\t${v}`, { sz: o.sz || 18 })],
   { tabs: '<w:tab w:val="left" w:pos="240"/>', ind: 'w:left="240" w:hanging="240"', after: 50, line: 264 })).join('');
 
 // ---------------------------------------------------------------- immagini
@@ -195,8 +195,8 @@ export function copertina(d) {
   ]]);
   return [
     vuoto(900),
-    p(r('PACCHETTO DI BENVENUTO', { b: true, sz: 17, color: C.accento, spacing: 60 }), { after: 260 }),
-    p(r('Benvenuti in', { sz: 44, color: C.medio }), { line: 240, after: 40 }),
+    p(r(d.kicker || 'PACCHETTO DI BENVENUTO', { b: true, sz: 17, color: C.accento, spacing: 60 }), { after: 260 }),
+    p(r(d.titoloPre || 'Benvenuti in', { sz: 44, color: C.medio }), { line: 240, after: 40 }),
     p(r('Toscana Diagnostica', { b: true, sz: 64, color: C.scuro }), { line: 240, after: 320 }),
     p('', { border: bordo('bottom', C.accento, 24, 1), after: 360, ind: `w:right="${LARGHEZZA - 1800}"` }),
     p(r('preparato per', { sz: 20, color: C.grigio, i: true }), { after: 80 }),
@@ -237,7 +237,7 @@ export function lettera(d) {
     p(r('Spett.le', { sz: 19, color: C.grigio }), { after: 20 }),
     ...destinatario.map((x, i) => p(r(x, { b: i === 0, sz: 20 }), { after: 0, line: 264 })),
     vuoto(380),
-    p(r('Benvenuti in Toscana Diagnostica', { b: true, sz: 26, color: C.scuro }), { after: 260, keepNext: true }),
+    p(r(d.titoloLettera || 'Benvenuti in Toscana Diagnostica', { b: true, sz: 26, color: C.scuro }), { after: 260, keepNext: true }),
     corpo,
     p(r(d.firma.nome, { b: true, sz: 22, color: C.scuro }), { before: 420, after: 20, keepNext: true, keepLines: true }),
     p(r(d.firma.ruolo, { sz: 19, color: C.grigio }), { after: 0 }),
@@ -333,6 +333,18 @@ export function credenziali(d) {
     titoletto('Il primo accesso', { before: 300 }),
     passiXml,
     ref,
+  ].join('');
+}
+
+/** Credenziali StudioLAB (portale dei referti): indirizzo, utente, password solo se l'operatore l'ha inclusa. */
+export function studiolab(d) {
+  const x = d.studiolab;
+  return [
+    testata('Le credenziali', 'Credenziali StudioLAB', 'Il portale dei referti di laboratorio: consultazione e stampa dei referti dei vostri pazienti.'),
+    tabellaDati([{ t: 'Indirizzo', w: 3800, b: true }, { t: 'Utente', w: 2900 }, { t: 'Password', w: 2938 }], [[x.url || '–', x.username || '–', x.password]]),
+    x.password_inclusa ? p(r('La password è stampata in questo documento su vostra richiesta: custoditelo con cura e cambiatela al primo accesso.', { sz: 16, color: 'A03030', i: true }), { before: 80, line: 252 }) : '',
+    vuoto(240),
+    riquadro(p([r('Credenziali personali. ', { b: true, sz: 18, color: C.scuro }), r('Ogni accesso al portale dei referti resta registrato: non condividete utente e password e segnalateci subito eventuali persone da abilitare o disabilitare.', { sz: 18 })], { line: 276 })),
   ].join('');
 }
 

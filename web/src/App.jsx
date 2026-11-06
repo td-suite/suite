@@ -21,6 +21,7 @@ const Files = lazy(() => import('./pages/Files.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Admin = lazy(() => import('./pages/admin/Admin.jsx'));
 const ModuleFrame = lazy(() => import('./components/ModuleFrame.jsx'));
+const FormB2B = lazy(() => import('./pages/FormB2B.jsx'));
 
 class ErrorBoundary extends React.Component {
   constructor(p) { super(p); this.state = { error: null }; }
@@ -38,6 +39,8 @@ function Gate() {
   const loc = useLocation();
   // Informativa IA: pagina pubblica, prima di ogni controllo (si apre anche senza login e durante la presa d'atto)
   if (loc.pathname === '/informativa-ia') return <Suspense fallback={<Splash />}><InformativaIA /></Suspense>;
+  // Form online del Business Hub per i clienti (processo Service): pubblica, con il token nel collegamento, senza login
+  if (loc.pathname.startsWith('/b2b/')) return <Suspense fallback={<Splash />}><Routes><Route path="/b2b/:token" element={<FormB2B />} /></Routes></Suspense>;
   if (loading) return <Splash />;
   if (totpRequired) return <Totp />;
   if (!user) {

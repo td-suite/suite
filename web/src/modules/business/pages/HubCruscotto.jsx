@@ -1,16 +1,20 @@
 // Business Hub · Cruscotto: funnel per fase (conteggi e fatturato FY atteso), stalli, prossime azioni, attività degli ultimi 7 giorni,
 // criticità aperte, NC aperte e ordini in attesa di risposta sui clienti attivi, clienti da confermare dal CEO, email da assegnare.
+// Punti Prelievo (06/11/2026): avvii con passi da completare (con "Riprova") e flagship con l'autorizzazione rilasciata da avviare.
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { BASE } from '../api.js';
-import { useAuth } from '../auth.jsx';
-import { useApi, Kpi, Card, Loading, ErrorBox, Empty, Badge } from '../components/ui.jsx';
-import { itDate, itDateTime, FASI, LINEE, eurK, TIPO_ATTIVITA, GRAVITA, ORIGINE_CRITICITA, NC_STATO, EMAIL_STATO } from '../format.js';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { api, BASE } from '../api.js';
+import { useAuth, canEditKind } from '../auth.jsx';
+import { useApi, Kpi, Card, Loading, ErrorBox, Empty, Badge, useToast } from '../components/ui.jsx';
+import { itDate, itDateTime, FASI, LINEE, eurK, TIPO_ATTIVITA, TONO_ATTIVITA, GRAVITA, ORIGINE_CRITICITA, NC_STATO, EMAIL_STATO, SOTTOTIPO, TIPO_PUNTO } from '../format.js';
 
 export default function HubCruscotto() {
   const { user } = useAuth();
   const nav = useNavigate();
-  const [linea, setLinea] = useState('');
+  // linea nell'indirizzo (?linea=SRV dalla sezione Service del menu): "Tutte le linee" la toglie
+  const [sp, setSp] = useSearchParams();
+  const linea = ['SRV', 'PP', 'MDL'].includes(sp.get('linea')) ? sp.get('linea') : '';
+  const setLinea = (l) => { const n = new URLSearchParams(sp); if (l) n.set('linea', l); else n.delete('linea'); setSp(n, { replace: true }); };
   const s = useApi(`/hub/cruscotto${linea ? `?linea=${linea}` : ''}`);
   const d = s.data;
   if (s.error) return <div className="page"><ErrorBox error={s.error} /></div>;
@@ -28,7 +32,7 @@ export default function HubCruscotto() {
       </div>
 
       <div className="grid g5">
-        <div className="click-card" onClick={() => nav(`${BASE}/pipeline`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} di fatturato FY atteso`} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/pipeline${linea ? `?linea=${linea}` : ''}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} di fatturato FY atteso`} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?attivo=1`)}><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?fase=0`)}><Kpi label="Prospect censiti" value={d.kpi.prospect} foot={`${d.kpi.account} account in tutto`} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?stallo=1`)}><Kpi label={`In stallo (> ${d.soglia_stallo} gg)`} value={d.kpi.stalli} foot="nessun avanzamento di fase" /></div>
@@ -36,7 +40,7 @@ export default function HubCruscotto() {
       </div>
 
       <div className="grid g2" style={{ marginTop: 16 }}>
-        <Card title="Funnel per fase" actions={<Link className="btn sm ghost" to={`${BASE}/pipeline`}>Apri la pipeline</Link>}>
+        <Card title="Funnel per fase" actions={<Link className="btn sm ghost" to={`${BASE}/pipeline${linea ? `?linea=${linea}` : ''}`}>Apri la pipeline</Link>}>
           <div className="funnel">
             {d.funnel.map((f) => (
               <div key={f.fase} className="frow click" onClick={() => nav(`${BASE}/clienti?fase=${f.fase}`)}>
@@ -85,7 +89,7 @@ export default function HubCruscotto() {
       <div className="grid g2" style={{ marginTop: 16 }}>
         <Card title="Attività degli ultimi 7 giorni" flush>
           {d.attivita.length ? <div className="table-wrap" style={{ maxHeight: 360 }}><table className="t"><tbody>
-            {d.attivita.map((x) => <tr key={x.id} className="click" onClick={() => apri(x.account_id)}><td className="small muted" style={{ whiteSpace: 'nowrap' }}>{itDateTime(x.at)}</td><td><Badge tone={x.tipo === 'SISTEMA' ? 'grey' : x.tipo === 'CRITICITA' ? 'red' : x.tipo.startsWith('EMAIL') ? 'teal' : 'blue'}>{TIPO_ATTIVITA[x.tipo]}</Badge></td><td><div className="strong">{x.org_name}</div><div className="small muted">{x.oggetto}{x.email_stato ? ` · ${EMAIL_STATO[x.email_stato]?.label}` : ''}{x.user_name ? ` · ${x.user_name}` : ''}</div></td></tr>)}
+            {d.attivita.map((x) => <tr key={x.id} className="click" onClick={() => apri(x.account_id)}><td className="small muted" style={{ whiteSpace: 'nowrap' }}>{itDateTime(x.at)}</td><td><Badge tone={TONO_ATTIVITA(x.tipo)}>{TIPO_ATTIVITA[x.tipo] || x.tipo}</Badge></td><td><div className="strong">{x.org_name}</div><div className="small muted">{x.oggetto}{x.email_stato ? ` · ${EMAIL_STATO[x.email_stato]?.label}` : ''}{x.user_name ? ` · ${x.user_name}` : ''}</div></td></tr>)}
           </tbody></table></div> : <Empty>Nessuna attività registrata negli ultimi 7 giorni</Empty>}
         </Card>
         <Card title="Criticità aperte" flush>
@@ -95,9 +99,53 @@ export default function HubCruscotto() {
         </Card>
       </div>
 
+      {(!linea || linea === 'SRV') && <Richiamo apri={apri} />}
+      {d.pp && (d.pp.da_completare.length > 0 || d.pp.da_avviare.length > 0) && <AvvioPP pp={d.pp} apri={(id) => nav(`${BASE}/account/${id}?scheda=punto`)} onDone={s.reload} puo={canEditKind(user, 'PP')} />}
+
       {d.email.length > 0 && <Card title="Email da assegnare" className="mt" actions={<Link className="btn sm ghost" to={`${BASE}/email`}>Assegna</Link>} flush>
         <table className="t"><tbody>{d.email.map((m) => <tr key={m.id} className="click" onClick={() => nav(`${BASE}/email`)}><td><Badge tone={LINEE[m.linea]?.tone}>{LINEE[m.linea]?.short}</Badge></td><td className="small">{itDateTime(m.received_at)}</td><td><div className="strong">{m.from_name || m.from_email}</div><div className="small muted">{m.subject}</div></td><td className="small muted">{m.come}</td></tr>)}</tbody></table>
       </Card>}
     </div>
+  );
+}
+
+// Punti Prelievo: passi dell'avvio da completare (non riusciti o in attesa della data o della sede) e flagship autorizzati da avviare
+function AvvioPP({ pp, apri, onDone, puo }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+  const riprova = async (e, id) => { e.stopPropagation(); setBusy(id); try { const r = await api.post(`/hub/accounts/${id}/avvio/riprova`, {}); toast(`Riprova: ${r.riepilogo.fatti} passi su ${r.riepilogo.previsti} fatti`); onDone(); } catch (x) { toast(x.message, 'err'); } finally { setBusy(null); } };
+  return (
+    <div className="grid g2" style={{ marginTop: 16 }}>
+      <Card title={`Punti prelievo: passi dell'avvio da completare (${pp.da_completare.length})`} flush>
+        {pp.da_completare.length ? <table className="t"><tbody>{pp.da_completare.map((x) => <tr key={x.id} className="click" onClick={() => apri(x.id)}>
+          <td><div className="strong">{x.nome}</div><div className="small muted">{x.da_completare.map((k) => SOTTOTIPO[k] || k).join(' · ')}</div></td>
+          <td><Badge tone={TIPO_PUNTO[x.tipo]?.tone}>{TIPO_PUNTO[x.tipo]?.label}</Badge></td>
+          <td className="small">{x.fatti}/{x.previsti}{x.falliti.length ? <div className="red">{x.falliti.length} non riusciti</div> : <div className="muted">in attesa</div>}</td>
+          <td style={{ width: 1 }}>{puo && x.falliti.length > 0 && <button className="btn sm ghost" disabled={busy === x.id} onClick={(e) => riprova(e, x.id)}>{busy === x.id ? 'Riprovo…' : 'Riprova'}</button>}</td>
+        </tr>)}</tbody></table> : <Empty>Nessun avvio da completare</Empty>}
+      </Card>
+      <Card title={`Flagship autorizzati da avviare (${pp.da_avviare.length})`} flush>
+        {pp.da_avviare.length ? <table className="t"><tbody>{pp.da_avviare.map((x) => <tr key={x.id} className="click" onClick={() => apri(x.id)}>
+          <td><div className="strong">{x.nome}</div><div className="small muted">autorizzazione rilasciata{x.autorizzato_il ? ` il ${itDate(x.autorizzato_il)}` : ''}{x.data_avvio ? ` · avvio ${itDate(x.data_avvio)}` : ''}</div></td>
+          <td className="small">"Avvia il punto prelievi" nella scheda</td>
+        </tr>)}</tbody></table> : <Empty>Nessun flagship in attesa di avvio</Empty>}
+      </Card>
+    </div>
+  );
+}
+
+// Richiamo periodico dei prospect Service (processo Service, 06/11/2026): chi riceverebbe il richiamo oggi, con l'interruttore e il limite
+function Richiamo({ apri }) {
+  const r = useApi('/hub/richiamo/anteprima');
+  const d = r.data;
+  if (!d) return null;
+  return (
+    <Card title={`Richiamo dei prospect · chi lo riceverebbe oggi (${d.oggi.length})`} className="mt" flush
+      actions={<span className="small">{d.attivo ? <Badge tone="green">acceso</Badge> : <Badge tone="grey">spento (Impostazioni)</Badge>} ogni {d.giorni} giorni · massimo {d.limite} al giorno{d.gia_oggi ? ` (già ${d.gia_oggi} oggi)` : ''}{d.ultimo_giorno ? ` · ultima esecuzione ${itDate(d.ultimo_giorno)}` : ''}</span>}>
+      {d.oggi.length ? <div className="table-wrap" style={{ maxHeight: 320 }}><table className="t"><thead><tr><th>Prospect</th><th>Fase</th><th>Destinatario</th><th>Ultimo richiamo</th></tr></thead><tbody>
+        {d.oggi.map((x) => <tr key={x.id} className="click" onClick={() => apri(x.id)}><td className="strong">{x.org_name}{x.priorita ? <span className="small muted"> · priorità {x.priorita.toLowerCase()}</span> : null}</td><td><Badge tone={FASI[x.fase_corrente].tone}>{FASI[x.fase_corrente].short}</Badge></td><td className="small">{x.contatto ? `${x.contatto} · ` : ''}{x.email}</td><td className="small">{x.ultimo_richiamo_at ? itDate(x.ultimo_richiamo_at) : 'mai'}</td></tr>)}
+      </tbody></table></div> : <Empty>Nessun prospect da richiamare oggi</Empty>}
+      <div className="small muted" style={{ padding: '8px 14px' }}>Da {d.casella} con le copie fisse e il pacchetto di presentazione. In coda per i prossimi giorni: {d.in_coda}. Esclusi: {Object.entries(d.esclusi).map(([k, v]) => `${k} ${v}`).join(' · ') || 'nessuno'}.</div>
+    </Card>
   );
 }

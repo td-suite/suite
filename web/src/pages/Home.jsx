@@ -175,7 +175,9 @@ function HomeCompleta({ user }) {
               </section>
             );
           })}
-          {modules.data && !modules.data.areas?.length && <Empty icon="grid" title="Nessun modulo assegnato">Il tuo profilo non ha ancora widget attivi. L'amministrazione può abilitarli dalla sezione Utenti.</Empty>}
+          {modules.data && !modules.data.areas?.length && (modules.data.in_attesa_contratto
+            ? <Empty icon="grid" title="Accesso in attivazione">Il vostro accesso alla Suite è pronto. I servizi (Portale Service, non conformità, ordini, circolari, rubrica e ticket) si attivano con la firma del contratto: completate la proposta dal collegamento ricevuto via email.</Empty>
+            : <Empty icon="grid" title="Nessun modulo assegnato">Il tuo profilo non ha ancora widget attivi. L'amministrazione può abilitarli dalla sezione Utenti.</Empty>)}
         </section>
 
         {/* Community: griglia ordinata a 12 colonne. Bacheca a sinistra su due righe; a destra Circolari, Calendario, News, Meteo;

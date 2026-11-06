@@ -50,6 +50,8 @@ export default function Pacchetto({ a, onChange }) {
                     <span className="strong">{s.titolo}</span>{s.fissa && <span className="small muted"> · sempre</span>}</label>
                   {s.key === 'offerta' && !off && <div className="small muted">{disp.offerta === 'PDF' ? `${disp.offerta_file.filename} (proposta ${disp.contratto.protocol || ''}, versione ${disp.offerta_file.version})` : `pagina "Offerta economica" con i dati della proposta: ${disp.proposta.map((x) => x.voce.toLowerCase()).join(', ')}`}</div>}
                   {s.key === 'credenziali' && <div className="small muted">{disp.accessi.length ? `${disp.accessi.length} accessi esterni della Legal entity` : 'nessun accesso esterno: crealo da Amministrazione > Legal entity > Accessi'}{disp.portale_referti ? ` · portale referti: ${disp.portale_referti.username || '–'}` : ''}</div>}
+                  {s.key === 'listino' && !off && disp.listino && <div className="small muted">{disp.listino.filename} (dal listino StudioLAB v{disp.listino.versione})</div>}
+                  {s.key === 'studiolab' && !off && disp.portale_referti && <div className="small muted">{disp.portale_referti.url || ''}{disp.portale_referti.username ? ` · utente ${disp.portale_referti.username}` : ''}</div>}
                   {s.key === 'vademecum' && <div className="small muted">{disp.service_attivo ? 'PDF dallo specchio del Portale Service, in coda (se non disponibile: link e QR)' : 'Portale Service non avviato: link e QR al Vademecum online'}</div>}
                   {off && <div className="small red">{s.motivo}</div>}
                 </li>

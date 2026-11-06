@@ -78,7 +78,7 @@ export default function Clienti() {
           <tbody>
             {righe.map((a) => (
               <tr key={a.id} className="click" onClick={() => nav(`${BASE}/account/${a.id}`)}>
-                <td><div className="strong">{a.org_name}</div><div className="small muted">{[a.gruppo && a.gruppo !== a.org_name ? a.gruppo : null, a.tipologia, a.n_sedi ? `${a.n_sedi} strutture` : null].filter(Boolean).join(' · ')}</div></td>
+                <td><div className="strong">{a.org_name}</div><div className="small muted">{[a.punto_nome && a.punto_nome !== a.org_name ? a.punto_nome : null, a.gruppo && a.gruppo !== a.org_name ? a.gruppo : null, a.tipologia, a.n_sedi ? `${a.n_sedi} strutture` : null].filter(Boolean).join(' · ')}</div></td>
                 <td><Badge tone={LINEE[a.linea].tone}>{LINEE[a.linea].short}</Badge></td>
                 <td style={{ whiteSpace: 'nowrap' }}><Badge tone={FASI[a.fase_corrente].tone}>{FASI[a.fase_corrente].short}</Badge>{a.cliente_attivo ? <div className="small green strong">cliente attivo</div> : a.da_confermare ? <div className="small" style={{ color: '#6d3f8a' }}>da confermare dal CEO</div> : null}</td>
                 <td>{a.priorita ? <Badge tone={PRIORITA[a.priorita].tone}>{PRIORITA[a.priorita].label}</Badge> : '–'}</td>

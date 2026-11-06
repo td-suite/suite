@@ -20,6 +20,7 @@ import { graphConfigured, graphToken, tokenRoles, resolveMailbox, messaggiDa, al
 import { getSettings } from './rules.js';
 import { LINEE, LINEE_KEYS, abbinaEmail, indirizzi, emailValida } from './hub.js';
 import { storeBuffer } from './storage.js';
+import { rifDaOggetto } from './processo.js';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const MAX_ALLEGATO = 20 * 1024 * 1024;
@@ -81,8 +82,11 @@ async function registraArrivo(m, accountId, userId = null) {
 export async function ingestEmail({ linea, casella: address, graphId, messageId = null, receivedAt = null, fromEmail, fromName = null, subject = '', preview = '', files = [], simulato = false }) {
   if (await one('SELECT 1 FROM email_in WHERE graph_id=$1', [graphId])) return { duplicato: true };
   const from = String(fromEmail || '').trim().toLowerCase();
-  const voci = await vociAbbinamento();
-  const m = abbinaEmail(from, voci, linea);
+  // processo Service: il riferimento [TD-B2B-...] che il kit di proposta mette nell'oggetto abbina la risposta all'account anche se
+  // il mittente non è tra gli indirizzi noti (un collega del referente, una casella diversa)
+  const rif = rifDaOggetto(subject);
+  const perRif = rif ? await one(`SELECT id FROM accounts WHERE b2b_token LIKE $1 || '%'`, [rif]) : null;
+  const m = perRif ? { account_id: perRif.id, come: 'riferimento della proposta nell\'oggetto' } : abbinaEmail(from, await vociAbbinamento(), linea);
   const row = await one(`INSERT INTO email_in (linea, casella, graph_id, message_id, received_at, from_email, from_name, subject, preview, n_allegati, stato, come, account_id, simulato)
     VALUES ($1,$2,$3,$4,coalesce($5, now()),$6,$7,$8,$9,$10,'DA_ASSEGNARE',$11,NULL,$12) RETURNING *`,
   [linea, address, graphId, messageId, receivedAt, from || null, fromName ? String(fromName).slice(0, 200) : null, String(subject || '').slice(0, 500), String(preview || '').slice(0, 2000), (files || []).length, m.come, simulato]);
@@ -94,8 +98,22 @@ export async function ingestEmail({ linea, casella: address, graphId, messageId 
   }
   let activityId = null;
   if (m.account_id) activityId = await registraArrivo(row, m.account_id);
+  if (activityId) await segnaRisposta(row.id, m.account_id, activityId, Boolean(perRif));
   console.log(`[business] casella ${linea}: messaggio ${row.id} ${m.account_id ? `abbinato all'account ${m.account_id}` : 'da assegnare'}, ${(files || []).length} allegati`);
   return { id: row.id, abbinato: Boolean(m.account_id), account_id: m.account_id || null, activity_id: activityId, come: m.come, candidati: m.candidati || [] };
+}
+
+/**
+ * Risposta del cliente a una proposta (processo Service): se l'account ha ricevuto il kit (o la mail porta il riferimento) gli allegati
+ * PDF diventano "da verificare" nel fascicolo e l'attività è una "Risposta del cliente" da verificare. L'operatore conferma dalla
+ * scheda con un clic se un PDF è il contratto firmato (lib/contrattualizza.js) o un allegato del contratto.
+ */
+export async function segnaRisposta(emailInId, accountId, activityId, perRiferimento = false) {
+  const a = await one(`SELECT id, b2b_token, contrattualizzato_at, EXISTS (SELECT 1 FROM kit_proposta k WHERE k.account_id=accounts.id AND k.stato='INVIATO') AS kit FROM accounts WHERE id=$1`, [accountId]);
+  if (!a || !(a.kit || a.b2b_token || perRiferimento)) return false;
+  const pdf = await q(`UPDATE documenti SET da_verificare=TRUE WHERE email_in_id=$1 AND (mime='application/pdf' OR lower(filename) LIKE '%.pdf') RETURNING id`, [emailInId]);
+  await q(`UPDATE activities SET sottotipo='RISPOSTA_KIT', esito=CASE WHEN $2 > 0 THEN 'DA_VERIFICARE' ELSE esito END WHERE id=$1`, [activityId, pdf.rowCount]);
+  return pdf.rowCount > 0;
 }
 
 export async function assegnaEmail(emailInId, accountId, userId) {
@@ -103,7 +121,9 @@ export async function assegnaEmail(emailInId, accountId, userId) {
   if (!m) throw Object.assign(new Error('Messaggio non trovato'), { status: 404 });
   if (m.stato === 'ABBINATO') throw Object.assign(new Error('Messaggio già abbinato a un account'), { status: 400 });
   await q('UPDATE email_in SET come=$2, assegnato_by=$3 WHERE id=$1', [m.id, 'assegnato a mano', userId]);
-  return registraArrivo({ ...m, come: 'assegnato a mano' }, accountId, userId);
+  const act = await registraArrivo({ ...m, come: 'assegnato a mano' }, accountId, userId);
+  if (act) await segnaRisposta(m.id, accountId, act, rifDaOggetto(m.subject) != null);
+  return act;
 }
 
 // ---- Lettura delle caselle (job business:inbox e "Leggi ora")
@@ -165,8 +185,10 @@ export async function provaInvio(linea, to) {
   return { ok: false, message: motivoInvio(out.error || 'Invio non riuscito', address) };
 }
 
+// Indirizzi web nel testo come collegamenti (il link alla form online del kit di proposta)
+const linkifica = (html) => html.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, '<a href="$1" style="color:#1C505E;font-weight:600">$1</a>');
 export function corpoHtml(testo) {
-  const p = String(testo || '').split(/\n{2,}/).map((x) => `<p style="margin:0 0 12px">${esc(x).replace(/\n/g, '<br>')}</p>`).join('');
+  const p = String(testo || '').split(/\n{2,}/).map((x) => `<p style="margin:0 0 12px">${linkifica(esc(x)).replace(/\n/g, '<br>')}</p>`).join('');
   return `<!doctype html><html lang="it"><body style="margin:0;font-family:Segoe UI,Arial,sans-serif;color:#0f2a33;font-size:14px;line-height:1.55"><div style="max-width:680px;padding:8px 4px">${p}</div></body></html>`;
 }
 
@@ -174,19 +196,21 @@ export function corpoHtml(testo) {
  * Invio dalla scheda account. Restituisce { activity_id, stato, errore, from, to, cc, allegati }.
  * allegati: [{ filename, content, contentType, ref }]
  */
-export async function inviaAlCliente({ account, to, ccExtra = [], subject, testo, allegati = [], userId, contattoId = null, contractId = null }) {
+export async function inviaAlCliente({ account, to, ccExtra = [], subject, testo, allegati = [], userId, contattoId = null, contractId = null, sottotipo = null, dati = null, testoDiario = null, logSubject = null, senzaCopie = false }) {
   const s = await getSettings();
   const { address } = casella(account.linea, s);
-  const cc = [...new Set([...ccFissi(account.linea, s), ...indirizzi(ccExtra)])].filter((x) => !to.includes(x));
-  const out = await sendMail({ from: address, to, cc, subject, html: corpoHtml(testo), text: testo, ref: `business:account:${account.id}`, logSubject: `Business Hub · account ${account.id}`,
+  // senzaCopie: solo l'invito con la password provvisoria (le credenziali personali non vanno in copia a nessuno)
+  const cc = senzaCopie ? [] : [...new Set([...ccFissi(account.linea, s), ...indirizzi(ccExtra)])].filter((x) => !to.includes(x));
+  const out = await sendMail({ from: address, to, cc, subject, html: corpoHtml(testo), text: testo, ref: `business:account:${account.id}`, logSubject: logSubject || `Business Hub · account ${account.id}`,
     attachments: allegati.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) });
   const stato = !out.ok ? 'FALLITO' : out.logged ? 'REGISTRATO' : 'INVIATO';
   const errore = out.ok ? null : motivoInvio(out.error || 'Invio non riuscito', address);
-  const act = await one(`INSERT INTO activities (account_id, tipo, user_id, contatto_id, con_chi, oggetto, testo, esito, email_message_id, email_from, email_to, email_cc, email_stato, email_errore, contract_id, dati)
-    VALUES ($1,'EMAIL_OUT',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
-  [account.id, userId, contattoId, to.join(', '), subject, testo, stato, out.logId ? `email_log:${out.logId}` : null, address, to.join(', '), cc.join(', '), stato, errore, contractId,
-    JSON.stringify({ allegati: allegati.map((a) => ({ filename: a.filename, ref: a.ref })), messaggio: randomUUID() })]);
-  console.log(`[business] invio email account ${account.id}: ${stato}`);
+  // testoDiario: quello che resta nel diario quando il testo vero non si conserva (l'invito con la password provvisoria)
+  const act = await one(`INSERT INTO activities (account_id, tipo, user_id, contatto_id, con_chi, oggetto, testo, esito, email_message_id, email_from, email_to, email_cc, email_stato, email_errore, contract_id, dati, sottotipo)
+    VALUES ($1,'EMAIL_OUT',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+  [account.id, userId, contattoId, to.join(', '), subject, testoDiario ?? testo, stato, out.logId ? `email_log:${out.logId}` : null, address, to.join(', '), cc.join(', '), stato, errore, contractId,
+    JSON.stringify({ allegati: allegati.map((a) => ({ filename: a.filename, ref: a.ref })), messaggio: randomUUID(), ...(dati || {}) }), sottotipo]);
+  console.log(`[business] invio email account ${account.id}${sottotipo ? ` (${sottotipo})` : ''}: ${stato}`);
   return { activity_id: act.id, stato, errore, from: address, to, cc, allegati: allegati.map((a) => a.filename) };
 }
 

@@ -21,6 +21,8 @@ import Clienti from './pages/Clienti.jsx';
 import Opportunita from './pages/Opportunita.jsx';
 import Account from './pages/Account.jsx';
 import EmailDaAssegnare from './pages/EmailDaAssegnare.jsx';
+import ClientiAttivi from './pages/ClientiAttivi.jsx';
+import PuntiPrelievo from './pages/PuntiPrelievo.jsx';
 import './business.css';
 
 export default function Module({ moduleKey, mode, moduleUser }) {
@@ -37,8 +39,11 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="db-opportunita" element={<Opportunita />} />
             <Route path="account/:id" element={<Account />} />
             <Route path="email" element={<EmailDaAssegnare />} />
+            <Route path="clienti-attivi" element={<ClientiAttivi />} />
             <Route path="contratti-panoramica" element={<Dashboard />} />
-            <Route path="punti-prelievo" element={<Contracts kind="PP" />} />
+            {/* Punti Prelievo (06/11/2026): elenco dei punti con tipo, sede, partner, fase, autorizzazione e avvio; i contratti PP a parte */}
+            <Route path="punti-prelievo" element={<PuntiPrelievo />} />
+            <Route path="contratti-pp" element={<Contracts kind="PP" />} />
             <Route path="service" element={<Contracts kind="SRV" />} />
             <Route path="medicina-del-lavoro" element={<Contracts kind="MDL" />} />
             <Route path="sedi" element={<Contracts kind="SEDE" />} />

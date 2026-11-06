@@ -44,7 +44,12 @@ attività degli ultimi 7 giorni, criticità aperte, NC aperte e ordini in attesa
 CEO, email da assegnare; filtro per linea), Pipeline (`Pipeline.jsx`: kanban con i prospect censiti ripiegati e le 7 fasi, filtri linea,
 priorità, owner, provincia, segmento, stato e ricerca), Clienti e prospect (`Clienti.jsx`, tabella ordinabile, nuovo prospect),
 DB Opportunità (`Opportunita.jsx`), Scheda account (`Account.jsx`), Email da assegnare con registro invii (`EmailDaAssegnare.jsx`).
-I contratti restano nel gruppo "Contratti e autorizzazioni" del menu (la vecchia home è "Panoramica contratti").
+Menu (richiesta del CEO del 06/11/2026, `web/src/modules/business/meta.js`): **Management** (Panoramica contratti, Tutti i contratti,
+Organizzazioni e sedi), **Service di Laboratorio** (Cruscotto e Pipeline filtrati con `?linea=SRV`, dalla pagina "Tutte le linee"; Clienti
+e prospect, DB Opportunità, Email da assegnare, **Clienti** = clienti della linea), **Punti Prelievo** (Punti Prelievo: dal 06/11/2026 l'elenco dei punti
+prelievo, vedi "Processo Punti Prelievo", con "Fascicoli autorizzazione", cruscotto e pipeline PP e i Contratti PP; Sedi TD in locazione), **Medicina del Lavoro** (pagina con i
+collegamenti a cruscotto e pipeline MDL), **Amministrazione** (Impostazioni, Registro attività). Una voce con `to` che inizia per "?"
+resta sulla pagina principale del modulo con il filtro nell'indirizzo (`components/Shell.jsx`).
 
 Scheda account: intestazione con linea, fase e date di fase, cliente attivo (interruttore solo per CEO/Admin), owner, prossima azione;
 schede Diario ("Registra contatto": tipo, quando, con chi, cosa ci siamo detti, esito, prossima azione, contratto, allegati), Referenti,
@@ -227,3 +232,230 @@ prova), poi il file del CEO (477 righe di dati; le 9 righe di totale e legenda i
 - Il dubbio dell'import (LAMM/Eurofins) e le 24 riconciliazioni con i contratti vanno decisi dal CEO; i 18 "da confermare" pure.
 - I contratti PP e la sede SEDE non erano nel db di prova (sedi TD assenti): in produzione "Account per i contratti già presenti" crea i
   loro account.
+
+## Processo Service: da prospect a cliente contrattualizzato (06/11/2026)
+Richiesta del CEO: listino StudioLAB per cliente con le versioni, offerta economica in PDF, kit di proposta da service@ con la form online,
+contratto firmato in ascolto, comunicazioni automatiche, attivazione dei widget, richiamo periodico dei prospect; "tutto deve essere
+registrato". Migrazione `010_service_flow.sql`; regole pure in `lib/listino.js` e `lib/processo.js`, parte operativa in `lib/flusso.js`,
+`lib/contrattualizza.js`, `lib/richiamo.js`, `lib/offertaEconomica.js`, `lib/mod173Pdf.js`; route `routes/listino.js`, `routes/processo.js`,
+`routes/b2b.js` (pubblica); interfaccia `components/Listino.jsx`, `components/Proposta.jsx`, `components/ProcessoImpostazioni.jsx`,
+`pages/ClientiAttivi.jsx`, `web/src/pages/FormB2B.jsx`. Test: `server/test/business-service-flow.test.mjs`.
+
+**1. Listino e offerta** (scheda account "Listino e offerta"). Carico dell'Excel esportato da StudioLAB (.xlsx o .csv) sempre con
+l'anteprima: la riga di intestazione si cerca nelle prime 20 righe, le colonne si riconoscono con i sinonimi (codice esame, descrizione,
+settore/sezione/branca, prezzo di listino/tariffa, prezzo offerto/scontato/netto, sconto %, unità, note); numeri all'italiana, sconto in
+percentuale o in frazioni, prezzo offerto o sconto ricavati l'uno dall'altro, righe vuote e di totale scartate. Il formato esatto di
+StudioLAB non era disponibile: se le colonne indispensabili (descrizione e prezzo di listino) non si riconoscono si scelgono a video e il
+mapping si salva (`listino.mapping`) per i caricamenti successivi. Ogni salvataggio è una versione (`listini`: v1, v2, ... con nota,
+righe in jsonb, riepilogo, differenze con la versione corrente: righe cambiate evidenziate, aggiunte, tolte, sconto medio prima e dopo);
+la corrente è l'ultima salvo scelta ("Rendi corrente") e lo sconto medio dell'account la segue. Sconto medio = 1 − Σofferta/Σlistino
+(ponderato), accanto la media semplice. Da ogni versione "Offerta economica" in PDF sulla carta intestata luglio 2026 (copertina con
+cliente e versione, riepilogo con esami, sconto medio, validità e condizioni di pagamento dalla Legal entity o dalle Impostazioni,
+tabelle per settore con codice, esame, listino, offerta, sconto; note; firma del CEO dalle Impostazioni), nei Documenti dell'account
+(categoria OFFERTA_ECONOMICA). Diario: LISTINO, OFFERTA_ECONOMICA.
+
+**2. Proposta al cliente** (scheda "Proposta e contratto"). Checklist: listino caricato, referente con email, dati del cliente completi
+(ragione sociale, P.IVA, indirizzo, città, email o PEC), credenziali StudioLAB (contratto della linea o Legal entity), accesso alla
+Suite (si crea da solo alla preparazione o con "Crea accesso"), offerta economica della versione corrente, lettera di offerta MOD230
+generata. Con tutto verde "Prepara la mail": accesso creato se manca, collegamento alla form, **pacchetto della proposta** (variante KIT
+del pacchetto di benvenuto: lettera di presentazione e invito modificabile in Impostazioni, lettera di offerta, **Offerta economica dal
+listino**, Portale Service, accesso alla Suite, **Credenziali StudioLAB** (password solo con la spunta), piano, referente, diversi,
+checklist, Vademecum con le pagine o solo link e QR), MOD173 compilabile precompilato, circolare per il trasporto dei campioni
+(`templates/circolare_trasporto_campioni_2003-05-08.pdf`, allegata come "Allegato 4 - Circolare Ministero 8 Maggio 2003.pdf"). Anteprima
+con mittente, destinatari, copie fisse, allegati con le dimensioni, oggetto e testo modificabili; "Invia da service@" con conferma.
+All'oggetto si aggiunge sempre il riferimento `[TD-B2B-xxxxxxxxxx]` (prime 10 lettere del token) che abbina la risposta. Con l'invio:
+EMAIL_OUT sottotipo KIT_PROPOSTA nel diario e nel registro invii, `kit_proposta` INVIATO, pipeline alla fase 4 con la data di oggi.
+Idempotenza: un secondo invio per la stessa versione del listino risponde 409 e chiede "Sì, invia di nuovo". Avviso oltre 3 MB di
+allegati (da verificare con "Prova l'invio"), blocco oltre 25 MB.
+
+**3. Accesso alla Suite prima della firma**. Persona ESTERNO della Legal entity e utente LOCAL esterno **senza grant**: per
+`esternoInAttesa` (lib/esterni.js) la Home non mostra nessun widget, nemmeno quelli aperti a tutti (Portale Service, SGI, Circolari,
+Ticket: `requireModuleReady` risponde 403 "Accesso in attivazione"), con il messaggio "Accesso in attivazione". L'invito con la password
+provvisoria parte da service@ **senza copie** (credenziali personali), nel diario resta una nota senza la password (sottotipo
+INVITO_SUITE); con la posta in modalità registro la password torna solo a chi preme "Crea accesso".
+
+**4. Form online pubblica** `/b2b/<token>` (nessun login; API `/api/business/b2b/:token` montata prima della sessione, modulo LIVE,
+30 invii ogni 15 minuti per IP, file fino a 10 MB, intestazione anti CSRF). Token per account (24 byte casuali), scadenza
+`hub_b2b_token_giorni`, "Rinnova" (stesso link) o "Nuovo collegamento" (il vecchio non vale più). La pagina mostra l'Anagrafica Clienti
+B2B (tutti i campi del TD-SGI-MOD173, precompilati da Legal entity, org_ext, referente principale e indirizzo del laboratorio, o
+dall'ultimo invio), il caricamento del contratto firmato (PDF, oppure "lo invio per email") e gli allegati configurati in Impostazioni.
+Ogni invio: `anagrafiche_b2b` (versione, dati, IP), MOD173 compilato in PDF nel fascicolo (categoria MOD173), file nei documenti
+(CONTRATTO_FIRMATO, ALLEGATO_CONTRATTO), attività FORM_B2B. I campi vuoti della Legal entity (`public.organizations`: P.IVA, SDI, PEC,
+indirizzo, IBAN, banca...) e di `org_ext` (servizi, riferimenti, condizioni di pagamento) si riempiono da soli; quelli già valorizzati e
+diversi diventano proposte nella scheda ("Applica i campi scelti"). Con il contratto firmato parte la contrattualizzazione.
+
+**5. Ascolto della casella**. Il job `business:inbox` (e la simulazione) riconosce il riferimento `[TD-B2B-...]` nell'oggetto anche da un
+mittente sconosciuto; per gli account con il kit inviato o il collegamento attivo gli allegati PDF diventano "da verificare" (badge
+"Clienti", riquadro in cima a "Proposta e contratto") e l'email è una "Risposta del cliente" (sottotipo RISPOSTA_KIT). Un clic: "È il
+contratto firmato" (contrattualizzazione), "Allegato del contratto", "Non pertinente". Anche un PDF caricato a mano nei Documenti si
+conferma come contratto firmato.
+
+**6. Contrattualizzazione** (`lib/contrattualizza.js`, una volta sola: `contrattualizzato_at`; un secondo contratto va nel fascicolo e
+nel contratto senza ripetere le comunicazioni): contratto della linea FIRMATO con la data e il PDF tra i suoi file (evento nel contratto),
+pipeline alla fase 6; attivazione: profilo di sistema **Cliente service** (Portale Service, SGI, NC, Ordini, Circolari, Rubrica; Ticket è
+aperto a tutti) in merge sugli accessi esterni della Legal entity (se non c'è un accesso si crea per il referente), nuovo invito a chi
+non è mai entrato, attività ATTIVAZIONE con gli avvisi (senza sede SERVICE "Il mio spazio", NC e Ordini restano senza ambito: creare la
+sede e "Riallinea perimetri", poi "Riapplica i servizi agli accessi"); poi da service@ con le copie fisse: **"Avvenuta
+contrattualizzazione: <cliente>"** a `hub_dest_contrattualizzazione` (riepilogo, PDF firmato allegato), **ringraziamento e benvenuto**
+al referente (Suite, servizi, accessi attivi, come entrare, referenti dallo specchio del Portale Service e dai Dati aziendali), **"Nuovo
+cliente contrattualizzato"** a `hub_dest_laboratorio` (volumi giornalieri attesi dal campo dell'account o volume FY / giorni lavorativi,
+data di avvio prevista, referente, listino, offerta economica allegata). Esito in `accounts.contrattualizzazione` e nella scheda; la fase 7
+resta al CEO. Diario: CONTRATTO_FIRMATO, ATTIVAZIONE, EMAIL_OUT CONTRATTUALIZZAZIONE / BENVENUTO / NUOVO_CLIENTE_LAB.
+
+**7. Richiamo dei prospect** (`lib/richiamo.js`, job `business:richiamo-prospect`). Account SRV in fase 0-5, non clienti né
+contrattualizzati, senza "Non contattare" (scheda "Proposta e contratto", Avvio del cliente), con un'email (referente principale o Legal
+entity), senza richiami né altre email inviate negli ultimi `hub_richiamo_giorni`; prima chi non è mai stato richiamato, poi il richiamo
+più vecchio, poi la priorità; massimo `hub_richiamo_limite` al giorno (contano anche gli invii a mano). Email da service@ con le copie
+fisse (modello in Impostazioni: azienda, servizi, Portale Service, invito a rispondere a service@ e al primo indirizzo dei recapiti,
+recapiti da anagrafica) con il **pacchetto di presentazione** (variante PROSPECT: lettera di presentazione, Portale Service, referente se
+c'è l'owner, diversi, Vademecum come link e QR; senza offerta né credenziali). EMAIL_OUT RICHIAMO e `ultimo_richiamo_at`. Interruttore
+spento di default; anteprima "chi riceverebbe il richiamo oggi" nel Cruscotto; "Esegui ora" in Impostazioni (solo acceso).
+
+**Pagina "Clienti"** (`/business/clienti-attivi`): clienti attivi (confermati dal CEO) e contrattualizzati in avvio della linea, con
+contratto, avvio (attivo dal o prevista), volumi giornalieri, listino, accessi, ultimo contatto, owner, allegati da verificare.
+
+**API** (`/api/business/hub`): `GET /accounts/:id/listini`, `POST /accounts/:id/listini/anteprima` e `/accounts/:id/listini` (multipart
+file, mapping, foglio, note), `GET /listini/:id`, `PUT /accounts/:id/listino-corrente`, `POST /listini/:id/offerta`,
+`GET|DELETE /listino/mapping`, `GET /accounts/:id/processo`, `POST /accounts/:id/accesso`, `POST /accounts/:id/b2b-link`,
+`POST /accounts/:id/kit/prepara`, `GET /kit/:id`, `POST /kit/:id/invia`, `POST /kit/:id/annulla`, `POST /documenti/:id/verifica`,
+`POST /accounts/:id/contrattualizza`, `POST /accounts/:id/attiva-accessi`, `POST /anagrafiche/:id/applica`, `GET /clienti-attivi`,
+`GET /richiamo/anteprima`, `POST /richiamo/esegui`, `GET|PUT /flusso/modelli`, `GET|PUT /b2b/allegati`. Pubbliche:
+`GET|POST /api/business/b2b/:token`, `GET /api/business/b2b/:token/mod173.pdf`. Badge del menu `da_verificare`.
+
+**Privacy e testi**: nei log del server solo id ed esiti; nessun nome, numero o impegno inventato: i testi vengono dai modelli con
+segnaposto (una riga con i segnaposto tutti vuoti non compare), i recapiti dall'anagrafica, i volumi e le date dall'account.
+
+**Collaudo del 06/11/2026** (db di prova `suite_srv_t`, porta 3143, origine finta del Portale Service su 7052, posta in modalità
+registro; moduli business, service, nc, orders, circolari, ticket avviati; DB Opportunità importato: 424 account). Prospect di prova
+"Laboratorio Analisi Collaudo S.r.l.": listino di 30 esami con titolo e intestazioni "Cod. Prestazione / Descrizione Prestazione / Branca /
+U.M. / Tariffa Listino € / Sconto % / Prezzo Netto € / Note" riconosciuto da solo (riga 4, 2 righe di totale scartate), v1 sconto 10%,
+v2 "sconto richiesto dal cliente" 9 righe cambiate, sconto medio 10% → 16,8%; offerta economica v2 di 4 pagine in circa 2 secondi;
+proposta MOD230 generata; kit preparato in 7 secondi (pacchetto della proposta di 281 pagine con il Vademecum, 4,5 MB di allegati),
+inviato (REGISTRATO) a referente con le copie fisse, fase 4. Accesso esterno: prima della firma Home vuota "Accesso in attivazione",
+Portale Service e Circolari 403. Form pubblica compilata (SDI, banca, IBAN, condizioni) con il PDF firmato: anagrafica v1, MOD173
+compilato nel fascicolo, 8 campi vuoti completati, 1 differenza proposta (termine di pagamento), contratto SRV-2026-0001 FIRMATO con il
+PDF, fase 6, profilo Cliente service (6 widget), tre email REGISTRATE (interna a Francesco Epifani e Rosetta Greco; benvenuto al
+referente in cc alle copie fisse; laboratorio@ e valentina.zezza@ in cc alle copie fisse, "circa 120 esami al giorno"); dopo la firma
+l'esterno vede Portale Service, SGI, NC, Ordini, Circolari, Ticket, Rubrica. Risposta per email con il riferimento da un mittente
+sconosciuto: abbinata, allegato da verificare, registrato come "Visura camerale". Richiamo: spento 400; acceso con limite 3: tre
+presentazioni di 9 pagine inviate in circa 10 secondi, seconda esecuzione 0 (limite giornaliero). Schermate `docs/screens/hub-listino.png`,
+`hub-kit.png`, `hub-form-b2b.png`, `hub-menu.png`.
+
+**Da verificare in produzione**: formato reale dell'Excel esportato da StudioLAB (al primo caricamento: colonne riconosciute o mapping a
+video); invio da service@ con allegati di qualche MB (il kit con il Vademecum supera i 3 MB: "Prova l'invio" e, se Graph rifiuta,
+Vademecum come link); permessi Graph Mail.Read/Mail.Send sulla casella service@; dominio pubblico del collegamento alla form (BASE_URL
+https); sede SERVICE della Legal entity da creare all'avvio per "Il mio spazio", NC e Ordini.
+
+## Processo Punti Prelievo (06/11/2026)
+Richiesta del CEO: "Il processo Punti Prelievo lo vedi così: Anagrafica: il punto prelievi può essere un flagship (cioè in sede in
+locazione) o un corner (in sede di terzi, ovvero il partner). Contratto: quando il punto è in sede di terzi [...] il contratto viene
+inviato da network@ alla sede che ospita il punto prelievi. Una volta firmato [...] il widget ascolta la mail e aggiorna il fascicolo [...];
+alternativa permette l'upload del pdf [...]. Non appena caricato, il widget scrive al partner inviando le credenziali della suite esponendo
+il widget Cash [...], a francesco.epifani@ e silvia.sansoni@ [...], a laboratorio@ e valentina.zezza@ [...], induce in widget Ordini il
+primo ordine standard [...], scrive a valentina.zezza@ [...], a amministrazione@ [...], a iacopo.cupelli@ [...]". Stessa meccanica e stesso
+stile del processo Service, parametrizzati per linea: token e form pubblica (variante PARTNER), invio dalla casella della linea con le
+copie fisse e registrazione, ascolto con il riferimento `[TD-B2B-...]`, verifica con un clic, contrattualizzazione idempotente.
+Migrazione `011_pp_flow.sql`; regole pure in `lib/processo.js` (sezione Punti Prelievo), parte operativa in `lib/puntoPrelievi.js`, ramo PP di
+`lib/contrattualizza.js`, route in `routes/processo.js`; interfaccia `components/PuntoPrelievi.jsx` (scheda "Punto prelievi"),
+`pages/PuntiPrelievo.jsx`, cruscotto, `web/src/pages/FormB2B.jsx` (variante PARTNER). Test: `server/test/business-pp-flow.test.mjs`.
+
+**1. Anagrafica del punto (account PP).** Un account per punto prelievi: l'unicità per Legal entity e linea resta per Service e MdL; per i
+Punti Prelievo vale per sede (`pp_site_id`, una sede un solo account) o per nome (`pp_nome`), così un partner può ospitare più corner e la
+società TD avere più flagship. **Flagship o corner non è un campo nuovo**: si deriva dalla sede TD collegata (`public.sites`, tipo
+PUNTO_PRELIEVI): titolo di godimento OSPITATA (o, senza titolo, una Legal entity ospitante) = corner; proprietà, locazione o comodato senza
+ospitante = flagship (il comodato è una sede TD: scelta documentata). Senza sede vale il "tipo previsto" (`pp_tipo_previsto`), da
+confermare al collegamento della sede; se la sede dice altro vale la sede (avviso). Per il corner l'account sta sulla Legal entity del
+partner (deve coincidere con l'ospitante della sede); per il flagship sulla Legal entity della sede (la società TD) o su quella scelta.
+Date di avvio prevista (`data_avvio_prevista`) ed effettiva (`data_avvio_effettiva`). La scheda "Punto prelievi" (al posto di "Listino e
+offerta" e "Proposta e contratto", che restano del Service) mostra tipo, sede, partner ospitante, referente del partner (referente
+principale), date, fascicolo di autorizzazione (della sede, altrimenti del contratto PP) e contratto PP o locazione della sede (SEDE), con i
+pulsanti "Fascicolo di autorizzazione" e "Scheda Sede in Amministrazione". Pagina **Punti Prelievo** (`/business/punti-prelievo`): elenco con
+tipo, sede, partner, fase, contratto o locazione, autorizzazione (stato del fascicolo), avvio (date e passi), filtro corner/flagship; sedi
+Punto prelievi dell'anagrafica senza account con "Crea il punto prelievi" (Legal entity = ospitante per il corner, Legal entity della sede
+per il flagship); "Nuovo punto prelievi" senza sede (nome, tipo previsto, Legal entity); collegamenti a Fascicoli autorizzazione, cruscotto e
+pipeline PP, Contratti PP (`/business/contratti-pp`, prima su `/punti-prelievo`). L'import "Account per i contratti già presenti" crea un
+account PP per Legal entity e sede del contratto.
+
+**2. Contratto al partner (solo corner).** Prerequisiti: punto corner, contratto PP generato (BOZZA o PROPOSTA con il PDF generato, "il
+contratto che ha in memoria": template `contratto_punto_prelievi.docx`), referente del partner con email. "Invia il contratto al partner da
+network@": stessa tabella e stessa anteprima del kit (`kit_proposta.variante = CONTRATTO_PARTNER`, contratto e PDF collegati): mittente
+network@, copie fisse Francesco Epifani e Silvia Sansoni, PDF del contratto, riferimento `[TD-B2B-xxxxxxxxxx]` sempre nell'oggetto,
+collegamento alla form del partner, testo dal modello "PP · contratto al partner"; invio con conferma, un secondo invio dello stesso PDF
+risponde 409 e chiede "Sì, invia di nuovo". Con l'invio: EMAIL_OUT sottotipo CONTRATTO_PARTNER nel diario e nel registro invii, evento
+INVIATO nel contratto, pipeline alla fase 4.
+
+**3. Ascolto, form del partner e fascicolo.** La form pubblica `/b2b/<token>` per un account PP è la **variante PARTNER**: dati del
+referente (nome, ruolo, email, telefono, note) e caricamento del contratto firmato (o "lo invio per email"), senza MOD173 (il PDF del MOD173
+risponde 404). Il referente si aggiorna (stessa email) o si aggiunge come principale; ogni invio resta in `anagrafiche_b2b`
+(`dati.variante = PARTNER`) con l'attività FORM_B2B. La risposta a network@ con il riferimento (anche da un mittente sconosciuto) porta gli
+allegati PDF "da verificare" in cima alla scheda: un clic "È il contratto firmato". In alternativa "Carica il PDF firmato (ricevuto per
+altri canali)" (`POST /hub/accounts/:id/contratto-firmato`, vale per ogni linea). Al contratto firmato (una volta sola,
+`contrattualizzato_at`; un secondo PDF va nel fascicolo e nel contratto senza ripetere nulla): documento CONTRATTO_FIRMATO dell'account,
+contratto PP FIRMATO con il PDF tra i suoi file, PDF anche nel **fascicolo di autorizzazione** come "disponibilità dei locali (contratto con la
+struttura ospitante)" se il fascicolo c'è, pipeline alla fase 6, poi l'avvio.
+
+**4. Avvio del punto prelievi** (passi a-g, regola pura `pianoAvvio`, esecuzione `eseguiAvvio`): ogni passo ha stato (fatto, non riuscito,
+in attesa della data, in attesa della sede), esito, data, destinatari e attività nel diario; un passo riuscito **non si ripete mai**; un
+passo non riuscito non ferma gli altri e aspetta "Riprova" (per riga o per tutti, dalla scheda e dal cruscotto). Tutte le email da network@
+con le copie fisse; destinatari interni e testi in Impostazioni (modelli "PP ·" con segnaposto, nessun nome, prezzo o fornitore scritto nel
+codice).
+- a) solo corner: profilo di sistema **Partner ospitante** (`PARTNER_OSPITANTE`: Cash in sola visualizzazione delle royalties delle sedi
+  ospitate, più circolari e rubrica come già previsto dal profilo) in merge sugli accessi esterni della Legal entity; se non ce n'è uno si
+  crea per il referente (persona ESTERNO, utente LOCAL esterno) con l'invito e la password provvisoria **senza copie** (nel diario solo una
+  nota, come per il Service); invito a chi non è mai entrato (mai due inviti alla stessa persona); poi l'email di benvenuto (cosa vede:
+  royalties mensili; servizi attivi dal profilo; accessi; data di avvio; referenti dallo specchio del Portale Service e dai Dati aziendali,
+  per la linea PP la casella network@). Al collegamento della sede il perimetro si riallinea (royalties della sede nuova).
+- b) solo corner: "Contratto punto prelievi firmato: <punto>" a `hub_pp_dest_conferma` con il riepilogo, il link alla scheda e il PDF firmato.
+- c) "Avvio del nuovo punto prelievi <punto>" a `hub_pp_dest_avvio` con la data di avvio effettiva, indirizzo, partner, orari e stato
+  dell'autorizzazione. **Scelta**: parte alla firma se la data effettiva c'è, altrimenti resta "in attesa della data" e parte al
+  salvataggio della data nella scheda (o dal job).
+- d) **primo ordine standard** in Ordini: ordine in BOZZA (origine SISTEMA, riferimento `BH-PP-<account>`, idempotente) per la sede del
+  punto con quantità 1 di ogni articolo attivo del Magazzino Centrale con la visibilità Punti Prelievo (`visible_sedi`, non "solo
+  laboratorio"; se nessun articolo è del Magazzino Centrale valgono quelli presenti, come in "Nuovo ordine"), nota "Primo ordine standard del
+  punto prelievi <punto>" e nota per l'Area Operations, evento nell'ordine, attività AVVIO PRIMO_ORDINE nel diario. Senza sede collegata
+  resta "in attesa della sede" e parte quando la sede viene creata e collegata; con Ordini non avviato (LIVE) o senza articoli PP il passo
+  non riesce e si riprova.
+- e) "Dotazione del nuovo punto prelievi <punto>: <elenco>" a `hub_pp_dest_dotazione` (elenco in Impostazioni).
+- f) "Fondo cassa e POS per il nuovo punto prelievi <punto>" a `hub_pp_dest_amministrazione`: fondo cassa della sede in Cash Management
+  (`cash.site_ext.cash_float`); se la sede non è configurata in Cash il **fondo cassa predefinito** delle Impostazioni di Cash
+  (`default_cash_float`, nuovo), dichiarato come predefinito; senza nessuno dei due "da definire"; richiesta di ordinare il POS.
+- g) "Adempimenti rifiuti speciali per il nuovo punto prelievi <punto>" a `hub_pp_dest_rifiuti`.
+
+**5. Flagship.** Niente contratto al partner: il contratto è la locazione della sede (Sedi TD in locazione, Payments). **Regola scelta (la più
+semplice): pulsante esplicito** "Avvia il punto prelievi" nella scheda, con la data di avvio effettiva obbligatoria: esegue c-g, porta la
+pipeline alla fase 6 (sede pronta) e si fa una volta sola (poi "Riprova"); quando il fascicolo di autorizzazione della sede è AUTORIZZATO e
+il flagship non è avviato, il cruscotto lo mostra tra i "Flagship autorizzati da avviare" (promemoria, nessun avvio automatico). La fase 7
+(Attivo) resta al CEO per tutti i punti.
+
+**Cruscotto** (filtro PP o tutte le linee): "Punti prelievo: passi dell'avvio da completare" (non riusciti con "Riprova" e in attesa) e
+"Flagship autorizzati da avviare". **Job** `business:avvio-pp` ogni 30 minuti: riprende i passi in attesa quando sede o data ci sono (mai i
+non riusciti). Un avvio alla volta per account (coda in memoria: la Suite gira in una sola istanza).
+
+**API** (`/api/business/hub`): `GET|PUT /accounts/:id/punto`, `POST /accounts/:id/contratto-partner/prepara` (l'invio è `POST /kit/:id/invia`),
+`POST /accounts/:id/contratto-firmato` (multipart `file`), `POST /accounts/:id/avvio` ({ data }, flagship), `POST /accounts/:id/avvio/riprova`
+({ passi? }), `GET /punti-prelievo`, `POST /punti-prelievo/da-sede` ({ site_id }); `POST /accounts` accetta per la linea PP `pp_site_id`,
+`pp_nome`, `pp_tipo_previsto`. Pubbliche: `GET|POST /api/business/b2b/:token` (variante PARTNER). Diario: tipo AVVIO (passi), sottotipi
+EMAIL CONTRATTO_PARTNER, BENVENUTO_PARTNER, CONFERMA_PP, AVVIO_PP, DOTAZIONE_PP, FONDO_CASSA_PP, RIFIUTI_PP, INVITO_SUITE.
+
+**Privacy**: nei log del server solo id, passi ed esiti; nel registro email l'oggetto è "Business Hub · account N" e nessun corpo; la
+password provvisoria non si conserva (con la posta in modalità registro non arriva a nessuno: in collaudo la si reimposta a mano).
+
+**Collaudo del 06/11/2026** (db `suite_pp_t`, porta 3144, posta in modalità registro; moduli business, cash, orders avviati; 14 articoli di
+prova in Ordini, 12 con la visibilità Punti Prelievo e 1 solo laboratorio). Corner (Farmacia Corner Prova, sede OSPITATA, fondo cassa 200 €
+in Cash): account dalla sede (corner dalla sede), contratto PP-2026-0001 generato, inviato da network@ (REGISTRATO, a referente, cc Francesco
+Epifani e Silvia Sansoni, fase 4; secondo invio 409); risposta per email da un mittente sconosciuto con il riferimento: abbinata, PDF da
+verificare; form del partner (variante PARTNER, MOD173 404) con il contratto firmato: contratto FIRMATO con il PDF, PDF nel fascicolo
+(disponibilità dei locali), fase 6; con Ordini fermo: a) b) e) f) g) fatti, c) in attesa della data, d) non riuscito; data impostata → c)
+inviato; Ordini avviato e "Riprova" → ORD in BOZZA con 12 righe a quantità 1; seconda Riprova 400; conferma del PDF arrivato per email:
+"già ricevuto", nessuna email nuova. Accesso esterno del partner: Home con Cash (più Portale Service e SGI aperti a tutti, Circolari, Ticket,
+Rubrica), `/api/cash/canoni/partner` 200 con la sola sede ospitata, rendiconti e versamenti di Cash 403, Business Hub e Ordini 403. Flagship
+(sede in LOCAZIONE, non configurata in Cash): fascicolo AUTORIZZATO → promemoria nel cruscotto; "Avvia" senza data 400; con la data c-g
+fatti, fondo cassa "150,00 € (fondo cassa predefinito delle Impostazioni di Cash ...)", fase 6, secondo avvio 409. Corner previsto senza sede
+con contratto caricato a mano (nessun contratto PP nel modulo: avviso): d) in attesa della sede; sede creata e collegata con la data →
+c) e d) eseguiti, perimetro Cash del partner riallineato sulla sede nuova. Schermate `docs/screens/hub-pp-account.png`,
+`hub-pp-avvio.png`, `hub-pp-elenco.png`, `hub-pp-form-partner.png`.
+
+**Da verificare in produzione**: permessi Graph Mail.Read e Mail.Send sulla casella network@ (Impostazioni, "Prova la casella" e "Prova
+l'invio" della linea Punti Prelievo); che gli indirizzi interni esistano (laboratorio@, valentina.zezza@, amministrazione@,
+iacopo.cupelli@, silvia.sansoni@); il fondo cassa predefinito in Cash > Impostazioni (vuoto: "da definire"); la visibilità Punti Prelievo
+degli articoli del Magazzino Centrale (definisce il primo ordine); sedi PP esistenti senza account: "Crea il punto prelievi" dall'elenco.

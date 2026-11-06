@@ -21,6 +21,8 @@ import { docxToPdfBatch } from './docgen.js';
 import {
   componiSezioni, modelliDa, sostituisci, valoriSegnaposto, pianoAvvio, referentiDedicati, contattoLaboratorio, certificazioniIso, paginaCredenziali, checklist,
 } from './pacchetto.js';
+import { versioneCorrente } from './listino.js';
+import { modelliFlussoDa, compila, referentiTesto } from './processo.js';
 import * as D from './pacchettoDocx.js';
 import { assembla, contaPagine, paginaIniziale } from './pacchettoPdf.js';
 
@@ -57,8 +59,10 @@ async function owner(userId) {
 
 /** Contratto della linea e lettera di offerta generata (ultima versione), o null. */
 export async function offertaDi(a) {
-  const c = await one(`SELECT c.id, c.protocol, c.status, c.version, c.signed_at, c.title FROM contracts c WHERE c.org_id=$1 AND c.kind=$2 AND c.status NOT IN ('ANNULLATO','CESSATO')
-    ORDER BY c.updated_at DESC NULLS LAST, c.id DESC LIMIT 1`, [a.organization_id, a.linea]);
+  // Punti Prelievo: una Legal entity può ospitare più punti, vince il contratto della sede del punto (poi quello senza sede)
+  const c = await one(`SELECT c.id, c.protocol, c.status, c.version, c.signed_at, c.title, c.site_id FROM contracts c WHERE c.org_id=$1 AND c.kind=$2 AND c.status NOT IN ('ANNULLATO','CESSATO')
+      AND ($3::int IS NULL OR c.site_id IS NULL OR c.site_id=$3)
+    ORDER BY CASE WHEN $3::int IS NULL OR c.site_id=$3 THEN 0 ELSE 1 END, c.updated_at DESC NULLS LAST, c.id DESC LIMIT 1`, [a.organization_id, a.linea, a.linea === 'PP' ? a.pp_site_id || null : null]);
   if (!c) return { contratto: null, file: null };
   const f = await one(`SELECT id, filename, size, version, data, blob_path FROM contract_files WHERE contract_id=$1 AND category='GENERATO_PDF' ORDER BY version DESC, created_at DESC LIMIT 1`, [c.id]);
   return { contratto: c, file: f };
@@ -141,23 +145,54 @@ async function sediRete() {
   return l.map((s) => ({ nome: s.name, tipo: TIPI_SEDE[s.kind] || 'Altre sedi', indirizzo: [s.address, [s.zip, s.city].filter(Boolean).join(' ') + (s.province ? ` (${s.province})` : '')].filter((x) => x && x.trim()).join(', ') }));
 }
 
+/** Referenti dedicati della linea dai soli dati presenti (specchio del Portale Service e Dati aziendali): per le email del processo. */
+export async function referentiPerLinea(a) {
+  const [company, s] = await Promise.all([getCompany(), getSettings()]);
+  const sp = await specchio({ vademecum: false }, []);
+  return referentiDedicati({ contatti: sp.contatti, company, linea: a.linea, casella: casellaLinea(a.linea, s).address });
+}
+
 const qrPng = (url) => QRCode.toBuffer(url, { type: 'png', margin: 1, width: 600, errorCorrectionLevel: 'M', color: { dark: '#004F5FFF', light: '#FFFFFFFF' } });
+
+/** Offerta economica dal listino StudioLAB corrente dell'account (processo Service): { documento, versione } o null. */
+export async function offertaListino(a) {
+  if (a.linea !== 'SRV') return null;
+  const v = await many('SELECT id, versione, offerta_documento_id FROM listini WHERE account_id=$1', [a.id]);
+  const c = versioneCorrente(v, a.listino_corrente_id);
+  if (!c?.offerta_documento_id) return null;
+  const doc = await one('SELECT id, filename, size, data, blob_path FROM documenti WHERE id=$1', [c.offerta_documento_id]);
+  return doc ? { documento: doc, versione: c.versione, listino_id: c.id } : null;
+}
+/** Credenziali StudioLAB (portale dei referti) senza password: { url, username, ha_password, fonte } o null. */
+export async function credenzialiStudiolab(a) {
+  const { contratto } = await offertaDi(a);
+  const c = await credenzialiPortale(a.organization_id, contratto?.id, false, []);
+  return c ? { url: c.portal_url, username: c.username, ha_password: c.ha_password, fonte: c.fonte } : null;
+}
+/** Modelli dei testi del processo Service (Impostazioni, app_settings flusso.modelli). */
+export async function modelliFlusso() {
+  const x = await one(`SELECT value FROM app_settings WHERE key='flusso.modelli'`);
+  return modelliFlussoDa(x?.value || null);
+}
 
 /**
  * Disponibilità per la composizione (senza generare): tipo di offerta, Vademecum, accessi, credenziali del portale.
  */
-export async function disponibilita(a) {
+export async function disponibilita(a, { variante = 'BENVENUTO' } = {}) {
   const { contratto, file } = await offertaDi(a);
   const proposta = propostaDi(a);
   const offerta = file ? 'PDF' : proposta.length ? 'ECONOMICA' : null;
   const cred = await credenzialiPortale(a.organization_id, contratto?.id, false, []);
   const accessi = await accessiEsterni(a.organization_id);
+  const ol = await offertaListino(a);
   return {
     offerta, contratto: contratto ? { id: contratto.id, protocol: contratto.protocol, status: contratto.status, version: contratto.version } : null,
     offerta_file: file ? { id: file.id, filename: file.filename, version: file.version, size: file.size } : null, proposta,
     portale_referti: cred ? { url: cred.portal_url, username: cred.username, ha_password: cred.ha_password, fonte: cred.fonte } : null,
     accessi: accessi.map((x) => ({ nome: x.nome, email: x.email, profilo: x.profilo })),
     service_attivo: await moduloAttivo('service'),
+    listino: ol ? { versione: ol.versione, documento_id: ol.documento.id, filename: ol.documento.filename } : null,
+    studiolab: a.linea === 'SRV' ? Boolean(cred) : undefined, variante,
   };
 }
 
@@ -168,16 +203,19 @@ export async function disponibilita(a) {
 export async function generaPacchetto(a, opz) {
   const avvisi = [];
   const data = opz.data;
-  const [company, s, mod, own, off] = await Promise.all([getCompany(), getSettings(), modelli(), owner(a.owner_user_id), offertaDi(a)]);
+  const variante = opz.variante || 'BENVENUTO';
+  const [company, s, mod, own, off, flusso, ol] = await Promise.all([getCompany(), getSettings(), modelli(), owner(a.owner_user_id), offertaDi(a), modelliFlusso(), offertaListino(a)]);
   const proposta = propostaDi(a);
   const tipoOfferta = off.file ? 'PDF' : proposta.length ? 'ECONOMICA' : null;
-  const sezioni = componiSezioni(a.linea, opz.scelte || {}, { offerta: tipoOfferta });
+  const credSl = a.linea === 'SRV' ? await credenzialiPortale(a.organization_id, off.contratto?.id, false, []) : null;
+  const sezioni = componiSezioni(a.linea, opz.scelte || {}, { offerta: tipoOfferta, listino: Boolean(ol), studiolab: a.linea === 'SRV' ? Boolean(credSl) : undefined, variante, owner: Boolean(own) });
   const incl = (k) => sezioni.some((x) => x.key === k && x.inclusa);
   if (!tipoOfferta) avvisi.push('Offerta omessa: nessuna lettera di offerta generata per il contratto della linea e nessun dato della proposta nell\'account');
   else if (tipoOfferta === 'ECONOMICA' && incl('offerta')) avvisi.push('Lettera di offerta non ancora generata: inserita la pagina "Offerta economica" con i dati della proposta');
   if (!own) avvisi.push('Account senza owner: copertina e pagina del referente senza nome');
 
-  const sp = await specchio({ vademecum: incl('vademecum') }, avvisi);
+  // la versione per i prospect porta il Vademecum come link e QR (niente centinaia di pagine in un'email di presentazione)
+  const sp = await specchio({ vademecum: incl('vademecum') && variante !== 'PROSPECT' && opz.vademecumPagine !== false }, avvisi);
   const casella = casellaLinea(a.linea, s).address;
   const url = suiteUrl();
   const portaleUrl = a.linea === 'SRV' ? `${url}/service` : url;
@@ -189,13 +227,19 @@ export async function generaPacchetto(a, opz) {
   const referenti = referentiDedicati({ contatti: sp.contatti, company, linea: a.linea, casella });
   const firma = { nome: s.lr_name || 'Francesco Epifani', ruolo: s.lr_role || 'Chief Executive Officer' };
   const accessi = incl('credenziali') ? await accessiEsterni(a.organization_id) : [];
-  const portaleRef = incl('credenziali') ? await credenzialiPortale(a.organization_id, off.contratto?.id, Boolean(opz.includiPassword), avvisi) : null;
-  const cred = paginaCredenziali({ suiteUrl: portaleUrl, accessi, portale: portaleRef, includiPassword: Boolean(opz.includiPassword) });
+  // credenziali del portale dei referti: nella pagina StudioLAB se la sezione c'è, altrimenti (PP, MDL) nella pagina degli accessi
+  const conStudiolab = incl('studiolab');
+  const portaleRef = incl('credenziali') || conStudiolab ? await credenzialiPortale(a.organization_id, off.contratto?.id, Boolean(opz.includiPassword), avvisi) : null;
+  const credTutte = paginaCredenziali({ suiteUrl: portaleUrl, accessi, portale: portaleRef, includiPassword: Boolean(opz.includiPassword) });
+  const cred = { ...credTutte, referti: conStudiolab || sezioni.some((x) => x.key === 'studiolab') ? null : credTutte.referti };
   if (incl('credenziali') && !accessi.length) avvisi.push('La Legal entity non ha ancora accessi esterni: crearli da Amministrazione > Legal entity > Accessi (Crea accesso esterno)');
   const certJson = sp.certificazioni;
   const d = {
     data, cliente, indirizzoCliente, destinatario, linea: a.linea, lineaLabel, owner: own, casella, company, referenti, firma, luogo: company.city || 'Sesto Fiorentino',
-    testoLettera: sostituisci(mod.lettera[a.linea], valori), suiteHost: url.replace(/^https?:\/\//, ''), portaleUrl, sla: incl('portale') ? await sla(a.organization_id) : {},
+    testoLettera: variante === 'BENVENUTO' ? sostituisci(mod.lettera[a.linea], valori) : compila(flusso.lettera_presentazione, { ...valori, referenti: '{{referenti}}' }),
+    titoloLettera: variante === 'BENVENUTO' ? null : 'Vi presentiamo Toscana Diagnostica',
+    kicker: { KIT: 'PROPOSTA DI COLLABORAZIONE', PROSPECT: 'PRESENTAZIONE' }[variante] || null, titoloPre: variante === 'BENVENUTO' ? null : 'Vi presentiamo',
+    studiolab: conStudiolab ? credTutte.referti : null, suiteHost: url.replace(/^https?:\/\//, ''), portaleUrl, sla: incl('portale') ? await sla(a.organization_id) : {},
     laboratorio: contattoLaboratorio(sp.contatti), credenziali: cred, piano: pianoAvvio(a.linea, data), certificazioni: certificazioniIso(certJson), organismo: certJson?.organismo?.nome || null,
     checklist: checklist(a.linea, { data, offerta: incl('offerta'), firmata: ['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(off.contratto?.status) }),
     aiuto: own?.nome ? `Scrivete o chiamate ${own.nome}${own.email ? ` (${own.email}${own.telefono ? `, ${own.telefono}` : ''})` : ''}, oppure il supporto clienti${company.support_email ? ` a ${company.support_email}` : ''}.` : `Scrivete a ${casella}${company.support_email ? ` o al supporto clienti, ${company.support_email}` : ''}.`,
@@ -217,6 +261,7 @@ export async function generaPacchetto(a, opz) {
       case 'network': nostre.push({ key: x.key, docx: D.costruisci(D.network(d)) }); break;
       case 'mdl': nostre.push({ key: x.key, docx: D.costruisci(D.mdl(d)) }); break;
       case 'credenziali': nostre.push({ key: x.key, docx: D.costruisci(D.credenziali(d), imgSuite('rIdQrCred')) }); break;
+      case 'studiolab': if (d.studiolab) nostre.push({ key: x.key, docx: D.costruisci(D.studiolab(d)) }); break;
       case 'avvio': nostre.push({ key: x.key, docx: D.costruisci(D.avvio(d)) }); break;
       case 'referente': nostre.push({ key: x.key, docx: D.costruisci(D.referente(d)) }); break;
       case 'diversi': nostre.push({ key: x.key, docx: D.costruisci(D.diversi(d)) }); break;
@@ -232,12 +277,21 @@ export async function generaPacchetto(a, opz) {
     offertaPdf = await readBuffer(off.file);
     if (!offertaPdf || !(await contaPagine(offertaPdf))) { avvisi.push('Il PDF della lettera di offerta non è leggibile: sezione omessa'); offertaPdf = null; const o = sezioni.find((y) => y.key === 'offerta'); o.inclusa = false; o.motivo = 'PDF della lettera di offerta non leggibile'; }
   }
+  // offerta economica dal listino StudioLAB (PDF già impaginato sulla stessa carta, con i suoi numeri: si coprono con quelli del pacchetto)
+  let listinoPdf = null;
+  if (incl('listino')) {
+    listinoPdf = await readBuffer(ol.documento);
+    if (!listinoPdf || !(await contaPagine(listinoPdf))) { avvisi.push('Il PDF dell\'offerta economica non è leggibile: sezione omessa'); listinoPdf = null; const o = sezioni.find((y) => y.key === 'listino'); o.inclusa = false; o.motivo = 'PDF dell\'offerta economica non leggibile'; }
+  }
+  const studio = sezioni.find((y) => y.key === 'studiolab');
+  if (studio?.inclusa && !d.studiolab) { studio.inclusa = false; studio.motivo = 'Nessuna credenziale StudioLAB registrata'; }
   // Parti nell'ordine di stampa (l'indice per ora vale una pagina)
   const parti = [];
   for (const x of sezioni.filter((y) => y.inclusa)) {
     if (x.key === 'indice') { parti.push({ key: 'indice', titolo: 'Indice', pdf: null, numero: 'piede' }); continue; }
     // l'offerta è sulla stessa carta intestata: il suo numero di pagina si copre con quello del pacchetto; il Vademecum ha il suo piè
     if (x.key === 'offerta' && tipoOfferta === 'PDF') { parti.push({ key: x.key, titolo: x.titolo, pdf: offertaPdf, numero: 'copri' }); continue; }
+    if (x.key === 'listino') { parti.push({ key: x.key, titolo: x.titolo, pdf: listinoPdf, numero: 'copri' }); continue; }
     parti.push({ key: x.key, titolo: x.titolo, pdf: pdfDi[x.key], numero: 'piede' });
     if (x.key === 'vademecum' && sp.vademecum) parti.push({ key: 'vademecum_pdf', titolo: 'Vademecum degli esami (pagine)', pdf: sp.vademecum, numero: 'testa', segnalibro: false });
   }
@@ -245,6 +299,7 @@ export async function generaPacchetto(a, opz) {
     if (k === 'offerta' && tipoOfferta === 'PDF') return [off.contratto.protocol ? `Proposta ${off.contratto.protocol}` : null, `versione ${off.file.version}`].filter(Boolean).join(', ');
     if (k === 'vademecum') return sp.vademecum ? `Guida operativa per i laboratori clienti, ${sp.vademecumPagine} pagine` : 'Online, con il QR code';
     if (k === 'lettera') return `${firma.nome}, ${firma.ruolo}`;
+    if (k === 'listino' && ol) return `Dal listino StudioLAB, versione ${ol.versione}`;
     return null;
   };
   let pagineIndice = 1; let indicePdf = null;
@@ -260,9 +315,10 @@ export async function generaPacchetto(a, opz) {
     pagineIndice = n;
   }
   parti.find((x) => x.key === 'indice').pdf = indicePdf;
-  const out = await assembla(parti, { titolo: `Benvenuti in Toscana Diagnostica · ${cliente}` });
+  const titoli = { BENVENUTO: `Benvenuti in Toscana Diagnostica · ${cliente}`, KIT: `Proposta di collaborazione · ${cliente}`, PROSPECT: `Toscana Diagnostica · presentazione per ${cliente}` };
+  const out = await assembla(parti, { titolo: titoli[variante] || titoli.BENVENUTO, etichettaEsterne: variante === 'BENVENUTO' ? 'Pacchetto di benvenuto' : variante === 'KIT' ? 'Proposta di collaborazione' : 'Presentazione' });
   for (const x of sezioni) x.pagina = out.inizi[x.key] || null;
-  return { pdf: out.pdf, pagine: out.pagine, sezioni, avvisi, password_inclusa: cred.password_inclusa, offerta: tipoOfferta, data };
+  return { pdf: out.pdf, pagine: out.pagine, sezioni, avvisi, password_inclusa: Boolean(credTutte.password_inclusa && (incl('studiolab') || incl('credenziali'))), offerta: tipoOfferta, data, variante, referenti_testo: referentiTesto(referenti) };
 }
 
 /** Testo e oggetto dell'email di accompagnamento con i segnaposto sostituiti. */

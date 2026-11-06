@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { api } from '../api.js';
 import { useApi, Card, Loading, ErrorBox, Empty, Badge, Modal, Field, useToast } from '../components/ui.jsx';
-import { itDateTime, LINEE, EMAIL_STATO } from '../format.js';
+import { itDateTime, LINEE, EMAIL_STATO, SOTTOTIPO } from '../format.js';
 
 export default function EmailDaAssegnare() {
   const toast = useToast();
@@ -38,7 +38,7 @@ export default function EmailDaAssegnare() {
       </Card>
       <Card title="Registro invii (email partite dal Business Hub)" className="mt" flush>
         {(inv.data || []).length ? <div className="table-wrap" style={{ maxHeight: 420 }}><table className="t"><thead><tr><th>Data</th><th>Account</th><th>Mittente</th><th>Destinatari</th><th>Oggetto</th><th>Esito</th></tr></thead><tbody>
-          {inv.data.map((x) => <tr key={x.id} className="click" onClick={() => { window.location.href = `/business/account/${x.account_id}`; }}><td className="small">{itDateTime(x.at)}</td><td className="strong">{x.org_name}</td><td className="small">{x.email_from}</td><td className="small">{x.email_to}{x.email_cc ? <div className="muted">cc {x.email_cc}</div> : null}</td><td className="small">{x.oggetto}{x.n_allegati ? ` · ${x.n_allegati} allegati` : ''}</td><td><Badge tone={EMAIL_STATO[x.email_stato]?.tone}>{EMAIL_STATO[x.email_stato]?.label || x.email_stato}</Badge>{x.email_errore ? <div className="small red">{x.email_errore}</div> : null}</td></tr>)}
+          {inv.data.map((x) => <tr key={x.id} className="click" onClick={() => { window.location.href = `/business/account/${x.account_id}`; }}><td className="small">{itDateTime(x.at)}</td><td className="strong">{x.org_name}</td><td className="small">{x.email_from}</td><td className="small">{x.email_to}{x.email_cc ? <div className="muted">cc {x.email_cc}</div> : null}</td><td className="small">{x.sottotipo && SOTTOTIPO[x.sottotipo] ? <><Badge tone="silk">{SOTTOTIPO[x.sottotipo]}</Badge> </> : null}{x.oggetto}{x.n_allegati ? ` · ${x.n_allegati} allegati` : ''}</td><td><Badge tone={EMAIL_STATO[x.email_stato]?.tone}>{EMAIL_STATO[x.email_stato]?.label || x.email_stato}</Badge>{x.email_errore ? <div className="small red">{x.email_errore}</div> : null}</td></tr>)}
         </tbody></table></div> : <Empty>Nessuna email inviata dal Business Hub</Empty>}
       </Card>
       {m && <Modal title={`Assegna l'email di ${m.e.from_email}`} onClose={() => setM(null)} footer={<><button className="btn ghost" onClick={() => setM(null)}>Annulla</button><button className="btn" onClick={assegna}>{m.modo === 'nuovo' ? 'Crea prospect e registra' : 'Registra nel diario'}</button></>}>

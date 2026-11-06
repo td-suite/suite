@@ -33,6 +33,7 @@ export default function Settings() {
           <div className="form-grid">
             {i('royalty_invoice_prefix', 'Prefisso numerazione estratti royalty', 'es. RY → RY2026-0001', { maxLength: 10 })}
             {i('pickup_alert_days', 'Giorni oltre i quali un flusso è in ritardo', 'Rendiconti non versati da più di N giorni compaiono nel cruscotto', { type: 'number', min: 0, max: 60 })}
+            {i('default_cash_float', 'Fondo cassa predefinito di una sede nuova (euro)', 'Usato dal Business Hub nell\'email all\'amministrazione quando un nuovo punto prelievi non è ancora configurato in Cash (indicato come predefinito). Vuoto = da definire', { inputMode: 'decimal', placeholder: 'es. 150,00' })}
           </div>
         </Card>
         <Card title="Comunicazioni email">
