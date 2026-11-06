@@ -2,15 +2,21 @@
 // account (mittente sconosciuto o presente su più account). Assegnazione manuale (con "aggiungi il mittente ai referenti"), oppure
 // "crea prospect" (Legal entity Cliente + account sulla linea della casella), oppure "ignora". Registro invii delle email partite.
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApi, Card, Loading, ErrorBox, Empty, Badge, Modal, Field, useToast } from '../components/ui.jsx';
 import { itDateTime, LINEE, EMAIL_STATO, SOTTOTIPO } from '../format.js';
 
 export default function EmailDaAssegnare() {
   const toast = useToast();
-  const q = useApi('/hub/email/da-assegnare');
-  const inv = useApi('/hub/invii');
-  const acc = useApi('/hub/accounts');
+  // linea fissa dalla sezione del menu (?linea=SRV|PP|MDL; senza parametro = Service): una casella per linea (CEO, 06/11/2026)
+  const [sp] = useSearchParams();
+  const linea = ['SRV', 'PP', 'MDL'].includes(sp.get('linea')) ? sp.get('linea') : 'SRV';
+  const q0 = useApi('/hub/email/da-assegnare');
+  const q = { ...q0, data: q0.data ? q0.data.filter((e) => e.linea === linea) : q0.data };
+  const inv = useApi(`/hub/invii?linea=${linea}`);
+  const acc0 = useApi('/hub/accounts');
+  const acc = { ...acc0, data: acc0.data ? { ...acc0.data, righe: (acc0.data.righe || []).filter((a) => a.linea === linea) } : acc0.data };
   const [m, setM] = useState(null);
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!q.data) return <div className="page"><Loading /></div>;
@@ -24,7 +30,7 @@ export default function EmailDaAssegnare() {
   const opzioni = (acc.data?.righe || []).filter((a) => !m || !m.cerca || a.org_name.toLowerCase().includes(m.cerca.toLowerCase())).slice(0, 200);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Email da assegnare</h1><div className="sub">Messaggi arrivati alle caselle di linea senza un account riconosciuto dal mittente. Assegnali: finiscono nel diario e, se vuoi, il mittente diventa un referente (le prossime email si abbinano da sole).</div></div></div>
+      <div className="page-head"><div><h1>Email da assegnare · {LINEE[linea].label}</h1><div className="sub">Messaggi arrivati alla casella della linea senza un account riconosciuto dal mittente. Assegnali: finiscono nel diario e, se vuoi, il mittente diventa un referente (le prossime email si abbinano da sole).</div></div></div>
       <Card title={`In attesa (${q.data.length})`} flush>
         {q.data.length ? <table className="t"><thead><tr><th>Casella</th><th>Ricevuta</th><th>Mittente</th><th>Oggetto e anteprima</th><th>Motivo</th><th /></tr></thead><tbody>
           {q.data.map((e) => <tr key={e.id}>

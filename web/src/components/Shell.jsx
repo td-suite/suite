@@ -8,6 +8,15 @@ import { timeAgo, AREA_COLORS } from '../format.js';
 import { moduleFor, vociModulo } from '../modules/registry.js';
 import InformativeIcone from './Informative.jsx';
 
+// Le voci replicate per linea (Business Hub: Cruscotto, Pipeline, Clienti… con ?linea=SRV|PP|MDL) hanno lo stesso percorso: è attiva
+// solo quella con la stessa linea dell'indirizzo. Una voce senza "?" si comporta come sempre.
+function vocePerLinea(to, loc) {
+  const q = to.split('?')[1];
+  if (!q) return true;
+  const voluti = new URLSearchParams(q); const attuali = new URLSearchParams(loc.search);
+  return [...voluti.entries()].every(([k, v]) => attuali.get(k) === v);
+}
+
 // Sezioni con sidebar: la chiave è il prefisso del percorso
 function sectionFor(pathname, user) {
   const mod = moduleFor(pathname);
@@ -185,7 +194,7 @@ export default function Shell() {
             <nav>
               {section.items.filter((it) => !it.flag || badges[it.flag] > 0).map((it, i) => it.group ? <div key={i} className="group">{it.group}</div>
                 : it.href ? <a key={it.href} href={it.href} className={it.evidenza ? 'evid' : undefined} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
-                : <NavLink key={it.to} to={it.to} end={it.end}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
+                : <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => (isActive && vocePerLinea(it.to, loc) ? 'active' : undefined)}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link><InformativeIcone variant="barra" /></div>
           </aside>

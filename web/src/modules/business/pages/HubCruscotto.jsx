@@ -11,11 +11,11 @@ import { itDate, itDateTime, FASI, LINEE, eurK, TIPO_ATTIVITA, TONO_ATTIVITA, GR
 export default function HubCruscotto() {
   const { user } = useAuth();
   const nav = useNavigate();
-  // linea nell'indirizzo (?linea=SRV dalla sezione Service del menu): "Tutte le linee" la toglie
-  const [sp, setSp] = useSearchParams();
-  const linea = ['SRV', 'PP', 'MDL'].includes(sp.get('linea')) ? sp.get('linea') : '';
-  const setLinea = (l) => { const n = new URLSearchParams(sp); if (l) n.set('linea', l); else n.delete('linea'); setSp(n, { replace: true }); };
-  const s = useApi(`/hub/cruscotto${linea ? `?linea=${linea}` : ''}`);
+  // linea fissa dall'indirizzo (?linea=SRV|PP|MDL, una voce Cruscotto per sezione del menu; senza parametro = Service). Il CEO
+  // (06/11/2026): nessuna vista "tutte le linee", ogni sezione vede solo la sua.
+  const [sp] = useSearchParams();
+  const linea = ['SRV', 'PP', 'MDL'].includes(sp.get('linea')) ? sp.get('linea') : 'SRV';
+  const s = useApi(`/hub/cruscotto?linea=${linea}`);
   const d = s.data;
   if (s.error) return <div className="page"><ErrorBox error={s.error} /></div>;
   if (!d) return <div className="page"><Loading /></div>;
@@ -25,25 +25,24 @@ export default function HubCruscotto() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Business Hub</h1>
-          <div className="sub">Buongiorno, {user.first_name || user.full_name}. La centrale del business di Toscana Diagnostica: pipeline per fasi, contatti, criticità, ordini e non conformità dei clienti. I contratti e le autorizzazioni sono un "di cui" del percorso.</div>
+          <h1>Cruscotto · {LINEE[linea].label}</h1>
+          <div className="sub">Buongiorno, {user.first_name || user.full_name}. La linea {LINEE[linea].label}: pipeline per fasi, contatti, criticità, ordini e non conformità. I contratti e le autorizzazioni sono un "di cui" del percorso.</div>
         </div>
-        <div className="seg">{[['', 'Tutte le linee'], ...Object.entries(LINEE).map(([k, v]) => [k, v.short])].map(([k, l]) => <label key={k} className={linea === k ? 'on' : ''}><input type="radio" checked={linea === k} onChange={() => setLinea(k)} />{l}</label>)}</div>
       </div>
 
       <div className="grid g5">
-        <div className="click-card" onClick={() => nav(`${BASE}/pipeline${linea ? `?linea=${linea}` : ''}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} di fatturato FY atteso`} /></div>
-        <div className="click-card" onClick={() => nav(`${BASE}/clienti?attivo=1`)}><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'} /></div>
-        <div className="click-card" onClick={() => nav(`${BASE}/clienti?fase=0`)}><Kpi label="Prospect censiti" value={d.kpi.prospect} foot={`${d.kpi.account} account in tutto`} /></div>
-        <div className="click-card" onClick={() => nav(`${BASE}/clienti?stallo=1`)}><Kpi label={`In stallo (> ${d.soglia_stallo} gg)`} value={d.kpi.stalli} foot="nessun avanzamento di fase" /></div>
-        <div className="click-card" onClick={() => nav(`${BASE}/email`)}><Kpi label="Email da assegnare" value={d.kpi.email_da_assegnare} foot={`${d.kpi.criticita} criticità aperte`} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/pipeline?linea=${linea}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} di fatturato FY atteso`} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&attivo=1`)}><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&fase=0`)}><Kpi label="Prospect censiti" value={d.kpi.prospect} foot={`${d.kpi.account} account in tutto`} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&stallo=1`)}><Kpi label={`In stallo (> ${d.soglia_stallo} gg)`} value={d.kpi.stalli} foot="nessun avanzamento di fase" /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/email?linea=${linea}`)}><Kpi label="Email da assegnare" value={d.kpi.email_da_assegnare} foot={`${d.kpi.criticita} criticità aperte`} /></div>
       </div>
 
       <div className="grid g2" style={{ marginTop: 16 }}>
-        <Card title="Funnel per fase" actions={<Link className="btn sm ghost" to={`${BASE}/pipeline${linea ? `?linea=${linea}` : ''}`}>Apri la pipeline</Link>}>
+        <Card title="Funnel per fase" actions={<Link className="btn sm ghost" to={`${BASE}/pipeline?linea=${linea}`}>Apri la pipeline</Link>}>
           <div className="funnel">
             {d.funnel.map((f) => (
-              <div key={f.fase} className="frow click" onClick={() => nav(`${BASE}/clienti?fase=${f.fase}`)}>
+              <div key={f.fase} className="frow click" onClick={() => nav(`${BASE}/clienti?linea=${linea}&fase=${f.fase}`)}>
                 <div className="fl">{FASI[f.fase].short}</div>
                 <div className="fb"><i style={{ width: `${f.fase === 0 ? 100 : f.n ? Math.max(2, (f.n / maxN) * 100) : 0}%` }} className={`t-${FASI[f.fase].tone}`} /></div>
                 <div className="fn num">{f.n}</div>
@@ -99,11 +98,11 @@ export default function HubCruscotto() {
         </Card>
       </div>
 
-      {(!linea || linea === 'SRV') && <Richiamo apri={apri} />}
+      {linea === 'SRV' && <Richiamo apri={apri} />}
       {d.pp && (d.pp.da_completare.length > 0 || d.pp.da_avviare.length > 0) && <AvvioPP pp={d.pp} apri={(id) => nav(`${BASE}/account/${id}?scheda=punto`)} onDone={s.reload} puo={canEditKind(user, 'PP')} />}
 
-      {d.email.length > 0 && <Card title="Email da assegnare" className="mt" actions={<Link className="btn sm ghost" to={`${BASE}/email`}>Assegna</Link>} flush>
-        <table className="t"><tbody>{d.email.map((m) => <tr key={m.id} className="click" onClick={() => nav(`${BASE}/email`)}><td><Badge tone={LINEE[m.linea]?.tone}>{LINEE[m.linea]?.short}</Badge></td><td className="small">{itDateTime(m.received_at)}</td><td><div className="strong">{m.from_name || m.from_email}</div><div className="small muted">{m.subject}</div></td><td className="small muted">{m.come}</td></tr>)}</tbody></table>
+      {d.email.length > 0 && <Card title="Email da assegnare" className="mt" actions={<Link className="btn sm ghost" to={`${BASE}/email?linea=${linea}`}>Assegna</Link>} flush>
+        <table className="t"><tbody>{d.email.map((m) => <tr key={m.id} className="click" onClick={() => nav(`${BASE}/email?linea=${linea}`)}><td><Badge tone={LINEE[m.linea]?.tone}>{LINEE[m.linea]?.short}</Badge></td><td className="small">{itDateTime(m.received_at)}</td><td><div className="strong">{m.from_name || m.from_email}</div><div className="small muted">{m.subject}</div></td><td className="small muted">{m.come}</td></tr>)}</tbody></table>
       </Card>}
     </div>
   );

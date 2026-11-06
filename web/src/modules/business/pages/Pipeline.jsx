@@ -61,7 +61,7 @@ export default function Pipeline() {
               {a.prossima_azione && <div className={`small ${a.azione_scaduta ? 'red' : 'muted'}`}>→ {a.prossima_azione}{a.data_prossima_azione ? ` (${itDate(a.data_prossima_azione)})` : ''}</div>}
             </div>
           ))}
-          {n === 0 && censiti && l.length > vis.length && <div className="small muted" style={{ padding: 8 }}>Altri {l.length - vis.length}: usa la ricerca o <Link to={`${BASE}/clienti?fase=0`}>l'elenco</Link></div>}
+          {n === 0 && censiti && l.length > vis.length && <div className="small muted" style={{ padding: 8 }}>Altri {l.length - vis.length}: usa la ricerca o <Link to={`${BASE}/clienti?linea=${f.linea}&fase=0`}>l'elenco</Link></div>}
           {n === 0 && !censiti && <div className="small muted" style={{ padding: 10 }}>{l.length} strutture censite senza contatti. Trascina qui per riportare un account a prospect.</div>}
         </div>
       </div>
@@ -70,8 +70,8 @@ export default function Pipeline() {
   return (
     <div className="page wide">
       <div className="page-head">
-        <div><h1>Pipeline</h1><div className="sub">Trascina una scheda nella fase raggiunta: la data e il passaggio finiscono nel diario dell'account. Stallo = nessun avanzamento da oltre {q.data.soglia_stallo} giorni.</div></div>
-        <Link className="btn" to={`${BASE}/clienti?nuovo=1`}>+ Nuovo prospect</Link>
+        <div><h1>Pipeline · {LINEE[f.linea].label}</h1><div className="sub">Trascina una scheda nella fase raggiunta: la data e il passaggio finiscono nel diario dell'account. Stallo = nessun avanzamento da oltre {q.data.soglia_stallo} giorni.</div></div>
+        <Link className="btn" to={`${BASE}/clienti?linea=${f.linea}&nuovo=1`}>+ Nuovo prospect</Link>
       </div>
       <FiltriAccount f={f} setF={setF} righe={q.data.righe} owners={owners.data || []} />
       <div className="kanban">{FASI.map((x) => colonna(x.n))}</div>

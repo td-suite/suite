@@ -11,6 +11,8 @@ const CHIAVI = ['q', 'linea', 'priorita', 'owner', 'prov', 'segmento', 'fase', '
 export function useFiltri() {
   const [sp, setSp] = useSearchParams();
   const f = Object.fromEntries(CHIAVI.map((k) => [k, sp.get(k) || '']));
+  // la linea è fissa dalla sezione del menu (?linea=…); senza parametro = Service. Nessuna vista "tutte le linee" (CEO, 06/11/2026)
+  if (!['SRV', 'PP', 'MDL'].includes(f.linea)) f.linea = 'SRV';
   const setF = (patch) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) { if (v === '' || v == null) n.delete(k); else n.set(k, v); } setSp(n, { replace: true }); };
   return [f, setF];
 }
@@ -30,7 +32,6 @@ export function FiltriAccount({ f, setF, righe, owners, fase }) {
   return (
     <div className="filters">
       <label className="f" style={{ minWidth: 220, flex: 1 }}>Cerca<input value={f.q} onChange={(e) => setF({ q: e.target.value })} placeholder="Nome, gruppo, città, tipologia" /></label>
-      <label className="f">Linea<select value={f.linea} onChange={(e) => setF({ linea: e.target.value })}><option value="">Tutte</option>{Object.entries(LINEE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></label>
       <label className="f">Priorità<select value={f.priorita} onChange={(e) => setF({ priorita: e.target.value })}><option value="">Tutte</option>{Object.entries(PRIORITA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></label>
       <label className="f">Owner<select value={f.owner} onChange={(e) => setF({ owner: e.target.value })}><option value="">Tutti</option><option value="nessuno">Da assegnare</option>{owners.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}</select></label>
       <label className="f" style={{ minWidth: 100 }}>Provincia<select value={f.prov} onChange={(e) => setF({ prov: e.target.value })}><option value="">Tutte</option>{prov.map((p) => <option key={p}>{p}</option>)}</select></label>
@@ -38,7 +39,7 @@ export function FiltriAccount({ f, setF, righe, owners, fase }) {
       {fase && <label className="f">Fase<select value={f.fase} onChange={(e) => setF({ fase: e.target.value })}><option value="">Tutte</option>{FASI.map((x) => <option key={x.n} value={x.n}>{x.label}</option>)}</select></label>}
       <label className="f">Stato<select value={f.attivo} onChange={(e) => setF({ attivo: e.target.value })}><option value="">Tutti</option><option value="1">Clienti attivi</option><option value="0">Non attivi</option><option value="conferma">Da confermare dal CEO</option></select></label>
       <label className="f inline" style={{ alignSelf: 'center' }}><input type="checkbox" checked={f.stallo === '1'} onChange={(e) => setF({ stallo: e.target.checked ? '1' : '' })} />Solo in stallo</label>
-      {attivi && <button className="btn sm ghost" style={{ alignSelf: 'center' }} onClick={() => setF(Object.fromEntries(CHIAVI.map((k) => [k, ''])))}>Azzera filtri</button>}
+      {attivi && <button className="btn sm ghost" style={{ alignSelf: 'center' }} onClick={() => setF(Object.fromEntries(CHIAVI.map((k) => [k, k === 'linea' ? f.linea : ''])))}>Azzera filtri</button>}
     </div>
   );
 }
@@ -68,7 +69,7 @@ export default function Clienti() {
   return (
     <div className="page wide">
       <div className="page-head">
-        <div><h1>Clienti e prospect</h1><div className="sub">Un account per Legal entity e linea di business. {righe.length} di {q.data.righe.length} account · fatturato FY atteso {eurK(totFy)}.</div></div>
+        <div><h1>{({ SRV: 'Clienti e prospect', PP: 'Partner e prospect', MDL: 'Aziende e prospect' })[f.linea]} · {LINEE[f.linea].label}</h1><div className="sub">Un account per Legal entity sulla linea. {righe.length} di {q.data.righe.filter((a) => a.linea === f.linea).length} account · fatturato FY atteso {eurK(totFy)}.</div></div>
         <button className="btn" onClick={() => setNuovo(true)}>+ Nuovo prospect</button>
       </div>
       <FiltriAccount f={f} setF={setF} righe={q.data.righe} owners={owners.data || []} fase />
@@ -94,16 +95,16 @@ export default function Clienti() {
           </tbody>
         </table>
       </div></div>
-      {nuovo && <NuovoProspect onClose={() => setNuovo(false)} onDone={(id) => nav(`${BASE}/account/${id}`)} owners={owners.data || []} />}
+      {nuovo && <NuovoProspect linea={f.linea} onClose={() => setNuovo(false)} onDone={(id) => nav(`${BASE}/account/${id}`)} owners={owners.data || []} />}
     </div>
   );
 }
 
-function NuovoProspect({ onClose, onDone, owners }) {
+function NuovoProspect({ onClose, onDone, owners, linea }) {
   const { user } = useAuth();
   const toast = useToast();
   const linee = Object.keys(LINEE).filter((k) => canEditKind(user, k));
-  const [f, setF] = useState({ linea: linee[0] || 'SRV', modo: 'esistente', organization_id: '', cerca: '', name: '', city: '', province: '', email: '', phone: '', priorita: 'MEDIA', owner_user_id: '' });
+  const [f, setF] = useState({ linea: linee.includes(linea) ? linea : linee[0] || 'SRV', modo: 'esistente', organization_id: '', cerca: '', name: '', city: '', province: '', email: '', phone: '', priorita: 'MEDIA', owner_user_id: '' });
   const orgs = useApi(f.modo === 'esistente' && f.cerca.length >= 2 ? `/organizations?q=${encodeURIComponent(f.cerca)}` : null, [f.cerca]);
   const salva = async () => {
     try {
