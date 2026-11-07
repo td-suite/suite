@@ -6,7 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
-import { useAuth } from '../auth.jsx';
+import { useAuth, isAdmin } from '../auth.jsx';
 import Pacchetto from '../components/Pacchetto.jsx';
 import Listino from '../components/Listino.jsx';
 import Proposta from '../components/Proposta.jsx';
@@ -24,6 +24,8 @@ const schedeDi = (linea) => (linea === 'PP' ? [SCHEDE[0], SCHEDE[1], ['punto', '
 export default function Account() {
   const { id } = useParams();
   const toast = useToast();
+  const { user } = useAuth();
+  const nav = useNavigate();
   const q = useApi(`/hub/accounts/${id}`);
   const owners = useApi('/hub/utenti');
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('scheda') || 'diario');
@@ -54,6 +56,7 @@ export default function Account() {
           {edit && <button className="btn" onClick={() => setModal({ t: 'contatto' })}><Icon name="plus" />Registra contatto</button>}
           {edit && <button className="btn dark" onClick={() => setModal({ t: 'email' })}><Icon name="mail" />Scrivi al cliente</button>}
           <a className="btn ghost" href="/admin/organizations" title="Anagrafica della Legal entity">Legal entity</a>
+          {isAdmin(user) && <button className="iconbtn" title="Elimina l'account dalla pipeline" onClick={() => setModal({ t: 'elimina' })}><Icon name="trash" /></button>}
         </div>
       </div>
 
@@ -110,6 +113,7 @@ export default function Account() {
 
       {modal?.t === 'contatto' && <Composer a={a} onClose={() => setModal(null)} onDone={() => { setModal(null); q.reload(); setTab('diario'); }} />}
       {modal?.t === 'email' && <ScriviCliente a={a} onClose={() => setModal(null)} onDone={() => { setModal(null); q.reload(); setTab('email'); }} />}
+      {modal?.t === 'elimina' && <ConfirmModal danger title={`Elimina ${a.org_name} dalla pipeline`} text={`L'account ${LINEE[a.linea].label} viene eliminato con diario, referenti, listini e documenti del Business Hub. La Legal entity, i contratti e i fascicoli restano. L'operazione non si annulla.`} confirmText="Elimina" onClose={() => setModal(null)} onConfirm={async () => { try { await api.del(`/hub/accounts/${a.id}`); toast('Account eliminato'); nav(`${BASE}/clienti?linea=${a.linea}`); } catch (e) { toast(e.message, 'err'); } }} />}
       {modal?.t === 'attivo' && <AttivoModal a={a} onClose={() => setModal(null)} onDone={() => { setModal(null); q.reload(); }} />}
       {modal?.t === 'fase' && <Modal title="Cambia fase" onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>Annulla</button><button className="btn" onClick={() => act(async () => { await api.put(`/hub/accounts/${a.id}/fase`, { fase: Number(modal.fase), data: modal.data, nota: modal.nota }); setModal(null); }, 'Fase registrata')}>Registra</button></>}>
         <div className="form-grid">
