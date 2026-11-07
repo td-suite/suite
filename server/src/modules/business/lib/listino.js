@@ -136,7 +136,7 @@ export function riepilogo(righe = []) {
   const to = r2(righe.reduce((s, x) => s + Number(x.offerto || 0), 0));
   const sp = righe.length ? r1(righe.reduce((s, x) => s + Number(x.sconto || 0), 0) / righe.length) : 0;
   const settori = [...new Set(righe.map((x) => x.settore).filter(Boolean))];
-  return { esami: righe.length, totale_listino: tl, totale_offerto: to, sconto_medio: tl > 0 ? r1((1 - to / tl) * 100) : 0, sconto_medio_semplice: sp,
+  return { esami: righe.length, con_listino: haListino(righe), totale_listino: tl, totale_offerto: to, sconto_medio: tl > 0 ? r1((1 - to / tl) * 100) : 0, sconto_medio_semplice: sp,
     scontati: righe.filter((x) => Number(x.sconto) > 0).length, settori: settori.length };
 }
 
@@ -285,3 +285,7 @@ export function testoRigheCambiate(cambiate = [], max = 50) {
   if (cambiate.length > max) righe.push(`- e altre ${cambiate.length - max} righe`);
   return righe.join('\n');
 }
+
+/** Vero se l'Excel ha davvero un prezzo di listino distinto dall'offerta (altrimenti resta la sola colonna "Offerta €": il CEO,
+ *  07/11/2026: "altrimenti l'impressione è che lo sconto sia zero"). */
+export const haListino = (righe = []) => righe.some((x) => x.listino != null && x.offerto != null && Math.abs(Number(x.listino) - Number(x.offerto)) > 0.005);

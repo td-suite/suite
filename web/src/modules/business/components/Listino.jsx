@@ -18,6 +18,10 @@ const docUrl = (id, inline) => `${API_BASE}/hub/documenti/${id}${inline ? '?inli
 const eur = (n) => (n == null ? '–' : new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)));
 const pct = (n) => `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(Number(n || 0))}%`;
 
+// Excel con il solo prezzo offerto (listino assente o uguale all'offerta): si mostra la sola colonna "Offerta €", niente sconto
+// (il CEO, 07/11/2026: "altrimenti l'impressione è che lo sconto sia zero")
+const haListino = (righe = []) => righe.some((x) => x.listino != null && x.offerto != null && Math.abs(Number(x.listino) - Number(x.offerto)) > 0.005);
+
 export default function Listino({ a, onChange }) {
   const toast = useToast();
   const q = useApi(`/hub/accounts/${a.id}/listini`);
@@ -42,7 +46,8 @@ export default function Listino({ a, onChange }) {
           {corrente ? <div className="grid g3">
             <div className="kpi card"><div className="lbl">Versione corrente</div><div className="val">v{corrente.versione}</div><div className="foot">{d.scelta_manuale ? 'scelta a mano' : 'l\'ultima caricata'} · {itDate(corrente.caricato_at)}</div></div>
             <div className="kpi card"><div className="lbl">Esami</div><div className="val">{corrente.riepilogo.esami}</div><div className="foot">{corrente.riepilogo.scontati} con sconto{corrente.riepilogo.settori > 1 ? ` · ${corrente.riepilogo.settori} settori` : ''}</div></div>
-            <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(corrente.riepilogo.sconto_medio)}</div><div className="foot">ponderato sul listino (semplice {pct(corrente.riepilogo.sconto_medio_semplice)})</div></div>
+            {corrente.riepilogo.con_listino === false ? <div className="kpi card"><div className="lbl">Prezzi</div><div className="val">solo offerta</div><div className="foot">l'Excel non ha un prezzo di listino distinto: nessuno sconto da mostrare</div></div>
+              : <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(corrente.riepilogo.sconto_medio)}</div><div className="foot">ponderato sul listino (semplice {pct(corrente.riepilogo.sconto_medio_semplice)})</div></div>}
           </div> : <Empty>Nessun listino: carica l'Excel esportato da StudioLAB. Le colonne si riconoscono da sole (codice, descrizione, settore, prezzo di listino, prezzo offerto, sconto); se il formato è diverso le indichi a video una volta sola.</Empty>}
           {corrente && <div className="row" style={{ marginTop: 12, gap: 8 }}>
             {d.puo_modificare && <button className="btn" onClick={() => setOfferta(corrente)}><Icon name="file" />Genera l'offerta economica (v{corrente.versione})</button>}
@@ -65,7 +70,7 @@ export default function Listino({ a, onChange }) {
             <td className="strong">v{v.versione}{v.id === d.corrente_id && <> <Badge tone="teal">corrente</Badge></>}{v.origine === 'REVISIONE' && <> <Badge tone="mauve">revisione{v.base_versione ? ` della v${v.base_versione}` : ''}</Badge></>}{v.firmata_at && <> <Badge tone="green">firmata</Badge></>}<div className="small muted">{v.origine === 'REVISIONE' ? 'prezzi modificati in pagina' : v.filename}</div>{v.note && <div className="small">{v.note}</div>}</td>
             <td className="small">{itDateTime(v.caricato_at)}<div className="muted">{v.caricato_da || ''}</div></td>
             <td className="num">{v.riepilogo.esami}</td>
-            <td className="num">{pct(v.riepilogo.sconto_medio)}</td>
+            <td className="num">{v.riepilogo.con_listino === false ? <span className="muted">solo offerta</span> : pct(v.riepilogo.sconto_medio)}</td>
             <td className="small">{v.diff ? <>{v.diff.cambiate} cambiate · {v.diff.aggiunte} aggiunte · {v.diff.tolte} tolte{v.diff.variazione_sconto ? <div className={v.diff.variazione_sconto > 0 ? 'green' : 'red'}>sconto medio {v.diff.variazione_sconto > 0 ? '+' : ''}{num(v.diff.variazione_sconto)} punti</div> : null}</> : <span className="muted">prima versione</span>}</td>
             <td className="small">{v.offerta_documento_id ? <><a href={docUrl(v.offerta_documento_id)}><Icon name="download" />{v.offerta_filename}</a><div className="muted">{itDateTime(v.offerta_at)}{v.offerta_dati?.validita ? ` · valida fino al ${itDate(v.offerta_dati.validita)}` : ''}</div></> : <span className="muted">non generata</span>}
               {v.revisione_inviata_at && <div className="muted">inviata per la firma il {itDateTime(v.revisione_inviata_at)}</div>}
@@ -129,14 +134,14 @@ export function Carica({ a, onClose, onDone, origine = null }) {
         {p.righe_totali > 0 && <>
           <div className="grid g4 mt">
             <div className="kpi card"><div className="lbl">Esami letti</div><div className="val">{p.righe_totali}</div><div className="foot">{p.scartate} righe scartate (vuote o di totale)</div></div>
-            <div className="kpi card"><div className="lbl">Totale listino</div><div className="val">{eur(p.riepilogo.totale_listino)} €</div></div>
+            {haListino(p.righe) && <div className="kpi card"><div className="lbl">Totale listino</div><div className="val">{eur(p.riepilogo.totale_listino)} €</div></div>}
             <div className="kpi card"><div className="lbl">Totale offerta</div><div className="val">{eur(p.riepilogo.totale_offerto)} €</div></div>
-            <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(p.riepilogo.sconto_medio)}</div><div className="foot">ponderato sul listino</div></div>
+            {haListino(p.righe) ? <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(p.riepilogo.sconto_medio)}</div><div className="foot">ponderato sul listino</div></div> : <div className="kpi card"><div className="lbl">Prezzi</div><div className="val">solo offerta</div><div className="foot">l'Excel non ha un prezzo di listino distinto</div></div>}
           </div>
           {p.differenze && <div className="alert info small" style={{ marginTop: 8 }}>Rispetto alla v{p.precedente.versione}: <b>{p.differenze.cambiate.length} righe cambiate</b>, {p.differenze.aggiunte.length} aggiunte, {p.differenze.tolte.length} tolte, {p.differenze.invariate} invariate · sconto medio {pct(p.differenze.sconto_medio_prima)} → <b>{pct(p.differenze.sconto_medio_dopo)}</b>{p.differenze.tolte.length ? <div>Tolte: {p.differenze.tolte.slice(0, 10).map((x) => x.codice || x.descrizione).join(', ')}{p.differenze.tolte.length > 10 ? '…' : ''}</div> : null}</div>}
           {p.avvisi.length > 0 && <div className="alert warn small" style={{ marginTop: 8 }}>{p.avvisi.map((x, i) => <div key={i}>{x}</div>)}</div>}
-          <div className="table-wrap mt" style={{ maxHeight: 360 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th><th className="num">Listino €</th><th className="num">Offerta €</th><th className="num">Sconto</th></tr></thead><tbody>
-            {p.righe.map((x, i) => <tr key={i} style={cambiate.has(chiave(x)) ? { background: '#fff4d6' } : undefined}><td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td><td className="num">{eur(x.listino)}</td><td className="num strong">{eur(x.offerto)}</td><td className="num">{x.sconto ? pct(x.sconto) : '–'}</td></tr>)}
+          <div className="table-wrap mt" style={{ maxHeight: 360 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th>{haListino(p.righe) && <th className="num">Listino €</th>}<th className="num">Offerta €</th>{haListino(p.righe) && <th className="num">Sconto</th>}</tr></thead><tbody>
+            {p.righe.map((x, i) => <tr key={i} style={cambiate.has(chiave(x)) ? { background: '#fff4d6' } : undefined}><td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td>{haListino(p.righe) && <td className="num">{eur(x.listino)}</td>}<td className="num strong">{eur(x.offerto)}</td>{haListino(p.righe) && <td className="num">{x.sconto ? pct(x.sconto) : '–'}</td>}</tr>)}
           </tbody></table></div>
           {p.differenze?.cambiate.length > 0 && <div className="small muted" style={{ marginTop: 4 }}>In giallo le righe con un prezzo diverso dalla versione corrente.</div>}
         </>}
@@ -153,10 +158,10 @@ function Righe({ v, onClose }) {
     <Modal wide title={`Listino v${v.versione} · ${v.riepilogo.esami} esami`} onClose={onClose}>
       {!q.data ? <Loading /> : <>
         {q.data.differenze && <div className="small muted" style={{ marginBottom: 8 }}>Evidenziate le {q.data.differenze.cambiate.length} righe cambiate rispetto alla versione precedente (prezzo prima → dopo).{q.data.differenze.aggiunte.length ? ` Aggiunte: ${q.data.differenze.aggiunte.length}.` : ''}{q.data.differenze.tolte.length ? ` Tolte: ${q.data.differenze.tolte.map((x) => x.codice || x.descrizione).join(', ')}.` : ''}</div>}
-        <div className="table-wrap" style={{ maxHeight: 520 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th><th className="num">Listino €</th><th className="num">Offerta €</th><th className="num">Sconto</th></tr></thead><tbody>
+        <div className="table-wrap" style={{ maxHeight: 520 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th>{haListino(q.data.righe) && <th className="num">Listino €</th>}<th className="num">Offerta €</th>{haListino(q.data.righe) && <th className="num">Sconto</th>}</tr></thead><tbody>
           {q.data.righe.map((x, i) => { const k = x.codice ? `c:${String(x.codice).toUpperCase()}` : `d:${x.descrizione}`; const c = cambiate.has(k); return <tr key={i} style={c ? { background: '#fff4d6' } : undefined}>
-            <td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td><td className="num">{eur(x.listino)}</td>
-            <td className="num strong">{c ? <><span className="muted" style={{ textDecoration: 'line-through' }}>{eur(prima[k].offerto_prima)}</span> {eur(x.offerto)}</> : eur(x.offerto)}</td><td className="num">{x.sconto ? pct(x.sconto) : '–'}</td></tr>; })}
+            <td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td>{haListino(q.data.righe) && <td className="num">{eur(x.listino)}</td>}
+            <td className="num strong">{c ? <><span className="muted" style={{ textDecoration: 'line-through' }}>{eur(prima[k].offerto_prima)}</span> {eur(x.offerto)}</> : eur(x.offerto)}</td>{haListino(q.data.righe) && <td className="num">{x.sconto ? pct(x.sconto) : '–'}</td>}</tr>; })}
         </tbody></table></div>
       </>}
     </Modal>
@@ -241,6 +246,7 @@ function EditorRevisione({ a, v, prossima, onClose, onSalvata }) {
   const MAX = 300;
   const set = (k, campo, val) => setMod((m) => ({ ...m, [k]: { ...(m[k] || {}), [campo]: val } }));
   const pronto = stato.cambiate.length > 0 && !stato.errori.length && motivo.trim().length >= 5;
+  const soloOfferta = !haListino(righe);   // Excel con il solo prezzo offerto: niente colonne Listino e Sconto
   const perche = stato.errori.length ? `Prezzi non validi: ${stato.errori.slice(0, 3).join(', ')}` : !stato.cambiate.length ? 'Cambia almeno un prezzo' : motivo.trim().length < 5 ? 'Scrivi il motivo della revisione' : '';
   const salva = async () => {
     setBusy(true);
@@ -250,9 +256,9 @@ function EditorRevisione({ a, v, prossima, onClose, onSalvata }) {
     <>
       <div className="grid g4">
         <div className="kpi card"><div className="lbl">Righe cambiate</div><div className={`val ${stato.cambiate.length ? '' : 'muted'}`}>{stato.cambiate.length}</div><div className="foot">su {righe.length} esami della v{v.versione}</div></div>
-        <div className="kpi card"><div className="lbl">Totale listino</div><div className="val">{eur(stato.tl)} €</div></div>
+        {soloOfferta ? null : <div className="kpi card"><div className="lbl">Totale listino</div><div className="val">{eur(stato.tl)} €</div></div>}
         <div className="kpi card"><div className="lbl">Totale offerta</div><div className="val">{eur(stato.to)} €</div><div className="foot">v{v.versione}: {eur(v.riepilogo.totale_offerto)} €</div></div>
-        <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(stato.sconto)}</div><div className="foot">v{v.versione}: {pct(v.riepilogo.sconto_medio)} (uso interno, non va nel PDF)</div></div>
+        {soloOfferta ? <div className="kpi card"><div className="lbl">Prezzi</div><div className="val">solo offerta</div><div className="foot">nessun prezzo di listino distinto</div></div> : <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(stato.sconto)}</div><div className="foot">v{v.versione}: {pct(v.riepilogo.sconto_medio)} (uso interno, non va nel PDF)</div></div>}
       </div>
       <div className="row mt" style={{ gap: 10, flexWrap: 'wrap' }}>
         <input style={{ maxWidth: 320 }} placeholder="Cerca per codice, esame o settore" value={cerca} onChange={(e) => setCerca(e.target.value)} />
@@ -261,7 +267,7 @@ function EditorRevisione({ a, v, prossima, onClose, onSalvata }) {
         <span className="spacer" />
         {stato.cambiate.length > 0 && <button className="btn sm ghost" onClick={() => setMod({})}>Annulla le modifiche</button>}
       </div>
-      <div className="table-wrap mt" style={{ maxHeight: 460 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th><th className="num">Listino €</th><th className="num">Offerta €</th><th className="num">Sconto</th></tr></thead><tbody>
+      <div className="table-wrap mt" style={{ maxHeight: 460 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th>{!soloOfferta && <th className="num">Listino €</th>}<th className="num">Offerta €</th>{!soloOfferta && <th className="num">Sconto</th>}</tr></thead><tbody>
         {visibili.slice(0, MAX).map((x) => {
           const m = mod[x.chiave] || {}; const c = stato.chiavi.has(x.chiave);
           const o = m.offerto != null ? num2(m.offerto) : Number(x.offerto); const l = m.listino != null ? num2(m.listino) : Number(x.listino);
@@ -269,9 +275,9 @@ function EditorRevisione({ a, v, prossima, onClose, onSalvata }) {
           const errO = m.offerto != null && !(Number.isFinite(o) && o >= 0); const errL = m.listino != null && !(Number.isFinite(l) && l >= 0);
           return <tr key={x.chiave} style={c ? { background: '#fff4d6' } : undefined}>
             <td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td>
-            <td className="num">{conListino ? <input className="num" style={{ width: 96, height: 28, textAlign: 'right', borderColor: errL ? 'var(--red, #c0392b)' : undefined }} value={m.listino ?? eur(x.listino)} onChange={(e) => set(x.chiave, 'listino', e.target.value)} aria-label={`Listino ${x.codice || x.descrizione}`} /> : eur(x.listino)}</td>
+            {!soloOfferta && <td className="num">{conListino ? <input className="num" style={{ width: 96, height: 28, textAlign: 'right', borderColor: errL ? 'var(--red, #c0392b)' : undefined }} value={m.listino ?? eur(x.listino)} onChange={(e) => set(x.chiave, 'listino', e.target.value)} aria-label={`Listino ${x.codice || x.descrizione}`} /> : eur(x.listino)}</td>}
             <td className="num">{c && diversi(o, x.offerto) && <span className="muted" style={{ textDecoration: 'line-through', marginRight: 6 }}>{eur(x.offerto)}</span>}<input className="num" style={{ width: 96, height: 28, textAlign: 'right', fontWeight: 600, borderColor: errO ? 'var(--red, #c0392b)' : undefined }} value={m.offerto ?? eur(x.offerto)} onChange={(e) => set(x.chiave, 'offerto', e.target.value)} aria-label={`Offerta ${x.codice || x.descrizione}`} /></td>
-            <td className="num">{sc > 0.05 ? pct(sc) : '–'}</td>
+            {!soloOfferta && <td className="num">{sc > 0.05 ? pct(sc) : '–'}</td>}
           </tr>;
         })}
       </tbody></table></div>

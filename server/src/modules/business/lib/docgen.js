@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import PizZip from 'pizzip';
+import { haListino } from './listino.js';
 import Docxtemplater from 'docxtemplater';
 import { config } from '../config.js';
 import { itDate, itDateTime } from './util.js';
@@ -152,6 +153,8 @@ export function contractData(c, p, s, extra = {}) {
       pickup_site: nz(rt.site), pickup_street: nz(rt.street), pickup_city: nz(rt.city), pickup_contact: nz(rt.contact), pickup_contact_ref: [rt.phone, rt.email].filter(Boolean).join(' / '),
       sol1: CHK(d.interface_solution === 1), sol2: CHK(d.interface_solution === 2), sol3: CHK(d.interface_solution === 3),
       ha_listino: righe.length > 0, listino_righe: righe,
+      // Excel con il solo prezzo offerto (listino assente o uguale all'offerta): tabella con la sola colonna "Offerta €"
+      con_listino: righe.length > 0 && haListino(extra.listino?.righe || []), solo_offerta: righe.length > 0 && !haListino(extra.listino?.righe || []),
       listino_intro: righe.length ? `Prezzi dell'offerta riservati al Cliente (${righe.length} ${righe.length === 1 ? 'esame' : 'esami'}):` : '',
       politica_riferimento: riferimentoPolitica(extra.politica?.doc || null, { inCoda: Boolean(extra.politica?.inCoda) }),
     };

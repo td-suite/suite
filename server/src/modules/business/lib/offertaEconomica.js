@@ -11,7 +11,8 @@ import { one } from '../db.js';
 import { getCompany } from '../../../lib/company.js';
 import { getSettings } from './rules.js';
 import { docxToPdfBatch } from './docgen.js';
-import { perSettore } from './listino.js';
+import { perSettore, haListino } from './listino.js';
+export { haListino };
 import { dataLunga, dataBreve } from './pacchetto.js';
 import * as D from './pacchettoDocx.js';
 import { assembla } from './pacchettoPdf.js';
@@ -47,6 +48,7 @@ export function copertinaOfferta(d) {
 /** Vero se almeno un esame ha un prezzo offerto sotto il listino (altrimenti la colonna "Sconto" non compare). */
 export const haSconto = (righe = []) => righe.some((x) => x.listino != null && x.offerto != null && Number(x.listino) - Number(x.offerto) > 0.005);
 
+
 const W = { codice: 1300, prezzo: 1250, sconto: 1000 };
 const bordoRiga = [D.nil('top'), D.nil('left'), D.bordo('bottom', C.bordo, 4), D.nil('right')].join('');
 const cellaTesto = (t, w, o = {}) => ({ c: p(r(t, { sz: 17, color: o.color || C.testo, b: o.b }), { line: 252, jc: o.jc || 'left' }), w, mar: [70, 100, 70, 100], fill: o.fill || null, borders: bordoRiga });
@@ -54,13 +56,13 @@ const cellaTesto = (t, w, o = {}) => ({ c: p(r(t, { sz: 17, color: o.color || C.
  * Tabella di un settore: intestazione ripetuta sulle pagine, numeri allineati a destra. conSconto=false: senza la colonna "Sconto"
  * (nessun esame scontato in tutta l'offerta), la colonna dell'esame si allarga.
  */
-export function tabellaEsami(righe, { conSconto = true } = {}) {
-  const wEsame = LARGHEZZA - W.codice - 2 * W.prezzo - (conSconto ? W.sconto : 0);
-  const colonne = [['Codice', W.codice, 'left'], ['Esame', wEsame, 'left'], ['Listino €', W.prezzo, 'right'], ['Offerta €', W.prezzo, 'right'], ...(conSconto ? [['Sconto', W.sconto, 'right']] : [])];
+export function tabellaEsami(righe, { conSconto = true, conListino = true } = {}) {
+  const wEsame = LARGHEZZA - W.codice - (conListino ? 2 : 1) * W.prezzo - (conSconto ? W.sconto : 0);
+  const colonne = [['Codice', W.codice, 'left'], ['Esame', wEsame, 'left'], ...(conListino ? [['Listino €', W.prezzo, 'right']] : []), ['Offerta €', W.prezzo, 'right'], ...(conSconto ? [['Sconto', W.sconto, 'right']] : [])];
   const head = colonne.map(([t, w, jc]) => ({ c: p(r(t, { b: true, sz: 16, color: C.bianco }), { line: 240, jc }), w, fill: C.medio, mar: [80, 100, 80, 100] }));
   const body = righe.map((x, i) => {
     const fill = i % 2 ? 'F6FAFB' : null;
-    return [cellaTesto(x.codice || '–', W.codice, { fill }), cellaTesto(x.descrizione, wEsame, { fill }), cellaTesto(eur(x.listino), W.prezzo, { jc: 'right', fill, color: C.grigio }),
+    return [cellaTesto(x.codice || '–', W.codice, { fill }), cellaTesto(x.descrizione, wEsame, { fill }), ...(conListino ? [cellaTesto(eur(x.listino), W.prezzo, { jc: 'right', fill, color: C.grigio })] : []),
       cellaTesto(eur(x.offerto), W.prezzo, { jc: 'right', fill, b: true }),
       ...(conSconto ? [cellaTesto(Number(x.sconto) > 0 ? `−${pct(x.sconto)}` : '–', W.sconto, { jc: 'right', fill, color: Number(x.sconto) > 0 ? C.medio : C.grigio })] : [])];
   });
@@ -81,11 +83,12 @@ export function corpoOfferta(d) {
     d.condizioni ? ['Condizioni di pagamento', d.condizioni] : null,
     ['Prezzi', 'In euro, per singolo esame.'],
   ].filter(Boolean);
-  const conSconto = haSconto(d.righe);
+  const conListino = haListino(d.righe);
+  const conSconto = conListino && haSconto(d.righe);
   const gruppi = perSettore(d.righe);
   const tabelle = gruppi.map((g, i) => [
     gruppi.length > 1 || g.settore !== 'Esami' ? D.titoletto(`${g.settore} (${g.righe.length})`, { before: i ? 300 : 200 }) : '',
-    tabellaEsami(g.righe, { conSconto }),
+    tabellaEsami(g.righe, { conSconto, conListino }),
   ].join('')).join('');
   return [
     D.testata('La proposta', 'Offerta economica', `Le condizioni economiche riservate a ${d.cliente} per gli esami del Service di Laboratorio di Toscana Diagnostica.`),
