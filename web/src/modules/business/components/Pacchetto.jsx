@@ -142,7 +142,7 @@ function InviaPacchetto({ a, v, contatti, onClose, onDone }) {
     setBusy(true);
     try {
       const r = await api.post(`/hub/accounts/${a.id}/email/invia`, { ...body(), conferma: true });
-      toast(r.stato === 'FALLITO' ? `Invio non riuscito: ${r.errore}` : r.stato === 'REGISTRATO' ? 'Pacchetto registrato (posta in modalità registro)' : 'Pacchetto inviato e registrato nel diario', r.stato === 'FALLITO' ? 'err' : 'ok');
+      toast(r.stato === 'FALLITO' ? `Invio non riuscito: ${r.errore}` : r.stato === 'REGISTRATO' ? 'Pacchetto registrato (posta in modalità registro)' : `Pacchetto inviato e registrato nel diario${r.fase ? ': pipeline alla fase 4 (offerta inviata)' : ''}`, r.stato === 'FALLITO' ? 'err' : 'ok');
       onDone();
     } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
   };

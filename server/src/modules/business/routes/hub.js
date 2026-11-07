@@ -16,6 +16,7 @@ import {
 } from '../lib/hub.js';
 import { ncDiOrg, ordiniDiOrg, ticketDiOrg, circolariDiOrg, portaleDiOrg, contatoriFeed } from '../lib/feed.js';
 import { assegnaEmail, inviaAlCliente, casella, ccFissi } from '../lib/caselle.js';
+import { avanzaFase } from '../lib/flusso.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });
@@ -471,9 +472,18 @@ r.post('/accounts/:id/email/invia', ah(async (req, res) => {
     await q(`UPDATE pacchetti SET inviato_activity_id=$2, inviato_at=now(), inviato_stato=$3 WHERE id=$1 AND account_id=$4`, [d.pacchetto_id, out.activity_id, out.stato, a.id]);
     await q(`UPDATE activities SET dati = coalesce(dati, '{}'::jsonb) || jsonb_build_object('pacchetto_id', $2::int) WHERE id=$1`, [out.activity_id, d.pacchetto_id]);
   }
+  // Offerta inviata al cliente (07/11/2026, CEO: "come mai non cambia lo stato passando alla fase 4?"): se tra gli allegati c'è
+  // un'offerta (lettera di offerta o listino del contratto, offerta economica, pacchetto) la pipeline va alla fase 4; mai indietro.
+  let fase = null;
+  if (out.stato !== 'FALLITO') {
+    const cat = docs.length ? await many('SELECT id, categoria FROM documenti WHERE id = ANY($1::int[])', [docs.map((f) => f.id)]) : [];
+    const cfc = cf.length ? await many('SELECT id, category FROM contract_files WHERE id = ANY($1::int[])', [cf.map((f) => f.id)]) : [];
+    const offerta = Boolean(d.pacchetto_id) || cat.some((x) => ['OFFERTA_ECONOMICA', 'PACCHETTO'].includes(x.categoria)) || cfc.some((x) => ['GENERATO_PDF', 'GENERATO_DOCX', 'LISTINO_PDF', 'LISTINO_XLSX'].includes(x.category));
+    if (offerta) fase = await avanzaFase(a.id, 4, todayRome(), `Offerta inviata al cliente da ${out.from} (${allegati.map((x) => x.filename).join(', ')}).`, req.user.id);
+  }
   await tocca(a.id);
-  await audit(req, 'HUB_EMAIL_OUT', 'account', a.id, { stato: out.stato, destinatari: to.length, allegati: allegati.length });
-  res.json(out);
+  await audit(req, 'HUB_EMAIL_OUT', 'account', a.id, { stato: out.stato, destinatari: to.length, allegati: allegati.length, fase });
+  res.json({ ...out, fase });
 }));
 
 // Registro invii (tutte le email partite dal Business Hub)
