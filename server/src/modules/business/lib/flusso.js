@@ -19,7 +19,7 @@ import { storeBuffer, readBuffer } from './storage.js';
 import { versioneCorrente } from './listino.js';
 import { todayRome } from './util.js';
 import {
-  nuovoToken, scadenzaToken, statoToken, etichettaRif, rifDaOggetto, prerequisitiKit, datiClienteMancanti, precompila, validaMod173, confrontaAnagrafica,
+  nuovoToken, scadenzaToken, statoToken, etichettaRif, rifDaOggetto, prerequisitiKit, volumiGiornalieri, ribaltaDaAvvio, datiClienteMancanti, precompila, validaMod173, confrontaAnagrafica,
   compila, allegatiDa, CAMPO_MOD173,
 } from './processo.js';
 import { offertaDi, credenzialiStudiolab, modelliFlusso, suiteUrl } from './pacchettoGenera.js';
@@ -129,6 +129,8 @@ export async function statoProcesso(a) {
     ...comune, kit, gia_inviato: cor ? kit.find((k) => k.stato === 'INVIATO' && k.listino_id === cor.id) || null : null,
     anagrafiche,
     contrattualizzato_at: a.contrattualizzato_at, contrattualizzazione: a.contrattualizzazione, volumi_giornalieri_attesi: a.volumi_giornalieri_attesi, data_avvio_prevista: a.data_avvio_prevista,
+    volumi: volumiGiornalieri(a, s.hub_giorni_lavorativi), giorni_lavorativi: Number(s.hub_giorni_lavorativi) || 250,
+    ribaltamento: ribaltaDaAvvio({ ...a, data_avvio: a.data_avvio_effettiva || a.data_avvio_prevista }, s.hub_giorni_lavorativi),
   };
 }
 

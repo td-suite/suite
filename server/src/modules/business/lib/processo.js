@@ -47,6 +47,30 @@ export function volumiGiornalieri({ volumi_giornalieri_attesi: g, volume_fy_atte
   return { valore: null, fonte: null, testo: 'non indicati (compilare "Volumi giornalieri attesi" nella scheda account)' };
 }
 
+// ---------------------------------------------------------------- ribaltamento dalla data di avvio
+/**
+ * Dalla data di avvio e dai dati economici annui ricava volumi e fatturato dell'anno di avvio e dell'anno seguente (07/11/2026, il CEO:
+ * "i volumi vanno ribaltati in automatico dalla data di avvio inserita"). Giorni lavorativi = lun-ven, senza festivi (approssimazione
+ * dichiarata). Ritorna null senza data o senza dati annui.
+ */
+export function ribaltaDaAvvio({ data_avvio, volume_fy_atteso: fy, fatturato_fy_atteso: fatt, volumi_giornalieri_attesi: g } = {}, giorniLavorativi = 250) {
+  const d = data_avvio ? new Date(`${String(data_avvio).slice(0, 10)}T00:00:00Z`) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const gl = Number(giorniLavorativi) > 0 ? Number(giorniLavorativi) : 250;
+  const anno = d.getUTCFullYear();
+  let residui = 0;
+  for (let x = new Date(d); x.getUTCFullYear() === anno; x.setUTCDate(x.getUTCDate() + 1)) { const w = x.getUTCDay(); if (w !== 0 && w !== 6) residui++; }
+  const quota = Math.min(1, residui / gl);
+  const giorn = g != null && Number(g) > 0 ? Number(g) : fy != null && Number(fy) > 0 ? Number(fy) / gl : null;
+  const r2 = (n) => (n == null ? null : Math.round(n * 100) / 100);
+  return {
+    anno, giorni_lavorativi_residui: residui, quota_anno: r2(quota), volumi_giornalieri: r2(giorn),
+    volume_anno_avvio: giorn != null ? Math.round(giorn * residui) : null,
+    fatturato_anno_avvio: fatt != null && Number(fatt) > 0 ? Math.round(Number(fatt) * quota) : null,
+    fatturato_anno_seguente: fatt != null && Number(fatt) > 0 ? Math.round(Number(fatt)) : null,
+  };
+}
+
 // ---------------------------------------------------------------- prerequisiti del kit
 /**
  * Checklist del kit. s = { listino, referente, datiMancanti: [], studiolab, accesso, offerta, lettera }.

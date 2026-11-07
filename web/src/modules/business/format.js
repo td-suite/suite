@@ -89,3 +89,20 @@ export const EMAIL_STATO = { INVIATO: { label: 'Inviato', tone: 'green' }, REGIS
 export const eurK = (n) => (n == null || n === '' ? '–' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0, useGrouping: 'always' }).format(Number(n)));
 export const pctSconto = (n) => (n == null || n === '' ? '–' : `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(Number(n) * 100)}%`);
 export const giorni = (n) => (n == null ? '–' : `${n} gg`);
+
+// Vocabolari dei Dati commerciali (07/11/2026, il CEO: "non schema libero ma tendine, tutto standardizzato"). Valori presi dal DB
+// Opportunità B2B; un valore importato fuori elenco resta selezionabile come "(valore importato)" finché non viene ricondotto.
+export const VOCABOLARI = {
+  tipologia: ['Laboratorio Analisi', 'Laboratorio Analisi (punto prelievi)', 'Centro Diagnostico', 'Centro Medico', 'Poliambulatorio', 'Studio Medico', 'Casa di Cura', 'Ospedale Privato', 'RSA', 'Centro Fisioterapico', 'Gruppo Sanitario', 'Onlus / Associazione', 'Istituzione', 'Sport / Fitness', 'Azienda (medicina del lavoro)', 'Altro'],
+  segmento_lab: ['Laboratori esterni / Anatomia Pat.', 'Centri Diagnostici', 'Poliambulatori / Centri Medici', 'Studi Medici Privati', 'Cliniche / Case di Cura', 'RSA / Residenziale', 'Centri Fisioterapici', 'Onlus / Associazioni', 'Sport / Fitness', 'Forze Armate / Istituzioni', 'Aziende'],
+  accreditata_ssr: ['Sì', 'No', 'n.d.'],
+  fornitore_attuale: ['n.d.', 'Toscana Diagnostica', 'Synlab', 'Bianalisi', 'CERBA', 'Fanfani', 'PAIM', 'Lifebrain', 'Laboratorio interno', 'Altro'],
+  situazione_fornitore: ['Da rilevare', 'In uscita dal fornitore (opportunità)', 'Incumbent da scalzare', 'Contratto TD in essere', 'Cliente TD attivo', 'Non interessato'],
+  listino_riferimento: ['Offerta dedicata', 'Offerta di Gruppo', 'Listino standard'],
+  modalita_contatto: ['Diretta', 'Tramite gruppo / ente gestore', 'Segnalazione', 'Gara / bando', 'Richiesta del cliente'],
+  fonte_priorita: ['Suggerita (regola tipologia)', 'Assegnata', 'Assegnata (Foglio2)'],
+  stato_cartella: ['Da contattare', 'Da inviare', 'Inviati', 'Non inviare'],
+  anno_bilancio: Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)),
+};
+// Discipline: scelta multipla, salvate come elenco separato da virgola
+export const DISCIPLINE = ['analisi cliniche', 'prelievi', 'anatomia patologica', 'diagnostica per immagini', 'specialistica ambulatoriale', 'polispecialistica', 'fisioterapia, riabilitazione', 'medicina dello sport', 'medicina del lavoro', 'medicina estetica', 'chirurgia', 'ortopedia', 'psichiatria', 'lungodegenza', 'residenziale anziani', 'residenziale anziani non autosufficienti', 'centro diurno', 'disabilità'];

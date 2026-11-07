@@ -123,6 +123,12 @@ function InviaPacchetto({ a, v, contatti, onClose, onDone }) {
   const [riep, setRiep] = useState(null);
   const [busy, setBusy] = useState(false);
   const cid = preset?.id || v.contatto_id || null;
+  // indirizzi della Legal entity e delle strutture del gruppo, selezionabili come destinatari (07/11/2026, CEO: "anche tutti gli altri indirizzi")
+  const altriIndirizzi = useMemo(() => { const seen = new Set(conEmail.map((c) => c.email.toLowerCase())); const out = [];
+    const add = (email, label) => { const e = String(email || '').trim(); if (!e || seen.has(e.toLowerCase())) return; seen.add(e.toLowerCase()); out.push({ email: e, label }); };
+    add(a.org_email, `${a.org_name} (email)`); add(a.org_pec, `${a.org_name} (PEC)`);
+    for (const sd of a.sedi || []) { add(sd.email, sd.nome || 'struttura'); add(sd.pec, `${sd.nome || 'struttura'} (PEC)`); }
+    return out; }, [a, conEmail]);
   const testo = useApi(`/hub/accounts/${a.id}/pacchetto/email${cid ? `?contatto_id=${cid}` : ''}`);
   useEffect(() => { if (testo.data) setF((x) => ({ ...x, subject: x.subject || testo.data.oggetto, testo: x.testo || testo.data.testo })); }, [testo.data]);
   const body = useMemo(() => () => ({ to: [...f.to, ...f.altri.split(/[,;\s]+/).filter(Boolean)], cc_extra: f.cc_extra.split(/[,;\s]+/).filter(Boolean), subject: f.subject, testo: f.testo, documenti: [v.documento_id], contatto_id: cid, pacchetto_id: v.id }), [f, v, cid]);
@@ -154,7 +160,10 @@ function InviaPacchetto({ a, v, contatti, onClose, onDone }) {
   return (
     <Modal wide title={`Invia il pacchetto v${v.versione} · da ${a.casella}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !f.subject || !f.testo} onClick={anteprima}>Riepilogo prima dell'invio</button></>}>
       <div className="form-grid">
-        <div className="span2"><div className="small strong muted">Destinatari dai referenti</div>{conEmail.length ? conEmail.map((c) => <label key={c.id} className="f inline"><input type="checkbox" checked={f.to.includes(c.email)} onChange={() => toggle(c.email)} />{c.nome} · {c.email}</label>) : <div className="small muted">Nessun referente con email: aggiungilo in Referenti o scrivi l'indirizzo qui sotto (cliente o punto prelievi).</div>}</div>
+        <div className="span2"><div className="row" style={{ justifyContent: 'space-between' }}><div className="small strong muted">Destinatari dai referenti</div>{conEmail.length > 1 && <button className="btn link small" onClick={() => setF((x) => ({ ...x, to: [...new Set([...x.to, ...conEmail.map((c) => c.email)])] }))}>Seleziona tutti i referenti</button>}</div>
+          {conEmail.length ? conEmail.map((c) => <label key={c.id} className="f inline"><input type="checkbox" checked={f.to.includes(c.email)} onChange={() => toggle(c.email)} />{c.nome}{c.ruolo ? ` (${c.ruolo})` : ''} · {c.email}</label>) : <div className="small muted">Nessun referente con email: aggiungilo in Referenti o scrivi l'indirizzo qui sotto (cliente o punto prelievi).</div>}
+          {altriIndirizzi.length > 0 && <><div className="small strong muted" style={{ marginTop: 6 }}>Altri indirizzi dell'anagrafica</div>{altriIndirizzi.map((x) => <label key={x.email} className="f inline"><input type="checkbox" checked={f.to.includes(x.email)} onChange={() => toggle(x.email)} />{x.label} · {x.email}</label>)}</>}
+        </div>
         <Field label="Altri destinatari"><input value={f.altri} onChange={(e) => setF({ ...f, altri: e.target.value })} placeholder="indirizzi separati da virgola" /></Field>
         <Field label="Altre copie (oltre a quelle fisse)"><input value={f.cc_extra} onChange={(e) => setF({ ...f, cc_extra: e.target.value })} /></Field>
         <Field label="Oggetto" className="span2"><input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></Field>

@@ -8,6 +8,7 @@ import { one, many, q } from '../db.js';
 import { config } from '../config.js';
 import { ah, bad, forbidden, notFound, audit, parse, todayRome } from '../lib/util.js';
 import { canEditKind, getSettings } from '../lib/rules.js';
+import { ribaltaDaAvvio } from '../lib/processo.js';
 import { storeBuffer, sendFile, readBuffer, dropBlobs } from '../lib/storage.js';
 import { indexOrg } from '../../../lib/search.js';
 import {
@@ -197,6 +198,21 @@ r.put('/accounts/:id', ah(async (req, res) => {
   const cols = Object.keys(d).filter((k) => d[k] !== undefined);
   if (!cols.length) return res.json(await loadAccount(a.id));
   await q(`UPDATE accounts SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [a.id, ...cols.map((c) => d[c])]);
+  // data di avvio (o volumi) cambiati: fatturato dell'anno di avvio e dell'anno seguente ribaltati in automatico dai dati annui
+  if (['data_avvio_prevista', 'data_avvio_effettiva', 'volumi_giornalieri_attesi', 'volume_fy_atteso', 'fatturato_fy_atteso'].some((k) => cols.includes(k))) {
+    const fresco = await loadAccount(a.id);
+    const s = await getSettings();
+    const rb = ribaltaDaAvvio({ ...fresco, data_avvio: fresco.data_avvio_effettiva || fresco.data_avvio_prevista }, s.hub_giorni_lavorativi);
+    if (rb && rb.fatturato_anno_avvio != null) {
+      const set = {}; if (rb.anno === 2026) { set.fatturato_2026 = rb.fatturato_anno_avvio; set.fatturato_2027 = rb.fatturato_anno_seguente; } else if (rb.anno === 2025) set.fatturato_2026 = rb.fatturato_anno_seguente;
+      if (fresco.volumi_giornalieri_attesi == null && rb.volumi_giornalieri != null) set.volumi_giornalieri_attesi = rb.volumi_giornalieri;
+      const ks = Object.keys(set);
+      if (ks.length) {
+        await q(`UPDATE accounts SET ${ks.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [a.id, ...ks.map((k) => set[k])]);
+        await addActivity(a.id, { tipo: 'SISTEMA', oggetto: 'Volumi e fatturati ribaltati dalla data di avvio', testo: `Avvio ${String(fresco.data_avvio_effettiva || fresco.data_avvio_prevista).slice(0, 10)}: ${rb.giorni_lavorativi_residui} giorni lavorativi residui nel ${rb.anno} (${Math.round(rb.quota_anno * 100)}% dell'anno). ${rb.volumi_giornalieri != null ? `Volumi: ${rb.volumi_giornalieri} esami al giorno, ${rb.volume_anno_avvio} nel ${rb.anno}. ` : ''}Fatturato ${rb.anno} da starting: ${rb.fatturato_anno_avvio} €; ${rb.anno + 1}: ${rb.fatturato_anno_seguente} €.` }, req.user.id);
+      }
+    }
+  }
   if (d.owner_user_id !== undefined && d.owner_user_id !== a.owner_user_id) {
     const u = d.owner_user_id ? await one('SELECT full_name FROM public.users WHERE id=$1', [d.owner_user_id]) : null;
     await addActivity(a.id, { tipo: 'SISTEMA', oggetto: 'Owner cambiato', testo: `${a.owner_name || 'nessuno'} → ${u?.full_name || 'nessuno'}` }, req.user.id);

@@ -441,3 +441,9 @@ label.btn { cursor: pointer; }
 .checklist-pr .ko .ico { background: var(--red-100); color: var(--red); }
 .checklist-pr .auto .ico { background: var(--blue-100); color: var(--teal); }
 .mb { margin-bottom: 14px; }
+
+/* scelta multipla a chip (Discipline nei Dati commerciali) */
+.chips-sel { display: flex; flex-wrap: wrap; gap: 4px; }
+.chips-sel .chip { cursor: pointer; background: #f1f5f6; color: var(--muted); border: 1px solid var(--line); }
+.chips-sel .chip.on { background: var(--teal-050); color: var(--teal); border-color: var(--teal); }
+.chips-sel .chip input { display: none; }

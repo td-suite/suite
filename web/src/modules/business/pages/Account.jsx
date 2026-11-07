@@ -13,8 +13,7 @@ import Proposta from '../components/Proposta.jsx';
 import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
-  itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, SOTTOTIPO, TONO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today,
-} from '../format.js';
+  itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, SOTTOTIPO, TONO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today, VOCABOLARI, DISCIPLINE } from '../format.js';
 
 // "Listino e offerta" e "Proposta e contratto": processo Service da prospect a cliente (06/11/2026), components/Listino.jsx e Proposta.jsx
 const SCHEDE = [['diario', 'Diario'], ['referenti', 'Referenti'], ['listino', 'Listino e offerta'], ['proposta', 'Proposta e contratto'], ['criticita', 'Criticità'], ['ordini', 'Ordini'], ['nc', 'Non conformità'], ['ticket', 'Ticket'], ['circolari', 'Circolari'],
@@ -414,7 +413,8 @@ function ScriviCliente({ a, onClose, onDone }) {
   return (
     <Modal wide title={`Scrivi al cliente · da ${a.casella}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={anteprima}>Riepilogo prima dell'invio</button></>}>
       <div className="form-grid">
-        <div className="span2"><div className="small strong muted">Destinatari dai referenti</div>{conEmail.length ? conEmail.map((c) => <label key={c.id} className="f inline"><input type="checkbox" checked={f.to.includes(c.email)} onChange={() => toggle('to', c.email)} />{c.nome} · {c.email}</label>) : <div className="small muted">Nessun referente con email: aggiungilo in Referenti o scrivi l'indirizzo qui sotto.</div>}</div>
+        <div className="span2"><div className="row" style={{ justifyContent: 'space-between' }}><div className="small strong muted">Destinatari dai referenti</div>{conEmail.length > 1 && <button className="btn link small" onClick={() => setF((x) => ({ ...x, to: [...new Set([...x.to, ...conEmail.map((c) => c.email)])] }))}>Seleziona tutti</button>}</div>{conEmail.length ? conEmail.map((c) => <label key={c.id} className="f inline"><input type="checkbox" checked={f.to.includes(c.email)} onChange={() => toggle('to', c.email)} />{c.nome}{c.ruolo ? ` (${c.ruolo})` : ''} · {c.email}</label>) : <div className="small muted">Nessun referente con email: aggiungilo in Referenti o scrivi l'indirizzo qui sotto.</div>}
+          {[a.org_email && { email: a.org_email, label: `${a.org_name} (email)` }, a.org_pec && { email: a.org_pec, label: `${a.org_name} (PEC)` }].filter((x) => x && !conEmail.some((c) => c.email.toLowerCase() === x.email.toLowerCase())).map((x) => <label key={x.email} className="f inline"><input type="checkbox" checked={f.to.includes(x.email)} onChange={() => toggle('to', x.email)} />{x.label} · {x.email}</label>)}</div>
         <Field label="Altri destinatari"><input value={f.altri} onChange={(e) => setF({ ...f, altri: e.target.value })} placeholder="indirizzi separati da virgola" /></Field>
         <Field label="Altre copie (oltre a quelle fisse)"><input value={f.cc_extra} onChange={(e) => setF({ ...f, cc_extra: e.target.value })} /></Field>
         <Field label="Oggetto" className="span2"><input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></Field>
@@ -466,6 +466,8 @@ const COMM = [['tipologia', 'Tipologia'], ['segmento_lab', 'Segmento Lab'], ['gr
 function Commerciali({ a, onChange }) {
   const toast = useToast();
   const [f, setF] = useState(null);
+  const acc = useApi(f ? '/hub/accounts' : null);
+  const gruppi = useMemo(() => [...new Set((acc.data?.righe || []).map((x) => x.gruppo).filter(Boolean))].sort(), [acc.data]);
   const salva = async () => { try { const b = Object.fromEntries(COMM.map(([k]) => [k, f[k]])); b.priorita = f.priorita || null; b.prospect = f.prospect; await api.put(`/hub/accounts/${a.id}`, b); toast('Dati salvati'); setF(null); onChange(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <div className="grid g2">
@@ -479,7 +481,17 @@ function Commerciali({ a, onChange }) {
           <div className="form-grid">
             <Field label="Priorità"><select value={f.priorita} onChange={(e) => setF({ ...f, priorita: e.target.value })}><option value="">–</option>{Object.entries(PRIORITA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
             <label className="f inline"><input type="checkbox" checked={f.prospect} onChange={(e) => setF({ ...f, prospect: e.target.checked })} />Prospect (potenziale cliente)</label>
-            {COMM.map(([k, l]) => <Field key={k} label={l} className={k === 'note' ? 'span2' : ''}>{k === 'note' ? <textarea value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /> : <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />}</Field>)}
+            {COMM.map(([k, l]) => <Field key={k} label={l} className={k === 'note' || k === 'discipline' ? 'span2' : ''}>
+              {k === 'note' ? <textarea value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />
+                : k === 'discipline' ? <Discipline value={f[k]} onChange={(v) => setF({ ...f, [k]: v })} />
+                  : VOCABOLARI[k] ? <select value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })}>
+                    <option value="">–</option>
+                    {f[k] && !VOCABOLARI[k].includes(f[k]) && <option value={f[k]}>{f[k]} (valore importato)</option>}
+                    {VOCABOLARI[k].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                    : k === 'gruppo' ? <><input list="hub-gruppi" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /><datalist id="hub-gruppi">{(gruppi || []).map((g) => <option key={g} value={g} />)}</datalist></>
+                      : <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={k === 'fonte_censimento' ? 'sito, elenco, segnalazione…' : undefined} />}
+            </Field>)}
           </div>
           <div className="row end" style={{ marginTop: 12 }}><button className="btn ghost" onClick={() => setF(null)}>Annulla</button><button className="btn" onClick={salva}>Salva</button></div>
         </>}
@@ -489,6 +501,18 @@ function Commerciali({ a, onChange }) {
           : <Empty>Una sola struttura: i suoi dati sono quelli della Legal entity.</Empty>}
         <div className="small muted" style={{ padding: '10px 14px' }}>Le strutture del gruppo non sono sedi dell'anagrafica: diventano sedi (Amministrazione &gt; Sedi, tipo Service) quando partono davvero.</div>
       </Card>
+    </div>
+  );
+}
+
+// Discipline a scelta multipla (vocabolario DISCIPLINE); valori importati fuori elenco restano come voci aggiuntive finché non si tolgono.
+function Discipline({ value, onChange }) {
+  const sel = String(value || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const extra = sel.filter((x) => !DISCIPLINE.includes(x));
+  const toggle = (d) => onChange((sel.includes(d) ? sel.filter((x) => x !== d) : [...sel, d]).join(', '));
+  return (
+    <div className="chips-sel">
+      {[...DISCIPLINE, ...extra].map((d) => <label key={d} className={`chip ${sel.includes(d) ? 'on' : ''}`}><input type="checkbox" checked={sel.includes(d)} onChange={() => toggle(d)} />{d}{extra.includes(d) ? ' (importata)' : ''}</label>)}
     </div>
   );
 }
