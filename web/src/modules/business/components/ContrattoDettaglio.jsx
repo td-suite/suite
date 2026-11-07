@@ -39,7 +39,12 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
   // Business Hub (06/11/2026): oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO, anche i contratti caricati dai pacchetti) la proposta la
   // modifica l'Admin del modulo con una nuova revisione; i documenti delle versioni precedenti restano
   const revisionabile = !editable && isAdmin(user) && !['CESSATO', 'ANNULLATO'].includes(c.status);
-  const daRigenerare = revisionabile && c.kind !== 'SEDE' && !c.files.some((f) => f.category === 'GENERATO_DOCX' && f.version === c.version);
+  // regola della rigenerazione (07/11/2026, lib/contrattoGenera.js): finché non c'è il contratto FIRMATO caricato il documento si
+  // rigenera liberamente sulla versione corrente (anche ATTIVO/FIRMATO importato senza PDF firmato); con il firmato serve la revisione
+  const conFirmato = c.files.some((f) => f.category === 'FIRMATO');
+  const generatoVersione = c.files.some((f) => f.category === 'GENERATO_DOCX' && f.version === c.version);
+  const rigenerabile = revisionabile && c.kind !== 'SEDE' && !conFirmato;
+  const daRigenerare = revisionabile && c.kind !== 'SEDE' && conFirmato && !generatoVersione;
   const d = c.data || {}; const p = c.org || {}; const site = c.site || {};  // controparte e sede TD: una delle due può mancare
   const files = (cat) => c.files.filter((f) => f.category === cat);
   const ricarica = () => { q.reload(); onChange?.(); };
@@ -59,6 +64,7 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
       {edit && editable && <Link className="btn ghost" to={modifica}><Icon name="edit" />Modifica</Link>}
       {revisionabile && <Link className="btn ghost" to={modifica} title="Modifica della proposta con una nuova revisione (storico conservato)"><Icon name="edit" />Modifica (nuova revisione)</Link>}
       {edit && editable && c.kind !== 'SEDE' && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), c.protocol ? 'Documento rigenerato' : 'Proposta protocollata e generata')}><Icon name="file" />{c.protocol ? 'Rigenera DOCX e PDF' : 'Genera proposta (DOCX e PDF)'}</button>}
+      {rigenerabile && <button className="btn" title="Nessun contratto firmato caricato: il documento della versione corrente si rigenera con il template attuale (stessa versione)" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), generatoVersione ? `Documento v${c.version} rigenerato` : `Documento v${c.version} generato`)}><Icon name="file" />{generatoVersione ? 'Rigenera DOCX e PDF' : `Genera documento v${c.version}`}</button>}
       {daRigenerare && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), `Documento della revisione v${c.version} generato`)}><Icon name="file" />Genera documento v{c.version}</button>}
       {(isAdmin(user) || user.suite_level === 'OWNER') && <button className="btn ghost" onClick={() => setModal({ type: 'stato', status: c.status, motivo: '' })}>Cambia stato</button>}
       {c.dossier && <Link className="btn dark" to={`${BASE}/fascicoli/${c.dossier.id}`}><Icon name="folder" />Fascicolo autorizzazione</Link>}

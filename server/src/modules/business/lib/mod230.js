@@ -195,3 +195,58 @@ export function posizioneOffertaAllegato1(pagine = []) {
   for (let i = a1 + 1; i < norm.length; i++) if (RE_ALLEGATO_2.test(norm[i])) return { allegato1: a1, indice: i };
   return null;
 }
+
+// ---------------------------------------------------------------- margine inferiore (piè di pagina della carta intestata)
+// Richiesta del CEO del 07/11/2026: nessun testo del contratto deve finire sopra il piè di pagina (la vecchia tabella dei prezzi
+// dell'Allegato 1 lo invadeva). Il piè della carta intestata (dati societari e numero di pagina) si riconosce perché si ripete alla stessa
+// quota con lo stesso testo (cifre a parte) su più pagine; il resto è il corpo.
+const chiavePiede = (it) => `${Math.round(it.y)}|${String(it.s).replace(/\s+/g, ' ').trim().replace(/\d+/g, '#')}`;
+/**
+ * Testo del corpo dentro la fascia del piè di pagina. pagine = posizioni del testo pagina per pagina [{ w, h, items: [{ s, x, y, w, h }] }]
+ * (coordinate PDF: origine in basso a sinistra, y = linea di base, come posizioniTesto in contrattoPdf.js). zona = frazione inferiore
+ * della pagina in cui cercare il piè; tolleranza in punti tipografici.
+ * Piè di pagina: le righe della zona che si ripetono (quota + testo, cifre a parte: il numero di pagina conta come "#") su almeno il 60%
+ * delle pagine (e almeno su due). Se in una pagina nessuna riga è così frequente (documento con due impaginazioni), vale la fascia di
+ * righe ripetute almeno due volte a partire dal fondo, fino alla prima riga che non si ripete. Il limite della pagina è la sommità del
+ * testo più alto del piè; una riga del corpo è "sul piè" se la sua base, meno il discendente (un quarto del corpo), scende sotto il
+ * limite: così si vede anche una tabella che si infila tra le righe del piè. Ritorna { pagine (controllate), senzaPiede: [pagine
+ * 1-based senza piè riconosciuto], violazioni: [{ pagina (1-based), testo, y, limite }] }. Pura, testata.
+ */
+export function testoSulPiede(pagine = [], { zona = 0.16, tolleranza = 0.5 } = {}) {
+  const conteggio = new Map();
+  const nelPiede = (p, it) => it.y < (p.h || 842) * zona;
+  let conTesto = 0;
+  pagine.forEach((p) => {
+    const viste = new Set();
+    const testi = (p?.items || []).filter((it) => String(it.s).trim());
+    if (testi.length) conTesto++;
+    for (const it of testi) if (nelPiede(p, it)) viste.add(chiavePiede(it));
+    for (const k of viste) conteggio.set(k, (conteggio.get(k) || 0) + 1);
+  });
+  const frequente = Math.max(conTesto < 2 ? 1 : 2, Math.ceil(conTesto * 0.6));
+  const ripetuta = conTesto < 2 ? 1 : 2;
+  const violazioni = []; const senzaPiede = [];
+  pagine.forEach((p, i) => {
+    const testi = (p?.items || []).filter((it) => String(it.s).trim());
+    const zonaBassa = testi.filter((it) => nelPiede(p, it));
+    let piede = zonaBassa.filter((it) => (conteggio.get(chiavePiede(it)) || 0) >= frequente);
+    if (!piede.length) {
+      // fascia dal fondo: la prima riga che non si ripete (corpo) la chiude
+      const righe = new Map();
+      for (const it of zonaBassa) { const k = Math.round(it.y); if (!righe.has(k)) righe.set(k, []); righe.get(k).push(it); }
+      for (const k of [...righe.keys()].sort((a, b) => a - b)) {
+        const riga = righe.get(k);
+        if (!riga.every((it) => (conteggio.get(chiavePiede(it)) || 0) >= ripetuta)) break;
+        piede.push(...riga);
+      }
+    }
+    if (!piede.length) { if (testi.length) senzaPiede.push(i + 1); return; }
+    const limite = Math.max(...piede.map((it) => it.y + (it.h || 0)));
+    const delPiede = new Set(piede);
+    for (const it of testi) {
+      if (delPiede.has(it)) continue;
+      if (it.y - (it.h || 0) * 0.25 < limite - tolleranza) violazioni.push({ pagina: i + 1, testo: String(it.s).trim().slice(0, 80), y: Math.round(it.y * 10) / 10, limite: Math.round(limite * 10) / 10 });
+    }
+  });
+  return { pagine: pagine.length, senzaPiede, violazioni };
+}

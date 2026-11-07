@@ -10,8 +10,8 @@ import { canEditKind } from '../lib/rules.js';
 import { requireAdmin } from '../lib/access.js';
 import { storeBuffer } from '../lib/storage.js';
 import { LINEE } from '../lib/hub.js';
-import { componiSezioni, nomeFile, segnapostoSconosciuti, LETTERA_CEO_DEFAULT, EMAIL_DEFAULT, OGGETTO_EMAIL, SEGNAPOSTO } from '../lib/pacchetto.js';
-import { generaPacchetto, disponibilita, emailPacchetto, modelli, CHIAVE_LETTERA, CHIAVE_EMAIL } from '../lib/pacchettoGenera.js';
+import { componiSezioni, nomeFile, segnapostoSconosciuti, LETTERA_CEO_DEFAULT, EMAIL_DEFAULT, OGGETTO_EMAIL, SEGNAPOSTO, CERTIFICAZIONI_DEFAULT, certificazioniDa } from '../lib/pacchetto.js';
+import { generaPacchetto, disponibilita, emailPacchetto, modelli, testiCertificazioni, CHIAVE_LETTERA, CHIAVE_EMAIL, CHIAVE_CERTIFICAZIONI } from '../lib/pacchettoGenera.js';
 import { loadAccount, addActivity } from './hub.js';
 
 const r = Router();
@@ -60,7 +60,7 @@ const generaSchema = z.object({
  */
 export async function creaPacchetto(a, { scelte = {}, contatto = null, includiPassword = false, data, variante = 'BENVENUTO', vademecumPagine } = {}, userId = null) {
   const t0 = Date.now();
-  const g = await generaPacchetto(a, { scelte, contatto, includiPassword, data, variante, vademecumPagine });
+  const g = await generaPacchetto(a, { scelte, contatto, includiPassword, data, variante, vademecumPagine, userId });
   const versione = Number((await one('SELECT coalesce(max(versione),0)+1 AS v FROM pacchetti WHERE account_id=$1', [a.id])).v);
   const filename = variante === 'BENVENUTO' ? nomeFile(a.org_name, versione, data) : nomeFile(a.org_name, versione, data).replace('_Pacchetto_benvenuto_', variante === 'KIT' ? '_Proposta_di_collaborazione_' : '_Presentazione_');
   const st = await storeBuffer('hub', filename, 'application/pdf', g.pdf);
@@ -70,7 +70,7 @@ export async function creaPacchetto(a, { scelte = {}, contatto = null, includiPa
   const omesse = g.sezioni.filter((x) => !x.inclusa).map((x) => `${x.titolo} (${x.motivo})`);
   const nome = { BENVENUTO: 'Pacchetto di benvenuto', KIT: 'Pacchetto della proposta', PROSPECT: 'Pacchetto di presentazione (prospect)' }[variante] || 'Pacchetto';
   const act = await addActivity(a.id, { tipo: 'PACCHETTO', oggetto: `${nome} v${versione} generato (${g.pagine} pagine)`, con_chi: contatto?.nome || null, contatto_id: contatto?.id || null,
-    testo: [`Sezioni: ${incluse.join(', ')}.`, omesse.length ? `Non incluse: ${omesse.join('; ')}.` : null, g.password_inclusa ? 'Password del portale referti stampata nel pacchetto (scelta dell\'operatore).' : null].filter(Boolean).join('\n'),
+    testo: [`Sezioni: ${incluse.join(', ')}.`, g.lettera_fonte === 'RIGENERATA' ? 'Lettera di offerta rigenerata dal contratto corrente con il template attuale (file del contratto aggiornati).' : g.lettera_fonte === 'FIRMATO' ? 'Lettera di offerta: il contratto firmato caricato.' : null, omesse.length ? `Non incluse: ${omesse.join('; ')}.` : null, g.password_inclusa ? 'Password del portale referti stampata nel pacchetto (scelta dell\'operatore).' : null].filter(Boolean).join('\n'),
     dati: { documento_id: doc.id, versione, pagine: g.pagine, variante } }, userId);
   await q('UPDATE documenti SET activity_id=$2 WHERE id=$1', [doc.id, act.id]);
   const row = await one(`INSERT INTO pacchetti (account_id, versione, data, documento_id, activity_id, contatto_id, destinatario, sezioni, avvisi, pagine, bytes, offerta, password_inclusa, created_by, variante)
@@ -130,6 +130,33 @@ r.put('/pacchetto/modelli', requireAdmin, ah(async (req, res) => {
   }
   await audit(req, 'HUB_PACCHETTO_MODELLI', 'settings', null, { ripristina: true });
   res.json({ ok: true, avvisi: [], ...(await modelli()) });
+}));
+
+// Pagina "Qualità e certificazioni" (07/11/2026): testi e standard di riferimento del SGI modificabili (app_settings
+// pacchetto.certificazioni); i numeri dei certificati non sono qui (specchio del Portale Service). Solo l'Admin del modulo salva.
+r.get('/pacchetto/certificazioni', ah(async (_req, res) => {
+  res.json({ ...(await testiCertificazioni()), predefiniti: CERTIFICAZIONI_DEFAULT });
+}));
+const testoCert = z.string().max(3000).optional();
+r.put('/pacchetto/certificazioni', requireAdmin, ah(async (req, res) => {
+  const d = parse(z.object({
+    titolo: z.string().max(300).optional(), intro: testoCert, accreditamento: testoCert, pratiche: testoCert, governance: testoCert,
+    standard: z.array(z.object({ norma: z.string().trim().max(120), ambito: z.string().trim().max(200).default('') })).max(40).optional(),
+    ripristina: z.boolean().optional(),
+  }), req.body || {});
+  if (d.ripristina) {
+    await q('DELETE FROM app_settings WHERE key=$1', [CHIAVE_CERTIFICAZIONI]);
+  } else {
+    // si salva solo ciò che differisce dai predefiniti (così un aggiornamento dei predefiniti arriva a chi non li ha toccati)
+    const voluti = certificazioniDa({ ...(await testiCertificazioni()), ...d });
+    const diversi = {};
+    for (const k of ['titolo', 'intro', 'accreditamento', 'pratiche', 'governance']) if (voluti[k] !== CERTIFICAZIONI_DEFAULT[k]) diversi[k] = voluti[k];
+    if (JSON.stringify(voluti.standard) !== JSON.stringify(CERTIFICAZIONI_DEFAULT.standard)) diversi.standard = voluti.standard;
+    if (Object.keys(diversi).length) await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [CHIAVE_CERTIFICAZIONI, JSON.stringify(diversi)]);
+    else await q('DELETE FROM app_settings WHERE key=$1', [CHIAVE_CERTIFICAZIONI]);
+  }
+  await audit(req, 'HUB_PACCHETTO_CERTIFICAZIONI', 'settings', null, { ripristina: Boolean(d.ripristina), campi: Object.keys(d).filter((k) => k !== 'ripristina') });
+  res.json({ ok: true, ...(await testiCertificazioni()), predefiniti: CERTIFICAZIONI_DEFAULT });
 }));
 
 export default r;

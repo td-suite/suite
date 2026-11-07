@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, API_BASE } from '../api.js';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, useToast, UploadButton } from '../components/ui.jsx';
 import { HubCaselle, ImportDb, AccountDaContratti } from '../components/HubImpostazioni.jsx';
-import { PacchettoModelli } from '../components/Pacchetto.jsx';
+import { PacchettoModelli, PacchettoCertificazioni } from '../components/Pacchetto.jsx';
 import { ProcessoService, ProcessoPuntiPrelievo, FlussoModelli, B2bAllegati } from '../components/ProcessoImpostazioni.jsx';
 
 const GROUPS = [
@@ -41,6 +41,7 @@ export default function Settings() {
       <FirmatarioContratti f={f} setF={setF} />
       <B2bAllegati />
       <PacchettoModelli />
+      <PacchettoCertificazioni />
       <ImportDb />
       <AccountDaContratti />
       <ImportPack storage={d.storage} />

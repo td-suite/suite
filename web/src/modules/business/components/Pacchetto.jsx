@@ -50,7 +50,9 @@ export default function Pacchetto({ a, onChange }) {
                 <li key={s.key} className={off ? 'off' : ''}>
                   <label className="f inline"><input type="checkbox" disabled={s.fissa || Boolean(off) || !d.puo_generare} checked={!off && !escluse.includes(s.key)} onChange={() => toggle(s.key)} />
                     <span className="strong">{s.titolo}</span>{s.fissa && <span className="small muted"> · sempre</span>}</label>
-                  {s.key === 'offerta' && !off && <div className="small muted">{disp.offerta === 'PDF' ? `${disp.offerta_file.filename} (proposta ${disp.contratto.protocol || ''}, versione ${disp.offerta_file.version})` : `pagina "Offerta economica" con i dati della proposta: ${disp.proposta.map((x) => x.voce.toLowerCase()).join(', ')}`}</div>}
+                  {s.key === 'offerta' && !off && <div className="small muted">{disp.offerta === 'PDF' ? (disp.offerta_fonte === 'FIRMATO' ? `contratto firmato ${disp.offerta_file?.filename || ''} (${disp.contratto.protocol || ''})`
+                    : disp.offerta_fonte === 'RIGENERATA' ? `rigenerata alla generazione dal contratto ${disp.contratto.protocol || ''} (versione ${disp.contratto.version}) con il template attuale: i file del contratto si aggiornano`
+                      : `${disp.offerta_file?.filename || ''} (proposta ${disp.contratto.protocol || ''}, versione ${disp.offerta_file?.version || ''})`) : `pagina "Offerta economica" con i dati della proposta: ${disp.proposta.map((x) => x.voce.toLowerCase()).join(', ')}`}</div>}
                   {s.key === 'credenziali' && <div className="small muted">{disp.accessi.length ? `${disp.accessi.length} accessi esterni della Legal entity` : 'nessun accesso esterno: crealo da Amministrazione > Legal entity > Accessi'}{disp.portale_referti ? ` · portale referti: ${disp.portale_referti.username || '–'}` : ''}</div>}
                   {s.key === 'listino' && !off && disp.listino && <div className="small muted">{disp.listino.filename} (dal listino StudioLAB v{disp.listino.versione})</div>}
                   {s.key === 'studiolab' && !off && disp.portale_referti && <div className="small muted">{disp.portale_referti.url || ''}{disp.portale_referti.username ? ` · utente ${disp.portale_referti.username}` : ''}</div>}
@@ -192,6 +194,51 @@ export function PacchettoModelli() {
       <textarea style={{ minHeight: 320, width: '100%' }} value={f.lettera[linea]} onChange={(e) => setF({ ...f, lettera: { ...f.lettera, [linea]: e.target.value } })} />
       <Field label="Email di accompagnamento" className="mt"><textarea style={{ minHeight: 160 }} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
       <div className="row end" style={{ marginTop: 10 }}><button className="btn" onClick={() => salva()}>Salva i modelli</button></div>
+    </Card>
+  );
+}
+
+// Impostazioni: pagina "Qualità e certificazioni" del pacchetto (07/11/2026, come la pagina Certificazioni del sito). Titolo, testi e
+// standard di riferimento del Sistema di Gestione Integrato, nell'ordine di stampa. I numeri e le validità dei certificati arrivano dallo
+// specchio del Portale Service (certificazioni.json), l'Autorizzazione Sanitaria dai Dati aziendali, la Politica Integrata dallo
+// specchio SGI: qui non si scrivono. Solo l'Admin del modulo salva.
+export function PacchettoCertificazioni() {
+  const toast = useToast();
+  const q = useApi('/hub/pacchetto/certificazioni');
+  const [f, setF] = useState(null);
+  useEffect(() => { if (q.data) setF({ titolo: q.data.titolo, intro: q.data.intro, accreditamento: q.data.accreditamento, pratiche: q.data.pratiche, governance: q.data.governance, standard: q.data.standard.map((x) => ({ ...x })) }); }, [q.data]);
+  if (!q.data || !f) return null;
+  const salva = async (extra = {}) => { try { await api.put('/hub/pacchetto/certificazioni', extra.ripristina ? { ripristina: true } : { ...f, standard: f.standard.filter((x) => x.norma.trim()) }); toast(extra.ripristina ? 'Testi predefiniti ripristinati' : 'Pagina "Qualità e certificazioni" salvata'); q.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const setStd = (i, k, v) => setF({ ...f, standard: f.standard.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+  const sposta = (i, d) => { const s = [...f.standard]; const j = i + d; if (j < 0 || j >= s.length) return; [s[i], s[j]] = [s[j], s[i]]; setF({ ...f, standard: s }); };
+  const testo = (k, label, h = 70) => <Field label={label} className="mt"><textarea style={{ minHeight: h }} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>;
+  return (
+    <Card title="Pacchetto di benvenuto · Qualità e certificazioni" className="mt" actions={<button className="btn sm ghost" onClick={() => salva({ ripristina: true })}>Ripristina i testi predefiniti</button>}>
+      <div className="small muted" style={{ marginBottom: 10 }}>Predefiniti dalla pagina Certificazioni del sito (07/11/2026). La tabella dei certificati (numero, validità, ente) viene dallo specchio del Portale Service; gli standard qui sotto che hanno un certificato prendono norma e numero del certificato, gli altri compaiono come "standard di riferimento". Autorizzazione Sanitaria: Dati aziendali. Collegamento alla Politica Integrata: specchio SGI.</div>
+      <Field label="Titolo (sotto «Qualità e certificazioni»)"><input value={f.titolo} onChange={(e) => setF({ ...f, titolo: e.target.value })} /></Field>
+      {testo('intro', 'Sistema di Gestione Integrato (introduzione)')}
+      <div className="mt strong small">Standard di riferimento del SGI (nell'ordine di stampa)</div>
+      <table className="t mt" style={{ width: '100%' }}>
+        <thead><tr><th style={{ width: '32%' }}>Norma o documento</th><th>Ambito</th><th style={{ width: 120 }} /></tr></thead>
+        <tbody>
+          {f.standard.map((x, i) => (
+            <tr key={i}>
+              <td><input value={x.norma} onChange={(e) => setStd(i, 'norma', e.target.value)} /></td>
+              <td><input value={x.ambito} onChange={(e) => setStd(i, 'ambito', e.target.value)} /></td>
+              <td className="nowrap">
+                <button className="btn sm ghost" title="Su" onClick={() => sposta(i, -1)}>↑</button>
+                <button className="btn sm ghost" title="Giù" onClick={() => sposta(i, 1)}>↓</button>
+                <button className="btn sm ghost" title="Togli" onClick={() => setF({ ...f, standard: f.standard.filter((_, j) => j !== i) })}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button className="btn sm ghost mt" onClick={() => setF({ ...f, standard: [...f.standard, { norma: '', ambito: '' }] })}>Aggiungi uno standard</button>
+      {testo('accreditamento', 'Accreditamento istituzionale')}
+      {testo('pratiche', 'Le pratiche')}
+      {testo('governance', 'La governance clinica')}
+      <div className="row end" style={{ marginTop: 10 }}><button className="btn" onClick={() => salva()}>Salva la pagina</button></div>
     </Card>
   );
 }

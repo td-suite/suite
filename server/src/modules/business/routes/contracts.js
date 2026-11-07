@@ -6,18 +6,12 @@ import { config } from '../config.js';
 import { ah, bad, forbidden, notFound, audit, parse, itDate, todayRome } from '../lib/util.js';
 import { requireKind, isAdmin } from '../lib/access.js';
 import { getSettings, KIND, canEditKind, HAS_DOSSIER } from '../lib/rules.js';
-import { contractData, renderDocx, docxToPdf, pdfAvailable, CONTRACT_TEMPLATE, CONTRACT_DOCNAME } from '../lib/docgen.js';
 import { encrypt, decrypt, sha256 } from '../lib/crypto.js';
 import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../lib/storage.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
 import { defaultChecklists, DEFAULT_HOURS } from '../lib/dossier.js';
-import { versioneCorrente } from '../lib/listino.js';
-import { conListinoAccount, riquadroListino, collegaVersione } from '../lib/listinoUnico.js';
-import { leggiFirma, firmatario } from '../lib/firmaTd.js';
-import { apponiFirma, accodaPdf, inserisciOffertaAllegato1 } from '../lib/contrattoPdf.js';
-import { contaPagine } from '../lib/pacchettoPdf.js';
-import { addGiorni } from '../lib/pacchetto.js';
-import { politicaQualita } from '../lib/politicaQualita.js';
+import { conListinoAccount, riquadroListino } from '../lib/listinoUnico.js';
+import { rendiContratto, salvaGenerati, notaGenerazione, regolaRigenerazione } from '../lib/contrattoGenera.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });
@@ -265,52 +259,25 @@ export async function nextProtocol(kind, year, s, client) {
   return `${s[`protocol_prefix_${kind}`] || kind}-${year}-${String(row.last).padStart(4, '0')}`;
 }
 
-/**
- * Allegato 1 del contratto Service (seconda richiesta del CEO del 07/11/2026): l'Offerta economica PDF della versione `listinoId` del
- * listino dell'account. Se per quella versione non è ancora stata generata (o il file non si legge) si genera adesso con creaOfferta,
- * come dalla scheda Listino e offerta: documento OFFERTA_ECONOMICA dell'account, attività nel diario, LISTINO_PDF del contratto.
- * Condizioni di pagamento: quelle del contratto, poi quelle della Legal entity, poi il predefinito; validità e destinatario come i
- * predefiniti della scheda. Ritorna { listino, documento_id, filename, pdf, pagine, generata }.
- */
-async function offertaAllegato1(c, listinoId, s, userId) {
-  const l = await one('SELECT id, versione, caricato_at, riepilogo, offerta_documento_id FROM listini WHERE id=$1', [listinoId]);
-  const leggi = async (id) => {
-    const d = id ? await one('SELECT id, filename, data, blob_path FROM documenti WHERE id=$1', [id]) : null;
-    const pdf = d ? await readBuffer(d) : null;
-    const pagine = pdf ? await contaPagine(pdf) : 0;
-    return pagine ? { documento_id: d.id, filename: d.filename, pdf, pagine } : null;
-  };
-  const esistente = await leggi(l.offerta_documento_id);
-  if (esistente) return { listino: l, ...esistente, generata: false };
-  const [{ creaOfferta }, { loadAccount }] = await Promise.all([import('./listino.js'), import('./hub.js')]);
-  const a = await loadAccount(c.account_id);
-  const ext = await one('SELECT pay_terms FROM org_ext WHERE org_id=$1', [a.organization_id]);
-  const ref = await one('SELECT id FROM contatti WHERE account_id=$1 AND principale ORDER BY id LIMIT 1', [a.id]);
-  const oggi = todayRome();
-  const out = await creaOfferta(a, l.id, {
-    data: oggi, validita: addGiorni(oggi, Number(s.hub_offerta_validita_giorni) || 60),
-    condizioni: c.data?.payment_terms || ext?.pay_terms || s.payment_terms_default || null, contatto_id: ref?.id || null,
-  }, userId);
-  const nuova = await leggi(out.documento_id);
-  if (!nuova) throw new Error('PDF dell\'offerta economica generato ma non leggibile');
-  return { listino: l, ...nuova, generata: true };
-}
-
+// Generazione (lib/contrattoGenera.js, condivisa con il Pacchetto di benvenuto). Regola (07/11/2026, regolaRigenerazione):
+// - bozza o proposta: nuova versione del documento (protocollo alla prima generazione), i file generati precedenti si sostituiscono;
+// - oltre la proposta SENZA file FIRMATO (es. ATTIVO/FIRMATO importato senza PDF firmato): rigenerazione libera della versione corrente,
+//   stessa versione, stato invariato, file della versione sostituiti sul posto;
+// - oltre la proposta CON il file FIRMATO: serve una nuova revisione ("Modifica"), poi si genera il documento della revisione.
+// Oltre la proposta genera solo l'Admin del modulo.
 r.post('/:id/generate', ah(async (req, res) => {
   let c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
   if (c.kind === 'SEDE') throw bad('Per le sedi in locazione il contratto lo predispone il locatore: carica il contratto firmato');
-  // oltre la proposta: solo l'Admin, sulla revisione appena salvata; i documenti delle versioni precedenti restano
-  const revisione = !editable(c.status);
-  if (revisione) {
-    if (!isAdmin(req.user)) throw bad('Il documento è già stato sottoscritto: lo rigenera un Admin del modulo dopo una nuova revisione');
-    if (['CESSATO', 'ANNULLATO'].includes(c.status)) throw bad('Un contratto cessato o annullato non si rigenera');
-    if (c.files.some((f) => f.category === 'GENERATO_DOCX' && f.version === c.version)) throw bad(`Il documento della versione ${c.version} esiste già: per cambiare i termini salva prima una nuova revisione con "Modifica"`);
-  }
+  const regola = regolaRigenerazione(c);
+  if (regola.errore) throw bad(regola.errore);
+  const revisione = regola.modo === 'REVISIONE';
+  const rigenerazione = regola.modo === 'RIGENERA';
+  if ((revisione || rigenerazione) && !isAdmin(req.user)) throw bad('Il documento è già oltre la proposta: lo rigenera un Admin del modulo');
   const s = await getSettings();
   const errors = completenessErrors(c);
   if (errors.length) throw bad(`Dati incompleti. ${errors.join(' ')}`);
-  if (revisione) {
+  if (revisione || rigenerazione) {
     if (!c.protocol) await tx(async (client) => { const protocol = await nextProtocol(c.kind, Number(String(c.proposal_date).slice(0, 4)), s, client); await client.query('UPDATE contracts SET protocol=$2 WHERE id=$1', [c.id, protocol]); });
   } else await tx(async (client) => {
     if (!c.protocol) {
@@ -325,82 +292,18 @@ r.post('/:id/generate', ah(async (req, res) => {
     await dropBlobs(old.rows.map((r) => r.blob_path));
   });
   c = await loadContract(c.id);
-  // MOD230 (07/11/2026): referente principale e listino corrente dell'account (Allegati 2 e 1), Politica della Qualità dallo specchio
-  // SGI (Allegato 8, pagine in coda al PDF); firma di TD nel PDF di MOD230 e MOD231 se caricata e non esclusa dalla spunta
-  const avvisi = [];
-  const extra = { referente: c.referente_principale || null };
-  let politica = null;
-  const pdfOk = await pdfAvailable();
-  // Allegato 1 = Offerta economica impaginata della versione corrente del listino dell'account (seconda richiesta del CEO del
-  // 07/11/2026): le sue pagine entrano nel PDF dopo la pagina dell'Allegato 1; senza listino o senza PDF "verrà allegata"
-  let offerta1 = null;
-  if (c.kind === 'SRV') {
-    if (c.account_id) {
-      const acc = await one('SELECT listino_corrente_id FROM accounts WHERE id=$1', [c.account_id]);
-      const v = versioneCorrente(await many('SELECT id, versione FROM listini WHERE account_id=$1', [c.account_id]), acc?.listino_corrente_id);
-      // listino unico: la versione dell'Allegato 1 è anche il listino (XLSX) del contratto
-      if (v) { const { loadAccount } = await import('./hub.js'); await collegaVersione(await loadAccount(c.account_id), v.id, { userId: req.user.id }); }
-      if (v && pdfOk) {
-        try { offerta1 = await offertaAllegato1(c, v.id, s, req.user.id); } catch (e) { avvisi.push(`Offerta economica v${v.versione} non disponibile per l'Allegato 1 (${e.message}): nel contratto "verrà allegata alla sottoscrizione"`); }
-      } else if (v) avvisi.push(`LibreOffice non disponibile: l'offerta economica v${v.versione} non entra nell'Allegato 1`);
-      // i file del listino collegati al contratto (XLSX e offerta PDF) entrano nella frase del listino dell'Allegato 1
-      if (v) c = await loadContract(c.id);
-    }
-    if (offerta1) extra.allegato1 = { versione: offerta1.listino.versione, data: offerta1.listino.caricato_at, esami: offerta1.listino.riepilogo?.esami };
-    politica = await politicaQualita();
-    if (politica.avviso) avvisi.push(politica.avviso);
-    extra.politica = { doc: politica.doc, inCoda: Boolean(politica.pdf) };
-  }
-  const data = contractData(c, c.org, s, extra);
-  const docx = renderDocx(CONTRACT_TEMPLATE[c.kind], data);
-  const base = `${CONTRACT_DOCNAME[c.kind]}_${c.protocol}_v${c.version}`;
-  const ins = async (cat, filename, mime, buf, meta = null) => { const st = await storeBuffer('contratti', filename, mime, buf); await q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, blob_path, version, uploaded_by, meta) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-    [c.id, cat, filename, mime, st.size, st.sha256, st.data, st.blob_path, c.version, req.user.id, meta ? JSON.stringify(meta) : null]); };
-  await ins('GENERATO_DOCX', `${base}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', docx);
-  let pdfError = null;
-  const esito = { firmato_td: false, firma: null, politica: null, allegato1: null };
-  if (pdfOk) {
-    try {
-      let pdf = await docxToPdf(docx);
-      if (['SRV', 'MDL'].includes(c.kind)) {
-        const firma = c.data?.firma_td === false ? null : await leggiFirma();
-        if (c.data?.firma_td === false) esito.firma = 'esclusa dalla spunta del contratto';
-        else if (!firma) esito.firma = 'nessuna firma caricata in Impostazioni';
-        else {
-          const chi = firmatario(s);
-          const r = await apponiFirma(pdf, { mime: firma.mime, buffer: firma.buffer }, chi);
-          if (r.apposte) { pdf = r.pdf; esito.firmato_td = true; esito.firma = { nome: chi.nome, qualifica: chi.ruolo, blocchi: r.apposte, sha256: firma.sha256 }; }
-          else { esito.firma = 'spazio della firma non trovato nel PDF'; avvisi.push('Firma di TD non apposta: spazio della firma non trovato nel PDF (nome e qualifica del firmatario devono comparire nel blocco firme)'); }
-        }
-      }
-      // l'offerta si inserisce dopo la firma (il suo blocco "Per Toscana Diagnostica" non deve ricevere la firma del contratto) e prima
-      // della Politica della Qualità in coda
-      if (offerta1) {
-        try {
-          const r = await inserisciOffertaAllegato1(pdf, offerta1.pdf, { titolo: `Allegato 1 · Offerta economica v${offerta1.listino.versione}` });
-          pdf = r.pdf;
-          esito.allegato1 = { listino_id: offerta1.listino.id, versione: offerta1.listino.versione, documento_id: offerta1.documento_id, filename: offerta1.filename, pagine: r.pagine, pagina: r.posizione.indice + 1, generata: offerta1.generata, segnalibro: r.segnalibro };
-        } catch (e) { avvisi.push(`Offerta economica v${offerta1.listino.versione} non inserita nell'Allegato 1 del PDF (${e.message}): il testo dell'allegato la richiama, va allegata a mano`); }
-      }
-      if (politica?.pdf) {
-        try { const r = await accodaPdf(pdf, politica.pdf); pdf = r.pdf; esito.politica = { ...politica.doc, pagine: r.pagine }; } catch (e) { avvisi.push(`Politica della Qualità non accodata al PDF: ${e.message}`); }
-      }
-      const { filename: _f, generata: _g, segnalibro: _s, ...a1 } = esito.allegato1 || {};
-      await ins('GENERATO_PDF', `${base}.pdf`, 'application/pdf', pdf, esito.allegato1 ? { allegato1_offerta: a1 } : null);
-    } catch (e) { pdfError = e.message; }
-  } else pdfError = 'LibreOffice non disponibile: generato solo il DOCX';
-  const nota = [revisione ? `Revisione v${c.version} (stato ${c.status} invariato, versioni precedenti conservate)` : null,
-    esito.firmato_td ? `PDF firmato da Toscana Diagnostica (${esito.firma.nome}, ${esito.firma.qualifica})` : null,
-    esito.allegato1 ? `Allegato 1: offerta economica v${esito.allegato1.versione} (${esito.allegato1.pagine} pagine)` : null,
-    esito.allegato1?.generata ? `Offerta economica v${esito.allegato1.versione} generata per l'Allegato 1 (${esito.allegato1.filename})` : null,
-    esito.politica ? `Politica della Qualità ${esito.politica.code} in coda (${esito.politica.pagine} pagine)` : null, ...avvisi, pdfError].filter(Boolean).join(' · ') || null;
-  await addEvent(c.id, 'GENERATO', req.user.id, nota, { protocol: c.protocol, version: c.version, revisione, firmato_td: esito.firmato_td, firma: esito.firma, politica: esito.politica, allegato1: esito.allegato1, avvisi });
-  await audit(req, 'CONTRACT_GENERATE', 'contract', c.id, { protocol: c.protocol, version: c.version, firmato_td: esito.firmato_td });
-  res.json({ ...(await loadContract(c.id)), pdfError, avvisi, firmato_td: esito.firmato_td, allegato1: esito.allegato1 });
+  const g = await rendiContratto(c, s, req.user.id);
+  c = g.c;
+  await salvaGenerati(c, g, req.user.id, { sostituisci: rigenerazione });
+  if (rigenerazione) await q('UPDATE contracts SET updated_at=now() WHERE id=$1', [c.id]);
+  const nota = notaGenerazione(c, g, { revisione, rigenerazione });
+  await addEvent(c.id, 'GENERATO', req.user.id, nota, { protocol: c.protocol, version: c.version, revisione, rigenerazione, firmato_td: g.esito.firmato_td, firma: g.esito.firma, politica: g.esito.politica, allegato1: g.esito.allegato1, piede: g.esito.piede, avvisi: g.avvisi });
+  await audit(req, 'CONTRACT_GENERATE', 'contract', c.id, { protocol: c.protocol, version: c.version, firmato_td: g.esito.firmato_td, rigenerazione });
+  res.json({ ...(await loadContract(c.id)), pdfError: g.pdfError, avvisi: g.avvisi, firmato_td: g.esito.firmato_td, allegato1: g.esito.allegato1, piede: g.esito.piede });
 }));
 
-// Controlli minimi prima di generare la proposta
-function completenessErrors(c) {
+// Controlli minimi prima di generare la proposta (anche per la rigenerazione dal pacchetto, lib/contrattoGenera.js)
+export function completenessErrors(c) {
   const e = []; const d = c.data || {}; const p = c.org;
   if (!p) { e.push('Indica la controparte (Legal entity): il documento è intestato a lei.'); return e; }
   if (!p.vat && !p.tax_code) e.push('Indica P.IVA o codice fiscale dell’organizzazione (Amministrazione > Organizzazioni).');

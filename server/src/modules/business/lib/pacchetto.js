@@ -29,7 +29,7 @@ export const SEZIONI = [
   { key: 'studiolab', titolo: 'Credenziali StudioLAB', linee: ['SRV'] },    // portale dei referti (contratto della linea o Legal entity)
   { key: 'avvio', titolo: 'I primi 30-60-90 giorni' },
   { key: 'referente', titolo: 'Il vostro referente dedicato' },
-  { key: 'diversi', titolo: 'Cosa ci rende diversi' },
+  { key: 'diversi', titolo: 'Qualità e certificazioni' },                  // era "Cosa ci rende diversi" (07/11/2026: come la pagina del sito)
   { key: 'checklist', titolo: 'Checklist per iniziare' },
   { key: 'vademecum', titolo: 'Vademecum degli esami', linee: ['SRV'] },
 ];
@@ -57,6 +57,25 @@ const SOLO_CLIENTE = ['offerta', 'listino', 'credenziali', 'studiolab', 'avvio',
 export function letteraConOfferta(meta, listinoId) {
   const a = meta?.allegato1_offerta;
   return Boolean(a && listinoId != null && Number(a.listino_id) === Number(listinoId) && Number(a.pagine) > 0);
+}
+
+const giorno = (d) => { if (!d) return null; const s = d instanceof Date ? d.toISOString() : String(d); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null; };
+/**
+ * Contratto firmato nel pacchetto (terza richiesta del CEO del 07/11/2026): la versione corrente del listino è cambiata dopo la firma?
+ * Allora l'offerta economica corrente si aggiunge come sezione a sé. caricatoAt = caricamento della versione corrente del listino;
+ * firma = { signedAt (data della firma del contratto), caricatoAt (caricamento del file FIRMATO), meta (contract_files.meta del PDF
+ * generato della stessa versione del firmato), listinoId }. Se il PDF generato da cui nasce il firmato conteneva già quella versione
+ * nell'Allegato 1 non è cambiata; altrimenti listino caricato dopo il giorno della firma o, se la data della firma manca (contratto
+ * già ATTIVO quando si carica il firmato), dopo il momento del caricamento del file firmato. Senza date utili: true (meglio i prezzi una volta in più che nessuno). Pura, testata.
+ */
+export function listinoDopoLaFirma(caricatoAt, { signedAt = null, caricatoFirmatoAt = null, meta = null, listinoId = null } = {}) {
+  if (listinoId != null && letteraConOfferta(meta, listinoId)) return false;
+  const l = giorno(caricatoAt); const f = giorno(signedAt);
+  if (l && f) return l > f;
+  // senza data della firma: il momento del caricamento del firmato (al secondo, non al giorno)
+  const tl = caricatoAt ? new Date(caricatoAt).getTime() : NaN; const tf = caricatoFirmatoAt ? new Date(caricatoFirmatoAt).getTime() : NaN;
+  if (Number.isFinite(tl) && Number.isFinite(tf)) return tl > tf;
+  return true;
 }
 
 /**
@@ -235,7 +254,75 @@ export function contattoLaboratorio(contatti) {
 /** Le certificazioni ISO con numero (certificazioni.json dello specchio): { norma, titolo, numero, scadenza }. */
 export function certificazioniIso(cert) {
   return (cert?.certificazioni || []).filter((c) => /^ISO\s/.test(String(c.norma || '')) && c.numero)
-    .map((c) => ({ norma: pulito(c.norma), titolo: pulito(c.titolo), numero: pulito(c.numero), scadenza: pulito(c.scadenza) || null }));
+    .map((c) => ({ norma: pulito(c.norma), titolo: pulito(c.titolo), numero: pulito(c.numero), scadenza: pulito(c.scadenza) || null,
+      emissione: pulito(c.emissione_corrente) || pulito(c.prima_emissione) || null }));
+}
+
+/**
+ * Pagina "Qualità e certificazioni" del pacchetto (terza richiesta del CEO del 07/11/2026: completa come
+ * https://www.toscanadiagnostica.it/chi-siamo/certificazioni). Testi e standard di riferimento modificabili in Impostazioni
+ * (app_settings pacchetto.certificazioni); i predefiniti sono quelli della pagina del sito letta il 07/11/2026, standard nell'ordine del
+ * sito. I numeri dei certificati NON stanno qui: vengono dallo specchio del Portale Service (certificazioni.json, certificazioniIso).
+ * L'ambito degli standard (seconda colonna) è quello di certificazioni.json, per gli standard che vi compaiono.
+ */
+export const CERTIFICAZIONI_DEFAULT = {
+  titolo: 'La qualità non è una promessa. È un metodo.',
+  intro: 'Toscana Diagnostica ha costruito un Sistema di Gestione Integrato (SGI) che unisce qualità clinica, sicurezza del paziente, tutela dei dati, responsabilità ambientale e governance.',
+  standard: [
+    { norma: 'Politica della Qualità nel SGI', ambito: 'Documento della Direzione' },
+    { norma: 'ISO 9001:2015', ambito: 'Sistema di Gestione per la Qualità' },
+    { norma: 'ISO 45001:2023', ambito: 'Sistema di Gestione per la Salute e Sicurezza sul Lavoro' },
+    { norma: 'ISO 14001:2015', ambito: 'Sistema di Gestione Ambientale' },
+    { norma: 'ISO 37001:2016', ambito: 'Sistema di Gestione per la Prevenzione della Corruzione' },
+    { norma: 'ISO 7101:2024', ambito: 'Sistema di Gestione per la Qualità nelle Organizzazioni Sanitarie' },
+    { norma: 'PAS 24000:2022', ambito: 'Responsabilità Sociale' },
+    { norma: 'ISO 27001:2022', ambito: 'Sistema di Gestione per la Sicurezza delle Informazioni' },
+    { norma: 'ISO 30415:2021', ambito: 'Diversità e Inclusione' },
+    { norma: 'UNI/PdR 125', ambito: 'Parità di Genere' },
+  ],
+  accreditamento: 'Accreditamento istituzionale con il Servizio Sanitario Regionale ai sensi della L.R. Toscana 51/2009: accreditamento quinquennale, con verifiche periodiche dei requisiti.',
+  pratiche: 'Il metodo si vede nel lavoro di ogni giorno: procedure operative standardizzate, controlli di qualità interni, partecipazione ai programmi di Valutazione Esterna di Qualità (VEQ), audit interni periodici e indicatori che misurano i processi.',
+  governance: 'Governance clinica: ogni campione segue un protocollo di identificazione e di validazione dei risultati; gli strumenti sono calibrati e le prestazioni analitiche sono verificate con i controlli di qualità e con la VEQ.',
+};
+/** Impostazioni salvate (anche parziali) sopra i predefiniti: testi vuoti = predefinito; standard: elenco salvato se non vuoto. Pura. */
+export function certificazioniDa(salvate = null) {
+  const x = salvate && typeof salvate === 'object' ? salvate : {};
+  const out = { ...CERTIFICAZIONI_DEFAULT };
+  for (const k of ['titolo', 'intro', 'accreditamento', 'pratiche', 'governance']) if (typeof x[k] === 'string' && x[k].trim()) out[k] = x[k].trim();
+  const st = Array.isArray(x.standard) ? x.standard.map((v) => ({ norma: pulito(v?.norma), ambito: pulito(v?.ambito) })).filter((v) => v.norma) : [];
+  if (st.length) out.standard = st;
+  return out;
+}
+/** Famiglia di una norma, senza anno né "/IEC": "ISO/IEC 27001:2022" → "ISO 27001", "UNI/PdR 125:2022" → "UNI/PDR 125". Pura. */
+export const famigliaNorma = (n) => pulito(n).toUpperCase().replace(/\/IEC\b/, '').replace(/:\s*\d{4}\b.*$/, '').replace(/\s+/g, ' ').trim();
+/**
+ * Contenuto della pagina "Qualità e certificazioni". cert = certificazioni.json dello specchio del Portale Service (o null);
+ * testi = certificazioniDa(impostazioni); autorizzazione = Dati aziendali health_authorization; politica = { code, rev, data, title,
+ * url } dallo specchio SGI (o null). Ritorna { titolo, intro, certificati: certificazioniIso, organismo: { nome, accreditamento,
+ * verifica } | null, standard: [{ norma, ambito, certificato: numero | null }], differenze: [{ standard, certificato, numero }]
+ * (anno della norma diverso tra l'elenco degli standard e il certificato: vale il certificato), accreditamento, autorizzazione,
+ * pratiche, governance, politica }. Pura, testata.
+ */
+export function qualitaCertificazioni({ cert = null, testi = CERTIFICAZIONI_DEFAULT, autorizzazione = null, politica = null } = {}) {
+  const certificati = certificazioniIso(cert);
+  const perFamiglia = new Map(certificati.map((c) => [famigliaNorma(c.norma), c]));
+  const ambiti = new Map((cert?.certificazioni || []).map((c) => [famigliaNorma(c.norma), pulito(c.titolo)]));
+  const differenze = [];
+  const standard = (testi.standard || []).map((v) => {
+    const c = perFamiglia.get(famigliaNorma(v.norma));
+    if (c && pulito(c.norma) !== pulito(v.norma)) differenze.push({ standard: pulito(v.norma), certificato: c.norma, numero: c.numero });
+    // con il certificato vale la norma del certificato (fonte dei certificati), non quella dell'elenco
+    return { norma: c ? c.norma : pulito(v.norma), ambito: pulito(v.ambito) || ambiti.get(famigliaNorma(v.norma)) || '', certificato: c ? c.numero : null };
+  });
+  // certificati con numero assenti dall'elenco degli standard: in coda, così l'elenco resta completo
+  for (const c of certificati) if (!standard.some((v) => famigliaNorma(v.norma) === famigliaNorma(c.norma))) standard.push({ norma: c.norma, ambito: c.titolo, certificato: c.numero });
+  const o = cert?.organismo;
+  return {
+    titolo: testi.titolo, intro: testi.intro, certificati,
+    organismo: o?.nome ? { nome: pulito(o.nome), accreditamento: pulito(o.accreditamento) || null, verifica: pulito(o.verifica) || null } : null,
+    standard, differenze, accreditamento: testi.accreditamento, autorizzazione: pulito(autorizzazione) || null,
+    pratiche: testi.pratiche, governance: testi.governance, politica: politica?.code ? politica : null,
+  };
 }
 
 // ---------------------------------------------------------------- credenziali

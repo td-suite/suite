@@ -6,9 +6,11 @@
 // - Allegato 1 (seconda richiesta del CEO del 07/11/2026): le pagine dell'Offerta economica impaginata (offertaEconomica.js) inserite
 //   dopo la pagina dell'Allegato 1 e prima dell'Allegato 2, posizione letta dal testo del PDF (posizioneOffertaAllegato1 in mod230.js);
 //   se il contratto ha già dei segnalibri, uno in più per l'offerta economica.
+// - Margine inferiore (terza richiesta del 07/11/2026): controllaPiede verifica che nessun testo del corpo stia nella fascia del piè di
+//   pagina (regola pura testoSulPiede in mod230.js), sul PDF del contratto prima dell'inserimento dell'offerta e della Politica.
 import { createRequire } from 'node:module';
 import { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef, PDFNull, PDFNumber, PDFHexString } from 'pdf-lib';
-import { spaziFirma, misuraFirma, posizioneOffertaAllegato1 } from './mod230.js';
+import { spaziFirma, misuraFirma, posizioneOffertaAllegato1, testoSulPiede } from './mod230.js';
 
 const require = createRequire(import.meta.url);
 
@@ -130,4 +132,9 @@ export async function inserisciOffertaAllegato1(pdfBuf, offertaBuf, { titolo = '
   if (!pos) throw new Error('titoli "ALLEGATO 1" e "ALLEGATO 2" non trovati nel PDF del contratto');
   const r = await inserisciPdf(pdfBuf, offertaBuf, pos.indice, { segnalibro: titolo });
   return { ...r, posizione: pos };
+}
+
+/** Testo del corpo sopra il piè di pagina: { pagine, senzaPiede, violazioni } (testoSulPiede sulle posizioni lette dal PDF). */
+export async function controllaPiede(pdfBuf, opz = {}) {
+  return testoSulPiede(await posizioniTesto(pdfBuf), opz);
 }

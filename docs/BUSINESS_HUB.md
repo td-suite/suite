@@ -66,6 +66,8 @@ alla Legal entity mancava il firmatario, quindi la generazione rispondeva "Dati 
 - FIRMATO, AUTORIZZATO, ATTIVO: un Admin del modulo usa "Modifica (nuova revisione)" con un **motivo obbligatorio**: la versione
   precedente va in `contract_revisions` (dati e motivo), la versione cresce, lo stato non cambia; "Genera documento vN" produce i nuovi
   DOCX e PDF lasciando quelli delle versioni precedenti. Cessati e annullati non si modificano.
+- Dal 07/11/2026 (vedi "Lettera di offerta sempre fresca"): finché il contratto non ha un file FIRMATO caricato, oltre la proposta
+  "Rigenera DOCX e PDF" rigenera la versione corrente senza revisione; la revisione serve solo con il firmato caricato.
 - "Cambia stato" (Admin del modulo o Owner): qualunque stato con motivazione obbligatoria (`POST /contracts/:id/stato-manuale`, evento
   STATO_MANUALE). Non cambia il cliente attivo.
 - La pagina del contratto porta all'account ("Account nel Business Hub", scheda Contratto) e mostra lo storico delle revisioni; dal
@@ -207,7 +209,7 @@ Gli accessi esterni non vedono il Business Hub nemmeno con un grant (403).
 `PUT /hub/criticita/:id/chiudi`, `POST /hub/accounts/:id/documenti`, `GET|DELETE /hub/documenti/:id`,
 `POST /hub/accounts/:id/email/anteprima`, `POST /hub/accounts/:id/email/invia`, `GET /hub/invii`, `GET /hub/email/da-assegnare`,
 `POST /hub/email/:id/assegna`, `POST /hub/email/:id/ignora`, `GET /hub/utenti`, `GET /hub/opportunita`, `POST /hub/opportunita/export`,
-`POST /hub/import/db/prova`, `POST /hub/import/db/esegui`, `GET|POST /hub/accounts/:id/pacchetto`, `GET|PUT /hub/pacchetto/modelli`, `GET /hub/import/db/runs`, `POST /hub/import/contratti`, `GET /hub/caselle`,
+`POST /hub/import/db/prova`, `POST /hub/import/db/esegui`, `GET|POST /hub/accounts/:id/pacchetto`, `GET|PUT /hub/pacchetto/modelli`, `GET|PUT /hub/pacchetto/certificazioni`, `GET /hub/import/db/runs`, `POST /hub/import/contratti`, `GET /hub/caselle`,
 `POST /hub/caselle/:linea/prova`, `POST /hub/caselle/:linea/prova-invio`, `POST /hub/caselle/leggi`, `POST /inbox/simula`,
 `POST /contracts/:id/stato-manuale`.
 
@@ -754,3 +756,64 @@ della linea (`profiloLineaSu`). Al kit di proposta e alla contrattualizzazione s
 l'impostazione `hub_accessi_portale` (Business Hub > Impostazioni, processo Service: TUTTI predefinito, o PRINCIPALE come prima); chi
 riceve l'invito alla creazione non ne riceve un secondo all'attivazione. Test: `server/test/business-listino-unico.test.mjs` e i nuovi casi
 di `business-pacchetto.test.mjs`. Screenshot: `docs/screens/hub-portale-accessi.png`, `docs/screens/hub-contratto-listino-unico.png`.
+
+## Lettera di offerta sempre fresca nel pacchetto, margine inferiore del contratto, "Qualità e certificazioni" (07/11/2026)
+Fatto osservato dal CEO (pacchetto AgapeLab v4): la sezione 02 "Lettera di offerta" era il GENERATO_PDF salvato nel contratto giorni
+prima con il template vecchio (tabella dei prezzi dell'Allegato 1 sul piè di pagina, buco tra gli artt. 14 e 15, nessuna offerta
+economica dentro): "gli stessi errori" anche con il codice corretto. In più la pagina delle certificazioni era incompleta rispetto al sito.
+
+**Generazione condivisa** (`lib/contrattoGenera.js`). `rendiContratto` (DOCX dal template + PDF di LibreOffice con firma di TD, Allegato 1
+= offerta economica della versione corrente del listino, generata al momento se manca, Politica della Qualità in coda),
+`salvaGenerati` (con `sostituisci` aggiorna sul posto le righe GENERATO_DOCX/GENERATO_PDF della versione: stesso id, così kit e invii
+che le richiamano restano validi), `notaGenerazione`, `offertaAllegato1` (spostata da `routes/contracts.js`). La usano la scheda
+Contratto (`POST /contracts/:id/generate`) e il pacchetto.
+
+**Regola della rigenerazione** (`regolaRigenerazione`, pura): BOZZA/PROPOSTA come prima (nuova versione, protocollo alla prima volta);
+oltre la proposta **senza file FIRMATO** (anche ATTIVO/FIRMATO importato senza PDF firmato) rigenerazione libera della versione corrente,
+stessa versione, stato invariato, file della versione sostituiti (evento GENERATO "Rigenerazione della versione N"); **con il FIRMATO**
+serve la revisione ("Modifica (nuova revisione)", poi "Genera documento vN"), altrimenti "Il contratto firmato è caricato e il documento
+della versione N esiste già: ...". Oltre la proposta genera l'Admin del modulo. Scheda Contratto: "Rigenera DOCX e PDF" (o "Genera
+documento vN" se manca) per l'Admin quando non c'è il firmato.
+
+**Pacchetto** (`letteraDiOfferta` in `lib/pacchettoGenera.js`): alla generazione (benvenuto e kit; non per i prospect né se l'operatore
+esclude la lettera)
+- contratto **senza FIRMATO** con protocollo: la lettera si renderizza dal contratto corrente con il codice attuale
+  (`rigeneraDalPacchetto`: dati completi, stessa versione, nessuna revisione) e **sostituisce** GENERATO_PDF/GENERATO_DOCX della versione
+  corrente, evento GENERATO "Documento della versione N rigenerato dal pacchetto di benvenuto con il template attuale" (dati
+  `rigenerato_dal_pacchetto: true`), attività del pacchetto "Lettera di offerta rigenerata dal contratto corrente"; se la rigenerazione
+  non si può fare (contratto mai generato, dati incompleti, LibreOffice assente) resta il PDF salvato con l'avviso;
+- contratto **con il FIRMATO** (PDF): nel pacchetto va il firmato (titolo "Lettera di offerta firmata", nota "Contratto P, versione N,
+  firmato il ..."); l'offerta economica corrente si aggiunge come sezione 03 se la versione del listino è cambiata dopo la firma
+  (`listinoDopoLaFirma`: la lettera generata della versione del firmato non conteneva quella versione e il listino è stato caricato dopo
+  il giorno della firma o, senza data della firma, dopo il caricamento del firmato); se per quella versione l'offerta non è ancora generata, si genera.
+- La composizione (`disponibilita`, `offerta_fonte`: FIRMATO, RIGENERATA, SALVATA) lo dice senza rigenerare. Il kit di proposta rilegge
+  la lettera dopo il pacchetto (file e meta aggiornati).
+
+**Margine inferiore** (`testoSulPiede` in `lib/mod230.js`, `controllaPiede` in `lib/contrattoPdf.js`): dalle posizioni del testo
+(pdf-parse) il piè della carta intestata è l'insieme delle righe della fascia bassa che si ripetono (quota e testo, cifre a parte) su
+almeno il 60% delle pagine; ogni riga del corpo la cui base (meno il discendente) scende sotto la sommità del piè è una violazione (si vede
+anche una tabella infilata tra le righe del piè). Il controllo gira a ogni generazione sul PDF del contratto prima dell'offerta e della
+Politica (`esito.piede` nell'evento GENERATO; avviso "Testo sopra il piè di pagina in pagina ..." se serve). Le pagine dell'offerta
+inserite nell'Allegato 1 tengono la numerazione dell'offerta (per ora va bene così). Sul pacchetto di produzione del 07/11 il controllo
+trova la pagina 16 (tabella del vecchio Allegato 1); sul contratto generato oggi nessuna violazione.
+
+**Qualità e certificazioni** (la sezione `diversi`, prima "Cosa ci rende diversi"; `qualitaCertificazioni` in `lib/pacchetto.js`, pagina
+`diversi` in `lib/pacchettoDocx.js`): titolo "La qualità non è una promessa. È un metodo."; introduzione sul SGI; **tabella dei
+certificati** (norma, sistema di gestione, numero, validità dal/al, ente in nota) dalla fonte di oggi, `certificazioni.json` dello
+specchio del Portale Service (le ISO con numero: 9001:2015, 45001:2018, 14001:2015, 37001:2025 con i numeri TOSC5191...: norme e anni
+come nella fonte, non corretti a mano); **standard di riferimento del SGI** nell'ordine del sito (Politica della Qualità nel SGI,
+ISO 9001:2015, ISO 45001:2023, ISO 14001:2015, ISO 37001:2016, ISO 7101:2024, PAS 24000:2022, ISO 27001:2022, ISO 30415:2021,
+UNI/PdR 125): quelli con il certificato prendono norma e numero del certificato, gli altri "Standard di riferimento" senza numeri; le
+differenze di anno tra elenco e certificato (45001: sito 2023, certificato 2018; 37001: sito 2016, certificato 2025) vanno tra gli avvisi
+del pacchetto ("nel pacchetto vale il certificato"); **accreditamento SSR** (L.R. Toscana 51/2009) e **Autorizzazione Sanitaria** dai
+Dati aziendali (`health_authorization`); **pratiche** e **governance clinica** in due paragrafi; **Politica Integrata**: codice,
+revisione e data dallo specchio SGI (`politicaQualita`, lo stesso documento dell'Allegato 8 del contratto) con il collegamento
+`https://service.toscanadiagnostica.it/doc/TD-SGI-POL001` (il Portale Service pubblico apre sempre la revisione in vigore, come il
+pulsante della pagina Certificazioni); in coda tre schede di "Cosa ci rende diversi". Impostazioni: Business Hub > Impostazioni,
+"Pacchetto di benvenuto · Qualità e certificazioni" (`app_settings pacchetto.certificazioni`, `GET/PUT /hub/pacchetto/certificazioni`,
+audit `HUB_PACCHETTO_CERTIFICAZIONI`): titolo, testi ed elenco degli standard modificabili (si salva solo ciò che differisce dai
+predefiniti); i numeri dei certificati non si scrivono lì.
+
+Test: `server/test/business-pacchetto-fresco.test.mjs` (regola della rigenerazione, listino dopo la firma, margine inferiore su un PDF di
+esempio e sul contratto MOD230 vero convertito con LibreOffice, pagina e impostazioni delle certificazioni).
+

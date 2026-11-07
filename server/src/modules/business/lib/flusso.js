@@ -287,6 +287,8 @@ export async function preparaKit(a, { contattoId = null, includiPassword = false
   const oggi = todayRome();
   const pk = await creaPacchetto(a, { contatto: ref, includiPassword, data: oggi, variante: 'KIT', vademecumPagine: vademecum !== false }, userId);
   for (const x of pk.avvisi || []) avvisi.push(`Pacchetto: ${x}`);
+  // il pacchetto rigenera la lettera di offerta dal contratto corrente (pacchettoGenera.js, letteraDiOfferta): file e meta si rileggono
+  stato.lettera = (await statoProcesso(a)).lettera;
   const mod = await mod173Compilabile(a, ref, userId);
   const circ = await documentoDaFile(a, { file: CIRCOLARE.file, filename: CIRCOLARE.filename, etichetta: CIRCOLARE.etichetta }, userId);
   const off = stato.listino?.offerta_documento_id ? await one('SELECT id, filename, size FROM documenti WHERE id=$1', [stato.listino.offerta_documento_id]) : null;

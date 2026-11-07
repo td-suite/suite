@@ -162,22 +162,27 @@ export function senzaNumeroPagina(footerXml) {
   return String(footerXml || '').replace(/<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?fldCharType="begin"[\s\S]*?fldCharType="end"\/><\/w:r>/g, '')
     .replace(/<w:fldSimple\b[^>]*PAGE[^>]*>[\s\S]*?<\/w:fldSimple>/g, '');
 }
-/** DOCX di una sezione: corpo + immagini [{ rId, nome, buffer }] sulla carta intestata. */
-export function costruisci(corpo, immagini = []) {
+/** DOCX di una sezione: corpo + immagini [{ rId, nome, buffer }] + collegamenti esterni [{ rId, url }] sulla carta intestata. */
+export function costruisci(corpo, immagini = [], collegamenti = []) {
   const { buf, head, sect } = parti();
   const zip = new PizZip(buf);
   zip.file('word/document.xml', head + corpo + margini(sect));
   for (const f of Object.keys(zip.files).filter((n) => /^word\/footer\d*\.xml$/.test(n))) zip.file(f, senzaNumeroPagina(zip.file(f).asText()));
-  if (immagini.length) {
+  if (immagini.length || collegamenti.length) {
     let rels = zip.file('word/_rels/document.xml.rels').asText();
     for (const im of immagini) {
       zip.file(`word/media/${im.nome}`, im.buffer);
       rels = rels.replace('</Relationships>', `<Relationship Id="${im.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${im.nome}"/></Relationships>`);
     }
+    for (const l of collegamenti) {
+      rels = rels.replace('</Relationships>', `<Relationship Id="${l.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(l.url)}" TargetMode="External"/></Relationships>`);
+    }
     zip.file('word/_rels/document.xml.rels', rels);
   }
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
+/** Collegamento esterno (la relazione rId → url si passa a costruisci): testo sottolineato nel colore della carta. */
+export const collegamento = (rId, testo, o = {}) => `<w:hyperlink r:id="${rId}" w:history="1">${r(testo, { u: true, color: C.scuro, sz: o.sz || 18, b: o.b })}</w:hyperlink>`;
 
 // ================================================================ pagine
 const metaRiga = (etichetta, valore) => [
@@ -418,24 +423,61 @@ export function referente(d) {
   ].join('');
 }
 
-/** Cosa ci rende diversi: quattro schede e le certificazioni con numero e scadenza (dallo specchio del Portale Service). */
+/**
+ * Qualità e certificazioni (terza richiesta del CEO del 07/11/2026: completa come la pagina "Certificazioni" del sito). d.qualita =
+ * qualitaCertificazioni() in pacchetto.js: certificati con numero e validità dallo specchio del Portale Service, elenco degli standard
+ * di riferimento del SGI (Impostazioni), accreditamento SSR e Autorizzazione Sanitaria (Dati aziendali), pratiche e governance clinica,
+ * collegamento alla Politica Integrata (rIdPolitica, dallo specchio SGI). In coda le tre schede di "Cosa ci rende diversi".
+ */
+// titoletto e paragrafi in una riga di tabella che non si spezza: LibreOffice non rispetta il keepNext del titoletto dopo una tabella
+// e lo lasciava solo in fondo alla pagina
+const paragrafoUnito = (t) => p(r(t, { sz: 18, color: C.testo }), { after: 80, line: 276, jc: 'both' });
+const blocco = (parti) => tabella([LARGHEZZA], [[{ c: parti.join(''), w: LARGHEZZA, mar: [0, 0, 0, 0] }]]);
 export function diversi(d) {
+  const x = d.qualita || {};
+  const bordoRiga = [nil('top'), nil('left'), bordo('bottom', C.bordo, 4), nil('right')].join('');
+  const validita = (c) => [c.emissione ? `dal ${c.emissione}` : null, c.scadenza ? `al ${c.scadenza}` : null].filter(Boolean).join(' ') || '–';
+  const cert = x.certificati?.length ? [
+    titoletto('I certificati', { before: 240 }),
+    tabellaDati([{ t: 'Norma', w: 1750, b: true }, { t: 'Sistema di gestione', w: 3488 }, { t: 'Numero', w: 1900 }, { t: 'Validità', w: 2500 }],
+      x.certificati.map((c) => [c.norma, c.titolo, c.numero, validita(c)])),
+    x.organismo ? p(r(`Ente di certificazione: ${x.organismo.nome}${x.organismo.accreditamento ? `. ${conPunto(x.organismo.accreditamento)}` : '.'}${x.organismo.verifica ? ` Validità verificabile su ${x.organismo.verifica.replace(/^https?:\/\//, '')}.` : ''}`, { sz: 16, color: C.grigio }), { before: 80, line: 252 }) : '',
+  ].join('') : '';
+  const stato = (v) => {
+    if (v.certificato) return r(`Certificato ${v.certificato}`, { sz: 17, b: true, color: C.scuro });
+    if (/^politica/i.test(v.norma)) return x.politica ? r(`${String(x.politica.code).replace(/_\d+$/, '')}, rev. ${x.politica.rev}`, { sz: 17, color: C.testo }) : r('Documento della Direzione', { sz: 17, color: C.testo });
+    return r('Standard di riferimento', { sz: 17, color: C.grigio });
+  };
+  const righeStd = (x.standard || []).map((v) => [
+    { c: p(r(v.norma, { sz: 17, b: true }), { line: 252 }), w: 2600, mar: [70, 120, 70, 120], borders: bordoRiga },
+    { c: p(r(v.ambito || '', { sz: 17 }), { line: 252 }), w: 4338, mar: [70, 120, 70, 120], borders: bordoRiga },
+    { c: p(stato(v), { line: 252 }), w: 2700, mar: [70, 120, 70, 120], borders: bordoRiga },
+  ]);
+  const standard = righeStd.length ? [
+    titoletto('Gli standard del Sistema di Gestione Integrato', { before: 300 }),
+    p(r('Il SGI è ispirato a questi standard internazionali; quelli certificati da un ente terzo sono nella tabella dei certificati.', { sz: 17, color: C.grigio }), { after: 80, line: 264, keepNext: true }),
+    tabella([2600, 4338, 2700], righeStd),
+  ].join('') : '';
+  const istituzionali = [x.accreditamento, x.autorizzazione ? conPunto(x.autorizzazione) : null].filter(Boolean);
+  const politica = x.politica ? [
+    p([r('Politica Integrata: ', { sz: 18, b: true, color: C.scuro }), r(`${String(x.politica.code).replace(/_\d+$/, '')} "${x.politica.title}", revisione ${x.politica.rev} del ${x.politica.data}. `, { sz: 18 }),
+      x.politica.url ? collegamento('rIdPolitica', 'Apri il PDF della revisione in vigore', { sz: 18 }) : ''], { before: 200, line: 276 }),
+  ].join('') : '';
   const schede = [
     { titolo: 'Trasparenza', corpo: d.linea === 'SRV' ? 'Tutto è tracciato e consultabile da voi: non conformità con le risposte, ordini con le fasi, circolari con le prese visione, ticket con i tempi. Non chiedete un resoconto: lo avete già.' : 'Tutto è tracciato e consultabile da voi nella Suite: circolari con le prese visione, ticket con i tempi, i dati che vi riguardano. Non chiedete un resoconto: lo avete già.' },
     { titolo: 'Tempi dichiarati', corpo: d.linea === 'SRV' ? 'I tempi di refertazione di ogni esame sono scritti nel Vademecum; le non conformità e i ticket hanno scadenze di risposta misurate. Promettiamo solo quello che misuriamo.' : 'Le richieste hanno scadenze di risposta misurate e visibili. Promettiamo solo quello che misuriamo.' },
-    { titolo: 'Certificazioni', corpo: 'Un Sistema di Gestione Integrato certificato da un ente terzo accreditato: qualità, ambiente, salute e sicurezza, prevenzione della corruzione. Gli audit interni sono continui e informatizzati.' },
     { titolo: 'Un solo portale', corpo: 'Un accesso personale per documenti, procedure, ordini, comunicazioni, richieste e contatti. Le stesse informazioni che usa il nostro personale, nella revisione in vigore.' },
   ];
-  const cert = d.certificazioni?.length ? [
-    titoletto('Le nostre certificazioni', { before: 360 }),
-    tabellaDati([{ t: 'Norma', w: 2000, b: true }, { t: 'Sistema di gestione', w: 4238 }, { t: 'Certificato', w: 1900 }, { t: 'Valido fino al', w: 1500 }],
-      d.certificazioni.map((c) => [c.norma, c.titolo, c.numero, c.scadenza || '–'])),
-    d.organismo ? p(r(`Ente di certificazione: ${d.organismo}.`, { sz: 16, color: C.grigio }), { before: 80, line: 252 }) : '',
-  ].join('') : '';
   return [
-    testata('Il nostro metodo', 'Cosa ci rende diversi', 'Quattro scelte che vedete ogni giorno nel lavoro insieme, non solo in queste pagine.'),
-    griglia(schede),
+    testata('Il nostro metodo', 'Qualità e certificazioni', x.titolo || null),
+    x.intro ? testo(x.intro, { sz: 19, after: 60 }) : '',
     cert,
+    standard,
+    istituzionali.length ? blocco([titoletto('Accreditamento e autorizzazione', { before: 300 }), ...istituzionali.map((t) => paragrafoUnito(t))]) : '',
+    x.pratiche || x.governance ? blocco([titoletto('Le pratiche e la governance clinica', { before: 300 }), ...[x.pratiche, x.governance].filter(Boolean).map((t) => paragrafoUnito(t))]) : '',
+    politica,
+    titoletto('Cosa ci rende diversi', { before: 360 }),
+    griglia(schede, { colonne: 3, gap: 200 }),
   ].join('');
 }
 
