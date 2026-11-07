@@ -4,6 +4,8 @@
 // Email da assegnare e Clienti sono replicati in ogni sezione con la linea fissa nell'indirizzo (?linea=…); nessuna vista "tutte le linee".
 // 07/11/2026: niente elenchi di contratti per linea ("una replica" di Tutti i contratti, CEO): i contratti si leggono nella scheda
 // dell'account (Clienti e prospect), dove si apre il dettaglio senza uscire dall'account (/business/account/:id/contratti/:cid).
+// 07/11/2026: 'DB Opportunità' tolto dal menu (il file è assorbito negli account): la stampa PDF/XLSX a 49 colonne sta in Pipeline e in
+// Clienti e prospect (pulsanti Stampa PDF / XLSX / Tabella); la tabella completa resta raggiungibile da lì (/business/db-opportunita).
 // Menu del CEO (06/11/2026): "Prima sezione: Management con Panoramica contratti e Tutti i contratti e Organizzazione e Sedi. Poi Service di
 // Laboratorio con Cruscotto, Pipeline, Clienti e prospect, DB Opportunità, Email da assegnare, Clienti. Poi Punti Prelievo con Punti Prelievo
 // e Sedi TD in locazione. Poi Medicina del Lavoro. Infine Amministrazione." Cruscotto e Pipeline della sezione Service sono filtrati sulla
@@ -23,7 +25,6 @@ export default {
     { to: '?linea=SRV', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'pipeline?linea=SRV', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=SRV', icon: 'users', label: 'Clienti e prospect', badge: 'da_confermare' },
-    { to: 'db-opportunita', icon: 'sheet', label: 'DB Opportunità' },
     { to: 'email?linea=SRV', icon: 'mail', label: 'Email da assegnare', badge: 'email_da_assegnare' },
     { to: 'clienti-attivi?linea=SRV', icon: 'check', label: 'Clienti', badge: 'da_verificare' },
     { group: 'Punti Prelievo' },

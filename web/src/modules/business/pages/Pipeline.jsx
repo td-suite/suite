@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api, BASE } from '../api.js';
+import { StampaDB } from '../components/StampaDB.jsx';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Badge, Modal, Field, useToast } from '../components/ui.jsx';
 import { FASI, LINEE, PRIORITA, eurK, itDate, today } from '../format.js';
@@ -76,7 +77,10 @@ export default function Pipeline() {
     <div className="page wide">
       <div className="page-head">
         <div><h1>Pipeline · {LINEE[f.linea].label}</h1><div className="sub">Trascina una scheda nella fase raggiunta: la data e il passaggio finiscono nel diario dell'account. Stallo = nessun avanzamento da oltre {q.data.soglia_stallo} giorni.</div></div>
-        <Link className="btn" to={`${BASE}/clienti?linea=${f.linea}&nuovo=1`}>+ Nuovo prospect</Link>
+        <div className="row" style={{ gap: 6 }}>
+          <StampaDB righe={righe} f={f} />
+          <Link className="btn" to={`${BASE}/clienti?linea=${f.linea}&nuovo=1`}>+ Nuovo prospect</Link>
+        </div>
       </div>
       <FiltriAccount f={f} setF={setF} righe={q.data.righe} owners={owners.data || []} />
       <div className={`kanban ${censiti ? 'censiti-aperti' : ''}`}>{FASI.map((x) => colonna(x.n))}</div>
@@ -127,3 +131,4 @@ function Censiti({ l, gruppo, setGruppo, chiusi, setChiusi, setDrag, setOver, na
     </div>
   );
 }
+

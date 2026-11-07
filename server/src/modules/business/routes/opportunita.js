@@ -34,8 +34,9 @@ r.get('/opportunita', ah(async (_req, res) => {
 
 // Export della selezione corrente: ids nell'ordine mostrato e colonne visibili
 r.post('/opportunita/export', ah(async (req, res) => {
-  const d = parse(z.object({ formato: z.enum(['xlsx', 'pdf']), ids: z.array(z.coerce.number().int()).max(5000), colonne: z.array(z.string()).min(1).max(60), filtri: z.string().max(800).optional() }), req.body);
-  const colonne = d.colonne.map((k) => COLONNE_VISTA.find((c) => c.k === k)).filter(Boolean);
+  // colonne assenti = tutte le 49 del DB (stampa dalla Pipeline e da Clienti e prospect, 07/11/2026)
+  const d = parse(z.object({ formato: z.enum(['xlsx', 'pdf']), ids: z.array(z.coerce.number().int()).max(5000), colonne: z.array(z.string()).min(1).max(60).optional(), filtri: z.string().max(800).optional() }), req.body);
+  const colonne = d.colonne ? d.colonne.map((k) => COLONNE_VISTA.find((c) => c.k === k)).filter(Boolean) : COLONNE_VISTA;
   if (!colonne.length) throw bad('Nessuna colonna valida');
   const tutte = await righeVista(d.ids);
   const pos = new Map(d.ids.map((id, i) => [id, i]));

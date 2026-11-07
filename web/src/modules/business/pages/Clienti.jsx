@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, BASE } from '../api.js';
+import { StampaDB } from '../components/StampaDB.jsx';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Badge, Modal, Field, Empty, useToast } from '../components/ui.jsx';
 import { FASI, LINEE, PRIORITA, eurK, itDate, itDateTime } from '../format.js';
@@ -70,7 +71,7 @@ export default function Clienti() {
     <div className="page wide">
       <div className="page-head">
         <div><h1>{({ SRV: 'Clienti e prospect', PP: 'Partner e prospect', MDL: 'Aziende e prospect' })[f.linea]} · {LINEE[f.linea].label}</h1><div className="sub">Un account per Legal entity sulla linea. {righe.length} di {q.data.righe.filter((a) => a.linea === f.linea).length} account · fatturato FY atteso {eurK(totFy)}.</div></div>
-        <button className="btn" onClick={() => setNuovo(true)}>+ Nuovo prospect</button>
+        <div className="row" style={{ gap: 6 }}><StampaDB righe={righe} f={f} /><button className="btn" onClick={() => setNuovo(true)}>+ Nuovo prospect</button></div>
       </div>
       <FiltriAccount f={f} setF={setF} righe={q.data.righe} owners={owners.data || []} fase />
       <div className="card"><div className="table-wrap" style={{ maxHeight: 'calc(100vh - 290px)' }}>
