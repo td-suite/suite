@@ -48,7 +48,7 @@ export default function Listino({ a, onChange }) {
             {d.puo_modificare && <button className="btn" onClick={() => setOfferta(corrente)}><Icon name="file" />Genera l'offerta economica (v{corrente.versione})</button>}
             {corrente.offerta_documento_id && <button className="btn ghost" onClick={() => setVista({ id: corrente.offerta_documento_id, titolo: `Offerta economica v${corrente.versione}` })}>Anteprima dell'offerta</button>}
           </div>}
-          <div className="small muted" style={{ marginTop: 10 }}>Lo sconto medio dell'account (Dati economici) segue la versione corrente. L'offerta economica entra nel kit di proposta e nel pacchetto.</div>
+          <div className="small muted" style={{ marginTop: 10 }}>Lo sconto medio dell'account (Dati economici) segue la versione corrente. L'offerta economica entra nel kit di proposta e nel pacchetto. Listino unico con il contratto Service: l'Excel di ogni nuova versione (anche di una revisione) diventa il listino del contratto e l'offerta economica della versione corrente il suo PDF; la versione precedente resta qui nello storico.</div>
         </Card>
         <Card title={vista ? vista.titolo : 'Anteprima'} flush actions={vista && <a className="btn sm ghost" href={docUrl(vista.id)}><Icon name="download" />Scarica</a>}>
           {vista ? <iframe className="pk-pdf" title="Anteprima" src={`${docUrl(vista.id, true)}#view=FitH`} /> : <Empty>{corrente?.offerta_documento_id ? 'Premi "Anteprima dell\'offerta"' : 'Genera l\'offerta economica per vederla qui'}</Empty>}
@@ -89,8 +89,9 @@ export default function Listino({ a, onChange }) {
   );
 }
 
-// Caricamento: file → anteprima (colonne, righe, differenze) → eventuale mapping a video → salva
-function Carica({ a, onClose, onDone }) {
+// Caricamento: file → anteprima (colonne, righe, differenze) → eventuale mapping a video → salva. La stessa modale si apre dal riquadro
+// "Listino dell'offerta" del contratto (listino unico, 07/11/2026: origine 'contratto'): la versione salvata è anche il listino del contratto.
+export function Carica({ a, onClose, onDone, origine = null }) {
   const toast = useToast();
   const [file, setFile] = useState(null);
   const [note, setNote] = useState('');
@@ -98,13 +99,13 @@ function Carica({ a, onClose, onDone }) {
   const [mapping, setMapping] = useState(null);   // scelto a video
   const [foglio, setFoglio] = useState('');
   const [busy, setBusy] = useState(false);
-  const fd = (m = mapping) => { const x = new FormData(); x.append('file', file); if (m) x.append('mapping', JSON.stringify(m)); if (foglio) x.append('foglio', foglio); x.append('note', note); return x; };
+  const fd = (m = mapping) => { const x = new FormData(); x.append('file', file); if (m) x.append('mapping', JSON.stringify(m)); if (foglio) x.append('foglio', foglio); x.append('note', note); if (origine) x.append('origine', origine); return x; };
   // Il file si legge da solo appena scelto (07/11/2026: il CEO non capiva perché "Salva" fosse spento: serviva prima l'anteprima).
   const leggi = async (m = mapping, f = file) => { if (!f) return; setBusy(true); try { const x = new FormData(); x.append('file', f); if (m) x.append('mapping', JSON.stringify(m)); if (foglio) x.append('foglio', foglio); const r = await api.upload(`/hub/accounts/${a.id}/listini/anteprima`, x); setP(r); if (!m) setMapping(null); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
   const scegli = (f) => { setFile(f); setP(null); setMapping(null); if (f) leggi(null, f); };
   const pronto = p && p.mancanti.length === 0 && p.righe_totali > 0;
   const perche = !file ? 'Scegli il file da StudioLAB' : busy ? 'Lettura del file in corso…' : !p ? 'Il file non è stato letto: premi "Leggi il file"' : p.mancanti.length ? 'Indica le colonne mancanti e premi "Applica le colonne scelte"' : !p.righe_totali ? 'Nessun esame leggibile nel file' : '';
-  const salva = async () => { setBusy(true); try { const r = await api.upload(`/hub/accounts/${a.id}/listini`, fd()); toast(`Listino v${r.versione} salvato: ${r.riepilogo.esami} esami`); onDone(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
+  const salva = async () => { setBusy(true); try { const r = await api.upload(`/hub/accounts/${a.id}/listini`, fd()); toast(`Listino v${r.versione} salvato: ${r.riepilogo.esami} esami${r.contratto_id ? ', registrato anche nel contratto' : ''}`); onDone(r); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
   const cambiate = useMemo(() => new Set(p?.differenze?.chiavi_cambiate || []), [p]);
   const chiave = (x) => (x.codice ? `c:${String(x.codice).toUpperCase()}` : null);
   const m = mapping || p?.mapping || {};

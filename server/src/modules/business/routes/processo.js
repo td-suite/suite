@@ -16,11 +16,12 @@ import { LINEE, LINEE_KEYS } from '../lib/hub.js';
 import {
   statoProcesso, creaAccesso, referentePrincipale, assicuraToken, preparaKit, inviaKit, verificaDocumento, applicaDifferenze, CHIAVE_ALLEGATI, CHIAVE_MODELLI,
 } from '../lib/flusso.js';
-import { contrattualizza, attivaAccessi } from '../lib/contrattualizza.js';
+import { contrattualizza, attivaAccessi, profiloLineaSu } from '../lib/contrattualizza.js';
 import { anteprimaRichiamo, eseguiRichiamo } from '../lib/richiamo.js';
-import { modelliFlussoDa, MODELLI_DEFAULT, MODELLI_LABEL, SEGNAPOSTO_MODELLI, segnapostoDi, allegatiDa, volumiGiornalieri } from '../lib/processo.js';
+import { modelliFlussoDa, MODELLI_DEFAULT, MODELLI_LABEL, SEGNAPOSTO_MODELLI, segnapostoDi, allegatiDa, volumiGiornalieri, pianoAccessi, accessiPerTutti } from '../lib/processo.js';
 import { modelliFlusso } from '../lib/pacchettoGenera.js';
-import { salvaFile } from '../lib/flusso.js';
+import { salvaFile, creaAccessiReferenti, accessiEsterni } from '../lib/flusso.js';
+import { svuotaCache } from '../lib/feed.js';
 import {
   statoPuntoPrelievi, aggiornaPunto, preparaContrattoPartner, avviaFlagship, eseguiAvvio, elencoPuntiPrelievo, sedeDi,
 } from '../lib/puntoPrelievi.js';
@@ -50,6 +51,28 @@ r.post('/accounts/:id/accesso', ah(async (req, res) => {
   const out = await creaAccesso(a, c, chi(req));
   await audit(req, 'HUB_ACCESSO_ESTERNO', 'account', a.id, { user_id: out.user_id, gia_presente: Boolean(out.gia_presente) });
   res.status(201).json(out);
+}));
+
+// Accessi al portale per i referenti (richiesta del CEO del 07/11/2026: "crea gli accessi al portale per tutti i referenti inclusi in
+// anagrafica"): piano per la scheda Portale (chi ha l'accesso, chi no, chi si salta e perché) e creazione per tutti o per uno
+r.get('/accounts/:id/accessi', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  const contatti = await many('SELECT id, nome, ruolo, email, principale FROM contatti WHERE account_id=$1 ORDER BY principale DESC, id', [a.id]);
+  const s = await getSettings();
+  res.json({ righe: pianoAccessi({ contatti, accessi: await accessiEsterni(a.organization_id) }), impostazione: accessiPerTutti(s) ? 'TUTTI' : 'PRINCIPALE', puo_modificare: canEditKind(req.user, a.linea) });
+}));
+r.post('/accounts/:id/accessi', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  richiedi(req, a);
+  const d = parse(z.object({ contatto_ids: z.array(z.number().int().positive()).max(200).optional(), tutti: z.boolean().optional() }), req.body || {});
+  if (!d.tutti && !d.contatto_ids?.length) throw bad('Indica i referenti o "tutti"');
+  // prima della firma senza widget (come l'accesso del referente principale); dopo la contrattualizzazione con il profilo della linea
+  const attivo = Boolean(a.contrattualizzato_at);
+  const out = await creaAccessiReferenti(a, { contattoIds: d.tutti ? null : d.contatto_ids, attivo, ...chi(req) });
+  if (out.creati && attivo) out.profilo = await profiloLineaSu(a, out.righe.filter((r) => r.esito === 'CREATO').map((r) => r.user_id));
+  svuotaCache();
+  await audit(req, 'HUB_ACCESSI_REFERENTI', 'account', a.id, { creati: out.creati, righe: out.righe.map((r) => ({ contatto: r.contatto_id, esito: r.esito, user: r.user_id || null })) });
+  res.status(201).json({ ...out, righe: out.righe.map(({ password_provvisoria: _pw, ...r }) => r), password_provvisorie: out.righe.filter((r) => r.password_provvisoria).map((r) => ({ email: r.email, password: r.password_provvisoria })) });
 }));
 
 // Collegamento alla form pubblica: crea, rinnova (stesso link, nuova scadenza), rigenera (link nuovo)

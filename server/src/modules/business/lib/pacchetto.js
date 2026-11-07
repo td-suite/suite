@@ -151,7 +151,7 @@ export function referentiDedicati({ contatti = null, company = {}, linea = 'SRV'
   const add = (ruolo, v, extra = {}) => {
     if (!v && !extra.email && !extra.telefono) return;
     const tel = [pulito(v?.tel), pulito(v?.cell) ? `cell. ${pulito(v.cell)}` : ''].filter(Boolean).join(' · ');
-    const r = { ruolo, nome: pulito(v?.nome), email: pulito(v?.email2 || v?.email) || null, telefono: tel || null, nota: null, ...extra };
+    const r = { ruolo, nome: pulito(v?.nome), email: pulito(v?.email2 || v?.email) || null, telefono: tel || null, telefoni: telefoni({ fisso: v?.tel, cellulare: v?.cell }), nota: null, ...extra };
     if (!r.email && !r.telefono) return;
     out.push(r);
   };
@@ -159,16 +159,53 @@ export function referentiDedicati({ contatti = null, company = {}, linea = 'SRV'
     add('Laboratorio di Analisi', trova(/^laboratorio di analisi$/i), { nota: 'campioni, richieste, referti e preparazioni' });
     add(pulito(trova(/service.*back office/i)?.ruolo) || 'Service, Flow & Back Office Manager', trova(/service.*back office/i), { nota: 'organizzazione del service e ritiri' });
   } else if (casella) {
-    out.push({ ruolo: linea === 'PP' ? 'Linea Punti Prelievo' : 'Medicina del Lavoro', nome: '', email: casella, telefono: null, nota: linea === 'PP' ? 'la casella della rete dei punti prelievo' : 'elenchi dei lavoratori e appuntamenti' });
+    out.push({ ruolo: linea === 'PP' ? 'Linea Punti Prelievo' : 'Medicina del Lavoro', nome: '', email: casella, telefono: null, telefoni: [], nota: linea === 'PP' ? 'la casella della rete dei punti prelievo' : 'elenchi dei lavoratori e appuntamenti' });
   }
   const ds = trova(/direzione sanitaria/i);
   if (ds) add('Direzione Sanitaria', ds);
-  else if (company.health_director) out.push({ ruolo: 'Direzione Sanitaria', nome: pulito(company.health_director), email: null, telefono: pulito(company.phone) || null, nota: null });
+  else if (company.health_director) out.push({ ruolo: 'Direzione Sanitaria', nome: pulito(company.health_director), email: null, telefono: pulito(company.phone) || null, telefoni: telefoni({ fisso: company.phone }), nota: null });
   if (linea === 'SRV') add('Direttore Tecnico del Laboratorio', trova(/direttore tecnico/i));
   if (company.support_email || company.support_phone) {
-    out.push({ ruolo: 'Supporto clienti', nome: '', email: pulito(company.support_email) || null, telefono: pulito(company.support_phone) || null, nota: unaRiga(company.support_hours) || null });
+    out.push({ ruolo: 'Supporto clienti', nome: '', email: pulito(company.support_email) || null, telefono: pulito(company.support_phone) || null, telefoni: telefoni({ fisso: company.support_phone }), nota: unaRiga(company.support_hours) || null });
   }
   return out.filter((r) => r.email || r.telefono);
+}
+
+/** Etichetta di un numero: "cell." per i cellulari italiani (3xx, anche con +39/0039), altrimenti "tel.". */
+export const etichettaTelefono = (n) => (/^(\+39|0039)?\s*3\d/.test(pulito(n).replace(/[\s./-]/g, '')) ? 'cell.' : 'tel.');
+/**
+ * Telefoni di un contatto su righe separate (richiesta del CEO del 07/11/2026): [{ etichetta, numero }], prima il fisso poi il
+ * cellulare, senza doppioni. fisso/cellulare dichiarati dalla fonte (contatti.json: tel/cell); altro = numero di tipo non dichiarato
+ * (users.phone): l'etichetta la decide il numero stesso. Nessun numero inventato: i vuoti si omettono.
+ */
+export function telefoni({ fisso = null, cellulare = null, altro = null } = {}) {
+  const out = []; const visti = new Set();
+  const aggiungi = (etichetta, n) => { const x = pulito(n); const k = x.replace(/\D/g, ''); if (!x || visti.has(k)) return; visti.add(k); out.push({ etichetta, numero: x }); };
+  aggiungi('tel.', fisso); aggiungi('cell.', cellulare); aggiungi(etichettaTelefono(altro), altro);
+  return out;
+}
+
+/**
+ * Righe della tabella dei referenti del pacchetto (lettera del CEO, pagina del referente, checklist; richiesta del CEO del 07/11/2026):
+ * il CEO SEMPRE in prima riga ("Chief Executive Officer · Francesco Epifani", recapiti dall'anagrafica: se mancano la cella resta
+ * vuota), poi i referenti dedicati della linea, poi l'owner dell'account se non è già tra loro. Pura.
+ * ceo/owner: { nome, ruolo, email, telefoni } o null; referenti: voci di referentiDedicati.
+ */
+export function righeReferenti({ ceo = null, referenti = [], owner = null } = {}) {
+  const chiave = (v) => pulito(v?.email).toLowerCase() || pulito(v?.nome).toLowerCase();
+  const out = [];
+  const presente = (v) => { const k = pulito(v?.email).toLowerCase(); const n = pulito(v?.nome).toLowerCase(); return out.some((x) => (k && pulito(x.email).toLowerCase() === k) || (n && pulito(x.nome).toLowerCase() === n)); };
+  if (ceo && (pulito(ceo.nome) || pulito(ceo.email))) {
+    out.push({ ruolo: pulito(ceo.ruolo) || 'Chief Executive Officer', nome: pulito(ceo.nome), email: pulito(ceo.email) || null, telefoni: ceo.telefoni || [], nota: null, ceo: true });
+  }
+  for (const r of referenti) {
+    if (presente(r) && chiave(r)) continue;
+    out.push({ ...r, telefoni: r.telefoni || (r.telefono ? [{ etichetta: '', numero: r.telefono }] : []) });
+  }
+  if (owner && (pulito(owner.nome) || pulito(owner.email)) && !presente(owner)) {
+    out.push({ ruolo: 'Il vostro referente dedicato', nome: pulito(owner.nome), email: pulito(owner.email) || null, telefoni: owner.telefoni || [], nota: pulito(owner.ruolo) || null, owner: true });
+  }
+  return out;
 }
 
 /** Laboratorio di Analisi (voce principale del gruppo omonimo) da contatti.json, o null. */
@@ -236,7 +273,7 @@ export const nomeFile = (cliente, versione, data) => `${String(data || '').slice
 export const LETTERA_CEO_DEFAULT = {
   SRV: `Gentile {{referente}},
 
-benvenuti in Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme. Nelle pagine che seguono, preparate per {{cliente}}, trovate la nostra offerta, il portale che userete ogni giorno, le istruzioni di accesso e il Vademecum degli esami: abbiamo voluto riunire tutto in un solo documento, perché l'inizio di una collaborazione merita chiarezza. Sapere a chi rivolgersi, dove trovare le informazioni e che cosa aspettarsi da noi.
+benvenuti in Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme. Nelle pagine che seguono, dedicate a {{cliente}}, trovate la nostra offerta, il portale che userete ogni giorno, le istruzioni di accesso e il Vademecum degli esami: abbiamo voluto riunire tutto in un solo documento, perché l'inizio di una collaborazione merita chiarezza. Sapere a chi rivolgersi, dove trovare le informazioni e che cosa aspettarsi da noi.
 
 Toscana Diagnostica è una rete sanitaria integrata nata nell'aprile 2026 in Toscana. Riunisce il Laboratorio di Analisi, la Diagnostica per Immagini, la Medicina Specialistica e la Medicina del Lavoro sotto un'unica direzione e un unico sistema di regole. Il principio che ci guida è semplice: ci prendiamo cura del tempo dei pazienti, lì dove ogni minuto conta. Per una struttura che ci affida i propri campioni questo significa risultati affidabili, nei tempi dichiarati, e un interlocutore che risponde.
 
@@ -255,7 +292,7 @@ Vi ringrazio per la fiducia. Il nostro impegno è che, fra qualche mese, possiat
 Con i migliori saluti,`,
   PP: `Gentile {{referente}},
 
-benvenuti nella rete di Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme. Nelle pagine che seguono, preparate per {{cliente}}, trovate la nostra proposta, la presentazione della rete, le istruzioni di accesso alla Suite e il piano dei primi mesi, riuniti in un solo documento perché l'inizio di una collaborazione merita chiarezza.
+benvenuti nella rete di Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme. Nelle pagine che seguono, dedicate a {{cliente}}, trovate la nostra proposta, la presentazione della rete, le istruzioni di accesso alla Suite e il piano dei primi mesi, riuniti in un solo documento perché l'inizio di una collaborazione merita chiarezza.
 
 Toscana Diagnostica è una rete sanitaria integrata nata nell'aprile 2026 in Toscana. Riunisce il Laboratorio di Analisi, la Diagnostica per Immagini, la Medicina Specialistica e la Medicina del Lavoro sotto un'unica direzione e un unico sistema di regole. Il principio che ci guida è semplice: ci prendiamo cura del tempo dei pazienti, lì dove ogni minuto conta. Un punto prelievi vicino a casa, ben organizzato e collegato al laboratorio, è il modo più concreto di farlo.
 
@@ -272,7 +309,7 @@ Vi ringrazio per la fiducia. Il nostro impegno è che il punto prelievi diventi,
 Con i migliori saluti,`,
   MDL: `Gentile {{referente}},
 
-benvenuti in Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme per la salute dei vostri lavoratori. Nelle pagine che seguono, preparate per {{cliente}}, trovate la nostra offerta, il funzionamento del servizio di Medicina del Lavoro, le istruzioni di accesso e il piano dei primi mesi, riuniti in un solo documento.
+benvenuti in Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo e come lavoreremo insieme per la salute dei vostri lavoratori. Nelle pagine che seguono, dedicate a {{cliente}}, trovate la nostra offerta, il funzionamento del servizio di Medicina del Lavoro, le istruzioni di accesso e il piano dei primi mesi, riuniti in un solo documento.
 
 Toscana Diagnostica è una rete sanitaria integrata nata nell'aprile 2026 in Toscana. Riunisce il Laboratorio di Analisi, la Diagnostica per Immagini, la Medicina Specialistica e la Medicina del Lavoro sotto un'unica direzione e un unico sistema di regole. Il principio che ci guida è semplice: ci prendiamo cura del tempo dei pazienti, lì dove ogni minuto conta. Per un'azienda significa visite e accertamenti organizzati senza perdite di tempo per i lavoratori e per chi li coordina.
 

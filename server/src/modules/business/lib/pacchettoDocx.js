@@ -80,7 +80,10 @@ export function testata(occhiello, titolo, sottotitolo) {
   ].join('');
 }
 export const titoletto = (t, o = {}) => p(r(t, { b: true, sz: 22, color: C.scuro }), { before: o.before ?? 240, after: 100, keepNext: true });
-export const testo = (t, o = {}) => p(r(t, { sz: o.sz || 20, color: o.color || C.testo, i: o.i }), { after: o.after ?? 120, line: o.line || 300, jc: o.jc || 'both' });
+// Paragrafi giustificati: ogni a capo diventa un paragrafo a sé (un <w:br/> dentro un paragrafo giustificato fa allargare le parole
+// della riga che lo precede a tutta riga, come "Gentile          Francesco          Sderci,"); l'ultima riga resta sempre a sinistra
+export const righeTesto = (t) => String(t ?? '').replace(/\r\n?/g, '\n').split('\n').map((x) => x.trim()).filter(Boolean);
+export const testo = (t, o = {}) => { const l = righeTesto(t); return l.map((x, i) => p(r(x, { sz: o.sz || 20, color: o.color || C.testo, i: o.i }), { after: i === l.length - 1 ? (o.after ?? 120) : 0, line: o.line || 300, jc: o.jc || 'both' })).join(''); };
 
 /** Scheda: titolo e testo su fondo chiaro con filetto a sinistra. */
 function scheda(titolo, corpo, o = {}) {
@@ -182,7 +185,7 @@ const metaRiga = (etichetta, valore) => [
   { c: p(r(valore, { sz: 20, color: C.testo }), { line: 252 }), w: 3900, mar: [70, 0, 70, 0] },
 ];
 
-/** Copertina: titolo, cliente, data, linea, a cura di, destinatario, QR al portale, motto. */
+/** Copertina: titolo, cliente, data, linea, a cura di, destinatario, QR al portale. */
 export function copertina(d) {
   const qr = d.qr ? immagine('rIdQrCopertina', 1980, 1980, 'qr-copertina.png') : '';
   const meta = [['Data', dataLunga(d.data)], ['Linea', d.lineaLabel], ['A cura di', d.owner?.nome ? [d.owner.nome, d.owner.ruolo].filter(Boolean).join(', ') : ''], ['Destinatario', d.destinatario || '']]
@@ -199,13 +202,12 @@ export function copertina(d) {
     p(r(d.titoloPre || 'Benvenuti in', { sz: 44, color: C.medio }), { line: 240, after: 40 }),
     p(r('Toscana Diagnostica', { b: true, sz: 64, color: C.scuro }), { line: 240, after: 320 }),
     p('', { border: bordo('bottom', C.accento, 24, 1), after: 360, ind: `w:right="${LARGHEZZA - 1800}"` }),
-    p(r('preparato per', { sz: 20, color: C.grigio, i: true }), { after: 80 }),
+    // richiesta del CEO del 07/11/2026 (come per l'offerta economica): niente riga "preparato per" e niente fascia "Ci prendiamo cura
+    // del tempo dei pazienti, ..." in copertina; il nome del cliente segue direttamente il filetto
     p(r(d.cliente, { b: true, sz: 36, color: C.testo }), { line: 260, after: 120 }),
     d.indirizzoCliente ? p(r(d.indirizzoCliente, { sz: 19, color: C.grigio }), { after: 0 }) : '',
-    vuoto(d.indirizzoCliente ? 4000 : 4280),
+    vuoto(d.indirizzoCliente ? 5600 : 5880),
     blocco,
-    vuoto(560),
-    riquadro(p([r('Ci prendiamo cura del tempo dei pazienti, ', { i: true, sz: 22, color: C.bianco }), r('lì dove ogni minuto conta.', { i: true, b: true, sz: 22, color: C.bianco })], { jc: 'center', line: 260 }), { scuro: true, mar: [240, 260, 240, 260] }),
   ].join('');
 }
 
@@ -229,9 +231,18 @@ export function indice(voci, d) {
 export function lettera(d) {
   const destinatario = [d.cliente, d.indirizzoCliente, d.destinatario ? `c.a. ${d.destinatario}` : null].filter(Boolean);
   // gli ultimi due paragrafi (chiusura e saluti) restano con la firma: mai la sola firma su una pagina nuova
+  // ogni paragrafo è un <w:p> a sé, e così ogni riga andata a capo nel modello (niente <w:br/> nei paragrafi giustificati); il saluto
+  // iniziale ("Gentile ...,") e la chiusura ("Con i migliori saluti,") sono allineati a sinistra
   const par = paragrafiLettera(d.testoLettera);
-  const corpo = par.map((x, i) => (x.tipo === 'referenti' ? bloccoReferenti(d.referenti)
-    : p(r(x.testo, { sz: 20 }), { after: 160, line: 312, jc: 'both', keepNext: i >= par.length - 2, keepLines: i >= par.length - 2 }))).join('');
+  const corpo = par.map((x, i) => {
+    if (x.tipo === 'referenti') return bloccoReferenti(d.referenti);
+    const finale = i >= par.length - 2;
+    const righe = righeTesto(x.testo);
+    return righe.map((riga, j) => {
+      const saluto = rigaASinistra(riga, { prima: i === 0 && j === 0, ultima: i === par.length - 1 && j === righe.length - 1 });
+      return p(r(riga, { sz: 20 }), { after: j === righe.length - 1 || saluto ? 160 : 0, line: 312, jc: saluto ? 'left' : 'both', keepNext: finale || j < righe.length - 1, keepLines: finale });
+    }).join('');
+  }).join('');
   return [
     p(r(`${d.luogo}, ${dataLunga(d.data)}`, { sz: 20, color: C.grigio }), { jc: 'right', after: 360 }),
     p(r('Spett.le', { sz: 19, color: C.grigio }), { after: 20 }),
@@ -243,15 +254,36 @@ export function lettera(d) {
     p(r(d.firma.ruolo, { sz: 19, color: C.grigio }), { after: 0 }),
   ].join('');
 }
-/** Contatti in tabella compatta: ruolo | nome · email · telefono */
+/** Saluto iniziale o chiusura della lettera: riga breve che finisce con la virgola (o la prima/ultima del testo): a sinistra. */
+export function rigaASinistra(riga, { prima = false, ultima = false } = {}) {
+  const t = String(riga || '').trim();
+  if (/^(gentil[ei]|egregi[oa]|spett|caro|cara|alla cortese)/i.test(t) && t.length <= 120) return true;
+  if ((prima || ultima) && t.length <= 120 && /,$/.test(t)) return true;
+  return /^(con i (migliori|più cordiali) saluti|cordiali saluti|distinti saluti|un cordiale saluto)/i.test(t);
+}
+
+// Tabella dei referenti (richiesta del CEO del 07/11/2026), la stessa nella lettera, nella pagina del referente e nella checklist:
+// tre colonne a larghezza fissa allineate in alto: 1) ruolo in grassetto con la descrizione sotto in piccolo, 2) nome (se c'è) ed
+// email, 3) telefoni (fisso e cellulare su righe separate). Righe separate da un filetto leggero; ogni riga di testo è un paragrafo
+// a sé (niente a capo forzati), le parole non si spezzano mai a metà (nessuna sillabazione: celle abbastanza larghe per un'email).
+export const COLONNE_REFERENTI = [3050, 4000, LARGHEZZA - 3050 - 4000];
+const FILETTO_REF = (prima) => [prima ? bordo('top', C.accento, 8) : nil('top'), nil('left'), bordo('bottom', C.bordo, 4), nil('right')].join('');
+/** Contatti in tabella: ruolo e descrizione | nome ed email | telefoni. voci: [{ ruolo, nota, nome, email, telefoni: [{ etichetta, numero }] }] */
 export function bloccoReferenti(voci = []) {
   if (!voci.length) return '';
-  const w1 = 3100; const w2 = LARGHEZZA - w1;
-  const righe = voci.map((v, i) => { const kn = i < voci.length - 1; return [
-    { c: p(r(v.ruolo, { b: true, sz: 17, color: C.scuro }), { line: 252, keepNext: true }) + (v.nota ? p(r(v.nota, { sz: 15, color: C.grigio }), { line: 240, keepNext: true }) : ''), w: w1, mar: [80, 160, 80, 120], fill: C.chiaro, borders: [nil('top'), bordo('left', C.accento, 18), bordo('bottom', C.bianco, 12), nil('right')].join('') },
-    { c: p([v.nome ? r(`${v.nome}\n`, { b: true, sz: 18 }) : '', r([v.email, v.telefono].filter(Boolean).join('   ·   '), { sz: 17, color: C.testo })], { line: 252, keepNext: kn }), w: w2, mar: [80, 160, 80, 120], fill: C.chiaro, borders: [nil('top'), nil('left'), bordo('bottom', C.bianco, 12), nil('right')].join(''), vAlign: 'center' },
-  ]; });
-  return [vuoto(80), tabella([w1, w2], righe), vuoto(200)].join('');
+  const [w1, w2, w3] = COLONNE_REFERENTI;
+  const mar = [90, 120, 90, 120];
+  const intest = [['Referente', w1], ['Nome ed email', w2], ['Telefono', w3]].map(([t, w]) => ({ c: p(r(t.toUpperCase(), { b: true, sz: 13, color: C.accento, spacing: 20 }), { line: 240, keepNext: true }), w, mar: [40, 120, 60, 120] }));
+  const righe = voci.map((v, i) => {
+    const kn = i < voci.length - 1;
+    const tel = (v.telefoni || []).filter((t) => t?.numero);
+    return [
+      { c: p(r(v.ruolo, { b: true, sz: 17, color: C.scuro }), { line: 252, keepNext: kn }) + (v.nota ? p(r(v.nota, { sz: 15, color: C.grigio }), { line: 240, keepNext: kn }) : ''), w: w1, mar, vAlign: 'top', borders: FILETTO_REF(i === 0) },
+      { c: (v.nome ? p(r(v.nome, { b: true, sz: 17 }), { line: 252, keepNext: kn }) : '') + (v.email ? p(r(v.email, { sz: 16 }), { line: 252, keepNext: kn }) : '') || p(''), w: w2, mar, vAlign: 'top', borders: FILETTO_REF(i === 0) },
+      { c: tel.length ? tel.map((t) => p([t.etichetta ? r(`${t.etichetta} `, { sz: 14, color: C.grigio }) : '', r(t.numero, { sz: 16 })], { line: 252, keepNext: kn })).join('') : p(''), w: w3, mar, vAlign: 'top', borders: FILETTO_REF(i === 0) },
+    ];
+  });
+  return [vuoto(80), tabella([w1, w2, w3], [intest, ...righe], { header: true }), vuoto(200)].join('');
 }
 
 /** Il Portale Service e i servizi digitali (SRV): schede e livello di supporto. */
@@ -371,7 +403,7 @@ export function avvio(d) {
 /** Il vostro referente dedicato: owner dell'account e gli altri contatti. */
 export function referente(d) {
   const o = d.owner || {};
-  const righe = [o.ruolo, o.email, o.telefono].filter(Boolean);
+  const righe = [o.ruolo, o.email, ...(o.telefoni?.length ? o.telefoni.map((t) => `${t.etichetta} ${t.numero}`.trim()) : [o.telefono])].filter(Boolean);
   const card = riquadro([
     p(r('VOSTRO REFERENTE PER TOSCANA DIAGNOSTICA', { b: true, sz: 15, color: 'BFE6EB', spacing: 30 }), { after: 80 }),
     p(r(o.nome || 'Da assegnare', { b: true, sz: 40, color: C.bianco }), { after: 100, line: 240 }),
@@ -381,8 +413,8 @@ export function referente(d) {
     testata('Le persone', 'Il vostro referente dedicato', 'Una persona che conosce la vostra struttura e segue la collaborazione dall\'avvio in poi: è il primo nome da chiamare quando qualcosa non va, o quando può andare meglio.'),
     card,
     titoletto('Gli altri contatti', { before: 360 }),
-    bloccoReferenti(d.referenti.filter((x) => !(o.email && x.email === o.email) && !(o.nome && x.nome === o.nome))),
-    p(r(`Le email inviate a ${d.casella} arrivano alla linea ${d.lineaLabel} e restano registrate nella scheda della vostra struttura: chiunque vi risponda conosce la storia della collaborazione.`, { sz: 17, color: C.grigio }), { before: 120, line: 264, jc: 'both' }),
+    bloccoReferenti(d.referenti.filter((x) => x.ceo || !(x.owner || (o.email && x.email === o.email) || (o.nome && x.nome === o.nome)))),
+    p(r(`Le email inviate a ${d.casella} arrivano alla linea ${d.lineaLabel} e restano registrate nella scheda della vostra struttura: chiunque vi risponda conosce la storia della collaborazione.`, { sz: 17, color: C.grigio }), { before: 120, line: 264 }),
   ].join('');
 }
 
@@ -416,9 +448,16 @@ export function checklist(d) {
   return [
     testata('Per iniziare', 'Checklist per iniziare', 'Da stampare o da tenere sottomano: le cose da fare nelle prime settimane, nell\'ordine in cui conviene farle.'),
     tabella([700, LARGHEZZA - 700], righe),
-    vuoto(360),
-    riquadro(p([r('Serve aiuto? ', { b: true, sz: 19, color: C.scuro }), r(d.aiuto, { sz: 19 })], { line: 276 })),
+    titoletto('Serve aiuto?', { before: 360 }),
+    aiutoChecklist(d),
   ].join('');
+}
+
+/** Contatti della checklist, nella tabella dei referenti: il CEO, l'owner dell'account (o la casella della linea) e il supporto clienti. */
+function aiutoChecklist(d) {
+  const voci = (d.referenti || []).filter((x) => x.ceo || x.owner || (d.owner?.email && x.email === d.owner.email) || x.ruolo === 'Supporto clienti' || (!d.owner && x.email === d.casella));
+  const ordine = (x) => (x.ceo ? 0 : x.ruolo === 'Supporto clienti' ? 2 : 1);   // CEO, poi il referente dell'account, poi il supporto
+  return voci.length ? bloccoReferenti([...voci].sort((a, b) => ordine(a) - ordine(b))) : testo(d.aiuto, { sz: 19 });
 }
 
 /** Offerta economica (ripiego quando la lettera di offerta non è stata generata): i soli dati della proposta presenti. */

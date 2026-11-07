@@ -98,7 +98,16 @@ r.get('/utenti', ah(async (_req, res) => {
 
 // ---------------- Scheda account ----------------
 r.get('/accounts/:id', ah(async (req, res) => {
-  const a = await loadAccount(req.params.id);
+  let a = await loadAccount(req.params.id);
+  // listino unico (07/11/2026): Service senza listino con un Excel storico nel contratto della linea → importazione automatica alla prima
+  // apertura (versione 1 corrente, attività LISTINO nel diario, file del contratto collegato alla versione); se il file non si legge resta
+  // "Importa dal contratto" con il mapping a video
+  if (a.linea === 'SRV') {
+    const { importaAllaPrimaApertura } = await import('../lib/listinoUnico.js');
+    const { salvaVersione } = await import('./listino.js');
+    const imp = await importaAllaPrimaApertura(a, (x) => salvaVersione(a, { buffer: x.buffer, filename: x.filename, mimetype: x.mime, note: x.note, esistenteId: x.esistenteId }, req.user.id));
+    if (imp) { await audit(req, 'HUB_LISTINO', 'account', a.id, { versione: imp.versione, esami: imp.riepilogo.esami, automatico: true }); a = await loadAccount(req.params.id); }
+  }
   const { stallo } = await soglie();
   const [contatti, persone, criticita, contratti, fascicoli, documenti, attivita, altri] = await Promise.all([
     many(`SELECT c.*, p.last_name || ' ' || p.first_name AS persona_nome, p.job_title AS persona_ruolo FROM contatti c LEFT JOIN public.people p ON p.id=c.person_id WHERE c.account_id=$1 ORDER BY c.principale DESC, c.nome`, [a.id]),

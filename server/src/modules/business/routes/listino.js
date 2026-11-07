@@ -18,6 +18,7 @@ import { salvaRevisione, emailRevisione, registraOffertaFirmata } from '../lib/r
 import { salvaFile } from '../lib/flusso.js';
 import { generaOffertaEconomica, nomeFileOfferta } from '../lib/offertaEconomica.js';
 import { addGiorni } from '../lib/pacchetto.js';
+import { collegaVersione, collegaOfferta } from '../lib/listinoUnico.js';
 import { loadAccount, addActivity } from './hub.js';
 
 const r = Router();
@@ -64,15 +65,15 @@ r.get('/listini/:id', ah(async (req, res) => {
 // Lettura del file con il mapping (riconosciuto, salvato o scelto a video) e confronto con la versione corrente: nessuna scrittura
 async function leggi(req, a) {
   if (!req.file) throw bad('Carica il file Excel del listino esportato da StudioLAB');
-  return leggiBuffer(req, a, req.file.buffer, req.file.originalname);
+  return leggiBuffer(a, req.file.buffer, req.file.originalname, { mapping: req.body.mapping, foglio: req.body.foglio });
 }
-async function leggiBuffer(req, a, buffer, filename) {
+async function leggiBuffer(a, buffer, filename, { mapping = null, foglio = null } = {}) {
   let forzato = null;
-  if (req.body.mapping) {
-    try { forzato = JSON.parse(req.body.mapping); } catch { throw bad('Mapping non valido'); }
+  if (mapping) {
+    try { forzato = typeof mapping === 'string' ? JSON.parse(mapping) : mapping; } catch { throw bad('Mapping non valido'); }
     forzato = Object.fromEntries(Object.entries(forzato || {}).filter(([k, v]) => CAMPI_KEYS.includes(k) && v !== '' && v != null).map(([k, v]) => [k, Number(v)]));
   }
-  const out = await leggiListino(buffer, filename, { mappingSalvato: await mappingSalvato(), mappingForzato: forzato, foglio: req.body.foglio || null });
+  const out = await leggiListino(buffer, filename, { mappingSalvato: await mappingSalvato(), mappingForzato: forzato, foglio: foglio || null });
   const prec = await listinoCorrente(a);
   const diff = prec && out.righe.length ? differenze(prec.righe, out.righe) : null;
   return { out, prec, diff };
@@ -86,7 +87,8 @@ r.post('/accounts/:id/listini/anteprima', upload.single('file'), ah(async (req, 
   res.json({ ...out, righe: out.righe.slice(0, 500), righe_totali: out.righe.length, versione: prossima, precedente: prec ? { id: prec.id, versione: prec.versione, riepilogo: prec.riepilogo } : null, differenze: diff });
 }));
 
-// Importa come nuova versione l'Excel del listino allegato al contratto della linea (travaso dai contratti, 07/11/2026)
+// Importa come nuova versione l'Excel del listino allegato al contratto della linea (travaso dai contratti, 07/11/2026): il file del
+// contratto si collega alla versione creata (listino unico), senza copia
 r.post('/accounts/:id/listini/da-contratto/:fileId', ah(async (req, res) => {
   const a = await loadAccount(req.params.id);
   richiedi(req, a);
@@ -95,40 +97,53 @@ r.post('/accounts/:id/listini/da-contratto/:fileId', ah(async (req, res) => {
   if (!/\.xlsx?$/i.test(f.filename)) throw bad('Il file allegato al contratto non è un Excel');
   const buffer = await readBuffer(f);
   if (!buffer) throw bad('Contenuto del file non disponibile');
-  req.file = { buffer, originalname: f.filename, mimetype: f.mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-  req.body = { ...(req.body || {}), note: `Importato dal contratto ${f.protocol || ''}`.trim() };
-  await salvaListino(req, res, a);
+  const out = await salvaVersione(a, { buffer, filename: f.filename, mimetype: f.mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', note: `Importato dal contratto ${f.protocol || ''}`.trim(), esistenteId: f.id }, req.user.id);
+  await audit(req, 'HUB_LISTINO', 'account', a.id, { versione: out.versione, esami: out.riepilogo.esami, dal_contratto: f.id });
+  res.status(201).json(out);
 }));
 
 r.post('/accounts/:id/listini', upload.single('file'), ah(async (req, res) => {
   const a = await loadAccount(req.params.id);
   richiedi(req, a);
-  await salvaListino(req, res, a);
+  if (!req.file) throw bad('Carica il file Excel del listino esportato da StudioLAB');
+  const out = await salvaVersione(a, { buffer: req.file.buffer, filename: req.file.originalname, mimetype: req.file.mimetype, note: req.body.note, mapping: req.body.mapping, foglio: req.body.foglio, salvaMapping: req.body.salva_mapping !== 'false', origine: req.body.origine }, req.user.id);
+  await audit(req, 'HUB_LISTINO', 'account', a.id, { versione: out.versione, esami: out.riepilogo.esami, dal: out.dal_contratto ? 'riquadro del contratto' : 'scheda Listino e offerta' });
+  res.status(201).json(out);
 }));
-async function salvaListino(req, res, a) {
-  const { out, prec, diff } = await leggi(req, a);
+
+/**
+ * Nuova versione del listino dell'account da un Excel (scheda Listino e offerta, riquadro "Listino dell'offerta" del contratto, file
+ * storico del contratto): lettura con il mapping, versione N+1 corrente, documento, attività nel diario e XLSX registrato nel contratto
+ * Service della linea (lib/listinoUnico.js). input: { buffer, filename, mimetype, note, mapping, foglio, salvaMapping, esistenteId }.
+ * Lancia 400 se le colonne non si riconoscono (il mapping si indica a video, nella modale di caricamento).
+ */
+export async function salvaVersione(a, input, userId = null) {
+  const { out, prec, diff } = await leggiBuffer(a, input.buffer, input.filename, { mapping: input.mapping, foglio: input.foglio });
   if (out.mancanti.length) throw bad(`Colonne non riconosciute: ${out.mancanti.join(', ')}. Indica a video quale colonna è la descrizione e quale il prezzo di listino`);
   if (!out.righe.length) throw bad('Nessuna riga di esame letta dal file');
-  const note = String(req.body.note || '').trim().slice(0, 1000) || null;
+  const note = String(input.note || '').trim().slice(0, 1000) || null;
   // il mapping scelto a video vale anche per i caricamenti successivi (stesso formato di StudioLAB)
-  if (req.body.mapping && req.body.salva_mapping !== 'false') {
+  if (input.mapping && input.salvaMapping !== false) {
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [CHIAVE_MAPPING, JSON.stringify({ mapping: out.mapping, intestazioni: out.intestazioni, salvato_at: new Date().toISOString() })]);
   }
-  const st = await storeBuffer('hub', req.file.originalname, req.file.mimetype, req.file.buffer);
+  const mime = input.mimetype || 'application/octet-stream';
+  const st = await storeBuffer('hub', input.filename, mime, input.buffer);
   const versione = Number((await one('SELECT coalesce(max(versione),0)+1 AS v FROM listini WHERE account_id=$1', [a.id])).v);
   const doc = await one(`INSERT INTO documenti (account_id, categoria, filename, mime, size, sha256, data, blob_path, uploaded_by, etichetta) VALUES ($1,'LISTINO',$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-    [a.id, req.file.originalname, req.file.mimetype || 'application/octet-stream', st.size, st.sha256, st.data, st.blob_path, req.user.id, `Listino StudioLAB v${versione}`]);
+    [a.id, input.filename, mime, st.size, st.sha256, st.data, st.blob_path, userId, `Listino StudioLAB v${versione}`]);
   const row = await one(`INSERT INTO listini (account_id, versione, filename, documento_id, note, mapping, intestazioni, righe, riepilogo, differenze, caricato_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-    [a.id, versione, req.file.originalname, doc.id, note, JSON.stringify(out.mapping), JSON.stringify(out.intestazioni), JSON.stringify(out.righe), JSON.stringify(out.riepilogo), diff ? JSON.stringify(diff) : null, req.user.id]);
+    [a.id, versione, input.filename, doc.id, note, JSON.stringify(out.mapping), JSON.stringify(out.intestazioni), JSON.stringify(out.righe), JSON.stringify(out.riepilogo), diff ? JSON.stringify(diff) : null, userId]);
   // una nuova versione diventa la corrente (salvo scelta successiva); lo sconto medio dell'account segue il listino corrente
   await q('UPDATE accounts SET listino_corrente_id=NULL, sconto_medio=$2, updated_at=now() WHERE id=$1', [a.id, -Number(out.riepilogo.sconto_medio || 0) / 100]);
+  // listino unico (07/11/2026): l'Excel della versione è anche il listino del contratto Service della linea
+  const nelContratto = await collegaVersione(a, row.id, { userId, esistenteId: input.esistenteId || null });
   const testo = [`${out.riepilogo.esami} esami, sconto medio ${out.riepilogo.sconto_medio}% sul listino (ponderato).`, note ? `Nota: ${note}` : null,
     diff ? `Rispetto alla v${prec.versione}: ${diff.cambiate.length} righe cambiate, ${diff.aggiunte.length} aggiunte, ${diff.tolte.length} tolte; sconto medio ${diff.sconto_medio_prima}% → ${diff.sconto_medio_dopo}%.` : null,
-    'Lo sconto medio dell\'account è stato aggiornato dal listino.'].filter(Boolean).join('\n');
-  const act = await addActivity(a.id, { tipo: 'LISTINO', oggetto: `Listino StudioLAB v${versione} caricato`, testo, dati: { listino_id: row.id, versione, documento_id: doc.id } }, req.user.id);
+    'Lo sconto medio dell\'account è stato aggiornato dal listino.',
+    nelContratto ? `Registrato come listino (XLSX) del contratto ${nelContratto.contratto.protocol || `#${nelContratto.contratto.id}`}${nelContratto.tolti ? ', al posto della versione precedente' : ''}.` : null].filter(Boolean).join('\n');
+  const act = await addActivity(a.id, { tipo: 'LISTINO', oggetto: `Listino StudioLAB v${versione} caricato`, testo, dati: { listino_id: row.id, versione, documento_id: doc.id, contratto_id: nelContratto?.contratto.id || null } }, userId);
   await q('UPDATE documenti SET activity_id=$2 WHERE id=$1', [doc.id, act.id]);
-  await audit(req, 'HUB_LISTINO', 'account', a.id, { versione, esami: out.riepilogo.esami });
-  res.status(201).json({ id: row.id, versione, riepilogo: out.riepilogo, differenze: diff });
+  return { id: row.id, versione, riepilogo: out.riepilogo, differenze: diff, contratto_id: nelContratto?.contratto.id || null, dal_contratto: input.origine === 'contratto' };
 }
 
 r.put('/accounts/:id/listino-corrente', ah(async (req, res) => {
@@ -165,6 +180,8 @@ export async function creaOfferta(a, listinoId, opz, userId) {
     testo: [`${l.riepilogo.esami} esami, sconto medio ${l.riepilogo.sconto_medio}%.`, g.dati.validita ? `Valida fino al ${g.dati.validita}.` : null, g.dati.condizioni ? `Condizioni di pagamento: ${g.dati.condizioni}.` : null].filter(Boolean).join('\n'),
     dati: { listino_id: l.id, versione: l.versione, documento_id: doc.id } }, userId);
   await q('UPDATE documenti SET activity_id=$2 WHERE id=$1', [doc.id, act.id]);
+  // listino unico (07/11/2026): l'offerta economica della versione corrente è il listino PDF del contratto Service della linea
+  await collegaOfferta(a, l.id, doc.id, { userId });
   console.log(`[business] offerta economica account ${a.id} v${l.versione}: ${g.pagine} pagine in ${Date.now() - t0} ms`);
   return { documento_id: doc.id, filename, pagine: g.pagine, bytes: g.pdf.length, versione: l.versione };
 }
@@ -191,6 +208,8 @@ r.post('/accounts/:id/listini/:lid/revisione', ah(async (req, res) => {
   richiedi(req, a);
   const d = parse(revisioneSchema, req.body || {});
   const out = await salvaRevisione(a, Number(req.params.lid), d, req.user.id);
+  // listino unico: l'XLSX della revisione (ricostruito dalle righe) sostituisce nel contratto quello della versione precedente
+  await collegaVersione(a, out.id, { userId: req.user.id });
   await audit(req, 'HUB_LISTINO_REVISIONE', 'account', a.id, { versione: out.versione, base: out.base, cambiate: out.differenze.cambiate.length });
   res.status(201).json(out);
 }));

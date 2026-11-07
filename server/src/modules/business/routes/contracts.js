@@ -3,7 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { config } from '../config.js';
-import { ah, bad, notFound, audit, parse, itDate, todayRome } from '../lib/util.js';
+import { ah, bad, forbidden, notFound, audit, parse, itDate, todayRome } from '../lib/util.js';
 import { requireKind, isAdmin } from '../lib/access.js';
 import { getSettings, KIND, canEditKind, HAS_DOSSIER } from '../lib/rules.js';
 import { contractData, renderDocx, docxToPdf, pdfAvailable, CONTRACT_TEMPLATE, CONTRACT_DOCNAME } from '../lib/docgen.js';
@@ -11,6 +11,11 @@ import { encrypt, decrypt, sha256 } from '../lib/crypto.js';
 import { storeBuffer, sendFile, dropBlobs } from '../lib/storage.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
 import { defaultChecklists, DEFAULT_HOURS } from '../lib/dossier.js';
+import { versioneCorrente } from '../lib/listino.js';
+import { conListinoAccount, riquadroListino, collegaVersione } from '../lib/listinoUnico.js';
+import { leggiFirma, firmatario } from '../lib/firmaTd.js';
+import { apponiFirma, accodaPdf } from '../lib/contrattoPdf.js';
+import { politicaQualita } from '../lib/politicaQualita.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });
@@ -44,6 +49,8 @@ const DATA_SCHEMA = {
     site_name: optStr(200), site_address: optStr(300), client_ds: optStr(160),
     vat_exemption: z.boolean().nullable().optional(), payment_terms: optStr(160),
     price_list_file: optStr(300),
+    // firma di TD nel PDF (07/11/2026): null = sì se la firma è caricata in Impostazioni, false = mai
+    firma_td: z.boolean().nullable().optional(),
     pickup: z.object({
       site: optStr(200), street: optStr(200), city: optStr(120), contact: optStr(160), phone: optStr(60), email: optStr(160),
       days: z.array(z.object({ mode: z.enum(['FISSO', 'CHIAMATA', 'NO']).default('NO'), time_from: optStr(5), time_to: optStr(5) })).max(6).default([]),
@@ -56,6 +63,7 @@ const DATA_SCHEMA = {
     doctor_name: optStr(160), doctor_email: optStr(160),
     vat_exemption: z.boolean().nullable().optional(), payment_terms: optStr(160),
     price_list_file: optStr(300),
+    firma_td: z.boolean().nullable().optional(),
     privacy: privacySchema,
   }),
   SEDE: z.object({
@@ -124,7 +132,8 @@ export async function loadContract(id) {
   if (!c) throw notFound('Contratto non trovato');
   c.org = c.org_id ? await one('SELECT * FROM orgs_v WHERE id=$1', [c.org_id]) : null;
   c.site = c.site_id ? await one(`SELECT ${SITE_COLS} FROM public.sites WHERE id=$1`, [c.site_id]) : null;
-  c.files = await many('SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.label, f.created_at, u.full_name AS uploaded_by_name FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by WHERE f.contract_id=$1 ORDER BY f.created_at DESC', [id]);
+  c.files = await many(`SELECT f.id, f.category, f.filename, f.mime, f.size, f.sha256, f.version, f.label, f.created_at, f.listino_id, l.versione AS listino_versione, u.full_name AS uploaded_by_name
+    FROM contract_files f LEFT JOIN users u ON u.id=f.uploaded_by LEFT JOIN listini l ON l.id=f.listino_id WHERE f.contract_id=$1 ORDER BY f.created_at DESC`, [id]);
   c.events = await many('SELECT e.*, u.full_name AS user_name FROM contract_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.contract_id=$1 ORDER BY e.at', [id]);
   c.dossier = await one('SELECT id, status, doc_date, submitted_at, authorized_at, authorization_ref FROM dossiers WHERE contract_id=$1', [id]);
   const cred = await one('SELECT portal_url, username, notes, updated_at, (password_enc IS NOT NULL) AS has_password FROM portal_credentials WHERE contract_id=$1', [id]);
@@ -132,6 +141,13 @@ export async function loadContract(id) {
   // Punti Prelievo: l'account del punto con la stessa sede, poi quello senza sede della Legal entity
   c.account_id = c.org_id && ['PP', 'SRV', 'MDL'].includes(c.kind) ? (await one(`SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2
     ORDER BY CASE WHEN $2='PP' AND pp_site_id IS NOT DISTINCT FROM $3::int THEN 0 WHEN pp_site_id IS NULL THEN 1 ELSE 2 END, id LIMIT 1`, [c.org_id, c.kind, c.site_id || null]))?.id || null : null;
+  // referente principale dell'account: proposto nell'Allegato 2 (ritiro campioni) del contratto Service quando i campi sono vuoti
+  // listino unico (07/11/2026): per il Service con account il riquadro "Listino dell'offerta" mostra la versione corrente dell'account
+  if (conListinoAccount(c)) {
+    const acc = await one('SELECT listino_corrente_id FROM accounts WHERE id=$1', [c.account_id]);
+    c.listino_account = riquadroListino(await many('SELECT id, versione, caricato_at, riepilogo, origine, offerta_documento_id FROM listini WHERE account_id=$1', [c.account_id]), acc?.listino_corrente_id);
+  }
+  c.referente_principale = c.account_id ? await one('SELECT nome, telefono, email FROM contatti WHERE account_id=$1 AND principale ORDER BY id LIMIT 1', [c.account_id]) : null;
   c.revisions = await many('SELECT r.id, r.version, r.status, r.motivo, r.at, r.snapshot, u.full_name AS user_name FROM contract_revisions r LEFT JOIN users u ON u.id=r.user_id WHERE r.contract_id=$1 ORDER BY r.at DESC', [id]);
   return c;
 }
@@ -170,6 +186,13 @@ export function datiNonDelForm(kind, data) {
   return Object.fromEntries(Object.entries(data || {}).filter(([k]) => !noti.has(k)));
 }
 
+// Denominazione breve vuota: "Punto Prelievi <comune>", tipo di sede e comune per le sedi, ragione sociale della controparte per gli altri
+export function titoloPredefinito(kind, data, org, site) {
+  if (kind === 'PP') return `Punto Prelievi ${site?.city || site?.name || ''}`.trim();
+  if (kind === 'SEDE') return `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data?.site_type] || 'Sede'} ${site?.city || site?.name || ''}`.trim();
+  return org?.name || site?.name || null;
+}
+
 r.post('/', ah(async (req, res) => {
   const d = parse(contractSchema, req.body);
   requireKind(d.kind, req.user);
@@ -177,7 +200,7 @@ r.post('/', ah(async (req, res) => {
   if (!d.org_id && !d.site_id) throw bad('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
   const org = await checkOrg(d.org_id);
   const site = await checkSite(d.kind, d.site_id, req.user);
-  const title = d.title || (d.kind === 'PP' ? `Punto Prelievi ${site.city || site.name}` : d.kind === 'SEDE' ? `${({ LABORATORIO: 'Laboratorio', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Sede' })[data.site_type]} ${site.city || site.name}` : org?.name || site?.name);
+  const title = d.title || titoloPredefinito(d.kind, data, org, site);
   const row = await tx(async (client) => {
     const c = (await client.query(`INSERT INTO contracts (kind, org_id, site_id, title, proposal_date, start_date, end_date, notes, data, created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [d.kind, org?.id || null, site?.id || null, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
@@ -212,15 +235,21 @@ r.put('/:id', ah(async (req, res) => {
   const orgId = d.org_id !== undefined ? d.org_id : c.org_id;
   const siteId = d.site_id !== undefined ? d.site_id : c.site_id;
   if (!orgId && !siteId) throw bad('Indica la controparte (Legal entity) o la sede TD: almeno una delle due');
-  await checkOrg(orgId);
-  await checkSite(c.kind, siteId, req.user);
+  const org = await checkOrg(orgId);
+  const site = await checkSite(c.kind, siteId, req.user);
+  // Un campo inviato vuoto si svuota davvero (richiesta del CEO del 07/11/2026: "in modifica cancello le note, salvo ma lui le
+  // rimette"): lo schema trasforma '' in null e il vecchio `d.notes ?? c.notes` rimetteva il valore precedente. Si tiene il valore
+  // salvato solo per i campi che la richiesta non contiene; la denominazione breve vuota torna quella predefinita.
+  const inviato = (k) => Object.prototype.hasOwnProperty.call(req.body || {}, k);
+  const title = inviato('title') ? (d.title || titoloPredefinito(c.kind, data, org, site) || c.title) : c.title;
   if (revisione) {
     await q('INSERT INTO contract_revisions (contract_id, version, status, snapshot, motivo, user_id) VALUES ($1,$2,$3,$4,$5,$6)',
       [c.id, c.version, c.status, JSON.stringify({ title: c.title, org_id: c.org_id, site_id: c.site_id, proposal_date: c.proposal_date, start_date: c.start_date, end_date: c.end_date, notes: c.notes, data: c.data }), revisione, req.user.id]);
     await q('UPDATE contracts SET version=version+1 WHERE id=$1', [c.id]);
   }
-  await q(`UPDATE contracts SET org_id=$2, site_id=$9, title=coalesce($3, title), proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
-    [c.id, orgId || null, d.title ?? null, d.proposal_date || null, d.start_date ?? c.start_date, d.end_date ?? c.end_date, d.notes ?? c.notes, JSON.stringify(data), siteId || null]);
+  await q(`UPDATE contracts SET org_id=$2, site_id=$9, title=$3, proposal_date=coalesce($4, proposal_date), start_date=$5, end_date=$6, notes=$7, data=$8, updated_at=now() WHERE id=$1`,
+    [c.id, orgId || null, title, d.proposal_date || null, inviato('start_date') ? d.start_date : c.start_date, inviato('end_date') ? d.end_date : c.end_date,
+      inviato('notes') ? d.notes : c.notes, JSON.stringify(data), siteId || null]);
   // il fascicolo del contratto segue controparte e sede del contratto
   await q('UPDATE dossiers SET org_id=$2, site_id=$3, updated_at=now() WHERE contract_id=$1 AND (org_id IS DISTINCT FROM $2 OR site_id IS DISTINCT FROM $3)', [c.id, orgId || null, siteId || null]);
   await addEvent(c.id, revisione ? 'REVISIONE' : 'MODIFICATO', req.user.id, revisione ? `Revisione v${c.version + 1}: ${revisione}` : null, revisione ? { version: c.version + 1 } : null);
@@ -263,19 +292,57 @@ r.post('/:id/generate', ah(async (req, res) => {
     await dropBlobs(old.rows.map((r) => r.blob_path));
   });
   c = await loadContract(c.id);
-  const data = contractData(c, c.org, s);
+  // MOD230 (07/11/2026): referente principale e listino corrente dell'account (Allegati 2 e 1), Politica della Qualità dallo specchio
+  // SGI (Allegato 8, pagine in coda al PDF); firma di TD nel PDF di MOD230 e MOD231 se caricata e non esclusa dalla spunta
+  const avvisi = [];
+  const extra = { referente: c.referente_principale || null };
+  let politica = null;
+  if (c.kind === 'SRV') {
+    if (c.account_id) {
+      const acc = await one('SELECT listino_corrente_id FROM accounts WHERE id=$1', [c.account_id]);
+      const v = versioneCorrente(await many('SELECT id, versione FROM listini WHERE account_id=$1', [c.account_id]), acc?.listino_corrente_id);
+      if (v) extra.listino = await one('SELECT id, versione, righe FROM listini WHERE id=$1', [v.id]);
+      // listino unico: la versione dell'Allegato 1 è anche il listino (XLSX) del contratto
+      if (v) { const { loadAccount } = await import('./hub.js'); await collegaVersione(await loadAccount(c.account_id), v.id, { userId: req.user.id }); }
+    }
+    politica = await politicaQualita();
+    if (politica.avviso) avvisi.push(politica.avviso);
+    extra.politica = { doc: politica.doc, inCoda: Boolean(politica.pdf) };
+  }
+  const data = contractData(c, c.org, s, extra);
   const docx = renderDocx(CONTRACT_TEMPLATE[c.kind], data);
   const base = `${CONTRACT_DOCNAME[c.kind]}_${c.protocol}_v${c.version}`;
   const ins = async (cat, filename, mime, buf) => { const st = await storeBuffer('contratti', filename, mime, buf); await q('INSERT INTO contract_files(contract_id, category, filename, mime, size, sha256, data, blob_path, version, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
     [c.id, cat, filename, mime, st.size, st.sha256, st.data, st.blob_path, c.version, req.user.id]); };
   await ins('GENERATO_DOCX', `${base}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', docx);
   let pdfError = null;
+  const esito = { firmato_td: false, firma: null, politica: null };
   if (await pdfAvailable()) {
-    try { await ins('GENERATO_PDF', `${base}.pdf`, 'application/pdf', await docxToPdf(docx)); } catch (e) { pdfError = e.message; }
+    try {
+      let pdf = await docxToPdf(docx);
+      if (['SRV', 'MDL'].includes(c.kind)) {
+        const firma = c.data?.firma_td === false ? null : await leggiFirma();
+        if (c.data?.firma_td === false) esito.firma = 'esclusa dalla spunta del contratto';
+        else if (!firma) esito.firma = 'nessuna firma caricata in Impostazioni';
+        else {
+          const chi = firmatario(s);
+          const r = await apponiFirma(pdf, { mime: firma.mime, buffer: firma.buffer }, chi);
+          if (r.apposte) { pdf = r.pdf; esito.firmato_td = true; esito.firma = { nome: chi.nome, qualifica: chi.ruolo, blocchi: r.apposte, sha256: firma.sha256 }; }
+          else { esito.firma = 'spazio della firma non trovato nel PDF'; avvisi.push('Firma di TD non apposta: spazio della firma non trovato nel PDF (nome e qualifica del firmatario devono comparire nel blocco firme)'); }
+        }
+      }
+      if (politica?.pdf) {
+        try { const r = await accodaPdf(pdf, politica.pdf); pdf = r.pdf; esito.politica = { ...politica.doc, pagine: r.pagine }; } catch (e) { avvisi.push(`Politica della Qualità non accodata al PDF: ${e.message}`); }
+      }
+      await ins('GENERATO_PDF', `${base}.pdf`, 'application/pdf', pdf);
+    } catch (e) { pdfError = e.message; }
   } else pdfError = 'LibreOffice non disponibile: generato solo il DOCX';
-  await addEvent(c.id, 'GENERATO', req.user.id, [revisione ? `Revisione v${c.version} (stato ${c.status} invariato, versioni precedenti conservate)` : null, pdfError].filter(Boolean).join(' · ') || null, { protocol: c.protocol, version: c.version, revisione });
-  await audit(req, 'CONTRACT_GENERATE', 'contract', c.id, { protocol: c.protocol, version: c.version });
-  res.json({ ...(await loadContract(c.id)), pdfError });
+  const nota = [revisione ? `Revisione v${c.version} (stato ${c.status} invariato, versioni precedenti conservate)` : null,
+    esito.firmato_td ? `PDF firmato da Toscana Diagnostica (${esito.firma.nome}, ${esito.firma.qualifica})` : null,
+    esito.politica ? `Politica della Qualità ${esito.politica.code} in coda (${esito.politica.pagine} pagine)` : null, ...avvisi, pdfError].filter(Boolean).join(' · ') || null;
+  await addEvent(c.id, 'GENERATO', req.user.id, nota, { protocol: c.protocol, version: c.version, revisione, firmato_td: esito.firmato_td, firma: esito.firma, politica: esito.politica, avvisi });
+  await audit(req, 'CONTRACT_GENERATE', 'contract', c.id, { protocol: c.protocol, version: c.version, firmato_td: esito.firmato_td });
+  res.json({ ...(await loadContract(c.id)), pdfError, avvisi, firmato_td: esito.firmato_td });
 }));
 
 // Controlli minimi prima di generare la proposta
@@ -329,6 +396,20 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
     const out = await contrattualizza(a.id, { documentoId: doc.id, fonte: 'scheda Contratto', userId: req.user.id, data: signedAt, contrattoId: c.id });
     await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: [f.originalname], account: a.id, contrattualizzazione: out.gia ? 'già fatta' : 'eseguita' });
     return res.json({ ...(await loadContract(c.id)), contrattualizzazione: { gia: Boolean(out.gia), account_id: a.id, fase: out.fase ?? null, avvisi: out.avvisi || [], email: out.email ? Object.fromEntries(Object.entries(out.email).map(([k, v]) => [k, v.stato])) : null } });
+  }
+  // Listino unico (07/11/2026): per il Service con account l'Excel caricato nel contratto diventa la nuova versione del listino
+  // dell'account (stessa lettura della scheda Listino e offerta) e si registra nel contratto collegato alla versione
+  if (category === 'LISTINO_XLSX' && conListinoAccount(c)) {
+    if (req.files.length !== 1) throw bad('Carica un solo Excel: il listino esportato da StudioLAB');
+    const f = req.files[0];
+    if (!/\.(xlsx|csv)$/i.test(f.originalname)) throw bad(`${f.originalname}: il listino va caricato in formato XLSX`);
+    const { loadAccount } = await import('./hub.js');
+    const { salvaVersione } = await import('./listino.js');
+    const a = await loadAccount(c.account_id);
+    if (!canEditKind(req.user, a.linea)) throw forbidden('Il listino lo gestisce chi segue la linea Service');
+    const out = await salvaVersione(a, { buffer: f.buffer, filename: f.originalname, mimetype: f.mimetype, note: req.body.note || `Caricato dal contratto ${c.protocol || `#${c.id}`}`, mapping: req.body.mapping, foglio: req.body.foglio, origine: 'contratto' }, req.user.id);
+    await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: [f.originalname], account: a.id, listino_versione: out.versione });
+    return res.json({ ...(await loadContract(c.id)), listino: { versione: out.versione, esami: out.riepilogo.esami } });
   }
   if (category === 'FIRMATO' && c.kind === 'SEDE' && !c.protocol) {
     const s = await getSettings();

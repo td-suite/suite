@@ -20,19 +20,39 @@ import { inviaAlCliente } from './caselle.js';
 import { storeBuffer, readBuffer } from './storage.js';
 import { versioneCorrente } from './listino.js';
 import { todayRome } from './util.js';
-import { compila, volumiGiornalieri, referentiTesto } from './processo.js';
+import { compila, volumiGiornalieri, referentiTesto, accessiPerTutti } from './processo.js';
 import { offertaDi, modelliFlusso, suiteUrl, referentiPerLinea } from './pacchettoGenera.js';
-import { attivita, avanzaFase, accessiEsterni, referentePrincipale, creaAccesso, invitaAccesso } from './flusso.js';
+import { attivita, avanzaFase, accessiEsterni, referentePrincipale, creaAccesso, invitaAccesso, creaAccessiReferenti } from './flusso.js';
 import { dataBreve } from './pacchetto.js';
 
 // Profilo di sistema degli accessi esterni per linea: Service → Cliente service; Punti Prelievo → Partner ospitante (royalties in Cash)
 export const PROFILO_LINEA = { SRV: { key: PROFILO_CLIENTE, label: 'Cliente service' }, PP: { key: PROFILO_PARTNER, label: 'Partner ospitante' } };
+
+/** Profilo di sistema della linea su alcuni accessi (accessi creati dopo la contrattualizzazione): nessun invito, l'hanno appena ricevuto. */
+export async function profiloLineaSu(a, userIds = []) {
+  if (!userIds.length) return { aggiunti: 0, avvisi: [] };
+  const pl = PROFILO_LINEA[a.linea] || PROFILO_LINEA.SRV;
+  const prof = await systemProfile(pl.key);
+  if (!prof) return { aggiunti: 0, avvisi: [`Profilo di sistema ${pl.label} non trovato`] };
+  const rep = await applyProfile(prof.id, userIds, { actorId: null, mode: 'merge' });
+  return { aggiunti: rep.added + rep.updated, avvisi: rep.warnings.slice(0, 10), profilo: pl.label };
+}
 
 /** Attivazione dei widget: profilo di sistema della linea sugli accessi esterni della Legal entity, invito a chi non è mai entrato. */
 export async function attivaAccessi(a, { userId = null } = {}) {
   const out = { accessi: 0, aggiunti: 0, inviti: [], avvisi: [], creato: null };
   const pl = PROFILO_LINEA[a.linea] || PROFILO_LINEA.SRV;
   let utenti = await accessiEsterni(a.organization_id);
+  // accessi al portale per tutti i referenti con email (richiesta del CEO del 07/11/2026; impostazione hub_accessi_portale): idempotente,
+  // chi ha già l'accesso resta com'è; ognuno dei nuovi riceve l'invito con la password provvisoria (e non un secondo invito qui sotto)
+  const creati = new Set();
+  if (accessiPerTutti(await getSettings())) {
+    const t = await creaAccessiReferenti(a, { attivo: a.linea === 'PP', userId });
+    for (const r of t.righe) {
+      if (r.esito === 'CREATO') { creati.add(r.user_id); if (r.invito) out.inviti.push({ email: r.email, stato: r.invito }); } else if (r.esito === 'ERRORE') out.avvisi.push(`Accesso per ${r.email} non creato: ${r.motivo}`);
+    }
+    if (creati.size) { out.creato = [...creati][0]; utenti = await accessiEsterni(a.organization_id); }
+  }
   if (!utenti.length) {
     const ref = await referentePrincipale(a.id);
     if (!ref?.email) { out.avvisi.push(`Nessun accesso esterno e nessun referente con email: ${a.linea === 'PP' ? 'aggiungi il referente del partner (scheda Referenti)' : 'crea l\'accesso dalla scheda "Kit e contrattualizzazione"'}`); return out; }
@@ -51,7 +71,7 @@ export async function attivaAccessi(a, { userId = null } = {}) {
     if (!sedi.n) out.avvisi.push('La Legal entity non ha ancora una sede SERVICE in anagrafica: "Il mio spazio", Non conformità e Ordini restano senza ambito finché non la crei (Amministrazione > Sedi, tipo Service) e premi "Riallinea perimetri" nella Legal entity');
   }
   for (const u of utenti) {
-    if (u.last_login_at || u.id === out.creato) continue;
+    if (u.last_login_at || u.id === out.creato || creati.has(u.id)) continue;
     const inv = await invitaAccesso(a, u, { attivo: true, userId });
     out.inviti.push({ email: u.email, stato: inv.stato });
   }

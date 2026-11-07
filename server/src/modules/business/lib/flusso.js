@@ -20,14 +20,15 @@ import { versioneCorrente } from './listino.js';
 import { todayRome } from './util.js';
 import {
   nuovoToken, scadenzaToken, statoToken, etichettaRif, rifDaOggetto, prerequisitiKit, volumiGiornalieri, ribaltaDaAvvio, datiClienteMancanti, precompila, validaMod173, confrontaAnagrafica,
-  compila, allegatiDa, CAMPO_MOD173,
+  compila, allegatiDa, CAMPO_MOD173, pianoAccessi, accessiPerTutti,
 } from './processo.js';
 import { offertaDi, credenzialiStudiolab, modelliFlusso, suiteUrl } from './pacchettoGenera.js';
 import { mod173Pdf } from './mod173Pdf.js';
 import { dataBreve } from './pacchetto.js';
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
-export const CIRCOLARE = { file: path.join(TEMPLATES, 'circolare_trasporto_campioni_2003-05-08.pdf'), filename: 'Allegato 4 - Circolare Ministero 8 Maggio 2003.pdf', etichetta: 'Circolare trasporto dei campioni (Ministero della Salute, 8 maggio 2003)' };
+// Circolare del trasporto dei campioni: Allegato 3 del MOD230 dal 07/11/2026 (prima 4: Allegati 1 e 2 accorpati, lib/mod230.js)
+export const CIRCOLARE = { file: path.join(TEMPLATES, 'circolare_trasporto_campioni_2003-05-08.pdf'), filename: 'Allegato 3 - Circolare Ministero 8 Maggio 2003.pdf', etichetta: 'Circolare trasporto dei campioni (Ministero della Salute, 8 maggio 2003)' };
 export const CHIAVE_ALLEGATI = 'b2b.allegati';
 export const CHIAVE_MODELLI = 'flusso.modelli';
 const errore = (status, msg) => Object.assign(new Error(msg), { status });
@@ -198,6 +199,34 @@ export async function creaAccesso(a, contatto, { suiteUserId = null, userId = nu
   return { user_id: user.id, email, invito: inv.stato, password_provvisoria: inv.password_provvisoria };
 }
 
+/**
+ * Accessi al portale per i referenti dell'account (richiesta del CEO del 07/11/2026): per ogni referente con email senza accesso crea
+ * l'accesso esterno con creaAccesso (invito con la password provvisoria a ciascuno, senza copie; attività ACCESSO nel diario per
+ * ciascuno), idempotente: chi ha già l'accesso resta com'è. soloPrincipale: come prima, il solo referente principale. contattoIds:
+ * limita ai referenti indicati. Ritorna { righe: [{ contatto_id, nome, email, esito: CREATO|HA_ACCESSO|SALTATO|ERRORE, motivo }], creati }.
+ */
+export async function creaAccessiReferenti(a, { soloPrincipale = false, contattoIds = null, attivo = false, userId = null, suiteUserId = null, diario = true } = {}) {
+  const contatti = await many('SELECT id, nome, ruolo, email, telefono, person_id, principale FROM contatti WHERE account_id=$1 ORDER BY principale DESC, id', [a.id]);
+  const piano = pianoAccessi({ contatti, accessi: await accessiEsterni(a.organization_id), soloPrincipale })
+    .filter((x) => !contattoIds || contattoIds.includes(Number(x.contatto_id)));
+  const righe = [];
+  for (const x of piano) {
+    if (x.esito !== 'DA_CREARE') { righe.push(x); continue; }
+    try {
+      const c = await creaAccesso(a, contatti.find((k) => k.id === x.contatto_id), { suiteUserId, userId, attivo });
+      righe.push({ ...x, esito: c.gia_presente ? 'HA_ACCESSO' : 'CREATO', user_id: c.user_id, invito: c.invito || null, password_provvisoria: c.password_provvisoria });
+    } catch (e) { righe.push({ ...x, esito: 'ERRORE', motivo: e.message }); }
+  }
+  const creati = righe.filter((r) => r.esito === 'CREATO');
+  if (diario && (creati.length || righe.some((r) => r.esito === 'ERRORE'))) {
+    const etichetta = { CREATO: 'creato', HA_ACCESSO: 'aveva già l\'accesso', SALTATO: 'saltato', ERRORE: 'non creato' };
+    await attivita(a.id, { tipo: 'ACCESSO', oggetto: `Accessi al portale per i referenti: ${creati.length} ${creati.length === 1 ? 'creato' : 'creati'}`,
+      testo: righe.map((r) => `- ${r.nome || r.email || 'referente'}${r.email ? ` (${r.email})` : ''}: ${etichetta[r.esito]}${r.motivo ? `, ${r.motivo}` : ''}${r.invito ? `, invito ${String(r.invito).toLowerCase()}` : ''}`).join('\n'),
+      dati: { creati: creati.map((r) => r.user_id), solo_principale: soloPrincipale } }, userId);
+  }
+  return { righe, creati: creati.length };
+}
+
 // ---------------------------------------------------------------- collegamento alla form pubblica
 /** Token della form: crea se manca, rinnova (stesso link, nuova scadenza) o rigenera (link nuovo, il vecchio non vale più). */
 export async function assicuraToken(a, { azione = 'crea', userId = null } = {}) {
@@ -246,7 +275,13 @@ export async function preparaKit(a, { contattoId = null, includiPassword = false
   if (!ref?.email) throw errore(400, 'Il referente destinatario deve avere un\'email');
   const avvisi = [];
   let accesso = stato.accessi[0] || null;
-  if (!accesso) { const c = await creaAccesso(a, ref, { suiteUserId, userId }); accesso = { email: c.email, id: c.user_id }; avvisi.push(`Accesso alla Suite creato per ${c.email} (invito ${c.invito.toLowerCase()})`); }
+  // accessi al portale (07/11/2026): per tutti i referenti con email (impostazione hub_accessi_portale), idempotente
+  const sAcc = await getSettings();
+  if (accessiPerTutti(sAcc)) {
+    const tutti = await creaAccessiReferenti(a, { userId, suiteUserId });
+    for (const r of tutti.righe) if (r.esito === 'CREATO') avvisi.push(`Accesso alla Suite creato per ${r.email} (invito ${String(r.invito || '').toLowerCase()})`); else if (r.esito === 'ERRORE') avvisi.push(`Accesso per ${r.email} non creato: ${r.motivo}`);
+    accesso = (await accessiEsterni(a.organization_id))[0] || accesso;
+  } else if (!accesso) { const c = await creaAccesso(a, ref, { suiteUserId, userId }); accesso = { email: c.email, id: c.user_id }; avvisi.push(`Accesso alla Suite creato per ${c.email} (invito ${c.invito.toLowerCase()})`); }
   const tok = await assicuraToken(a, { azione: 'crea', userId });
   const oggi = todayRome();
   const pk = await creaPacchetto(a, { contatto: ref, includiPassword, data: oggi, variante: 'KIT', vademecumPagine: vademecum !== false }, userId);

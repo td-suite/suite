@@ -50,6 +50,10 @@ export const DEFAULT_SETTINGS = {
   protocol_prefix_SEDE: 'SEDE',
   pp_duration_years: '3',
   payment_terms_default: 'Bonifico bancario 30 gg fm da emissione fattura',
+  // Firmatario dei contratti di TD nei blocchi firme di MOD230 e MOD231 (07/11/2026): vuoti = legale rappresentante (lr_name, lr_role);
+  // l'immagine della firma è nella tabella firma_td (lib/firmaTd.js)
+  firma_nome: '',
+  firma_qualifica: '',
   portal_url_default: 'https://portale.toscanadiagnostica.it',
   // Testi
   dirty_clean_default: 'che gli stessi sono localizzati all’interno della stanza in cui avvengono le prestazioni sanitarie.',
@@ -72,6 +76,9 @@ export const DEFAULT_SETTINGS = {
   hub_dest_contrattualizzazione: 'francesco.epifani@toscanadiagnostica.it, rosetta.greco@toscanadiagnostica.it',
   hub_dest_laboratorio: 'laboratorio@toscanadiagnostica.it, valentina.zezza@toscanadiagnostica.it',
   hub_giorni_lavorativi: '250',
+  // Accessi al portale (07/11/2026, il CEO: "crea gli accessi al portale per tutti i referenti inclusi in anagrafica"): TUTTI i referenti
+  // con email o solo il PRINCIPALE, al kit di proposta e alla contrattualizzazione
+  hub_accessi_portale: 'TUTTI',
   hub_richiamo_attivo: 'false',
   hub_richiamo_giorni: '60',
   hub_richiamo_limite: '20',

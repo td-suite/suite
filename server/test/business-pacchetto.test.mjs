@@ -9,9 +9,10 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import {
   componiSezioni, sezioniLinea, sostituisci, segnapostoSconosciuti, valoriSegnaposto, pianoAvvio, addGiorni, dataLunga, paginaCredenziali, referentiDedicati,
   checklist, modelliDa, paragrafiLettera, nomeFile, LETTERA_CEO_DEFAULT, EMAIL_DEFAULT, OGGETTO_EMAIL, conPunto, certificazioniIso,
+  telefoni, etichettaTelefono, righeReferenti,
 } from '../src/modules/business/lib/pacchetto.js';
 import { assembla, paginaIniziale, leggiSegnalibri, contaPagine } from '../src/modules/business/lib/pacchettoPdf.js';
-import { senzaNumeroPagina, margini } from '../src/modules/business/lib/pacchettoDocx.js';
+import { senzaNumeroPagina, margini, rigaASinistra, righeTesto, lettera, copertina, bloccoReferenti, COLONNE_REFERENTI, LARGHEZZA } from '../src/modules/business/lib/pacchettoDocx.js';
 import { margineSuperioreMinimo, intestazioniRipetute } from '../src/modules/business/lib/docgen.js';
 
 const chiavi = (l) => l.map((x) => x.key);
@@ -169,4 +170,48 @@ test('unione con il PDF del Vademecum dello specchio (salta se il file non c\'è
   const out = await assembla([{ key: 'copertina', titolo: 'Copertina', pdf: await pdfDi(1, 'cop') }, { key: 'vademecum', titolo: 'Vademecum degli esami', pdf: v, numero: 'testa' }]);
   assert.equal(out.pagine, n + 1);
   assert.deepEqual((await leggiSegnalibri(out.pdf)).map((x) => x.pagina), [1, 2]);
+});
+
+// Correzioni del CEO del 07/11/2026: niente "preparato per" né fascia, saluto a sinistra, tabella dei referenti a tre colonne con il CEO
+test('tabella dei referenti: CEO in prima riga, telefoni su righe separate, owner in coda se non è già tra i referenti', () => {
+  assert.deepEqual(telefoni({ fisso: '055 7765103', cellulare: '393 8543181' }), [{ etichetta: 'tel.', numero: '055 7765103' }, { etichetta: 'cell.', numero: '393 8543181' }]);
+  assert.deepEqual(telefoni({ fisso: '055 776511', altro: '055776511' }), [{ etichetta: 'tel.', numero: '055 776511' }], 'doppione tolto');
+  assert.deepEqual(telefoni({}), [], 'nessun numero inventato');
+  assert.equal(etichettaTelefono('+39 347 1234567'), 'cell.');
+  assert.equal(etichettaTelefono('055 776511'), 'tel.');
+  const ref = referentiDedicati({ contatti: { gruppi: [{ contatti: [
+    { ruolo: 'Laboratorio di Analisi', email: 'laboratorio@toscanadiagnostica.it', tel: '055 7765108' },
+    { ruolo: 'Service, Flow & Back Office Manager', nome: 'Rosetta Greco', email2: 'rosetta.greco@toscanadiagnostica.it', tel: '055 7765103', cell: '393 0000000' }] }] }, company: {}, linea: 'SRV' });
+  assert.deepEqual(ref[1].telefoni.map((t) => t.etichetta), ['tel.', 'cell.']);
+  const ceo = { nome: 'Francesco Epifani', ruolo: 'Chief Executive Officer', email: 'francesco.epifani@toscanadiagnostica.it', telefoni: [] };
+  const r = righeReferenti({ ceo, referenti: ref, owner: { nome: 'Mario Rossi', email: 'mario.rossi@toscanadiagnostica.it', ruolo: 'Commerciale', telefoni: [] } });
+  assert.deepEqual(r.map((x) => x.ruolo), ['Chief Executive Officer', 'Laboratorio di Analisi', 'Service, Flow & Back Office Manager', 'Il vostro referente dedicato']);
+  assert.equal(r[0].ceo, true);
+  assert.deepEqual(r[0].telefoni, [], 'telefono del CEO assente in anagrafica: cella vuota');
+  assert.equal(r[3].nota, 'Commerciale');
+  const r2 = righeReferenti({ ceo, referenti: ref, owner: { nome: 'Rosetta Greco', email: 'rosetta.greco@toscanadiagnostica.it' } });
+  assert.equal(r2.length, 3, 'owner già tra i referenti: nessuna riga in più');
+  assert.equal(righeReferenti({ ceo, referenti: [{ ruolo: 'X', email: 'francesco.epifani@toscanadiagnostica.it' }] }).length, 1, 'il CEO non si ripete');
+  const xml = bloccoReferenti(r);
+  assert.equal(COLONNE_REFERENTI.reduce((a, b) => a + b, 0), LARGHEZZA);
+  assert.equal((xml.match(/<w:gridCol /g) || []).length, 3, 'tre colonne');
+  assert.ok(!/<w:br\/>/.test(xml), 'nessun a capo forzato nelle celle');
+  assert.ok(xml.indexOf('Chief Executive Officer') < xml.indexOf('Laboratorio di Analisi'));
+});
+
+test('lettera e copertina: saluto a sinistra, nessun a capo forzato nei paragrafi giustificati, niente "preparato per" né fascia', () => {
+  assert.equal(rigaASinistra('Gentile Francesco Sderci,'), true);
+  assert.equal(rigaASinistra('Con i migliori saluti,'), true);
+  assert.equal(rigaASinistra('benvenuti in Toscana Diagnostica. Con questa lettera desidero presentarvi chi siamo.'), false);
+  assert.deepEqual(righeTesto('a\r\nb\n\n c '), ['a', 'b', 'c']);
+  const d = { data: '2026-11-07', cliente: 'AGAPELAB SRL', indirizzoCliente: 'Via X 1', destinatario: 'Francesco Sderci', luogo: 'Sesto Fiorentino', firma: { nome: 'Francesco Epifani', ruolo: 'Chief Executive Officer' }, referenti: [],
+    testoLettera: 'Gentile Francesco Sderci,\nbenvenuti in Toscana Diagnostica. Testo lungo della lettera.\n\nCon i migliori saluti,', lineaLabel: 'Service di Laboratorio' };
+  const xml = lettera(d);
+  assert.ok(!/<w:br\/>/.test(xml), 'nessun <w:br/> nella lettera');
+  const para = xml.split('<w:p>').filter((x) => /Gentile Francesco Sderci,/.test(x))[0];
+  assert.match(para, /<w:jc w:val="left"\/>/, 'saluto allineato a sinistra');
+  assert.match(xml.split('<w:p>').filter((x) => /benvenuti in Toscana/.test(x))[0], /<w:jc w:val="both"\/>/);
+  const cop = copertina({ ...d, qr: false });
+  assert.ok(!/preparato per/i.test(cop) && !/prendiamo cura/i.test(cop));
+  for (const l of ['SRV', 'PP', 'MDL']) assert.ok(!/preparat[eoa] per/i.test(LETTERA_CEO_DEFAULT[l]));
 });

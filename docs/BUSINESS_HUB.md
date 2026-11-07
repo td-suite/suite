@@ -263,7 +263,7 @@ generata. Con tutto verde "Prepara la mail": accesso creato se manca, collegamen
 del pacchetto di benvenuto: lettera di presentazione e invito modificabile in Impostazioni, lettera di offerta, **Offerta economica dal
 listino**, Portale Service, accesso alla Suite, **Credenziali StudioLAB** (password solo con la spunta), piano, referente, diversi,
 checklist, Vademecum con le pagine o solo link e QR), MOD173 compilabile precompilato, circolare per il trasporto dei campioni
-(`templates/circolare_trasporto_campioni_2003-05-08.pdf`, allegata come "Allegato 4 - Circolare Ministero 8 Maggio 2003.pdf"). Anteprima
+(`templates/circolare_trasporto_campioni_2003-05-08.pdf`, allegata come "Allegato 3 - Circolare Ministero 8 Maggio 2003.pdf", Allegato 4 fino al 07/11/2026). Anteprima
 con mittente, destinatari, copie fisse, allegati con le dimensioni, oggetto e testo modificabili; "Invia da service@" con conferma.
 All'oggetto si aggiunge sempre il riferimento `[TD-B2B-xxxxxxxxxx]` (prime 10 lettere del token) che abbina la risposta. Con l'invio:
 EMAIL_OUT sottotipo KIT_PROPOSTA nel diario e nel registro invii, `kit_proposta` INVIATO, pipeline alla fase 4 con la data di oggi.
@@ -550,3 +550,140 @@ offerta economica (pagina 25). Schermate `docs/screens/hub-contratto-in-scheda.p
 **Da verificare in produzione**: che l'ordine delle schede e il contratto incorporato vadano bene al CEO sugli account con molti contratti
 (pacchetti del 21/07/2026); testo del modello "Revisione dell'offerta economica" (Impostazioni, scheda dei modelli); che la casella service@
 riceva le risposte con l'offerta firmata (stessi permessi Graph del kit).
+
+## Contratto Service MOD230: campi, allegati rinumerati, firma di TD, Politica della Qualità (07/11/2026)
+
+Richiesta del CEO: "tendina per le modalità di pagamento. in modifica cancello le note, per esempio, salvo ma lui le rimette e quindi non
+salva correttamente! errore grafico nel pulsante 'responsabile ...'. in nominativo del committente di default ripeti la legal entity.
+fammi caricare la firma del firmatario del contratto (PNG, JPG) in modo tale che venga perfettamente apposta nel pdf. una riga di spazio
+in più nel contratto tra i commi dell'art. 4 e il 5. idem tra 14 e 15. riorganizziamo gli allegati: accorpa 1 e 2, sono la stessa cosa.
+dal widget SGI prendi la versione della politica della qualità più aggiornata e allegala come ultimo allegato al contratto! precompila i
+dati dell'allegato 3 se non è indicata una sede operativa diversa da quella legale." Regole pure in `lib/mod230.js`, PDF in
+`lib/contrattoPdf.js`, firma in `lib/firmaTd.js`, Politica in `lib/politicaQualita.js`; migrazione `013_firma_td.sql`.
+
+**Campi del form** (Contratti > Service, "Modifica proposta").
+- *Termini di pagamento*: tendina con "Predefinito: <testo delle Impostazioni>" (campo vuoto), "Bonifico bancario 30 gg f.m. data
+  fattura", "Bonifico bancario 60 gg f.m. data fattura", "Bonifico bancario a vista fattura", "RID/SDD 30 gg f.m.", "Altro (specificare)"
+  che apre il campo libero; un valore già salvato fuori elenco resta selezionabile come "<valore> (valore attuale)". Elenco in
+  `format.js` (`TERMINI_PAGAMENTO`, `opzioniPagamento`), stessa tendina nella lettera MdL.
+- *Campi svuotati*: la causa era il PUT `/contracts/:id` (`notes = d.notes ?? c.notes`: lo schema trasforma '' in null e il `??` rimetteva
+  la nota precedente, anche quella importata dalla Pipeline B2B; idem per decorrenza e scadenza, e `title = coalesce(...)`). Ora un campo
+  presente nella richiesta si salva com'è (vuoto = null); si conserva solo quello che la richiesta non contiene; la denominazione breve
+  vuota torna quella predefinita (ragione sociale, "Punto Prelievi <comune>", tipo di sede e comune). I campi di `data` erano già corretti.
+- *Ruolo privacy*: il segmented control "Titolare del trattamento / Responsabile per conto di un Committente" era stirato a tutta la
+  colonna (riquadro vuoto a destra) e, con le voci su una riga sola, il testo veniva tagliato nelle colonne strette. `business.css`: il
+  controllo è largo quanto le voci (`label.f > .seg { align-self: flex-start }`) e una voce lunga va a capo nel suo bottone (vale per
+  tutti i segmented control del modulo). Schermata `docs/screens/hub-contratto-form.png` (1366 px; verificato anche a 1920 e 900 px).
+- *Nominativo del Committente*: scegliendo "Responsabile" con il campo vuoto si precompila con la ragione sociale della Legal entity
+  controparte (modificabile); vuoto anche nel documento vale la ragione sociale (`committente()`).
+- *Logistica dei ritiri (Allegato 2)*: i campi vuoti mostrano in grigio i valori che andranno nel documento: sede operativa del contratto
+  se indicata (denominazione e indirizzo della sede operativa, città dall'ultima parte dell'indirizzo dopo la virgola), altrimenti sede
+  legale della Legal entity; referente, telefono ed e-mail dal referente principale dell'account (`contatti.principale`, restituito da
+  `GET /contracts/:id` come `referente_principale`). "Precompila i campi vuoti" li scrive nel form. La generazione applica la stessa regola
+  (`ritiroPredefinito` in `mod230.js` e `format.js`, verificate uguali dai test) ai soli campi vuoti.
+- *Apponi la firma di TD nel PDF* (scheda Proposta, Service e MdL): `data.firma_td` (null = sì se la firma è caricata, false = mai);
+  disattivata se in Impostazioni non c'è la firma.
+
+**Allegati** (template `templates/offerta_service.docx`, riscritto una volta con `rinumeraRichiami` di `mod230.js`; la versione
+precedente è quella della v0.51.0). L'1 "Elenco analisi effettuate da Toscana Diagnostica" e il 2 "Prezzi e Condizioni Economiche" sono diventati
+**1 "Elenco delle analisi, prezzi e condizioni economiche"**: testo del catalogo, frase del listino con i nomi dei file caricati e, se
+l'account ha un listino StudioLAB, la tabella "Prezzi dell'offerta riservati al Cliente" (Codice, Esame, Listino €, Offerta €) della
+versione corrente. Poi 2 Ritiro campioni, 3 Trasporto materiali infettivi (la circolare del kit si chiama "Allegato 3 - Circolare
+Ministero 8 Maggio 2003.pdf"), 4 Guida agli Esami, 5 Interfacciamento informatico, 6 Terzi Incaricati, 7 Ruolo privacy del Cliente,
+8 Politica della Qualità. Rinumerati la Lista degli allegati, i titoli "ALLEGATO n —", i richiami del corpo (Allegato n. 2 → 1 nello
+sconto e nel tariffario dell'art. 5.1, n. 3 → 2 ritiri, n. 4 → 3 trasporto, n. 5 → 4 Guida, n. 6 → 5 interfacciamento, n. 7 / Allegato 7
+→ 6 Terzi, n. 8 → 7 privacy, "con relativi 9 Allegati" → 8) e le etichette del form (Allegato 5 interfacciamento, Allegato 1 listino,
+Allegato 2 ritiri, Allegato 7 privacy). La lettera MdL (MOD231) ha la sua numerazione e non cambia.
+
+**Spaziature**: una riga vuota in più prima del titolo "5. Prezzi, modalità di pagamento e morosità del Cliente" e di "15. Foro" (paragrafi
+vuoti nello stile del documento) e il titolo resta con il primo comma (keepNext: non più da solo in fondo alla pagina).
+
+**Firma di TD nel PDF**. Blocchi firme di MOD230 e MOD231 (tre per lettera: offerta, approvazione ex artt. 1341-1342, "Letto, approvato
+e sottoscritto"): tra la riga "qualifica" e la riga "nome" c'è una riga vuota alta 1,5 cm (spazio della firma di TD; nella colonna del
+Cliente è lo spazio sopra la linea) e i segnaposto `{firma_ruolo}`/`{firma_nome}` (Impostazioni, "Firmatario dei contratti"). Alla
+generazione il PDF di LibreOffice si legge con pdf-parse (testo con le coordinate), si trova nella metà destra della pagina il nome del
+firmatario con la qualifica sopra e si disegna l'immagine con pdf-lib nel rettangolo tra le due righe: altezza al massimo quella dello
+spazio, larghezza al massimo 170 pt, proporzioni conservate, centrata sul nome, PNG con la sua trasparenza. Scelta: ancorare la firma al
+testo stampato e non a coordinate fisse (il blocco firme cambia pagina con i dati) né a un segnaposto nascosto (resterebbe nel testo
+selezionabile del PDF). Se nome e qualifica non si trovano il PDF esce senza firma con un avviso. Il DOCX resta con lo spazio vuoto.
+L'evento GENERATO registra `firmato_td`, `firma` (nome, qualifica, blocchi firmati, sha256 dell'immagine) e la nota "PDF firmato da
+Toscana Diagnostica (nome, qualifica)"; la risposta della generazione ha `firmato_td` e `avvisi`.
+
+**Politica della Qualità (Allegato 8)**. Dallo specchio del Portale SGI (modulo sgi, `docs.json` e cache dei file): prima un documento
+intitolato "Politica della/per la Qualità", poi la Politica Integrata della famiglia POL (nel SGI di TD la politica per la qualità è la
+Politica integrata multi-norma TD-SGI-POL001, come dice il testo dell'allegato), con PDF, revisione più alta. Nel DOCX l'allegato ha il
+riferimento "Documento di riferimento: TD-SGI-POL001 "Politica Integrata", revisione 02 del 29/10/2026 (...). Il testo integrale è
+riportato in coda alla versione PDF"; nel PDF le pagine del documento SGI si accodano dopo l'ultima pagina del contratto. Se il modulo SGI
+non è avviato, lo specchio è vuoto o il PDF non si legge: allegato con "Documento non disponibile dallo specchio SGI al momento della
+generazione: ne viene fornita copia al Cliente al momento della sottoscrizione", avviso nell'evento GENERATO e riquadro "Documento
+generato con avvisi" nella scheda del contratto.
+
+**API** (`/api/business`): `PUT /contracts/:id` (campi inviati vuoti = vuoti), `GET /contracts/:id` con `referente_principale`,
+`POST /contracts/:id/generate` con `avvisi` e `firmato_td`, `GET|POST|DELETE /settings/firma`, `GET /settings/firma/immagine`.
+
+**Test**: `server/test/business-mod230.test.mjs` (tendina con il valore attuale, rinumerazione pura e template con allegati, richiami,
+lista, righe vuote e blocchi firme, ritiro precompilato e parità form/documento, committente, ricerca della Politica anche sul `docs.json`
+del portale SGI, dati del documento con la tabella dei prezzi, spazio della firma e firma di prova apposta su un PDF; con
+`DATABASE_URL_TEST`: note svuotate, denominazione predefinita, campi non inviati intatti, caricamento della firma solo PNG/JPG fino a 1 MB).
+
+**Collaudo del 07/11/2026** (db di prova `suite_m230_t`, porta 3146, specchio SGI da un server statico del repo del portale SGI sulla
+porta 7053). Legal entity e account Service fittizi con referente principale e listino di 3 esami; contratto SRV con Responsabile
+(committente = ragione sociale), pagamento "Bonifico bancario 60 gg f.m. data fattura", nota della Pipeline B2B svuotata da form: resta
+vuota (anche riaprendo il form); "Altro" con testo libero salvato e riproposto come "(valore attuale)". Firma di prova (PNG generato con la
+scritta "firma di prova") caricata in Impostazioni (`docs/screens/hub-impostazioni-firma.png`). PDF di 28 pagine: firma nei tre blocchi
+(pagine 2 e 10), art. 5 in testa a pagina 5 con tre righe vuote prima, art. 15 con cinque righe vuote prima, Lista degli allegati 1-8,
+Allegato 1 con la tabella dei prezzi, Allegato 2 con sede legale e referente principale, Allegato 8 con il riferimento a TD-SGI-POL001
+rev. 02 e le 9 pagine della Politica Integrata in coda. Ripiego provato togliendo `docs.json` dallo specchio: PDF di 19 pagine, allegato
+"Documento non disponibile dallo specchio SGI", avviso nell'evento. Esempio: `2026-11-07_Contratto_Service_esempio.pdf`.
+
+**Da verificare con il CEO**: le spaziature degli artt. 5 e 15 (nel PDF prima della modifica c'erano già 2 e 4 righe vuote; il titolo
+dell'art. 5 restava da solo in fondo a pagina 4, probabilmente l'effetto visto: ora va in testa alla pagina successiva con il primo comma);
+che la Politica Integrata TD-SGI-POL001 sia il documento giusto (nel SGI non c'è un documento intitolato "Politica della Qualità"); la firma
+vera (PNG con sfondo trasparente, ritagliata stretta attorno al tratto, per occupare bene lo spazio); il contratto Punti Prelievo ha un
+altro blocco firme ("L'Amministratore Delegato" in persona del legale rappresentante) e per ora non riceve la firma.
+
+## Pacchetto ripulito, listino unico tra contratto e account, accessi al portale per tutti i referenti (07/11/2026)
+Richieste del CEO: le correzioni dell'offerta economica "ANCHE qui" nel pacchetto di benvenuto; "che sia alla scheda del contratto o qui
+l'upload del file XLSX deve essere lo stesso file. questa scheda [Listino StudioLAB del cliente] è perfetta e va tenuta"; "crea gli
+accessi al portale per tutti i referenti inclusi in anagrafica". Migrazione `014_listino_unico.sql`.
+
+**Pacchetto di benvenuto** (`lib/pacchettoDocx.js`, `lib/pacchetto.js`, `lib/pacchettoGenera.js`). Copertina senza la riga "preparato per"
+e senza la fascia "Ci prendiamo cura del tempo dei pazienti, ..." (la carta intestata resta com'è: il suo piè non ha il motto); nelle
+lettere predefinite "preparate per {{cliente}}" diventa "dedicate a {{cliente}}" (i modelli già personalizzati in Impostazioni non
+cambiano). Lettera: ogni paragrafo e ogni riga andata a capo nel modello è un `<w:p>` a sé (un `<w:br/>` in un paragrafo giustificato
+allargava le parole a tutta riga: "Gentile          Francesco          Sderci,"); il saluto iniziale e la chiusura sono allineati a
+sinistra (`rigaASinistra`), il resto giustificato con l'ultima riga a sinistra; `testo()` fa lo stesso per gli altri paragrafi.
+Tabella dei referenti (`bloccoReferenti`, la stessa nella lettera, nella pagina "Il vostro referente dedicato" e in "Serve aiuto?" della
+checklist): tre colonne a larghezza fissa allineate in alto (ruolo in grassetto con la descrizione sotto; nome ed email; telefoni, fisso e
+cellulare su righe separate), filetti leggeri, intestazione ripetuta. Righe (`righeReferenti`): **il CEO sempre in prima riga** (nome e
+ruolo dal legale rappresentante delle Impostazioni, email `lr_email`, telefono dall'anagrafica: `people.phone_office` e `users.phone`
+della persona con quell'email, in mancanza `lr_phone`; il cellulare personale `people.phone` non si pubblica; se non c'è la cella resta
+vuota), poi i referenti della linea dallo specchio del Portale Service e dai Dati aziendali, poi l'owner dell'account se non è già tra
+loro ("Il vostro referente dedicato", con la sua mansione). La pagina del referente esclude l'owner (ha la sua scheda sopra); la checklist
+mostra CEO, owner e supporto clienti. Pagina delle credenziali: tutti gli accessi esterni della Legal entity (già così).
+
+**Listino unico** (`lib/listinoUnico.js`). Sorgente unica: le versioni del listino dell'account (`listini`). `contract_files.listino_id`
+dice da quale versione viene un file del contratto; senza `listino_id` il file è storico. Per il contratto Service con account
+(`conListinoAccount`): ogni nuova versione (Excel dalla scheda Listino e offerta, dal riquadro del contratto, importato dal contratto,
+revisione dei prezzi in pagina, con l'XLSX ricostruito dalle righe) si registra come LISTINO_XLSX del contratto della linea
+(`collegaVersione`, idempotente) e toglie dal contratto la copia della versione precedente (che resta nei documenti e nello storico
+dell'account); l'offerta economica PDF generata dalla versione corrente diventa il LISTINO_PDF (`collegaOfferta`); la generazione della
+lettera MOD230 collega la versione dell'Allegato 1. Evento ALLEGATO nella cronologia del contratto. Il salvataggio è
+`salvaVersione(a, input, userId)` di `routes/listino.js`, usato da `POST /hub/accounts/:id/listini`, da `.../listini/da-contratto/:fileId`
+(il file storico si collega alla versione, senza copia), da `POST /contracts/:id/files` con LISTINO_XLSX (Service con account) e
+dall'importazione automatica: `GET /hub/accounts/:id` di un account Service senza listino con un Excel storico nel contratto lo importa
+(v1, attività LISTINO nel diario); se le colonne non si riconoscono resta "Importa dal contratto". Riquadro "Listino dell'offerta" del
+contratto (`c.listino_account`, `riquadroListino`): versione corrente (vN, data, esami, link alla scheda Listino e offerta), "Carica la
+vN+1" con la stessa modale di `Listino.jsx` (`Carica`, anteprima e mapping), i file collegati e gli eventuali file storici. Contratti
+senza account (MDL, SEDE, PP senza punto): riquadro e caricamenti di prima.
+
+**Accessi al portale per tutti i referenti.** Regola pura `pianoAccessi` (`lib/processo.js`): per ogni referente HA_ACCESSO, DA_CREARE o
+SALTATO con il motivo (senza email, email non valida, stessa email di un altro referente, impostazione "solo il principale").
+`creaAccessiReferenti` (`lib/flusso.js`) crea gli accessi mancanti con `creaAccesso` (invito a ciascuno con la password provvisoria dalla
+casella della linea, senza copie; attività ACCESSO per ciascuno e un riepilogo riga per riga), idempotente. Scheda Portale dell'account:
+i referenti senza accesso con "Crea accesso" e, in alto, "Crea gli accessi per tutti i referenti" (conferma, esito riga per riga);
+`GET/POST /hub/accounts/:id/accessi` (audit `HUB_ACCESSI_REFERENTI`); dopo la contrattualizzazione i nuovi accessi ricevono il profilo
+della linea (`profiloLineaSu`). Al kit di proposta e alla contrattualizzazione si creano per tutti i referenti con email secondo
+l'impostazione `hub_accessi_portale` (Business Hub > Impostazioni, processo Service: TUTTI predefinito, o PRINCIPALE come prima); chi
+riceve l'invito alla creazione non ne riceve un secondo all'attivazione. Test: `server/test/business-listino-unico.test.mjs` e i nuovi casi
+di `business-pacchetto.test.mjs`. Screenshot: `docs/screens/hub-portale-accessi.png`, `docs/screens/hub-contratto-listino-unico.png`.

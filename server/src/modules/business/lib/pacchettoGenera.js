@@ -20,6 +20,7 @@ import { readBuffer } from './storage.js';
 import { docxToPdfBatch } from './docgen.js';
 import {
   componiSezioni, modelliDa, sostituisci, valoriSegnaposto, pianoAvvio, referentiDedicati, contattoLaboratorio, certificazioniIso, paginaCredenziali, checklist,
+  telefoni, righeReferenti,
 } from './pacchetto.js';
 import { versioneCorrente } from './listino.js';
 import { modelliFlussoDa, compila, referentiTesto } from './processo.js';
@@ -52,9 +53,30 @@ async function owner(userId) {
   if (!userId) return null;
   // nome nell'ordine naturale (Nome Cognome: va nelle frasi della lettera); ruolo = mansione della persona (users.title è il titolo, es. "Dott.")
   const u = await one(`SELECT coalesce(nullif(trim(concat_ws(' ', p.first_name, p.last_name)),''), nullif(trim(concat_ws(' ', u.first_name, u.last_name)),''), u.full_name) AS full_name,
-      u.email, coalesce(nullif(p.phone_office,''), nullif(u.phone,'')) AS telefono, nullif(p.job_title,'') AS ruolo
+      u.email, coalesce(nullif(p.phone_office,''), nullif(u.phone,'')) AS telefono, nullif(p.job_title,'') AS ruolo, nullif(p.phone_office,'') AS fisso, nullif(u.phone,'') AS altro
     FROM public.users u LEFT JOIN public.people p ON p.id=u.person_id WHERE u.id=$1`, [userId]);
-  return u ? { nome: u.full_name, email: u.email || null, telefono: u.telefono || null, ruolo: u.ruolo || null } : null;
+  return u ? { nome: u.full_name, email: u.email || null, telefono: u.telefono || null, telefoni: telefoni({ fisso: u.fisso, altro: u.altro }), ruolo: u.ruolo || null } : null;
+}
+
+/**
+ * Contatto del CEO per la prima riga della tabella dei referenti (richiesta del CEO del 07/11/2026): nome e ruolo dal legale
+ * rappresentante (Impostazioni, lr_name e lr_role), email lr_email; telefoni dall'anagrafica della persona con quell'email (telefono
+ * d'ufficio di public.people, telefono dell'utente), in mancanza il telefono del legale rappresentante delle Impostazioni (lr_phone).
+ * Il cellulare personale (people.phone) non si pubblica. Nessun numero inventato: se non c'è, la cella resta vuota.
+ */
+export async function contattoCeo(s) {
+  const email = String(s.lr_email || '').trim();
+  let x = null;
+  if (email) {
+    x = await one(`SELECT nullif(p.phone_office,'') AS fisso, nullif(u.phone,'') AS altro,
+        nullif(trim(concat_ws(' ', p.first_name, p.last_name)),'') AS nome_persona, nullif(u.full_name,'') AS nome_utente
+      FROM (SELECT 1) z
+      LEFT JOIN public.users u ON lower(u.email)=lower($1) AND NOT coalesce(u.is_external, false)
+      LEFT JOIN public.people p ON p.id = u.person_id OR (u.person_id IS NULL AND lower(p.email)=lower($1))
+      ORDER BY (p.phone_office IS NOT NULL) DESC LIMIT 1`, [email]);
+  }
+  const tel = telefoni({ fisso: x?.fisso || s.lr_phone || null, altro: x?.altro });
+  return { nome: s.lr_name || x?.nome_persona || x?.nome_utente || '', ruolo: s.lr_role || 'Chief Executive Officer', email: email || null, telefoni: tel };
 }
 
 /** Contratto della linea e lettera di offerta generata (ultima versione), o null. */
@@ -225,6 +247,8 @@ export async function generaPacchetto(a, opz) {
   const destinatario = opz.contatto?.nome || null;
   const valori = valoriSegnaposto({ cliente, referente: destinatario, data, owner: own?.nome });
   const referenti = referentiDedicati({ contatti: sp.contatti, company, linea: a.linea, casella });
+  // tabella dei referenti del pacchetto: CEO in prima riga, poi i referenti della linea e l'owner dell'account
+  const tabellaReferenti = righeReferenti({ ceo: await contattoCeo(s), referenti, owner: own });
   const firma = { nome: s.lr_name || 'Francesco Epifani', ruolo: s.lr_role || 'Chief Executive Officer' };
   const accessi = incl('credenziali') ? await accessiEsterni(a.organization_id) : [];
   // credenziali del portale dei referti: nella pagina StudioLAB se la sezione c'è, altrimenti (PP, MDL) nella pagina degli accessi
@@ -235,7 +259,7 @@ export async function generaPacchetto(a, opz) {
   if (incl('credenziali') && !accessi.length) avvisi.push('La Legal entity non ha ancora accessi esterni: crearli da Amministrazione > Legal entity > Accessi (Crea accesso esterno)');
   const certJson = sp.certificazioni;
   const d = {
-    data, cliente, indirizzoCliente, destinatario, linea: a.linea, lineaLabel, owner: own, casella, company, referenti, firma, luogo: company.city || 'Sesto Fiorentino',
+    data, cliente, indirizzoCliente, destinatario, linea: a.linea, lineaLabel, owner: own, casella, company, referenti: tabellaReferenti, firma, luogo: company.city || 'Sesto Fiorentino',
     testoLettera: variante === 'BENVENUTO' ? sostituisci(mod.lettera[a.linea], valori) : compila(flusso.lettera_presentazione, { ...valori, referenti: '{{referenti}}' }),
     titoloLettera: variante === 'BENVENUTO' ? null : 'Vi presentiamo Toscana Diagnostica',
     kicker: { KIT: 'PROPOSTA DI COLLABORAZIONE', PROSPECT: 'PRESENTAZIONE' }[variante] || null, titoloPre: variante === 'BENVENUTO' ? null : 'Vi presentiamo',

@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canEditKind, isAdmin } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, useToast } from './ui.jsx';
+import { Carica as CaricaListino } from './Listino.jsx';
 import { itDate, itDateTime, bytes, KIND, FILE_CAT, EVENT, DOSSIER_STATUS, FEE_VAT, FEE_PERIOD, FEE_BASE, DAYS, today, num, HAS_DOSSIER, SITE_TYPE, RENT_PERIOD } from '../format.js';
 
 // esito del caricamento del contratto firmato passato dalla contrattualizzazione dell'account
@@ -29,6 +30,8 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
   const [modal, setModal] = useState(null);
   const [signedDate, setSignedDate] = useState(today());
   const [pdfErr, setPdfErr] = useState(null);
+  // avvisi dell'ultima generazione (07/11/2026): Politica della Qualità non disponibile dallo specchio SGI, firma di TD non apposta
+  const [avvisiGen, setAvvisiGen] = useState(null);
   if (q.error) return <ErrorBox error={q.error} />;
   if (!c) return <Loading />;
   const edit = canEditKind(user, c.kind);
@@ -40,7 +43,7 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
   const d = c.data || {}; const p = c.org || {}; const site = c.site || {};  // controparte e sede TD: una delle due può mancare
   const files = (cat) => c.files.filter((f) => f.category === cat);
   const ricarica = () => { q.reload(); onChange?.(); };
-  const act = async (fn, msg) => { try { const r = await fn(); if (r?.pdfError) setPdfErr(r.pdfError); ricarica(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); } catch (e) { toast(e.message, 'err'); } };
+  const act = async (fn, msg) => { try { const r = await fn(); if (r?.pdfError) setPdfErr(r.pdfError); if (r?.avvisi) setAvvisiGen({ avvisi: r.avvisi, firmato: r.firmato_td }); ricarica(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); } catch (e) { toast(e.message, 'err'); } };
   const uploadFiles = (category, list, extra = {}) => act(async () => { const fd = new FormData(); fd.append('category', category); for (const [k, v] of Object.entries(extra)) fd.append(k, v); for (const f of list) fd.append('files', f); return api.upload(`/contracts/${c.id}/files`, fd); }, category === 'FIRMATO' ? msgFirmato : 'File caricati');
   // la modifica (proposta o nuova revisione) aperta dalla scheda account torna alla scheda Contratto
   const modifica = `${BASE}/contratti/${c.id}/modifica${embedded && c.account_id ? `?da=account&account=${c.account_id}` : ''}`;
@@ -86,6 +89,7 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
 
       <div className="steps">{steps.map((s, i) => <div key={s} className={`s ${i < stepIdx ? 'done' : ''} ${i === stepIdx ? 'now' : ''}`}><i>{i + 1}</i>{{ BOZZA: 'Bozza', PROPOSTA: 'Proposta generata', FIRMATO: c.kind === 'SEDE' ? 'Contratto di locazione firmato' : 'Sottoscritto', AUTORIZZATO: 'Autorizzazione sanitaria', ATTIVO: 'In vigore' }[s]}</div>)}{['CESSATO', 'ANNULLATO'].includes(c.status) && <div className="s now"><i>!</i>{c.status === 'CESSATO' ? 'Cessato' : 'Annullato'}{c.cancel_reason ? `: ${c.cancel_reason}` : ''}</div>}</div>
       {pdfErr && <div className="alert warn" style={{ marginBottom: 14 }}>PDF non prodotto: {pdfErr}. Il DOCX è disponibile.</div>}
+      {avvisiGen?.avvisi?.length > 0 && <div className="alert warn" style={{ marginBottom: 14 }}><strong>Documento generato con avvisi:</strong><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{avvisiGen.avvisi.map((a, i) => <li key={i}>{a}</li>)}</ul></div>}
 
       <div className="grid g2">
         {c.kind === 'SEDE' ? (
@@ -162,10 +166,11 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
 
       {['SRV', 'MDL'].includes(c.kind) && (
         <div className="grid g2" style={{ marginTop: 16 }}>
-          <Card title="Listino dell'offerta" actions={edit && <div className="row" style={{ gap: 6 }}><UploadButton label="XLSX" accept=".xlsx,.xls" onFiles={(fl) => uploadFiles('LISTINO_XLSX', fl)} /><UploadButton label="PDF" accept="application/pdf" onFiles={(fl) => uploadFiles('LISTINO_PDF', fl)} /></div>}>
+          {c.listino_account ? <ListinoUnico c={c} edit={edit} files={[...files('LISTINO_XLSX'), ...files('LISTINO_PDF')]} onCarica={() => setModal({ type: 'listino' })} onDel={(f) => setModal({ type: 'delfile', f })} />
+            : <Card title="Listino dell'offerta" actions={edit && <div className="row" style={{ gap: 6 }}><UploadButton label="XLSX" accept=".xlsx,.xls" onFiles={(fl) => uploadFiles('LISTINO_XLSX', fl)} /><UploadButton label="PDF" accept="application/pdf" onFiles={(fl) => uploadFiles('LISTINO_PDF', fl)} /></div>}>
             {[...files('LISTINO_XLSX'), ...files('LISTINO_PDF')].length ? [...files('LISTINO_XLSX'), ...files('LISTINO_PDF')].map((f) => <div key={f.id} className="row" style={{ marginBottom: 6 }}><Badge tone={f.category === 'LISTINO_XLSX' ? 'green' : 'blue'}>{f.category === 'LISTINO_XLSX' ? 'XLSX' : 'PDF'}</Badge><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{bytes(f.size)} · {itDateTime(f.created_at)}</span>{edit && <button className="iconbtn" title="Rimuovi" onClick={() => setModal({ type: 'delfile', f })}><Icon name="trash" /></button>}</div>)
               : <div className="muted">Carica il listino dell'offerta in XLSX (per il cliente e il gestionale) e in PDF (allegato alla proposta).</div>}
-          </Card>
+          </Card>}
           <Credentials c={c} edit={edit} onSaved={ricarica} />
         </div>
       )}
@@ -196,11 +201,36 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
         </div>
         <div className="small muted" style={{ marginTop: 8 }}>Riservato all'Admin del modulo. Il cambio resta nella cronologia con la motivazione. Il cliente attivo dell'account non cambia: lo conferma il CEO nel Business Hub.</div>
       </Modal>}
+      {modal?.type === 'listino' && <CaricaListino a={{ id: c.account_id, org_name: p.name || titolo }} origine="contratto" onClose={() => setModal(null)} onDone={() => { setModal(null); ricarica(); }} />}
       {modal?.type === 'delfile' && <ConfirmModal danger title="Rimuovi file" text={`Rimuovere ${modal.f.filename}?`} confirmText="Rimuovi" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/contracts/${c.id}/files/${modal.f.id}`); ricarica(); }} />}
       {modal?.type === 'delete' && <ConfirmModal danger title="Elimina bozza" text="La bozza e i file collegati verranno eliminati." confirmText="Elimina" onClose={() => setModal(null)} onConfirm={async () => { await api.del(`/contracts/${c.id}`); if (embedded) onChange?.({ eliminato: c.id }); else nav(`${BASE}/${KIND[c.kind].path}`); }} />}
       {modal?.type === 'cancel' && <PromptModal danger title="Annulla contratto" label="Motivazione" confirmText="Annulla contratto" onClose={() => setModal(null)} onConfirm={async (reason) => { await api.post(`/contracts/${c.id}/status`, { status: 'ANNULLATO', reason }); ricarica(); }} />}
       {modal?.type === 'cease' && <PromptModal title="Cessazione del contratto" label="Motivazione (recesso, disdetta, risoluzione) e data di efficacia" confirmText="Registra cessazione" onClose={() => setModal(null)} onConfirm={async (reason) => { await api.post(`/contracts/${c.id}/status`, { status: 'CESSATO', reason }); ricarica(); }} />}
     </div>
+  );
+}
+
+/**
+ * Riquadro "Listino dell'offerta" del contratto Service con account (listino unico, richiesta del CEO del 07/11/2026): la versione
+ * corrente del listino dell'account (vN, data, esami) con il link alla scheda Listino e offerta, "Carica la vN+1" con la stessa modale
+ * di caricamento della scheda (anteprima e mapping delle colonne), e i file collegati: l'XLSX della versione e l'offerta economica PDF.
+ */
+function ListinoUnico({ c, edit, files, onCarica, onDel }) {
+  const l = c.listino_account; const v = l.corrente;
+  const scheda = `${BASE}/account/${c.account_id}?scheda=listino`;
+  const storici = files.filter((f) => !f.listino_id);
+  return (
+    <Card title="Listino dell'offerta" actions={edit && <button className="btn sm" onClick={onCarica}><Icon name="upload" />{v ? `Carica la v${l.prossima}` : 'Carica il listino'}</button>}>
+      {v ? <div className="row" style={{ gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 8 }}>
+        <Badge tone="teal">v{v.versione} corrente</Badge>
+        <span className="small">{v.origine === 'REVISIONE' ? 'revisione dei prezzi' : 'Excel di StudioLAB'} del {itDate(v.data)} · <b>{v.esami ?? '–'}</b> esami</span>
+        <a className="btn link small" href={scheda}>Listino e offerta</a>
+      </div> : <div className="muted" style={{ marginBottom: 8 }}>Nessun listino nell'account: caricalo qui o nella scheda <a href={scheda}>Listino e offerta</a>. È lo stesso file.</div>}
+      {files.filter((f) => f.listino_id).map((f) => <div key={f.id} className="row" style={{ marginBottom: 6 }}><Badge tone={f.category === 'LISTINO_XLSX' ? 'green' : 'blue'}>{f.category === 'LISTINO_XLSX' ? 'XLSX' : 'PDF'}</Badge><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">v{f.listino_versione} · {bytes(f.size)} · {itDateTime(f.created_at)}</span></div>)}
+      {v && !files.some((f) => f.listino_id === v.id && f.category === 'LISTINO_PDF') && <div className="small muted">Offerta economica PDF della v{v.versione}: si genera nella scheda Listino e offerta e arriva qui da sola.</div>}
+      {storici.length > 0 && <div style={{ marginTop: 8 }}><div className="small muted">File storici del contratto (prima del listino unico):</div>{storici.map((f) => <div key={f.id} className="row" style={{ marginBottom: 4 }}><Badge tone="grey">{f.category === 'LISTINO_XLSX' ? 'XLSX' : 'PDF'}</Badge><a href={`${API_BASE}/contract-files/${f.id}`}><Icon name="download" />{f.filename}</a><span className="small muted">{bytes(f.size)} · {itDateTime(f.created_at)}</span>{edit && <button className="iconbtn" title="Rimuovi" onClick={() => onDel(f)}><Icon name="trash" /></button>}</div>)}</div>}
+      <div className="small muted" style={{ marginTop: 8 }}>Un solo listino tra contratto e account: ogni versione caricata qui o nella scheda Listino e offerta (anche una revisione dei prezzi) diventa il listino del contratto e dell'Allegato 1 della lettera MOD230; la versione precedente resta nello storico dell'account.</div>
+    </Card>
   );
 }
 

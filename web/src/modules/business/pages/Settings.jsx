@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
-import { useApi, Card, Field, ErrorBox, Loading, Badge, useToast } from '../components/ui.jsx';
+import { api, API_BASE } from '../api.js';
+import { useApi, Card, Field, ErrorBox, Loading, Badge, useToast, UploadButton } from '../components/ui.jsx';
 import { HubCaselle, ImportDb, AccountDaContratti } from '../components/HubImpostazioni.jsx';
 import { PacchettoModelli } from '../components/Pacchetto.jsx';
 import { ProcessoService, ProcessoPuntiPrelievo, FlussoModelli, B2bAllegati } from '../components/ProcessoImpostazioni.jsx';
@@ -38,6 +38,7 @@ export default function Settings() {
       <ProcessoService f={f} setF={setF} />
       <ProcessoPuntiPrelievo f={f} setF={setF} />
       <FlussoModelli />
+      <FirmatarioContratti f={f} setF={setF} />
       <B2bAllegati />
       <PacchettoModelli />
       <ImportDb />
@@ -114,6 +115,48 @@ function ImportPack({ storage }) {
         </div>
       )}
       {runs.data?.length > 0 && <details className="mt"><summary className="small">Caricamenti precedenti ({runs.data.length})</summary><table className="t small"><tbody>{runs.data.map((x) => <tr key={x.id}><td>{new Date(x.at).toLocaleString('it-IT')}</td><td>{x.filename}</td><td>{x.dry_run ? 'prova' : 'caricamento'}</td><td>{x.user_name}</td><td>{x.summary?.contracts ? `${x.summary.contracts.created + x.summary.contracts.updated} contratti, ${x.summary.dossiers.created + x.summary.dossiers.updated} fascicoli, ${x.summary.files?.stored ?? x.summary.files?.planned ?? 0} documenti` : ''}</td></tr>)}</tbody></table></details>}
+    </Card>
+  );
+}
+
+// Firmatario dei contratti (07/11/2026): nome e qualifica nei blocchi firme di TD delle lettere di offerta Service (MOD230) e MdL
+// (MOD231), vuoti = legale rappresentante; immagine della firma (PNG o JPG fino a 1 MB) apposta nel PDF generato. Nome e qualifica si
+// salvano con "Salva impostazioni", l'immagine subito.
+function FirmatarioContratti({ f, setF }) {
+  const toast = useToast();
+  const q = useApi('/settings/firma');
+  const [ver, setVer] = useState(0);
+  const firma = q.data?.firma;
+  const carica = async (fl) => {
+    const file = fl[0];
+    if (!/^image\/(png|jpeg)$/.test(file.type) && !/\.(png|jpe?g)$/i.test(file.name)) return toast('La firma va caricata in PNG o JPG', 'err');
+    if (file.size > 1024 * 1024) return toast('Immagine della firma oltre 1 MB', 'err');
+    try { const fd = new FormData(); fd.append('file', file); await api.upload('/settings/firma', fd); toast('Firma caricata'); setVer((v) => v + 1); q.reload(); } catch (e) { toast(e.message, 'err'); }
+  };
+  const rimuovi = async () => {
+    if (!window.confirm('Rimuovere l\'immagine della firma? I PDF generati da adesso non saranno firmati.')) return;
+    try { await api.del('/settings/firma'); toast('Firma rimossa'); q.reload(); } catch (e) { toast(e.message, 'err'); }
+  };
+  return (
+    <Card title="Firmatario dei contratti" className="mt">
+      <div className="small muted" style={{ marginBottom: 10 }}>Nome e qualifica compaiono nei blocchi firme di Toscana Diagnostica delle lettere di offerta Service (MOD230) e Medicina del Lavoro (MOD231); vuoti, quelli del legale rappresentante. L'immagine della firma (PNG con sfondo trasparente o JPG, al massimo 1 MB) viene apposta nel PDF generato, nello spazio tra la qualifica e il nome, senza deformarla; ogni contratto può escluderla con la spunta "Apponi la firma di TD nel PDF". Il DOCX resta con lo spazio vuoto.</div>
+      <div className="form-grid">
+        <Field label="Nome e cognome del firmatario" help={`vuoto: ${f.lr_name || 'legale rappresentante'}`}><input value={f.firma_nome ?? ''} placeholder={f.lr_name || ''} onChange={(e) => setF({ ...f, firma_nome: e.target.value })} /></Field>
+        <Field label="Qualifica" help={`vuota: ${f.lr_role || 'ruolo del legale rappresentante'}`}><input value={f.firma_qualifica ?? ''} placeholder={f.lr_role || ''} onChange={(e) => setF({ ...f, firma_qualifica: e.target.value })} /></Field>
+        <div className="span2">
+          <div className="small strong muted" style={{ marginBottom: 6 }}>Immagine della firma</div>
+          {firma ? (
+            <div className="firma-anteprima">
+              <img src={`${API_BASE}/settings/firma/immagine?v=${encodeURIComponent(firma.sha256 || '')}${ver}`} alt="Anteprima della firma" />
+              <div className="small muted">{firma.filename} · {firma.larghezza}×{firma.altezza} px · {Math.round(firma.size / 1024)} KB</div>
+            </div>
+          ) : <div className="muted small">Nessuna firma caricata: i PDF dei contratti escono senza firma di TD.</div>}
+          <div className="row" style={{ gap: 6, marginTop: 8 }}>
+            <UploadButton label={firma ? 'Sostituisci la firma' : 'Carica la firma (PNG, JPG)'} accept="image/png,image/jpeg" onFiles={carica} />
+            {firma && <button type="button" className="btn sm ghost" onClick={rimuovi}>Rimuovi</button>}
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }

@@ -4,12 +4,12 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, MoneyInput, useToast, Icon, UploadButton, Badge } from '../components/ui.jsx';
 import { PartyCards } from '../components/PartyPicker.jsx';
-import { today, KIND, DAYS, FEE_VAT, FEE_PERIOD, FEE_BASE, FEE_KIND, SITE_TYPE, RENT_PERIOD, bytes } from '../format.js';
+import { today, KIND, DAYS, FEE_VAT, FEE_PERIOD, FEE_BASE, FEE_KIND, SITE_TYPE, RENT_PERIOD, bytes, opzioniPagamento, PAGAMENTO_ALTRO, ritiroPredefinito } from '../format.js';
 
 const EMPTY = {
   PP: { fee: { items: [{ kind: 'PERCENT', percent: '', base: 'PUNTO_PRELIEVI', base_other: '', include_ssr: false, amount: '', period: 'MESE', purpose: '', vat: 'PIU_IVA', closing: true, text: '' }] }, services: { nursing: 'TD', reception: 'HOST' }, duration_years: 3, duvri_costs_clause: '' },
-  SRV: { site_name: '', site_address: '', client_ds: '', vat_exemption: null, payment_terms: '', pickup: { site: '', street: '', city: '', contact: '', phone: '', email: '', days: DAYS.slice(0, 6).map(() => ({ mode: 'NO', time_from: '', time_to: '' })) }, interface_solution: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
-  MDL: { service_email: '', service_contact: '', service_phone: '', invoice_email: '', doctor_name: '', doctor_email: '', vat_exemption: null, payment_terms: '', privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
+  SRV: { site_name: '', site_address: '', client_ds: '', vat_exemption: null, payment_terms: '', firma_td: null, pickup: { site: '', street: '', city: '', contact: '', phone: '', email: '', days: DAYS.slice(0, 6).map(() => ({ mode: 'NO', time_from: '', time_to: '' })) }, interface_solution: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
+  MDL: { service_email: '', service_contact: '', service_phone: '', invoice_email: '', doctor_name: '', doctor_email: '', vat_exemption: null, payment_terms: '', firma_td: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
   SEDE: { site_type: 'PUNTO_PRELIEVI', rent: { amount: '', period: 'MESE', vat: 'PIU_IVA', deposit: '', duration_years: 6, renewal_years: 6, notice_months: 12, istat: true, expenses: '', registration: '', notes: '' } },
 };
 const deepMerge = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b || {})) o[k] = v && typeof v === 'object' && !Array.isArray(v) ? deepMerge(a[k] || {}, v) : v; return o; };
@@ -22,6 +22,8 @@ export default function ContractForm() {
   const existing = useApi(id ? `/contracts/${id}` : null);
   const kind = existing.data?.kind || kindParam;
   const settings = useApi('/settings');
+  // firma di TD caricata in Impostazioni (spunta "Apponi la firma di TD nel PDF" di Service e MdL)
+  const firmaTd = useApi(['SRV', 'MDL'].includes(existing.data?.kind || kindParam) ? '/settings/firma' : null);
   const [f, setF] = useState(null);
   // Legal entity (controparte) e sedi TD dell'anagrafica unica (Amministrazione): qui si scelgono, non si creano.
   // Almeno una delle due è obbligatoria; per punti prelievo e sedi in locazione la sede TD è sempre richiesta.
@@ -50,6 +52,8 @@ export default function ContractForm() {
   if (!f) return <div className="page">{existing.error ? <ErrorBox error={existing.error} /> : <Loading />}</div>;
   const setD = (path, v) => setF((x) => { const d = structuredClone(x.data); let o = d; const ks = path.split('.'); for (const k of ks.slice(0, -1)) o = o[k]; o[ks.at(-1)] = v; return { ...x, data: d }; });
   const d = f.data;
+  // Allegato 2 del Service: valori proposti per i campi vuoti del ritiro campioni (format.js, stessa regola del documento generato)
+  const rit = kind === 'SRV' ? ritiroPredefinito(d, partner || {}, existing.data?.referente_principale || null) : {};
   // contratto oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO): la modifica è una nuova revisione dell'Admin, con il motivo
   const revisione = Boolean(id && existing.data && !['BOZZA', 'PROPOSTA'].includes(existing.data.status));
 
@@ -98,6 +102,10 @@ export default function ContractForm() {
             <Field label={kind === 'PP' ? 'Decorrenza (apertura del punto prelievi)' : kind === 'SEDE' ? 'Decorrenza della locazione' : 'Decorrenza (se diversa dalla sottoscrizione)'}><input type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></Field>
             <Field label="Denominazione breve" className="span2" help={kind === 'PP' ? 'vuota: "Punto Prelievi <comune>"' : kind === 'SEDE' ? 'vuota: tipo di sede e comune' : 'vuota: ragione sociale del cliente'}><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
             <Field label="Note interne" className="span2"><textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ minHeight: 60 }} /></Field>
+            {(kind === 'SRV' || kind === 'MDL') && <div className="span2">
+              <label className="f inline"><input type="checkbox" disabled={!firmaTd.data?.firma} checked={Boolean(firmaTd.data?.firma) && d.firma_td !== false} onChange={(e) => setD('firma_td', e.target.checked ? null : false)} /> Apponi la firma di TD nel PDF</label>
+              <div className="small muted">{firmaTd.data?.firma ? `Firma di ${firmaTd.data.firmatario?.nome || 'TD'} (${firmaTd.data.firmatario?.ruolo || ''}) nei blocchi firme di Toscana Diagnostica del PDF generato; il DOCX resta con lo spazio vuoto.` : 'Nessuna firma caricata: si carica in Impostazioni, "Firmatario dei contratti" (Admin del modulo).'}</div>
+            </div>}
           </div>
         </Card>
       </div>
@@ -137,24 +145,25 @@ export default function ContractForm() {
         <Card title="Condizioni di vendita (lettera di offerta)" className="mt">
           <CommercialFields d={d} setD={setD} S={S} partner={partner} />
           <div style={{ marginTop: 14 }}>
-            <Field label="Interfacciamento informatico scelto (Allegato 6)">
+            <Field label="Interfacciamento informatico scelto (Allegato 5)">
               <div className="seg wrap">{[[1, 'Soluzione 1 · LIS TD bidirezionale'], [2, 'Soluzione 2 · portale web'], [3, 'Soluzione 3 · schede cartacee']].map(([v, l]) => <label key={v} className={d.interface_solution === v ? 'on' : ''}><input type="radio" checked={d.interface_solution === v} onChange={() => setD('interface_solution', v)} />{l}</label>)}</div>
             </Field>
           </div>
         </Card>
-        <Card title="Listino dell'offerta (Allegato 2)" className="mt" actions={<div className="row" style={{ gap: 6 }}><UploadButton label="Carica XLSX" accept=".xlsx,.xls" onFiles={(fl) => addFiles('LISTINO_XLSX', fl)} /><UploadButton label="Carica PDF" accept="application/pdf" onFiles={(fl) => addFiles('LISTINO_PDF', fl)} /></div>}>
+        <Card title="Listino dell'offerta (Allegato 1)" className="mt" actions={<div className="row" style={{ gap: 6 }}><UploadButton label="Carica XLSX" accept=".xlsx,.xls" onFiles={(fl) => addFiles('LISTINO_XLSX', fl)} /><UploadButton label="Carica PDF" accept="application/pdf" onFiles={(fl) => addFiles('LISTINO_PDF', fl)} /></div>}>
           {fileList(['LISTINO_XLSX', 'LISTINO_PDF'])}
-          <div className="small muted" style={{ marginTop: 8 }}>Il listino in XLSX serve al cliente e al gestionale, il PDF è l'allegato della proposta. I nomi dei file compaiono nell'Allegato 2.</div>
+          <div className="small muted" style={{ marginTop: 8 }}>Il listino in XLSX serve al cliente e al gestionale, il PDF è l'allegato della proposta. I nomi dei file compaiono nell'Allegato 1 "Elenco delle analisi, prezzi e condizioni economiche", con la tabella dei prezzi del listino corrente dell'account (scheda Listino e offerta) quando c'è.</div>
         </Card>
-        <Card title="Logistica dei ritiri (Allegato 3)" className="mt">
+        <Card title="Logistica dei ritiri (Allegato 2)" className="mt">
+          <div className="small muted" style={{ marginBottom: 8 }}>Campi vuoti: nel documento vanno i valori in grigio, dalla {rit.fonte === 'SEDE_OPERATIVA' ? 'sede operativa indicata sopra' : 'sede legale della Legal entity'}{existing.data?.referente_principale ? ' e dal referente principale dell\'account' : ''}.</div>
           <div className="form-grid">
-            <Field label="Sede di ritiro (denominazione)"><input value={d.pickup.site || ''} onChange={(e) => setD('pickup.site', e.target.value)} /></Field>
-            <Field label="Indirizzo"><input value={d.pickup.street || ''} onChange={(e) => setD('pickup.street', e.target.value)} /></Field>
-            <Field label="Città"><input value={d.pickup.city || ''} onChange={(e) => setD('pickup.city', e.target.value)} /></Field>
-            <Field label="Persona referente del cliente"><input value={d.pickup.contact || ''} onChange={(e) => setD('pickup.contact', e.target.value)} /></Field>
-            <Field label="Telefono referente"><input value={d.pickup.phone || ''} onChange={(e) => setD('pickup.phone', e.target.value)} /></Field>
-            <Field label="E-mail referente"><input value={d.pickup.email || ''} onChange={(e) => setD('pickup.email', e.target.value)} /></Field>
-            {partner && <div className="span2"><button className="btn sm ghost" onClick={() => setF({ ...f, data: { ...d, pickup: { ...d.pickup, site: d.site_name || partner.name, street: partner.street || '', city: partner.city || '', contact: partner.svc_contact || '', phone: partner.svc_mobile || partner.phone || '', email: partner.svc_email || partner.email || '' } } })}>Usa i riferimenti dell'organizzazione</button></div>}
+            <Field label="Sede di ritiro (denominazione)"><input value={d.pickup.site || ''} placeholder={rit.site} onChange={(e) => setD('pickup.site', e.target.value)} /></Field>
+            <Field label="Indirizzo"><input value={d.pickup.street || ''} placeholder={rit.street} onChange={(e) => setD('pickup.street', e.target.value)} /></Field>
+            <Field label="Città"><input value={d.pickup.city || ''} placeholder={rit.city} onChange={(e) => setD('pickup.city', e.target.value)} /></Field>
+            <Field label="Persona referente del cliente"><input value={d.pickup.contact || ''} placeholder={rit.contact} onChange={(e) => setD('pickup.contact', e.target.value)} /></Field>
+            <Field label="Telefono referente"><input value={d.pickup.phone || ''} placeholder={rit.phone} onChange={(e) => setD('pickup.phone', e.target.value)} /></Field>
+            <Field label="E-mail referente"><input value={d.pickup.email || ''} placeholder={rit.email} onChange={(e) => setD('pickup.email', e.target.value)} /></Field>
+            {partner && <div className="span2"><button type="button" className="btn sm ghost" onClick={() => setF({ ...f, data: { ...d, pickup: { ...d.pickup, ...Object.fromEntries(['site', 'street', 'city', 'contact', 'phone', 'email'].map((k) => [k, (d.pickup[k] || '').trim() ? d.pickup[k] : rit[k]])) } } })}>Precompila i campi vuoti</button></div>}
           </div>
           <table className="t" style={{ marginTop: 12 }}>
             <thead><tr><th>Giorno</th><th>Modalità</th><th>Dalle ore</th><th>Alle ore</th><th /></tr></thead>
@@ -168,7 +177,7 @@ export default function ContractForm() {
           </table>
           <div className="small muted" style={{ marginTop: 6 }}>L'orario "alle ore" è facoltativo: con il solo orario iniziale l'allegato riporta "ore 10:00", con entrambi "10:00-12:00".</div>
         </Card>
-        <PrivacyCard d={d} setD={setD} annex="Allegato 8" />
+        <PrivacyCard d={d} setD={setD} annex="Allegato 7" partner={partner} />
       </>}
 
       {kind === 'MDL' && <>
@@ -188,7 +197,7 @@ export default function ContractForm() {
           {fileList(['LISTINO_XLSX', 'LISTINO_PDF'])}
           <div className="small muted" style={{ marginTop: 8 }}>Il listino in XLSX serve al cliente e al gestionale, il PDF è l'allegato della proposta. I nomi dei file compaiono nell'Allegato 1.</div>
         </Card>
-        <PrivacyCard d={d} setD={setD} annex="Allegato 3" />
+        <PrivacyCard d={d} setD={setD} annex="Allegato 3" partner={partner} />
       </>}
 
       {kind === 'SEDE' && <>
@@ -220,9 +229,17 @@ export default function ContractForm() {
 }
 
 function CommercialFields({ d, setD, S, partner }) {
+  // Termini di pagamento: tendina con le voci standard (format.js), "Altro (specificare)" apre il campo libero, un valore salvato fuori
+  // elenco resta come "(valore attuale)"; vuoto = testo predefinito delle Impostazioni
+  const [altro, setAltro] = useState(false);
+  const pag = opzioniPagamento(d.payment_terms, { predefinito: S.payment_terms_default, altro });
+  const scegli = (v) => { if (v === PAGAMENTO_ALTRO) { setAltro(true); setD('payment_terms', ''); } else { setAltro(false); setD('payment_terms', v); } };
   return (
     <div className="form-grid">
-      <Field label="Termini di pagamento" help="vuoto: testo predefinito"><input value={d.payment_terms || ''} onChange={(e) => setD('payment_terms', e.target.value)} placeholder={S.payment_terms_default} /></Field>
+      <Field label="Termini di pagamento" className="span2" help={pag.altro ? 'scrivi i termini concordati' : 'voce standard; "Altro" per un testo libero'}>
+        <select value={pag.scelta} onChange={(e) => scegli(e.target.value)}>{pag.opzioni.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+      </Field>
+      {pag.altro && <Field label="Termini di pagamento (testo libero)" className="span2"><input autoFocus value={d.payment_terms || ''} onChange={(e) => setD('payment_terms', e.target.value)} placeholder="es. Bonifico bancario 90 gg f.m. data fattura" /></Field>}
       <Field label="Esenzione IVA art. 10 n. 18 D.P.R. 633/1972" className="span2">
         <div className="seg wrap">{[[true, 'Prestazione esente'], [false, 'Prestazione imponibile'], [null, 'Da dichiarare dal cliente']].map(([v, l]) => <label key={String(v)} className={d.vat_exemption === v ? 'on' : ''}><input type="radio" checked={d.vat_exemption === v} onChange={() => setD('vat_exemption', v)} />{l}</label>)}</div>
       </Field>
@@ -245,15 +262,18 @@ function FileList({ cats, files, pending, onRemovePending, onRemove }) {
   );
 }
 
-function PrivacyCard({ d, setD, annex }) {
+function PrivacyCard({ d, setD, annex, partner }) {
   const p = d.privacy || {};
+  // "Responsabile per conto di un Committente": il Nominativo del Committente vuoto si precompila con la ragione sociale della Legal
+  // entity controparte (richiesta del CEO del 07/11/2026), modificabile; vuoto anche nel documento vale la ragione sociale
+  const ruolo = (v) => { setD('privacy.role', v); if (v === 'RESPONSABILE' && !(p.principal || '').trim() && partner?.name) setD('privacy.principal', partner.name); };
   return (
     <Card title={`Ruolo privacy del cliente (art. 28 GDPR, ${annex})`} className="mt">
       <div className="form-grid">
         <Field label="Il cliente tratta i dati dei pazienti come" className="span2">
-          <div className="seg">{[['TITOLARE', 'Titolare del trattamento'], ['RESPONSABILE', 'Responsabile per conto di un Committente']].map(([v, l]) => <label key={v} className={p.role === v ? 'on' : ''}><input type="radio" checked={p.role === v} onChange={() => setD('privacy.role', v)} />{l}</label>)}</div>
+          <div className="seg">{[['TITOLARE', 'Titolare del trattamento'], ['RESPONSABILE', 'Responsabile per conto di un Committente']].map(([v, l]) => <label key={v} className={p.role === v ? 'on' : ''}><input type="radio" checked={p.role === v} onChange={() => ruolo(v)} />{l}</label>)}</div>
         </Field>
-        {p.role === 'RESPONSABILE' && <Field label="Nominativo del Committente" className="span2"><input value={p.principal || ''} onChange={(e) => setD('privacy.principal', e.target.value)} /></Field>}
+        {p.role === 'RESPONSABILE' && <Field label="Nominativo del Committente" className="span2" help="vuoto: ragione sociale della Legal entity controparte"><input value={p.principal || ''} placeholder={partner?.name || ''} onChange={(e) => setD('privacy.principal', e.target.value)} /></Field>}
         <Field label="Ulteriori misure di sicurezza richieste dal cliente" className="span2" help="vuoto: NO"><input value={p.measures || ''} onChange={(e) => setD('privacy.measures', e.target.value)} /></Field>
         <Field label="DPO del cliente (nominativo)"><input value={p.dpo_name || ''} onChange={(e) => setD('privacy.dpo_name', e.target.value)} /></Field>
         <Field label="DPO del cliente (contatto)"><input value={p.dpo_contact || ''} onChange={(e) => setD('privacy.dpo_contact', e.target.value)} /></Field>

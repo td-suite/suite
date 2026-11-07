@@ -99,7 +99,11 @@ input[type=checkbox], input[type=radio] { width: 16px; height: 16px; min-height:
 .seg { display: inline-flex; border: 1px solid #c9d7da; border-radius: 8px; overflow: hidden; max-width: 100%; }
 .seg.wrap { flex-wrap: wrap; }
 .seg.wrap label { border-bottom: 1px solid #c9d7da; margin-bottom: -1px; }
-.seg label { display: flex; align-items: center; gap: 6px; padding: 6px 12px; white-space: nowrap; height: 36px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-right: 1px solid #c9d7da; }
+/* Segmented control (07/11/2026, "errore grafico nel pulsante Responsabile per conto di un Committente"): dentro un campo era stirato a
+   tutta la larghezza della colonna (riquadro vuoto a destra delle voci) e con le voci su una riga sola il testo sbordava ed era tagliato
+   quando la colonna è stretta. Ora è largo quanto le voci e una voce lunga va a capo dentro il suo bottone. */
+label.f > .seg { align-self: flex-start; }
+.seg label { display: flex; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 6px 12px; white-space: normal; line-height: 1.25; min-height: 36px; min-width: 0; flex: 0 1 auto; box-sizing: border-box; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-right: 1px solid #c9d7da; }
 .seg label:last-child { border-right: 0; }
 .seg label.on { background: var(--teal); color: #fff; }
 .seg input { display: none; }
@@ -482,3 +486,9 @@ label.btn { cursor: pointer; }
 :root[data-theme="dark"] .cens, :root[data-theme="dark"] .kcard, :root[data-theme="dark"] .pipe-apri { background: var(--card, #142a30); }
 :root[data-theme="dark"] .kcol { background: rgba(255,255,255,.04); }
 :root[data-theme="dark"] .cens .cg { background: rgba(255,255,255,.04); }
+
+/* Impostazioni, Firmatario dei contratti: anteprima della firma su scacchiera (si vede la trasparenza del PNG) */
+.firma-anteprima { display: inline-flex; flex-direction: column; gap: 6px; }
+.firma-anteprima img { max-width: 320px; max-height: 120px; object-fit: contain; border: 1px solid #c9d7da; border-radius: 8px; padding: 8px;
+  background-color: #fff; background-image: linear-gradient(45deg, #eef2f3 25%, transparent 25%), linear-gradient(-45deg, #eef2f3 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eef2f3 75%), linear-gradient(-45deg, transparent 75%, #eef2f3 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }

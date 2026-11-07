@@ -65,6 +65,7 @@ da `getCompany()`.
 | business | Impostazioni | lab_address, lr_*, ds_* (altri), rspp, rls, mc, protocolli, testi | SPECIFICO | Legale rappresentante, titoli del DS, sicurezza, contratti. |
 | business | Impostazioni (Business Hub) | hub_stallo_giorni, hub_ordini_giorni, hub_casella_*, hub_lettura_*, hub_cc_* | SPECIFICO | Soglie del CRM e caselle di linea (06/11/2026, docs/BUSINESS_HUB.md). |
 | business | Impostazioni (Business Hub) | hub_pp_dest_*, hub_pp_dotazione_elenco | SPECIFICO | Processo Punti Prelievo: destinatari interni dell'avvio del punto prelievi ed elenco della dotazione (06/11/2026). |
+| business | Impostazioni (Firmatario dei contratti) | firma_nome, firma_qualifica, tabella firma_td | SPECIFICO | Firmatario di TD nei blocchi firme di MOD230 e MOD231 (vuoti = lr_name, lr_role) e immagine della firma apposta nel PDF (07/11/2026). |
 | cash | Impostazioni | default_cash_float | SPECIFICO | Fondo cassa predefinito di una sede nuova, letto dal Business Hub per l'email all'amministrazione quando la sede non è ancora configurata in Cash (06/11/2026). |
 | business | accounts | anagrafica commerciale del DB Opportunità (tipologia, segmento, fornitore, priorità, fasi, valori) | SPECIFICO | Ragione sociale, indirizzo, email, PEC e telefono restano della Legal entity (`public.organizations`). |
 | finance | Impostazioni | company_name | CABLATO -> core | `legal_name`; in sola lettura. |
@@ -264,3 +265,18 @@ interna, avvio al laboratorio, dotazione, fondo cassa e POS, rifiuti speciali) c
 partner sono in `b2b.allegati` (linea PP). Cash > Impostazioni: `default_cash_float` (vuoto = "da definire"), usato solo se la sede
 del punto non è configurata in Cash. Job `business:avvio-pp` (ogni 30 minuti, modulo LIVE): riprende i passi in attesa della sede o della
 data; i passi non riusciti aspettano "Riprova". Migrazione: business 011_pp_flow.sql.
+
+## Business Hub: firmatario dei contratti (07/11/2026)
+Business Hub > Impostazioni > "Firmatario dei contratti" (Admin del modulo). `firma_nome` e `firma_qualifica` (`business.app_settings`,
+predefiniti vuoti = `lr_name` e `lr_role` del legale rappresentante; si salvano con "Salva impostazioni") compaiono nei tre blocchi firme
+di Toscana Diagnostica della lettera di offerta Service (MOD230) e Medicina del Lavoro (MOD231). L'immagine della firma (PNG con sfondo
+trasparente o JPG, al massimo 1 MB; tipo riconosciuto dai primi byte, dimensioni lette con pdf-lib) sta nella tabella `business.firma_td`
+(una riga, archivio a due vie come i documenti: Azure Blob se configurato, altrimenti bytea) e si carica, sostituisce e rimuove subito,
+con anteprima: `GET /api/business/settings/firma` (metadati e firmatario in uso), `GET /api/business/settings/firma/immagine`,
+`POST /api/business/settings/firma` (multipart `file`), `DELETE /api/business/settings/firma`; registro `SETTINGS_FIRMA`,
+`SETTINGS_FIRMA_RIMOSSA`. Nessuna firma caricata = PDF senza firma (il DOCX resta sempre con lo spazio vuoto). Migrazione: business
+013_firma_td.sql. Dettagli in docs/BUSINESS_HUB.md, "Contratto Service MOD230".
+
+Termini di pagamento delle lettere di offerta: le voci della tendina sono nel codice (`web/src/modules/business/format.js`,
+`TERMINI_PAGAMENTO`), non in Impostazioni: sono le voci standard del format. `payment_terms_default` resta il testo usato quando il
+campo del contratto è vuoto (prima voce della tendina, "Predefinito: ...").

@@ -10,6 +10,8 @@ import { config } from '../config.js';
 import { pdfAvailable } from '../lib/docgen.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
+import multer from 'multer';
+import { infoFirma, leggiFirma, salvaFirma, rimuoviFirma, firmatario, FIRMA_MAX_BYTES } from '../lib/firmaTd.js';
 
 const r = Router();
 
@@ -35,6 +37,7 @@ r.put('/settings', requireAdmin, ah(async (req, res) => {
     if ((['hub_dest_contrattualizzazione', 'hub_dest_laboratorio', 'hub_richiamo_recapiti'].includes(k) || /^hub_pp_dest_/.test(k)) && v.split(/[,;\s]+/).filter(Boolean).some((x) => !emailValida(x))) throw bad(`${k}: c'è un indirizzo non valido`);
     if (k === 'hub_pp_dotazione_elenco' && v.length > 2000) throw bad('Elenco della dotazione: al massimo 2000 caratteri');
     if (k === 'hub_richiamo_attivo' && !['true', 'false'].includes(v)) throw bad('Interruttore del richiamo: true o false');
+    if (k === 'hub_accessi_portale' && !['TUTTI', 'PRINCIPALE'].includes(v)) throw bad('Accessi al portale: TUTTI o PRINCIPALE');
     if (CORE_KEYS.includes(k)) continue;   // dati aziendali: si modificano in Amministrazione > Impostazioni > Dati aziendali
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }
@@ -42,6 +45,36 @@ r.put('/settings', requireAdmin, ah(async (req, res) => {
   const keys = Object.keys(body).filter((k) => !/_(birth|residence|tax_code)/.test(k));
   await audit(req, 'SETTINGS_UPDATE', 'settings', null, { keys });
   res.json({ ok: true });
+}));
+
+// ---------------- Firma del firmatario dei contratti (07/11/2026) ----------------
+// Immagine PNG o JPG fino a 1 MB, apposta nel PDF dei contratti SRV e MDL (lib/firmaTd.js, lib/contrattoPdf.js). Nome e qualifica
+// sono le impostazioni firma_nome e firma_qualifica (vuote = legale rappresentante), salvate con PUT /settings.
+const caricaFirma = multer({ storage: multer.memoryStorage(), limits: { fileSize: FIRMA_MAX_BYTES, files: 1 } }).single('file');
+r.get('/settings/firma', ah(async (_req, res) => {
+  const s = await getSettings();
+  res.json({ firma: await infoFirma(), firmatario: firmatario(s) });
+}));
+r.get('/settings/firma/immagine', ah(async (_req, res) => {
+  const f = await leggiFirma();
+  if (!f) throw notFound('Nessuna firma caricata');
+  res.setHeader('Content-Type', f.mime);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(f.buffer);
+}));
+r.post('/settings/firma', requireAdmin, (req, res, next) => caricaFirma(req, res, (e) => {
+  if (e?.code === 'LIMIT_FILE_SIZE') return next(bad('Immagine della firma oltre 1 MB'));
+  return next(e);
+}), ah(async (req, res) => {
+  const f = await salvaFirma(req.file, req.user.id);
+  await audit(req, 'SETTINGS_FIRMA', 'settings', null, { filename: f.filename, size: f.size, sha256: f.sha256 });
+  res.json({ firma: f, firmatario: firmatario(await getSettings()) });
+}));
+r.delete('/settings/firma', requireAdmin, ah(async (req, res) => {
+  const c = await rimuoviFirma();
+  if (c) await audit(req, 'SETTINGS_FIRMA_RIMOSSA', 'settings', null);
+  res.json({ firma: null, firmatario: firmatario(await getSettings()) });
 }));
 
 // ---------------- Organizzazioni e sedi (anagrafica unica della Suite) ----------------

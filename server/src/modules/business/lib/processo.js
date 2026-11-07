@@ -398,7 +398,7 @@ Un cordiale saluto,
 Toscana Diagnostica`,
   lettera_presentazione: `Gentile {{referente}},
 
-con questa lettera desidero presentarvi Toscana Diagnostica e invitarvi a diventare nostri clienti. Nelle pagine che seguono, preparate per {{cliente}}, trovate chi siamo, il portale che i nostri clienti usano ogni giorno e le persone a cui rivolgervi.
+con questa lettera desidero presentarvi Toscana Diagnostica e invitarvi a diventare nostri clienti. Nelle pagine che seguono, dedicate a {{cliente}}, trovate chi siamo, il portale che i nostri clienti usano ogni giorno e le persone a cui rivolgervi.
 
 Toscana Diagnostica è una rete sanitaria integrata nata nell'aprile 2026 in Toscana. Riunisce il Laboratorio di Analisi, la Diagnostica per Immagini, la Medicina Specialistica e la Medicina del Lavoro sotto un'unica direzione e un unico sistema di regole. Il principio che ci guida è semplice: ci prendiamo cura del tempo dei pazienti, lì dove ogni minuto conta. Per una struttura che ci affida i propri campioni questo significa risultati affidabili, nei tempi dichiarati, e un interlocutore che risponde.
 
@@ -543,6 +543,37 @@ export function modelliFlussoDa(salvati) {
 }
 
 /** Blocco dei contatti in testo (email): "- Ruolo: Nome · email · telefono (nota)". */
+// ---------------------------------------------------------------- accessi al portale per tutti i referenti
+// Richiesta del CEO del 07/11/2026: "crea gli accessi al portale per tutti i referenti inclusi in anagrafica". Impostazione
+// hub_accessi_portale: TUTTI (predefinito: ogni referente con email) o PRINCIPALE (solo il referente principale, come prima).
+export const ACCESSI_PORTALE = { TUTTI: 'Tutti i referenti con email', PRINCIPALE: 'Solo il referente principale' };
+export const accessiPerTutti = (s = {}) => String(s.hub_accessi_portale || 'TUTTI').toUpperCase() !== 'PRINCIPALE';
+const EMAIL_ACCESSO = /^[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}$/i;
+/**
+ * Piano degli accessi della Legal entity per i referenti dell'account (pura): per ogni referente { contatto_id, nome, ruolo, email,
+ * principale, esito, motivo, user_id }. esito: HA_ACCESSO (utente esterno della Legal entity con quell'email), DA_CREARE, SALTATO
+ * (senza email, email non valida, email ripetuta in un altro referente). soloPrincipale: gli altri referenti restano fuori (SALTATO).
+ * contatti: [{ id, nome, ruolo, email, principale }]; accessi: utenti esterni della Legal entity [{ id, email }].
+ */
+export function pianoAccessi({ contatti = [], accessi = [], soloPrincipale = false } = {}) {
+  const perEmail = new Map(accessi.map((u) => [String(u.email || '').trim().toLowerCase(), u]));
+  const viste = new Set();
+  const ordinati = [...contatti].sort((x, y) => Number(Boolean(y.principale)) - Number(Boolean(x.principale)) || Number(x.id) - Number(y.id));
+  const principaleId = ordinati.find((c) => String(c.email || '').trim())?.id ?? null;
+  return ordinati.map((c) => {
+    const email = String(c.email || '').trim().toLowerCase();
+    const base = { contatto_id: c.id, nome: c.nome || '', ruolo: c.ruolo || null, email: email || null, principale: Boolean(c.principale), user_id: null };
+    if (!email) return { ...base, esito: 'SALTATO', motivo: 'senza email' };
+    if (!EMAIL_ACCESSO.test(email)) return { ...base, esito: 'SALTATO', motivo: 'email non valida' };
+    if (viste.has(email)) return { ...base, esito: 'SALTATO', motivo: 'stessa email di un altro referente' };
+    viste.add(email);
+    const u = perEmail.get(email);
+    if (u) return { ...base, esito: 'HA_ACCESSO', motivo: null, user_id: u.id };
+    if (soloPrincipale && c.id !== principaleId) return { ...base, esito: 'SALTATO', motivo: 'impostazione "solo il referente principale"' };
+    return { ...base, esito: 'DA_CREARE', motivo: null };
+  });
+}
+
 export function referentiTesto(voci = []) {
   return voci.map((v) => `- ${v.ruolo}: ${[v.nome, v.email, v.telefono].filter(Boolean).join(' · ')}${v.nota ? ` (${v.nota})` : ''}`).join('\n');
 }

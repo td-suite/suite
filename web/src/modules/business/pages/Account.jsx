@@ -331,15 +331,46 @@ function FeedCircolari({ a }) {
     </Card>
   );
 }
+// Accessi esterni e referenti senza accesso (richiesta del CEO del 07/11/2026: "crea gli accessi al portale per tutti i referenti
+// inclusi in anagrafica"): per ogni referente con email senza accesso "Crea accesso", in alto "Crea gli accessi per tutti i referenti"
+// (conferma, invito a ciascuno con la password provvisoria, nessuna copia, esito riga per riga, attività nel diario)
+const ESITO_ACC = { CREATO: ['green', 'creato'], HA_ACCESSO: ['teal', 'ha già l\'accesso'], SALTATO: ['grey', 'saltato'], ERRORE: ['red', 'non creato'] };
 function FeedPortale({ a }) {
+  const toast = useToast();
   const f = useFeed(a, 'portale');
+  const p = useApi(`/hub/accounts/${a.id}/accessi`);
+  const [conferma, setConferma] = useState(false);
+  const [esito, setEsito] = useState(null);
+  const [busy, setBusy] = useState(null);
   if (!f.data) return f.error ? <ErrorBox error={f.error} /> : <Loading />;
+  const senza = (p.data?.righe || []).filter((r) => r.esito !== 'HA_ACCESSO');
+  const daCreare = senza.filter((r) => r.esito === 'DA_CREARE');
+  const edit = p.data?.puo_modificare;
+  const crea = async (body) => {
+    const r = await api.post(`/hub/accounts/${a.id}/accessi`, body);
+    setEsito(r); f.reload?.(); p.reload();
+    toast(r.creati ? `${r.creati} ${r.creati === 1 ? 'accesso creato' : 'accessi creati'}: invito con la password provvisoria a ciascuno` : 'Nessun accesso da creare');
+    return r;
+  };
+  const una = async (r) => { setBusy(r.contatto_id); try { await crea({ contatto_ids: [r.contatto_id] }); } catch (e) { toast(e.message, 'err'); } finally { setBusy(null); } };
   return (
-    <Card title="Accessi esterni della Legal entity al Portale" flush>
-      {f.data.righe.length ? <table className="t"><thead><tr><th>Utente</th><th>Stato</th><th>Ultimo accesso</th><th>Ultima consultazione</th></tr></thead><tbody>
-        {f.data.righe.map((u) => <tr key={u.id}><td><div className="strong">{u.full_name}</div><div className="small muted">{u.email}</div></td><td className="small">{u.status}</td><td className="small">{u.last_login_at ? itDateTime(u.last_login_at) : <span className="muted">mai</span>}</td><td className="small">{u.ultima_lettura ? itDateTime(u.ultima_lettura) : '–'}</td></tr>)}
-      </tbody></table> : <Empty>Nessun accesso esterno: si crea dalla scheda Legal entity in Amministrazione.</Empty>}
-    </Card>
+    <>
+      <Card title="Accessi esterni della Legal entity al Portale" flush actions={edit && daCreare.length > 0 && <button className="btn sm" onClick={() => setConferma(true)}><Icon name="plus" />Crea gli accessi per tutti i referenti ({daCreare.length})</button>}>
+        <table className="t"><thead><tr><th>Utente</th><th>Stato</th><th>Ultimo accesso</th><th>Ultima consultazione</th></tr></thead><tbody>
+          {f.data.righe.map((u) => <tr key={u.id}><td><div className="strong">{u.full_name}</div><div className="small muted">{u.email}</div></td><td className="small">{u.status}</td><td className="small">{u.last_login_at ? itDateTime(u.last_login_at) : <span className="muted">mai</span>}</td><td className="small">{u.ultima_lettura ? itDateTime(u.ultima_lettura) : '–'}</td></tr>)}
+          {senza.map((r) => <tr key={`c${r.contatto_id}`} className="muted-row"><td><div className="strong">{r.nome || r.email || 'Referente'}{r.principale && <> <Badge tone="teal">principale</Badge></>}</div><div className="small muted">{r.email || 'nessuna email'}{r.ruolo ? ` · ${r.ruolo}` : ''}</div></td>
+            <td className="small"><Badge tone="grey">senza accesso</Badge>{r.esito === 'SALTATO' && <div className="muted">{r.motivo}</div>}</td>
+            <td colSpan={2} className="small">{edit && r.esito === 'DA_CREARE' && <button className="btn sm ghost" disabled={busy === r.contatto_id} onClick={() => una(r)}><Icon name="plus" />{busy === r.contatto_id ? 'Creazione…' : 'Crea accesso'}</button>}</td></tr>)}
+          {!f.data.righe.length && !senza.length && <tr><td colSpan={4}><Empty>Nessun accesso esterno e nessun referente: aggiungi i referenti nella scheda Referenti.</Empty></td></tr>}
+        </tbody></table>
+        <div className="small muted" style={{ padding: '8px 12px' }}>Un accesso per ogni referente con email (scheda Referenti): invito dalla casella della linea con la password provvisoria, senza copie. Prima della firma senza widget; dopo la contrattualizzazione con il profilo della linea. Al kit di proposta e alla contrattualizzazione si creano da soli per tutti i referenti ({p.data?.impostazione === 'PRINCIPALE' ? 'impostazione attuale: solo il principale' : 'impostazione attuale: tutti i referenti'}, Business Hub &gt; Impostazioni).</div>
+      </Card>
+      {esito && <Card title="Esito della creazione degli accessi" className="mt" flush actions={<button className="btn sm ghost" onClick={() => setEsito(null)}>Chiudi</button>}>
+        <table className="t"><tbody>{esito.righe.map((r) => <tr key={r.contatto_id}><td><div className="strong">{r.nome || r.email || 'Referente'}</div><div className="small muted">{r.email || 'nessuna email'}</div></td><td><Badge tone={ESITO_ACC[r.esito]?.[0]}>{ESITO_ACC[r.esito]?.[1] || r.esito}</Badge></td><td className="small">{r.motivo || (r.invito ? `invito ${String(r.invito).toLowerCase()}` : '')}</td></tr>)}</tbody></table>
+        {esito.password_provvisorie?.length > 0 && <div className="alert warn small" style={{ margin: 12 }}>Posta in modalità registro: gli inviti non partono. Password provvisorie da comunicare: {esito.password_provvisorie.map((x) => `${x.email} ${x.password}`).join(' · ')}</div>}
+      </Card>}
+      {conferma && <ConfirmModal title="Crea gli accessi per tutti i referenti" text={`Si creano ${daCreare.length} accessi al portale (${daCreare.map((r) => r.email).join(', ')}): ciascuno riceve l'invito con la password provvisoria da ${a.casella || 'la casella della linea'}, senza copie. Chi ha già l'accesso resta com'è; i referenti senza email si saltano.`} confirmText="Crea gli accessi" onClose={() => setConferma(false)} onConfirm={() => crea({ tutti: true })} />}
+    </>
   );
 }
 

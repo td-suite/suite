@@ -9,6 +9,7 @@ import Docxtemplater from 'docxtemplater';
 import { config } from '../config.js';
 import { itDate, itDateTime } from './util.js';
 import { feeItems, yearsWords, eur, pct } from './rules.js';
+import { ritiroPerDocumento, committente, righeListino, riferimentoPolitica } from './mod230.js';
 
 const TPL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
 const CHK = (b) => (b ? '☒' : '☐');
@@ -95,9 +96,13 @@ function partnerData(p, prefix) {
   };
 }
 
-export function contractData(c, p, s) {
+// extra (contratti SRV, 07/11/2026): { referente: referente principale dell'account { nome, telefono, email } per l'Allegato 2,
+// listino: versione corrente del listino dell'account { righe } per l'Allegato 1, politica: { doc, inCoda } per l'Allegato 8 }
+export function contractData(c, p, s, extra = {}) {
   const d = c.data || {};
   const base = baseData(s);
+  // firmatario di TD nei blocchi firme di MOD230 e MOD231 (Impostazioni, "Firmatario dei contratti"; vuoto = legale rappresentante)
+  const firma = { firma_nome: String(s.firma_nome || '').trim() || s.lr_name, firma_ruolo: String(s.firma_qualifica || '').trim() || s.lr_role };
   const common = { protocol: c.protocol || 'bozza', proposal_date: itDate(c.proposal_date), trace_line: trace(c, 'Proposta') };
   if (c.kind === 'PP') {
     const site = c.site || {};
@@ -117,7 +122,8 @@ export function contractData(c, p, s) {
   const privacy = d.privacy || {};
   const priv = {
     priv_owner: CHK(privacy.role === 'TITOLARE'), priv_processor: CHK(privacy.role === 'RESPONSABILE'),
-    priv_principal: privacy.role === 'RESPONSABILE' ? nz(privacy.principal, '__________') : '-',
+    // Nominativo del Committente: vuoto = ragione sociale della Legal entity controparte (richiesta del CEO del 07/11/2026)
+    priv_principal: committente(privacy, p),
     priv_measures_no: CHK(!privacy.measures), priv_measures_yes: CHK(Boolean(privacy.measures)), priv_measures: nz(privacy.measures),
     priv_dpo_name: nz(privacy.dpo_name, '-'), priv_dpo_contact: nz(privacy.dpo_contact, '-'),
   };
@@ -134,17 +140,25 @@ export function contractData(c, p, s) {
       const time = day.time_from ? (day.time_to ? `${day.time_from}-${day.time_to}` : `ore ${day.time_from}`) : '';
       dd[`d${i + 1}_fixed`] = CHK(day.mode === 'FISSO'); dd[`d${i + 1}_oncall`] = CHK(day.mode === 'CHIAMATA'); dd[`d${i + 1}_time`] = day.mode && day.mode !== 'NO' ? time : (day.mode === 'NO' ? 'Nessun ritiro' : '');
     }
+    // Allegato 2 (ritiro campioni): i campi vuoti prendono la sede operativa del contratto se indicata, altrimenti la sede legale
+    // della Legal entity, e il referente principale dell'account (lib/mod230.js)
+    const rt = ritiroPerDocumento(pk, d, p, extra.referente || null);
+    // Allegato 1: tabella dei prezzi dell'offerta dal listino corrente dell'account, se c'è
+    const righe = righeListino(extra.listino?.righe || []);
     return {
-      ...base, ...common, ...client, ...priv, ...dd,
+      ...base, ...common, ...client, ...priv, ...dd, ...firma,
       site_name: nz(d.site_name, p.name), site_address: nz(d.site_address, [p.street, p.zip, p.city, p.prov ? `(${p.prov})` : ''].filter(Boolean).join(', ')),
       client_ds: nz(d.client_ds, '____________________________'),
-      pickup_site: nz(pk.site, d.site_name || p.name), pickup_street: nz(pk.street), pickup_city: nz(pk.city), pickup_contact: nz(pk.contact), pickup_contact_ref: [pk.phone, pk.email].filter(Boolean).join(' / '),
+      pickup_site: nz(rt.site), pickup_street: nz(rt.street), pickup_city: nz(rt.city), pickup_contact: nz(rt.contact), pickup_contact_ref: [rt.phone, rt.email].filter(Boolean).join(' / '),
       sol1: CHK(d.interface_solution === 1), sol2: CHK(d.interface_solution === 2), sol3: CHK(d.interface_solution === 3),
+      ha_listino: righe.length > 0, listino_righe: righe,
+      listino_intro: righe.length ? `Prezzi dell'offerta riservati al Cliente (${righe.length} ${righe.length === 1 ? 'esame' : 'esami'}):` : '',
+      politica_riferimento: riferimentoPolitica(extra.politica?.doc || null, { inCoda: Boolean(extra.politica?.inCoda) }),
     };
   }
   // MDL
   return {
-    ...base, ...common, ...client, ...priv,
+    ...base, ...common, ...client, ...priv, ...firma,
     service_email: nz(d.service_email, '______________'), service_contact: nz(d.service_contact, '______________'), service_phone: nz(d.service_phone, '__________'),
     invoice_email: nz(d.invoice_email, p.pec || '______________'), doctor_email: nz(d.doctor_email, '______________'),
   };

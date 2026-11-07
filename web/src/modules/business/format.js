@@ -108,3 +108,55 @@ export const VOCABOLARI = {
 };
 // Discipline: scelta multipla, salvate come elenco separato da virgola
 export const DISCIPLINE = ['analisi cliniche', 'prelievi', 'anatomia patologica', 'diagnostica per immagini', 'specialistica ambulatoriale', 'polispecialistica', 'fisioterapia, riabilitazione', 'medicina dello sport', 'medicina del lavoro', 'medicina estetica', 'chirurgia', 'ortopedia', 'psichiatria', 'lungodegenza', 'residenziale anziani', 'residenziale anziani non autosufficienti', 'centro diurno', 'disabilità'];
+
+// Termini di pagamento delle lettere di offerta (MOD230 Service, MOD231 MdL), tendina chiesta dal CEO il 07/11/2026. L'elenco sta qui
+// (non in Impostazioni) perché sono le voci standard del format; il testo predefinito delle Impostazioni (payment_terms_default) resta
+// il valore usato quando il campo è vuoto. "Altro (specificare)" apre il campo libero; un valore già salvato che non coincide con una
+// voce resta selezionabile come "(valore attuale)".
+export const TERMINI_PAGAMENTO = [
+  'Bonifico bancario 30 gg f.m. data fattura',
+  'Bonifico bancario 60 gg f.m. data fattura',
+  'Bonifico bancario a vista fattura',
+  'RID/SDD 30 gg f.m.',
+];
+export const PAGAMENTO_ALTRO = '__altro__';
+/**
+ * Stato della tendina per il valore salvato: { scelta, opzioni: [{ value, label }], altro }.
+ * scelta '' = predefinito delle Impostazioni (campo vuoto), una voce dell'elenco, il valore attuale fuori elenco o PAGAMENTO_ALTRO
+ * (testo libero in corso di scrittura: `altro` = true).
+ */
+export function opzioniPagamento(valore, { predefinito = '', altro = false } = {}) {
+  const v = String(valore ?? '').trim();
+  const opzioni = [{ value: '', label: predefinito ? `Predefinito: ${predefinito}` : 'Predefinito delle Impostazioni' }, ...TERMINI_PAGAMENTO.map((t) => ({ value: t, label: t }))];
+  const fuori = v && !TERMINI_PAGAMENTO.includes(v);
+  if (fuori && !altro) opzioni.push({ value: v, label: `${v} (valore attuale)` });
+  opzioni.push({ value: PAGAMENTO_ALTRO, label: 'Altro (specificare)' });
+  return { scelta: altro ? PAGAMENTO_ALTRO : v, opzioni, altro: Boolean(altro) };
+}
+
+// Allegato 2 del MOD230 (ritiro campioni): valori proposti quando i campi sono vuoti. Stessa regola di
+// server/src/modules/business/lib/mod230.js (ritiroPredefinito), che li applica al documento generato: sede operativa del contratto se
+// indicata, altrimenti sede legale della Legal entity; referente, telefono ed e-mail dal referente principale dell'account.
+export function dividiIndirizzo(s) {
+  const t = String(s || '').trim().replace(/\s+/g, ' ');
+  if (!t) return { via: '', citta: '' };
+  const i = t.lastIndexOf(',');
+  if (i < 0) return { via: t, citta: '' };
+  const coda = t.slice(i + 1).trim(); const testa = t.slice(0, i).trim();
+  if (!/[A-Za-zÀ-ÿ]/.test(coda) || !testa) return { via: t, citta: '' };
+  return { via: testa, citta: coda };
+}
+export function ritiroPredefinito(d = {}, p = {}, r = null) {
+  const cittaDi = (x) => [x?.zip, x?.city].filter(Boolean).join(' ') + (x?.prov ? ` (${x.prov})` : '');
+  const operativa = Boolean(String(d.site_name || '').trim() || String(d.site_address || '').trim());
+  let site; let street; let city;
+  if (operativa) {
+    const ind = dividiIndirizzo(d.site_address);
+    site = String(d.site_name || '').trim() || p?.name || '';
+    street = ind.via || (d.site_address ? '' : p?.street || '');
+    city = ind.citta || (d.site_address ? '' : cittaDi(p));
+  } else {
+    site = p?.name || ''; street = p?.street || ''; city = cittaDi(p);
+  }
+  return { site, street, city, contact: r?.nome || '', phone: r?.telefono || '', email: r?.email || '', fonte: operativa ? 'SEDE_OPERATIVA' : 'SEDE_LEGALE' };
+}
