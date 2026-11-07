@@ -87,6 +87,16 @@ const trace = (c, label) => `${label} ${c.protocol || `#${c.id}`} · versione ${
 
 // ---------------- Contratti ----------------
 // p è la riga di orgs_v: dati anagrafici da public.organizations (name, vat, street, city, prov, pec, sdi) e campi Business da org_ext
+/** Termini di pagamento della lettera di offerta: UNICA fonte = Impostazioni Business della Legal entity (metodo + termine); se vuoti,
+ *  il predefinito delle Impostazioni. Il contratto non ha più un testo proprio (CEO, 07/11/2026: "collega questi due campi, non possono
+ *  esserci scritte cose diverse"; un valore storico con riferimenti a gestioni precedenti era finito in una lettera al cliente). */
+export function terminiPagamento(p = {}, s = {}) {
+  const metodo = String(p.pay_method || '').trim(); const termine = String(p.pay_terms || '').trim();
+  // un termine storico che contiene già il metodo ("Bonifico bancario 60 gg…") non lo ripete
+  const t = termine.toLowerCase().startsWith(metodo.toLowerCase()) && metodo ? termine : [metodo, termine].filter(Boolean).join(' ');
+  return t || s.payment_terms_default || '';
+}
+
 function partnerData(p, prefix) {
   return {
     [`${prefix}_name`]: p.name, [`${prefix}_street`]: nz(p.street), [`${prefix}_zip`]: nz(p.zip), [`${prefix}_city`]: nz(p.city), [`${prefix}_prov`]: nz(p.prov),
@@ -131,7 +141,7 @@ export function contractData(c, p, s, extra = {}) {
     : d.vat_exemption === false ? '☒ Il Cliente dichiara che la prestazione non rientra nell’esenzione IVA ex art. 10, n. 18 D.P.R. 633/1972: si applica l’IVA di legge'
       : 'Il Cliente dichiara se la prestazione sanitaria rientra nell’esenzione IVA ex art. 10, n. 18 D.P.R. 633/1972';
   const listClause = d.price_list_file ? `Listino allegato: ${d.price_list_file}.` : '';
-  const client = { ...partnerData(p, 'client'), client_bank: nz(p.bank_name, 'Istituto di Credito che vorrete indicarci'), payment_terms: nz(d.payment_terms, s.payment_terms_default), vat_exemption_clause: vatClause, price_list_clause: listClause };
+  const client = { ...partnerData(p, 'client'), client_bank: nz(p.bank_name, 'Istituto di Credito che vorrete indicarci'), payment_terms: terminiPagamento(p, s), vat_exemption_clause: vatClause, price_list_clause: listClause };
   if (c.kind === 'SRV') {
     const pk = d.pickup || {}; const days = pk.days || [];
     const dd = {};

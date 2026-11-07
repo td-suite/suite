@@ -22,6 +22,7 @@ import Exposure from './pages/Exposure.jsx';
 import ExposureSite from './pages/ExposureSite.jsx';
 import Sites from './pages/Sites.jsx';
 import SiteDetail from './pages/SiteDetail.jsx';
+import IntornoRilevazione from './pages/IntornoRilevazione.jsx';
 import Budget from './pages/Budget.jsx';
 import Connectors from './pages/Connectors.jsx';
 import Settings from './pages/Settings.jsx';
@@ -52,6 +53,7 @@ export default function Module({ moduleUser }) {
           <Route path="esposizione/:id" element={<ExposureSite />} />
           <Route path="sedi" element={<Sites />} />
           <Route path="sedi/:id" element={<SiteDetail />} />
+          <Route path="intorno/:id" element={<IntornoRilevazione />} />
           <Route path="budget" element={<Budget />} />
           <Route path="connettori" element={admin ? <Connectors /> : <Forbidden />} />
           <Route path="impostazioni" element={admin ? <Settings /> : <Forbidden />} />

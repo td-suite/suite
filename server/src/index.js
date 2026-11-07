@@ -62,16 +62,21 @@ if (canonicalHost && process.env.CANONICAL_REDIRECT !== 'false') {
 const frameExtra = ['https://*.toscanadiagnostica.it', 'https://*.sibforms.com'];
 try { const o = new URL(serviceConfig.vademecumUrl).origin; if (!frameExtra.includes(o)) frameExtra.push(o); } catch { /* URL non valida: resta il predefinito */ }
 
+// Google Maps JavaScript API (Retail > Intorno, docs/RETAIL_INTORNO.md): domini dell'elenco CSP di Google per le mappe nel browser
+const googleMaps = { script: ['https://maps.googleapis.com', 'https://maps.gstatic.com'], img: ['https://*.googleapis.com', 'https://*.gstatic.com', 'https://*.google.com', 'https://*.googleusercontent.com'],
+  connect: ['https://*.googleapis.com', 'https://*.gstatic.com', 'https://*.google.com'], font: ['https://fonts.gstatic.com'], style: ['https://fonts.googleapis.com'], frame: ['https://*.google.com'] };
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net', 'https://server.arcgisonline.com', 'https://*.arcgisonline.com', 'https://tile.openstreetmap.org'],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      fontSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com'],
-      frameSrc: ["'self'", 'blob:', ...frameExtra],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.blob.core.windows.net', 'https://server.arcgisonline.com', 'https://*.arcgisonline.com', 'https://tile.openstreetmap.org', ...googleMaps.img],
+      scriptSrc: ["'self'", ...googleMaps.script],
+      styleSrc: ["'self'", "'unsafe-inline'", ...googleMaps.style],
+      fontSrc: ["'self'", 'data:', ...googleMaps.font],
+      connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com', ...googleMaps.connect],
+      workerSrc: ["'self'", 'blob:'],
+      frameSrc: ["'self'", 'blob:', ...frameExtra, ...googleMaps.frame],
       objectSrc: ["'self'", 'blob:'],
       formAction: ["'self'", 'https://login.microsoftonline.com', 'https://*.toscanadiagnostica.it'],
       manifestSrc: ["'self'"],

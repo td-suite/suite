@@ -6,6 +6,7 @@ import { Donut, HBars, VBars, Trend, Legend, C } from '../components/charts.jsx'
 import { PeriodFilter, SiteSelect, KindSelect, defaultPeriod } from '../components/filters.jsx';
 import { qs, base } from '../api.js';
 import { eur, eur0, num, pct, delta, itDate, monthLabel, SEX, CHANNEL, PAYMENT, WEEKDAYS, MONTHS, itDateTime, SEGMENT } from '../format.js';
+import { Territorio } from './IntornoRilevazione.jsx';
 
 function KpiD({ label, value, prev, foot, accent, money = true, invert }) {
   return (
@@ -208,6 +209,8 @@ export default function Dashboard() {
           </Card>
         </div>
       </>}
+      {/* Il territorio: cosa c'è intorno alle sedi e "Valuta un indirizzo" (Google Places, docs/RETAIL_INTORNO.md) */}
+      <Territorio />
     </div>
   );
 }

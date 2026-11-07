@@ -8,7 +8,7 @@ export const EMPTY_EXT = {
   legal_rep: '', signer: '', signer_role: '', contract_services: '', lab_reference: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)', billing_ref: '',
   sales_contact: '', sales_email: '', sales_phone: '',
   svc_contact: '', svc_email: '', svc_mobile: '', svc_address: '', proc_contact: '', proc_email: '', proc_mobile: '', proc_address: '',
-  pay_method: 'Bonifico bancario', pay_terms: '30 gg fm', currency: 'EUR', withholding: false, vat_territoriality: 'Italia', intent_declaration: '', split_payment: false, tax_values: '',
+  pay_method: 'Bonifico bancario', pay_terms: '30 gg f.m. data fattura', currency: 'EUR', withholding: false, vat_territoriality: 'Italia', intent_declaration: '', split_payment: false, tax_values: '',
   portal_url: '', portal_username: '', portal_password: '', notes: '',
 };
 
@@ -57,6 +57,28 @@ function ReferenteTD({ p, set, persone, campi, label, indirizzo }) {
   );
 }
 
+// Metodo e termine di pagamento: tendine standard (CEO, 07/11/2026); un valore salvato fuori elenco resta come "(valore attuale)",
+// "Altro" apre il testo libero. Sono l'UNICA fonte dei termini di pagamento della lettera di offerta (docgen terminiPagamento).
+export const METODI_PAGAMENTO = ['Bonifico bancario', 'RID/SDD', 'Carta di credito', 'Contanti'];
+export const TERMINI_PAGAMENTO = ['30 gg f.m. data fattura', '60 gg f.m. data fattura', '90 gg f.m. data fattura', 'a vista fattura', '30 gg data fattura', 'anticipato'];
+function Tendina({ p, set, k, label, voci, help }) {
+  const [altro, setAltro] = useState(false);
+  const v = String(p[k] || '').trim();
+  const fuori = v && !voci.includes(v);
+  const sel = altro ? '__altro' : v;
+  return (
+    <Field label={label} help={help}>
+      <select value={sel} onChange={(e) => { if (e.target.value === '__altro') { setAltro(true); set(k, ''); } else { setAltro(false); set(k, e.target.value); } }}>
+        <option value="">–</option>
+        {voci.map((x) => <option key={x} value={x}>{x}</option>)}
+        {fuori && !altro && <option value={v}>{v} (valore attuale)</option>}
+        <option value="__altro">Altro (specificare)</option>
+      </select>
+      {altro && <input style={{ marginTop: 6 }} autoFocus value={p[k] || ''} onChange={(e) => set(k, e.target.value)} placeholder="testo libero" />}
+    </Field>
+  );
+}
+
 export function OrgExtFields({ p, set }) {
   const persone = usePersonaleTD();
   const F = (k, label, opts = {}) => (
@@ -93,7 +115,9 @@ export function OrgExtFields({ p, set }) {
       <div>
         <h3>Condizioni di pagamento e classificazione fiscale</h3>
         <div className="form-grid" style={{ marginTop: 8 }}>
-          {F('pay_method', 'Metodo di pagamento')}{F('pay_terms', 'Termine di pagamento')}{F('currency', 'Valuta')}
+          <Tendina p={p} set={set} k="pay_method" label="Metodo di pagamento" voci={METODI_PAGAMENTO} />
+          <Tendina p={p} set={set} k="pay_terms" label="Termine di pagamento" voci={TERMINI_PAGAMENTO} help="unica fonte dei termini di pagamento della lettera di offerta" />
+          {F('currency', 'Valuta')}
           {F('vat_territoriality', 'Territorialità IVA')}{F('intent_declaration', 'Dichiarazione d’intento IVA')}{F('tax_values', 'Tax values')}
           {B('withholding', 'Soggetto a ritenuta d’acconto')}{B('split_payment', 'Split payment')}
         </div>

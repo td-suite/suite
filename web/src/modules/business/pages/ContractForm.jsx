@@ -4,12 +4,12 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, MoneyInput, useToast, Icon, UploadButton, Badge } from '../components/ui.jsx';
 import { PartyCards } from '../components/PartyPicker.jsx';
-import { today, KIND, DAYS, FEE_VAT, FEE_PERIOD, FEE_BASE, FEE_KIND, SITE_TYPE, RENT_PERIOD, bytes, opzioniPagamento, PAGAMENTO_ALTRO, ritiroPredefinito } from '../format.js';
+import { today, KIND, DAYS, FEE_VAT, FEE_PERIOD, FEE_BASE, FEE_KIND, SITE_TYPE, RENT_PERIOD, bytes, ritiroPredefinito } from '../format.js';
 
 const EMPTY = {
   PP: { fee: { items: [{ kind: 'PERCENT', percent: '', base: 'PUNTO_PRELIEVI', base_other: '', include_ssr: false, amount: '', period: 'MESE', purpose: '', vat: 'PIU_IVA', closing: true, text: '' }] }, services: { nursing: 'TD', reception: 'HOST' }, duration_years: 3, duvri_costs_clause: '' },
-  SRV: { site_name: '', site_address: '', client_ds: '', vat_exemption: null, payment_terms: '', firma_td: null, pickup: { site: '', street: '', city: '', contact: '', phone: '', email: '', days: DAYS.slice(0, 6).map(() => ({ mode: 'NO', time_from: '', time_to: '' })) }, interface_solution: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
-  MDL: { service_email: '', service_contact: '', service_phone: '', invoice_email: '', doctor_name: '', doctor_email: '', vat_exemption: null, payment_terms: '', firma_td: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
+  SRV: { site_name: '', site_address: '', client_ds: '', vat_exemption: null, firma_td: null, pickup: { site: '', street: '', city: '', contact: '', phone: '', email: '', days: DAYS.slice(0, 6).map(() => ({ mode: 'NO', time_from: '', time_to: '' })) }, interface_solution: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
+  MDL: { service_email: '', service_contact: '', service_phone: '', invoice_email: '', doctor_name: '', doctor_email: '', vat_exemption: null, firma_td: null, privacy: { role: null, principal: '', measures: '', dpo_name: '', dpo_contact: '' } },
   SEDE: { site_type: 'PUNTO_PRELIEVI', rent: { amount: '', period: 'MESE', vat: 'PIU_IVA', deposit: '', duration_years: 6, renewal_years: 6, notice_months: 12, istat: true, expenses: '', registration: '', notes: '' } },
 };
 const deepMerge = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b || {})) o[k] = v && typeof v === 'object' && !Array.isArray(v) ? deepMerge(a[k] || {}, v) : v; return o; };
@@ -229,17 +229,14 @@ export default function ContractForm() {
 }
 
 function CommercialFields({ d, setD, S, partner }) {
-  // Termini di pagamento: tendina con le voci standard (format.js), "Altro (specificare)" apre il campo libero, un valore salvato fuori
-  // elenco resta come "(valore attuale)"; vuoto = testo predefinito delle Impostazioni
-  const [altro, setAltro] = useState(false);
-  const pag = opzioniPagamento(d.payment_terms, { predefinito: S.payment_terms_default, altro });
-  const scegli = (v) => { if (v === PAGAMENTO_ALTRO) { setAltro(true); setD('payment_terms', ''); } else { setAltro(false); setD('payment_terms', v); } };
+  // Termini di pagamento: UNICA fonte = Impostazioni Business della Legal entity (metodo + termine); qui solo in lettura
+  // (CEO, 07/11/2026: "collega questi due campi, non possono esserci scritte cose diverse")
+  const termini = [partner?.pay_method, partner?.pay_terms].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
   return (
     <div className="form-grid">
-      <Field label="Termini di pagamento" className="span2" help={pag.altro ? 'scrivi i termini concordati' : 'voce standard; "Altro" per un testo libero'}>
-        <select value={pag.scelta} onChange={(e) => scegli(e.target.value)}>{pag.opzioni.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+      <Field label="Termini di pagamento (dalle Impostazioni Business della Legal entity)" className="span2" help="si modificano in Organizzazioni e sedi > Impostazioni Business: metodo e termine di pagamento">
+        <input value={termini || (S.payment_terms_default ? `${S.payment_terms_default} (predefinito delle Impostazioni)` : '')} readOnly />
       </Field>
-      {pag.altro && <Field label="Termini di pagamento (testo libero)" className="span2"><input autoFocus value={d.payment_terms || ''} onChange={(e) => setD('payment_terms', e.target.value)} placeholder="es. Bonifico bancario 90 gg f.m. data fattura" /></Field>}
       <Field label="Esenzione IVA art. 10 n. 18 D.P.R. 633/1972" className="span2">
         <div className="seg wrap">{[[true, 'Prestazione esente'], [false, 'Prestazione imponibile'], [null, 'Da dichiarare dal cliente']].map(([v, l]) => <label key={String(v)} className={d.vat_exemption === v ? 'on' : ''}><input type="radio" checked={d.vat_exemption === v} onChange={() => setD('vat_exemption', v)} />{l}</label>)}</div>
       </Field>

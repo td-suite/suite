@@ -21,6 +21,9 @@ import connectorRoutes from './routes/connectors.js';
 import statsRoutes from './routes/stats.js';
 import budgetRoutes from './routes/budget.js';
 import structureRoutes from './routes/structure.js';
+import intornoRoutes from './routes/intorno.js';
+import { rilevazioneMensile, mockAttivo as intornoMock } from './lib/intorno.js';
+import { chiaveServer } from '../../lib/googleMaps.js';
 
 const KEY = 'retail';
 
@@ -74,6 +77,7 @@ export default function mount(app) {
   r.use('/stats', statsRoutes);
   r.use(budgetRoutes);                // working-days, budgets, variance, market
   r.use('/structure', structureRoutes);
+  r.use(intornoRoutes);               // Intorno: luoghi intorno alle sedi e indirizzi valutati (Google Places, docs/RETAIL_INTORNO.md)
   // Errori specifici dell'app (duplicati, file troppo grandi) con i messaggi dell'app; il resto al gestore della Suite
   r.use((err, _req, res, next) => {
     if (err?.code === '23505') return res.status(409).json({ error: 'Elemento duplicato (codice, codice fiscale, partita IVA o email già presenti)' });
@@ -95,5 +99,15 @@ export default function mount(app) {
       try { await syncConnector(c.kind, null); done.push({ kind: c.kind, ok: true }); } catch (e) { done.push({ kind: c.kind, error: e.message }); }
     }
     return { synced: done };
+  });
+
+  // Intorno: rilevazione mensile di tutte le sedi attive del network (docs/RETAIL_INTORNO.md). Il job gira ogni giorno e rileva solo
+  // le sedi senza una rilevazione nel mese corrente, fermandosi al tetto giornaliero: le restanti il giorno dopo. Solo con modulo
+  // LIVE e con la chiave server (o le risposte di prova INTORNO_MOCK=1 fuori produzione).
+  registerJob(`${KEY}:intorno`, 24 * 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
+    if (!chiaveServer() && !intornoMock()) return { skipped: true, reason: 'GOOGLE_MAPS_SERVER_KEY non impostata' };
+    return rilevazioneMensile();
   });
 }

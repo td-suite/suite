@@ -5,7 +5,7 @@ import { getCompany, splitTitle } from '../../../lib/company.js';
 export const DEFAULT_SETTINGS = {
   // Società
   company_name: 'Toscana Diagnostica S.r.l.',
-  company_legal_address: 'Sesto Fiorentino (FI), Via di Pratignone, 13/4',
+  company_legal_address: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)',
   company_capital: '€ 50.000,00 i.v.',
   company_city: 'Firenze',
   company_prov: 'FI',
@@ -97,7 +97,7 @@ export const DEFAULT_SETTINGS = {
 export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_city', 'company_prov', 'company_vat', 'company_tax_code', 'company_capital', 'company_phone', 'company_fax', 'company_pec', 'ds_name', 'ds_title'];
 export function coreSettings(co) {
   const ds = splitTitle(co.health_director);
-  return { company_name: co.legal_name, company_legal_address: [co.city && `${co.city}${co.province ? ` (${co.province})` : ''}`, co.address].filter(Boolean).join(', '),
+  return { company_name: co.legal_name, company_legal_address: [co.address, [co.zip, co.city && `${co.city}${co.province ? ` (${co.province})` : ''}`].filter(Boolean).join(' ')].filter(Boolean).join(', '),
     company_city: co.city, company_prov: co.province, company_vat: co.vat, company_tax_code: co.tax_code, company_capital: co.share_capital,
     company_phone: co.phone, company_fax: co.fax, company_pec: co.pec, ds_name: ds.name, ds_title: ds.title };
 }

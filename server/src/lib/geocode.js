@@ -1,7 +1,8 @@
-// Coordinate dall'indirizzo: Nominatim (OpenStreetMap, gratuito, 1 richiesta al secondo, User-Agent obbligatorio) con precisione al
-// civico; se non trova nulla, Open-Meteo per la sola città. Senza chiavi. Usato dal form Sedi (pulsante) e al salvataggio di una
+// Coordinate dall'indirizzo: Google Geocoding se è impostata GOOGLE_MAPS_SERVER_KEY (lib/googleMaps.js), poi Nominatim (OpenStreetMap, gratuito, 1 richiesta al secondo, User-Agent obbligatorio) con precisione al
+// civico; se non trova nulla, Open-Meteo per la sola città. Senza chiave Google funziona lo stesso. Usato dal form Sedi (pulsante) e al salvataggio di una
 // sede senza coordinate; nelle importazioni delle sedi le coordinate mancanti si completano in coda, una al secondo.
 import { geocodeCity } from './weather.js';
+import { chiaveServer, geocodificaGoogle, senzaChiave } from './googleMaps.js';
 
 const UA = 'SuiteTD/0.6 (suite.toscanadiagnostica.it; it@toscanadiagnostica.it)';
 let last = 0;
@@ -25,6 +26,14 @@ async function nominatim(params) {
 /** Ritorna { lat, lng, label, precision: 'civico'|'via'|'citta', source } oppure null */
 export async function geocodeAddress({ address, zip, city, province }) {
   if (!address && !city) return null;
+  // 0. Google Geocoding se c'è la chiave server (GOOGLE_MAPS_SERVER_KEY, docs/RETAIL_INTORNO.md): più precisa al civico in Italia.
+  //    Se non trova o dà errore si prosegue con OpenStreetMap come prima.
+  if (chiaveServer()) {
+    try {
+      const g = await geocodificaGoogle(`${addressLine({ address, zip, city, province })}, Italia`);
+      if (g) return { lat: g.lat, lng: g.lng, label: g.label, precision: g.precision, source: g.source };
+    } catch (e) { console.warn('[geocode] Google:', senzaChiave(e.message)); }
+  }
   try {
     // 1. ricerca strutturata (indirizzo + città + CAP), la più precisa
     let hit = address && city ? await nominatim({ street: address, city, postalcode: zip, state: province ? undefined : undefined }) : null;

@@ -203,12 +203,13 @@ test('Allegato 1: pagine dell\'offerta inserite nel PDF prima dell\'Allegato 2, 
 
 test('documento: committente, ritiro precompilato, rimando all\'offerta economica, firmatario e riferimento della Politica', () => {
   const s = { ...DEFAULT_SETTINGS, firma_nome: '', firma_qualifica: '' };
-  const p = { name: 'Laboratorio Prova S.r.l.', street: 'Via Roma 1', zip: '59100', city: 'Prato', prov: 'PO', vat: '01234567890', pec: 'prova@pec.test', legal_rep: 'Carla Prova' };
-  const c = { id: 9, kind: 'SRV', protocol: 'SRV-2026-0009', version: 1, proposal_date: '2026-11-07', data: { privacy: { role: 'RESPONSABILE' }, payment_terms: 'RID/SDD 30 gg f.m.' } };
+  const p = { name: 'Laboratorio Prova S.r.l.', street: 'Via Roma 1', zip: '59100', city: 'Prato', prov: 'PO', vat: '01234567890', pec: 'prova@pec.test', legal_rep: 'Carla Prova', pay_method: 'RID/SDD', pay_terms: '30 gg f.m. data fattura' };
+  const c = { id: 9, kind: 'SRV', protocol: 'SRV-2026-0009', version: 1, proposal_date: '2026-11-07', data: { privacy: { role: 'RESPONSABILE' } } };
   const d = contractData(c, p, s, { referente: { nome: 'Maria Verdi', telefono: '0574 1', email: 'm@p.test' }, allegato1: { versione: 2, data: '2026-11-06T08:00:00Z', esami: 2 }, politica: { doc: { code: 'TD-SGI-POL001_02', rev: '02', data: '29/10/2026', title: 'Politica Integrata' }, inCoda: true } });
   assert.equal(d.priv_principal, 'Laboratorio Prova S.r.l.');
   assert.equal(d.pickup_site, 'Laboratorio Prova S.r.l.'); assert.equal(d.pickup_city, '59100 Prato (PO)'); assert.equal(d.pickup_contact, 'Maria Verdi'); assert.equal(d.pickup_contact_ref, '0574 1 / m@p.test');
-  assert.equal(d.payment_terms, 'RID/SDD 30 gg f.m.');
+  // (07/11/2026) termini di pagamento: unica fonte = Impostazioni Business della Legal entity (metodo + termine)
+  assert.equal(d.payment_terms, 'RID/SDD 30 gg f.m. data fattura');
   assert.equal(d.firma_nome, DEFAULT_SETTINGS.lr_name); assert.equal(d.firma_ruolo, DEFAULT_SETTINGS.lr_role);
   assert.equal(contractData(c, p, { ...s, firma_nome: 'Nome Firmatario', firma_qualifica: 'Procuratore' }).firma_nome, 'Nome Firmatario');
   const testo = testoDocx(renderDocx(CONTRACT_TEMPLATE.SRV, d)).join('\n');

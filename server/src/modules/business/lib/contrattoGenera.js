@@ -10,6 +10,7 @@
 //   liberamente sulla stessa versione; con il firmato caricato serve una nuova revisione.
 // - rigeneraDalPacchetto(): rigenerazione sulla versione corrente senza revisione né cambio di stato, evento GENERATO "rigenerato dal
 //   pacchetto". La usa pacchettoGenera.js quando il contratto non ha un file FIRMATO.
+import { terminiPagamento } from './docgen.js';
 import { one, many, q } from '../db.js';
 import { todayRome } from './util.js';
 import { getSettings } from './rules.js';
@@ -65,12 +66,12 @@ export async function offertaAllegato1(c, listinoId, s, userId) {
   if (esistente) return { listino: l, ...esistente, generata: false };
   const [{ creaOfferta }, { loadAccount }] = await Promise.all([import('../routes/listino.js'), import('../routes/hub.js')]);
   const a = await loadAccount(c.account_id);
-  const ext = await one('SELECT pay_terms FROM org_ext WHERE org_id=$1', [a.organization_id]);
+  const ext = await one('SELECT pay_method, pay_terms FROM org_ext WHERE org_id=$1', [a.organization_id]);
   const ref = await one('SELECT id FROM contatti WHERE account_id=$1 AND principale ORDER BY id LIMIT 1', [a.id]);
   const oggi = todayRome();
   const out = await creaOfferta(a, l.id, {
     data: oggi, validita: addGiorni(oggi, Number(s.hub_offerta_validita_giorni) || 60),
-    condizioni: c.data?.payment_terms || ext?.pay_terms || s.payment_terms_default || null, contatto_id: ref?.id || null,
+    condizioni: terminiPagamento(ext || {}, s) || null, contatto_id: ref?.id || null,
   }, userId);
   const nuova = await leggi(out.documento_id);
   if (!nuova) throw new Error('PDF dell\'offerta economica generato ma non leggibile');

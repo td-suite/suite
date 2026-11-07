@@ -292,3 +292,15 @@ la rubrica Gmail" (credenziali OAuth, consenso, token, lettura), "Collega l'acco
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; facoltativa `GOOGLE_REDIRECT_URI`. Nessun dato chiesto due volte: le credenziali Microsoft
 sono quelle già usate per le caselle. Audit: `RUBRICA_IMPOSTAZIONI`, `RUBRICA_GOOGLE_COLLEGATA`, `RUBRICA_GOOGLE_RIFIUTATA`,
 `RUBRICA_GOOGLE_SCOLLEGATA`. Guida completa (permessi Graph, Application Access Policy, progetto Google Cloud): docs/RUBRICHE.md.
+
+## Retail > Intorno: cosa c'è intorno alle sedi (07/11/2026)
+Retail > Impostazioni > "Intorno" (profilo ADMIN del modulo). Chiavi in `retail.app_settings` (non nell'editor delle impostazioni
+dell'app): `retail.intorno.tetto_giornaliero` (300), `retail.intorno.raggio_urbano` (3000 m), `retail.intorno.raggio_extraurbano`
+(10000 m), `retail.intorno.sottocategorie` (categorie attive separate da virgola; assente = tutte). Nella stessa card: contatore delle
+chiamate di oggi e del mese (`retail.intorno_chiamate`), "Prova la chiave" (una chiamata con la risposta grezza, chiave mascherata),
+"Esegui ora la rilevazione mensile" (job `retail:intorno`, anche in Amministrazione > Moduli > Lavori di sfondo). Le chiavi Google NON
+sono impostazioni: solo variabili d'ambiente su Render (sync:false) `GOOGLE_MAPS_SERVER_KEY` e `GOOGLE_MAPS_BROWSER_KEY`; la pagina
+dice solo se ci sono. Nessun dato chiesto due volte: "Sede extraurbana" è un campo dell'anagrafica unica (`public.sites.extraurbana`,
+migrazione core 042, Amministrazione > Sedi) e le coordinate restano `public.sites.lat/lng` (geocodifica Google con conferma dalla scheda
+Intorno o dal form Sedi). Audit: `INTORNO_IMPOSTAZIONI`, `INTORNO_PROVA`, `INTORNO_JOB`, `INTORNO_RILEVA`, `INTORNO_VALUTA`,
+`INTORNO_COORDINATE_SEDE`, `INTORNO_VALUTAZIONE_ELIMINATA`. Guida completa: docs/RETAIL_INTORNO.md.

@@ -85,6 +85,7 @@ const siteSchema = z.object({
   email: z.string().email().nullable().optional(), org_node: z.boolean().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
   opened_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),   // data di apertura della sede (letta da Cash e Retail)
+  extraurbana: z.boolean().optional(),   // sede extraurbana: raggio dell'Intorno del Retail più ampio (10 km predefiniti, docs/RETAIL_INTORNO.md)
   // Titolo di godimento e locazione (fonte unica: Payments e Facility leggono da qui, lib/leaseSync.js)
   tenure: z.enum(['PROPRIETA', 'LOCAZIONE', 'COMODATO', 'OSPITATA']).optional(),
   rent_amount: money, rent_period: z.enum(['MESE', 'TRIMESTRE', 'SEMESTRE', 'ANNO']).optional(),

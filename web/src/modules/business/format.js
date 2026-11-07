@@ -98,7 +98,7 @@ export const VOCABOLARI = {
   tipologia: ['Laboratorio Analisi', 'Laboratorio Analisi (punto prelievi)', 'Centro Diagnostico', 'Centro Medico', 'Poliambulatorio', 'Studio Medico', 'Casa di Cura', 'Ospedale Privato', 'RSA', 'Centro Fisioterapico', 'Gruppo Sanitario', 'Onlus / Associazione', 'Istituzione', 'Sport / Fitness', 'Azienda (medicina del lavoro)', 'Altro'],
   segmento_lab: ['Laboratori esterni / Anatomia Pat.', 'Centri Diagnostici', 'Poliambulatori / Centri Medici', 'Studi Medici Privati', 'Cliniche / Case di Cura', 'RSA / Residenziale', 'Centri Fisioterapici', 'Onlus / Associazioni', 'Sport / Fitness', 'Forze Armate / Istituzioni', 'Aziende'],
   accreditata_ssr: ['Sì', 'No', 'n.d.'],
-  fornitore_attuale: ['n.d.', 'Toscana Diagnostica', 'Synlab', 'Bianalisi', 'CERBA', 'Fanfani', 'PAIM', 'Lifebrain', 'Laboratorio interno', 'Altro'],
+  fornitore_attuale: ['n.d.', 'Toscana Diagnostica', 'Synlab', 'Bianalisi', 'CERBA', 'PAIM', 'Lifebrain', 'Laboratorio interno', 'Altro'],
   situazione_fornitore: ['Da rilevare', 'In uscita dal fornitore (opportunità)', 'Incumbent da scalzare', 'Contratto TD in essere', 'Cliente TD attivo', 'Non interessato'],
   listino_riferimento: ['Offerta dedicata', 'Offerta di Gruppo', 'Listino standard'],
   modalita_contatto: ['Diretta', 'Tramite gruppo / ente gestore', 'Segnalazione', 'Gara / bando', 'Richiesta del cliente'],

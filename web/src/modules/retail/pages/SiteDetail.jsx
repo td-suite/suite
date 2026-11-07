@@ -4,6 +4,8 @@ import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, useToast, Kpi, Ic
 import { HBars, C } from '../components/charts.jsx';
 import { api, base } from '../api.js';
 import { eur0, num, pct, itDate, SITE_KIND, WEEKDAYS, ADMIN_SITES, ADMIN_PERSON } from '../format.js';
+import Intorno, { metri } from '../components/Intorno.jsx';
+import { useAuth, canWrite, isAdmin } from '../auth.jsx';
 
 const ROLES = ['Site manager', 'Accettazione', 'Infermiere', 'Tecnico di radiologia', 'Tecnico di laboratorio', 'Medico', 'Anestesista', 'Biologo', 'Amministrativo', 'Pulizie', 'Altro'];
 const ASSET_KINDS = { RM: 'Risonanza magnetica', TC: 'TC', MAMMOGRAFO: 'Mammografo', ECOGRAFO: 'Ecografo', RX: 'Radiologia', MOC: 'MOC / densitometro', EMG: 'Elettromiografo', AMBULATORIO: 'Ambulatorio', BOX_PRELIEVO: 'Box prelievo', MONITOR: 'Monitor', TOTEM: 'Totem', ALTRO: 'Altro' };
@@ -44,7 +46,7 @@ export default function SiteDetail() {
         <Kpi label="Apertura settimanale" value={`${Math.round(weeklyHours)} h`} foot={`${hours.filter((h) => !h.closed).length} giorni su 7${site.saturday_open ? ' · sabato aperto' : ''}`} />
         <Kpi label="Struttura" value={site.surface_sqm ? `${num(site.surface_sqm)} mq` : '–'} foot={`${site.rooms || 0} ambulatori · ${site.boxes || 0} box prelievo · ${assets.filter((a) => a.active).reduce((a, x) => a + x.quantity, 0)} dotazioni`} />
       </div>
-      <div className="tabs">{[['profilo', 'Profilo'], ['persone', 'Persone'], ['orari', 'Orari'], ['dotazioni', 'Dotazioni'], ['bacino', 'Bacino e vendite']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{[['profilo', 'Profilo'], ['persone', 'Persone'], ['orari', 'Orari'], ['dotazioni', 'Dotazioni'], ['bacino', 'Bacino e vendite'], ['intorno', 'Intorno']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
 
       {tab === 'profilo' && <div className="grid g2">
         <Card title="Anagrafica (Amministrazione)" actions={<Link className="btn sm ghost" to={ADMIN_SITES}>Apri in Amministrazione</Link>}>
@@ -118,6 +120,8 @@ export default function SiteDetail() {
         </Card>
       </div>}
 
+      {tab === 'intorno' && <IntornoSede siteId={id} />}
+
       {staff && <Modal title={`Piano di lavoro Retail · ${staff.last_name} ${staff.first_name}`} onClose={() => setStaff(null)} footer={<><button className="btn ghost" onClick={() => setStaff(null)}>Annulla</button><button className="btn" onClick={saveStaff}>Salva</button></>}>
         <div className="alert" style={{ marginBottom: 12 }}><span>{KIND_LABEL[staff.kind] || staff.kind}{staff.job_title ? ` · ${staff.job_title}` : ''}{staff.discipline ? ` · ${staff.discipline}` : ''}. Nome, rapporto, contatti e sede si modificano nella <Link to={ADMIN_PERSON(staff.id)}>scheda persona</Link> in Amministrazione o in Contratti del personale.</span></div>
         <div className="form-grid">
@@ -136,6 +140,47 @@ export default function SiteDetail() {
           <Field label="Dettagli" className="span2"><input value={asset.details || ''} placeholder="modello, anno, note" onChange={(e) => setAsset({ ...asset, details: e.target.value })} /></Field>
           <Field label="Attiva" className="inline"><input type="checkbox" checked={asset.active !== false} onChange={(e) => setAsset({ ...asset, active: e.target.checked })} /> in uso</Field>
         </div>
+      </Modal>}
+    </div>
+  );
+}
+
+// Scheda "Intorno" della sede (docs/RETAIL_INTORNO.md): ultima rilevazione, "Rileva adesso", storico; geocodifica con conferma
+// per la sede senza coordinate (solo Amministratore del modulo)
+function IntornoSede({ siteId }) {
+  const toast = useToast();
+  const { user } = useAuth();
+  const d = useApi(`/sedi/${siteId}/intorno`);
+  const [sel, setSel] = useState(null);           // rilevazione dello storico aperta
+  const [vista, setVista] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [geo, setGeo] = useState(null);           // indirizzo trovato da confermare
+  useEffect(() => { if (!sel) { setVista(null); return; } api.get(`/intorno/rilevazioni/${sel}`).then(setVista).catch((e) => toast(e.message, 'err')); }, [sel]);
+  if (d.error) return <ErrorBox error={d.error} />;
+  if (!d.data) return <Loading />;
+  const { sede, ultima, storico, config } = d.data;
+  const senzaCoord = sede.lat == null || sede.lng == null;
+  const rileva = async () => {
+    setBusy(true);
+    try { const r = await api.post(`/sedi/${siteId}/intorno/rileva`); toast(`Rilevazione completata: ${r.luoghi.filter((l) => l.presente).length} luoghi, ${r.n_chiamate} chiamate`); setSel(null); d.reload(); }
+    catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
+  };
+  const geocodifica = async () => { setBusy(true); try { setGeo(await api.post(`/sedi/${siteId}/intorno/geocodifica`)); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
+  const confermaGeo = async () => { try { await api.put(`/sedi/${siteId}/intorno/coordinate`, { lat: geo.lat, lng: geo.lng, label: geo.label }); toast('Coordinate salvate nell\'anagrafica della sede'); setGeo(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const azioni = <>
+    {isAdmin(user) && <button className="btn sm ghost" disabled={busy} onClick={geocodifica} title="Coordinate della sede dall'indirizzo dell'anagrafica (Google Geocoding), da confermare"><Icon name="pin" />Geocodifica</button>}
+    {canWrite(user) && <button className="btn sm" disabled={busy || senzaCoord} onClick={rileva}><Icon name="refresh" />{busy ? 'Rilevo…' : 'Rileva adesso'}</button>}
+  </>;
+  const mostrata = sel && vista ? vista : ultima;
+  return (
+    <div>
+      <p className="small muted" style={{ marginTop: 0 }}>Raggio {metri(sede.raggio_m)}{sede.extraurbana ? ' (sede extraurbana)' : ''} · {ultima ? `ultima rilevazione del ${itDate(ultima.data)}` : 'mai rilevata'} · rilevazione automatica una volta al mese.{senzaCoord && ' La sede non ha coordinate: usa "Geocodifica" o completa l\'indirizzo in Amministrazione > Sedi.'}
+        {sel && <> · <button className="btn sm ghost" onClick={() => setSel(null)}>Torna all'ultima rilevazione</button></>}</p>
+      <Intorno rilevazione={mostrata} storico={storico} config={config} azioni={azioni} onApri={(rid) => setSel(rid)} />
+      {geo && <Modal title="Conferma l'indirizzo trovato" onClose={() => setGeo(null)} footer={<><button className="btn ghost" onClick={() => setGeo(null)}>Annulla</button><button className="btn" onClick={confermaGeo}>Conferma e salva le coordinate</button></>}>
+        <p style={{ marginTop: 0 }}>Cercato: <b>{geo.cercato}</b></p>
+        <p>Trovato: <b>{geo.label}</b> <Badge tone={geo.precision === 'civico' ? 'green' : geo.precision === 'via' ? 'blue' : 'mauve'}>{geo.precision === 'civico' ? 'al civico' : geo.precision === 'via' ? 'alla via' : 'solo il comune'}</Badge>{geo.prova && <> <Badge tone="grey">geocodifica di prova</Badge></>}</p>
+        <p className="small muted">Coordinate {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}{sede.lat != null ? ` (oggi ${Number(sede.lat).toFixed(6)}, ${Number(sede.lng).toFixed(6)})` : ''}. Confermando si aggiornano latitudine e longitudine della sede nell'anagrafica unica.</p>
       </Modal>}
     </div>
   );
