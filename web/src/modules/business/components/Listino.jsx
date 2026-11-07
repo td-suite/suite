@@ -3,9 +3,15 @@
 // Caricamento sempre con l'anteprima: colonne riconosciute (o mapping a video, che vale anche per i caricamenti successivi), righe lette,
 // riepilogo e differenze con la versione corrente; poi "Salva come vN". Versioni con le differenze evidenziate, scelta della corrente,
 // "Offerta economica" in PDF da ogni versione (validità, condizioni, note, destinatario) con l'anteprima in pagina.
+// Revisione del listino/offerta (richiesta del CEO del 07/11/2026: "nel listino/offerta devi prevedere una sezione di revisione
+// listino/offerta in cui può cambiare anche solo un prezzo e noi rigeneriamo a quel punto solo il PDF del listino/offerta e mandiamo
+// rifirmato solo quello!"): prezzi modificati in pagina dalla versione corrente → "Salva come versione N+1" (motivo obbligatorio), poi
+// solo l'offerta economica della nuova versione (non il pacchetto, non la lettera di offerta), "Invia per la firma" con il PDF allegato
+// e l'offerta firmata che torna.
 import React, { useMemo, useState } from 'react';
 import { api, API_BASE } from '../api.js';
-import { useApi, Card, Field, ErrorBox, Loading, Badge, Modal, Icon, Empty, useToast } from './ui.jsx';
+import { useApi, Card, Field, ErrorBox, Loading, Badge, Modal, Icon, Empty, UploadButton, useToast } from './ui.jsx';
+import ScriviCliente from './ScriviCliente.jsx';
 import { itDate, itDateTime, bytes, num } from '../format.js';
 
 const docUrl = (id, inline) => `${API_BASE}/hub/documenti/${id}${inline ? '?inline=1' : ''}`;
@@ -19,10 +25,15 @@ export default function Listino({ a, onChange }) {
   const [sel, setSel] = useState(null);         // versione aperta
   const [offerta, setOfferta] = useState(null); // versione per cui generare l'offerta
   const [vista, setVista] = useState(null);     // documento PDF in anteprima
+  const [rivedi, setRivedi] = useState(false);  // editor della revisione aperto
+  const [invio, setInvio] = useState(null);     // email "Invia per la firma" pronta (oggetto, testo, PDF)
   const d = q.data;
   if (q.error) return <ErrorBox error={q.error} />;
   if (!d) return <Loading />;
   const corrente = d.versioni.find((v) => v.id === d.corrente_id);
+  const ricarica = () => { q.reload(); onChange?.(); };
+  const preparaInvio = async (v) => { try { setInvio({ v, ...(await api.get(`/hub/listini/${v.id}/revisione/email`)) }); } catch (e) { toast(e.message, 'err'); } };
+  const caricaFirmata = async (v, fl) => { try { const fd = new FormData(); fd.append('file', fl[0]); const r = await api.upload(`/hub/listini/${v.id}/offerta-firmata`, fd); toast(r.gia ? `La v${r.versione} era già firmata: PDF aggiunto ai documenti` : `Offerta economica v${r.versione} firmata registrata nel diario`); ricarica(); } catch (e) { toast(e.message, 'err'); } };
   const scegli = async (id) => { try { await api.put(`/hub/accounts/${a.id}/listino-corrente`, { listino_id: id }); toast(id ? 'Versione corrente scelta' : 'Corrente: l\'ultima versione'); q.reload(); onChange?.(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <>
@@ -44,15 +55,21 @@ export default function Listino({ a, onChange }) {
         </Card>
       </div>
 
+      {corrente && <RevisioneOfferta a={a} v={corrente} prossima={d.versioni[0].versione + 1} edit={d.puo_modificare} aperta={rivedi} onApri={() => setRivedi(true)} onChiudi={() => setRivedi(false)}
+        onSalvata={(r) => { setRivedi(false); toast(`Revisione salvata come v${r.versione}: ${r.differenze.cambiate.length} ${r.differenze.cambiate.length === 1 ? 'riga cambiata' : 'righe cambiate'}`); ricarica(); }}
+        onOfferta={() => setOfferta(corrente)} onVedi={() => setVista({ id: corrente.offerta_documento_id, titolo: `Offerta economica v${corrente.versione}` })} onInvia={() => preparaInvio(corrente)} onFirmata={(fl) => caricaFirmata(corrente, fl)} />}
+
       <Card title="Versioni" className="mt" flush>
         {d.versioni.length ? <table className="t"><thead><tr><th>Versione</th><th>Caricata</th><th className="num">Esami</th><th className="num">Sconto medio</th><th>Rispetto alla precedente</th><th>Offerta economica</th><th /></tr></thead><tbody>
           {d.versioni.map((v) => <tr key={v.id} className={v.id === d.corrente_id ? 'sel' : ''}>
-            <td className="strong">v{v.versione}{v.id === d.corrente_id && <> <Badge tone="teal">corrente</Badge></>}<div className="small muted">{v.filename}</div>{v.note && <div className="small">{v.note}</div>}</td>
+            <td className="strong">v{v.versione}{v.id === d.corrente_id && <> <Badge tone="teal">corrente</Badge></>}{v.origine === 'REVISIONE' && <> <Badge tone="mauve">revisione{v.base_versione ? ` della v${v.base_versione}` : ''}</Badge></>}{v.firmata_at && <> <Badge tone="green">firmata</Badge></>}<div className="small muted">{v.origine === 'REVISIONE' ? 'prezzi modificati in pagina' : v.filename}</div>{v.note && <div className="small">{v.note}</div>}</td>
             <td className="small">{itDateTime(v.caricato_at)}<div className="muted">{v.caricato_da || ''}</div></td>
             <td className="num">{v.riepilogo.esami}</td>
             <td className="num">{pct(v.riepilogo.sconto_medio)}</td>
             <td className="small">{v.diff ? <>{v.diff.cambiate} cambiate · {v.diff.aggiunte} aggiunte · {v.diff.tolte} tolte{v.diff.variazione_sconto ? <div className={v.diff.variazione_sconto > 0 ? 'green' : 'red'}>sconto medio {v.diff.variazione_sconto > 0 ? '+' : ''}{num(v.diff.variazione_sconto)} punti</div> : null}</> : <span className="muted">prima versione</span>}</td>
-            <td className="small">{v.offerta_documento_id ? <><a href={docUrl(v.offerta_documento_id)}><Icon name="download" />{v.offerta_filename}</a><div className="muted">{itDateTime(v.offerta_at)}{v.offerta_dati?.validita ? ` · valida fino al ${itDate(v.offerta_dati.validita)}` : ''}</div></> : <span className="muted">non generata</span>}</td>
+            <td className="small">{v.offerta_documento_id ? <><a href={docUrl(v.offerta_documento_id)}><Icon name="download" />{v.offerta_filename}</a><div className="muted">{itDateTime(v.offerta_at)}{v.offerta_dati?.validita ? ` · valida fino al ${itDate(v.offerta_dati.validita)}` : ''}</div></> : <span className="muted">non generata</span>}
+              {v.revisione_inviata_at && <div className="muted">inviata per la firma il {itDateTime(v.revisione_inviata_at)}</div>}
+              {v.firmata_documento_id && <div><a href={docUrl(v.firmata_documento_id)}><Icon name="download" />firmata: {v.firmata_filename}</a> <span className="muted">{itDateTime(v.firmata_at)}</span></div>}</td>
             <td style={{ whiteSpace: 'nowrap' }}>
               <button className="btn sm ghost" onClick={() => setSel(v)}>Righe</button>{' '}
               {d.puo_modificare && <button className="btn sm ghost" onClick={() => setOfferta(v)}>Offerta</button>}{' '}
@@ -66,6 +83,8 @@ export default function Listino({ a, onChange }) {
       {carica && <Carica a={a} mapping={d.mapping} onClose={() => setCarica(false)} onDone={() => { setCarica(false); q.reload(); onChange?.(); }} />}
       {sel && <Righe v={sel} onClose={() => setSel(null)} />}
       {offerta && <Offerta a={a} v={offerta} predefiniti={d.predefiniti} onClose={() => setOfferta(null)} onDone={(r) => { setOfferta(null); q.reload(); onChange?.(); setVista({ id: r.documento_id, titolo: `Offerta economica v${r.versione}` }); }} />}
+      {invio && <ScriviCliente a={a} titolo={`Invia per la firma l'offerta economica v${invio.versione} · da ${a.casella}`} iniziale={{ subject: invio.subject, testo: invio.testo, documenti: [invio.documento.id] }}
+        extra={{ sottotipo: 'OFFERTA_REVISIONE', listino_id: invio.listino_id }} onClose={() => setInvio(null)} onDone={() => { setInvio(null); ricarica(); }} />}
     </>
   );
 }
@@ -145,7 +164,8 @@ function Righe({ v, onClose }) {
 
 function Offerta({ a, v, predefiniti, onClose, onDone }) {
   const toast = useToast();
-  const [f, setF] = useState({ validita: v.offerta_dati?.validita || predefiniti.validita || '', condizioni: v.offerta_dati?.condizioni || predefiniti.condizioni || '', note: v.offerta_dati?.note || v.note || '', contatto_id: '' });
+  const [f, setF] = useState({ validita: v.offerta_dati?.validita || predefiniti.validita || '', condizioni: v.offerta_dati?.condizioni || predefiniti.condizioni || '', note: v.offerta_dati?.note || (v.origine === 'REVISIONE' ? '' : v.note || ''),   // il motivo di una revisione è interno: non va da solo nel PDF
+    contatto_id: '' });
   const [busy, setBusy] = useState(false);
   const go = async () => { setBusy(true); try { const r = await api.post(`/hub/listini/${v.id}/offerta`, { ...f, contatto_id: f.contatto_id ? Number(f.contatto_id) : null }); toast(`Offerta economica v${r.versione} generata: ${r.pagine} pagine`); onDone(r); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
   return (
@@ -156,7 +176,113 @@ function Offerta({ a, v, predefiniti, onClose, onDone }) {
         <Field label="Condizioni di pagamento" className="span2" help="Dalla Legal entity o dalle Impostazioni (termini predefiniti)"><input value={f.condizioni} onChange={(e) => setF({ ...f, condizioni: e.target.value })} /></Field>
         <Field label="Note dell'offerta" className="span2"><textarea value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       </div>
-      <div className="small muted" style={{ marginTop: 8 }}>PDF su carta intestata luglio 2026: copertina con cliente e versione, riepilogo (esami, sconto medio, validità, condizioni), tabelle per settore, note, firma del CEO dalle Impostazioni. Resta nei documenti dell'account.</div>
+      <div className="small muted" style={{ marginTop: 8 }}>PDF su carta intestata luglio 2026: copertina con il cliente, riepilogo (esami, validità, condizioni), tabelle per settore (la colonna dello sconto solo se almeno un esame è scontato), note, firma del CEO dalle Impostazioni. La versione è nel nome del file, non nel documento. Resta nei documenti dell'account; si rigenera solo questo PDF (non il pacchetto né la lettera di offerta).</div>
     </Modal>
+  );
+}
+
+// ---------------- Revisione del listino/offerta ----------------
+const num2 = (v) => { const t = String(v ?? '').trim().replace(/\s|€/g, ''); if (!t) return NaN; return Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); };
+const diversi = (x, y) => Math.abs(Number(x) - Number(y)) > 0.005;
+
+/**
+ * Riquadro "Revisione del listino/offerta" della versione corrente: i tre passi dopo una revisione (offerta economica della versione,
+ * invio per la firma, offerta firmata che torna) e "Rivedi i prezzi", che apre la tabella modificabile.
+ */
+function RevisioneOfferta({ a, v, prossima, edit, aperta, onApri, onChiudi, onSalvata, onOfferta, onVedi, onInvia, onFirmata }) {
+  const passi = v.versione > 1 || v.origine === 'REVISIONE';
+  return (
+    <Card title="Revisione del listino/offerta" className="mt" actions={edit && !aperta && <button className="btn sm" onClick={onApri}><Icon name="edit" />Rivedi i prezzi (v{prossima} dalla v{v.versione})</button>}>
+      {aperta ? <EditorRevisione a={a} v={v} prossima={prossima} onClose={onChiudi} onSalvata={onSalvata} />
+        : <>
+          <div className="small muted" style={{ marginBottom: passi ? 10 : 0 }}>Basta cambiare anche un solo prezzo: la revisione diventa la versione v{prossima} con il motivo e le righe cambiate nel diario; poi si rigenera solo l'offerta economica e si manda a firmare solo quella. Il contratto e la lettera di offerta non cambiano; la versione precedente resta nello storico con le differenze.</div>
+          {passi && <ol className="checklist-pr">
+            <li className={v.offerta_documento_id ? 'ok' : 'ko'}><span className="ico">{v.offerta_documento_id ? '✓' : '1'}</span><div style={{ flex: 1 }}><div className="strong">Offerta economica v{v.versione}</div><div className="small muted">{v.offerta_documento_id ? `${v.offerta_filename} · ${itDateTime(v.offerta_at)}` : 'Solo il PDF dell\'offerta: non il pacchetto, non la lettera di offerta'}</div></div>
+              {v.offerta_documento_id && <button className="btn sm ghost" onClick={onVedi}>Anteprima</button>} {edit && <button className={`btn sm ${v.offerta_documento_id ? 'ghost' : ''}`} onClick={onOfferta}><Icon name="file" />{v.offerta_documento_id ? 'Rigenera' : 'Genera l\'offerta economica'}</button>}</li>
+            <li className={v.revisione_inviata_at ? 'ok' : 'ko'}><span className="ico">{v.revisione_inviata_at ? '✓' : '2'}</span><div style={{ flex: 1 }}><div className="strong">Invia per la firma</div><div className="small muted">{v.revisione_inviata_at ? `Inviata il ${itDateTime(v.revisione_inviata_at)} (diario: email "Offerta rivista per la firma")` : `Da ${a.casella} ai referenti, con l'offerta v${v.versione} in PDF allegata; testo dal modello "Revisione dell'offerta economica" delle Impostazioni`}</div></div>
+              {edit && <button className={`btn sm ${v.revisione_inviata_at ? 'ghost' : ''}`} disabled={!v.offerta_documento_id} title={v.offerta_documento_id ? '' : 'Genera prima l\'offerta economica'} onClick={onInvia}><Icon name="mail" />{v.revisione_inviata_at ? 'Invia di nuovo' : 'Invia per la firma'}</button>}</li>
+            <li className={v.firmata_at ? 'ok' : 'ko'}><span className="ico">{v.firmata_at ? '✓' : '3'}</span><div style={{ flex: 1 }}><div className="strong">Offerta firmata</div><div className="small muted">{v.firmata_at ? <>Ricevuta il {itDateTime(v.firmata_at)}: <a href={docUrl(v.firmata_documento_id)}>{v.firmata_filename}</a></> : 'Carica il PDF firmato, o confermalo tra gli allegati da verificare (scheda Kit e contrattualizzazione) se arriva come risposta all\'email. Nessuna nuova contrattualizzazione.'}</div></div>
+              {edit && !v.firmata_at && <UploadButton label="Carica l'offerta firmata (PDF)" accept="application/pdf" onFiles={onFirmata} />}</li>
+          </ol>}
+        </>}
+    </Card>
+  );
+}
+
+/** Tabella modificabile in pagina: offerta (e, a scelta, listino) riga per riga, ricerca, righe cambiate evidenziate, totali in tempo reale. */
+function EditorRevisione({ a, v, prossima, onClose, onSalvata }) {
+  const toast = useToast();
+  const q = useApi(`/hub/listini/${v.id}`);
+  const [mod, setMod] = useState({});           // chiave → { offerto, listino } come testo
+  const [cerca, setCerca] = useState('');
+  const [soloCambiate, setSoloCambiate] = useState(false);
+  const [conListino, setConListino] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const righe = q.data?.righe || [];
+  // valori correnti di ogni riga (modificati o originali) e righe cambiate
+  const stato = useMemo(() => {
+    let tl = 0; let to = 0; const cambiate = []; const errori = [];
+    for (const x of righe) {
+      const m = mod[x.chiave];
+      const offerto = m?.offerto != null ? num2(m.offerto) : Number(x.offerto);
+      const listino = m?.listino != null ? num2(m.listino) : Number(x.listino);
+      if (!Number.isFinite(offerto) || offerto < 0 || !Number.isFinite(listino) || listino < 0) { errori.push(x.codice || x.descrizione); continue; }
+      tl += listino; to += offerto;
+      if (diversi(offerto, x.offerto) || diversi(listino, x.listino)) cambiate.push({ chiave: x.chiave, offerto, ...(diversi(listino, x.listino) ? { listino } : {}) });
+    }
+    return { tl, to, sconto: tl > 0 ? (1 - to / tl) * 100 : 0, cambiate, errori, chiavi: new Set(cambiate.map((c) => c.chiave)) };
+  }, [righe, mod]);
+  if (q.error) return <ErrorBox error={q.error} />;
+  if (!q.data) return <Loading />;
+  const t = cerca.trim().toLowerCase();
+  const visibili = righe.filter((x) => (!t || String(x.codice || '').toLowerCase().includes(t) || String(x.descrizione || '').toLowerCase().includes(t) || String(x.settore || '').toLowerCase().includes(t)) && (!soloCambiate || stato.chiavi.has(x.chiave)));
+  const MAX = 300;
+  const set = (k, campo, val) => setMod((m) => ({ ...m, [k]: { ...(m[k] || {}), [campo]: val } }));
+  const pronto = stato.cambiate.length > 0 && !stato.errori.length && motivo.trim().length >= 5;
+  const perche = stato.errori.length ? `Prezzi non validi: ${stato.errori.slice(0, 3).join(', ')}` : !stato.cambiate.length ? 'Cambia almeno un prezzo' : motivo.trim().length < 5 ? 'Scrivi il motivo della revisione' : '';
+  const salva = async () => {
+    setBusy(true);
+    try { onSalvata(await api.post(`/hub/accounts/${a.id}/listini/${v.id}/revisione`, { righe: stato.cambiate, motivo: motivo.trim() })); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <div className="grid g4">
+        <div className="kpi card"><div className="lbl">Righe cambiate</div><div className={`val ${stato.cambiate.length ? '' : 'muted'}`}>{stato.cambiate.length}</div><div className="foot">su {righe.length} esami della v{v.versione}</div></div>
+        <div className="kpi card"><div className="lbl">Totale listino</div><div className="val">{eur(stato.tl)} €</div></div>
+        <div className="kpi card"><div className="lbl">Totale offerta</div><div className="val">{eur(stato.to)} €</div><div className="foot">v{v.versione}: {eur(v.riepilogo.totale_offerto)} €</div></div>
+        <div className="kpi card accent"><div className="lbl">Sconto medio</div><div className="val">{pct(stato.sconto)}</div><div className="foot">v{v.versione}: {pct(v.riepilogo.sconto_medio)} (uso interno, non va nel PDF)</div></div>
+      </div>
+      <div className="row mt" style={{ gap: 10, flexWrap: 'wrap' }}>
+        <input style={{ maxWidth: 320 }} placeholder="Cerca per codice, esame o settore" value={cerca} onChange={(e) => setCerca(e.target.value)} />
+        <label className="f inline small"><input type="checkbox" checked={soloCambiate} onChange={(e) => setSoloCambiate(e.target.checked)} />Solo le righe cambiate</label>
+        <label className="f inline small"><input type="checkbox" checked={conListino} onChange={(e) => setConListino(e.target.checked)} />Modifica anche il prezzo di listino</label>
+        <span className="spacer" />
+        {stato.cambiate.length > 0 && <button className="btn sm ghost" onClick={() => setMod({})}>Annulla le modifiche</button>}
+      </div>
+      <div className="table-wrap mt" style={{ maxHeight: 460 }}><table className="t small"><thead><tr><th>Codice</th><th>Esame</th><th>Settore</th><th className="num">Listino €</th><th className="num">Offerta €</th><th className="num">Sconto</th></tr></thead><tbody>
+        {visibili.slice(0, MAX).map((x) => {
+          const m = mod[x.chiave] || {}; const c = stato.chiavi.has(x.chiave);
+          const o = m.offerto != null ? num2(m.offerto) : Number(x.offerto); const l = m.listino != null ? num2(m.listino) : Number(x.listino);
+          const sc = Number.isFinite(o) && Number.isFinite(l) && l > 0 ? (1 - o / l) * 100 : 0;
+          const errO = m.offerto != null && !(Number.isFinite(o) && o >= 0); const errL = m.listino != null && !(Number.isFinite(l) && l >= 0);
+          return <tr key={x.chiave} style={c ? { background: '#fff4d6' } : undefined}>
+            <td className="mono">{x.codice || '–'}</td><td>{x.descrizione}</td><td className="muted">{x.settore || ''}</td>
+            <td className="num">{conListino ? <input className="num" style={{ width: 96, height: 28, textAlign: 'right', borderColor: errL ? 'var(--red, #c0392b)' : undefined }} value={m.listino ?? eur(x.listino)} onChange={(e) => set(x.chiave, 'listino', e.target.value)} aria-label={`Listino ${x.codice || x.descrizione}`} /> : eur(x.listino)}</td>
+            <td className="num">{c && diversi(o, x.offerto) && <span className="muted" style={{ textDecoration: 'line-through', marginRight: 6 }}>{eur(x.offerto)}</span>}<input className="num" style={{ width: 96, height: 28, textAlign: 'right', fontWeight: 600, borderColor: errO ? 'var(--red, #c0392b)' : undefined }} value={m.offerto ?? eur(x.offerto)} onChange={(e) => set(x.chiave, 'offerto', e.target.value)} aria-label={`Offerta ${x.codice || x.descrizione}`} /></td>
+            <td className="num">{sc > 0.05 ? pct(sc) : '–'}</td>
+          </tr>;
+        })}
+      </tbody></table></div>
+      <div className="small muted" style={{ marginTop: 4 }}>{visibili.length > MAX ? `Mostrate le prime ${MAX} righe su ${visibili.length}: usa la ricerca. ` : ''}In giallo le righe con un prezzo diverso dalla v{v.versione}. Prezzi in euro, anche con la virgola (12,50).</div>
+      <div className="form-grid mt">
+        <Field label="Motivo della revisione (obbligatorio)" className="span2" help="Va nelle note della versione e nel diario, es. prezzo concordato con il cliente il …"><textarea style={{ minHeight: 60 }} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></Field>
+      </div>
+      <div className="row end" style={{ marginTop: 10, gap: 8 }}>
+        {perche && <span className="small muted">{perche}</span>}
+        <button className="btn ghost" onClick={onClose}>Chiudi senza salvare</button>
+        <button className="btn" disabled={!pronto || busy} onClick={salva}>{busy ? 'Salvataggio…' : `Salva come versione ${prossima}`}</button>
+      </div>
+    </>
   );
 }

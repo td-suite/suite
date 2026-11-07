@@ -1,4 +1,5 @@
-// Business Hub · scheda "Proposta e contratto" dell'account (processo Service, richiesta del CEO del 06/11/2026): checklist dei
+// Business Hub · scheda "Kit e contrattualizzazione" dell'account (ex "Proposta e contratto": dal 07/11/2026 il contratto ha la sua scheda,
+// "Contratto", components/ContrattoDettaglio.jsx) (processo Service, richiesta del CEO del 06/11/2026): checklist dei
 // prerequisiti del kit (listino, referente, dati del cliente, credenziali StudioLAB, accesso alla Suite, offerta economica, lettera di
 // offerta), collegamento alla form online, "Prepara la mail" con l'anteprima di testo e allegati, "Invia da service@" con conferma (e
 // conferma del reinvio per la stessa versione del listino), allegati arrivati dal cliente da verificare ("È il contratto firmato"),
@@ -30,7 +31,7 @@ export default function Proposta({ a, onChange, vaiA }) {
     const r = await run('prepara', () => api.post(`/hub/accounts/${a.id}/kit/prepara`, { contatto_id: opz.contatto_id ? Number(opz.contatto_id) : null, includi_password: opz.includi_password, vademecum: opz.vademecum }));
     if (r) setKit({ ...r, oggettoEdit: r.oggetto, testoEdit: r.testo, altri: '', contatti: a.contatti });
   };
-  const azione = { listino: () => vaiA('listino'), offerta: () => vaiA('listino'), referente: () => vaiA('referenti'), lettera: () => vaiA('contratti'), dati: () => window.open('/admin/organizations', '_blank') };
+  const azione = { listino: () => vaiA('listino'), offerta: () => vaiA('listino'), referente: () => vaiA('referenti'), lettera: () => vaiA('contratto'), dati: () => window.open('/admin/organizations', '_blank') };
   const contratti = d.documenti_contratto || [];
   const c = d.contrattualizzazione;
   // Cliente già attivo o contrattualizzato (fase 6-7): la proposta è una fase passata, la checklist del kit non va mostrata come
@@ -40,12 +41,12 @@ export default function Proposta({ a, onChange, vaiA }) {
   return (
     <>
       {d.contrattualizzato_at && <div className="alert info" style={{ marginBottom: 12 }}><b>Contratto firmato ricevuto il {itDateTime(d.contrattualizzato_at)}</b>{c?.fonte ? ` (${c.fonte})` : ''}: pipeline alla fase 6, servizi della Suite attivati, comunicazioni inviate. La fase 7 la conferma il CEO.</div>}
-      <DaVerificare righe={d.da_verificare} edit={edit} busy={busy} run={run} />
+      <DaVerificare righe={d.da_verificare} edit={edit} busy={busy} run={run} conOfferta={a.linea === 'SRV'} />
 
       {acquisito && !mostraProposta && <Card title={a.cliente_attivo ? 'Cliente attivo' : 'Cliente contrattualizzato'} className="mb" actions={<Badge tone="green">{a.cliente_attivo ? 'attivo' : 'contratto firmato'}</Badge>}>
         <table className="t"><tbody>
           <tr><td className="muted">Fase</td><td>{FASI[a.fase_corrente]?.label || a.fase_corrente}{a.attivo_dal ? ` · attivo dal ${itDate(a.attivo_dal)}` : ''}</td></tr>
-          <tr><td className="muted">Contratto</td><td>{contratti.length ? contratti.map((x) => <div key={x.id}><a href={docUrl(x.id)}>{x.etichetta || x.filename}</a> <span className="small muted">{itDate(x.created_at)}</span></div>) : c?.contratto?.protocol || <span className="muted">nessun contratto firmato registrato nel fascicolo (i contratti protocollati sono nella scheda Contratti)</span>}{' '}<button className="btn link small" onClick={() => vaiA('contratti')}>Vai ai contratti</button></td></tr>
+          <tr><td className="muted">Contratto</td><td>{contratti.length ? contratti.map((x) => <div key={x.id}><a href={docUrl(x.id)}>{x.etichetta || x.filename}</a> <span className="small muted">{itDate(x.created_at)}</span></div>) : c?.contratto?.protocol || <span className="muted">nessun contratto firmato registrato nel fascicolo (i contratti protocollati sono nella scheda Contratto)</span>}{' '}<button className="btn link small" onClick={() => vaiA('contratto')}>Vai al contratto</button></td></tr>
           <tr><td className="muted">Listino StudioLAB</td><td>{d.listino ? `v${d.listino.versione}, ${d.listino.riepilogo?.esami} esami` : d.listino_nel_contratto ? <>Excel allegato al contratto: {d.listino_nel_contratto.filename}{edit && <> <button className="btn sm" disabled={Boolean(busy)} onClick={() => run('imp', () => api.post(`/hub/accounts/${a.id}/listini/da-contratto/${d.listino_nel_contratto.id}`, {}), (r) => `Listino v${r.versione} importato dal contratto: ${r.riepilogo.esami} esami`)}>Importa dal contratto</button></>}</> : <span className="muted">non caricato</span>} <button className="btn link small" onClick={() => vaiA('listino')}>Listino e offerta</button></td></tr>
           {d.offerta_contratto && <tr><td className="muted">Offerta economica</td><td>allegata al contratto: <a href={`${API_BASE}/contract-files/${d.offerta_contratto.id}`}>{d.offerta_contratto.filename}</a></td></tr>}
           <tr><td className="muted">Accesso alla Suite</td><td>{d.prerequisiti.voci.find((v) => v.key === 'accesso')?.ok ? 'creato' : <span className="muted">non creato</span>} <button className="btn link small" onClick={() => vaiA('portale')}>Portale</button></td></tr>
@@ -149,7 +150,8 @@ export default function Proposta({ a, onChange, vaiA }) {
 }
 
 // Allegati arrivati dal cliente o dal partner (posta con il riferimento [TD-B2B-...]): un clic per dire cos'è
-export function DaVerificare({ righe, edit, busy, run, chi = 'dal cliente', okMsg = 'Contratto firmato registrato: comunicazioni inviate e servizi attivati' }) {
+// conOfferta: anche "È l'offerta economica firmata" (revisione del listino/offerta del 07/11/2026: nessuna contrattualizzazione)
+export function DaVerificare({ righe, edit, busy, run, chi = 'dal cliente', okMsg = 'Contratto firmato registrato: comunicazioni inviate e servizi attivati', conOfferta = false }) {
   if (!righe?.length) return null;
   return (
     <Card title={`Allegati arrivati ${chi} da verificare (${righe.length})`} className="mb" flush>
@@ -157,6 +159,7 @@ export function DaVerificare({ righe, edit, busy, run, chi = 'dal cliente', okMs
         <td><a href={docUrl(x.id, true)} target="_blank" rel="noreferrer"><Icon name="eye" />{x.filename}</a><div className="small muted">{x.from_email ? `email da ${x.from_email}, ${itDateTime(x.received_at)}` : itDateTime(x.created_at)} · {bytes(x.size)}</div></td>
         <td style={{ whiteSpace: 'nowrap', width: 1 }}>{edit && <>
           <button className="btn sm" disabled={Boolean(busy)} onClick={() => run(`v${x.id}`, () => api.post(`/hub/documenti/${x.id}/verifica`, { esito: 'CONTRATTO' }), (r) => (r.contrattualizzazione?.gia ? 'PDF aggiunto: il contratto firmato era già stato ricevuto' : okMsg))}><Icon name="check" />È il contratto firmato</button>{' '}
+          {conOfferta && <><button className="btn sm ghost" disabled={Boolean(busy)} onClick={() => run(`v${x.id}`, () => api.post(`/hub/documenti/${x.id}/verifica`, { esito: 'OFFERTA_FIRMATA' }), (r) => (r.offerta?.gia ? `Offerta economica v${r.offerta.versione} già firmata: PDF aggiunto` : `Offerta economica v${r.offerta?.versione} firmata registrata`))}>È l'offerta economica firmata</button>{' '}</>}
           <button className="btn sm ghost" disabled={Boolean(busy)} onClick={() => run(`v${x.id}`, () => api.post(`/hub/documenti/${x.id}/verifica`, { esito: 'ALLEGATO' }), 'Registrato come allegato del contratto')}>Allegato del contratto</button>{' '}
           <button className="btn sm ghost" disabled={Boolean(busy)} onClick={() => run(`v${x.id}`, () => api.post(`/hub/documenti/${x.id}/verifica`, { esito: 'NON_PERTINENTE' }), 'Segnato come non pertinente')}>Non pertinente</button>
         </>}</td>

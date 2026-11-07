@@ -11,6 +11,7 @@ import ContractDetail from './pages/ContractDetail.jsx';
 import Dossier from './pages/Dossier.jsx';
 import DossierForm from './pages/DossierForm.jsx';
 import { useApi, Loading, ErrorBox } from './components/ui.jsx';
+import { BASE } from './api.js';
 import Organizations from './pages/Organizations.jsx';
 import Dossiers from './pages/Dossiers.jsx';
 import Settings from './pages/Settings.jsx';
@@ -25,6 +26,12 @@ import ClientiAttivi from './pages/ClientiAttivi.jsx';
 import PuntiPrelievo from './pages/PuntiPrelievo.jsx';
 import './business.css';
 
+// vecchio indirizzo /business/account/:accountId/contratti/:id → scheda Contratto dell'account con quel contratto scelto
+function ContrattoInScheda() {
+  const { accountId, id } = useParams();
+  return <Navigate replace to={`${BASE}/account/${accountId}?scheda=contratto&contratto=${id}`} />;
+}
+
 export default function Module({ moduleKey, mode, moduleUser }) {
   const user = moduleUser;
   const admin = isAdmin(user);
@@ -38,7 +45,8 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="clienti" element={<Clienti />} />
             <Route path="db-opportunita" element={<Opportunita />} />
             <Route path="account/:id" element={<Account />} />
-            <Route path="account/:accountId/contratti/:id" element={<ContractDetail />} />
+            {/* il contratto aperto dalla scheda account ora è la scheda "Contratto" dell'account (07/11/2026): i vecchi collegamenti ci arrivano */}
+            <Route path="account/:accountId/contratti/:id" element={<ContrattoInScheda />} />
             <Route path="email" element={<EmailDaAssegnare />} />
             <Route path="clienti-attivi" element={<ClientiAttivi />} />
             <Route path="contratti-panoramica" element={<Dashboard />} />

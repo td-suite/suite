@@ -1,8 +1,12 @@
 // Business Hub · "Offerta economica" in PDF da una versione del listino StudioLAB del cliente (richiesta del CEO del 06/11/2026: "l'offerta
 // economica in PDF impaginata figa"). Stessa tecnica del Pacchetto di benvenuto: DOCX sulla carta intestata luglio 2026 (pacchettoDocx.js),
-// un giro di LibreOffice, numerazione e segnalibri con pdf-lib (pacchettoPdf.js). Copertina con cliente e versione; riepilogo (numero di
-// esami, sconto medio, validità, condizioni di pagamento); tabelle per settore con codice, esame, listino, offerta e sconto; note; firma
-// del CEO dalle Impostazioni (lr_name, lr_role). Solo dati presenti nella Suite: il listino caricato, l'account, le Impostazioni.
+// un giro di LibreOffice, numerazione e segnalibri con pdf-lib (pacchettoPdf.js). Copertina con il cliente; riepilogo (numero di esami,
+// validità, condizioni di pagamento); tabelle per settore con codice, esame, listino, offerta e, solo se almeno un esame è scontato,
+// sconto; note; firma del CEO dalle Impostazioni (lr_name, lr_role). Solo dati presenti nella Suite: il listino caricato, l'account, le
+// Impostazioni.
+// Richiesta del CEO del 07/11/2026: niente sconto medio, niente colonna "Sconto" se non c'è sconto, niente "preparata per", niente riga
+// della versione, niente fascia "Ci prendiamo cura ...", niente "Listino di riferimento". La versione resta nel nome del file, nei
+// metadati del PDF e nel registro (listini, diario), non nel documento.
 import { one } from '../db.js';
 import { getCompany } from '../../../lib/company.js';
 import { getSettings } from './rules.js';
@@ -23,9 +27,9 @@ const meta = (etichetta, valore) => [
   { c: p(r(valore, { sz: 20, color: C.testo }), { line: 252 }), w: 4400, mar: [70, 0, 70, 0] },
 ];
 
-/** Copertina: titolo, cliente, versione, data, validità, a cura di. */
+/** Copertina: titolo, cliente, data, validità, a cura di, destinatario (la versione del listino non compare nel documento). */
 export function copertinaOfferta(d) {
-  const righe = [['Data', dataLunga(d.data)], ['Versione', `v${d.versione} del listino StudioLAB`], ['Valida fino al', d.validita ? dataBreve(d.validita) : ''], ['A cura di', d.owner || ''], ['Alla cortese attenzione', d.destinatario || '']]
+  const righe = [['Data', dataLunga(d.data)], ['Valida fino al', d.validita ? dataBreve(d.validita) : ''], ['A cura di', d.owner || ''], ['Alla cortese attenzione', d.destinatario || '']]
     .filter(([, v]) => v).map(([k, v]) => meta(k, v));
   return [
     D.vuoto(900),
@@ -33,30 +37,34 @@ export function copertinaOfferta(d) {
     p(r('Service di Laboratorio', { sz: 44, color: C.medio }), { line: 240, after: 40 }),
     p(r('Toscana Diagnostica', { b: true, sz: 64, color: C.scuro }), { line: 240, after: 320 }),
     p('', { border: D.bordo('bottom', C.accento, 24, 1), after: 360, ind: `w:right="${LARGHEZZA - 1800}"` }),
-    p(r('preparata per', { sz: 20, color: C.grigio, i: true }), { after: 80 }),
     p(r(d.cliente, { b: true, sz: 36, color: C.testo }), { line: 260, after: 120 }),
     d.indirizzo ? p(r(d.indirizzo, { sz: 19, color: C.grigio }), { after: 0 }) : '',
-    D.vuoto(d.indirizzo ? 3300 : 3580),
+    D.vuoto(d.indirizzo ? 3700 : 3980),
     D.tabella([2000, 4400], righe),
-    D.vuoto(560),
-    D.riquadro(p([r('Ci prendiamo cura del tempo dei pazienti, ', { i: true, sz: 22, color: C.bianco }), r('lì dove ogni minuto conta.', { i: true, b: true, sz: 22, color: C.bianco })], { jc: 'center', line: 260 }), { scuro: true, mar: [240, 260, 240, 260] }),
   ].join('');
 }
 
+/** Vero se almeno un esame ha un prezzo offerto sotto il listino (altrimenti la colonna "Sconto" non compare). */
+export const haSconto = (righe = []) => righe.some((x) => x.listino != null && x.offerto != null && Number(x.listino) - Number(x.offerto) > 0.005);
+
 const W = { codice: 1300, prezzo: 1250, sconto: 1000 };
-W.esame = LARGHEZZA - W.codice - 2 * W.prezzo - W.sconto;
 const bordoRiga = [D.nil('top'), D.nil('left'), D.bordo('bottom', C.bordo, 4), D.nil('right')].join('');
 const cellaTesto = (t, w, o = {}) => ({ c: p(r(t, { sz: 17, color: o.color || C.testo, b: o.b }), { line: 252, jc: o.jc || 'left' }), w, mar: [70, 100, 70, 100], fill: o.fill || null, borders: bordoRiga });
-/** Tabella di un settore: intestazione ripetuta sulle pagine, numeri allineati a destra. */
-export function tabellaEsami(righe) {
-  const head = [['Codice', W.codice, 'left'], ['Esame', W.esame, 'left'], ['Listino €', W.prezzo, 'right'], ['Offerta €', W.prezzo, 'right'], ['Sconto', W.sconto, 'right']]
-    .map(([t, w, jc]) => ({ c: p(r(t, { b: true, sz: 16, color: C.bianco }), { line: 240, jc }), w, fill: C.medio, mar: [80, 100, 80, 100] }));
+/**
+ * Tabella di un settore: intestazione ripetuta sulle pagine, numeri allineati a destra. conSconto=false: senza la colonna "Sconto"
+ * (nessun esame scontato in tutta l'offerta), la colonna dell'esame si allarga.
+ */
+export function tabellaEsami(righe, { conSconto = true } = {}) {
+  const wEsame = LARGHEZZA - W.codice - 2 * W.prezzo - (conSconto ? W.sconto : 0);
+  const colonne = [['Codice', W.codice, 'left'], ['Esame', wEsame, 'left'], ['Listino €', W.prezzo, 'right'], ['Offerta €', W.prezzo, 'right'], ...(conSconto ? [['Sconto', W.sconto, 'right']] : [])];
+  const head = colonne.map(([t, w, jc]) => ({ c: p(r(t, { b: true, sz: 16, color: C.bianco }), { line: 240, jc }), w, fill: C.medio, mar: [80, 100, 80, 100] }));
   const body = righe.map((x, i) => {
     const fill = i % 2 ? 'F6FAFB' : null;
-    return [cellaTesto(x.codice || '–', W.codice, { fill }), cellaTesto(x.descrizione, W.esame, { fill }), cellaTesto(eur(x.listino), W.prezzo, { jc: 'right', fill, color: C.grigio }),
-      cellaTesto(eur(x.offerto), W.prezzo, { jc: 'right', fill, b: true }), cellaTesto(Number(x.sconto) > 0 ? `−${pct(x.sconto)}` : '–', W.sconto, { jc: 'right', fill, color: Number(x.sconto) > 0 ? C.medio : C.grigio })];
+    return [cellaTesto(x.codice || '–', W.codice, { fill }), cellaTesto(x.descrizione, wEsame, { fill }), cellaTesto(eur(x.listino), W.prezzo, { jc: 'right', fill, color: C.grigio }),
+      cellaTesto(eur(x.offerto), W.prezzo, { jc: 'right', fill, b: true }),
+      ...(conSconto ? [cellaTesto(Number(x.sconto) > 0 ? `−${pct(x.sconto)}` : '–', W.sconto, { jc: 'right', fill, color: Number(x.sconto) > 0 ? C.medio : C.grigio })] : [])];
   });
-  return D.tabella([W.codice, W.esame, W.prezzo, W.prezzo, W.sconto], [head, ...body], { header: true });
+  return D.tabella(colonne.map(([, w]) => w), [head, ...body], { header: true });
 }
 
 /** Corpo: riepilogo, tabelle per settore, note, firma. */
@@ -65,18 +73,19 @@ export function corpoOfferta(d) {
   const kpi = (lbl, val, foot) => ({ c: [p(r(lbl.toUpperCase(), { b: true, sz: 14, color: C.accento, spacing: 20 }), { after: 40 }), p(r(val, { b: true, sz: 30, color: C.scuro }), { after: 20, line: 240 }), foot ? p(r(foot, { sz: 15, color: C.grigio }), { line: 240 }) : ''].join(''),
     w: Math.floor((LARGHEZZA - 2 * 200) / 3), fill: C.chiaro, borders: D.BORDO_SCHEDA, mar: [160, 180, 160, 140] });
   const gap = { c: p(''), w: 200 };
-  const w3 = Math.floor((LARGHEZZA - 2 * 200) / 3);
-  const kpis = D.tabella([w3, 200, w3, 200, w3], [[kpi('Esami in offerta', String(rp.esami), rp.settori > 1 ? `in ${rp.settori} settori` : null), gap,
-    kpi('Sconto medio', pct(rp.sconto_medio), 'ponderato sui prezzi di listino'), gap, kpi('Valida fino al', d.validita ? dataBreve(d.validita) : '–', null)]]);
+  const w2 = Math.floor((LARGHEZZA - 200) / 2);
+  // due riquadri: esami e validità (lo sconto medio non compare nel documento, richiesta del CEO del 07/11/2026)
+  const kpis = D.tabella([w2, 200, w2], [[{ ...kpi('Esami in offerta', String(rp.esami), rp.settori > 1 ? `in ${rp.settori} settori` : null), w: w2 }, gap,
+    { ...kpi('Valida fino al', d.validita ? dataBreve(d.validita) : '–', null), w: w2 }]]);
   const condizioni = [
     d.condizioni ? ['Condizioni di pagamento', d.condizioni] : null,
-    ['Listino di riferimento', `Listino StudioLAB, versione ${d.versione}${d.caricato_at ? ` del ${dataBreve(d.caricato_at)}` : ''}`],
     ['Prezzi', 'In euro, per singolo esame.'],
   ].filter(Boolean);
+  const conSconto = haSconto(d.righe);
   const gruppi = perSettore(d.righe);
   const tabelle = gruppi.map((g, i) => [
     gruppi.length > 1 || g.settore !== 'Esami' ? D.titoletto(`${g.settore} (${g.righe.length})`, { before: i ? 300 : 200 }) : '',
-    tabellaEsami(g.righe),
+    tabellaEsami(g.righe, { conSconto }),
   ].join('')).join('');
   return [
     D.testata('La proposta', 'Offerta economica', `Le condizioni economiche riservate a ${d.cliente} per gli esami del Service di Laboratorio di Toscana Diagnostica.`),

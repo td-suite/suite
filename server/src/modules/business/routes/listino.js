@@ -1,6 +1,8 @@
 // Business Hub · Listino StudioLAB e Offerta economica (route montate sotto /api/business/hub). Docs: docs/BUSINESS_HUB.md, "Processo
 // Service". Lettura per tutti i profili del modulo; caricamento, scelta della versione corrente e generazione dell'offerta per chi
 // gestisce la linea (canEditKind). Il caricamento passa sempre dall'anteprima: prima "anteprima" (nessuna scrittura), poi "salva".
+// Revisione del listino/offerta (richiesta del CEO del 07/11/2026): prezzi cambiati in pagina → nuova versione (origine REVISIONE), solo
+// l'offerta economica rigenerata, invio per la firma (EMAIL_OUT OFFERTA_REVISIONE), offerta firmata che torna (lib/revisioneOfferta.js).
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -11,13 +13,16 @@ import { canEditKind, getSettings } from '../lib/rules.js';
 import { requireAdmin } from '../lib/access.js';
 import { storeBuffer, readBuffer } from '../lib/storage.js';
 import { LINEE } from '../lib/hub.js';
-import { leggiListino, differenze, versioneCorrente, CAMPI_KEYS } from '../lib/listino.js';
+import { leggiListino, differenze, versioneCorrente, CAMPI_KEYS, chiaveRiga } from '../lib/listino.js';
+import { salvaRevisione, emailRevisione, registraOffertaFirmata } from '../lib/revisioneOfferta.js';
+import { salvaFile } from '../lib/flusso.js';
 import { generaOffertaEconomica, nomeFileOfferta } from '../lib/offertaEconomica.js';
 import { addGiorni } from '../lib/pacchetto.js';
 import { loadAccount, addActivity } from './hub.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 1 } });
+const isPdf = (f) => (/pdf/i.test(f.mimetype || '') || /\.pdf$/i.test(f.originalname || '')) && f.buffer.subarray(0, 5).toString() === '%PDF-';
 export const CHIAVE_MAPPING = 'listino.mapping';
 
 function richiedi(req, a) { if (!canEditKind(req.user, a.linea)) throw forbidden(`Il listino lo gestisce chi segue la linea ${LINEE[a.linea].label}`); }
@@ -26,10 +31,11 @@ async function mappingSalvato() {
   try { return x ? JSON.parse(x.value) : null; } catch { return null; }
 }
 const versioniDi = (accountId) => many(`SELECT l.id, l.versione, l.filename, l.documento_id, l.note, l.riepilogo, l.caricato_at, u.full_name AS caricato_da, l.offerta_documento_id, l.offerta_at, l.offerta_dati,
-    d.filename AS offerta_filename, d.size AS offerta_size,
+    d.filename AS offerta_filename, d.size AS offerta_size, l.origine, (SELECT b.versione FROM listini b WHERE b.id=l.base_listino_id) AS base_versione,
+    l.revisione_inviata_at, l.firmata_at, l.firmata_documento_id, df.filename AS firmata_filename,
     CASE WHEN l.differenze IS NULL THEN NULL ELSE jsonb_build_object('aggiunte', jsonb_array_length(l.differenze->'aggiunte'), 'tolte', jsonb_array_length(l.differenze->'tolte'),
       'cambiate', jsonb_array_length(l.differenze->'cambiate'), 'invariate', l.differenze->'invariate', 'variazione_sconto', l.differenze->'variazione_sconto') END AS diff
-  FROM listini l LEFT JOIN users u ON u.id=l.caricato_by LEFT JOIN documenti d ON d.id=l.offerta_documento_id WHERE l.account_id=$1 ORDER BY l.versione DESC`, [accountId]);
+  FROM listini l LEFT JOIN users u ON u.id=l.caricato_by LEFT JOIN documenti d ON d.id=l.offerta_documento_id LEFT JOIN documenti df ON df.id=l.firmata_documento_id WHERE l.account_id=$1 ORDER BY l.versione DESC`, [accountId]);
 
 /** Listino corrente dell'account (riga completa) o null. */
 export async function listinoCorrente(a) {
@@ -51,7 +57,8 @@ r.get('/accounts/:id/listini', ah(async (req, res) => {
 r.get('/listini/:id', ah(async (req, res) => {
   const l = await one('SELECT l.*, u.full_name AS caricato_da FROM listini l LEFT JOIN users u ON u.id=l.caricato_by WHERE l.id=$1', [Number(req.params.id)]);
   if (!l) throw notFound('Listino non trovato');
-  res.json(l);
+  // chiave di ogni riga (codice o descrizione normalizzata): la usa la revisione in pagina per indicare le righe cambiate
+  res.json({ ...l, righe: (l.righe || []).map((x) => ({ ...x, chiave: chiaveRiga(x) })) });
 }));
 
 // Lettura del file con il mapping (riconosciuto, salvato o scelto a video) e confronto con la versione corrente: nessuna scrittura
@@ -169,6 +176,42 @@ r.post('/listini/:id/offerta', ah(async (req, res) => {
   const d = parse(offertaSchema, req.body || {});
   const out = await creaOfferta(a, Number(req.params.id), d, req.user.id);
   await audit(req, 'HUB_OFFERTA_ECONOMICA', 'account', a.id, { versione: out.versione, pagine: out.pagine });
+  res.status(201).json(out);
+}));
+
+// ---------------- Revisione del listino/offerta (richiesta del CEO del 07/11/2026)
+// Dalla versione corrente: righe con i prezzi cambiati in pagina (solo quelle cambiate) e motivo obbligatorio → versione N+1
+const prezzo = z.preprocess((v) => (typeof v === 'string' ? Number(v.replace(',', '.')) : v), z.number({ invalid_type_error: 'prezzo non numerico' }).finite().min(0, 'il prezzo non può essere negativo'));
+const revisioneSchema = z.object({
+  righe: z.array(z.object({ chiave: z.string().trim().min(1).max(400), offerto: prezzo, listino: prezzo.optional() })).min(1, 'cambia almeno un prezzo').max(5000),
+  motivo: z.string().trim().min(5, 'motivo della revisione di almeno 5 caratteri').max(1000),
+});
+r.post('/accounts/:id/listini/:lid/revisione', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  richiedi(req, a);
+  const d = parse(revisioneSchema, req.body || {});
+  const out = await salvaRevisione(a, Number(req.params.lid), d, req.user.id);
+  await audit(req, 'HUB_LISTINO_REVISIONE', 'account', a.id, { versione: out.versione, base: out.base, cambiate: out.differenze.cambiate.length });
+  res.status(201).json(out);
+}));
+// Testo dell'email "Invia per la firma" (modello delle Impostazioni) con l'offerta economica PDF della versione da allegare
+r.get('/listini/:id/revisione/email', ah(async (req, res) => {
+  const l = await one('SELECT account_id FROM listini WHERE id=$1', [Number(req.params.id)]);
+  if (!l) throw notFound('Listino non trovato');
+  const a = await loadAccount(l.account_id);
+  res.json(await emailRevisione(a, Number(req.params.id)));
+}));
+// Offerta economica firmata ricevuta per altri canali: nei Documenti con l'etichetta "Offerta economica vN firmata"
+r.post('/listini/:id/offerta-firmata', upload.single('file'), ah(async (req, res) => {
+  const l = await one('SELECT account_id FROM listini WHERE id=$1', [Number(req.params.id)]);
+  if (!l) throw notFound('Listino non trovato');
+  const a = await loadAccount(l.account_id);
+  richiedi(req, a);
+  if (!req.file) throw bad('Carica il PDF dell\'offerta firmata');
+  if (!isPdf(req.file)) throw bad('L\'offerta firmata deve essere un PDF');
+  const doc = await salvaFile(a, req.file, 'OFFERTA_ECONOMICA', 'Offerta economica firmata', { userId: req.user.id });
+  const out = await registraOffertaFirmata(a, Number(req.params.id), doc.id, { userId: req.user.id, fonte: 'caricamento' });
+  await audit(req, 'HUB_OFFERTA_FIRMATA', 'account', a.id, { versione: out.versione, documento: doc.id, gia: out.gia });
   res.status(201).json(out);
 }));
 

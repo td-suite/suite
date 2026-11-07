@@ -242,7 +242,9 @@ ha scritto "ogni 60 mesi", inteso come **ogni 60 giorni, modificabile**), `hub_r
 `hub_richiamo_recapiti` (francesco.epifani@ e rosetta.greco@: nome, ruolo e telefono si leggono dall'anagrafica; il primo è l'indirizzo
 "a cui scrivere" oltre a service@). Stato interno `hub_richiamo_ultimo_giorno` (ignorato dal PUT).
 Con le route dedicate (Admin del modulo): `flusso.modelli` (JSON, solo i testi modificati: oggetto e testo del kit di proposta, della
-email interna, del benvenuto al cliente, dell'email al laboratorio, del richiamo, lettera di presentazione del pacchetto;
+email interna, del benvenuto al cliente, dell'email al laboratorio, del richiamo, lettera di presentazione del pacchetto; dal 07/11/2026
+"Revisione dell'offerta economica" (`revisione_oggetto`, `revisione_testo`: email "Invia per la firma" dell'offerta rivista, segnaposto
+`{{cliente}}`, `{{versione}}`, `{{righe_cambiate}}`, `{{data}}`);
 `GET|PUT /api/business/hub/flusso/modelli`, "Ripristina i testi predefiniti"), `b2b.allegati` (JSON per linea: allegati del contratto
 richiesti nella form, titolo e obbligatorio; il contratto firmato c'è sempre; `GET|PUT /api/business/hub/b2b/allegati`),
 `listino.mapping` (mapping delle colonne del listino StudioLAB scelto a video, `DELETE /api/business/hub/listino/mapping` lo azzera).

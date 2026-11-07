@@ -29,12 +29,16 @@ export default function ContractForm() {
   const sites = useApi('/sites?all=1');
   const [err, setErr] = useState(null);
   const [pending, setPending] = useState([]); // file da caricare dopo il salvataggio (nuova proposta)
+  // aperta dalla scheda "Contratto" dell'account (07/11/2026): ?da=account&account=<id> (e per una nuova proposta ?org=<Legal entity>,
+  // ?site=<sede del punto prelievi>): precompilata, al salvataggio si torna alla scheda Contratto con il contratto scelto
+  const qs = new URLSearchParams(window.location.search);
+  const daAccount = qs.get('da') === 'account' && /^\d+$/.test(qs.get('account') || '') ? qs.get('account') : null;
 
   useEffect(() => {
     if (id && !existing.data) return;
     const c = existing.data;
     setF({
-      org_id: c?.org_id || '', site_id: c?.site_id || '', title: c?.title || '', proposal_date: c?.proposal_date || today(), start_date: c?.start_date || '', end_date: c?.end_date || '', notes: c?.notes || '',
+      org_id: c?.org_id || (!id && qs.get('org')) || '', site_id: c?.site_id || (!id && qs.get('site')) || '', title: c?.title || '', proposal_date: c?.proposal_date || today(), start_date: c?.start_date || '', end_date: c?.end_date || '', notes: c?.notes || '',
       data: deepMerge(EMPTY[kind], c?.data || {}),
     });
   }, [id, existing.data, kind]);
@@ -59,7 +63,7 @@ export default function ContractForm() {
       const r = id ? await api.put(`/contracts/${id}`, body) : await api.post('/contracts', body);
       for (const pf of pending) { const fd = new FormData(); fd.append('category', pf.category); fd.append('files', pf.file); await api.upload(`/contracts/${r.id}/files`, fd); }
       toast(id ? (kind === 'SEDE' ? 'Sede aggiornata' : 'Proposta aggiornata') : (kind === 'SEDE' ? 'Sede registrata' : 'Proposta creata in bozza'));
-      nav(`${BASE}/contratti/${r.id}`);
+      nav(daAccount ? `${BASE}/account/${daAccount}?scheda=contratto&contratto=${r.id}` : `${BASE}/contratti/${r.id}`);
     } catch (e) { setErr(e); }
   };
   const S = settings.data?.settings || {};

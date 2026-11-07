@@ -311,6 +311,25 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
   if (!category) throw bad('Categoria non valida');
   if (!req.files?.length) throw bad('Nessun file');
   if (category === 'FIRMATO' && c.status === 'BOZZA' && c.kind !== 'SEDE') throw bad('Genera prima la proposta: il contratto firmato va caricato sulla proposta protocollata');
+  // Una sola strada per il contratto firmato (07/11/2026): per Service e Punti Prelievo con l'account nel Business Hub il PDF va nei
+  // documenti dell'account e passa dalla contrattualizzazione (lib/contrattualizza.js: contratto FIRMATO, fase 6, comunicazioni e
+  // attivazione una volta sola; un secondo PDF va nel contratto senza ripetere nulla), come dalla form online, dalla casella e dalla
+  // scheda "Kit e contrattualizzazione". Medicina del Lavoro e sedi in locazione restano sul solo contratto.
+  if (category === 'FIRMATO' && ['SRV', 'PP'].includes(c.kind) && c.account_id) {
+    if (req.files.length !== 1) throw bad('Carica un solo PDF: il contratto firmato');
+    const f = req.files[0];
+    if (!/\.pdf$/i.test(f.originalname) || f.buffer.subarray(0, 5).toString() !== '%PDF-') throw bad(`${f.originalname}: il contratto firmato va caricato in PDF`);
+    const signedAt = /^\d{4}-\d{2}-\d{2}$/.test(req.body.signed_at || '') ? req.body.signed_at : todayRome();
+    const { loadAccount } = await import('./hub.js');
+    const { salvaFile } = await import('../lib/flusso.js');
+    const { contrattualizza } = await import('../lib/contrattualizza.js');
+    const a = await loadAccount(c.account_id);
+    const doc = await salvaFile(a, f, 'CONTRATTO_FIRMATO', 'Contratto firmato', { userId: req.user.id });
+    await q('UPDATE documenti SET verificato_at=now(), verificato_by=$2 WHERE id=$1', [doc.id, req.user.id]);
+    const out = await contrattualizza(a.id, { documentoId: doc.id, fonte: 'scheda Contratto', userId: req.user.id, data: signedAt, contrattoId: c.id });
+    await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: [f.originalname], account: a.id, contrattualizzazione: out.gia ? 'già fatta' : 'eseguita' });
+    return res.json({ ...(await loadContract(c.id)), contrattualizzazione: { gia: Boolean(out.gia), account_id: a.id, fase: out.fase ?? null, avvisi: out.avvisi || [], email: out.email ? Object.fromEntries(Object.entries(out.email).map(([k, v]) => [k, v.stato])) : null } });
+  }
   if (category === 'FIRMATO' && c.kind === 'SEDE' && !c.protocol) {
     const s = await getSettings();
     await tx(async (client) => { const protocol = await nextProtocol('SEDE', Number(String(c.proposal_date).slice(0, 4)), s, client); await client.query('UPDATE contracts SET protocol=$2 WHERE id=$1', [c.id, protocol]); });

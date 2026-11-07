@@ -1,8 +1,9 @@
 // Business Hub · Scheda account: intestazione (Legal entity, linea, fase con avanzamento, cliente attivo riservato al CEO/Admin, owner,
-// prossima azione) e schede: Diario (con "Registra contatto"), Referenti, Criticità, Ordini, Non conformità, Ticket, Circolari,
-// Portale, Contratti e Fascicoli (di cui), Documenti, Email (con "Scrivi al cliente" dalla casella della linea), Dati economici e
-// commerciali (con le strutture del gruppo), Pacchetto di benvenuto (components/Pacchetto.jsx). Le sezioni degli altri widget sono in
-// sola lettura.
+// prossima azione) e schede: Diario (con "Registra contatto"), Referenti, Contratto (il contratto della linea incorporato, prima di
+// listino e offerta: richiesta del CEO del 07/11/2026), Listino e offerta, Kit e contrattualizzazione, Criticità, Ordini, Non
+// conformità, Ticket, Circolari, Portale, Fascicoli (di cui), Documenti, Email (con "Scrivi al cliente" dalla casella della linea),
+// Pacchetto di benvenuto (components/Pacchetto.jsx), Dati economici e commerciali (con le strutture del gruppo). Le sezioni degli altri
+// widget sono in sola lettura.
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
@@ -11,15 +12,23 @@ import Pacchetto from '../components/Pacchetto.jsx';
 import Listino from '../components/Listino.jsx';
 import Proposta from '../components/Proposta.jsx';
 import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
+import ScriviCliente from '../components/ScriviCliente.jsx';
+import ContrattoDettaglio from '../components/ContrattoDettaglio.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
   itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, SOTTOTIPO, TONO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today, VOCABOLARI, DISCIPLINE } from '../format.js';
 
-// "Listino e offerta" e "Proposta e contratto": processo Service da prospect a cliente (06/11/2026), components/Listino.jsx e Proposta.jsx
-const SCHEDE = [['diario', 'Diario'], ['referenti', 'Referenti'], ['listino', 'Listino e offerta'], ['proposta', 'Proposta e contratto'], ['criticita', 'Criticità'], ['ordini', 'Ordini'], ['nc', 'Non conformità'], ['ticket', 'Ticket'], ['circolari', 'Circolari'],
-  ['portale', 'Portale'], ['contratti', 'Contratti'], ['fascicoli', 'Fascicoli'], ['documenti', 'Documenti'], ['email', 'Email'], ['pacchetto', 'Pacchetto di benvenuto'], ['economici', 'Dati economici'], ['commerciali', 'Dati commerciali']];
-// Linea Punti Prelievo (06/11/2026): al posto di listino e proposta del Service la scheda "Punto prelievi" (components/PuntoPrelievi.jsx)
-const schedeDi = (linea) => (linea === 'PP' ? [SCHEDE[0], SCHEDE[1], ['punto', 'Punto prelievi'], ...SCHEDE.slice(4)] : SCHEDE);
+// Ordine delle schede (richiesta del CEO del 07/11/2026: "La pagina del contratto del cliente va assolutamente inglobata nella scheda del
+// cliente [...] quella parte viene anche prima del listino/offerta!"): il contratto ha la sua scheda subito dopo i referenti; la vecchia
+// tabella "Contratti" non c'è più (i contratti della Legal entity sono nella scheda Contratto). "Kit e contrattualizzazione" è la ex
+// "Proposta e contratto" (components/Proposta.jsx): kit, form online, contrattualizzazione, avvio; il riepilogo del cliente
+// contrattualizzato o attivo resta lì.
+const SCHEDE = [['diario', 'Diario'], ['referenti', 'Referenti'], ['contratto', 'Contratto'], ['listino', 'Listino e offerta'], ['proposta', 'Kit e contrattualizzazione'], ['criticita', 'Criticità'], ['ordini', 'Ordini'], ['nc', 'Non conformità'], ['ticket', 'Ticket'], ['circolari', 'Circolari'],
+  ['portale', 'Portale'], ['fascicoli', 'Fascicoli'], ['documenti', 'Documenti'], ['email', 'Email'], ['pacchetto', 'Pacchetto di benvenuto'], ['economici', 'Dati economici'], ['commerciali', 'Dati commerciali']];
+// Linea Punti Prelievo (06/11/2026): al posto di listino e kit del Service la scheda "Punto prelievi" (components/PuntoPrelievi.jsx)
+const schedeDi = (linea) => (linea === 'PP' ? [...SCHEDE.slice(0, 3), ['punto', 'Punto prelievi'], ...SCHEDE.slice(5)] : SCHEDE);
+// indirizzi salvati prima del 07/11/2026 (?scheda=contratti) aprono la scheda Contratto
+const schedaIniziale = () => { const k = new URLSearchParams(window.location.search).get('scheda') || 'diario'; return k === 'contratti' ? 'contratto' : k; };
 
 export default function Account() {
   const { id } = useParams();
@@ -28,14 +37,14 @@ export default function Account() {
   const nav = useNavigate();
   const q = useApi(`/hub/accounts/${id}`);
   const owners = useApi('/hub/utenti');
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('scheda') || 'diario');
+  const [tab, setTab] = useState(schedaIniziale);
   const [modal, setModal] = useState(null);
   const a = q.data;
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!a) return <div className="page"><Loading /></div>;
   const edit = a.puo_modificare;
   const act = async (fn, msg) => { try { await fn(); if (msg) toast(msg); q.reload(); } catch (e) { toast(e.message, 'err'); } };
-  const conta = { proposta: a.da_verificare || 0, punto: a.da_verificare || 0, diario: a.attivita.length, referenti: a.contatti.length, criticita: a.criticita.filter((k) => !k.chiusa_at).length, contratti: a.contratti.length, fascicoli: a.fascicoli.length, documenti: a.documenti.length, email: a.attivita.filter((x) => x.tipo.startsWith('EMAIL')).length };
+  const conta = { proposta: a.da_verificare || 0, punto: a.da_verificare || 0, diario: a.attivita.length, referenti: a.contatti.length, criticita: a.criticita.filter((k) => !k.chiusa_at).length, contratto: contrattiDellaLinea(a).length > 1 ? contrattiDellaLinea(a).length : 0, fascicoli: a.fascicoli.length, documenti: a.documenti.length, email: a.attivita.filter((x) => x.tipo.startsWith('EMAIL')).length };
   const daConfermare = !a.cliente_attivo && a.attivita.some((x) => x.esito === 'DA_CONFERMARE');
   return (
     <div className="page">
@@ -94,7 +103,8 @@ export default function Account() {
 
       {tab === 'diario' && <Diario a={a} onChange={q.reload} />}
       {tab === 'referenti' && <Referenti a={a} onChange={q.reload} />}
-      {tab === 'listino' && <Listino a={a} onChange={q.reload} />}
+      {tab === 'contratto' && <SchedaContratto a={a} onChange={q.reload} />}
+      {tab === 'listino' && <Listino a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'proposta' && <Proposta a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'punto' && a.linea === 'PP' && <PuntoPrelievi a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'criticita' && <Criticita a={a} onChange={q.reload} />}
@@ -103,7 +113,6 @@ export default function Account() {
       {tab === 'ticket' && <FeedTicket a={a} />}
       {tab === 'circolari' && <FeedCircolari a={a} />}
       {tab === 'portale' && <FeedPortale a={a} />}
-      {tab === 'contratti' && <Contratti a={a} />}
       {tab === 'fascicoli' && <Fascicoli a={a} />}
       {tab === 'documenti' && <Documenti a={a} onChange={q.reload} />}
       {tab === 'email' && <Email a={a} onScrivi={() => setModal({ t: 'email' })} />}
@@ -334,15 +343,48 @@ function FeedPortale({ a }) {
   );
 }
 
-// ---------------- Contratti e fascicoli (di cui) ----------------
-function Contratti({ a }) {
-  const nav = useNavigate();
+// ---------------- Contratto (dentro la scheda del cliente) e fascicoli (di cui) ----------------
+// Contratti della linea dell'account (per i Punti Prelievo quelli della sede del punto o senza sede)
+function contrattiDellaLinea(a) {
+  return (a.contratti || []).filter((c) => c.kind === a.linea && (a.linea !== 'PP' || !a.pp_site_id || !c.site_id || Number(c.site_id) === Number(a.pp_site_id)));
+}
+/**
+ * Scheda "Contratto": la pagina del contratto completa incorporata (components/ContrattoDettaglio.jsx). Con più contratti della linea
+ * (revisioni, annullati, cessati, più punti) in alto il selettore (predefinito: il contratto del pacchetto e del kit, il più recente non
+ * annullato né cessato) e "Tutti i contratti di questa Legal entity" (elenco compatto qui dentro). Senza contratti: "Nuova proposta"
+ * precompilata con Legal entity e linea, che al salvataggio torna qui.
+ */
+function SchedaContratto({ a, onChange }) {
+  const linea = contrattiDellaLinea(a);
+  const daUrl = new URLSearchParams(window.location.search).get('contratto');
+  const [scelto, setScelto] = useState(() => (daUrl && a.contratti.some((c) => String(c.id) === daUrl) ? Number(daUrl) : null));
+  const [tutti, setTutti] = useState(false);
+  const id = (scelto && a.contratti.some((c) => c.id === scelto) ? scelto : null) || a.contratto_corrente_id || linea[0]?.id || null;
+  const nuova = `${BASE}/contratti/nuovo/${a.linea}?da=account&account=${a.id}&org=${a.organization_id}${a.linea === 'PP' && a.pp_site_id ? `&site=${a.pp_site_id}` : ''}`;
+  const etichetta = (c) => `${c.protocol || `bozza #${c.id}`} · v${c.version} · ${c.title || ''}${c.site_name ? ` (${c.site_name})` : ''}`;
+  const altri = a.contratti.length > 1 || (a.contratti.length === 1 && !linea.length);
   return (
-    <Card title="Contratti della Legal entity (di cui)" flush actions={<Link className="btn sm" to={`${BASE}/contratti/nuovo/${a.linea}`}>+ Proposta {LINEE[a.linea].short}</Link>}>
-      {a.contratti.length ? <table className="t"><thead><tr><th>Protocollo</th><th>Sezione</th><th>Titolo</th><th>Stato</th><th>Proposta</th><th>Firma</th><th className="num">Versione</th></tr></thead><tbody>
-        {a.contratti.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${BASE}/account/${a.id}/contratti/${c.id}`)}><td className="mono">{c.protocol || 'bozza'}</td><td><KindBadge kind={c.kind} /></td><td>{c.title}{c.site_name ? <div className="small muted">{c.site_name}</div> : null}</td><td><StatusBadge status={c.status} /></td><td className="small">{itDate(c.proposal_date)}</td><td className="small">{itDate(c.signed_at) || '–'}</td><td className="num">v{c.version}</td></tr>)}
-      </tbody></table> : <Empty>Nessun contratto con questa Legal entity</Empty>}
-    </Card>
+    <>
+      {(linea.length > 1 || a.contratti.length > 0) && <div className="row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        {linea.length > 1 && <label className="row small" style={{ gap: 6 }}><span className="muted">Contratto</span>
+          <select style={{ height: 30, width: 'auto', maxWidth: 520 }} value={id || ''} onChange={(e) => setScelto(Number(e.target.value))}>{linea.map((c) => <option key={c.id} value={c.id}>{etichetta(c)} · {c.status.toLowerCase()}{c.id === a.contratto_corrente_id ? ' (in uso)' : ''}</option>)}</select></label>}
+        {altri && <button className="btn link small" onClick={() => setTutti(!tutti)}>{tutti ? 'Nascondi l\'elenco' : `Tutti i contratti di questa Legal entity (${a.contratti.length})`}</button>}
+        <span className="spacer" />
+        {a.puo_modificare && id && <Link className="btn sm ghost" to={nuova}><Icon name="plus" />Nuova proposta {LINEE[a.linea].short}</Link>}
+      </div>}
+      {tutti && <Card title="Contratti della Legal entity" className="mb" flush>
+        <table className="t"><thead><tr><th>Protocollo</th><th>Sezione</th><th>Titolo</th><th>Stato</th><th>Proposta</th><th>Firma</th><th className="num">Versione</th></tr></thead><tbody>
+          {a.contratti.map((c) => { const dellaLinea = linea.some((x) => x.id === c.id); return <tr key={c.id} className={`click ${c.id === id ? 'sel' : ''}`} onClick={() => { if (dellaLinea) { setScelto(c.id); setTutti(false); } else window.location.href = `${BASE}/contratti/${c.id}`; }}>
+            <td className="mono">{c.protocol || 'bozza'}</td><td><KindBadge kind={c.kind} /></td><td>{c.title}{c.site_name ? <div className="small muted">{c.site_name}</div> : null}{!dellaLinea && <div className="small muted">altra linea: si apre nella pagina del contratto</div>}</td><td><StatusBadge status={c.status} /></td><td className="small">{itDate(c.proposal_date)}</td><td className="small">{itDate(c.signed_at) || '–'}</td><td className="num">v{c.version}</td></tr>; })}
+        </tbody></table>
+      </Card>}
+      {id ? <ContrattoDettaglio key={id} id={id} embedded onChange={(e) => { if (e?.eliminato) setScelto(null); onChange(); }} />
+        : <Card title="Nessun contratto">
+          <Empty>Nessun contratto {LINEE[a.linea].label} con {a.org_name}{a.linea === 'PP' && a.punto_nome ? ` per il punto ${a.punto_nome}` : ''}.</Empty>
+          {a.puo_modificare && <div className="row" style={{ justifyContent: 'center' }}><Link className="btn" to={nuova}><Icon name="plus" />Nuova proposta</Link></div>}
+          <div className="small muted" style={{ marginTop: 10, textAlign: 'center' }}>La proposta si apre con la Legal entity e la linea già scelte; al salvataggio si torna qui.</div>
+        </Card>}
+    </>
   );
 }
 function Fascicoli({ a }) {
@@ -386,49 +428,6 @@ function Email({ a, onScrivi }) {
         <td className="small" style={{ whiteSpace: 'nowrap' }}>{itDateTime(x.at)}{x.email_stato && <div><Badge tone={EMAIL_STATO[x.email_stato]?.tone}>{EMAIL_STATO[x.email_stato]?.label}</Badge></div>}</td>
       </tr>)}</tbody></table> : <Empty>Nessuna email: quelle in arrivo su {a.casella} si registrano da sole se il mittente è un referente o della Legal entity.</Empty>}
     </Card>
-  );
-}
-
-function ScriviCliente({ a, onClose, onDone }) {
-  const toast = useToast();
-  const conEmail = a.contatti.filter((c) => c.email);
-  const [f, setF] = useState({ to: conEmail.filter((c) => c.principale).map((c) => c.email), altri: '', cc_extra: '', subject: '', testo: '', documenti: [], contract_files: [] });
-  const [riep, setRiep] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const cf = useMemo(() => a.contratti.flatMap((c) => (c.files || []).map((x) => ({ ...x, c }))), [a]);
-  const body = () => ({ to: [...f.to, ...f.altri.split(/[,;\s]+/).filter(Boolean)], cc_extra: f.cc_extra.split(/[,;\s]+/).filter(Boolean), subject: f.subject, testo: f.testo, documenti: f.documenti, contract_files: f.contract_files });
-  const toggle = (k, v) => setF((x) => ({ ...x, [k]: x[k].includes(v) ? x[k].filter((y) => y !== v) : [...x[k], v] }));
-  const anteprima = async () => { setBusy(true); try { setRiep(await api.post(`/hub/accounts/${a.id}/email/anteprima`, body())); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
-  const invia = async () => { setBusy(true); try { const r = await api.post(`/hub/accounts/${a.id}/email/invia`, { ...body(), conferma: true }); toast(r.stato === 'FALLITO' ? `Invio non riuscito: ${r.errore}` : r.stato === 'REGISTRATO' ? 'Email registrata (posta in modalità registro)' : 'Email inviata e registrata nel diario', r.stato === 'FALLITO' ? 'err' : 'ok'); onDone(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
-  if (riep) return (
-    <Modal wide title="Conferma l'invio" onClose={onClose} footer={<><button className="btn ghost" onClick={() => setRiep(null)}>Torna al messaggio</button><button className="btn" disabled={busy} onClick={invia}><Icon name="mail" />{busy ? 'Invio…' : 'Conferma e invia'}</button></>}>
-      <table className="t"><tbody>
-        <tr><td className="muted">Mittente</td><td className="strong">{riep.from}</td></tr>
-        <tr><td className="muted">Destinatari</td><td>{riep.to.join(', ')}</td></tr>
-        <tr><td className="muted">Copie fisse (sempre presenti)</td><td>{riep.cc_fissi.join(', ') || '–'}</td></tr>
-        <tr><td className="muted">Copie</td><td>{riep.cc.join(', ') || '–'}</td></tr>
-        <tr><td className="muted">Oggetto</td><td>{riep.subject}</td></tr>
-        <tr><td className="muted">Allegati</td><td>{riep.allegati.length ? riep.allegati.map((x) => `${x.filename} (${bytes(x.size)})`).join(', ') : 'nessuno'}</td></tr>
-      </tbody></table>
-      {riep.avvisi.length > 0 && <div className="alert warn small" style={{ marginTop: 10 }}>{riep.avvisi.join(' · ')}</div>}
-      <div className="small muted" style={{ marginTop: 10 }}>L'email resta nel diario dell'account con l'esito dell'invio e nel registro invii.</div>
-    </Modal>
-  );
-  return (
-    <Modal wide title={`Scrivi al cliente · da ${a.casella}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={anteprima}>Riepilogo prima dell'invio</button></>}>
-      <div className="form-grid">
-        <div className="span2"><div className="row" style={{ justifyContent: 'space-between' }}><div className="small strong muted">Destinatari dai referenti</div>{conEmail.length > 1 && <button className="btn link small" onClick={() => setF((x) => ({ ...x, to: [...new Set([...x.to, ...conEmail.map((c) => c.email)])] }))}>Seleziona tutti</button>}</div>{conEmail.length ? conEmail.map((c) => <label key={c.id} className="f inline"><input type="checkbox" checked={f.to.includes(c.email)} onChange={() => toggle('to', c.email)} />{c.nome}{c.ruolo ? ` (${c.ruolo})` : ''} · {c.email}</label>) : <div className="small muted">Nessun referente con email: aggiungilo in Referenti o scrivi l'indirizzo qui sotto.</div>}
-          {[a.org_email && { email: a.org_email, label: `${a.org_name} (email)` }, a.org_pec && { email: a.org_pec, label: `${a.org_name} (PEC)` }].filter((x) => x && !conEmail.some((c) => c.email.toLowerCase() === x.email.toLowerCase())).map((x) => <label key={x.email} className="f inline"><input type="checkbox" checked={f.to.includes(x.email)} onChange={() => toggle('to', x.email)} />{x.label} · {x.email}</label>)}</div>
-        <Field label="Altri destinatari"><input value={f.altri} onChange={(e) => setF({ ...f, altri: e.target.value })} placeholder="indirizzi separati da virgola" /></Field>
-        <Field label="Altre copie (oltre a quelle fisse)"><input value={f.cc_extra} onChange={(e) => setF({ ...f, cc_extra: e.target.value })} /></Field>
-        <Field label="Oggetto" className="span2"><input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} /></Field>
-        <Field label="Testo" className="span2"><textarea style={{ minHeight: 180 }} value={f.testo} onChange={(e) => setF({ ...f, testo: e.target.value })} /></Field>
-        {(a.documenti.length > 0 || cf.length > 0) && <div className="span2"><div className="small strong muted">Allegati</div>
-          {a.documenti.map((d) => <label key={`d${d.id}`} className="f inline"><input type="checkbox" checked={f.documenti.includes(d.id)} onChange={() => toggle('documenti', d.id)} />{d.filename} <span className="small muted">({bytes(d.size)}, documenti dell'account)</span></label>)}
-          {cf.map((x) => <label key={`c${x.id}`} className="f inline"><input type="checkbox" checked={f.contract_files.includes(x.id)} onChange={() => toggle('contract_files', x.id)} />{x.filename} <span className="small muted">({bytes(x.size)}, {x.c.protocol || x.c.title})</span></label>)}
-        </div>}
-      </div>
-    </Modal>
   );
 }
 

@@ -109,8 +109,10 @@ export async function ingestEmail({ linea, casella: address, graphId, messageId 
  * scheda con un clic se un PDF è il contratto firmato (lib/contrattualizza.js) o un allegato del contratto.
  */
 export async function segnaRisposta(emailInId, accountId, activityId, perRiferimento = false) {
-  const a = await one(`SELECT id, b2b_token, contrattualizzato_at, EXISTS (SELECT 1 FROM kit_proposta k WHERE k.account_id=accounts.id AND k.stato='INVIATO') AS kit FROM accounts WHERE id=$1`, [accountId]);
-  if (!a || !(a.kit || a.b2b_token || perRiferimento)) return false;
+  // anche l'offerta economica inviata per la firma dopo una revisione del listino (07/11/2026): il PDF firmato che torna è "da verificare"
+  const a = await one(`SELECT id, b2b_token, contrattualizzato_at, EXISTS (SELECT 1 FROM kit_proposta k WHERE k.account_id=accounts.id AND k.stato='INVIATO') AS kit,
+      EXISTS (SELECT 1 FROM listini l WHERE l.account_id=accounts.id AND l.revisione_inviata_at IS NOT NULL AND l.firmata_at IS NULL) AS revisione FROM accounts WHERE id=$1`, [accountId]);
+  if (!a || !(a.kit || a.b2b_token || a.revisione || perRiferimento)) return false;
   const pdf = await q(`UPDATE documenti SET da_verificare=TRUE WHERE email_in_id=$1 AND (mime='application/pdf' OR lower(filename) LIKE '%.pdf') RETURNING id`, [emailInId]);
   await q(`UPDATE activities SET sottotipo='RISPOSTA_KIT', esito=CASE WHEN $2 > 0 THEN 'DA_VERIFICARE' ELSE esito END WHERE id=$1`, [activityId, pdf.rowCount]);
   return pdf.rowCount > 0;

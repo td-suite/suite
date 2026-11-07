@@ -102,7 +102,7 @@ r.post('/documenti/:id/verifica', ah(async (req, res) => {
   if (!d0?.account_id) throw notFound('Documento non trovato');
   const a = await loadAccount(d0.account_id);
   richiedi(req, a);
-  const d = parse(z.object({ esito: z.enum(['CONTRATTO', 'ALLEGATO', 'NON_PERTINENTE']), etichetta: z.string().trim().max(160).optional() }), req.body || {});
+  const d = parse(z.object({ esito: z.enum(['CONTRATTO', 'ALLEGATO', 'NON_PERTINENTE', 'OFFERTA_FIRMATA']), etichetta: z.string().trim().max(160).optional() }), req.body || {});
   const out = await verificaDocumento(a, Number(req.params.id), d.esito, { userId: req.user.id, etichetta: d.etichetta || null });
   await audit(req, 'HUB_DOCUMENTO_VERIFICATO', 'account', a.id, { documento: Number(req.params.id), esito: d.esito });
   res.json(out);

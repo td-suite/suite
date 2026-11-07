@@ -35,7 +35,7 @@ export async function attivaAccessi(a, { userId = null } = {}) {
   let utenti = await accessiEsterni(a.organization_id);
   if (!utenti.length) {
     const ref = await referentePrincipale(a.id);
-    if (!ref?.email) { out.avvisi.push(`Nessun accesso esterno e nessun referente con email: ${a.linea === 'PP' ? 'aggiungi il referente del partner (scheda Referenti)' : 'crea l\'accesso dalla scheda "Proposta e contratto"'}`); return out; }
+    if (!ref?.email) { out.avvisi.push(`Nessun accesso esterno e nessun referente con email: ${a.linea === 'PP' ? 'aggiungi il referente del partner (scheda Referenti)' : 'crea l\'accesso dalla scheda "Kit e contrattualizzazione"'}`); return out; }
     // l'accesso appena creato riceve già l'invito con la password provvisoria: non si invita una seconda volta qui sotto
     try { const c = await creaAccesso(a, ref, { userId, attivo: a.linea === 'PP' }); out.creato = c.user_id; if (c.invito) out.inviti.push({ email: c.email, stato: c.invito }); utenti = await accessiEsterni(a.organization_id); } catch (e) { out.avvisi.push(`Accesso non creato: ${e.message}`); return out; }
   }
@@ -63,9 +63,14 @@ export async function attivaAccessi(a, { userId = null } = {}) {
   return out;
 }
 
-/** Contratto della linea: FIRMATO (da BOZZA o PROPOSTA) con la data e il PDF firmato tra i suoi file. */
-export async function firmaContratto(a, doc, data, fonte, userId) {
-  const { contratto } = await offertaDi(a);
+/**
+ * Contratto della linea: FIRMATO (da BOZZA o PROPOSTA) con la data e il PDF firmato tra i suoi file. contrattoId: il contratto scelto
+ * (caricamento dalla scheda Contratto), altrimenti quello della linea (offertaDi: il più recente non annullato né cessato).
+ */
+export async function firmaContratto(a, doc, data, fonte, userId, contrattoId = null) {
+  const contratto = contrattoId
+    ? await one('SELECT id, protocol, status, version FROM contracts WHERE id=$1 AND org_id=$2 AND kind=$3', [contrattoId, a.organization_id, a.linea])
+    : (await offertaDi(a)).contratto;
   if (!contratto) return { esito: 'nessun contratto della linea: crea la proposta in Contratti e carica il PDF firmato' };
   const buf = await readBuffer(doc);
   const st = await storeBuffer('contratti', doc.filename, 'application/pdf', buf);
@@ -79,16 +84,19 @@ export async function firmaContratto(a, doc, data, fonte, userId) {
 
 /**
  * Contrattualizzazione dell'account. Idempotente: alla seconda volta il PDF va nel contratto e nel diario, le comunicazioni non ripartono.
- * opz: { documentoId (PDF firmato tra i documenti dell'account), fonte ('form online'|'email'|'caricamento'), userId, data }.
+ * opz: { documentoId (PDF firmato tra i documenti dell'account), fonte ('form online'|'email'|'caricamento'|'scheda Contratto'), userId,
+ * data, contrattoId (il contratto su cui si è caricato il PDF dalla scheda Contratto; senza, quello della linea) }.
+ * Una sola strada (07/11/2026): form online, casella, "Carica il PDF firmato" della scheda Kit e contrattualizzazione e "Carica firmato"
+ * della scheda Contratto (routes/contracts.js, linee Service e Punti Prelievo) passano tutti da qui.
  */
-export async function contrattualizza(accountId, { documentoId, fonte = 'form online', userId = null, data = null } = {}) {
+export async function contrattualizza(accountId, { documentoId, fonte = 'form online', userId = null, data = null, contrattoId = null } = {}) {
   const { loadAccount } = await import('../routes/hub.js');
   const a = await loadAccount(accountId);
   const doc = await one('SELECT * FROM documenti WHERE id=$1 AND account_id=$2', [documentoId, a.id]);
   if (!doc) throw Object.assign(new Error('Documento del contratto non trovato'), { status: 404 });
   const giorno = data || todayRome();
   const presa = await one('UPDATE accounts SET contrattualizzato_at=now(), updated_at=now() WHERE id=$1 AND contrattualizzato_at IS NULL RETURNING contrattualizzato_at', [a.id]);
-  const contratto = await firmaContratto(a, doc, giorno, fonte, userId);
+  const contratto = await firmaContratto(a, doc, giorno, fonte, userId, contrattoId);
   if (!presa) {
     await attivita(a.id, { tipo: 'CONTRATTO_FIRMATO', oggetto: `Contratto firmato ricevuto di nuovo (${fonte})`, testo: `Il cliente risulta già contrattualizzato: il PDF è nel fascicolo e nel contratto (${contratto.esito}); le comunicazioni non ripartono.`, dati: { documento_id: doc.id } }, userId);
     return { gia: true, contratto };

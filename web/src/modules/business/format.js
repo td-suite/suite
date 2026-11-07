@@ -36,7 +36,7 @@ export const STATUS = {
   PROPOSTA: { label: 'Proposta inviata', tone: 'blue' },
   FIRMATO: { label: 'Firmato', tone: 'green' },
   AUTORIZZATO: { label: 'Autorizzato', tone: 'teal' },
-  ATTIVO: { label: 'Attivo', tone: 'teal' },
+  ATTIVO: { label: 'In vigore', tone: 'teal' },   // stato del CONTRATTO; 'cliente attivo' è un'altra cosa e lo dichiara il CEO (07/11/2026)
   CESSATO: { label: 'Cessato', tone: 'grey' },
   ANNULLATO: { label: 'Annullato', tone: 'red' },
 };
@@ -74,6 +74,8 @@ export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', EMAIL_IN: 'Email ricevuta',
 // Sottotipi delle email del processo (diario e registro invii)
 export const SOTTOTIPO = { KIT_PROPOSTA: 'Kit di proposta', CONTRATTUALIZZAZIONE: 'Avvenuta contrattualizzazione', BENVENUTO: 'Benvenuto al cliente', NUOVO_CLIENTE_LAB: 'Nuovo cliente al laboratorio',
   RICHIAMO: 'Richiamo prospect', INVITO_SUITE: 'Invito alla Suite', RISPOSTA_KIT: 'Risposta del cliente',
+  // revisione del listino/offerta (07/11/2026)
+  REVISIONE: 'Revisione del listino/offerta', OFFERTA_REVISIONE: 'Offerta rivista per la firma', OFFERTA_FIRMATA: 'Offerta economica firmata',
   CONTRATTO_PARTNER: 'Contratto al partner', BENVENUTO_PARTNER: 'Credenziali e benvenuto al partner', CONFERMA_PP: 'Contratto firmato (interna)', AVVIO_PP: 'Avvio al laboratorio',
   DOTAZIONE_PP: 'Dotazione', FONDO_CASSA_PP: 'Fondo cassa e POS', RIFIUTI_PP: 'Rifiuti speciali', PRIMO_ORDINE: 'Primo ordine standard',
   CREDENZIALI: 'a) Credenziali al partner', CONFERMA: 'b) Conferma interna', AVVIO_LAB: 'c) Avvio al laboratorio', DOTAZIONE: 'e) Dotazione', FONDO_CASSA: 'f) Fondo cassa e POS', RIFIUTI: 'g) Rifiuti speciali' };

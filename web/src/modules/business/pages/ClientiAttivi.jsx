@@ -20,18 +20,18 @@ export default function ClientiAttivi() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Clienti · {LINEE[linea].label}</h1><div className="sub">I clienti della linea: attivi (confermati dal CEO) e contrattualizzati in avvio (contratto firmato ricevuto). {attivi} attivi, {q.data.righe.length - attivi} in avvio.</div></div>
+        <div><h1>Clienti · {LINEE[linea].label}</h1><div className="sub">I clienti della linea: attivi (confermati dal CEO) e contrattualizzati in avvio (contratto firmato). {attivi} attivi, {q.data.righe.length - attivi} in avvio. Lo stato del contratto (in vigore, firmato) è un'altra cosa dallo stato del cliente, che passa ad attivo solo con la conferma del CEO dalla scheda.</div></div>
         <div className="row" style={{ gap: 8 }}>
           <div className="seg">{[['', 'Tutti'], ['attivi', 'Attivi'], ['avvio', 'In avvio']].map(([k, l]) => <label key={k} className={solo === k ? 'on' : ''}><input type="radio" checked={solo === k} onChange={() => setSolo(k)} />{l}</label>)}</div>
           <select style={{ width: 'auto' }} value={linea} onChange={(e) => setSp({ linea: e.target.value })}>{Object.entries(LINEE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
         </div>
       </div>
       <Card flush>{righe.length ? <div className="table-wrap"><table className="t">
-        <thead><tr><th>Cliente</th><th>Stato</th><th>Contratto</th><th>Avvio</th><th>Volumi attesi</th><th>Listino</th><th>Accessi</th><th>Ultimo contatto</th><th>Owner</th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Stato del cliente</th><th>Contratto</th><th>Avvio</th><th>Volumi attesi</th><th>Listino</th><th>Accessi</th><th>Ultimo contatto</th><th>Owner</th></tr></thead>
         <tbody>{righe.map((x) => <tr key={x.id} className="click" onClick={() => nav(`${BASE}/account/${x.id}${x.da_verificare ? '?scheda=proposta' : ''}`)}>
           <td><div className="strong">{x.org_name}</div><div className="small muted">{[x.citta, x.prov && `(${x.prov})`].filter(Boolean).join(' ')}{x.da_verificare ? <> · <Badge tone="mauve">{x.da_verificare} allegati da verificare</Badge></> : null}</div></td>
           <td>{x.cliente_attivo ? <Badge tone="teal">attivo{x.attivo_dal ? ` dal ${itDate(x.attivo_dal)}` : ''}</Badge> : <Badge tone="green">{FASI[x.fase_corrente]?.label || 'in avvio'}</Badge>}{x.contrattualizzato_at && <div className="small muted">firmato ricevuto {itDate(x.contrattualizzato_at)}</div>}</td>
-          <td>{x.contratto ? <><StatusBadge status={x.contratto.status} /><div className="small muted mono">{x.contratto.protocol || ''}{x.contratto.signed_at ? ` · firma ${itDate(x.contratto.signed_at)}` : ''}</div></> : <span className="muted small">nessuno</span>}</td>
+          <td>{x.contratto ? <><StatusBadge status={x.contratto.status} /><div className="small muted mono">{x.contratto.protocol || ''}{x.contratto.status === 'ATTIVO' && x.contratto.start_date ? ` · dal ${itDate(x.contratto.start_date)}` : x.contratto.signed_at ? ` · firma ${itDate(x.contratto.signed_at)}` : ''}</div></> : <span className="muted small">nessuno</span>}</td>
           <td className="small">{x.attivo_dal ? itDate(x.attivo_dal) : x.data_avvio_prevista ? <>prevista {itDate(x.data_avvio_prevista)}</> : <span className="muted">da definire</span>}</td>
           <td className="small">{x.volumi.valore != null ? <>{num(x.volumi.valore)} al giorno<div className="muted">{x.volumi.fonte === 'calcolo' ? 'dal volume annuo' : 'indicati'}</div></> : <span className="muted">–</span>}{x.fatturato_fy_atteso ? <div className="muted">{eurK(x.fatturato_fy_atteso)} / anno</div> : null}</td>
           <td className="small">{x.listino_versione ? `v${x.listino_versione}` : '–'}</td>

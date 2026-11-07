@@ -99,7 +99,7 @@ export async function filesContratto(contractId) {
   return { listino_xlsx: xlsx, offerta_pdf: pdf };
 }
 
-/** Stato del processo di un account per la scheda "Proposta e contratto". */
+/** Stato del processo di un account per la scheda "Kit e contrattualizzazione". */
 export async function statoProcesso(a) {
   const s = await getSettings();
   const vers = await many('SELECT id, versione, riepilogo, offerta_documento_id, offerta_at FROM listini WHERE account_id=$1', [a.id]);
@@ -395,7 +395,7 @@ export async function riceviForm(a, input, files, { ip = null, contrattoPerEmail
   const act = await attivita(a.id, { tipo: 'FORM_B2B', oggetto: `Form online compilata: anagrafica v${versione}${files.contratto ? ' e contratto firmato' : ''}`, con_chi: dati.svc_contatto || null,
     esito: confronto.differenze.length ? 'DA_VERIFICARE' : null,
     testo: [`Anagrafica Clienti B2B (MOD173) compilata online, PDF nel fascicolo.`, confronto.riempire.length ? `Campi vuoti della Legal entity completati: ${confronto.riempire.map((v) => v.label).join(', ')}.` : null,
-      confronto.differenze.length ? `Differenze da verificare (scheda "Proposta e contratto", Applica): ${confronto.differenze.map((v) => v.label).join(', ')}.` : null,
+      confronto.differenze.length ? `Differenze da verificare (scheda "Kit e contrattualizzazione", Applica): ${confronto.differenze.map((v) => v.label).join(', ')}.` : null,
       files.allegati.length ? `Allegati caricati: ${files.allegati.length}.` : null, !files.contratto && contrattoPerEmail ? 'Il cliente invierà il contratto firmato per email.' : null].filter(Boolean).join('\n'),
     dati: { versione, documento_id: doc.id } });
   await q('UPDATE documenti SET activity_id=$2 WHERE id=$1', [doc.id, act.id]);
@@ -438,11 +438,20 @@ export async function applicaDifferenze(a, anagraficaId, campi = [], userId = nu
   return { applicati: voci.length, restanti: resto.length };
 }
 
-/** Esito della verifica di un allegato arrivato dal cliente: CONTRATTO (avvia la contrattualizzazione), ALLEGATO, NON_PERTINENTE. */
+/**
+ * Esito della verifica di un allegato arrivato dal cliente: CONTRATTO (avvia la contrattualizzazione), ALLEGATO, NON_PERTINENTE,
+ * OFFERTA_FIRMATA (offerta economica rifirmata dopo una revisione del listino: lib/revisioneOfferta.js, nessuna contrattualizzazione).
+ */
 export async function verificaDocumento(a, documentoId, esito, { userId = null, etichetta = null } = {}) {
   const d = await one('SELECT * FROM documenti WHERE id=$1 AND account_id=$2', [documentoId, a.id]);
   if (!d) throw errore(404, 'Documento non trovato');
-  if (!['CONTRATTO', 'ALLEGATO', 'NON_PERTINENTE'].includes(esito)) throw errore(400, 'Esito non valido');
+  if (!['CONTRATTO', 'ALLEGATO', 'NON_PERTINENTE', 'OFFERTA_FIRMATA'].includes(esito)) throw errore(400, 'Esito non valido');
+  if (esito === 'OFFERTA_FIRMATA') {
+    const rev = await import('./revisioneOfferta.js');
+    const l = await rev.versioneDaFirmare(a);
+    if (!l) throw errore(400, 'Nessuna versione del listino a cui collegare l\'offerta firmata');
+    return { esito, offerta: await rev.registraOffertaFirmata(a, l.id, d.id, { userId, fonte: d.email_in_id ? 'email' : 'caricamento' }) };
+  }
   if (esito === 'CONTRATTO' && !(/pdf/i.test(d.mime) || /\.pdf$/i.test(d.filename))) throw errore(400, 'Il contratto firmato deve essere un PDF');
   const cat = esito === 'CONTRATTO' ? 'CONTRATTO_FIRMATO' : esito === 'ALLEGATO' ? 'ALLEGATO_CONTRATTO' : d.categoria;
   await q('UPDATE documenti SET categoria=$2, da_verificare=FALSE, verificato_at=now(), verificato_by=$3, etichetta=coalesce($4, etichetta) WHERE id=$1',

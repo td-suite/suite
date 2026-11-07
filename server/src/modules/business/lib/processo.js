@@ -383,6 +383,19 @@ I nostri recapiti:
 
 Un cordiale saluto,
 Toscana Diagnostica`,
+  // revisione del listino/offerta (richiesta del CEO del 07/11/2026): solo l'offerta economica rigenerata, da rifirmare
+  revisione_oggetto: 'Toscana Diagnostica · Offerta economica aggiornata (v{{versione}}) · {{cliente}}',
+  revisione_testo: `Gentile Cliente,
+
+vi inviamo in allegato l'offerta economica aggiornata per {{cliente}} (versione {{versione}} del {{data}}).
+
+Prezzi modificati rispetto alla versione precedente:
+{{righe_cambiate}}
+
+Le altre righe dell'offerta non cambiano. Vi chiediamo di restituircela firmata rispondendo a questa email.
+
+Un cordiale saluto,
+Toscana Diagnostica`,
   lettera_presentazione: `Gentile {{referente}},
 
 con questa lettera desidero presentarvi Toscana Diagnostica e invitarvi a diventare nostri clienti. Nelle pagine che seguono, preparate per {{cliente}}, trovate chi siamo, il portale che i nostri clienti usano ogni giorno e le persone a cui rivolgervi.
@@ -500,7 +513,7 @@ Grazie.`,
 };
 export const MODELLI_LABEL = {
   kit: 'Kit di proposta (al cliente)', interna: 'Avvenuta contrattualizzazione (interna)', benvenuto: 'Ringraziamento e benvenuto (al cliente)',
-  laboratorio: 'Nuovo cliente (al laboratorio)', richiamo: 'Richiamo dei prospect', lettera_presentazione: 'Lettera di presentazione (pacchetto del kit e del richiamo)',
+  laboratorio: 'Nuovo cliente (al laboratorio)', richiamo: 'Richiamo dei prospect', revisione: 'Revisione dell\'offerta economica', lettera_presentazione: 'Lettera di presentazione (pacchetto del kit e del richiamo)',
   pp_contratto: 'PP · contratto al partner', pp_benvenuto: 'PP · credenziali e benvenuto al partner', pp_conferma: 'PP · contratto firmato (interna)',
   pp_avvio: 'PP · avvio al laboratorio', pp_dotazione: 'PP · dotazione', pp_fondo: 'PP · fondo cassa e POS', pp_rifiuti: 'PP · rifiuti speciali',
 };
@@ -510,6 +523,7 @@ export const SEGNAPOSTO_MODELLI = {
   benvenuto: ['cliente', 'referente', 'suite_url', 'accessi', 'referenti', 'owner', 'data'],
   laboratorio: ['cliente', 'data', 'volumi_giornalieri', 'data_avvio', 'referente_dettaglio', 'listino', 'link_scheda'],
   richiamo: ['cliente', 'referente', 'casella', 'contatto_commerciale', 'recapiti', 'data'],
+  revisione: ['cliente', 'versione', 'righe_cambiate', 'data'],
   lettera_presentazione: ['cliente', 'referente', 'data', 'owner', 'referenti'],
   pp_contratto: ['punto', 'partner', 'referente', 'indirizzo_punto', 'link_form', 'scadenza_form', 'owner', 'data'],
   pp_benvenuto: ['punto', 'partner', 'referente', 'suite_url', 'servizi', 'accessi', 'data_avvio', 'referenti', 'owner', 'data'],

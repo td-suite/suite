@@ -52,9 +52,11 @@ collegamenti a cruscotto e pipeline MDL), **Amministrazione** (Impostazioni, Reg
 resta sulla pagina principale del modulo con il filtro nell'indirizzo (`components/Shell.jsx`).
 
 Scheda account: intestazione con linea, fase e date di fase, cliente attivo (interruttore solo per CEO/Admin), owner, prossima azione;
-schede Diario ("Registra contatto": tipo, quando, con chi, cosa ci siamo detti, esito, prossima azione, contratto, allegati), Referenti,
-Criticità (manuali + NC), Ordini, Non conformità, Ticket, Circolari, Portale, Contratti e Fascicoli (di cui), Documenti, Email ("Scrivi al
-cliente"), Pacchetto di benvenuto, Dati economici, Dati commerciali con le strutture del gruppo.
+schede (ordine dal 07/11/2026, vedi "Contratto nella scheda del cliente") Diario ("Registra contatto": tipo, quando, con chi, cosa ci siamo
+detti, esito, prossima azione, contratto, allegati), Referenti, **Contratto**, Listino e offerta, Kit e contrattualizzazione, Criticità
+(manuali + NC), Ordini, Non conformità, Ticket, Circolari, Portale, Fascicoli (di cui), Documenti, Email ("Scrivi al cliente"), Pacchetto
+di benvenuto, Dati economici, Dati commerciali con le strutture del gruppo. Punti Prelievo: Diario, Referenti, Contratto, Punto prelievi,
+Criticità, ...; Medicina del Lavoro: come il Service.
 
 ## Proposte modificabili (AgapeLab)
 Perché il CEO non trovava "nessun modo per modificare" la proposta di AgapeLab: il contratto è arrivato dai pacchetti in stato ATTIVO e
@@ -66,7 +68,8 @@ alla Legal entity mancava il firmatario, quindi la generazione rispondeva "Dati 
   DOCX e PDF lasciando quelli delle versioni precedenti. Cessati e annullati non si modificano.
 - "Cambia stato" (Admin del modulo o Owner): qualunque stato con motivazione obbligatoria (`POST /contracts/:id/stato-manuale`, evento
   STATO_MANUALE). Non cambia il cliente attivo.
-- La scheda contratto porta all'account ("Account nel Business Hub") e mostra lo storico delle revisioni.
+- La pagina del contratto porta all'account ("Account nel Business Hub", scheda Contratto) e mostra lo storico delle revisioni; dal
+  07/11/2026 la stessa pagina è incorporata nella scheda Contratto dell'account.
 - Correzione collegata: la modifica di un contratto conserva le chiavi di `data` che il form non conosce (`data.pipeline` e
   `data.censimento` dei pacchetti); prima la validazione le scartava e una modifica avrebbe cancellato la pipeline del 21/07/2026.
 
@@ -249,12 +252,11 @@ StudioLAB non era disponibile: se le colonne indispensabili (descrizione e prezz
 mapping si salva (`listino.mapping`) per i caricamenti successivi. Ogni salvataggio è una versione (`listini`: v1, v2, ... con nota,
 righe in jsonb, riepilogo, differenze con la versione corrente: righe cambiate evidenziate, aggiunte, tolte, sconto medio prima e dopo);
 la corrente è l'ultima salvo scelta ("Rendi corrente") e lo sconto medio dell'account la segue. Sconto medio = 1 − Σofferta/Σlistino
-(ponderato), accanto la media semplice. Da ogni versione "Offerta economica" in PDF sulla carta intestata luglio 2026 (copertina con
-cliente e versione, riepilogo con esami, sconto medio, validità e condizioni di pagamento dalla Legal entity o dalle Impostazioni,
-tabelle per settore con codice, esame, listino, offerta, sconto; note; firma del CEO dalle Impostazioni), nei Documenti dell'account
-(categoria OFFERTA_ECONOMICA). Diario: LISTINO, OFFERTA_ECONOMICA.
+(ponderato), accanto la media semplice (uso interno). Da ogni versione "Offerta economica" in PDF sulla carta intestata luglio 2026
+(contenuto dal 07/11/2026: vedi "Offerta economica: contenuto"), nei Documenti dell'account (categoria OFFERTA_ECONOMICA). Diario:
+LISTINO, OFFERTA_ECONOMICA. Revisione in pagina: vedi "Listino: revisione".
 
-**2. Proposta al cliente** (scheda "Proposta e contratto"). Checklist: listino caricato, referente con email, dati del cliente completi
+**2. Proposta al cliente** (scheda "Kit e contrattualizzazione", fino al 07/11/2026 "Proposta e contratto"). Checklist: listino caricato, referente con email, dati del cliente completi
 (ragione sociale, P.IVA, indirizzo, città, email o PEC), credenziali StudioLAB (contratto della linea o Legal entity), accesso alla
 Suite (si crea da solo alla preparazione o con "Crea accesso"), offerta economica della versione corrente, lettera di offerta MOD230
 generata. Con tutto verde "Prepara la mail": accesso creato se manca, collegamento alla form, **pacchetto della proposta** (variante KIT
@@ -286,7 +288,7 @@ diversi diventano proposte nella scheda ("Applica i campi scelti"). Con il contr
 
 **5. Ascolto della casella**. Il job `business:inbox` (e la simulazione) riconosce il riferimento `[TD-B2B-...]` nell'oggetto anche da un
 mittente sconosciuto; per gli account con il kit inviato o il collegamento attivo gli allegati PDF diventano "da verificare" (badge
-"Clienti", riquadro in cima a "Proposta e contratto") e l'email è una "Risposta del cliente" (sottotipo RISPOSTA_KIT). Un clic: "È il
+"Clienti", riquadro in cima a "Kit e contrattualizzazione") e l'email è una "Risposta del cliente" (sottotipo RISPOSTA_KIT). Un clic: "È il
 contratto firmato" (contrattualizzazione), "Allegato del contratto", "Non pertinente". Anche un PDF caricato a mano nei Documenti si
 conferma come contratto firmato.
 
@@ -303,7 +305,7 @@ data di avvio prevista, referente, listino, offerta economica allegata). Esito i
 resta al CEO. Diario: CONTRATTO_FIRMATO, ATTIVAZIONE, EMAIL_OUT CONTRATTUALIZZAZIONE / BENVENUTO / NUOVO_CLIENTE_LAB.
 
 **7. Richiamo dei prospect** (`lib/richiamo.js`, job `business:richiamo-prospect`). Account SRV in fase 0-5, non clienti né
-contrattualizzati, senza "Non contattare" (scheda "Proposta e contratto", Avvio del cliente), con un'email (referente principale o Legal
+contrattualizzati, senza "Non contattare" (scheda "Kit e contrattualizzazione", Avvio del cliente), con un'email (referente principale o Legal
 entity), senza richiami né altre email inviate negli ultimi `hub_richiamo_giorni`; prima chi non è mai stato richiamato, poi il richiamo
 più vecchio, poi la priorità; massimo `hub_richiamo_limite` al giorno (contano anche gli invii a mano). Email da service@ con le copie
 fisse (modello in Impostazioni: azienda, servizi, Portale Service, invito a rispondere a service@ e al primo indirizzo dei recapiti,
@@ -367,7 +369,7 @@ ospitante = flagship (il comodato è una sede TD: scelta documentata). Senza sed
 confermare al collegamento della sede; se la sede dice altro vale la sede (avviso). Per il corner l'account sta sulla Legal entity del
 partner (deve coincidere con l'ospitante della sede); per il flagship sulla Legal entity della sede (la società TD) o su quella scelta.
 Date di avvio prevista (`data_avvio_prevista`) ed effettiva (`data_avvio_effettiva`). La scheda "Punto prelievi" (al posto di "Listino e
-offerta" e "Proposta e contratto", che restano del Service) mostra tipo, sede, partner ospitante, referente del partner (referente
+offerta" e "Kit e contrattualizzazione", che restano del Service) mostra tipo, sede, partner ospitante, referente del partner (referente
 principale), date, fascicolo di autorizzazione (della sede, altrimenti del contratto PP) e contratto PP o locazione della sede (SEDE), con i
 pulsanti "Fascicolo di autorizzazione" e "Scheda Sede in Amministrazione". Pagina **Punti Prelievo** (`/business/punti-prelievo`): elenco con
 tipo, sede, partner, fase, contratto o locazione, autorizzazione (stato del fascicolo), avvio (date e passi), filtro corner/flagship; sedi
@@ -459,3 +461,92 @@ c) e d) eseguiti, perimetro Cash del partner riallineato sulla sede nuova. Scher
 l'invio" della linea Punti Prelievo); che gli indirizzi interni esistano (laboratorio@, valentina.zezza@, amministrazione@,
 iacopo.cupelli@, silvia.sansoni@); il fondo cassa predefinito in Cash > Impostazioni (vuoto: "da definire"); la visibilità Punti Prelievo
 degli articoli del Magazzino Centrale (definisce il primo ordine); sedi PP esistenti senza account: "Crea il punto prelievi" dall'elenco.
+
+## Contratto nella scheda del cliente, revisione del listino/offerta, offerta economica ripulita (07/11/2026)
+Richiesta del CEO, testuale: "Elimina la % di sconto. Elimina la colonna di sconto se non c'è sconto. Elimina la riga preparata per.
+Elimina la riga versione. Elimina la riga 'Ci prendiamo cura ...'. Elimina la riga 'Listino di riferimento ...'. La pagina del contratto
+del cliente va assolutamente inglobata nella scheda del cliente. Così oggi è completamente scollegata dal resto. Per capirci, è quella la
+parte essenziale. Il contratto è lì! E poi si ricongiunge nel file unico PDF che gli mandiamo. Ma quella parte viene anche prima del
+listino/offerta! Inoltre nel listino/offerta devi prevedere una sezione di revisione listino/offerta in cui può cambiare anche solo un
+prezzo e noi rigeneriamo a quel punto solo il PDF del listino/offerta e mandiamo rifirmato solo quello!" Migrazione `012_revisione_offerta.sql`.
+
+**Scheda account.** Ordine delle schede: Diario, Referenti, **Contratto**, Listino e offerta, **Kit e contrattualizzazione** (ex "Proposta e
+contratto": kit, form online, allegati da verificare, contrattualizzazione, avvio; il riepilogo "Cliente contrattualizzato/attivo" resta lì),
+Criticità, Ordini, NC, Ticket, Circolari, Portale, Fascicoli, Documenti, Email, Pacchetto di benvenuto, Dati economici, Dati commerciali.
+PP: Diario, Referenti, Contratto, Punto prelievi, Criticità, ...; MDL come il Service. La vecchia scheda "Contratti" non c'è più:
+`?scheda=contratti` apre la scheda Contratto, `/business/account/:id/contratti/:cid` reindirizza a `?scheda=contratto&contratto=:cid`.
+
+**Contratto nella scheda.** La pagina del contratto è il componente `components/ContrattoDettaglio.jsx` (`{ id, embedded, onChange }`),
+usato dalla pagina `/business/contratti/:id` (Management > Tutti i contratti, elenchi, fascicoli) e incorporato nella scheda: stesso
+contenuto e stesse azioni (Genera proposta / Rigenera, Modifica, Modifica (nuova revisione), Genera documento vN, Carica firmato, Cambia
+stato, Segna come attivo, Annulla, Cessazione, Elimina bozza, Dati della proposta, Controparte MOD173, Listino dell'offerta, Credenziali
+del portale, Altri documenti, Revisioni, Cronologia), senza il titolo della pagina, senza "Account nel Business Hub" e "Torna alla
+scheda"; ogni azione ricarica anche l'account (fase, diario, documenti). Contratto mostrato: quello di `offertaDi(a)` (il più recente non
+annullato né cessato della linea; PP: della sede del punto), restituito da `GET /hub/accounts/:id` come `contratto_corrente_id`; con più
+contratti della linea un selettore in alto, e "Tutti i contratti di questa Legal entity" apre l'elenco compatto dentro la scheda (un
+contratto di un'altra linea si apre nella sua pagina). Senza contratti: riquadro "Nessun contratto" con "Nuova proposta", che apre la
+ContractForm con Legal entity e linea già scelte (`?da=account&account=<id>&org=<Legal entity>`, PP anche `&site=<sede del punto>`); al
+salvataggio, e dopo "Modifica" aperta dalla scheda, si torna alla scheda Contratto con quel contratto.
+
+**Contratto firmato: una sola strada.** Prima "Carica firmato" della pagina del contratto (`POST /contracts/:id/files`, categoria FIRMATO)
+metteva il PDF e lo stato FIRMATO sul solo contratto, mentre la contrattualizzazione del processo (`lib/contrattualizza.js`: form online,
+casella, "Carica il PDF firmato") faceva anche fase 6, attivazione e comunicazioni, e firmava il contratto di `offertaDi`. Ora, per Service
+e Punti Prelievo con l'account nel Business Hub, "Carica firmato" (un solo PDF, mai in BOZZA) salva il PDF nei documenti dell'account
+(CONTRATTO_FIRMATO, verificato) e chiama `contrattualizza(account, { contrattoId })`: contratto scelto FIRMATO con la data e il PDF tra i
+suoi file (un solo file, evento FIRMATO), fase 6, attivazione e comunicazioni **una volta sola** (`contrattualizzato_at`); un secondo PDF
+va nel contratto e nel diario senza ripetere nulla. La risposta porta `contrattualizzazione` (già fatta o eseguita, fase, avvisi).
+`firmaContratto` accetta il contratto esplicito (stessa Legal entity e linea), altrimenti usa `offertaDi`. Medicina del Lavoro (nessun
+processo di contrattualizzazione) e sedi in locazione restano sul solo contratto, come prima.
+
+**Listino: revisione** (scheda Listino e offerta, riquadro "Revisione del listino/offerta"; parte operativa `lib/revisioneOfferta.js`,
+regola pura `applicaRevisione` in `lib/listino.js`). "Rivedi i prezzi" dalla versione corrente: tabella modificabile in pagina (Offerta €
+riga per riga, con la spunta anche Listino €; ricerca per codice, esame o settore; "solo le righe cambiate"; righe cambiate in giallo con il
+prezzo precedente barrato; righe cambiate, totale listino, totale offerta e sconto medio in tempo reale), "Motivo della revisione"
+obbligatorio, "Salva come versione N+1": stesse righe con i prezzi modificati e lo sconto ricalcolato, mapping e intestazioni ereditati,
+`differenze` con la funzione di sempre, note = motivo, `origine` REVISIONE (EXCEL per i caricamenti), `base_listino_id`; la nuova versione
+è la corrente e lo sconto medio dell'account la segue; diario LISTINO sottotipo REVISIONE con le righe cambiate (prima → dopo). La
+versione precedente resta nello storico. Poi tre passi nel riquadro: 1) "Genera l'offerta economica" della nuova versione (solo quel PDF:
+non il pacchetto, non la lettera MOD230; il motivo non si precompila nelle note del PDF), 2) "Invia per la firma": "Scrivi al cliente" con
+l'offerta PDF già allegata, destinatari dai referenti, oggetto e testo dal modello "Revisione dell'offerta economica" delle Impostazioni
+(`{{cliente}}`, `{{versione}}`, `{{righe_cambiate}}`, `{{data}}`), riepilogo e copie fisse come sempre; registrato come EMAIL_OUT
+sottotipo OFFERTA_REVISIONE (`listini.revisione_inviata_at`), 3) offerta firmata: "Carica l'offerta firmata (PDF)" oppure, se arriva come
+risposta, il PDF diventa "da verificare" (l'account ha un'offerta inviata e non firmata) e nella scheda Kit e contrattualizzazione si
+conferma con "È l'offerta economica firmata" (versione: l'ultima inviata e non firmata, altrimenti la corrente). Documento con l'etichetta
+"Offerta economica vN firmata", `firmata_at` sulla versione, che resta (o torna) la corrente; attività OFFERTA_ECONOMICA sottotipo
+OFFERTA_FIRMATA; **nessuna contrattualizzazione nuova** e nessuna comunicazione. Validazione: chiave di riga esistente e non ripetuta,
+prezzi numerici ≥ 0 (anche con la virgola), almeno un prezzo diverso, motivo di almeno 5 caratteri, solo dalla versione corrente, solo chi
+gestisce la linea. Il pacchetto e il kit usano l'offerta della versione corrente, quindi quella rivista.
+
+**Offerta economica: contenuto** (`lib/offertaEconomica.js`). Copertina: titolo, cliente e indirizzo, poi Data, Valida fino al, A cura di,
+Alla cortese attenzione (senza "preparata per", senza la riga della versione, senza la fascia "Ci prendiamo cura del tempo dei pazienti,
+lì dove ogni minuto conta."). Corpo: due riquadri (esami in offerta, valida fino al: niente sconto medio), condizioni di pagamento e prezzi
+(niente "Listino di riferimento"), tabelle per settore con Codice, Esame, Listino €, Offerta € e **Sconto solo se almeno un esame ha un
+prezzo offerto sotto il listino** (altrimenti la colonna sparisce e l'esame si allarga), note, chiusura e firma. La versione resta nel nome
+del file (`AAAA-MM-GG_Offerta_economica_<cliente>_vN.pdf`), nel titolo dei metadati del PDF, nel registro dei listini e nel diario. Il
+pacchetto unico continua a includere la lettera di offerta (MOD230 del contratto) e l'offerta economica: lì nulla cambia (la fascia "Ci
+prendiamo cura" della copertina del pacchetto di benvenuto non è dell'offerta e resta).
+
+**API** (`/api/business`): `POST /hub/accounts/:id/listini/:lid/revisione` ({ righe: [{ chiave, offerto, listino? }], motivo }),
+`GET /hub/listini/:id/revisione/email`, `POST /hub/listini/:id/offerta-firmata` (multipart `file`), `GET /hub/listini/:id` (righe con la
+`chiave`), `POST /hub/accounts/:id/email/invia` accetta `sottotipo: 'OFFERTA_REVISIONE'` e `listino_id`, `POST /hub/documenti/:id/verifica`
+accetta `esito: 'OFFERTA_FIRMATA'`, `GET /hub/accounts/:id` restituisce `contratto_corrente_id`; `POST /contracts/:id/files` con FIRMATO
+passa dalla contrattualizzazione (Service e PP con account).
+
+**Test**: `server/test/business-revisione-offerta.test.mjs` (contenuto di copertina e corpo, colonna dello sconto, revisione pura con
+validazione, modello; con `DATABASE_URL_TEST` il flusso: contratto firmato dalla scheda una volta sola, revisione v2, offerta v2, invio
+OFFERTA_REVISIONE, offerta firmata senza nuova contrattualizzazione).
+
+**Collaudo del 07/11/2026** (db di prova `suite_ctr_t`, porta 3145, posta in modalità registro; DB Opportunità importato: 424 account).
+Centro Medico Sirio (SRV, fase 5, dati della Legal entity di prova completati): scheda Contratto con "Nessun contratto"; contratto SRV
+creato (`contratto_corrente_id` = quello), proposta SRV-2026-0001 generata dalla scheda; "Carica firmato" dalla scheda → contratto
+Firmato, fase 6, comunicazioni interna, benvenuto e laboratorio REGISTRATE, attivazione; secondo PDF: "già contrattualizzato", nessuna
+email nuova, una sola attività di fase 6. Vecchio indirizzo `/account/42/contratti/1` → scheda Contratto. Listino di 3 esami, offerta v1
+di 2 pagine senza le righe eliminate; revisione in pagina dell'emocromo 5,20 → 5,00 € con motivo → v2 (1 riga cambiata, sconto medio
+38,4% → 39,2%); offerta v2 (2 pagine); "Invia per la firma" con il PDF allegato (REGISTRATO, OFFERTA_REVISIONE); offerta firmata caricata →
+"Offerta economica v2 firmata", v2 corrente, nessuna contrattualizzazione. Seconda revisione v3 inviata, risposta simulata con il PDF:
+abbinata, da verificare, "È l'offerta economica firmata" → v3 firmata. Pacchetto unico: 34 pagine con lettera di offerta (pagina 5) e
+offerta economica (pagina 25). Schermate `docs/screens/hub-contratto-in-scheda.png`, `hub-listino-revisione.png`.
+
+**Da verificare in produzione**: che l'ordine delle schede e il contratto incorporato vadano bene al CEO sugli account con molti contratti
+(pacchetti del 21/07/2026); testo del modello "Revisione dell'offerta economica" (Impostazioni, scheda dei modelli); che la casella service@
+riceva le risposte con l'offerta firmata (stessi permessi Graph del kit).

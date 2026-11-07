@@ -105,7 +105,7 @@ r.get('/accounts/:id', ah(async (req, res) => {
     many(`SELECT p.id, p.last_name || ' ' || p.first_name AS nome, p.email, p.phone, p.job_title AS ruolo FROM public.people p
       WHERE p.organization_id=$1 AND p.status <> 'CESSATO' AND NOT EXISTS (SELECT 1 FROM contatti c WHERE c.account_id=$2 AND c.person_id=p.id) ORDER BY p.last_name, p.first_name`, [a.organization_id, a.id]),
     many(`SELECT k.*, u.full_name AS user_name, uc.full_name AS chiusa_by_name FROM criticita k LEFT JOIN users u ON u.id=k.user_id LEFT JOIN users uc ON uc.id=k.chiusa_by WHERE k.account_id=$1 ORDER BY (k.chiusa_at IS NULL) DESC, k.aperta_at DESC`, [a.id]),
-    many(`SELECT c.id, c.kind, c.protocol, c.status, c.title, c.proposal_date, c.signed_at, c.start_date, c.end_date, c.version, s.name AS site_name,
+    many(`SELECT c.id, c.kind, c.protocol, c.status, c.title, c.proposal_date, c.signed_at, c.start_date, c.end_date, c.version, c.site_id, s.name AS site_name,
         (SELECT json_agg(json_build_object('id', f.id, 'category', f.category, 'filename', f.filename, 'size', f.size) ORDER BY f.created_at DESC) FROM contract_files f WHERE f.contract_id=c.id) AS files
       FROM contracts c LEFT JOIN public.sites s ON s.id=c.site_id WHERE c.org_id=$1 ORDER BY (c.kind=$2) DESC, c.created_at DESC`, [a.organization_id, a.linea]),
     many(`SELECT d.id, d.status, coalesce(d.title, c.title, s.name) AS title, d.submitted_at, d.authorized_at, d.authorization_ref, s.name AS site_name, c.protocol
@@ -116,7 +116,11 @@ r.get('/accounts/:id', ah(async (req, res) => {
       FROM activities x LEFT JOIN users u ON u.id=x.user_id LEFT JOIN contracts c ON c.id=x.contract_id WHERE x.account_id=$1 ORDER BY x.at DESC, x.id DESC LIMIT 500`, [a.id]),
     many('SELECT id, linea, fase_corrente, cliente_attivo FROM accounts WHERE organization_id=$1 AND id<>$2', [a.organization_id, a.id]),
   ]);
-  res.json({ ...arricchisci(a, stallo), contatti, persone, criticita, contratti, fascicoli, documenti, attivita, altri_account: altri,
+  // scheda "Contratto" (07/11/2026): il contratto della linea mostrato per primo è quello del pacchetto e del kit (offertaDi: il più
+  // recente non annullato né cessato; per i Punti Prelievo quello della sede del punto)
+  const { offertaDi } = await import('../lib/pacchettoGenera.js');
+  const { contratto: contrattoCorrente } = await offertaDi(a);
+  res.json({ ...arricchisci(a, stallo), contatti, persone, criticita, contratti, fascicoli, documenti, attivita, altri_account: altri, contratto_corrente_id: contrattoCorrente?.id || null,
     puo_modificare: puoLinea(req, a.linea), puo_attivo: isCeoOAdmin(req), puo_criticita: puoLinea(req, a.linea) || req.user.role === 'HQS',
     casella: casella(a.linea, await getSettings()).address, soglia_stallo: stallo, da_verificare: documenti.filter((d) => d.da_verificare).length });
 }));
@@ -415,7 +419,9 @@ r.delete('/documenti/:id', ah(async (req, res) => {
 // ---------------- Scrivi al cliente ----------------
 const emailSchema = z.object({ to: z.array(z.string().trim()).min(1, 'almeno un destinatario'), cc_extra: z.array(z.string().trim()).default([]), subject: z.string().trim().min(2).max(300),
   testo: z.string().trim().min(2).max(50000), documenti: z.array(z.coerce.number().int()).default([]), contract_files: z.array(z.coerce.number().int()).default([]),
-  contatto_id: optInt.optional(), contract_id: optInt.optional(), conferma: z.boolean().optional(), pacchetto_id: optInt.optional() });
+  contatto_id: optInt.optional(), contract_id: optInt.optional(), conferma: z.boolean().optional(), pacchetto_id: optInt.optional(),
+  // revisione del listino/offerta (07/11/2026): "Invia per la firma" dell'offerta economica della versione
+  sottotipo: z.enum(['OFFERTA_REVISIONE']).optional(), listino_id: optInt.optional() });
 async function preparaEmail(req) {
   const a = await loadAccount(req.params.id);
   richiediLinea(req, a.linea);
@@ -443,7 +449,11 @@ r.post('/accounts/:id/email/invia', ah(async (req, res) => {
   const allegati = [];
   for (const f of docs) allegati.push({ filename: f.filename, content: await readBuffer(f), contentType: f.mime, ref: `documento:${f.id}` });
   for (const f of cf) allegati.push({ filename: f.filename, content: await readBuffer(f), contentType: f.mime, ref: `contract_file:${f.id}` });
-  const out = await inviaAlCliente({ account: a, to, ccExtra: cc, subject: d.subject, testo: d.testo, allegati, userId: req.user.id, contattoId: d.contatto_id || null, contractId: d.contract_id || null });
+  const revisione = d.sottotipo === 'OFFERTA_REVISIONE' ? await one('SELECT id, versione FROM listini WHERE id=$1 AND account_id=$2', [d.listino_id || 0, a.id]) : null;
+  if (d.sottotipo === 'OFFERTA_REVISIONE' && !revisione) throw bad('Versione del listino non valida per questo account');
+  const out = await inviaAlCliente({ account: a, to, ccExtra: cc, subject: d.subject, testo: d.testo, allegati, userId: req.user.id, contattoId: d.contatto_id || null, contractId: d.contract_id || null,
+    sottotipo: d.sottotipo || null, dati: revisione ? { listino_id: revisione.id, versione: revisione.versione } : null });
+  if (revisione) { const { segnaInviata } = await import('../lib/revisioneOfferta.js'); await segnaInviata(revisione.id, out.activity_id, out.stato); }
   for (const f of docs) await q('UPDATE documenti SET activity_id=coalesce(activity_id, $2) WHERE id=$1', [f.id, out.activity_id]);
   // Pacchetto di benvenuto inviato dalla scheda: l'invio resta nel registro dei pacchetti (l'email è un EMAIL_OUT come le altre)
   if (d.pacchetto_id) {

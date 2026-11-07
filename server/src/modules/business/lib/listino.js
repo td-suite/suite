@@ -140,7 +140,7 @@ export function riepilogo(righe = []) {
     scontati: righe.filter((x) => Number(x.sconto) > 0).length, settori: settori.length };
 }
 
-const chiaveRiga = (x) => (x.codice ? `c:${String(x.codice).trim().toUpperCase()}` : `d:${normIntestazione(x.descrizione)}`);
+export const chiaveRiga = (x) => (x.codice ? `c:${String(x.codice).trim().toUpperCase()}` : `d:${normIntestazione(x.descrizione)}`);
 /**
  * Differenze tra due versioni (per codice, o per descrizione se il codice manca): aggiunte, tolte, cambiate (prezzo offerto o
  * listino), invariate, e la variazione dello sconto medio. Le righe cambiate portano i valori prima e dopo.
@@ -242,3 +242,46 @@ export async function leggiListino(buffer, filename, { mappingSalvato = null, ma
     da_mapping_salvato: Boolean(!mappingForzato && auto.mancanti.length && salvatoValido), mancanti, ...letto, riepilogo: riepilogo(letto.righe), campi: CAMPI.map((c) => ({ k: c.k, label: c.label, obbligatorio: Boolean(c.obbligatorio) })) };
 }
 export const etichettaCampo = (k) => PER_K[k]?.label || k;
+
+// ---------------------------------------------------------------- revisione del listino/offerta (richiesta del CEO del 07/11/2026)
+// "nel listino/offerta devi prevedere una sezione di revisione listino/offerta in cui può cambiare anche solo un prezzo e noi rigeneriamo
+// a quel punto solo il PDF del listino/offerta e mandiamo rifirmato solo quello". Regola pura: dalle righe della versione di partenza e
+// dalle modifiche ({ chiave, offerto, listino? }) le righe della nuova versione (sconto ricalcolato), le differenze con la funzione di
+// sempre e il riepilogo. Errori espliciti: chiave sconosciuta o ripetuta, prezzo non numerico o negativo, nessun prezzo cambiato.
+const prezzoValido = (v) => v != null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+export function applicaRevisione(righe = [], modifiche = []) {
+  if (!Array.isArray(modifiche) || !modifiche.length) throw Object.assign(new Error('Nessun prezzo modificato'), { status: 400 });
+  const chiavi = new Set(righe.map(chiaveRiga));
+  const perChiave = new Map();
+  for (const m of modifiche) {
+    const k = String(m?.chiave || '');
+    if (!chiavi.has(k)) throw Object.assign(new Error(`Riga non presente nella versione di partenza: ${k || '(vuota)'}`), { status: 400 });
+    if (perChiave.has(k)) throw Object.assign(new Error(`Riga indicata due volte: ${k}`), { status: 400 });
+    if (!prezzoValido(m.offerto)) throw Object.assign(new Error(`Prezzo offerto non valido per ${k}: serve un numero maggiore o uguale a zero`), { status: 400 });
+    if (m.listino !== undefined && m.listino !== null && !prezzoValido(m.listino)) throw Object.assign(new Error(`Prezzo di listino non valido per ${k}: serve un numero maggiore o uguale a zero`), { status: 400 });
+    perChiave.set(k, { offerto: r2(Number(m.offerto)), listino: m.listino == null ? null : r2(Number(m.listino)) });
+  }
+  const avvisi = [];
+  const nuove = righe.map((x) => {
+    const m = perChiave.get(chiaveRiga(x));
+    if (!m) return { ...x };
+    const listino = m.listino == null ? Number(x.listino) : m.listino;
+    const offerto = m.offerto;
+    if (offerto > listino + 0.005) avvisi.push(`${x.codice || x.descrizione}: prezzo offerto superiore al listino`);
+    return { ...x, listino: r2(listino), offerto, sconto: listino > 0 ? r2((1 - offerto / listino) * 100) : 0 };
+  });
+  const diff = differenze(righe, nuove);
+  if (!diff.cambiate.length) throw Object.assign(new Error('Nessun prezzo diverso dalla versione di partenza'), { status: 400 });
+  return { righe: nuove, differenze: diff, riepilogo: riepilogo(nuove), cambiate: diff.cambiate, avvisi: [...new Set(avvisi)].slice(0, 20) };
+}
+
+/** Righe cambiate in testo (diario ed email): "- A1 Glicemia: 2,50 € → 2,00 €" (e il listino se cambia anche quello). */
+export function testoRigheCambiate(cambiate = [], max = 50) {
+  const e = (n) => `${new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0))} €`;
+  const righe = cambiate.slice(0, max).map((x) => {
+    const listino = Math.abs(Number(x.listino_prima) - Number(x.listino_dopo)) > 0.005 ? ` (listino ${e(x.listino_prima)} → ${e(x.listino_dopo)})` : '';
+    return `- ${[x.codice, x.descrizione].filter(Boolean).join(' ')}: ${e(x.offerto_prima)} → ${e(x.offerto_dopo)}${listino}`;
+  });
+  if (cambiate.length > max) righe.push(`- e altre ${cambiate.length - max} righe`);
+  return righe.join('\n');
+}
