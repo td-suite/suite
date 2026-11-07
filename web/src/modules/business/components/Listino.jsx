@@ -80,17 +80,23 @@ function Carica({ a, onClose, onDone }) {
   const [foglio, setFoglio] = useState('');
   const [busy, setBusy] = useState(false);
   const fd = (m = mapping) => { const x = new FormData(); x.append('file', file); if (m) x.append('mapping', JSON.stringify(m)); if (foglio) x.append('foglio', foglio); x.append('note', note); return x; };
-  const leggi = async (m = mapping) => { setBusy(true); try { const r = await api.upload(`/hub/accounts/${a.id}/listini/anteprima`, fd(m)); setP(r); if (!m) setMapping(null); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
+  // Il file si legge da solo appena scelto (07/11/2026: il CEO non capiva perché "Salva" fosse spento: serviva prima l'anteprima).
+  const leggi = async (m = mapping, f = file) => { if (!f) return; setBusy(true); try { const x = new FormData(); x.append('file', f); if (m) x.append('mapping', JSON.stringify(m)); if (foglio) x.append('foglio', foglio); const r = await api.upload(`/hub/accounts/${a.id}/listini/anteprima`, x); setP(r); if (!m) setMapping(null); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
+  const scegli = (f) => { setFile(f); setP(null); setMapping(null); if (f) leggi(null, f); };
+  const pronto = p && p.mancanti.length === 0 && p.righe_totali > 0;
+  const perche = !file ? 'Scegli il file da StudioLAB' : busy ? 'Lettura del file in corso…' : !p ? 'Il file non è stato letto: premi "Leggi il file"' : p.mancanti.length ? 'Indica le colonne mancanti e premi "Applica le colonne scelte"' : !p.righe_totali ? 'Nessun esame leggibile nel file' : '';
   const salva = async () => { setBusy(true); try { const r = await api.upload(`/hub/accounts/${a.id}/listini`, fd()); toast(`Listino v${r.versione} salvato: ${r.riepilogo.esami} esami`); onDone(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); } };
   const cambiate = useMemo(() => new Set(p?.differenze?.chiavi_cambiate || []), [p]);
   const chiave = (x) => (x.codice ? `c:${String(x.codice).toUpperCase()}` : null);
   const m = mapping || p?.mapping || {};
   return (
     <Modal wide title={`Carica il listino StudioLAB · ${a.org_name}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button>
-      <button className="btn ghost" disabled={!file || busy} onClick={() => leggi()}>{p ? 'Rileggi' : 'Anteprima'}</button>
-      <button className="btn" disabled={!p || p.mancanti.length > 0 || !p.righe_totali || busy} onClick={salva}>Salva come v{p?.versione || ''}</button></>}>
+      {p && <button className="btn ghost" disabled={busy} onClick={() => leggi()}>Rileggi</button>}
+      {pronto ? <button className="btn" disabled={busy} onClick={salva}>{busy ? 'Salvataggio…' : `Salva come versione ${p.versione}`}</button>
+        : <button className="btn" disabled={!file || busy} onClick={() => leggi()} title={perche}>{busy ? 'Lettura…' : 'Leggi il file'}</button>}</>}>
       <div className="form-grid">
-        <Field label="File Excel esportato da StudioLAB (.xlsx o .csv)" className="span2"><input type="file" accept=".xlsx,.csv" onChange={(e) => { setFile(e.target.files[0] || null); setP(null); setMapping(null); }} /></Field>
+        <Field label="File Excel esportato da StudioLAB (.xlsx o .csv)" className="span2"><input type="file" accept=".xlsx,.csv" onChange={(e) => scegli(e.target.files[0] || null)} /></Field>
+        {perche && !busy && <div className="small muted span2">{perche}{p ? '' : '. Il file viene letto appena lo scegli: qui sotto compaiono colonne, esami e differenze con la versione corrente, poi si salva come nuova versione.'}</div>}
         <Field label="Nota della versione" className="span2" help="Es. sconto richiesto dal cliente, revisione del listino"><input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
       {p && <div className="mt">

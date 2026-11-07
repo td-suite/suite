@@ -337,7 +337,7 @@ function Contratti({ a }) {
   return (
     <Card title="Contratti della Legal entity (di cui)" flush actions={<Link className="btn sm" to={`${BASE}/contratti/nuovo/${a.linea}`}>+ Proposta {LINEE[a.linea].short}</Link>}>
       {a.contratti.length ? <table className="t"><thead><tr><th>Protocollo</th><th>Sezione</th><th>Titolo</th><th>Stato</th><th>Proposta</th><th>Firma</th><th className="num">Versione</th></tr></thead><tbody>
-        {a.contratti.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${BASE}/contratti/${c.id}`)}><td className="mono">{c.protocol || 'bozza'}</td><td><KindBadge kind={c.kind} /></td><td>{c.title}{c.site_name ? <div className="small muted">{c.site_name}</div> : null}</td><td><StatusBadge status={c.status} /></td><td className="small">{itDate(c.proposal_date)}</td><td className="small">{itDate(c.signed_at) || '–'}</td><td className="num">v{c.version}</td></tr>)}
+        {a.contratti.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${BASE}/account/${a.id}/contratti/${c.id}`)}><td className="mono">{c.protocol || 'bozza'}</td><td><KindBadge kind={c.kind} /></td><td>{c.title}{c.site_name ? <div className="small muted">{c.site_name}</div> : null}</td><td><StatusBadge status={c.status} /></td><td className="small">{itDate(c.proposal_date)}</td><td className="small">{itDate(c.signed_at) || '–'}</td><td className="num">v{c.version}</td></tr>)}
       </tbody></table> : <Empty>Nessun contratto con questa Legal entity</Empty>}
     </Card>
   );

@@ -6,7 +6,7 @@ import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, 
 import { itDate, itDateTime, bytes, KIND, FILE_CAT, EVENT, DOSSIER_STATUS, FEE_VAT, FEE_PERIOD, FEE_BASE, DAYS, today, num, HAS_DOSSIER, SITE_TYPE, RENT_PERIOD } from '../format.js';
 
 export default function ContractDetail() {
-  const { id } = useParams();
+  const { id, accountId } = useParams();   // accountId: dettaglio aperto dalla scheda account, si resta nel contesto dell'account
   const nav = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
@@ -33,6 +33,7 @@ export default function ContractDetail() {
 
   return (
     <div className="page">
+      {accountId && <div style={{ marginBottom: 8 }}><Link className="btn sm ghost" to={`${BASE}/account/${accountId}`}><Icon name="back" />Torna alla scheda del cliente</Link></div>}
       <div className="page-head">
         <div>
           <div className="row" style={{ gap: 8, marginBottom: 6 }}><KindBadge kind={c.kind} /><StatusBadge status={c.status} />{c.protocol && <span className="mono">{c.protocol} · v{c.version}</span>}</div>

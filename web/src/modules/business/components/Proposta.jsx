@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { api, API_BASE } from '../api.js';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, Modal, Icon, Empty, ConfirmModal, useToast } from './ui.jsx';
-import { itDate, itDateTime, bytes, EMAIL_STATO, num } from '../format.js';
+import { itDate, itDateTime, bytes, EMAIL_STATO, FASI, num } from '../format.js';
 
 const docUrl = (id, inline) => `${API_BASE}/hub/documenti/${id}${inline ? '?inline=1' : ''}`;
 const COM = { interna: 'Avvenuta contrattualizzazione (interna)', benvenuto: 'Ringraziamento e benvenuto al cliente', laboratorio: 'Nuovo cliente al laboratorio' };
@@ -19,6 +19,7 @@ export default function Proposta({ a, onChange, vaiA }) {
   const [busy, setBusy] = useState('');
   const [manuale, setManuale] = useState(false);
   const [dati, setDati] = useState(null);
+  const [mostraProposta, setMostraProposta] = useState(false);
   const d = q.data;
   if (q.error) return <ErrorBox error={q.error} />;
   if (!d) return <Loading />;
@@ -32,18 +33,33 @@ export default function Proposta({ a, onChange, vaiA }) {
   const azione = { listino: () => vaiA('listino'), offerta: () => vaiA('listino'), referente: () => vaiA('referenti'), lettera: () => vaiA('contratti'), dati: () => window.open('/admin/organizations', '_blank') };
   const contratti = d.documenti_contratto || [];
   const c = d.contrattualizzazione;
+  // Cliente già attivo o contrattualizzato (fase 6-7): la proposta è una fase passata, la checklist del kit non va mostrata come
+  // "da compilare" (CEO, 07/11/2026). Resta raggiungibile per una nuova proposta (es. revisione del listino).
+  const acquisito = Boolean(a.cliente_attivo || Number(a.fase_corrente) >= 6 || d.contrattualizzato_at);
+  const vociOk = d.prerequisiti.voci.filter((v) => v.ok).length;
   return (
     <>
       {d.contrattualizzato_at && <div className="alert info" style={{ marginBottom: 12 }}><b>Contratto firmato ricevuto il {itDateTime(d.contrattualizzato_at)}</b>{c?.fonte ? ` (${c.fonte})` : ''}: pipeline alla fase 6, servizi della Suite attivati, comunicazioni inviate. La fase 7 la conferma il CEO.</div>}
       <DaVerificare righe={d.da_verificare} edit={edit} busy={busy} run={run} />
 
+      {acquisito && !mostraProposta && <Card title={a.cliente_attivo ? 'Cliente attivo' : 'Cliente contrattualizzato'} className="mb" actions={<Badge tone="green">{a.cliente_attivo ? 'attivo' : 'contratto firmato'}</Badge>}>
+        <table className="t"><tbody>
+          <tr><td className="muted">Fase</td><td>{FASI[a.fase_corrente]?.label || a.fase_corrente}{a.attivo_dal ? ` · attivo dal ${itDate(a.attivo_dal)}` : ''}</td></tr>
+          <tr><td className="muted">Contratto</td><td>{contratti.length ? contratti.map((x) => <div key={x.id}><a href={docUrl(x.id)}>{x.etichetta || x.filename}</a> <span className="small muted">{itDate(x.created_at)}</span></div>) : c?.contratto?.protocol || <span className="muted">nessun contratto firmato registrato nel fascicolo (i contratti protocollati sono nella scheda Contratti)</span>}{' '}<button className="btn link small" onClick={() => vaiA('contratti')}>Vai ai contratti</button></td></tr>
+          <tr><td className="muted">Listino StudioLAB</td><td>{d.listino ? `v${d.listino.versione}, ${d.listino.riepilogo?.esami} esami` : d.listino_nel_contratto ? <>Excel allegato al contratto: {d.listino_nel_contratto.filename}{edit && <> <button className="btn sm" disabled={Boolean(busy)} onClick={() => run('imp', () => api.post(`/hub/accounts/${a.id}/listini/da-contratto/${d.listino_nel_contratto.id}`, {}), (r) => `Listino v${r.versione} importato dal contratto: ${r.riepilogo.esami} esami`)}>Importa dal contratto</button></>}</> : <span className="muted">non caricato</span>} <button className="btn link small" onClick={() => vaiA('listino')}>Listino e offerta</button></td></tr>
+          {d.offerta_contratto && <tr><td className="muted">Offerta economica</td><td>allegata al contratto: <a href={`${API_BASE}/contract-files/${d.offerta_contratto.id}`}>{d.offerta_contratto.filename}</a></td></tr>}
+          <tr><td className="muted">Accesso alla Suite</td><td>{d.prerequisiti.voci.find((v) => v.key === 'accesso')?.ok ? 'creato' : <span className="muted">non creato</span>} <button className="btn link small" onClick={() => vaiA('portale')}>Portale</button></td></tr>
+        </tbody></table>
+        <div className="small muted" style={{ marginTop: 8 }}>La proposta al cliente è una fase già superata: il kit non è richiesto. {edit && <button className="btn link small" onClick={() => setMostraProposta(true)}>Prepara comunque una nuova proposta</button>}</div>
+      </Card>}
       <div className="grid g2">
-        <Card title="Proposta al cliente" actions={d.prerequisiti.pronto ? <Badge tone="green">pronta</Badge> : <Badge tone="red">prerequisiti mancanti</Badge>}>
+        {(!acquisito || mostraProposta) && <Card title="Proposta al cliente" actions={d.prerequisiti.pronto ? <Badge tone="green">pronta</Badge> : <Badge tone="red">prerequisiti mancanti</Badge>}>
           <ul className="checklist-pr">
             {d.prerequisiti.voci.map((v) => <li key={v.key} className={v.ok ? 'ok' : v.auto ? 'auto' : 'ko'}>
               <span className="ico">{v.ok ? '✓' : v.auto ? '•' : '✗'}</span>
               <div style={{ flex: 1 }}><div className="strong">{v.label}</div><div className="small muted">{v.dettaglio}</div></div>
               {!v.ok && edit && v.key === 'accesso' && d.referente?.email && <button className="btn sm ghost" disabled={Boolean(busy)} onClick={() => run('accesso', () => api.post(`/hub/accounts/${a.id}/accesso`, {}), (r) => (r.password_provvisoria ? `Accesso creato (posta in modalità registro: password provvisoria ${r.password_provvisoria})` : 'Accesso creato e invito inviato'))}>Crea accesso</button>}
+              {!v.ok && edit && v.key === 'listino' && v.nel_contratto && <button className="btn sm" disabled={Boolean(busy)} onClick={() => run('imp', () => api.post(`/hub/accounts/${a.id}/listini/da-contratto/${v.nel_contratto.id}`, {}), (r) => `Listino v${r.versione} importato dal contratto: ${r.riepilogo.esami} esami`)}>Importa dal contratto</button>}
               {!v.ok && azione[v.key] && <button className="btn sm ghost" onClick={azione[v.key]}>{v.key === 'dati' ? 'Legal entity' : 'Vai'}</button>}
             </li>)}
           </ul>
@@ -57,10 +73,10 @@ export default function Proposta({ a, onChange, vaiA }) {
           {d.gia_inviato && <div className="alert warn small" style={{ marginTop: 10 }}>Il kit per il listino v{d.gia_inviato.listino_versione} è già stato inviato il {itDateTime(d.gia_inviato.inviato_at)}{d.gia_inviato.inviato_a ? ` a ${d.gia_inviato.inviato_a}` : ''}. Un nuovo invio chiede conferma.</div>}
           {edit && <div className="row" style={{ marginTop: 12 }}><button className="btn" disabled={!d.prerequisiti.pronto || Boolean(busy)} onClick={prepara}><Icon name="mail" />{busy === 'prepara' ? 'Preparo il kit… (qualche secondo)' : 'Prepara la mail'}</button>
             <span className="small muted">Genera il pacchetto della proposta, il MOD173 compilabile e il collegamento alla form; l'invio parte solo dopo l'anteprima.</span></div>}
-        </Card>
+        </Card>}
 
         <div>
-          <Card title="Form online del cliente">
+          {(!acquisito || mostraProposta || d.form.link) && <Card title="Form online del cliente">
             {d.form.link ? <>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><code className="small" style={{ wordBreak: 'break-all' }}>{d.form.link}</code></div>
               <div className="small" style={{ marginTop: 6 }}>{d.form.valido ? <Badge tone="green">valido fino al {itDate(d.form.scade)}</Badge> : <Badge tone="red">{d.form.motivo}</Badge>} · riferimento nell'oggetto delle email: <span className="mono">{d.form.rif}</span></div>
@@ -72,8 +88,8 @@ export default function Proposta({ a, onChange, vaiA }) {
               </div>
             </> : <div className="small muted">Il collegamento nasce con la preparazione del kit (valido {d.form.giorni} giorni, Impostazioni).{edit && <> <button className="btn sm ghost" onClick={() => run('link', () => api.post(`/hub/accounts/${a.id}/b2b-link`, { azione: 'crea' }), 'Collegamento creato')}>Crealo ora</button></>}</div>}
             <div className="small muted" style={{ marginTop: 8 }}>Senza login: il cliente compila l'Anagrafica Clienti B2B (MOD173), carica il contratto firmato e gli allegati. La form salva nel fascicolo e con il contratto firmato avvia la contrattualizzazione.</div>
-          </Card>
-          <Card title="Avvio del cliente" className="mt" actions={edit && !dati && <button className="btn sm ghost" onClick={() => setDati({ volumi_giornalieri_attesi: d.volumi_giornalieri_attesi ?? '', data_avvio_prevista: d.data_avvio_prevista ? String(d.data_avvio_prevista).slice(0, 10) : '', non_contattare: Boolean(a.non_contattare) })}><Icon name="edit" />Modifica</button>}>
+          </Card>}
+          <Card title={acquisito ? 'Dati di avvio' : 'Avvio del cliente'} className={(!acquisito || mostraProposta || d.form.link) ? 'mt' : ''} actions={edit && !dati && <button className="btn sm ghost" onClick={() => setDati({ volumi_giornalieri_attesi: d.volumi_giornalieri_attesi ?? '', data_avvio_prevista: d.data_avvio_prevista ? String(d.data_avvio_prevista).slice(0, 10) : '', non_contattare: Boolean(a.non_contattare) })}><Icon name="edit" />Modifica</button>}>
             {!dati ? <table className="t"><tbody>
               <tr><td className="muted">Volumi giornalieri attesi</td><td>{d.volumi_giornalieri_attesi != null ? `${num(d.volumi_giornalieri_attesi)} esami al giorno` : a.volume_fy_atteso ? <span className="muted">dal volume annuo atteso ({num(a.volume_fy_atteso)})</span> : '–'}</td></tr>
               <tr><td className="muted">Data di avvio prevista</td><td>{d.data_avvio_prevista ? itDate(d.data_avvio_prevista) : '–'}</td></tr>
@@ -86,7 +102,7 @@ export default function Proposta({ a, onChange, vaiA }) {
               </div>
               <div className="row end" style={{ marginTop: 10 }}><button className="btn ghost" onClick={() => setDati(null)}>Annulla</button><button className="btn" onClick={async () => { await run('dati', () => api.put(`/hub/accounts/${a.id}`, dati), 'Dati salvati'); setDati(null); }}>Salva</button></div>
             </>}
-            <div className="small muted" style={{ marginTop: 6 }}>Volumi e data di avvio vanno nell'email al laboratorio quando arriva il contratto firmato.</div>
+            <div className="small muted" style={{ marginTop: 6 }}>{acquisito ? 'Dati facoltativi: servono per il laboratorio e per le statistiche; non sono richiesti per un cliente già attivo.' : 'Volumi e data di avvio vanno nell\'email al laboratorio quando arriva il contratto firmato.'}</div>
           </Card>
         </div>
       </div>

@@ -18,7 +18,12 @@ export default function Pipeline() {
   const [drag, setDrag] = useState(null);
   const [over, setOver] = useState(null);
   const [sposta, setSposta] = useState(null);
-  const [censiti, setCensiti] = useState(false);
+  const [censiti, setCensiti] = useState(true);
+  // Censiti (fase 0): si vedono TUTTI, in righe compatte raggruppate (provincia, tipologia, priorità o alfabeto), gruppi ripiegabili.
+  // Il CEO (07/11/2026): "devo poterli vedere tutti, la ricerca è stupida se non ricordo i nomi".
+  const [gruppo, setGruppo] = useState(() => { try { return localStorage.getItem('hub.censiti.gruppo') || 'prov'; } catch { return 'prov'; } });
+  const [chiusi, setChiusi] = useState({});
+  const cambiaGruppo = (g) => { setGruppo(g); setChiusi({}); try { localStorage.setItem('hub.censiti.gruppo', g); } catch { /* niente */ } };
   const righe = useMemo(() => filtra(q.data?.righe || [], f), [q.data, f]);
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!q.data) return <div className="page"><Loading /></div>;
@@ -38,7 +43,7 @@ export default function Pipeline() {
   const tot = (l) => l.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0);
   const colonna = (n) => {
     const l = col(n);
-    const vis = n === 0 && !censiti ? [] : n === 0 ? l.slice(0, 120) : l;
+    const vis = n === 0 ? [] : l;
     return (
       <div key={n} className={`kcol ${over === n ? 'over' : ''} ${n === 0 ? 'k0' : ''} ${n === 0 && !censiti ? 'chiusa' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(n); }} onDragLeave={() => setOver((o) => (o === n ? null : o))} onDrop={() => drop(n)}>
         <div className="khd">
@@ -61,7 +66,7 @@ export default function Pipeline() {
               {a.prossima_azione && <div className={`small ${a.azione_scaduta ? 'red' : 'muted'}`}>→ {a.prossima_azione}{a.data_prossima_azione ? ` (${itDate(a.data_prossima_azione)})` : ''}</div>}
             </div>
           ))}
-          {n === 0 && censiti && l.length > vis.length && <div className="small muted" style={{ padding: 8 }}>Altri {l.length - vis.length}: usa la ricerca o <Link to={`${BASE}/clienti?linea=${f.linea}&fase=0`}>l'elenco</Link></div>}
+          {n === 0 && censiti && <Censiti l={l} gruppo={gruppo} setGruppo={cambiaGruppo} chiusi={chiusi} setChiusi={setChiusi} setDrag={setDrag} setOver={setOver} nav={nav} />}
           {n === 0 && !censiti && <div className="small muted" style={{ padding: 10 }}>{l.length} strutture censite senza contatti. Trascina qui per riportare un account a prospect.</div>}
         </div>
       </div>
@@ -74,7 +79,7 @@ export default function Pipeline() {
         <Link className="btn" to={`${BASE}/clienti?linea=${f.linea}&nuovo=1`}>+ Nuovo prospect</Link>
       </div>
       <FiltriAccount f={f} setF={setF} righe={q.data.righe} owners={owners.data || []} />
-      <div className="kanban">{FASI.map((x) => colonna(x.n))}</div>
+      <div className={`kanban ${censiti ? 'censiti-aperti' : ''}`}>{FASI.map((x) => colonna(x.n))}</div>
       {sposta && <Modal title={`${sposta.a.org_name}: ${FASI[sposta.a.fase_corrente].label} → ${FASI[sposta.n].label}`} onClose={() => setSposta(null)} footer={<><button className="btn ghost" onClick={() => setSposta(null)}>Annulla</button><button className="btn" onClick={conferma}>Registra l'avanzamento</button></>}>
         {sposta.n < sposta.a.fase_corrente && <div className="alert warn small" style={{ marginBottom: 10 }}>Ritorno a una fase precedente: le date delle fasi successive si tolgono e restano nel diario.</div>}
         <div className="form-grid">
@@ -82,6 +87,43 @@ export default function Pipeline() {
           <Field label="Nota (facoltativa)" className="span2"><textarea value={sposta.nota} onChange={(e) => setSposta({ ...sposta, nota: e.target.value })} placeholder="Cosa è successo" /></Field>
         </div>
       </Modal>}
+    </div>
+  );
+}
+
+// Elenco completo dei censiti in righe compatte, raggruppate e ripiegabili; ogni riga si trascina in una fase come una scheda.
+const GRUPPI = { prov: 'Provincia', tipologia: 'Tipologia', priorita: 'Priorità', alfa: 'Alfabetico' };
+const ORD_PRIO = { ALTA: 0, MEDIA: 1, BASSA: 2 };
+function Censiti({ l, gruppo, setGruppo, chiusi, setChiusi, setDrag, setOver, nav }) {
+  const chiave = (a) => gruppo === 'prov' ? (a.prov ? a.prov.toUpperCase() : 'Provincia non indicata')
+    : gruppo === 'tipologia' ? (a.tipologia || 'Tipologia non indicata')
+      : gruppo === 'priorita' ? (a.priorita ? PRIORITA[a.priorita]?.label || a.priorita : 'Senza priorità')
+        : (a.org_name || '?').trim().charAt(0).toUpperCase().replace(/[^A-Z]/, '#');
+  const m = new Map();
+  for (const a of l) { const k = chiave(a); if (!m.has(k)) m.set(k, []); m.get(k).push(a); }
+  const gruppi = [...m.entries()].sort((x, y) => gruppo === 'priorita' ? (ORD_PRIO[l.find((a) => chiave(a) === x[0])?.priorita] ?? 9) - (ORD_PRIO[l.find((a) => chiave(a) === y[0])?.priorita] ?? 9) : x[0].localeCompare(y[0]));
+  for (const [, v] of gruppi) v.sort((a, b) => (a.citta || '').localeCompare(b.citta || '') || a.org_name.localeCompare(b.org_name));
+  const tutti = (aperti) => setChiusi(aperti ? {} : Object.fromEntries(gruppi.map(([k]) => [k, true])));
+  return (
+    <div className="censiti">
+      <div className="ctool">
+        <select value={gruppo} onChange={(e) => setGruppo(e.target.value)} title="Raggruppa per">{Object.entries(GRUPPI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <button className="btn link small" onClick={() => tutti(true)}>Apri tutti</button>
+        <button className="btn link small" onClick={() => tutti(false)}>Chiudi tutti</button>
+      </div>
+      {gruppi.length === 0 && <div className="small muted" style={{ padding: 8 }}>Nessun censito con i filtri attuali.</div>}
+      {gruppi.map(([k, v]) => (
+        <div key={k} className="cgrp">
+          <button className="cghd" onClick={() => setChiusi((c) => ({ ...c, [k]: !c[k] }))} aria-expanded={!chiusi[k]}><span className="car">{chiusi[k] ? '▸' : '▾'}</span><span className="ct">{k}</span><span className="kn">{v.length}</span></button>
+          {!chiusi[k] && v.map((a) => (
+            <div key={a.id} className={`crow ${a.stallo ? 'stallo' : ''}`} draggable onDragStart={() => setDrag(a.id)} onDragEnd={() => { setDrag(null); setOver(null); }} onClick={() => nav(`${BASE}/account/${a.id}`)} title={[a.tipologia, a.segmento_lab, a.gruppo && `gruppo ${a.gruppo}`].filter(Boolean).join(' · ')}>
+              <div className="cn">{a.org_name}</div>
+              <div className="cm">{[a.citta, gruppo !== 'prov' && a.prov && `(${a.prov})`].filter(Boolean).join(' ')}{a.n_sedi > 0 ? ` · ${a.n_sedi} strutture` : ''}</div>
+              {a.priorita && gruppo !== 'priorita' && <Badge tone={PRIORITA[a.priorita].tone}>{PRIORITA[a.priorita].label}</Badge>}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

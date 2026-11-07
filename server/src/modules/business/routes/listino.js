@@ -9,7 +9,7 @@ import { config } from '../config.js';
 import { ah, bad, forbidden, notFound, audit, parse, todayRome } from '../lib/util.js';
 import { canEditKind, getSettings } from '../lib/rules.js';
 import { requireAdmin } from '../lib/access.js';
-import { storeBuffer } from '../lib/storage.js';
+import { storeBuffer, readBuffer } from '../lib/storage.js';
 import { LINEE } from '../lib/hub.js';
 import { leggiListino, differenze, versioneCorrente, CAMPI_KEYS } from '../lib/listino.js';
 import { generaOffertaEconomica, nomeFileOfferta } from '../lib/offertaEconomica.js';
@@ -57,12 +57,15 @@ r.get('/listini/:id', ah(async (req, res) => {
 // Lettura del file con il mapping (riconosciuto, salvato o scelto a video) e confronto con la versione corrente: nessuna scrittura
 async function leggi(req, a) {
   if (!req.file) throw bad('Carica il file Excel del listino esportato da StudioLAB');
+  return leggiBuffer(req, a, req.file.buffer, req.file.originalname);
+}
+async function leggiBuffer(req, a, buffer, filename) {
   let forzato = null;
   if (req.body.mapping) {
     try { forzato = JSON.parse(req.body.mapping); } catch { throw bad('Mapping non valido'); }
     forzato = Object.fromEntries(Object.entries(forzato || {}).filter(([k, v]) => CAMPI_KEYS.includes(k) && v !== '' && v != null).map(([k, v]) => [k, Number(v)]));
   }
-  const out = await leggiListino(req.file.buffer, req.file.originalname, { mappingSalvato: await mappingSalvato(), mappingForzato: forzato, foglio: req.body.foglio || null });
+  const out = await leggiListino(buffer, filename, { mappingSalvato: await mappingSalvato(), mappingForzato: forzato, foglio: req.body.foglio || null });
   const prec = await listinoCorrente(a);
   const diff = prec && out.righe.length ? differenze(prec.righe, out.righe) : null;
   return { out, prec, diff };
@@ -76,9 +79,26 @@ r.post('/accounts/:id/listini/anteprima', upload.single('file'), ah(async (req, 
   res.json({ ...out, righe: out.righe.slice(0, 500), righe_totali: out.righe.length, versione: prossima, precedente: prec ? { id: prec.id, versione: prec.versione, riepilogo: prec.riepilogo } : null, differenze: diff });
 }));
 
+// Importa come nuova versione l'Excel del listino allegato al contratto della linea (travaso dai contratti, 07/11/2026)
+r.post('/accounts/:id/listini/da-contratto/:fileId', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  richiedi(req, a);
+  const f = await one(`SELECT f.id, f.filename, f.mime, f.data, f.blob_path, c.protocol FROM contract_files f JOIN contracts c ON c.id=f.contract_id WHERE f.id=$1 AND c.org_id=$2 AND c.kind=$3`, [req.params.fileId, a.organization_id, a.linea]);
+  if (!f) throw notFound('File del contratto non trovato per questo account');
+  if (!/\.xlsx?$/i.test(f.filename)) throw bad('Il file allegato al contratto non è un Excel');
+  const buffer = await readBuffer(f);
+  if (!buffer) throw bad('Contenuto del file non disponibile');
+  req.file = { buffer, originalname: f.filename, mimetype: f.mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  req.body = { ...(req.body || {}), note: `Importato dal contratto ${f.protocol || ''}`.trim() };
+  await salvaListino(req, res, a);
+}));
+
 r.post('/accounts/:id/listini', upload.single('file'), ah(async (req, res) => {
   const a = await loadAccount(req.params.id);
   richiedi(req, a);
+  await salvaListino(req, res, a);
+}));
+async function salvaListino(req, res, a) {
   const { out, prec, diff } = await leggi(req, a);
   if (out.mancanti.length) throw bad(`Colonne non riconosciute: ${out.mancanti.join(', ')}. Indica a video quale colonna è la descrizione e quale il prezzo di listino`);
   if (!out.righe.length) throw bad('Nessuna riga di esame letta dal file');
@@ -102,7 +122,7 @@ r.post('/accounts/:id/listini', upload.single('file'), ah(async (req, res) => {
   await q('UPDATE documenti SET activity_id=$2 WHERE id=$1', [doc.id, act.id]);
   await audit(req, 'HUB_LISTINO', 'account', a.id, { versione, esami: out.riepilogo.esami });
   res.status(201).json({ id: row.id, versione, riepilogo: out.riepilogo, differenze: diff });
-}));
+}
 
 r.put('/accounts/:id/listino-corrente', ah(async (req, res) => {
   const a = await loadAccount(req.params.id);

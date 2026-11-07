@@ -90,6 +90,15 @@ export async function statoComune(a, s = null) {
   };
 }
 
+/** File utili del contratto della linea: l'ultimo Excel del listino (LISTINO_XLSX) e l'ultimo PDF dell'offerta (LISTINO_PDF, o un
+ *  allegato con "offerta" nel nome). */
+export async function filesContratto(contractId) {
+  const files = await many(`SELECT id, category, filename, size, created_at FROM contract_files WHERE contract_id=$1 ORDER BY created_at DESC`, [contractId]);
+  const xlsx = files.find((f) => f.category === 'LISTINO_XLSX') || files.find((f) => /\.xlsx?$/i.test(f.filename) && /listino|offerta/i.test(f.filename) && !['GENERATO_DOCX', 'GENERATO_PDF', 'FIRMATO'].includes(f.category)) || null;
+  const pdf = files.find((f) => f.category === 'LISTINO_PDF') || files.find((f) => /\.pdf$/i.test(f.filename) && /offerta|listino/i.test(f.filename) && !['GENERATO_PDF', 'FIRMATO'].includes(f.category)) || null;
+  return { listino_xlsx: xlsx, offerta_pdf: pdf };
+}
+
 /** Stato del processo di un account per la scheda "Proposta e contratto". */
 export async function statoProcesso(a) {
   const s = await getSettings();
@@ -97,11 +106,18 @@ export async function statoProcesso(a) {
   const cor = versioneCorrente(vers, a.listino_corrente_id);
   const [ref, o, sl, acc, off] = await Promise.all([referentePrincipale(a.id), org(a.organization_id), a.linea === 'SRV' ? credenzialiStudiolab(a) : null, accessiEsterni(a.organization_id), offertaDi(a)]);
   const accesso = acc[0] || null;
+  // Dati già presenti nel contratto della linea (07/11/2026, il CEO: "i dati di Tutti i contratti vanno travasati in Clienti e prospect"):
+  // l'Excel del listino allegato al contratto si importa con un clic; il PDF dell'offerta allegato al contratto vale come offerta economica.
+  const nelContratto = off.contratto ? await filesContratto(off.contratto.id) : { listino_xlsx: null, offerta_pdf: null };
+  const offertaContratto = !cor?.offerta_documento_id && nelContratto.offerta_pdf ? nelContratto.offerta_pdf : null;
   const prereq = prerequisitiKit({
     listino: cor ? { versione: cor.versione, esami: cor.riepilogo?.esami } : null, referente: ref, datiMancanti: datiClienteMancanti(o || {}),
-    studiolab: sl, accesso: accesso ? { email: accesso.email, widget: accesso.widget } : null, offerta: cor?.offerta_documento_id ? { versione: cor.versione } : null,
+    studiolab: sl, accesso: accesso ? { email: accesso.email, widget: accesso.widget } : null,
+    offerta: cor?.offerta_documento_id ? { versione: cor.versione } : offertaContratto ? { contratto: true, filename: offertaContratto.filename } : null,
     lettera: off.file ? { filename: off.file.filename, protocol: off.contratto?.protocol } : null,
   });
+  if (!cor && nelContratto.listino_xlsx) { const v = prereq.voci.find((x) => x.key === 'listino'); v.dettaglio = `Excel allegato al contratto ${off.contratto.protocol || ''}: ${nelContratto.listino_xlsx.filename}. Importalo con "Importa dal contratto"`; v.nel_contratto = { id: nelContratto.listino_xlsx.id, filename: nelContratto.listino_xlsx.filename }; }
+  if (offertaContratto) { const v = prereq.voci.find((x) => x.key === 'offerta'); v.dettaglio = `allegata al contratto ${off.contratto.protocol || ''}: ${offertaContratto.filename}`; }
   if (a.linea !== 'SRV') { const st = prereq.voci.find((v) => v.key === 'studiolab'); st.ok = true; st.dettaglio = 'non richieste per questa linea'; prereq.pronto = prereq.voci.every((v) => v.ok || v.auto); }
   const anagrafiche = await many(`SELECT id, versione, inviata_at, documento_id, riempiti, differenze, allegati, applicata_at FROM anagrafiche_b2b WHERE account_id=$1 ORDER BY versione DESC`, [a.id]);
   const comune = await statoComune(a, s);
@@ -109,6 +125,7 @@ export async function statoProcesso(a) {
   return {
     linea: a.linea, prerequisiti: prereq, listino: cor ? { id: cor.id, versione: cor.versione, riepilogo: cor.riepilogo, offerta_documento_id: cor.offerta_documento_id } : null,
     referente: ref, accessi: acc, studiolab: sl, lettera: off.file ? { id: off.file.id, filename: off.file.filename, contratto: off.contratto } : null, contratto: off.contratto,
+    offerta_contratto: offertaContratto ? { id: offertaContratto.id, filename: offertaContratto.filename, size: Number(offertaContratto.size || 0) } : null, listino_nel_contratto: !cor && nelContratto.listino_xlsx ? { id: nelContratto.listino_xlsx.id, filename: nelContratto.listino_xlsx.filename } : null,
     ...comune, kit, gia_inviato: cor ? kit.find((k) => k.stato === 'INVIATO' && k.listino_id === cor.id) || null : null,
     anagrafiche,
     contrattualizzato_at: a.contrattualizzato_at, contrattualizzazione: a.contrattualizzazione, volumi_giornalieri_attesi: a.volumi_giornalieri_attesi, data_avvio_prevista: a.data_avvio_prevista,
@@ -234,11 +251,12 @@ export async function preparaKit(a, { contattoId = null, includiPassword = false
   for (const x of pk.avvisi || []) avvisi.push(`Pacchetto: ${x}`);
   const mod = await mod173Compilabile(a, ref, userId);
   const circ = await documentoDaFile(a, { file: CIRCOLARE.file, filename: CIRCOLARE.filename, etichetta: CIRCOLARE.etichetta }, userId);
-  const off = await one('SELECT id, filename, size FROM documenti WHERE id=$1', [stato.listino.offerta_documento_id]);
+  const off = stato.listino?.offerta_documento_id ? await one('SELECT id, filename, size FROM documenti WHERE id=$1', [stato.listino.offerta_documento_id]) : null;
   const allegati = [
     { documento_id: pk.documento_id, filename: pk.filename, size: pk.bytes, ruolo: 'Pacchetto della proposta (presentazione, Portale Service, credenziali, Vademecum)' },
     stato.lettera ? { contract_file_id: stato.lettera.id, filename: stato.lettera.filename, size: Number((await one('SELECT size FROM contract_files WHERE id=$1', [stato.lettera.id]))?.size || 0), ruolo: 'Lettera di offerta' } : null,
-    off ? { documento_id: off.id, filename: off.filename, size: off.size, ruolo: `Offerta economica (listino v${stato.listino.versione})` } : null,
+    off ? { documento_id: off.id, filename: off.filename, size: off.size, ruolo: `Offerta economica (listino v${stato.listino.versione})` }
+      : stato.offerta_contratto ? { contract_file_id: stato.offerta_contratto.id, filename: stato.offerta_contratto.filename, size: stato.offerta_contratto.size, ruolo: 'Offerta economica (allegata al contratto)' } : null,
     { documento_id: circ.id, filename: circ.filename, size: circ.size, ruolo: 'Circolare per il trasporto dei campioni' },
     { documento_id: mod.id, filename: mod.filename, size: mod.size, ruolo: 'Modulo Anagrafica Clienti B2B (MOD173) compilabile' },
   ].filter(Boolean);

@@ -38,6 +38,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="clienti" element={<Clienti />} />
             <Route path="db-opportunita" element={<Opportunita />} />
             <Route path="account/:id" element={<Account />} />
+            <Route path="account/:accountId/contratti/:id" element={<ContractDetail />} />
             <Route path="email" element={<EmailDaAssegnare />} />
             <Route path="clienti-attivi" element={<ClientiAttivi />} />
             <Route path="contratti-panoramica" element={<Dashboard />} />

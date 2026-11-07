@@ -2,6 +2,8 @@
 // La chiave resta `business`: percorsi /business, API /api/business, grant e profili invariati.
 // 06/11/2026, sera: "gli altri [le altre linee] non servono qui, semmai replicalo per ogni sezione": Cruscotto, Pipeline, Clienti e prospect,
 // Email da assegnare e Clienti sono replicati in ogni sezione con la linea fissa nell'indirizzo (?linea=…); nessuna vista "tutte le linee".
+// 07/11/2026: niente elenchi di contratti per linea ("una replica" di Tutti i contratti, CEO): i contratti si leggono nella scheda
+// dell'account (Clienti e prospect), dove si apre il dettaglio senza uscire dall'account (/business/account/:id/contratti/:cid).
 // Menu del CEO (06/11/2026): "Prima sezione: Management con Panoramica contratti e Tutti i contratti e Organizzazione e Sedi. Poi Service di
 // Laboratorio con Cruscotto, Pipeline, Clienti e prospect, DB Opportunità, Email da assegnare, Clienti. Poi Punti Prelievo con Punti Prelievo
 // e Sedi TD in locazione. Poi Medicina del Lavoro. Infine Amministrazione." Cruscotto e Pipeline della sezione Service sono filtrati sulla
@@ -23,7 +25,6 @@ export default {
     { to: 'clienti?linea=SRV', icon: 'users', label: 'Clienti e prospect', badge: 'da_confermare' },
     { to: 'db-opportunita', icon: 'sheet', label: 'DB Opportunità' },
     { to: 'email?linea=SRV', icon: 'mail', label: 'Email da assegnare', badge: 'email_da_assegnare' },
-    { to: 'service', icon: 'file', label: 'Contratti service' },
     { to: 'clienti-attivi?linea=SRV', icon: 'check', label: 'Clienti', badge: 'da_verificare' },
     { group: 'Punti Prelievo' },
     { to: '?linea=PP', icon: 'home', label: 'Cruscotto', end: true },
@@ -31,7 +32,6 @@ export default {
     { to: 'clienti?linea=PP', icon: 'users', label: 'Partner e prospect' },
     { to: 'punti-prelievo', icon: 'pin', label: 'Punti Prelievo', badge: 'fascicoli_aperti' },
     { to: 'email?linea=PP', icon: 'mail', label: 'Email da assegnare' },
-    { to: 'contratti-pp', icon: 'file', label: 'Contratti punti prelievo' },
     { to: 'sedi', icon: 'room', label: 'Sedi TD in locazione' },
     { to: 'clienti-attivi?linea=PP', icon: 'check', label: 'Punti attivi' },
     { group: 'Medicina del Lavoro' },
@@ -39,7 +39,6 @@ export default {
     { to: 'pipeline?linea=MDL', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=MDL', icon: 'users', label: 'Aziende e prospect' },
     { to: 'email?linea=MDL', icon: 'mail', label: 'Email da assegnare' },
-    { to: 'medicina-del-lavoro', icon: 'file', label: 'Contratti medicina del lavoro' },
     { to: 'clienti-attivi?linea=MDL', icon: 'check', label: 'Clienti' },
     { group: 'Amministrazione', profiles: ['ADMIN'] },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni', profiles: ['ADMIN'] },

@@ -369,6 +369,21 @@ label.btn { cursor: pointer; }
 .funnel .fn { font-weight: 750; } .funnel .fe { font-size: 12px; color: var(--muted); }
 /* pipeline a colonne */
 .kanban { display: grid; grid-template-columns: 170px repeat(7, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.kanban.censiti-aperti { grid-template-columns: 300px repeat(7, minmax(190px, 1fr)); }
+/* censiti: elenco completo in righe compatte raggruppate */
+.censiti { display: flex; flex-direction: column; gap: 4px; }
+.censiti .ctool { display: flex; align-items: center; gap: 4px; padding: 2px 0 6px; }
+.censiti .ctool select { font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff; flex: 1; min-width: 0; }
+.censiti .cgrp { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.censiti .cghd { width: 100%; display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: #f6fafb; border: 0; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 750; color: var(--jet); text-align: left; }
+.censiti .cghd .car { color: var(--muted); width: 10px; }
+.censiti .cghd .ct { flex: 1; }
+.censiti .crow { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; padding: 6px 10px 6px 24px; border-top: 1px solid var(--line); cursor: grab; }
+.censiti .crow:hover { background: var(--teal-050); }
+.censiti .crow.stallo { border-left: 3px solid var(--red); }
+.censiti .cn { font-size: 12.5px; font-weight: 650; color: var(--jet); grid-column: 1; }
+.censiti .cm { font-size: 11.5px; color: var(--muted); grid-column: 1; }
+.censiti .crow .badge { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 .kcol { background: #eef3f4; border: 1px solid var(--line); border-radius: 12px; min-height: 240px; display: flex; flex-direction: column; max-height: calc(100vh - 250px); }
 .kcol.over { outline: 2px dashed var(--teal); background: var(--teal-050); }
 .kcol.k0.chiusa { min-height: 120px; }
