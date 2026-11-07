@@ -33,6 +33,7 @@ import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
 import assetTypesRoutes from './routes/assetTypes.js';
 import consensiRoutes from './routes/consensi.js';
+import rubricheRoutes from './routes/rubriche.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
@@ -137,6 +138,7 @@ app.use('/api', importRoutes);
 app.use('/api', orgcatRoutes);
 app.use('/api', assetTypesRoutes);                       // Catalogo dispositivi (Amministrazione > Anagrafiche)
 app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
+app.use('/api/rubriche', rubricheRoutes);       // rubriche esterne (Outlook di francesco.epifani@, Gmail fraepi@): referenti delle Legal entity
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 

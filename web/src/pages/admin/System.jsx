@@ -477,6 +477,65 @@ function InformativeBox() {
   );
 }
 
+// Rubriche esterne (07/11/2026): contatti Outlook della casella di Francesco (Graph, Contacts.Read applicativo) e rubrica Google di
+// fraepi@gmail.com (People API, consenso OAuth dato una volta da Francesco). Le usano "Cerca in rubrica" dei referenti (Business Hub,
+// Registra contatto, Persone, Accessi delle Legal entity). Guida e permessi in docs/RUBRICHE.md.
+function EsitoProva({ r }) {
+  if (!r) return null;
+  return (
+    <div className={`alert ${r.ok ? 'ok' : 'err'} small`} style={{ marginTop: 8 }}><Icon name={r.ok ? 'check' : 'alert'} /><div>
+      <div className="strong">{r.message}</div>
+      {(r.steps || []).map((x, i) => <div key={i}>{x.ok ? '✓' : '✗'} {x.step}: {x.detail}</div>)}
+    </div></div>
+  );
+}
+function RubricheBox() {
+  const toast = useToast();
+  const st = useApi('/rubriche/stato');
+  const [f, setF] = useState(null);
+  const [prova, setProva] = useState({});
+  const [busy, setBusy] = useState('');
+  const [scollega, setScollega] = useState(false);
+  const esito = React.useMemo(() => { const p = new URLSearchParams(window.location.search); return p.get('rubriche_google') ? { ok: p.get('rubriche_google') === 'ok', motivo: p.get('motivo') } : null; }, []);
+  useEffect(() => { if (st.data && !f) setF({ outlook_casella: st.data.outlook.casella || '', google_account: st.data.google.account_atteso || '' }); }, [st.data]);
+  useEffect(() => { if (esito) document.getElementById('rubriche')?.scrollIntoView({ behavior: 'smooth' }); }, [esito]);
+  if (st.error) return <Card title="Rubriche esterne" icon="users"><ErrorBox error={st.error} /></Card>;
+  if (!st.data || !f) return <Card title="Rubriche esterne" icon="users"><Skeleton /></Card>;
+  const { outlook: o, google: g, mock } = st.data;
+  const dirty = f.outlook_casella.trim() !== (o.casella || '') || f.google_account.trim().toLowerCase() !== (g.account_atteso || '');
+  const salva = async () => { try { await api.put('/rubriche/impostazioni', { outlook_casella: f.outlook_casella.trim(), google_account: f.google_account.trim() }); toast('Rubriche salvate'); st.reload(); } catch (e) { toast(e, 'err'); } };
+  const prova_ = async (k) => { setBusy(k); try { const r = await api.post(`/rubriche/${k}/prova`); setProva((p) => ({ ...p, [k]: r })); } catch (e) { toast(e, 'err'); } setBusy(''); };
+  return (
+    <div id="rubriche"><Card title="Rubriche esterne" icon="users">
+      <p className="small muted" style={{ marginTop: 0 }}>Per compilare i referenti delle Legal entity senza ricopiarli: "Cerca in rubrica" nei form di Business Hub (Referenti, Registra contatto), Persone e Accessi delle Legal entity interroga la Suite, i contatti Outlook e la rubrica Gmail. Si salva solo il contatto scelto; la ricerca è disponibile al personale interno con il Business Hub e agli amministratori. Permessi e guida Google Cloud: docs/RUBRICHE.md.</p>
+      {mock && <div className="alert warn small" style={{ marginBottom: 10 }}><Icon name="alert" /><span>Modalità di prova (RUBRICHE_MOCK=1): le rubriche rispondono con contatti finti dichiarati come tali. Solo in sviluppo.</span></div>}
+      {esito && <div className={`alert ${esito.ok ? 'ok' : 'err'} small`} style={{ marginBottom: 10 }}><Icon name={esito.ok ? 'check' : 'alert'} /><span>{esito.ok ? 'Account Google collegato: la rubrica Gmail è disponibile nella ricerca.' : `Collegamento Google non riuscito: ${esito.motivo || 'motivo sconosciuto'}`}</span></div>}
+      <div className="form-section"><h3>Outlook · Microsoft 365</h3></div>
+      <div className="row" style={{ alignItems: 'end', gap: 10, flexWrap: 'wrap' }}>
+        <Field label="Casella di cui leggere i contatti" help="Predefinita francesco.epifani@toscanadiagnostica.it. Serve Contacts.Read (applicativo) sull'app registration della Suite."><input value={f.outlook_casella} onChange={(e) => setF({ ...f, outlook_casella: e.target.value })} style={{ minWidth: 320 }} aria-label="Casella Outlook" /></Field>
+        <Badge tone={o.configurata ? 'green' : 'grey'}>{o.configurata ? 'Configurata' : 'Non configurata'}</Badge>
+        <button className="btn ghost" disabled={busy === 'outlook'} onClick={() => prova_('outlook')}>{busy === 'outlook' ? 'Prova in corso' : 'Prova la rubrica Outlook'}</button>
+      </div>
+      {o.errore && <div className="small amber" style={{ marginTop: 6 }}>{o.errore}</div>}
+      <EsitoProva r={prova.outlook} />
+      <div className="form-section" style={{ marginTop: 16 }}><h3>Gmail · Google</h3></div>
+      <div className="row" style={{ alignItems: 'end', gap: 10, flexWrap: 'wrap' }}>
+        <Field label="Account Google della rubrica" help="Solo questo account può dare il consenso (predefinito fraepi@gmail.com)."><input value={f.google_account} onChange={(e) => setF({ ...f, google_account: e.target.value })} style={{ minWidth: 260 }} aria-label="Account Google" /></Field>
+        <Badge tone={g.configurata ? 'green' : 'grey'}>{g.configurata ? (g.account ? `Collegato · ${g.account}` : 'Configurata') : 'Non collegato'}</Badge>
+        {!mock && <a className={`btn${g.credenziali ? '' : ' disabled'}`} href={g.credenziali ? '/api/rubriche/google/avvia' : undefined} aria-disabled={!g.credenziali}><Icon name="key" />{g.account ? 'Ricollega l\'account Google' : 'Collega l\'account Google'}</a>}
+        {!mock && g.account && <button className="btn ghost danger" onClick={() => setScollega(true)}>Scollega</button>}
+        <button className="btn ghost" disabled={busy === 'google'} onClick={() => prova_('google')}>{busy === 'google' ? 'Prova in corso' : 'Prova la rubrica Gmail'}</button>
+      </div>
+      {g.consenso_at && <div className="small muted" style={{ marginTop: 6 }}>Consenso del {fmtDateTime(g.consenso_at)}. Il refresh token è cifrato nella Suite con CREDENTIALS_KEY.</div>}
+      {g.errore && <div className="small amber" style={{ marginTop: 6 }}>{g.errore}</div>}
+      {g.redirect_uri && <div className="small muted" style={{ marginTop: 6 }}>URI di reindirizzamento da registrare nel client OAuth di Google Cloud: <code>{g.redirect_uri}</code> <CopyButton text={g.redirect_uri} /></div>}
+      <EsitoProva r={prova.google} />
+      <div className="row between" style={{ marginTop: 12 }}><span className="small muted">{dirty ? 'Modifiche non salvate' : ''}</span><button className="btn sm" disabled={!dirty} onClick={salva}>Salva</button></div>
+      {scollega && <ConfirmModal danger title="Scollega l'account Google" text="Il consenso viene revocato presso Google e il token cancellato dalla Suite: la ricerca in Gmail smette di funzionare finché Francesco non ricollega l'account." confirmText="Scollega" onClose={() => setScollega(false)} onConfirm={async () => { try { const r = await api.post('/rubriche/google/revoca'); toast(r.revocato ? 'Account Google scollegato e consenso revocato' : 'Token cancellato dalla Suite (revoca presso Google non confermata: rimuovi l\'accesso da myaccount.google.com/permissions)'); st.reload(); } catch (e) { toast(e, 'err'); } }} />}
+    </Card></div>
+  );
+}
+
 export function Settings() {
   const { data, loading, error, reload } = useApi('/settings');
   const toast = useToast();
@@ -492,7 +551,8 @@ export function Settings() {
         {isOwner(me) && <Integrations />}
         {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /></Card>}
         {data && <InformativeBox />}
-        {data && Object.entries(data).filter(([k]) => k !== 'company' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+        {data && <RubricheBox />}
+        {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'rubriche' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
             {k === 'community.values' ? <ValuesEditor value={v} onSave={(nv) => save(k, nv)} /> : <JsonEditor k={k} value={v} onSave={(nv) => save(k, nv)} />}
           </Card>

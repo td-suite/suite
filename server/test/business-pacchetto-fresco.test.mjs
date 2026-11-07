@@ -140,11 +140,12 @@ test('Qualità e certificazioni: impostazioni sopra i predefiniti, pagina DOCX c
   const qualita = qualitaCertificazioni({ cert: CERT, autorizzazione: 'Autorizzazione Sanitaria n. 12 del 12/06/2026 rilasciata dal Comune di Sesto Fiorentino', politica });
   const corpo = D.diversi({ linea: 'SRV', qualita });
   const testo = corpo.replace(/<[^>]+>/g, ' ').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
-  for (const atteso of ['Qualità e certificazioni', 'La qualità non è una promessa. È un metodo.', 'TOSC5191H2605', 'dal 04/09/2026 al 03/09/2029', 'Standard di riferimento',
-    'L.R. Toscana 51/2009', 'Comune di Sesto Fiorentino.', 'Valutazione Esterna di Qualità (VEQ)', 'Governance clinica', 'TD-SGI-POL001 "Politica Integrata", revisione 01', 'Apri il PDF della revisione in vigore', 'Cosa ci rende diversi']) {
+  for (const atteso of ['Qualità e certificazioni', 'La qualità non è una promessa. È un metodo.', 'TOSC5191H2605', 'dal 04/09/2026 al 03/09/2029', 'Certificato in ricezione',
+    'L.R. Toscana 51/2009', 'Comune di Sesto Fiorentino.', 'Valutazione Esterna di Qualità (VEQ)', 'Governance clinica', 'Cosa ci rende diversi']) {
     assert.ok(testo.includes(atteso), `manca: ${atteso}`);
   }
-  assert.match(corpo, /<w:hyperlink r:id="rIdPolitica"/);
+  // (07/11/2026, CEO) la riga 'Politica Integrata: … Apri il PDF' non c'è più nella pagina
+  assert.doesNotMatch(corpo, /Apri il PDF della revisione in vigore/);
   const docx = D.costruisci(corpo, [], [{ rId: 'rIdPolitica', url: politica.url }]);
   const rels = new PizZip(docx).file('word/_rels/document.xml.rels').asText();
   assert.match(rels, /Id="rIdPolitica" Type="[^"]+\/hyperlink" Target="https:\/\/service\.toscanadiagnostica\.it\/doc\/TD-SGI-POL001" TargetMode="External"/);

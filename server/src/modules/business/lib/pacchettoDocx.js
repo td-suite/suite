@@ -446,7 +446,7 @@ export function diversi(d) {
   const stato = (v) => {
     if (v.certificato) return r(`Certificato ${v.certificato}`, { sz: 17, b: true, color: C.scuro });
     if (/^politica/i.test(v.norma)) return x.politica ? r(`${String(x.politica.code).replace(/_\d+$/, '')}, rev. ${x.politica.rev}`, { sz: 17, color: C.testo }) : r('Documento della Direzione', { sz: 17, color: C.testo });
-    return r('Standard di riferimento', { sz: 17, color: C.grigio });
+    return r('Certificato in ricezione', { sz: 17, color: C.grigio });
   };
   const righeStd = (x.standard || []).map((v) => [
     { c: p(r(v.norma, { sz: 17, b: true }), { line: 252 }), w: 2600, mar: [70, 120, 70, 120], borders: bordoRiga },
@@ -459,10 +459,8 @@ export function diversi(d) {
     tabella([2600, 4338, 2700], righeStd),
   ].join('') : '';
   const istituzionali = [x.accreditamento, x.autorizzazione ? conPunto(x.autorizzazione) : null].filter(Boolean);
-  const politica = x.politica ? [
-    p([r('Politica Integrata: ', { sz: 18, b: true, color: C.scuro }), r(`${String(x.politica.code).replace(/_\d+$/, '')} "${x.politica.title}", revisione ${x.politica.rev} del ${x.politica.data}. `, { sz: 18 }),
-      x.politica.url ? collegamento('rIdPolitica', 'Apri il PDF della revisione in vigore', { sz: 18 }) : ''], { before: 200, line: 276 }),
-  ].join('') : '';
+  // riga 'Politica Integrata: … Apri il PDF' tolta dal CEO (07/11/2026)
+  const politica = '';
   const schede = [
     { titolo: 'Trasparenza', corpo: d.linea === 'SRV' ? 'Tutto è tracciato e consultabile da voi: non conformità con le risposte, ordini con le fasi, circolari con le prese visione, ticket con i tempi. Non chiedete un resoconto: lo avete già.' : 'Tutto è tracciato e consultabile da voi nella Suite: circolari con le prese visione, ticket con i tempi, i dati che vi riguardano. Non chiedete un resoconto: lo avete già.' },
     { titolo: 'Tempi dichiarati', corpo: d.linea === 'SRV' ? 'I tempi di refertazione di ogni esame sono scritti nel Vademecum; le non conformità e i ticket hanno scadenze di risposta misurate. Promettiamo solo quello che misuriamo.' : 'Le richieste hanno scadenze di risposta misurate e visibili. Promettiamo solo quello che misuriamo.' },

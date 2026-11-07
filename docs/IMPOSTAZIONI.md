@@ -280,3 +280,15 @@ con anteprima: `GET /api/business/settings/firma` (metadati e firmatario in uso)
 Termini di pagamento delle lettere di offerta: le voci della tendina sono nel codice (`web/src/modules/business/format.js`,
 `TERMINI_PAGAMENTO`), non in Impostazioni: sono le voci standard del format. `payment_terms_default` resta il testo usato quando il
 campo del contratto è vuoto (prima voce della tendina, "Predefinito: ...").
+
+## Rubriche esterne: Outlook e Gmail (07/11/2026)
+Amministrazione > Impostazioni > "Rubriche esterne" (amministratori). Chiave `app_settings.rubriche` (esclusa dall'editor generico):
+`outlook_casella` (casella di cui leggere i contatti con Microsoft Graph, predefinita francesco.epifani@toscanadiagnostica.it) e
+`google_account` (unico account Google ammesso al consenso, predefinito fraepi@gmail.com). Nella stessa card: stato di ciascuna
+rubrica con il motivo se non è configurata, "Prova la rubrica Outlook" (credenziali, permesso Contacts.Read, casella, lettura) e "Prova
+la rubrica Gmail" (credenziali OAuth, consenso, token, lettura), "Collega l'account Google" (apre il consenso di Google) e "Scollega"
+(revoca presso Google e cancella il token), URI di reindirizzamento da registrare in Google Cloud con il pulsante Copia. Il refresh token
+è in `app_settings.secret:rubriche_google`, cifrato con CREDENTIALS_KEY come le altre credenziali. Variabili su Render (sync:false):
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`; facoltativa `GOOGLE_REDIRECT_URI`. Nessun dato chiesto due volte: le credenziali Microsoft
+sono quelle già usate per le caselle. Audit: `RUBRICA_IMPOSTAZIONI`, `RUBRICA_GOOGLE_COLLEGATA`, `RUBRICA_GOOGLE_RIFIUTATA`,
+`RUBRICA_GOOGLE_SCOLLEGATA`. Guida completa (permessi Graph, Application Access Policy, progetto Google Cloud): docs/RUBRICHE.md.

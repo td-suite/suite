@@ -193,9 +193,9 @@ test('modelli: segnaposto, righe senza dato tolte, modelli salvati con i predefi
 test('pacchetto: offerta economica dal listino, credenziali StudioLAB, variante prospect senza offerta né credenziali', () => {
   const by = (l) => Object.fromEntries(l.map((x) => [x.key, x]));
   const kit = by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: true, studiolab: true, variante: 'KIT' }));
-  assert.equal(kit.listino.inclusa, true); assert.equal(kit.studiolab.inclusa, true); assert.equal(kit.lettera.titolo, 'Lettera di presentazione');
+  assert.equal(kit.listino, undefined, 'con la lettera di offerta in PDF l\'offerta economica non è una sezione (è l\'Allegato 1)'); assert.equal(kit.studiolab.inclusa, true); assert.equal(kit.lettera.titolo, 'Lettera di presentazione');
   const pr = by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: true, studiolab: true, variante: 'PROSPECT' }));
-  for (const k of ['offerta', 'listino', 'credenziali', 'studiolab', 'avvio', 'checklist']) assert.equal(pr[k].inclusa, false, k);
+  for (const k of ['offerta', 'credenziali', 'studiolab', 'avvio', 'checklist']) assert.equal(pr[k].inclusa, false, k);
   assert.equal(pr.portale.inclusa, true); assert.equal(pr.vademecum.inclusa, true); assert.equal(pr.referente.inclusa, true);
   assert.equal(by(componiSezioni('SRV', {}, { variante: 'PROSPECT', owner: false })).referente.inclusa, false, 'prospect senza owner: niente "Da assegnare"');
   const eco = by(componiSezioni('SRV', {}, { offerta: 'ECONOMICA', listino: true }));

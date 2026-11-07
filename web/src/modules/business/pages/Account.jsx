@@ -14,6 +14,7 @@ import Proposta from '../components/Proposta.jsx';
 import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import ScriviCliente from '../components/ScriviCliente.jsx';
 import ContrattoDettaglio from '../components/ContrattoDettaglio.jsx';
+import CercaRubrica, { SuggerimentoEmail } from '../../../components/CercaRubrica.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
   itDate, itDateTime, bytes, FASI, LINEE, PRIORITA, TIPO_ATTIVITA, SOTTOTIPO, TONO_ATTIVITA, ORIGINE_CRITICITA, GRAVITA, NC_STATO, ORDINE_STATO, EMAIL_STATO, DOSSIER_STATUS, FILE_CAT, eurK, pctSconto, num, today, VOCABOLARI, DISCIPLINE } from '../format.js';
@@ -154,7 +155,7 @@ function Diario({ a, onChange }) {
             {x.esito && <Badge tone={x.esito === 'DA_CONFERMARE' || x.esito === 'DA_VERIFICARE' ? 'mauve' : x.esito === 'FALLITO' ? 'red' : 'grey'}>{x.esito.replace(/_/g, ' ').toLowerCase()}</Badge>}
             <span className="spacer" />
             <span className="small muted">{itDateTime(x.at)}{x.user_name ? ` · ${x.user_name}` : ''}</span>
-            {['CHIAMATA', 'INCONTRO', 'SOPRALLUOGO', 'NOTA', 'OFFERTA'].includes(x.tipo) && a.puo_modificare && <button className="iconbtn" title="Elimina" onClick={() => setDel(x)}><Icon name="trash" /></button>}
+            {['CHIAMATA', 'MESSAGGIO', 'INCONTRO', 'SOPRALLUOGO', 'NOTA', 'OFFERTA'].includes(x.tipo) && a.puo_modificare && <button className="iconbtn" title="Elimina" onClick={() => setDel(x)}><Icon name="trash" /></button>}
           </div>
           {(x.con_chi || x.email_from) && <div className="small muted">{x.tipo === 'EMAIL_IN' ? `Da ${x.email_from}` : x.tipo === 'EMAIL_OUT' ? `Da ${x.email_from} a ${x.email_to}${x.email_cc ? ` · cc ${x.email_cc}` : ''}` : `Con ${x.con_chi}`}</div>}
           {x.testo && <div className="dt">{x.testo}</div>}
@@ -172,11 +173,22 @@ function Composer({ a, onClose, onDone }) {
   const [f, setF] = useState({ tipo: 'CHIAMATA', at: loc, contatto_id: '', con_chi: '', oggetto: '', testo: '', esito: '', prossima_azione: '', data_prossima: '', contract_id: '' });
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  // scorciatoia "Con chi" dalle rubriche: il contatto scelto diventa un referente dell'account (campi modificabili prima di crearlo)
+  const [creati, setCreati] = useState([]);
+  const [nuovo, setNuovo] = useState(null);
+  const contatti = [...a.contatti, ...creati];
+  const creaReferente = async () => {
+    try {
+      const row = await api.post(`/hub/accounts/${a.id}/contatti`, nuovo);
+      setCreati((l) => [...l, row]); setF((cur) => ({ ...cur, contatto_id: String(row.id), con_chi: '' })); setNuovo(null);
+      toast('Referente creato: lo trovi anche nella scheda Referenti');
+    } catch (e) { toast(e.message, 'err'); }
+  };
   const salva = async () => {
     setBusy(true);
     try {
       const fd = new FormData();
-      const c = a.contatti.find((x) => String(x.id) === String(f.contatto_id));
+      const c = contatti.find((x) => String(x.id) === String(f.contatto_id));
       for (const [k, v] of Object.entries({ ...f, at: f.at ? new Date(f.at).toISOString() : '', con_chi: f.con_chi || (c ? `${c.nome}${c.ruolo ? ` (${c.ruolo})` : ''}` : '') })) fd.append(k, v ?? '');
       for (const x of files) fd.append('files', x);
       await api.upload(`/hub/accounts/${a.id}/attivita`, fd); toast('Contatto registrato nel diario'); onDone();
@@ -185,10 +197,21 @@ function Composer({ a, onClose, onDone }) {
   return (
     <Modal wide title={`Registra contatto · ${a.org_name}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={salva}>Registra nel diario</button></>}>
       <div className="form-grid">
-        <Field label="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>{['CHIAMATA', 'INCONTRO', 'SOPRALLUOGO', 'OFFERTA', 'NOTA', 'EMAIL_IN', 'EMAIL_OUT'].map((k) => <option key={k} value={k}>{TIPO_ATTIVITA[k]}{k.startsWith('EMAIL') ? ' (registrata a mano)' : ''}</option>)}</select></Field>
+        <Field label="Tipo"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>{['CHIAMATA', 'MESSAGGIO', 'INCONTRO', 'SOPRALLUOGO', 'OFFERTA', 'NOTA', 'EMAIL_IN', 'EMAIL_OUT'].map((k) => <option key={k} value={k}>{TIPO_ATTIVITA[k]}{k.startsWith('EMAIL') ? ' (registrata a mano)' : ''}</option>)}</select></Field>
         <Field label="Quando"><input type="datetime-local" value={f.at} onChange={(e) => setF({ ...f, at: e.target.value })} /></Field>
-        <Field label="Con chi (referente)"><select value={f.contatto_id} onChange={(e) => setF({ ...f, contatto_id: e.target.value })}><option value="">Altro / non in elenco</option>{a.contatti.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.ruolo ? ` · ${c.ruolo}` : ''}</option>)}</select></Field>
+        <Field label="Con chi (referente)"><select value={f.contatto_id} onChange={(e) => setF({ ...f, contatto_id: e.target.value })}><option value="">Altro / non in elenco</option>{contatti.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.ruolo ? ` · ${c.ruolo}` : ''}</option>)}</select></Field>
         {!f.contatto_id && <Field label="Con chi (testo)"><input value={f.con_chi} onChange={(e) => setF({ ...f, con_chi: e.target.value })} placeholder="Nome e ruolo" /></Field>}
+        {!f.contatto_id && !nuovo && a.puo_modificare && <CercaRubrica etichetta="Non è tra i referenti? Cercalo in rubrica e crealo" onScegli={(c) => setNuovo({ nome: '', ruolo: '', email: '', telefono: '', note: '', principale: false, ...referenteDaRubrica(c) })} />}
+        {nuovo && <div className="span2 card" style={{ padding: 12 }}>
+          <div className="strong" style={{ marginBottom: 8 }}>Nuovo referente da rubrica</div>
+          <div className="form-grid">
+            <Field label="Nome e cognome"><input value={nuovo.nome} onChange={(e) => setNuovo({ ...nuovo, nome: e.target.value })} /></Field>
+            <Field label="Ruolo"><input value={nuovo.ruolo} onChange={(e) => setNuovo({ ...nuovo, ruolo: e.target.value })} /></Field>
+            <Field label="Email"><input value={nuovo.email} onChange={(e) => setNuovo({ ...nuovo, email: e.target.value })} /></Field>
+            <Field label="Telefono"><input value={nuovo.telefono} onChange={(e) => setNuovo({ ...nuovo, telefono: e.target.value })} /></Field>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}><button type="button" className="btn sm" disabled={(nuovo.nome || '').trim().length < 2} onClick={creaReferente}>Crea il referente e usalo</button><button type="button" className="btn sm ghost" onClick={() => setNuovo(null)}>Annulla</button></div>
+        </div>}
         <Field label="Oggetto" className="span2"><input value={f.oggetto} onChange={(e) => setF({ ...f, oggetto: e.target.value })} placeholder="In breve" /></Field>
         <Field label="Cosa ci siamo detti" className="span2"><textarea style={{ minHeight: 130 }} value={f.testo} onChange={(e) => setF({ ...f, testo: e.target.value })} /></Field>
         <Field label="Esito"><input value={f.esito} onChange={(e) => setF({ ...f, esito: e.target.value })} placeholder="Es. interessato, richiamare, offerta richiesta" /></Field>
@@ -203,15 +226,27 @@ function Composer({ a, onClose, onDone }) {
 }
 
 // ---------------- Referenti ----------------
+// Campi del referente dal contatto scelto in rubrica (CercaRubrica): nome completo, ruolo (o azienda se manca), email, telefoni
+// (fisso e cellulare insieme, il campo è unico), provenienza per i nuovi; le note restano quelle scritte se ci sono
+const FONTE_REFERENTE = { OUTLOOK: 'RUBRICA_OUTLOOK', GOOGLE: 'RUBRICA_GMAIL' };
+function referenteDaRubrica(c, cur = {}) {
+  return {
+    nome: c.nome || cur.nome, ruolo: c.ruolo || cur.ruolo || '', email: c.email || cur.email || '', telefono: c.telefoni_testo || cur.telefono || '',
+    note: cur.note || (c.azienda && c.fonte !== 'SUITE' ? `${c.azienda} (da ${c.origine})` : ''),
+    ...(cur.id ? {} : { fonte: FONTE_REFERENTE[c.fonte] || 'MANUALE' }),
+  };
+}
 function Referenti({ a, onChange }) {
   const toast = useToast();
   const [m, setM] = useState(null);
   const salva = async () => { try { if (m.id) await api.put(`/hub/contatti/${m.id}`, m); else await api.post(`/hub/accounts/${a.id}/contatti`, m); toast('Referente salvato'); setM(null); onChange(); } catch (e) { toast(e.message, 'err'); } };
+  // contatto scelto dalle rubriche (Suite, Outlook, Gmail): compila i campi vuoti o tutti, resta modificabile prima di Salva
+  const daRubrica = (c) => setM((cur) => ({ ...cur, ...referenteDaRubrica(c, cur) }));
   return (
     <div className="grid g2">
       <Card title="Referenti del cliente" actions={a.puo_modificare && <button className="btn sm" onClick={() => setM({ nome: '', ruolo: '', email: '', telefono: '', principale: false, note: '' })}>+ Referente</button>} flush>
         {a.contatti.length ? <table className="t"><tbody>{a.contatti.map((c) => <tr key={c.id}>
-          <td><div className="strong">{c.nome}{c.principale ? <Badge tone="teal">principale</Badge> : null}</div><div className="small muted">{[c.ruolo, c.person_id ? 'in Persone' : null, c.fonte === 'DB_OPPORTUNITA' ? 'dal DB Opportunità' : c.fonte === 'EMAIL' ? 'da email' : null].filter(Boolean).join(' · ')}</div></td>
+          <td><div className="strong">{c.nome}{c.principale ? <Badge tone="teal">principale</Badge> : null}</div><div className="small muted">{[c.ruolo, c.person_id ? 'in Persone' : null, c.fonte === 'DB_OPPORTUNITA' ? 'dal DB Opportunità' : c.fonte === 'EMAIL' ? 'da email' : c.fonte === 'RUBRICA_OUTLOOK' ? 'da Outlook' : c.fonte === 'RUBRICA_GMAIL' ? 'da Gmail' : null].filter(Boolean).join(' · ')}</div></td>
           <td className="small">{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '–'}<div>{c.telefono || ''}</div></td>
           <td style={{ width: 1, whiteSpace: 'nowrap' }}>{a.puo_modificare && <><button className="btn sm ghost" onClick={() => setM({ ...c })}><Icon name="edit" /></button> <button className="iconbtn" onClick={async () => { await api.del(`/hub/contatti/${c.id}`); onChange(); }}><Icon name="trash" /></button></>}</td>
         </tr>)}</tbody></table> : <Empty>Nessun referente: aggiungilo per registrare con chi parli e per abbinare le email in arrivo.</Empty>}
@@ -223,9 +258,11 @@ function Referenti({ a, onChange }) {
       </Card>
       {m && <Modal title={m.id ? 'Modifica referente' : 'Nuovo referente'} onClose={() => setM(null)} footer={<><button className="btn ghost" onClick={() => setM(null)}>Annulla</button><button className="btn" onClick={salva}>Salva</button></>}>
         <div className="form-grid">
-          <Field label="Nome e cognome" className="span2"><input value={m.nome} onChange={(e) => setM({ ...m, nome: e.target.value })} autoFocus /></Field>
+          <CercaRubrica onScegli={daRubrica} etichetta="Cerca il referente in rubrica" />
+          <Field label="Nome e cognome" className="span2"><input value={m.nome} onChange={(e) => setM({ ...m, nome: e.target.value })} /></Field>
           <Field label="Ruolo"><input value={m.ruolo || ''} onChange={(e) => setM({ ...m, ruolo: e.target.value })} /></Field>
           <Field label="Email"><input value={m.email || ''} onChange={(e) => setM({ ...m, email: e.target.value })} /></Field>
+          <SuggerimentoEmail email={m.email} onCompleta={daRubrica} />
           <Field label="Telefono"><input value={m.telefono || ''} onChange={(e) => setM({ ...m, telefono: e.target.value })} /></Field>
           <label className="f inline"><input type="checkbox" checked={Boolean(m.principale)} onChange={(e) => setM({ ...m, principale: e.target.checked })} />Referente principale</label>
           <Field label="Note" className="span2"><input value={m.note || ''} onChange={(e) => setM({ ...m, note: e.target.value })} /></Field>

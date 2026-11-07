@@ -7,6 +7,7 @@ import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
 // mappa delle sedi (leaflet) a richiesta: non entra nel chunk dell'Amministrazione né in quello della Rubrica (M8)
 const SitesMap = React.lazy(() => import('../../components/SitesMap.jsx'));
 import { OrgAccessModal } from './OrgAccess.jsx';
+import CercaRubrica, { SuggerimentoEmail } from '../../components/CercaRubrica.jsx';
 
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
 export function LegacyRefs({ refs }) {
@@ -441,10 +442,18 @@ export function PeopleAdmin() {
   const [modal, setModal] = useState(null);
   const [pos, setPos] = useState(null);
   const people = useMemo(() => (data || []).map((p) => ({ value: p.id, label: `${p.last_name} ${p.first_name}` })), [data]);
+  // contatto scelto dalle rubriche (Outlook, Gmail): compila solo i campi che la rubrica conosce, tutti modificabili prima di Salva;
+  // la Legal entity si propone se l'azienda del contatto ha lo stesso nome di una Legal entity in anagrafica
+  const daRubrica = (c, patch) => {
+    const org = c.azienda ? (orgs.data || []).find((o) => o.name.trim().toLowerCase() === c.azienda.trim().toLowerCase()) : null;
+    patch(Object.fromEntries(Object.entries({ last_name: c.cognome, first_name: c.nome_proprio, email: c.email, phone: c.cellulare, phone_office: c.telefono, organization_id: org ? org.id : '' }).filter(([, v]) => v)));
+  };
   const fields = [
+    { key: 'rubrica', type: 'custom', render: (_f, patch) => <CercaRubrica etichetta="Compila da rubrica (referenti delle Legal entity)" suite={false} onScegli={(c) => daRubrica(c, patch)} /> },
     { key: 'last_name', label: 'Cognome', required: true }, { key: 'first_name', label: 'Nome', required: true }, { key: 'title', label: 'Titolo', max: 20 },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(PERSON_KIND) }, { key: 'status', label: 'Stato', type: 'select', options: opts({ CANDIDATO: 'Candidato', IMPEGNO: 'Impegno', ATTIVO: 'Attivo', CESSATO: 'Cessato' }) },
     { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Cellulare' }, { key: 'phone_office', label: 'Telefono ufficio' }, { key: 'phone_ext', label: 'Interno centralino', max: 10 },
+    { key: 'rubrica_email', type: 'custom', render: (f, patch) => <SuggerimentoEmail email={f.email} onCompleta={(c) => daRubrica(c, patch)} /> },
     { key: 'site_id', label: 'Sede di lavoro', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })) },
     { key: 'role_id', label: 'Ruolo', type: 'select', options: (roles.data || []).map((r) => ({ value: r.id, label: r.name })), help: 'Cosa fa (dal catalogo Ruoli): vale per tutti, anche senza casella nell\'organigramma. Gli incarichi sotto sono le caselle.' }, { key: 'discipline', label: 'Disciplina' },
     { key: 'hired_at', label: 'Data di ingresso', type: 'date' }, { key: 'terminated_at', label: 'Data di cessazione', type: 'date' },

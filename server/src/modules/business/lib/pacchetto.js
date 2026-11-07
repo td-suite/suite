@@ -21,7 +21,7 @@ export const SEZIONI = [
   { key: 'indice', titolo: 'Indice', fissa: true },
   { key: 'lettera', titolo: 'Lettera di benvenuto' },
   { key: 'offerta', titolo: 'Lettera di offerta' },
-  { key: 'listino', titolo: 'Offerta economica', linee: ['SRV'] },          // dal listino StudioLAB del cliente (processo Service, 06/11/2026)
+  { key: 'listino', titolo: 'Offerta economica', linee: ['SRV'] },          // SOLO di riserva quando non c'è la lettera di offerta (CEO, 07/11/2026: "non serve, c'è la Lettera di offerta che diventa Allegato 1")
   { key: 'portale', titolo: 'Il Portale Service e i servizi digitali', linee: ['SRV'] },
   { key: 'network', titolo: 'La rete Toscana Diagnostica', linee: ['PP'] },
   { key: 'mdl', titolo: 'La Medicina del Lavoro', linee: ['MDL'] },
@@ -33,6 +33,8 @@ export const SEZIONI = [
   { key: 'checklist', titolo: 'Checklist per iniziare' },
   { key: 'vademecum', titolo: 'Vademecum degli esami', linee: ['SRV'] },
 ];
+// Portale per il download dei referti: indirizzo pubblico fisso (CEO, 07/11/2026), qualunque cosa ci sia nelle credenziali
+export const PORTALE_REFERTI_URL = 'https://referti.toscanadiagnostica.it/';
 const PER_KEY = Object.fromEntries(SEZIONI.map((s) => [s.key, s]));
 export const sezioniLinea = (linea) => SEZIONI.filter((s) => !s.linee || s.linee.includes(linea));
 
@@ -94,9 +96,9 @@ export function componiSezioni(linea, scelte = {}, disp = {}) {
     if (s.key === 'listino' && !disp.listino) { out.inclusa = false; out.motivo = 'Nessuna offerta economica generata dal listino StudioLAB del cliente'; return out; }
     // niente doppione (seconda richiesta del CEO del 07/11/2026): la lettera di offerta inclusa contiene già l'offerta economica di
     // questa versione nel suo Allegato 1; se l'operatore esclude la lettera, l'offerta economica torna come sezione a sé
-    if (s.key === 'listino' && disp.listinoNellaLettera && disp.offerta === 'PDF' && scelte.offerta !== false) {
-      out.inclusa = false; out.nellaLettera = true; out.motivo = 'Già nella lettera di offerta (Allegato 1 del contratto)'; return out;
-    }
+    // (07/11/2026, CEO) con la lettera di offerta in PDF la sezione "Offerta economica" non esiste proprio: l'offerta è l'Allegato 1
+    // della lettera (anche se la lettera è esclusa dall'operatore: non serve un surrogato)
+    if (s.key === 'listino' && disp.offerta === 'PDF') return null;
     if (s.key === 'studiolab' && !disp.studiolab) { out.inclusa = false; out.motivo = disp.studiolab === undefined ? 'Credenziali StudioLAB nella pagina degli accessi' : 'Nessuna credenziale StudioLAB registrata (contratto della linea o Legal entity)'; return out; }
     if (s.key === 'offerta' && disp.offerta === 'ECONOMICA' && disp.listino) { out.inclusa = false; out.motivo = 'Sostituita dall\'offerta economica dal listino StudioLAB'; return out; }
     if (s.key === 'lettera' && variante !== 'BENVENUTO') out.titolo = 'Lettera di presentazione';
@@ -107,7 +109,7 @@ export function componiSezioni(linea, scelte = {}, disp = {}) {
     if (s.key === 'credenziali' && linea !== 'SRV') out.titolo = 'Accesso alla Suite';
     if (!s.fissa && scelte[s.key] === false) { out.inclusa = false; out.motivo = 'Esclusa dall\'operatore'; }
     return out;
-  });
+  }).filter(Boolean);
 }
 
 // ---------------------------------------------------------------- segnaposto
@@ -339,11 +341,13 @@ export function paginaCredenziali({ suiteUrl, accessi = [], portale = null, incl
   let referti = null;
   if (portale && (portale.portal_url || portale.username)) {
     const conPw = includiPassword && Boolean(portale.password);
-    referti = { url: pulito(portale.portal_url) || null, username: pulito(portale.username) || null,
+    // l'indirizzo del portale per il download dei referti è sempre quello pubblico (CEO, 07/11/2026)
+    referti = { url: PORTALE_REFERTI_URL, username: pulito(portale.username) || null,
       password: conPw ? String(portale.password) : 'comunicata separatamente', password_inclusa: conPw };
   }
   return { suiteUrl, righe, referti, password_inclusa: Boolean(referti?.password_inclusa) };
 }
+
 
 // ---------------------------------------------------------------- checklist
 export function checklist(linea, { data, offerta = false, firmata = false } = {}) {

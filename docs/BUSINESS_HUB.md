@@ -817,3 +817,18 @@ predefiniti); i numeri dei certificati non si scrivono lì.
 Test: `server/test/business-pacchetto-fresco.test.mjs` (regola della rigenerazione, listino dopo la firma, margine inferiore su un PDF di
 esempio e sul contratto MOD230 vero convertito con LibreOffice, pagina e impostazioni delle certificazioni).
 
+
+## Referenti dalle rubriche esterne: Outlook e Gmail (07/11/2026)
+Richiesta del CEO: scorrere la rubrica Gmail (fraepi@gmail.com) e i contatti Outlook di francesco.epifani@ quando si inseriscono i
+referenti. Componente core `CercaRubrica` (guida, permessi e privacy in docs/RUBRICHE.md):
+- **Referenti > "+ Referente" e modifica**: in testa al form "Cerca il referente in rubrica" con risultati raggruppati per Suite
+  (persone dell'anagrafica e referenti già presenti negli account), Outlook e Gmail; il clic compila nome e cognome, ruolo, email e
+  telefono (fisso e cellulare nello stesso campo, "055 … · cell. 333 …"); se l'azienda del contatto è nota e le note sono vuote, le note
+  diventano "Azienda (da Outlook)". Tutto resta modificabile prima di Salva. Sotto l'email, se quella scritta a mano è di un contatto
+  Outlook (o Gmail), compare "Trovato in Outlook" con "Completa i campi".
+- **Provenienza**: i referenti creati dalla rubrica hanno `contatti.fonte` = `RUBRICA_OUTLOOK` o `RUBRICA_GMAIL` (in elenco: "da
+  Outlook", "da Gmail"); in modifica la provenienza non cambia. Nessuna migrazione: `fonte` è già TEXT.
+- **Registra contatto > Con chi**: se il referente non è in elenco, "Non è tra i referenti? Cercalo in rubrica e crealo" apre i campi
+  precompilati del nuovo referente; "Crea il referente e usalo" lo aggiunge all'account (POST `/hub/accounts/:id/contatti`) e lo seleziona
+  nella tendina. Il referente resta anche se poi si annulla la registrazione del contatto.
+- Accesso: chi ha il Business Hub (personale interno) e gli amministratori; gli esterni no. Si salva solo il contatto scelto.

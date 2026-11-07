@@ -288,7 +288,7 @@ r.delete('/accounts/:id', ah(async (req, res) => {
 
 // ---------------- Diario ----------------
 const attivitaSchema = z.object({
-  tipo: z.enum(['CHIAMATA', 'INCONTRO', 'SOPRALLUOGO', 'NOTA', 'OFFERTA', 'CRITICITA', 'EMAIL_IN', 'EMAIL_OUT']),
+  tipo: z.enum(['CHIAMATA', 'MESSAGGIO', 'INCONTRO', 'SOPRALLUOGO', 'NOTA', 'OFFERTA', 'CRITICITA', 'EMAIL_IN', 'EMAIL_OUT']),
   at: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.string().max(40).nullable()).optional(),
   con_chi: optStr(300).optional(), contatto_id: optInt.optional(), oggetto: optStr(300).optional(), testo: optStr(20000).optional(), esito: optStr(300).optional(),
   prossima_azione: optStr(500).optional(), data_prossima: optDate.optional(), contract_id: optInt.optional(),
@@ -326,7 +326,9 @@ r.delete('/attivita/:id', ah(async (req, res) => {
 
 // ---------------- Referenti ----------------
 const contattoSchema = z.object({ nome: z.string().trim().min(2).max(200), ruolo: optStr(200).optional(), email: optStr(200).optional(), telefono: optStr(60).optional(),
-  principale: z.boolean().optional(), note: optStr(1000).optional(), person_id: optInt.optional() });
+  principale: z.boolean().optional(), note: optStr(1000).optional(), person_id: optInt.optional(),
+  // provenienza del referente scelto dalle rubriche esterne (componente CercaRubrica, 07/11/2026): resta modificabile come ogni referente
+  fonte: z.enum(['MANUALE', 'RUBRICA_OUTLOOK', 'RUBRICA_GMAIL']).optional() });
 async function personaDi(orgId, d) {
   if (d.person_id) { const p = await one('SELECT id FROM public.people WHERE id=$1 AND organization_id=$2', [d.person_id, orgId]); if (!p) throw bad('La persona non appartiene a questa Legal entity'); return p.id; }
   if (d.email) return (await one('SELECT id FROM public.people WHERE organization_id=$1 AND lower(email)=lower($2) LIMIT 1', [orgId, d.email]))?.id || null;
@@ -340,17 +342,17 @@ r.post('/accounts/:id/contatti', ah(async (req, res) => {
   const personId = await personaDi(a.organization_id, d);
   if (personId && await one('SELECT 1 FROM contatti WHERE account_id=$1 AND person_id=$2', [a.id, personId])) throw bad('Questa persona è già tra i referenti');
   if (d.principale) await q('UPDATE contatti SET principale=FALSE WHERE account_id=$1', [a.id]);
-  const row = await one(`INSERT INTO contatti (account_id, person_id, nome, ruolo, email, telefono, principale, note, fonte) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'MANUALE') RETURNING *`,
-    [a.id, personId, d.nome, d.ruolo || null, d.email ? d.email.toLowerCase() : null, d.telefono || null, Boolean(d.principale), d.note || null]);
+  const row = await one(`INSERT INTO contatti (account_id, person_id, nome, ruolo, email, telefono, principale, note, fonte) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [a.id, personId, d.nome, d.ruolo || null, d.email ? d.email.toLowerCase() : null, d.telefono || null, Boolean(d.principale), d.note || null, d.fonte || 'MANUALE']);
   await tocca(a.id);
-  await audit(req, 'HUB_CONTATTO', 'account', a.id, { contatto: row.id, persona: personId });
+  await audit(req, 'HUB_CONTATTO', 'account', a.id, { contatto: row.id, persona: personId, fonte: row.fonte });
   res.status(201).json(row);
 }));
 r.put('/contatti/:id', ah(async (req, res) => {
   const c = await one('SELECT c.*, a.linea, a.organization_id FROM contatti c JOIN accounts a ON a.id=c.account_id WHERE c.id=$1', [Number(req.params.id)]);
   if (!c) throw notFound();
   richiediLinea(req, c.linea);
-  const d = parse(contattoSchema.partial(), req.body);
+  const d = parse(contattoSchema.omit({ fonte: true }).partial(), req.body);   // la provenienza non cambia in modifica
   if (d.email && !emailValida(d.email)) throw bad('Email non valida');
   if (d.principale) await q('UPDATE contatti SET principale=FALSE WHERE account_id=$1', [c.account_id]);
   const personId = d.email !== undefined || d.person_id !== undefined ? await personaDi(c.organization_id, { ...c, ...d }) : c.person_id;

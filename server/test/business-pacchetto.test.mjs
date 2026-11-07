@@ -145,22 +145,17 @@ test('niente doppione: l\'offerta economica già nell\'Allegato 1 della lettera 
   assert.equal(letteraConOfferta(meta, null), false);
   assert.equal(letteraConOfferta({ allegato1_offerta: { ...meta.allegato1_offerta, pagine: 0 } }, 12), false);
   const by = (sez) => Object.fromEntries(sez.map((x) => [x.key, x]));
-  // lettera con l'offerta dentro: la sezione "Offerta economica" non si aggiunge, con il motivo e il segno nellaLettera
+  // (07/11/2026, CEO) con la lettera di offerta in PDF la sezione "Offerta economica" non esiste: l'offerta è l'Allegato 1 della lettera
   const dentro = by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: true, listinoNellaLettera: true }));
-  assert.equal(dentro.offerta.inclusa, true);
-  assert.equal(dentro.listino.inclusa, false); assert.equal(dentro.listino.nellaLettera, true);
-  assert.match(dentro.listino.motivo, /Già nella lettera di offerta \(Allegato 1/);
-  // lettera esclusa dall'operatore: l'offerta economica torna sezione a sé
-  const esclusa = by(componiSezioni('SRV', { offerta: false }, { offerta: 'PDF', listino: true, listinoNellaLettera: true }));
-  assert.equal(esclusa.offerta.inclusa, false); assert.equal(esclusa.listino.inclusa, true);
-  // lettera generata prima (senza offerta dentro): come prima, entrambe
-  const prima = by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: true, listinoNellaLettera: false }));
-  assert.equal(prima.offerta.inclusa, true); assert.equal(prima.listino.inclusa, true); assert.equal(prima.listino.nellaLettera, undefined);
-  // nessuna lettera generata (offerta ECONOMICA dai dati della proposta): il flag non conta, vale la regola di prima
+  assert.equal(dentro.offerta.inclusa, true); assert.equal(dentro.listino, undefined);
+  // anche se la lettera è esclusa dall'operatore o generata prima: nessun surrogato
+  assert.equal(by(componiSezioni('SRV', { offerta: false }, { offerta: 'PDF', listino: true, listinoNellaLettera: true })).listino, undefined);
+  assert.equal(by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: true, listinoNellaLettera: false })).listino, undefined);
+  // nessuna lettera generata (offerta ECONOMICA dai dati della proposta): l'offerta economica dal listino resta, di riserva
   const eco = by(componiSezioni('SRV', {}, { offerta: 'ECONOMICA', listino: true, listinoNellaLettera: true }));
   assert.equal(eco.listino.inclusa, true); assert.equal(eco.offerta.inclusa, false);
-  // account senza listino: nessuna offerta economica, qualunque cosa dica la lettera
-  assert.equal(by(componiSezioni('SRV', {}, { offerta: 'PDF', listino: false, listinoNellaLettera: false })).listino.inclusa, false);
+  // account senza listino e senza lettera: niente offerta economica
+  assert.equal(by(componiSezioni('SRV', {}, { offerta: null, listino: false })).listino.inclusa, false);
 });
 
 async function pdfDi(n, testo) {

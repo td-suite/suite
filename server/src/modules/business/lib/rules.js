@@ -54,7 +54,7 @@ export const DEFAULT_SETTINGS = {
   // l'immagine della firma è nella tabella firma_td (lib/firmaTd.js)
   firma_nome: '',
   firma_qualifica: '',
-  portal_url_default: 'https://portale.toscanadiagnostica.it',
+  portal_url_default: 'https://referti.toscanadiagnostica.it/',   // portale per il download dei referti: sempre questo (CEO, 07/11/2026)
   // Testi
   dirty_clean_default: 'che gli stessi sono localizzati all’interno della stanza in cui avvengono le prestazioni sanitarie.',
   duvri_costs_default: 'Non sono stati identificati rischi di interferenza, pertanto i costi sono pari a 0 Euro.',

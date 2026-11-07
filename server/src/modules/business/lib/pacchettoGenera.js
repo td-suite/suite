@@ -378,7 +378,7 @@ export async function generaPacchetto(a, opz) {
   if (incl('diversi')) {
     const pol = await politicaQualita();
     const politica = pol.doc ? { ...pol.doc, url: await urlPolitica(pol.doc.code) } : null;
-    if (!politica) avvisi.push(`Qualità e certificazioni senza il collegamento alla Politica Integrata: ${pol.avviso || 'documento non disponibile dallo specchio SGI'}`);
+    // (07/11/2026) la riga con il link alla Politica Integrata non c'è più nel pacchetto: nessun avviso se manca
     qualita = qualitaCertificazioni({ cert: certJson, testi: await testiCertificazioni(), autorizzazione: company.health_authorization, politica });
     if (!qualita.certificati.length) avvisi.push('Qualità e certificazioni senza la tabella dei certificati: certificazioni.json non disponibile dallo specchio del Portale Service');
     for (const x of qualita.differenze) avvisi.push(`Certificazioni: l'elenco degli standard indica ${x.standard}, il certificato ${x.numero} dello specchio ${x.certificato}: nel pacchetto vale il certificato`);
@@ -433,7 +433,7 @@ export async function generaPacchetto(a, opz) {
     }
   }
   // pagine dell'offerta economica dentro la lettera (1-based nella lettera), per l'indice e il segnalibro; solo se coerenti con il PDF
-  const a1Dentro = offertaPdf && a1 && sezioni.some((y) => y.key === 'listino' && y.nellaLettera) && a1.pagina >= 1 && a1.pagina + a1.pagine - 1 <= await contaPagine(offertaPdf) ? a1 : null;
+  const a1Dentro = offertaPdf && a1 && a1.pagina >= 1 && a1.pagina + a1.pagine - 1 <= await contaPagine(offertaPdf) ? a1 : null;
   // offerta economica dal listino StudioLAB (PDF già impaginato sulla stessa carta, con i suoi numeri: si coprono con quelli del pacchetto)
   let listinoPdf = null;
   if (incl('listino')) {

@@ -66,7 +66,7 @@ export const FASI = [
 ];
 export const LINEE = { SRV: { label: 'Service di Laboratorio', short: 'Service', tone: 'blue' }, PP: { label: 'Punti Prelievo', short: 'Punti prelievo', tone: 'teal' }, MDL: { label: 'Medicina del Lavoro', short: 'MDL', tone: 'mauve' } };
 export const PRIORITA = { ALTA: { label: 'Alta', tone: 'red' }, MEDIA: { label: 'Media', tone: 'mauve' }, BASSA: { label: 'Bassa', tone: 'grey' } };
-export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', EMAIL_IN: 'Email ricevuta', EMAIL_OUT: 'Email inviata', INCONTRO: 'Incontro', SOPRALLUOGO: 'Sopralluogo', NOTA: 'Nota', OFFERTA: 'Offerta', CRITICITA: 'Criticità', SISTEMA: 'Sistema', PACCHETTO: 'Pacchetto',
+export const TIPO_ATTIVITA = { CHIAMATA: 'Chiamata', MESSAGGIO: 'WhatsApp/SMS', EMAIL_IN: 'Email ricevuta', EMAIL_OUT: 'Email inviata', INCONTRO: 'Incontro', SOPRALLUOGO: 'Sopralluogo', NOTA: 'Nota', OFFERTA: 'Offerta', CRITICITA: 'Criticità', SISTEMA: 'Sistema', PACCHETTO: 'Pacchetto',
   // processo Service (06/11/2026): ogni evento ha il suo tipo
   LISTINO: 'Listino caricato', OFFERTA_ECONOMICA: 'Offerta economica', ACCESSO: 'Accesso alla Suite', KIT: 'Kit di proposta', FORM_B2B: 'Form online', CONTRATTO_FIRMATO: 'Contratto firmato', ATTIVAZIONE: 'Attivazione servizi',
   // processo Punti Prelievo (06/11/2026): passi dell'avvio del punto prelievi

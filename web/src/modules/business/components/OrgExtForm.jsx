@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { Field, ErrorBox, Modal } from './ui.jsx';
 
@@ -14,7 +14,51 @@ export const EMPTY_EXT = {
 
 export const ORG_KIND = { GRUPPO: 'Gruppo', SOCIETA: 'Società', CLIENTE: 'Cliente', PARTNER: 'Partner', FORNITORE: 'Fornitore', TARGET: 'Target', ALTRO: 'Altro' };
 
+// Personale di Toscana Diagnostica (dipendenti, LP, dirigenti) per i referenti del tracciato MOD173: scelto a tendina, il resto
+// (mail, telefono, indirizzo della sede) si compila da solo (CEO, 07/11/2026: "qui tutto a tendina... inserendo il nome, poi
+// autocompili il resto"). La rubrica sta fuori dal prefisso /api/business.
+function usePersonaleTD() {
+  const [lista, setLista] = useState([]);
+  useEffect(() => { let vivo = true;
+    fetch('/api/people?status=ATTIVO', { credentials: 'include', headers: { 'X-Requested-With': 'td-suite' } }).then((r) => (r.ok ? r.json() : []))
+      .then((rows) => { if (vivo) setLista((Array.isArray(rows) ? rows : []).filter((x) => ['DIPENDENTE', 'LP', 'DIRIGENTE'].includes(x.kind))); }).catch(() => {});
+    return () => { vivo = false; }; }, []);
+  return lista;
+}
+const nomePersona = (x) => `${x.first_name} ${x.last_name}`.trim();
+
+// Tendina del referente TD: scegliendo una persona si compilano nome, mail e telefono (e l'indirizzo della sede, se richiesto);
+// "Altro" lascia i campi liberi; un valore già salvato non in elenco resta selezionabile.
+function ReferenteTD({ p, set, persone, campi, label, indirizzo }) {
+  const [altro, setAltro] = useState(false);
+  const attuale = p[campi.nome] || '';
+  const inElenco = persone.some((x) => nomePersona(x) === attuale);
+  const scegli = (v) => {
+    if (v === '__altro') { setAltro(true); return; }
+    setAltro(false);
+    const x = persone.find((y) => String(y.id) === v);
+    if (!x) { set(campi.nome, ''); return; }
+    set(campi.nome, nomePersona(x)); set(campi.email, x.email || '');
+    set(campi.tel, x.phone_office || x.phone || '');
+    if (indirizzo && campi.indirizzo) set(campi.indirizzo, [x.site_name, x.site_city].filter(Boolean).join(', '));
+  };
+  const sel = altro || (attuale && !inElenco) ? '__altro' : String(persone.find((x) => nomePersona(x) === attuale)?.id || '');
+  return (
+    <>
+      <Field label={label}>
+        <select value={sel} onChange={(e) => scegli(e.target.value)}>
+          <option value="">–</option>
+          {persone.map((x) => <option key={x.id} value={x.id}>{nomePersona(x)}{x.job_title ? ` · ${x.job_title}` : ''}</option>)}
+          <option value="__altro">Altro (scrivi il nome)</option>
+        </select>
+        {sel === '__altro' && <input style={{ marginTop: 6 }} value={attuale} onChange={(e) => set(campi.nome, e.target.value)} placeholder="Nome e cognome" />}
+      </Field>
+    </>
+  );
+}
+
 export function OrgExtFields({ p, set }) {
+  const persone = usePersonaleTD();
   const F = (k, label, opts = {}) => (
     <Field key={k} label={label} className={opts.span ? 'span2' : ''} help={opts.help}>
       {opts.type === 'textarea' ? <textarea value={p[k] || ''} onChange={(e) => set(k, e.target.value)} /> : <input type={opts.type || 'text'} value={p[k] || ''} placeholder={opts.ph} autoComplete={opts.type === 'password' ? 'new-password' : undefined} onChange={(e) => set(k, opts.upper ? e.target.value.toUpperCase() : e.target.value)} />}
@@ -36,15 +80,15 @@ export function OrgExtFields({ p, set }) {
       </div>
       <div>
         <h3>Referente commerciale Toscana Diagnostica</h3>
-        <div className="form-grid" style={{ marginTop: 8 }}>{F('sales_contact', 'Referente')}{F('sales_email', 'Mail')}{F('sales_phone', 'Telefono')}</div>
+        <div className="form-grid" style={{ marginTop: 8 }}><ReferenteTD p={p} set={set} persone={persone} label="Referente" campi={{ nome: 'sales_contact', email: 'sales_email', tel: 'sales_phone' }} />{F('sales_email', 'Mail')}{F('sales_phone', 'Telefono')}</div>
       </div>
       <div>
         <h3>Riferimenti per la gestione del servizio</h3>
-        <div className="form-grid" style={{ marginTop: 8 }}>{F('svc_contact', 'Contatto di riferimento')}{F('svc_email', 'Mail')}{F('svc_mobile', 'Cellulare')}{F('svc_address', 'Indirizzo')}</div>
+        <div className="form-grid" style={{ marginTop: 8 }}><ReferenteTD p={p} set={set} persone={persone} label="Contatto di riferimento" indirizzo campi={{ nome: 'svc_contact', email: 'svc_email', tel: 'svc_mobile', indirizzo: 'svc_address' }} />{F('svc_email', 'Mail')}{F('svc_mobile', 'Cellulare')}{F('svc_address', 'Indirizzo')}</div>
       </div>
       <div>
         <h3>Riferimenti per l’approvvigionamento</h3>
-        <div className="form-grid" style={{ marginTop: 8 }}>{F('proc_contact', 'Contatto di riferimento')}{F('proc_email', 'Mail')}{F('proc_mobile', 'Cellulare')}{F('proc_address', 'Indirizzo')}</div>
+        <div className="form-grid" style={{ marginTop: 8 }}><ReferenteTD p={p} set={set} persone={persone} label="Contatto di riferimento" indirizzo campi={{ nome: 'proc_contact', email: 'proc_email', tel: 'proc_mobile', indirizzo: 'proc_address' }} />{F('proc_email', 'Mail')}{F('proc_mobile', 'Cellulare')}{F('proc_address', 'Indirizzo')}</div>
       </div>
       <div>
         <h3>Condizioni di pagamento e classificazione fiscale</h3>

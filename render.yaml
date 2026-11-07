@@ -58,6 +58,10 @@ services:
         value: "30"
       - key: BUSINESS_CREDENTIALS_KEY
         sync: false   # copiare qui il valore di CREDENTIALS_KEY del servizio td-business: decifra le password dei portali travasate dal modulo Business
+      - key: GOOGLE_CLIENT_ID
+        sync: false   # rubrica Gmail (fraepi@gmail.com): client OAuth "Applicazione web" del progetto Google Cloud, redirect https://suite.toscanadiagnostica.it/api/rubriche/google/callback (docs/RUBRICHE.md)
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false   # segreto dello stesso client OAuth; il refresh token del consenso si salva cifrato con CREDENTIALS_KEY
       - key: CREDENTIALS_KEY
         generateValue: true   # cifra le credenziali impostate dall'Amministrazione (connessioni ai DB delle app, chiave Anthropic, Azure Blob): non cambiarla dopo il primo avvio
       # Le connessioni ai database delle app esistenti (sola lettura), la chiave Anthropic e la stringa Azure si impostano dalla Suite:

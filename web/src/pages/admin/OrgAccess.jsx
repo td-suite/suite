@@ -7,6 +7,7 @@ import { api } from '../../api.js';
 import { useApi, Badge, Skeleton, Empty, ErrorBox, Field, useToast, Modal, Switch, CopyButton } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { ORG_KIND, STATUS, STATUS_TONE, timeAgo } from '../../format.js';
+import CercaRubrica, { SuggerimentoEmail } from '../../components/CercaRubrica.jsx';
 
 const PROFILE_LABEL = { PARTNER_OSPITANTE: 'Partner ospitante', CLIENTE_SERVICE: 'Cliente service' };
 
@@ -20,6 +21,8 @@ function CreateAccess({ org, data, onClose, onCreated }) {
     const p = data.people.find((x) => String(x.id) === String(id));
     setF({ ...f, person_id: id, first_name: p?.first_name || '', last_name: p?.last_name || '', email: p?.email || '', job_title: p?.job_title || '', phone_office: p?.phone_office || '' });
   };
+  // referente della Legal entity dalle rubriche (Outlook, Gmail): compila i campi della nuova persona, modificabili prima di creare
+  const daRubrica = (c) => setF((cur) => ({ ...cur, person_id: '', ...Object.fromEntries(Object.entries({ last_name: c.cognome, first_name: c.nome_proprio, email: c.email, job_title: c.ruolo, phone_office: c.telefono || c.cellulare }).filter(([, v]) => v)) }));
   const submit = async (e) => {
     e.preventDefault(); setBusy(true);
     try {
@@ -52,9 +55,11 @@ function CreateAccess({ org, data, onClose, onCreated }) {
         {data.people.length > 0 && <Field label="Referente già in anagrafica" className="span-all" help="Persone della Legal entity (tipo Esterno) senza accesso: scegline una per precompilare">
           <select value={f.person_id} onChange={(e) => pickPerson(e.target.value)}><option value="">Nuova persona</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}{p.email ? ` · ${p.email}` : ' · senza email'}{p.job_title ? ` · ${p.job_title}` : ''}</option>)}</select>
         </Field>}
+        {!f.person_id && <div className="span-all"><CercaRubrica etichetta="Compila da rubrica (Outlook, Gmail)" suite={false} onScegli={daRubrica} /></div>}
         <Field label="Cognome" required><input value={f.last_name} onChange={set('last_name')} required maxLength={60} /></Field>
         <Field label="Nome" required><input value={f.first_name} onChange={set('first_name')} required maxLength={60} /></Field>
         <Field label="Email" required help="Credenziali locali con invito (gli esterni non hanno Microsoft 365 aziendale)"><input type="email" value={f.email} onChange={set('email')} required /></Field>
+        {!f.person_id && <SuggerimentoEmail email={f.email} onCompleta={daRubrica} />}
         <Field label="Ruolo presso la Legal entity"><input value={f.job_title} onChange={set('job_title')} maxLength={160} placeholder="Titolare, Direttore di laboratorio, Amministrazione" /></Field>
         <Field label="Telefono ufficio"><input value={f.phone_office} onChange={set('phone_office')} maxLength={40} /></Field>
         <Field label="Profilo di accesso" required help={f.profile_key === data.proposed_profile_key ? 'Proposto dal tipo di Legal entity e dalle sedi collegate' : undefined}>
