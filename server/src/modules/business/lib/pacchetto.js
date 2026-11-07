@@ -50,10 +50,21 @@ export const VARIANTI = ['BENVENUTO', 'KIT', 'PROSPECT'];
 const SOLO_CLIENTE = ['offerta', 'listino', 'credenziali', 'studiolab', 'avvio', 'checklist'];
 
 /**
+ * La lettera di offerta generata (contract_files GENERATO_PDF del contratto Service) contiene già l'offerta economica della versione
+ * listinoId del listino? meta = contract_files.meta ({ allegato1_offerta: { listino_id, versione, pagine, pagina } }); un PDF generato
+ * prima dell'Allegato 1 con l'offerta (meta vuoto) o con un'altra versione del listino non la contiene. Pura, testata.
+ */
+export function letteraConOfferta(meta, listinoId) {
+  const a = meta?.allegato1_offerta;
+  return Boolean(a && listinoId != null && Number(a.listino_id) === Number(listinoId) && Number(a.pagine) > 0);
+}
+
+/**
  * Composizione del pacchetto: [{ key, titolo, inclusa, fissa, motivo }] per le sezioni della linea, nell'ordine di stampa.
  * scelte: { [key]: false } per escludere (le fisse restano); disp: { offerta: 'PDF'|'ECONOMICA'|null (null = nessuna offerta generata
  * né dati della proposta: la sezione si omette con il motivo), listino: offerta economica dal listino sì/no, studiolab: credenziali
- * StudioLAB sì/no (assente = come prima: le credenziali del portale referti restano nella pagina degli accessi), variante }.
+ * StudioLAB sì/no (assente = come prima: le credenziali del portale referti restano nella pagina degli accessi), variante,
+ * listinoNellaLettera: la lettera di offerta (PDF) contiene già l'offerta economica della versione corrente (letteraConOfferta) }.
  */
 export function componiSezioni(linea, scelte = {}, disp = {}) {
   const variante = VARIANTI.includes(disp.variante) ? disp.variante : 'BENVENUTO';
@@ -62,6 +73,11 @@ export function componiSezioni(linea, scelte = {}, disp = {}) {
     if (variante === 'PROSPECT' && SOLO_CLIENTE.includes(s.key)) { out.inclusa = false; out.motivo = 'Versione di presentazione per i prospect: senza offerta né credenziali'; return out; }
     if (variante === 'PROSPECT' && s.key === 'referente' && disp.owner === false) { out.inclusa = false; out.motivo = 'Nessun owner assegnato all\'account: i contatti sono nella lettera'; return out; }
     if (s.key === 'listino' && !disp.listino) { out.inclusa = false; out.motivo = 'Nessuna offerta economica generata dal listino StudioLAB del cliente'; return out; }
+    // niente doppione (seconda richiesta del CEO del 07/11/2026): la lettera di offerta inclusa contiene già l'offerta economica di
+    // questa versione nel suo Allegato 1; se l'operatore esclude la lettera, l'offerta economica torna come sezione a sé
+    if (s.key === 'listino' && disp.listinoNellaLettera && disp.offerta === 'PDF' && scelte.offerta !== false) {
+      out.inclusa = false; out.nellaLettera = true; out.motivo = 'Già nella lettera di offerta (Allegato 1 del contratto)'; return out;
+    }
     if (s.key === 'studiolab' && !disp.studiolab) { out.inclusa = false; out.motivo = disp.studiolab === undefined ? 'Credenziali StudioLAB nella pagina degli accessi' : 'Nessuna credenziale StudioLAB registrata (contratto della linea o Legal entity)'; return out; }
     if (s.key === 'offerta' && disp.offerta === 'ECONOMICA' && disp.listino) { out.inclusa = false; out.motivo = 'Sostituita dall\'offerta economica dal listino StudioLAB'; return out; }
     if (s.key === 'lettera' && variante !== 'BENVENUTO') out.titolo = 'Lettera di presentazione';

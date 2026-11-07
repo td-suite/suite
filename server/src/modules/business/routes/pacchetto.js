@@ -36,7 +36,7 @@ r.get('/accounts/:id/pacchetto', ah(async (req, res) => {
   const principale = contatti.find((c) => c.principale) || contatti[0] || null;
   res.json({
     linea: a.linea, linea_label: LINEE[a.linea].label, data: todayRome(),
-    sezioni: componiSezioni(a.linea, {}, { offerta: disp.offerta, listino: Boolean(disp.listino), studiolab: disp.studiolab }), disponibilita: disp, contatti, contatto_predefinito: principale?.id || null,
+    sezioni: componiSezioni(a.linea, {}, { offerta: disp.offerta, listino: Boolean(disp.listino), listinoNellaLettera: disp.listino_nella_lettera, studiolab: disp.studiolab }), disponibilita: disp, contatti, contatto_predefinito: principale?.id || null,
     versioni: await versioni(a.id), email: await emailPacchetto(a, { contatto: principale, data: todayRome() }),
     puo_generare: canEditKind(req.user, a.linea),
   });

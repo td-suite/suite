@@ -30,7 +30,8 @@ export function paginaIniziale(parti) {
 }
 
 /**
- * Unione. parti: [{ key, titolo, pdf: Buffer, numero: 'piede'|'copri'|'testa', segnalibro: bool }] nell'ordine di stampa.
+ * Unione. parti: [{ key, titolo, pdf: Buffer, numero: 'piede'|'copri'|'testa', segnalibro: bool, segnalibriInterni: [{ titolo, pagina }] }]
+ * nell'ordine di stampa.
  * Ritorna { pdf: Buffer, pagine, inizi: { key: pagina } }.
  */
 export async function assembla(parti, { titolo = 'Pacchetto di benvenuto', autore = 'Toscana Diagnostica', etichettaEsterne = 'Pacchetto di benvenuto' } = {}) {
@@ -63,7 +64,10 @@ export async function assembla(parti, { titolo = 'Pacchetto di benvenuto', autor
       pg.drawText(txt, { x: width - 28 - w, y: height - 18, size, font, color: GRIGIO });
     }
   });
-  aggiungiSegnalibri(out, parti.filter((x) => x.segnalibro !== false).map((x) => ({ titolo: x.titolo, pagina: inizi[x.key] })));
+  // segnalibriInterni: voci dentro una parte (pagina 1-based nella parte), subito dopo la voce della parte (es. l'offerta economica
+  // nell'Allegato 1 della lettera di offerta)
+  aggiungiSegnalibri(out, parti.filter((x) => x.segnalibro !== false).flatMap((x) => [{ titolo: x.titolo, pagina: inizi[x.key] },
+    ...(x.segnalibriInterni || []).map((y) => ({ titolo: y.titolo, pagina: inizi[x.key] + Number(y.pagina) - 1 }))]));
   const pdf = Buffer.from(await out.save({ useObjectStreams: true }));
   return { pdf, pagine: totale, inizi };
 }

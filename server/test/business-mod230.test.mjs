@@ -9,14 +9,15 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import PizZip from 'pizzip';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, StandardFonts, PDFName } from 'pdf-lib';
 import {
   ALLEGATI_MOD230, MAPPA_ALLEGATI_MOD230, rinumeraRichiami, dividiIndirizzo, ritiroPredefinito, ritiroPerDocumento, committente,
-  cercaPoliticaQualita, riferimentoPolitica, spaziFirma, misuraFirma, righeListino,
+  cercaPoliticaQualita, riferimentoPolitica, spaziFirma, misuraFirma, testoAllegato1, posizioneOffertaAllegato1,
 } from '../src/modules/business/lib/mod230.js';
 import { contractData, renderDocx, CONTRACT_TEMPLATE } from '../src/modules/business/lib/docgen.js';
 import { DEFAULT_SETTINGS } from '../src/modules/business/lib/rules.js';
-import { apponiFirma, accodaPdf } from '../src/modules/business/lib/contrattoPdf.js';
+import { apponiFirma, accodaPdf, inserisciPdf, inserisciOffertaAllegato1, testoPagine } from '../src/modules/business/lib/contrattoPdf.js';
+import { aggiungiSegnalibri, leggiSegnalibri } from '../src/modules/business/lib/pacchettoPdf.js';
 import { tipoImmagine, firmatario } from '../src/modules/business/lib/firmaTd.js';
 import * as F from '../../web/src/modules/business/format.js';
 import { SALTA, avviaSuite, client, entra, OWNER } from './helpers/suiteTest.mjs';
@@ -85,15 +86,25 @@ test('template MOD230: allegati accorpati e rinumerati ovunque, righe vuote prim
   const lista = righe.slice(i + 3, i + 3 + 16);
   assert.deepEqual(lista.filter((_, k) => k % 2 === 0).map(Number), [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.deepEqual(lista.filter((_, k) => k % 2 === 1), ALLEGATI_MOD230.map((a) => a.titolo));
-  // una riga vuota in più prima del titolo dell'art. 5 e dell'art. 15 (paragrafi vuoti: nel testo estratto non compaiono, si contano nell'XML)
+  // spaziatura uniforme: esattamente un paragrafo vuoto prima di ogni titolo di articolo (CEO, 07/11/2026: prima art. 5 ne aveva 3 e art. 15 cinque, buco evidente)
   const xml = new PizZip(fs.readFileSync(path.join(TPL, CONTRACT_TEMPLATE.SRV))).file('word/document.xml').asText();
   const ps = [...xml.matchAll(/<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g)].map((m) => m[0]);
   const vuotiPrima = (titolo) => { const k = ps.findIndex((p) => p.includes(`<w:t>${titolo}</w:t>`)); let n = 0; while (k - 1 - n >= 0 && !/<w:t[ >]/.test(ps[k - 1 - n])) n++; return n; };
   assert.equal(vuotiPrima('Durata del Contratto'), 1, 'tra gli altri articoli una riga vuota');
-  assert.equal(vuotiPrima('Prezzi, modalità di pagamento e morosità del Cliente'), 3);
-  assert.equal(vuotiPrima('Foro'), 5);
+  assert.equal(vuotiPrima('Prezzi, modalità di pagamento e morosità del Cliente'), 1);
+  assert.equal(vuotiPrima('Foro'), 1);
   assert.equal((xml.match(/\{firma_nome\}/g) || []).length, 3); assert.equal((xml.match(/\{firma_ruolo\}/g) || []).length, 3);
   assert.ok(!/\{lr_name\}|\{lr_role\}/.test(xml));
+  // Allegato 1 (seconda richiesta del CEO del 07/11/2026): niente tabelle dei prezzi, un paragrafo che rimanda all'Offerta economica;
+  // il testo del catalogo resta
+  const a1 = righe.indexOf('ALLEGATO 1 — Elenco delle analisi, prezzi e condizioni economiche');
+  const a2 = righe.findIndex((t) => t.startsWith('ALLEGATO 2 — '));
+  const corpo1 = righe.slice(a1 + 1, a2);
+  assert.ok(corpo1[0].startsWith("L'elenco completo degli esami eseguiti da Toscana Diagnostica è disponibile nel catalogo aggiornato, articolato per settori clinici: Ematologia"));
+  assert.ok(corpo1.some((t) => t.startsWith('Il catalogo è fornito al Cliente in formato Excel e PDF')));
+  assert.equal(corpo1.at(-1), '{allegato1_offerta}', 'il rimando all\'offerta chiude l\'allegato, prima del salto pagina');
+  assert.equal(corpo1.filter((t) => t === '{allegato1_offerta}').length, 1);
+  for (const x of ['listino_righe', 'listino_intro', 'con_listino', 'solo_offerta', 'ha_listino', 'Listino €', 'Offerta €']) assert.ok(!xml.includes(x), `nel template resta ${x}`);
   const mdl = new PizZip(fs.readFileSync(path.join(TPL, CONTRACT_TEMPLATE.MDL))).file('word/document.xml').asText();
   assert.equal((mdl.match(/\{firma_nome\}/g) || []).length, 3, 'MOD231: stesso blocco firme');
 });
@@ -139,26 +150,76 @@ test('Politica della Qualità: titolo esplicito, poi Politica Integrata, revisio
   if (fs.existsSync(reale)) assert.equal(cercaPoliticaQualita(JSON.parse(fs.readFileSync(reale, 'utf8'))).code, 'TD-SGI-POL001_02');
 });
 
-test('documento: committente, ritiro precompilato, tabella dei prezzi dell\'offerta, firmatario e riferimento della Politica', () => {
+test('Allegato 1: testo con la versione del listino o "verrà allegata"', () => {
+  assert.equal(testoAllegato1({ versione: 3, data: '2026-11-05T09:12:00.000Z', esami: 2793 }),
+    "I prezzi riservati al Cliente sono riportati nell'Offerta economica che segue, parte integrante del presente Allegato (listino StudioLAB versione 3 del 05/11/2026, 2793 esami).");
+  assert.equal(testoAllegato1({ versione: 1, data: new Date('2026-11-07T10:00:00Z'), esami: 1 }),
+    "I prezzi riservati al Cliente sono riportati nell'Offerta economica che segue, parte integrante del presente Allegato (listino StudioLAB versione 1 del 07/11/2026, 1 esame).");
+  assert.equal(testoAllegato1({ versione: 2, data: null, esami: 4 }),
+    "I prezzi riservati al Cliente sono riportati nell'Offerta economica che segue, parte integrante del presente Allegato (listino StudioLAB versione 2, 4 esami).", 'senza data nessuna data inventata');
+  assert.equal(testoAllegato1(null), "L'Offerta economica con i prezzi riservati al Cliente verrà allegata alla sottoscrizione.");
+});
+
+test('Allegato 1: posizione dell\'offerta dal testo delle pagine (dopo l\'Allegato 1, prima dell\'Allegato 2)', () => {
+  const pagine = ['Spett.le Laboratorio ... Allegato n. 1 e Allegato n. 2', 'LISTA DEGLI ALLEGATI 1 Elenco delle analisi, prezzi e condizioni economiche 2 Ritiro campioni',
+    'ALLEGATO 1 — Elenco delle analisi, prezzi e condizioni economiche L\'elenco completo ...', 'ALLEGATO 2 — Ritiro campioni Sede ...', 'ALLEGATO 3 — Trasporto ...'];
+  assert.deepEqual(posizioneOffertaAllegato1(pagine), { allegato1: 2, indice: 3 });
+  // titoli spezzati in più pezzi di testo e con spazi diversi; Allegato 1 su due pagine
+  assert.deepEqual(posizioneOffertaAllegato1(['x', 'ALLEGATO  1 —\nElenco delle analisi', 'seguito dell\'allegato 1', 'ALLEGATO 2 — Ritiro campioni']), { allegato1: 1, indice: 3 });
+  assert.equal(posizioneOffertaAllegato1(['ALLEGATO 1 — Elenco ... ALLEGATO 2 — Ritiro campioni']), null, 'stessa pagina: nessun punto pulito');
+  assert.equal(posizioneOffertaAllegato1(['Allegato n. 1', 'Allegato n. 2']), null, 'i richiami del corpo non sono titoli');
+  assert.equal(posizioneOffertaAllegato1([]), null);
+});
+
+test('Allegato 1: pagine dell\'offerta inserite nel PDF prima dell\'Allegato 2, segnalibro solo se il PDF ne ha già', async () => {
+  const pdfDi = async (testi, { segnalibri = false } = {}) => {
+    const doc = await PDFDocument.create(); const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const t of testi) doc.addPage([595, 842]).drawText(t, { x: 60, y: 760, size: 12, font });
+    if (segnalibri) aggiungiSegnalibri(doc, [{ titolo: 'Lettera', pagina: 1 }, { titolo: 'Allegati', pagina: 3 }]);
+    return Buffer.from(await doc.save({ useObjectStreams: false }));
+  };
+  // i titoli con il trattino lungo: Helvetica standard non lo codifica, nel PDF di prova si usa il trattino semplice (la regola li accetta entrambi)
+  const contratto = await pdfDi(['Lettera di offerta', 'Condizioni generali', 'ALLEGATO 1 - Elenco delle analisi, prezzi e condizioni economiche', 'ALLEGATO 2 - Ritiro campioni', 'ALLEGATO 3 - Trasporto']);
+  const offerta = await pdfDi(['OFFERTA ECONOMICA copertina', 'Offerta economica pagina 1', 'Offerta economica pagina 2']);
+  const r = await inserisciOffertaAllegato1(contratto, offerta);
+  assert.deepEqual(r.posizione, { allegato1: 2, indice: 3 }); assert.equal(r.pagine, 3); assert.equal(r.segnalibro, false);
+  const testi = await testoPagine(r.pdf);
+  assert.equal(testi.length, 8);
+  assert.deepEqual(testi.map((t) => t.split(' ')[0]), ['Lettera', 'Condizioni', 'ALLEGATO', 'OFFERTA', 'Offerta', 'Offerta', 'ALLEGATO', 'ALLEGATO']);
+  assert.match(testi[2], /ALLEGATO 1/); assert.match(testi[6], /ALLEGATO 2/);
+  assert.equal((await PDFDocument.load(r.pdf)).catalog.get(PDFName.of('Outlines')), undefined, 'nessun segnalibro creato se il contratto non ne ha');
+  // con segnalibri: "Allegati" porta a pagina 3 (Allegato 1), prima dell'offerta: la voce nuova va in fondo
+  const conSegn = await inserisciOffertaAllegato1(await pdfDi(['Lettera', 'Condizioni', 'ALLEGATO 1 - Elenco', 'ALLEGATO 2 - Ritiro', 'Fine'], { segnalibri: true }), offerta, { titolo: 'Allegato 1 · Offerta economica v3' });
+  assert.equal(conSegn.segnalibro, true);
+  assert.deepEqual(await leggiSegnalibri(conSegn.pdf), [{ titolo: 'Lettera', pagina: 1 }, { titolo: 'Allegati', pagina: 3 }, { titolo: 'Allegato 1 · Offerta economica v3', pagina: 4 }]);
+  // segnalibro dopo la posizione: la voce nuova lo precede
+  const doc = await PDFDocument.create(); for (let i = 0; i < 4; i++) doc.addPage([595, 842]);
+  aggiungiSegnalibri(doc, [{ titolo: 'Inizio', pagina: 1 }, { titolo: 'Allegato 2', pagina: 3 }]);
+  const ins = await inserisciPdf(Buffer.from(await doc.save()), offerta, 2, { segnalibro: 'Offerta' });
+  assert.deepEqual(await leggiSegnalibri(ins.pdf), [{ titolo: 'Inizio', pagina: 1 }, { titolo: 'Offerta', pagina: 3 }, { titolo: 'Allegato 2', pagina: 6 }]);
+  await assert.rejects(() => inserisciPdf(contratto, offerta, 99), /fuori dal documento/);
+  await assert.rejects(() => inserisciOffertaAllegato1(offerta, offerta), /non trovati/);
+});
+
+test('documento: committente, ritiro precompilato, rimando all\'offerta economica, firmatario e riferimento della Politica', () => {
   const s = { ...DEFAULT_SETTINGS, firma_nome: '', firma_qualifica: '' };
   const p = { name: 'Laboratorio Prova S.r.l.', street: 'Via Roma 1', zip: '59100', city: 'Prato', prov: 'PO', vat: '01234567890', pec: 'prova@pec.test', legal_rep: 'Carla Prova' };
   const c = { id: 9, kind: 'SRV', protocol: 'SRV-2026-0009', version: 1, proposal_date: '2026-11-07', data: { privacy: { role: 'RESPONSABILE' }, payment_terms: 'RID/SDD 30 gg f.m.' } };
-  const righe = [{ codice: 'A1', descrizione: 'Glicemia', listino: 2.5, offerto: 2 }, { codice: null, descrizione: 'Emocromo', listino: 4, offerto: 3.6 }];
-  const d = contractData(c, p, s, { referente: { nome: 'Maria Verdi', telefono: '0574 1', email: 'm@p.test' }, listino: { righe }, politica: { doc: { code: 'TD-SGI-POL001_02', rev: '02', data: '29/10/2026', title: 'Politica Integrata' }, inCoda: true } });
+  const d = contractData(c, p, s, { referente: { nome: 'Maria Verdi', telefono: '0574 1', email: 'm@p.test' }, allegato1: { versione: 2, data: '2026-11-06T08:00:00Z', esami: 2 }, politica: { doc: { code: 'TD-SGI-POL001_02', rev: '02', data: '29/10/2026', title: 'Politica Integrata' }, inCoda: true } });
   assert.equal(d.priv_principal, 'Laboratorio Prova S.r.l.');
   assert.equal(d.pickup_site, 'Laboratorio Prova S.r.l.'); assert.equal(d.pickup_city, '59100 Prato (PO)'); assert.equal(d.pickup_contact, 'Maria Verdi'); assert.equal(d.pickup_contact_ref, '0574 1 / m@p.test');
   assert.equal(d.payment_terms, 'RID/SDD 30 gg f.m.');
   assert.equal(d.firma_nome, DEFAULT_SETTINGS.lr_name); assert.equal(d.firma_ruolo, DEFAULT_SETTINGS.lr_role);
   assert.equal(contractData(c, p, { ...s, firma_nome: 'Nome Firmatario', firma_qualifica: 'Procuratore' }).firma_nome, 'Nome Firmatario');
-  assert.deepEqual(righeListino(righe).map((x) => [x.lst_codice, x.lst_esame, x.lst_listino, x.lst_offerta]), [['A1', 'Glicemia', '2,50', '2,00'], ['–', 'Emocromo', '4,00', '3,60']]);
   const testo = testoDocx(renderDocx(CONTRACT_TEMPLATE.SRV, d)).join('\n');
-  assert.match(testo, /Prezzi dell'offerta riservati al Cliente \(2 esami\):/);
-  assert.match(testo, /A1\nGlicemia\n2,50\n2,00\n–\nEmocromo\n4,00\n3,60/);
+  assert.match(testo, /\nI prezzi riservati al Cliente sono riportati nell'Offerta economica che segue, parte integrante del presente Allegato \(listino StudioLAB versione 2 del 06\/11\/2026, 2 esami\)\.\nALLEGATO 2 — Ritiro campioni/);
+  assert.doesNotMatch(testo, /Prezzi dell'offerta|Listino €|Offerta €/, 'nessuna tabella dei prezzi nel DOCX');
   assert.match(testo, /Documento di riferimento: TD-SGI-POL001 "Politica Integrata", revisione 02/);
   assert.equal((testo.match(new RegExp(DEFAULT_SETTINGS.lr_name, 'g')) || []).length, 3);
-  // senza listino la tabella sparisce
+  // senza listino (o senza offerta disponibile): "verrà allegata"
   const senza = testoDocx(renderDocx(CONTRACT_TEMPLATE.SRV, contractData(c, p, s, {}))).join('\n');
-  assert.doesNotMatch(senza, /Prezzi dell'offerta|Listino €/);
+  assert.match(senza, /\nL'Offerta economica con i prezzi riservati al Cliente verrà allegata alla sottoscrizione\.\nALLEGATO 2 — Ritiro campioni/);
+  assert.doesNotMatch(senza, /che segue|Listino €/);
   assert.match(senza, /Documento non disponibile dallo specchio SGI/);
 });
 

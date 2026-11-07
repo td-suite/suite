@@ -20,7 +20,7 @@ import { readBuffer } from './storage.js';
 import { docxToPdfBatch } from './docgen.js';
 import {
   componiSezioni, modelliDa, sostituisci, valoriSegnaposto, pianoAvvio, referentiDedicati, contattoLaboratorio, certificazioniIso, paginaCredenziali, checklist,
-  telefoni, righeReferenti,
+  telefoni, righeReferenti, letteraConOfferta,
 } from './pacchetto.js';
 import { versioneCorrente } from './listino.js';
 import { modelliFlussoDa, compila, referentiTesto } from './processo.js';
@@ -86,7 +86,8 @@ export async function offertaDi(a) {
       AND ($3::int IS NULL OR c.site_id IS NULL OR c.site_id=$3)
     ORDER BY CASE WHEN $3::int IS NULL OR c.site_id=$3 THEN 0 ELSE 1 END, c.updated_at DESC NULLS LAST, c.id DESC LIMIT 1`, [a.organization_id, a.linea, a.linea === 'PP' ? a.pp_site_id || null : null]);
   if (!c) return { contratto: null, file: null };
-  const f = await one(`SELECT id, filename, size, version, data, blob_path FROM contract_files WHERE contract_id=$1 AND category='GENERATO_PDF' ORDER BY version DESC, created_at DESC LIMIT 1`, [c.id]);
+  // meta.allegato1_offerta: versione del listino la cui offerta economica è già nell'Allegato 1 del PDF (contratto Service)
+  const f = await one(`SELECT id, filename, size, version, data, blob_path, meta FROM contract_files WHERE contract_id=$1 AND category='GENERATO_PDF' ORDER BY version DESC, created_at DESC LIMIT 1`, [c.id]);
   return { contratto: c, file: f };
 }
 const pct = (x) => `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(Math.abs(Number(x)) * 100)}%`;
@@ -207,13 +208,14 @@ export async function disponibilita(a, { variante = 'BENVENUTO' } = {}) {
   const cred = await credenzialiPortale(a.organization_id, contratto?.id, false, []);
   const accessi = await accessiEsterni(a.organization_id);
   const ol = await offertaListino(a);
+  const nellaLettera = Boolean(file && ol && letteraConOfferta(file.meta, ol.listino_id));
   return {
     offerta, contratto: contratto ? { id: contratto.id, protocol: contratto.protocol, status: contratto.status, version: contratto.version } : null,
     offerta_file: file ? { id: file.id, filename: file.filename, version: file.version, size: file.size } : null, proposta,
     portale_referti: cred ? { url: cred.portal_url, username: cred.username, ha_password: cred.ha_password, fonte: cred.fonte } : null,
     accessi: accessi.map((x) => ({ nome: x.nome, email: x.email, profilo: x.profilo })),
     service_attivo: await moduloAttivo('service'),
-    listino: ol ? { versione: ol.versione, documento_id: ol.documento.id, filename: ol.documento.filename } : null,
+    listino: ol ? { versione: ol.versione, documento_id: ol.documento.id, filename: ol.documento.filename } : null, listino_nella_lettera: nellaLettera,
     studiolab: a.linea === 'SRV' ? Boolean(cred) : undefined, variante,
   };
 }
@@ -230,7 +232,9 @@ export async function generaPacchetto(a, opz) {
   const proposta = propostaDi(a);
   const tipoOfferta = off.file ? 'PDF' : proposta.length ? 'ECONOMICA' : null;
   const credSl = a.linea === 'SRV' ? await credenzialiPortale(a.organization_id, off.contratto?.id, false, []) : null;
-  const sezioni = componiSezioni(a.linea, opz.scelte || {}, { offerta: tipoOfferta, listino: Boolean(ol), studiolab: a.linea === 'SRV' ? Boolean(credSl) : undefined, variante, owner: Boolean(own) });
+  // offerta economica già nell'Allegato 1 della lettera di offerta (stessa versione del listino): la sezione "Offerta economica" non si ripete
+  const a1 = tipoOfferta === 'PDF' && ol && letteraConOfferta(off.file.meta, ol.listino_id) ? off.file.meta.allegato1_offerta : null;
+  const sezioni = componiSezioni(a.linea, opz.scelte || {}, { offerta: tipoOfferta, listino: Boolean(ol), listinoNellaLettera: Boolean(a1), studiolab: a.linea === 'SRV' ? Boolean(credSl) : undefined, variante, owner: Boolean(own) });
   const incl = (k) => sezioni.some((x) => x.key === k && x.inclusa);
   if (!tipoOfferta) avvisi.push('Offerta omessa: nessuna lettera di offerta generata per il contratto della linea e nessun dato della proposta nell\'account');
   else if (tipoOfferta === 'ECONOMICA' && incl('offerta')) avvisi.push('Lettera di offerta non ancora generata: inserita la pagina "Offerta economica" con i dati della proposta');
@@ -299,8 +303,15 @@ export async function generaPacchetto(a, opz) {
   let offertaPdf = null;
   if (incl('offerta') && tipoOfferta === 'PDF') {
     offertaPdf = await readBuffer(off.file);
-    if (!offertaPdf || !(await contaPagine(offertaPdf))) { avvisi.push('Il PDF della lettera di offerta non è leggibile: sezione omessa'); offertaPdf = null; const o = sezioni.find((y) => y.key === 'offerta'); o.inclusa = false; o.motivo = 'PDF della lettera di offerta non leggibile'; }
+    if (!offertaPdf || !(await contaPagine(offertaPdf))) {
+      avvisi.push('Il PDF della lettera di offerta non è leggibile: sezione omessa'); offertaPdf = null; const o = sezioni.find((y) => y.key === 'offerta'); o.inclusa = false; o.motivo = 'PDF della lettera di offerta non leggibile';
+      // senza la lettera l'offerta economica torna sezione a sé
+      const l = sezioni.find((y) => y.key === 'listino' && y.nellaLettera);
+      if (l) { l.inclusa = true; l.nellaLettera = false; l.motivo = null; }
+    }
   }
+  // pagine dell'offerta economica dentro la lettera (1-based nella lettera), per l'indice e il segnalibro; solo se coerenti con il PDF
+  const a1Dentro = offertaPdf && a1 && sezioni.some((y) => y.key === 'listino' && y.nellaLettera) && a1.pagina >= 1 && a1.pagina + a1.pagine - 1 <= await contaPagine(offertaPdf) ? a1 : null;
   // offerta economica dal listino StudioLAB (PDF già impaginato sulla stessa carta, con i suoi numeri: si coprono con quelli del pacchetto)
   let listinoPdf = null;
   if (incl('listino')) {
@@ -314,13 +325,19 @@ export async function generaPacchetto(a, opz) {
   for (const x of sezioni.filter((y) => y.inclusa)) {
     if (x.key === 'indice') { parti.push({ key: 'indice', titolo: 'Indice', pdf: null, numero: 'piede' }); continue; }
     // l'offerta è sulla stessa carta intestata: il suo numero di pagina si copre con quello del pacchetto; il Vademecum ha il suo piè
-    if (x.key === 'offerta' && tipoOfferta === 'PDF') { parti.push({ key: x.key, titolo: x.titolo, pdf: offertaPdf, numero: 'copri' }); continue; }
+    if (x.key === 'offerta' && tipoOfferta === 'PDF') {
+      parti.push({ key: x.key, titolo: x.titolo, pdf: offertaPdf, numero: 'copri', segnalibriInterni: a1Dentro ? [{ titolo: `Offerta economica (Allegato 1, v${a1Dentro.versione})`, pagina: a1Dentro.pagina }] : [] });
+      continue;
+    }
     if (x.key === 'listino') { parti.push({ key: x.key, titolo: x.titolo, pdf: listinoPdf, numero: 'copri' }); continue; }
     parti.push({ key: x.key, titolo: x.titolo, pdf: pdfDi[x.key], numero: 'piede' });
     if (x.key === 'vademecum' && sp.vademecum) parti.push({ key: 'vademecum_pdf', titolo: 'Vademecum degli esami (pagine)', pdf: sp.vademecum, numero: 'testa', segnalibro: false });
   }
-  const nota = (k) => {
-    if (k === 'offerta' && tipoOfferta === 'PDF') return [off.contratto.protocol ? `Proposta ${off.contratto.protocol}` : null, `versione ${off.file.version}`].filter(Boolean).join(', ');
+  const nota = (k, inizi) => {
+    if (k === 'offerta' && tipoOfferta === 'PDF') {
+      return [off.contratto.protocol ? `Proposta ${off.contratto.protocol}` : null, `versione ${off.file.version}`,
+        a1Dentro ? `con l'offerta economica v${a1Dentro.versione} nell'Allegato 1 (da pagina ${inizi.offerta + a1Dentro.pagina - 1})` : null].filter(Boolean).join(', ');
+    }
     if (k === 'vademecum') return sp.vademecum ? `Guida operativa per i laboratori clienti, ${sp.vademecumPagine} pagine` : 'Online, con il QR code';
     if (k === 'lettera') return `${firma.nome}, ${firma.ruolo}`;
     if (k === 'listino' && ol) return `Dal listino StudioLAB, versione ${ol.versione}`;
@@ -331,8 +348,9 @@ export async function generaPacchetto(a, opz) {
     const conteggi = [];
     for (const x of parti) conteggi.push({ key: x.key, pagine: x.key === 'indice' ? pagineIndice : await contaPagine(x.pdf) });
     const inizi = paginaIniziale(conteggi);
-    const voci = parti.filter((x) => !['copertina', 'indice', 'vademecum_pdf'].includes(x.key)).map((x, i) => ({ n: i + 1, titolo: x.titolo, pagina: inizi[x.key], nota: nota(x.key) }));
-    const omesse = sezioni.filter((x) => !x.inclusa).map((x) => x.titolo);
+    const voci = parti.filter((x) => !['copertina', 'indice', 'vademecum_pdf'].includes(x.key)).map((x, i) => ({ n: i + 1, titolo: x.titolo, pagina: inizi[x.key], nota: nota(x.key, inizi) }));
+    // l'offerta economica dentro la lettera non è "non inclusa"
+    const omesse = sezioni.filter((x) => !x.inclusa && !x.nellaLettera).map((x) => x.titolo);
     [indicePdf] = await docxToPdfBatch([D.costruisci(D.indice(voci, { omesse }))]);
     const n = await contaPagine(indicePdf);
     if (n === pagineIndice) break;
@@ -342,6 +360,8 @@ export async function generaPacchetto(a, opz) {
   const titoli = { BENVENUTO: `Benvenuti in Toscana Diagnostica · ${cliente}`, KIT: `Proposta di collaborazione · ${cliente}`, PROSPECT: `Toscana Diagnostica · presentazione per ${cliente}` };
   const out = await assembla(parti, { titolo: titoli[variante] || titoli.BENVENUTO, etichettaEsterne: variante === 'BENVENUTO' ? 'Pacchetto di benvenuto' : variante === 'KIT' ? 'Proposta di collaborazione' : 'Presentazione' });
   for (const x of sezioni) x.pagina = out.inizi[x.key] || null;
+  const sl = sezioni.find((x) => x.key === 'listino' && x.nellaLettera);
+  if (sl && a1Dentro && out.inizi.offerta) sl.pagina = out.inizi.offerta + a1Dentro.pagina - 1;
   return { pdf: out.pdf, pagine: out.pagine, sezioni, avvisi, password_inclusa: Boolean(credTutte.password_inclusa && (incl('studiolab') || incl('credenziali'))), offerta: tipoOfferta, data, variante, referenti_testo: referentiTesto(referenti) };
 }
 

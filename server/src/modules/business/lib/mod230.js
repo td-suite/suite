@@ -7,6 +7,7 @@
 //   Legal entity; referente, telefono ed e-mail dal referente principale dell'account.
 // - Allegato 8 "Politica della Qualità": il documento dello specchio SGI nella revisione più aggiornata.
 // - Firma di TD nel PDF: il riquadro tra la qualifica e il nome del firmatario nella colonna di Toscana Diagnostica dei blocchi firme.
+// - Allegato 1 (seconda richiesta del 07/11/2026): paragrafo che rimanda all'Offerta economica impaginata, inserita nel PDF prima dell'Allegato 2.
 
 // ---------------------------------------------------------------- allegati
 /** Allegati del MOD230 dopo l'accorpamento del 07/11/2026 (numero, titolo della Lista degli allegati). */
@@ -162,11 +163,35 @@ export function misuraFirma(spazio, imgW, imgH, { margine = 2, larghezzaMax = 17
   return { x: spazio.cx - width / 2, y: spazio.y + margine, width, height };
 }
 
-// ---------------------------------------------------------------- Allegato 1: prezzi dell'offerta
-const eur2 = (n) => (n == null || n === '' ? '' : new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)));
-/** Righe del listino corrente dell'account per la tabella dell'Allegato 1 (codice, esame, settore, listino €, offerta €). */
-export function righeListino(righe = []) {
-  return (Array.isArray(righe) ? righe : []).map((x) => ({
-    lst_codice: x.codice || '–', lst_esame: x.descrizione || x.codice || '', lst_settore: x.settore || '', lst_listino: eur2(x.listino), lst_offerta: eur2(x.offerto),
-  }));
+// ---------------------------------------------------------------- Allegato 1: l'Offerta economica impaginata
+// Richiesta del CEO del 07/11/2026 ("l'allegato 1 e la lettera di offerta sono un doppione ... sostituisci l'allegato 1 con la lettera di
+// offerta"): nell'Allegato 1 niente più tabella dei prezzi nel DOCX; un paragrafo rimanda all'Offerta economica (offertaEconomica.js) le
+// cui pagine si inseriscono nel PDF del contratto subito dopo la pagina dell'Allegato 1, prima dell'Allegato 2 (contrattoPdf.js).
+const dataIt = (d) => { const s = d instanceof Date ? d.toISOString() : String(d || ''); return /^\d{4}-\d{2}-\d{2}/.test(s) ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
+/**
+ * Paragrafo dell'Allegato 1. listino = { versione, data (caricamento), esami } della versione la cui offerta economica entra nel PDF,
+ * oppure null (account senza listino, o offerta non disponibile): l'offerta si allegherà alla sottoscrizione.
+ */
+export function testoAllegato1(listino) {
+  if (!listino) return "L'Offerta economica con i prezzi riservati al Cliente verrà allegata alla sottoscrizione.";
+  const n = Number(listino.esami) || 0;
+  const dettagli = [`listino StudioLAB versione ${listino.versione}`, dataIt(listino.data) ? `del ${dataIt(listino.data)}` : null].filter(Boolean).join(' ');
+  return `I prezzi riservati al Cliente sono riportati nell'Offerta economica che segue, parte integrante del presente Allegato (${dettagli}, ${n} ${n === 1 ? 'esame' : 'esami'}).`;
+}
+
+const RE_ALLEGATO_1 = /ALLEGATO\s*1\s*[—–-]\s*Elenco/;
+const RE_ALLEGATO_2 = /ALLEGATO\s*2\s*[—–-]/;
+/**
+ * Dove inserire le pagine dell'Offerta economica nel PDF del contratto. pagine = testo di ogni pagina (stringhe, nell'ordine).
+ * Il titolo "ALLEGATO 1 — Elenco ..." e il titolo "ALLEGATO 2 —" che lo segue si cercano nel testo (le maiuscole con il trattino lungo
+ * ci sono solo nei titoli: i richiami del corpo sono "Allegato n. 1"). Ritorna { allegato1, indice } (0-based: indice = pagina prima
+ * della quale inserire, cioè quella in cui inizia l'Allegato 2) o null se i titoli non si trovano. Pura, testata.
+ */
+export function posizioneOffertaAllegato1(pagine = []) {
+  const norm = pagine.map((t) => String(t || '').replace(/\s+/g, ' '));
+  const a1 = norm.findIndex((t) => RE_ALLEGATO_1.test(t));
+  if (a1 < 0) return null;
+  // l'Allegato 2 può iniziare nella stessa pagina dell'Allegato 1 solo se il salto pagina manca: allora non c'è un punto pulito
+  for (let i = a1 + 1; i < norm.length; i++) if (RE_ALLEGATO_2.test(norm[i])) return { allegato1: a1, indice: i };
+  return null;
 }

@@ -43,7 +43,9 @@ export default function Pacchetto({ a, onChange }) {
           <div className="small muted" style={{ marginBottom: 10 }}>Un unico PDF su carta intestata, con indice, numeri di pagina e segnalibri. Le sezioni senza dati non compaiono e lo si vede qui sotto.</div>
           <ul className="pk-sez">
             {d.sezioni.map((s) => {
-              const off = !s.fissa && s.motivo && !escluse.includes(s.key);
+              // offerta economica già nell'Allegato 1 della lettera di offerta: torna sezione a sé se la lettera si esclude
+              const libera = s.nellaLettera && escluse.includes('offerta');
+              const off = !s.fissa && s.motivo && !escluse.includes(s.key) && !libera;
               return (
                 <li key={s.key} className={off ? 'off' : ''}>
                   <label className="f inline"><input type="checkbox" disabled={s.fissa || Boolean(off) || !d.puo_generare} checked={!off && !escluse.includes(s.key)} onChange={() => toggle(s.key)} />
@@ -53,7 +55,7 @@ export default function Pacchetto({ a, onChange }) {
                   {s.key === 'listino' && !off && disp.listino && <div className="small muted">{disp.listino.filename} (dal listino StudioLAB v{disp.listino.versione})</div>}
                   {s.key === 'studiolab' && !off && disp.portale_referti && <div className="small muted">{disp.portale_referti.url || ''}{disp.portale_referti.username ? ` · utente ${disp.portale_referti.username}` : ''}</div>}
                   {s.key === 'vademecum' && <div className="small muted">{disp.service_attivo ? 'PDF dallo specchio del Portale Service, in coda (se non disponibile: link e QR)' : 'Portale Service non avviato: link e QR al Vademecum online'}</div>}
-                  {off && <div className="small red">{s.motivo}</div>}
+                  {off && <div className={`small ${s.nellaLettera ? 'muted' : 'red'}`}>{s.motivo}</div>}
                 </li>
               );
             })}

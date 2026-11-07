@@ -586,9 +586,9 @@ dati dell'allegato 3 se non è indicata una sede operativa diversa da quella leg
 
 **Allegati** (template `templates/offerta_service.docx`, riscritto una volta con `rinumeraRichiami` di `mod230.js`; la versione
 precedente è quella della v0.51.0). L'1 "Elenco analisi effettuate da Toscana Diagnostica" e il 2 "Prezzi e Condizioni Economiche" sono diventati
-**1 "Elenco delle analisi, prezzi e condizioni economiche"**: testo del catalogo, frase del listino con i nomi dei file caricati e, se
-l'account ha un listino StudioLAB, la tabella "Prezzi dell'offerta riservati al Cliente" (Codice, Esame, Listino €, Offerta €) della
-versione corrente. Poi 2 Ritiro campioni, 3 Trasporto materiali infettivi (la circolare del kit si chiama "Allegato 3 - Circolare
+**1 "Elenco delle analisi, prezzi e condizioni economiche"**: testo del catalogo, frase del listino con i nomi dei file caricati e il
+rimando all'Offerta economica impaginata, le cui pagine entrano nel PDF (dalla seconda richiesta del 07/11/2026 la tabella dei prezzi nel
+DOCX non c'è più: vedi "Allegato 1 = Offerta economica" più sotto). Poi 2 Ritiro campioni, 3 Trasporto materiali infettivi (la circolare del kit si chiama "Allegato 3 - Circolare
 Ministero 8 Maggio 2003.pdf"), 4 Guida agli Esami, 5 Interfacciamento informatico, 6 Terzi Incaricati, 7 Ruolo privacy del Cliente,
 8 Politica della Qualità. Rinumerati la Lista degli allegati, i titoli "ALLEGATO n —", i richiami del corpo (Allegato n. 2 → 1 nello
 sconto e nel tariffario dell'art. 5.1, n. 3 → 2 ritiri, n. 4 → 3 trasporto, n. 5 → 4 Guida, n. 6 → 5 interfacciamento, n. 7 / Allegato 7
@@ -623,7 +623,7 @@ generato con avvisi" nella scheda del contratto.
 
 **Test**: `server/test/business-mod230.test.mjs` (tendina con il valore attuale, rinumerazione pura e template con allegati, richiami,
 lista, righe vuote e blocchi firme, ritiro precompilato e parità form/documento, committente, ricerca della Politica anche sul `docs.json`
-del portale SGI, dati del documento con la tabella dei prezzi, spazio della firma e firma di prova apposta su un PDF; con
+del portale SGI, dati del documento (Allegato 1: vedi la sezione più sotto), spazio della firma e firma di prova apposta su un PDF; con
 `DATABASE_URL_TEST`: note svuotate, denominazione predefinita, campi non inviati intatti, caricamento della firma solo PNG/JPG fino a 1 MB).
 
 **Collaudo del 07/11/2026** (db di prova `suite_m230_t`, porta 3146, specchio SGI da un server statico del repo del portale SGI sulla
@@ -641,6 +641,73 @@ dell'art. 5 restava da solo in fondo a pagina 4, probabilmente l'effetto visto: 
 che la Politica Integrata TD-SGI-POL001 sia il documento giusto (nel SGI non c'è un documento intitolato "Politica della Qualità"); la firma
 vera (PNG con sfondo trasparente, ritagliata stretta attorno al tratto, per occupare bene lo spazio); il contratto Punti Prelievo ha un
 altro blocco firme ("L'Amministratore Delegato" in persona del legale rappresentante) e per ora non riceve la firma.
+
+## Allegato 1 = Offerta economica, pacchetto e kit senza doppione (07/11/2026)
+Richiesta del CEO guardando il pacchetto di un cliente (lettera di offerta MOD230 di 76 pagine perché l'Allegato 1 conteneva la tabella di
+2793 esami, poi l'Offerta economica impaginata di 84 pagine): "credo che l'allegato 1 e la lettera di offerta siano un doppione! e mi piace
+più la lettera di offerta dell'allegato 1. quindi sostituisci l'allegato 1 con la lettera di offerta." Interpretazione: l'Allegato 1 del
+contratto è il documento "Offerta economica" (`lib/offertaEconomica.js`) inserito nel PDF al posto della tabella DOCX, e nessun invio
+contiene due volte gli stessi prezzi. Migrazione `015_allegato1_offerta.sql` (`contract_files.meta`).
+
+**Template** (`templates/offerta_service.docx`, riscritto una volta con uno script fuori dal repo: tolti `{#ha_listino}`,
+`{listino_intro}`, le due tabelle `{#con_listino}`/`{#solo_offerta}` con `{#listino_righe}`). Al loro posto il paragrafo
+`{allegato1_offerta}` (`testoAllegato1` in `lib/mod230.js`): con l'offerta "I prezzi riservati al Cliente sono riportati nell'Offerta
+economica che segue, parte integrante del presente Allegato (listino StudioLAB versione N del gg/mm/aaaa, M esami)." (data = caricamento
+della versione, esami dal riepilogo); senza listino, o se l'offerta non si può produrre, "L'Offerta economica con i prezzi riservati al
+Cliente verrà allegata alla sottoscrizione." Il testo del catalogo (settori, formato Excel e PDF) e la frase del listino restano.
+
+**Generazione** (`POST /contracts/:id/generate`, Service con account). Versione corrente del listino dell'account → `offertaAllegato1`
+(`routes/contracts.js`): se l'offerta di quella versione esiste e si legge si usa; altrimenti si genera adesso con `creaOfferta`
+(`routes/listino.js`), registrata come dalla scheda Listino e offerta (documento OFFERTA_ECONOMICA dell'account, attività nel diario,
+LISTINO_PDF del contratto con evento ALLEGATO), condizioni di pagamento del contratto (poi della Legal entity, poi il predefinito),
+validità e destinatario come i predefiniti della scheda. PDF: LibreOffice, firma di TD nei blocchi firme, **poi** l'inserimento
+(`inserisciOffertaAllegato1` in `lib/contrattoPdf.js`: così il blocco "Per Toscana Diagnostica" dell'offerta non riceve la firma del
+contratto), poi la Politica della Qualità in coda. La posizione si legge dal testo del PDF (`posizioneOffertaAllegato1`, pura): pagina del
+titolo "ALLEGATO 1 — Elenco", poi la prima pagina successiva con il titolo "ALLEGATO 2 —"; le pagine dell'offerta (copertina compresa,
+con la sua numerazione) entrano prima di quella. Titoli non trovati (o nella stessa pagina) = nessun inserimento e avviso. Segnalibri: il
+PDF di LibreOffice del contratto oggi non ne ha; se li avesse, se ne aggiunge uno "Allegato 1 · Offerta economica vN" nell'ordine delle
+pagine (`aggiungiSegnalibroSePresenti`). Il GENERATO_PDF registra `meta.allegato1_offerta = { listino_id, versione, documento_id,
+pagine, pagina }` (pagina = prima pagina dell'offerta nel PDF del contratto); l'evento GENERATO ha la nota "Allegato 1: offerta economica
+vN (K pagine)" (e "Offerta economica vN generata per l'Allegato 1 (file)" se generata ora) e `allegato1` nei dati; la risposta ha
+`allegato1`. Senza LibreOffice o con l'offerta non generabile: testo "verrà allegata" e avviso. Il DOCX generato non contiene l'offerta
+(che è un PDF): è la versione modificabile. I numeri di pagina del contratto restano quelli di LibreOffice (le pagine dell'offerta hanno
+i loro: l'Allegato 2 continua dal numero dell'Allegato 1).
+
+**Pacchetto** (`lib/pacchettoGenera.js`, regola pura `letteraConOfferta` in `lib/pacchetto.js`). Se la lettera di offerta inclusa (02,
+GENERATO_PDF) ha `meta.allegato1_offerta.listino_id` uguale alla versione corrente del listino, la sezione "Offerta economica" (03) non si
+aggiunge (`nellaLettera`, motivo "Già nella lettera di offerta (Allegato 1 del contratto)", in grigio nella composizione e non tra le
+"Non incluse" dell'indice); la voce dell'indice della lettera dice "con l'offerta economica vN nell'Allegato 1 (da pagina P)" e i
+segnalibri hanno "Offerta economica (Allegato 1, vN)" subito dopo "Lettera di offerta" (`segnalibriInterni` di `assembla`). Lettera
+esclusa dall'operatore o non leggibile: l'offerta economica torna sezione a sé. Lettera generata prima (senza `meta`) o con un'altra
+versione del listino: sezione 03 come prima. `GET .../pacchetto` espone `disponibilita.listino_nella_lettera`.
+
+**Kit di proposta** (`lib/flusso.js`): stessa regola (`stato.lettera.con_offerta`): se la lettera MOD230 contiene già l'offerta della
+versione corrente, il PDF dell'offerta economica non si allega (un file in meno) e la lettera ha il ruolo "Lettera di offerta (con
+l'offerta economica del listino vN nell'Allegato 1)". La contrattualizzazione (email al laboratorio con la sola offerta) non cambia.
+
+**Correzione collegata**: `posizioniTesto` (pdf-parse) riceve una copia del buffer con un ArrayBuffer tutto suo: un Buffer piccolo di
+Node sta nel pool condiviso (byteOffset diverso da 0) e il pdf.js di pdf-parse leggeva byte sbagliati ("bad XRef entry"); con i PDF di
+LibreOffice (grandi) non capitava, nei test con PDF piccoli sì a seconda dell'ordine delle allocazioni.
+
+**Test**: `business-mod230.test.mjs` (template senza tabelle e con `{allegato1_offerta}` in fondo all'allegato, testo con e senza
+listino, posizione dal testo delle pagine anche con titoli spezzati e richiami del corpo, inserimento in un PDF con e senza segnalibri,
+documento con il rimando o "verrà allegata"); `business-pacchetto.test.mjs` (`letteraConOfferta`, composizione con lettera inclusa,
+esclusa, vecchia, offerta ECONOMICA, senza listino; segnalibro interno di `assembla`).
+
+**Collaudo del 07/11/2026** (db `suite_a1_t`, porta 3148, import del DB Opportunità, specchio SGI da un server statico del repo del
+portale SGI, firma di prova). Account con il listino di prova (3 esami) senza offerta: contratto SRV generato in 5 s, offerta v1
+generata al momento (documento dell'account e LISTINO_PDF del contratto), PDF di 30 pagine: Allegato 1 a pagina 12 con il paragrafo
+"... (listino StudioLAB versione 1 del 07/11/2026, 3 esami).", pagine 13-14 l'offerta (copertina e tabelle, senza firma del contratto),
+pagina 15 Allegato 2, Politica in coda; rigenerazione: offerta riusata. Pacchetto: 42 pagine, nessuna sezione 03, indice con la nota
+"con l'offerta economica v1 nell'Allegato 1 (da pagina 17)", segnalibro a pagina 17. Kit: 4 allegati (pacchetto, lettera con l'offerta,
+circolare, MOD173), senza il PDF dell'offerta. Account senza listino: Allegato 1 "verrà allegata", pacchetto senza 03 (nessuna offerta).
+`meta` tolto a mano (contratto "vecchio"): pacchetto con 03 e kit con l'offerta allegata. Nuova versione v2 dopo il contratto: pacchetto
+con 03 (v2); contratto rigenerato con la v2, lettera esclusa dall'operatore: 03 torna. Esempio:
+`2026-11-07_Contratto_Service_allegato1.pdf`.
+
+**Da verificare con il CEO**: la frase di chiusura dell'offerta ("Le condizioni contrattuali sono quelle della lettera di offerta e delle
+Condizioni Generali di Contratto che vi trasmettiamo per la firma") resta anche dentro il contratto; con un listino grande il PDF del
+contratto contiene tutte le pagine dell'offerta (nel caso segnalato 84, al posto delle pagine della tabella).
 
 ## Pacchetto ripulito, listino unico tra contratto e account, accessi al portale per tutti i referenti (07/11/2026)
 Richieste del CEO: le correzioni dell'offerta economica "ANCHE qui" nel pacchetto di benvenuto; "che sia alla scheda del contratto o qui

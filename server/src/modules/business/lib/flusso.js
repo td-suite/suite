@@ -24,7 +24,7 @@ import {
 } from './processo.js';
 import { offertaDi, credenzialiStudiolab, modelliFlusso, suiteUrl } from './pacchettoGenera.js';
 import { mod173Pdf } from './mod173Pdf.js';
-import { dataBreve } from './pacchetto.js';
+import { dataBreve, letteraConOfferta } from './pacchetto.js';
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
 // Circolare del trasporto dei campioni: Allegato 3 del MOD230 dal 07/11/2026 (prima 4: Allegati 1 e 2 accorpati, lib/mod230.js)
@@ -125,7 +125,8 @@ export async function statoProcesso(a) {
   const kit = comune.kit.filter((k) => k.variante !== 'CONTRATTO_PARTNER');
   return {
     linea: a.linea, prerequisiti: prereq, listino: cor ? { id: cor.id, versione: cor.versione, riepilogo: cor.riepilogo, offerta_documento_id: cor.offerta_documento_id } : null,
-    referente: ref, accessi: acc, studiolab: sl, lettera: off.file ? { id: off.file.id, filename: off.file.filename, contratto: off.contratto } : null, contratto: off.contratto,
+    // con_offerta: la lettera (PDF del contratto) ha già nell'Allegato 1 l'offerta economica della versione corrente del listino
+    referente: ref, accessi: acc, studiolab: sl, lettera: off.file ? { id: off.file.id, filename: off.file.filename, contratto: off.contratto, con_offerta: letteraConOfferta(off.file.meta, cor?.id) } : null, contratto: off.contratto,
     offerta_contratto: offertaContratto ? { id: offertaContratto.id, filename: offertaContratto.filename, size: Number(offertaContratto.size || 0) } : null, listino_nel_contratto: !cor && nelContratto.listino_xlsx ? { id: nelContratto.listino_xlsx.id, filename: nelContratto.listino_xlsx.filename } : null,
     ...comune, kit, gia_inviato: cor ? kit.find((k) => k.stato === 'INVIATO' && k.listino_id === cor.id) || null : null,
     anagrafiche,
@@ -289,10 +290,14 @@ export async function preparaKit(a, { contattoId = null, includiPassword = false
   const mod = await mod173Compilabile(a, ref, userId);
   const circ = await documentoDaFile(a, { file: CIRCOLARE.file, filename: CIRCOLARE.filename, etichetta: CIRCOLARE.etichetta }, userId);
   const off = stato.listino?.offerta_documento_id ? await one('SELECT id, filename, size FROM documenti WHERE id=$1', [stato.listino.offerta_documento_id]) : null;
+  // niente doppione (seconda richiesta del CEO del 07/11/2026): se la lettera MOD230 contiene già l'offerta economica della versione
+  // corrente nel suo Allegato 1, il PDF dell'offerta non si allega una seconda volta
+  const conOfferta = Boolean(stato.lettera?.con_offerta);
   const allegati = [
     { documento_id: pk.documento_id, filename: pk.filename, size: pk.bytes, ruolo: 'Pacchetto della proposta (presentazione, Portale Service, credenziali, Vademecum)' },
-    stato.lettera ? { contract_file_id: stato.lettera.id, filename: stato.lettera.filename, size: Number((await one('SELECT size FROM contract_files WHERE id=$1', [stato.lettera.id]))?.size || 0), ruolo: 'Lettera di offerta' } : null,
-    off ? { documento_id: off.id, filename: off.filename, size: off.size, ruolo: `Offerta economica (listino v${stato.listino.versione})` }
+    stato.lettera ? { contract_file_id: stato.lettera.id, filename: stato.lettera.filename, size: Number((await one('SELECT size FROM contract_files WHERE id=$1', [stato.lettera.id]))?.size || 0),
+      ruolo: conOfferta ? `Lettera di offerta (con l'offerta economica del listino v${stato.listino.versione} nell'Allegato 1)` : 'Lettera di offerta' } : null,
+    conOfferta ? null : off ? { documento_id: off.id, filename: off.filename, size: off.size, ruolo: `Offerta economica (listino v${stato.listino.versione})` }
       : stato.offerta_contratto ? { contract_file_id: stato.offerta_contratto.id, filename: stato.offerta_contratto.filename, size: stato.offerta_contratto.size, ruolo: 'Offerta economica (allegata al contratto)' } : null,
     { documento_id: circ.id, filename: circ.filename, size: circ.size, ruolo: 'Circolare per il trasporto dei campioni' },
     { documento_id: mod.id, filename: mod.filename, size: mod.size, ruolo: 'Modulo Anagrafica Clienti B2B (MOD173) compilabile' },
