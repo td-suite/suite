@@ -45,7 +45,7 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura')] },
   { key: 'rubrica', area: 'PEOPLE', name: 'Rubrica e Organigramma', tagline: 'Chi fa cosa, contatti, Teams', icon: 'rubrica', kind: 'NATIVE', route: '/people', sort_order: 20,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Aggiornamento schede')] },
-  { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Piano annuale per area', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'Amministratore (tutte le aree)'), P('RESPONSABILE', 'Responsabile di area (approva la propria area)'), P('VIEWER', 'Consultazione (tutte le aree)')] },
+  { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Piano annuale per area', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'Amministratore (tutte le aree)'), P('RESPONSABILE', 'Responsabile di area (modifica e approva la propria area)'), P('DIPENDENTE', 'Utente (compila il proprio piano)')] },
 
   // ---- Retail e Comunicazione
   { key: 'retail', area: 'RETAIL_FLOW', name: 'Retail Assistant', tagline: 'Clienti, campagne, esposizione', icon: 'retail', kind: 'LEGACY', legacy_url: 'https://retail.toscanadiagnostica.it', sort_order: 30, scope_type: 'SITE',

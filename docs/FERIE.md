@@ -54,9 +54,9 @@ Regole pure in `lib/pianoAnnuale.js` (`azioniPiano`, `statoPeriodo`, `statoDopoM
 - **Dipendente** (ruolo implicito, `open_to_all`): solo la propria area: il proprio piano (compila, modifica in BOZZA e PROPOSTO non
   preso in carico, invia; poi variazioni) e il piano dei colleghi della propria area (nomi, date e stato, senza saldi, note né giorni;
   le variazioni in attesa dei colleghi non si vedono). Le altre aree rispondono 403 (piano, export) o non compaiono negli elenchi.
-- **VIEWER**: consultazione di tutto, sola lettura.
-- Cruscotto, storico dei periodi, elenco dipendenti e saldi: ADMIN e VIEWER tutto, il responsabile filtrato sulle proprie aree, il
-  dipendente 403. "Oggi e prossimi 14 giorni": solo le aree visibili. Regole di copertura: fuori da ADMIN/VIEWER solo quelle delle aree
+- **DIPENDENTE (Utente)**: compila il proprio piano e vede quello della propria area; è il ruolo implicito di ogni interno, il grant esplicito serve solo a chi vuole assegnarlo a mano. Il profilo Consultazione (VIEWER) è stato tolto l'08/11/2026 su indicazione del CEO (migrazione core 049: i grant VIEWER diventano DIPENDENTE).
+- Cruscotto, storico dei periodi, elenco dipendenti e saldi: ADMIN tutto, il responsabile filtrato sulle proprie aree, il
+  dipendente 403. "Oggi e prossimi 14 giorni": solo le aree visibili. Regole di copertura: fuori da ADMIN solo quelle delle aree
   visibili.
 - Esterni (partner, clienti service): 403 su tutte le API senza un grant esplicito; la Home li nasconde.
 

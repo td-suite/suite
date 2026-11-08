@@ -52,7 +52,7 @@ export async function setSetting(key, value) {
  * Contesto dell'utente (una volta per richiesta HTTP). Funzionamento stabilito dal CEO (08/11/2026): "Solo l'amministratore vede tutto.
  * Ogni dipendente vede solo la propria area. Il responsabile dell'Area può modificare il piano dei dipendenti dell'area e approvarlo".
  * role: ADMIN (Owner e Admin della Suite, HR solo con il grant ADMIN: tutto) | RESPONSABILE (grant: approva la propria area, o le sedi
- * dell'ambito del grant) | VIEWER (consultazione di tutto) | DIPENDENTE (implicito).
+ * dell'ambito del grant) | DIPENDENTE (= Utente: compila il proprio piano e vede la propria area; implicito per ogni interno).
  * approva: persone di cui l'utente è responsabile (approvatore dall'organigramma o dal dossier HR, deleghe attive, grant RESPONSABILE),
  * mai sé stesso. areeGestite: aree di quelle persone. Il dipendente vede solo la propria area (nomi e periodi dei colleghi).
  */
@@ -73,7 +73,7 @@ export async function contesto(user, role) {
   const s = await settings();
   const perim = await perimetro({ includiDirigenti: s.includi_dirigenti !== false });
   const isAdmin = role === 'ADMIN';
-  const isViewer = role === 'VIEWER';
+  const isViewer = false;   // il profilo Consultazione non esiste più (CEO, 08/11/2026): chi non è ADMIN né responsabile è Utente della propria area
   const personId = user.person_id || null;
   const me = personId ? perim.persone.get(personId) || null : null;
   const deleganti = personId ? (await many(`SELECT delegante_person_id AS id FROM deleghe WHERE delegato_person_id=$1 AND $2::date BETWEEN dal AND al`, [personId, oggi()])).map((r) => r.id) : [];
