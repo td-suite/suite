@@ -81,7 +81,9 @@ export async function nextProtocol(prefix = 'CIRC', client) {
   const runner = client ? client.query.bind(client) : q;
   const year = today().slice(0, 4);
   await runner('SELECT pg_advisory_xact_lock(hashtext($1))', [`protocol:${prefix}:${year}`]).catch(() => {});
-  const r = await runner(`SELECT max(NULLIF(regexp_replace(protocol, '^' || $1 || '-' || $2 || '-', ''), '')::int) AS n FROM news WHERE protocol ~ ('^' || $1 || '-' || $2 || '-[0-9]+$')`, [prefix, year]);
+  // anche i protocolli provvisori già portati nel registro Circolari (news.protocol_legacy, Diagnostica D42): un CIRC-… non si riusa mai
+  const r = await runner(`SELECT max(NULLIF(regexp_replace(p, '^' || $1 || '-' || $2 || '-', ''), '')::int) AS n
+                            FROM (SELECT protocol AS p FROM news UNION ALL SELECT protocol_legacy FROM news) x WHERE p ~ ('^' || $1 || '-' || $2 || '-[0-9]+$')`, [prefix, year]);
   const n = (r.rows[0]?.n || 0) + 1;
   return `${prefix}-${year}-${String(n).padStart(3, '0')}`;
 }

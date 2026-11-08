@@ -51,3 +51,4 @@
 .circ-lettura .table-wrap { overflow-x: auto; max-width: 100%; }
 .circ-lettura table.t { min-width: 0; }
 .circ-lettura .t th, .circ-lettura .t td { white-space: normal; }
+.circ-orig-links { margin-top: 3px; font-size: 12px; white-space: nowrap; }

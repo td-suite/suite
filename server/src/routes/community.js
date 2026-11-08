@@ -15,6 +15,8 @@ import { weatherForSite, weatherForPoint } from '../lib/weather.js';
 import { indexNews, removeNews, indexPost, indexEvent, indexNotice, removeFromIndex } from '../lib/search.js';
 import * as blob from '../lib/blob.js';
 import { streamFile } from './files.js';
+// Circolari interne: una sola serie (CEO, 08/11/2026): il registro TD-AAAA/NNN e l'impaginazione sono del modulo Circolari
+import * as ponte from '../modules/circolari/lib/ponte.js';
 
 const r = Router();
 const MODULE = 'comunicazione';
@@ -202,7 +204,7 @@ r.delete('/community/comments/:id', ah(async (req, res) => {
 // =====================================================================================================
 // News, circolari, blog
 // =====================================================================================================
-const NEWS_LIST = `n.id, n.kind, n.title, n.slug, n.summary, n.cover_file_id, n.audience, n.status, n.published_at, n.requires_ack, n.ack_due, n.protocol, n.is_public, n.tags, n.created_at, n.updated_at,
+const NEWS_LIST = `n.id, n.kind, n.title, n.slug, n.summary, n.cover_file_id, n.audience, n.status, n.published_at, n.requires_ack, n.ack_due, n.protocol, n.protocol_legacy, n.circolare_id, n.is_public, n.tags, n.created_at, n.updated_at,
   n.author_id, u.full_name AS author_name`;
 const newsSchema = z.object({
   kind: z.enum(['NEWS', 'CIRCOLARE', 'BLOG']).default('NEWS'),
@@ -226,6 +228,13 @@ async function uniqueSlug(title, excludeId) {
     if (!hit || hit.id === excludeId) return s;
   }
   return `${base}-${Date.now()}`;
+}
+// Confronto di due audience indipendente dall'ordine delle chiavi (JSONB le riordina) e degli id
+const canonAudience = (x) => { const a = normalizeAudience(x); return JSON.stringify([a.type, a.key || null, [...(a.ids || [])].map(String).sort()]); };
+// PDF protocollato da allegare all'email di avviso (circolari nel registro unico); vuoto se manca
+async function allegatoPdf(n) {
+  const f = n.circolare_id ? await ponte.pdfDellaNews({ query: (t, p) => q(t, p) }, n.circolare_id) : null;
+  return f ? [{ filename: f.filename, content: f.pdf, contentType: 'application/pdf' }] : [];
 }
 const newsFiles = (id) => many('SELECT f.id, f.filename, f.mime, f.size FROM news_files nf JOIN files f ON f.id=nf.file_id WHERE nf.news_id=$1 AND f.deleted_at IS NULL ORDER BY f.id', [id]);
 
@@ -261,8 +270,24 @@ r.get('/community/news/:slug', ah(async (req, res) => {
   if (n.status === 'PUBLISHED' && !(n.requires_ack && !n.acked)) {
     await q(`UPDATE notifications SET read_at=coalesce(read_at, now()) WHERE user_id=$1 AND read_at IS NULL AND link=$2`, [req.user.id, `/community/news/${n.slug}`]).catch(() => {});
   }
+  // Circolare nel registro unico: PDF protocollato scaricabile da chi vede la news; l'archivio Circolari solo per il personale interno
+  const circ = n.kind === 'CIRCOLARE' ? await ponte.infoCircolare({ query: (t, p) => q(t, p) }, n.circolare_id) : null;
   res.json({ ...n, files: await newsFiles(n.id), can_edit: editor, can_publish: canPublish(req.user),
+    circolare: circ ? { id: circ.id, protocollo: circ.protocollo, stato: circ.stato, has_pdf: circ.has_pdf, pdf_url: circ.has_pdf ? `/api/community/news/${n.id}/pdf` : null, archivio: isExternal(req.user) ? null : circ.link } : null,
     quiz: quiz ? { ...publicQuiz(quiz), answered: Boolean(mine), my: mine ? { ...mine, correct: quiz.questions.map((x) => x.answer) } : null } : null });
+}));
+
+// PDF protocollato della circolare (impaginato dal modulo Circolari): a chi vede la news, alla redazione anche se non pubblicata
+r.get('/community/news/:id/pdf', ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const n = await one('SELECT id, kind, status, audience, circolare_id FROM news WHERE id=$1', [id]);
+  if (!n || (!canEdit(req.user) && (n.status !== 'PUBLISHED' || !canSee(req.user, n.audience)))) throw notFound('Contenuto non trovato');
+  const f = await ponte.pdfDellaNews({ query: (t, p) => q(t, p) }, n.circolare_id);
+  if (!f) throw new HttpError(409, n.circolare_id ? 'PDF non disponibile (modulo Circolari non attivo o impaginazione senza LibreOffice)' : 'Circolare con protocollo provvisorio: non ancora nel registro Circolari');
+  await readLog(req, { module: MODULE, entity: 'news', entityId: id }).catch(() => {});
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${f.filename}"`);
+  res.send(f.pdf);
 }));
 
 // Commenti sotto gli articoli del Blog (solo kind BLOG: news e circolari non si commentano, richiesta del CEO 29/10/2026)
@@ -369,7 +394,9 @@ r.post('/community/news/:id/email/reinvia', requirePublisher, ah(async (req, res
     `<p>${n.summary ? escapeHtml(n.summary) : 'È stata pubblicata una nuova circolare che richiede la tua presa visione.'}</p>` +
     `${n.ack_due ? `<p>Conferma la presa visione entro il <strong>${itDate(n.ack_due)}</strong>.</p>` : ''}` +
     `<p><a href="${url}" style="display:inline-block;padding:10px 16px;background:#1C505E;color:#fff;border-radius:8px;text-decoration:none">Leggi e conferma</a></p>`);
-  const r2 = await sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` })));
+  const allegato = await allegatoPdf(n);
+  const r2 = await sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}`, attachments: allegato })));
+  if (n.circolare_id) await ponte.aggiornaEsiti({ query: (t, p) => q(t, p) }, n.id).catch(() => {});
   await audit(req, 'NEWS_EMAIL_REINVIO', { module: MODULE, entity: 'news', entityId: id, label: n.title, data: { destinatari: targets.length, ...r2 } });
   res.json({ destinatari: targets.length, ...r2 });
 }));
@@ -394,8 +421,12 @@ r.get('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
   const id = idParam(req.params.id);
   const n = await one(`SELECT n.*, u.full_name AS author_name, (SELECT count(*)::int FROM news_acks k WHERE k.news_id=n.id) AS acks_count FROM news n LEFT JOIN users u ON u.id=n.author_id WHERE n.id=$1`, [id]);
   if (!n) throw notFound('Contenuto non trovato');
-  res.json({ ...n, files: await newsFiles(n.id), quiz: await quizFor(n.id) });
+  res.json({ ...n, files: await newsFiles(n.id), quiz: await quizFor(n.id), registro_attivo: await ponte.registroAttivo(),
+    circolare: n.kind === 'CIRCOLARE' ? await ponte.infoCircolare({ query: (t, p) => q(t, p) }, n.circolare_id) : null });
 }));
+
+// Stato del registro unico delle circolari (nota dell'editor quando il tipo è Circolare)
+r.get('/community/manage/registro-circolari', requireEditor, ah(async (_req, res) => res.json({ attivo: await ponte.registroAttivo() })));
 
 r.post('/community/manage/news', requireEditor, ah(async (req, res) => {
   const b = parse(newsSchema, req.body);
@@ -440,17 +471,35 @@ r.put('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
   if (b.ack_due !== undefined || !requiresAck) set('ack_due', requiresAck ? (b.ack_due ?? cur.ack_due) : null);
   if (b.is_public !== undefined || kind !== 'BLOG') set('is_public', kind === 'BLOG' ? Boolean(b.is_public ?? cur.is_public) : false);
   if (b.tags !== undefined) set('tags', b.tags);
+  // Circolare pubblicata già nel registro: un aggiornamento del contenuto (titolo, sommario, testo, allegati, destinatari) diventa una
+  // revisione TD-AAAA/NNN-rN in Circolari con il PDF nuovo; senza modifiche al contenuto nessuna revisione
+  const oldFiles = fileIds ? (await many('SELECT file_id FROM news_files WHERE news_id=$1 ORDER BY file_id', [id])).map((x) => x.file_id) : null;
+  const contenutoCambiato = (b.title !== undefined && b.title !== cur.title) || (b.summary !== undefined && (b.summary || null) !== (cur.summary || null))
+    || (b.body !== undefined && b.body !== cur.body) || (b.audience !== undefined && canonAudience(audience) !== canonAudience(cur.audience))
+    || (fileIds && JSON.stringify([...fileIds].sort((x, y) => x - y)) !== JSON.stringify(oldFiles));
+  let revisione = null; let revisioneErrore = null;
   const n = await tx(async (c) => {
-    const row = (await c.query(`UPDATE news SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params)).rows[0];
+    let row = (await c.query(`UPDATE news SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params)).rows[0];
     if (fileIds) {
       await c.query('DELETE FROM news_files WHERE news_id=$1', [id]);
       for (const f of fileIds) await c.query('INSERT INTO news_files (news_id, file_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, f]);
     }
+    if (cur.status === 'PUBLISHED' && row.kind === 'CIRCOLARE' && row.circolare_id && contenutoCambiato) {
+      if (!(await ponte.registroAttivo())) revisioneErrore = 'modulo Circolari non attivo: revisione non registrata';
+      else {
+        await c.query('SAVEPOINT revisione_circolare');
+        try {
+          revisione = await ponte.revisionaNews(c, row, { userId: req.user.id });
+          row = (await c.query('UPDATE news SET protocol=$2, circolare_id=$3 WHERE id=$1 RETURNING *', [id, revisione.protocollo, revisione.id])).rows[0];
+          await c.query('RELEASE SAVEPOINT revisione_circolare');
+        } catch (e) { await c.query('ROLLBACK TO SAVEPOINT revisione_circolare'); revisione = null; revisioneErrore = e.message; console.error(`[circolari] revisione della news ${id} non registrata: ${e.message}`); }
+      }
+    }
     return row;
   });
-  await audit(req, 'NEWS_UPDATED', { module: MODULE, entity: 'news', entityId: id, label: n.title, data: { ...b, body: b.body ? '(aggiornato)' : undefined } });
+  await audit(req, 'NEWS_UPDATED', { module: MODULE, entity: 'news', entityId: id, label: n.title, data: { ...b, body: b.body ? '(aggiornato)' : undefined, revisione_circolare: revisione?.protocollo || null, revisione_errore: revisioneErrore } });
   indexNews(n).catch((e) => console.warn('[search]', e.message));
-  res.json({ ...n, files: await newsFiles(n.id) });
+  res.json({ ...n, files: await newsFiles(n.id), revisione_circolare: revisione ? { id: revisione.id, protocollo: revisione.protocollo, has_pdf: revisione.has_pdf } : null, revisione_errore: revisioneErrore });
 }));
 
 r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, res) => {
@@ -462,12 +511,16 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
     await indexNews(cur).catch((e) => console.warn('[search]', e.message));
     return res.json({ ...cur, files: await newsFiles(cur.id), notified: 0, emails: 0, already_published: true });
   }
+  // Circolari: protocollo TD-AAAA/NNN dal registro unico del modulo Circolari (impaginazione DOCX/PDF e riga in archivio nella stessa
+  // transazione, con savepoint); modulo non LIVE o in errore → protocollo provvisorio CIRC-AAAA-NNN come prima, detto nell'esito
+  let registro = { circolare: null, provvisorio: false, avviso: null, errore: null };
   const n = await tx(async (c) => {
-    let protocol = cur.protocol;
-    if (cur.kind === 'CIRCOLARE' && !protocol) protocol = await nextProtocol('CIRC', c);
-    return (await c.query(`UPDATE news SET status='PUBLISHED', published_at=coalesce(published_at, now()), protocol=$2, updated_at=now() WHERE id=$1 RETURNING *`, [id, protocol])).rows[0];
+    const row = (await c.query(`UPDATE news SET status='PUBLISHED', published_at=coalesce(published_at, now()), updated_at=now() WHERE id=$1 RETURNING *`, [id])).rows[0];
+    if (row.kind !== 'CIRCOLARE' || row.protocol) return row;
+    registro = await ponte.protocollaNews(c, row, { userId: req.user.id, nextProtocol });
+    return registro.news;
   });
-  await audit(req, 'NEWS_PUBLISHED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol ? `${n.protocol} ${n.title}` : n.title, data: { kind: n.kind, audience: n.audience, requires_ack: n.requires_ack } });
+  await audit(req, 'NEWS_PUBLISHED', { module: MODULE, entity: 'news', entityId: id, label: n.protocol ? `${n.protocol} ${n.title}` : n.title, data: { kind: n.kind, audience: n.audience, requires_ack: n.requires_ack, circolare_id: registro.circolare?.id || null, protocollo_provvisorio: registro.provvisorio, errore_registro: registro.errore } });
   // Circolari: questionario di comprensione generato dal testo (se l'intelligenza artificiale è configurata); un errore non blocca la pubblicazione
   let quiz = null; let quizError = null;
   if (n.kind === 'CIRCOLARE' && !(await one('SELECT 1 FROM news_quiz WHERE news_id=$1', [id]))) {
@@ -485,8 +538,11 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
     body: n.requires_ack ? `Presa visione richiesta${n.ack_due ? ` entro il ${itDate(n.ack_due)}` : ''}.` : (n.summary || null), link,
   });
   let emails = 0;
+  // Diffusione registrata in Circolari come invio al segmento PERSONALE (esiti dall'email di avviso qui sotto, nessun secondo invio)
+  if (registro.circolare) await ponte.registraDiffusione({ query: (t, p) => q(t, p) }, { circolareId: registro.circolare.id, news: n, destinatari: recipients, userId: req.user.id }).catch((e) => console.warn('[circolari] diffusione', e.message));
   if (isCirc && n.requires_ack) {
     const url = `${config.baseUrl}${link}`;
+    const allegato = await allegatoPdf(n);
     const html = layout(`Circolare ${n.protocol}: ${n.title}`,
       `<p>${n.summary ? escapeHtml(n.summary) : 'È stata pubblicata una nuova circolare che richiede la tua presa visione.'}</p>` +
       `${n.ack_due ? `<p>Conferma la presa visione entro il <strong>${itDate(n.ack_due)}</strong>.</p>` : ''}` +
@@ -495,10 +551,12 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
     const targets = recipients.filter((u) => u.notify_email && u.email);
     emails = targets.length;
     // Invio in sfondo, uno alla volta con ritentativi (lib/mailer.js sendMailMany): la risposta non aspetta la posta
-    setImmediate(() => sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` })))
-      .then((r) => console.log(`[community] circolare ${n.protocol}: email inviate ${r.inviati}, fallite ${r.falliti.length}`)).catch(() => {}));
+    setImmediate(() => sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}`, attachments: allegato })))
+      .then(async (r) => { console.log(`[community] circolare ${n.protocol}: email inviate ${r.inviati}, fallite ${r.falliti.length}`); if (n.circolare_id) await ponte.aggiornaEsiti({ query: (t, p) => q(t, p) }, n.id).catch(() => {}); }).catch(() => {}));
   }
-  res.json({ ...n, files: await newsFiles(n.id), notified, emails, quiz: publicQuiz(quiz), quiz_error: quizError });
+  res.json({ ...n, files: await newsFiles(n.id), notified, emails, quiz: publicQuiz(quiz), quiz_error: quizError,
+    circolare: registro.circolare ? { id: registro.circolare.id, protocollo: registro.circolare.protocollo, has_pdf: registro.circolare.has_pdf, link: `/circolari/${registro.circolare.id}`, pdf_url: registro.circolare.has_pdf ? `/api/community/news/${n.id}/pdf` : null, render_error: registro.circolare.render_error || null } : null,
+    protocollo_provvisorio: registro.provvisorio, avviso_registro: registro.avviso });
 }));
 
 // Questionario: rigenera (anche su circolari pubblicate: gli esiti precedenti si azzerano) o rimuove
@@ -528,6 +586,8 @@ r.delete('/community/manage/news/:id', requireEditor, ah(async (req, res) => {
     // Bozze e contenuti già archiviati si eliminano definitivamente (con prese visione, questionario e notifiche collegate)
     if (cur.status === 'ARCHIVED' && !canPublish(req.user)) throw forbidden('Un contenuto archiviato lo elimina solo chi può pubblicare');
     await q('DELETE FROM news WHERE id=$1', [id]);
+    // Il protocollo consumato resta nel registro: la circolare collegata passa ad ANNULLATA con la nota (mai cancellata)
+    if (cur.circolare_id && await ponte.registroAttivo()) await q(`UPDATE circolari.circolari SET stato='ANNULLATA', note_interne = note_interne || $2, updated_at=now() WHERE news_id=$1 AND stato='PUBBLICATA'`, [id, `\nAnnullata: news eliminata in Comunicazione il ${new Date().toISOString().slice(0, 10)}`]).catch((e) => console.warn('[circolari] annullamento', e.message));
     await q(`DELETE FROM notifications WHERE link=$1 AND kind IN ('NEWS','CIRCOLARE')`, [`/community/news/${cur.slug}`]).catch(() => {});
     await removeNews(cur).catch(() => {});
     await audit(req, 'NEWS_DELETED', { module: MODULE, entity: 'news', entityId: id, label: cur.protocol ? `${cur.protocol} ${cur.title}` : cur.title });

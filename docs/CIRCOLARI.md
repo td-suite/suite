@@ -53,8 +53,7 @@ ADMIN (tutto), PUBBLICATORE (pubblica, invia, revisiona, annulla, liste), REDATT
 VIEWER (consultazione e download). Proposte di grant: area "retail & communications" → PUBBLICATORE, "laboratorio" → REDATTORE.
 
 ## Da fare
-- Le circolari interne della Community (`news.kind = CIRCOLARE`, protocollo `CIRC-AAAA-NNN`, presa visione) restano un registro
-  separato: da decidere se farle passare da questo modulo (protocollo unico) o tenerle come comunicazioni interne con presa visione.
+- (Fatto l'08/11/2026: le circolari di Comunicazione passano da questo registro, vedi "Circolari da Comunicazione".)
 - BYTEA di DOCX e PDF nello schema del modulo: migrazione su Azure Blob nella fase 2, come per gli altri moduli.
 - Tracciamento delle aperture per destinatario (oggi solo conteggio delle letture dal QR) e pagina pubblica HTML oltre al PDF.
 - Collaudo della strutturazione con Claude in produzione (in locale la chiave non c'è: testato il ripiego euristico).
@@ -99,3 +98,58 @@ solo a chi gestisce il widget".
 Gli utenti esterni di una Legal entity che ospita un punto prelievi attivo (o firmataria di un contratto PP vigente) ricevono i segmenti
 Punti prelievo e Partner anche se la Legal entity non è di tipo PARTNER; le proposte di destinatari di questi segmenti includono le
 Legal entity ospitanti. Clienti service e Medicina del lavoro seguono i clienti attivi e contrattualizzati della Suite (blocco 2).
+
+## Circolari da Comunicazione (08/11/2026)
+Richiesta del CEO: "come mai se costruisco una circolare dal widget Comunicazione non figura anche in Archivio del widget Circolari? Deve!".
+Regola: esiste UNA sola serie di circolari di Toscana Diagnostica, quella di questo modulo (registro TD-AAAA/NNN, carta intestata,
+archivio, QR). Il codice del ponte è in `server/src/modules/circolari/lib/ponte.js`; i punti di aggancio sono in `server/src/routes/community.js`.
+
+**Pubblicazione** (`POST /api/community/manage/news/:id/publish`, news `kind = CIRCOLARE`). Nella transazione della news, con un savepoint:
+- con il modulo Circolari LIVE la circolare prende il prossimo numero del registro (`nextNumero`, stesso blocco consultivo per anno
+  della pubblicazione nel modulo: le due strade condividono la serie), viene impaginata qui (DOCX e PDF su carta intestata, QR verso la
+  versione digitale) ed entra in `circolari.circolari` come PUBBLICATA con `origine = 'COMUNICAZIONE'` e `news_id`; la news riceve
+  `protocol = TD-AAAA/NNN` e `circolare_id`. Corrispondenze: titolo e sommario (In sintesi) della news; corpo Markdown convertito nei
+  blocchi (`#`/`##` → titoli di sezione, paragrafi, elenchi puntati e numerati, citazioni, tabelle Markdown; immagini nel testo tolte;
+  paragrafi lunghi divisi alle frasi, mai troncati); allegati della news agganciati (`circolari.allegati` e sezione "Allegati" nel corpo);
+  destinatari = "Personale interno" o il perimetro scelto (sedi, Legal entity, modulo, utenti selezionati); decorrenza = data di
+  pubblicazione; riferimenti = presa visione obbligatoria con la scadenza; tipo = INTERNA, linea vuota, segmento PERSONALE; "Per
+  informazioni" e firma = autore della news (nome, email, ruolo dalla scheda persona).
+- con il modulo non LIVE la news prende il protocollo provvisorio `CIRC-AAAA-NNN` come prima e l'esito lo dice ("protocollo provvisorio:
+  avvia il modulo Circolari per il registro unico"); se il registro va in errore la pubblicazione non si blocca: errore nel log del
+  server e nell'audit `NEWS_PUBLISHED`, protocollo provvisorio, avviso nell'esito. Un `CIRC-` non si riusa mai: `nextProtocol` conta
+  anche `news.protocol_legacy`.
+- notifica in app, email di avviso (con il **PDF protocollato allegato**), questionario e presa visione restano quelli di Comunicazione.
+  La diffusione si registra in Circolari come invio al segmento PERSONALE (`circolari.invii` con `news_id`, una riga per news): gli
+  esiti per destinatario si rileggono dal registro email della Suite (`email_log`, ref `news:<id>`), nessun secondo invio.
+
+**Interfaccia.** Comunicazione, editor: con tipo Circolare la nota "Alla pubblicazione riceve il protocollo TD-AAAA/NNN del registro
+Circolari ed entra nell'archivio" (o l'avviso del protocollo provvisorio se il modulo è spento); dopo la pubblicazione protocollo, "PDF
+protocollato" e "Apri nell'archivio Circolari". Elenco dei contenuti: protocollo, "era CIRC-…", link PDF e archivio. Pagina della news:
+"Scarica il PDF protocollato" (`GET /api/community/news/:id/pdf`, a chi vede la news) e, per il personale interno, "Apri nell'archivio
+Circolari". Circolari, Archivio: colonna e filtro **Origine** (Circolari | Comunicazione); la riga di una circolare da Comunicazione
+apre la news, con i link News, Presa visione e Scheda. Scheda: badge "da Comunicazione", riquadro con i link alla news e alla pagina
+Presa visione, allegati; niente "Conferma presa visione", "Nuova revisione" e "Annulla" (si fanno in Comunicazione: le API rispondono 400).
+
+**Revisioni.** Una circolare pubblicata in Comunicazione si aggiorna da chi può pubblicare ("Aggiorna"): se cambiano titolo, sommario,
+testo, allegati o destinatari, l'aggiornamento registra in Circolari la revisione `TD-AAAA/NNN-rN` con il PDF nuovo (le precedenti passano
+a SUPERATA, il QR serve l'ultima) e la news prende il nuovo protocollo; senza modifiche al contenuto (es. solo i tag) nessuna revisione;
+nessuna nuova notifica. L'eliminazione definitiva della news (dopo l'archiviazione) porta la circolare collegata ad ANNULLATA: il
+protocollo resta nel registro.
+
+**Circolari già pubblicate con CIRC-** (es. la CIRC-2026-001 dell'08/11/2026). Amministrazione > Diagnostica, controllo **D42
+"Circolari di Comunicazione fuori dal registro"** (circolari pubblicate senza `circolare_id`; "modulo non avviato" finché Circolari non è
+avviato) con il pulsante **Registra**: prossimo numero TD-AAAA/NNN dell'anno di pubblicazione, `news.protocol` aggiornato e lo storico
+in `news.protocol_legacy`, riga PUBBLICATA in Circolari con PDF, diffusione con gli esiti delle email già inviate; nessuna nuova notifica
+né email. Idempotente (una seconda Registra non trova righe; unicità `(news_id, revisione)`). Notifiche e email già inviate citano il
+vecchio protocollo: restano come sono.
+
+**Dati.** Migrazioni idempotenti e non distruttive: core `050_circolari_ponte.sql` (`news.circolare_id`, chiave esterna logica verso
+`circolari.circolari`, e `news.protocol_legacy`); modulo `003_comunicazione.sql` (`circolari.origine`, `news_id`, `allegati`,
+indice unico `(news_id, revisione)`, `invii.news_id`, `invii.segmento`). Le circolari da Comunicazione non entrano nell'indice di ricerca
+come `circolare_td` (ci sono già come news, con il protocollo TD): una sola voce.
+
+**Verifiche in produzione dopo il rilascio.** 1) Modulo Circolari LIVE (Amministrazione > Travaso moduli). 2) Amministrazione >
+Diagnostica: D42 mostra la CIRC-2026-001; "Registra" → TD-2026/NNN (il numero dipende da quante circolari sono già nel registro), PDF in
+Archivio, "era CIRC-2026-001" nell'elenco. 3) Pagina della news: "Scarica il PDF protocollato" apre il PDF con il nuovo protocollo.
+4) Prossima circolare da Comunicazione: protocollo TD nell'esito, riga in Archivio con origine Comunicazione, email di avviso con il PDF.
+Nota: anche le circolari interne hanno il QR verso la versione digitale (URL con token casuale, come per tutte le circolari del registro).

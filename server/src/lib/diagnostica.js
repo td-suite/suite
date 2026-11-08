@@ -276,6 +276,16 @@ const corr = {
     for (const r of righe) { const x = await q(`UPDATE users SET status='DISABLED', updated_at=now() WHERE id=$1 AND is_external AND status='ACTIVE'`, [r.id]); out.push({ id: r.id, esito: x.rowCount ? 'accesso disattivato' : 'già disattivato' }); }
     return out;
   },
+  // D42: circolari pubblicate in Comunicazione con protocollo provvisorio CIRC-… portate nel registro unico del modulo Circolari
+  async d42(righe, ctx) {
+    const { registraEsistente } = await import('../modules/circolari/lib/ponte.js');
+    const out = [];
+    for (const r of righe) {
+      try { const x = await registraEsistente(r.id, { userId: ctx.req?.user?.id || null }); out.push({ id: r.id, esito: x.esito, motivo: x.motivo }); }
+      catch (e) { out.push({ id: r.id, esito: 'errore', motivo: e.message }); }
+    }
+    return out;
+  },
   // D34: perimetri dei partner riallineati alle sedi ospitate
   async d34(righe, ctx) {
     const { realignOrgPerimeters } = await import('./esterni.js');
@@ -497,6 +507,14 @@ export const CONTROLLI = [
           UNION ALL SELECT s.id, s.code, s.kind, 'Retail', CASE WHEN r.in_network THEN 'nel network' ELSE 'fuori dal network' END, CASE WHEN s.kind NOT IN ('HEADQUARTER','SERVICE','ALTRO') THEN 'nel network' ELSE 'fuori dal network' END
             FROM retail.site_ext r JOIN sites s ON s.id = r.site_id WHERE r.in_network IS NOT NULL AND r.in_network IS DISTINCT FROM (s.kind NOT IN ('HEADQUARTER','SERVICE','ALTRO'))
           ORDER BY 2, 4`, chiave: 'id', link: sedeLink },
+  // Circolari interne: una sola serie (CEO, 08/11/2026). Le circolari pubblicate in Comunicazione prima del registro unico (o con il modulo
+  // Circolari spento) hanno il protocollo provvisorio CIRC-AAAA-NNN: "Registra" le porta nel registro TD-AAAA/NNN senza ripetere la notifica
+  { id: 'D42', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Circolari di Comunicazione fuori dal registro', richiede: ['circolari.circolari'],
+    spiegazione: 'Esiste una sola serie di circolari, quella del modulo Circolari (TD-AAAA/NNN, carta intestata, archivio, QR). Qui le circolari pubblicate in Comunicazione con il protocollo provvisorio CIRC-… (pubblicate prima del registro unico o con il modulo Circolari spento).',
+    sql: `SELECT n.id, n.protocol, n.title, n.slug, n.published_at, n.requires_ack FROM news n WHERE n.kind = 'CIRCOLARE' AND n.status = 'PUBLISHED' AND n.circolare_id IS NULL ORDER BY n.published_at, n.id`,
+    chiave: 'id', link: (r) => (r.slug ? `/community/news/${enc(r.slug)}` : null),
+    correggi: { etichetta: 'Registra', conferma: true, richiede: ['circolari.circolari'], fn: corr.d42,
+      descrizione: 'prossimo numero TD-AAAA/NNN del registro Circolari (anno di pubblicazione), protocollo della news aggiornato (lo storico CIRC-… resta in protocol_legacy), riga PUBBLICATA in Circolari con PDF e diffusione al segmento Personale con gli esiti delle email già inviate; nessuna nuova notifica né email' } },
   { id: 'D39', area: 'SISTEMA', gravita: 'BLOCCANTE', titolo: 'Colonne di riferimento a sedi e Legal entity senza chiave esterna', spiegazione: 'Un riferimento senza FK può puntare a una sede o Legal entity inesistente.',
     sql: `SELECT c.table_schema, c.table_name, c.column_name FROM information_schema.columns c
           WHERE c.table_schema NOT IN ('pg_catalog','information_schema') AND c.column_name ~ '(^|_)(site_id|sede_id|struttura_id|org_id|organization_id|company_id|host_org_id)$'

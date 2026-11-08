@@ -112,6 +112,12 @@ function Article() {
       <article className="article">
         <div className="crumb"><Link to={n.kind === 'CIRCOLARE' ? '/community/circolari' : n.kind === 'BLOG' ? '/community/blog' : '/community/news'}>{NEWS_KIND[n.kind] || 'News'}</Link><Icon name="chevron" /><span className="ellipsis">{n.title}</span></div>
         <div className="kicker"><Badge tone={n.kind === 'CIRCOLARE' ? 'mauve' : n.kind === 'BLOG' ? 'amber' : 'teal'}>{NEWS_KIND[n.kind] || n.kind}</Badge>{n.protocol && <span className="mono muted">{n.protocol}</span>}{n.tags?.map((t) => <span key={t} className="chip">{t}</span>)}</div>
+        {n.circolare && (
+          <div className="row tight" style={{ flexWrap: 'wrap', margin: '6px 0' }}>
+            {n.circolare.pdf_url && <a className="btn sm" href={n.circolare.pdf_url} target="_blank" rel="noreferrer"><Icon name="pdf" />Scarica il PDF protocollato</a>}
+            {n.circolare.archivio && <Link className="btn sm ghost" to={n.circolare.archivio}><Icon name="folder" />Apri nell'archivio Circolari</Link>}
+          </div>
+        )}
         <h1>{n.title}</h1>
         {n.summary && <p className="lead">{n.summary}</p>}
         <div className="byline">{n.author_name && <span>di {n.author_name}</span>}<span>{fmtDateTime(n.published_at || n.created_at)}</span>{n.is_public && <Badge tone="grey">Pubblico</Badge>}</div>

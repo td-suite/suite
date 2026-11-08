@@ -6,7 +6,7 @@ import { api, base, useApi } from '../api.js';
 import { useAuth, canEdit, canPublish } from '../auth.jsx';
 import { Card, Field, Loading, Empty, Badge, Modal, ConfirmModal, useToast, PageHead } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { STATO, SEGMENTO, ORIENTAMENTO, itDate, itDateTime, isoDate } from '../format.js';
+import { STATO, SEGMENTO, ORIENTAMENTO, ORIGINE, itDate, itDateTime, isoDate } from '../format.js';
 import Blocchi, { Lettura } from './Blocchi.jsx';
 
 const FIELDS = ['tipo', 'linea', 'segmento', 'titolo', 'destinatari', 'oggetto', 'decorrenza', 'riferimenti', 'luogo', 'data', 'sintesi', 'corpo', 'contatti', 'firma_nome', 'firma_ruolo', 'orientamento', 'note_interne'];
@@ -55,26 +55,38 @@ export default function Circolare() {
   if (error) return <div className="page"><Empty icon="alert" title="Circolare non trovata">{error.message}</Empty></div>;
   if (!c || !f) return <div className="page"><Loading /></div>;
   const st = STATO[c.stato];
+  // Circolare pubblicata nel widget Comunicazione: presa visione, questionario ed esiti stanno nella news; revisioni e archiviazione pure
+  const daCom = c.origine === 'COMUNICAZIONE';
   const pdfUrl = c.has_pdf ? `/api/circolari/circolari/${id}/pdf?v=${preview}${c.render_at ? '&t=' + encodeURIComponent(c.render_at) : ''}` : null;
   const stale = bozza && c.render_at && dirty;
 
   return (
     <div className="page">
       <PageHead title={c.protocollo ? `Circolare ${c.protocollo}` : 'Bozza di circolare'} icon="doc" crumb={<Link to={`${base}/${bozza ? 'bozze' : 'archivio'}`}>{bozza ? 'Bozze' : 'Archivio'}</Link>}
-        sub={<span><Badge tone={st.tone}>{st.label}</Badge> {c.revisione > 0 && <Badge tone="blue">revisione {c.revisione}</Badge>} <span className="muted">creata da {c.created_by_name || 'n/d'} il {itDateTime(c.created_at)}{c.published_at ? ` · pubblicata da ${c.published_by_name || 'n/d'} il ${itDateTime(c.published_at)}` : ''}{c.sorgente_nome ? ` · origine: ${c.sorgente_nome}` : ''}</span></span>}
+        sub={<span><Badge tone={st.tone}>{st.label}</Badge> {c.revisione > 0 && <Badge tone="blue">revisione {c.revisione}</Badge>} {daCom && <Badge tone={ORIGINE.COMUNICAZIONE.tone}>da Comunicazione</Badge>} <span className="muted">creata da {c.created_by_name || 'n/d'} il {itDateTime(c.created_at)}{c.published_at ? ` · pubblicata da ${c.published_by_name || 'n/d'} il ${itDateTime(c.published_at)}` : ''}{c.sorgente_nome ? ` · origine: ${c.sorgente_nome}` : ''}</span></span>}
         actions={<>
           {edit && <button className="btn ghost" disabled={busy || !dirty} onClick={() => salva()}><Icon name="check" />Salva</button>}
           {edit && <button className="btn ghost" disabled={busy} onClick={anteprima}><Icon name="eye" />Anteprima impaginata</button>}
           {bozza && canPublish(user) && <button className="btn" disabled={busy} onClick={() => setModal('pubblica')}><Icon name="send" />Pubblica</button>}
-          {c.stato === 'PUBBLICATA' && !canEdit(user) && (c.presa_visione_at
+          {daCom && c.news?.slug && <Link className="btn ghost" to={`/community/news/${c.news.slug}`}><Icon name="external" />Apri la news</Link>}
+          {c.stato === 'PUBBLICATA' && !canEdit(user) && !daCom && (c.presa_visione_at
             ? <Badge tone="green">Presa visione il {itDateTime(c.presa_visione_at)}</Badge>
             : <button className="btn" disabled={busy} onClick={presaVisione}><Icon name="check" />Confermo la presa visione</button>)}
           {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn" disabled={busy} onClick={() => setModal('invia')}><Icon name="mail" />Invia</button>}
-          {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn ghost" disabled={busy} onClick={() => setModal('revisione')}><Icon name="refresh" />Nuova revisione</button>}
-          {c.stato === 'PUBBLICATA' && canPublish(user) && <button className="btn danger" disabled={busy} onClick={() => setModal('annulla')}><Icon name="x" />Annulla</button>}
+          {c.stato === 'PUBBLICATA' && canPublish(user) && !daCom && <button className="btn ghost" disabled={busy} onClick={() => setModal('revisione')}><Icon name="refresh" />Nuova revisione</button>}
+          {c.stato === 'PUBBLICATA' && canPublish(user) && !daCom && <button className="btn danger" disabled={busy} onClick={() => setModal('annulla')}><Icon name="x" />Annulla</button>}
           {edit && <button className="btn danger" disabled={busy} onClick={() => setModal('elimina')}><Icon name="trash" />Elimina bozza</button>}
         </>} />
 
+      {daCom && (
+        <div className="alert info" style={{ marginBottom: 12 }}><Icon name="info" /><div>
+          Circolare pubblicata nel widget Comunicazione: protocollo e impaginazione sono di questo registro{c.news?.protocol_legacy ? ` (protocollo provvisorio di origine ${c.news.protocol_legacy})` : ''}; presa visione, questionario ed email di avviso sono nella news. Le revisioni nascono aggiornando la news.
+          <div className="row tight" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+            {c.news?.slug ? <Link className="btn sm ghost" to={`/community/news/${c.news.slug}`}>Apri la news</Link> : <span className="small muted">La news non esiste più in Comunicazione.</span>}
+            {c.news?.requires_ack && <Link className="btn sm ghost" to={`/community/manage/news/${c.news_id}/acks`}>Presa visione ed esiti</Link>}
+          </div>
+        </div></div>
+      )}
       <div className="circ-grid">
         <div className="grid">
           {edit ? (
@@ -130,6 +142,7 @@ export default function Circolare() {
               <h2 style={{ margin: '14px 0 8px' }}>{c.titolo}</h2>
               {c.sintesi && <div className="alert info" style={{ marginBottom: 10 }}><div><b>In sintesi.</b> {c.sintesi}</div></div>}
               <Lettura blocchi={c.corpo} />
+              {c.allegati?.length > 0 && <div className="row tight" style={{ flexWrap: 'wrap', marginTop: 8 }}>{c.allegati.map((a) => <a key={a.id} className="chip" href={`/api/files/${a.id}`} target="_blank" rel="noreferrer"><Icon name="file" />{a.filename}</a>)}</div>}
               <div className="small muted" style={{ marginTop: 10 }}>{(c.contatti || []).join(' · ')}</div>
               <div style={{ marginTop: 10 }}><b>{c.firma_nome}</b><div className="small muted">{c.firma_ruolo}</div></div>
             </Card>

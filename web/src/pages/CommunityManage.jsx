@@ -11,6 +11,16 @@ import { Forbidden } from './Misc.jsx';
 
 const STATUS_TONE = { DRAFT: 'grey', PUBLISHED: 'green', ARCHIVED: 'amber' };
 
+// Esito della pubblicazione: protocollo del registro Circolari (TD-AAAA/NNN) o provvisorio (CIRC-…) con l'avviso, questionario
+export function esitoPubblicazione(r, titolo) {
+  const parti = [titolo ? `"${titolo}" pubblicata` : 'Pubblicato'];
+  if (r?.circolare) parti.push(`protocollo ${r.circolare.protocollo} del registro Circolari${r.circolare.has_pdf ? ', PDF impaginato' : ''}`);
+  else if (r?.protocollo_provvisorio) parti.push(`${r.protocol}: ${r.avviso_registro}`);
+  if (r?.quiz) parti.push('con questionario di comprensione');
+  else if (r?.quiz_error) parti.push(`questionario non generato: ${r.quiz_error}`);
+  return { testo: parti.join(' · '), tono: r?.protocollo_provvisorio ? 'err' : 'ok' };
+}
+
 function SubNav() {
   return (
     <div className="tabs">
@@ -29,7 +39,7 @@ function ContentTable() {
   const rows = (Array.isArray(data) ? data : data?.rows || []).filter((n) => !kind || n.kind === kind);
   const toast = useToast();
   const [del, setDel] = useState(null);
-  const publish = async (n) => { try { await api.post(`/community/manage/news/${n.id}/publish`); toast(`"${n.title}" pubblicata`); reload(); } catch (e) { toast(e, 'err'); } };
+  const publish = async (n) => { try { const r = await api.post(`/community/manage/news/${n.id}/publish`); const e = esitoPubblicazione(r, n.title); toast(e.testo, e.tono); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
       <PageHead title="Gestione Comunicazione" icon="megaphone" sub="News, circolari, blog, avvisi e frase del giorno" actions={<Link to="/community/manage/news/new" className="btn"><Icon name="plus" />Nuovo contenuto</Link>} />
@@ -45,7 +55,7 @@ function ContentTable() {
             <thead><tr><th>Titolo</th><th>Tipo</th><th>Stato</th><th>Pubblico</th><th>Pubblicata</th><th>Presa visione</th><th></th></tr></thead>
             <tbody>{rows.map((n) => (
               <tr key={n.id}>
-                <td><Link to={`/community/manage/news/${n.id}`} className="strong">{n.title}</Link>{n.protocol && <div className="tiny mono muted">{n.protocol}</div>}</td>
+                <td><Link to={`/community/manage/news/${n.id}`} className="strong">{n.title}</Link>{n.protocol && <div className="tiny mono muted">{n.protocol}{n.protocol_legacy ? ` (era ${n.protocol_legacy})` : ''}{n.circolare_id ? <> · <a href={`/api/community/news/${n.id}/pdf`} target="_blank" rel="noreferrer">PDF</a> · <Link to={`/circolari/${n.circolare_id}`}>archivio Circolari</Link></> : n.kind === 'CIRCOLARE' && n.status === 'PUBLISHED' ? ' · provvisorio, fuori dal registro' : ''}</div>}</td>
                 <td><Badge tone={n.kind === 'CIRCOLARE' ? 'mauve' : n.kind === 'BLOG' ? 'amber' : 'teal'}>{NEWS_KIND[n.kind]}</Badge></td>
                 <td><Badge tone={STATUS_TONE[n.status]}>{NEWS_STATUS[n.status] || n.status}</Badge></td>
                 <td className="small">{audienceLabel(n.audience)}{n.is_public && <div className="tiny muted">Pubblico</div>}</td>
@@ -118,6 +128,10 @@ function Editor() {
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef(null);
   const [quizBusy, setQuizBusy] = useState(false);
+  // Registro unico delle circolari (modulo Circolari LIVE): decide la nota sotto il tipo Circolare
+  const registro = useApi(isNew ? '/community/manage/registro-circolari' : null, [isNew]);
+  const registroAttivo = isNew ? registro.data?.attivo : existing.data?.registro_attivo;
+  const circ = existing.data?.circolare || null;
   useEffect(() => {
     if (existing.data) {
       const n = existing.data.row || existing.data;
@@ -150,9 +164,10 @@ function Editor() {
     setBusy(true);
     try {
       let nid = isNew ? null : Number(id);
-      if (isNew) { const r = await api.post('/community/manage/news', payload()); nid = r.id; } else await api.put(`/community/manage/news/${nid}`, payload());
-      if (f.status === 'PUBLISHED') toast('Contenuto aggiornato');
-      else if (publish) { const r = await api.post(`/community/manage/news/${nid}/publish`); toast(r?.quiz ? 'Pubblicato, con questionario di comprensione' : r?.quiz_error ? `Pubblicato. Questionario non generato: ${r.quiz_error}` : 'Pubblicato'); }
+      let agg = null;
+      if (isNew) { const r = await api.post('/community/manage/news', payload()); nid = r.id; } else agg = await api.put(`/community/manage/news/${nid}`, payload());
+      if (f.status === 'PUBLISHED') toast(agg?.revisione_circolare ? `Contenuto aggiornato: revisione ${agg.revisione_circolare.protocollo} registrata in Circolari` : agg?.revisione_errore ? `Contenuto aggiornato, revisione in Circolari non registrata: ${agg.revisione_errore}` : 'Contenuto aggiornato', agg?.revisione_errore ? 'err' : 'ok');
+      else if (publish) { const r = await api.post(`/community/manage/news/${nid}/publish`); const e = esitoPubblicazione(r); toast(e.testo, e.tono); }
       else toast('Bozza salvata');
       navigate('/community/manage');
     } catch (e) { toast(e, 'err'); }
@@ -194,7 +209,18 @@ function Editor() {
               {f.kind === 'CIRCOLARE' && <>
                 <label className="f inline"><Switch checked={f.requires_ack} onChange={(v) => set('requires_ack', v)} label="Richiede presa visione" />Richiede presa visione</label>
                 {f.requires_ack && <Field label="Scadenza presa visione"><input type="date" value={f.ack_due} onChange={(e) => set('ack_due', e.target.value)} /></Field>}
-                <div className="help">Alla pubblicazione la circolare riceve un protocollo CIRC-AAAA-NNN e i destinatari vengono avvisati.</div>
+                {f.status === 'PUBLISHED' && f.protocol ? (
+                  <div className="help">
+                    <div>Protocollo <span className="mono">{f.protocol}</span>{f.protocol_legacy ? ` (era ${f.protocol_legacy})` : ''}.</div>
+                    {circ ? <div className="row tight" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                      {circ.has_pdf && <a className="btn sm ghost" href={`/api/community/news/${id}/pdf`} target="_blank" rel="noreferrer"><Icon name="pdf" />PDF protocollato</a>}
+                      <Link className="btn sm ghost" to={circ.link}><Icon name="folder" />Apri nell'archivio Circolari</Link>
+                    </div> : <div>Protocollo provvisorio: la circolare non è ancora nel registro Circolari ({registroAttivo ? 'si registra da Amministrazione > Diagnostica, controllo D42' : 'avvia il modulo Circolari per il registro unico'}).</div>}
+                    {circ && <div style={{ marginTop: 4 }}>Se modifichi titolo, sommario, testo, allegati o destinatari, "Aggiorna" registra una revisione {circ.protocollo.replace(/-r\d+$/, '')}-rN con il PDF nuovo.</div>}
+                  </div>
+                ) : registroAttivo === false
+                  ? <div className="help">Il modulo Circolari non è avviato: alla pubblicazione la circolare riceve un protocollo provvisorio CIRC-AAAA-NNN (avvia il modulo Circolari per il registro unico). I destinatari vengono avvisati.</div>
+                  : <div className="help">Alla pubblicazione riceve il protocollo TD-AAAA/NNN del registro Circolari ed entra nell'archivio, impaginata su carta intestata (PDF allegato all'email di avviso). I destinatari vengono avvisati.</div>}
               </>}
               {f.kind === 'BLOG' && <label className="f inline"><Switch checked={f.is_public} onChange={(v) => set('is_public', v)} label="Pubblico" />Visibile sulle vetrine pubbliche</label>}
               <Field label="Tag" help="Separati da virgola"><input value={tagText} onChange={(e) => setTagText(e.target.value)} placeholder="qualità, formazione" /></Field>

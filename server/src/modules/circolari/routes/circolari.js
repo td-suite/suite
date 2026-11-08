@@ -8,8 +8,9 @@ import { ah, parse, audit, notFound, forbidden, bad, HttpError } from '../../../
 import { upsertIndex, removeFromIndex } from '../../../lib/search.js';
 import { sendMail, layout } from '../../../lib/mailer.js';
 import { config } from '../config.js';
-import { renderDocx, effectiveOrientation, dataItaliana } from '../lib/render.js';
-import { docxToPdf, pdfAvailable, pdfPages } from '../lib/pdf.js';
+import { effectiveOrientation, dataItaliana } from '../lib/render.js';
+import { produciFile } from '../lib/impagina.js';
+import { aggiornaEsiti } from '../lib/ponte.js';
 import { extract, fromText, heuristicStructure, clampBlocks } from '../lib/extract.js';
 import { structureDraft } from '../lib/ai.js';
 import { perimetro, filtro, visibile } from '../lib/visibilita.js';
@@ -40,8 +41,11 @@ const schema = z.object({
 });
 
 const corpoTesto = (corpo) => (corpo || []).map((b) => (b.type === 'elenco' ? (b.items || []).join('. ') : b.type === 'tabella' ? [b.colonne, ...(b.righe || [])].map((r) => (r || []).join(' ')).join('. ') : b.text || '')).join('\n');
-const LIST_COLS = `id, anno, numero, revisione, protocollo, parent_id, stato, tipo, linea, segmento, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, orientamento, orientamento_eff, pub_token, pdf IS NOT NULL AS has_pdf, docx IS NOT NULL AS has_docx, pdf_pages, render_at, render_error, sorgente_nome, published_at, created_at, updated_at, created_by, published_by`;
-const FULL_COLS = `${LIST_COLS}, corpo, contatti, firma_nome, firma_ruolo, audience, note_interne, sorgente_testo, updated_by`;
+// origine: CIRCOLARI (redatta qui) o COMUNICAZIONE (pubblicata nel widget Comunicazione, lib/ponte.js); news: slug e presa visione della news
+const NEWS_DI = `(SELECT json_build_object('id', n.id, 'slug', n.slug, 'status', n.status, 'requires_ack', n.requires_ack, 'protocol_legacy', n.protocol_legacy) FROM public.news n WHERE n.id = circolari.news_id) AS news`;
+const LIST_COLS = `id, anno, numero, revisione, protocollo, parent_id, stato, tipo, linea, segmento, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, orientamento, orientamento_eff, pub_token, pdf IS NOT NULL AS has_pdf, docx IS NOT NULL AS has_docx, pdf_pages, render_at, render_error, sorgente_nome, published_at, created_at, updated_at, created_by, published_by, origine, news_id, ${NEWS_DI}`;
+const FULL_COLS = `${LIST_COLS}, corpo, contatti, firma_nome, firma_ruolo, audience, note_interne, sorgente_testo, updated_by, allegati`;
+const daComunicazione = (c) => c.origine === 'COMUNICAZIONE';
 const publicUrl = (c) => (c.pub_token ? `${config.baseUrl}/api/circolari/pub/${c.pub_token}` : null);
 const fileBase = (c) => `Circolare ${(c.protocollo || `bozza-${c.id}`).replace(/\//g, '-')}`;
 const nomi = async (ids) => {
@@ -60,11 +64,7 @@ async function load(id) {
 // Impaginazione: DOCX sempre, PDF se LibreOffice è disponibile. Salva i file e lo stato dell'impaginazione
 async function impagina(c, { client } = {}) {
   const runner = client ? client.query.bind(client) : q;
-  const { buffer, orientamento } = await renderDocx(c, { publicUrl: c.stato === 'BOZZA' ? null : publicUrl(c) });
-  let pdf = null, pages = null, error = null;
-  if (await pdfAvailable()) {
-    try { pdf = await docxToPdf(buffer); pages = pdfPages(pdf); } catch (e) { error = e.message; }
-  } else error = 'LibreOffice non disponibile su questo server: generato solo il DOCX';
+  const { docx: buffer, pdf, pages, orientamento, error } = await produciFile(c, { publicUrl: c.stato === 'BOZZA' ? null : publicUrl(c) });
   await runner('UPDATE circolari SET docx=$2, pdf=$3, pdf_pages=$4, orientamento_eff=$5, render_at=now(), render_error=$6 WHERE id=$1', [c.id, buffer, pdf, pages, orientamento, error]);
   return { orientamento, pdf: Boolean(pdf), pages, error };
 }
@@ -74,7 +74,8 @@ function indexBody(c) {
   return [c.protocollo, c.oggetto, c.destinatari, c.decorrenza, c.riferimenti, c.sintesi, corpoTesto(c.corpo)].filter(Boolean).join('\n');
 }
 async function indexCircolare(c) {
-  if (c.stato !== 'PUBBLICATA') { await removeFromIndex('circolare_td', `circolari:${c.id}`); return; }
+  // le circolari da Comunicazione sono già nell'indice come news (con il protocollo TD): una sola voce, niente doppioni
+  if (c.stato !== 'PUBBLICATA' || daComunicazione(c)) { await removeFromIndex('circolare_td', `circolari:${c.id}`); return; }
   await upsertIndex({ kind: 'circolare_td', ref_id: `circolari:${c.id}`, module_key: KEY, title: `${c.protocollo} · ${c.titolo}`, body: indexBody(c), link: `/circolari/${c.id}`, audience: c.audience || { type: 'INTERNAL' }, sensitive: false });
 }
 export async function reindexCircolari() {
@@ -85,12 +86,13 @@ export async function reindexCircolari() {
 
 // ---- Elenco e ricerca sul contenuto
 r.get('/circolari', ah(async (req, res) => {
-  const f = parse(z.object({ q: z.string().trim().max(200).optional().default(''), stato: z.string().max(20).optional().default(''), anno: z.coerce.number().int().optional(), segmento: z.string().max(30).optional().default(''), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }), req.query);
+  const f = parse(z.object({ q: z.string().trim().max(200).optional().default(''), stato: z.string().max(20).optional().default(''), anno: z.coerce.number().int().optional(), segmento: z.string().max(30).optional().default(''), origine: z.enum(['', 'CIRCOLARI', 'COMUNICAZIONE']).optional().default(''), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }), req.query);
   const params = []; const p = (v) => { params.push(v); return `$${params.length}`; };
   const where = [];
   if (f.stato) where.push(`stato = ${p(f.stato)}`);
   if (f.anno) where.push(`anno = ${p(f.anno)}`);
   if (f.segmento) where.push(`segmento = ${p(f.segmento)}`);
+  if (f.origine) where.push(`origine = ${p(f.origine)}`);
   const per = await perimetro(req); const fv = filtro(per, p); if (fv) where.push(fv);
   let rank = 'NULL::real AS rank', snippet = 'NULL::text AS snippet', order = 'coalesce(published_at, updated_at) DESC';
   if (f.q) {
@@ -161,7 +163,11 @@ r.post('/circolari/importa', (req, res, next) => upload(req, res, (e) => (e ? ne
 r.get('/circolari/:id', ah(async (req, res) => {
   const c = await load(req.params.id);
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
-  const invii = await many('SELECT i.id, i.lista_id, l.nome AS lista_nome, i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at FROM invii i LEFT JOIN liste l ON l.id=i.lista_id WHERE i.circolare_id=$1 ORDER BY i.inviato_at DESC', [c.id]);
+  // Circolare da Comunicazione: la diffusione è l'avviso della news (segmento PERSONALE), con gli esiti riletti dal registro email
+  if (c.news_id) await aggiornaEsiti({ query: (t, p) => q(t, p) }, c.news_id).catch(() => {});
+  const invii = await many(`SELECT i.id, i.lista_id, coalesce(l.nome, CASE WHEN i.news_id IS NOT NULL THEN 'Comunicazione: ' || CASE WHEN i.oggetto_email IS NULL THEN 'notifica in app' ELSE 'notifica ed email di avviso' END || ' (segmento Personale)' END) AS lista_nome,
+                                    i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at, i.news_id, i.segmento
+                               FROM invii i LEFT JOIN liste l ON l.id=i.lista_id WHERE i.circolare_id=$1 OR (i.news_id IS NOT NULL AND i.news_id = $2) ORDER BY i.inviato_at DESC`, [c.id, c.news_id || null]);
   const letture = (await one('SELECT count(*)::int AS n FROM letture WHERE circolare_id=$1', [c.id])).n;
   const presa = await one('SELECT at FROM prese_visione WHERE circolare_id=$1 AND user_id=$2', [c.id, req.user.suite_user_id]);
   const revisioni = c.numero ? await many(`SELECT id, revisione, protocollo, stato, published_at, titolo FROM circolari WHERE anno=$1 AND numero=$2 ORDER BY revisione`, [c.anno, c.numero]) : [];
@@ -174,6 +180,7 @@ r.post('/circolari/:id/presa-visione', ah(async (req, res) => {
   const c = await load(req.params.id);
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   if (c.stato !== 'PUBBLICATA') throw bad('La presa visione si conferma solo sulle circolari pubblicate in vigore');
+  if (daComunicazione(c)) throw bad('Questa circolare viene da Comunicazione: la presa visione si conferma nella news');
   const ins = await one('INSERT INTO prese_visione (circolare_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING at', [c.id, req.user.suite_user_id]);
   if (ins) await audit(req, 'CIRCOLARE_PRESA_VISIONE', { module: KEY, entity: 'circolare', entityId: c.id, label: `${c.protocollo} · ${c.titolo}` });
   const at = ins?.at || (await one('SELECT at FROM prese_visione WHERE circolare_id=$1 AND user_id=$2', [c.id, req.user.suite_user_id]))?.at;
@@ -276,6 +283,7 @@ r.post('/circolari/:id/revisione', ah(async (req, res) => {
   if (!canPublish(req.user)) throw forbidden('Le revisioni sono riservate al profilo Pubblicazione');
   const cur = await load(req.params.id);
   if (cur.stato !== 'PUBBLICATA') throw bad('Solo una circolare pubblicata si può revisionare');
+  if (daComunicazione(cur)) throw bad('Circolare da Comunicazione: si revisiona aggiornando la news in Comunicazione (la revisione si registra qui da sola)');
   const open = await one(`SELECT id FROM circolari WHERE anno=$1 AND numero=$2 AND stato='BOZZA'`, [cur.anno, cur.numero]);
   if (open) throw bad(`Esiste già una revisione in bozza (id ${open.id})`);
   const maxRev = (await one('SELECT max(revisione) AS r FROM circolari WHERE anno=$1 AND numero=$2', [cur.anno, cur.numero])).r;
@@ -290,6 +298,7 @@ r.post('/circolari/:id/annulla', ah(async (req, res) => {
   if (!canPublish(req.user)) throw forbidden('Operazione riservata al profilo Pubblicazione');
   const cur = await load(req.params.id);
   if (cur.stato === 'BOZZA') throw bad('Una bozza si elimina, non si annulla');
+  if (daComunicazione(cur)) throw bad('Circolare da Comunicazione: si archivia o si elimina in Comunicazione (il registro la segna da solo)');
   const motivo = String(req.body?.motivo || '').slice(0, 500);
   const c = await one(`UPDATE circolari SET stato='ANNULLATA', note_interne = note_interne || $2, updated_by=$3, updated_at=now() WHERE id=$1 RETURNING ${FULL_COLS}`, [cur.id, motivo ? `\nAnnullata: ${motivo}` : '\nAnnullata', req.user.suite_user_id]);
   await indexCircolare(c);
