@@ -104,7 +104,7 @@ function MarkdownToolbar({ textareaRef, value, onChange }) {
   );
 }
 
-const EMPTY_NEWS = { kind: 'NEWS', title: '', summary: '', body: '', audience: { type: 'ALL' }, requires_ack: false, ack_due: '', is_public: false, tags: [], cover_file_id: null, status: 'DRAFT' };
+const EMPTY_NEWS = { kind: 'NEWS', title: '', summary: '', body: '', audience: { type: 'ALL' }, requires_ack: false, ack_due: '', is_public: false, tags: [], cover_file_id: null, files: [], status: 'DRAFT' };
 
 function Editor() {
   const { id } = useParams();
@@ -136,7 +136,15 @@ function Editor() {
     kind: f.kind, title: f.title, summary: f.summary || null, body: f.body, audience: f.audience, requires_ack: f.kind === 'CIRCOLARE' ? Boolean(f.requires_ack) : false,
     ack_due: f.requires_ack && f.ack_due ? f.ack_due : null, is_public: f.kind === 'BLOG' ? Boolean(f.is_public) : false,
     tags: tagText.split(',').map((t) => t.trim()).filter(Boolean), cover_file_id: f.cover_file_id || null,
+    file_ids: (f.files || []).map((x) => x.id),   // allegati (PDF, DOCX, XLSX, immagini…): la news li elenca sotto il testo
   });
+  // Allegati: qualsiasi file (fino a 20), caricato con scope NEWS; prima l'editor accettava solo immagini (segnalazione del CEO, 08/11/2026)
+  const addAttachments = async (fileList) => {
+    for (const file of Array.from(fileList || [])) {
+      try { const fd = new FormData(); fd.append('file', file); const up = await api.upload('/files/upload?scope=NEWS', fd); setF((x) => ({ ...x, files: [...(x.files || []), { id: up.id, filename: up.filename, mime: up.mime, size: up.size }] })); }
+      catch (e) { toast(e, 'err'); }
+    }
+  };
   const save = async (publish) => {
     if (!f.title.trim() || !f.body.trim()) return toast('Titolo e testo sono obbligatori', 'err');
     setBusy(true);
@@ -207,6 +215,11 @@ function Editor() {
               </div>
             </Card>
           )}
+          <Card title="Allegati" icon="file">
+            {(f.files || []).length > 0 && <div className="col" style={{ gap: 6, marginBottom: 10 }}>{f.files.map((a) => <div key={a.id} className="row" style={{ gap: 8 }}><Icon name="file" /><a href={`/api/files/${a.id}`} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</a><span className="small muted">{a.size ? `${Math.max(1, Math.round(a.size / 1024))} KB` : ''}</span><button type="button" className="iconbtn" aria-label="Togli allegato" onClick={() => set('files', f.files.filter((x) => x.id !== a.id))}><Icon name="x" /></button></div>)}</div>}
+            {cfg.blobEnabled ? <label className="dropzone" style={{ display: 'block' }}><Icon name="upload" /><div className="small">Carica allegati (PDF, Word, Excel, immagini): chi legge li trova sotto il testo</div><input type="file" multiple hidden onChange={(e) => { addAttachments(e.target.files); e.target.value = ''; }} /></label>
+              : <div className="small muted">L'archivio file non è configurato: gli allegati non si possono caricare.</div>}
+          </Card>
           <Card title="Copertina" icon="image">
             {f.cover_file_id ? <div className="col"><img className="cover lg" src={`/api/files/${f.cover_file_id}`} alt="" style={{ height: 150 }} /><button className="btn sm ghost" onClick={() => set('cover_file_id', null)}><Icon name="trash" />Rimuovi</button></div>
               : cfg.blobEnabled ? <label className="dropzone" style={{ display: 'block' }}><Icon name="upload" /><div className="small">Carica un'immagine di copertina</div><input type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && uploadCover(e.target.files[0])} /></label>
