@@ -519,6 +519,28 @@ function EsitoProva({ r }) {
     </div></div>
   );
 }
+// Email della Suite: stato del canale (Graph dalla casella suite@ oppure solo registro), prova di invio a se stessi, ultimi invii
+function EmailBox() {
+  const toast = useToast();
+  const { user } = useAuth();
+  const stato = useApi('/admin/mail/stato');
+  const registro = useApi('/admin/mail/registro?limit=30');
+  const [busy, setBusy] = useState(false);
+  const prova = async () => { setBusy(true); try { const r = await api.post('/admin/mail/prova', {}); toast(r.esito === 'SENT' ? `Prova inviata a ${r.to}: controlla la posta` : r.esito === 'LOGGED' ? `Canale in modalità registro: la prova è stata solo registrata, nessuna email è partita` : `Esito ${r.esito}`, r.esito === 'SENT' ? 'ok' : 'err'); registro.reload(); stato.reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const d = stato.data;
+  return (
+    <Card title="Email della Suite" icon="mail" actions={<button className="btn sm" disabled={busy || !d} onClick={prova}><Icon name="mail" />Invia una prova a me ({user.email})</button>}>
+      {!d ? <Skeleton lines={3} /> : <>
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap', marginBottom: 8 }}><Badge tone={d.attivo ? 'green' : 'red'}>{d.attivo ? 'Invio attivo (Microsoft Graph)' : 'Solo registro: le email non partono'}</Badge><span className="small muted">Mittente: {d.sender_name} &lt;{d.sender}&gt;</span></div>
+        <div className="small" style={{ marginBottom: 8 }}>{d.spiegazione}</div>
+        <div className="small muted" style={{ marginBottom: 10 }}>Interni attivi: {d.interni_attivi}, di cui {d.interni_che_ricevono_email} con email e avvisi email accesi (sono quelli che ricevono l'email di una circolare con presa visione). Ultimi 30 giorni: {Object.entries(d.ultimi_30_giorni || {}).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ') || 'nessun invio registrato'}.</div>
+        {registro.data?.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Quando</th><th>A</th><th>Oggetto</th><th>Esito</th></tr></thead><tbody>
+          {registro.data.map((m) => <tr key={m.id}><td className="small">{fmtDateTime(m.created_at)}</td><td className="small" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.to_addr}>{m.to_addr}</td><td className="small">{m.subject}</td><td><Badge tone={m.status === 'SENT' ? 'green' : m.status === 'FAILED' ? 'red' : 'grey'}>{m.status === 'SENT' ? 'inviata' : m.status === 'FAILED' ? 'non riuscita' : m.status === 'LOGGED' ? 'solo registrata' : m.status.toLowerCase()}</Badge>{m.error && <div className="tiny muted">{m.error}</div>}</td></tr>)}
+        </tbody></table></div>}
+      </>}
+    </Card>
+  );
+}
 // Scadenzario di direzione del Cockpit (app_settings 'cockpit.scadenzario'): notifica giornaliera a titolare e amministratori e soglie
 // dichiarate delle fonti che non hanno una data di scadenza propria (proposte, ordini, presa visione delle circolari)
 function ScadenzarioBox() {
@@ -615,6 +637,7 @@ export function Settings() {
         {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /><CompanyOrgBox /></Card>}
         {data && <InformativeBox />}
         {data && <RubricheBox />}
+        {data && <EmailBox />}
         {data && <ScadenzarioBox />}
         {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'company_org_id' && k !== 'rubriche' && k !== 'cockpit.scadenzario' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
