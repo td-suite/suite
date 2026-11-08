@@ -19,6 +19,8 @@ export const GRAVITA = ['BLOCCANTE', 'ATTENZIONE', 'INFO'];
 const enc = encodeURIComponent;
 const sedeLink = (r) => (r.code || r.site_code ? `/admin/sites?q=${enc(r.code || r.site_code)}` : null);
 const orgLink = (name) => (name ? `/admin/organizations?q=${enc(name)}` : null);
+// B5b: "Unisci" sulla riga (D16a-c) apre lo strumento di fusione con le prime due Legal entity del gruppo
+const unisciLink = (r) => (Array.isArray(r.ids) && r.ids.length > 1 ? `/admin/organizations?unisci=${r.ids.slice(0, 2).join(',')}` : null);
 
 // ------------------------------------------------------------------ correzioni (import pigri: niente cicli tra moduli)
 const sites = () => import('./sites.js');
@@ -68,6 +70,13 @@ const corr = {
     const { syncHostToCash } = await sites();
     const out = [];
     for (const r of righe) { const n = await syncHostToCash({ query: q }, r.id); out.push({ id: r.id, esito: n ? 'Cash riallineato' : 'già allineato' }); }
+    return out;
+  },
+  // D07: azienda di Cash = Legal entity della sede (B6)
+  async d07(righe) {
+    const { syncCompanyToCash } = await sites();
+    const out = [];
+    for (const r of righe) { const n = await tx((c) => syncCompanyToCash(c, r.id)); out.push({ id: r.id, esito: n ? 'azienda Cash = Legal entity della sede' : 'non corretta', motivo: n ? undefined : 'la Legal entity della sede manca o non è una società del gruppo: correggi la sede in Amministrazione > Sedi' }); }
     return out;
   },
   // D10a: contratto di Payments dall'anagrafica
@@ -184,6 +193,47 @@ const corr = {
     const x = await sediServiceMancanti({ esegui: true, orgIds, req: ctx.req, actorId: ctx.req?.user?.id || null });
     return x.piano.map((p) => ({ id: p.org_id, esito: `${p.tipo === 'STRUTTURA' ? `struttura ${p.nome}` : 'sede della Legal entity'}: ${p.esito}${p.code ? ` (${p.code})` : ''}`, motivo: p.motivo && p.esito === 'errore' ? p.motivo : (p.avvisi || []).join('; ') || undefined }));
   },
+  // D25: tipi delle Legal entity secondo la decisione 8 (B5): stessa funzione della migrazione 045 (locatori FORNITORE, partner PARTNER)
+  async d25(righe, ctx) {
+    const r = (await one('SELECT public.riclassifica_tipi_legal_entity() AS r')).r || {};
+    const cambiate = new Map([...(r.locatori_a_fornitore || []).map((x) => [x.id, 'FORNITORE (locatore)']), ...(r.partner_a_partner || []).map((x) => [x.id, 'PARTNER (punto prelievi)'])]);
+    const { audit } = await import('./util.js');
+    if (cambiate.size) await audit({ user: ctx.req?.user, ip: ctx.req?.ip }, 'ORG_KIND_RICLASSIFICATI', { entity: 'organization', label: `${cambiate.size} Legal entity riclassificate (decisione 8)`, data: r });
+    return righe.map((x) => ({ id: x.id, esito: cambiate.get(x.id) ? `tipo = ${cambiate.get(x.id)}` : 'non cambiata', motivo: cambiate.get(x.id) ? undefined : x.kind === 'CLIENTE' ? 'richiedente Spedizioni: il tipo si decide nella scheda della Legal entity' : 'è anche partner di un punto prelievi: resta PARTNER' }))
+      .concat([...cambiate.entries()].filter(([id]) => !righe.some((x) => x.id === id)).map(([id, t]) => ({ id, esito: `tipo = ${t}` })));
+  },
+  // D21a / D21b: ponte B2B di Retail (B15)
+  async d21a(righe, ctx) {
+    const { abbinaDaiCodici } = await import('../modules/retail/lib/b2b.js');
+    return (await abbinaDaiCodici({ ids: righe.map((r) => Number(r.id)), userId: ctx.req?.user?.id || null })).map((x) => ({ id: x.id, esito: x.esito, motivo: x.motivo }));
+  },
+  async d21b(righe, ctx) {
+    const { abbinaDaiCodici } = await import('../modules/retail/lib/b2b.js');
+    return (await abbinaDaiCodici({ ids: righe.map((r) => Number(r.id)), correggiDiversi: true, userId: ctx.req?.user?.id || null })).map((x) => ({ id: x.id, esito: x.esito, motivo: x.motivo }));
+  },
+  // D23: referenti del Business Hub collegati alle persone per email (B7)
+  async d23(righe) {
+    const { collegaReferenti } = await import('../modules/business/lib/referenti.js');
+    return (await collegaReferenti({ ids: righe.map((r) => Number(r.id)), anche_collegati: true })).map((x) => ({ id: x.id, esito: x.esito, motivo: x.motivo }));
+  },
+  // D36: sede della persona = sede del contratto di lavoro (C13)
+  async d36(righe) {
+    const { syncDerived } = await import('../modules/contracts/lib/people.js');
+    const out = [];
+    for (const r of righe) { await syncDerived(null, r.id); out.push({ id: r.id, esito: `sede = sede del contratto (#${r.work_site_id})` }); }
+    return out;
+  },
+  // D24: data di avvio del punto ↔ apertura della sede (B1)
+  async d24(righe, ctx) {
+    const { allineaDataAvvio } = await import('../modules/business/lib/puntoPrelievi.js');
+    const out = [];
+    for (const r of righe) {
+      if (!r.active || r.kind !== 'PUNTO_PRELIEVI') { out.push({ id: r.id, esito: 'non corretta', motivo: !r.active ? 'sede chiusa: scollega la sede dal punto o riaprila' : 'la sede non è di tipo Punto prelievi' }); continue; }
+      const x = await allineaDataAvvio(r.id, { req: ctx.req });
+      out.push({ id: r.id, esito: x?.esito === 'SCRITTA' ? 'data di apertura della sede = data di avvio' : x?.esito === 'DIVERSA' ? 'data di avvio dell\'account = apertura della sede' : (x?.esito || 'nulla da fare') });
+    }
+    return out;
+  },
   // D30: planimetria corrente ripubblicata in Room
   async d30(righe) {
     const { publishCurrentPlan } = await import('./roomPlan.js');
@@ -240,8 +290,9 @@ export const CONTROLLI = [
           WHERE e.host_org_id IS DISTINCT FROM CASE WHEN s.tenure = 'OSPITATA' THEN s.host_organization_id END
              OR e.ownership IS DISTINCT FROM CASE WHEN s.tenure = 'OSPITATA' THEN 'OSPITATA' ELSE 'PROPRIA' END ORDER BY s.code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Riallinea Cash dal core', conferma: true, descrizione: 'cash.site_ext.ownership e host_org_id ricopiati dall\'anagrafica', fn: corr.d06 } },
-  { id: 'D07', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Azienda di Cash diversa dalla Legal entity della sede', richiede: ['cash.site_ext'], spiegazione: 'L\'azienda Cash della sede dovrebbe essere la sua Legal entity proprietaria.',
-    sql: `SELECT s.id, s.code, s.organization_id, e.company_id FROM sites s JOIN cash.site_ext e ON e.site_id = s.id WHERE e.company_id IS DISTINCT FROM s.organization_id ORDER BY s.code`, chiave: 'id', link: sedeLink, correggiDopo: 'Fase 3 (B6: azienda Cash derivata dalla sede)' },
+  { id: 'D07', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Azienda di Cash diversa dalla Legal entity della sede', richiede: ['cash.site_ext'], spiegazione: 'B6: l\'azienda Cash della sede è la sua Legal entity proprietaria (allineata da saveSite quando cambia).',
+    sql: `SELECT s.id, s.code, s.organization_id, e.company_id FROM sites s JOIN cash.site_ext e ON e.site_id = s.id WHERE e.company_id IS DISTINCT FROM s.organization_id ORDER BY s.code`, chiave: 'id', link: sedeLink,
+    correggi: { etichetta: 'Azienda = Legal entity della sede', conferma: true, descrizione: 'B6: cash.site_ext.company_id = Legal entity proprietaria della sede, se è una società del gruppo (altrimenti la riga resta: correggi la sede in Amministrazione > Sedi)', fn: corr.d07 } },
   { id: 'D08', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi in locazione senza canone, decorrenza o locatore', spiegazione: 'Il canone si inserisce una volta sola in Amministrazione > Sedi (Payments e Facility lo leggono da lì).',
     sql: `SELECT id, code, name, rent_amount, lease_start, lease_landlord_org_id FROM sites WHERE active AND kind <> 'SERVICE' AND tenure = 'LOCAZIONE' AND (rent_amount IS NULL OR lease_start IS NULL OR lease_landlord_org_id IS NULL) ORDER BY code`, chiave: 'id', link: sedeLink },
   { id: 'D09', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi in locazione senza PDF del contratto', spiegazione: 'Il contratto di locazione in PDF si carica nella scheda della sede (lettura con Claude).',
@@ -266,10 +317,10 @@ export const CONTROLLI = [
           WHERE EXISTS (SELECT 1 FROM business.contracts c WHERE c.org_id = a.organization_id AND c.kind = a.linea AND c.status IN ('FIRMATO','AUTORIZZATO','ATTIVO'))
             AND (a.prospect OR a.contrattualizzato_at IS NULL OR a.fase_corrente < 6) ORDER BY o.name`, chiave: 'id', link: (r) => `/business/account/${r.id}`,
     correggi: { etichetta: 'Segna contrattualizzati', conferma: true, descrizione: 'contrattualizzato alla data della firma, prospect tolto, fase 6, sede SERVICE per Service e MdL (senza le comunicazioni automatiche, annotato nel diario)', fn: corr.d12, richiede: ['business.accounts'] } },
-  { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL vigenti senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL attivo o contrattualizzato (vista clienti_attivi_v) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
-    // adattata ad A5: la regola del cliente è la vista public.clienti_attivi_v (entrambi i livelli), una riga per Legal entity
+  { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL attivi senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL ATTIVO nel Business Hub (fase 7 confermata dal CEO; vista clienti_attivi_v, livello ATTIVO) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
+    // solo i clienti ATTIVI nel Business Hub (CEO, 08/11/2026: "Strutture clienti service: solo quelli ATTIVI"), una riga per Legal entity
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
-          WHERE NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) GROUP BY o.id, o.name ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
+          WHERE v.livello = 'ATTIVO' AND NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) GROUP BY o.id, o.name ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
     correggi: { etichetta: 'Crea le sedi SERVICE', conferma: true, descrizione: 'una sede SERVICE per Legal entity con l\'indirizzo della Legal entity (o una per struttura del gruppo attivata), con saveSite e audit', fn: corr.d13 } },
   { id: 'D14', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Sedi SERVICE di Legal entity non clienti, non attive o senza account', richiede: ['business.accounts'], spiegazione: 'Un punto SERVICE appartiene a un cliente Service o MdL attivo.',
     sql: `SELECT s.id, s.code, s.studiolab_code, o.id AS org_id, o.name, o.kind FROM sites s LEFT JOIN organizations o ON o.id = s.organization_id
@@ -280,15 +331,15 @@ export const CONTROLLI = [
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello, min(v.account_id) AS account_id FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
           WHERE NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active AND coalesce(s.studiolab_code, '') <> '')
             AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = o.id AND coalesce(a.studiolab_code, '') <> '') GROUP BY o.id, o.name ORDER BY o.name`, chiave: 'id', link: (r) => (r.account_id ? `/business/account/${r.account_id}` : orgLink(r.name)) },
-  { id: 'D15b', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Codice StudioLAB su più sedi', spiegazione: 'Ordini e NC abbinano il codice a una sola sede: con due sedi l\'abbinamento è arbitrario.',
+  { id: 'D15b', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Codice StudioLAB su più sedi', spiegazione: 'Ordini e NC abbinano il codice a una sola sede: con due sedi l\'abbinamento è arbitrario. Si corregge in Amministrazione > Sedi (il codice resta a una sola sede); a zero doppioni il vincolo di unicità si attiva da solo (B19).',
     sql: `SELECT lower(studiolab_code) AS codice, array_agg(id ORDER BY id) AS sedi FROM sites WHERE coalesce(studiolab_code, '') <> '' GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'codice', link: (r) => `/admin/sites?q=${enc(r.codice)}` },
-  { id: 'D16a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity con la stessa P.IVA', spiegazione: 'Duplicati da unire con lo strumento di fusione (decisione 9).',
-    sql: `SELECT regexp_replace(upper(vat_number), '[^0-9A-Z]', '', 'g') AS piva, array_agg(id ORDER BY id) AS ids, array_agg(name ORDER BY id) AS nomi FROM organizations WHERE coalesce(vat_number, '') <> '' GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'piva', link: (r) => `/admin/organizations?q=${enc(r.piva)}`, correggiDopo: 'Fase 3 (B5b: fusione di Legal entity duplicate)' },
+  { id: 'D16a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity con la stessa P.IVA', spiegazione: 'Duplicati da unire con lo strumento di fusione (decisione 9, B5b): "Unisci" sulla riga apre Amministrazione > Legal entity con l\'anteprima e la scelta della riga che resta.',
+    sql: `SELECT regexp_replace(upper(vat_number), '[^0-9A-Z]', '', 'g') AS piva, array_agg(id ORDER BY id) AS ids, array_agg(name ORDER BY id) AS nomi FROM organizations WHERE coalesce(vat_number, '') <> '' GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'piva', link: unisciLink },
   { id: 'D16b', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity con lo stesso codice fiscale (diverso dalla P.IVA)', spiegazione: 'Possibili duplicati.',
-    sql: `SELECT upper(tax_code) AS cf, array_agg(id ORDER BY id) AS ids FROM organizations WHERE coalesce(tax_code, '') <> '' AND tax_code IS DISTINCT FROM vat_number GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'cf', link: () => '/admin/organizations', correggiDopo: 'Fase 3 (B5b)' },
+    sql: `SELECT upper(tax_code) AS cf, array_agg(id ORDER BY id) AS ids FROM organizations WHERE coalesce(tax_code, '') <> '' AND tax_code IS DISTINCT FROM vat_number GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'cf', link: unisciLink },
   { id: 'D16c', area: 'CLIENTI', gravita: 'INFO', titolo: 'Legal entity con nomi molto simili', spiegazione: 'Somiglianza dei nomi di almeno 0,8 (pg_trgm).',
     sql: `SELECT a.id AS id_a, a.name AS nome_a, b.id AS id_b, b.name AS nome_b, round(similarity(lower(a.name), lower(b.name))::numeric, 2) AS sim
-          FROM organizations a JOIN organizations b ON a.id < b.id AND similarity(lower(a.name), lower(b.name)) >= 0.8 ORDER BY sim DESC`, chiave: 'id_a', link: (r) => orgLink(r.nome_a), correggiDopo: 'Fase 3 (B5b)' },
+          FROM organizations a JOIN organizations b ON a.id < b.id AND similarity(lower(a.name), lower(b.name)) >= 0.8 ORDER BY sim DESC`, chiave: 'id_a', link: (r) => `/admin/organizations?unisci=${r.id_a},${r.id_b}` },
   { id: 'D17', area: 'CLIENTI', gravita: 'INFO', titolo: 'Legal entity da rivedere', spiegazione: 'Create in automatico (locatori, richiedenti, prospect) con la spunta "da rivedere".',
     sql: `SELECT id, kind, name, notes, created_at FROM organizations WHERE needs_review ORDER BY created_at DESC`, chiave: 'id', link: (r) => orgLink(r.name) },
   { id: 'D20', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity tra le strutture di Ordini e NC senza essere clienti', richiede: ['orders.strutture_v', 'nc.sedi_v'], spiegazione: 'A4: le righe Legal entity di Ordini e NC sono solo i clienti di clienti_attivi_v o con punti SERVICE; le altre con dati storici restano visibili ma disattivate.',
@@ -296,11 +347,13 @@ export const CONTROLLI = [
     sql: `SELECT v.org_id, v.name, v.org_kind, v.configured, 'Ordini' AS modulo FROM orders.strutture_v v WHERE v.origin = 'ORG' AND v.active AND public.cliente_livello(v.org_id) IS NULL
           UNION ALL SELECT n.org_id, n.nome, n.org_kind, n.configurata, 'NC' FROM nc.sedi_v n WHERE n.origin = 'ORG' AND n.attiva AND public.cliente_livello(n.org_id) IS NULL
           ORDER BY 2`, chiave: 'org_id', link: (r) => orgLink(r.name) },
-  { id: 'D21a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Clienti B2B di Retail non abbinati a una Legal entity', richiede: ['retail.customers'], spiegazione: 'Il ponte codice StudioLAB → Legal entity è la correzione B15.',
-    sql: `SELECT c.id, c.external_code, c.company_name, c.vat_number, c.b2b_type FROM retail.customers c WHERE c.kind = 'B2B' AND NOT c.demo AND c.organization_id IS NULL ORDER BY c.company_name`, chiave: 'id', link: (r) => `/retail/clienti/${r.id}`, correggiDopo: 'Fase 3 (B15)' },
+  { id: 'D21a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Clienti B2B di Retail non abbinati a una Legal entity', richiede: ['retail.customers'], spiegazione: 'B15: ogni codice cliente StudioLAB delle vendite si abbina alla Legal entity (dalla sede con lo stesso codice, altrimenti a mano in Retail > Aziende e strutture > Da abbinare).',
+    sql: `SELECT c.id, c.external_code, c.company_name, c.vat_number, c.b2b_type FROM retail.customers c WHERE c.kind = 'B2B' AND NOT c.demo AND c.organization_id IS NULL ORDER BY c.company_name`, chiave: 'id', link: (r) => `/retail/clienti/b2b?tab=da_abbinare&q=${enc(r.external_code || '')}`,
+    correggi: { etichetta: 'Abbina dai codici StudioLAB', conferma: true, descrizione: 'B15: codice cliente = codice StudioLAB di una sede della Suite → Legal entity della sede; i codici senza sede restano "da abbinare" (selettore nella pagina B2B di Retail)', fn: corr.d21a, richiede: ['retail.customers'] } },
   { id: 'D21b', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'B2B abbinato a una Legal entity diversa da quella della sede con lo stesso codice', richiede: ['retail.customers'], spiegazione: 'Codice cliente StudioLAB uguale al codice della sede SERVICE ma Legal entity diversa.',
     sql: `SELECT c.id, c.external_code, s.id AS site_id, s.code, s.organization_id, c.organization_id AS customer_org_id FROM retail.customers c
-          JOIN sites s ON lower(s.studiolab_code) = lower(c.external_code) WHERE c.kind = 'B2B' AND c.organization_id IS DISTINCT FROM s.organization_id ORDER BY c.external_code`, chiave: 'id', link: sedeLink, correggiDopo: 'Fase 3 (B15)' },
+          JOIN sites s ON lower(s.studiolab_code) = lower(c.external_code) WHERE c.kind = 'B2B' AND c.organization_id IS DISTINCT FROM s.organization_id ORDER BY c.external_code`, chiave: 'id', link: sedeLink,
+    correggi: { etichetta: 'Abbina alla Legal entity della sede', conferma: true, descrizione: 'B15: il cliente B2B passa alla Legal entity della sede con lo stesso codice StudioLAB', fn: corr.d21b, richiede: ['retail.customers'] } },
   { id: 'D22a', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Legal entity di TD non collegata ai Dati aziendali', spiegazione: 'A9: la riga di Toscana Diagnostica in Legal entity è quella indicata nei Dati aziendali, con la stessa P.IVA.',
     // adattata ad A9: anomalia se company_org_id manca, se la sua P.IVA non è quella dei Dati aziendali, o se nessuna società del gruppo ha quella P.IVA
     sql: `WITH k AS (SELECT CASE WHEN jsonb_typeof(value) = 'number' THEN (value)::text::int END AS org_id FROM app_settings WHERE key = 'company_org_id'),
@@ -319,13 +372,28 @@ export const CONTROLLI = [
                                      ('codice fiscale', o.tax_code, nullif(c.v->>'tax_code', '')), ('indirizzo', o.address, nullif(c.v->>'address', '')), ('PEC', o.pec, nullif(c.v->>'pec', '')), ('SDI', o.sdi, nullif(c.v->>'sdi_code', ''))) x(campo, legal_entity, dati_aziendali)
           WHERE x.dati_aziendali IS NOT NULL AND x.legal_entity IS DISTINCT FROM x.dati_aziendali`,
     chiave: 'campo', link: () => '/admin/settings', correggi: { etichetta: 'Allinea ai Dati aziendali', conferma: true, descrizione: 'i campi della Legal entity di TD presi dai Dati aziendali', fn: corr.d22b, tutte: true } },
-  { id: 'D22c', area: 'CLIENTI', gravita: 'INFO', titolo: 'Copie dell\'indirizzo del Laboratorio nelle impostazioni dei moduli', richiede: ['business.app_settings', 'nc.app_settings'], spiegazione: 'Nome e indirizzo del Laboratorio verranno letti dalla sede LABORATORIO (B9); senza chiave il modulo usa il valore predefinito del codice.',
-    sql: `SELECT 'business' AS modulo, key, value::text AS valore FROM business.app_settings WHERE key = 'lab_address' UNION ALL SELECT 'nc', key, value::text FROM nc.app_settings WHERE key IN ('lab_nome','lab_indirizzo')`, chiave: 'key', link: () => null, correggiDopo: 'Fase 3 (B9)' },
+  { id: 'D22c', area: 'CLIENTI', gravita: 'INFO', titolo: 'Indirizzo del Laboratorio ancora dalle impostazioni dei moduli', richiede: ['business.app_settings', 'nc.app_settings'], spiegazione: 'B9: Business Hub e NC leggono nome e indirizzo del Laboratorio dalla sede LABORATORIO di Amministrazione > Sedi. Le righe compaiono solo se quella sede manca (allora valgono le impostazioni del modulo o il predefinito): crea o attiva la sede Laboratorio.',
+    // adattata a B9: le copie contano solo finché manca la sede LABORATORIO attiva
+    sql: `SELECT 'business' AS modulo, key, value::text AS valore FROM business.app_settings WHERE key = 'lab_address' AND NOT EXISTS (SELECT 1 FROM sites WHERE kind = 'LABORATORIO' AND active)
+          UNION ALL SELECT 'nc', key, value::text FROM nc.app_settings WHERE key IN ('lab_nome','lab_indirizzo') AND NOT EXISTS (SELECT 1 FROM sites WHERE kind = 'LABORATORIO' AND active)`, chiave: 'key', link: () => '/admin/sites' },
   { id: 'D23', area: 'CLIENTI', gravita: 'INFO', titolo: 'Referenti Business senza persona o con persona di un\'altra Legal entity', richiede: ['business.contatti', 'business.accounts'], spiegazione: 'Abbinamento per email dei referenti alle persone dell\'anagrafica (B7).',
     sql: `SELECT k.id, k.account_id, k.email, p.id AS person_id, p.organization_id FROM business.contatti k JOIN business.accounts a ON a.id = k.account_id LEFT JOIN people p ON lower(p.email) = lower(k.email)
-          WHERE k.email IS NOT NULL AND (k.person_id IS NULL OR p.organization_id IS DISTINCT FROM a.organization_id) ORDER BY k.email`, chiave: 'id', link: (r) => `/business/account/${r.account_id}`, correggiDopo: 'Fase 3 (B7)' },
-  { id: 'D25', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Tipi assegnati dal creatore: locatori PARTNER, richiedenti Spedizioni CLIENTE', spiegazione: 'Decisione 8: locatori = FORNITORE, partner dei punti prelievo = PARTNER (migrazione B5).',
-    sql: `SELECT id, kind, name, notes FROM organizations WHERE (kind = 'PARTNER' AND (notes ILIKE '%contratto di locazione%' OR notes ILIKE '%Scadenziario strutture%')) OR (kind = 'CLIENTE' AND notes ILIKE 'Creata da Shipments%') ORDER BY name`, chiave: 'id', link: (r) => orgLink(r.name), correggiDopo: 'Fase 3 (B5)' },
+          WHERE k.email IS NOT NULL AND (k.person_id IS NULL OR p.organization_id IS DISTINCT FROM a.organization_id) ORDER BY k.email`, chiave: 'id', link: (r) => `/business/account/${r.account_id}`,
+    correggi: { etichetta: 'Collega per email', conferma: true, descrizione: 'B7: referente = persona di Amministrazione > Persone con la stessa email (senza persona o di un\'altra Legal entity: resta da sistemare)', fn: corr.d23, richiede: ['business.contatti'] } },
+  { id: 'D25', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Tipi delle Legal entity diversi dalla decisione 8', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Decisione 8 (B5): locatori = FORNITORE, partner dei punti prelievo = PARTNER (chi è anche cliente Service/MdL resta CLIENTE); i richiedenti di Spedizioni creati CLIENTE si decidono nella scheda.',
+    // adattata a B5: stesse regole della funzione public.riclassifica_tipi_legal_entity (migrazione 045)
+    sql: `WITH partner AS (SELECT host_organization_id AS id FROM sites WHERE host_organization_id IS NOT NULL
+                         UNION SELECT org_id FROM business.contracts WHERE kind = 'PP' AND org_id IS NOT NULL AND status <> 'ANNULLATO'
+                         UNION SELECT organization_id FROM business.accounts WHERE linea = 'PP'),
+               clienti AS (SELECT organization_id AS id FROM business.accounts WHERE linea IN ('SRV','MDL') UNION SELECT organization_id FROM sites WHERE kind = 'SERVICE' AND organization_id IS NOT NULL),
+               locatori AS (SELECT lease_landlord_org_id AS id FROM sites WHERE lease_landlord_org_id IS NOT NULL)
+          SELECT o.id, o.kind, o.name, o.notes, CASE WHEN o.kind = 'PARTNER' THEN 'FORNITORE (locatore)' WHEN o.id IN (SELECT id FROM partner) THEN 'PARTNER (punto prelievi)' ELSE 'da decidere (richiedente Spedizioni)' END AS atteso
+            FROM organizations o
+           WHERE (o.kind = 'PARTNER' AND (o.id IN (SELECT id FROM locatori) OR o.notes ILIKE '%contratto di locazione%' OR o.notes ILIKE '%Scadenziario strutture%') AND o.id NOT IN (SELECT id FROM partner))
+              OR (o.kind = 'CLIENTE' AND o.id IN (SELECT id FROM partner) AND o.id NOT IN (SELECT id FROM clienti))
+              OR (o.kind = 'CLIENTE' AND o.notes ILIKE 'Creata da Shipments%')
+           ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
+    correggi: { etichetta: 'Applica la decisione 8', conferma: true, descrizione: 'locatori PARTNER → FORNITORE e partner dei punti prelievo CLIENTE → PARTNER (chi è anche cliente resta CLIENTE con la nota); i richiedenti di Spedizioni restano da decidere nella scheda', fn: corr.d25, tutte: true } },
   { id: 'D33', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Accessi esterni attivi di Legal entity disattivate', spiegazione: 'Un partner o cliente disattivato non deve più entrare nella Suite.',
     sql: `SELECT u.id, u.email, o.id AS org_id, o.name FROM users u LEFT JOIN people p ON p.id = u.person_id JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id)
           WHERE u.is_external AND u.status = 'ACTIVE' AND NOT o.active ORDER BY o.name, u.email`, chiave: 'id', link: (r) => `/admin/users/${r.id}`,
@@ -358,13 +426,17 @@ export const CONTROLLI = [
     correggi: { etichetta: 'Riallinea i perimetri', conferma: true, descrizione: 'realignOrgPerimeters per le Legal entity dei partner', fn: corr.d34 } },
   { id: 'D35', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Personale attivo senza sede di afferenza', spiegazione: 'Dipendenti, LP e dirigenti senza sede di lavoro.',
     sql: `SELECT p.id, p.last_name, p.kind FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','LP','DIRIGENTE') AND p.site_id IS NULL ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
-  { id: 'D36', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Sede del contratto di lavoro diversa dalla sede di afferenza', richiede: ['contracts.employments'], attivoDopo: 'Fase 4 (C13: regola di coerenza tra sede di afferenza e sede del contratto)', spiegazione: 'Tre rappresentazioni di "dove lavora" senza regola di coerenza.',
-    sql: `SELECT p.id, p.last_name, p.site_id, e.work_site_id FROM people p JOIN contracts.employments e ON e.resource_id = p.id WHERE e.work_site_id IS DISTINCT FROM p.site_id ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
-
+  { id: 'D36', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Sede del contratto di lavoro diversa dalla sede di afferenza', richiede: ['contracts.employments'], spiegazione: 'C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (allineata da Contratti del personale; in Persone non si cambia).',
+    // adattata a C13: solo i contratti in corso con la sede di lavoro indicata
+    sql: `SELECT p.id, p.last_name, p.site_id, e.work_site_id FROM people p JOIN contracts.employments e ON e.resource_id = p.id
+          WHERE e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE) AND e.work_site_id IS DISTINCT FROM p.site_id ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}`,
+    correggi: { etichetta: 'Sede = sede del contratto', conferma: true, descrizione: 'people.site_id = sede di lavoro del contratto in corso (e l\'utente la segue)', fn: corr.d36 } },
   // ---------------- Processi e sistema
-  { id: 'D24', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Account PP con sede chiusa o non PP, o data di avvio diversa dall\'apertura', richiede: ['business.accounts'], attivoDopo: 'Fase 3 (B1: data di avvio effettiva scritta in Sedi)', spiegazione: 'La data di avvio effettiva del punto diventa l\'apertura della sede.',
+  { id: 'D24', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Account PP con sede chiusa o non PP, o data di avvio diversa dall\'apertura', richiede: ['business.accounts'], spiegazione: 'B1: la data di avvio effettiva del punto è l\'apertura della sede in Amministrazione > Sedi (scritta da sola se la sede non ce l\'ha).',
+    // adattata a B1: la data dell'account conta solo se c'è (collegare una sede già aperta a un punto non ancora avviato non è un'anomalia)
     sql: `SELECT a.id, a.pp_site_id, s.code, s.active, s.kind, a.data_avvio_effettiva, s.opened_at FROM business.accounts a JOIN sites s ON s.id = a.pp_site_id
-          WHERE a.linea = 'PP' AND (NOT s.active OR s.kind <> 'PUNTO_PRELIEVI' OR a.data_avvio_effettiva IS DISTINCT FROM s.opened_at) ORDER BY s.code`, chiave: 'id', link: (r) => `/business/account/${r.id}` },
+          WHERE a.linea = 'PP' AND (NOT s.active OR s.kind <> 'PUNTO_PRELIEVI' OR (a.data_avvio_effettiva IS NOT NULL AND a.data_avvio_effettiva IS DISTINCT FROM s.opened_at)) ORDER BY s.code`, chiave: 'id', link: (r) => `/business/account/${r.id}`,
+    correggi: { etichetta: 'Allinea la data di apertura', conferma: true, descrizione: 'sede senza data di apertura: riceve la data di avvio (saveSite); sede con un\'altra data: l\'account prende quella della sede. Sedi chiuse o non PP restano da sistemare a mano', fn: corr.d24 } },
   { id: 'D26', area: 'SISTEMA', gravita: 'BLOCCANTE', titolo: 'Sorgenti legacy che hanno scritto l\'anagrafica di recente', spiegazione: 'A12: la sincronizzazione dalle app di origine non scrive più sedi, Legal entity e persone. Controlla anche, in Render, LEGACY_FINANCE_DATABASE_URL e LEGACY_SHIPMENTS_DATABASE_URL.',
     // adattata ad A12: solo le sorgenti che negli ultimi 7 giorni hanno creato o aggiornato sedi, organizzazioni o persone
     sql: `SELECT key, enabled, last_sync_at, last_status, stats FROM legacy_sources WHERE enabled AND last_sync_at > now() - interval '7 days'
@@ -387,6 +459,13 @@ export const CONTROLLI = [
   { id: 'D31', area: 'SISTEMA', gravita: 'INFO', titolo: 'Sedi TD senza coordinate', spiegazione: 'Mappa, meteo e Intorno del Retail usano le coordinate.',
     sql: `SELECT id, code, name FROM sites WHERE active AND kind <> 'SERVICE' AND (lat IS NULL OR lng IS NULL) ORDER BY code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Calcola dall\'indirizzo', conferma: false, descrizione: 'coordinate da OpenStreetMap, in coda, salvate con saveSite', fn: corr.d31 } },
+  // C10 (programma anagrafica unica): gli override dei moduli sul tipo di sede si mostrano come scostamento dall'anagrafica
+  { id: 'D41', area: 'SISTEMA', gravita: 'INFO', titolo: 'Tipo di sede cambiato nei moduli (scostamento dall\'anagrafica)', richiede: ['orders.site_ext', 'retail.site_ext'], spiegazione: 'C10: Ordini (ruolo della struttura) e Retail (sede del network) possono scostarsi dal tipo di sede di Amministrazione > Sedi: qui gli scostamenti, da confermare o togliere nel modulo.',
+    sql: `SELECT s.id, s.code, s.kind, 'Ordini' AS modulo, 'ruolo ' || e.kind AS scostamento, CASE s.kind WHEN 'SERVICE' THEN 'CLIENTE' WHEN 'LABORATORIO' THEN 'LAB' ELSE 'SEDE' END AS atteso
+            FROM orders.site_ext e JOIN sites s ON s.id = e.site_id WHERE e.kind IS NOT NULL AND e.kind IS DISTINCT FROM CASE s.kind WHEN 'SERVICE' THEN 'CLIENTE' WHEN 'LABORATORIO' THEN 'LAB' ELSE 'SEDE' END
+          UNION ALL SELECT s.id, s.code, s.kind, 'Retail', CASE WHEN r.in_network THEN 'nel network' ELSE 'fuori dal network' END, CASE WHEN s.kind NOT IN ('HEADQUARTER','SERVICE','ALTRO') THEN 'nel network' ELSE 'fuori dal network' END
+            FROM retail.site_ext r JOIN sites s ON s.id = r.site_id WHERE r.in_network IS NOT NULL AND r.in_network IS DISTINCT FROM (s.kind NOT IN ('HEADQUARTER','SERVICE','ALTRO'))
+          ORDER BY 2, 4`, chiave: 'id', link: sedeLink },
   { id: 'D39', area: 'SISTEMA', gravita: 'BLOCCANTE', titolo: 'Colonne di riferimento a sedi e Legal entity senza chiave esterna', spiegazione: 'Un riferimento senza FK può puntare a una sede o Legal entity inesistente.',
     sql: `SELECT c.table_schema, c.table_name, c.column_name FROM information_schema.columns c
           WHERE c.table_schema NOT IN ('pg_catalog','information_schema') AND c.column_name ~ '(^|_)(site_id|sede_id|struttura_id|org_id|organization_id|company_id|host_org_id)$'
@@ -491,6 +570,7 @@ export function registerDiagnosticaJobs(registerJob) {
   registerJob('core:diagnostica', 24 * 60, async () => {
     const risultati = await esegui({ limite: 0 });
     const { run, precedente } = await salvaEsito(risultati, null);
+    await (await import('./sites.js')).assicuraIndiceStudiolab().catch(() => false);   // B19: vincolo attivato quando D15b torna a zero
     const cr = cresciuti(risultati, precedente);
     if (cr.length) {
       const { notify, adminUserIds } = await import('./community.js');

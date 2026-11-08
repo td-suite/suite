@@ -25,16 +25,13 @@ export const AREAS = [ // dall'organigramma TD-SGI-IDL007_01 Allegato 1: [nome, 
   ['Diagnostic Center', 'Direzione Generale'],
 ];
 
-export const WORK_SITES = [
-  { name: 'Sede operativa Sesto Fiorentino', address: 'via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)' },
-  { name: 'Sede Firenze Belfiore', address: 'viale Belfiore, 55, 50144 Firenze (FI)' },
-  { name: 'Sede Livorno', address: 'Via Aurelio Lampredi, 3, 57121 Livorno (LI)' },
-];
+// C6 (programma anagrafica unica, 08/11/2026): tolto l'elenco fisso delle sedi di lavoro (WORK_SITES, con Viale Belfiore e Livorno):
+// le sedi di lavoro sono quelle di Amministrazione > Sedi (GET /api/contracts/work-sites).
 
 export const DEFAULT_SETTINGS = {
   company_name: 'Toscana Diagnostica S.r.l.',
   company_address: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)',
-  company_legal_address: 'Viale Belfiore, 55, 50144, Firenze (FI)',
+  company_legal_address: 'Via di Pratignone, 13/4, 50019 Sesto Fiorentino (FI)',   // C6: ripiego allineato ai Dati aziendali (prima Viale Belfiore)
   company_vat: '07528130482',
   company_rea: 'FI-709602',
   company_capital: '€ 50.000,00 i.v.',
@@ -49,7 +46,6 @@ export const DEFAULT_SETTINGS = {
   board_signatory_title: 'Un Consigliere di Amministrazione',
   dirigenti_minimum: '85000.00',                       // CCNL Dirigenti Industria: trattamento minimo complessivo di garanzia (TMCG) annuo
   dirigenti_monthly_payments: '13',
-  letter_city: 'Firenze',
   // Costo azienda (ipotesi configurabili: verificare con il consulente del lavoro)
   cost_inps_pct: '29.00',
   cost_inail_pct: '0.50',

@@ -14,7 +14,7 @@ export const nomeTipologia = (kind) => TIPOLOGIE.find((t) => t.kind === kind)?.n
 
 // Tipi di sede dell'anagrafica (public.sites.kind) che hanno una dotazione di avvio; HEADQUARTER, ALTRO e i punti SERVICE no
 // (i clienti service compaiono come Legal entity).
-export const SITE_KINDS_DOTAZIONE = ['PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO', 'LABORATORIO'];
+export { SEDI_OPERATIVE as SITE_KINDS_DOTAZIONE } from '../../../lib/tipiSede.js';   // C7: costante unica
 const POLI = ['CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO'];
 
 // Tipologia della dotazione dalla struttura di strutture_v: le Legal entity (origin ORG) e i punti SERVICE sono SERVICE;

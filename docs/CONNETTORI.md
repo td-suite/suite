@@ -90,3 +90,12 @@ Silva ha attivato `https://silva.cloud/portaleordini` con header `X-API-KEY` (ch
 
 ## Silva: trasmissione degli ordini in API (31/10/2026)
 All'approvazione dell'Area Operations (fase 2 → 3) la Suite invia l'ordine a `POST {base}/api/v1/ordini` con la chiave X-API-KEY del connettore e `X-Idempotency-Key` = numero d'ordine (`lib/silva.js pushOrderToSilva`); 200/201/409 = ricevuto, altrimenti ritentativi dal job `orders:silva-push` ogni 5 minuti finché l'ordine resta APPROVATO (max 50). Stato sull'ordine (`silva_send_status`, `silva_sent_at`, `silva_reference`) e in Trasmissione al magazzino con il pulsante "Trasmetti a Silva". Impostazione `push_orders` = false nel connettore per disattivare. La specifica consegnata a Silva è docs/SILVA_API_ORDINI.md con lo schema docs/silva-api-ordini-v1.openapi.yaml; gli avanzamenti restano le route in ingresso presa-in-carico / spedito / consegnato.
+
+## Sedi dal connettore: codice, nome e orari (anagrafica unica, blocco 3, 08/11/2026)
+- La sede si riconosce prima dal codice della fonte memorizzato alla prima ricezione (`legacy_refs."ingest:<fonte>"`), poi dal codice
+  della Suite: rinominare il codice in Amministrazione > Sedi non crea doppioni al prossimo invio.
+- Il nome inviato non sovrascrive un nome cambiato nella Suite (avviso nel lotto).
+- `opening_hours` in testo ("Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00") diventa orari strutturati; un testo non interpretabile
+  non sovrascrive gli orari strutturati della sede.
+- `manager_name` è accettato ma ignorato: il responsabile di sede è quello dell'organigramma.
+- Le Legal entity nuove passano dalla funzione unica `createOrganization` (nomi simili segnati "da rivedere").

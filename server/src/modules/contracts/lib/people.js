@@ -40,6 +40,12 @@ export async function syncDerived(c, id) {
       discipline = coalesce((SELECT l.discipline FROM lp_contracts l WHERE l.resource_id = p.id), p.discipline),
       updated_at = now()
     WHERE p.id = $1`, [id]);
+  // C13 (programma anagrafica unica, 08/11/2026): la sede della persona è quella del contratto di lavoro se c'è (sede di lavoro di un
+  // contratto non concluso); senza contratto resta quella di Amministrazione > Persone. L'utente segue la persona (syncUserFromPerson).
+  const r = await run(`UPDATE public.people p SET site_id = e.work_site_id, updated_at = now() FROM employments e
+     WHERE e.resource_id = p.id AND p.id = $1 AND e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
+       AND p.site_id IS DISTINCT FROM e.work_site_id RETURNING p.id`, [id]);
+  if (r.rowCount) setTimeout(() => import('../../../lib/accounts.js').then((m) => m.syncUserFromPerson(id)).catch(() => {}), 1500);
 }
 
 /** Crea la persona (public.people + person_ext) e registra PERSON_CREATED. Ritorna l'id di public.people. */

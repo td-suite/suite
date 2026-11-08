@@ -9,6 +9,7 @@ import { ToastProvider } from './components/ui.jsx';
 import './styles.css';
 import Dashboard from './pages/Dashboard.jsx';
 import Customers from './pages/Customers.jsx';
+import B2B from './pages/B2B.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
 import Recalls from './pages/Recalls.jsx';
 import Products from './pages/Products.jsx';
@@ -39,7 +40,7 @@ export default function Module({ moduleUser }) {
         <Routes>
           <Route path="" element={<Dashboard />} />
           <Route path="clienti" element={<Customers kind="B2C" />} />
-          <Route path="clienti/b2b" element={<Customers kind="B2B" />} />
+          <Route path="clienti/b2b" element={<B2B />} />
           <Route path="clienti/:id" element={<CustomerDetail />} />
           <Route path="richiami" element={<Recalls />} />
           <Route path="prodotti" element={<Products />} />

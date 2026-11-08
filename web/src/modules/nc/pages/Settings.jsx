@@ -38,7 +38,11 @@ export default function Settings() {
         <Card title="Regole del processo" actions={<button className="btn sm" onClick={save}>Salva</button>}>
           <ErrorBox error={err} />
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(LABEL).map(([k, [l, h]]) => <Field key={k} label={l} help={h}><input value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>)}
+            {Object.entries(LABEL).map(([k, [l, h]]) => {
+              // B9: nome e indirizzo del laboratorio vengono dalla sede LABORATORIO di Amministrazione > Sedi (sola lettura)
+              const daSede = ['lab_nome', 'lab_indirizzo'].includes(k) && f.lab_da_sede;
+              return <Field key={k} label={l} help={daSede ? `Dalla sede ${f.lab_da_sede} in Amministrazione > Sedi (si modifica lì)` : h}><input value={f[k] ?? ''} readOnly={!!daSede} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>;
+            })}
           </div>
         </Card>
         <div style={{ display: 'grid', gap: 16, alignContent: 'start' }}>

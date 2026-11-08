@@ -217,20 +217,22 @@ export function siteFieldsFromExtract(ex, { landlordOrgId = null } = {}) {
   }
   return { fields, confidence };
 }
-// Legal entity dal locatore letto nel contratto (public.organizations, kind PARTNER, needs_review): quella esistente se P.IVA, CF o nome
-// coincidono. Usata da Amministrazione > Sedi e dallo Scadenziario di Payments. Ritorna { id, name, existing, how? }.
-export async function landlordOrg(loc, { source }) {
+// Legal entity dal locatore letto nel contratto (public.organizations, kind FORNITORE per la decisione 8 del CEO, needs_review): quella
+// esistente se P.IVA, CF o nome coincidono, altrimenti nuova con createOrganization (B5). Usata da Amministrazione > Sedi e dallo
+// Scadenziario di Payments. Ritorna { id, name, existing, how? }.
+export async function landlordOrg(loc, { source, req = null, actorId = null } = {}) {
   const name = String(loc?.ragione_sociale || '').trim();
   if (name.length < 2) throw bad('Ragione sociale del locatore non letta dal contratto: crea la Legal entity in Amministrazione');
   const hit = await matchOrg({ vat_number: loc.piva, tax_code: loc.cf, name });
   if (hit) return { id: hit.id, name: hit.name, existing: true, how: hit.how };
   const addr = String(loc.indirizzo || '');
   const mCity = addr.match(/,\s*([^,(]+?)\s*(?:\(([A-Z]{2})\))?\s*$/);
-  const row = await one(`INSERT INTO public.organizations (kind, name, vat_number, tax_code, pec, address, city, province, needs_review, notes)
-    VALUES ('PARTNER', $1, $2, $3, $4, $5, $6, $7, TRUE, $8) RETURNING id, name, kind, vat_number, tax_code, city`,
-  [name, loc.piva || null, loc.cf || null, loc.pec || null, mCity ? addr.slice(0, mCity.index).trim() || null : addr || null, mCity ? mCity[1].trim() : null, mCity?.[2] || null,
-    `Creata da ${source} dal contratto di locazione in PDF${loc.legale_rappresentante ? ` · legale rappresentante ${loc.legale_rappresentante}` : ''}`]);
-  return { ...row, existing: false };
+  const { createOrganization } = await import('./organizations.js');
+  const r = await createOrganization({ kind: 'FORNITORE', name, vat_number: loc.piva || null, tax_code: loc.cf || null, pec: loc.pec || null, address: mCity ? addr.slice(0, mCity.index).trim() || null : addr || null,
+    city: mCity ? mCity[1].trim() : null, province: mCity?.[2] || null, notes: `Creata da ${source} dal contratto di locazione in PDF (locatore)${loc.legale_rappresentante ? ` · legale rappresentante ${loc.legale_rappresentante}` : ''}` },
+  { origine: `${source}, locatore dal contratto in PDF`, req, actorId, needsReview: true });
+  const o = r.org;
+  return { id: o.id, name: o.name, kind: o.kind, vat_number: o.vat_number, tax_code: o.tax_code, city: o.city, existing: !r.created, how: r.come };
 }
 
 // Fine del primo periodo: decorrenza + anni (fine mese rispettata), null se manca uno dei due

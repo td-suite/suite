@@ -138,3 +138,20 @@ export async function aggiornaOrgTd(client, saved) {
   await run(`UPDATE organizations SET ${ks.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...ks.map((k) => mod[k][1])]);
   return { org_id: id, modifiche: mod };
 }
+
+/**
+ * B9 (08/11/2026): il Laboratorio di Analisi è la sede di tipo LABORATORIO in Amministrazione > Sedi (fonte unica di nome e indirizzo,
+ * prima copiati nelle impostazioni del Business Hub `lab_address` e di NC `lab_nome`/`lab_indirizzo`). Con più laboratori attivi vale
+ * quello della Legal entity di TD, poi l'ordine della sede. null se non c'è: i moduli usano allora il proprio valore predefinito.
+ * Ritorna { id, code, name, address, zip, city, province, email, phone, indirizzo (via, CAP città (PR)), indirizzo_contratti (città (PR), via) }.
+ */
+export async function getLaboratorio() {
+  const td = await companyOrgId().catch(() => null);
+  const s = await one(`SELECT id, code, name, address, zip, city, province, email, phone FROM sites WHERE kind='LABORATORIO' AND active
+     ORDER BY (organization_id IS NOT DISTINCT FROM $1::int) DESC, sort_order NULLS LAST, id LIMIT 1`, [td]).catch(() => null);
+  if (!s) return null;
+  const prov = s.province ? ` (${s.province})` : '';
+  return { ...s,
+    indirizzo: [s.address, [s.zip, s.city].filter(Boolean).join(' ') + (s.city ? prov : '')].filter((x) => x && x.trim()).join(', '),
+    indirizzo_contratti: [s.city ? `${s.city}${prov}` : null, s.address].filter(Boolean).join(', ') };
+}

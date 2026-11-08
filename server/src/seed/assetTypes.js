@@ -126,7 +126,8 @@ export const ASSET_CATEGORIES = {
   ELETTROMEDICALE: 'Elettromedicali', DIAGNOSTICA_IMMAGINI: 'Diagnostica per immagini', LABORATORIO: 'Laboratorio', IT: 'IT', ARREDI: 'Arredi',
   EMERGENZA: 'Emergenza', IGIENE_AMBIENTE: 'Igiene e ambiente',
 };
-export const SITE_KINDS_FACILITY = ['PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO', 'LABORATORIO', 'HEADQUARTER'];
+import { SEDI_OPERATIVE } from '../lib/tipiSede.js';   // C7: costante unica
+export const SITE_KINDS_FACILITY = [...SEDI_OPERATIVE, 'HEADQUARTER'];
 
 // Controllo del seed (anche nei test): codici unici, categorie e tipologie ammesse, almeno una periodicità per voce
 export function validateAssetTypes(list = ASSET_TYPES_SEED) {

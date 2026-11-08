@@ -206,3 +206,10 @@ disattivata). Il titolo è quello dell'anagrafica Sedi (`public.sites.tenure`). 
   intelligenti (le letture SMART si inseriscono come le manuali).
 - Regole di accesso nuove solo su `grant_rules` vuota; in produzione aggiungerle a mano.
 - Il QR richiede l'accesso alla Suite (nessuna pagina pubblica del dispositivo).
+
+## Anagrafica unica, blocco 3 (08/11/2026)
+- B4: superficie, locali e **box prelievo** (colonna nuova `properties.boxes`, migrazione 005) sono di Facility; Retail li legge da qui
+  (prima li scriveva nel proprio `site_ext`: la migrazione porta in Facility i valori dove mancavano). Il numero di ambulatori viene da
+  Room Planning e compare nella scheda dell'immobile.
+- Ore e giorni di apertura settimanali calcolati dagli orari della sede (Amministrazione > Sedi): indicatori energetici e scheda li
+  usano; il valore scritto nell'immobile vale solo se la sede non ha orari in anagrafica (campo in sola lettura altrimenti).

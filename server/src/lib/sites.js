@@ -21,7 +21,8 @@ const numOrNull = (v) => (v === undefined ? undefined : v === null || v === '' ?
 const money = z.preprocess(numOrNull, z.number().min(0).max(100_000_000).nullable().optional());
 const smallInt = (max) => z.preprocess(numOrNull, z.number().int().min(0).max(max).nullable().optional());
 const isoDate = z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional());
-export const SITE_KINDS = ['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'];
+import { SITE_KINDS } from './tipiSede.js';   // C7: costante unica
+export { SITE_KINDS };
 export const siteSchema = z.object({
   code: z.string().min(2).max(40), name: z.string().min(2).max(250), short_name: z.string().max(120).nullable().optional(),
   kind: z.enum(SITE_KINDS).optional(),
@@ -51,6 +52,42 @@ export function hoursText(j) {
   const groups = [];
   for (const d of DAYS) { const t = fmt(d); if (!t) continue; const last = groups[groups.length - 1]; if (last && last.t === t && DAYS.indexOf(last.to) === DAYS.indexOf(d) - 1) last.to = d; else groups.push({ from: d, to: d, t }); }
   return groups.map((g) => `${DAY_LABEL[g.from]}${g.from !== g.to ? `-${DAY_LABEL[g.to]}` : ''} ${g.t}`).join('; ') || null;
+}
+/**
+ * Testo degli orari → orari strutturati (inverso di hoursText, B11: il connettore manda solo il testo). Accetta gruppi separati da ";" o
+ * a capo, ognuno "giorni fasce": giorni come "Lun", "Lun-Ven", "Lun, Mer" (anche per esteso, "lunedì"), fasce "7:30-12:30" o "7.30-12",
+ * separate da virgola. Ritorna null se anche un solo gruppo non si interpreta (in quel caso il testo resta testo).
+ * Esempio: orariDaTesto('Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00') → { mon: [{from:'07:30',to:'12:30'},{from:'15:00',to:'18:00'}], ..., sat: [...] }
+ */
+export function orariDaTesto(testo) {
+  if (!testo || typeof testo !== 'string') return null;
+  const giorno = (x) => { const k = String(x).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').slice(0, 3); return DAYS.find((d) => DAY_LABEL[d].toLowerCase() === k) || null; };
+  const ora = (x) => { const m = String(x).trim().match(/^(\d{1,2})(?:[:.](\d{2}))?$/); if (!m || Number(m[1]) > 24 || Number(m[2] || 0) > 59) return null; return `${m[1].padStart(2, '0')}:${m[2] || '00'}`; };
+  const out = {};
+  const gruppi = testo.split(/[;\n]+/).map((g) => g.trim()).filter(Boolean);
+  if (!gruppi.length) return null;
+  for (const g of gruppi) {
+    const m = g.match(/^([A-Za-zÀ-ú.,\s-]+?)\s+(\d.*)$/);
+    if (!m) return null;
+    const giorni = [];
+    for (const parte of m[1].replace(/\./g, '').split(/\s*,\s*/).filter(Boolean)) {
+      const [a, b] = parte.split(/\s*-\s*/);
+      const da = giorno(a); const a2 = b ? giorno(b) : da;
+      if (!da || !a2) return null;
+      const i0 = DAYS.indexOf(da); const i1 = DAYS.indexOf(a2);
+      if (i1 < i0) return null;
+      for (let i = i0; i <= i1; i++) giorni.push(DAYS[i]);
+    }
+    const fasce = [];
+    for (const f of m[2].split(/\s*,\s*/).filter(Boolean)) {
+      const [x, y] = f.split(/\s*[-–]\s*/); const from = ora(x); const to = ora(y);
+      if (!from || !to || to <= from) return null;
+      fasce.push({ from, to });
+    }
+    if (!fasce.length || fasce.length > 3) return null;
+    for (const d of giorni) out[d] = fasce;
+  }
+  return Object.keys(out).length ? out : null;
 }
 export const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_hours_json = b.opening_hours_json ? JSON.stringify(b.opening_hours_json) : null; if (b.opening_hours_json) b.opening_hours = hoursText(JSON.parse(b.opening_hours_json)); } return b; };
 
@@ -101,6 +138,16 @@ export async function syncHostToCash(c, siteId) {
   return r.rowCount;
 }
 
+// B6: l'azienda di Cash della sede è la sua Legal entity proprietaria (se è una società del gruppo, l'elenco delle aziende di Cash).
+// Allineata dal core alla creazione e quando cambia la Legal entity; il controllo D07 verifica, la correzione chiama questa funzione.
+export async function syncCompanyToCash(c, siteId) {
+  if (!(await c.query(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`)).rows[0]?.ok) return 0;
+  const r = await c.query(`UPDATE cash.site_ext e SET company_id = s.organization_id, updated_at=now()
+     FROM public.sites s JOIN public.organizations o ON o.id = s.organization_id AND o.kind IN ('SOCIETA','GRUPPO')
+    WHERE s.id=e.site_id AND e.site_id=$1 AND e.company_id IS DISTINCT FROM s.organization_id`, [siteId]);
+  return r.rowCount;
+}
+
 const ADDRESS_KEYS = ['address', 'zip', 'city', 'province'];
 const LEASE_CHANGE = ['rent_amount', 'rent_period'];
 const NODE_KEYS = ['name', 'kind', 'active', 'org_node'];
@@ -128,6 +175,12 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
   }
   // A7 (d): un indirizzo scritto a mano diverso da quello in vigore smette di seguire la Legal entity (address_from_org = FALSE)
   if (cur?.address_from_org && b.address_from_org === undefined && ADDRESS_KEYS.some((k) => changed(b, cur, k))) b.address_from_org = false;
+  // B19: il codice StudioLAB è di una sola sede (Ordini, NC e Retail abbinano il codice a una sede): rifiutato se è già di un'altra
+  if (b.studiolab_code !== undefined) b.studiolab_code = b.studiolab_code ? String(b.studiolab_code).trim() || null : null;
+  if (b.studiolab_code) {
+    const altra = (await c.query(`SELECT id, code, name FROM sites WHERE lower(studiolab_code)=lower($1) AND id IS DISTINCT FROM $2 LIMIT 1`, [b.studiolab_code, cur?.id ?? null])).rows[0];
+    if (altra) throw bad(`Il codice StudioLAB ${b.studiolab_code} è già della sede ${altra.code} ${altra.name}: un codice, una sede`);
+  }
   // chiusura e riapertura (B17 minimo): data di chiusura alla disattivazione, tolta alla riattivazione
   if (cur && b.active === false && cur.active && b.closed_at == null) b.closed_at = today();
   if (cur && b.active === true && !cur.active) b.closed_at = null;
@@ -153,6 +206,7 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
   const campi = { ...b, ...ext };
   const titoloCambiato = created || ['tenure', 'host_organization_id'].some((k) => b[k] !== undefined);
   if (titoloCambiato) await syncHostToCash(c, site.id);
+  if (!created && b.organization_id !== undefined) await syncCompanyToCash(c, site.id);   // B6
   const modifiche = cur ? diff(cur, site, Object.keys(campi)) : undefined;
   await audit(attoreDi({ req, actorId }), created ? 'SITE_CREATED' : 'SITE_UPDATED',
     { entity: 'site', entityId: site.id, label: `${site.code} ${site.name}`, data: { origine, campi, modifiche } }, c);
@@ -192,9 +246,20 @@ async function effettiSede({ site: s, prima: cur, campi: b, created, origine, re
     out.perimetri.push({ organization_id: orgId, users: rep.users ?? 0, changed: rep.changed ?? 0, error: rep.error });
     if (rep.changed || rep.error) await audit(attoreDi({ req, actorId }), 'EXTERNAL_PERIMETERS_REALIGNED', { entity: 'organization', entityId: orgId, label: `Sede ${s.code}: perimetri degli accessi esterni ricalcolati (${origine})`, data: { site_id: s.id, changed: rep.changed ?? null, error: rep.error } });
   }
+  // B19: appena non ci sono più codici StudioLAB doppi l'indice di unicità si attiva da solo
+  if (b.studiolab_code !== undefined) await assicuraIndiceStudiolab().catch(() => false);
   // Chiusura: quadro d'impatto (cosa resta collegato alla sede disattivata)
   if (cur && cur.active && b.active === false) out.impatto = await impattoChiusura(s.id);
   return out;
+}
+
+/** B19: indice unico parziale sul codice StudioLAB, creato solo se non ci sono doppioni (D15b = 0). Ritorna true se l'indice c'è. */
+export async function assicuraIndiceStudiolab() {
+  if ((await one(`SELECT to_regclass('public.sites_studiolab_code_uq') IS NOT NULL AS ok`))?.ok) return true;
+  const doppi = await one(`SELECT count(*)::int AS n FROM (SELECT 1 FROM sites WHERE coalesce(studiolab_code,'') <> '' GROUP BY lower(studiolab_code) HAVING count(*) > 1) d`);
+  if (doppi.n) return false;
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS sites_studiolab_code_uq ON sites (lower(studiolab_code)) WHERE coalesce(studiolab_code, '') <> ''`);
+  return true;
 }
 
 /** Quadro d'impatto della chiusura di una sede (B17 minimo): cosa resta collegato. Solo conteggi, nessuna modifica. */

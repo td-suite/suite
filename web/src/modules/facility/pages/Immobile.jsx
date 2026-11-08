@@ -45,12 +45,13 @@ export default function Immobile() {
           <div className="fa-facts">
             <div><div className="k">Titolo</div><div className="v">{TENURE[p.tenure]}</div></div>
             <div><div className="k">Superficie</div><div className="v">{p.surface_sqm ? `${num(p.surface_sqm)} m2` : '–'}</div></div>
-            <div><div className="k">Piani · locali</div><div className="v">{p.floors ?? '–'} · {p.rooms ?? '–'}</div></div>
+            <div><div className="k">Piani · locali · box</div><div className="v">{p.floors ?? '–'} · {p.rooms ?? '–'} · {p.boxes ?? '–'}</div>{R.ambulatori_room != null && <div className="small muted">{R.ambulatori_room} ambulatori in Room Planning</div>}</div>
             <div><div className="k">Classe energetica</div><div className="v">{p.energy_class || '–'}</div>{p.ape_valid_until && <div className="small muted">APE fino al {itDate(p.ape_valid_until)}</div>}</div>
             <div><div className="k">Riscaldamento</div><div className="v">{p.heating_type || '–'}</div></div>
             <div><div className="k">Raffrescamento</div><div className="v">{p.cooling_type || '–'}</div></div>
             <div><div className="k">Anno di costruzione</div><div className="v">{p.year_built || '–'}</div></div>
-            <div><div className="k">Apertura</div><div className="v">{p.opening_hours_week ? `${num(p.opening_hours_week)} h/sett.` : '–'}{p.occupancy_days_week ? ` · ${num(p.occupancy_days_week)} gg` : ''}</div></div>
+            {/* B4: ore e giorni dagli orari della sede in anagrafica; il valore scritto qui vale solo se la sede non ha orari */}
+            <div><div className="k">Apertura</div>{R.ore_apertura_anagrafica > 0 ? <><div className="v">{num(R.ore_apertura_anagrafica)} h/sett. · {num(R.giorni_apertura_anagrafica)} gg</div><div className="small muted">dagli orari della sede (<Link to={editSite}>Amministrazione &gt; Sedi</Link>)</div></> : <div className="v">{p.opening_hours_week ? `${num(p.opening_hours_week)} h/sett.` : '–'}{p.occupancy_days_week ? ` · ${num(p.occupancy_days_week)} gg` : ''}</div>}</div>
             <div><div className="k">Catasto</div><div className="v">{['foglio', 'particella', 'sub'].map((k) => p.cadastral?.[k] && `${k[0].toUpperCase()}${k.slice(1)} ${p.cadastral[k]}`).filter(Boolean).join(' · ') || '–'}</div>{p.cadastral?.categoria && <div className="small muted">cat. {p.cadastral.categoria}</div>}</div>
           </div>
           {p.notes && <div className="fa-muted-box" style={{ marginTop: 12 }}>{p.notes}</div>}
@@ -158,12 +159,13 @@ export default function Immobile() {
 function EditModal({ d, onClose, onDone }) {
   const toast = useToast();
   const p = d.property;
-  const [f, setF] = useState({ surface_sqm: p.surface_sqm ?? '', floors: p.floors ?? '', rooms: p.rooms ?? '', energy_class: p.energy_class || '', ape_valid_until: p.ape_valid_until || '', heating_type: p.heating_type || '', cooling_type: p.cooling_type || '',
+  const orariSede = (d.registry?.ore_apertura_anagrafica || 0) > 0;   // B4: ore e giorni dagli orari della sede
+  const [f, setF] = useState({ surface_sqm: p.surface_sqm ?? '', floors: p.floors ?? '', rooms: p.rooms ?? '', boxes: p.boxes ?? '', energy_class: p.energy_class || '', ape_valid_until: p.ape_valid_until || '', heating_type: p.heating_type || '', cooling_type: p.cooling_type || '',
     year_built: p.year_built ?? '', occupancy_days_week: p.occupancy_days_week ?? '', opening_hours_week: p.opening_hours_week ?? '', notes: p.notes || '', cadastral: { foglio: '', particella: '', sub: '', categoria: '', ...(p.cadastral || {}) }, lease_id: p.lease_id || '' });
   const { data: leases } = useApi(`/immobili/${d.site.id}/contratti`);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const setC = (k) => (e) => setF({ ...f, cadastral: { ...f.cadastral, [k]: e.target.value } });
-  const save = async () => { try { await api.put(`/immobili/${d.site.id}`, f); toast('Immobile aggiornato'); onDone(); } catch (e) { toast(e, 'err'); } };
+  const save = async () => { try { const b = { ...f }; if (orariSede) { delete b.opening_hours_week; delete b.occupancy_days_week; } await api.put(`/immobili/${d.site.id}`, b); toast('Immobile aggiornato'); onDone(); } catch (e) { toast(e, 'err'); } };
   return (
     <Modal wide title={`Dati dell'immobile · ${d.site.name}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Salva</button></>}>
       <div className="fa-grid">
@@ -171,11 +173,12 @@ function EditModal({ d, onClose, onDone }) {
         <Field label="Contratto di affitto in Payments" help="Vuoto = contratto attivo della sede"><select className="fa-in" value={f.lease_id} onChange={set('lease_id')}><option value="">Automatico</option>{(leases?.rows || []).map((l) => <option key={l.id} value={l.id}>{l.landlord || 'Locatore'} · dal {itDate(l.start_date)}{l.active ? '' : ' (cessato)'}</option>)}</select></Field>
         <Field label="Piani"><input className="fa-in" type="number" value={f.floors} onChange={set('floors')} /></Field>
         <Field label="Locali"><input className="fa-in" type="number" min="0" value={f.rooms} onChange={set('rooms')} /></Field>
+        <Field label="Box prelievo" help="Letti anche da Retail Assistant"><input className="fa-in" type="number" min="0" value={f.boxes} onChange={set('boxes')} /></Field>
         <Field label="Anno di costruzione"><input className="fa-in" type="number" value={f.year_built} onChange={set('year_built')} /></Field>
         <Field label="Classe energetica (APE)"><input className="fa-in" value={f.energy_class} onChange={set('energy_class')} placeholder="es. C" /></Field>
         <Field label="APE valido fino al"><input className="fa-in" type="date" value={f.ape_valid_until} onChange={set('ape_valid_until')} /></Field>
-        <Field label="Ore di apertura a settimana" help="Per l'indicatore kWh per ora di apertura"><input className="fa-in" type="number" min="0" max="168" value={f.opening_hours_week} onChange={set('opening_hours_week')} /></Field>
-        <Field label="Giorni di apertura a settimana"><input className="fa-in" type="number" min="0" max="7" step="0.5" value={f.occupancy_days_week} onChange={set('occupancy_days_week')} /></Field>
+        <Field label="Ore di apertura a settimana" help={orariSede ? `Dagli orari della sede in Amministrazione > Sedi: ${d.registry.ore_apertura_anagrafica} h` : "Per l'indicatore kWh per ora di apertura (la sede non ha orari in anagrafica)"}><input className="fa-in" type="number" min="0" max="168" value={orariSede ? d.registry.ore_apertura_anagrafica : f.opening_hours_week} disabled={orariSede} onChange={set('opening_hours_week')} /></Field>
+        <Field label="Giorni di apertura a settimana" help={orariSede ? 'Dagli orari della sede' : undefined}><input className="fa-in" type="number" min="0" max="7" step="0.5" value={orariSede ? d.registry.giorni_apertura_anagrafica : f.occupancy_days_week} disabled={orariSede} onChange={set('occupancy_days_week')} /></Field>
         <Field label="Riscaldamento"><input className="fa-in" value={f.heating_type} onChange={set('heating_type')} placeholder="es. caldaia a condensazione" /></Field>
         <Field label="Raffrescamento"><input className="fa-in" value={f.cooling_type} onChange={set('cooling_type')} placeholder="es. pompa di calore" /></Field>
       </div>

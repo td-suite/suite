@@ -9,8 +9,10 @@ import { refreshCustomerStats } from '../lib/customers.js';
 
 const r = Router();
 
-const BASE = `SELECT c.id, c.kind, c.source, c.external_id, c.last_name, c.first_name, c.sex, c.birth_date, c.tax_code, c.company_name, c.vat_number, c.sector, c.b2b_type, c.contact_name, c.employees,
-  c.email, c.phone, c.address, c.zip, c.city, c.province, c.home_site_id, s.name AS home_site_name, c.organization_id, o.name AS organization_name, o.kind AS organization_kind, c.group_name, c.external_code, c.acquisition_channel, c.marketing_consent, c.first_visit, c.last_visit, c.visits, c.revenue, c.tags, c.notes, c.created_at,
+// B15: per i B2B abbinati i campi anagrafici vengono dalla Legal entity (Amministrazione > Legal entity), non dalla riga di Retail
+const DAL_CORE = (k, ok = k) => `CASE WHEN c.kind='B2B' AND o.id IS NOT NULL THEN o.${ok} ELSE c.${k} END AS ${k}`;
+const BASE = `SELECT c.id, c.kind, c.source, c.external_id, c.last_name, c.first_name, c.sex, c.birth_date, c.tax_code, ${DAL_CORE('company_name', 'name')}, ${DAL_CORE('vat_number')}, c.sector, c.b2b_type, c.contact_name, c.employees,
+  ${DAL_CORE('email')}, ${DAL_CORE('phone')}, ${DAL_CORE('address')}, ${DAL_CORE('zip')}, ${DAL_CORE('city')}, ${DAL_CORE('province')}, c.home_site_id, c.abbinamento, c.company_name AS nome_nel_file, s.name AS home_site_name, c.organization_id, o.name AS organization_name, o.kind AS organization_kind, c.group_name, c.external_code, c.acquisition_channel, c.marketing_consent, c.first_visit, c.last_visit, c.visits, c.revenue, c.tags, c.notes, c.created_at,
   CASE WHEN c.birth_date IS NULL THEN NULL ELSE date_part('year', age(c.birth_date))::int END AS age,
   CASE WHEN c.last_visit IS NULL THEN 'MAI' WHEN c.last_visit < CURRENT_DATE - ($CHURN || ' days')::interval THEN 'DORMIENTE' WHEN c.visits >= 2 THEN 'RICORRENTE' WHEN c.first_visit >= CURRENT_DATE - interval '90 days' THEN 'NUOVO' ELSE 'OCCASIONALE' END AS segment
   FROM customers c LEFT JOIN sites_v s ON s.id=c.home_site_id LEFT JOIN public.organizations o ON o.id=c.organization_id`;
@@ -100,6 +102,25 @@ r.post('/', requireWrite, ah(async (req, res) => {
   res.status(201).json(row);
 }));
 
+// ---- B15: clienti B2B = clienti attivi della Suite; codici StudioLAB da abbinare alla Legal entity
+r.get('/b2b', ah(async (req, res) => {
+  const { quadroB2B } = await import('../lib/b2b.js');
+  res.json(await quadroB2B({ q: String(req.query.q || '').trim() }));
+}));
+r.post('/b2b/abbina-codici', requireWrite, ah(async (req, res) => {
+  const { abbinaDaiCodici } = await import('../lib/b2b.js');
+  const out = await abbinaDaiCodici({ userId: req.suiteUser?.id || null });
+  await audit(req, 'B2B_ABBINA_CODICI', 'customer', null, { abbinati: out.filter((x) => x.organization_id).length, esiti: out });
+  res.json(out);
+}));
+r.put('/:id/abbina', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ organization_id: z.number().int().positive().nullable() }), req.body);
+  const { abbinaManuale } = await import('../lib/b2b.js');
+  const row = await abbinaManuale(Number(req.params.id), d.organization_id, { userId: req.suiteUser?.id || null });
+  await audit(req, 'B2B_ABBINA', 'customer', Number(req.params.id), { organization_id: d.organization_id });
+  res.json(row);
+}));
+
 r.get('/:id', ah(async (req, res) => {
   const id = Number(req.params.id);
   const settings = await getSettings();
@@ -121,9 +142,14 @@ r.get('/:id', ah(async (req, res) => {
   res.json({ ...c, sales, by_line, by_site, recalls, suggestions });
 }));
 
+// B15: per un B2B si modificano solo i campi di Retail (segmento, settore, note, gruppo, tag); l'anagrafica è della Legal entity
+const B2B_CAMPI_RETAIL = ['b2b_type', 'sector', 'notes', 'group_name', 'tags', 'contact_name', 'employees', 'home_site_id'];
 r.put('/:id', requireWrite, ah(async (req, res) => {
   const id = Number(req.params.id);
   const d = clean(parse(schema.partial(), req.body));
+  const cur = await one('SELECT kind FROM customers WHERE id=$1', [id]);
+  if (!cur) throw notFound();
+  if (cur.kind === 'B2B') { for (const k of Object.keys(d)) if (!B2B_CAMPI_RETAIL.includes(k)) delete d[k]; }
   const cols = Object.keys(d);
   if (cols.length) await q(`UPDATE customers SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...cols.map((c) => (c === 'tags' ? JSON.stringify(d[c]) : d[c]))]);
   await audit(req, 'CUSTOMER_UPDATE', 'customer', id, d);

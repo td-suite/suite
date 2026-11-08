@@ -64,14 +64,18 @@ r.put('/kit-types/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) 
 }));
 
 // ---------------- Impostazioni ----------------
-const SETTING_KEYS = ['sample_fee', 'billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'lab_consignee', 'return_address', 'td_sites', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'daily_alerts_enabled', 'notify_admins_email', 'retention_months', 'inbox_enabled', 'inbox_address'];
-const PUBLIC_KEYS = ['td_sites', 'return_address', 'lab_consignee', 'sample_fee', 'billing_customer'];
+// C1: td_sites non c'è più (le sedi di ricezione sono quelle dell'anagrafica, td_sites_list in /settings/public)
+const SETTING_KEYS = ['sample_fee', 'billing_customer', 'billing_customer_address', 'affinity_notify_emails', 'affinity_sender_filter', 'lab_consignee', 'return_address', 'alert_return_days', 'alert_awb_days', 'alert_stock_min', 'notify_patient_on_ship', 'notify_affinity_on_ship', 'daily_alerts_enabled', 'notify_admins_email', 'retention_months', 'inbox_enabled', 'inbox_address'];
+const PUBLIC_KEYS = ['return_address', 'lab_consignee', 'sample_fee', 'billing_customer'];
 r.get('/settings/public', ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [PUBLIC_KEYS]);
   const out = Object.fromEntries(rows.map((x) => [x.key, x.value]));
   // sedi TD per la consegna dei campioni: dall'anagrafica unica (punti prelievo, laboratori, centri attivi), non dal testo libero
-  const sites = await many(`SELECT coalesce(short_name, name) AS n FROM public.sites WHERE active AND kind IN ('PUNTO_PRELIEVI','LABORATORIO','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO') ORDER BY sort_order, lower(name)`);
-  if (sites.length) out.td_sites = sites.map((x) => x.n).join(', ');
+  const sites = await many(`SELECT id, coalesce(short_name, name) AS n FROM public.sites WHERE active AND kind IN ('PUNTO_PRELIEVI','LABORATORIO','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO') ORDER BY sort_order, lower(name)`);
+  out.td_sites_list = sites.map((x) => ({ id: x.id, name: x.n }));   // C1: sedi con l'id (orders.sample_received_site_id)
+  out.td_sites = sites.map((x) => x.n).join(', ');   // testo per compatibilità
+  // C11: indirizzo di ritorno predefinito dai Dati aziendali della Suite quando il modulo non ne ha uno proprio
+  { const { indirizzoRitorno } = await import('../lib/indirizzoRitorno.js'); const v = await indirizzoRitorno(out.return_address); out.return_address_da_dati_aziendali = v !== out.return_address; out.return_address = v; }
   res.json(out);
 }));
 r.get('/settings', requireRole('SUPERADMIN', 'ADMIN'), ah(async (_req, res) => {

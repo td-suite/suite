@@ -31,6 +31,18 @@ async function stato() {
 }
 
 r.get('/settings', requireQualita, ah(async (_req, res) => res.json(await stato())));
+// C12: laboratori di origine = Legal entity dell'anagrafica (proposta per nome finché non si sceglie)
+r.get('/settings/laboratori', requireQualita, ah(async (_req, res) => {
+  const { laboratoriOrigine } = await import('../lib/laboratori.js');
+  const { many: suiteMany } = await import('../../../db.js');
+  res.json({ laboratori: await laboratoriOrigine(), organizzazioni: await suiteMany(`SELECT id, name, vat_number, kind FROM public.organizations WHERE active AND kind NOT IN ('GRUPPO','SOCIETA','TARGET') ORDER BY lower(name)`) });
+}));
+r.put('/settings/laboratori', requireQualita, ah(async (req, res) => {
+  const { salvaLaboratori } = await import('../lib/laboratori.js');
+  const out = await salvaLaboratori(req.body || {}, req.user?.id || null);   // utente del modulo (app_settings.updated_by)
+  await audit(req, 'REFERTI_LABORATORI_ORIGINE', { module: KEY, entity: 'settings', label: 'Laboratori di origine collegati alle Legal entity', data: req.body });
+  res.json(out);
+}));
 
 r.put('/settings', requireQualita, ah(async (req, res) => {
   const b = parse(z.object({

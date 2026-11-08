@@ -929,7 +929,10 @@ function Anagrafica({
     })
   }, "Rimuovi"))), ro("Contatti telefonici", str.telefono), ro("Mail", str.email))), React.createElement("div", {
     className: "card"
-  }, React.createElement("h3", null, "Orari di apertura"), DAYS.map((dn, d) => React.createElement("div", {
+  }, React.createElement("h3", null, "Orari di apertura"), str._orariDaSede && React.createElement("div", {
+    className: "small muted",
+    style: { marginBottom: 8 }
+  }, "Orari della sede in Amministrazione > Sedi (fonte unica, si modificano lì): qui in sola lettura. Room tiene solo le fasce degli ambulatori e del desk."), DAYS.map((dn, d) => React.createElement("div", {
     className: "avrow",
     key: d
   }, React.createElement("div", {
@@ -947,6 +950,7 @@ function Anagrafica({
   }, React.createElement("input", {
     type: "checkbox",
     checked: !str.hours[d].closed,
+    disabled: !!str._orariDaSede,
     onChange: e => upd(s => {
       s.hours[d].closed = !e.target.checked;
     })
@@ -956,6 +960,7 @@ function Anagrafica({
     type: "time",
     step: "1800",
     value: str.hours[d].open,
+    disabled: !!str._orariDaSede,
     onChange: e => upd(s => {
       s.hours[d].open = e.target.value;
     })
@@ -965,10 +970,13 @@ function Anagrafica({
     type: "time",
     step: "1800",
     value: str.hours[d].close,
+    disabled: !!str._orariDaSede,
     onChange: e => upd(s => {
       s.hours[d].close = e.target.value;
     })
-  })), d === 0 && !str.hours[0].closed && React.createElement("button", {
+  }), str._orariDaSede && str.hours[d].fasce?.length > 1 && React.createElement("span", {
+    className: "small muted"
+  }, " (" + str.hours[d].fasce.map(f => f.from + "-" + f.to).join(", ") + ")")), d === 0 && !str.hours[0].closed && !str._orariDaSede && React.createElement("button", {
     className: "btn sm ghost",
     onClick: () => upd(s => {
       for (let i = 1; i < 7; i++) if (!s.hours[i].closed) {
@@ -1843,34 +1851,15 @@ function PlanimetriaTab({
     }
   }, React.createElement("h3", null, "Planimetria dinamica"), React.createElement("span", {
     className: "sp"
-  }), React.createElement(FileBtn, {
-    label: str.plan.dataUrl ? 'Sostituisci PDF' : 'Carica PDF planimetria',
-    accept: "application/pdf",
-    onData: (d, f) => {
-      if (f.size > 3800000) {
-        alert('Il PDF supera 3,8 MB: verrà mostrato in sessione ma potrebbe non essere salvato tra le sessioni. Consiglio una versione compressa.');
-      }
-      upd(s => {
-        s.plan.dataUrl = d;
-        s.plan.imgUrl = null;
-      });
-      pdfToImg(d).then(img => {
-        if (img) upd(s => {
-          if (s.plan.dataUrl === d) s.plan.imgUrl = img;
-        });
-      });
-    }
-  }), str.plan.dataUrl && React.createElement("button", {
+  }), React.createElement("a", {
     className: "btn sm ghost",
-    onClick: () => upd(s => {
-      s.plan.dataUrl = null;
-      s.plan.imgUrl = null;
-    })
-  }, "Rimuovi PDF")), str.plan.dataUrl ? React.createElement("p", {
+    href: "/admin/sites",
+    title: "La planimetria si carica una volta sola nella scheda della sede (Amministrazione > Sedi) ed è pubblicata qui e in Facility"
+  }, str.plan.dataUrl ? 'Sostituisci in Amministrazione > Sedi' : 'Carica in Amministrazione > Sedi')), str.plan.dataUrl ? React.createElement("p", {
     className: "note"
   }, "Seleziona un ambulatorio e clicca sulla planimetria per posizionarlo: sulla pianta compare solo il numero; nome, medico in attività e orario si leggono nel pannello a fianco e al passaggio del mouse.") : React.createElement("p", {
     className: "note"
-  }, "Senza PDF viene generato uno schema automatico degli ambulatori, comunque dinamico. Carica la planimetria reale per il posizionamento puntuale."), str.plan.dataUrl && React.createElement("div", {
+  }, "Senza PDF viene generato uno schema automatico degli ambulatori, comunque dinamico. La planimetria reale si carica in Amministrazione > Sedi (fonte unica) e arriva qui da sola."), str.plan.dataUrl && React.createElement("div", {
     className: "rowline",
     style: {
       margin: '8px 0'

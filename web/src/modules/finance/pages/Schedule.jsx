@@ -423,7 +423,10 @@ function LeaseForm({ data, sites, orgs, orgsReload, onClose, onSaved }) {
       const steps = (ai.initial_steps || []).filter((st) => st.valid_from >= f.start_date).map((st) => (st.reason === 'INIZIALE' && f.amount !== '' ? { ...st, amount: Number(f.amount) } : st));
       if (steps.length > 1) body.initial_steps = steps;
     }
-    if (edit) await api.put(`/scadenziario/leases/${data.id}`, body); else await api.post('/scadenziario/leases', body);
+    const r = edit ? await api.put(`/scadenziario/leases/${data.id}`, body) : await api.post('/scadenziario/leases', body);
+    // B18: la sede è Ospitata, di proprietà o in comodato in Amministrazione > Sedi: il titolo cambia solo con la conferma esplicita
+    const rs = r?.registry_sync_result;
+    if (rs?.status === 'conferma' && window.confirm(`${rs.reason}\n\nConfermi?`)) await api.post(`/scadenziario/leases/${r.id}/allinea-anagrafica`, { conferma_titolo: true });
   }, edit ? 'Contratto aggiornato' : 'Contratto registrato');
   const del = () => confirmDelete('il contratto con i suoi scatti e gli esiti') && run(() => api.del(`/scadenziario/leases/${data.id}`), 'Contratto eliminato');
   const org = f.landlord_org_id ? orgs.find((o) => o.id === Number(f.landlord_org_id)) : null;

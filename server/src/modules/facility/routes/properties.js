@@ -103,7 +103,7 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
 // Titolo di godimento e locatore non sono più qui: si modificano in Amministrazione > Sedi (fonte unica)
 const propSchema = z.object({
   lease_id: z.coerce.number().int().positive().nullable().optional().or(z.literal('').transform(() => null)),
-  surface_sqm: optNum(0, 1_000_000), floors: optNum(-5, 200), rooms: optNum(0, 10_000),
+  surface_sqm: optNum(0, 1_000_000), floors: optNum(-5, 200), rooms: optNum(0, 10_000), boxes: optNum(0, 1_000),
   cadastral: z.object({ foglio: optText(40), particella: optText(40), sub: optText(40), categoria: optText(40), rendita: optText(40) }).partial().optional(),
   energy_class: optText(10), ape_valid_until: optDate, heating_type: optText(200), cooling_type: optText(200), year_built: optNum(1000, 2100),
   occupancy_days_week: optNum(0, 7), opening_hours_week: optNum(0, 168), notes: optText(4000),

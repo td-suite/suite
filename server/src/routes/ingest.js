@@ -17,7 +17,19 @@ export const SYNC_USER_SQL = `UPDATE users u SET first_name=p.first_name, last_n
   site_id=p.site_id, organization_id=coalesce(p.organization_id, s.organization_id), updated_at=now()
   FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`;
 import { ensureUnit, upsertPosition } from './orgcat.js';
-import { scriviSede } from '../lib/sites.js';
+import { scriviSede, orariDaTesto } from '../lib/sites.js';
+import { SITE_KINDS } from '../lib/tipiSede.js';
+import { createOrganization } from '../lib/organizations.js';
+
+// B11: il nome della sede è stato cambiato nella Suite? Sì se differisce dall'ultimo nome ricevuto da questa fonte o, per le sedi
+// ricevute prima di B11 (senza ultimo nome), se l'audit ha un SITE_UPDATED del nome non partito da un connettore.
+export async function nomeCambiatoInSuite(c, sede, fonte) {
+  const ultimo = sede.legacy_refs?.[`${fonte}#nome`];
+  if (ultimo != null) return String(ultimo) !== String(sede.name);
+  const r = await c.query(`SELECT 1 FROM audit_log WHERE entity='site' AND entity_id=$1 AND action IN ('SITE_UPDATED','SITE_UPDATE')
+      AND data->'campi' ? 'name' AND coalesce(data->>'origine','') NOT LIKE 'Connettore%' LIMIT 1`, [String(sede.id)]);
+  return r.rowCount > 0;
+}
 
 const r = Router();
 const MAX_ROWS = 1000;
@@ -78,9 +90,9 @@ export const ROW_SCHEMAS = {
     sex: opt(z.enum(['F', 'M'])), birth_date: dateStr, birth_place: opt(str(120)), vat_number: opt(str(20)), address: opt(str(250)), zip: opt(str(10)), city: opt(str(120)), province: opt(str(4)),
   }),
   sites: z.object({
-    code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'])),
+    code: str(40).min(2), name: str(250).min(2), short_name: opt(str(120)), kind: opt(z.enum(SITE_KINDS)),
     address: opt(str(200)), zip: opt(str(10)), city: opt(str(80)), province: opt(str(4)), lat: opt(z.number()), lng: opt(z.number()), phone: opt(str(40)), email,
-    manager_name: opt(str(160)), opening_hours: opt(str(600)), studiolab_code: opt(str(40)), legacy_brand: opt(str(120)), active: opt(z.boolean()), organization_code: opt(str(40)),
+    manager_name: opt(str(160)) /* accettato e ignorato (B2: il responsabile è dell'organigramma) */, opening_hours: opt(str(600)), studiolab_code: opt(str(40)), legacy_brand: opt(str(120)), active: opt(z.boolean()), organization_code: opt(str(40)),
     opened_at: dateStr,
   }),
   organizations: z.object({
@@ -151,21 +163,35 @@ export const APPLIERS = {
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async sites(c, row, k) {
-    // A0: anche il connettore e il file Sedi passano dalla funzione unica del core (lib/sites.js): regole del titolo, audit, Cash.
-    // Semantica invariata: il nome si aggiorna sempre, gli altri campi solo se il file li porta (mai cancellati); le conseguenze fuori
-    // transazione (Payments, organigramma, coordinate, perimetri) partono dopo il COMMIT del lotto (k._dopo, applyBatch).
+    // A0: anche il connettore e il file Sedi passano dalla funzione unica del core (lib/sites.js): regole del titolo, audit, Cash; le
+    // conseguenze fuori transazione (Payments, organigramma, coordinate, perimetri) partono dopo il COMMIT del lotto (k._dopo, applyBatch).
+    // B11 (08/11/2026): la sede si riconosce prima dal codice che la fonte le ha dato (legacy_refs."ingest:<fonte>"), poi dal codice
+    // della Suite: un codice rinominato in Amministrazione > Sedi non crea più un doppione al prossimo invio. Il nome si aggiorna solo se
+    // nessuno l'ha cambiato nella Suite (ultimo nome ricevuto in legacy_refs."ingest:<fonte>#nome", altrimenti audit SITE_UPDATED non del
+    // connettore). Gli orari in testo diventano orari strutturati (opening_hours_json); un testo non interpretabile non sovrascrive gli
+    // orari strutturati già presenti. Il connettore non scrive più il responsabile (B2: si legge dall'organigramma).
     const org = row.organization_code ? (await c.query('SELECT id FROM organizations WHERE lower(code)=lower($1)', [row.organization_code])).rows[0] : null;
     if (row.organization_code && !org) throw new Error(`organizzazione ${row.organization_code} inesistente`);
-    const ex = (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.code])).rows[0];
+    const fonte = `ingest:${k.source || 'xlsx'}`;
+    let ex = (await c.query(`SELECT id, code, name, opening_hours_json, legacy_refs FROM sites WHERE lower(legacy_refs->>$1)=lower($2) ORDER BY id LIMIT 1`, [fonte, row.code])).rows[0];
+    if (!ex) ex = (await c.query('SELECT id, code, name, opening_hours_json, legacy_refs FROM sites WHERE lower(code)=lower($1)', [row.code])).rows[0];
+    const avvisi = [];
     const val = { name: row.name, short_name: row.short_name, kind: row.kind, organization_id: org?.id, address: row.address, zip: row.zip, city: row.city, province: row.province,
-      lat: row.lat, lng: row.lng, phone: row.phone, email: row.email, opening_hours: row.opening_hours, studiolab_code: row.studiolab_code, legacy_brand: row.legacy_brand,
-      active: row.active, opened_at: row.opened_at };
+      lat: row.lat, lng: row.lng, phone: row.phone, email: row.email, studiolab_code: row.studiolab_code, legacy_brand: row.legacy_brand, active: row.active, opened_at: row.opened_at };
     const data = Object.fromEntries(Object.entries(val).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+    if (row.opening_hours) {
+      const j = orariDaTesto(row.opening_hours);
+      if (j) data.opening_hours_json = j;
+      else if (ex?.opening_hours_json) avvisi.push(`orari "${row.opening_hours}" non interpretabili: restano gli orari strutturati della sede`);
+      else data.opening_hours = row.opening_hours;
+    }
+    if (ex && data.name && data.name !== ex.name && await nomeCambiatoInSuite(c, ex, fonte)) { avvisi.push(`nome "${data.name}" non applicato: la sede è stata rinominata nella Suite ("${ex.name}")`); delete data.name; }
+    if (ex && ex.code.toLowerCase() !== row.code.toLowerCase()) avvisi.push(`riconosciuta come ${ex.code} (codice ${row.code} della fonte, rinominato nella Suite)`);
     if (!ex) { data.code = row.code; if (!data.kind) data.kind = 'PUNTO_PRELIEVI'; if (data.active === undefined) data.active = true; }
     const out = await scriviSede(c, { id: ex?.id || null, data, validato: true, origine: `Connettore ${k.source || 'file Sedi'}`, actorId: k.user_id || null,
-      extra: { manager_name: row.manager_name || undefined, legacy_refs: { [`ingest:${k.source}`]: row.code } } });
+      extra: { legacy_refs: { [fonte]: ex?.legacy_refs?.[fonte] || row.code, [`${fonte}#nome`]: row.name } } });
     if (Array.isArray(k._dopo)) k._dopo.push(out.effetti);
-    return { id: out.site.id, action: ex ? 'aggiornata' : 'creata' };
+    return { id: out.site.id, action: ex ? 'aggiornata' : 'creata', ...(avvisi.length ? { avvisi } : {}) };
   },
   async organizations(c, row, k) {
     let ex = null;
@@ -184,9 +210,12 @@ export const APPLIERS = {
         iban=coalesce($18,iban), bic=coalesce($19,bic), bank_name=coalesce($20,bank_name), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
       return { id: ex.id, action: 'aggiornata' };
     }
-    const ins = await c.query(`INSERT INTO organizations (name, kind, code, vat_number, tax_code, sdi, pec, email, phone, address, zip, city, province, website, active, legacy_refs, iban, bic, bank_name)
-      VALUES ($1,coalesce($2,'CLIENTE'),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,coalesce($15,TRUE),$16,$17,$18,$19) RETURNING id`, vals);
-    return { id: ins.rows[0].id, action: 'creata' };
+    // B5: nuova Legal entity dalla funzione unica del core (nella transazione del lotto; nomi simili con la spunta "da rivedere")
+    const { org } = await createOrganization({ name: row.name, kind: row.kind || 'CLIENTE', code: row.code || null, vat_number: vat, tax_code: row.tax_code || null, sdi: row.sdi || null, pec: row.pec || null,
+      email: row.email || null, phone: row.phone || null, address: row.address || null, zip: row.zip || null, city: row.city || null, province: row.province || null, website: row.website || null,
+      active: row.active ?? true, legacy_refs: { [`ingest:${k.source}`]: row.code || row.vat_number || row.name }, iban, bic: row.bic ? row.bic.replace(/\s+/g, '').toUpperCase() : null, bank_name: row.bank_name || null },
+    { origine: `Connettore ${k.source || 'file Legal entity'}`, actorId: k.user_id || null, c, dedupe: false, simili: true });
+    return { id: org.id, action: 'creata' };
   },
   async events(c, row, k) {
     const site = row.site_code ? (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.site_code])).rows[0] : null;

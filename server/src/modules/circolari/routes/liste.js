@@ -36,10 +36,13 @@ r.get('/liste/proposte', ah(async (req, res) => {
   if (segmento === 'CLIENTI_SERVICE' || segmento === 'PUNTI_PRELIEVO' || segmento === 'PARTNER') {
     const kinds = segmento === 'CLIENTI_SERVICE' ? ['SERVICE'] : segmento === 'PUNTI_PRELIEVO' ? ['PUNTO_PRELIEVI'] : ['SERVICE', 'PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO', 'ALTRO'];
     rows = await suiteMany(`SELECT lower(s.email) AS email, s.name AS nome, coalesce(o.name, '') AS organizzazione FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id WHERE s.active AND s.email IS NOT NULL AND s.email <> '' AND s.kind = ANY($1::text[]) ORDER BY lower(s.name)`, [kinds]);
-    // A5 (blocco 2): Legal entity dei clienti Service attivi e contrattualizzati (lib/clienti.js) per Clienti service; partner per Partner
+    // A5 (blocco 2): Legal entity dei clienti Service attivi e contrattualizzati (lib/clienti.js) per Clienti service. B12: per Punti
+    // prelievo le Legal entity che ospitano un punto prelievi attivo; per Partner anche quelle di tipo PARTNER
+    const ospitanti = `o.id IN (SELECT s.host_organization_id FROM public.sites s WHERE s.active AND s.tenure = 'OSPITATA' AND s.host_organization_id IS NOT NULL)`;
     const orgs = segmento === 'CLIENTI_SERVICE'
       ? await emailClienti('SRV')
-      : await suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione FROM public.organizations o WHERE o.email IS NOT NULL AND o.email <> '' AND o.kind = 'PARTNER' ORDER BY lower(o.name)`).catch(() => []);
+      : await suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione FROM public.organizations o WHERE o.email IS NOT NULL AND o.email <> '' AND o.active
+          AND (${segmento === 'PARTNER' ? `o.kind = 'PARTNER' OR ` : ''}${ospitanti}) ORDER BY lower(o.name)`).catch(() => []);
     rows = rows.concat(orgs);
   } else if (segmento === 'PERSONALE') {
     rows = await suiteMany(`SELECT lower(u.email) AS email, coalesce(u.full_name, u.email) AS nome, 'Toscana Diagnostica' AS organizzazione FROM public.users u WHERE u.status='ACTIVE' ORDER BY lower(coalesce(u.full_name, u.email))`).catch(() => []);

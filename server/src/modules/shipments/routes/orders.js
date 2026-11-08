@@ -320,13 +320,20 @@ r.post('/:id(\\d+)/deliver', requireRole(...OPERATORS), ah(async (req, res) => {
 }));
 
 // Ricezione del campione (per id o per barcode scansionato)
-const recvSchema = z.object({ received_at: dateStr.optional(), site: opt(z.string().max(100)), barcode: opt(z.string().max(60)) });
+const recvSchema = z.object({ received_at: dateStr.optional(), site: opt(z.string().max(100)), site_id: opt(z.coerce.number().int().positive()), barcode: opt(z.string().max(60)) });
+// C1: sede di ricezione = sede dell'anagrafica (site_id); il testo resta come nome leggibile (e ripiego per i client vecchi)
+async function sedeRicezione(c, d) {
+  if (d.site_id) { const s = (await c.query('SELECT id, coalesce(short_name, name) AS n FROM public.sites WHERE id=$1', [d.site_id])).rows[0]; if (s) return { id: s.id, testo: s.n }; }
+  if (d.site) { const r = (await c.query(`SELECT id, coalesce(short_name, name) AS n FROM public.sites WHERE kind <> 'SERVICE' AND lower(trim($1)) IN (lower(name), lower(coalesce(short_name,'')), lower(code))`, [d.site])).rows; return { id: r.length === 1 ? r[0].id : null, testo: d.site }; }
+  return { id: null, testo: null };
+}
 async function receiveSample(req, c, o, d) {
   if (!['SHIPPED', 'DELIVERED'].includes(o.status)) throw badL(req, `Stato non compatibile con la ricezione del campione (${o.status})`, `Status not compatible with sample receipt (${o.status})`);
   const when = d.received_at ? new Date(`${d.received_at}T12:00:00+02:00`) : new Date();
   const lifestyle = o.project === 'LIFESTYLE';
-  await c.query(`UPDATE orders SET status=$2, sample_received_at=$3, sample_received_site=$4, delivered_at=coalesce(delivered_at,$3), closed_at=$5, updated_at=now() WHERE id=$1`,
-    [o.id, lifestyle ? 'CLOSED' : 'SAMPLE_RECEIVED', when, d.site || null, lifestyle ? when : null]);
+  const sede = await sedeRicezione(c, d);
+  await c.query(`UPDATE orders SET status=$2, sample_received_at=$3, sample_received_site=$4, sample_received_site_id=$6, delivered_at=coalesce(delivered_at,$3), closed_at=$5, updated_at=now() WHERE id=$1`,
+    [o.id, lifestyle ? 'CLOSED' : 'SAMPLE_RECEIVED', when, sede.testo, lifestyle ? when : null, sede.id]);
   await c.query(`UPDATE kits SET status=$2, updated_at=now() WHERE id=$1`, [o.kit_id, lifestyle ? 'CLOSED' : 'SAMPLE_RECEIVED']);
   await c.query(`UPDATE shipments SET last_status='DELIVERED', delivered_at=$2, last_status_text=coalesce(last_status_text,'Campione ricevuto in sede'), updated_at=now() WHERE order_id=$1 AND direction='RETURN' AND last_status<>'DELIVERED'`, [o.id, when]);
   await c.query(`UPDATE shipments SET last_status='DELIVERED', delivered_at=coalesce(delivered_at,$2), updated_at=now() WHERE order_id=$1 AND direction='OUTBOUND' AND last_status<>'DELIVERED'`, [o.id, when]);
@@ -398,7 +405,7 @@ r.post('/:id(\\d+)/undo', requireRole(...OPERATORS), ah(async (req, res) => {
       await c.query(`UPDATE shipments SET last_status='IN_TRANSIT', delivered_at=NULL, updated_at=now() WHERE order_id=$1 AND direction='OUTBOUND'`, [id]);
     } else if (o.status === 'SAMPLE_RECEIVED' || (o.status === 'CLOSED' && o.project === 'LIFESTYLE')) {
       if (o.lab_shipment_id) throw badL(req, 'Il campione è già in una spedizione verso il laboratorio', 'The sample is already in a laboratory shipment');
-      await c.query(`UPDATE orders SET status='DELIVERED', sample_received_at=NULL, sample_received_site=NULL, closed_at=NULL, updated_at=now() WHERE id=$1`, [id]);
+      await c.query(`UPDATE orders SET status='DELIVERED', sample_received_at=NULL, sample_received_site=NULL, sample_received_site_id=NULL, closed_at=NULL, updated_at=now() WHERE id=$1`, [id]);
       await c.query(`UPDATE kits SET status='DELIVERED', updated_at=now() WHERE id=$1`, [o.kit_id]);
       await c.query(`UPDATE shipments SET last_status='PENDING', delivered_at=NULL, updated_at=now() WHERE order_id=$1 AND direction='RETURN'`, [id]);
     } else if (o.status === 'CANCELLED') {
@@ -436,6 +443,7 @@ r.post('/:id(\\d+)/shipments/:sid/refresh', requireRole(...OPERATORS), ah(async 
 r.get('/:id(\\d+)/sheet.pdf', ah(async (req, res) => {
   const o = await loadOrder(Number(req.params.id));
   const settings = Object.fromEntries((await many("SELECT key, value FROM app_settings WHERE key IN ('return_address','lab_consignee')")).map((x) => [x.key, x.value]));
+  settings.return_address = await (await import('../lib/indirizzoRitorno.js')).indirizzoRitorno(settings.return_address);   // C11
   const buf = await shippingSheet(o, { legs: legsOf(o), settings, lang: req.query.lang || o.lang });
   res.type('application/pdf').set('Content-Disposition', `inline; filename="shipments-${o.external_ref || o.id}.pdf"`).send(buf);
 }));

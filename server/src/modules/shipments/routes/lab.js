@@ -210,7 +210,7 @@ r.post('/:id(\\d+)/notify', requireRole(...OPERATORS), ah(async (req, res) => {
 r.get('/:id(\\d+)/sheet.pdf', ah(async (req, res) => {
   const l = await loadLab(Number(req.params.id));
   const consignee = await getSetting('lab_consignee', '');
-  const sender = await getSetting('return_address', '');
+  const sender = await (await import('../lib/indirizzoRitorno.js')).indirizzoRitorno(await getSetting('return_address', ''));   // C11
   res.type('application/pdf').set('Content-Disposition', `inline; filename="fedex-${l.awb_number || l.id}.pdf"`).send(await labSheet(l, { consignee, sender }));
 }));
 

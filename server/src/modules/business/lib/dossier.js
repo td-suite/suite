@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
+import { many } from '../db.js';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 
@@ -43,6 +44,32 @@ export function defaultChecklists() {
 export const DEFAULT_HOURS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'].map((day, i) => ({
   day, draw: i < 6 ? 'dalle ore 7:00 alle ore 10:30' : '', pickup: i === 6 ? '' : (i === 0 || i === 5 ? 'dalle ore 7:30 alle ore 12:30' : 'dalle ore 7:30 alle ore 19:30'),
 }));
+
+// C2 (programma anagrafica unica, 08/11/2026): orari e personale del fascicolo precompilati dall'anagrafica. Orari: le fasce di apertura
+// della sede (Amministrazione > Sedi) come orari dei prelievi, i ritiri restano quelli standard; personale: le persone attive della sede
+// (Amministrazione > Persone), con il responsabile del nodo Sede dell'organigramma per primo. Funzioni pure + lettura.
+const GIORNI = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const hm = (x) => String(x || '').replace(/^0/, '');
+export function orariFascicolo(j) {
+  if (!j || typeof j !== 'object' || !GIORNI.some((g) => Array.isArray(j[g]) && j[g].length)) return null;
+  return DEFAULT_HOURS.map((h, i) => {
+    const f = Array.isArray(j[GIORNI[i]]) ? j[GIORNI[i]] : [];
+    return { ...h, draw: f.map((x) => `dalle ore ${hm(x.from)} alle ore ${hm(x.to)}`).join(' e '), pickup: f.length ? h.pickup : '' };
+  });
+}
+const CONTRATTO = { DIPENDENTE: 'Dipendente', DIRIGENTE: 'Dirigente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Sanitario' };
+export function personaleFascicolo(persone) {
+  return (persone || []).map((p) => ({ surname: p.last_name || '', name: p.first_name || '', affiliation: 'Toscana Diagnostica', contract: CONTRATTO[p.kind] || p.kind || '', hours: '', role: p.job_title || (p.is_head ? 'Responsabile di sede' : ''), degree: '' }));
+}
+export async function precompilaFascicolo(siteId) {
+  if (!siteId) return { hours: DEFAULT_HOURS, staff: [] };
+  const s = (await many('SELECT opening_hours_json FROM public.sites WHERE id=$1', [siteId]))[0];
+  const persone = await many(`SELECT p.last_name, p.first_name, p.kind, p.job_title,
+      EXISTS (SELECT 1 FROM public.org_units u JOIN public.org_positions op ON op.unit_id=u.id AND op.is_head WHERE u.kind='SEDE' AND u.site_id=$1 AND op.person_id=p.id) AS is_head
+    FROM public.people p WHERE p.site_id=$1 AND p.status='ATTIVO' AND p.kind IN ('DIPENDENTE','DIRIGENTE','LP','MEDICO','SANITARIO')
+    ORDER BY is_head DESC, p.last_name, p.first_name LIMIT 60`, [siteId]);
+  return { hours: orariFascicolo(s?.opening_hours_json) || DEFAULT_HOURS, staff: personaleFascicolo(persone) };
+}
 
 // Stato di completamento del fascicolo
 export function completeness(dossier, files) {

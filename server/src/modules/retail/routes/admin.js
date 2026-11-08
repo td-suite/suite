@@ -86,6 +86,8 @@ export async function upsertSiteExt(siteId, body) {
   const cur = (await one('SELECT * FROM site_ext WHERE site_id=$1', [siteId])) || {};
   const next = {};
   for (const k of EXT_COLS) {
+    // B4: superficie e box sono di Facility, gli ambulatori di Room Planning: Retail non li scrive più (restano i valori di riserva)
+    if (['surface_sqm', 'rooms', 'boxes'].includes(k)) { next[k] = cur[k] ?? null; continue; }
     if (!(k in b)) { next[k] = cur[k] ?? null; continue; }
     const v = b[k];
     next[k] = typeof v === 'string' ? cleanStr(v) : v ?? null;

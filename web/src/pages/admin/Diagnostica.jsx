@@ -88,7 +88,7 @@ function Righe({ k, onCorreggi }) {
           <tr key={i}>
             {cols.map((c) => <td key={c} className={/id$|code|codice/.test(c) ? 'mono' : ''}>{valore(r[c])}</td>)}
             <td style={{ whiteSpace: 'nowrap' }}>
-              {r.__link && (r.__link.startsWith('/business') || r.__link.startsWith('/retail') ? <a href={r.__link}>Apri</a> : <Link to={r.__link}>Apri</Link>)}
+              {r.__link && (r.__link.startsWith('/business') || r.__link.startsWith('/retail') ? <a href={r.__link}>Apri</a> : <Link to={r.__link}>{r.__link.includes('unisci=') ? 'Unisci' : 'Apri'}</Link>)}
               {k.correggi && !k.correggi.tutte && (k.correggi.azioni ? k.correggi.azioni : [null]).map((a) => (
                 <button key={a || 'x'} className="btn sm ghost" style={{ marginLeft: 6 }} onClick={() => onCorreggi([r[k.chiave]], a)}>{a === 'crea_sede' ? 'Crea la sede dal nodo' : a === 'elimina_nodo' ? 'Elimina il nodo' : a === 'collega' ? 'Collega' : 'Correggi'}</button>
               ))}

@@ -48,10 +48,10 @@ export default function Sites() {
   const [err, setErr] = useState(null);
   const save = async () => {
     setErr(null);
-    const b = { company_id: Number(edit.company_id || user.company_id) || undefined, cash_float: Number(edit.cash_float),
+    const b = { cash_float: Number(edit.cash_float),   // B6: l'azienda è la Legal entity della sede (la decide il server)
       expected_registers: Number(edit.expected_registers) || 1, pos_terminals: edit.pos_terminals || null,
       royalty_fixed_monthly: Number(edit.royalty_fixed_monthly) || 0, royalty_pct: Number(edit.royalty_pct) || 0, royalty_base: edit.royalty_base, royalty_vat_rate: Number(edit.royalty_vat_rate) || 0, royalty_notes: edit.royalty_notes || null };
-    if (edit.configured) { delete b.company_id; if (edit.float_reason) b.float_reason = edit.float_reason; }
+    if (edit.configured && edit.float_reason) b.float_reason = edit.float_reason;
     try {
       await api.put(`/sites/${edit.id}`, b);
       toast(edit.configured ? 'Impostazioni Cash salvate' : 'Sede configurata in Cash'); setEdit(null); reload();
@@ -96,14 +96,13 @@ export default function Sites() {
         </table></div></div>
       )}
       {edit && (
-        <Modal title={edit.configured ? `Impostazioni Cash · ${edit.name}` : `Configura in Cash · ${edit.name}`} onClose={() => setEdit(null)} footer={<><button className="btn ghost" onClick={() => setEdit(null)}>Annulla</button><button className="btn" disabled={(!edit.configured && !edit.company_id) || (floatChanged && !edit.float_reason)} onClick={save}>Salva</button></>}>
+        <Modal title={edit.configured ? `Impostazioni Cash · ${edit.name}` : `Configura in Cash · ${edit.name}`} onClose={() => setEdit(null)} footer={<><button className="btn ghost" onClick={() => setEdit(null)}>Annulla</button><button className="btn" disabled={floatChanged && !edit.float_reason} onClick={save}>Salva</button></>}>
           <ErrorBox error={err} />
           <div className="alert info" style={{ marginBottom: 12 }}>
             <span><b>{edit.code}</b> · {[edit.address, edit.city, edit.province && `(${edit.province})`].filter(Boolean).join(' ') || 'indirizzo non indicato'}. Codice, nome, indirizzo e stato della sede si modificano in <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link>.</span>
           </div>
           <div className="form-grid">
-            {sup && !edit.configured && <Field label="Azienda Cash" help="Società della rete a cui appartiene la cassa di questa sede"><select value={edit.company_id} onChange={(e) => setEdit({ ...edit, company_id: e.target.value })}>{(companies.data || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
-            {sup && edit.configured && <Field label="Azienda Cash"><input value={edit.company_name || ''} disabled /></Field>}
+            {sup && <Field label="Azienda Cash" help={<>È la Legal entity proprietaria della sede: si cambia in <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link></>}><input value={edit.company_name || (companies.data || []).find((c) => c.id === Number(edit.organization_id))?.name || 'dalla Legal entity della sede'} disabled /></Field>}
             <Field label="Fondo cassa" help="Somma che resta in sede e viene sottratta dal contante versato"><MoneyInput value={edit.cash_float} onChange={(v) => setEdit({ ...edit, cash_float: v === '' ? 0 : v })} /></Field>
             <Field label="Terminali POS (TID separati da virgola)" help="Servono per riconoscere la sede negli estratti dell'acquirer"><input value={edit.pos_terminals} onChange={(e) => setEdit({ ...edit, pos_terminals: e.target.value })} /></Field>
             <Field label="Numero di casse attese al giorno" help="Una per operatore: il controllo giornaliero si aspetta questo numero di chiusure"><input type="number" min={1} max={20} value={edit.expected_registers ?? 1} onChange={(e) => setEdit({ ...edit, expected_registers: e.target.value })} /></Field>
@@ -124,6 +123,7 @@ export default function Sites() {
           <p className="small muted" style={{ margin: '0 0 8px' }}>Titolo di godimento e struttura ospitante sono dell'anagrafica unica: si cambiano in Amministrazione, Sedi (Cash li legge da lì).</p>
           {edit.ownership !== 'OSPITATA' ? <p className="small muted" style={{ marginTop: 8 }}>La sede non compare nella pagina Royalty di sede e non genera report per strutture ospitanti.</p> : <>
           <h3 style={{ margin: '14px 0 8px' }}>Royalty alla struttura ospitante</h3>
+          <RoyaltyDalContratto siteId={edit.id} onApplied={() => { setEdit(null); reload(); }} />
           <div className="form-grid">
             <Field label="Struttura ospitante" help="Dall'anagrafica della sede (Amministrazione, Sedi)"><input value={host?.name || edit.host_name || ''} disabled placeholder="non indicata in Amministrazione, Sedi" /></Field>
             <Field label="P.IVA struttura" help="Dall'anagrafica della Legal entity"><input value={host?.vat_number || ''} disabled placeholder={host ? 'non indicata' : ''} /></Field>
@@ -149,5 +149,32 @@ function FloatHistory({ site, onClose }) {
       {!data ? <Loading /> : <table className="t"><thead><tr><th>Quando</th><th>Chi</th><th className="num">Da</th><th className="num">A</th><th>Motivo</th></tr></thead>
         <tbody>{data.map((h) => <tr key={h.id}><td>{itDateTime(h.changed_at)}</td><td>{h.full_name}</td><td className="num">{h.old_value == null ? '–' : eur(h.old_value)}</td><td className="num strong">{eur(h.new_value)}</td><td>{h.reason}</td></tr>)}</tbody></table>}
     </Modal>
+  );
+}
+
+// B13 (decisione 10 del CEO): i termini del contratto PP del Business Hub propongono le royalty della sede. Proposta in anteprima e
+// conferma; se in Cash ci sono già royalty diverse serve la spunta "Sovrascrivi" (mai sovrascritte senza conferma).
+const RL = { royalty_fixed_monthly: 'Quota fissa mensile', royalty_pct: 'Percentuale %', royalty_base: 'Base', royalty_vat_rate: 'IVA %' };
+function RoyaltyDalContratto({ siteId, onApplied }) {
+  const toast = useToast();
+  const { data: p } = useApi(`/sites/${siteId}/royalty-proposta`);
+  const [open, setOpen] = useState(false); const [sovr, setSovr] = useState(false); const [err, setErr] = useState(null);
+  if (!p?.contratto || !['NUOVA', 'DIVERSA', 'UGUALE'].includes(p.stato)) return null;
+  if (p.stato === 'UGUALE') return <p className="small muted" style={{ margin: '0 0 8px' }}>Allineate al contratto PP{p.contratto.protocol ? ` ${p.contratto.protocol}` : ''}.</p>;
+  const applica = async () => { setErr(null); try { await api.post(`/sites/${siteId}/royalty-proposta`, { sovrascrivi: sovr }); toast('Royalty dal contratto PP registrate'); onApplied(); } catch (e) { setErr(e); } };
+  return (
+    <div className={`alert ${p.stato === 'DIVERSA' ? 'warn' : 'info'} small`} style={{ marginBottom: 10, display: 'block' }}>
+      <div>
+        <div>Contratto PP{p.contratto.protocol ? ` ${p.contratto.protocol}` : ''}: {p.contratto.voci?.join('; ') || 'nessuna voce economica'}. {p.stato === 'DIVERSA' ? 'Le royalty qui sotto sono diverse da quelle del contratto.' : 'Le royalty non sono ancora impostate.'}</div>
+        {!open ? <button className="btn sm" style={{ marginTop: 6 }} data-testid="cash-royalty-proposta" onClick={() => setOpen(true)}>Proposta dal contratto PP</button> : <div style={{ marginTop: 8 }}>
+          <ErrorBox error={err} />
+          <table className="t small"><thead><tr><th>Campo</th><th>Dal contratto</th><th>Oggi in Cash</th></tr></thead><tbody>
+            {Object.keys(RL).map((k) => <tr key={k}><td>{RL[k]}</td><td className="strong">{k === 'royalty_fixed_monthly' ? eur(p.proposta[k]) : String(p.proposta[k])}</td><td>{p.attuale ? (k === 'royalty_fixed_monthly' ? eur(p.attuale[k]) : String(p.attuale[k])) : '–'}</td></tr>)}
+          </tbody></table>
+          {p.stato === 'DIVERSA' && <label className="row small" style={{ gap: 6, margin: '6px 0' }}><input type="checkbox" checked={sovr} onChange={(e) => setSovr(e.target.checked)} />Sovrascrivi le royalty attuali con quelle del contratto</label>}
+          <div className="row" style={{ gap: 8 }}><button className="btn sm" data-testid="cash-royalty-conferma" disabled={p.stato === 'DIVERSA' && !sovr} onClick={applica}>Conferma</button><button className="btn sm ghost" onClick={() => setOpen(false)}>Annulla</button></div>
+        </div>}
+      </div>
+    </div>
   );
 }

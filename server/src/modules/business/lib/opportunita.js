@@ -200,12 +200,13 @@ export async function esegui(file, decisioni, userId) {
       if (!orgId) {
         const notes = testo([`Creata dall'import del DB Opportunità B2B Laboratorio (ID ${ids.join(', ')}).`, multi ? `Gruppo o ente gestore con ${u.righe.length} strutture: elenco nel Business Hub (sedi dell'account).` : null,
           em.nota ? `Email: ${em.nota}` : null, !multi && r0.nd.length ? `Campi "n.d." nel DB: ${r0.nd.join(', ')}.` : null]);
-        const row = await one(`INSERT INTO public.organizations (kind, name, email, pec, phone, address, city, province, notes, legacy_refs)
-          VALUES ('CLIENTE',$1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [p.nome, multi ? null : em.email, multi ? null : em.pec, multi ? null : r0.telefono, multi ? null : r0.indirizzo, multi ? null : r0.citta, multi ? null : (r0.prov && r0.prov.length <= 3 ? r0.prov : null),
-          notes, JSON.stringify({ db_opportunita: multi ? ids : ids[0] })]);
-        orgId = row.id; rep.legal_entity_nuove++;
-        indexOrg(row).catch(() => {});
+        // B5: createOrganization (doppioni per P.IVA, CF o nome ritrovati; nomi simili con la spunta "da rivedere")
+        const { createOrganization } = await import('../../../lib/organizations.js');
+        const out = await createOrganization({ kind: 'CLIENTE', name: p.nome, email: multi ? null : em.email, pec: multi ? null : em.pec, phone: multi ? null : r0.telefono, address: multi ? null : r0.indirizzo,
+          city: multi ? null : r0.citta, province: multi ? null : (r0.prov && r0.prov.length <= 3 ? r0.prov : null), notes, legacy_refs: { db_opportunita: multi ? ids : ids[0] } }, { origine: 'Business Hub, import del DB Opportunità' });
+        orgId = out.org.id;
+        if (out.created) rep.legal_entity_nuove++;
+        else { rep.legal_entity_abbinate++; await q(`UPDATE public.organizations SET legacy_refs = coalesce(legacy_refs, '{}'::jsonb) || $2::jsonb, updated_at=now() WHERE id=$1`, [orgId, JSON.stringify({ db_opportunita: multi ? ids : ids[0] })]); }
       } else {
         if (p.esito === 'CONTRATTO') rep.abbinate_contratto++; else rep.legal_entity_abbinate++;
         const cur = await one('SELECT * FROM public.organizations WHERE id=$1', [orgId]);

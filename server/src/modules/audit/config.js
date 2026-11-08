@@ -32,6 +32,6 @@ export const ENTE_TIPI = ['CERTIFICATORE', 'ASL', 'ISPETTIVO', 'ALTRO'];
 export const ESITI_TERZI = ['CONFORME', 'CONFORME_CON_RILIEVI', 'NON_CONFORME', 'ALTRO'];
 export const ANSWER_VALUES = ['SI', 'NO', 'NC', 'NA'];
 // Sedi "struttura" soggette all'auto-audit mensile (non SERVICE, non HEADQUARTER)
-export const STRUCTURE_KINDS = ['PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'CENTRO_MEDICO', 'POLIAMBULATORIO', 'LABORATORIO'];
+export { SEDI_OPERATIVE as STRUCTURE_KINDS } from '../../lib/tipiSede.js';   // C7: costante unica
 // Legal entity interne al gruppo (non auditabili come partner)
 export const INTERNAL_ORG_KINDS = ['GRUPPO', 'SOCIETA'];

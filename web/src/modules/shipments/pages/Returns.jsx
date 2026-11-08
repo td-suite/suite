@@ -13,7 +13,7 @@ export default function Returns({ project }) {
   const op = canOperate(user);
   const toast = useToast();
   const pub = useSettingsPublic();
-  const sites = (pub.data?.td_sites || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const sites = pub.data?.td_sites_list || [];   // C1: sedi dell'anagrafica con l'id
   const [code, setCode] = useState('');
   const [date, setDate] = useState(today());
   const [site, setSite] = useState('');
@@ -27,7 +27,7 @@ export default function Returns({ project }) {
     if (!b) return;
     setErr(null);
     try {
-      const o = await api.post('/orders/sample-received', { barcode: b, received_at: date, site: project === 'LIFESTYLE' ? (site || sites[0] || null) : null });
+      const o = await api.post('/orders/sample-received', { barcode: b, received_at: date, site_id: project === 'LIFESTYLE' ? (Number(site || sites[0]?.id) || null) : null });
       setLast(o); setCode(''); toast(t('ret.ok', { b: o.barcode, p: patientName(o) }));
     } catch (e) { setErr(e); }
   };
@@ -40,7 +40,7 @@ export default function Returns({ project }) {
           <div className="row" style={{ alignItems: 'flex-end' }}>
             <div style={{ flex: 1, minWidth: 260 }}><BarcodeInput autoFocus value={code} onChange={setCode} onEnter={register} /></div>
             <Field label={t('ord.sampleDate')}><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 170 }} /></Field>
-            {project === 'LIFESTYLE' && <Field label={t('ret.site')}><select value={site || sites[0] || ''} onChange={(e) => setSite(e.target.value)} style={{ width: 200 }}>{sites.map((s) => <option key={s}>{s}</option>)}</select></Field>}
+            {project === 'LIFESTYLE' && <Field label={t('ret.site')}><select value={site || sites[0]?.id || ''} onChange={(e) => setSite(e.target.value)} style={{ width: 200 }}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>}
             <button className="btn lg" onClick={() => register()} disabled={!code}>{t('ret.register')}</button>
           </div>
           {last && <div className="bigok" style={{ marginTop: 12 }}>✓ {t('ret.ok', { b: last.barcode, p: patientName(last) })} · <Link to={`/${p}/richieste/${last.id}`}>{last.external_ref || `#${last.id}`}</Link>{project === 'ENDEAVOR' && <> · <Link to={`/${p}/laboratorio`}>{t('nav.lab')} →</Link></>}</div>}

@@ -880,3 +880,12 @@ Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regol
 - Strutture del gruppo: diventano sedi SERVICE quando sono attivate (fase 6 o 7 nel DB Opportunità o punto del contratto firmato), con
   l'operazione della Diagnostica; finché non partono restano nell'elenco dell'account.
 
+
+## Anagrafica unica, blocco 3 (08/11/2026)
+- Punti Prelievo: colonna "Royalty in Cash" e modale di conferma della proposta dai termini del contratto PP (`fee.items`), annotata alla
+  firma negli eventi del contratto; mai scritta senza conferma, mai sovrascritta senza "Sovrascrivi" (docs/ANAGRAFICA.md, B13).
+- Data di avvio effettiva del punto = apertura della sede in Amministrazione > Sedi (B1).
+- Contratto Service: punto service e ritiro dalla sede SERVICE del cliente quando c'è (B14).
+- Nuovi account: la Legal entity nasce da `createOrganization` (doppioni ritrovati; partner dei punti prelievo di tipo PARTNER, B5).
+- Referenti collegati alle persone dell'anagrafica per email (B7); Laboratorio dalla sede LABORATORIO (B9).
+- Fascicoli: orari e personale precompilati dalla sede e dalle persone (C2).

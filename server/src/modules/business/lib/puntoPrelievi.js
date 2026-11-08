@@ -83,7 +83,7 @@ export async function statoPuntoPrelievi(a) {
   const accessi = await accessiEsterni(a.organization_id);
   return {
     ...p, prerequisiti: prereq, accessi, dest: destinatariLinea('PP', s), sedi_candidate: candidate,
-    date: { prevista: a.data_avvio_prevista, effettiva: a.data_avvio_effettiva },
+    date: { prevista: a.data_avvio_prevista, effettiva: p.sede?.opened_at && a.data_avvio_effettiva ? p.sede.opened_at : a.data_avvio_effettiva, apertura_sede: p.sede?.opened_at || null },
     avvio: { avviato_at: a.pp_avvio_at, fonte: a.pp_avvio?.fonte || null, piano, riepilogo: p.tipo.tipo ? riepilogoAvvio(p.tipo.tipo, passi) : null },
     ...comune, kit: comune.kit.filter((k) => k.variante === 'CONTRATTO_PARTNER'),
     gia_inviato: p.contratto_file ? comune.kit.find((k) => k.variante === 'CONTRATTO_PARTNER' && k.stato === 'INVIATO' && Number(k.contract_file_id) === Number(p.contratto_file.id)) || null : null,
@@ -120,11 +120,29 @@ export async function aggiornaPunto(a, d, { userId = null } = {}) {
   const cols = Object.keys(set);
   if (!cols.length) return { ok: true };
   await q(`UPDATE accounts SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [a.id, ...cols.map((c) => set[c])]);
+  // B1: la data di avvio effettiva è l'apertura della sede (scritta in Sedi se vuota; se la sede ne ha già una vale quella)
+  const sedeAvvio = await allineaDataAvvio(a.id, { userId });
+  if (sedeAvvio?.esito === 'SCRITTA') note.push('Data di apertura della sede impostata in Amministrazione > Sedi');
+  if (sedeAvvio?.avviso) note.push(sedeAvvio.avviso);
   if (note.length) await attivita(a.id, { tipo: 'SISTEMA', oggetto: 'Anagrafica del punto prelievi aggiornata', testo: note.join('\n') }, userId);
   let riallineo = null; let ripresa = null;
   if (set.pp_site_id && a.pp_avvio?.passi?.CREDENZIALI?.stato === 'OK') riallineo = await realignOrgPerimeters(a.organization_id).then((r) => ({ cambiati: r.changed })).catch(() => null);
   if (a.pp_avvio_at && (set.pp_site_id || set.data_avvio_effettiva)) ripresa = await riprendiAvvio(a.id, { userId });
-  return { ok: true, riallineo, ripresa };
+  return { ok: true, riallineo, ripresa, sede_avvio: sedeAvvio };
+}
+
+/**
+ * B1: allinea data di avvio effettiva dell'account e apertura della sede collegata. La fonte è la sede: se la sede non ha la data la
+ * riceve dall'account (saveSite), se ne ha una diversa l'account prende quella della sede. Senza data nell'account non succede nulla
+ * (collegare una sede già aperta non avvia il punto).
+ */
+export async function allineaDataAvvio(accountId, { userId = null, req = null } = {}) {
+  const a = await one('SELECT id, linea, pp_site_id, data_avvio_effettiva FROM accounts WHERE id=$1', [accountId]);
+  if (!a || a.linea !== 'PP' || !a.pp_site_id || !a.data_avvio_effettiva) return null;
+  const { dataAvvioInSede } = await import('./contrattoSede.js');
+  const r = await dataAvvioInSede(a.pp_site_id, a.data_avvio_effettiva, { userId, req });
+  if (r.esito === 'DIVERSA') await q(`UPDATE accounts SET data_avvio_effettiva=(SELECT opened_at FROM public.sites WHERE id=$2), updated_at=now() WHERE id=$1`, [a.id, a.pp_site_id]);
+  return r;
 }
 
 // ---------------------------------------------------------------- contratto al partner (solo corner) da network@
@@ -422,13 +440,14 @@ export async function avviaFlagship(a, { data, userId = null } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data || ''))) throw errore(400, 'Indica la data di avvio effettiva');
   if (a.pp_avvio_at) throw errore(409, `Il punto prelievi è già stato avviato il ${dataBreve(new Date(a.pp_avvio_at).toISOString().slice(0, 10))}: usa "Riprova" sui passi da completare`);
   await q('UPDATE accounts SET data_avvio_effettiva=$2, prospect=FALSE, updated_at=now() WHERE id=$1', [a.id, data]);
+  const sedeAvvio = await allineaDataAvvio(a.id, { userId });   // B1: apertura della sede
   // decisione 4 del CEO: nessun blocco se la sede in locazione non ha PDF o canone in Sedi, solo l'avviso (nel diario e nella risposta)
   const loc = p.locazione;
   const testoLoc = loc?.tenure === 'LOCAZIONE' ? ` Sede in locazione (Amministrazione > Sedi): ${loc.rent_amount != null ? `canone ${eur(loc.rent_amount)} ${String(loc.rent_period || 'MESE').toLowerCase()}` : 'canone non indicato'}${loc.landlord_name ? `, locatore ${loc.landlord_name}` : ''}${loc.documento_id ? ', contratto in PDF presente' : ', contratto in PDF mancante'}.` : '';
   await attivita(a.id, { tipo: 'AVVIO', oggetto: 'Avvio del punto prelievi flagship', testo: `Data di avvio effettiva: ${dataBreve(data)}.${testoLoc}${p.fascicolo ? ` Autorizzazione: fascicolo ${DOSSIER_LABEL[p.fascicolo.status] || p.fascicolo.status}.` : ''}${loc?.avvisi?.length ? ` Avvisi: ${loc.avvisi.join('; ')}.` : ''}` }, userId);
   const fase = await avanzaFase(a.id, 6, data, 'Avvio del punto prelievi flagship (sede TD in locazione o di proprietà): la fase 7 la conferma il CEO.', userId);
   const out = await avviaPuntoPrelievi(a.id, { fonte: 'avvio del flagship', userId });
-  return { ...out, fase, avvisi: [...(out.avvisi || []), ...(loc?.avvisi || [])] };
+  return { ...out, fase, avvisi: [...(out.avvisi || []), ...(loc?.avvisi || []), ...(sedeAvvio?.avviso ? [sedeAvvio.avviso] : [])] };
 }
 
 /** Job business:avvio-pp: riprende i passi in attesa quando la data o la sede ci sono (sede collegata a mano, data salvata altrove). */
@@ -468,6 +487,13 @@ export async function elencoPuntiPrelievo() {
       (SELECT d.status FROM dossiers d WHERE d.site_id=s.id ORDER BY d.created_at DESC LIMIT 1) AS fascicolo_status
     FROM public.sites s LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id LEFT JOIN public.organizations so ON so.id=s.organization_id
     WHERE s.kind='PUNTO_PRELIEVI' AND s.active AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.pp_site_id=s.id) ORDER BY s.name`);
+  // B13: proposta delle royalties in Cash dai termini del contratto PP vigente (stato per la colonna e la modale di conferma)
+  const { propostaRoyalty } = await import('../../../lib/royaltyPP.js');
+  for (const p of punti) {
+    if (!p.pp_site_id || !p.contratto || !['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(p.contratto.status)) continue;
+    const r = await propostaRoyalty(p.pp_site_id).catch(() => null);
+    if (r) p.royalty = { stato: r.stato, differenze: r.differenze || [], voci: r.contratto?.voci || [] };
+  }
   return { punti, sedi_senza_account: senza.map((s) => ({ ...s, tipo: tipoPunto({ sede: s }).tipo, org_account: s.tenure === 'OSPITATA' || (!s.tenure && s.host_organization_id) ? s.host_organization_id : s.organization_id })) };
 }
 

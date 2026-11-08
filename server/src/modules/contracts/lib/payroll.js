@@ -6,9 +6,10 @@ import { DEFAULT_SETTINGS } from './seedData.js';
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura.
 // company_address (sede operativa / di lavoro predefinita) resta del modulo: se vuota vale la sede legale.
-export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_vat', 'company_rea', 'company_capital', 'company_phone', 'company_email', 'company_pec', 'company_website', 'health_director'];
+// C6: letter_city (luogo delle lettere) è la città della sede legale nei Dati aziendali, non più un'impostazione del modulo
+export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_vat', 'company_rea', 'company_capital', 'company_phone', 'company_email', 'company_pec', 'company_website', 'health_director', 'letter_city'];
 export const coreSettings = (co) => ({ company_name: co.legal_name, company_legal_address: co.address_full, company_vat: co.vat, company_rea: co.rea, company_capital: co.share_capital,
-  company_phone: co.phone, company_email: co.email, company_pec: co.pec, company_website: co.website, health_director: co.health_director });
+  company_phone: co.phone, company_email: co.email, company_pec: co.pec, company_website: co.website, health_director: co.health_director, letter_city: co.city });
 export async function getSettings() {
   const rows = await many('SELECT key, value FROM app_settings');
   const s = { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };

@@ -14,7 +14,6 @@ import { requireAdmin, requireOwner } from '../lib/access.js';
 import { sendMail, layout } from '../lib/mailer.js';
 import { ROW_SCHEMAS, APPLIERS, applyBatch } from './ingest.js';
 import { upsertPosition, syncPersonFromPosition, ensureSiteNodes } from './orgcat.js';
-import { geocodeAddress } from '../lib/geocode.js';
 import { applyCentralino } from '../lib/centralino.js';
 import { createMissingAccounts } from '../lib/accounts.js';
 import { seedGrantRules, proposeGrantsForAll } from '../lib/grantRules.js';
@@ -24,7 +23,7 @@ const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const bad = (m) => new HttpError(400, m);
 
-const SITE_KINDS = ['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'];
+import { SITE_KINDS } from '../lib/tipiSede.js';   // C7: costante unica dei tipi di struttura
 const ORG_KINDS = ['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'];
 const PERSON_KINDS = ['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'];
 const PERSON_STATUS = ['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'];
@@ -363,11 +362,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   if (dataset === 'people') accounts = await createMissingAccounts({ actor: req.user, sendInvite: false }).catch((e) => { console.warn('[accounts]', e.message); return null; });
   if (dataset === 'people' || dataset === 'orgchart' || dataset === 'users') { await seedGrantRules().catch(() => {}); await proposeGrantsForAll(req.user.id).catch((e) => console.warn('[regole]', e.message)); }
   if (dataset === 'sites') await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
-  if (dataset === 'sites') {   // coordinate mancanti completate in coda dall'indirizzo (una al secondo, Nominatim)
-    many(`SELECT id, address, zip, city, province FROM sites WHERE (lat IS NULL OR lng IS NULL) AND (address IS NOT NULL OR city IS NOT NULL)`).then(async (rows) => {
-      for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await q('UPDATE sites SET lat=$2, lng=$3 WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [s.id, g.lat, g.lng]); } catch (e) { console.warn('[geocode]', s.id, e.message); } }
-    }).catch(() => {});
-  }
+  // coordinate: le completa saveSite dopo il COMMIT del lotto (effetti di scriviSede, B11), niente UPDATE diretti di public.sites
   res.status(201).json({ batch_id: batch.id, status: out.status, rows_total: data.length, rows_ok: out.rows_ok, rows_rejected: out.rows_rejected, errors, accounts });
 }));
 

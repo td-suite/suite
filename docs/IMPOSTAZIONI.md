@@ -328,3 +328,19 @@ Intorno o dal form Sedi). Audit: `INTORNO_IMPOSTAZIONI`, `INTORNO_PROVA`, `INTOR
   `attivo_dal` completata dalla fase 7), orders 013 e nc 007 (strutture e sedi invianti solo clienti, le altre Legal entity con dati
   restano disattivate). Idempotenti e non distruttive, con rapporto `MIGRAZIONE_RAPPORTO`.
 
+
+## Anagrafica unica, blocco 3 (08/11/2026)
+- Business Hub `lab_address` e NC `lab_nome`/`lab_indirizzo`: non sono più impostazioni da compilare, vengono dalla sede LABORATORIO di
+  Amministrazione > Sedi (in sola lettura nelle pagine dei moduli; senza quella sede vale il valore del modulo o il predefinito). Email e
+  telefono del laboratorio in NC restano impostazioni del modulo (canale delle notifiche).
+- Contratti del personale `letter_city` (luogo delle lettere): è la città dei Dati aziendali, in sola lettura.
+- Spedizioni `td_sites`: non più letta (le sedi di ricezione sono quelle dell'anagrafica); `return_address` vuoto o uguale al testo
+  iniziale = indirizzo dei Dati aziendali.
+- Cash: l'azienda della sede non si sceglie più (è la Legal entity proprietaria della sede); le royalties si possono precompilare dal
+  contratto PP ("Proposta dal contratto PP", con conferma).
+- Room: orari di apertura e planimetria non sono più impostazioni di Room (Amministrazione > Sedi); Retail: superficie, ambulatori e box
+  non sono più impostazioni di Retail (Facility e Room); Facility: ore e giorni di apertura settimanali calcolati dagli orari della sede.
+- Contratti del personale: le aree sono le unità di primo livello dell'organigramma (Amministrazione > Organizzazione), "Allinea al core".
+- Referti esterni: `laboratori_origine` (Impostazioni > Laboratori di origine e Legal entity).
+- Migrazioni: core 045, business 019, cash 017, retail 011-013, room 011, nc 008, facility 005, contracts 020, shipments 006, finance 005
+  (dettagli e verifiche in docs/ANAGRAFICA.md, blocco 3).

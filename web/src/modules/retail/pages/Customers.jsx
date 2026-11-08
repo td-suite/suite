@@ -88,22 +88,19 @@ export default function Customers({ kind }) {
 
 export function CustomerModal({ value: v, onChange, onClose, onSave }) {
   const sites = useApi('/sites');
-  const orgs = useApi('/organizations');
   const s = (k, x) => onChange({ ...v, [k]: x });
   const isB2B = v.kind === 'B2B';
   return (
     <Modal title={v.id ? 'Modifica cliente' : isB2B ? 'Nuovo cliente B2B' : 'Nuovo paziente'} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={onSave}>Salva</button></>}>
       <div className="form-grid">
         {isB2B ? <>
-          <Field label="Ragione sociale *" className="span2"><input value={v.company_name || ''} onChange={(e) => s('company_name', e.target.value)} /></Field>
-          <Field label="Partita IVA"><input value={v.vat_number || ''} onChange={(e) => s('vat_number', e.target.value)} className="mono" /></Field>
-          <Field label="Tipologia"><select value={v.b2b_type || ''} onChange={(e) => s('b2b_type', e.target.value)}><option value="">–</option>{Object.entries(B2B_TYPE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          {/* B15: l'anagrafica del cliente B2B è la Legal entity (Amministrazione > Legal entity); qui solo i campi di Retail */}
+          <div className="span2 small muted">Ragione sociale, P.IVA, indirizzo, email e telefono vengono dalla Legal entity {v.organization_name ? <b>{v.organization_name}</b> : '(codice ancora da abbinare)'}: si modificano in Amministrazione &gt; Legal entity. Qui si gestiscono segmento, settore e note di Retail.</div>
+          <Field label="Segmento (tipologia)"><select value={v.b2b_type || ''} onChange={(e) => s('b2b_type', e.target.value)}><option value="">–</option>{Object.entries(B2B_TYPE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           <Field label="Settore"><input value={v.sector || ''} onChange={(e) => s('sector', e.target.value)} placeholder="es. manifatturiero, GDO, sanità" /></Field>
-          <Field label="Dipendenti"><input type="number" value={v.employees ?? ''} onChange={(e) => s('employees', e.target.value)} /></Field>
-          <Field label="Referente"><input value={v.contact_name || ''} onChange={(e) => s('contact_name', e.target.value)} /></Field>
-          <Field label="Legal entity in anagrafica" help="Collega il cliente a una società, cliente o partner dell'anagrafica unica della Suite (facoltativo)" className="span2"><select value={v.organization_id || ''} onChange={(e) => s('organization_id', e.target.value ? Number(e.target.value) : null)}><option value="">– nessun collegamento –</option>{(orgs.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}{o.vat_number ? ` · ${o.vat_number}` : ''} ({o.kind})</option>)}</select></Field>
           <Field label="Gruppo" help="Clienti con più reparti o sedi"><input value={v.group_name || ''} onChange={(e) => s('group_name', e.target.value)} /></Field>
-          <Field label="Codice nel gestionale"><input className="mono" value={v.external_code || ''} onChange={(e) => s('external_code', e.target.value)} /></Field>
+          <Field label="Codice StudioLAB"><input className="mono" value={v.external_code || ''} disabled /></Field>
+          <Field label="Note" className="span2"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field>
         </> : <>
           <Field label="Cognome *"><input value={v.last_name || ''} onChange={(e) => s('last_name', e.target.value)} /></Field>
           <Field label="Nome *"><input value={v.first_name || ''} onChange={(e) => s('first_name', e.target.value)} /></Field>
@@ -113,6 +110,7 @@ export function CustomerModal({ value: v, onChange, onClose, onSave }) {
           <Field label="Canale di acquisizione"><select value={v.acquisition_channel || ''} onChange={(e) => s('acquisition_channel', e.target.value)}><option value="">–</option>{Object.entries(CHANNEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           <Field label="Consenso marketing" className="inline"><input type="checkbox" checked={Boolean(v.marketing_consent)} onChange={(e) => s('marketing_consent', e.target.checked)} /> autorizza comunicazioni commerciali</Field>
         </>}
+        {!isB2B && <>
         <Field label="Email"><input type="email" value={v.email || ''} onChange={(e) => s('email', e.target.value)} /></Field>
         <Field label="Telefono"><input value={v.phone || ''} onChange={(e) => s('phone', e.target.value)} /></Field>
         <Field label="Indirizzo"><input value={v.address || ''} onChange={(e) => s('address', e.target.value)} /></Field>
@@ -121,6 +119,7 @@ export function CustomerModal({ value: v, onChange, onClose, onSave }) {
         <Field label="Provincia"><input value={v.province || ''} maxLength={2} onChange={(e) => s('province', e.target.value.toUpperCase())} /></Field>
         <Field label="Sede di riferimento"><select value={v.home_site_id || ''} onChange={(e) => s('home_site_id', e.target.value)}><option value="">–</option>{(sites.data || []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
         <Field label="Note" className="span2"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field>
+        </>}
       </div>
     </Modal>
   );

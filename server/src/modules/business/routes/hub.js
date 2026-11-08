@@ -2,6 +2,7 @@
 // chi gestisce la linea (canEditKind: ADMIN tutte, SERVICE il service, RETAIL i punti prelievo, MDL la medicina del lavoro); le
 // criticità anche per HQS; "cliente attivo" solo il CEO (Owner della Suite) o un Admin del modulo. Docs: docs/BUSINESS_HUB.md.
 import { Router } from 'express';
+import { createOrganization } from '../../../lib/organizations.js';
 import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
@@ -187,11 +188,12 @@ r.post('/accounts', ah(async (req, res) => {
   let orgId = d.organization_id;
   if (!orgId && !d.nuova_org) throw bad('Scegli la Legal entity o indica il nome della nuova');
   if (!orgId) {
-    // prospect nuovo: Legal entity CLIENTE (il tipo TARGET è delle società da acquisire di Integration)
+    // prospect nuovo: Legal entity CLIENTE, PARTNER per il partner di un punto prelievi (decisione 8; il tipo TARGET è delle società da
+    // acquisire di Integration). B5: createOrganization ritrova la Legal entity esistente (P.IVA, CF, nome) invece di creare un doppione
     const o = d.nuova_org;
-    const row = await one(`INSERT INTO public.organizations (kind, name, city, province, email, phone, address, vat_number, notes) VALUES ('CLIENTE',$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [o.name, o.city, o.province, o.email, o.phone, o.address, o.vat_number, 'Creata dal Business Hub (prospect)']);
-    orgId = row.id; indexOrg(row).catch(() => {});
+    const out = await createOrganization({ kind: d.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: o.name, city: o.city, province: o.province, email: o.email, phone: o.phone, address: o.address, vat_number: o.vat_number,
+      notes: d.linea === 'PP' ? 'Creata dal Business Hub (partner di un punto prelievi)' : 'Creata dal Business Hub (prospect)' }, { origine: 'Business Hub, nuovo account', req });
+    orgId = out.org.id;
   } else if (!(await one('SELECT 1 FROM public.organizations WHERE id=$1', [orgId]))) throw bad('Legal entity non trovata');
   if (d.linea !== 'PP' && await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [orgId, d.linea])) throw bad('Questa Legal entity ha già un account su questa linea');
   if (d.linea === 'PP') {
@@ -234,12 +236,19 @@ r.put('/accounts/:id', ah(async (req, res) => {
       }
     }
   }
+  // B1: data di avvio effettiva del punto prelievi = apertura della sede in Amministrazione > Sedi
+  let sedeAvvio = null;
+  if (a.linea === 'PP' && (cols.includes('data_avvio_effettiva') || cols.includes('pp_site_id'))) {
+    const { allineaDataAvvio } = await import('../lib/puntoPrelievi.js');
+    sedeAvvio = await allineaDataAvvio(a.id, { userId: req.user.id }).catch((e) => ({ esito: 'ERRORE', avviso: e.message }));
+    if (sedeAvvio?.avviso) await addActivity(a.id, { tipo: 'SISTEMA', oggetto: 'Data di avvio e apertura della sede', testo: sedeAvvio.avviso }, req.user.id);
+  }
   if (d.owner_user_id !== undefined && d.owner_user_id !== a.owner_user_id) {
     const u = d.owner_user_id ? await one('SELECT full_name FROM public.users WHERE id=$1', [d.owner_user_id]) : null;
     await addActivity(a.id, { tipo: 'SISTEMA', oggetto: 'Owner cambiato', testo: `${a.owner_name || 'nessuno'} → ${u?.full_name || 'nessuno'}` }, req.user.id);
   }
   await audit(req, 'HUB_ACCOUNT_UPDATE', 'account', a.id, { campi: cols });
-  res.json({ ok: true });
+  res.json({ ok: true, ...(sedeAvvio ? { sede_avvio: sedeAvvio } : {}) });
 }));
 
 // Avanzamento di fase (trascinamento nella Pipeline o dalla scheda): registra l'attività con la data
@@ -302,6 +311,12 @@ r.put('/accounts/:id/attivo', ah(async (req, res) => {
       [a.id, dal, req.suiteUser.id, d.nota || null, JSON.stringify(pd)]);
     await q(`UPDATE activities SET esito='CONFERMATO' WHERE account_id=$1 AND esito='DA_CONFERMARE'`, [a.id]);
     await addActivity(a.id, { tipo: 'SISTEMA', oggetto: 'Cliente attivo', esito: 'CONFERMATO', fase_da: a.fase_corrente, fase_a: 7, testo: [`Cliente attivo dal ${dal}, impostato da ${req.suiteUser.full_name}.`, d.nota].filter(Boolean).join('\n') }, req.user.id);
+    // La struttura in Amministrazione > Sedi > Strutture clienti service compare solo per i clienti attivi: se manca, si crea ora (idempotente)
+    if (['SRV', 'MDL'].includes(a.linea)) {
+      const { sedeServiceAllaFirma } = await import('../lib/contrattualizza.js');
+      const sede = await sedeServiceAllaFirma(a, { userId: req.user.id, fonte: 'cliente attivo' });
+      if (sede.esito === 'errore') console.warn(`[business] cliente attivo account ${a.id}: ${sede.avvisi?.join('; ')}`);
+    }
   } else {
     delete pd[7];
     const f = faseEffettiva(pd, false);
@@ -383,6 +398,7 @@ r.post('/accounts/:id/contatti', ah(async (req, res) => {
     [a.id, personId, d.nome, d.ruolo || null, d.email ? d.email.toLowerCase() : null, d.telefono || null, Boolean(d.principale), d.note || null, d.fonte || 'MANUALE']);
   await tocca(a.id);
   await audit(req, 'HUB_CONTATTO', 'account', a.id, { contatto: row.id, persona: personId, fonte: row.fonte });
+  const { collegaReferente } = await import('../lib/referenti.js'); await collegaReferente(row.id);   // B7: persona dell'anagrafica per email
   res.status(201).json(row);
 }));
 r.put('/contatti/:id', ah(async (req, res) => {
@@ -395,6 +411,7 @@ r.put('/contatti/:id', ah(async (req, res) => {
   const personId = d.email !== undefined || d.person_id !== undefined ? await personaDi(c.organization_id, { ...c, ...d }) : c.person_id;
   await q(`UPDATE contatti SET nome=coalesce($2,nome), ruolo=$3, email=$4, telefono=$5, principale=coalesce($6, principale), note=$7, person_id=$8, updated_at=now() WHERE id=$1`,
     [c.id, d.nome || null, d.ruolo !== undefined ? d.ruolo : c.ruolo, d.email !== undefined ? (d.email ? d.email.toLowerCase() : null) : c.email, d.telefono !== undefined ? d.telefono : c.telefono, d.principale ?? null, d.note !== undefined ? d.note : c.note, personId]);
+  { const { collegaReferente } = await import('../lib/referenti.js'); await collegaReferente(c.id); }   // B7
   res.json({ ok: true });
 }));
 r.delete('/contatti/:id', ah(async (req, res) => {
@@ -542,8 +559,8 @@ r.post('/email/:id/assegna', ah(async (req, res) => {
   let accountId = d.account_id;
   if (!accountId && d.crea_prospect) {
     richiediLinea(req, m.linea);
-    const row = await one(`INSERT INTO public.organizations (kind, name, city, email, notes) VALUES ('CLIENTE',$1,$2,$3,$4) RETURNING *`, [d.crea_prospect.nome, d.crea_prospect.city || null, m.from_email, 'Creata dal Business Hub da un\'email in arrivo (prospect)']);
-    indexOrg(row).catch(() => {});
+    const { org: row } = await createOrganization({ kind: m.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: d.crea_prospect.nome, city: d.crea_prospect.city || null, email: m.from_email, notes: 'Creata dal Business Hub da un\'email in arrivo (prospect)' }, { origine: 'Business Hub, email da assegnare', req });   // B5
+    if (await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [row.id, m.linea]) && m.linea !== 'PP') throw bad(`La Legal entity ${row.name} esiste già con un account su questa linea: assegna l'email a quell'account`);
     accountId = (await one(`INSERT INTO accounts (organization_id, linea, prospect, created_by) VALUES ($1,$2,TRUE,$3) RETURNING id`, [row.id, m.linea, req.user.id])).id;
     await addActivity(accountId, { tipo: 'SISTEMA', oggetto: 'Prospect creato da un\'email in arrivo', testo: `Casella ${m.casella}` }, req.user.id);
   }

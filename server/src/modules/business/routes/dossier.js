@@ -9,7 +9,7 @@ import { getSettings } from '../lib/rules.js';
 import { dossierData, renderDocx, docxToPdf, pdfAvailable, baseData } from '../lib/docgen.js';
 import { sha256 } from '../lib/crypto.js';
 import { storeBuffer, sendFile, dropBlobs } from '../lib/storage.js';
-import { DOSSIER_DOCS, DOC_BY_KEY, defaultChecklists, completeness, checklistXlsx, DEFAULT_HOURS } from '../lib/dossier.js';
+import { DOSSIER_DOCS, DOC_BY_KEY, defaultChecklists, completeness, checklistXlsx, DEFAULT_HOURS, precompilaFascicolo } from '../lib/dossier.js';
 import { addEvent, checkOrg, checkSite, defaultDocState, SITE_COLS } from './contracts.js';
 
 // Fascicoli di autorizzazione sanitaria (L.R. Toscana 51/2009). Ogni fascicolo ha i propri riferimenti all'anagrafica unica:
@@ -69,13 +69,24 @@ r.post('/', ah(async (req, res) => {
   const org = await checkOrg(b.org_id);
   const site = await checkSite(null, b.site_id, req.user);
   const title = b.title || (site ? `Autorizzazione ${site.name}` : `Autorizzazione ${org.name}`);
-  const row = await one('INSERT INTO dossiers (org_id, site_id, title, hours, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
-    [org?.id || null, site?.id || null, title, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), b.doc_date || todayRome(), JSON.stringify(defaultDocState(!org)), req.user.id]);
+  const pre = await precompilaFascicolo(site?.id || null);   // C2: orari e personale dall'anagrafica
+  const row = await one('INSERT INTO dossiers (org_id, site_id, title, hours, staff, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$9,$5,$6,$7,$8) RETURNING id',
+    [org?.id || null, site?.id || null, title, JSON.stringify(pre.hours), JSON.stringify(defaultChecklists()), b.doc_date || todayRome(), JSON.stringify(defaultDocState(!org)), req.user.id, JSON.stringify(pre.staff)]);
   await audit(req, 'DOSSIER_CREATE', 'dossier', row.id, { org: org?.name, site: site?.name, title });
   res.status(201).json(await loadDossier(row.id));
 }));
 
 r.get('/:id', ah(async (req, res) => res.json(await loadDossier(Number(req.params.id)))));
+// C2: ricompila orari e personale dall'anagrafica della sede (Sedi e Persone/organigramma); sostituisce solo con la conferma
+r.post('/:id/precompila', ah(async (req, res) => {
+  requireDossier(req.user);
+  const d = await loadDossier(Number(req.params.id));
+  if (!d.site_id) throw bad('Il fascicolo non ha una sede TD: orari e personale si compilano a mano');
+  const pre = await precompilaFascicolo(d.site_id);
+  await q('UPDATE dossiers SET hours=$2, staff=CASE WHEN $4 THEN $3::jsonb ELSE staff END, updated_at=now() WHERE id=$1', [d.id, JSON.stringify(pre.hours), JSON.stringify(pre.staff), req.body?.personale !== false]);
+  await audit(req, 'DOSSIER_PRECOMPILA', 'dossier', d.id, { persone: pre.staff.length });
+  res.json(await loadDossier(d.id));
+}));
 
 // Dati del fascicolo: controparte e sede (solo senza contratto: con il contratto le segue), orari, personale, strumentazione, note, codici, date
 const staffSchema = z.array(z.object({ surname: z.string().trim().max(80), name: z.string().trim().max(80), affiliation: optStr(80), contract: optStr(40), hours: optStr(20), role: optStr(120), degree: optStr(300) })).max(60);

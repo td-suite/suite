@@ -21,30 +21,8 @@ export const PRODUCT_LINES = [
   { code: 'PAC', name: 'Pacchetti e check-up', color: '#e0b84a', sort_order: 50 },
 ];
 
-// Sedi attive (da "Sedi Attive - TD.xlsx", aprile 2026)
-export const SITES = [
-  { code: 'FI-HQ', name: 'Firenze · Viale Belfiore (sede)', kind: 'HEADQUARTER', address: 'Viale Belfiore, 55', city: 'Firenze', province: 'FI', zip: '50144', manager: 'Francesco Epifani', legacy_brand: 'Toscana Diagnostica', lat: 43.7836, lng: 11.2376 },
-  { code: 'SF-LAB', name: 'Sesto Fiorentino · Laboratorio Pratignone', kind: 'LABORATORIO', address: 'Via di Pratignone, 13/4', city: 'Sesto Fiorentino', province: 'FI', zip: '50019', manager: 'Valentina Zezza', legacy_brand: 'Toscana Diagnostica', lat: 43.8205, lng: 11.1850 },
-  { code: 'FI-CEC', name: 'Firenze · Via Cecioni', kind: 'CENTRO_DIAGNOSTICO', address: 'Via Adriano Cecioni, 86', city: 'Firenze', province: 'FI', zip: '50142', manager: 'Eva Alderighi', legacy_brand: 'Toscana Diagnostica', lat: 43.7735, lng: 11.2110 },
-  { code: 'PC-MOR', name: 'Poggio a Caiano · Viale Aldo Moro', kind: 'CENTRO_DIAGNOSTICO', address: 'Viale Aldo Moro, 18/20', city: 'Poggio a Caiano', province: 'PO', zip: '59016', manager: null, legacy_brand: 'Toscana Diagnostica', lat: 43.8135, lng: 11.0545 },
-  { code: 'SF-RAG', name: 'Sesto Fiorentino · Istituto Ragionieri', kind: 'POLIAMBULATORIO', address: 'Via dei Colatori, 10/A', city: 'Sesto Fiorentino', province: 'FI', zip: '50019', manager: null, legacy_brand: 'Istituto Ragionieri', lat: 43.8300, lng: 11.1990 },
-  { code: 'SF-COL', name: 'Sesto Fiorentino · Via dei Colatori 7', kind: 'CENTRO_DIAGNOSTICO', address: 'Via dei Colatori, 7', city: 'Sesto Fiorentino', province: 'FI', zip: '50019', manager: null, legacy_brand: 'Toscana Diagnostica', lat: 43.8298, lng: 11.1985 },
-  { code: 'FI-CIFS', name: 'Firenze · CIFS Via della Fortezza', kind: 'POLIAMBULATORIO', address: 'Via della Fortezza, 6', city: 'Firenze', province: 'FI', zip: '50129', manager: 'Sandra Pellegrino', legacy_brand: 'CIFS', lat: 43.7805, lng: 11.2500 },
-  { code: 'FI-COR', name: 'Firenze · COR Via Giano della Bella', kind: 'POLIAMBULATORIO', address: 'Via Giano della Bella, 6', city: 'Firenze', province: 'FI', zip: '50124', manager: 'Francesco Nardi', legacy_brand: 'COR Firenze', lat: 43.7650, lng: 11.2350 },
-  { code: 'BSL-BIO', name: 'Borgo San Lorenzo · Bioscienze', kind: 'CENTRO_DIAGNOSTICO', address: 'Piazza Martin Luther King', city: 'Borgo San Lorenzo', province: 'FI', zip: '50032', manager: 'Riccardo Gabellini', legacy_brand: 'Bioscienze', lat: 43.9550, lng: 11.3860 },
-  { code: 'MM-PP', name: 'Montemurlo · Punto prelievi', kind: 'PUNTO_PRELIEVI', address: 'Via Montalese, 653', city: 'Montemurlo', province: 'PO', zip: '59013', manager: 'Piera Mucci', legacy_brand: 'Toscana Diagnostica', lat: 43.9270, lng: 11.0350 },
-  { code: 'QU-PP', name: 'Quarrata · Punto prelievi', kind: 'PUNTO_PRELIEVI', address: 'Via della Repubblica, 88/C', city: 'Quarrata', province: 'PT', zip: '51039', manager: 'Lorenzo Gucci', legacy_brand: 'Toscana Diagnostica', lat: 43.8470, lng: 10.9800 },
-  { code: 'CA-PP', name: 'Calenzano · Punto prelievi', kind: 'PUNTO_PRELIEVI', address: 'Via di Prato, 26', city: 'Calenzano', province: 'FI', zip: '50041', manager: 'Manuela Gelli', legacy_brand: 'Toscana Diagnostica', lat: 43.8650, lng: 11.1650 },
-  { code: 'CB-POL', name: 'Campi Bisenzio · Via Buozzi', kind: 'POLIAMBULATORIO', address: 'Via Bruno Buozzi, 27', city: 'Campi Bisenzio', province: 'FI', zip: '50013', manager: 'Sara Baldacci', legacy_brand: 'Toscana Diagnostica', lat: 43.8200, lng: 11.1350 },
-  { code: 'LI-LAM', name: 'Livorno · Labronica Via Lampredi', kind: 'PUNTO_PRELIEVI', address: 'Via Aurelio Lampredi, 3', city: 'Livorno', province: 'LI', zip: '57121', manager: 'Sara Baldacci', legacy_brand: 'Labronica', lat: 43.5520, lng: 10.3150 },
-  { code: 'LI-FOL', name: 'Livorno · Biolabor Folgore', kind: 'POLIAMBULATORIO', address: 'Piazzale 185° Reggimento Artiglieria Folgore, 1', city: 'Livorno', province: 'LI', zip: '57128', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.5300, lng: 10.3200 },
-  { code: 'LI-MAR', name: 'Livorno · Biolabor Via March', kind: 'POLIAMBULATORIO', address: 'Via Giovanni March, 20', city: 'Livorno', province: 'LI', zip: '57121', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.5480, lng: 10.3180 },
-  { code: 'LI-ROM', name: 'Livorno · Biolabor Via Roma', kind: 'PUNTO_PRELIEVI', address: 'Via Roma, 51', city: 'Livorno', province: 'LI', zip: '57125', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.5440, lng: 10.3120 },
-  { code: 'LI-MON', name: 'Livorno · Biolabor Montenero', kind: 'PUNTO_PRELIEVI', address: 'Via di Montenero, 201', city: 'Livorno', province: 'LI', zip: '57128', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.5150, lng: 10.3350 },
-  { code: 'LI-MTL', name: 'Livorno · Biolabor Piazzale Montello', kind: 'PUNTO_PRELIEVI', address: 'Piazzale Montello, 12/A', city: 'Livorno', province: 'LI', zip: '57128', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.5330, lng: 10.3230 },
-  { code: 'RS-POL', name: 'Rosignano Solvay · Biolabor', kind: 'POLIAMBULATORIO', address: "Via dell'Energia", city: 'Rosignano Solvay', province: 'LI', zip: '57016', manager: 'Sara Baldacci', legacy_brand: 'Biolabor', lat: 43.3900, lng: 10.4300 },
-  { code: 'FI-PAO', name: 'Firenze · Viale Paoli', kind: 'CENTRO_DIAGNOSTICO', address: 'Viale Paoli, 6', city: 'Firenze', province: 'FI', zip: '50137', manager: null, legacy_brand: 'Toscana Diagnostica', lat: 43.7820, lng: 11.2810 },
-];
+// C6 (programma anagrafica unica, 08/11/2026): tolto l'elenco fisso delle sedi (SITES, con la sede di Viale Belfiore): le sedi sono
+// solo quelle di Amministrazione > Sedi (retail.sites_v).
 
 export const EXPOSURE_ZONES = [
   { code: 'ESTERNO', name: 'Esterno e insegna', description: 'Facciata, insegna, vetrofanie, totem esterno', sort_order: 10 },

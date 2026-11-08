@@ -11,7 +11,7 @@ import { getSettings, KIND, canEditKind, HAS_DOSSIER } from '../lib/rules.js';
 import { encrypt, decrypt, sha256 } from '../lib/crypto.js';
 import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../lib/storage.js';
 import { audit as suiteAudit } from '../../../lib/util.js';
-import { defaultChecklists, DEFAULT_HOURS } from '../lib/dossier.js';
+import { defaultChecklists, DEFAULT_HOURS, precompilaFascicolo } from '../lib/dossier.js';
 import { conListinoAccount, riquadroListino } from '../lib/listinoUnico.js';
 import { rendiContratto, salvaGenerati, notaGenerazione, regolaRigenerazione } from '../lib/contrattoGenera.js';
 
@@ -148,6 +148,8 @@ export async function loadContract(id) {
     c.listino_account = riquadroListino(await many('SELECT id, versione, caricato_at, riepilogo, origine, offerta_documento_id FROM listini WHERE account_id=$1', [c.account_id]), acc?.listino_corrente_id);
   }
   c.referente_principale = c.account_id ? await one('SELECT nome, telefono, email FROM contatti WHERE account_id=$1 AND principale ORDER BY id LIMIT 1', [c.account_id]) : null;
+  // B14: punto service e ritiro dalla sede SERVICE del cliente (Amministrazione > Sedi), letti e non copiati
+  if (c.kind === 'SRV' && c.org_id) { const { sedeServiceDi } = await import('../lib/contrattoGenera.js'); c.sede_service = await sedeServiceDi(c); }
   c.revisions = await many('SELECT r.id, r.version, r.status, r.motivo, r.at, r.snapshot, u.full_name AS user_name FROM contract_revisions r LEFT JOIN users u ON u.id=r.user_id WHERE r.contract_id=$1 ORDER BY r.at DESC', [id]);
   return c;
 }
@@ -201,13 +203,14 @@ r.post('/', ah(async (req, res) => {
   const org = await checkOrg(d.org_id);
   const site = await checkSite(d.kind, d.site_id, req.user);
   const title = d.title || titoloPredefinito(d.kind, data, org, site);
+  const preFasc = HAS_DOSSIER(d.kind) ? await precompilaFascicolo(site?.id || null) : null;   // C2: orari e personale dall'anagrafica
   const row = await tx(async (client) => {
     const c = (await client.query(`INSERT INTO contracts (kind, org_id, site_id, title, proposal_date, start_date, end_date, notes, data, created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [d.kind, org?.id || null, site?.id || null, title, d.proposal_date, d.start_date, d.end_date, d.notes, JSON.stringify(data), req.user.id])).rows[0];
     if (HAS_DOSSIER(d.kind)) {
       // il fascicolo nasce con la controparte e la sede TD del contratto (dossiers.org_id / site_id) e le segue
-      await client.query('INSERT INTO dossiers (contract_id, org_id, site_id, hours, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-        [c.id, org?.id || null, site?.id || null, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(defaultDocState(!org)), req.user.id]);
+      await client.query('INSERT INTO dossiers (contract_id, org_id, site_id, hours, staff, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$9,$5,$6,$7,$8)',
+        [c.id, org?.id || null, site?.id || null, JSON.stringify(preFasc.hours), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(defaultDocState(!org)), req.user.id, JSON.stringify(preFasc.staff)]);
     }
     await addEvent(c.id, 'CREATO', req.user.id, null, null, client);
     return c;

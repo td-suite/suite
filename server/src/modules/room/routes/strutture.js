@@ -13,13 +13,14 @@ const siteId = (v) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0)
 
 // Elenco sedi (documento lite + logo) in ordine alfabetico: le sedi attive dell'anagrafica unica configurate in Room Planning.
 // ?all=1 include anche le sedi attive non ancora configurate (per aprirle e configurarle). I punti SERVICE dei clienti non sono sedi
-// di Room (blocco 2 dell'anagrafica unica, A7 (e)): restano solo quelli già configurati, segnalati dalla Diagnostica (D29).
+// di Room (A7 (e) e B10 del programma anagrafica unica): la vista sites_v non li contiene più (le loro impostazioni, se c'erano, restano
+// in site_ext e la Diagnostica le segnala con D29).
 r.get('/', ah(async (req, res) => {
   const all = req.query.all === '1';
   const rows = await many(`SELECT ${SITE_COLS}, u.full_name AS updated_by_name,
       (SELECT data FROM struttura_blobs b WHERE b.struttura_id=s.id AND b.kind='logo') AS logo,
       EXISTS (SELECT 1 FROM struttura_blobs b WHERE b.struttura_id=s.id AND b.kind='planPdf') AS has_plan
-    FROM sites_v s LEFT JOIN users u ON u.id=s.updated_by WHERE s.active AND ($1::boolean OR s.configurata) AND (s.kind IS DISTINCT FROM 'SERVICE' OR s.configurata)`, [all]);
+    FROM sites_v s LEFT JOIN users u ON u.id=s.updated_by WHERE s.active AND ($1::boolean OR s.configurata)`, [all]);   // B10: la vista esclude i punti SERVICE
   const list = rows.filter((x) => canSeeStruttura(req.user, x.id)).map((x) => ({ ...liteOf(x), logo: x.logo || null,
     _version: x.version || 0, _updatedAt: x.updated_at, _updatedBy: x.updated_by_name, _hasPlan: x.has_plan }));
   res.json(sortStrutture(list));
@@ -64,7 +65,7 @@ r.put('/:id', ah(async (req, res) => {
   const { data, version, blobs } = parse(z.object({ data: z.any(), version: z.number().int(), blobs: blobsSchema }), req.body);
   const err = validateLite(data);
   if (err) throw bad(err);
-  const site = await one('SELECT id, active FROM public.sites WHERE id=$1', [id]);
+  const site = await one('SELECT id, active, opening_hours_json FROM public.sites WHERE id=$1', [id]);
   if (!site) throw notFound('Sede non trovata');
   if (!site.active) throw new HttpError(409, 'La sede non è attiva nell\'anagrafica: riattivala in Amministrazione > Sedi prima di modificarla');
   const row = await one('SELECT version, updated_at, updated_by FROM site_ext WHERE site_id=$1', [id]);
@@ -76,12 +77,16 @@ r.put('/:id', ah(async (req, res) => {
     throw e;
   }
   const newVersion = version + 1;
-  const ext = extData(data);
+  const ext = extData(data, site);   // B3: senza la copia degli orari della sede
   await tx(async (c) => {
     await c.query(`INSERT INTO site_ext (site_id, data, version, updated_by) VALUES ($1,$2,$3,$4)
       ON CONFLICT (site_id) DO UPDATE SET data=EXCLUDED.data, version=EXCLUDED.version, updated_at=now(), updated_by=EXCLUDED.updated_by`, [id, JSON.stringify(ext), newVersion, req.user.id]);
+    // B16: la planimetria in PDF arriva solo da Amministrazione > Sedi (lib/roomPlan.js storePlan/publishCurrentPlan): Room non la
+    // carica né la toglie; accetta solo l'immagine ricavata nel browser dal PDF pubblicato (planImg) e il logo
+    const haPdf = Boolean((await c.query(`SELECT 1 FROM struttura_blobs WHERE struttura_id=$1 AND kind='planPdf'`, [id])).rows[0]);
     for (const k of BLOB_KINDS) {
       if (!blobs || !(k in blobs)) continue; // blob non inviato = invariato
+      if (k === 'planPdf' || (k === 'planImg' && (!haPdf || !blobs[k]))) continue;
       if (blobs[k]) await c.query('INSERT INTO struttura_blobs (struttura_id, kind, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (struttura_id, kind) DO UPDATE SET data=EXCLUDED.data, updated_at=now()', [id, k, blobs[k]]);
       else await c.query('DELETE FROM struttura_blobs WHERE struttura_id=$1 AND kind=$2', [id, k]);
     }
@@ -143,7 +148,7 @@ r.post('/:id/history/:hid/restore', ah(async (req, res) => {
   if (!h) throw notFound();
   const row = await one('SELECT version FROM site_ext WHERE site_id=$1', [id]);
   const newVersion = (row?.version || 0) + 1;
-  const ext = extData(h.data);
+  const ext = extData(h.data, await one('SELECT opening_hours_json FROM public.sites WHERE id=$1', [id]));
   await tx(async (c) => {
     await c.query(`INSERT INTO site_ext (site_id, data, version, updated_by) VALUES ($1,$2,$3,$4)
       ON CONFLICT (site_id) DO UPDATE SET data=EXCLUDED.data, version=EXCLUDED.version, updated_at=now(), updated_by=EXCLUDED.updated_by`, [id, JSON.stringify(ext), newVersion, req.user.id]);

@@ -79,6 +79,12 @@ export function leaseFieldsFromSite(s) {
     notice_months: s.lease_notice_months ?? null, period_months: periodMonths(s.rent_period), deposit: s.deposit_amount ?? null, registration: s.lease_registration ?? null,
     kind: leaseKindOf(s.tenure, s.lease_years, s.lease_renewal_years) };
 }
+// B18: titolo della sede che risulta da un contratto di Payments. Il contratto di comodato porta COMODATO, gli altri LOCAZIONE; serve
+// la conferma quando la sede ha un titolo diverso e non è già in locazione (OSPITATA, PROPRIETA, COMODATO verso LOCAZIONE).
+export function titoloDaContratto(tenureSede, kindContratto) {
+  const tenure = kindContratto === 'COMODATO' ? 'COMODATO' : 'LOCAZIONE';
+  return { tenure, conferma: Boolean(tenureSede) && tenureSede !== tenure && tenureSede !== 'LOCAZIONE' };
+}
 // Dal contratto di Payments (e dall'importo dello scatto iniziale) ai campi della sede
 export function siteFieldsFromLease(l, initialAmount) {
   const p = rentPeriodOf(l.period_months);
@@ -212,6 +218,15 @@ export async function leaseToSite(leaseId, opts = {}) {
     if (!(await financeReady())) return { status: 'skip', reason: 'schema Payments non aggiornato' };
     const l = await one('SELECT * FROM finance.lease_contracts WHERE id=$1', [leaseId]);
     if (!l || !l.active) return { status: 'skip', reason: 'contratto non attivo' };
+    // B18: il titolo di una sede OSPITATA, di PROPRIETÀ o in COMODATO non cambia senza conferma esplicita (prima diventava LOCAZIONE e
+    // l'ospitante restava valorizzato). Con la conferma passa da saveSite, che toglie anche l'ospitante (regoleTitolo).
+    const before = await one('SELECT id, code, name, tenure, host_organization_id FROM public.sites WHERE id=$1', [l.site_id]);
+    if (!before) return { status: 'skip', reason: 'sede inesistente' };
+    const verifica = titoloDaContratto(before.tenure, l.kind);
+    if (verifica.conferma && opts.confermaTitolo !== true) {
+      return { status: 'conferma', site_id: l.site_id, tenure_before: before.tenure, tenure_after: verifica.tenure,
+        reason: `La sede ${before.code} ${before.name} risulta ${TENURE[before.tenure] || before.tenure} in Amministrazione > Sedi: l'anagrafica non è stata modificata. Conferma per registrarla in ${TENURE[verifica.tenure].toLowerCase()} con i dati di questo contratto${before.host_organization_id ? ' (la Legal entity ospitante verrà tolta)' : ''}.` };
+    }
     if (!l.registry_sync) {
       const other = await one('SELECT id FROM finance.lease_contracts WHERE site_id=$1 AND registry_sync AND active AND id<>$2', [l.site_id, l.id]);
       if (other) return { status: 'skip', reason: 'la sede ha già un altro contratto collegato all\'anagrafica' };
@@ -220,13 +235,12 @@ export async function leaseToSite(leaseId, opts = {}) {
     const steps = await many('SELECT valid_from, amount, reason FROM finance.lease_steps WHERE lease_id=$1 ORDER BY valid_from', [l.id]);
     const ini = steps.find((x) => x.reason === 'INIZIALE') || steps[0] || null;
     const f = siteFieldsFromLease(l, ini?.amount ?? null);
-    const before = await one('SELECT tenure FROM public.sites WHERE id=$1', [l.site_id]);
-    if (!before) return { status: 'skip', reason: 'sede inesistente' };
+    f.tenure = verifica.tenure;
     // i valori assenti nel contratto non cancellano quelli dell'anagrafica. A0: scrittura dalla funzione unica del core (regole del
     // titolo, audit SITE_UPDATED con origine Payments, Cash, perimetri); il flag antirimbalzo impedisce che riparta siteToLease
     const data = Object.fromEntries(Object.entries(f).filter(([k, v]) => k === 'tenure' || v != null));
     const { saveSite } = await import('./sites.js');
-    await saveSite({ id: l.site_id, data, origine: 'Payments > Scadenziario strutture', actorId: opts.actorId || null });
-    return { status: 'ok', site_id: l.site_id, tenure_before: before.tenure };
+    await saveSite({ id: l.site_id, data, origine: verifica.conferma ? 'Payments > Scadenziario strutture (titolo confermato)' : 'Payments > Scadenziario strutture', actorId: opts.actorId || null });
+    return { status: 'ok', site_id: l.site_id, tenure_before: before.tenure, tenure_after: verifica.tenure };
   });
 }

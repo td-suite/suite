@@ -9,7 +9,7 @@ import Docxtemplater from 'docxtemplater';
 import { config } from '../config.js';
 import { itDate, itDateTime } from './util.js';
 import { feeItems, yearsWords, eur, pct } from './rules.js';
-import { ritiroPerDocumento, committente, testoAllegato1, riferimentoPolitica } from './mod230.js';
+import { ritiroPerDocumento, committente, testoAllegato1, riferimentoPolitica, datiDaSedeService } from './mod230.js';
 
 const TPL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
 const CHK = (b) => (b ? '☒' : '☐');
@@ -109,7 +109,7 @@ function partnerData(p, prefix) {
 // extra (contratti SRV, 07/11/2026): { referente: referente principale dell'account { nome, telefono, email } per l'Allegato 2,
 // listino: versione corrente del listino dell'account { righe } per l'Allegato 1, politica: { doc, inCoda } per l'Allegato 8 }
 export function contractData(c, p, s, extra = {}) {
-  const d = c.data || {};
+  let d = c.data || {};   // let: B14 sovrappone punto service e ritiro della sede SERVICE
   const base = baseData(s);
   // firmatario di TD nei blocchi firme di MOD230 e MOD231 (Impostazioni, "Firmatario dei contratti"; vuoto = legale rappresentante)
   const firma = { firma_nome: String(s.firma_nome || '').trim() || s.lr_name, firma_ruolo: String(s.firma_qualifica || '').trim() || s.lr_role };
@@ -143,6 +143,7 @@ export function contractData(c, p, s, extra = {}) {
   const listClause = d.price_list_file ? `Listino allegato: ${d.price_list_file}.` : '';
   const client = { ...partnerData(p, 'client'), client_bank: nz(p.bank_name, 'Istituto di Credito che vorrete indicarci'), payment_terms: terminiPagamento(p, s), vat_exemption_clause: vatClause, price_list_clause: listClause };
   if (c.kind === 'SRV') {
+    if (extra.sedeService) d = datiDaSedeService(d, extra.sedeService);   // B14: punto service e ritiro dalla sede SERVICE
     const pk = d.pickup || {}; const days = pk.days || [];
     const dd = {};
     for (let i = 0; i < 6; i++) {

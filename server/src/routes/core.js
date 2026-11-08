@@ -19,7 +19,8 @@ import { storeBuffer, sendFile, dropBlobs } from '../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
 import { aiEnabled } from '../lib/claude.js';
 import { registryLease, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
-import { saveSite, hoursText } from '../lib/sites.js';
+import { saveSite, hoursText, impattoChiusura } from '../lib/sites.js';
+import { createOrganization } from '../lib/organizations.js';
 import { allineaSediDaOrg } from '../lib/clienti.js';
 import { effettiCessazione, adminDaConfermare } from '../lib/cessazione.js';
 import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
@@ -85,7 +86,8 @@ r.get('/sites', ah(async (req, res) => {
       (SELECT json_build_object('id', d.id, 'filename', d.filename, 'mime', d.mime, 'size', d.size, 'created_at', d.created_at, 'published_room_at', d.published_room_at,
          'versions', (SELECT count(*)::int FROM site_documents v WHERE v.site_id=s.id AND v.kind='PLANIMETRIA'))
          FROM site_documents d WHERE d.site_id=s.id AND d.kind='PLANIMETRIA' ORDER BY d.created_at DESC, d.id DESC LIMIT 1) AS planimetria,
-      h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
+      h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id,
+      CASE WHEN s.kind='SERVICE' THEN public.cliente_livello(s.organization_id) END AS cliente_livello   -- stato del cliente letto dal Business Hub (CEO, 08/11/2026)
     FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id LEFT JOIN organizations lo ON lo.id=s.lease_landlord_org_id
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
         JOIN people pp ON pp.id=op.person_id AND pp.status='ATTIVO' LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE   -- A8: solo responsabili attivi
@@ -124,6 +126,14 @@ r.post('/sites', requireAdmin, ah(async (req, res) => {
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   const s = await saveSite({ id: Number(req.params.id), data: req.body, origine: 'Amministrazione > Sedi', req });
   res.json(s);
+}));
+
+// B17: quadro d'impatto prima di chiudere una sede (cosa resta collegato: Payments, persone, utenti, perimetri, nodo, account e contratti
+// PP). Solo lettura: la chiusura vera passa dal PUT (active=false) che imposta closed_at e restituisce lo stesso quadro.
+r.get('/sites/:id/impatto-chiusura', requireAdmin, ah(async (req, res) => {
+  const s = await one('SELECT id, code, name, active, closed_at FROM sites WHERE id=$1', [Number(req.params.id)]);
+  if (!s) throw notFound('Sede non trovata');
+  res.json({ sede: s, ...(await impattoChiusura(s.id)) });
 }));
 
 // ---- Contratto di locazione in PDF della sede (fonte unica del file: public.site_documents) letto con Claude
@@ -176,8 +186,7 @@ r.delete('/sites/:id/lease-document', requireAdmin, ah(async (req, res) => {
 r.post('/sites/:id/lease-document/landlord', requireAdmin, ah(async (req, res) => {
   const d = await siteDoc(req);
   if (!d.extracted?.locatore) throw bad('Il documento non ha dati del locatore');
-  const o = await landlordOrg(d.extracted.locatore, { source: 'Amministrazione > Sedi' });
-  if (!o.existing) { await audit(req, 'ORG_CREATED', { entity: 'organization', entityId: o.id, label: o.name, data: { from_site_document: d.id } }); indexOrg(o).catch(() => {}); }
+  const o = await landlordOrg(d.extracted.locatore, { source: 'Amministrazione > Sedi', req });   // B5: FORNITORE, audit e indice in createOrganization
   res.status(o.existing ? 200 : 201).json(o);
 }));
 // Contratto di Payments collegato alla sede (per la scheda Sedi): canone vigente, scatti, documenti
@@ -234,13 +243,15 @@ r.get('/organizations', ah(async (req, res) => {
   const visibili = isExternal(req.user) ? rows.filter((o) => o.id === req.user.organization_id || ['GRUPPO', 'SOCIETA'].includes(o.kind)) : rows;
   res.json(isAdmin(req.user) ? rows : visibili.map((o) => ({ id: o.id, kind: o.kind, code: o.code, name: o.name, city: o.city, province: o.province })));
 }));
+// B5: la creazione passa da createOrganization (lib/organizations.js): se esiste già una Legal entity con la stessa P.IVA, lo stesso codice
+// fiscale o lo stesso nome la risposta è 409 con la riga esistente (forza_duplicato: true crea comunque, con la spunta "da rivedere");
+// un nome molto simile crea la riga con la spunta "da rivedere" e la nota del possibile doppione.
 r.post('/organizations', requireAdmin, ah(async (req, res) => {
   const b = parse(orgSchema, req.body);
-  const cols = Object.keys(b); const vals = Object.values(b);
-  const o = await one(`INSERT INTO organizations (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
-  await audit(req, 'ORG_CREATED', { entity: 'organization', entityId: o.id, label: o.name });
-  indexOrg(o).catch(() => {});
-  res.status(201).json(o);
+  const forza = req.body?.forza_duplicato === true;
+  const out = await createOrganization(b, { origine: 'Amministrazione > Legal entity', req, dedupe: !forza, needsReview: forza });
+  if (!out.created) return res.status(409).json({ error: `Esiste già la Legal entity "${out.org.name}" (#${out.org.id}) con ${out.come === 'nome' ? 'lo stesso nome' : `la stessa ${out.come}`}: usa quella oppure conferma la creazione del doppione`, code: 'DUPLICATO', esistente: { id: out.org.id, name: out.org.name, kind: out.org.kind }, come: out.come });
+  res.status(201).json({ ...out.org, simili: out.simili });
 }));
 r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
   const b = parse(orgSchema.partial(), req.body);
@@ -255,6 +266,24 @@ r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
   let sedi_service_allineate = 0;
   if (['address', 'zip', 'city', 'province'].some((k) => b[k] !== undefined)) sedi_service_allineate = await allineaSediDaOrg(o.id, { req }).catch((e) => { console.warn('[sedi SERVICE]', o.id, e.message); return 0; });
   res.json({ ...o, sedi_service_allineate });
+}));
+
+// ---- B5b: fusione di Legal entity duplicate (decisione 9). Anteprima (prova, nessuna scrittura) e poi esecuzione con conferma "UNISCI".
+// Amministratori; l'esecuzione la fanno il titolare e gli Admin (livelli OWNER e ADMIN), come le correzioni della Diagnostica.
+const fusioneSchema = z.object({ tieni: z.coerce.number().int().positive(), assorbi: z.coerce.number().int().positive(), conferma: z.string().optional() });
+r.post('/organizations/fusione/anteprima', requireAdmin, ah(async (req, res) => {
+  const b = parse(fusioneSchema, req.body);
+  const { fondiLegalEntity } = await import('../lib/fusioneOrg.js');
+  res.json(await fondiLegalEntity(b.tieni, b.assorbi, { prova: true, req }));
+}));
+r.post('/organizations/fusione', requireAdmin, ah(async (req, res) => {
+  const b = parse(fusioneSchema, req.body);
+  if (!['OWNER', 'ADMIN'].includes(req.user.level)) throw forbidden('La fusione la eseguono il titolare e gli amministratori Admin');
+  if (b.conferma !== 'UNISCI') throw bad('Conferma mancante: scrivi UNISCI');
+  const { fondiLegalEntity } = await import('../lib/fusioneOrg.js');
+  const rep = await fondiLegalEntity(b.tieni, b.assorbi, { prova: false, req });
+  if (!rep.eseguita) return res.status(409).json({ error: `Fusione non eseguita: ${rep.conflitti.map((x) => `${x.tabella} (${x.motivo})`).join('; ')}`, code: 'CONFLITTO', rapporto: rep });
+  res.json(rep);
 }));
 
 // ---- Persone e rubrica (modulo "rubrica"; i dati contrattuali restano in Contracts: qui solo chi è, dove, cosa fa)
@@ -312,7 +341,7 @@ r.post('/people/:id/account', requireAdmin, ah(async (req, res) => {
   } catch (e) { throw bad(e.message); }
 }));
 // ---- Eliminazioni (amministratori). Un elemento referenziato da dati operativi non si elimina: si disattiva.
-async function moduleRefs(table, col, id) {
+async function moduleRefs(table, col, id, estensioni = null) {
   // tabelle di qualsiasi schema (moduli compresi) con FK verso public.<table>: quante righe puntano a questo id
   const fks = (await q(`SELECT tc.table_schema, tc.table_name, kcu.column_name FROM information_schema.table_constraints tc
       JOIN information_schema.key_column_usage kcu ON kcu.constraint_name=tc.constraint_name AND kcu.constraint_schema=tc.constraint_schema
@@ -321,7 +350,11 @@ async function moduleRefs(table, col, id) {
   const out = [];
   for (const f of fks) {
     if (f.table_schema === 'public' && ['grant_scopes', 'users', 'people', 'sites', 'read_log', 'audit_log', 'search_index', 'notifications', 'files', 'api_keys', 'ingest_batches', 'module_state', 'grants', 'app_settings', 'org_units', 'org_positions'].includes(f.table_name)) continue;
-    if (/_ext$/.test(f.table_name) || f.table_name === 'person_areas') continue;   // estensioni: vanno via in cascata
+    // C4: le estensioni dei moduli (<schema>.*_ext) vanno via in cascata: si contano a parte (estensioni) e chiedono la conferma
+    if (/_ext$/.test(f.table_name) || f.table_name === 'person_areas') {
+      if (estensioni) { const n = (await q(`SELECT count(*)::int AS n FROM "${f.table_schema}"."${f.table_name}" WHERE "${f.column_name}"=$1`, [id]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n; if (n) estensioni.push(`${f.table_schema === 'public' ? '' : f.table_schema + ': '}impostazioni del modulo (${f.table_name})`); }
+      continue;
+    }
     const n = (await q(`SELECT count(*)::int AS n FROM "${f.table_schema}"."${f.table_name}" WHERE "${f.column_name}"=$1`, [id]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n;
     if (n) out.push(`${f.table_schema === 'public' ? '' : f.table_schema + ': '}${f.table_name} (${n})`);
   }
@@ -330,12 +363,14 @@ async function moduleRefs(table, col, id) {
 r.delete('/sites/:id', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const s = await one('SELECT * FROM sites WHERE id=$1', [id]); if (!s) throw notFound();
-  const refs = await moduleRefs('sites', 'id', id);
+  const ext = [];
+  const refs = await moduleRefs('sites', 'id', id, ext);
   if (refs.length) throw bad(`La sede ha dati collegati (${refs.join(', ')}): disattivala invece di eliminarla`);
+  if (ext.length && req.query.conferma !== '1') return res.status(409).json({ error: `Eliminando la sede si cancellano anche: ${ext.join(', ')}`, code: 'ESTENSIONI', estensioni: ext });
   await q('UPDATE people SET site_id=NULL WHERE site_id=$1', [id]); await q('UPDATE users SET site_id=NULL WHERE site_id=$1', [id]);
   await q('DELETE FROM grant_scopes WHERE scope_type=\'SITE\' AND scope_id=$1', [id]);
   await q('DELETE FROM sites WHERE id=$1', [id]);
-  await audit(req, 'SITE_DELETED', { entity: 'site', entityId: id, label: `${s.code} · ${s.name}` });
+  await audit(req, 'SITE_DELETED', { entity: 'site', entityId: id, label: `${s.code} · ${s.name}`, data: { estensioni: ext } });
   res.json({ ok: true });
 }));
 r.delete('/organizations/:id', requireAdmin, ah(async (req, res) => {
@@ -343,12 +378,14 @@ r.delete('/organizations/:id', requireAdmin, ah(async (req, res) => {
   const o = await one('SELECT * FROM organizations WHERE id=$1', [id]); if (!o) throw notFound();
   const sites = (await one('SELECT count(*)::int AS n FROM sites WHERE organization_id=$1', [id])).n;
   if (sites) throw bad(`L'organizzazione ha ${sites} sed${sites === 1 ? 'e' : 'i'} collegat${sites === 1 ? 'a' : 'e'}: eliminale o spostale prima`);
-  const refs = await moduleRefs('organizations', 'id', id);
+  const ext = [];
+  const refs = await moduleRefs('organizations', 'id', id, ext);
   if (refs.length) throw bad(`L'organizzazione ha dati collegati (${refs.join(', ')}): disattivala invece di eliminarla`);
+  if (ext.length && req.query.conferma !== '1') return res.status(409).json({ error: `Eliminando la Legal entity si cancellano anche: ${ext.join(', ')}`, code: 'ESTENSIONI', estensioni: ext });
   await q('UPDATE people SET organization_id=NULL WHERE organization_id=$1', [id]); await q('UPDATE users SET organization_id=NULL WHERE organization_id=$1', [id]);
   await q('DELETE FROM grant_scopes WHERE scope_type=\'ORG\' AND scope_id=$1', [id]);
   await q('DELETE FROM organizations WHERE id=$1', [id]);
-  await audit(req, 'ORGANIZATION_DELETED', { entity: 'organization', entityId: id, label: o.name });
+  await audit(req, 'ORGANIZATION_DELETED', { entity: 'organization', entityId: id, label: o.name, data: { estensioni: ext } });
   res.json({ ok: true });
 }));
 // Duplicati: stessa persona (cognome e nome, email e CF compatibili) caricata più volte. Si tiene la scheda più vecchia,
@@ -447,9 +484,15 @@ r.put('/people/:id', ah(async (req, res) => {
     const fuori = Object.keys(req.body || {}).filter((k) => !RUBRICA_EDITABILI.includes(k));
     if (fuori.length) throw forbidden(`Con il profilo Rubrica "Aggiornamento schede" si modificano solo telefoni, interno, ruolo, reparto e titolo: ${fuori.join(', ')} li cambia un amministratore`);
   }
-  const prima = await one('SELECT id, organization_id, status FROM people WHERE id=$1', [Number(req.params.id)]);
+  const prima = await one('SELECT id, organization_id, status, site_id FROM people WHERE id=$1', [Number(req.params.id)]);
   if (!prima) throw notFound();
   const b = await resolveCatalog(parse(personSchema.partial(), req.body));
+  // C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (Contratti del personale)
+  if (b.site_id !== undefined && Number(b.site_id || 0) !== Number(prima.site_id || 0)) {
+    const ws = (await one(`SELECT to_regclass('contracts.employments') IS NOT NULL AS ok`))?.ok ? await one(`SELECT e.work_site_id, s.name FROM contracts.employments e JOIN sites s ON s.id=e.work_site_id
+        WHERE e.resource_id=$1 AND e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)`, [prima.id]) : null;
+    if (ws && Number(b.site_id) !== Number(ws.work_site_id)) throw bad(`La sede di questa persona è quella del contratto di lavoro (${ws.name}): si cambia nel contratto, in Contratti del personale`);
+  }
   // A11: cessazione manuale di una persona con accesso da amministratore: serve la conferma esplicita (conferma_disattivazione_admin)
   const cessa = b.status === 'CESSATO' && prima.status !== 'CESSATO';
   if (cessa && !req.body?.conferma_disattivazione_admin) {

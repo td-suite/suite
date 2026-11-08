@@ -1,4 +1,5 @@
 // Importazione da Excel/CSV esportati dai gestionali (GIPO, TuoTempo, StudioLab) con mappatura colonne guidata
+import { orgDaCodice } from './b2b.js';
 import ExcelJS from 'exceljs';
 import { q, one, many, tx } from '../db.js';
 import { bad } from './util.js';
@@ -253,6 +254,14 @@ export async function runImport({ source, dataset, buffer, filename, mapping, us
       await c.query('INSERT INTO import_mappings(source, dataset, mapping) VALUES ($1,$2,$3) ON CONFLICT (source, dataset) DO UPDATE SET mapping=EXCLUDED.mapping, updated_at=now()', [source, dataset, JSON.stringify(map)]);
     }
     const custCache = new Map(); const prodCache = new Map(); const costSeen = new Map(); const touched = new Set();
+    const b2bReport = { abbinati: [], da_abbinare: [] };   // B15: esito del ponte B2B nel rapporto dell'import
+    const ponteB2B = async (cl, d) => {
+      const m = d.external_code ? await orgDaCodice(d.external_code, cl) : null;
+      if (m) return { organization_id: m.org_id, abbinamento: 'AUTO' };
+      const vat = String(d.vat_number || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^IT/, '');
+      if (vat.length >= 11) { const o = (await cl.query(`SELECT id FROM public.organizations WHERE regexp_replace(regexp_replace(upper(coalesce(vat_number,'')), '[^A-Z0-9]', '', 'g'), '^IT', '')=$1 ORDER BY active DESC, id LIMIT 1`, [vat])).rows[0]; if (o) return { organization_id: o.id, abbinamento: 'AUTO' }; }
+      return { organization_id: null, abbinamento: 'DA_ABBINARE' };
+    };
     const upsertCustomer = async (d) => {
       const key = d.external_code ? `c:${d.external_code}` : d.external_id ? `x:${d.source}:${d.external_id}` : d.tax_code ? `cf:${d.tax_code}` : d.vat_number ? `vat:${d.vat_number}` : d.company_name ? `co:${norm(d.company_name)}` : d.last_name && d.first_name && d.birth_date ? `nm:${norm(d.last_name)}:${norm(d.first_name)}:${d.birth_date}` : null;
       if (!key) return null;
@@ -267,6 +276,8 @@ export async function runImport({ source, dataset, buffer, filename, mapping, us
       const cols = ['last_name', 'first_name', 'sex', 'birth_date', 'tax_code', 'email', 'phone', 'address', 'zip', 'city', 'province', 'marketing_consent', 'acquisition_channel', 'company_name', 'vat_number', 'sector', 'contact_name', 'employees', 'home_site_id', 'external_code', 'group_name', 'b2b_type'];
       if (row) {
         if (!dryRun) {
+          // B15: un B2B già presente ma ancora da abbinare si abbina appena una sede ha il suo codice StudioLAB
+          if (d.kind === 'B2B') { const pt = await ponteB2B(c, d); if (pt.organization_id) { const u = await c.query(`UPDATE customers SET organization_id=$2, abbinamento='AUTO', abbinato_at=now() WHERE id=$1 AND organization_id IS NULL RETURNING id`, [row.id, pt.organization_id]); if (u.rowCount) b2bReport.abbinati.push(d.external_code || d.company_name); } }
           const set = cols.filter((k) => d[k] != null && d[k] !== '');
           if (set.length) await c.query(`UPDATE customers SET ${set.map((k, i) => `${k}=coalesce(${k}, $${i + 2})`).join(', ')}, updated_at=now() WHERE id=$1`, [row.id, ...set.map((k) => d[k])]);
           if (d.external_id) await c.query('UPDATE customers SET external_id=coalesce(external_id,$2), source=CASE WHEN external_id IS NULL THEN $3 ELSE source END WHERE id=$1', [row.id, d.external_id, d.source]);
@@ -274,7 +285,11 @@ export async function runImport({ source, dataset, buffer, filename, mapping, us
         custCache.set(key, row.id); touched.add(row.id); return row.id;
       }
       if (dryRun) { custCache.set(key, -1); return -1; }
-      const ins = await c.query(`INSERT INTO customers(kind, source, external_id, ${cols.join(',')}) VALUES ($1,$2,$3,${cols.map((_, i) => `$${i + 4}`).join(',')}) RETURNING id`, [d.kind, d.source, d.external_id || null, ...cols.map((k) => d[k] ?? null)]);
+      // B15: un B2B nuovo nasce come ponte codice → Legal entity: abbinato in automatico se una sede della Suite ha lo stesso codice
+      // StudioLAB (o una Legal entity ha la stessa P.IVA), altrimenti "da abbinare" (pagina B2B > Da abbinare). Mai un cliente anonimo.
+      const ponte = d.kind === 'B2B' ? await ponteB2B(c, d) : { organization_id: null, abbinamento: null };
+      const ins = await c.query(`INSERT INTO customers(kind, source, external_id, organization_id, abbinamento, abbinato_at, ${cols.join(',')}) VALUES ($1,$2,$3,$4,$5,CASE WHEN $4::int IS NULL THEN NULL ELSE now() END,${cols.map((_, i) => `$${i + 6}`).join(',')}) RETURNING id`, [d.kind, d.source, d.external_id || null, ponte.organization_id, ponte.abbinamento, ...cols.map((k) => d[k] ?? null)]);
+      if (ponte.abbinamento) b2bReport[ponte.abbinamento === 'AUTO' ? 'abbinati' : 'da_abbinare'].push(d.external_code || d.company_name);
       custCache.set(key, ins.rows[0].id); touched.add(ins.rows[0].id); return ins.rows[0].id;
     };
     const upsertProduct = async (d) => {
@@ -386,10 +401,10 @@ export async function runImport({ source, dataset, buffer, filename, mapping, us
       await c.query('UPDATE import_batches SET rows_ok=$2, rows_skipped=$3, errors=$4, status=$5 WHERE id=$1', [batchId, ok, skipped, JSON.stringify(errors.slice(0, 200)), skipped && !ok ? 'ERRORE' : 'OK']);
       await c.query(`UPDATE campaigns c SET bookings = s.n FROM (SELECT campaign_id, count(DISTINCT external_ref)::int AS n FROM sales WHERE campaign_id IS NOT NULL GROUP BY campaign_id) s WHERE s.campaign_id = c.id`);
     }
-    return { batchId, touched: [...touched] };
+    return { batchId, touched: [...touched], b2b: { abbinati: [...new Set(b2bReport.abbinati)], da_abbinare: [...new Set(b2bReport.da_abbinare)] } };
   });
   if (!dryRun) await refreshCustomerStats(res.touched.length && res.touched.length < 5000 ? res.touched : null);
-  return { batch_id: res.batchId, rows_total: rows.length, rows_ok: ok, rows_skipped: skipped, errors: errors.slice(0, 200), mapping: map, headers, dry_run: dryRun };
+  return { batch_id: res.batchId, rows_total: rows.length, rows_ok: ok, rows_skipped: skipped, errors: errors.slice(0, 200), mapping: map, headers, dry_run: dryRun, b2b: res.b2b };
 }
 
 export async function savedMapping(source, dataset) {

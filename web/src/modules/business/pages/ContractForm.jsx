@@ -137,8 +137,14 @@ export default function ContractForm() {
       {kind === 'SRV' && <>
         <Card title="Sede operativa del cliente e Direttore Sanitario (lettera di offerta e art. 4.3)" className="mt">
           <div className="form-grid">
-            <Field label="Denominazione della sede operativa" help="vuota: ragione sociale"><input value={d.site_name || ''} onChange={(e) => setD('site_name', e.target.value)} /></Field>
-            <Field label="Indirizzo della sede operativa" help="vuoto: indirizzo fiscale dell'organizzazione"><input value={d.site_address || ''} onChange={(e) => setD('site_address', e.target.value)} /></Field>
+            {/* B14: con la sede SERVICE del cliente nome e indirizzo del punto si leggono dalla sede (Amministrazione > Sedi), non si copiano */}
+            {existing.data?.sede_service ? <>
+              <Field label="Sede operativa (punto service)" help={<>Dalla sede {existing.data.sede_service.code} in <a href="/admin/sites?tab=service">Amministrazione &gt; Sedi</a>: si modifica lì</>}><input value={existing.data.sede_service.name} disabled /></Field>
+              <Field label="Indirizzo della sede operativa" help="Dalla sede SERVICE"><input value={[existing.data.sede_service.address, [existing.data.sede_service.zip, existing.data.sede_service.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')} disabled /></Field>
+            </> : <>
+              <Field label="Denominazione della sede operativa" help="vuota: ragione sociale. Alla contrattualizzazione diventa la sede SERVICE del cliente"><input value={d.site_name || ''} onChange={(e) => setD('site_name', e.target.value)} /></Field>
+              <Field label="Indirizzo della sede operativa" help="vuoto: indirizzo fiscale dell'organizzazione"><input value={d.site_address || ''} onChange={(e) => setD('site_address', e.target.value)} /></Field>
+            </>}
             <Field label="Direttore Sanitario della struttura cliente" className="span2"><input value={d.client_ds || ''} onChange={(e) => setD('client_ds', e.target.value)} placeholder="dott. Nome Cognome" /></Field>
           </div>
         </Card>
@@ -155,7 +161,7 @@ export default function ContractForm() {
           <div className="small muted" style={{ marginTop: 8 }}>Il listino in XLSX serve al cliente e al gestionale, il PDF è l'allegato della proposta. I nomi dei file compaiono nell'Allegato 1 "Elenco delle analisi, prezzi e condizioni economiche", con la tabella dei prezzi del listino corrente dell'account (scheda Listino e offerta) quando c'è.</div>
         </Card>
         <Card title="Logistica dei ritiri (Allegato 2)" className="mt">
-          <div className="small muted" style={{ marginBottom: 8 }}>Campi vuoti: nel documento vanno i valori in grigio, dalla {rit.fonte === 'SEDE_OPERATIVA' ? 'sede operativa indicata sopra' : 'sede legale della Legal entity'}{existing.data?.referente_principale ? ' e dal referente principale dell\'account' : ''}.</div>
+          <div className="small muted" style={{ marginBottom: 8 }}>Campi vuoti: nel documento vanno {existing.data?.sede_service ? `i dati della sede SERVICE ${existing.data.sede_service.code} (Amministrazione > Sedi: denominazione, indirizzo, telefono, email e, senza giorni indicati, i giorni fissi dagli orari della sede)` : `i valori in grigio, dalla ${rit.fonte === 'SEDE_OPERATIVA' ? 'sede operativa indicata sopra' : 'sede legale della Legal entity'}`}{existing.data?.referente_principale ? ' e dal referente principale dell\'account' : ''}.</div>
           <div className="form-grid">
             <Field label="Sede di ritiro (denominazione)"><input value={d.pickup.site || ''} placeholder={rit.site} onChange={(e) => setD('pickup.site', e.target.value)} /></Field>
             <Field label="Indirizzo"><input value={d.pickup.street || ''} placeholder={rit.street} onChange={(e) => setD('pickup.street', e.target.value)} /></Field>

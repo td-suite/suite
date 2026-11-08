@@ -94,3 +94,8 @@ solo a chi gestisce il widget".
   questionario e la risposta lo segnala (`quiz_error`).
 - Dove si scrive: Blog da Gestione > Nuovo contenuto con Tipo = Blog (letto in Community > Blog); Bacheca dal riquadro in alto della pagina
   Bacheca (post liberi di tutti gli utenti); Avvisi da Gestione > Avvisi; presa visione con Tipo = Circolare, interruttore "Richiede presa visione".
+
+## Segmenti dei partner (anagrafica unica, blocco 3, 08/11/2026)
+Gli utenti esterni di una Legal entity che ospita un punto prelievi attivo (o firmataria di un contratto PP vigente) ricevono i segmenti
+Punti prelievo e Partner anche se la Legal entity non è di tipo PARTNER; le proposte di destinatari di questi segmenti includono le
+Legal entity ospitanti. Clienti service e Medicina del lavoro seguono i clienti attivi e contrattualizzati della Suite (blocco 2).

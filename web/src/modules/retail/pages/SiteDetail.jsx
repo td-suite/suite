@@ -28,7 +28,7 @@ export default function SiteDetail() {
   // Allineamento SGI (modulo Audit SGI): A verde, B teal, C ambra, D rosso
   const SGI_LEVEL = { A: { label: 'Allineato', color: '#2f7d5b' }, B: { label: 'Sostanzialmente allineato', color: '#1C505E' }, C: { label: 'Parzialmente allineato', color: '#a35a00' }, D: { label: 'Critico', color: '#b3372f' } };
   const staffList = d.data.staff;
-  const saveProfile = async () => { try { const b = { ...profile }; for (const k of ['surface_sqm', 'rooms', 'boxes', 'sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const saveProfile = async () => { try { const b = { ...profile }; delete b.surface_sqm; delete b.rooms; delete b.boxes; for (const k of ['sqm_waiting']) b[k] = b[k] === '' || b[k] == null ? null : Number(b[k]); await api.put(`/structure/sites/${id}/profile`, b); toast('Profilo salvato'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveHours = async () => { try { await api.put(`/structure/sites/${id}/hours`, { hours: hours.map((h) => ({ weekday: h.weekday, note: h.note || null })) }); toast('Note salvate'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveStaff = async () => { try { const b = { retail_role: staff.retail_role || null, weekly_hours: staff.weekly_hours === '' || staff.weekly_hours == null ? null : Number(staff.weekly_hours), days: staff.days || null, notes: staff.notes || null, sort_order: Number(staff.sort_order) || 100 }; await api.put(`/structure/people/${staff.id}`, b); toast('Piano di lavoro salvato'); setStaff(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveAsset = async () => { try { const b = { ...asset }; delete b.id; delete b.site_id; b.quantity = Number(b.quantity) || 1; if (asset.id) await api.put(`/structure/assets/${asset.id}`, b); else await api.post(`/structure/sites/${id}/assets`, b); toast('Dotazione salvata'); setAsset(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
@@ -77,10 +77,11 @@ export default function SiteDetail() {
         <Card title="Profilo della struttura (Retail)" actions={can_edit && <button className="btn sm" onClick={saveProfile}>Salva</button>}>
           <div className="form-grid">
             <Field label="Apertura (data)" help="Dall'anagrafica della sede (Amministrazione, Sedi)"><input value={site.opened_at ? itDate(site.opened_at) : ''} disabled placeholder="non indicata in Amministrazione" /></Field>
-            <Field label="Superficie (mq)"><input type="number" value={profile.surface_sqm ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, surface_sqm: e.target.value })} /></Field>
+            {/* B4: superficie e box da Facility (Immobili), ambulatori da Room Planning: qui in sola lettura */}
+            <Field label="Superficie (mq)" help="Da Facility > Immobili"><input type="number" value={profile.surface_sqm ?? ''} disabled /></Field>
             <Field label="Sala d'attesa (mq)"><input type="number" value={profile.sqm_waiting ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, sqm_waiting: e.target.value })} /></Field>
-            <Field label="Ambulatori"><input type="number" value={profile.rooms ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, rooms: e.target.value })} /></Field>
-            <Field label="Box prelievo"><input type="number" value={profile.boxes ?? ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, boxes: e.target.value })} /></Field>
+            <Field label="Ambulatori" help="Da Room Planning (ambulatori della sede)"><input type="number" value={profile.rooms ?? ''} disabled /></Field>
+            <Field label="Box prelievo" help="Da Facility > Immobili"><input type="number" value={profile.boxes ?? ''} disabled /></Field>
             <Field label="Parcheggio"><input value={profile.parking || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, parking: e.target.value })} /></Field>
             <Field label="Accessibilità"><input value={profile.accessibility || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, accessibility: e.target.value })} /></Field>
             <Field label="Comuni del bacino" help="Separati da virgola: alimentano i dati di mercato della sede" className="span2"><input value={profile.catchment_cities || ''} disabled={!can_edit} onChange={(e) => setProfile({ ...profile, catchment_cities: e.target.value })} /></Field>

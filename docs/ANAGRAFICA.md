@@ -1185,11 +1185,18 @@ espressamente indicato, riporta sempre quello della Legal entity." `lib/clienti.
   `address_from_org = TRUE`; orari di ritiro del contratto (`data.pickup.days`: giorni a orario fisso negli orari strutturati, riepilogo
   completo con i giorni a chiamata nelle note), referente del ritiro, telefono ed email; codice StudioLAB se già inserito nell'account.
   Idempotente: una Legal entity con una sede SERVICE attiva non ne riceve un'altra; una struttura si riconosce per nome.
+- **Solo clienti attivi (CEO, 08/11/2026: "Nella scheda Sedi/Strutture clienti service devono figurare solo quelli ATTIVI. Verifica
+  sempre lo stato da Business Hub").** La scheda Amministrazione > Sedi > "Strutture clienti service" mostra solo le sedi SERVICE delle
+  Legal entity con livello `ATTIVO` in `clienti_attivi_v` (`GET /api/sites` espone `cliente_livello` = `public.cliente_livello`, cioè lo
+  stato del Business Hub: `accounts.cliente_attivo` confermato dal CEO). Le sedi dei clienti contrattualizzati ma non ancora attivi
+  restano nascoste (contatore e link "Mostra per correggere", badge "Cliente non ancora attivo"); "Crea le sedi SERVICE mancanti" e D13
+  lavorano solo sui clienti ATTIVI; quando il CEO imposta il cliente attivo (`PUT /accounts/:id/attivo`) la sede SERVICE si crea se manca.
 - Chi la chiama: la contrattualizzazione Service (prima dell'attivazione degli accessi, così "Il mio spazio", NC e Ordini hanno subito
-  il loro ambito e i perimetri si riallineano da saveSite), la firma MDL, la correzione D12, la correzione D13 e l'operazione
+  il loro ambito e i perimetri si riallineano da saveSite; la sede resta nascosta nella scheda finché il cliente non è attivo), la firma
+  MDL, la conferma del cliente attivo, la correzione D12, la correzione D13 e l'operazione
   **"Crea le sedi SERVICE mancanti"** (Amministrazione > Diagnostica anagrafica, riquadro "Sedi SERVICE dei clienti": Prova senza
   scritture, Esegui con conferma `ESEGUI`, audit `SEDI_SERVICE_CREATE`; `GET/POST /api/admin/migrazioni/sedi-service`): per ogni Legal
-  entity di `clienti_attivi_v` (entrambi i livelli) una sede per ogni struttura del gruppo dell'account **attivata** (fase 6 o 7 nel DB
+  entity di `clienti_attivi_v` con livello ATTIVO una sede per ogni struttura del gruppo dell'account **attivata** (fase 6 o 7 nel DB
   Opportunità, oppure nome uguale al punto `site_name`/`pickup.site` di un contratto vigente) e, se resta senza sede SERVICE attiva, una
   sede con l'indirizzo della Legal entity. Le strutture non attivate restano "strutture del gruppo" nell'account (elencate nel rapporto).
 - Indirizzo ereditato (`sites.address_from_org`, migrazione 044): quando cambia l'indirizzo della Legal entity (Amministrazione > Legal
@@ -1247,3 +1254,147 @@ docs/screens/business-clienti-codice.png, business-account-codice.png, admin-dia
   ('044_clienti_attivi.sql','business/018_clienti_attivi.sql');`
 - Cockpit: le card dei moduli LIVE con `source = 'modulo'` (GET /api/cockpit).
 
+
+## Blocco 3 del programma: correzioni B e C (08/11/2026)
+Tutte le correzioni B (B1-B19) e C (C1-C13) della review, nell'ordine della sezione 7.4. Migrazioni core 045, business 019, cash 017,
+retail 011-013, room 011, nc 008, facility 005, contracts 020, shipments 006, finance 005: idempotenti, non distruttive (nessuna riga
+cancellata salvo le tabelle residue e **vuote** di Cash, C8; nessun dato anagrafico riscritto salvo i tipi delle Legal entity, decisione 8,
+con la nota sulla riga), rapporto `MIGRAZIONE_RAPPORTO` in `audit_log`. Le correzioni dei dati di produzione si fanno da Amministrazione >
+Diagnostica anagrafica (Correggi con conferma). **Nessun controllo della Diagnostica è più "attivo dopo"** e nessuna correzione è più
+"disponibile dopo".
+
+**Sedi: chiusura dell'anello di saveSite (B11, B18, B1, B17, B19).**
+- B11 · Connettore e file Sedi (`routes/ingest.js`): la sede si riconosce prima dal codice dato dalla fonte (`legacy_refs."ingest:<fonte>"`),
+  poi dal codice della Suite: **un codice rinominato in Sedi non crea più un doppione**. Il nome si aggiorna solo se nessuno l'ha cambiato
+  nella Suite (ultimo nome ricevuto in `legacy_refs."ingest:<fonte>#nome"`, per le sedi più vecchie l'audit `SITE_UPDATED` non del
+  connettore). Gli orari in testo diventano orari strutturati (`orariDaTesto`, inverso di `hoursText`); un testo non interpretabile non
+  sovrascrive gli orari strutturati presenti (avviso nel lotto). Il connettore non scrive più `manager_name` (B2). L'import XLSX non fa più
+  UPDATE diretti delle coordinate: le completa saveSite dopo il COMMIT del lotto. Le Legal entity nuove del connettore nascono da
+  createOrganization (B5).
+- B18 · Payments (`leaseToSite`): un contratto dello Scadenziario non cambia il titolo di una sede OSPITATA, di PROPRIETÀ o in COMODATO
+  (`titoloDaContratto`): risponde `registry_sync_result.status = 'conferma'` con il motivo, l'anagrafica resta intatta; con la conferma
+  (form di Payments, `POST /api/finance/scadenziario/leases/:id/allinea-anagrafica { conferma_titolo: true }`) passa da saveSite, che
+  toglie anche l'ospitante (audit con origine "Payments > Scadenziario strutture (titolo confermato)"). Il contratto di comodato porta
+  COMODATO, gli altri LOCAZIONE.
+- B1 · La data di avvio effettiva del punto prelievi **è l'apertura della sede**: scritta in `sites.opened_at` con saveSite se la sede
+  non ce l'ha (scheda Punto prelievi, account, Avvia del flagship); se la sede ne ha un'altra vale quella e l'account la segue (avviso nel
+  diario). D24 attivo (adattato: la data dell'account conta solo se c'è) con la correzione "Allinea la data di apertura".
+- B17 · Prima di chiudere una sede (Amministrazione > Sedi, Attiva = no) la pagina mostra il **quadro d'impatto** (`GET
+  /api/sites/:id/impatto-chiusura`: contratti Payments attivi, persone e utenti, ambiti di accesso, nodo, account e contratti PP) e chiede
+  la conferma; alla disattivazione `closed_at` = oggi (o la data indicata) e il quadro torna nella risposta.
+- B19 · Codice StudioLAB unico: saveSite rifiuta un codice già di un'altra sede ("un codice, una sede"); l'indice unico parziale
+  `sites_studiolab_code_uq` (lower) lo crea la migrazione 045 se non ci sono doppioni, altrimenti si attiva da solo quando D15b torna a
+  zero (al salvataggio del codice e nel lavoro giornaliero della Diagnostica).
+
+**Legal entity (B5, B5b).**
+- B5 · `createOrganization` (lib/organizations.js) è l'unica creazione delle Legal entity: doppione per P.IVA (anche con "IT"), codice
+  fiscale o nome uguale normalizzato (forme societarie e punteggiatura ignorate) → restituisce quella esistente; nome molto simile (pg_trgm
+  >= 0,8) → la nuova nasce con `needs_review` e la nota "Possibile doppione di #id"; audit `ORG_CREATED` con l'origine. La usano
+  Amministrazione > Legal entity (409 `DUPLICATO` con la riga esistente; "crea comunque" con `forza_duplicato`, sempre da rivedere),
+  Business Hub (nuovo account, email da assegnare, DB Opportunità, pacchetti), Spedizioni (richiedente), Payments e Sedi (locatore dal
+  PDF, `landlordOrg`), connettore e file Legal entity. **Tipi (decisione 8)**: locatore = FORNITORE, partner del punto prelievi = PARTNER
+  (nuovo account PP, email della casella network@), cliente/prospect = CLIENTE. Migrazione 045 (funzione
+  `public.riclassifica_tipi_legal_entity`, richiamata anche dalla migrazione business 019 e dalla correzione D25 "Applica la decisione
+  8"): locatori PARTNER → FORNITORE se non sono anche partner di un punto; ospitanti, controparti PP e Legal entity degli account PP
+  CLIENTE → PARTNER, **salvo che siano anche clienti** (account Service/MdL o sede SERVICE): restano CLIENTE con la nota "Resta CLIENTE
+  anche se è partner di un punto prelievi". Ogni riga cambiata ha la nota e compare nel rapporto. I richiedenti di Spedizioni restano
+  CLIENTE (non coperti dalla decisione: D25 li lascia da decidere nella scheda).
+- B5b · **Fusione di Legal entity duplicate** (lib/fusioneOrg.js; Amministrazione > Legal entity > "Unisci"; dalla Diagnostica D16a-c
+  "Unisci" sulla riga apre lo strumento con le due righe): scelta della riga che resta, **anteprima** (la fusione gira in una transazione
+  annullata: l'anteprima è esattamente ciò che succederà), poi "UNISCI" (titolare e Admin). Ogni chiave esterna verso
+  `public.organizations` di ogni schema passa alla riga che resta; le tabelle con una riga per Legal entity (`*.org_ext` e simili) si
+  fondono **campo per campo** preferendo i valori presenti nella riga che resta (i JSON si uniscono); `grant_scopes` ORG e
+  `company_org_id` si spostano; i campi vuoti della riga che resta si completano (P.IVA, CF, indirizzo, PEC, IBAN...), note e
+  `legacy_refs` si uniscono, il tipo resta. Un vincolo di unicità violato (es. due account del Business Hub sulla stessa linea) è un
+  **conflitto**: la fusione non si esegue finché non lo si risolve nel modulo. La riga unita si elimina e resta intera nel registro
+  `org_merges` (con il rapporto); audit `ORG_MERGED`; indice di ricerca e perimetri degli accessi esterni ricalcolati.
+
+**Responsabile, Laboratorio, Room (B2, B9, B10, B16).**
+- B2 · Retail (`retail.sites_v.manager`) e NC (`nc.sedi_v.referente`) leggono il responsabile dall'organigramma (funzione core
+  `public.responsabile_sede`, solo persone attive); `sites.manager_name` resta come colonna (non distruttiva) ma nessuno la scrive o la
+  legge più (il connettore la ignora; il conteggio delle sedi con il testo è nel rapporto 045).
+- B9 · Nome e indirizzo del Laboratorio dalla sede LABORATORIO di Amministrazione > Sedi (`getLaboratorio`, lib/company.js; con più
+  laboratori quello della Legal entity di TD): Business Hub `lab_address` (MOD173, contratti) in sola lettura come i Dati aziendali, NC
+  `lab_nome`/`lab_indirizzo` in sola lettura (email e telefono di NC restano del modulo: sono il canale delle notifiche). D22c adattato:
+  le copie compaiono solo se manca la sede LABORATORIO.
+- B10 · `room.sites_v` senza punti SERVICE (migrazione room 011); le impostazioni Room già salvate per un punto SERVICE restano e D29
+  le elenca.
+- B16 · Planimetria solo da Amministrazione > Sedi: Room non carica né toglie più il PDF (il PUT ignora `planPdf`; accetta l'immagine
+  `planImg` ricavata nel browser dal PDF pubblicato); il pulsante di Room apre Amministrazione > Sedi.
+
+**Circolari, royalties, contratto Service, Retail B2B (B12, B13, B14, B15).**
+- B12 · Segmenti delle Circolari: un utente esterno la cui Legal entity ospita un punto prelievi attivo (o firma un contratto PP vigente)
+  riceve Punti prelievo e Partner anche se il tipo della Legal entity non è PARTNER; le proposte dei destinatari di Punti prelievo e
+  Partner includono le Legal entity ospitanti (Clienti service e MdL già da `clienti_attivi_v`, blocco 2).
+- B13 · **Royalties dal contratto PP** (lib/royaltyPP.js, decisione 10): `royaltyDaVoci` porta i `fee.items` del contratto in Cash
+  (percentuali sommate, quota fissa mensile dal periodo, IVA 22% se "+ IVA", minimo garantito, una tantum e testi nelle note). Alla firma
+  la proposta si annota negli eventi del contratto (`ROYALTY_PROPOSTA`), **nessuna scrittura automatica**; si conferma dalla modale della
+  pagina Punti Prelievo (colonna "Royalty in Cash") o in Cash > Sedi ("Proposta dal contratto PP"). Se Cash ha già royalties diverse:
+  avviso e sovrascrittura solo con la spunta "Sovrascrivi" (409 `ROYALTY_DIVERSE` altrimenti). Storico `site_royalty_history`, audit
+  `ROYALTY_DA_CONTRATTO_PP`. API: `GET/POST /api/business/hub/punti-prelievo/:siteId/royalty`, `GET/POST
+  /api/cash/sites/:id/royalty-proposta`.
+- B14 · Contratto Service: con la sede SERVICE del cliente (`sedeServiceDi`) nome e indirizzo del punto si leggono dalla sede (nel form in
+  sola lettura con il rimando a Sedi) e l'Allegato 2 (ritiro) prende sede, via, città, telefono, email e, senza giorni indicati, i giorni
+  fissi dagli orari della sede (`datiDaSedeService`); i campi compilati del ritiro restano. Senza sede SERVICE valgono i campi del
+  contratto (dai quali la contrattualizzazione crea la sede, A7).
+- B15 · **Retail B2B = clienti attivi**: la pagina "Aziende e strutture (B2B)" elenca i clienti di `clienti_attivi_v` (Service e MdL,
+  attivi e in avvio) con l'anagrafica della Legal entity, i codici StudioLAB abbinati, visite e fatturato. `retail.customers` con
+  `kind = 'B2B'` è il **ponte** codice StudioLAB → Legal entity (`abbinamento` AUTO | MANUALE | DA_ABBINARE, vista `retail.b2b_v`) con i
+  soli campi di Retail (segmento, settore, note, gruppo): i campi anagrafici si leggono dal core e il PUT di un B2B ignora gli altri. L'import
+  delle vendite non crea più B2B anonimi: un codice nuovo si abbina in automatico se una sede ha lo stesso codice StudioLAB (o una Legal
+  entity la stessa P.IVA), altrimenti va in "Da abbinare" (selettore della Legal entity, clienti attivi per primi) e nel rapporto dell'import
+  (`b2b.abbinati`, `b2b.da_abbinare`). D21a "Abbina dai codici StudioLAB" e D21b "Abbina alla Legal entity della sede" attivi.
+
+**Un solo proprietario per orari, superfici e ambulatori (B3, B4).**
+- B3 · Room legge gli orari di apertura della sede dal core (`orariRoomDaCore`: dalla prima apertura all'ultima chiusura del giorno, le
+  fasce nel dettaglio) e non ne salva più la copia in `site_ext.data.hours` (resta come ripiego per le sedi senza orari in anagrafica:
+  conteggio nel rapporto room 011); nel planner gli orari sono in sola lettura con il rimando. Retail li leggeva già dal core.
+- B4 · Superficie, locali e box prelievo sono di Facility (`facility.properties`, colonna `boxes` nuova); il numero di ambulatori è quello
+  di Room (`public.ambulatori_room`). Retail li mostra in sola lettura (`retail.sites_v` da `public.facility_sede`) e non li scrive più;
+  la migrazione porta in Facility superficie e box scritti in Retail dove Facility non li aveva (`public.consolida_superfici_in_facility`).
+  Ore e giorni di apertura settimanali per gli indicatori energetici di Facility si calcolano dagli orari della sede
+  (`public.ore_apertura_settimana`, `giorni_apertura_settimana`); il valore scritto a mano vale solo per le sedi senza orari.
+
+**Cash, referenti, Contratti del personale (B6, B7, B8).**
+- B6 · L'azienda di Cash di una sede è la sua Legal entity proprietaria (se società del gruppo): il PUT di Cash la imposta dal core, saveSite
+  la riallinea quando cambia (`syncCompanyToCash`); D07 "Azienda = Legal entity della sede" attivo; rapporto cash 017.
+- B7 · Referenti del Business Hub collegati alla persona di Amministrazione > Persone con la stessa email anche senza accesso (mai una
+  persona di un'altra Legal entity), al salvataggio del referente e dalla correzione D23.
+- B8 · Contratti del personale: le aree sono le unità di primo livello dell'organigramma del core (`areas.core_unit_id`, migrazione
+  contracts 020: collegate per nome, le altre nel rapporto). Le route di scrittura delle aree e dell'organigramma del modulo rispondono 410
+  con il rimando ad Amministrazione > Organizzazione; in Impostazioni del modulo le aree sono in sola lettura con "Allinea al core" (crea
+  le aree delle unità nuove e ne riprende i nomi, nessuna area eliminata).
+
+**Correzioni C.**
+- C1 · Spedizioni: sede di ricezione del campione = sede dell'anagrafica (`orders.sample_received_site_id`; il testo resta per lo storico,
+  la migrazione abbina i testi riconosciuti); l'impostazione `td_sites` non è più letta.
+- C2 · Fascicoli: orari dei prelievi dalle fasce della sede e personale dalle persone attive della sede (responsabile per primo) alla
+  creazione; "Dalla sede" e "Dall'anagrafica" nella scheda del fascicolo.
+- C4 · Eliminazione di sede o Legal entity: le estensioni dei moduli con righe si elencano e chiedono la conferma (409 `ESTENSIONI`).
+- C5 · Payments: `beneficiaries.org_id` facoltativo verso la Legal entity (collegato dal locatore/fornitore e dalla migrazione dove la
+  P.IVA coincide con una sola Legal entity).
+- C6 · Via le costanti morte (sedi fisse di Contratti e Retail con Viale Belfiore); il luogo delle lettere dei Contratti del personale è la
+  città dei Dati aziendali (`letter_city` in sola lettura).
+- C7 · Costante unica dei tipi di struttura (`lib/tipiSede.js`: `SITE_KINDS`, `SEDI_OPERATIVE`, `SEDI_TD`).
+- C8 · Tabelle residue dello scadenziario in Cash eliminate solo se vuote (rapporto `cash/017#C8`).
+- C9 · Selettori di Legal entity di Ticket e Audit partner senza prospect né target.
+- C10 · D41: scostamenti dei moduli dal tipo di sede (ruolo in Ordini, network di Retail).
+- C11 · Spedizioni: indirizzo di ritorno dai Dati aziendali se l'impostazione è vuota o è ancora il testo iniziale.
+- C12 · Referti esterni: ogni laboratorio di origine collegato a una Legal entity (Impostazioni del modulo, proposta per nome).
+- C13 · La sede della persona è la sede di lavoro del contratto in corso (Contratti del personale la allinea, l'utente la segue); in Persone
+  non si cambia (400 con il rimando); D36 attivo con la correzione "Sede = sede del contratto".
+
+**Diagnostica.** Attivi D24 (B1) e D36 (C13); correzioni nuove: D07, D16a-c (Unisci), D21a, D21b, D23, D24, D25, D36; D22c adattato a
+B9; nuovo D41 (C10). Schermate: docs/screens/admin-legal-entity-unisci.png, retail-b2b-abbinamento.png, cash-royalty-proposta.png.
+
+**Verifiche in produzione dopo il rilascio** (Amministrazione > Diagnostica anagrafica o in sola lettura):
+- rapporti: `SELECT entity_id, data FROM audit_log WHERE action='MIGRAZIONE_RAPPORTO' AND entity_id IN ('045_anagrafica_blocco3.sql',
+  'business/019_tipi_legal_entity.sql','cash/017_azienda_dalla_sede.sql','cash/017_azienda_dalla_sede.sql#C8','retail/012_b2b_ponte.sql',
+  'retail/013_struttura_da_facility_room.sql','room/011_anagrafica_blocco3.sql','facility/005_anagrafica_blocco3.sql',
+  'contracts/020_aree_dal_core.sql','shipments/006_sede_ricezione.sql','finance/005_beneficiari_legal_entity.sql');`
+- tipi (decisione 8): `SELECT id, kind, name FROM organizations WHERE notes LIKE '%migrazione 045%';` (righe cambiate o rimaste CLIENTE);
+- D15b = 0 e `SELECT to_regclass('public.sites_studiolab_code_uq')` non nullo (altrimenti pulire i doppioni in Sedi);
+- D16a/b/c (duplicati da unire con "Unisci"), D21a/D21b (B2B da abbinare), D07, D23, D24, D25, D36, D41;
+- B2B: `SELECT abbinamento, count(*) FROM retail.customers WHERE kind='B2B' AND NOT demo GROUP BY 1;`
+- aree dei Contratti: rapporto contracts 020 (`aree_senza_unita_del_core`, `unita_di_primo_livello_senza_area`), poi "Allinea al core";
+- Room: `sedi_con_orari_solo_in_room` nel rapporto room 011 (sedi a cui mancano gli orari in Amministrazione > Sedi).

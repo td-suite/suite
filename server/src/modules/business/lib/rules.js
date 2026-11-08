@@ -1,6 +1,6 @@
 // Impostazioni predefinite, etichette, regole dei contratti e del fascicolo
 import { many } from '../db.js';
-import { getCompany, splitTitle } from '../../../lib/company.js';
+import { getCompany, splitTitle, getLaboratorio } from '../../../lib/company.js';
 
 export const DEFAULT_SETTINGS = {
   // Società
@@ -94,7 +94,8 @@ export const DEFAULT_SETTINGS = {
 };
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura
-export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_city', 'company_prov', 'company_vat', 'company_tax_code', 'company_capital', 'company_phone', 'company_fax', 'company_pec', 'ds_name', 'ds_title'];
+// lab_address (B9): dalla sede LABORATORIO di Amministrazione > Sedi, in sola lettura come i Dati aziendali
+export const CORE_KEYS = ['company_name', 'company_legal_address', 'company_city', 'company_prov', 'company_vat', 'company_tax_code', 'company_capital', 'company_phone', 'company_fax', 'company_pec', 'ds_name', 'ds_title', 'lab_address'];
 export function coreSettings(co) {
   const ds = splitTitle(co.health_director);
   return { company_name: co.legal_name, company_legal_address: [co.address, [co.zip, co.city && `${co.city}${co.province ? ` (${co.province})` : ''}`].filter(Boolean).join(' ')].filter(Boolean).join(', '),
@@ -107,6 +108,8 @@ export async function getSettings() {
   for (const r of rows) s[r.key] = r.value;
   const core = coreSettings(await getCompany());
   for (const [k, v] of Object.entries(core)) if (v) s[k] = v;   // i dati aziendali della Suite prevalgono sulle copie del modulo
+  const lab = await getLaboratorio();   // B9: indirizzo del Laboratorio dalla sede LABORATORIO (l'impostazione del modulo non vale più)
+  if (lab?.indirizzo_contratti) s.lab_address = lab.indirizzo_contratti;
   if (!s.ds_phone) s.ds_phone = s.company_phone;
   return s;
 }

@@ -21,6 +21,16 @@ async function evento(contractId, kind, userId, note, data) {
   await q('INSERT INTO contract_events(contract_id, kind, user_id, note, data) VALUES ($1,$2,$3,$4,$5)', [contractId, kind, userId || null, note, data ? JSON.stringify(data) : null]).catch(() => {});
 }
 
+// B13: alla firma la proposta delle royalties per Cash (dai fee.items del contratto) si prepara e si annota negli eventi del contratto;
+// si conferma nella pagina Punti Prelievo o in Cash > Sedi (mai scritta da sola)
+async function notaRoyalty(c, siteId, userId) {
+  const { propostaRoyalty } = await import('../../../lib/royaltyPP.js');
+  const p = await propostaRoyalty(siteId).catch(() => null);
+  if (!p || !['NUOVA', 'DIVERSA'].includes(p.stato)) return p ? { stato: p.stato } : null;
+  await evento(c.id, 'ROYALTY_PROPOSTA', userId, `Royalties per Cash dal contratto: ${p.proposta.voci.join('; ') || 'nessuna voce'}. ${p.stato === 'DIVERSA' ? 'Cash ha già royalties diverse: ' : ''}da confermare in Business Hub > Punti Prelievo o in Cash > Sedi`, { site_id: siteId, proposta: p.proposta, differenze: p.differenze });
+  return { stato: p.stato, differenze: p.differenze };
+}
+
 /** Coerenza tra contratto PP e sede (funzione pura, usata anche dall'elenco Punti Prelievo e dalla Diagnostica D04). */
 export function coerenzaPP({ sede, orgId }) {
   if (!sede) return { stato: 'SENZA_SEDE', testo: 'Il contratto non indica la sede del punto prelievi' };
@@ -43,7 +53,7 @@ export async function allineaSedeAllaFirma(contractId, { req = null, userId = nu
   if (!c.org_id) return { esito: 'SENZA_CONTROPARTE', avviso: 'Contratto PP senza controparte: la sede non si aggiorna' };
   const sede = c.site_id ? await caricaSede(c.site_id) : null;
   const co = coerenzaPP({ sede, orgId: c.org_id });
-  if (co.stato === 'OK') return { esito: 'COERENTE' };
+  if (co.stato === 'OK') return { esito: 'COERENTE', royalty: await notaRoyalty(c, sede.id, userId) };
   if (co.stato === 'SENZA_SEDE') { await evento(c.id, 'SEDE_AVVISO', userId, co.testo); return { esito: 'SENZA_SEDE', avviso: co.testo }; }
   if (co.stato === 'CONFLITTO') {
     await evento(c.id, 'SEDE_AVVISO', userId, `Firma: ${co.testo}`, { site_id: sede.id, host_organization_id: sede.host_organization_id, controparte: c.org_id });
@@ -51,7 +61,8 @@ export async function allineaSedeAllaFirma(contractId, { req = null, userId = nu
   }
   const s = await saveSite({ id: sede.id, data: { tenure: 'OSPITATA', host_organization_id: c.org_id }, origine: `Business Hub, firma del contratto PP ${c.protocol || `#${c.id}`}`, req, actorId: req ? null : await suiteIdDi(userId) });
   await evento(c.id, 'SEDE_ALLINEATA', userId, `Sede ${sede.name} (${sede.code}) impostata in Amministrazione > Sedi come Ospitata da ${c.org_name}`, { site_id: sede.id, prima: { tenure: sede.tenure, host_organization_id: sede.host_organization_id }, perimetri: s.perimetri });
-  return { esito: 'IMPOSTATA', perimetri: s.perimetri, avviso: null };
+  const royalty = await notaRoyalty(c, sede.id, userId);
+  return { esito: 'IMPOSTATA', perimetri: s.perimetri, avviso: null, royalty };
 }
 
 /**
@@ -89,4 +100,21 @@ export async function dopoCambioStato(contractId, nuovoStato, opts = {}) {
 export async function verificaSedePP(orgId, siteId) {
   const sede = siteId ? await caricaSede(siteId) : null;
   return coerenzaPP({ sede, orgId });
+}
+
+/**
+ * B1 (08/11/2026): la data di avvio effettiva del punto prelievi è l'apertura della sede (public.sites.opened_at). Si scrive con saveSite
+ * solo se la sede non ha ancora una data di apertura; se ne ha un'altra resta quella dell'anagrafica (avviso: decide Amministrazione).
+ * Ritorna { esito: 'SCRITTA' | 'GIA_ALLINEATA' | 'DIVERSA' | 'SENZA_SEDE', avviso? }.
+ */
+export async function dataAvvioInSede(siteId, data, { req = null, userId = null } = {}) {
+  if (!siteId || !data) return { esito: 'SENZA_SEDE' };
+  const s = await one('SELECT id, code, name, opened_at FROM public.sites WHERE id=$1', [siteId]);
+  if (!s) return { esito: 'SENZA_SEDE' };
+  const cur = s.opened_at ? String(s.opened_at).slice(0, 10) : null;
+  const d = String(data).slice(0, 10);
+  if (cur === d) return { esito: 'GIA_ALLINEATA' };
+  if (cur) return { esito: 'DIVERSA', avviso: `La sede ${s.code} ha già la data di apertura ${cur.split('-').reverse().join('/')} in Amministrazione > Sedi: resta quella (la data di avvio del punto la segue)` };
+  await saveSite({ id: s.id, data: { opened_at: d }, origine: 'Business Hub, data di avvio effettiva del punto prelievi', req, actorId: req ? null : await suiteIdDi(userId) });
+  return { esito: 'SCRITTA' };
 }

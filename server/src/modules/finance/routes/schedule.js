@@ -14,7 +14,7 @@ import { requestSchema, createRequest } from '../lib/requestCreate.js';
 import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../../../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
 import { aiEnabled } from '../../../lib/claude.js';
-import { matchOrg } from '../../../lib/anagraficaMatch.js';
+import { landlordOrg } from '../../../lib/leaseAnalysis.js';
 import { leaseToSite } from '../../../lib/leaseSync.js';
 
 const uploadPdf = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
@@ -220,8 +220,10 @@ r.post('/beneficiaries', requireWrite, ah(async (req, res) => {
   const taxId = org?.vat_number || org?.tax_code || d.tax_id || null;
   let b = taxId ? await one('SELECT * FROM beneficiaries WHERE lower(tax_id)=lower($1)', [taxId]) : null;
   if (!b) b = await one('SELECT * FROM beneficiaries WHERE lower(name)=lower($1)', [name]);
-  if (!b) b = await one('INSERT INTO beneficiaries (name, tax_id) VALUES ($1,$2) RETURNING *', [name, taxId]);
+  if (!b && d.org_id) b = await one('SELECT * FROM beneficiaries WHERE org_id=$1 ORDER BY id LIMIT 1', [d.org_id]);
+  if (!b) b = await one('INSERT INTO beneficiaries (name, tax_id, org_id) VALUES ($1,$2,$3) RETURNING *', [name, taxId, d.org_id || null]);
   else if (!b.tax_id && taxId) await q('UPDATE beneficiaries SET tax_id=$2 WHERE id=$1', [b.id, taxId]);
+  if (d.org_id && !b.org_id) await q('UPDATE beneficiaries SET org_id=$2 WHERE id=$1 AND org_id IS NULL', [b.id, d.org_id]);   // C5: collegamento facoltativo alla Legal entity
   if (org?.iban) await q('INSERT INTO beneficiary_ibans (beneficiary_id, iban, bic, bank) VALUES ($1,$2,$3,$4) ON CONFLICT (beneficiary_id, iban) DO NOTHING', [b.id, org.iban.replace(/\s+/g, '').toUpperCase(), org.bic || null, org.bank_name || null]);
   await audit(req, 'BENEFICIARY_CREATE', 'beneficiary', b.id, { name, tax_id: taxId, org_id: d.org_id, from: 'scadenziario' });
   const ibans = await many('SELECT iban, bic, bank, verified_at FROM beneficiary_ibans WHERE beneficiary_id=$1 ORDER BY first_seen_at DESC', [b.id]);
@@ -292,14 +294,9 @@ r.post('/organizations', requireWrite, ah(async (req, res) => {
   const loc = f.extracted.locatore;
   const name = String(loc.ragione_sociale || '').trim();
   if (name.length < 2) throw bad('Ragione sociale del locatore non letta dal contratto: crea la Legal entity in Amministrazione');
-  const hit = await matchOrg({ vat_number: loc.piva, tax_code: loc.cf, name });
-  if (hit) return res.json({ id: hit.id, name: hit.name, existing: true, how: hit.how });
-  const addr = String(loc.indirizzo || '');
-  const mCity = addr.match(/,\s*([^,(]+?)\s*(?:\(([A-Z]{2})\))?\s*$/);
-  const row = await one(`INSERT INTO public.organizations (kind, name, vat_number, tax_code, pec, address, city, province, needs_review, notes)
-    VALUES ('PARTNER', $1, $2, $3, $4, $5, $6, $7, TRUE, $8) RETURNING id, name, kind, vat_number, tax_code, city`,
-  [name, loc.piva || null, loc.cf || null, loc.pec || null, mCity ? addr.slice(0, mCity.index).trim() || null : addr || null, mCity ? mCity[1].trim() : null, mCity?.[2] || null,
-    `Creata dallo Scadenziario strutture (Payments) dal contratto di affitto in PDF${loc.legale_rappresentante ? ` · legale rappresentante ${loc.legale_rappresentante}` : ''}`]);
+  // B5: locatore = FORNITORE, creato (o ritrovato) dalla funzione unica del core (lib/leaseAnalysis.js landlordOrg → createOrganization)
+  const row = await landlordOrg(loc, { source: 'lo Scadenziario strutture (Payments)', actorId: req.suiteUser?.id || null });
+  if (row.existing) return res.json(row);
   await audit(req, 'ORGANIZATION_CREATE', 'organization', row.id, { name, vat_number: loc.piva, from_document_id: f.id, source: 'scadenziario' });
   res.status(201).json({ ...row, existing: false });
 }));
@@ -391,7 +388,7 @@ r.post('/leases', requireWrite, ah(async (req, res) => {
     return l;
   });
   // anagrafica Sedi: una sede che non era in locazione diventa LOCAZIONE con canone, locatore e durata del contratto (lib/leaseSync.js)
-  const registry = await leaseToSite(row.id, { actorId: req.suiteUser?.id }).catch((e) => ({ status: 'error', reason: e.message }));
+  const registry = await leaseToSite(row.id, { actorId: req.suiteUser?.id, confermaTitolo: req.body?.conferma_titolo === true }).catch((e) => ({ status: 'error', reason: e.message }));
   await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount, steps: steps.length, document_id: doc?.id || null, registry: registry.status });
   res.status(201).json({ ...row, registry_sync_result: registry });
 }));
@@ -417,9 +414,17 @@ r.put('/leases/:id', requireWrite, ah(async (req, res) => {
       await c.query('UPDATE lease_steps SET valid_from=$2 WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM lease_steps x WHERE x.lease_id=$3 AND x.valid_from=$2 AND x.id<>$1)', [ini.id, start, l.id]);
     }
   });
-  const registry = await leaseToSite(l.id, { actorId: req.suiteUser?.id }).catch((e) => ({ status: 'error', reason: e.message }));
+  const registry = await leaseToSite(l.id, { actorId: req.suiteUser?.id, confermaTitolo: req.body?.conferma_titolo === true }).catch((e) => ({ status: 'error', reason: e.message }));
   await audit(req, 'LEASE_UPDATE', 'lease', l.id, { ...d, registry: registry.status });
   res.json({ ...(await one('SELECT * FROM lease_contracts WHERE id=$1', [l.id])), registry_sync_result: registry });
+}));
+
+// B18: allineamento dell'anagrafica Sedi dal contratto con la conferma del cambio di titolo (sede Ospitata, di proprietà o in comodato)
+r.post('/leases/:id/allinea-anagrafica', requireWrite, ah(async (req, res) => {
+  const l = await getLease(req, Number(req.params.id));
+  const registry = await leaseToSite(l.id, { actorId: req.suiteUser?.id, confermaTitolo: req.body?.conferma_titolo === true }).catch((e) => ({ status: 'error', reason: e.message }));
+  await audit(req, 'LEASE_REGISTRY_SYNC', 'lease', l.id, { site_id: l.site_id, conferma_titolo: req.body?.conferma_titolo === true, esito: registry.status, tenure_before: registry.tenure_before, tenure_after: registry.tenure_after });
+  res.json({ registry_sync_result: registry });
 }));
 
 r.delete('/leases/:id', requireWrite, ah(async (req, res) => {

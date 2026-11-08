@@ -15,6 +15,17 @@ import { one, many, q } from '../db.js';
 import { todayRome } from './util.js';
 import { getSettings } from './rules.js';
 import { contractData, renderDocx, docxToPdf, pdfAvailable, CONTRACT_TEMPLATE, CONTRACT_DOCNAME } from './docgen.js';
+
+/**
+ * B14: sede SERVICE del contratto Service: quella della Legal entity con il nome del punto del contratto (site_name) se ce ne sono più,
+ * altrimenti la più vecchia attiva. null se il cliente non ha ancora la sede (la crea la contrattualizzazione, A7).
+ */
+export async function sedeServiceDi(c) {
+  const rows = await many(`SELECT id, code, name, address, zip, city, province, phone, email, opening_hours_json FROM public.sites WHERE organization_id=$1 AND kind='SERVICE' AND active ORDER BY id`, [c.org_id]);
+  if (!rows.length) return null;
+  const nome = String(c.data?.site_name || '').trim().toLowerCase();
+  return (nome && rows.find((r) => r.name.trim().toLowerCase() === nome)) || rows[0];
+}
 import { storeBuffer, readBuffer, dropBlobs } from './storage.js';
 import { versioneCorrente } from './listino.js';
 import { collegaVersione } from './listinoUnico.js';
@@ -110,6 +121,7 @@ export async function rendiContratto(c, s, userId) {
     if (politica.avviso) avvisi.push(politica.avviso);
     extra.politica = { doc: politica.doc, inCoda: Boolean(politica.pdf) };
   }
+  if (c.kind === 'SRV' && c.org_id) extra.sedeService = await sedeServiceDi(c);   // B14
   const data = contractData(c, c.org, s, extra);
   const docx = renderDocx(CONTRACT_TEMPLATE[c.kind], data);
   const base = `${CONTRACT_DOCNAME[c.kind]}_${c.protocol}_v${c.version}`;

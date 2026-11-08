@@ -111,43 +111,12 @@ r.get('/', ah(async (_req, res) => {
   res.json({ tree: roots, counts, documents, reporting: people });
 }));
 
-r.post('/units', requireWrite, ah(async (req, res) => {
-  const d = parse(unitSchema, req.body);
-  if (d.parent_id && !(await one('SELECT 1 FROM org_units WHERE id=$1', [d.parent_id]))) throw bad('Unità padre inesistente');
-  const row = await one(`INSERT INTO org_units(parent_id, kind, name, role_title, head_name, resource_id, area_id, tbd, notes, sort_order)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, coalesce($10, (SELECT coalesce(max(sort_order),0)+10 FROM org_units WHERE parent_id IS NOT DISTINCT FROM $1))) RETURNING id`,
-    [d.parent_id ?? null, d.kind, d.name, d.role_title ?? null, d.head_name ?? null, d.resource_id ?? null, d.area_id ?? null, Boolean(d.tbd), d.notes ?? null, d.sort_order ?? null]);
-  await audit(req, 'ORG_UNIT_CREATE', 'org_unit', row.id, { name: d.name });
-  res.status(201).json(row);
-}));
-
-r.put('/units/:id', requireWrite, ah(async (req, res) => {
-  const id = Number(req.params.id);
-  const cur = await one('SELECT * FROM org_units WHERE id=$1', [id]);
-  if (!cur) throw notFound('Unità inesistente');
-  const d = parse(unitSchema.partial(), req.body);
-  if (d.parent_id !== undefined) {
-    if (d.parent_id === id) throw bad('Un\'unità non può dipendere da sé stessa');
-    // impedisce cicli: il nuovo padre non deve essere un discendente
-    let p = d.parent_id; const seen = new Set();
-    while (p) { if (p === id) throw bad('Spostamento non valido: creerebbe un ciclo'); if (seen.has(p)) break; seen.add(p); p = (await one('SELECT parent_id FROM org_units WHERE id=$1', [p]))?.parent_id; }
-  }
-  const cols = Object.keys(d);
-  if (!cols.length) return res.json({ ok: true });
-  await q(`UPDATE org_units SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...cols.map((k) => d[k])]);
-  await audit(req, 'ORG_UNIT_UPDATE', 'org_unit', id, d);
-  res.json({ ok: true });
-}));
-
-r.delete('/units/:id', requireRole('ADMIN'), ah(async (req, res) => {
-  const id = Number(req.params.id);
-  const cur = await one('SELECT * FROM org_units WHERE id=$1', [id]);
-  if (!cur) throw notFound('Unità inesistente');
-  if (!cur.parent_id) throw bad('La radice dell\'organigramma non si elimina');
-  await q('DELETE FROM org_units WHERE id=$1', [id]);
-  await audit(req, 'ORG_UNIT_DELETE', 'org_unit', id, { name: cur.name });
-  res.json({ ok: true });
-}));
+// B8 (programma anagrafica unica, 08/11/2026): l'organigramma è quello del core (Amministrazione > Organizzazione, public.org_units).
+// Le route di scrittura dell'organigramma del modulo non esistono più: rispondono 410 con il rimando.
+const ORG_DAL_CORE = 'L\'organigramma si modifica in Amministrazione > Organizzazione (unità e incarichi del core): il modulo Contratti lo legge da lì';
+r.post('/units', ah(async () => { throw new HttpError(410, ORG_DAL_CORE); }));
+r.put('/units/:id', ah(async () => { throw new HttpError(410, ORG_DAL_CORE); }));
+r.delete('/units/:id', ah(async () => { throw new HttpError(410, ORG_DAL_CORE); }));
 
 /** Allinea il campo "responsabile" delle risorse all'organigramma: il responsabile di ogni unità riporta al responsabile dell'unità padre. */
 r.post('/align-managers', requireRole('ADMIN'), ah(async (req, res) => {

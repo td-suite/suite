@@ -78,6 +78,31 @@ export function ritiroPredefinito(d = {}, p = {}, r = null) {
     fonte: operativa ? 'SEDE_OPERATIVA' : 'SEDE_LEGALE',
   };
 }
+/**
+ * B14 (programma anagrafica unica, 08/11/2026): punto service e ritiro letti dalla sede SERVICE del cliente (Amministrazione > Sedi),
+ * non dalle copie nel contratto. Con la sede: nome e indirizzo del punto sono quelli della sede; il ritiro (Allegato 2) prende sede,
+ * via, città, telefono ed email della sede quando i campi del contratto sono vuoti, e i giorni fissi dagli orari della sede se il
+ * contratto non indica giorni. Senza sede restano i dati del contratto (la sede nasce alla contrattualizzazione, A7).
+ * sede = { name, address, zip, city, province, phone, email, opening_hours_json }. Ritorna d con site_name, site_address e pickup.
+ */
+const GIORNI6 = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export function datiDaSedeService(d = {}, sede = null) {
+  if (!sede) return d;
+  const citta = [sede.zip, sede.city].filter(Boolean).join(' ') + (sede.province ? ` (${sede.province})` : '');
+  const indirizzo = [sede.address, citta].filter((x) => x && x.trim()).join(', ');
+  const pk = { ...(d.pickup || {}) };
+  const vuoto = (k) => !String(pk[k] ?? '').trim();
+  if (vuoto('site')) pk.site = sede.name || '';
+  if (vuoto('street')) pk.street = sede.address || '';
+  if (vuoto('city')) pk.city = citta;
+  if (vuoto('phone') && sede.phone) pk.phone = sede.phone;
+  if (vuoto('email') && sede.email) pk.email = sede.email;
+  const senzaGiorni = !(pk.days || []).some((x) => x?.mode && x.mode !== 'NO');
+  const j = sede.opening_hours_json && typeof sede.opening_hours_json === 'object' ? sede.opening_hours_json : null;
+  if (senzaGiorni && j) pk.days = GIORNI6.map((g) => { const f = (j[g] || [])[0]; return f ? { mode: 'FISSO', time_from: f.from, time_to: f.to } : { mode: 'NO' }; });
+  return { ...d, site_name: sede.name || d.site_name, site_address: indirizzo || d.site_address, pickup: pk, punto_da_sede: true };
+}
+
 /** Allegato 2 per il documento: i campi compilati nel form prevalgono, quelli vuoti prendono il valore proposto. */
 export function ritiroPerDocumento(pickup = {}, d = {}, p = {}, r = null) {
   const pre = ritiroPredefinito(d, p, r);

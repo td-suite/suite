@@ -28,7 +28,7 @@ export default function OrderDetail({ project }) {
   const ret = o.shipments.find((s) => s.direction === 'RETURN');
   const act = async (fn, okMsg) => { setErr(null); try { await fn(); toast(okMsg || t('c.saved')); setModal(null); reload(); } catch (e) { setErr(e); } };
   const open = (m, init = {}) => { setErr(null); setForm(init); setModal(m); };
-  const sites = (pub.data?.td_sites || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const sites = pub.data?.td_sites_list || [];   // C1: sedi dell'anagrafica con l'id
   const closed = ['CLOSED', 'CANCELLED'].includes(o.status);
   const svc = (s) => (s === 'EXPRESS' ? 'SDA Express' : s === 'STANDARD' ? 'SDA Standard' : t('ord.noLeg'));
 
@@ -54,7 +54,7 @@ export default function OrderDetail({ project }) {
         {op && o.status === 'NEW' && <button className="btn" onClick={() => open('assign', { barcode: '' })}>{t('ord.assign')}</button>}
         {op && o.status === 'ASSIGNED' && <button className="btn" onClick={() => open('ship', { outbound_tracking: '', return_tracking: '', shipped_at: today() })}>{t('ord.ship')}</button>}
         {op && o.status === 'SHIPPED' && <button className="btn" onClick={() => open('deliver', { delivered_at: today() })}>{t('ord.deliver')}</button>}
-        {op && ['SHIPPED', 'DELIVERED'].includes(o.status) && <button className="btn" onClick={() => open('sample', { received_at: today(), site: sites[0] || '' })}>{t('ord.sample')}</button>}
+        {op && ['SHIPPED', 'DELIVERED'].includes(o.status) && <button className="btn" onClick={() => open('sample', { received_at: today(), site_id: sites[0]?.id || '' })}>{t('ord.sample')}</button>}
         {op && o.status === 'SAMPLE_RECEIVED' && project === 'ENDEAVOR' && <Link className="btn" to={`/${p}/laboratorio`}>{t('nav.lab')}</Link>}
       </div>
       {o.requester_kind === 'LEGAL_ENTITY' && (
@@ -139,10 +139,10 @@ export default function OrderDetail({ project }) {
         </Modal>
       )}
       {modal === 'sample' && (
-        <Modal title={t('ord.sample')} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" onClick={() => act(() => api.post(`/orders/${o.id}/sample-received`, { received_at: form.received_at, site: form.site || null }))}>{t('c.confirm')}</button></>}>
+        <Modal title={t('ord.sample')} onClose={() => setModal(null)} footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" onClick={() => act(() => api.post(`/orders/${o.id}/sample-received`, { received_at: form.received_at, site_id: Number(form.site_id) || null }))}>{t('c.confirm')}</button></>}>
           <ErrorBox error={err} />
           <Field label={t('ord.sampleDate')}><input type="date" value={form.received_at} onChange={(e) => setForm({ ...form, received_at: e.target.value })} /></Field>
-          {project === 'LIFESTYLE' && <Field label={t('ord.site')}><select value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })}>{sites.map((s) => <option key={s}>{s}</option>)}<option value="">—</option></select></Field>}
+          {project === 'LIFESTYLE' && <Field label={t('ord.site')}><select value={form.site_id} onChange={(e) => setForm({ ...form, site_id: e.target.value })}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}<option value="">—</option></select></Field>}
         </Modal>
       )}
       {modal === 'track' && (

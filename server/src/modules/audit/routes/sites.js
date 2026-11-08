@@ -67,12 +67,14 @@ r.get('/partners', ah(async (req, res) => {
   res.json({ rows: orgs.map((o) => ({ ...o, ultimo: o.ultimo ? { ...o.ultimo, level: levelLetter(o.ultimo.score) } : null })), complessiva, can_conduct: isAuditor(req) });
 }));
 
-// Ricerca Legal entity per il nuovo audit partner (tutte quelle non interne)
+// Ricerca Legal entity per il nuovo audit partner. C9 (programma anagrafica unica): soci in affari reali, non i prospect né le target
+// M&A: partner, fornitori, Legal entity che ospitano una sede attiva, clienti attivi e contrattualizzati (public.cliente_livello)
+const SOCI_IN_AFFARI = `(o.kind IN ('PARTNER','FORNITORE') OR public.cliente_livello(o.id) IS NOT NULL OR EXISTS (SELECT 1 FROM public.sites s WHERE s.active AND s.host_organization_id = o.id))`;
 r.get('/organizations', ah(async (req, res) => {
   if (limitedToSites(req)) throw forbidden();
   const qs = String(req.query.q || '').trim();
   const params = [INTERNAL_ORG_KINDS];
-  let w = `NOT (o.kind = ANY($1)) AND o.active`;
+  let w = `NOT (o.kind = ANY($1)) AND o.active AND ${SOCI_IN_AFFARI}`;
   if (qs) { params.push(`%${qs}%`); w += ` AND (o.name ILIKE $${params.length} OR o.vat_number ILIKE $${params.length})`; }
   res.json(await many(`SELECT o.id, o.kind, o.name, o.vat_number, o.city FROM public.organizations o WHERE ${w} ORDER BY o.name LIMIT 50`, params));
 }));

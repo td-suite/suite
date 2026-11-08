@@ -159,8 +159,10 @@ export async function creaSedeService({ orgId, linea = 'SRV', contrattoId = null
 export async function sediServiceMancanti({ esegui = false, orgIds = null, req = null, actorId = null } = {}) {
   const out = { pronto: await has('business.accounts'), esegui, piano: [], strutture_in_attesa: [], creati: 0, errori: 0 };
   if (!out.pronto) return out;
+  // Solo i clienti ATTIVI nel Business Hub (fase 7 confermata dal CEO): "Nella scheda Sedi/Strutture clienti service devono figurare solo
+  // quelli ATTIVI. Verifica sempre lo stato da Business Hub" (CEO, 08/11/2026). I contrattualizzati aspettano la conferma.
   const clienti = await many(`SELECT v.org_id, o.name AS org_name, array_agg(DISTINCT v.linea ORDER BY v.linea) AS linee, array_agg(DISTINCT v.livello) AS livelli
-      FROM public.clienti_attivi_v v JOIN organizations o ON o.id=v.org_id WHERE ($1::int[] IS NULL OR v.org_id = ANY($1::int[])) GROUP BY v.org_id, o.name ORDER BY lower(o.name)`, [orgIds]);
+      FROM public.clienti_attivi_v v JOIN organizations o ON o.id=v.org_id WHERE v.livello='ATTIVO' AND ($1::int[] IS NULL OR v.org_id = ANY($1::int[])) GROUP BY v.org_id, o.name ORDER BY lower(o.name)`, [orgIds]);
   for (const c of clienti) {
     const accounts = await many(`SELECT id, linea, sedi FROM business.accounts WHERE organization_id=$1 AND linea = ANY($2::text[]) ORDER BY linea`, [c.org_id, c.linee]);
     const punti = (await many(`SELECT data->>'site_name' AS a, data->'pickup'->>'site' AS b FROM business.contracts WHERE org_id=$1 AND kind = ANY($2::text[]) AND status IN ('FIRMATO','ATTIVO')`, [c.org_id, c.linee])).flatMap((r) => [r.a, r.b]).filter(Boolean);

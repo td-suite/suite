@@ -9,13 +9,29 @@ export const BLOB_KINDS = ['logo', 'planPdf', 'planImg'];
 export const ANAGRAFICA_KEYS = ['id', 'denominazione', 'nomeSede', 'indirizzo', 'telefono', 'email', 'siteManager', 'siteManagerEmailDefault'];
 
 // Colonne di sites_v che servono alle route
-export const SITE_COLS = 's.id, s.code, s.name, s.short_name, s.kind, s.address, s.zip, s.city, s.province, s.phone, s.email, s.manager_name, s.manager_email, s.active, s.sort_order, s.data, s.version, s.created_at, s.updated_at, s.updated_by, s.configurata';
+export const SITE_COLS = 's.id, s.code, s.name, s.short_name, s.kind, s.address, s.zip, s.city, s.province, s.phone, s.email, s.manager_name, s.manager_email, s.active, s.sort_order, s.data, s.version, s.created_at, s.updated_at, s.updated_by, s.configurata, s.opening_hours_json';
 
 export function indirizzoDi(row) {
   const parts = [row.address || ''];
   const city = row.city || '';
   if (city && !parts[0].toLowerCase().includes(city.toLowerCase())) parts.push([row.zip, city, row.province].filter(Boolean).join(' '));
   return parts.filter(Boolean).join(', ');
+}
+
+// B3 (programma anagrafica unica, 08/11/2026): gli orari di apertura della sede sono quelli di Amministrazione > Sedi
+// (public.sites.opening_hours_json, fino a tre fasce al giorno). Room li riceve nel suo modello (una fascia al giorno: dalla prima
+// apertura all'ultima chiusura) e non ne tiene una copia; le fasce degli ambulatori e del desk restano di Room. Una sede senza orari
+// in anagrafica usa ancora quelli salvati in Room (ripiego dichiarato: la Diagnostica e il rapporto lo segnalano).
+const GIORNI_CORE = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+export const haOrariCore = (j) => Boolean(j && typeof j === 'object' && GIORNI_CORE.some((d) => Array.isArray(j[d]) && j[d].length));
+export function orariRoomDaCore(j) {
+  if (!haOrariCore(j)) return null;
+  const h = {};
+  GIORNI_CORE.forEach((d, i) => {
+    const f = (Array.isArray(j[d]) ? j[d] : []).filter((x) => x?.from && x?.to).sort((a, b) => a.from.localeCompare(b.from));
+    h[i] = f.length ? { closed: false, open: f[0].from, close: f.reduce((m, x) => (x.to > m ? x.to : m), f[0].to), fasce: f.map((x) => ({ from: x.from, to: x.to })) } : { closed: true, open: '08:00', close: '13:00' };
+  });
+  return h;
 }
 
 // Documento "lite" (senza binari) di una sede dell'anagrafica unica: impostazioni Room se presenti, altrimenti i valori di una sede nuova
@@ -26,13 +42,17 @@ export function liteOf(row) {
   for (const k of ANAGRAFICA_KEYS) delete lite[k];
   lite.plan = { markers: data.plan?.markers || {} };
   lite.logo = null;
+  const core = orariRoomDaCore(row.opening_hours_json);   // B3: orari dall'anagrafica
+  if (core) lite.hours = core;
+  lite._orariDaSede = Boolean(core);
   return { id: row.id, denominazione: row.name || '', nomeSede: '', indirizzo: indirizzoDi(row), telefono: row.phone || '', email: row.email || '', siteManager: row.manager_name || '', siteManagerEmailDefault: row.manager_email || '', ...lite,
     _code: row.code, _active: row.active, _configurata: Boolean(row.configurata) };
 }
 
 // Impostazioni Room da salvare in site_ext.data: tutto il documento tranne anagrafica, binari e campi tecnici
-export function extData(lite) {
+export function extData(lite, row = null) {
   const d = { ...lite };
+  if (row && haOrariCore(row.opening_hours_json)) delete d.hours;   // B3: gli orari della sede non si copiano in Room
   for (const k of ANAGRAFICA_KEYS) delete d[k];
   delete d.logo;
   d.plan = { markers: lite.plan?.markers || {} };
@@ -85,7 +105,7 @@ export async function mutateStruttura(id, mutator, user, note = 'aggiornamento a
   const data = liteOf(row);
   if (!mutator(data)) return false;
   const newVersion = (row.version || 0) + 1;
-  const ext = extData(data);
+  const ext = extData(data, row);
   await tx(async (c) => {
     await c.query(`INSERT INTO site_ext (site_id, data, version, updated_by) VALUES ($1,$2,$3,$4)
       ON CONFLICT (site_id) DO UPDATE SET data=EXCLUDED.data, version=EXCLUDED.version, updated_at=now(), updated_by=EXCLUDED.updated_by`, [id, JSON.stringify(ext), newVersion, user?.id || null]);

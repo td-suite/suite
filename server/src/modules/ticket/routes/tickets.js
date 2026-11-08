@@ -45,7 +45,10 @@ r.get('/catalogo', ah(async (req, res) => {
             (SELECT string_agg(p.last_name || ' ' || p.first_name, ', ' ORDER BY p.last_name) FROM public.org_positions op JOIN public.people p ON p.id=op.person_id WHERE op.unit_id=u.id AND op.is_head) AS responsabili
           FROM public.org_units u WHERE u.active ${external ? 'AND u.public_contact' : ''} ORDER BY u.sort_order, u.name`),
     many(`SELECT id, code, name, short_name, kind, city, organization_id FROM public.sites WHERE active AND kind <> 'SERVICE' ORDER BY name`),
-    many(`SELECT id, code, name, kind FROM public.organizations WHERE active ORDER BY name`),
+    // C9 (programma anagrafica unica): niente prospect nel selettore: società del gruppo, partner, fornitori, clienti attivi e
+    // contrattualizzati (public.cliente_livello) e Legal entity che ospitano una sede attiva
+    many(`SELECT id, code, name, kind FROM public.organizations o WHERE active AND (kind IN ('GRUPPO','SOCIETA','PARTNER','FORNITORE') OR public.cliente_livello(o.id) IS NOT NULL
+            OR EXISTS (SELECT 1 FROM public.sites s WHERE s.active AND s.host_organization_id = o.id)) ORDER BY name`),
     settings(),
   ]);
   const unitIds = new Set(unita.map((u) => u.id));

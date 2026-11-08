@@ -310,8 +310,13 @@ export function Sites() {
   }, [data]);
   const norm = (x) => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const isService = (s) => s.kind === 'SERVICE';
+  // Strutture clienti service: SOLO i clienti ATTIVI, stato letto dal Business Hub (cliente_livello della vista clienti_attivi_v; CEO, 08/11/2026).
+  // Le strutture dei clienti contrattualizzati ma non ancora attivi restano nascoste; un link le mostra per correggerle.
+  const [mostraNonAttivi, setMostraNonAttivi] = useState(false);
   const all = data || [];
-  const rows = all.filter((s) => (tab === 'service' ? isService(s) : !isService(s))).filter((s) => !q || norm(`${s.code} ${s.name} ${s.short_name || ''} ${s.address || ''} ${s.zip || ''} ${s.city || ''} ${s.province || ''} ${s.organization_name || ''} ${s.studiolab_code || ''}`).includes(norm(q)));
+  const serviceAttiva = (s) => isService(s) && s.cliente_livello === 'ATTIVO';
+  const serviceNonAttive = all.filter((s) => isService(s) && s.cliente_livello !== 'ATTIVO');
+  const rows = all.filter((s) => (tab === 'service' ? (mostraNonAttivi ? isService(s) : serviceAttiva(s)) : !isService(s))).filter((s) => !q || norm(`${s.code} ${s.name} ${s.short_name || ''} ${s.address || ''} ${s.zip || ''} ${s.city || ''} ${s.province || ''} ${s.organization_name || ''} ${s.studiolab_code || ''}`).includes(norm(q)));
   const fields = [
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
@@ -353,6 +358,12 @@ export function Sites() {
   ];
   const save = async (body) => {
     const b = { ...body, organization_id: body.organization_id ? Number(body.organization_id) : null, host_organization_id: body.host_organization_id ? Number(body.host_organization_id) : null, lease_landlord_org_id: body.lease_landlord_org_id ? Number(body.lease_landlord_org_id) : null };
+    // B17: prima di chiudere una sede il quadro d'impatto (cosa resta collegato) e la conferma
+    if (modal?.id && modal.active && b.active === false) {
+      const imp = await api.get(`/sites/${modal.id}/impatto-chiusura`);
+      const testo = imp?.voci?.length ? `Chiudendo ${modal.name} restano collegati:\n- ${imp.voci.join('\n- ')}\n\nLa data di chiusura sarà ${b.closed_at ? b.closed_at.split('-').reverse().join('/') : 'oggi'}. Confermi la chiusura?` : `Nessun dato resta collegato a ${modal.name}. Confermi la chiusura?`;
+      if (!window.confirm(testo)) throw new Error('Chiusura annullata: la sede resta attiva');
+    }
     const r = modal?.id ? await api.put(`/sites/${modal.id}`, b) : await api.post('/sites', b);
     const ls = r?.lease_sync;
     // A0/B17: alla chiusura della sede il core restituisce il quadro d'impatto (cosa resta collegato); perimetri dei partner riallineati
@@ -364,7 +375,8 @@ export function Sites() {
   return (
     <div className="page">
       <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<><button className="btn ghost" title="Ricava latitudine e longitudine dall'indirizzo per le sedi che non le hanno" onClick={async () => { try { const r = await api.post('/sites/geocode-missing'); toast(r.queued ? `${r.queued} sedi in coda: coordinate pronte tra circa ${Math.max(5, r.queued * 2)} secondi` : 'Tutte le sedi hanno già le coordinate'); setTimeout(reload, Math.min(60000, Math.max(5000, r.queued * 2500))); } catch (e) { toast(e, 'err'); } }}><Icon name="pin" />Completa coordinate</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button></>} />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(isService).length }]} />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(serviceAttiva).length }]} />
+      {tab === 'service' && serviceNonAttive.length > 0 && <div className="alert info small" style={{ marginTop: 8 }}><Icon name="info" /><span>Qui compaiono solo le strutture dei clienti <b>attivi</b> nel Business Hub (fase 7 confermata dal CEO). {serviceNonAttive.length} struttur{serviceNonAttive.length === 1 ? 'a' : 'e'} di clienti non attivi {mostraNonAttivi ? 'mostrat' : 'nascost'}{serviceNonAttive.length === 1 ? 'a' : 'e'}. <button className="linklike" onClick={() => setMostraNonAttivi((v) => !v)}>{mostraNonAttivi ? 'Nascondi' : 'Mostra per correggere'}</button></span></div>}
       {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente, indirizzo o città' : 'Codice, nome, indirizzo o città'} /><div className="spacer" /><button className={`btn ghost sm${showMap ? ' active' : ''}`} onClick={() => setShowMap((v) => !v)}><Icon name="pin" />{showMap ? 'Nascondi mappa' : 'Mappa'}</button></div>
       {showMap && <Card flush style={{ marginBottom: 14 }}>
@@ -383,10 +395,10 @@ export function Sites() {
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Codice</th><th>Nome</th><th>Tipo</th><th>Indirizzo</th><th>Legal entity</th><th>Responsabile</th><th>Utenti</th><th>Foto</th><th></th></tr></thead><tbody>
           {rows.map((s) => <tr key={s.id}>
             <td className="mono">{s.code}</td>
-            <td><div className="strong">{s.name}{s.planimetria && <a className="plan-ico" href={`/api/sites/${s.id}/planimetria`} target="_blank" rel="noreferrer" title={`Planimetria: ${s.planimetria.filename}${s.planimetria.published_room_at ? ' (in Room Planning e Facility)' : ''}`} aria-label="Planimetria"><Icon name="image" /></a>}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}</div></td>
+            <td><div className="strong">{s.name}{s.planimetria && <a className="plan-ico" href={`/api/sites/${s.id}/planimetria`} target="_blank" rel="noreferrer" title={`Planimetria: ${s.planimetria.filename}${s.planimetria.published_room_at ? ' (in Room Planning e Facility)' : ''}`} aria-label="Planimetria"><Icon name="image" /></a>}</div><div className="row tight">{!s.active && <Badge tone="grey">Non attiva</Badge>}{s.kind === 'SERVICE' && s.cliente_livello !== 'ATTIVO' && <Badge tone="amber" title="Stato del cliente nel Business Hub">{s.cliente_livello === 'CONTRATTUALIZZATO' ? 'Cliente non ancora attivo' : 'Non cliente nel Business Hub'}</Badge>}</div></td>
             <td className="small">{SITE_KIND[s.kind] || s.kind}</td><td className="small">{s.address && <div>{s.address}</div>}<span className="muted">{[s.zip, s.city].filter(Boolean).join(' ')}{s.province ? ` (${s.province})` : ''}</span>{s.lat != null && s.lng != null ? <button className="linklike small" style={{ display: 'block' }} onClick={() => { setShowMap(true); setFocusId(s.id); }}>Sulla mappa</button> : <div className="faint small">Senza coordinate</div>}</td><td className="small">{s.organization_name}{s.host_organization_name && <div className="faint">ospitata da {s.host_organization_name}</div>}<div><Badge tone={s.tenure === 'PROPRIETA' ? 'green' : s.tenure === 'OSPITATA' ? 'mauve' : s.tenure === 'COMODATO' ? 'grey' : 'blue'}>{TENURE[s.tenure] || s.tenure}</Badge>{s.tenure === 'LOCAZIONE' && s.rent_amount != null && <span className="faint"> {eurIt(s.rent_amount)} {RENT_PERIOD[s.rent_period] || ''}</span>}</div></td><td className="small">{s.manager_name ? <Link to={`/people/${s.manager_person_id}`}>{s.manager_name}</Link> : <span className="faint">da assegnare</span>}</td><td className="num">{s.users_count}</td>
             <td className="small muted">{(s.photo_file_ids || []).length ? `${s.photo_file_ids.length} / 3` : ''}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { await api.del(`/sites/${s.id}`); toast('Sede eliminata'); reload(); }} /></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(s)}><Icon name="edit" /></button><button className="iconbtn" aria-label="Foto" title="Foto della sede" onClick={() => setPhotos(s)}><Icon name="image" /></button><DeleteButton label={`la sede ${s.code}`} text="Persone e utenti collegati restano, senza sede. Se la sede ha dati nei moduli l'eliminazione viene rifiutata: in quel caso disattivala." onDelete={async () => { try { await api.del(`/sites/${s.id}`); } catch (e) { if (e.code !== 'ESTENSIONI' || !window.confirm(`${e.message}. Confermi l'eliminazione?`)) throw e; await api.del(`/sites/${s.id}?conferma=1`); } toast('Sede eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
@@ -403,6 +415,8 @@ export function Organizations() {
   const [q, setQ] = useState(qIniziale);
   const [modal, setModal] = useState(null);
   const [access, setAccess] = useState(null);   // sezione Accessi della Legal entity (utenti esterni collegati, nuovo accesso, riallineo)
+  // B5b: ?unisci=<id>,<id> (dalla Diagnostica D16) apre lo strumento di fusione con le due righe
+  const [unisci, setUnisci] = useState(() => { try { const v = new URLSearchParams(window.location.search).get('unisci'); return v ? { ids: v.split(',').map(Number).filter(Boolean) } : null; } catch { return null; } });
   const rows = (data || []).filter((o) => !q || `${o.code || ''} ${o.name} ${o.city || ''}`.toLowerCase().includes(q.toLowerCase()));
   const fields = [
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
@@ -411,10 +425,18 @@ export function Organizations() {
     { key: 'iban', label: 'IBAN', max: 40, help: 'Coordinate bancarie della Legal entity: le leggono Business (contratti) e Cash (addebiti SEPA).' }, { key: 'bic', label: 'BIC', max: 11 }, { key: 'bank_name', label: 'Banca', max: 160 },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
   ];
-  const save = async (body) => { if (modal?.id) await api.put(`/organizations/${modal.id}`, body); else await api.post('/organizations', body); toast('Legal entity salvata'); reload(); };
+  // B5: una Legal entity con la stessa P.IVA, lo stesso CF o lo stesso nome esiste già → 409 DUPLICATO: si crea solo con la conferma
+  const save = async (body) => {
+    if (modal?.id) await api.put(`/organizations/${modal.id}`, body);
+    else {
+      try { const o = await api.post('/organizations', body); if (o?.simili?.length) toast(`Creata con la spunta "da rivedere": nome simile a ${o.simili.map((x) => x.name).join(', ')}`, 'warn'); }
+      catch (e) { if (e.code !== 'DUPLICATO' || !window.confirm(`${e.message}.\n\nCreare comunque una nuova Legal entity?`)) throw e; await api.post('/organizations', { ...body, forza_duplicato: true }); }
+    }
+    toast('Legal entity salvata'); reload();
+  };
   return (
     <div className="page">
-      <PageHead title="Legal entity" icon="folder" sub="Soggetti giuridici, una riga per partita IVA: società del gruppo, clienti service, partner, fornitori e target M&A" actions={<button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova legal entity</button>} />
+      <PageHead title="Legal entity" icon="folder" sub="Soggetti giuridici, una riga per partita IVA: società del gruppo, clienti service, partner, fornitori e target M&A" actions={<><button className="btn ghost" title="Unisci due Legal entity duplicate (anteprima prima di confermare)" onClick={() => setUnisci({ ids: [] })}><Icon name="copy" />Unisci</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova legal entity</button></>} />
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Nome, codice o città" /></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}
@@ -425,13 +447,49 @@ export function Organizations() {
             <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}</div></td>
             <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td>
             <td className="num"><button className="btn sm ghost" title="Accessi esterni della Legal entity" onClick={() => setAccess(o)}><Icon name="users" />{o.users_count}{o.hosted_sites_count > 0 && <Badge tone="amber" title="Ospita punti prelievo TD">{o.hosted_sites_count} ospitat{o.hosted_sites_count === 1 ? 'a' : 'e'}</Badge>}</button></td>
-            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`la legal entity ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { await api.del(`/organizations/${o.id}`); toast('Legal entity eliminata'); reload(); }} /></td>
+            <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`la legal entity ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { try { await api.del(`/organizations/${o.id}`); } catch (e) { if (e.code !== 'ESTENSIONI' || !window.confirm(`${e.message}. Confermi l'eliminazione?`)) throw e; await api.del(`/organizations/${o.id}?conferma=1`); } toast('Legal entity eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>
       {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova legal entity'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
       {access && <OrgAccessModal org={access} onClose={() => setAccess(null)} onChanged={reload} />}
+      {unisci && <UnisciModal orgs={data || []} ids={unisci.ids} onClose={() => setUnisci(null)} onDone={() => { setUnisci(null); reload(); }} />}
     </div>
+  );
+}
+
+// B5b: fusione di due Legal entity duplicate. Si sceglie la riga che resta; l'anteprima mostra riferimenti spostati per modulo, campi
+// completati, avvisi e conflitti; l'esecuzione chiede "UNISCI". Si apre anche dalla Diagnostica (D16, ?unisci=<id>,<id>).
+function UnisciModal({ orgs, ids, onClose, onDone }) {
+  const toast = useToast();
+  const [tieni, setTieni] = useState(ids[0] ? String(ids[0]) : '');
+  const [assorbi, setAssorbi] = useState(ids[1] ? String(ids[1]) : '');
+  const [rep, setRep] = useState(null); const [err, setErr] = useState(null); const [busy, setBusy] = useState(''); const [testo, setTesto] = useState('');
+  const opzioni = (orgs || []).map((o) => ({ value: String(o.id), label: `${o.name}${o.vat_number ? ` · ${o.vat_number}` : ''} (#${o.id}, ${ORG_KIND[o.kind] || o.kind})` }));
+  const scambia = () => { setTieni(assorbi); setAssorbi(tieni); setRep(null); };
+  const anteprima = async () => { setBusy('prova'); setErr(null); try { setRep(await api.post('/organizations/fusione/anteprima', { tieni: Number(tieni), assorbi: Number(assorbi) })); } catch (e) { setErr(e); } finally { setBusy(''); } };
+  const esegui = async () => { setBusy('esegui'); setErr(null); try { const r = await api.post('/organizations/fusione', { tieni: Number(tieni), assorbi: Number(assorbi), conferma: testo }); toast(`${r.assorbi.name} unita in ${r.tieni.name}`); onDone(); } catch (e) { setErr(e); } finally { setBusy(''); } };
+  return (
+    <Modal wide title="Unisci Legal entity duplicate" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn ghost" disabled={!tieni || !assorbi || tieni === assorbi || !!busy} onClick={anteprima}>Anteprima</button><button className="btn danger" data-testid="unisci-esegui" disabled={!rep || rep.conflitti?.length > 0 || testo !== 'UNISCI' || !!busy} onClick={esegui}>Unisci</button></>}>
+      <ErrorBox error={err} />
+      <p className="small muted">La riga che resta tiene i suoi dati; i campi vuoti si completano con quelli della riga unita. Ogni riferimento dei moduli (account, contratti, sedi, persone, accessi, ordini, NC...) passa alla riga che resta; le impostazioni dei moduli si fondono campo per campo. La riga unita si elimina e resta nel registro delle fusioni.</p>
+      <div className="grid g2">
+        <Field label="Resta"><select value={tieni} onChange={(e) => { setTieni(e.target.value); setRep(null); }}><option value="">Scegli…</option>{opzioni.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+        <Field label="Da unire (sparisce)"><select value={assorbi} onChange={(e) => { setAssorbi(e.target.value); setRep(null); }}><option value="">Scegli…</option>{opzioni.filter((o) => o.value !== tieni).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+      </div>
+      <button className="btn sm ghost" onClick={scambia} disabled={!tieni || !assorbi}><Icon name="refresh" />Scambia</button>
+      {rep && <div className="mt" data-testid="unisci-anteprima">
+        <h4>Anteprima: {rep.assorbi.name} (#{rep.assorbi.id}) → {rep.tieni.name} (#{rep.tieni.id})</h4>
+        {rep.avvisi?.map((a, i) => <div key={i} className="alert warn small"><Icon name="alert" /><span>{a}</span></div>)}
+        {rep.conflitti?.length > 0 && <div className="alert err small"><Icon name="alert" /><span>Conflitti da risolvere prima di unire: {rep.conflitti.map((x) => `${x.tabella}: ${x.motivo}`).join('; ')}</span></div>}
+        <table className="t small"><thead><tr><th>Tabella</th><th>Colonna</th><th className="num">Righe</th><th>Cosa succede</th></tr></thead><tbody>
+          {(rep.riferimenti || []).map((x, i) => <tr key={i}><td className="mono">{x.tabella}</td><td className="mono">{x.colonna}</td><td className="num">{x.righe}</td><td>{x.azione}</td></tr>)}
+          {!rep.riferimenti?.length && <tr><td colSpan={4} className="muted">Nessun riferimento nei moduli</td></tr>}
+        </tbody></table>
+        <div className="small mt">Campi completati dalla riga unita: {rep.campi?.length ? rep.campi.join(', ') : 'nessuno'}.</div>
+        {!rep.conflitti?.length && <Field label='Per confermare scrivi UNISCI'><input value={testo} onChange={(e) => setTesto(e.target.value)} placeholder="UNISCI" /></Field>}
+      </div>}
+    </Modal>
   );
 }
 

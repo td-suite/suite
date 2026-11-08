@@ -123,10 +123,10 @@ r.post('/inbox/organizations', requireRole(...OPERATORS), ah(async (req, res) =>
   if (!org) {
     const vat = String(ric.piva || '').replace(/\s+/g, '').slice(0, 20) || null;
     const cf = String(ric.cf || '').replace(/\s+/g, '').toUpperCase().slice(0, 20) || null;
-    const row = await one(`INSERT INTO public.organizations (kind, name, vat_number, tax_code, email, phone, needs_review, notes)
-      VALUES ('CLIENTE', $1, $2, $3, $4, $5, TRUE, $6) RETURNING *`,
-    [name.slice(0, 250), vat, cf, ric.email || null, ric.telefono || null, `Creata da Shipments (Lifestyle) dalla richiesta in arrivo #${m.id}${ric.referente ? ` · referente ${ric.referente}` : ''}`]);
-    indexOrg(row).catch(() => {});
+    // B5: funzione unica del core (deduplica, audit ORG_CREATED); il richiedente resta CLIENTE da rivedere
+    const { createOrganization } = await import('../../../lib/organizations.js');
+    const { org: row } = await createOrganization({ kind: 'CLIENTE', name: name.slice(0, 250), vat_number: vat, tax_code: cf, email: ric.email || null, phone: ric.telefono || null,
+      notes: `Creata da Shipments (Lifestyle) dalla richiesta in arrivo #${m.id}${ric.referente ? ` · referente ${ric.referente}` : ''}` }, { origine: 'Spedizioni, richiedente Lifestyle', req, needsReview: true });
     await audit(req, 'ORGANIZATION_CREATE', 'organization', row.id, { name, vat_number: vat, from_message_id: m.id, source: 'shipments' });
     org = { id: row.id, name: row.name, how: 'creata dal documento' };
     created = true;

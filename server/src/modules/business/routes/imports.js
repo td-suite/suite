@@ -79,10 +79,10 @@ async function upsertOrg(o, userId, dryRun, report) {
   }
   report.organizations.created.push({ key: o.key, name: o.name, kind: data.kind, vat_number: data.vat_number || null });
   if (dryRun) return null;
-  const cols = Object.keys(data); const vals = Object.values(data);
-  const row = await one(`INSERT INTO public.organizations (${cols.join(', ')}, legacy_refs) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}, $${cols.length + 1}) RETURNING *`, [...vals, JSON.stringify({ business_pack: o.key })]);
+  // B5: creazione dalla funzione unica del core (audit ORG_CREATED, nomi simili con la spunta "da rivedere")
+  const { createOrganization } = await import('../../../lib/organizations.js');
+  const { org: row } = await createOrganization({ ...data, legacy_refs: { business_pack: o.key } }, { origine: `Business Hub, pacchetto ${o.key}` });
   await upsertExt(row.id, o.ext, userId);
-  indexOrg(row).catch(() => {});
   return row.id;
 }
 async function upsertExt(orgId, ext, userId) {

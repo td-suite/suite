@@ -72,7 +72,7 @@ r.get('/quantitative', ah(async (req, res) => {
       round(avg(EXTRACT(epoch FROM (fee_sample_date::timestamp - sample_received_at))/86400)::numeric, 1) AS sample_to_lab,
       round(avg(EXTRACT(epoch FROM (closed_at - created_at))/86400)::numeric, 1) AS total
     FROM orders WHERE project=$1 AND status<>'CANCELLED' AND created_at::date BETWEEN $2 AND $3`, args);
-  const bySite = project === 'LIFESTYLE' ? await many(`SELECT coalesce(sample_received_site,'-') AS site, count(*)::int AS n FROM orders WHERE project=$1 AND sample_received_at::date BETWEEN $2 AND $3 GROUP BY 1 ORDER BY n DESC`, args) : [];
+  const bySite = project === 'LIFESTYLE' ? await many(`SELECT coalesce((SELECT coalesce(s.short_name, s.name) FROM public.sites s WHERE s.id=orders.sample_received_site_id), sample_received_site, '-') AS site, count(*)::int AS n FROM orders WHERE project=$1 AND sample_received_at::date BETWEEN $2 AND $3 GROUP BY 1 ORDER BY n DESC`, args) : [];
   const open = await many(`SELECT status, count(*)::int AS n FROM orders WHERE project=$1 AND status NOT IN ('CLOSED','CANCELLED') GROUP BY status`, [project]);
   const stock = await many(`SELECT status, count(*)::int AS n FROM kits WHERE project=$1 GROUP BY status`, [project]);
   res.json({ project, from, to, perMonth, byMode, times, bySite, open, stock });

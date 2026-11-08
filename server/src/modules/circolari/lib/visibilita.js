@@ -1,10 +1,21 @@
 // Perimetro di lettura delle circolari (richiesta del CEO, 27/10/2026): il modulo è aperto a chiunque abbia un account.
 // Chi è interno (dipendente, dirigente, libero professionista, medico, sanitario di una società del gruppo) le vede tutte.
-// Chi è esterno vede solo le circolari pubblicate del proprio segmento, dedotto dall'anagrafica unica (sede di tipo SERVICE
-// o Legal entity CLIENTE → Clienti service; sede PUNTO_PRELIEVI → Punti prelievo; Legal entity PARTNER → Partner) più i
+// Chi è esterno vede solo le circolari pubblicate del proprio segmento, dedotto dall'anagrafica unica (sede di tipo SERVICE o cliente
+// Service attivo/contrattualizzato → Clienti service; cliente MdL → Medicina del lavoro; sede PUNTO_PRELIEVI, Legal entity che ospita
+// un punto prelievi o firmataria di un contratto PP → Punti prelievo e Partner; Legal entity PARTNER → Partner) più i
 // segmenti delle liste di distribuzione attive in cui compare la sua email. La redazione (ADMIN, PUBBLICATORE, REDATTORE)
 // e Owner/Admin della Suite vedono sempre tutto.
 import { many } from '../db.js';
+import { many as suiteMany } from '../../../db.js';
+
+/** B12: la Legal entity ospita punti prelievo TD (sede OSPITATA attiva) o è controparte di un contratto PP vigente. */
+export async function ospitantePP(orgId) {
+  if (!orgId) return false;
+  const r = await suiteMany(`SELECT 1 FROM public.sites s WHERE s.active AND s.tenure = 'OSPITATA' AND s.host_organization_id = $1
+      UNION ALL SELECT 1 FROM business.contracts c WHERE to_regclass('business.contracts') IS NOT NULL AND c.kind = 'PP' AND c.org_id = $1 AND c.status IN ('FIRMATO','AUTORIZZATO','ATTIVO') LIMIT 1`, [orgId])
+    .catch(async () => suiteMany(`SELECT 1 FROM public.sites s WHERE s.active AND s.tenure = 'OSPITATA' AND s.host_organization_id = $1 LIMIT 1`, [orgId]).catch(() => []));
+  return r.length > 0;
+}
 import { clientiAttivi } from '../../../lib/clienti.js';
 
 const INTERNI = new Set(['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO']);
@@ -35,6 +46,9 @@ export async function perimetro(req) {
   if (clienti.some((c) => c.linea === 'MDL')) seg.add('MEDICINA_LAVORO');
   if (su.site_kind === 'PUNTO_PRELIEVI') seg.add('PUNTI_PRELIEVO');
   if (su.organization_kind === 'PARTNER') seg.add('PARTNER');
+  // B12: gli utenti dei partner che ospitano un punto prelievi (o firmatari di un contratto PP) ricevono Punti prelievo e Partner anche
+  // se la loro Legal entity non è di tipo PARTNER (prima dipendeva solo dal tipo)
+  if (await ospitantePP(orgId)) { seg.add('PUNTI_PRELIEVO'); seg.add('PARTNER'); }
   if (su.email) {
     const liste = await many(
       `SELECT DISTINCT l.segmento FROM liste l, jsonb_array_elements(l.destinatari) d

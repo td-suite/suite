@@ -135,6 +135,8 @@ export default function Impostazioni() {
         </div>
       </Card>
 
+      <LaboratoriOrigine />
+
       <Card title="Sorgenti riconosciute" icon="info">
         <table className="t"><thead><tr><th>Laboratorio</th><th>Come si riconosce</th><th>Struttura</th></tr></thead>
           <tbody>
@@ -146,5 +148,25 @@ export default function Impostazioni() {
       </Card>
       {rimuovi && <ConfirmModal title="Torna al template predefinito" text={`Il template caricato viene disattivato: i prossimi referti useranno il predefinito ${form.template_predefinito || 'Format TD (BARONI VERA)'}. I referti già prodotti non cambiano.`} confirmText="Disattiva il template" danger onConfirm={() => run(() => api.del('/settings/template'), 'Template disattivato').then(() => setRimuovi(false))} onClose={() => setRimuovi(false)} />}
     </div>
+  );
+}
+
+// C12 (programma anagrafica unica): ogni laboratorio di origine è una Legal entity di Amministrazione > Legal entity
+function LaboratoriOrigine() {
+  const toast = useToast();
+  const { data, reload } = useApi('/settings/laboratori');
+  const [sel, setSel] = useState({});
+  if (!data) return null;
+  const val = (l) => sel[l.sorgente] ?? (l.org?.id || '');
+  const salva = async () => { try { await api.put('/settings/laboratori', Object.fromEntries(data.laboratori.map((l) => [l.sorgente, val(l) || null]))); toast('Laboratori collegati alle Legal entity'); setSel({}); reload(); } catch (e) { toast(e.message, 'err'); } };
+  return (
+    <Card title="Laboratori di origine e Legal entity" icon="building" actions={<button className="btn sm" onClick={salva}>Salva</button>}>
+      <p className="small muted" style={{ marginTop: 0 }}>Ogni laboratorio esterno è una Legal entity dell'anagrafica (Amministrazione &gt; Legal entity): serve ai conteggi per cliente e fornitore. Se manca, la Suite propone quella con il nome più simile.</p>
+      <table className="t"><tbody>{data.laboratori.map((l) => <tr key={l.sorgente}>
+        <td className="strong">{l.label}</td>
+        <td><select value={val(l)} onChange={(e) => setSel({ ...sel, [l.sorgente]: e.target.value })}><option value="">{l.proposta ? `Proposta: ${l.proposta.name} (scegli per confermare)` : 'Non collegato'}</option>{data.organizzazioni.map((o) => <option key={o.id} value={o.id}>{o.name}{o.vat_number ? ` · ${o.vat_number}` : ''}</option>)}</select></td>
+        <td className="small">{l.org ? <Badge tone="green">collegato</Badge> : l.proposta ? <button className="btn sm ghost" onClick={() => setSel({ ...sel, [l.sorgente]: String(l.proposta.id) })}>Usa la proposta</button> : <Badge tone="amber">da collegare</Badge>}</td>
+      </tr>)}</tbody></table>
+    </Card>
   );
 }

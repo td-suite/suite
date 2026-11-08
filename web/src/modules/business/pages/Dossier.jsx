@@ -105,7 +105,7 @@ function SiteTab({ d, c, edit, save }) {
   useEffect(() => { setX({ floor: '', building_type: '', workers: '', prov_name: '', notes: '', dvr_code: '', duvri_code: '', dirty_clean_clause: '', ...(d.extra || {}) }); }, [d.extra]);
   return (
     <div className="grid g2" style={{ marginTop: 16 }}>
-      <Card title="Orari di apertura (Relazione operativa)" actions={edit && <button className="btn sm" onClick={() => save({ hours }, 'Orari salvati')}>Salva orari</button>}>
+      <Card title="Orari di apertura (Relazione operativa)" actions={edit && <div className="row" style={{ gap: 6 }}>{d.site_id && <button className="btn sm ghost" title="Orari dei prelievi dalle fasce di apertura della sede (Amministrazione > Sedi)" onClick={async () => { const r = await api.post(`/dossiers/${d.id}/precompila`, { personale: false }); setHours(r.hours); }}>Dalla sede</button>}<button className="btn sm" onClick={() => save({ hours }, 'Orari salvati')}>Salva orari</button></div>}>
         <table className="t"><thead><tr><th>Giorno</th><th>Orario di prelievo</th><th>Orario di ritiro referti</th></tr></thead>
           <tbody>{hours.map((h, i) => <tr key={h.day}><td className="strong">{h.day}</td><td><input value={h.draw || ''} disabled={!edit} placeholder="Chiuso" onChange={(e) => setHours(hours.map((y, j) => (j === i ? { ...y, draw: e.target.value } : y)))} /></td><td><input value={h.pickup || ''} disabled={!edit} onChange={(e) => setHours(hours.map((y, j) => (j === i ? { ...y, pickup: e.target.value } : y)))} /></td></tr>)}</tbody></table>
         <div className="small muted" style={{ marginTop: 6 }}>Lasciare vuoti entrambi i campi per indicare il giorno di chiusura.</div>
@@ -132,7 +132,7 @@ function StaffTab({ d, edit, save }) {
   const [rows, setRows] = useState(d.staff || []);
   const set = (i, k, v) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   return (
-    <Card title="Elenco del personale che opera nella struttura" className="mt" flush actions={edit && <div className="row" style={{ gap: 6 }}><button className="btn sm ghost" onClick={() => setRows([...rows, { ...EMPTY_STAFF }])}>+ Riga</button><button className="btn sm" onClick={() => save({ staff: rows.filter((r) => r.surname || r.name) }, 'Personale salvato')}>Salva</button></div>}>
+    <Card title="Elenco del personale che opera nella struttura" className="mt" flush actions={edit && <div className="row" style={{ gap: 6 }}><button className="btn sm ghost" onClick={() => setRows([...rows, { ...EMPTY_STAFF }])}>+ Riga</button>{d.site_id && <button className="btn sm ghost" title="Persone attive della sede (Amministrazione > Persone) con il responsabile dall'organigramma: sostituisce l'elenco" onClick={async () => { if (!window.confirm('Sostituire l\'elenco con il personale della sede in anagrafica?')) return; const r = await api.post(`/dossiers/${d.id}/precompila`); setRows(r.staff || []); }}>Dall'anagrafica</button>}<button className="btn sm" onClick={() => save({ staff: rows.filter((r) => r.surname || r.name) }, 'Personale salvato')}>Salva</button></div>}>
       <div className="table-wrap"><table className="t">
         <thead><tr><th>Cognome</th><th>Nome</th><th>Afferenza</th><th>Contratto</th><th>Ore giornaliere</th><th>Ruolo</th><th>Titolo di studio</th><th /></tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i}>

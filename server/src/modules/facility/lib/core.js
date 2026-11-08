@@ -72,8 +72,12 @@ export async function ensureProperties() {
   await q(`INSERT INTO properties (site_id) SELECT s.id FROM public.sites s WHERE s.active AND s.kind <> 'SERVICE' ON CONFLICT (site_id) DO NOTHING`);
 }
 // Titolo di godimento e locazione dall'anagrafica (fonte unica)
+// B3/B4 (programma anagrafica unica, 08/11/2026): ore e giorni di apertura settimanali calcolati dagli orari della sede (anagrafica)
+// e numero di ambulatori da Room Planning, in sola lettura; superficie, locali e box sono di Facility (properties)
 export const REGISTRY_COLS = `ps.tenure, ps.rent_amount, ps.rent_period, ps.rent_vat, ps.rent_vat_rate, ps.lease_start, ps.lease_years, ps.lease_renewal_years, ps.lease_notice_months, ps.lease_end,
-  ps.lease_landlord_org_id, ps.lease_registration, ps.guarantee_bank_amount, ps.guarantee_insurance_amount, ps.deposit_amount, ps.guarantee_notes`;
+  ps.lease_landlord_org_id, ps.lease_registration, ps.guarantee_bank_amount, ps.guarantee_insurance_amount, ps.deposit_amount, ps.guarantee_notes,
+  public.ore_apertura_settimana(ps.opening_hours_json) AS ore_apertura_anagrafica, public.giorni_apertura_settimana(ps.opening_hours_json) AS giorni_apertura_anagrafica,
+  public.ambulatori_room(ps.id) AS ambulatori_room`;
 export async function registryBySite(siteId) {
   return one(`SELECT ${REGISTRY_COLS}, lo.name AS landlord_name, lo.vat_number AS landlord_vat, lo.city AS landlord_city,
       (SELECT json_build_object('id', d.id, 'filename', d.filename, 'size', d.size, 'created_at', d.created_at) FROM public.site_documents d WHERE d.site_id=ps.id AND d.kind='CONTRATTO_LOCAZIONE' ORDER BY d.created_at DESC LIMIT 1) AS lease_document

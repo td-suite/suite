@@ -21,7 +21,11 @@ export async function loadEnergyData({ siteIds = null } = {}) {
   const ids = utilities.map((u) => u.id);
   const bills = ids.length ? await many('SELECT id, utility_id, period_from, period_to, due_date, amount, consumption, unit, paid_at FROM finance.utility_bills WHERE utility_id = ANY($1::int[]) ORDER BY due_date', [ids]) : [];
   const readings = ids.length ? await many('SELECT id, utility_id, read_at, value, source FROM meter_readings WHERE utility_id = ANY($1::int[]) ORDER BY read_at', [ids]) : [];
-  const sites = await many(`SELECT s.id, s.code, s.name, s.kind, s.city, pr.surface_sqm, pr.opening_hours_week, pr.occupancy_days_week FROM sites_v s LEFT JOIN properties pr ON pr.site_id=s.id
+  // B4: ore e giorni di apertura dagli orari della sede in anagrafica; il valore scritto in Facility resta solo come riserva
+  const sites = await many(`SELECT s.id, s.code, s.name, s.kind, s.city, pr.surface_sqm,
+      coalesce(nullif(public.ore_apertura_settimana(ps.opening_hours_json), 0), pr.opening_hours_week) AS opening_hours_week,
+      coalesce(nullif(public.giorni_apertura_settimana(ps.opening_hours_json), 0), pr.occupancy_days_week) AS occupancy_days_week
+    FROM sites_v s JOIN public.sites ps ON ps.id=s.id LEFT JOIN properties pr ON pr.site_id=s.id
     WHERE s.active ${siteIds ? 'AND s.id = ANY($1::int[])' : ''} ORDER BY s.sort_order, s.name`, p);
   const activity = await many(`SELECT site_id, to_char(month, 'YYYY-MM') AS month, accettazioni, prestazioni, ore_apertura, giorni_apertura, source FROM activity_metrics ${siteIds ? 'WHERE site_id = ANY($1::int[])' : ''}`, p);
   const targets = await many(`SELECT t.*, s.name AS site_name FROM energy_targets t LEFT JOIN public.sites s ON s.id=t.site_id ${siteIds ? 'WHERE t.site_id IS NULL OR t.site_id = ANY($1::int[])' : ''} ORDER BY t.year DESC, t.site_id NULLS FIRST`, p);

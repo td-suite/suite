@@ -233,6 +233,20 @@ r.post('/accounts/:id/avvio/riprova', ah(async (req, res) => {
 }));
 // Pagina "Punti Prelievo": elenco dei punti (account PP) e sedi Punto prelievi senza account
 r.get('/punti-prelievo', ah(async (_req, res) => res.json(await elencoPuntiPrelievo())));
+// B13: royalties del punto in Cash dai termini del contratto PP (proposta e conferma; con royalties diverse già in Cash serve sovrascrivi)
+r.get('/punti-prelievo/:siteId/royalty', ah(async (req, res) => {
+  const { propostaRoyalty } = await import('../../../lib/royaltyPP.js');
+  res.json(await propostaRoyalty(Number(req.params.siteId)));
+}));
+r.post('/punti-prelievo/:siteId/royalty', ah(async (req, res) => {
+  if (!canEditKind(req.user, 'PP')) throw forbidden('Operazione riservata a chi gestisce la linea Punti Prelievo');
+  const d = parse(z.object({ sovrascrivi: z.boolean().optional() }), req.body || {});
+  const { applicaRoyalty } = await import('../../../lib/royaltyPP.js');
+  const out = await applicaRoyalty(Number(req.params.siteId), { sovrascrivi: d.sovrascrivi === true, req, origine: 'Business Hub > Punti Prelievo' });
+  if (out.esito === 'CONFERMA_RICHIESTA') return res.status(409).json({ error: out.avvisi?.[0] || 'Cash ha già royalties diverse: conferma la sovrascrittura', code: 'ROYALTY_DIVERSE', ...out });
+  await audit(req, 'HUB_ROYALTY_CASH', 'site', Number(req.params.siteId), { esito: out.esito });
+  res.json(out);
+}));
 // Account PP dalla sede: Legal entity = ospitante (corner) o Legal entity della sede (flagship), sede collegata
 r.post('/punti-prelievo/da-sede', ah(async (req, res) => {
   if (!canEditKind(req.user, 'PP')) throw forbidden('Operazione riservata a chi gestisce la linea Punti Prelievo');

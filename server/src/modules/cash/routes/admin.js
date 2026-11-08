@@ -192,15 +192,11 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   // partial() applica comunque i default: li rimuovo per non azzerare i campi omessi
   const partial = z.object(Object.fromEntries(Object.entries(siteSchema.shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.removeDefault() : v).optional()])));
   const d = parse(site ? partial : siteSchema, req.body);
-  if (!site) {
-    if (!isSuper(req.user)) d.company_id = req.user.company_id;
-    if (!d.company_id) throw bad('Indica l\'azienda Cash della sede');
-    assertCompany(req.user, d.company_id);
-    if (!await one('SELECT 1 FROM companies_v WHERE id=$1', [d.company_id])) throw bad('Azienda inesistente: scegli una società o un gruppo dell\'anagrafica');
-  } else if (d.company_id != null && d.company_id !== site.company_id) {
-    if (!isSuper(req.user)) throw forbidden('Solo il super amministratore sposta una sede su un\'altra azienda');
-    if (await one('SELECT 1 FROM cash_reports WHERE site_id=$1', [id])) throw bad('La sede ha rendiconti: l\'azienda non si può cambiare');
-  }
+  // B6 (programma anagrafica unica): l'azienda di Cash è la Legal entity proprietaria della sede (Amministrazione > Sedi), non si sceglie qui
+  const prop = await one(`SELECT s.organization_id, o.name, (o.kind IN ('SOCIETA','GRUPPO')) AS societa FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id WHERE s.id=$1`, [id]);
+  if (prop?.organization_id && prop.societa) { if (!site) assertCompany(req.user, prop.organization_id); d.company_id = prop.organization_id; }
+  else if (!site) throw bad(prop?.organization_id ? `La Legal entity della sede (${prop.name}) non è una società del gruppo: verifica la sede in Amministrazione > Sedi` : 'La sede non ha la Legal entity proprietaria: indicala in Amministrazione > Sedi (è l\'azienda di Cash)');
+  else delete d.company_id;   // sede già configurata con una Legal entity non del gruppo: resta l'azienda attuale (controllo D07)
   // royalty solo per le sedi Ospitate nell'anagrafica (titolo di godimento letto da public.sites, mai scritto da qui)
   const core = await one('SELECT tenure FROM public.sites WHERE id=$1', [id]);
   if (core?.tenure !== 'OSPITATA') Object.assign(d, { royalty_fixed_monthly: 0, royalty_pct: 0, royalty_vat_rate: 0, royalty_notes: null });
@@ -234,6 +230,26 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
   });
   await audit(req, site ? 'SITE_UPDATE' : 'SITE_CONFIGURE', 'site', id, req.body);
   res.json({ ok: true, id });
+}));
+
+// B13: royalties della sede proposte dal contratto PP del Business Hub (decisione 10 del CEO): anteprima e conferma
+// la sede può non essere ancora configurata in Cash (caso tipico alla firma del PP): la proposta la configura con le royalty
+const sedeProposta = (req) => assertSite(req.user, Number(req.params.id)).catch(async (e) => {
+  if (!/non è ancora configurata/.test(e.message)) throw e;
+  const s = await one('SELECT organization_id FROM public.sites WHERE id=$1', [Number(req.params.id)]);
+  if (!isSuper(req.user)) assertCompany(req.user, s?.organization_id);   // sede non configurata: l'azienda è la Legal entity della sede (B6)
+});
+r.get('/sites/:id/royalty-proposta', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
+  await sedeProposta(req);
+  const { propostaRoyalty } = await import('../../../lib/royaltyPP.js');
+  res.json(await propostaRoyalty(Number(req.params.id)));
+}));
+r.post('/sites/:id/royalty-proposta', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
+  await sedeProposta(req);
+  const { applicaRoyalty } = await import('../../../lib/royaltyPP.js');
+  const out = await applicaRoyalty(Number(req.params.id), { sovrascrivi: req.body?.sovrascrivi === true, req, origine: 'Cash > Sedi' });
+  if (out.esito === 'CONFERMA_RICHIESTA') return res.status(409).json({ error: out.avvisi?.[0] || 'Cash ha già royalties diverse: conferma la sovrascrittura', code: 'ROYALTY_DIVERSE', ...out });
+  res.json(out);
 }));
 
 // ---------------- Operatori (utenti della Suite) ----------------
