@@ -13,7 +13,7 @@
 import { config } from '../config.js';
 import { one, q } from '../db.js';
 import { findSedeByCodice, extOf } from './sedi.js';
-import { logConnector } from '../../../lib/connectors.js';
+import { logConnector, connectorSync, studiolabClientToken } from '../../../lib/connectors.js';
 
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 // Sto facendo un'ipotesi sui codici 20/25: lo swagger li elenca senza descrizione; da confermare con CB Sistemi.
@@ -30,12 +30,19 @@ async function call(method, path, body, { query } = {}) {
   const log = (status, message) => logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'nc', endpoint: `${method} ${path}`, status, ms: Date.now() - t0, message });
   let res, text;
   try {
+    // autenticazione: chiave API (X-API-KEY) oppure, con il connettore a client registrato, token Bearer rinnovato da solo (08/11/2026)
+    const auth = await intestazioneAuth();
     res = await fetch(url, {
       method, signal: ctrl.signal,
-      headers: { 'X-API-KEY': config.lis.apiKey, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { ...auth, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     text = await res.text();
+    if (res.status === 401 && auth.Authorization) {   // token scaduto o revocato: un secondo tentativo con login nuovo
+      const auth2 = await intestazioneAuth(true);
+      res = await fetch(url, { method, signal: ctrl.signal, headers: { ...auth2, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      text = await res.text();
+    }
   } catch (e) {
     const msg = e.name === 'AbortError' ? 'StudioLAB non risponde (timeout)' : `StudioLAB non raggiungibile: ${e.message}`;
     log('ERRORE', msg);
@@ -50,6 +57,12 @@ async function call(method, path, body, { query } = {}) {
   }
   log('OK', null);
   return data;
+}
+
+async function intestazioneAuth(forza = false) {
+  const c = connectorSync('STUDIOLAB');
+  if (c.auth_kind === 'CLIENT_JWT') { const t = await studiolabClientToken({ forza }); return { Authorization: `Bearer ${t.accessToken}` }; }
+  return { 'X-API-KEY': config.lis.apiKey };
 }
 
 const envelope = (extra = {}) => ({ Mittente: config.lis.mittente, CodiceCliente: config.lis.codiceCliente || undefined, ...extra });

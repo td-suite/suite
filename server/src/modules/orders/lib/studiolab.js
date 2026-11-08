@@ -9,7 +9,7 @@
 // 3) Import da file e inserimento manuale restano disponibili (pagina Produzione).
 import { config } from '../config.js';
 import { many, one, q } from '../db.js';
-import { connectorSync, logConnector } from '../../../lib/connectors.js';
+import { connectorSync, logConnector, studiolabClientToken } from '../../../lib/connectors.js';
 
 export const studiolabStatus = () => { const c = connectorSync('STUDIOLAB'); return { configured: config.studiolab.enabled, baseUrl: config.studiolab.baseUrl, clientCode: config.studiolab.clientCode, inboundConfigured: Boolean(config.studiolab.inboundKey), connector: { source: c.source, configured: c.configured, active: c.active, last_test_at: c.last_test_at, last_status: c.last_status } }; };
 
@@ -21,8 +21,12 @@ async function call(path, params = {}) {
   const log = (status, message) => logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'orders', endpoint: `GET ${path}`, status, ms: Date.now() - t0, message });
   let res, txt;
   try {
-    res = await fetch(url, { headers: { 'X-API-KEY': config.studiolab.apiKey, accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+    // chiave API oppure token Bearer del client registrato (connettore CLIENT_JWT, 08/11/2026), con un secondo tentativo su 401
+    const jwt = connectorSync('STUDIOLAB').auth_kind === 'CLIENT_JWT';
+    const auth = jwt ? { Authorization: `Bearer ${(await studiolabClientToken()).accessToken}` } : { 'X-API-KEY': config.studiolab.apiKey };
+    res = await fetch(url, { headers: { ...auth, accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
     txt = await res.text();
+    if (res.status === 401 && jwt) { res = await fetch(url, { headers: { Authorization: `Bearer ${(await studiolabClientToken({ forza: true })).accessToken}`, accept: 'application/json' }, signal: AbortSignal.timeout(20_000) }); txt = await res.text(); }
   } catch (e) { const msg = `ServiceNET non raggiungibile: ${e.cause?.message || e.message}`; log('ERRORE', msg); throw new Error(msg); }
   let j; try { j = JSON.parse(txt); } catch { j = txt; }
   if (!res.ok) { const msg = `ServiceNET ${res.status} su ${path}: ${typeof j === 'string' ? j.slice(0, 200) : j.Message || j.message || JSON.stringify(j).slice(0, 200)}`; log(String(res.status), msg); throw new Error(msg); }

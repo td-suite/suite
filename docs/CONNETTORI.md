@@ -99,3 +99,18 @@ All'approvazione dell'Area Operations (fase 2 → 3) la Suite invia l'ordine a `
   non sovrascrive gli orari strutturati della sede.
 - `manager_name` è accettato ma ignorato: il responsabile di sede è quello dell'organigramma.
 - Le Legal entity nuove passano dalla funzione unica `createOrganization` (nomi simili segnati "da rivedere").
+
+## StudioLAB con client registrato (WebApi v1 di CB Sistemi, istruzioni dell'08/11/2026)
+Tipo di autenticazione `CLIENT_JWT` (migrazione core 051). Credenziali cifrate del connettore: `client_name` (es. TDSuite), `client_id`
+(GUID assegnato da CB Sistemi), `client_host`, `password` (8-16 caratteri con maiuscola, minuscola, numero e carattere speciale). Indirizzo
+base senza percorso (es. `http://10.0.1.3:12002`). Flusso (`lib/connectors.js`):
+1. **Registrazione una tantum**: pulsante "Registra la password del client" → `POST {base}/api/v1/auth/client/register` con name, id,
+   host, password; imposta la password del client già censito; se è già impostata il server rifiuta (normale).
+2. **Login**: `studiolabClientToken()` → `POST {base}/api/v1/auth/client/login` con name e password → `{ accessToken, validTo }`; il token
+   resta in memoria fino a 2 minuti prima della scadenza, poi si rinnova da solo; `forza: true` rilogga subito.
+3. **Chiamate**: `Authorization: Bearer <accessToken>`; NC (`nc/lib/lis.js`) e Ordini (`orders/lib/studiolab.js`) usano il token quando il
+   connettore è `CLIENT_JWT`, altrimenti la chiave API; su 401 ripetono una volta con un login nuovo. "Prova connessione" chiama
+   `GET {base}/api/v1/auth/client/info`.
+**Rete**: `10.0.1.3` è un indirizzo privato del laboratorio. La Suite gira su Render, fuori da quella rete: la chiamata riesce solo se
+CB Sistemi espone la WebApi su un indirizzo raggiungibile da internet (con allowlist degli IP in uscita di Render e HTTPS) oppure se
+tra Render e il laboratorio c'è una VPN. Finché non c'è, la Prova risponde "non raggiungibile" e non è un errore della Suite.

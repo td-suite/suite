@@ -54,6 +54,16 @@ r.put('/:kind', ah(async (req, res) => {
 }));
 
 // Prova di connessione: mai un 500, l'esito (anche negativo) torna con ok:false e resta registrato
+// StudioLAB, client registrato: registrazione della password una tantum (CB Sistemi, 08/11/2026)
+r.post('/:kind/registra-client', ah(async (req, res) => {
+  const kind = kindOf(req);
+  if (kind !== 'STUDIOLAB') throw bad('La registrazione del client riguarda solo StudioLAB');
+  const { studiolabClientRegister } = await import('../lib/connectors.js');
+  let out;
+  try { out = await studiolabClientRegister(); } catch (e) { out = { ok: false, message: e.message }; }
+  await audit(req, 'CONNECTOR_CLIENT_REGISTER', { entity: 'connector', entityId: kind, label: `${kind}: ${out.ok ? 'OK' : 'ERRORE'}`, data: { message: out.message } });
+  res.json(out);
+}));
 r.post('/:kind/test', ah(async (req, res) => {
   const kind = kindOf(req);
   const out = await testConnector(kind);
