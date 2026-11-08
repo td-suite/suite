@@ -66,41 +66,44 @@ export function resolveExternalScopes(module, { orgId, hostedSiteIds = [], orgSi
  * - accesso esterno (isExternal: non Owner/Admin, non Legal entity del gruppo, non dominio aziendale);
  * - Legal entity di tipo CLIENTE (un PARTNER non lo è mai, anche se ospita punti prelievo);
  * - almeno un grant confermato nato dal profilo di sistema CLIENTE_SERVICE (l'accesso è stato creato come Cliente service);
- * - contratto service: la Legal entity ha almeno una sede SERVICE attiva nell'anagrafica (un CLIENTE senza punti SERVICE no,
- *   anche se qualcuno gli ha applicato il profilo Cliente service a mano).
+ * - contratto service: la Legal entity ha almeno una sede SERVICE attiva nell'anagrafica oppure è tra i clienti attivi o
+ *   contrattualizzati di public.clienti_attivi_v (A5, livello = public.cliente_livello); un CLIENTE prospect no, anche se qualcuno
+ *   gli ha applicato il profilo Cliente service a mano.
  * profiliSistema: chiavi dei profili di sistema da cui nascono i grant dell'utente (es. ['CLIENTE_SERVICE'], ['PARTNER_OSPITANTE']).
  */
-export function riconosciClienteService({ esterno, orgKind, profiliSistema = [], sediService = 0 }) {
-  return Boolean(esterno) && orgKind === 'CLIENTE' && (profiliSistema || []).includes(PROFILO_CLIENTE) && Number(sediService) > 0;
+export function riconosciClienteService({ esterno, orgKind, profiliSistema = [], sediService = 0, livello = null }) {
+  return Boolean(esterno) && orgKind === 'CLIENTE' && (profiliSistema || []).includes(PROFILO_CLIENTE) && (Number(sediService) > 0 || Boolean(livello));
 }
 
 /**
- * Legal entity cliente service valida (funzione pura): tipo CLIENTE, attiva, almeno una sede SERVICE attiva (il contratto service).
+ * Legal entity cliente service valida (funzione pura): tipo CLIENTE, attiva, e cliente del servizio: almeno una sede SERVICE attiva
+ * oppure presente in public.clienti_attivi_v (A5, blocco 2: livello ATTIVO o CONTRATTUALIZZATO, Service o Medicina del Lavoro; il
+ * cliente contrattualizzato vede già il portale). livello = public.cliente_livello(org).
  * È la condizione sull'organizzazione di riconosciClienteService e vale anche per la "Vista come Legal entity" del personale TD.
  */
-export function legalEntityClienteService({ kind, active = true, sediService = 0 } = {}) {
-  return kind === 'CLIENTE' && active !== false && Number(sediService) > 0;
+export function legalEntityClienteService({ kind, active = true, sediService = 0, livello = null } = {}) {
+  return kind === 'CLIENTE' && active !== false && (Number(sediService) > 0 || Boolean(livello));
 }
 
 /** Legal entity cliente service per id: { org: {id, name, code, kind}, sedi_service: [...] } oppure null se non è un cliente service valido. */
 export async function organizzazioneClienteService(orgId) {
   const id = Number(orgId);
   if (!Number.isInteger(id) || id <= 0) return null;
-  const o = await one('SELECT id, name, code, kind, active FROM organizations WHERE id = $1', [id]);
+  const o = await one('SELECT id, name, code, kind, active, public.cliente_livello(id) AS livello FROM organizations WHERE id = $1', [id]);
   if (!o) return null;
   const sedi = await many(`SELECT id, code, name, city, studiolab_code FROM sites WHERE organization_id = $1 AND kind = 'SERVICE' AND active ORDER BY name`, [id]);
-  if (!legalEntityClienteService({ kind: o.kind, active: o.active, sediService: sedi.length })) return null;
-  return { org: { id: o.id, name: o.name, code: o.code, kind: o.kind }, sedi_service: sedi };
+  if (!legalEntityClienteService({ kind: o.kind, active: o.active, sediService: sedi.length, livello: o.livello })) return null;
+  return { org: { id: o.id, name: o.name, code: o.code, kind: o.kind, livello: o.livello }, sedi_service: sedi };
 }
 
 /** Elenco delle Legal entity cliente service (per il selettore "Visualizza come" del personale TD): sedi SERVICE e accessi esterni. */
 export async function elencoClientiService() {
-  return many(`SELECT o.id, o.name, o.code, o.city,
+  return many(`SELECT o.id, o.name, o.code, o.city, public.cliente_livello(o.id) AS livello,
       (SELECT count(*)::int FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) AS sedi_service,
       (SELECT count(DISTINCT u.id)::int FROM users u LEFT JOIN people p ON p.id = u.person_id
         WHERE coalesce(p.organization_id, u.organization_id) = o.id AND u.level = 'USER' AND u.status IN ('ACTIVE','PENDING')) AS accessi_esterni
     FROM organizations o
-   WHERE o.kind = 'CLIENTE' AND o.active AND EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active)
+   WHERE o.kind = 'CLIENTE' AND o.active AND public.cliente_livello(o.id) IS NOT NULL
    ORDER BY lower(o.name)`);
 }
 
@@ -118,7 +121,7 @@ export async function clienteService(u) {
     WHERE u.id = $1`, [u.id]);
   if (!x || x.kind !== 'CLIENTE' || !(x.profili || []).includes(PROFILO_CLIENTE)) return null;
   const cs = await organizzazioneClienteService(x.id);
-  if (!cs || !riconosciClienteService({ esterno: true, orgKind: cs.org.kind, profiliSistema: x.profili, sediService: cs.sedi_service.length })) return null;
+  if (!cs || !riconosciClienteService({ esterno: true, orgKind: cs.org.kind, profiliSistema: x.profili, sediService: cs.sedi_service.length, livello: cs.org.livello })) return null;
   return cs;
 }
 

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, audit, parse, notFound } from '../lib/util.js';
 import { requireAdmin, requireOwner } from '../lib/access.js';
-import { applyProfile, applyDefaultToAll } from '../lib/accessProfiles.js';
+import { applyProfile, applyDefaultToAll, MODI } from '../lib/accessProfiles.js';
 
 const r = Router();
 
@@ -98,10 +98,13 @@ r.delete('/:id(\\d+)', requireOwner, ah(async (req, res) => {
 
 r.post('/:id(\\d+)/apply', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
-  const b = parse(z.object({ user_ids: z.array(z.number().int()).min(1).max(1000), mode: z.enum(['merge', 'replace']).optional() }), req.body);
-  const report = await applyProfile(id, b.user_ids, { actorId: req.user.id, mode: b.mode || 'merge' });
+  // Assegnazione da Amministrazione (richiesta del CEO dell'08/11/2026): predefinito "sovrascrivi" (spunta "Sostituisci i permessi
+  // esistenti" accesa); "merge" se la spunta è tolta; "replace" (tutti i widget) solo su richiesta esplicita
+  const b = parse(z.object({ user_ids: z.array(z.number().int()).min(1).max(1000), mode: z.enum(MODI).optional() }), req.body);
+  const report = await applyProfile(id, b.user_ids, { actorId: req.user.id, mode: b.mode || 'sovrascrivi' });
   await audit(req, 'ACCESS_PROFILE_APPLIED', { entity: 'access_profile', entityId: id, label: `${report.profile.name} → ${report.users} utent${report.users === 1 ? 'e' : 'i'} (${report.mode})`,
-    data: { user_ids: b.user_ids, mode: report.mode, added: report.added, updated: report.updated, kept: report.kept, removed: report.removed, warnings: report.warnings.slice(0, 50) } });
+    data: { user_ids: b.user_ids, mode: report.mode, added: report.added, updated: report.updated, kept: report.kept, removed: report.removed, replaced: report.replaced,
+      sostituiti: report.rows.flatMap((x) => x.sostituiti.map((y) => ({ user_id: x.user_id, ...y }))).slice(0, 200), sede_mancante: report.sede_mancante.map((x) => x.user_id), warnings: report.warnings.slice(0, 50) } });
   res.json(report);
 }));
 

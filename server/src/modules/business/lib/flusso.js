@@ -404,6 +404,11 @@ export async function salvaFile(a, f, categoria, etichetta, { activityId = null,
 async function scriviCampi(orgId, voci, userId = null) {
   const perOrg = voci.filter((v) => v.tabella === 'org'); const perExt = voci.filter((v) => v.tabella === 'ext');
   if (perOrg.length) await q(`UPDATE public.organizations SET ${perOrg.map((v, i) => `${v.colonna}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [orgId, ...perOrg.map((v) => v.valore)]);
+  // A7 (d): indirizzo della Legal entity completato dal MOD173 → le sedi SERVICE con l'indirizzo ereditato lo seguono
+  if (perOrg.some((v) => ['address', 'zip', 'city', 'province'].includes(v.colonna))) {
+    const { allineaSediDaOrg } = await import('../../../lib/clienti.js');
+    await allineaSediDaOrg(orgId, { actorId: userId, origine: 'Business Hub, MOD173 compilato dal cliente' }).catch((e) => console.warn('[sedi SERVICE]', orgId, e.message));
+  }
   if (perExt.length) {
     await q('INSERT INTO org_ext (org_id, created_by) VALUES ($1,$2) ON CONFLICT (org_id) DO NOTHING', [orgId, userId]);
     await q(`UPDATE org_ext SET ${perExt.map((v, i) => `${v.colonna}=$${i + 2}`).join(', ')}, updated_by=$${perExt.length + 2}, updated_at=now() WHERE org_id=$1`, [orgId, ...perExt.map((v) => v.valore), userId]);

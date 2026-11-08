@@ -5,6 +5,7 @@
 // segmenti delle liste di distribuzione attive in cui compare la sua email. La redazione (ADMIN, PUBBLICATORE, REDATTORE)
 // e Owner/Admin della Suite vedono sempre tutto.
 import { many } from '../db.js';
+import { clientiAttivi } from '../../../lib/clienti.js';
 
 const INTERNI = new Set(['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO']);
 const GRUPPO = new Set(['GRUPPO', 'SOCIETA']);
@@ -26,7 +27,12 @@ export async function perimetro(req) {
   // Interni: tutte le circolari di tutti i segmenti; le bozze solo chi è in redazione
   if (isInterno(su) || REDAZIONE.has(role)) return { tutte: true, bozze: REDAZIONE.has(role), segmenti: null, interno: isInterno(su) };
   const seg = new Set();
-  if (su.site_kind === 'SERVICE' || su.organization_kind === 'CLIENTE') seg.add('CLIENTI_SERVICE');
+  // A5 (blocco 2, 08/11/2026): Clienti service e Medicina del Lavoro dai clienti attivi e contrattualizzati della Suite
+  // (lib/clienti.js clientiAttivi, entrambi i livelli), non più da ogni Legal entity CLIENTE (anche prospect)
+  const orgId = Number(su.eff_organization_id || su.organization_id) || null;
+  const clienti = orgId ? await clientiAttivi({ orgId }).catch(() => []) : [];
+  if (su.site_kind === 'SERVICE' || clienti.some((c) => c.linea === 'SRV')) seg.add('CLIENTI_SERVICE');
+  if (clienti.some((c) => c.linea === 'MDL')) seg.add('MEDICINA_LAVORO');
   if (su.site_kind === 'PUNTO_PRELIEVI') seg.add('PUNTI_PRELIEVO');
   if (su.organization_kind === 'PARTNER') seg.add('PARTNER');
   if (su.email) {

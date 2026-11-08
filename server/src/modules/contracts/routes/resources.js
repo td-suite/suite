@@ -12,7 +12,7 @@ import { analyzeAttachment } from '../lib/docAnalyze.js';
 import { getSettings, decompose, decomposeDirigente, costCoefficient, companyCost, minimumFor, ralAt } from '../lib/payroll.js';
 import { computeDeadlines, missingDocuments } from '../lib/deadlines.js';
 import { CATEGORY_LABELS } from '../lib/seedData.js';
-import { applyDueTerminations } from '../lib/termination.js';
+import { applyDueTerminations, applyDueHires } from '../lib/termination.js';
 import { effettiCessazione } from '../../../lib/cessazione.js';
 import { removeFromIndex } from '../../../lib/search.js';
 import { PERSON_KINDS, hrKind, createPerson, updatePerson, deletePerson, reindexPerson, syncDerived, siteLabel } from '../lib/people.js';
@@ -269,7 +269,7 @@ r.post('/bulk-import', requireWrite, upload.single('file'), ah(async (req, res) 
 
 r.get('/', ah(async (req, res) => {
   // cessazioni con decorrenza raggiunta: in MIRROR i dati arrivano dall'app di origine e non si toccano
-  if (req.moduleMode !== 'MIRROR') await applyDueTerminations();
+  if (req.moduleMode !== 'MIRROR') { await applyDueTerminations(); await applyDueHires(req.user); }
   const P = new Params();
   const w = ['TRUE'];
   if (req.query.kind) w.push(`r.kind = ${P.add(req.query.kind)}`);
@@ -398,6 +398,7 @@ r.put('/:id/employment', requireWrite, ah(async (req, res) => {
   const e = parse(employmentSchema, { ...base, ...req.body });
   if (req.body.base_pay === undefined && (req.body.ral !== undefined || req.body.level !== undefined)) { delete e.base_pay; delete e.superminimo; delete e.function_allowance; } // RAL o livello cambiati: ricalcolo
   await tx(async (c) => { await upsertEmployment(c, id, e); if (e.start_date) await updatePerson(c, req, id, { hired_at: e.start_date }, { audit: false }); });
+  await applyDueHires(req.user);   // contratto già iniziato: la persona diventa ATTIVA subito
   reindexPerson(id);
   await audit(req, 'EMPLOYMENT_UPDATE', 'resource', id, { ral: e.ral, level: e.level, job_title: e.job_title });
   res.json({ ok: true });
@@ -410,6 +411,7 @@ r.put('/:id/lp', requireWrite, ah(async (req, res) => {
   if (rsrc.kind !== 'LP') throw bad('La risorsa non è un libero professionista');
   const l = parse(lpSchema, req.body);
   await tx(async (c) => { await upsertLp(c, id, l); if (l.start_date) await updatePerson(c, req, id, { hired_at: l.start_date }, { audit: false }); });
+  await applyDueHires(req.user);
   reindexPerson(id);
   await audit(req, 'LP_UPDATE', 'resource', id, { discipline: l.discipline, start_date: l.start_date });
   res.json({ ok: true });

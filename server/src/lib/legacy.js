@@ -667,71 +667,94 @@ export async function getCounters(user) {
 const eur = (v) => (v == null ? null : Math.round(Number(v) * 100) / 100);
 const pct = (a, b) => (b ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null);
 
+// A10 (programma "anagrafica unica", blocco 2, 08/11/2026): le card si leggono dallo schema del modulo quando è LIVE nella Suite (stessa
+// tecnica di safe(): pool del modulo, search_path = <modulo>, public), dall'app di origine solo se il modulo non è ancora LIVE e la
+// sorgente è collegata. Le sedi vengono sempre da public.sites (nei moduli LIVE la tabella sites delle app di origine non esiste più).
+// leggi(key, { modulo, legacy }): SQL per lo schema del modulo e (se diverso) per l'app di origine.
+async function leggi(key, { modulo, legacy }) {
+  if (await moduleLive(key)) { const { moduleDb } = await import('./modules.js'); return moduleDb(key).many(modulo); }
+  return lq(key, legacy || modulo);
+}
+// Fonte della card: 'modulo' (LIVE nella Suite), 'origine' (app di origine collegata) o null (nessuna)
+async function fonteCard(key) { if (await moduleLive(key)) return 'modulo'; return sourceEnabled(key) ? 'origine' : null; }
+
+const CASH_GIORNO = (sites) => `SELECT s.name, sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS tot FROM cash_reports r JOIN ${sites} s ON s.id = r.site_id
+      WHERE r.report_date = CURRENT_DATE AND r.status <> 'DRAFT' GROUP BY s.name ORDER BY tot DESC`;
+const CASH_MESE = (sites) => `SELECT s.name, sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS tot FROM cash_reports r JOIN ${sites} s ON s.id = r.site_id
+      WHERE r.report_date >= date_trunc('month', CURRENT_DATE) AND r.status <> 'DRAFT' GROUP BY s.name ORDER BY tot DESC`;
+const CONTRACTS_DET = (res) => `SELECT 'Scadenze manuali' AS label, count(*)::int AS n FROM deadlines WHERE done = FALSE AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
+      UNION ALL SELECT 'Documenti del dossier', count(*)::int FROM attachments a JOIN ${res} x ON x.id = a.resource_id WHERE x.status = 'ATTIVO' AND a.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
+      UNION ALL SELECT 'Contratti a termine', count(*)::int FROM employments e JOIN ${res} x ON x.id = e.resource_id WHERE x.status = 'ATTIVO' AND e.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
+      UNION ALL SELECT 'Incarichi LP', count(*)::int FROM lp_contracts l JOIN ${res} x ON x.id = l.resource_id WHERE x.status = 'ATTIVO' AND l.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30`;
+
 const CARD_BUILDERS = [
   { key: 'cash_today', module_key: 'cash', title: 'Incassi di oggi', unit: 'EUR', link: '/go/cash', async build() {
-    const rows = await lq('cash', `SELECT s.name, sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS tot FROM cash_reports r JOIN sites s ON s.id = r.site_id
-      WHERE r.report_date = CURRENT_DATE AND r.status <> 'DRAFT' GROUP BY s.name ORDER BY tot DESC`);
+    const rows = await leggi('cash', { modulo: CASH_GIORNO('public.sites'), legacy: CASH_GIORNO('sites') });
     const total = rows.reduce((a, r) => a + Number(r.tot || 0), 0);
     return { value: eur(total), hint: `${rows.length} sedi con rendiconto chiuso oggi`, series: rows.slice(0, 12).map((r) => ({ label: r.name, value: eur(r.tot) })) };
   } },
   { key: 'cash_month', module_key: 'cash', title: 'Incassi del mese', unit: 'EUR', link: '/go/cash', async build() {
-    const rows = await lq('cash', `SELECT s.name, sum(r.cash_to_deposit + r.pos_total + r.transfer_total) AS tot FROM cash_reports r JOIN sites s ON s.id = r.site_id
-      WHERE r.report_date >= date_trunc('month', CURRENT_DATE) AND r.status <> 'DRAFT' GROUP BY s.name ORDER BY tot DESC`);
-    const prev = await lq('cash', `SELECT sum(cash_to_deposit + pos_total + transfer_total) AS tot FROM cash_reports WHERE status <> 'DRAFT'
-      AND report_date >= date_trunc('month', CURRENT_DATE - interval '1 month') AND report_date <= (date_trunc('month', CURRENT_DATE - interval '1 month')::date + (CURRENT_DATE - date_trunc('month', CURRENT_DATE)::date))`);
+    const rows = await leggi('cash', { modulo: CASH_MESE('public.sites'), legacy: CASH_MESE('sites') });
+    const prev = await leggi('cash', { modulo: `SELECT sum(cash_to_deposit + pos_total + transfer_total) AS tot FROM cash_reports WHERE status <> 'DRAFT'
+      AND report_date >= date_trunc('month', CURRENT_DATE - interval '1 month') AND report_date <= (date_trunc('month', CURRENT_DATE - interval '1 month')::date + (CURRENT_DATE - date_trunc('month', CURRENT_DATE)::date))` });
     const total = rows.reduce((a, r) => a + Number(r.tot || 0), 0);
     return { value: eur(total), delta: pct(total, Number(prev[0]?.tot || 0)), hint: 'Contanti netti, POS e bonifici dei rendiconti chiusi; delta sullo stesso periodo del mese scorso', series: rows.slice(0, 12).map((r) => ({ label: r.name, value: eur(r.tot) })) };
   } },
   { key: 'retail_revenue', module_key: 'retail', title: 'Fatturato del mese', unit: 'EUR', link: '/go/retail', async build() {
-    const cur = await lq('retail', `SELECT sum(net_amount) AS tot, count(DISTINCT external_ref) AS tickets FROM sales WHERE sale_date >= date_trunc('month', CURRENT_DATE)`);
-    const prev = await lq('retail', `SELECT sum(net_amount) AS tot FROM sales WHERE sale_date >= date_trunc('month', CURRENT_DATE - interval '1 month')
-      AND sale_date <= (date_trunc('month', CURRENT_DATE - interval '1 month')::date + (CURRENT_DATE - date_trunc('month', CURRENT_DATE)::date))`);
-    const lines = await lq('retail', `SELECT coalesce(l.name, 'Altro') AS label, sum(s.net_amount) AS tot FROM sales s LEFT JOIN products p ON p.id = s.product_id LEFT JOIN product_lines l ON l.id = p.line_id
-      WHERE s.sale_date >= date_trunc('month', CURRENT_DATE) GROUP BY 1 ORDER BY tot DESC`);
+    const cur = await leggi('retail', { modulo: `SELECT sum(net_amount) AS tot, count(DISTINCT external_ref) AS tickets FROM sales WHERE sale_date >= date_trunc('month', CURRENT_DATE)` });
+    const prev = await leggi('retail', { modulo: `SELECT sum(net_amount) AS tot FROM sales WHERE sale_date >= date_trunc('month', CURRENT_DATE - interval '1 month')
+      AND sale_date <= (date_trunc('month', CURRENT_DATE - interval '1 month')::date + (CURRENT_DATE - date_trunc('month', CURRENT_DATE)::date))` });
+    const lines = await leggi('retail', { modulo: `SELECT coalesce(l.name, 'Altro') AS label, sum(s.net_amount) AS tot FROM sales s LEFT JOIN products p ON p.id = s.product_id LEFT JOIN product_lines l ON l.id = p.line_id
+      WHERE s.sale_date >= date_trunc('month', CURRENT_DATE) GROUP BY 1 ORDER BY tot DESC` });
     return { value: eur(cur[0]?.tot || 0), delta: pct(Number(cur[0]?.tot || 0), Number(prev[0]?.tot || 0)), hint: `${cur[0]?.tickets || 0} accettazioni nel mese; delta sullo stesso periodo del mese scorso`, series: lines.map((r) => ({ label: r.label, value: eur(r.tot) })) };
   } },
   { key: 'retail_new_customers', module_key: 'retail', title: 'Nuovi pazienti del mese', unit: 'n', link: '/go/retail', async build() {
-    const cur = await lq('retail', `SELECT count(*)::int AS n FROM customers WHERE kind = 'B2C' AND coalesce(first_visit, created_at::date) >= date_trunc('month', CURRENT_DATE)`);
-    const prev = await lq('retail', `SELECT count(*)::int AS n FROM customers WHERE kind = 'B2C' AND coalesce(first_visit, created_at::date) >= date_trunc('month', CURRENT_DATE - interval '1 month') AND coalesce(first_visit, created_at::date) < date_trunc('month', CURRENT_DATE)`);
+    const cur = await leggi('retail', { modulo: `SELECT count(*)::int AS n FROM customers WHERE kind = 'B2C' AND coalesce(first_visit, created_at::date) >= date_trunc('month', CURRENT_DATE)` });
+    const prev = await leggi('retail', { modulo: `SELECT count(*)::int AS n FROM customers WHERE kind = 'B2C' AND coalesce(first_visit, created_at::date) >= date_trunc('month', CURRENT_DATE - interval '1 month') AND coalesce(first_visit, created_at::date) < date_trunc('month', CURRENT_DATE)` });
     return { value: cur[0]?.n || 0, delta: pct(cur[0]?.n || 0, prev[0]?.n || 0), hint: 'Pazienti B2C con prima visita nel mese; delta sul mese scorso intero' };
   } },
   { key: 'orders_open', module_key: 'orders', title: 'Ordini aperti', unit: 'n', link: '/go/orders', async build() {
-    const rows = await lq('orders', `SELECT status, count(*)::int AS n FROM orders WHERE status NOT IN ('BOZZA','CHIUSO','ANNULLATO') GROUP BY status`);
-    const packs = await lq('orders', `SELECT coalesce(sum(coalesce(l.qty_approved, l.qty_requested)), 0)::int AS n FROM order_lines l JOIN orders o ON o.id = l.order_id WHERE o.status NOT IN ('BOZZA','CHIUSO','ANNULLATO')`);
+    const rows = await leggi('orders', { modulo: `SELECT status, count(*)::int AS n FROM orders WHERE status NOT IN ('BOZZA','CHIUSO','ANNULLATO') GROUP BY status` });
+    const packs = await leggi('orders', { modulo: `SELECT coalesce(sum(coalesce(l.qty_approved, l.qty_requested)), 0)::int AS n FROM order_lines l JOIN orders o ON o.id = l.order_id WHERE o.status NOT IN ('BOZZA','CHIUSO','ANNULLATO')` });
     const total = rows.reduce((a, r) => a + r.n, 0);
     return { value: total, hint: `${packs[0]?.n || 0} confezioni in lavorazione; il gestionale ordini non registra il valore economico`, series: rows.map((r) => ({ label: r.status, value: r.n })) };
   } },
   { key: 'nc_open', module_key: 'nc', title: 'Non conformità aperte', unit: 'n', link: '/go/nc', async build() {
-    const rows = await lq('nc', `SELECT gravita AS label, count(*)::int AS n FROM nc WHERE stato NOT IN ('CHIUSA','VERIFICATA','ANNULLATA') GROUP BY gravita ORDER BY 1`);
-    const rt = await lq('nc', `SELECT avg(EXTRACT(EPOCH FROM (first_response_at - sent_at)) / 3600) AS ore FROM nc WHERE sent_at IS NOT NULL AND first_response_at IS NOT NULL AND opened_at >= CURRENT_DATE - 90`);
+    const rows = await leggi('nc', { modulo: `SELECT gravita AS label, count(*)::int AS n FROM nc WHERE stato NOT IN ('CHIUSA','VERIFICATA','ANNULLATA') GROUP BY gravita ORDER BY 1` });
+    const rt = await leggi('nc', { modulo: `SELECT avg(EXTRACT(EPOCH FROM (first_response_at - sent_at)) / 3600) AS ore FROM nc WHERE sent_at IS NOT NULL AND first_response_at IS NOT NULL AND opened_at >= CURRENT_DATE - 90` });
     const ore = rt[0]?.ore != null ? Math.round(Number(rt[0].ore) * 10) / 10 : null;
     return { value: rows.reduce((a, r) => a + r.n, 0), hint: ore != null ? `Tempo medio di risposta delle sedi negli ultimi 90 giorni: ${ore} ore` : 'Nessuna risposta registrata negli ultimi 90 giorni', series: rows.map((r) => ({ label: r.label, value: r.n })) };
   } },
   { key: 'finance_pending', module_key: 'finance', title: 'Autorizzazioni in attesa di firma', unit: 'n', link: '/go/finance', async build() {
-    const r = await lq('finance', `SELECT count(*)::int AS n, coalesce(sum(amount), 0) AS tot FROM payment_requests WHERE status = 'IN_FIRMA'`);
+    const r = await leggi('finance', { modulo: `SELECT count(*)::int AS n, coalesce(sum(amount), 0) AS tot FROM payment_requests WHERE status = 'IN_FIRMA'` });
     return { value: r[0]?.n || 0, hint: `Importo complessivo in attesa: ${eur(r[0]?.tot || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, series: [{ label: 'Importo in attesa (EUR)', value: eur(r[0]?.tot || 0) }] };
   } },
   { key: 'integration_progress', module_key: 'integration', title: 'Avanzamento integrazioni', unit: '%', link: '/go/integration', async build() {
-    const rows = await lq('integration', `SELECT t.nome AS label, count(a.*)::int AS tot, count(*) FILTER (WHERE a.st = 3)::int AS done FROM targets t LEFT JOIN activities a ON a.target_id = t.id GROUP BY t.id, t.nome, t.position ORDER BY t.position`);
+    // nella Suite i target sono Legal entity (vista targets_v: tipo TARGET o con org_ext), nell'app di origine la tabella targets
+    const rows = await leggi('integration', {
+      modulo: `SELECT t.nome AS label, count(a.target_id)::int AS tot, count(*) FILTER (WHERE a.st = 3)::int AS done FROM targets_v t LEFT JOIN activities a ON a.target_id = t.id GROUP BY t.id, t.nome, t.position ORDER BY t.position`,
+      legacy: `SELECT t.nome AS label, count(a.*)::int AS tot, count(*) FILTER (WHERE a.st = 3)::int AS done FROM targets t LEFT JOIN activities a ON a.target_id = t.id GROUP BY t.id, t.nome, t.position ORDER BY t.position` });
     const tot = rows.reduce((a, r) => a + r.tot, 0), done = rows.reduce((a, r) => a + r.done, 0);
     return { value: tot ? Math.round((done / tot) * 100) : 0, hint: `${done} attività completate su ${tot}, ${rows.length} target`, series: rows.map((r) => ({ label: r.label || 'Target', value: r.tot ? Math.round((r.done / r.tot) * 100) : 0 })) };
   } },
   { key: 'contracts_deadlines', module_key: 'contracts', title: 'Scadenze contrattuali a 30 giorni', unit: 'n', link: '/go/contracts', restricted: true, async build() {
-    const r = await lq('contracts', COUNTER_QUERIES.contracts.sql);
-    const det = await lq('contracts', `SELECT 'Scadenze manuali' AS label, count(*)::int AS n FROM deadlines WHERE done = FALSE AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
-      UNION ALL SELECT 'Documenti del dossier', count(*)::int FROM attachments a JOIN resources x ON x.id = a.resource_id WHERE x.status = 'ATTIVO' AND a.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
-      UNION ALL SELECT 'Contratti a termine', count(*)::int FROM employments e JOIN resources x ON x.id = e.resource_id WHERE x.status = 'ATTIVO' AND e.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
-      UNION ALL SELECT 'Incarichi LP', count(*)::int FROM lp_contracts l JOIN resources x ON x.id = l.resource_id WHERE x.status = 'ATTIVO' AND l.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30`);
+    // nella Suite le risorse sono le persone dell'anagrafica (vista resources_v)
+    const r = await leggi('contracts', { modulo: COUNTER_QUERIES.contracts.sql.replace(/\bresources r\b/g, 'resources_v r'), legacy: COUNTER_QUERIES.contracts.sql });
+    const det = await leggi('contracts', { modulo: CONTRACTS_DET('resources_v'), legacy: CONTRACTS_DET('resources') });
     return { value: r[0]?.n || 0, hint: 'Scadenze manuali, documenti del dossier, contratti a termine e incarichi in scadenza', series: det.map((x) => ({ label: x.label, value: x.n })) };
   } },
   { key: 'shipments_transit', module_key: 'shipments', title: 'Kit in viaggio', unit: 'n', link: '/go/shipments', async build() {
-    const rows = await lq('shipments', `SELECT project AS label, count(*)::int AS n FROM kits WHERE status IN ('SHIPPED','SHIPPED_TO_LAB') GROUP BY project`);
-    const wait = await lq('shipments', `SELECT count(*)::int AS n FROM orders WHERE status = 'NEW'`);
+    const rows = await leggi('shipments', { modulo: `SELECT project AS label, count(*)::int AS n FROM kits WHERE status IN ('SHIPPED','SHIPPED_TO_LAB') GROUP BY project` });
+    const wait = await leggi('shipments', { modulo: `SELECT count(*)::int AS n FROM orders WHERE status = 'NEW'` });
     return { value: rows.reduce((a, r) => a + r.n, 0), hint: `${wait[0]?.n || 0} ordini nuovi da assegnare`, series: rows.map((r) => ({ label: r.label, value: r.n })) };
   } },
   { key: 'room_coverage', module_key: 'room', title: 'Copertura turni ambulatori', unit: '%', link: '/go/room', async build() {
-    const r = await lq('room', `SELECT count(*)::int AS tot, count(*) FILTER (WHERE prof_id IS NOT NULL)::int AS coperti FROM turni WHERE mese = to_char(CURRENT_DATE, 'YYYY-MM')`);
-    const sedi = await lq('room', `SELECT count(*)::int AS n, coalesce(sum(jsonb_array_length(coalesce(data->'ambulatori', '[]'::jsonb))), 0)::int AS amb FROM strutture WHERE deleted_at IS NULL`);
+    const r = await leggi('room', { modulo: `SELECT count(*)::int AS tot, count(*) FILTER (WHERE prof_id IS NOT NULL)::int AS coperti FROM turni WHERE mese = to_char(CURRENT_DATE, 'YYYY-MM')` });
+    // nella Suite le sedi di Room sono le sedi dell'anagrafica configurate (site_ext), senza la tabella strutture dell'app di origine
+    const sedi = await leggi('room', {
+      modulo: `SELECT count(*)::int AS n, coalesce(sum(CASE WHEN jsonb_typeof(e.data->'ambulatori') = 'array' THEN jsonb_array_length(e.data->'ambulatori') ELSE 0 END), 0)::int AS amb
+        FROM site_ext e JOIN public.sites s ON s.id = e.site_id WHERE s.active AND s.kind <> 'SERVICE'`,
+      legacy: `SELECT count(*)::int AS n, coalesce(sum(jsonb_array_length(coalesce(data->'ambulatori', '[]'::jsonb))), 0)::int AS amb FROM strutture WHERE deleted_at IS NULL` });
     const tot = r[0]?.tot || 0, cop = r[0]?.coperti || 0;
     return { value: tot ? Math.round((cop / tot) * 100) : null, hint: `${cop} turni coperti su ${tot} nel mese; ${sedi[0]?.n || 0} sedi e ${sedi[0]?.amb || 0} ambulatori censiti`, series: [{ label: 'Coperti', value: cop }, { label: 'Scoperti', value: tot - cop }] };
   } },
@@ -740,9 +763,10 @@ const CARD_BUILDERS = [
 async function computeCockpit() {
   const cards = await Promise.all(CARD_BUILDERS.map(async (b) => {
     const base = { key: b.key, module_key: b.module_key, title: b.title, unit: b.unit, link: b.link, restricted: Boolean(b.restricted) };
-    if (!sourceEnabled(b.module_key)) return { ...base, value: null, unavailable: true, hint: 'Sorgente non configurata' };
-    try { return { ...base, ...(await b.build()) }; }
-    catch (e) { console.warn(`[cockpit:${b.key}] ${e.message}`); return { ...base, value: null, unavailable: true, hint: 'Lettura non riuscita' }; }
+    const fonte = await fonteCard(b.module_key);
+    if (!fonte) return { ...base, value: null, unavailable: true, hint: 'Modulo non avviato nella Suite e app di origine non collegata' };
+    try { return { ...base, source: fonte, ...(await b.build()) }; }
+    catch (e) { console.warn(`[cockpit:${b.key}] ${e.message}`); return { ...base, source: fonte, value: null, unavailable: true, hint: 'Lettura non riuscita' }; }
   }));
   return { generated_at: new Date().toISOString(), cards };
 }

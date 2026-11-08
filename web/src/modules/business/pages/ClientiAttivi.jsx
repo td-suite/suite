@@ -17,6 +17,7 @@ export default function ClientiAttivi() {
   if (!q.data) return <div className="page"><Loading /></div>;
   const righe = q.data.righe.filter((x) => !solo || (solo === 'attivi' ? x.cliente_attivo : !x.cliente_attivo));
   const attivi = q.data.righe.filter((x) => x.cliente_attivo).length;
+  const senzaCodice = linea === 'PP' ? 0 : q.data.righe.filter((x) => !x.codice_studiolab).length;
   return (
     <div className="page">
       <div className="page-head">
@@ -26,10 +27,12 @@ export default function ClientiAttivi() {
           <select style={{ width: 'auto' }} value={linea} onChange={(e) => setSp({ linea: e.target.value })}>{Object.entries(LINEE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
         </div>
       </div>
+      {senzaCodice > 0 && <div className="alert warn small" style={{ marginBottom: 12 }}>{senzaCodice === 1 ? 'Un cliente non ha' : `${senzaCodice} clienti non hanno`} ancora il codice StudioLAB: inseriscilo dalla scheda del cliente (Ordini, Non conformità e Retail lo usano per riconoscerlo).</div>}
       <Card flush>{righe.length ? <div className="table-wrap"><table className="t">
-        <thead><tr><th>Cliente</th><th>Stato del cliente</th><th>Contratto</th><th>Avvio</th><th>Volumi attesi</th><th>Listino</th><th>Accessi</th><th>Ultimo contatto</th><th>Owner</th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Codice StudioLAB</th><th>Stato del cliente</th><th>Contratto</th><th>Avvio</th><th>Volumi attesi</th><th>Listino</th><th>Accessi</th><th>Ultimo contatto</th><th>Owner</th></tr></thead>
         <tbody>{righe.map((x) => <tr key={x.id} className="click" onClick={() => nav(`${BASE}/account/${x.id}${x.da_verificare ? '?scheda=proposta' : ''}`)}>
           <td><div className="strong">{x.org_name}</div><div className="small muted">{[x.citta, x.prov && `(${x.prov})`].filter(Boolean).join(' ')}{x.da_verificare ? <> · <Badge tone="mauve">{x.da_verificare} allegati da verificare</Badge></> : null}</div></td>
+          <td className="small">{x.linea === 'PP' ? <span className="muted">–</span> : x.codice_studiolab ? <span className="mono strong">{x.codice_studiolab}</span> : <Badge tone="amber">da inserire</Badge>}{x.linea !== 'PP' && !x.sede_service_id ? <div className="tiny muted">senza sede SERVICE</div> : null}</td>
           <td>{x.cliente_attivo ? <Badge tone="teal">attivo{x.attivo_dal ? ` dal ${itDate(x.attivo_dal)}` : ''}</Badge> : <Badge tone="green">{FASI[x.fase_corrente]?.label || 'in avvio'}</Badge>}{x.contrattualizzato_at && <div className="small muted">firmato ricevuto {itDate(x.contrattualizzato_at)}</div>}</td>
           <td>{x.contratto ? <><StatusBadge status={x.contratto.status} /><div className="small muted mono">{x.contratto.protocol || ''}{x.contratto.status === 'ATTIVO' && x.contratto.start_date ? ` · dal ${itDate(x.contratto.start_date)}` : x.contratto.signed_at ? ` · firma ${itDate(x.contratto.signed_at)}` : ''}</div></> : <span className="muted small">nessuno</span>}</td>
           <td className="small">{x.attivo_dal ? itDate(x.attivo_dal) : x.data_avvio_prevista ? <>prevista {itDate(x.data_avvio_prevista)}</> : <span className="muted">da definire</span>}</td>

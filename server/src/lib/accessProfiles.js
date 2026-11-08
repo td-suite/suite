@@ -1,9 +1,15 @@
 // Profili di accesso (richiesta del CEO, 28/10/2026): pacchetti "widget → profilo" applicati a uno o più utenti.
-// - merge (predefinito): aggiunge i grant mancanti; aggiorna quelli esistenti solo se erano proposte o nati da un profilo (o da una
-//   regola dell'organigramma); un grant manuale con profilo diverso resta com'è e finisce nel rapporto. Non toglie mai nulla.
-// - replace: sostituisce tutti i grant dell'utente con quelli del profilo (solo su richiesta esplicita).
+// - sovrascrivi (predefinito dell'assegnazione da Amministrazione, richiesta del CEO dell'08/11/2026: "Quando assegno un profilo a
+//   una risorsa, sovrascrivi quello che aveva! [...] quando assegno un profilo correlato alla sede del dipendente, assegnala!"): per
+//   ogni widget del profilo il grant esistente, anche manuale o più alto, viene SOSTITUITO da quello del profilo (ruolo e ambito) e il
+//   rapporto dice "sostituito X → Y"; i grant sugli altri widget restano.
+// - merge (spunta "Sostituisci i permessi esistenti" tolta; applicazione automatica del Default ai nuovi account; profili di sistema
+//   degli esterni): aggiunge i grant mancanti; aggiorna quelli esistenti solo se erano proposte o nati da un profilo (o da una regola
+//   dell'organigramma); un grant manuale con profilo diverso resta com'è e finisce nel rapporto. Non toglie mai nulla.
+// - replace: sostituisce tutti i grant dell'utente con quelli del profilo, togliendo gli altri widget (solo su richiesta esplicita).
 // I grant nascono confermati (proposed FALSE, source PROFILE, profile_id); per i moduli con scope_type SITE lo scope è la sede della
-// persona (people.site_id, altrimenti users.site_id); senza sede il grant nasce senza scope e il rapporto lo segnala.
+// persona: people.site_id, altrimenti la sede di lavoro del contratto (contracts.employments.work_site_id), altrimenti users.site_id;
+// senza sede il grant nasce senza ambito e il rapporto chiede di assegnare la sede in Anagrafica > Persone (con il link).
 // Utenti esterni (29/10/2026, lib/esterni.js): gli ambiti si risolvono dalla Legal entity dell'utente (Cash → sedi ospitate,
 // NC → la Legal entity, altri moduli per sede → le sedi dell'organizzazione) e si riallineano a ogni applicazione del profilo.
 import { one, many, tx } from '../db.js';
@@ -32,20 +38,24 @@ export async function getDefaultProfile() {
 }
 
 /**
- * Applica un profilo a più utenti. opts: { actorId, mode: 'merge' | 'replace' }.
- * Ritorna { profile: {id, name}, mode, users, added, updated, kept, removed, warnings: [string], rows: [{user_id, email, added, updated, kept, removed, warnings}] }.
+ * Applica un profilo a più utenti. opts: { actorId, mode: 'sovrascrivi' | 'merge' | 'replace' }.
+ * Ritorna { profile: {id, name}, mode, users, added, updated, kept, removed, replaced, warnings: [string], sede_mancante: [{ user_id,
+ * person_id, nome, link }], rows: [{user_id, email, added, updated, kept, removed, sostituiti: [{ modulo, da, a, ambito }], ambito_sede,
+ * warnings}] }.
  */
+export const MODI = ['sovrascrivi', 'merge', 'replace'];
 export async function applyProfile(profileId, userIds, { actorId = null, mode = 'merge' } = {}) {
   const profile = await getProfile(profileId);
   if (!profile) throw Object.assign(new Error('Profilo di accesso inesistente'), { status: 404 });
-  if (!['merge', 'replace'].includes(mode)) throw Object.assign(new Error('Modalità non valida'), { status: 400 });
+  if (!MODI.includes(mode)) throw Object.assign(new Error('Modalità non valida'), { status: 400 });
+  const sovrascrivi = mode === 'sovrascrivi';
   const actor = await loadActor(actorId);
   const owner = isOwnerLevel(actor);
   const modules = await many('SELECT key, name, restricted, active, scope_type, profiles FROM modules');
   const byKey = Object.fromEntries(modules.map((m) => [m.key, m]));
 
   // Item validi del profilo (una volta sola): modulo esistente e attivo, profilo previsto, modulo riservato solo per il titolare
-  const report = { profile: { id: profile.id, name: profile.name }, mode, users: 0, added: 0, updated: 0, kept: 0, removed: 0, warnings: [], rows: [] };
+  const report = { profile: { id: profile.id, name: profile.name }, mode, users: 0, added: 0, updated: 0, kept: 0, removed: 0, replaced: 0, warnings: [], sede_mancante: [], rows: [] };
   const items = [];
   for (const it of Array.isArray(profile.items) ? profile.items : []) {
     const m = byKey[it.module_key];
@@ -59,13 +69,22 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
   const itemKeys = new Set(items.map((i) => i.module.key));
 
   const ids = [...new Set((userIds || []).map(Number).filter(Number.isFinite))];
+  // sede della persona: anagrafica (people.site_id), poi la sede di lavoro del contratto (Contracts, se il modulo è avviato), poi l'utente
+  const conContratti = Boolean((await one(`SELECT to_regclass('contracts.employments') IS NOT NULL AS ok`))?.ok);
+  const sedeContratto = conContratti ? `(SELECT e.work_site_id FROM contracts.employments e WHERE e.resource_id = p.id AND e.work_site_id IS NOT NULL
+      ORDER BY (e.end_date IS NULL OR e.end_date >= CURRENT_DATE) DESC, e.start_date DESC NULLS LAST LIMIT 1)` : 'NULL::int';
   for (const uid of ids) {
-    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, u.is_external, coalesce(p.site_id, u.site_id) AS site_id,
+    const u = await one(`SELECT u.id, u.email, u.full_name, u.level, u.status, u.is_external, p.id AS person_id, p.last_name,
+                                p.site_id AS sede_persona, ${sedeContratto} AS sede_contratto, u.site_id AS sede_utente,
+                                coalesce(p.site_id, ${sedeContratto}, u.site_id) AS site_id,
                                 coalesce(p.organization_id, u.organization_id) AS organization_id, o.kind AS organization_kind
                            FROM users u LEFT JOIN people p ON p.id=u.person_id LEFT JOIN organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.id=$1`, [uid]);
     if (!u) { report.warnings.push(`Utente n. ${uid} inesistente: saltato`); continue; }
     if (u.level === 'OWNER' && !owner) { report.warnings.push(`${u.full_name}: il titolare lo modifica solo il titolare, saltato`); continue; }
-    const row = { user_id: u.id, email: u.email, full_name: u.full_name, added: 0, updated: 0, kept: 0, removed: 0, warnings: [] };
+    const row = { user_id: u.id, email: u.email, full_name: u.full_name, added: 0, updated: 0, kept: 0, removed: 0, sostituiti: [], warnings: [] };
+    const sedeNome = u.site_id ? (await one('SELECT code, name FROM sites WHERE id=$1', [u.site_id])) : null;
+    row.ambito_sede = u.site_id ? { id: u.site_id, nome: sedeNome ? `${sedeNome.code} ${sedeNome.name}` : `#${u.site_id}`, fonte: u.sede_persona ? 'anagrafica' : u.sede_contratto ? 'contratto di lavoro' : 'utente' } : null;
+    let senzaSede = false;
     // Esterno (Legal entity CLIENTE/PARTNER/... o dominio non aziendale): gli ambiti si risolvono dall'organizzazione, non dalla
     // sede della persona (lib/esterni.js: Cash → sedi ospitate, NC → la Legal entity, altri → sedi dell'organizzazione)
     const external = !isInternal({ ...u, internal_domains: config.autoInternalDomains });
@@ -80,7 +99,7 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
         return r.scopes;
       }
       if (m.scope_type === 'SITE' && u.site_id) return [{ type: 'SITE', id: u.site_id }];
-      if (m.scope_type === 'SITE' && !u.site_id && it.scoped) row.warnings.push(`${m.name} (${it.profile}): la persona non ha una sede, grant senza ambito`);
+      if (m.scope_type === 'SITE' && !u.site_id && it.scoped) { senzaSede = true; row.warnings.push(`${m.name} (${it.profile}): la persona non ha una sede, grant senza ambito: assegna la sede alla persona in Anagrafica > Persone`); }
       return [];
     };
     await tx(async (c) => {
@@ -106,6 +125,24 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
             [u.id, m.key, it.profile, profile.id, actorId]);
           await addScopes(ng.id);
           row.added++;
+          continue;
+        }
+        // sovrascrivi: il grant del profilo SOSTITUISCE quello esistente (ruolo e ambito), anche se manuale o più alto
+        if (sovrascrivi) {
+          const { rows: vecchi } = await c.query('SELECT scope_type, scope_id FROM grant_scopes WHERE grant_id=$1 ORDER BY scope_type, scope_id', [g.id]);
+          const chiave = (arr) => arr.map((x) => `${x.scope_type || x.type}:${x.scope_id ?? x.id}`).sort().join(',');
+          // ambito nuovo: esterni → dall'organizzazione; widget per sede → la sede della persona (senza sede in anagrafica l'ambito
+          // esistente resta: non si allarga un grant a tutte le sedi togliendo l'ambito); altri widget → ambito invariato
+          const vecchiScope = vecchi.map((x) => ({ type: x.scope_type, id: x.scope_id }));
+          const nuoviScope = external ? scopes : m.scope_type === 'SITE' ? (scopes.length || !it.scoped ? scopes : vecchiScope) : vecchiScope;
+          const ambitoCambia = chiave(vecchi) !== chiave(nuoviScope);
+          if (g.profile === it.profile && !g.proposed && !ambitoCambia && g.profile_id === profile.id) { row.kept++; continue; }
+          await c.query(`UPDATE grants SET profile=$2, proposed=FALSE, source='PROFILE', profile_id=$3, updated_at=now() WHERE id=$1`, [g.id, it.profile, profile.id]);
+          if (ambitoCambia) { await c.query('DELETE FROM grant_scopes WHERE grant_id=$1', [g.id]); for (const x of nuoviScope) await c.query(`INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [g.id, x.type, x.id]); }
+          // ambito effettivo nel rapporto (widget per sede o esterni): la sede della persona, l'organizzazione o tutte le sedi
+          const ambito = external ? (nuoviScope.length ? 'perimetro della Legal entity' : 'senza ambito') : m.scope_type === 'SITE' ? (nuoviScope.length ? (scopes.length ? row.ambito_sede?.nome : 'ambito precedente (persona senza sede)') : 'tutte le sedi') : null;
+          if (g.profile !== it.profile || g.proposed || ambitoCambia) row.sostituiti.push({ modulo: m.name, da: g.proposed ? `${g.profile} (proposta)` : g.profile, a: it.profile, ambito, ambito_cambiato: ambitoCambia });
+          row.updated++;
           continue;
         }
         // grant già presente: si tocca solo se era una proposta, nato da un profilo o da una regola dell'organigramma (mode replace: sempre).
@@ -139,8 +176,9 @@ export async function applyProfile(profileId, userIds, { actorId = null, mode = 
         row.updated++;
       }
     });
-    report.users++; report.added += row.added; report.updated += row.updated; report.kept += row.kept; report.removed += row.removed;
+    report.users++; report.added += row.added; report.updated += row.updated; report.kept += row.kept; report.removed += row.removed; report.replaced += row.sostituiti.length;
     for (const w of row.warnings) report.warnings.push(`${u.full_name}: ${w}`);
+    if (senzaSede) report.sede_mancante.push({ user_id: u.id, person_id: u.person_id || null, nome: u.full_name, link: u.person_id ? `/admin/people?q=${encodeURIComponent(u.last_name || u.full_name)}` : `/admin/users/${u.id}` });
     report.rows.push(row);
   }
   return report;

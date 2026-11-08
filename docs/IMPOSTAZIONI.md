@@ -315,3 +315,16 @@ Intorno o dal form Sedi). Audit: `INTORNO_IMPOSTAZIONI`, `INTORNO_PROVA`, `INTOR
   `diagnostica_runs`, `site_documents.label/origin`), cash 016 (titolo e ospitante solo dal core), audit 003, facility 004, orders 012,
   room 010 (responsabile di sede solo attivo). Tutte idempotenti e non distruttive, con rapporto `MIGRAZIONE_RAPPORTO` in audit_log.
 - Cash: titolo di godimento e struttura ospitante non sono più impostazioni di Cash (Amministrazione > Sedi).
+
+## Anagrafica unica, blocco 2 (08/11/2026)
+- Profili di accesso: l'assegnazione da Amministrazione ha la spunta "Sostituisci i permessi esistenti" (accesa di base, modalità
+  `sovrascrivi`): per i widget del profilo il permesso che la persona aveva viene sostituito (ruolo e ambito) e l'ambito dei widget per
+  sede è la sede della persona (anagrafica, altrimenti contratto di lavoro); senza sede il rapporto rimanda ad Anagrafica > Persone. Il
+  profilo Default dei nuovi account resta additivo. Dettagli in docs/ANAGRAFICA.md (blocco 2).
+- Codice StudioLAB del cliente: si inserisce nella scheda account del Business Hub (riquadro "Codice StudioLAB") o in Amministrazione >
+  Sedi (sede SERVICE); non è un'impostazione di Ordini o NC. `sites.address_from_org`: indirizzo della sede SERVICE ereditato dalla Legal
+  entity (lo segue quando cambia).
+- Migrazioni: core 044 (`clienti_attivi_v`, `cliente_livello`, `sites.address_from_org`), business 018 (`accounts.studiolab_code`,
+  `attivo_dal` completata dalla fase 7), orders 013 e nc 007 (strutture e sedi invianti solo clienti, le altre Legal entity con dati
+  restano disattivate). Idempotenti e non distruttive, con rapporto `MIGRAZIONE_RAPPORTO`.
+

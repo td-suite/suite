@@ -27,7 +27,7 @@ import {
 } from '../lib/puntoPrelievi.js';
 import { PASSI_AVVIO_PP, tipoPunto } from '../lib/processo.js';
 import { config } from '../config.js';
-import { loadAccount } from './hub.js';
+import { loadAccount, STUDIOLAB_SELECT } from './hub.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 1 } });
@@ -249,7 +249,11 @@ r.post('/punti-prelievo/da-sede', ah(async (req, res) => {
   res.status(201).json({ id: row.id });
 }));
 
-// Clienti della linea (menu "Clienti"): clienti attivi e contrattualizzati in avvio, con contratto, avvio, volumi, ultimo contatto
+// Clienti della linea (menu "Clienti"): clienti attivi e contrattualizzati in avvio, con contratto, avvio, volumi, ultimo contatto.
+// A5 (blocco 2): per Service e Medicina del Lavoro la regola è la vista unica public.clienti_attivi_v (la stessa di Ordini, NC, Portale e
+// Circolari); per i Punti Prelievo resta quella della linea (cliente attivo, contrattualizzato o fase 6).
+const CLIENTE_DELLA_LINEA = `(CASE WHEN a.linea IN ('SRV','MDL') THEN EXISTS (SELECT 1 FROM public.clienti_attivi_v v WHERE v.account_id=a.id)
+  ELSE (a.cliente_attivo OR a.contrattualizzato_at IS NOT NULL OR a.fase_corrente >= 6) END)`;
 r.get('/clienti-attivi', ah(async (req, res) => {
   const linea = LINEE_KEYS.includes(req.query.linea) ? req.query.linea : 'SRV';
   const s = await getSettings();
@@ -260,9 +264,10 @@ r.get('/clienti-attivi', ah(async (req, res) => {
       (SELECT max(x.at) FROM activities x WHERE x.account_id=a.id AND x.tipo NOT IN ('SISTEMA')) AS ultimo_contatto,
       (SELECT l.versione FROM listini l WHERE l.account_id=a.id ORDER BY l.versione DESC LIMIT 1) AS listino_versione,
       (SELECT count(*)::int FROM documenti d WHERE d.account_id=a.id AND d.da_verificare) AS da_verificare,
-      (SELECT count(*)::int FROM public.users u LEFT JOIN public.people p ON p.id=u.person_id WHERE u.is_external AND u.status='ACTIVE' AND coalesce(p.organization_id, u.organization_id)=a.organization_id) AS accessi
+      (SELECT count(*)::int FROM public.users u LEFT JOIN public.people p ON p.id=u.person_id WHERE u.is_external AND u.status='ACTIVE' AND coalesce(p.organization_id, u.organization_id)=a.organization_id) AS accessi,
+      ${STUDIOLAB_SELECT}
     FROM accounts a JOIN public.organizations o ON o.id=a.organization_id LEFT JOIN public.users uo ON uo.id=a.owner_user_id
-    WHERE a.linea=$1 AND (a.cliente_attivo OR a.contrattualizzato_at IS NOT NULL OR a.fase_corrente >= 6) ORDER BY a.cliente_attivo DESC, coalesce(a.attivo_dal, a.data_avvio_prevista) DESC NULLS LAST, o.name`, [linea]);
+    WHERE a.linea=$1 AND ${CLIENTE_DELLA_LINEA} ORDER BY a.cliente_attivo DESC, coalesce(a.attivo_dal, a.data_avvio_prevista) DESC NULLS LAST, o.name`, [linea]);
   res.json({ linea, righe: rows.map((x) => ({ ...x, volumi: volumiGiornalieri(x, s.hub_giorni_lavorativi) })) });
 }));
 

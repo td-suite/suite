@@ -143,6 +143,10 @@ export async function contrattualizza(accountId, { documentoId, fonte = 'form on
     console.log(`[business] contratto punto prelievi account ${a.id}: avvio ${avvio.riepilogo.fatti}/${avvio.riepilogo.previsti}`);
     return esito;
   }
+  // A7 (decisione 5): sede SERVICE del cliente creata dalla contrattualizzazione (prima solo un avviso), prima dell'attivazione
+  // degli accessi: saveSite riallinea i perimetri e "Il mio spazio", NC e Ordini hanno subito il loro ambito
+  const sede = await sedeServiceAllaFirma(a, { contrattoId: contratto.id || null, userId, fonte });
+  avvisi.push(...sede.avvisi);
   const attivazione = await attivaAccessi(a, { userId });
   avvisi.push(...attivazione.avvisi);
 
@@ -176,9 +180,80 @@ export async function contrattualizza(accountId, { documentoId, fonte = 'form on
   if (vg.fonte !== 'campo') avvisi.push(`Volumi giornalieri ${vg.fonte === 'calcolo' ? 'calcolati dal volume annuo atteso' : 'non indicati'}: compila "Volumi giornalieri attesi" nella scheda account`);
   if (!fresco.data_avvio_prevista) avvisi.push('Data di avvio prevista non indicata nella scheda account');
 
-  const esito = { at: new Date().toISOString(), fonte, documento_id: doc.id, contratto, fase, attivazione: { accessi: attivazione.accessi, aggiunti: attivazione.aggiunti, inviti: attivazione.inviti }, email, avvisi };
+  const esito = { at: new Date().toISOString(), fonte, documento_id: doc.id, contratto, fase, sede_service: sede.site ? { id: sede.site.id, code: sede.site.code, esito: sede.esito } : null, attivazione: { accessi: attivazione.accessi, aggiunti: attivazione.aggiunti, inviti: attivazione.inviti }, email, avvisi };
   await q('UPDATE accounts SET contrattualizzazione=$2, prospect=FALSE, updated_at=now() WHERE id=$1', [a.id, JSON.stringify(esito)]);
   if (fresco.owner_user_id) await notify([fresco.owner_user_id], { kind: 'MODULO', module_key: 'business', title: `${a.org_name}: contratto firmato`.slice(0, 200), body: 'Pipeline alla fase 6, comunicazioni inviate, servizi della Suite attivati.', link: `/business/account/${a.id}` }).catch(() => 0);
   console.log(`[business] contrattualizzazione account ${a.id}: interna ${email.interna?.stato}, benvenuto ${email.benvenuto?.stato}, laboratorio ${email.laboratorio?.stato}, ${attivazione.accessi} accessi attivati`);
   return esito;
+}
+
+/**
+ * A7: sede SERVICE del cliente alla contrattualizzazione (Service e Medicina del Lavoro) con saveSite (lib/clienti.js creaSedeService):
+ * nome = ragione sociale, indirizzo del contratto se indicato altrimenti della Legal entity, orari di ritiro dal contratto, codice
+ * StudioLAB se già inserito nell'account. Idempotente: se la Legal entity ha già una sede SERVICE attiva non crea nulla.
+ * Ritorna { esito: 'creata'|'esistente'|'errore', site?, avvisi }.
+ */
+export async function sedeServiceAllaFirma(a, { contrattoId = null, userId = null, fonte = 'contrattualizzazione' } = {}) {
+  const { creaSedeService } = await import('../../../lib/clienti.js');
+  try {
+    const r = await creaSedeService({ orgId: a.organization_id, linea: a.linea, contrattoId, origine: `Business Hub, contrattualizzazione ${a.linea} (${fonte})`, actorId: userId });
+    if (r.esito === 'creata') {
+      await attivita(a.id, { tipo: 'SISTEMA', oggetto: `Sede SERVICE creata in anagrafica: ${r.site.code}`,
+        testo: [`${r.site.name}${r.site.address ? `, ${[r.site.address, r.site.city].filter(Boolean).join(' ')}` : ''}${r.site.address_from_org ? ' (indirizzo della Legal entity)' : ''}.`,
+          r.site.studiolab_code ? `Codice StudioLAB: ${r.site.studiolab_code}.` : 'Codice StudioLAB da inserire nella scheda account (campo "Codice StudioLAB").'].join('\n'),
+        dati: { site_id: r.site.id } }, userId);
+    }
+    return r;
+  } catch (e) {
+    console.warn(`[business] sede SERVICE account ${a.id}: ${e.message}`);
+    return { esito: 'errore', avvisi: [`Sede SERVICE non creata: ${e.message} (Amministrazione > Diagnostica anagrafica, D13)`] };
+  }
+}
+
+/**
+ * A5: contratto Service o Medicina del Lavoro FIRMATO o ATTIVO (caricamento del firmato senza account, cambio di stato) → account
+ * coerente: prospect FALSE, fase almeno 6, sede SERVICE. Per la Medicina del Lavoro la firma è la contrattualizzazione
+ * (contrattualizzato_at, una volta sola): niente comunicazioni automatiche né profili degli accessi (non previsti per la linea).
+ * Per il Service contrattualizzato_at resta della contrattualizzazione con il PDF firmato (lib/contrattualizza.js), che manda le email.
+ * Ritorna null se il contratto non c'entra, altrimenti { account_id, fase, contrattualizzato, sede, avvisi }.
+ */
+export async function allineaAccountAlContratto(contrattoId, { userId = null, fonte = 'cambio di stato del contratto' } = {}) {
+  const c = await one('SELECT id, kind, status, org_id, protocol, signed_at FROM contracts WHERE id=$1', [contrattoId]);
+  if (!c || !['SRV', 'MDL'].includes(c.kind) || !['FIRMATO', 'ATTIVO'].includes(c.status) || !c.org_id) return null;
+  const { loadAccount } = await import('../routes/hub.js');
+  const acc = await one('SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2', [c.org_id, c.kind]);
+  if (!acc) return { account_id: null, avvisi: ['Nessun account del Business Hub per questa Legal entity e linea: la sede SERVICE si crea dalla Diagnostica anagrafica (D13)'] };
+  const a = await loadAccount(acc.id);
+  const giorno = c.signed_at ? String(c.signed_at instanceof Date ? c.signed_at.toISOString() : c.signed_at).slice(0, 10) : todayRome();
+  const presa = c.kind === 'MDL'
+    ? await one(`UPDATE accounts SET contrattualizzato_at=coalesce($2::date::timestamptz, now()), prospect=FALSE, updated_at=now() WHERE id=$1 AND contrattualizzato_at IS NULL RETURNING id`, [a.id, c.signed_at])
+    : null;
+  await q('UPDATE accounts SET prospect=FALSE, updated_at=now() WHERE id=$1 AND prospect', [a.id]);
+  if (presa) await attivita(a.id, { tipo: 'CONTRATTO_FIRMATO', oggetto: `Contratto Medicina del Lavoro ${c.protocol || `#${c.id}`} ${c.status.toLowerCase()} (${fonte})`, testo: 'Cliente contrattualizzato: compare tra i clienti della Suite (Ordini, Non conformità, Portale, Circolari). La fase 7 la conferma il CEO.', dati: { contratto_id: c.id } }, userId);
+  const fase = await avanzaFase(a.id, 6, giorno, `Contratto ${c.protocol || `#${c.id}`} ${c.status.toLowerCase()} (${fonte}).`, userId);
+  const sede = await sedeServiceAllaFirma(a, { contrattoId: c.id, userId, fonte });
+  return { account_id: a.id, fase, contrattualizzato: Boolean(presa), sede: sede.site ? { id: sede.site.id, code: sede.site.code, esito: sede.esito } : null, avvisi: sede.avvisi };
+}
+
+/**
+ * Correzione D12 della Diagnostica anagrafica (A5): account con contratto della linea vigente ma ancora prospect, sotto la fase 6 o
+ * senza data di contrattualizzazione → contrattualizzato alla data della firma, prospect FALSE, fase 6, sede SERVICE (Service e MdL).
+ * Nessuna comunicazione automatica (email interna, benvenuto, laboratorio): si registra nel diario che sono state saltate.
+ */
+export async function contrattualizzatoDaDiagnostica(accountId, { userId = null } = {}) {
+  const a = await one('SELECT id, organization_id, linea FROM accounts WHERE id=$1', [accountId]);
+  if (!a) return { esito: 'account inesistente' };
+  const c = await one(`SELECT id, protocol, status, signed_at FROM contracts WHERE org_id=$1 AND kind=$2 AND status IN ('FIRMATO','AUTORIZZATO','ATTIVO') ORDER BY signed_at NULLS LAST, id LIMIT 1`, [a.organization_id, a.linea]);
+  if (!c) return { esito: 'nessun contratto vigente della linea' };
+  const presa = await one(`UPDATE accounts SET contrattualizzato_at=coalesce($2::date::timestamptz, now()), prospect=FALSE, updated_at=now() WHERE id=$1 AND contrattualizzato_at IS NULL RETURNING id`, [a.id, c.signed_at]);
+  await q('UPDATE accounts SET prospect=FALSE, updated_at=now() WHERE id=$1 AND prospect', [a.id]);
+  const giorno = c.signed_at ? String(c.signed_at instanceof Date ? c.signed_at.toISOString() : c.signed_at).slice(0, 10) : todayRome();
+  const fase = await avanzaFase(a.id, 6, giorno, `Contratto ${c.protocol || `#${c.id}`} ${c.status.toLowerCase()} (Diagnostica anagrafica, D12).`, userId);
+  if (presa) await attivita(a.id, { tipo: 'SISTEMA', oggetto: 'Contrattualizzazione registrata dalla Diagnostica anagrafica (D12)', testo: `Contratto ${c.protocol || `#${c.id}`} ${c.status.toLowerCase()}: cliente contrattualizzato alla data della firma. Le comunicazioni automatiche della contrattualizzazione non sono state inviate.`, dati: { contratto_id: c.id } }, userId);
+  let sede = null;
+  if (['SRV', 'MDL'].includes(a.linea)) {
+    const { loadAccount } = await import('../routes/hub.js');
+    sede = await sedeServiceAllaFirma(await loadAccount(a.id), { contrattoId: c.id, userId, fonte: 'Diagnostica anagrafica D12' });
+  }
+  return { esito: `contrattualizzato${presa ? '' : ' (data già presente)'}, fase ${fase ?? 'invariata'}${sede?.site ? `, sede SERVICE ${sede.site.code} ${sede.esito}` : ''}`, avvisi: sede?.avvisi || [] };
 }

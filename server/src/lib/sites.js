@@ -31,6 +31,7 @@ export const siteSchema = z.object({
   studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
   opened_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),   // data di apertura della sede (letta da Cash e Retail)
   closed_at: isoDate,   // data di chiusura (B17 minimo, A1): impostata da sola alla disattivazione se non indicata
+  address_from_org: z.boolean().optional(),   // sede SERVICE con l'indirizzo della Legal entity: lo segue quando cambia (A7, lib/clienti.js)
   extraurbana: z.boolean().optional(),   // sede extraurbana: raggio dell'Intorno del Retail più ampio (10 km predefiniti, docs/RETAIL_INTORNO.md)
   // Titolo di godimento e locazione (fonte unica: Payments e Facility leggono da qui, lib/leaseSync.js)
   tenure: z.enum(['PROPRIETA', 'LOCAZIONE', 'COMODATO', 'OSPITATA']).optional(),
@@ -125,6 +126,8 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
     if (!cur && b.organization_id == null) { const td = await companyOrgId(); if (td) b.organization_id = td; }
     else if (cur && b.organization_id === null && cur.organization_id != null) throw bad('Una sede di Toscana Diagnostica deve avere la Legal entity proprietaria (Dati aziendali)');
   }
+  // A7 (d): un indirizzo scritto a mano diverso da quello in vigore smette di seguire la Legal entity (address_from_org = FALSE)
+  if (cur?.address_from_org && b.address_from_org === undefined && ADDRESS_KEYS.some((k) => changed(b, cur, k))) b.address_from_org = false;
   // chiusura e riapertura (B17 minimo): data di chiusura alla disattivazione, tolta alla riattivazione
   if (cur && b.active === false && cur.active && b.closed_at == null) b.closed_at = today();
   if (cur && b.active === true && !cur.active) b.closed_at = null;

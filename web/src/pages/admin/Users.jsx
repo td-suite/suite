@@ -5,7 +5,7 @@ import { useAuth, isOwner } from '../../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, SearchInput, Avatar, useToast, Switch, MultiSelect, Modal, ConfirmModal, Pager, CopyButton } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { LEVEL, STATUS, STATUS_TONE, PROVIDER, fmtDateTime, timeAgo, AREA_COLORS, AREA_NAMES } from '../../format.js';
-import { ProfilePicker, ProfileReport } from './AccessProfiles.jsx';
+import { ProfilePicker, ProfileReport, ApplyProfileModal } from './AccessProfiles.jsx';
 
 // ---------- Elenco ----------
 export function UsersList() {
@@ -74,9 +74,8 @@ export function UsersList() {
         </table></div>}
         {data && <Pager page={page} pageSize={50} total={data.total} onChange={(p) => setF('page', String(p))} />}
       </Card>
-      {applyProfile && <ConfirmModal title={`Assegnare il profilo "${applyProfile.name}" a ${selected.size} utent${selected.size === 1 ? 'e' : 'i'}?`} confirmText="Assegna"
-        text={`Vengono aggiunti i permessi del profilo (${(applyProfile.items || []).length} widget) a: ${selectedRows.slice(0, 6).map((u) => u.full_name).join(', ')}${selectedRows.length > 6 ? ` e altri ${selectedRows.length - 6}` : ''}. I permessi già presenti non vengono tolti: si aggiornano solo le proposte e quelli nati da un profilo, mai un permesso assegnato a mano. Sui widget per sede l'ambito è la sede della persona.`}
-        onConfirm={async () => { const r = await api.post(`/access-profiles/${applyProfile.id}/apply`, { user_ids: [...selected], mode: 'merge' }); setReport(r); setSelected(new Set()); toast(`Profilo applicato: ${r.added} aggiunti, ${r.updated} aggiornati, ${r.kept} lasciati${r.warnings.length ? `, ${r.warnings.length} avvisi` : ''}`); reload(); }} onClose={() => setApplyProfile(null)} />}
+      {applyProfile && <ApplyProfileModal profile={applyProfile} users={selectedRows.map((u) => ({ id: u.id, full_name: u.full_name }))} onClose={() => setApplyProfile(null)}
+        onDone={(r) => { setApplyProfile(null); setReport(r); setSelected(new Set()); toast(`Profilo applicato: ${r.added} aggiunti, ${r.replaced || 0} sostituiti, ${r.kept} già uguali${r.warnings.length ? `, ${r.warnings.length} avvisi` : ''}`); reload(); }} />}
       {report && <Modal title="Rapporto dell'assegnazione" wide onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} /></Modal>}
       {confirmDel && <ConfirmModal title={`Eliminare l'accesso di ${confirmDel.full_name}?`} text="L'utente non potrà più entrare nella Suite e perde i moduli assegnati. La persona resta in anagrafica: l'accesso si può ricreare dalla sua scheda." danger confirmText="Elimina" onConfirm={async () => { await api.del(`/users/${confirmDel.id}`); toast('Accesso eliminato'); reload(); }} onClose={() => setConfirmDel(null)} />}
     </div>
@@ -316,10 +315,9 @@ export function UserDetail() {
         </Modal>
       )}
       {confirm && <ConfirmModal title={confirm.title} text={confirm.text} danger={confirm.danger} confirmText={confirm.confirmText} onConfirm={confirm.go} onClose={() => setConfirm(null)} />}
-      {applyProfile && <ConfirmModal title={`Applicare il profilo "${applyProfile.name}" a ${u?.full_name}?`} confirmText="Applica"
-        text={`Vengono aggiunti i permessi del profilo (${(applyProfile.items || []).length} widget). I permessi già presenti non vengono tolti: si aggiornano solo le proposte e quelli nati da un profilo, mai un permesso assegnato a mano. Sui widget per sede l'ambito è la sede della persona.`}
-        onConfirm={async () => { const r = await api.post(`/access-profiles/${applyProfile.id}/apply`, { user_ids: [Number(id)], mode: 'merge' }); setReport(r); toast(`Profilo applicato: ${r.added} aggiunti, ${r.updated} aggiornati, ${r.kept} lasciati`); detail.reload(); }} onClose={() => setApplyProfile(null)} />}
-      {report && <Modal title="Rapporto dell'applicazione" onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} compact /></Modal>}
+      {applyProfile && <ApplyProfileModal profile={applyProfile} users={[{ id: Number(id), full_name: u?.full_name }]} onClose={() => setApplyProfile(null)}
+        onDone={(r) => { setApplyProfile(null); setReport(r); toast(`Profilo applicato: ${r.added} aggiunti, ${r.replaced || 0} sostituiti`); detail.reload(); }} />}
+      {report && <Modal title="Rapporto dell'assegnazione" onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} compact /></Modal>}
     </div>
   );
 }

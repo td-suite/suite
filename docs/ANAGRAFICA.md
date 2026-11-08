@@ -1142,10 +1142,108 @@ anomale, D18d ai responsabili attivi): conteggi per area, prime 50 righe, CSV de
 singolo controllo, "Salva l'esito" (`diagnostica_runs`). Esecuzione in transazione READ ONLY con `statement_timeout` 5 s; "modulo non
 avviato" se manca lo schema. Correzioni (`POST /api/admin/diagnostica/:id/correggi { ids, conferma: 'CORREGGI', opzioni }`) solo con le
 funzioni del core, audit `DIAGNOSTICA_CORREZIONE` con prima/dopo: D01, D02, D03, D04, D06, D10a, D18a, D18b, D18c, D18e, D19 (opzione
-`includi_admin`), D22a, D22b, D30, D31, D33, D34. Controlli "attivi dopo": D13 (Fase 2, A5/A7), D24 (Fase 3, B1), D36 (Fase 4, C13);
-correzioni "dopo": D07 (B6), D12 (A5), D16a-c (B5b), D20 (A4), D21a-b (B15), D22c (B9), D23 (B7), D25 (B5). Lavoro giornaliero
+`includi_admin`), D22a, D22b, D30, D31, D33, D34 (dal blocco 2 anche D12 e D13). Controlli "attivi dopo": D24 (Fase 3, B1), D36 (Fase 4,
+C13); correzioni "dopo": D07 (B6), D16a-c (B5b), D21a-b (B15), D22c (B9), D23 (B7), D25 (B5). Lavoro giornaliero
 `core:diagnostica`: salva l'esito e notifica gli amministratori se crescono i controlli bloccanti. Schermate:
 docs/screens/admin-diagnostica.png, admin-diagnostica-sede.png.
 
 **Cash.** Vedi A2 sopra: Cash legge titolo e ospitante dall'anagrafica e conserva solo i propri campi (fondo cassa, casse, POS, royalty,
 azienda). D06 verifica lo specchio; D07 (azienda Cash ≠ Legal entity della sede) si corregge con B6.
+
+## Blocco 2 del programma: clienti attivi, sedi SERVICE, strutture di Ordini e NC, Cockpit, profili (08/11/2026)
+Correzioni A5, A4, A7 (con la richiesta del CEO dell'08/11/2026), A10 e la richiesta del CEO sui profili di accesso. Migrazioni core 044,
+business 018, orders 013, nc 007: idempotenti, non distruttive (nessuna riga cancellata, nessun dato sovrascritto: solo `attivo_dal`
+completata dove vuota con la data della fase 7), rapporto `MIGRAZIONE_RAPPORTO` in `audit_log`.
+
+**Clienti attivi e contrattualizzati: una sola regola (A5, decisione 1).** Vista `public.clienti_attivi_v(org_id, linea, livello, dal,
+fonte, account_id)`, una riga per Legal entity e linea (SRV, MDL), sempre con la Legal entity attiva:
+- `ATTIVO` = `business.accounts.cliente_attivo` (fase 7 confermata dal CEO), `dal` = `attivo_dal`, `fonte` = `CEO`;
+- `CONTRATTUALIZZATO` = `contrattualizzato_at` valorizzato oppure contratto della linea FIRMATO o ATTIVO, purché la linea non sia
+  cessata (tutti i contratti della linea CESSATI o ANNULLATI e almeno uno CESSATO); `dal` = data della contrattualizzazione o della
+  firma, `fonte` = `CONTRATTUALIZZAZIONE` o `CONTRATTO`.
+La vista legge lo schema del Business Hub: la crea la funzione `public.clienti_attivi_ricrea()` (vuota con le stesse colonne se il
+Business Hub non è avviato, completa dalla migrazione business 018). Nel codice si legge solo con `clientiAttivi({ linea, livello,
+orgId })` di `lib/clienti.js`; nelle viste dei moduli con la funzione SQL `public.cliente_livello(org_id)` = `ATTIVO`,
+`CONTRATTUALIZZATO`, `PUNTO_SERVICE` (Legal entity con una sede SERVICE attiva anche se il Business Hub non la conosce) o NULL.
+Consumatori: Ordini e NC (strutture), Dotazione di avvio, Portale Service ("Il mio spazio" e "Visualizza come"), Circolari (segmenti e
+proposte di destinatari), pagina Clienti del Business Hub (linee SRV e MDL), Diagnostica (D13, D15c, D20). Entrambi i livelli ovunque:
+**decisione tecnica** (da segnalare al CEO): Ordini e NC includono i contrattualizzati perché il servizio parte alla firma; anche il
+Portale li include (il cliente contrattualizzato deve già vedere il portale) e le Circolari ne seguono la regola.
+Account coerente al contratto (A5): la contrattualizzazione Service (PDF firmato) imposta già `prospect = FALSE`, fase 6 e
+`contrattualizzato_at`; per la **Medicina del Lavoro** la firma (PDF caricato sul contratto MDL o stato FIRMATO/ATTIVO) è la
+contrattualizzazione: `contrattualizzato_at` alla data della firma, `prospect = FALSE`, fase 6, sede SERVICE, diario (nessuna email né
+profilo degli accessi, non previsti per la linea). Il cambio di stato a FIRMATO/ATTIVO di un contratto Service senza PDF porta l'account
+a `prospect = FALSE` e fase 6 con la sede SERVICE; `contrattualizzato_at` resta della contrattualizzazione con il PDF (che manda le
+email). `attivo_dal` resta del solo flag del CEO (la migrazione business 018 la completa dalla fase 7 dove mancava).
+
+**Sedi SERVICE dei clienti (A7, decisione 5 e richiesta del CEO dell'08/11/2026).** "In Sedi/Strutture clienti service genera anche tutte
+le Legal entity che non hanno sede, perché vuol dire che hanno una sede sola, quella della Legal entity; in indirizzo, se non
+espressamente indicato, riporta sempre quello della Legal entity." `lib/clienti.js`:
+- `creaSedeService({ orgId, linea, contrattoId, struttura })` con `saveSite`: kind SERVICE, Legal entity = cliente, nome = ragione
+  sociale (o nome della struttura del gruppo), codice `SRV-<codice Legal entity>` (`MDL-` per la Medicina del Lavoro, progressivo se
+  occupato), indirizzo = `data.site_address` del contratto Service se indicato, altrimenti quello della Legal entity con
+  `address_from_org = TRUE`; orari di ritiro del contratto (`data.pickup.days`: giorni a orario fisso negli orari strutturati, riepilogo
+  completo con i giorni a chiamata nelle note), referente del ritiro, telefono ed email; codice StudioLAB se già inserito nell'account.
+  Idempotente: una Legal entity con una sede SERVICE attiva non ne riceve un'altra; una struttura si riconosce per nome.
+- Chi la chiama: la contrattualizzazione Service (prima dell'attivazione degli accessi, così "Il mio spazio", NC e Ordini hanno subito
+  il loro ambito e i perimetri si riallineano da saveSite), la firma MDL, la correzione D12, la correzione D13 e l'operazione
+  **"Crea le sedi SERVICE mancanti"** (Amministrazione > Diagnostica anagrafica, riquadro "Sedi SERVICE dei clienti": Prova senza
+  scritture, Esegui con conferma `ESEGUI`, audit `SEDI_SERVICE_CREATE`; `GET/POST /api/admin/migrazioni/sedi-service`): per ogni Legal
+  entity di `clienti_attivi_v` (entrambi i livelli) una sede per ogni struttura del gruppo dell'account **attivata** (fase 6 o 7 nel DB
+  Opportunità, oppure nome uguale al punto `site_name`/`pickup.site` di un contratto vigente) e, se resta senza sede SERVICE attiva, una
+  sede con l'indirizzo della Legal entity. Le strutture non attivate restano "strutture del gruppo" nell'account (elencate nel rapporto).
+- Indirizzo ereditato (`sites.address_from_org`, migrazione 044): quando cambia l'indirizzo della Legal entity (Amministrazione > Legal
+  entity, MOD173 compilato dal cliente) le sedi SERVICE con l'indirizzo ereditato si aggiornano con saveSite (`allineaSediDaOrg`, audit
+  `SITE_UPDATED` con origine "Amministrazione > Legal entity (indirizzo)"); un indirizzo scritto a mano nella sede, diverso da quello in
+  vigore, mette `address_from_org = FALSE` e la sede smette di seguire la Legal entity. Il connettore (ingest) non riallinea ancora.
+- **Codice StudioLAB** (decisione 5): la fonte è la sede SERVICE (`sites.studiolab_code`, letto da Ordini, NC, Retail). Nella scheda
+  account del Business Hub (linee SRV e MDL) il riquadro "Codice StudioLAB" lo mostra e lo fa inserire a chi gestisce la linea (`PUT
+  /api/business/hub/accounts/:id/studiolab`): con la sede già presente scrive nella sede (saveSite), senza sede resta in
+  `business.accounts.studiolab_code` e passa alla sede quando nasce. Lo stesso codice su due sedi è rifiutato. Avviso non bloccante nella
+  scheda e nella pagina Clienti (colonna "Codice StudioLAB" e conteggio dei mancanti); controllo D15c "Clienti senza codice StudioLAB".
+- Consumatori delle sedi SERVICE (A7 (e)): Ordini (punti di consegna della Legal entity), NC (codice → Legal entity), Retail
+  (`retail.sites_v`), Portale Service, invariati; Room le esclude dall'elenco (resta solo un punto SERVICE già configurato, D29); Cash le
+  esclude già (solo sedi TD).
+
+**Ordini e NC: strutture = clienti (A4).** Viste `orders.strutture_v` e `nc.sedi_v` ridefinite (stesse colonne più `cliente_livello`):
+le righe Legal entity (`origin = 'ORG'`) sono attive solo per i clienti (`public.cliente_livello` non NULL: attivi e contrattualizzati di
+entrambe le linee, o con punti SERVICE). Le Legal entity che non sono clienti ma hanno dati nel modulo (ordini, giacenze, confezioni,
+produzione, segnalazioni, dotazione; NC e accettazioni) o impostazioni del modulo (`org_ext`) restano nella vista **disattivate**
+(`active`/`attiva` = FALSE): lo storico si legge, non compaiono nei selettori e negli elenchi. La Dotazione di avvio prende le Legal
+entity con `cliente_livello` (prima ogni CLIENTE o PARTNER). D20 controlla le righe ORG attive che non sono clienti in entrambi i moduli.
+
+**Cockpit (A10).** Le card della direzione (`lib/legacy.js`, `leggi()`) leggono lo schema del modulo quando è LIVE nella Suite (Cash,
+Retail, Ordini, NC, Payments, Integration con `targets_v`, Contratti con `resources_v`, Spedizioni, Room con `site_ext` al posto della
+tabella `strutture`), le sedi da `public.sites`; l'app di origine solo se il modulo non è LIVE e la sorgente è collegata. Ogni card dice
+la fonte (`source`: `modulo` o `origine`); senza nessuna delle due "Modulo non avviato nella Suite e app di origine non collegata".
+
+**Profili di accesso: il profilo sostituisce e assegna la sede (richiesta del CEO dell'08/11/2026).** "Quando assegno un profilo a una
+risorsa, sovrascrivi quello che aveva! Non dirmi 'aveva un altro ruolo, ho lasciato quello'. Inoltre, quando assegno un profilo
+correlato alla sede del dipendente, assegnala!" Assegnazione da Amministrazione (Profili di accesso > **Applica**, Utenti > Assegna
+profilo, scheda utente > Applica profilo) con la spunta **"Sostituisci i permessi esistenti"** (accesa di base): modalità `sovrascrivi`
+di `applyProfile`, predefinita di `POST /api/access-profiles/:id/apply`. Per ogni widget del profilo il permesso esistente (anche
+manuale o più alto) è sostituito da quello del profilo, ruolo e ambito; i permessi sugli altri widget restano. Ambito dei widget per sede
+= sede della persona: `people.site_id`, altrimenti la sede di lavoro del contratto (`contracts.employments.work_site_id`, contratto in
+corso più recente), altrimenti `users.site_id`; senza sede il permesso nasce senza ambito (un ambito già presente resta) e il rapporto
+dice "assegna la sede alla persona in Anagrafica > Persone" con il link. Rapporto: "sostituito X → Y · ambito: <sede>", sede assegnata e
+da dove viene, elenco `sede_mancante`; audit `ACCESS_PROFILE_APPLIED` con i sostituiti. Spunta tolta = `merge` (comportamento di prima:
+il manuale resta). L'applicazione automatica del profilo Default ai nuovi account e i profili di sistema degli esterni restano
+additivi (`merge`). Schermate: docs/screens/admin-profili-applica.png, admin-profili-applica-rapporto.png.
+
+**Diagnostica.** D12 ha la correzione "Segna contrattualizzati" (contrattualizzato alla data della firma, prospect tolto, fase 6, sede
+SERVICE per Service e MdL, senza le comunicazioni automatiche, annotato nel diario); D13 è attivo (regola = `clienti_attivi_v`) con la
+correzione "Crea le sedi SERVICE"; nuovo D15c "Clienti senza codice StudioLAB"; D20 adattato ad A4 (Ordini e NC). Schermate:
+docs/screens/business-clienti-codice.png, business-account-codice.png, admin-diagnostica-sedi-service.png.
+
+**Verifiche in produzione dopo il rilascio** (query da Amministrazione > Diagnostica anagrafica o in sola lettura):
+- `SELECT linea, livello, fonte, count(*) FROM clienti_attivi_v GROUP BY 1,2,3;` (confronto con la pagina Clienti del Business Hub);
+- D12, D13, D15a, D15c, D20 (dopo "Segna contrattualizzati" e "Crea le sedi SERVICE mancanti": D12 = 0, D13 = 0, D20 = 0);
+- ordini e NC ancora visibili: `SELECT count(*) FROM orders.orders o JOIN orders.strutture_v s ON s.id = o.struttura_id` uguale a
+  `SELECT count(*) FROM orders.orders`; idem `nc.nc` con `nc.sedi_v`;
+- Legal entity non clienti rimaste disattivate per lo storico: `SELECT id, name FROM orders.strutture_v WHERE origin='ORG' AND NOT active`
+  e `SELECT id, nome FROM nc.sedi_v WHERE origin='ORG' AND NOT attiva` (se qualcuna è un cliente reale: account e contratto nel Business
+  Hub, oppure la sua sede SERVICE);
+- rapporto delle migrazioni: `SELECT entity_id, data FROM audit_log WHERE action='MIGRAZIONE_RAPPORTO' AND entity_id IN
+  ('044_clienti_attivi.sql','business/018_clienti_attivi.sql');`
+- Cockpit: le card dei moduli LIVE con `source = 'modulo'` (GET /api/cockpit).
+

@@ -17,7 +17,7 @@ import { registerJob } from '../../lib/jobs.js';
 import { HttpError, forbidden } from '../../lib/util.js';
 import { config } from './config.js';
 import { publicUser } from './lib/access.js';
-import { applyDueTerminations } from './lib/termination.js';
+import { applyDueTerminations, applyDueHires } from './lib/termination.js';
 import { ensureSeed } from './lib/seed.js';
 import { pollRecruitingInbox } from './lib/inbox.js';
 import { runReminders } from './lib/peopleMail.js';
@@ -123,6 +123,7 @@ export default function mount(app) {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
     const n = await applyDueTerminations();
-    return { cessate: n };
+    const assunti = await applyDueHires();
+    return { cessate: n, prese_servizio: assunti };
   });
 }

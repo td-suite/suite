@@ -23,7 +23,9 @@ r.use(requireRole(...OPS_ROLES));
 const opt = (s) => s.optional().nullable().transform((v) => (v === '' ? null : v));
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const conflict = (msg) => new HttpError(409, msg);
-const ORG_KINDS = ['CLIENTE', 'PARTNER'];   // Legal entity con dotazione: clienti service e partner
+// A4 (blocco 2, 08/11/2026): Legal entity con dotazione = i clienti del servizio della vista strutture_v (cliente_livello: attivi e
+// contrattualizzati di public.clienti_attivi_v, o con punti SERVICE), non più ogni CLIENTE o PARTNER dell'anagrafica
+const ORG_KINDS = ['ATTIVO', 'CONTRATTUALIZZATO', 'PUNTO_SERVICE'];
 
 // Colonne dell'articolo per righe di modello e di carico (icona della categoria per la grafica)
 const ART = `a.code AS article_code, a.silva_code, a.name AS article_name, a.unit, a.pack_label, a.color, a.active AS article_active, a.source, c.icon, c.name AS category_name, c.sort AS category_sort`;
@@ -130,7 +132,7 @@ r.get('/modelli/:kind/export.xlsx', ah(async (req, res) => {
 }));
 
 // ---------------- b) Sedi e Legal entity ----------------
-// Elenco: sedi dei tipi con dotazione e Legal entity clienti service e partner, con data di apertura, stato e totali
+// Elenco: sedi dei tipi con dotazione e Legal entity clienti del servizio (attivi, contrattualizzati o con punti SERVICE), con data di apertura, stato e totali
 const SEDI_SQL = `SELECT s.id, s.origin, s.site_id, s.org_id, s.code, s.name, s.site_kind, s.org_kind, s.kind AS flow_kind, s.address, s.zip, s.city, s.province, s.active,
     s.referente, s.referente_phone, s.phone, s.email, s.organization_name,
     CASE WHEN s.origin='SITE' THEN ps.opened_at ELSE l.start_date END AS opened_at,
@@ -142,7 +144,7 @@ const SEDI_SQL = `SELECT s.id, s.origin, s.site_id, s.org_id, s.code, s.name, s.
   LEFT JOIN public.sites ps ON ps.id = s.site_id
   LEFT JOIN startup_loads l ON l.struttura_id = s.id
   LEFT JOIN orders o ON o.id = l.order_id`;
-const SEDI_WHERE = `((s.origin='SITE' AND s.site_kind = ANY($1::text[])) OR (s.origin='ORG' AND s.org_kind = ANY($2::text[])))`;
+const SEDI_WHERE = `((s.origin='SITE' AND s.site_kind = ANY($1::text[])) OR (s.origin='ORG' AND s.cliente_livello = ANY($2::text[])))`;
 
 function arricchisci(s, oggi) {
   const kind = s.load_kind || tipologiaDaSiteKind(s.site_kind, s.origin);

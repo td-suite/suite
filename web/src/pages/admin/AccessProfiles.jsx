@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth, isOwner } from '../../auth.jsx';
 import { useApi, Card, Badge, Skeleton, Empty, ErrorBox, PageHead, Field, useToast, Switch, Modal, ConfirmModal, Popover } from '../../components/ui.jsx';
@@ -13,24 +14,71 @@ export const modulesByArea = (mods) => {
 };
 
 // ---------- Rapporto di un'applicazione (usato anche in Utenti) ----------
+// Assegnazione con "Sostituisci i permessi esistenti" (richiesta del CEO dell'08/11/2026): il rapporto dice "sostituito X → Y" e la sede
+// assegnata come ambito; chi non ha una sede in anagrafica ha il link ad Anagrafica > Persone.
 export function ProfileReport({ report, compact }) {
   if (!report) return null;
   const n = (v, s, p) => `${v} ${v === 1 ? s : p}`;
+  const sostituiti = (report.rows || []).flatMap((r) => (r.sostituiti || []).map((x) => ({ ...x, utente: r.full_name })));
+  const ambiti = (report.rows || []).filter((r) => r.ambito_sede);
+  const modo = { sovrascrivi: ' (permessi esistenti sostituiti)', replace: ' (sostituzione completa)', merge: ' (solo aggiunte)' }[report.mode] || '';
   return (
-    <div className="col" style={{ gap: 10 }}>
-      <div className="alert ok"><Icon name="check" /><span>Profilo <b>{report.profile?.name}</b> applicato a {n(report.users, 'utente', 'utenti')}{report.mode === 'replace' ? ' (sostituzione completa)' : ''}.</span></div>
+    <div className="col" style={{ gap: 10 }} data-testid="rapporto-profilo">
+      <div className="alert ok"><Icon name="check" /><span>Profilo <b>{report.profile?.name}</b> applicato a {n(report.users, 'utente', 'utenti')}{modo}.</span></div>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <Badge tone="green">{n(report.added, 'permesso aggiunto', 'permessi aggiunti')}</Badge>
+        {report.replaced > 0 && <Badge tone="teal">{n(report.replaced, 'sostituito', 'sostituiti')}</Badge>}
         <Badge tone="blue">{n(report.updated, 'aggiornato', 'aggiornati')}</Badge>
-        <Badge tone="grey">{n(report.kept, 'lasciato', 'lasciati')}</Badge>
+        <Badge tone="grey">{n(report.kept, 'già uguale', 'già uguali')}</Badge>
         {report.removed > 0 && <Badge tone="red">{n(report.removed, 'rimosso', 'rimossi')}</Badge>}
         {report.warnings?.length > 0 && <Badge tone="amber">{n(report.warnings.length, 'avviso', 'avvisi')}</Badge>}
       </div>
+      {sostituiti.length > 0 && <div className="small"><b>Sostituiti:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{sostituiti.slice(0, compact ? 10 : 80).map((x, i) => <li key={i}>{report.users > 1 ? `${x.utente}: ` : ''}{x.modulo}: sostituito <b>{x.da}</b> → <b>{x.a}</b>{x.ambito ? <> · ambito: {x.ambito}</> : null}</li>)}</ul></div>}
+      {ambiti.length > 0 && <div className="small muted">Ambito di sede: {ambiti.slice(0, 6).map((r) => `${report.users > 1 ? `${r.full_name}: ` : ''}${r.ambito_sede.nome} (dalla ${r.ambito_sede.fonte === 'anagrafica' ? 'sede in anagrafica' : r.ambito_sede.fonte === 'contratto di lavoro' ? 'sede del contratto di lavoro' : 'sede dell\'utente'})`).join('; ')}{ambiti.length > 6 ? ` e altri ${ambiti.length - 6}` : ''}.</div>}
+      {report.sede_mancante?.length > 0 && <div className="alert warn small" style={{ alignItems: 'flex-start' }} data-testid="sede-mancante"><Icon name="alert" /><span>{report.sede_mancante.length === 1 ? `${report.sede_mancante[0].nome} non ha` : `${report.sede_mancante.length} persone non hanno`} una sede in anagrafica: i permessi per sede sono nati senza ambito. Assegna la sede alla persona in <b>Anagrafica &gt; Persone</b>, poi riapplica il profilo: {report.sede_mancante.slice(0, 8).map((x, i) => <React.Fragment key={x.user_id}>{i ? ', ' : ''}<Link to={x.link}>{x.nome}</Link></React.Fragment>)}{report.sede_mancante.length > 8 ? '…' : ''}</span></div>}
       {report.warnings?.length > 0 && <div className="alert warn small" style={{ alignItems: 'flex-start' }}><Icon name="alert" /><ul style={{ margin: 0, paddingLeft: 18 }}>{report.warnings.slice(0, compact ? 8 : 60).map((w, i) => <li key={i}>{w}</li>)}{report.warnings.length > (compact ? 8 : 60) && <li>… e altri {report.warnings.length - (compact ? 8 : 60)}</li>}</ul></div>}
-      {!compact && report.rows?.length > 1 && <div className="table-wrap"><table className="t"><thead><tr><th>Utente</th><th>Aggiunti</th><th>Aggiornati</th><th>Lasciati</th><th>Avvisi</th></tr></thead><tbody>
-        {report.rows.map((r) => <tr key={r.user_id}><td><div className="strong">{r.full_name}</div><div className="tiny muted">{r.email}</div></td><td>{r.added}</td><td>{r.updated}</td><td>{r.kept}</td><td className="small">{r.warnings.length ? r.warnings.join('; ') : <span className="faint">nessuno</span>}</td></tr>)}
+      {!compact && report.rows?.length > 1 && <div className="table-wrap"><table className="t"><thead><tr><th>Utente</th><th>Aggiunti</th><th>Sostituiti</th><th>Aggiornati</th><th>Già uguali</th><th>Avvisi</th></tr></thead><tbody>
+        {report.rows.map((r) => <tr key={r.user_id}><td><div className="strong">{r.full_name}</div><div className="tiny muted">{r.email}</div></td><td>{r.added}</td><td>{(r.sostituiti || []).length}</td><td>{r.updated}</td><td>{r.kept}</td><td className="small">{r.warnings.length ? r.warnings.join('; ') : <span className="faint">nessuno</span>}</td></tr>)}
       </tbody></table></div>}
     </div>
+  );
+}
+
+// ---------- Conferma dell'assegnazione con la spunta "Sostituisci i permessi esistenti" (Utenti: elenco e scheda; Profili: Applica) ----------
+// Spunta accesa (predefinita): per ogni widget del profilo il permesso esistente viene sostituito (ruolo e ambito di sede). Spenta:
+// si aggiungono solo i permessi mancanti e quelli assegnati a mano restano. users: [{ id, full_name }] se già scelti; senza, la modale
+// mostra la ricerca degli utenti (pagina Profili di accesso > Applica).
+export function ApplyProfileModal({ profile, users = null, onClose, onDone }) {
+  const [sostituisci, setSostituisci] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [qtext, setQtext] = useState('');
+  const [scelti, setScelti] = useState([]);
+  const cerca = useApi(users ? null : `/users${qtext.trim().length >= 2 ? `?qtext=${encodeURIComponent(qtext.trim())}&pageSize=20` : '?pageSize=20'}`, [qtext]);
+  const elenco = users || scelti;
+  const go = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await api.post(`/access-profiles/${profile.id}/apply`, { user_ids: elenco.map((u) => u.id), mode: sostituisci ? 'sovrascrivi' : 'merge' }); onDone(r); } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  const nomi = elenco.slice(0, 6).map((u) => u.full_name).join(', ') + (elenco.length > 6 ? ` e altri ${elenco.length - 6}` : '');
+  return (
+    <Modal title={`Assegnare il profilo "${profile.name}"${elenco.length ? ` a ${elenco.length === 1 ? elenco[0].full_name : `${elenco.length} utenti`}` : ''}?`} onClose={onClose}
+      footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !elenco.length} onClick={go}>{busy ? 'Assegnazione…' : 'Assegna'}</button></>}>
+      <ErrorBox error={err} />
+      {!users && <div className="col" style={{ gap: 6, marginBottom: 10 }}>
+        <Field label="Utenti a cui assegnarlo"><input value={qtext} onChange={(e) => setQtext(e.target.value)} placeholder="Cerca per nome o email" aria-label="Cerca utenti" /></Field>
+        <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+          {(cerca.data?.rows || []).map((u) => { const on = scelti.some((x) => x.id === u.id); return (
+            <label key={u.id} className="row small" style={{ gap: 8, padding: '6px 10px', cursor: 'pointer' }}><input type="checkbox" checked={on} onChange={() => setScelti(on ? scelti.filter((x) => x.id !== u.id) : [...scelti, { id: u.id, full_name: u.full_name }])} /><span className="strong">{u.full_name}</span><span className="muted">{u.email}</span>{u.site_name && <span className="tiny muted">· {u.site_name}</span>}</label>
+          ); })}
+          {cerca.data && !(cerca.data.rows || []).length && <div className="small muted" style={{ padding: 10 }}>Nessun utente trovato.</div>}
+        </div>
+        {scelti.length > 0 && <div className="small">Scelti: {nomi}</div>}
+      </div>}
+      <p className="small" style={{ marginTop: 0 }}>{users ? <>Utenti: {nomi}. </> : null}Il profilo ha {(profile.items || []).length} widget. Sui widget per sede l'ambito è la sede della persona (anagrafica, altrimenti la sede del contratto di lavoro): se la persona non ha una sede il rapporto lo segnala con il link ad Anagrafica &gt; Persone.</p>
+      <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}><input type="checkbox" checked={sostituisci} onChange={(e) => setSostituisci(e.target.checked)} aria-label="Sostituisci i permessi esistenti" style={{ marginTop: 3, width: 16, height: 16, flex: '0 0 auto' }} />
+        <span style={{ flex: 1 }}><b>Sostituisci i permessi esistenti</b><span className="small muted" style={{ display: 'block' }}>{sostituisci ? 'Per ogni widget del profilo il permesso che la persona aveva (anche assegnato a mano) viene sostituito da quello del profilo, ruolo e ambito. I permessi sugli altri widget restano.' : 'Si aggiungono solo i permessi mancanti; quelli già presenti assegnati a mano restano com\'erano.'}</span></span></label>
+    </Modal>
   );
 }
 
@@ -64,6 +112,7 @@ export function AccessProfiles() {
   const [edit, setEdit] = useState(null);      // profilo in modifica, o 'new'
   const [del, setDel] = useState(null);
   const [applyAll, setApplyAll] = useState(false);
+  const [applica, setApplica] = useState(null);   // profilo da assegnare a utenti scelti qui
   const [report, setReport] = useState(null);
   const def = (data || []).find((p) => p.is_default);
   const modName = (k) => (mods.data || []).find((m) => m.key === k)?.name || k;
@@ -88,13 +137,14 @@ export function AccessProfiles() {
               <td className="small nowrap">{p.users_count} utent{p.users_count === 1 ? 'e' : 'i'}</td>
               <td className="small nowrap">{fmtDateTime(p.updated_at)}</td>
               <td className="actions" onClick={(e) => e.stopPropagation()}>
+                <button className="btn sm ghost" onClick={() => setApplica(p)}><Icon name="users" />Applica</button>
                 <button className="iconbtn" aria-label={owner ? 'Modifica' : 'Apri'} title={owner ? 'Modifica' : 'Apri'} onClick={() => setEdit(p)}><Icon name={owner ? 'edit' : 'eye'} /></button>
                 {owner && !p.system && <button className="iconbtn danger" aria-label="Elimina" title="Elimina" onClick={() => setDel(p)}><Icon name="trash" /></button>}
               </td>
             </tr>
           ))}</tbody>
         </table></div>}
-        <div className="small muted" style={{ padding: 14 }}>Il profilo <b>Default</b> viene assegnato automaticamente a ogni nuovo account. L'assegnazione aggiunge i permessi del profilo e non toglie quelli esistenti; sui widget per sede l'ambito è la sede della persona. {!owner && 'La creazione e la modifica dei profili sono riservate al titolare.'}</div>
+        <div className="small muted" style={{ padding: 14 }}>Il profilo <b>Default</b> viene assegnato automaticamente a ogni nuovo account. L'assegnazione (Applica, oppure Utenti > Assegna profilo) sostituisce, per i widget del profilo, i permessi che la persona aveva (spunta "Sostituisci i permessi esistenti", accesa di base); sui widget per sede l'ambito è la sede della persona. L'applicazione automatica del Default ai nuovi account aggiunge soltanto. {!owner && 'La creazione e la modifica dei profili sono riservate al titolare.'}</div>
       </Card>
       {edit && <ProfileModal profile={edit === 'new' ? null : edit} modules={mods.data || []} readOnly={!owner} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
       {del && <ConfirmModal title={`Eliminare il profilo "${del.name}"?`} danger confirmText="Elimina" text={`I permessi già assegnati a ${del.users_count} utent${del.users_count === 1 ? 'e restano' : 'i restano'}: perdono solo il collegamento al profilo.`}
@@ -102,7 +152,8 @@ export function AccessProfiles() {
       {applyAll && <ConfirmModal title={`Applicare "${def?.name}" a tutti gli utenti?`} confirmText="Applica a tutti"
         text="A ogni utente attivo o in attesa vengono aggiunti i permessi del profilo predefinito che ancora mancano. I permessi esistenti non vengono tolti né declassati; sui widget per sede l'ambito è la sede della persona."
         onConfirm={async () => { const r = await api.post('/access-profiles/default/apply-all'); setReport(r); reload(); }} onClose={() => setApplyAll(false)} />}
-      {report && <Modal title="Rapporto dell'applicazione" wide onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} /></Modal>}
+      {applica && <ApplyProfileModal profile={applica} onClose={() => setApplica(null)} onDone={(r) => { setApplica(null); setReport(r); toast(`Profilo applicato: ${r.added} aggiunti, ${r.replaced || 0} sostituiti`); reload(); }} />}
+      {report && <Modal title="Rapporto dell'assegnazione" wide onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} /></Modal>}
     </div>
   );
 }

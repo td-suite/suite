@@ -20,6 +20,7 @@ import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_N
 import { aiEnabled } from '../lib/claude.js';
 import { registryLease, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
 import { saveSite, hoursText } from '../lib/sites.js';
+import { allineaSediDaOrg } from '../lib/clienti.js';
 import { effettiCessazione, adminDaConfermare } from '../lib/cessazione.js';
 import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
 import { storePlan, listPlans, planFile, deletePlan, PLAN_MAX_BYTES } from '../lib/roomPlan.js';
@@ -250,7 +251,10 @@ r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
   if (!o) throw notFound();
   await audit(req, 'ORG_UPDATED', { entity: 'organization', entityId: o.id, label: o.name, data: b });
   indexOrg(o).catch(() => {});
-  res.json(o);
+  // A7 (d): le sedi SERVICE con l'indirizzo ereditato seguono il nuovo indirizzo della Legal entity (saveSite, audit SITE_UPDATED)
+  let sedi_service_allineate = 0;
+  if (['address', 'zip', 'city', 'province'].some((k) => b[k] !== undefined)) sedi_service_allineate = await allineaSediDaOrg(o.id, { req }).catch((e) => { console.warn('[sedi SERVICE]', o.id, e.message); return 0; });
+  res.json({ ...o, sedi_service_allineate });
 }));
 
 // ---- Persone e rubrica (modulo "rubrica"; i dati contrattuali restano in Contracts: qui solo chi è, dove, cosa fa)
@@ -283,7 +287,8 @@ r.get('/people', ah(async (req, res) => {
   if (kind) where.push(`p.kind = ${p(kind)}`);
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
   if (unit_id) where.push(`(p.unit_id = ${p(Number(unit_id))} OR EXISTS (SELECT 1 FROM org_positions op WHERE op.person_id=p.id AND op.unit_id = ${p(Number(unit_id))}))`);
-  if (status && !all) where.push(`p.status = ${p(status)}`);
+  // 'ATTIVO' comprende chi è in arrivo (IMPEGNO con contratto confermato): in Persone si deve vedere (CEO, 08/11/2026)
+  if (status && !all) where.push(status === 'ATTIVO' ? `p.status IN ('ATTIVO','IMPEGNO')` : `p.status = ${p(status)}`);
   // Esterni (partner ospitanti, clienti service): solo le persone attive delle unità con "contatto pubblico", e di ciascuna solo
   // nome, ruolo, email e telefono ufficio (lib/esterni.js). Nessuna ricerca fuori da quel perimetro.
   const external = isExternal(req.user);

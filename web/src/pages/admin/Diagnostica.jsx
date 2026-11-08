@@ -8,8 +8,8 @@ import { fmtDateTime } from '../../format.js';
 
 // Amministrazione > Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026): tutti i controlli D01-D40 sulle
 // anagrafiche di sedi, Legal entity e persone, con conteggi, prime righe, "Correggi" con conferma (chiama le funzioni del core e scrive
-// l'audit DIAGNOSTICA_CORREZIONE), esportazione CSV del rapporto. In fondo l'operazione una tantum "Contratti SEDE del Business Hub"
-// (A3): Prova (rapporto delle differenze) ed Esegui (solo titolare).
+// l'audit DIAGNOSTICA_CORREZIONE), esportazione CSV del rapporto. In fondo le operazioni "Sedi SERVICE dei clienti" (A7, blocco 2: Prova
+// ed Esegui) e "Contratti SEDE del Business Hub" (A3): Prova (rapporto delle differenze) ed Esegui (solo titolare).
 const TONO = { OK: 'green', BLOCCANTE: 'red', ATTENZIONE: 'amber', INFO: 'blue', DOPO: 'grey', NON_AVVIATO: 'grey', ERRORE: 'red' };
 const STATO = { OK: 'verde', BLOCCANTE: 'bloccante', ATTENZIONE: 'attenzione', INFO: 'informativo', DOPO: 'più avanti', NON_AVVIATO: 'modulo non avviato', ERRORE: 'errore' };
 const valore = (v) => (v == null ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -70,6 +70,7 @@ export function Diagnostica() {
             ))}</tbody>
           </table></div>
         </Card>
+        <SediService onDone={reload} />
         <ContrattiSede onDone={reload} />
       </>}
       {corr && <CorreggiModal corr={corr} onClose={() => setCorr(null)} onDone={(out) => { setCorr(null); toast(`${out.controllo}: ${out.prima.n} → ${out.dopo.n} righe`); reload(); }} />}
@@ -139,6 +140,42 @@ function CorreggiModal({ corr, onClose, onDone }) {
         <ul className="small">{(out.esito || []).map((e, i) => <li key={i}>{e.id != null ? <span className="mono">#{e.id} </span> : null}{e.esito}{e.motivo ? <span className="amber"> · {e.motivo}</span> : null}</li>)}</ul>
       </>}
     </Modal>
+  );
+}
+
+// ---- A7 (blocco 2): "Crea le sedi SERVICE mancanti" (richiesta del CEO dell'08/11/2026). Prova: rapporto senza scritture. Esegui
+// (amministratori, con conferma): una sede SERVICE con l'indirizzo della Legal entity per ogni cliente attivo o contrattualizzato che
+// non ne ha, una per ogni struttura del gruppo attivata. Idempotente: ripetuta non crea doppioni.
+function SediService({ onDone }) {
+  const toast = useToast();
+  const [rep, setRep] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [conferma, setConferma] = useState(false);
+  const [testo, setTesto] = useState('');
+  const prova = async () => { setBusy('prova'); setErr(null); try { setRep(await api.get('/admin/migrazioni/sedi-service')); } catch (e) { setErr(e); } finally { setBusy(''); } };
+  const esegui = async () => { setBusy('esegui'); setErr(null); try { const r = await api.post('/admin/migrazioni/sedi-service', { conferma: 'ESEGUI' }); setRep(r); setConferma(false); setTesto(''); toast(`Sedi SERVICE create: ${r.creati}${r.errori ? `, errori ${r.errori}` : ''}`); onDone?.(); } catch (e) { setErr(e); } finally { setBusy(''); } };
+  const daCreare = (rep?.piano || []).filter((p) => p.esito === 'da creare').length;
+  return (
+    <Card title="Sedi SERVICE dei clienti (crea quelle mancanti)" icon="building" className="mt" actions={<div className="row" style={{ gap: 6 }}>
+      <button className="btn sm ghost" disabled={Boolean(busy)} onClick={prova}>{busy === 'prova' ? 'Prova…' : 'Prova'}</button>
+      <button className="btn sm" disabled={Boolean(busy) || !rep || rep.esegui || !daCreare} onClick={() => setConferma(true)}>Esegui</button>
+    </div>}>
+      <p className="small muted" style={{ marginTop: 0 }}>Ogni cliente Service o Medicina del Lavoro attivo o contrattualizzato ha la sua sede SERVICE in Amministrazione &gt; Sedi (Ordini, Non conformità, Retail e Portale la usano). Una Legal entity senza sede ha una sede sola, la sua: nasce con l'indirizzo della Legal entity, che segue anche quando cambia. Le strutture del gruppo dell'account diventano sedi solo se attivate (fase 6 o 7 nel DB Opportunità, o punto del contratto firmato). Il codice StudioLAB si inserisce poi nella scheda account.</p>
+      <ErrorBox error={err} />
+      {rep && !rep.pronto && <Empty compact>Business Hub non avviato: nessun cliente da esaminare.</Empty>}
+      {rep?.pronto && <>
+        <div className="small" style={{ marginBottom: 6 }}>{rep.esegui ? <>Eseguito: <b>{rep.creati}</b> sedi create{rep.errori ? <>, <span className="red">{rep.errori} errori</span></> : null}.</> : <>Da creare: <b>{daCreare}</b>.</>} Strutture del gruppo in attesa di attivazione: {rep.strutture_in_attesa.length}.</div>
+        {rep.piano.length ? <div className="table-wrap"><table className="t small" data-testid="sedi-service-piano"><thead><tr><th>Legal entity</th><th>Sede</th><th>Indirizzo</th><th>Perché</th><th>Esito</th></tr></thead>
+          <tbody>{rep.piano.map((p, i) => <tr key={i}><td className="strong">{p.org_name}</td><td>{p.tipo === 'STRUTTURA' ? `Struttura: ${p.nome}` : 'Sede della Legal entity'}{p.code ? <div className="mono tiny">{p.code}</div> : null}</td><td>{p.indirizzo || <span className="amber">indirizzo mancante</span>}</td><td className="muted">{p.motivo}</td>
+            <td><Badge tone={p.esito === 'creata' ? 'green' : p.esito === 'errore' ? 'red' : p.esito === 'esistente' ? 'grey' : 'teal'}>{p.esito}</Badge>{p.avvisi?.length ? <div className="tiny amber">{p.avvisi.join(' · ')}</div> : null}</td></tr>)}</tbody></table></div>
+          : <div className="alert info small">Tutti i clienti attivi e contrattualizzati hanno la loro sede SERVICE.</div>}
+      </>}
+      {conferma && <Modal title="Creare le sedi SERVICE mancanti" onClose={() => setConferma(false)} footer={<><button className="btn ghost" onClick={() => setConferma(false)}>Annulla</button><button className="btn" disabled={testo !== 'ESEGUI' || Boolean(busy)} onClick={esegui}>{busy === 'esegui' ? 'Esecuzione…' : 'Esegui'}</button></>}>
+        <p>{daCreare} sedi SERVICE nuove in Amministrazione &gt; Sedi, con saveSite (audit SITE_CREATED, perimetri degli accessi esterni del cliente riallineati). Nessuna sede esistente viene modificata.</p>
+        <Field label="Per confermare scrivi ESEGUI"><input value={testo} onChange={(e) => setTesto(e.target.value)} aria-label="Conferma creazione sedi" /></Field>
+      </Modal>}
+    </Card>
   );
 }
 

@@ -12,13 +12,14 @@ const r = Router();
 const siteId = (v) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw bad('id sede non valido'); return n; };
 
 // Elenco sedi (documento lite + logo) in ordine alfabetico: le sedi attive dell'anagrafica unica configurate in Room Planning.
-// ?all=1 include anche le sedi attive non ancora configurate (per aprirle e configurarle).
+// ?all=1 include anche le sedi attive non ancora configurate (per aprirle e configurarle). I punti SERVICE dei clienti non sono sedi
+// di Room (blocco 2 dell'anagrafica unica, A7 (e)): restano solo quelli già configurati, segnalati dalla Diagnostica (D29).
 r.get('/', ah(async (req, res) => {
   const all = req.query.all === '1';
   const rows = await many(`SELECT ${SITE_COLS}, u.full_name AS updated_by_name,
       (SELECT data FROM struttura_blobs b WHERE b.struttura_id=s.id AND b.kind='logo') AS logo,
       EXISTS (SELECT 1 FROM struttura_blobs b WHERE b.struttura_id=s.id AND b.kind='planPdf') AS has_plan
-    FROM sites_v s LEFT JOIN users u ON u.id=s.updated_by WHERE s.active AND ($1::boolean OR s.configurata)`, [all]);
+    FROM sites_v s LEFT JOIN users u ON u.id=s.updated_by WHERE s.active AND ($1::boolean OR s.configurata) AND (s.kind IS DISTINCT FROM 'SERVICE' OR s.configurata)`, [all]);
   const list = rows.filter((x) => canSeeStruttura(req.user, x.id)).map((x) => ({ ...liteOf(x), logo: x.logo || null,
     _version: x.version || 0, _updatedAt: x.updated_at, _updatedBy: x.updated_by_name, _hasPlan: x.has_plan }));
   res.json(sortStrutture(list));

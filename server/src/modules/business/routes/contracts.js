@@ -390,6 +390,8 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
     await addEvent(c.id, 'FIRMATO', req.user.id, `Contratto sottoscritto il ${itDate(signedAt)}`);
     // A1: contratto PP senza account del Business Hub firmato dalla scheda: stessa regola della contrattualizzazione
     if (c.kind === 'PP') req._sedePP = await dopoCambioStato(c.id, 'FIRMATO', { req, userId: req.user.id });
+    // A5/A7: Medicina del Lavoro (o Service senza account) firmato dalla scheda → account coerente e sede SERVICE
+    if (['SRV', 'MDL'].includes(c.kind)) req._account = await allineaCliente(c.id, req.user.id, 'caricamento del contratto firmato');
   }
   if (category.startsWith('LISTINO')) {
     const names = (await many(`SELECT filename FROM contract_files WHERE contract_id=$1 AND category IN ('LISTINO_XLSX','LISTINO_PDF') ORDER BY created_at`, [c.id])).map((f) => f.filename).join(', ');
@@ -397,7 +399,7 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
   }
   await addEvent(c.id, 'ALLEGATO', req.user.id, `${category}: ${req.files.map((f) => f.originalname).join(', ')}`);
   await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: req.files.map((f) => f.originalname) });
-  res.json({ ...(await loadContract(c.id)), ...(req._sedePP || {}) });
+  res.json({ ...(await loadContract(c.id)), ...(req._sedePP || {}), ...(req._account ? { cliente: req._account } : {}) });
 }));
 
 r.delete('/:id/files/:fid', ah(async (req, res) => {
@@ -412,6 +414,12 @@ r.delete('/:id/files/:fid', ah(async (req, res) => {
   await audit(req, 'CONTRACT_FILE_DELETE', 'contract', c.id, { file: f.filename });
   res.json(await loadContract(c.id));
 }));
+
+// A5/A7: allineamento dell'account del cliente al contratto firmato o attivo (lib/contrattualizza.js); un errore non blocca la risposta
+async function allineaCliente(contrattoId, userId, fonte) {
+  const { allineaAccountAlContratto } = await import('../lib/contrattualizza.js');
+  return allineaAccountAlContratto(contrattoId, { userId, fonte }).catch((e) => ({ errore: e.message }));
+}
 
 // ---------------- Stato ----------------
 r.post('/:id/status', ah(async (req, res) => {
@@ -429,7 +437,9 @@ r.post('/:id/status', ah(async (req, res) => {
   await audit(req, `CONTRACT_${status}`, 'contract', c.id, { reason });
   // A1: contratto PP firmato → sede ospitata dalla controparte; cessato e non rinnovato → sede chiusa (lib/contrattoSede.js)
   const sede = c.kind === 'PP' ? await dopoCambioStato(c.id, status, { req, userId: req.user.id }) : {};
-  res.json({ ...(await loadContract(c.id)), ...sede });
+  // A5/A7: Service e Medicina del Lavoro firmati o attivi → account coerente (prospect, fase 6) e sede SERVICE
+  const cliente = ['SRV', 'MDL'].includes(c.kind) ? await allineaCliente(c.id, req.user.id, `contratto ${status.toLowerCase()}`) : null;
+  res.json({ ...(await loadContract(c.id)), ...sede, ...(cliente ? { cliente } : {}) });
 }));
 
 // Cambio di stato manuale (Business Hub, 06/11/2026): Admin del modulo o Owner della Suite, qualunque stato, con motivazione.
@@ -446,7 +456,8 @@ r.post('/:id/stato-manuale', ah(async (req, res) => {
   await audit(req, 'CONTRACT_STATUS_MANUAL', 'contract', c.id, { da: c.status, a: status, motivo });
   // A1: anche il cambio di stato manuale allinea o chiude la sede del contratto PP
   const sede = c.kind === 'PP' ? await dopoCambioStato(c.id, status, { req, userId: req.user.id }) : {};
-  res.json({ ...(await loadContract(c.id)), ...sede });
+  const cliente = ['SRV', 'MDL'].includes(c.kind) ? await allineaCliente(c.id, req.user.id, `cambio di stato manuale a ${status.toLowerCase()}`) : null;
+  res.json({ ...(await loadContract(c.id)), ...sede, ...(cliente ? { cliente } : {}) });
 }));
 
 r.delete('/:id', ah(async (req, res) => {

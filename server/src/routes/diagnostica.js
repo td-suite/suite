@@ -1,4 +1,5 @@
-// Amministrazione > Diagnostica anagrafica (correzione A13) e operazione una tantum "Contratti SEDE del Business Hub" (A3).
+// Amministrazione > Diagnostica anagrafica (correzione A13), operazione una tantum "Contratti SEDE del Business Hub" (A3) e operazione
+// "Crea le sedi SERVICE mancanti" (A7, blocco 2).
 // Lettura agli amministratori; correzioni agli amministratori (Admin e titolare) con conferma esplicita; l'eliminazione dei contratti SEDE
 // ("Esegui") solo al titolare. Ogni correzione scrive l'audit DIAGNOSTICA_CORREZIONE con prima e dopo; l'esportazione CSV
 // DIAGNOSTICA_EXPORT; l'esecuzione salvata una riga in diagnostica_runs.
@@ -83,6 +84,22 @@ r.post('/admin/migrazioni/sede-business', ah(async (req, res) => {
   if (req.body?.conferma !== 'ESEGUI') throw bad('Conferma l\'operazione (conferma: "ESEGUI")');
   const out = await sedeBusiness.esegui({ req });
   await audit(req, 'BUSINESS_SEDE_MIGRAZIONE', { entity: 'migration', entityId: 'sede-business', label: `Contratti SEDE migrati in Sedi: ${out.eseguiti.filter((x) => x.esito === 'migrato').length}`, data: { eseguiti: out.eseguiti.map(({ file, ...x }) => ({ ...x, file: (file || []).map((f) => ({ id: f.file_id, esito: f.esito })) })), verifiche: out.verifiche } });
+  res.json(out);
+}));
+
+// ---- A7: "Crea le sedi SERVICE mancanti" (richiesta del CEO dell'08/11/2026). "Prova" (rapporto, nessuna scrittura) ed "Esegui"
+// (amministratori, con conferma): per ogni cliente di clienti_attivi_v senza sede SERVICE una sede con l'indirizzo della Legal entity,
+// e una sede per ogni struttura del gruppo attivata (accounts.sedi). Idempotente.
+r.get('/admin/migrazioni/sedi-service', ah(async (_req, res) => {
+  const { sediServiceMancanti } = await import('../lib/clienti.js');
+  res.json(await sediServiceMancanti({ esegui: false }));
+}));
+r.post('/admin/migrazioni/sedi-service', ah(async (req, res) => {
+  const { sediServiceMancanti } = await import('../lib/clienti.js');
+  if (req.body?.conferma !== 'ESEGUI') throw bad('Conferma l\'operazione (conferma: "ESEGUI")');
+  const out = await sediServiceMancanti({ esegui: true, req, actorId: req.user.id });
+  await audit(req, 'SEDI_SERVICE_CREATE', { entity: 'migration', entityId: 'sedi-service', label: `Sedi SERVICE mancanti: ${out.creati} create${out.errori ? `, ${out.errori} errori` : ''}`,
+    data: { piano: out.piano.map((p) => ({ org_id: p.org_id, tipo: p.tipo, nome: p.nome, esito: p.esito, site_id: p.site_id || null, motivo: p.esito === 'errore' ? p.motivo : undefined })), strutture_in_attesa: out.strutture_in_attesa.length } });
   res.json(out);
 }));
 

@@ -170,6 +170,20 @@ const corr = {
     const r = await tx(async (c) => aggiornaOrgTd(c, (await c.query(`SELECT value FROM app_settings WHERE key='company'`)).rows[0]?.value || null));
     return [{ id: r.org_id, esito: r.org_id ? 'Legal entity di TD allineata ai Dati aziendali' : 'Legal entity di TD non impostata', modifiche: r.modifiche }];
   },
+  // D12: account con contratto vigente → contrattualizzato alla data della firma, prospect FALSE, fase 6, sede SERVICE (A5)
+  async d12(righe, ctx) {
+    const { contrattualizzatoDaDiagnostica } = await import('../modules/business/lib/contrattualizza.js');
+    const out = [];
+    for (const r of righe) { const x = await contrattualizzatoDaDiagnostica(r.id, { userId: ctx.req?.user?.id || null }); out.push({ id: r.id, esito: x.esito, motivo: x.avvisi?.length ? x.avvisi.join('; ') : undefined }); }
+    return out;
+  },
+  // D13: clienti senza sede SERVICE → "Crea le sedi SERVICE mancanti" sulle Legal entity indicate (A7, lib/clienti.js)
+  async d13(righe, ctx) {
+    const { sediServiceMancanti } = await import('./clienti.js');
+    const orgIds = [...new Set(righe.map((r) => Number(r.id)))];
+    const x = await sediServiceMancanti({ esegui: true, orgIds, req: ctx.req, actorId: ctx.req?.user?.id || null });
+    return x.piano.map((p) => ({ id: p.org_id, esito: `${p.tipo === 'STRUTTURA' ? `struttura ${p.nome}` : 'sede della Legal entity'}: ${p.esito}${p.code ? ` (${p.code})` : ''}`, motivo: p.motivo && p.esito === 'errore' ? p.motivo : (p.avvisi || []).join('; ') || undefined }));
+  },
   // D30: planimetria corrente ripubblicata in Room
   async d30(righe) {
     const { publishCurrentPlan } = await import('./roomPlan.js');
@@ -250,16 +264,22 @@ export const CONTROLLI = [
   { id: 'D12', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Account con contratto vigente ancora prospect o sotto la fase 6', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Il contratto della linea firmato o attivo rende il cliente contrattualizzato (decisione 1: "attivo" lo conferma il CEO).',
     sql: `SELECT a.id, o.name, a.linea, a.prospect, a.cliente_attivo, a.contrattualizzato_at, a.fase_corrente FROM business.accounts a JOIN organizations o ON o.id = a.organization_id
           WHERE EXISTS (SELECT 1 FROM business.contracts c WHERE c.org_id = a.organization_id AND c.kind = a.linea AND c.status IN ('FIRMATO','AUTORIZZATO','ATTIVO'))
-            AND (a.prospect OR a.contrattualizzato_at IS NULL OR a.fase_corrente < 6) ORDER BY o.name`, chiave: 'id', link: (r) => `/business/account/${r.id}`, correggiDopo: 'Fase 2 (A5: clienti attivi e contrattualizzati)' },
-  { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL vigenti senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], attivoDopo: 'Fase 2 (A5 e A7: regola del cliente attivo e sede SERVICE creata dalla contrattualizzazione)', spiegazione: 'Ogni cliente Service o MdL contrattualizzato ha il suo punto SERVICE con il codice StudioLAB (decisione 5).',
-    sql: `SELECT o.id, o.name, a.linea FROM business.accounts a JOIN organizations o ON o.id = a.organization_id WHERE a.linea IN ('SRV','MDL')
-          AND (a.cliente_attivo OR a.contrattualizzato_at IS NOT NULL OR EXISTS (SELECT 1 FROM business.contracts c WHERE c.org_id = a.organization_id AND c.kind = a.linea AND c.status IN ('FIRMATO','ATTIVO')))
-          AND NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name) },
+            AND (a.prospect OR a.contrattualizzato_at IS NULL OR a.fase_corrente < 6) ORDER BY o.name`, chiave: 'id', link: (r) => `/business/account/${r.id}`,
+    correggi: { etichetta: 'Segna contrattualizzati', conferma: true, descrizione: 'contrattualizzato alla data della firma, prospect tolto, fase 6, sede SERVICE per Service e MdL (senza le comunicazioni automatiche, annotato nel diario)', fn: corr.d12, richiede: ['business.accounts'] } },
+  { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL vigenti senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL attivo o contrattualizzato (vista clienti_attivi_v) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
+    // adattata ad A5: la regola del cliente è la vista public.clienti_attivi_v (entrambi i livelli), una riga per Legal entity
+    sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
+          WHERE NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active) GROUP BY o.id, o.name ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
+    correggi: { etichetta: 'Crea le sedi SERVICE', conferma: true, descrizione: 'una sede SERVICE per Legal entity con l\'indirizzo della Legal entity (o una per struttura del gruppo attivata), con saveSite e audit', fn: corr.d13 } },
   { id: 'D14', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Sedi SERVICE di Legal entity non clienti, non attive o senza account', richiede: ['business.accounts'], spiegazione: 'Un punto SERVICE appartiene a un cliente Service o MdL attivo.',
     sql: `SELECT s.id, s.code, s.studiolab_code, o.id AS org_id, o.name, o.kind FROM sites s LEFT JOIN organizations o ON o.id = s.organization_id
           WHERE s.kind = 'SERVICE' AND s.active AND (o.id IS NULL OR o.kind <> 'CLIENTE' OR NOT o.active OR NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = o.id AND a.linea IN ('SRV','MDL'))) ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D15a', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Sedi SERVICE senza codice StudioLAB', spiegazione: 'Il codice lo inserisce chi gestisce il widget subito dopo la creazione del cliente (decisione 5).',
     sql: `SELECT id, code, name FROM sites WHERE kind = 'SERVICE' AND active AND coalesce(studiolab_code, '') = '' ORDER BY code`, chiave: 'id', link: sedeLink },
+  { id: 'D15c', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Clienti senza codice StudioLAB', richiede: ['business.accounts'], spiegazione: 'Elenco dei clienti (attivi e contrattualizzati) per cui nessuna sede SERVICE e nessun account ha il codice StudioLAB: lo inserisce chi gestisce il widget nella scheda account (decisione 5).',
+    sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello, min(v.account_id) AS account_id FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
+          WHERE NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id AND s.kind = 'SERVICE' AND s.active AND coalesce(s.studiolab_code, '') <> '')
+            AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = o.id AND coalesce(a.studiolab_code, '') <> '') GROUP BY o.id, o.name ORDER BY o.name`, chiave: 'id', link: (r) => (r.account_id ? `/business/account/${r.account_id}` : orgLink(r.name)) },
   { id: 'D15b', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Codice StudioLAB su più sedi', spiegazione: 'Ordini e NC abbinano il codice a una sola sede: con due sedi l\'abbinamento è arbitrario.',
     sql: `SELECT lower(studiolab_code) AS codice, array_agg(id ORDER BY id) AS sedi FROM sites WHERE coalesce(studiolab_code, '') <> '' GROUP BY 1 HAVING count(*) > 1 ORDER BY 1`, chiave: 'codice', link: (r) => `/admin/sites?q=${enc(r.codice)}` },
   { id: 'D16a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity con la stessa P.IVA', spiegazione: 'Duplicati da unire con lo strumento di fusione (decisione 9).',
@@ -271,10 +291,11 @@ export const CONTROLLI = [
           FROM organizations a JOIN organizations b ON a.id < b.id AND similarity(lower(a.name), lower(b.name)) >= 0.8 ORDER BY sim DESC`, chiave: 'id_a', link: (r) => orgLink(r.nome_a), correggiDopo: 'Fase 3 (B5b)' },
   { id: 'D17', area: 'CLIENTI', gravita: 'INFO', titolo: 'Legal entity da rivedere', spiegazione: 'Create in automatico (locatori, richiedenti, prospect) con la spunta "da rivedere".',
     sql: `SELECT id, kind, name, notes, created_at FROM organizations WHERE needs_review ORDER BY created_at DESC`, chiave: 'id', link: (r) => orgLink(r.name) },
-  { id: 'D20', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity tra le strutture di Ordini e NC senza essere clienti', richiede: ['orders.strutture_v', 'business.accounts'], spiegazione: 'Finché A4 non è fatto, Ordini e NC mostrano tutte le Legal entity come strutture.',
-    sql: `SELECT v.org_id, v.name, v.org_kind, v.configured FROM orders.strutture_v v WHERE v.origin = 'ORG' AND v.active
-          AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = v.org_id AND a.linea IN ('SRV','MDL') AND (a.cliente_attivo OR a.contrattualizzato_at IS NOT NULL))
-          AND NOT EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = v.org_id AND s.kind = 'SERVICE' AND s.active) ORDER BY v.name`, chiave: 'org_id', link: (r) => orgLink(r.name), correggiDopo: 'Fase 2 (A4)' },
+  { id: 'D20', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity tra le strutture di Ordini e NC senza essere clienti', richiede: ['orders.strutture_v', 'nc.sedi_v'], spiegazione: 'A4: le righe Legal entity di Ordini e NC sono solo i clienti di clienti_attivi_v o con punti SERVICE; le altre con dati storici restano visibili ma disattivate.',
+    // adattata ad A4: stessa regola della vista (public.cliente_livello), sulle righe attive di Ordini e di NC
+    sql: `SELECT v.org_id, v.name, v.org_kind, v.configured, 'Ordini' AS modulo FROM orders.strutture_v v WHERE v.origin = 'ORG' AND v.active AND public.cliente_livello(v.org_id) IS NULL
+          UNION ALL SELECT n.org_id, n.nome, n.org_kind, n.configurata, 'NC' FROM nc.sedi_v n WHERE n.origin = 'ORG' AND n.attiva AND public.cliente_livello(n.org_id) IS NULL
+          ORDER BY 2`, chiave: 'org_id', link: (r) => orgLink(r.name) },
   { id: 'D21a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Clienti B2B di Retail non abbinati a una Legal entity', richiede: ['retail.customers'], spiegazione: 'Il ponte codice StudioLAB → Legal entity è la correzione B15.',
     sql: `SELECT c.id, c.external_code, c.company_name, c.vat_number, c.b2b_type FROM retail.customers c WHERE c.kind = 'B2B' AND NOT c.demo AND c.organization_id IS NULL ORDER BY c.company_name`, chiave: 'id', link: (r) => `/retail/clienti/${r.id}`, correggiDopo: 'Fase 3 (B15)' },
   { id: 'D21b', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'B2B abbinato a una Legal entity diversa da quella della sede con lo stesso codice', richiede: ['retail.customers'], spiegazione: 'Codice cliente StudioLAB uguale al codice della sede SERVICE ma Legal entity diversa.',

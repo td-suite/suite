@@ -73,6 +73,8 @@ export default function Account() {
       <div className="steps hub">{FASI.slice(1).map((f) => { const d = a.phase_dates?.[f.n]; const cls = f.n < a.fase_corrente || (d && f.n <= a.fase_corrente) ? 'done' : ''; return <div key={f.n} className={`s ${cls} ${f.n === a.fase_corrente ? 'now' : ''}`}><i>{f.n}</i><span>{f.label}<small>{d ? itDate(d) : ''}</small></span></div>; })}</div>
       {a.fase_corrente === 6 && a.phase_dates?.[7] && !a.cliente_attivo && <div className="alert warn small" style={{ marginBottom: 12 }}>Il DB indica "Attivo / Starting" dal {itDate(a.phase_dates[7])}: la fase 7 vale solo quando il CEO conferma il cliente attivo.</div>}
 
+      {['SRV', 'MDL'].includes(a.linea) && <CodiceStudiolab a={a} edit={edit} onDone={q.reload} />}
+
       <div className="grid g4 hubhead">
         <div className="card kpi">
           <div className="lbl">Cliente attivo</div>
@@ -570,8 +572,29 @@ function Commerciali({ a, onChange }) {
       <Card title={a.n_sedi ? `Strutture del gruppo (${a.n_sedi})` : 'Strutture'} flush>
         {a.sedi?.length ? <div className="table-wrap" style={{ maxHeight: 520 }}><table className="t"><tbody>{a.sedi.map((s) => <tr key={s.id_db}><td><div className="strong">{s.nome}</div><div className="small muted">ID {s.id_db} · {[s.tipologia, s.indirizzo, s.citta, s.prov && `(${s.prov})`].filter(Boolean).join(' · ')}</div><div className="small">{[s.email, s.pec && `PEC ${s.pec}`, s.telefono, s.referente && `Ref. ${s.referente}`].filter(Boolean).join(' · ')}</div></td><td className="small" style={{ whiteSpace: 'nowrap' }}>{s.fase}<div>{s.fatturato_fy_atteso ? eurK(s.fatturato_fy_atteso) : ''}</div></td></tr>)}</tbody></table></div>
           : <Empty>Una sola struttura: i suoi dati sono quelli della Legal entity.</Empty>}
-        <div className="small muted" style={{ padding: '10px 14px' }}>Le strutture del gruppo non sono sedi dell'anagrafica: diventano sedi (Amministrazione &gt; Sedi, tipo Service) quando partono davvero.</div>
+        <div className="small muted" style={{ padding: '10px 14px' }}>Le strutture del gruppo non sono sedi dell'anagrafica finché non partono: alla contrattualizzazione nasce la sede SERVICE della Legal entity, e per le strutture attivate (fase 6 o 7, o punto del contratto firmato) una sede ciascuna con "Crea le sedi SERVICE mancanti" (Amministrazione &gt; Diagnostica anagrafica).</div>
       </Card>
+    </div>
+  );
+}
+
+// Codice StudioLAB del cliente (A7 (c), decisione 5 del CEO, 08/11/2026): lo inserisce chi gestisce la linea subito dopo la creazione del
+// cliente. Si scrive nella sede SERVICE dell'anagrafica (letta da Ordini, NC e Retail); senza sede resta nell'account e passa alla sede
+// quando nasce. Avviso non bloccante finché manca a un cliente attivo o contrattualizzato (elenco in Diagnostica anagrafica, D15c).
+function CodiceStudiolab({ a, edit, onDone }) {
+  const toast = useToast();
+  const [v, setV] = useState(null);
+  const cliente = Boolean(a.cliente_livello || a.contrattualizzato_at || a.cliente_attivo);
+  const salva = async () => { try { await api.put(`/hub/accounts/${a.id}/studiolab`, { codice: v.trim() || null }); toast('Codice StudioLAB salvato'); setV(null); onDone(); } catch (e) { toast(e.message, 'err'); } };
+  return (
+    <div className={`alert ${!a.codice_studiolab && cliente ? 'warn' : 'info'} small`} style={{ marginBottom: 12, alignItems: 'center' }} data-testid="codice-studiolab">
+      <Icon name={!a.codice_studiolab && cliente ? 'alert' : 'scan'} size={18} />
+      <span style={{ flex: 1 }}>
+        <b>Codice StudioLAB:</b> {a.codice_studiolab ? <span className="mono strong">{a.codice_studiolab}</span> : <span>{cliente ? 'da inserire: Ordini, Non conformità e Retail riconoscono il cliente da questo codice' : 'non ancora indicato'}</span>}
+        <span className="muted"> · {a.sede_service_id ? `sede SERVICE in anagrafica${a.sedi_service > 1 ? ` (${a.sedi_service})` : ''}` : 'nessuna sede SERVICE: nasce alla contrattualizzazione, il codice passerà a lei'}{a.cliente_livello ? ` · cliente ${a.cliente_livello === 'ATTIVO' ? 'attivo' : 'contrattualizzato'}` : ''}</span>
+      </span>
+      {edit && v === null && <button className="btn sm ghost" onClick={() => setV(a.codice_studiolab || '')}><Icon name="edit" />{a.codice_studiolab ? 'Modifica' : 'Inserisci'}</button>}
+      {v !== null && <span className="row" style={{ gap: 6 }}><input value={v} onChange={(e) => setV(e.target.value)} maxLength={40} placeholder="es. 1234" aria-label="Codice StudioLAB" style={{ width: 140 }} autoFocus /><button className="btn sm" onClick={salva}>Salva</button><button className="btn sm ghost" onClick={() => setV(null)}>Annulla</button></span>}
     </div>
   );
 }

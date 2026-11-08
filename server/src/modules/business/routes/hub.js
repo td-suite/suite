@@ -30,10 +30,17 @@ const isCeoOAdmin = (req) => puoImpostareAttivo(req.user?.role, req.suiteUser?.l
 const puoLinea = (req, linea) => canEditKind(req.user, linea);
 function richiediLinea(req, linea) { if (!puoLinea(req, linea)) throw forbidden(`Non gestisci la linea ${LINEE[linea]?.label || linea}`); }
 
+// A7 (c), decisione 5: codice StudioLAB del cliente = quello della sede SERVICE (fonte unica letta da Ordini, NC e Retail); finché la
+// sede non c'è vale il codice salvato nell'account (accounts.studiolab_code). Livello di cliente della vista unica clienti_attivi_v.
+export const STUDIOLAB_SELECT = `(SELECT ps.id FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active ORDER BY (coalesce(ps.studiolab_code,'')<>'') DESC, ps.id LIMIT 1) AS sede_service_id,
+    (SELECT count(*)::int FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active) AS sedi_service,
+    coalesce((SELECT ps.studiolab_code FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active AND coalesce(ps.studiolab_code,'')<>'' ORDER BY ps.id LIMIT 1), nullif(a.studiolab_code,'')) AS codice_studiolab,
+    (SELECT v.livello FROM public.clienti_attivi_v v WHERE v.account_id=a.id) AS cliente_livello`;
 export const ACCOUNT_SELECT = `SELECT a.*, o.name AS org_name, o.kind AS org_kind, o.code AS org_code, o.vat_number, o.address AS org_address, o.zip AS org_zip,
     coalesce(o.city, a.sedi->0->>'citta') AS citta, coalesce(o.province, a.sedi->0->>'prov') AS prov, o.email AS org_email, o.pec AS org_pec, o.phone AS org_phone, o.active AS org_active,
     uo.full_name AS owner_name, ua.full_name AS attivo_da_name, jsonb_array_length(a.sedi) AS n_sedi,
-    CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome
+    CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome,
+    ${STUDIOLAB_SELECT}
   FROM accounts a JOIN public.organizations o ON o.id=a.organization_id
   LEFT JOIN public.users uo ON uo.id=a.owner_user_id LEFT JOIN public.users ua ON ua.id=a.attivo_da_user`;
 
@@ -251,6 +258,35 @@ r.put('/accounts/:id/fase', ah(async (req, res) => {
     dati: { phase_dates_prima: a.phase_dates } }, req.user.id);
   await audit(req, 'HUB_FASE', 'account', a.id, { da: a.fase_corrente, a: nuova });
   res.json({ ok: true, fase_corrente: nuova, phase_dates: pd });
+}));
+
+// Codice StudioLAB del cliente (A7 (c), decisione 5 del CEO): lo inserisce chi gestisce la linea subito dopo la creazione del cliente.
+// Con la sede SERVICE già in anagrafica il codice si scrive nella sede (saveSite, audit SITE_UPDATED); senza, resta nell'account e passa
+// alla sede quando nasce. Lo stesso codice su due sedi non è ammesso (Ordini e NC abbinerebbero a caso, controllo D15b).
+r.put('/accounts/:id/studiolab', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  richiediLinea(req, a.linea);
+  if (!['SRV', 'MDL'].includes(a.linea)) throw bad('Il codice StudioLAB riguarda i clienti Service e Medicina del Lavoro');
+  const { codice } = parse(z.object({ codice: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), z.string().max(40).nullable()) }), req.body);
+  const nuovo = codice || null;
+  const sedeId = a.sede_service_id || null;
+  if (nuovo) {
+    const dup = await one(`SELECT id, code, name FROM public.sites WHERE lower(studiolab_code)=lower($1) AND ($2::int IS NULL OR id<>$2) LIMIT 1`, [nuovo, sedeId]);
+    if (dup) throw bad(`Il codice StudioLAB ${nuovo} è già della sede ${dup.code} (${dup.name}): un codice, una sede`);
+  }
+  let dove;
+  if (sedeId) {
+    const { saveSite } = await import('../../../lib/sites.js');
+    await saveSite({ id: sedeId, data: { studiolab_code: nuovo }, origine: 'Business Hub, scheda account (codice StudioLAB)', req });
+    await q('UPDATE accounts SET studiolab_code=NULL, updated_at=now() WHERE organization_id=$1 AND studiolab_code IS NOT NULL', [a.organization_id]);
+    dove = 'sede SERVICE';
+  } else {
+    await q('UPDATE accounts SET studiolab_code=$2, updated_at=now() WHERE id=$1', [a.id, nuovo]);
+    dove = 'account (passerà alla sede SERVICE quando nasce)';
+  }
+  await addActivity(a.id, { tipo: 'SISTEMA', oggetto: nuovo ? `Codice StudioLAB: ${nuovo}` : 'Codice StudioLAB tolto', testo: `${a.codice_studiolab ? `Prima: ${a.codice_studiolab}. ` : ''}Salvato nella ${dove}.` }, req.user.id);
+  await audit(req, 'HUB_STUDIOLAB', 'account', a.id, { prima: a.codice_studiolab || null, dopo: nuovo, sede_id: sedeId });
+  res.json(await loadAccount(a.id));
 }));
 
 // Cliente attivo: "chi dice che il cliente è attivo? Lo devo dire io" (CEO, 06/11/2026). Solo Owner della Suite o Admin del modulo.

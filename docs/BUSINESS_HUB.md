@@ -858,3 +858,25 @@ Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regol
   "Apri in Sedi" per gli amministratori.
 - **Flagship (decisione 4).** "Avvia il punto prelievi" legge la locazione dalla sede (`locazioneSede`): nessun blocco, avviso nella scheda,
   nel diario e nella risposta se la sede in locazione non ha il PDF o il canone in Sedi.
+
+## Clienti attivi, sede SERVICE e codice StudioLAB (08/11/2026, anagrafica unica blocco 2)
+- **Clienti** (menu della linea): per Service e Medicina del Lavoro l'elenco è la vista unica della Suite `public.clienti_attivi_v`
+  (attivi = flag del CEO; contrattualizzati = contrattualizzazione o contratto della linea firmato/attivo non cessato), la stessa di
+  Ordini, NC, Portale e Circolari (docs/ANAGRAFICA.md, blocco 2); i Punti Prelievo restano sulla regola della linea. Nuova colonna
+  "Codice StudioLAB" (con "da inserire" e "senza sede SERVICE") e avviso con il numero dei clienti senza codice.
+- **Sede SERVICE alla contrattualizzazione**: la contrattualizzazione Service crea la sede SERVICE del cliente in Amministrazione > Sedi
+  (nome = ragione sociale, indirizzo del contratto se indicato altrimenti della Legal entity, orari di ritiro dal contratto, codice
+  StudioLAB se già inserito), con una riga nel diario e `sede_service` nell'esito; l'avviso "crea la sede SERVICE e premi Riallinea
+  perimetri" non serve più. Per i clienti già attivi: Amministrazione > Diagnostica anagrafica, "Crea le sedi SERVICE mancanti".
+- **Medicina del Lavoro**: la firma del contratto MDL (PDF firmato caricato sul contratto o stato Firmato/Attivo) contrattualizza
+  l'account (data della firma), lo toglie dai prospect, lo porta alla fase 6 e crea la sede SERVICE (`MDL-<codice>`); niente email né
+  profilo degli accessi automatici (da definire per la linea). Il cliente MdL compare in Ordini, NC, Portale e Circolari (segmento
+  Medicina del Lavoro).
+- **Cambio di stato** di un contratto Service o MdL a Firmato/Attivo (anche manuale): account fuori dai prospect, fase 6, sede SERVICE.
+- **Codice StudioLAB** nella scheda account (riquadro sopra i riquadri dell'account, linee SRV e MDL): "Inserisci"/"Modifica" per chi
+  gestisce la linea; si salva nella sede SERVICE (o nell'account finché la sede non c'è); un codice già usato da un'altra sede è
+  rifiutato. API `PUT /api/business/hub/accounts/:id/studiolab { codice }`; il dettaglio dell'account espone `codice_studiolab`,
+  `sede_service_id`, `sedi_service`, `cliente_livello`.
+- Strutture del gruppo: diventano sedi SERVICE quando sono attivate (fase 6 o 7 nel DB Opportunità o punto del contratto firmato), con
+  l'operazione della Diagnostica; finché non partono restano nell'elenco dell'account.
+
