@@ -24,11 +24,21 @@ r.get('/settings/mail-status', requireAdmin, ah(async (_req, res) => res.json(aw
 
 r.put('/settings', requireAdmin, ah(async (req, res) => {
   const body = req.body || {};
+  delete body.company;   // dati aziendali della Suite che GET /settings aggiunge in sola lettura: la pagina li rimanda indietro
   for (const k of Object.keys(body)) {
     if (!(k in DEFAULT_SETTINGS)) throw bad(`Impostazione sconosciuta: ${k}`);
     if (CORE_KEYS.includes(k)) continue;   // ragione sociale: Dati aziendali della Suite
     if (['threshold_single', 'threshold_joint', 'aggregation_days', 'token_days', 'reminder_days', 'schedule_alert_days'].includes(k) && !(Number(body[k]) >= 0)) throw bad(`${k}: valore numerico non valido`);
     if (['schedule_istat_pct', 'schedule_utility_growth_pct'].includes(k)) { body[k] = String(body[k] ?? '').replace(',', '.'); if (!Number.isFinite(Number(body[k]))) throw bad(`${k}: percentuale non valida`); }
+    if (k === 'pl_coefficiente_oneri') { body[k] = String(body[k] ?? '').replace(',', '.'); if (!(Number(body[k]) >= 1 && Number(body[k]) <= 3)) throw bad('Coefficiente oneri: valore tra 1 e 3 (es. 1,28)'); }
+    if (['srv_costo_ritiro', 'srv_costo_medio_esame'].includes(k)) { body[k] = String(body[k] ?? '').replace(',', '.').trim(); if (body[k] !== '' && !(Number(body[k]) >= 0)) throw bad(`${k}: importo non valido`); }
+    if (k === 'pl_chiave_ripartizione' && body[k] !== 'RICAVI') throw bad('Chiave di ripartizione: per ora solo RICAVI (decisione 11 del CEO)');
+    if (k === 'pl_iva_costi' && !['COSTO', 'ESCLUSA'].includes(body[k])) throw bad('IVA sui costi: COSTO oppure ESCLUSA');
+    if (k === 'pl_sedi_centrali') {
+      const ids = [...new Set(String(body[k] || '').split(',').map((x) => Number(String(x).trim())).filter((x) => x > 0))];
+      if (ids.length) { const n = (await one('SELECT count(*)::int AS n FROM public.sites WHERE id = ANY($1::int[])', [ids])).n; if (n !== ids.length) throw bad('Sedi centrali: una o più sedi non esistono'); }
+      body[k] = ids.join(',');
+    }
     if (k === 'schedule_notify_roles') {
       const roles = String(body[k] || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
       if (roles.some((x) => !['SUPPORT', 'CEO', 'CFO', 'VIEWER'].includes(x))) throw bad('Profili ammessi per gli avvisi: SUPPORT, CEO, CFO, VIEWER');

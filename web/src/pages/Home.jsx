@@ -5,6 +5,7 @@ import { useAuth, isExternal, hasModule } from '../auth.jsx';
 import { useApi, Skeleton, Badge, Empty } from '../components/ui.jsx';
 import { Icon, weatherIcon } from '../components/Icons.jsx';
 import Widget from '../components/Widget.jsx';
+import { MODULES as MODULI_WEB } from '../modules/registry.js';
 import PiedeSito from '../components/PiedeSito.jsx';
 import Board from '../components/community/Board.jsx';
 import { CircolariCard, NewsCard, CalendarCard, WeatherCard, QuoteCard, FilesCard, PeopleQuick, BirthdaysCard } from '../components/community/Cards.jsx';
@@ -117,7 +118,8 @@ function HomeCompleta({ user }) {
   const now = useClock();
   const todayKey = now.toLocaleDateString('sv-SE');
   const eventsToday = (h.events || []).filter((e) => String(e.starts_at || '').slice(0, 10) === todayKey).length;
-  const totalWidgets = (modules.data?.areas || []).reduce((n, a) => n + a.modules.length, 0);
+  // moduli riservati al personale (meta.js soloInterni, es. Piano Ferie): mai nella Home di un accesso esterno
+  const totalWidgets = (modules.data?.areas || []).reduce((n, a) => n + a.modules.filter((m) => !(external && MODULI_WEB[m.key]?.soloInterni)).length, 0);
   const submit = (e) => { e.preventDefault(); const s = q.trim(); if (s) navigate(`/search?q=${encodeURIComponent(s)}`); };
 
   return (
@@ -163,7 +165,7 @@ function HomeCompleta({ user }) {
         <section className="dash" aria-label="I tuoi strumenti">
           {modules.loading && <div className="tiles" aria-busy="true">{Array.from({ length: 10 }).map((_, i) => <div key={i} className="widget" style={{ cursor: 'default' }}><Skeleton block /></div>)}</div>}
           {modules.error && <Empty icon="alert" title="Impossibile caricare i moduli">{modules.error.message}</Empty>}
-          {modules.data?.areas?.map((a) => {
+          {modules.data?.areas?.map((a) => (external ? { ...a, modules: a.modules.filter((m) => !MODULI_WEB[m.key]?.soloInterni) } : a)).filter((a) => a.modules.length).map((a) => {
             const color = areaColor(a.key, a.color);
             const live = a.modules.reduce((n, m) => n + (Number(counters?.[m.key]?.value) > 0 ? 1 : 0), 0);
             return (

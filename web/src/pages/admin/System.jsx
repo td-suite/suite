@@ -519,6 +519,39 @@ function EsitoProva({ r }) {
     </div></div>
   );
 }
+// Scadenzario di direzione del Cockpit (app_settings 'cockpit.scadenzario'): notifica giornaliera a titolare e amministratori e soglie
+// dichiarate delle fonti che non hanno una data di scadenza propria (proposte, ordini, presa visione delle circolari)
+function ScadenzarioBox() {
+  const toast = useToast();
+  const { data, reload } = useApi('/cockpit/scadenzario/impostazioni');
+  const [v, setV] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.valori) setV(data.valori); }, [data]);
+  if (!v) return null;
+  const num = (k, label, help, min, max) => <Field label={label} help={help}><input type="number" min={min} max={max} value={v[k]} onChange={(e) => setV({ ...v, [k]: Number(e.target.value) })} style={{ width: 110 }} /></Field>;
+  const salva = async () => { setBusy(true); try { await api.put('/cockpit/scadenzario/impostazioni', v); toast('Impostazioni dello scadenzario salvate'); reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const invia = async () => { setBusy(true); try { const r = await api.post('/cockpit/scadenzario/notifica'); toast(r.skipped ? `Nessuna notifica: ${r.skipped}` : `Notifica inviata a ${r.utenti} utenti (${r.scadenze} scadenze entro 7 giorni)`); reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const dirty = JSON.stringify(v) !== JSON.stringify(data.valori);
+  return (
+    <Card title="Scadenzario di direzione (Cockpit)" icon="calendar">
+      <div className="col" style={{ gap: 10 }}>
+        <label className="row tight"><Switch checked={Boolean(v.notifica_attiva)} onChange={(x) => setV({ ...v, notifica_attiva: x })} label="Notifica giornaliera dello scadenzario" /><span className="small">Notifica giornaliera in app al titolare e agli amministratori con le scadenze entro 7 giorni (job core:scadenzario, una volta al giorno, solo se ce ne sono)</span></label>
+        <div className="row" style={{ alignItems: 'end' }}>
+          {num('notifica_ora', 'Dalle ore', 'Ora di Roma dalla quale parte la notifica del giorno', 0, 23)}
+          {num('proposte_giorni', 'Proposte senza risposta (giorni)', 'Business Hub: offerte e contratti proposti senza risposta', 1, 365)}
+          {num('ordini_giorni', 'Ordini da approvare (giorni)', 'Ordini inviati in attesa di approvazione', 1, 60)}
+          {num('circolari_giorni', 'Presa visione circolari (giorni)', 'Circolari al personale dopo la pubblicazione', 1, 120)}
+        </div>
+        <div className="small muted">Ultime notifiche: {data.ultimi_invii?.length ? data.ultimi_invii.map((x) => `${String(x.giorno).slice(8, 10)}/${String(x.giorno).slice(5, 7)} a ${x.utenti} utenti`).join(' · ') : 'nessuna'}</div>
+        <div className="row end">
+          <button className="btn ghost" disabled={busy} onClick={invia}><Icon name="send" />Invia ora</button>
+          <button className="btn" disabled={busy || !dirty} onClick={salva}>Salva</button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function RubricheBox() {
   const toast = useToast();
   const st = useApi('/rubriche/stato');
@@ -582,7 +615,8 @@ export function Settings() {
         {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /><CompanyOrgBox /></Card>}
         {data && <InformativeBox />}
         {data && <RubricheBox />}
-        {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'company_org_id' && k !== 'rubriche' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+        {data && <ScadenzarioBox />}
+        {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'company_org_id' && k !== 'rubriche' && k !== 'cockpit.scadenzario' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
             {k === 'community.values' ? <ValuesEditor value={v} onSave={(nv) => save(k, nv)} /> : <JsonEditor k={k} value={v} onSave={(nv) => save(k, nv)} />}
           </Card>

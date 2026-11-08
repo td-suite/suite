@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { ah, bad, notFound, forbidden, audit, parse, suiteAudit } from '../lib/util.js';
 import { requireManage, canManage } from '../lib/access.js';
 import { getSettings } from '../lib/rules.js';
-import { requestSchema, prepare, upsertBeneficiary, editable, createRequest, dateStr } from '../lib/requestCreate.js';
+import { requestSchema, prepare, upsertBeneficiary, editable, createRequest, dateStr, checkClassificazione, CLASSIFICAZIONE_COLS } from '../lib/requestCreate.js';
 import { onRequestStatus } from '../lib/scheduleData.js';
 import { loadRequest, addEvent, submit, resend, voidSignatures, aggregationCheck, generateDocument, signers, REQUEST_COLS, REQUEST_FROM } from '../lib/workflow.js';
 import { formData, renderDocx, docxToPdf, pdfAvailable } from '../lib/docgen.js';
@@ -74,10 +74,10 @@ r.put('/:id', requireManage, ah(async (req, res) => {
   if (!cur) throw notFound();
   if (!editable(cur.status) || cur.signatures.some((x) => x.valid)) throw bad('Istanza non modificabile: è già stata firmata o chiusa');
   const s = await getSettings();
-  const d = await prepare(parse(requestSchema, req.body), s);
+  const d = await prepare(await checkClassificazione(parse(requestSchema, req.body)), s);
   await tx(async (c) => {
     const b = await upsertBeneficiary(d, c);
-    const cols = ['request_date', 'requester', 'cost_center', 'beneficiary_id', 'beneficiary_name', 'beneficiary_tax_id', 'beneficiary_iban', 'beneficiary_bic', 'beneficiary_bank', 'amount', 'purpose', 'doc_type', 'doc_other', 'doc_number', 'doc_date', 'bank_account_id', 'debit_account', 'payment_method', 'payment_method_other', 'value_date', 'tier', 'single_signer', 'board_number', 'board_date', 'prior_approval', 'prior_approval_ref', 'checks', 'new_iban', 'iban_verified_note', 'notes'];
+    const cols = ['request_date', 'requester', 'cost_center', 'beneficiary_id', 'beneficiary_name', 'beneficiary_tax_id', 'beneficiary_iban', 'beneficiary_bic', 'beneficiary_bank', 'amount', 'purpose', 'doc_type', 'doc_other', 'doc_number', 'doc_date', 'bank_account_id', 'debit_account', 'payment_method', 'payment_method_other', 'value_date', 'tier', 'single_signer', 'board_number', 'board_date', 'prior_approval', 'prior_approval_ref', 'checks', 'new_iban', 'iban_verified_note', 'notes', ...CLASSIFICAZIONE_COLS];
     const vals = { ...d, beneficiary_id: b.beneficiary.id, new_iban: b.new_iban, checks: JSON.stringify(d.checks) };
     const bump = cur.status === 'IN_FIRMA';
     await c.query(`UPDATE payment_requests SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, version = version + ${bump ? 1 : 0}, updated_at=now() WHERE id=$1`, [id, ...cols.map((k) => vals[k] ?? null)]);
@@ -93,6 +93,20 @@ r.put('/:id', requireManage, ah(async (req, res) => {
     links = (await submit(fresh, req.user.id, { resubmit: true })).links;
   }
   res.json({ ...(await loadRequest(id)), links });
+}));
+
+// ---------------- Classificazione per il controllo di gestione ----------------
+// Sede / centro di costo, cliente e "fuori dal conto economico" si possono correggere in ogni stato (anche dopo firma ed esecuzione):
+// non fanno parte del contenuto firmato, quindi firme e impronta restano valide. Finance Support e amministratori.
+r.put('/:id/classificazione', requireManage, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const cur = await one('SELECT id, site_id, org_id, pl_escluso FROM payment_requests WHERE id=$1', [id]);
+  if (!cur) throw notFound();
+  const d = await checkClassificazione(parse(z.object({ site_id: requestSchema.shape.site_id, org_id: requestSchema.shape.org_id, pl_escluso: z.boolean().default(false) }), req.body));
+  await q('UPDATE payment_requests SET site_id=$2, org_id=$3, pl_escluso=$4, updated_at=now() WHERE id=$1', [id, d.site_id, d.org_id, d.pl_escluso]);
+  await addEvent(id, 'MODIFICATA', req.user.id, 'Classificazione per il controllo di gestione (sede, cliente, conto economico)', { prima: cur, dopo: d });
+  await audit(req, 'REQUEST_CLASSIFY', 'payment_request', id, { prima: cur, dopo: d });
+  res.json(await loadRequest(id));
 }));
 
 // ---------------- Invio in firma ----------------

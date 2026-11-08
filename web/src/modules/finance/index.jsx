@@ -15,6 +15,8 @@ import Beneficiaries from './pages/Beneficiaries.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
 import Schedule from './pages/Schedule.jsx';
+import ContoEconomico from './pages/ContoEconomico.jsx';
+import MargineService from './pages/MargineService.jsx';
 import './finance.css';
 
 export default function Module({ moduleUser }) {
@@ -37,6 +39,8 @@ export default function Module({ moduleUser }) {
           <Route path="firma/:token" element={<Sign />} />
           <Route path="beneficiari" element={<Beneficiaries />} />
           <Route path="scadenziario" element={<Schedule />} />
+          <Route path="conto-economico" element={<ContoEconomico />} />
+          <Route path="margine-service" element={<MargineService />} />
           <Route path="impostazioni" element={(admin || user?.role === 'SUPPORT') ? <Settings /> : <Forbidden />} />
           <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
           <Route path="*" element={<Navigate to={base} replace />} />

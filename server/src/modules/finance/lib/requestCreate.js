@@ -38,7 +38,24 @@ export const requestSchema = z.object({
   checks: z.object({ budget: z.boolean().default(false), aggregation: z.boolean().default(false), documents: z.boolean().default(false), related_party: z.boolean().default(false), cfo_consent: z.boolean().default(false), iban_verified: z.boolean().default(false) }).default({}),
   iban_verified_note: optStr(300),
   notes: optStr(2000),
+  // Controllo di gestione (08/11/2026): sede / centro di costo e cliente, facoltativi; fuori dal conto economico se già contato altrove.
+  // Non fanno parte del contenuto firmato (rules.js SIGNED_FIELDS).
+  site_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
+  org_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
+  pl_escluso: z.boolean().default(false),
 });
+export const CLASSIFICAZIONE_COLS = ['site_id', 'org_id', 'pl_escluso'];
+
+// Sede (TD, non SERVICE) e Legal entity del cliente devono esistere nell'anagrafica unica
+export async function checkClassificazione(d) {
+  if (d.site_id) {
+    const s = await one('SELECT id, kind FROM public.sites WHERE id=$1', [d.site_id]);
+    if (!s) throw bad('Sede / centro di costo inesistente');
+    if (s.kind === 'SERVICE') throw bad('Il centro di costo è una sede di TD: i punti dei clienti Service si indicano come Cliente');
+  }
+  if (d.org_id && !(await one('SELECT id FROM public.organizations WHERE id=$1', [d.org_id]))) throw bad('Cliente (Legal entity) inesistente');
+  return d;
+}
 
 export const editable = (st) => ['BOZZA', 'RIFIUTATA', 'IN_FIRMA'].includes(st);
 
@@ -75,10 +92,10 @@ export async function prepare(d, s) {
 }
 
 // Inserimento dell'istanza in bozza (dati già validati con requestSchema): anagrafica beneficiario, riga, evento CREATA
-export const REQUEST_INSERT_COLS = ['request_date', 'requester', 'cost_center', 'beneficiary_id', 'beneficiary_name', 'beneficiary_tax_id', 'beneficiary_iban', 'beneficiary_bic', 'beneficiary_bank', 'amount', 'purpose', 'doc_type', 'doc_other', 'doc_number', 'doc_date', 'bank_account_id', 'debit_account', 'payment_method', 'payment_method_other', 'value_date', 'tier', 'single_signer', 'board_number', 'board_date', 'prior_approval', 'prior_approval_ref', 'checks', 'new_iban', 'iban_verified_note', 'notes'];
+export const REQUEST_INSERT_COLS = ['request_date', 'requester', 'cost_center', 'beneficiary_id', 'beneficiary_name', 'beneficiary_tax_id', 'beneficiary_iban', 'beneficiary_bic', 'beneficiary_bank', 'amount', 'purpose', 'doc_type', 'doc_other', 'doc_number', 'doc_date', 'bank_account_id', 'debit_account', 'payment_method', 'payment_method_other', 'value_date', 'tier', 'single_signer', 'board_number', 'board_date', 'prior_approval', 'prior_approval_ref', 'checks', 'new_iban', 'iban_verified_note', 'notes', 'site_id', 'org_id', 'pl_escluso'];
 export async function createRequest(data, user, { client } = {}) {
   const s = await getSettings();
-  const d = await prepare(data, s);
+  const d = await prepare(await checkClassificazione(data), s);
   const insert = async (c) => {
     const b = await upsertBeneficiary(d, c);
     const cols = [...REQUEST_INSERT_COLS, 'created_by'];

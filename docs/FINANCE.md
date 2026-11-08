@@ -1,0 +1,119 @@
+# Finance Management · Controllo di gestione
+
+Programma "anagrafica unica e Suite interconnessa" (CEO, 08/11/2026), decisioni 11 e 12: **costi centrali e personale condiviso
+attribuiti alle sedi in proporzione ai ricavi della sede sul totale**; **fatturazione attiva fuori perimetro: alla Suite basta la
+produzione**. Il widget Finance Management (chiave `finance`, ex Payments) ospita, nel gruppo di menu "Controllo di gestione", due pagine
+visibili ai profili CEO, CFO, SUPPORT e VIEWER (lettura):
+
+- **Conto economico di sede** `/finance/conto-economico` (P&L per sede, anno e mese o anno intero, tutte le sedi o una, export XLSX e PDF);
+- **Margine clienti Service** `/finance/margine-service` (margine per cliente Service, anno e mese, dettaglio mese per mese, export).
+
+Codice: regole pure `server/src/modules/finance/lib/contoEconomico.js` (test `server/test/finance-controllo.test.mjs`), lettura delle fonti
+`lib/controlloData.js`, export `lib/controlloExport.js`, route `routes/controllo.js` (`/api/finance/controllo/...`), pagine
+`web/src/modules/finance/pages/ContoEconomico.jsx`, `MargineService.jsx`, selettori `components/Classificazione.jsx`. Migrazione
+`finance/006_controllo_gestione.sql`.
+
+## Regola delle fonti: mai uno zero silenzioso
+Ogni fonte di un altro modulo si legge con la tecnica `safe()` del Cockpit: solo se il modulo è LIVE nella Suite (pool del modulo); un
+modulo non LIVE o una lettura fallita danno la riga **"non disponibile"** con la nota (pagina, XLSX, PDF), non zero. Il margine di una sede
+è **"parziale"** quando manca una fonte, quando ci sono importi "da indicare" (compensi variabili dei liberi professionisti, ricavi
+Service senza valore) o quando i costi centrali sono parziali. Ogni cella si apre sulle righe che la compongono, con il modulo di
+provenienza e il collegamento.
+
+## Conto economico di sede
+**Sedi (colonne)**: `public.sites` attive non SERVICE (più quelle chiuse dopo l'inizio del periodo), escluse le **sedi centrali**
+(impostazione `pl_sedi_centrali`; vuota = le sedi di tipo Sede direzionale). Periodo: un mese, oppure l'anno; **l'anno in corso si ferma al
+mese corrente** e il confronto con l'anno precedente usa gli stessi mesi.
+
+**Ricavi (produzione)**
+- Retail: `retail.sales.net_amount` per sede (`site_id` → `public.sites`) e data, senza le vendite dimostrative (`source = 'DEMO'`) e
+  senza le vendite B2B dei clienti Service (vanno nella riga Service: niente doppio conteggio).
+- Service: produzione dei clienti (sezione sotto) attribuita alla sede **LABORATORIO** (`getLaboratorio`); senza sede Laboratorio la riga
+  è "non disponibile".
+- Incassi Cash (riga di **controllo**, non sommata): `cash.cash_reports` da CLOSED in poi (`pos_total + cash_to_deposit + transfer_total`)
+  con la differenza rispetto a Retail, solo per le sedi con rendiconti nel periodo.
+
+**Costi diretti di sede**
+- Canone: rata vigente dagli scatti del contratto dello Scadenziario (`finance.lease_contracts` + `lease_steps`, lib/scheduleData.js) / mesi
+  della periodicità, per i giorni di contratto nel mese (contratto scaduto senza rinnovo: fino alla scadenza). Per il contratto collegato
+  all'anagrafica (`registry_sync`) l'IVA segue `public.sites.rent_vat/rent_vat_rate` e l'impostazione `pl_iva_costi`; un secondo contratto
+  della sede (box) vale come registrato. Sede in LOCAZIONE senza contratto nello Scadenziario: `rent_amount / rent_period` dell'anagrafica
+  dalla `lease_start`.
+- Utenze: bollette registrate (`finance.utility_bills` della sede), ripartite per giorni del periodo fatturato (senza periodo: mese di
+  scadenza). Le bollette attese ma non registrate non si contano.
+- Royalties al partner ospitante: royalty di sede confermate in Cash (`cash.site_royalty_statements`, periodo del mese, non annullate:
+  la tabella `royalty_statements` è per società e non per sede), totale con IVA o imponibile secondo `pl_iva_costi`.
+- Personale dipendente (Contratti del personale): `employments.work_site_id` = sede; costo = **RAL vigente** (scatti `ral_steps`) ×
+  coefficiente oneri / 12 per i giorni coperti dal rapporto (inizio = `start_date` o ingresso, fine = `end_date` o cessazione). Il
+  coefficiente è l'impostazione `pl_coefficiente_oneri` (**1,28, ipotesi dichiarata**) salvo il coefficiente scritto da HR sul contratto
+  (`employments.cost_coefficient`).
+- Liberi professionisti: sede della persona (`people.site_id`, `lp_contracts` non ha una sede), compenso mensile del tariffario
+  (`est_monthly_cost`, cioè i compensi FISSI) per i giorni coperti; compensi orari, a prestazione o variabili = riga **"da indicare"**.
+- Manutenzioni (Facility): interventi chiusi con costo (`work_orders.cost`, data di chiusura) e manutenzioni del piano eseguite con costo
+  (`maintenance_plans.cost`, data di esecuzione). Le stime di costo degli obblighi non sono costi sostenuti e non si contano.
+- Pagamenti Finance: istanze FIRMATA o ESEGUITA, alla data di esecuzione (o valuta, o richiesta), con `site_id` = sede; con il solo
+  cliente (`org_id`) vanno al Laboratorio. **Esclusi** i pagamenti creati dallo Scadenziario (già in canone e utenze) e quelli segnati
+  "fuori dal conto economico" (`pl_escluso`: stipendi e contributi, rate, imposte).
+
+**Costi centrali (decisione 11)**: personale e liberi professionisti senza sede o con sede centrale, pagamenti senza sede né cliente,
+canoni, utenze e altri costi delle sedi centrali. Si ripartiscono su ogni sede in proporzione ai ricavi della sede sul totale del periodo
+(riga "Quota costi centrali" con la percentuale; centesimi di arrotondamento alla sede con la quota più alta). Con ricavi a zero la
+ripartizione non si fa e la pagina lo dice. Chiave `pl_chiave_ripartizione`: per ora solo `RICAVI` (campo predisposto).
+
+**Margine di sede** = ricavi − costi diretti − quota dei costi centrali; margine %; margine dello stesso periodo dell'anno precedente e
+variazione. Ricavi registrati su sedi fuori dal conto (centrali, SERVICE, chiuse) compaiono negli avvisi.
+
+## Margine per cliente Service
+Clienti: `public.clienti_attivi_v` linea SRV, livelli ATTIVO e CONTRATTUALIZZATO ("in avvio"). Per ogni mese:
+- **Produzione**: StudioLAB non ha un'API di produzione per cliente (orders/lib/studiolab.js), ma la Suite la riceve già in due moduli:
+  le **vendite B2B di Retail** (codice StudioLAB abbinato alla Legal entity, con codice d'esame e valore) e la **produzione di Ordini**
+  (HL7 OML/ORU o import, per codice d'esame, sulla Legal entity o sui suoi punti SERVICE). In più la tabella
+  `finance.produzione_service` (org_id, mese, esami, valore, fonte `STUDIOLAB` | `MANUALE` | `STIMA`, righe per esame, note) per
+  l'inserimento manuale e da XLSX nella pagina. Priorità: riga salvata MANUALE/STUDIOLAB → Retail → Ordini → stima salvata → stima
+  calcolata al momento.
+- **Stima** (badge "stima"): volumi giornalieri attesi dell'account del Business Hub (o volume annuo / giorni lavorativi) × giorni
+  lavorativi del mese (`hub_giorni_lavorativi` del Business Hub / 12), al prezzo medio per esame dell'account (o fatturato annuo /
+  volume annuo); nessuna stima prima della data di avvio (effettiva, prevista, o la data di cliente attivo/contrattualizzato) né per i
+  mesi futuri. "Salva le stime" la registra come fonte STIMA senza toccare le righe presenti.
+- **Ricavo**: esami ai prezzi del **listino corrente** del cliente (`business.listini`, versione scelta o ultima: `versioneCorrente` di
+  business/lib/listino.js; prezzo offerto, altrimenti di listino) quando la produzione ha le righe per esame; i codici fuori listino
+  valgono il valore registrato. Altrimenti il valore caricato o stimato.
+- **Costi diretti**: ritiri del mese = giorni a orario FISSO del contratto Service vigente (`data.pickup.days`, entro la durata del
+  contratto; i ritiri a chiamata si contano a parte e non si valorizzano) × `srv_costo_ritiro`; costo analitico = costo per codice della
+  tabella `finance.costi_esami` (XLSX "costi esami" in Impostazioni), altrimenti `srv_costo_medio_esame`; pagamenti Finance con
+  `org_id` = cliente. Costi non impostati = "da indicare" (mai zero inventato).
+- Margine, margine %, ordinamento per colonna, totale di linea, dettaglio del cliente mese per mese, export XLSX/PDF.
+
+## Istanze di pagamento: sede e cliente
+`finance.payment_requests` ha `site_id` (sede / centro di costo, solo sedi TD), `org_id` (cliente) e `pl_escluso`: selettori facoltativi
+nel form dell'istanza e riquadro "Controllo di gestione" nella scheda, modificabile da Finance Support e amministratori **in ogni stato**
+(`PUT /api/finance/requests/:id/classificazione`, evento e audit `REQUEST_CLASSIFY`): non fanno parte del contenuto firmato
+(`SIGNED_FIELDS`), quindi firme e impronta restano valide. Le istanze create dallo Scadenziario nascono con la sede del contratto o
+dell'utenza. La migrazione 006 abbina il testo `cost_center` alle sedi per nome, nome breve o codice (anche la prima parte prima di
+" · ", ":", " - ", " / "), solo se la sede è una sola e `site_id` è vuoto; `cost_center` non si tocca (è nel modulo firmato). Ambigui e
+non riconosciuti nel rapporto (`testi_da_classificare`).
+
+## API (`/api/finance/controllo`)
+`GET conto-economico?anno&mese&site_id` (+ `/export.xlsx`, `/export.pdf`), `GET margine-service?anno&mese&org` (+ export),
+`GET margine-service/cliente/:orgId?anno`, `GET|POST produzione`, `DELETE produzione/:id`, `POST produzione/stime`,
+`POST produzione/import[?prova=1]` (multipart `file`, colonne Cliente, Mese, Esami, Valore, Codice esame, Descrizione, Fonte; cliente
+riconosciuto da codice StudioLAB della sede SERVICE o dell'account, P.IVA o ragione sociale), `GET costi-esami`, `POST costi-esami/import`
+(amministratori), `GET sedi`, `GET clienti`, `GET impostazioni`. Scritture della produzione: Finance Support e amministratori; audit
+`PRODUZIONE_SRV_*`, `COSTI_ESAMI_IMPORT`, `PL_EXPORT`, `MARGINE_SRV_EXPORT`.
+
+## Impostazioni (Finance Management > Impostazioni > Controllo di gestione)
+`pl_coefficiente_oneri` (1.28), `pl_sedi_centrali` (vuoto = sedi direzionali), `pl_chiave_ripartizione` (RICAVI), `pl_iva_costi` (COSTO:
+IVA indetraibile sommata, l'attività sanitaria è esente; ESCLUSA: imponibile), `srv_costo_ritiro` e `srv_costo_medio_esame` (vuoti = da
+indicare), tabella costi esami. Le ipotesi compaiono nella nota "Come è calcolato" delle pagine e degli export.
+
+## Verifiche in produzione dopo il rilascio
+- Rapporto: `SELECT data FROM audit_log WHERE action='MIGRAZIONE_RAPPORTO' AND entity_id='finance/006_controllo_gestione.sql';`
+  (istanze abbinate, ambigue, testi da classificare: si classificano dalla scheda dell'istanza).
+- Istanze autorizzate o eseguite senza sede né cliente (finiscono tra i costi centrali):
+  `SELECT count(*), sum(amount) FROM finance.payment_requests WHERE status IN ('FIRMATA','ESEGUITA') AND site_id IS NULL AND org_id IS NULL AND NOT pl_escluso;`
+  e quelle per stipendi/contributi/rate da segnare "fuori dal conto economico" (`prior_approval`).
+- Sede LABORATORIO presente (ricavi Service): `SELECT id, name FROM sites WHERE kind='LABORATORIO' AND active;`
+- Dipendenti senza sede di lavoro (costi centrali): `SELECT count(*) FROM contracts.employments WHERE work_site_id IS NULL;`
+- Clienti Service senza listino o senza volumi attesi (ricavo da indicare o niente stima): pagina Margine clienti Service, badge
+  "senza listino" e "da indicare".
+- Impostare costo per ritiro e costo medio per esame (o caricare i costi esami) prima di leggere il margine Service.

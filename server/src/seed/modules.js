@@ -45,6 +45,7 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura')] },
   { key: 'rubrica', area: 'PEOPLE', name: 'Rubrica e Organigramma', tagline: 'Chi fa cosa nella rete, contatti, scrivi su Teams', icon: 'rubrica', kind: 'NATIVE', route: '/people', sort_order: 20,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Aggiornamento schede')] },
+  { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Ferie dei dipendenti: richieste, approvazioni, piano per area e copertura', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'HR (tutto)'), P('RESPONSABILE', 'Responsabile (approva la propria area)'), P('VIEWER', 'Consultazione')] },
 
   // ---- Retail e Comunicazione
   { key: 'retail', area: 'RETAIL_FLOW', name: 'Retail Assistant', tagline: 'Clienti B2C e B2B, campagne, promozioni, esposizione in sede', icon: 'retail', kind: 'LEGACY', legacy_url: 'https://retail.toscanadiagnostica.it', sort_order: 30, scope_type: 'SITE',

@@ -1144,3 +1144,33 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .cr-scelto .ico, .cr-trovato .ico { width: 14px; height: 14px; flex: none; }
 .cr-trovato { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; background: var(--blue-100); color: var(--ink); border-radius: 9px; padding: 7px 10px; }
 .cr-btn { border: 1px solid var(--teal); background: var(--card); color: var(--teal); border-radius: 7px; padding: 2px 9px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+/* ---------- Cockpit: scadenzario di direzione ---------- */
+.scad .scad-riep { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.scad-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-2); cursor: pointer; font: inherit; text-align: left; color: var(--ink); }
+.scad-tile .n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; min-width: 30px; }
+.scad-tile .l { font-size: 12px; font-weight: 650; color: var(--muted); }
+.scad-tile.t-red .n { color: var(--red); } .scad-tile.t-amber .n { color: var(--amber); } .scad-tile.t-mauve .n { color: var(--mauve-700); }
+.scad-tile.on { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); background: var(--teal-050); }
+.scad-tile:focus-visible, .chip-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.scad-filtri { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.scad-filtri .wrap { flex-wrap: wrap; }
+.scad-filtri select, .scad-filtri input[type="date"] { width: auto; }
+.scad-cerca { flex: 1 1 220px; min-width: 200px; }
+.chip-btn { border: 1px solid var(--input-line); background: var(--input); color: var(--muted); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.chip-btn[style]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--area, var(--teal)); margin-right: 6px; vertical-align: 1px; }
+.chip-btn.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.scad-tab .scad-sett td { background: var(--card-2); font-weight: 750; font-size: 12.5px; color: var(--teal); padding: 7px 14px; }
+.scad-tab td { vertical-align: top; }
+.scad-tab .scad-tit { min-width: 260px; }
+.scad-tab tr.st-SCADUTA td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.scad-tab tr.st-OGGI td:first-child, .scad-tab tr.st-ENTRO_7 td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
+.scad-tab tr.vista td { opacity: .55; }
+.scad-azioni { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.scad-azioni .btn { white-space: nowrap; }
+.scad-area { border-left: 3px solid var(--area, var(--teal)); padding-left: 5px; font-weight: 700; }
+.scad-fonti { margin-top: 12px; }
+.scad-fonti summary { cursor: pointer; color: var(--muted); }
+.scad-fonti ul { margin: 6px 0; padding-left: 18px; }
+.scad-fonti li { margin: 4px 0; }
+@media (max-width: 760px) { .scad .scad-riep { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

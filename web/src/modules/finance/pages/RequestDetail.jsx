@@ -6,6 +6,7 @@ import { useAuth, canManage } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, TierBadge, Modal, ConfirmModal, PromptModal, Icon, useToast } from '../components/ui.jsx';
 import { eur, itDate, itDateTime, bytes, today, DOC_TYPE, PAY_METHOD, CHECKS, ROLE_SIGNER, EVENT, STATUS } from '../format.js';
 import { amountToWords, prettyIban } from '../words.js';
+import { ClassificazioneCard } from '../components/Classificazione.jsx';
 
 function Row({ k, v, mono }) { return <tr><td className="muted small" style={{ width: 220 }}>{k}</td><td className={mono ? 'mono' : ''}>{v || <span className="muted">–</span>}</td></tr>; }
 
@@ -119,6 +120,7 @@ export default function RequestDetail() {
               <table className="t"><tbody><Row k="Eseguito da" v={r.executed_by} /><Row k="Data esecuzione" v={r.executed_at ? itDate(r.executed_at) : ''} /><Row k="CRO / TRN" v={r.cro_trn} mono /><Row k="Allegati" v={String(r.attachments_count)} /></tbody></table>
             </Card>
           )}
+          <ClassificazioneCard r={r} canEdit={manager} onSaved={() => { toast('Classificazione salvata'); req.reload(); }} />
           <Card title="Documentazione di supporto" actions={manager && !closed && <><input ref={fileRef} type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} /><button className="btn sm" onClick={() => fileRef.current.click()}><Icon name="upload" />Carica</button></>}>
             {r.attachments.length ? r.attachments.map((a) => (
               <div key={a.id} className="row" style={{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}>

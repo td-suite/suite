@@ -8,8 +8,9 @@ import { sendMail, layout } from './mail.js';
 import { formData, renderDocx, docxToPdf, pdfAvailable, ROLE_LABEL } from './docgen.js';
 
 export const REQUEST_COLS = `r.*, (SELECT count(*)::int FROM request_attachments a WHERE a.request_id=r.id) AS attachments_count,
-  u.full_name AS created_by_name, b.label AS bank_label`;
-export const REQUEST_FROM = 'FROM payment_requests r JOIN users u ON u.id=r.created_by LEFT JOIN bank_accounts b ON b.id=r.bank_account_id';
+  u.full_name AS created_by_name, b.label AS bank_label, pl_s.name AS pl_site_name, pl_o.name AS pl_org_name`;
+// pl_s / pl_o: sede (centro di costo) e cliente del controllo di gestione, dall'anagrafica unica
+export const REQUEST_FROM = 'FROM payment_requests r JOIN users u ON u.id=r.created_by LEFT JOIN bank_accounts b ON b.id=r.bank_account_id LEFT JOIN public.sites pl_s ON pl_s.id=r.site_id LEFT JOIN public.organizations pl_o ON pl_o.id=r.org_id';
 
 export async function loadRequest(id) {
   const r = await one(`SELECT ${REQUEST_COLS} ${REQUEST_FROM} WHERE r.id=$1`, [id]);

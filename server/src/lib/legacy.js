@@ -660,8 +660,17 @@ export async function getCounters(user) {
     if (k === 'contracts') { if (user?.grants?.contracts) out[k] = v; continue; }
     if (user?.grants?.[k] || admin || OPEN_COUNTERS.includes(k)) out[k] = v;
   }
+  // Contatori calcolati per utente (non in cache): Piano Ferie mostra "richieste da approvare" a chi approva, "giorni residui" al dipendente
+  for (const [k, carica] of Object.entries(PER_USER_COUNTERS)) {
+    try { const c = await (await carica())(user); if (c && c.value != null) out[k] = c; } catch (e) { console.warn(`[contatore:${k}] ${e.message}`); }
+  }
   return out;
 }
+const PER_USER_COUNTERS = {
+  ferie: async () => (await import('../modules/ferie/lib/home.js')).contatoreHome,
+  // Cockpit: scadenze di direzione da oggi a 7 giorni (lib/scadenzario.js), senza quelle segnate viste; solo a chi vede il Cockpit
+  cockpit: async () => (await import('./scadenzario.js')).contatoreHome,
+};
 
 // ---------------------------------------------------------------- Cockpit direzionale (cache 5 minuti)
 const eur = (v) => (v == null ? null : Math.round(Number(v) * 100) / 100);
@@ -778,6 +787,14 @@ async function cachedCockpit() {
 export async function getCockpit(user) {
   const data = await cachedCockpit();
   const cards = data.cards.filter((c) => !c.restricted || Boolean(user?.grants?.contracts)).map(({ restricted, ...c }) => c);
+  // Card dello Scadenzario di direzione (per utente: righe dei moduli riservati e scadenze segnate viste)
+  try {
+    const { righeUtente, riepilogo } = await import('./scadenzario.js');
+    const rip = riepilogo(await righeUtente(user));
+    cards.unshift({ key: 'scadenze_7', module_key: 'cockpit', title: 'Scadenze entro 7 giorni', unit: 'n', link: '#scadenzario', value: rip.entro_7,
+      hint: `${rip.OGGI} oggi, ${rip.SCADUTA} già scadute, ${rip.ENTRO_30} entro 30 giorni (scadenzario di direzione)`,
+      series: [{ label: 'Scadute', value: rip.SCADUTA }, { label: 'Oggi', value: rip.OGGI }, { label: 'Entro 7 giorni', value: rip.ENTRO_7 }, { label: 'Entro 30 giorni', value: rip.ENTRO_30 }] });
+  } catch (e) { console.warn(`[cockpit:scadenze_7] ${e.message}`); cards.unshift({ key: 'scadenze_7', module_key: 'cockpit', title: 'Scadenze entro 7 giorni', unit: 'n', value: null, unavailable: true, hint: 'Lettura non riuscita' }); }
   return { generated_at: data.generated_at, cards };
 }
 

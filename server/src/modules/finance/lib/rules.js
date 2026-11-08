@@ -22,6 +22,16 @@ export const DEFAULT_SETTINGS = {
   schedule_istat_pct: '1.5',
   schedule_utility_growth_pct: '0',
   schedule_notify_roles: 'CEO,CFO,SUPPORT',
+  // Controllo di gestione (conto economico di sede e margine per cliente Service, 08/11/2026). Ipotesi dichiarate nella pagina e in
+  // docs/FINANCE.md: coefficiente oneri sulla RAL (costo aziendale = RAL × coefficiente), sedi centrali (id separati da virgola; vuoto =
+  // le sedi di tipo Sede direzionale), chiave di ripartizione dei costi centrali (per ora solo RICAVI, decisione 11), IVA sui costi
+  // (COSTO = indetraibile, sommata; ESCLUSA = imponibile), costo per ritiro e costo medio per esame (vuoti = da indicare).
+  pl_coefficiente_oneri: '1.28',
+  pl_sedi_centrali: '',
+  pl_chiave_ripartizione: 'RICAVI',
+  pl_iva_costi: 'COSTO',
+  srv_costo_ritiro: '',
+  srv_costo_medio_esame: '',
 };
 
 // Chiavi che vengono dai Dati aziendali della Suite (Amministrazione > Impostazioni, docs/IMPOSTAZIONI.md): qui in sola lettura

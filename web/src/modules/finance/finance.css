@@ -416,3 +416,13 @@ table.t.diff th { position: static; }
 .doc-chip .iconbtn { padding: 0 2px; font-size: 11px; }
 /* Contratto collegato all'anagrafica Sedi (Amministrazione): dati di sola lettura qui, si modificano in Sedi */
 .registry-info { margin-top: 4px; padding: 4px 8px; border-left: 3px solid var(--teal, #1c505e); background: var(--card-2, #f8fbfb); border-radius: 0 6px 6px 0; }
+
+/* Controllo di gestione: conto economico di sede e margine per cliente Service */
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.linklike:hover { color: var(--teal); }
+table.pl td:first-child { white-space: nowrap; }
+table.pl tr.pl-group td { background: var(--teal-050); color: var(--teal); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 14px; }
+tr.pl-sum td { font-weight: 700; background: var(--card-2, #fafcfc); }
+table.pl tr.pl-total td { font-weight: 800; font-size: 15px; border-top: 2px solid var(--teal); }
+table.pl tr.pl-control td { color: var(--muted); font-style: italic; }
+table.pl tr.pl-prev td { color: var(--muted); }

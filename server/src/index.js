@@ -29,6 +29,7 @@ import filesRoutes from './routes/files.js';
 import searchRoutes from './routes/search.js';
 import ingestRoutes from './routes/ingest.js';
 import legacyRoutes from './routes/legacy.js';
+import scadenzarioRoutes from './routes/scadenzario.js';
 import travasoRoutes from './routes/travaso.js';
 import importRoutes from './routes/importxlsx.js';
 import orgcatRoutes from './routes/orgcat.js';
@@ -139,6 +140,7 @@ app.use('/api', communityRoutes);
 app.use('/api', filesRoutes);
 app.use('/api', searchRoutes);
 app.use('/api', legacyRoutes);
+app.use('/api', scadenzarioRoutes);                      // Cockpit: scadenzario unico di direzione (lib/scadenzario.js)
 app.use('/api', travasoRoutes);
 app.use('/api', importRoutes);
 app.use('/api', orgcatRoutes);

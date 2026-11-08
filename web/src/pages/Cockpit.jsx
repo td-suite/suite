@@ -3,8 +3,9 @@ import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts';
 import { useApi, Card, Skeleton, Empty, Coming, ErrorBox, PageHead, Kpi } from '../components/ui.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { fmtDateTime, fmtNum, AREA_COLORS } from '../format.js';
+import CockpitScadenzario from './CockpitScadenzario.jsx';
 
-const MOD_COLOR = { cash: AREA_COLORS.FINANCE, orders: AREA_COLORS.OPERATIONS, shipments: AREA_COLORS.OPERATIONS, room: AREA_COLORS.RETAIL_FLOW, nc: AREA_COLORS.HQS, finance: AREA_COLORS.FINANCE, integration: AREA_COLORS.FINANCE, business: AREA_COLORS.RETAIL_FLOW, retail: AREA_COLORS.RETAIL_FLOW, contracts: AREA_COLORS.PEOPLE };
+const MOD_COLOR = { cockpit: AREA_COLORS.DIREZIONE, cash: AREA_COLORS.FINANCE, orders: AREA_COLORS.OPERATIONS, shipments: AREA_COLORS.OPERATIONS, room: AREA_COLORS.RETAIL_FLOW, nc: AREA_COLORS.HQS, finance: AREA_COLORS.FINANCE, integration: AREA_COLORS.FINANCE, business: AREA_COLORS.RETAIL_FLOW, retail: AREA_COLORS.RETAIL_FLOW, contracts: AREA_COLORS.PEOPLE };
 
 function Tip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -39,8 +40,9 @@ export default function Cockpit() {
   const { data, loading, error, unavailable, reload } = useApi('/cockpit');
   return (
     <div className="page">
-      <PageHead title="Cockpit direzionale" icon="cockpit" sub={data?.generated_at ? `Dati aggiornati il ${fmtDateTime(data.generated_at)}` : 'Incassi, fatturato, ordini, NC, ambulatori, M&A in una pagina'}
+      <PageHead title="Cockpit direzionale" icon="cockpit" sub={data?.generated_at ? `Dati aggiornati il ${fmtDateTime(data.generated_at)}` : 'Scadenze di direzione, incassi, fatturato, ordini, NC, ambulatori, M&A in una pagina'}
         actions={<button className="btn ghost" onClick={reload} disabled={loading}><Icon name="refresh" />Aggiorna</button>} />
+      {!unavailable && <CockpitScadenzario />}
       {loading && <div className="grid g4">{[1, 2, 3, 4, 5, 6, 7, 8].map((i) => <div key={i} className="card kpi"><Skeleton lines={2} /></div>)}</div>}
       {unavailable && <Card><Coming what="Il cockpit direzionale" /></Card>}
       {error && !unavailable && <ErrorBox error={error} />}

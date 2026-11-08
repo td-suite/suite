@@ -1406,3 +1406,12 @@ B9; nuovo D41 (C10). Schermate: docs/screens/admin-legal-entity-unisci.png, reta
 - B2B: `SELECT abbinamento, count(*) FROM retail.customers WHERE kind='B2B' AND NOT demo GROUP BY 1;`
 - aree dei Contratti: rapporto contracts 020 (`aree_senza_unita_del_core`, `unita_di_primo_livello_senza_area`), poi "Allinea al core";
 - Room: `sedi_con_orari_solo_in_room` nel rapporto room 011 (sedi a cui mancano gli orari in Amministrazione > Sedi).
+
+## Finance Management: conto economico di sede e margine per cliente Service (08/11/2026)
+Decisioni 11 e 12 del programma. Il Controllo di gestione di Finance Management **legge** l'anagrafica e i moduli e non scrive nessun dato
+anagrafico: sedi = `public.sites` (attive non SERVICE, sedi centrali da impostazione), Laboratorio = sede LABORATORIO (`getLaboratorio`),
+clienti = `public.clienti_attivi_v` (SRV), persone e sedi di lavoro da Contratti del personale, canoni da Sedi e dallo Scadenziario,
+listini e volumi dal Business Hub, produzione StudioLAB da Retail (ponte B2B) e Ordini. Le istanze di pagamento hanno `site_id` →
+`public.sites` e `org_id` → `public.organizations` (facoltativi, fuori dal contenuto firmato); la migrazione finance 006 abbina il
+centro di costo testuale alle sedi senza toccarlo. Fonte non LIVE = "non disponibile", mai zero. Dettagli, ipotesi e verifiche di
+produzione in docs/FINANCE.md.

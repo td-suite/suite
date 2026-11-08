@@ -199,6 +199,7 @@ r.post('/events/request', requireWrite, ah(async (req, res) => {
     // soglia si soddisfa anche con prior_approval), l'imposta di registro resta senza approvazione preventiva
     prior_approval: kind !== 'registro', prior_approval_ref: kind === 'canone' ? 'Contratto di affitto' : kind === 'bolletta' ? 'Utenza' : null,
     checks: {}, notes: `Scadenziario: ${d.key}${ev.estimate ? ' (importo stimato, confermato alla creazione)' : ''}`,
+    site_id: (await one('SELECT kind FROM public.sites WHERE id=$1', [owner.site_id]))?.kind === 'SERVICE' ? null : owner.site_id,   // centro di costo = sede del contratto o dell'utenza (il conto economico la conta già in canone / utenze)
   };
   const parsed = parse(requestSchema, body);
   const out = await tx(async (c) => {

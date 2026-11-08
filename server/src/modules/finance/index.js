@@ -1,5 +1,6 @@
 // Modulo Finance (Finance Management): autorizzazioni di pagamento con firma congiunta CEO/CFO, beneficiari, conti di addebito,
 // moduli DOCX/PDF, link di firma via email, controllo anti-frazionamento. Travaso dell'app finance.toscanadiagnostica.it.
+// Ospita anche lo Scadenziario strutture e il Controllo di gestione (conto economico di sede, margine per cliente Service).
 // Autenticazione, utenti e profili sono della Suite: il ruolo dell'app (SUPPORT, CEO, CFO, VIEWER) è il profilo del grant,
 // il flag is_admin dell'app vale anche per i livelli OWNER e ADMIN della Suite.
 import { Router } from 'express';
@@ -16,6 +17,7 @@ import requestRoutes, { filesRouter } from './routes/requests.js';
 import signRoutes from './routes/sign.js';
 import statsRoutes from './routes/stats.js';
 import scheduleRoutes from './routes/schedule.js';
+import controlloRoutes from './routes/controllo.js';
 import { scheduleBadge, runScheduleAlerts, pruneScheduleNotified } from './lib/scheduleData.js';
 
 const KEY = 'finance';
@@ -83,6 +85,7 @@ export default function mount(app) {
   r.use('/sign', signRoutes);
   r.use('/stats', statsRoutes);
   r.use('/scadenziario', scheduleRoutes);   // scadenziario strutture: affitti, utenze, scatti, istanze dalle scadenze, previsione
+  r.use('/controllo', controlloRoutes);     // controllo di gestione: conto economico di sede, margine per cliente Service
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
   // Errori propri dell'app (duplicati, dimensione allegati) con i messaggi dell'app
   r.use((err, req, res, next) => {

@@ -5,3 +5,4 @@ await tryImport('../lib/legacy.js', 'registerLegacyJobs');
 await tryImport('../lib/community.js', 'registerCommunityJobs');
 await tryImport('../lib/search.js', 'registerSearchJobs');
 await tryImport('../lib/diagnostica.js', 'registerDiagnosticaJobs');   // A13: esito giornaliero della Diagnostica anagrafica
+await tryImport('../lib/scadenzario.js', 'registerScadenzarioJobs');   // Cockpit: notifica giornaliera dello scadenzario di direzione

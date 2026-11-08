@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { api, fileUrl } from '../api.js';
 import { useAuth, isAdmin } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, MoneyInput, Modal, useToast } from '../components/ui.jsx';
 import { eur } from '../format.js';
@@ -32,6 +32,14 @@ export default function Settings() {
   const [f, setF] = useState(null);
   const [bank, setBank] = useState(null);
   const [mail, setMail] = useState(null);
+  const sedi = useApi('/controllo/sedi');
+  const costi = useApi('/controllo/costi-esami');
+  const costiRef = useRef();
+  const caricaCosti = async (file) => {
+    if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    try { const r = await api.upload('/controllo/costi-esami/import', fd); toast(`Costi esami caricati: ${r.caricati}${r.scartate.length ? `, ${r.scartate.length} righe scartate` : ''}`); costi.reload(); } catch (e) { toast(e.message, 'err'); }
+  };
   useEffect(() => { if (cfg.data) setF({ ...cfg.data.settings }); }, [cfg.data]);
   const save = async () => { try { await api.put('/settings', f); toast('Impostazioni salvate'); cfg.reload(); } catch (e) { toast(e.message, 'err'); } };
   const saveBank = async () => {
@@ -77,6 +85,30 @@ export default function Settings() {
           <Field label="Previsione: crescita annua delle utenze %" help="Ipotesi applicata alla media mensile delle bollette (0 = costi costanti)"><input type="number" step="0.1" value={f.schedule_utility_growth_pct ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_utility_growth_pct: e.target.value })} /></Field>
           <Field label="Profili che ricevono gli avvisi" help="Profili Finance Management separati da virgola: CEO, CFO, SUPPORT, VIEWER (con SUPPORT anche titolare e amministratori della Suite)"><input value={f.schedule_notify_roles ?? ''} disabled={!admin} onChange={(e) => setF({ ...f, schedule_notify_roles: e.target.value })} /></Field>
         </div>
+      </Card>
+      <Card title="Controllo di gestione" className="mt">
+        <p className="small muted" style={{ marginTop: 0 }}>Ipotesi del conto economico di sede e del margine per cliente Service (pagine del gruppo "Controllo di gestione"): compaiono nella nota "Come è calcolato" delle pagine e degli export.</p>
+        <div className="form-grid">
+          <Field label="Coefficiente oneri sulla RAL" help="Costo aziendale del dipendente = RAL × coefficiente (predefinito 1,28: ipotesi dichiarata). Se Contratti del personale ha un coefficiente sul contratto vale quello."><input inputMode="decimal" value={String(f.pl_coefficiente_oneri ?? '').replace('.', ',')} disabled={!admin} onChange={(e) => setF({ ...f, pl_coefficiente_oneri: e.target.value })} /></Field>
+          <Field label="IVA sui costi" help="Canoni più IVA e royalties: IVA come costo (indetraibile, attività sanitaria esente) oppure esclusa. Bollette, manutenzioni e pagamenti valgono come registrati."><select value={f.pl_iva_costi || 'COSTO'} disabled={!admin} onChange={(e) => setF({ ...f, pl_iva_costi: e.target.value })}><option value="COSTO">IVA come costo (indetraibile)</option><option value="ESCLUSA">Esclusa (imponibile)</option></select></Field>
+          <Field label="Chiave di ripartizione dei costi centrali" help="Decisione 11 del CEO: in proporzione ai ricavi della sede sul totale. Altre chiavi in futuro."><select value={f.pl_chiave_ripartizione || 'RICAVI'} disabled onChange={() => {}}><option value="RICAVI">Ricavi della sede</option></select></Field>
+          <Field label="Costo per ritiro dei campioni (€)" help="Service: costo di un ritiro × ritiri del mese (giorni fissi del contratto). Vuoto = da indicare."><input inputMode="decimal" value={String(f.srv_costo_ritiro ?? '').replace('.', ',')} disabled={!admin} onChange={(e) => setF({ ...f, srv_costo_ritiro: e.target.value })} /></Field>
+          <Field label="Costo medio per esame (€)" help="Service: costo analitico per gli esami senza costo per codice nella tabella qui sotto. Vuoto = da indicare."><input inputMode="decimal" value={String(f.srv_costo_medio_esame ?? '').replace('.', ',')} disabled={!admin} onChange={(e) => setF({ ...f, srv_costo_medio_esame: e.target.value })} /></Field>
+          <Field label="Sedi centrali" className="span2" help="Le loro spese (canone, utenze, personale, pagamenti) vanno tra i costi centrali, ripartiti sulle sedi. Nessuna scelta = le sedi di tipo Sede direzionale.">
+            <div className="row" style={{ flexWrap: 'wrap', gap: 10 }} data-testid="sedi-centrali">
+              {(sedi.data || []).filter((x) => x.active).map((x) => {
+                const ids = String(f.pl_sedi_centrali || '').split(',').filter(Boolean).map(Number);
+                const on = ids.includes(x.id);
+                return <label key={x.id} className="small" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" disabled={!admin} checked={on} onChange={(e) => setF({ ...f, pl_sedi_centrali: (e.target.checked ? [...ids, x.id] : ids.filter((i) => i !== x.id)).join(',') })} />{x.name}{x.kind === 'HEADQUARTER' ? ' (direzionale)' : ''}</label>;
+              })}
+            </div>
+          </Field>
+        </div>
+        <div className="row" style={{ marginTop: 12, gap: 10, flexWrap: 'wrap' }}>
+          <span className="small"><b>Costi esami</b>: {costi.data ? `${costi.data.n} codici caricati` : '…'} (file XLSX con le colonne Codice, Descrizione, Costo; un codice già presente si aggiorna)</span>
+          {admin && <><input ref={costiRef} type="file" accept=".xlsx" hidden onChange={(e) => { caricaCosti(e.target.files[0]); e.target.value = ''; }} /><button className="btn sm ghost" onClick={() => costiRef.current.click()}>Carica costi esami</button></>}
+        </div>
+        <div className="small muted" style={{ marginTop: 6 }}>Le modifiche si salvano con "Salva impostazioni".</div>
       </Card>
       <Card title="Testi del modulo" className="mt">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

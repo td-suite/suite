@@ -6,6 +6,7 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, MoneyInput, useToast } from '../components/ui.jsx';
 import { eur, today, DOC_TYPE, PAY_METHOD, CHECKS, TIER, ROLE_SIGNER } from '../format.js';
 import { amountToWords, validIban, normalizeIban, prettyIban } from '../words.js';
+import { SelettoriPL } from '../components/Classificazione.jsx';
 
 const EMPTY = {
   request_date: today(), requester: '', cost_center: '',
@@ -15,6 +16,7 @@ const EMPTY = {
   single_signer: '', board_number: '', board_date: '', prior_approval: false, prior_approval_ref: '',
   checks: { budget: false, aggregation: false, documents: false, related_party: false, cfo_consent: false, iban_verified: false },
   iban_verified_note: '', notes: '',
+  site_id: null, org_id: null, pl_escluso: false,   // controllo di gestione (facoltativi)
 };
 
 export default function RequestForm() {
@@ -35,7 +37,7 @@ export default function RequestForm() {
     if (existing.data) {
       const r = existing.data;
       if (!r.editable) { nav(`${base}/istanze/${r.id}`, { replace: true }); return; }
-      setF({ ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, r[k] ?? EMPTY[k]])), checks: { ...EMPTY.checks, ...(r.checks || {}) }, bank_account_id: r.bank_account_id || '' });
+      setF({ ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, r[k] ?? EMPTY[k]])), checks: { ...EMPTY.checks, ...(r.checks || {}) }, bank_account_id: r.bank_account_id || '', pl_org_name: r.pl_org_name });
     }
   }, [existing.data]); // eslint-disable-line
   useEffect(() => { if (banks.data?.length && !f.bank_account_id && !id) setF((x) => ({ ...x, bank_account_id: banks.data[0].id })); }, [banks.data]); // eslint-disable-line
@@ -73,7 +75,8 @@ export default function RequestForm() {
   const save = async (andSubmit) => {
     setBusy(true); setErr(null);
     try {
-      const body = { ...f, amount: Number(f.amount), bank_account_id: f.bank_account_id || null, single_signer: tier === 'SINGOLA' ? f.single_signer || null : null };
+      const { pl_org_name: _o, ...rest } = f;
+      const body = { ...rest, amount: Number(f.amount), bank_account_id: f.bank_account_id || null, single_signer: tier === 'SINGOLA' ? f.single_signer || null : null, site_id: f.site_id || null, org_id: f.org_id || null, pl_escluso: Boolean(f.pl_escluso) };
       const r = id ? await api.put(`/requests/${id}`, body) : await api.post('/requests', body);
       toast(id ? 'Istanza aggiornata' : 'Istanza salvata in bozza');
       nav(`${base}/istanze/${r.id}${andSubmit ? '?invia=1' : ''}`);
@@ -100,7 +103,8 @@ export default function RequestForm() {
             <div className="form-grid">
               <Field label="Data richiesta"><input type="date" value={f.request_date} onChange={(e) => set('request_date', e.target.value)} /></Field>
               <Field label="Richiedente / Funzione"><input value={f.requester} onChange={(e) => set('requester', e.target.value)} /></Field>
-              <Field label="Centro di costo / voce di budget"><input value={f.cost_center} onChange={(e) => set('cost_center', e.target.value)} placeholder="es. Laboratorio HUB · reagenti" /></Field>
+              <Field label="Centro di costo / voce di budget" help="Testo del modulo firmato"><input value={f.cost_center} onChange={(e) => set('cost_center', e.target.value)} placeholder="es. Laboratorio HUB · reagenti" /></Field>
+              <SelettoriPL value={f} onChange={(x) => setF((cur) => ({ ...cur, site_id: x.site_id, org_id: x.org_id, pl_escluso: x.pl_escluso }))} />
             </div>
           </Card>
 
