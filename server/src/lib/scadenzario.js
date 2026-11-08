@@ -596,7 +596,7 @@ export async function righeUtente(user, { oggi = oggiRoma() } = {}) {
 export async function contatoreHome(user) {
   if (!puoVedere(user)) return null;
   const rip = riepilogo(await righeUtente(user));
-  return { value: rip.entro_7, label: rip.SCADUTA ? `Scadenze entro 7 giorni (${rip.SCADUTA} scadute)` : 'Scadenze entro 7 giorni' };
+  return { value: rip.entro_7, label: rip.SCADUTA ? `Entro 7 gg, ${rip.SCADUTA} scadute` : 'Entro 7 giorni' };
 }
 
 // ------------------------------------------------------------------ job core:scadenzario (notifica giornaliera)

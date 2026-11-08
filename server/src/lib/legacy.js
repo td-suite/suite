@@ -597,35 +597,35 @@ const COUNTER_QUERIES = {
   nc: { label: 'NC aperte', sql: `SELECT count(*)::int AS n FROM nc WHERE stato NOT IN ('CHIUSA','VERIFICATA','ANNULLATA')` },
   orders: { label: 'Ordini da evadere', sql: `SELECT count(*)::int AS n FROM orders WHERE status NOT IN ('BOZZA','CONSEGNATO','IMMAGAZZINATO','CHIUSO','ANNULLATO')` },
   cash: { label: 'Rendiconti da approvare', sql: `SELECT count(*)::int AS n FROM cash_reports WHERE status = 'CLOSED'` },
-  finance: { label: 'Autorizzazioni in attesa di firma', sql: `SELECT count(*)::int AS n FROM payment_requests WHERE status = 'IN_FIRMA'` },
+  finance: { label: 'In attesa di firma', sql: `SELECT count(*)::int AS n FROM payment_requests WHERE status = 'IN_FIRMA'` },
   // Integration nella Suite: i target sono Legal entity (org_ext), la data di fine attività è sul record (stessa regola del badge del modulo)
-  integration: { label: 'Attività M&A in ritardo', sql: `SELECT count(*)::int AS n FROM activities a JOIN org_ext e ON e.org_id=a.target_id WHERE a.st < 3 AND a.fine ~ '^\\d{4}-\\d{2}-\\d{2}$' AND a.fine::date < CURRENT_DATE`,
+  integration: { label: 'Attività in ritardo', sql: `SELECT count(*)::int AS n FROM activities a JOIN org_ext e ON e.org_id=a.target_id WHERE a.st < 3 AND a.fine ~ '^\\d{4}-\\d{2}-\\d{2}$' AND a.fine::date < CURRENT_DATE`,
     legacySql: `SELECT count(*)::int AS n FROM activities a JOIN targets t ON t.id = a.target_id WHERE a.st < 3 AND t.closing ~ '^\\d{4}-\\d{2}-\\d{2}' AND (t.closing::date + (a.ew * 7)) < CURRENT_DATE` },
   shipments: { label: 'Kit in viaggio', sql: `SELECT count(*)::int AS n FROM kits WHERE status IN ('SHIPPED','SHIPPED_TO_LAB')` },
-  room: { label: 'Turni scoperti nel mese', sql: `SELECT count(*)::int AS n FROM turni WHERE prof_id IS NULL AND mese = to_char(CURRENT_DATE, 'YYYY-MM')` },
-  contracts: { label: 'Scadenze entro 30 giorni', sql: `SELECT (
+  room: { label: 'Turni scoperti', sql: `SELECT count(*)::int AS n FROM turni WHERE prof_id IS NULL AND mese = to_char(CURRENT_DATE, 'YYYY-MM')` },
+  contracts: { label: 'Entro 30 giorni', sql: `SELECT (
       (SELECT count(*) FROM deadlines WHERE done = FALSE AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) +
       (SELECT count(*) FROM attachments a JOIN resources r ON r.id = a.resource_id WHERE r.status = 'ATTIVO' AND a.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) +
       (SELECT count(*) FROM employments e JOIN resources r ON r.id = e.resource_id WHERE r.status = 'ATTIVO' AND e.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) +
       (SELECT count(*) FROM lp_contracts l JOIN resources r ON r.id = l.resource_id WHERE r.status = 'ATTIVO' AND l.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30)
     )::int AS n` },
   // Widget nativi e moduli senza app di origine: stesso meccanismo (lettura nello schema del modulo quando è LIVE)
-  business: { label: 'Contratti in scadenza e fascicoli aperti', sql: `SELECT ((SELECT count(*) FROM contracts WHERE status IN ('FIRMATO','AUTORIZZATO','ATTIVO') AND end_date IS NOT NULL AND end_date <= CURRENT_DATE + 60) + (SELECT count(*) FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')))::int AS n` },
+  business: { label: 'Scadenze, fascicoli', sql: `SELECT ((SELECT count(*) FROM contracts WHERE status IN ('FIRMATO','AUTORIZZATO','ATTIVO') AND end_date IS NOT NULL AND end_date <= CURRENT_DATE + 60) + (SELECT count(*) FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')))::int AS n` },
   retail: { label: 'Richiami scaduti', sql: `SELECT count(*) FILTER (WHERE due < CURRENT_DATE)::int AS n FROM (SELECT s.customer_id, p.id, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id IS NOT NULL AND p.periodicity_months IS NOT NULL GROUP BY s.customer_id, p.id) x` },
   ticket: { label: 'Ticket aperti', sql: `SELECT count(*)::int AS n FROM tickets WHERE stato NOT IN ('CHIUSO','ANNULLATO')` },
   circolari: { label: 'Circolari in bozza', sql: `SELECT count(*)::int AS n FROM circolari WHERE stato='BOZZA'` },
-  cartella: { label: 'Documenti nuovi (7 giorni)', sql: `SELECT count(*)::int AS n FROM documenti WHERE created_at > now() - interval '7 days'` },
+  cartella: { label: 'Nuovi in 7 giorni', sql: `SELECT count(*)::int AS n FROM documenti WHERE created_at > now() - interval '7 days'` },
   // Audit SGI: auto-audit del mese non ancora inviati dalle sedi struttura + auto-audit inviati da verificare
-  audit: { label: 'Auto-audit del mese mancanti e da verificare', sql: `SELECT (
+  audit: { label: 'Auto-audit da fare', sql: `SELECT (
       (SELECT count(*) FROM sites_v s WHERE s.in_esercizio AND s.kind IN ('PUNTO_PRELIEVI','CENTRO_DIAGNOSTICO','CENTRO_MEDICO','POLIAMBULATORIO','LABORATORIO')
          AND NOT EXISTS (SELECT 1 FROM audits a WHERE a.kind='AUTO' AND a.site_id=s.id AND a.period=date_trunc('month', CURRENT_DATE)::date AND a.deleted_at IS NULL AND a.status <> 'BOZZA')) +
       (SELECT count(*) FROM audits a WHERE a.kind='AUTO' AND a.status='INVIATO' AND a.deleted_at IS NULL))::int AS n` },
   // Facility e Manutenzioni: scadenze del piano scadute + interventi URGENTE/ALTA aperti (stessa regola del badge del modulo)
-  facility: { label: 'Scadenze scadute e interventi urgenti', sql: `SELECT (
+  facility: { label: 'Scadute, urgenti', sql: `SELECT (
       (SELECT count(*) FROM maintenance_plans WHERE status IN ('PIANIFICATA','SCADUTA') AND due_date < CURRENT_DATE) +
       (SELECT count(*) FROM work_orders WHERE status <> 'CHIUSO' AND priority IN ('URGENTE','ALTA')))::int AS n` },
   // Portale Service: documenti PDF pubblicati nello specchio del sito (= meta.n_pdf); nessun numero se lo specchio è vuoto
-  service: { label: 'Documenti PDF pubblicati', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
+  service: { label: 'Documenti pubblicati', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
   // SGI Management (Portale SGI): documenti attivi nello specchio del sito (= meta.n_docs); nessun numero se lo specchio è vuoto
   sgi: { label: 'Documenti attivi', sql: `SELECT jsonb_array_length(json)::int AS n FROM contenuti WHERE chiave='docs'` },
 };
@@ -633,7 +633,7 @@ const COUNTER_QUERIES = {
 const OPEN_COUNTERS = ['service', 'sgi'];
 // Comunicazione vive nel core (schema public): contenuti in bozza da pubblicare e avvisi attivi
 const CORE_COUNTERS = {
-  comunicazione: { label: 'Contenuti in bozza e avvisi attivi', sql: `SELECT ((SELECT count(*) FROM news WHERE status='DRAFT') + (SELECT count(*) FROM notices WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at >= now())))::int AS n` },
+  comunicazione: { label: 'Bozze e avvisi attivi', sql: `SELECT ((SELECT count(*) FROM news WHERE status='DRAFT') + (SELECT count(*) FROM notices WHERE starts_at <= now() AND (ends_at IS NULL OR ends_at >= now())))::int AS n` },
 };
 
 async function computeCounters() {

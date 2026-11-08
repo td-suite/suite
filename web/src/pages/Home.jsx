@@ -169,7 +169,7 @@ function HomeCompleta({ user }) {
             const color = areaColor(a.key, a.color);
             const live = a.modules.reduce((n, m) => n + (Number(counters?.[m.key]?.value) > 0 ? 1 : 0), 0);
             return (
-              <section key={a.key} className="area" style={{ '--area': color, '--n': Math.min(a.modules.length, 5) }} aria-label={a.name}>
+              <section key={a.key} className="area" style={{ '--area': color, '--n': Math.min(a.modules.length, 6) }} aria-label={a.name}>
                 <div className="area-head"><i /><h2>{a.name}</h2><span className="meta">{a.modules.length} {a.modules.length === 1 ? 'strumento' : 'strumenti'}{live ? ` · ${live} con novità` : ''}</span></div>
                 <div className="tiles">
                   {a.modules.map((m) => <Widget key={m.key} module={m} areaColor={color} areaKey={a.key} counter={counters?.[m.key]} countersLoading={countersLoading} profileLabel={profileLabels[`${m.key}:${m.profile}`]} />)}
