@@ -1,5 +1,5 @@
 // Immobili: elenco delle sedi dell'anagrafica (immobili creati al volo), scheda con dati immobiliari, canone e scadenze dal contratto di
-// Payments, Legal entity ospitante o locatore, obblighi di controllo, documenti, planimetria dell'anagrafica (public.site_documents kind
+// Finance Management, Legal entity ospitante o locatore, obblighi di controllo, documenti, planimetria dell'anagrafica (public.site_documents kind
 // PLANIMETRIA, fonte unica con Amministrazione > Sedi, lib/roomPlan.js) pubblicata in Room Planning, utenze della sede con stato della
 // voltura e prossime bollette, dispositivi, interventi aperti, consumi dell'anno e indicatori.
 import { Router } from 'express';
@@ -83,7 +83,7 @@ r.get('/immobili/:siteId', ah(async (req, res) => {
     currentPlan(siteId),   // planimetria dell'anagrafica (Amministrazione > Sedi o caricata da qui: è la stessa)
     listPlans(siteId),
   ]);
-  // utenze della sede da Payments con stato della voltura e prossime bollette attese (calcolo dello scadenziario di Payments)
+  // utenze della sede da Finance Management con stato della voltura e prossime bollette attese (calcolo dello scadenziario di Finance Management)
   let utilities = null, nextBills = [];
   if (li.available) {
     utilities = await many(`SELECT u.id, u.kind, coalesce(u.supplier_name, o.name) AS supplier_name, u.code, u.holder, u.transfer_status, u.period_months, u.ref_due, u.avg_amount, u.auto_pay, u.active,
@@ -114,7 +114,7 @@ r.put('/immobili/:siteId', requireFacility, ah(async (req, res) => {
   const b = parse(propSchema, req.body || {});
   if (b.lease_id && await financeLive()) {
     const l = await one('SELECT site_id FROM finance.lease_contracts WHERE id=$1', [b.lease_id]);
-    if (!l || l.site_id !== siteId) throw bad('Il contratto di affitto indicato non è di questa sede in Payments');
+    if (!l || l.site_id !== siteId) throw bad('Il contratto di affitto indicato non è di questa sede in Finance Management');
   }
   const cols = Object.keys(b).filter((k) => b[k] !== undefined);
   if (cols.length) await q(`UPDATE properties SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now(), updated_by=$${cols.length + 2} WHERE id=$1`,
@@ -234,7 +234,7 @@ r.get('/immobili/:siteId/contratto-pdf', ah(async (req, res) => {
   await sendFile(res, d, { inline: true });
 }));
 
-// Contratti di affitto della sede in Payments (per collegare l'immobile)
+// Contratti di affitto della sede in Finance Management (per collegare l'immobile)
 r.get('/immobili/:siteId/contratti', requireFacility, ah(async (req, res) => {
   const siteId = idOf(req.params.siteId, 'Sede non trovata');
   if (!(await financeLive())) return res.json({ finance: false, rows: [] });

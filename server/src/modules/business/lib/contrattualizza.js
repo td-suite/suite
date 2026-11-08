@@ -257,3 +257,43 @@ export async function contrattualizzatoDaDiagnostica(accountId, { userId = null 
   }
   return { esito: `contrattualizzato${presa ? '' : ' (data già presente)'}, fase ${fase ?? 'invariata'}${sede?.site ? `, sede SERVICE ${sede.site.code} ${sede.esito}` : ''}`, avvisi: sede?.avvisi || [] };
 }
+
+/**
+ * Ogni contratto Service o Medicina del Lavoro con controparte ha il suo account nella sezione della linea ("Come mai figurano in tutti
+ * i contratti e non nella sezione Medicina del Lavoro???", CEO 08/11/2026; regola del 07/11: tutti i dati dei contratti finiscono nelle
+ * schede dei clienti). Se l'account manca lo crea (prospect) e porta la fase allo stato del contratto: BOZZA → fase 3, PROPOSTA →
+ * fase 4 (offerta inviata) alla data della proposta, FIRMATO/ATTIVO → allineaAccountAlContratto (fase 6, sede SERVICE). Mai indietro.
+ * Ritorna null se il contratto non c'entra, altrimenti { account_id, creato, fase }.
+ */
+export async function accountDaContratto(contrattoId, { userId = null, fonte = 'contratto' } = {}) {
+  const c = await one('SELECT id, kind, status, org_id, protocol, proposal_date, created_at FROM contracts WHERE id=$1', [contrattoId]);
+  if (!c || !['SRV', 'MDL'].includes(c.kind) || !c.org_id || c.status === 'ANNULLATO') return null;
+  let acc = await one('SELECT id FROM accounts WHERE organization_id=$1 AND linea=$2', [c.org_id, c.kind]);
+  let creato = false;
+  if (!acc) {
+    acc = await one(`INSERT INTO accounts (organization_id, linea, prospect, created_by) VALUES ($1,$2,TRUE,$3) RETURNING id`, [c.org_id, c.kind, userId]);
+    creato = true;
+    await attivita(acc.id, { tipo: 'SISTEMA', oggetto: `Scheda creata dal contratto ${c.protocol || `#${c.id}`}`, testo: `Account della linea creato automaticamente perché il contratto esisteva senza scheda (${fonte}).`, dati: { contratto_id: c.id } }, userId);
+  }
+  const giorno = (c.proposal_date ? String(c.proposal_date instanceof Date ? c.proposal_date.toISOString() : c.proposal_date) : String(c.created_at?.toISOString?.() || todayRome())).slice(0, 10);
+  let fase = null;
+  if (['FIRMATO', 'ATTIVO', 'CESSATO'].includes(c.status)) {
+    const r = await allineaAccountAlContratto(c.id, { userId, fonte });
+    fase = r?.fase ?? null;
+  } else if (c.status === 'PROPOSTA') fase = await avanzaFase(acc.id, 4, giorno, `Proposta ${c.protocol || `#${c.id}`} inviata (${fonte}).`, userId);
+  else if (c.status === 'BOZZA') fase = await avanzaFase(acc.id, 3, giorno, `Proposta ${c.protocol || `#${c.id}`} in preparazione (${fonte}).`, userId);
+  return { account_id: acc.id, creato, fase };
+}
+
+/** Tutti i contratti SRV/MDL con controparte senza account della linea: rapporto (esegui=false) o creazione. */
+export async function contrattiSenzaAccount({ esegui = false, userId = null } = {}) {
+  const rows = await many(`SELECT c.id, c.kind, c.status, c.protocol, c.org_id, o.name AS org_name FROM contracts c JOIN public.organizations o ON o.id=c.org_id
+    WHERE c.kind IN ('SRV','MDL') AND c.status <> 'ANNULLATO' AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.organization_id=c.org_id AND a.linea=c.kind) ORDER BY c.kind, o.name`);
+  if (!esegui) return rows;
+  const out = [];
+  for (const r of rows) {
+    try { const x = await accountDaContratto(r.id, { userId, fonte: 'Diagnostica anagrafica' }); out.push({ id: r.id, esito: x ? `scheda ${x.creato ? 'creata' : 'esistente'} #${x.account_id}${x.fase ? `, fase ${x.fase}` : ''}` : 'non pertinente' }); }
+    catch (e) { out.push({ id: r.id, esito: 'errore', motivo: e.message }); }
+  }
+  return out;
+}

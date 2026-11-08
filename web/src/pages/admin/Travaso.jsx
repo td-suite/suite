@@ -181,7 +181,7 @@ export function Travaso() {
   const mirror = async (m) => { try { await api.post(`/travaso/${m.key}/mirror`); toast(`${m.name} torna in collaudo`); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title="Travaso moduli" icon="import" sub="Moduli sull'anagrafica unica (Cash, Room, NC, Ordini, Retail, Contratti, Business, Integration): si avviano vuoti con un clic. Moduli indipendenti (Payments, Spedizioni): dati copiati dall'app originale, poi il passaggio definitivo quando i conteggi coincidono" />
+      <PageHead title="Travaso moduli" icon="import" sub="Moduli sull'anagrafica unica (Cash, Room, NC, Ordini, Retail, Contratti, Business, Integration): si avviano vuoti con un clic. Moduli indipendenti (Finance Management, Spedizioni): dati copiati dall'app originale, poi il passaggio definitivo quando i conteggi coincidono" />
       {loading && <Skeleton lines={6} />}
       <ErrorBox error={error} />
       {data && !data.length && <Empty icon="import" title="Nessun modulo da travasare" />}

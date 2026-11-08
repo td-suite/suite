@@ -512,20 +512,20 @@ casella (impostazioni cv_inbox, cv_inbox_enabled) e crea un CV per ogni allegato
 riferimento, sintesi AI se attiva), senza doppioni (cv_box.graph_id, migrazione 018); stato e "Leggi ora" in cima al CV Box.
 Richiede sull'app registration della Suite il permesso applicativo Mail.Read sulla casella recruitment@.
 
-## Payments: Scadenziario strutture (28/10/2026)
+## Finance Management: Scadenziario strutture (28/10/2026)
 Richiesta del CEO, testuale: "Ci servirebbe un sistema per mappare tutti gli affitti con tutte le utenze in modo che mi avvisi dei
 pagamenti e che possiamo consultarlo per tenere tutti gli scatti e per prevedere i costi futuri. Integriamola come funzione su
-Payments." Costruita prima in Cash Management e poi, per correzione di rotta del CEO, spostata per intero nel widget Payments (modulo
+Finance Management." Costruita prima in Cash Management e poi, per correzione di rotta del CEO, spostata per intero nel widget Finance Management (modulo
 `finance`) e collegata alle istanze di pagamento; da Cash è stata rimossa senza tracce (la migrazione 014 di cash non era mai stata
 applicata in produzione). Voce di menu "Scadenziario strutture" (gruppo "Affitti e utenze", badge con le scadenze scadute o entro 7
 giorni), pagina `web/src/modules/finance/pages/Schedule.jsx`, route `/api/finance/scadenziario` (`routes/schedule.js`), logica pura in
 `lib/schedule.js`, dati, badge, avvisi e aggancio alle istanze in `lib/scheduleData.js`, creazione condivisa delle istanze in
 `lib/requestCreate.js`, migrazione `002_scadenziario.sql`.
-**Anagrafica**: le sedi sono `public.sites` senza perimetro per utente (Payments non ha sedi per utente; le strutture dei clienti service
+**Anagrafica**: le sedi sono `public.sites` senza perimetro per utente (Finance Management non ha sedi per utente; le strutture dei clienti service
 restano fuori), scelte da `GET /scadenziario/sites` con conteggi di contratti, utenze, volture aperte e prossima scadenza; locatore e
 fornitore sono Legal entity facoltative (`landlord_org_id`, `supplier_org_id` → `public.organizations`, elenco `GET /scadenziario/organizations`
 con `has_iban`) con un nome libero se la controparte non è in anagrafica (se vuoto vale quello della Legal entity); il **beneficiario
-Payments** (`beneficiary_id` → `finance.beneficiaries`, tendina con ricerca su `GET /beneficiaries?q=` e "nuovo dal locatore / fornitore":
+Finance Management** (`beneficiary_id` → `finance.beneficiaries`, tendina con ricerca su `GET /beneficiaries?q=` e "nuovo dal locatore / fornitore":
 `POST /scadenziario/beneficiaries { org_id | name }` crea il beneficiario con nome e P.IVA/CF della Legal entity e ne importa l'IBAN se il
 core ce l'ha) è il collegamento con le istanze. Nessun dato di esempio.
 **Tabelle** (schema finance): `lease_contracts` (sede, locatore, beneficiary_id, immobile, tipologia COMMERCIALE_6_6 / 9_9 / ABITATIVO_4_4
@@ -549,19 +549,19 @@ importo). Finestra predefinita 60 giorni indietro, 400 avanti.
 **Istanze dalle scadenze** (la parte nuova): su canoni, imposta di registro e bollette non pagate il pulsante "Crea istanza" chiama
 `POST /scadenziario/events/request { key, amount? }` (SUPPORT e amministratori): per le stime l'importo si conferma prima. L'istanza nasce in
 bozza con la stessa funzione di `POST /requests` (`createRequest` in lib/requestCreate.js: `requestSchema`, `prepare`, `upsertBeneficiary`,
-nessuna regola duplicata): data di oggi, richiedente = utente, beneficiario dal beneficiario Payments del contratto/utenza (ultimo IBAN noto,
+nessuna regola duplicata): data di oggi, richiedente = utente, beneficiario dal beneficiario Finance Management del contratto/utenza (ultimo IBAN noto,
 prima quelli verificati) oppure dal nome del locatore/fornitore e dalla Legal entity collegata (name, vat_number/tax_code, iban, bic,
 bank_name); importo della scadenza; causale "<titolo> <sede> <periodo o data>"; doc_type CONTRATTO (doc_number unità e locatore, doc_date
 decorrenza) per canoni e registro, FATTURA (doc_number codice utenza) per le bollette; SEPA (F24 per il registro); valuta = data della
 scadenza; prior_approval vero con riferimento "Contratto di affitto" / "Utenza" per canoni e bollette (pagamenti ricorrenti già approvati;
 lo schema lo ammette in ogni scaglione: oltre soglia la delibera CdA è soddisfatta anche dall'approvazione preventiva), falso per il
-registro; note "Scadenziario: <key>". Senza IBAN la richiesta fallisce: "Indica l'IBAN del locatore/fornitore nel beneficiario Payments o
+registro; note "Scadenziario: <key>". Senza IBAN la richiesta fallisce: "Indica l'IBAN del locatore/fornitore nel beneficiario Finance Management o
 nella Legal entity". Il collegamento va in `schedule_requests`; in agenda la scadenza mostra "Istanza AP-2026-0001 · stato" con link a
 `/finance/istanze/:id`. Quando l'istanza passa a ESEGUITA (`POST /requests/:id/execute`) la scadenza viene segnata fatta da sola
 (`schedule_done` con request_id, importo eseguito, nota "Istanza <protocollo> eseguita il ..."; una bolletta registrata prende `paid_at`);
 se viene ANNULLATA (`/cancel`) o RIFIUTATA (routes/sign.js) il collegamento cade e la scadenza torna aperta (`onRequestStatus` in
 lib/scheduleData.js). La Previsione ha la riga "Istanze già create" (istanze collegate in bozza, in firma o autorizzate, per mese della
-scadenza) sotto il totale di rete, e il KPI corrispondente. Il cruscotto di Payments ha il riquadro "Scadenze strutture" (scadute, entro 30
+scadenza) sotto il totale di rete, e il KPI corrispondente. Il cruscotto di Finance Management ha il riquadro "Scadenze strutture" (scadute, entro 30
 giorni e importo in arrivo, canoni al mese, volture aperte, prossime scadenze; `schedule` in `GET /stats/summary`).
 **KPI, previsione, avvisi**: come nella versione Cash (scadute, entro 30 giorni, disdette entro 6 mesi, volture aperte, canoni al mese;
 previsione per sede e mese con rivalutazione ISTAT ipotetica `schedule_istat_pct`, imposta di registro, crescita utenze
@@ -591,7 +591,7 @@ fideiussione, spese), registrazione, tipo di contratto, clausole rilevanti e `co
 testuale. Senza chiave Anthropic la richiesta risponde 400 "Intelligenza artificiale non configurata: inserisci la chiave Anthropic in
 Amministrazione > Impostazioni". Poi (`lib/leaseAnalysis.js`, `buildProposal`) abbina la sede TD per città e indirizzo dell'immobile
 (`matchSite` di `server/src/lib/anagraficaMatch.js`, estratta dal caricamento pacchetti di Business e condivisa, con il criterio
-"città e indirizzo" in più), il locatore alle Legal entity per P.IVA, CF o nome (`matchOrg`) e il beneficiario Payments per P.IVA o nome;
+"città e indirizzo" in più), il locatore alle Legal entity per P.IVA, CF o nome (`matchOrg`) e il beneficiario Finance Management per P.IVA o nome;
 risposta `{ document_id, extracted, proposta: { site_id, site_label, site_how, landlord_org_id, landlord_label, landlord_how, beneficiary_id,
 lease (campi del form), initial_steps, confidence }, avvisi }` (OCR, testo troncato, conduttore diverso da Toscana Diagnostica, campi a bassa
 confidenza, rate iniziali diverse, sede o locatore non abbinati).
@@ -615,7 +615,7 @@ Claude. Schermate docs/screens/finance-scadenziario-pdf-{analisi,differenze}.png
 
 ## Contatori dei widget nella Home (28/10/2026)
 Segnalazione del CEO: "non vedo le notifiche sulle icone dei widget". I contatori delle card della Home (GET /api/home/counters, lib/legacy.js)
-erano definiti solo per gli otto moduli travasati (NC, Ordini, Cash, Payments, Integration, Spedizioni, Room, Contratti del personale).
+erano definiti solo per gli otto moduli travasati (NC, Ordini, Cash, Finance Management, Integration, Spedizioni, Room, Contratti del personale).
 Aggiunti Business (contratti in scadenza entro 60 giorni e fascicoli aperti), Retail (richiami scaduti), Ticket (ticket aperti), Circolari
 (bozze), Cartella (documenti nuovi negli ultimi 7 giorni) e Comunicazione (contenuti in bozza e avvisi attivi, letti nel core). Il
 contatore di Integration ora segue lo schema della Suite (target = Legal entity, data di fine sull'attività) e conserva la query legacy per
@@ -875,7 +875,7 @@ richiedente del kit può essere una Legal entity.
   lingua}, confidenza per campo con citazione. Senza chiave Anthropic: 400 "Intelligenza artificiale non configurata…" (il file non
   viene salvato). Il richiedente si abbina con `matchOrg` (P.IVA, codice fiscale, nome anche simile) e la proposta porta il criterio;
   se manca, "Crea Legal entity dal documento" (`POST /api/shipments/inbox/organizations { from_message_id }`) la crea kind CLIENTE,
-  `needs_review`, con P.IVA/CF/email/telefono letti (stessa logica dello Scadenziario di Payments: prima matchOrg, poi INSERT).
+  `needs_review`, con P.IVA/CF/email/telefono letti (stessa logica dello Scadenziario di Finance Management: prima matchOrg, poi INSERT).
   Le righe proposte (`parsed`) sono una per kit se `quantita_kit` > 1, con il riferimento esterno numerato (-1, -2…) perché il
   riferimento è unico per richiesta. "Rileggi" rifà righe e abbinamento dal JSON già letto (nessuna nuova chiamata al modello);
   "Rileggi tutte" resta solo Endeavor. Per Endeavor lo stesso upload passa il testo al riconoscitore delle email Affinity
@@ -903,14 +903,14 @@ Nessuna anagrafica propria nel modulo: `facility.properties.site_id` (UNIQUE), `
 `work_orders.site_id`, `activity_metrics.site_id`, `energy_targets.site_id` → `public.sites`; locatore, manutentore e fornitore →
 `public.organizations`; `work_orders.assigned_user_id` → `public.users`. Riferimenti logici senza FK tra schemi (verificati dal codice):
 `properties.lease_id` → `finance.lease_contracts.id`, `utility_meta.utility_id` e `meter_readings.utility_id` → `finance.utilities.id`.
-Scritture fuori dallo schema del modulo: `finance.utilities` e `finance.utility_bills` (utenze e bollette create da Facility, Payments è la
+Scritture fuori dallo schema del modulo: `finance.utilities` e `finance.utility_bills` (utenze e bollette create da Facility, Finance Management è la
 fonte unica e le mette nello scadenziario) e `room.struttura_blobs` (planimetria: Facility è la fonte, Room la mostra; `site_ext` di Room
 non si tocca). Letture: `finance.lease_contracts`/`lease_steps` (canone, scatti, scadenza), `retail.sales` (accettazioni per sede e mese),
 `cash.cash_reports` (giorni con rendiconto), `public.sites.host_organization_id` e `public.sites.tenure` con le colonne della locazione
 (titolo di godimento, canone, garanzie, locatore: vedi la sezione seguente).
 
 
-## Sedi: titolo di godimento, locazione e garanzie, fonte unica per Payments e Facility (31/10/2026)
+## Sedi: titolo di godimento, locazione e garanzie, fonte unica per Finance Management e Facility (31/10/2026)
 Richiesta del CEO: in Amministrazione > Sedi il canone (con IVA se dovuta), le garanzie date al locatore (fideiussione bancaria,
 fideiussione assicurativa, caparra con importi) e il contratto di locazione in PDF letto con l'API Anthropic; "questo elemento mettilo a
 disposizione di payments per lo scadenziario pagamenti (in modo da non replicare l'azione!!!)"; Facility leggeva male ospitata/locazione.
@@ -918,48 +918,48 @@ disposizione di payments per lo scadenziario pagamenti (in modo da non replicare
   `rent_amount` (importo della rata), `rent_period` MESE | TRIMESTRE | SEMESTRE | ANNO, `rent_vat` PIU_IVA | ESENTE | IVA_INCLUSA,
   `rent_vat_rate` (default 22), `lease_start`, `lease_years`, `lease_renewal_years`, `lease_notice_months`, `lease_end` (fine del primo
   periodo, calcolata da decorrenza e durata se vuota), `lease_landlord_org_id` → organizations (locatore o comodante), `lease_registration`
-  (stessi valori di Payments), `guarantee_bank_amount`, `guarantee_insurance_amount`, `deposit_amount` (caparra o deposito cauzionale),
+  (stessi valori di Finance Management), `guarantee_bank_amount`, `guarantee_insurance_amount`, `deposit_amount` (caparra o deposito cauzionale),
   `guarantee_notes`. Recupero: OSPITATA dove c'è `host_organization_id`; LOCAZIONE con i dati del contratto (rata dello scatto iniziale,
-  periodicità, decorrenza, durata, locatore, deposito, registrazione) dove Payments ha un contratto attivo; le altre restano LOCAZIONE da
+  periodicità, decorrenza, durata, locatore, deposito, registrazione) dove Finance Management ha un contratto attivo; le altre restano LOCAZIONE da
   verificare (`needs_review` non toccato). Le colonne della locazione arrivano solo agli amministratori da `GET /api/sites`.
 - **Coerenza** (server, `lib/leaseSync.js`): OSPITATA richiede la Legal entity ospitante (400 altrimenti); se si indica l'ospitante e il
   titolo non è nel corpo, la sede diventa OSPITATA (il form lo propone); togliendo l'ospitante a una sede OSPITATA torna LOCAZIONE.
   Proprietà e ospitata non hanno canone, durata né garanzie (i campi si svuotano), il comodato tiene durata e comodante.
 - **PDF del contratto, fonte unica del file**: `public.site_documents` (site_id, kind CONTRATTO_LOCAZIONE | ALTRO, filename, mime, size,
   sha256, data bytea o blob_path con `lib/moduleStorage.js` prefisso `sites`, extracted JSONB, extracted_at, model, text_chars, ocr,
-  uploaded_by). Scelta: tabella core e non `finance.lease_documents`, perché l'anagrafica deve funzionare anche con Payments spento;
-  Payments vede lo stesso file con una riga `finance.lease_documents` senza byte e `site_document_id` → site_documents (migrazione finance
-  004, ON DELETE CASCADE): download da Payments servito da site_documents, eliminazione da Payments rifiutata ("si sostituisce o si elimina
+  uploaded_by). Scelta: tabella core e non `finance.lease_documents`, perché l'anagrafica deve funzionare anche con Finance Management spento;
+  Finance Management vede lo stesso file con una riga `finance.lease_documents` senza byte e `site_document_id` → site_documents (migrazione finance
+  004, ON DELETE CASCADE): download da Finance Management servito da site_documents, eliminazione da Finance Management rifiutata ("si sostituisce o si elimina
   da Amministrazione > Sedi"). I PDF caricati direttamente nello Scadenziario restano in `finance.lease_documents` come prima.
   Endpoint (amministratori): `POST /api/sites/:id/lease-document` (multipart `file`, PDF fino a 20 MB: salva, estrae il testo con OCR se
   serve, chiede a Claude il JSON e restituisce `{ document_id, document, extracted, proposta: { fields, confidence, landlord,
   initial_steps }, avvisi }`; senza chiave Anthropic 400 con il messaggio standard, FINANCE_AI_MOCK=1 fuori produzione usa l'estrattore di
   prova), `GET /api/sites/:id/lease-document[?doc=]` (inline, `download=1` per scaricare), `DELETE /api/sites/:id/lease-document[?doc=]`,
   `POST /api/sites/:id/lease-document/landlord` (Legal entity del locatore letto: esistente per P.IVA/CF/nome o creata PARTNER
-  `needs_review`), `GET /api/sites/:id/lease` (contratto Payments collegato con rata vigente e scatti).
+  `needs_review`), `GET /api/sites/:id/lease` (contratto Finance Management collegato con rata vigente e scatti).
 - **Lettura con Claude condivisa**: `server/src/lib/leaseAnalysis.js` (spostato da `modules/finance/lib/leaseAnalysis.js`, che ora lo
-  riesporta: Payments invariato). Il prompt chiede in più `canone.iva_aliquota` e `garanzie` { fideiussione_bancaria, fideiussione_
+  riesporta: Finance Management invariato). Il prompt chiede in più `canone.iva_aliquota` e `garanzie` { fideiussione_bancaria, fideiussione_
   assicurativa, caparra } con importo e citazione (fideiussione di tipo non specificato = bancaria con nota); l'estrattore di prova legge
   le stesse garanzie. `siteFieldsFromExtract` mappa il JSON sulle colonne della sede con la confidenza per campo; nel form ogni campo letto
   ha la spilla verde/gialla/rossa con la citazione al passaggio del mouse; l'utente controlla e salva (niente salvataggio automatico).
-- **Payments senza doppio inserimento** (`lib/leaseSync.js`, usata da `routes/core.js` e da `modules/finance/routes/schedule.js`):
+- **Finance Management senza doppio inserimento** (`lib/leaseSync.js`, usata da `routes/core.js` e da `modules/finance/routes/schedule.js`):
   `siteToLease` al salvataggio di una sede in LOCAZIONE con canone e decorrenza crea o aggiorna `finance.lease_contracts` della sede
   (colonna `registry_sync`, al massimo un contratto collegato attivo per sede; uno già esistente viene adottato): locatore, decorrenza,
   durata, rinnovo, preavviso, periodicità (MESE 1, TRIMESTRE 3, SEMESTRE 6, ANNO 12), deposito = caparra, registrazione, tipologia dalla
   durata, ISTAT dal PDF, note "Dati dall'anagrafica Sedi (Amministrazione)". Scatti: senza scatti crea l'INIZIALE (con le rate iniziali
   ridotte lette nel PDF come scatti ALTRO, come lo Scadenziario); senza scatti dopo l'iniziale aggiorna l'INIZIALE; con scatti successivi
-  registrati in Payments (ISTAT, rinegoziazioni) non li tocca e, solo se il canone è cambiato in Sedi, aggiunge uno scatto dalla data di
-  oggi con motivo `ANAGRAFICA` (nuovo valore ammesso in `lease_steps.reason`). Collega a Payments i PDF della sede. La risposta di
+  registrati in Finance Management (ISTAT, rinegoziazioni) non li tocca e, solo se il canone è cambiato in Sedi, aggiunge uno scatto dalla data di
+  oggi con motivo `ANAGRAFICA` (nuovo valore ammesso in `lease_steps.reason`). Collega a Finance Management i PDF della sede. La risposta di
   POST/PUT /api/sites porta `lease_sync` { status ok | skip | error, reason, lease_id, created, step }. Se la sede smette di essere in
-  locazione il contratto Payments resta attivo (avviso: va chiuso nello Scadenziario).
-  `leaseToSite` è il verso opposto: un contratto creato o modificato in Payments (e la modifica dello scatto iniziale) porta la sede a
+  locazione il contratto Finance Management resta attivo (avviso: va chiuso nello Scadenziario).
+  `leaseToSite` è il verso opposto: un contratto creato o modificato in Finance Management (e la modifica dello scatto iniziale) porta la sede a
   LOCAZIONE con canone dallo scatto iniziale (bimestrale = mensile con importo / 2), locatore, durata, deposito e registrazione; vale per il
   contratto collegato o, se la sede non ne ha, per quello nuovo (un secondo contratto della stessa sede, es. il box, non tocca
   l'anagrafica). Antirimbalzo: le due funzioni girano in un contesto AsyncLocalStorage con l'origine (CORE o FINANCE) e non si richiamano.
-  In Payments la scheda del contratto collegato mostra "Dati dall'anagrafica Sedi (Amministrazione)" (canone con IVA e garanzie, link al
+  In Finance Management la scheda del contratto collegato mostra "Dati dall'anagrafica Sedi (Amministrazione)" (canone con IVA e garanzie, link al
   form) e il PDF della sede con l'etichetta "Sedi".
 - **Facility legge** `public.sites.tenure` e le colonne della locazione (docs/FACILITY.md): Montemurlo, Poggio a Caiano, Calenzano risultano
-  Ospitata; la scheda immobile mostra canone, IVA, garanzie, locatore, PDF e contratto Payments, con "Modifica in Amministrazione > Sedi".
+  Ospitata; la scheda immobile mostra canone, IVA, garanzie, locatore, PDF e contratto Finance Management, con "Modifica in Amministrazione > Sedi".
 - Test: `server/test/lease-sync.test.mjs` (fine del primo periodo, periodo ↔ periodicità, fusione della proposta, coerenza titolo /
   ospitante, piano degli scatti, garanzie lette dal PDF di prova).
 
@@ -1100,13 +1100,13 @@ una sola funzione del core**, `saveSite` (lib/sites.js, A0), che: applica le reg
 ospitante; titolo che esce da Ospitata ⇒ ospitante tolto; campi della locazione ripuliti), il vincolo "sede TD (non SERVICE) ⇒ Legal
 entity proprietaria" (alla creazione la Legal entity di TD dei Dati aziendali), scrive l'audit `SITE_CREATED`/`SITE_UPDATED` con
 `origine` e modifiche prima/dopo, allinea lo specchio di Cash (`cash.site_ext.ownership/host_org_id`), crea o aggiorna il contratto di
-Payments (`siteToLease`), crea o adotta il nodo Sede (`ensureSiteNodes`), ricalcola le coordinate quando cambia l'indirizzo, riallinea i
+Finance Management (`siteToLease`), crea o adotta il nodo Sede (`ensureSiteNodes`), ricalcola le coordinate quando cambia l'indirizzo, riallinea i
 perimetri degli accessi esterni delle Legal entity toccate (ospitante vecchia e nuova, proprietaria dei punti SERVICE), alla
-disattivazione imposta `closed_at` e restituisce il quadro d'impatto (`impattoChiusura`: Payments, persone, utenti, perimetri, nodo,
+disattivazione imposta `closed_at` e restituisce il quadro d'impatto (`impattoChiusura`: Finance Management, persone, utenti, perimetri, nodo,
 account e contratti PP). La parte transazionale è `scriviSede(c, …)` (per chi scrive dentro una transazione: connettore, import XLSX,
 migrazione dei contratti SEDE); le conseguenze fuori transazione partono dopo il COMMIT. Usano `saveSite`: Amministrazione > Sedi,
 connettore e file Sedi (`routes/ingest.js`), Business (firma e cessazione PP), Ordini (Dotazione, data di apertura), Retail (Intorno,
-coordinate), Payments (`leaseToSite`), Diagnostica. Restano fuori (da portare): foto della sede (`routes/files.js`), coordinate del meteo e
+coordinate), Finance Management (`leaseToSite`), Diagnostica. Restano fuori (da portare): foto della sede (`routes/files.js`), coordinate del meteo e
 del "Completa coordinate" (solo se vuote), riferimenti legacy di Room (travaso).
 
 **Flussi chiusi in questo blocco.**
@@ -1228,7 +1228,7 @@ produzione, segnalazioni, dotazione; NC e accettazioni) o impostazioni del modul
 entity con `cliente_livello` (prima ogni CLIENTE o PARTNER). D20 controlla le righe ORG attive che non sono clienti in entrambi i moduli.
 
 **Cockpit (A10).** Le card della direzione (`lib/legacy.js`, `leggi()`) leggono lo schema del modulo quando è LIVE nella Suite (Cash,
-Retail, Ordini, NC, Payments, Integration con `targets_v`, Contratti con `resources_v`, Spedizioni, Room con `site_ext` al posto della
+Retail, Ordini, NC, Finance Management, Integration con `targets_v`, Contratti con `resources_v`, Spedizioni, Room con `site_ext` al posto della
 tabella `strutture`), le sedi da `public.sites`; l'app di origine solo se il modulo non è LIVE e la sorgente è collegata. Ogni card dice
 la fonte (`source`: `modulo` o `origine`); senza nessuna delle due "Modulo non avviato nella Suite e app di origine non collegata".
 
@@ -1279,16 +1279,16 @@ Diagnostica anagrafica (Correggi con conferma). **Nessun controllo della Diagnos
   sovrascrive gli orari strutturati presenti (avviso nel lotto). Il connettore non scrive più `manager_name` (B2). L'import XLSX non fa più
   UPDATE diretti delle coordinate: le completa saveSite dopo il COMMIT del lotto. Le Legal entity nuove del connettore nascono da
   createOrganization (B5).
-- B18 · Payments (`leaseToSite`): un contratto dello Scadenziario non cambia il titolo di una sede OSPITATA, di PROPRIETÀ o in COMODATO
+- B18 · Finance Management (`leaseToSite`): un contratto dello Scadenziario non cambia il titolo di una sede OSPITATA, di PROPRIETÀ o in COMODATO
   (`titoloDaContratto`): risponde `registry_sync_result.status = 'conferma'` con il motivo, l'anagrafica resta intatta; con la conferma
-  (form di Payments, `POST /api/finance/scadenziario/leases/:id/allinea-anagrafica { conferma_titolo: true }`) passa da saveSite, che
-  toglie anche l'ospitante (audit con origine "Payments > Scadenziario strutture (titolo confermato)"). Il contratto di comodato porta
+  (form di Finance Management, `POST /api/finance/scadenziario/leases/:id/allinea-anagrafica { conferma_titolo: true }`) passa da saveSite, che
+  toglie anche l'ospitante (audit con origine "Finance Management > Scadenziario strutture (titolo confermato)"). Il contratto di comodato porta
   COMODATO, gli altri LOCAZIONE.
 - B1 · La data di avvio effettiva del punto prelievi **è l'apertura della sede**: scritta in `sites.opened_at` con saveSite se la sede
   non ce l'ha (scheda Punto prelievi, account, Avvia del flagship); se la sede ne ha un'altra vale quella e l'account la segue (avviso nel
   diario). D24 attivo (adattato: la data dell'account conta solo se c'è) con la correzione "Allinea la data di apertura".
 - B17 · Prima di chiudere una sede (Amministrazione > Sedi, Attiva = no) la pagina mostra il **quadro d'impatto** (`GET
-  /api/sites/:id/impatto-chiusura`: contratti Payments attivi, persone e utenti, ambiti di accesso, nodo, account e contratti PP) e chiede
+  /api/sites/:id/impatto-chiusura`: contratti Finance Management attivi, persone e utenti, ambiti di accesso, nodo, account e contratti PP) e chiede
   la conferma; alla disattivazione `closed_at` = oggi (o la data indicata) e il quadro torna nella risposta.
 - B19 · Codice StudioLAB unico: saveSite rifiuta un codice già di un'altra sede ("un codice, una sede"); l'indice unico parziale
   `sites_studiolab_code_uq` (lower) lo crea la migrazione 045 se non ci sono doppioni, altrimenti si attiva da solo quando D15b torna a
@@ -1299,7 +1299,7 @@ Diagnostica anagrafica (Correggi con conferma). **Nessun controllo della Diagnos
   fiscale o nome uguale normalizzato (forme societarie e punteggiatura ignorate) → restituisce quella esistente; nome molto simile (pg_trgm
   >= 0,8) → la nuova nasce con `needs_review` e la nota "Possibile doppione di #id"; audit `ORG_CREATED` con l'origine. La usano
   Amministrazione > Legal entity (409 `DUPLICATO` con la riga esistente; "crea comunque" con `forza_duplicato`, sempre da rivedere),
-  Business Hub (nuovo account, email da assegnare, DB Opportunità, pacchetti), Spedizioni (richiedente), Payments e Sedi (locatore dal
+  Business Hub (nuovo account, email da assegnare, DB Opportunità, pacchetti), Spedizioni (richiedente), Finance Management e Sedi (locatore dal
   PDF, `landlordOrg`), connettore e file Legal entity. **Tipi (decisione 8)**: locatore = FORNITORE, partner del punto prelievi = PARTNER
   (nuovo account PP, email della casella network@), cliente/prospect = CLIENTE. Migrazione 045 (funzione
   `public.riclassifica_tipi_legal_entity`, richiamata anche dalla migrazione business 019 e dalla correzione D25 "Applica la decisione
@@ -1379,7 +1379,7 @@ Diagnostica anagrafica (Correggi con conferma). **Nessun controllo della Diagnos
 - C2 · Fascicoli: orari dei prelievi dalle fasce della sede e personale dalle persone attive della sede (responsabile per primo) alla
   creazione; "Dalla sede" e "Dall'anagrafica" nella scheda del fascicolo.
 - C4 · Eliminazione di sede o Legal entity: le estensioni dei moduli con righe si elencano e chiedono la conferma (409 `ESTENSIONI`).
-- C5 · Payments: `beneficiaries.org_id` facoltativo verso la Legal entity (collegato dal locatore/fornitore e dalla migrazione dove la
+- C5 · Finance Management: `beneficiaries.org_id` facoltativo verso la Legal entity (collegato dal locatore/fornitore e dalla migrazione dove la
   P.IVA coincide con una sola Legal entity).
 - C6 · Via le costanti morte (sedi fisse di Contratti e Retail con Viale Belfiore); il luogo delle lettere dei Contratti del personale è la
   città dei Dati aziendali (`letter_city` in sola lettura).

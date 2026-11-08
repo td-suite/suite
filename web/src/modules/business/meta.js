@@ -34,7 +34,7 @@ export default {
     { to: 'punti-prelievo', icon: 'pin', label: 'Punti Prelievo', badge: 'fascicoli_aperti' },
     { to: 'email?linea=PP', icon: 'mail', label: 'Email da assegnare' },
     { to: 'sedi', icon: 'room', label: 'Sedi TD in locazione' },
-    { to: 'clienti-attivi?linea=PP', icon: 'check', label: 'Punti attivi' },
+    { to: 'clienti-attivi?linea=PP', icon: 'check', label: 'Punti e centri attivi' },
     { group: 'Medicina del Lavoro' },
     { to: '?linea=MDL', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'pipeline?linea=MDL', icon: 'stats', label: 'Pipeline' },

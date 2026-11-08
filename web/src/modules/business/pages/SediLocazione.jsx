@@ -5,7 +5,7 @@ import { useApi, Card, Field, Loading, ErrorBox, Empty, Badge } from '../compone
 import { eur, itDate, DOSSIER_STATUS } from '../format.js';
 
 // Sedi TD in locazione (A3, 08/11/2026): vista in sola lettura delle sedi di Toscana Diagnostica in LOCAZIONE, letta dall'anagrafica Sedi
-// (canone, decorrenza, scadenza, preavviso, locatore, contratto in PDF) e da Payments (canone vigente e prossimo scatto). Decisione 3 del
+// (canone, decorrenza, scadenza, preavviso, locatore, contratto in PDF) e da Finance Management (canone vigente e prossimo scatto). Decisione 3 del
 // CEO: il canone è visibile a tutti gli utenti del modulo. Qui non si crea né si modifica nulla: la fonte unica è Amministrazione > Sedi.
 const PERIODO = { MESE: 'al mese', TRIMESTRE: 'al trimestre', SEMESTRE: 'al semestre', ANNO: "all'anno" };
 const IVA = { PIU_IVA: '+ IVA', IVA_INCLUSA: 'IVA inclusa', ESENTE: 'esente IVA' };
@@ -19,7 +19,7 @@ export default function SediLocazione() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Sedi TD in locazione</h1><div className="sub">Laboratorio, punti prelievo e centri flagship in locazione: canone, scadenze e contratto dall'anagrafica Sedi, canone vigente da Payments. Sola lettura: il contratto di locazione si carica e si modifica in Amministrazione, Sedi.</div></div>
+        <div><h1>Sedi TD in locazione</h1><div className="sub">Laboratorio, punti prelievo e centri flagship in locazione: canone, scadenze e contratto dall'anagrafica Sedi, canone vigente da Finance Management. Sola lettura: il contratto di locazione si carica e si modifica in Amministrazione, Sedi.</div></div>
         {data?.amministratore && <a className="btn ghost" href="/admin/sites">Apri in Sedi</a>}
       </div>
       <div className="filters">
@@ -29,7 +29,7 @@ export default function SediLocazione() {
       <ErrorBox error={error} />
       <Card flush>{!data ? <Loading /> : sedi.length ? (
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Sede</th><th>Locatore</th><th className="num">Canone (Sedi)</th><th className="num">Canone vigente (Payments)</th><th>Decorrenza</th><th>Fine primo periodo</th><th>Disdetta entro</th><th>Contratto</th><th>Autorizzazione</th></tr></thead>
+          <thead><tr><th>Sede</th><th>Locatore</th><th className="num">Canone (Sedi)</th><th className="num">Canone vigente (Finance Management)</th><th>Decorrenza</th><th>Fine primo periodo</th><th>Disdetta entro</th><th>Contratto</th><th>Autorizzazione</th></tr></thead>
           <tbody>{sedi.map((s) => (
             <tr key={s.id}>
               <td><div className="strong">{s.name}</div><div className="small muted"><span className="mono">{s.code}</span>{s.city ? ` · ${s.city}` : ''}</div>{data.amministratore && <a className="small" href={`/admin/sites?q=${encodeURIComponent(s.code)}`}>Apri in Sedi</a>}</td>

@@ -425,7 +425,7 @@ codice).
   (`default_cash_float`, nuovo), dichiarato come predefinito; senza nessuno dei due "da definire"; richiesta di ordinare il POS.
 - g) "Adempimenti rifiuti speciali per il nuovo punto prelievi <punto>" a `hub_pp_dest_rifiuti`.
 
-**5. Flagship.** Niente contratto al partner: il contratto è la locazione della sede (Sedi TD in locazione, Payments). **Regola scelta (la più
+**5. Flagship.** Niente contratto al partner: il contratto è la locazione della sede (Sedi TD in locazione, Finance Management). **Regola scelta (la più
 semplice): pulsante esplicito** "Avvia il punto prelievi" nella scheda, con la data di avvio effettiva obbligatoria: esegue c-g, porta la
 pipeline alla fase 6 (sede pronta) e si fa una volta sola (poi "Riprova"); quando il fascicolo di autorizzazione della sede è AUTORIZZATO e
 il flagship non è avviato, il cruscotto lo mostra tra i "Flagship autorizzati da avviare" (promemoria, nessun avvio automatico). La fase 7
@@ -849,12 +849,12 @@ Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regol
   (`POST … { conferma: 'ESEGUI' }`, solo titolare): fascicoli staccati e conservati (evento nel fascicolo), PDF portati in
   `site_documents` riusando byte o blob (FIRMATO → contratto se la sede non ne ha, PLANIMETRIA → planimetria se manca, il resto ALTRO; mai
   sostituire i correnti), solo i campi vuoti della locazione riempiti con `scriviSede` (per ogni differenza **vale Sedi**), spese,
-  registrazione e note accodate alle note delle garanzie, ISTAT al contratto Payments, audit `BUSINESS_SEDE_MIGRATED` con il contratto
+  registrazione e note accodate alle note delle garanzie, ISTAT al contratto Finance Management, audit `BUSINESS_SEDE_MIGRATED` con il contratto
   completo, cancellazione diretta, poi vincoli `contracts_kind_check` (PP, SRV, MDL) e `contracts_site_required_check` (solo PP). Verifiche
   restituite: contratti SEDE rimasti, fascicoli senza sede né Legal entity, PDF firmati presenti in Sedi.
 - **Sedi TD in locazione** (voce di menu invariata, `/business/sedi`): vista in sola lettura per tutti gli utenti del modulo
   (`GET /api/business/sedi-locazione`): canone e periodicità, locatore, decorrenza, fine del primo periodo, **disdetta entro** (fine meno
-  preavviso), canone vigente e prossimo scatto da Payments, PDF del contratto (`/api/business/sedi-locazione/:id/contratto`), fascicolo;
+  preavviso), canone vigente e prossimo scatto da Finance Management, PDF del contratto (`/api/business/sedi-locazione/:id/contratto`), fascicolo;
   "Apri in Sedi" per gli amministratori.
 - **Flagship (decisione 4).** "Avvia il punto prelievi" legge la locazione dalla sede (`locazioneSede`): nessun blocco, avviso nella scheda,
   nel diario e nella risposta se la sede in locazione non ha il PDF o il canone in Sedi.
@@ -889,3 +889,15 @@ Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regol
 - Nuovi account: la Legal entity nasce da `createOrganization` (doppioni ritrovati; partner dei punti prelievo di tipo PARTNER, B5).
 - Referenti collegati alle persone dell'anagrafica per email (B7); Laboratorio dalla sede LABORATORIO (B9).
 - Fascicoli: orari e personale precompilati dalla sede e dalle persone (C2).
+
+## Regole del CEO dell'08/11/2026 (v0.60.0)
+- **Clienti (Service e Medicina del Lavoro): SOLO i clienti attivi**, cioè con la fase 7 confermata dal CEO (`accounts.cliente_attivo`).
+  I contrattualizzati in avvio restano in Pipeline e in Clienti e prospect (fase 6). `GET /hub/clienti-attivi?linea=SRV|MDL`.
+- **Punti e centri attivi (sezione Punti Prelievo)**: TUTTE le sedi attive di Toscana Diagnostica di tipo punto prelievi, centro medico,
+  centro diagnostico e poliambulatorio dall'anagrafica Sedi, con titolo, ospitante, apertura, responsabile, contratto PP, fascicolo e la
+  scheda del Business Hub quando c'è (`accounts.pp_site_id`). `GET /hub/clienti-attivi?linea=PP` (`puntiECentriAttivi`).
+- **Ogni contratto SRV/MDL con controparte ha la sua scheda nella sezione della linea** (`lib/contrattualizza.js accountDaContratto`):
+  alla creazione del contratto, alla generazione della proposta e a ogni cambio di stato; fase dallo stato (bozza 3, proposta 4 alla data
+  della proposta, firmato/attivo 6 con sede SERVICE), mai indietro. Job `business:schede-dai-contratti` ogni 6 ore e controllo
+  Diagnostica **D12b** con "Crea le schede" per i contratti esistenti (caso CNA Firenze e ACF Fiorentina, Medicina del Lavoro).
+- Il widget Payments si chiama **Finance Management** (chiave `finance` invariata, migrazione core 047).

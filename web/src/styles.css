@@ -311,6 +311,14 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 
 /* ---------- Modale ---------- */
 .backdrop { position: fixed; inset: 0; background: rgba(1, 33, 44, .5); display: grid; place-items: center; z-index: 60; padding: 20px; backdrop-filter: blur(2px); }
+/* I modali aperti da una cella "actions" (white-space: nowrap) o da un badge ereditavano il nowrap: il testo usciva dal riquadro con
+   la barra orizzontale (CEO, 08/11/2026: "il testo deve andare a capo"). Qui si torna al testo normale, a capo e spezzabile. */
+.backdrop, .modal, .modal * { white-space: normal; }
+.modal .mono, .modal pre, .modal code, .modal .num, .modal .badge, .modal .btn, .modal .nowrap, .modal .t th, .modal .tabs button { white-space: nowrap; }
+.modal pre { white-space: pre-wrap; }
+.modal .mb { overflow-wrap: anywhere; min-width: 0; }
+.modal .mb p { margin: 0 0 10px; line-height: 1.5; }
+.alert > span, .alert > div { min-width: 0; overflow-wrap: anywhere; }
 .modal { background: var(--card); color: var(--ink); border-radius: 16px; width: min(640px, 100%); max-height: calc(100vh - 40px); overflow: auto; box-shadow: var(--shadow-lg); border: 1px solid var(--line); }
 .modal.wide { width: min(940px, 100%); }
 .modal .mh { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; position: sticky; top: 0; background: var(--card); z-index: 1; }

@@ -1,6 +1,6 @@
 // Titolo di godimento, canone con IVA, garanzie, locatore e contratto in PDF: dall'anagrafica Sedi (Amministrazione), fonte unica; qui
-// solo lettura con il rimando al form. Rata vigente e scatti: dal contratto collegato nello Scadenziario di Payments.
-// Scheda dell'immobile: dati immobiliari, contratto e canone da Payments (o Legal entity ospitante), planimetria dell'anagrafica Sedi
+// solo lettura con il rimando al form. Rata vigente e scatti: dal contratto collegato nello Scadenziario di Finance Management.
+// Scheda dell'immobile: dati immobiliari, contratto e canone da Finance Management (o Legal entity ospitante), planimetria dell'anagrafica Sedi
 // (fonte unica per tutta la Suite: caricarla da qui o da Amministrazione > Sedi è la stessa cosa) pubblicata in Room Planning, documenti, obblighi di controllo, utenze con volture e prossime bollette, dispositivi, interventi aperti, consumi dell'anno
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -62,7 +62,7 @@ export default function Immobile() {
             {p.tenure === 'OSPITATA' && <div><div className="k">Ospitata da</div><div className="v">{d.host?.name || '–'}</div>{d.host?.city && <div className="small muted">{d.host.city}</div>}</div>}
             {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">{p.tenure === 'COMODATO' ? 'Comodante' : 'Locatore'}</div><div className="v">{d.landlord?.name || L?.landlord || '–'}</div>{d.landlord?.vat_number && <div className="small muted">P.IVA {d.landlord.vat_number}</div>}</div>}
             {p.tenure === 'LOCAZIONE' && <div><div className="k">Canone (anagrafica)</div><div className="fa-big">{R.rent_amount != null ? eur(R.rent_amount) : '–'}</div>{R.rent_amount != null && <div className="small muted">{PERIOD_LABEL[R.rent_period] || ''} · {vatText(R)} · {eur(Number(R.rent_amount) * (PERIOD_N[R.rent_period] || 12))} l'anno</div>}</div>}
-            {L && <div><div className="k">Rata vigente (Payments)</div><div className="v">{eur(L.rent)}</div><div className="small muted">ogni {L.period_months === 1 ? 'mese' : `${L.period_months} mesi`}{L.istat ? ' · ISTAT' : ''}</div></div>}
+            {L && <div><div className="k">Rata vigente (Finance Management)</div><div className="v">{eur(L.rent)}</div><div className="small muted">ogni {L.period_months === 1 ? 'mese' : `${L.period_months} mesi`}{L.istat ? ' · ISTAT' : ''}</div></div>}
             {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">Decorrenza · durata</div><div className="v">{itDate(R.lease_start || L?.start_date) || '–'}</div><div className="small muted">{R.lease_years ? `${R.lease_years} anni` : ''}{R.lease_renewal_years ? ` + ${R.lease_renewal_years}` : ''}{R.lease_notice_months != null ? ` · preavviso ${R.lease_notice_months} mesi` : ''}</div></div>}
             {['LOCAZIONE', 'COMODATO'].includes(p.tenure) && <div><div className="k">Scadenza</div><div className="v" style={{ color: L?.expired ? 'var(--red)' : undefined }}>{itDate(L?.end_date || R.lease_end) || '–'}</div>{L?.renewals > 0 && <div className="small muted">{L.renewals} rinnovi taciti</div>}{R.lease_registration && <div className="small muted">{REG_LABEL[R.lease_registration]}</div>}</div>}
           </div>
@@ -77,9 +77,9 @@ export default function Immobile() {
           </>}
           <div className="small" style={{ marginTop: 10, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             {R.lease_document && <a className="fa-file" href={`${apiBase}/immobili/${s.id}/contratto-pdf`} target="_blank" rel="noreferrer"><Icon name="pdf" />{R.lease_document.filename}</a>}
-            {p.tenure === 'LOCAZIONE' && (!d.finance ? <span className="muted">Payments non avviato: la rata vigente e le scadenze si leggono dallo Scadenziario quando è attivo.</span>
-              : L ? <span className="muted"><a href={`/finance/scadenziario?site_id=${s.id}`}>Contratto n. {L.id} nello Scadenziario di Payments</a>{L.steps?.length > 1 ? ` · scatti: ${L.steps.map((x) => `${itDate(x.valid_from)} ${eur(x.amount)}`).join(' · ')}` : ''}{L.next_step ? ` · prossimo il ${itDate(L.next_step.valid_from)}` : ''}</span>
-                : <span className="muted">Nessun contratto in Payments: nasce da solo quando in Amministrazione &gt; Sedi ci sono canone e decorrenza.</span>)}
+            {p.tenure === 'LOCAZIONE' && (!d.finance ? <span className="muted">Finance Management non avviato: la rata vigente e le scadenze si leggono dallo Scadenziario quando è attivo.</span>
+              : L ? <span className="muted"><a href={`/finance/scadenziario?site_id=${s.id}`}>Contratto n. {L.id} nello Scadenziario di Finance Management</a>{L.steps?.length > 1 ? ` · scatti: ${L.steps.map((x) => `${itDate(x.valid_from)} ${eur(x.amount)}`).join(' · ')}` : ''}{L.next_step ? ` · prossimo il ${itDate(L.next_step.valid_from)}` : ''}</span>
+                : <span className="muted">Nessun contratto in Finance Management: nasce da solo quando in Amministrazione &gt; Sedi ci sono canone e decorrenza.</span>)}
             {p.tenure === 'OSPITATA' && <span className="muted">Nessun contratto di affitto TD: la Legal entity ospitante si imposta in Amministrazione &gt; Sedi.</span>}
           </div>
         </Card>
@@ -116,9 +116,9 @@ export default function Immobile() {
 
       <div className="fa-two">
         <Card title="Utenze della sede" icon="bolt" flush actions={<Link className="btn sm ghost" to={`${base}/utenze?site_id=${s.id}`}>Utenze</Link>}>
-          {!d.finance ? <Empty compact icon="bolt" title="Payments non avviato" /> : !d.utilities?.length ? <Empty compact icon="bolt" title="Nessuna utenza">Le utenze si creano in Utenze (finiscono nello Scadenziario di Payments).</Empty> : <>
+          {!d.finance ? <Empty compact icon="bolt" title="Finance Management non avviato" /> : !d.utilities?.length ? <Empty compact icon="bolt" title="Nessuna utenza">Le utenze si creano in Utenze (finiscono nello Scadenziario di Finance Management).</Empty> : <>
             <ul className="fa-list" style={{ padding: 12 }}>{d.utilities.map((u) => <li key={u.id} style={{ opacity: u.active ? 1 : 0.55 }}><span><span className="t">{VECTOR[u.vector] || u.kind}</span> <span className="small muted">{u.supplier_name || ''}{u.pod_pdr || u.code ? ` · ${u.pod_pdr || u.code}` : ''}</span><div className="m">fatturazione {ogni(u.period_months)}{u.last_bill ? ` · ultima bolletta ${itDate(u.last_bill)}` : ''}</div></span><Transfer s={u.transfer_status} /></li>)}</ul>
-            {d.next_bills.length > 0 && <div style={{ padding: '0 12px 12px' }}><div className="small muted" style={{ marginBottom: 6 }}>Prossime bollette attese (Scadenziario di Payments)</div>
+            {d.next_bills.length > 0 && <div style={{ padding: '0 12px 12px' }}><div className="small muted" style={{ marginBottom: 6 }}>Prossime bollette attese (Scadenziario di Finance Management)</div>
               <ul className="fa-list">{d.next_bills.map((e) => <li key={e.key}><span>{itDate(e.date)} · {e.title}<div className="m">{e.desc}</div></span><b>{e.amount != null ? `${e.estimate ? '~' : ''}${eur(e.amount)}` : '–'}</b></li>)}</ul></div>}
           </>}
         </Card>
@@ -170,7 +170,7 @@ function EditModal({ d, onClose, onDone }) {
     <Modal wide title={`Dati dell'immobile · ${d.site.name}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Salva</button></>}>
       <div className="fa-grid">
         <Field label="Superficie (m2)"><input className="fa-in" type="number" min="0" value={f.surface_sqm} onChange={set('surface_sqm')} /></Field>
-        <Field label="Contratto di affitto in Payments" help="Vuoto = contratto attivo della sede"><select className="fa-in" value={f.lease_id} onChange={set('lease_id')}><option value="">Automatico</option>{(leases?.rows || []).map((l) => <option key={l.id} value={l.id}>{l.landlord || 'Locatore'} · dal {itDate(l.start_date)}{l.active ? '' : ' (cessato)'}</option>)}</select></Field>
+        <Field label="Contratto di affitto in Finance Management" help="Vuoto = contratto attivo della sede"><select className="fa-in" value={f.lease_id} onChange={set('lease_id')}><option value="">Automatico</option>{(leases?.rows || []).map((l) => <option key={l.id} value={l.id}>{l.landlord || 'Locatore'} · dal {itDate(l.start_date)}{l.active ? '' : ' (cessato)'}</option>)}</select></Field>
         <Field label="Piani"><input className="fa-in" type="number" value={f.floors} onChange={set('floors')} /></Field>
         <Field label="Locali"><input className="fa-in" type="number" min="0" value={f.rooms} onChange={set('rooms')} /></Field>
         <Field label="Box prelievo" help="Letti anche da Retail Assistant"><input className="fa-in" type="number" min="0" value={f.boxes} onChange={set('boxes')} /></Field>
@@ -255,7 +255,7 @@ function ObligationModal({ siteId, obl, onClose, onDone }) {
         <Field label="Ogni (mesi)" required><input className="fa-in" type="number" min="1" max="240" value={f.interval_months} onChange={set('interval_months')} /></Field>
         {isNew && <Field label="Prima scadenza" required><input className="fa-in" type="date" value={f.first_due} onChange={set('first_due')} /></Field>}
         <Field label="A carico di"><input className="fa-in" value={f.responsible} onChange={set('responsible')} placeholder="Conduttore, Locatore, RSPP" /></Field>
-        <Field label="Costo stimato (€)" help="Se valorizzato, all'esecuzione avvisa Payments"><input className="fa-in" type="number" min="0" step="0.01" value={f.cost_estimate} onChange={set('cost_estimate')} /></Field>
+        <Field label="Costo stimato (€)" help="Se valorizzato, all'esecuzione avvisa Finance Management"><input className="fa-in" type="number" min="0" step="0.01" value={f.cost_estimate} onChange={set('cost_estimate')} /></Field>
         <Field label="Tipo di dispositivo collegato"><select className="fa-in" value={f.asset_type_code} onChange={set('asset_type_code')}><option value="">Nessuno</option>{(cat || []).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}</select></Field>
       </div>
       <Field label="Note"><textarea className="fa-note" rows={2} value={f.notes} onChange={set('notes')} /></Field>

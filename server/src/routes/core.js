@@ -98,7 +98,7 @@ r.get('/sites', ah(async (req, res) => {
     return res.json(rows.filter((s) => mine.has(Number(s.id)) || (req.user.organization_id && Number(s.organization_id) === Number(req.user.organization_id)))
       .map((s) => ({ id: s.id, code: s.code, name: s.name, short_name: s.short_name, kind: s.kind, city: s.city, province: s.province, address: s.address, zip: s.zip, phone: s.phone, email: s.email, opening_hours: s.opening_hours, organization_id: s.organization_id, organization_name: s.organization_name, active: s.active })));
   }
-  // canone, garanzie, contratto e metadati della planimetria: solo agli amministratori (Payments e Facility li leggono con i propri permessi;
+  // canone, garanzie, contratto e metadati della planimetria: solo agli amministratori (Finance Management e Facility li leggono con i propri permessi;
   // il file della planimetria lo scarica ogni utente interno da GET /sites/:id/planimetria)
   const hide = Object.fromEntries([...LEASE_SITE_KEYS.filter((k) => k !== 'tenure'), 'lease_landlord_name', 'lease_document', 'planimetria'].map((k) => [k, undefined]));
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, ...hide, legacy_refs: undefined, notes: undefined })));
@@ -117,7 +117,7 @@ r.post('/sites/geocode-missing', requireAdmin, ah(async (req, res) => {
   (async () => { for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await saveCoords(s.id, g); } catch (e) { console.warn('[geocode]', s.id, e.message); } } })();
   res.json({ queued: rows.length });
 }));
-// Creazione e modifica passano dalla funzione unica del core (lib/sites.js, A0): regole del titolo, audit, Cash, Payments,
+// Creazione e modifica passano dalla funzione unica del core (lib/sites.js, A0): regole del titolo, audit, Cash, Finance Management,
 // organigramma, coordinate, perimetri degli accessi esterni e quadro d'impatto alla chiusura
 r.post('/sites', requireAdmin, ah(async (req, res) => {
   const s = await saveSite({ data: req.body, origine: 'Amministrazione > Sedi', req });
@@ -128,7 +128,7 @@ r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
   res.json(s);
 }));
 
-// B17: quadro d'impatto prima di chiudere una sede (cosa resta collegato: Payments, persone, utenti, perimetri, nodo, account e contratti
+// B17: quadro d'impatto prima di chiudere una sede (cosa resta collegato: Finance Management, persone, utenti, perimetri, nodo, account e contratti
 // PP). Solo lettura: la chiusura vera passa dal PUT (active=false) che imposta closed_at e restituisce lo stesso quadro.
 r.get('/sites/:id/impatto-chiusura', requireAdmin, ah(async (req, res) => {
   const s = await one('SELECT id, code, name, active, closed_at FROM sites WHERE id=$1', [Number(req.params.id)]);
@@ -142,7 +142,7 @@ const SITE_DOC_COLS = 'id, site_id, kind, filename, mime, size, sha256, (extract
 async function siteOr404(id) { const s = await one('SELECT id, code, name FROM sites WHERE id=$1', [id]); if (!s) throw notFound('Sede non trovata'); return s; }
 const pdfOnly = (req, res, next) => uploadPdf.single('file')(req, res, (e) => (e ? next(e.code === 'LIMIT_FILE_SIZE' ? bad('File troppo grande (massimo 20 MB)') : bad(e.message)) : next()));
 // Carica il PDF, estrae il testo, chiede a Claude i dati del contratto e restituisce la proposta dei campi della sede. Niente salvataggio
-// dei campi: l'utente controlla nel form e salva (al salvataggio il PDF viene collegato anche al contratto di Payments).
+// dei campi: l'utente controlla nel form e salva (al salvataggio il PDF viene collegato anche al contratto di Finance Management).
 r.post('/sites/:id/lease-document', requireAdmin, pdfOnly, ah(async (req, res) => {
   const site = await siteOr404(Number(req.params.id));
   if (!req.file) throw bad('Carica il contratto in PDF (campo "file")');
@@ -156,7 +156,7 @@ r.post('/sites/:id/lease-document', requireAdmin, pdfOnly, ah(async (req, res) =
     VALUES ($1,'CONTRATTO_LOCAZIONE',$2,'application/pdf',$3,$4,$5,$6,$7,now(),$8,$9,$10,$11) RETURNING ${SITE_DOC_COLS}`,
   [site.id, req.file.originalname, stored.size, stored.sha256, stored.data, stored.blob_path, JSON.stringify(extracted), model, text.chars, text.ocr, req.user.id]);
   const p = await buildProposal(extracted, { avvisi });
-  // avviso sui campi a bassa confidenza con i nomi del form Sedi (quello di buildProposal usa i campi di Payments)
+  // avviso sui campi a bassa confidenza con i nomi del form Sedi (quello di buildProposal usa i campi di Finance Management)
   const LABEL = { rent_amount: 'canone', rent_period: 'periodicità', rent_vat: 'IVA', rent_vat_rate: 'aliquota IVA', lease_start: 'decorrenza', lease_years: 'durata', lease_renewal_years: 'rinnovo', lease_notice_months: 'preavviso', lease_end: 'fine del primo periodo', lease_landlord_org_id: 'locatore', lease_registration: 'registrazione', guarantee_bank_amount: 'fideiussione bancaria', guarantee_insurance_amount: 'fideiussione assicurativa', deposit_amount: 'caparra / deposito' };
   const low = Object.entries(p.site_confidence || {}).filter(([, c]) => c.level === 'bassa').map(([k]) => LABEL[k] || k);
   for (let i = avvisi.length - 1; i >= 0; i--) if (/^Campi letti con bassa confidenza/.test(avvisi[i])) avvisi.splice(i, 1);
@@ -177,7 +177,7 @@ async function siteDoc(req) {
 r.get('/sites/:id/lease-document', requireAdmin, ah(async (req, res) => { await sendFile(res, await siteDoc(req), { inline: req.query.download !== '1' }); }));
 r.delete('/sites/:id/lease-document', requireAdmin, ah(async (req, res) => {
   const d = await siteDoc(req);
-  await q('DELETE FROM site_documents WHERE id=$1', [d.id]);   // in Payments il collegamento (finance.lease_documents) cade in cascata
+  await q('DELETE FROM site_documents WHERE id=$1', [d.id]);   // in Finance Management il collegamento (finance.lease_documents) cade in cascata
   await dropBlobs('sites', [d.blob_path]);
   await audit(req, 'SITE_LEASE_DOCUMENT_DELETED', { entity: 'site', entityId: d.site_id, data: { document_id: d.id, filename: d.filename } });
   res.json({ ok: true });
@@ -189,7 +189,7 @@ r.post('/sites/:id/lease-document/landlord', requireAdmin, ah(async (req, res) =
   const o = await landlordOrg(d.extracted.locatore, { source: 'Amministrazione > Sedi', req });   // B5: FORNITORE, audit e indice in createOrganization
   res.status(o.existing ? 200 : 201).json(o);
 }));
-// Contratto di Payments collegato alla sede (per la scheda Sedi): canone vigente, scatti, documenti
+// Contratto di Finance Management collegato alla sede (per la scheda Sedi): canone vigente, scatti, documenti
 r.get('/sites/:id/lease', requireAdmin, ah(async (req, res) => {
   const l = await registryLease(Number(req.params.id));
   if (!l) return res.json({ lease: null });
@@ -427,13 +427,50 @@ r.delete('/people/:id', requireAdmin, ah(async (req, res) => {
   const u = await one('SELECT id, level FROM users WHERE person_id=$1', [id]);
   if (u?.level === 'OWNER') throw bad('La persona del titolare non si elimina');
   const refs = await moduleRefs('people', 'id', id);
-  if (refs.length) throw bad(`La persona ha dati collegati (${refs.join(', ')}): mettila in stato CESSATO invece di eliminarla`);
-  await q('UPDATE people SET manager_person_id=NULL WHERE manager_person_id=$1', [id]);
+  // Omonimo (stesso cognome e nome, altra scheda): i dati collegati passano a lui invece di sparire (caso del doppione da importazione)
+  const omonimo = await one(`SELECT id, last_name, first_name, email FROM people WHERE id<>$1 AND lower(unaccent(last_name))=lower(unaccent($2)) AND lower(unaccent(first_name))=lower(unaccent($3)) ORDER BY (status='ATTIVO') DESC, id LIMIT 1`, [id, p.last_name, p.first_name])
+    .catch(() => one(`SELECT id, last_name, first_name, email FROM people WHERE id<>$1 AND lower(last_name)=lower($2) AND lower(first_name)=lower($3) ORDER BY (status='ATTIVO') DESC, id LIMIT 1`, [id, p.last_name, p.first_name]));
+  let spostati = null, cancellati = null;
+  if (refs.length) {
+    // "Se ti dico elimina, elimina" (CEO, 08/11/2026): con ?forza=1 si procede comunque; prima la conferma con il quadro di ciò che succede
+    if (req.query.forza !== '1') {
+      return res.status(409).json({ code: 'DATI_COLLEGATI', error: `La persona ha dati collegati (${refs.join(', ')})`, dati: refs,
+        omonimo: omonimo ? { id: omonimo.id, nome: `${omonimo.last_name} ${omonimo.first_name}`, email: omonimo.email } : null,
+        effetto: omonimo ? `Eliminando comunque, i dati collegati passano a ${omonimo.last_name} ${omonimo.first_name}${omonimo.email ? ` (${omonimo.email})` : ''}.` : 'Eliminando comunque, i dati collegati vengono cancellati in modo definitivo.' });
+    }
+    spostati = []; cancellati = [];
+    const fks = (await q(`SELECT tc.table_schema, tc.table_name, kcu.column_name FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu ON kcu.constraint_name=tc.constraint_name AND kcu.constraint_schema=tc.constraint_schema
+        JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name=tc.constraint_name AND ccu.constraint_schema=tc.constraint_schema
+        WHERE tc.constraint_type='FOREIGN KEY' AND ccu.table_schema='public' AND ccu.table_name='people' AND ccu.column_name='id'`)).rows;
+    for (const f of fks) {
+      if (f.table_schema === 'public' && ['users', 'people', 'grant_scopes', 'org_positions', 'search_index', 'audit_log', 'notifications', 'read_log'].includes(f.table_name)) continue;
+      const tab = `"${f.table_schema}"."${f.table_name}"`; const col = `"${f.column_name}"`;
+      const n = (await q(`SELECT count(*)::int AS n FROM ${tab} WHERE ${col}=$1`, [id]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n;
+      if (!n) continue;
+      let mossi = 0;
+      if (omonimo) {
+        // riga per riga: se la stessa riga esiste già per l'omonimo (vincolo di unicità) la copia si cancella
+        const ids = (await q(`SELECT ctid::text AS t FROM ${tab} WHERE ${col}=$1`, [id])).rows.map((r) => r.t);
+        for (const t of ids) {
+          try { await q(`UPDATE ${tab} SET ${col}=$2 WHERE ctid=$1::tid`, [t, omonimo.id]); mossi++; }
+          catch { await q(`DELETE FROM ${tab} WHERE ctid=$1::tid`, [t]).catch(() => {}); }
+        }
+        spostati.push(`${f.table_schema}.${f.table_name} (${mossi})`);
+        if (mossi < n) cancellati.push(`${f.table_schema}.${f.table_name} (${n - mossi}, già presenti per l'omonimo)`);
+      } else {
+        await q(`DELETE FROM ${tab} WHERE ${col}=$1`, [id]);
+        cancellati.push(`${f.table_schema}.${f.table_name} (${n})`);
+      }
+    }
+  }
+  await q('UPDATE people SET manager_person_id=$2 WHERE manager_person_id=$1', [id, omonimo?.id || null]);
+  await q('DELETE FROM org_positions WHERE person_id=$1', [id]).catch(() => {});
   if (u) { await q('DELETE FROM grants WHERE user_id=$1', [u.id]); await q('DELETE FROM users WHERE id=$1', [u.id]); }
   await q('DELETE FROM people WHERE id=$1', [id]);
   await removeFromIndex('person', id).catch(() => {});
-  await audit(req, 'PERSON_DELETED', { entity: 'person', entityId: id, label: `${p.last_name} ${p.first_name}`, data: { user_deleted: Boolean(u) } });
-  res.json({ ok: true });
+  await audit(req, 'PERSON_DELETED', { entity: 'person', entityId: id, label: `${p.last_name} ${p.first_name}`, data: { user_deleted: Boolean(u), forzata: Boolean(spostati), omonimo_id: omonimo?.id || null, spostati, cancellati } });
+  res.json({ ok: true, spostati, cancellati, omonimo: omonimo ? `${omonimo.last_name} ${omonimo.first_name}` : null });
 }));
 
 // Centralino, aree e organigramma: non per gli esterni (vedono solo i contatti pubblici)

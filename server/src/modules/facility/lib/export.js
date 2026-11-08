@@ -216,7 +216,7 @@ export async function energiaPdf(e, { siteId = null, analisi = null } = {}) {
   }
 
   st.h2('Metodo e note');
-  st.p(`Consumi dalle bollette registrate in Payments (ripartite sui giorni del periodo di fatturazione) o, in mancanza, dalle letture dei contatori. kWh equivalenti: gas ${n0(e.factors.kwh.GAS, 2)} kWh/Smc, gasolio ${n0(e.factors.kwh.GASOLIO, 1)} kWh/l. CO2: elettrico ${n0(e.factors.co2.ELETTRICO, 2)} kg/kWh, gas ${n0(e.factors.co2.GAS, 2)} kg/Smc (fattori indicativi, modificabili nelle impostazioni). Anomalia: mese oltre la soglia impostata rispetto allo stesso mese dell'anno prima o alla media dei tre mesi precedenti. ${BENCHMARK_SOURCE}`, { size: 8, color: C.grey });
+  st.p(`Consumi dalle bollette registrate in Finance Management (ripartite sui giorni del periodo di fatturazione) o, in mancanza, dalle letture dei contatori. kWh equivalenti: gas ${n0(e.factors.kwh.GAS, 2)} kWh/Smc, gasolio ${n0(e.factors.kwh.GASOLIO, 1)} kWh/l. CO2: elettrico ${n0(e.factors.co2.ELETTRICO, 2)} kg/kWh, gas ${n0(e.factors.co2.GAS, 2)} kg/Smc (fattori indicativi, modificabili nelle impostazioni). Anomalia: mese oltre la soglia impostata rispetto allo stesso mese dell'anno prima o alla media dei tre mesi precedenti. ${BENCHMARK_SOURCE}`, { size: 8, color: C.grey });
   return st.finish();
 }
 

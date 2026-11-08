@@ -164,7 +164,7 @@ export const APPLIERS = {
   },
   async sites(c, row, k) {
     // A0: anche il connettore e il file Sedi passano dalla funzione unica del core (lib/sites.js): regole del titolo, audit, Cash; le
-    // conseguenze fuori transazione (Payments, organigramma, coordinate, perimetri) partono dopo il COMMIT del lotto (k._dopo, applyBatch).
+    // conseguenze fuori transazione (Finance Management, organigramma, coordinate, perimetri) partono dopo il COMMIT del lotto (k._dopo, applyBatch).
     // B11 (08/11/2026): la sede si riconosce prima dal codice che la fonte le ha dato (legacy_refs."ingest:<fonte>"), poi dal codice
     // della Suite: un codice rinominato in Amministrazione > Sedi non crea più un doppione al prossimo invio. Il nome si aggiorna solo se
     // nessuno l'ha cambiato nella Suite (ultimo nome ricevuto in legacy_refs."ingest:<fonte>#nome", altrimenti audit SITE_UPDATED non del
@@ -273,7 +273,7 @@ export async function applyBatch(batchId, dataset, rows, k) {
     const result = { errors, applied: applied.slice(0, MAX_ROWS), summary: { creati: applied.filter((a) => /^cre/.test(a.action)).length, aggiornati: applied.filter((a) => /^agg/.test(a.action)).length } };
     await c.query(`UPDATE ingest_batches SET status=$2, applied_at=now(), rows_ok=$3, rows_rejected=$4, result=$5 WHERE id=$1`, [batchId, status, ok, rej, JSON.stringify(result)]);
     await c.query('COMMIT');
-    // conseguenze fuori transazione delle scritture (es. sedi: Payments, organigramma, coordinate, perimetri) dopo il COMMIT
+    // conseguenze fuori transazione delle scritture (es. sedi: Finance Management, organigramma, coordinate, perimetri) dopo il COMMIT
     for (const f of dopo) await f().catch((e) => console.warn('[ingest] dopo il lotto:', e.message));
     return { status, rows_ok: ok, rows_rejected: rej, errors };
   } catch (e) {

@@ -151,7 +151,7 @@ export async function esegui({ req }) {
 }
 
 // ------------------------------------------------------------------ "Sedi TD in locazione" (vista in sola lettura per il Business Hub)
-/** Sedi TD in LOCAZIONE con canone, scadenze, locatore, PDF e canone vigente di Payments (decisione 3: canone visibile a tutti gli
+/** Sedi TD in LOCAZIONE con canone, scadenze, locatore, PDF e canone vigente di Finance Management (decisione 3: canone visibile a tutti gli
  *  utenti del modulo). Data ultima utile per la disdetta = fine del periodo meno il preavviso. */
 export async function sediInLocazione() {
   const rows = await many(`SELECT s.id, s.code, s.name, s.city, s.province, s.kind, s.tenure, s.active, s.rent_amount, s.rent_period, s.rent_vat, s.rent_vat_rate, s.lease_start, s.lease_years,

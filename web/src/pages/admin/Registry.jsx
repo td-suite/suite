@@ -134,7 +134,7 @@ function SitePhotos({ site, onClose }) {
   );
 }
 
-// ---------- Titolo di godimento e locazione della sede (fonte unica per Payments e Facility) ----------
+// ---------- Titolo di godimento e locazione della sede (fonte unica per Finance Management e Facility) ----------
 export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
 const RENT_PERIOD = { MESE: 'al mese', TRIMESTRE: 'al trimestre', SEMESTRE: 'al semestre', ANNO: 'all\'anno' };
 const PERIOD_N = { MESE: 12, TRIMESTRE: 4, SEMESTRE: 2, ANNO: 1 };
@@ -195,7 +195,7 @@ function LeasePdfBox({ site, f, patch, onOrgCreated }) {
         <Icon name="file" />
         <div style={{ flex: 1, minWidth: 220 }}>
           <b>Carica il contratto in PDF</b>
-          <div className="small muted">Claude legge locatore, canone, IVA, durata e garanzie e precompila i campi: controlli e salvi tu. Il PDF resta qui ed è lo stesso che vede Payments.{busy ? ' Lettura in corso…' : ''}</div>
+          <div className="small muted">Claude legge locatore, canone, IVA, durata e garanzie e precompila i campi: controlli e salvi tu. Il PDF resta qui ed è lo stesso che vede Finance Management.{busy ? ' Lettura in corso…' : ''}</div>
           {doc && <div className="small" style={{ marginTop: 4 }}><a href={`/api/sites/${site.id}/lease-document?doc=${doc.id}`} target="_blank" rel="noreferrer"><Icon name="file" />{doc.filename}</a> <span className="muted">· {Math.round(doc.size / 1024)} KB{doc.model ? ` · letto ${doc.model === 'mock' ? 'in prova' : 'con Claude'}` : ''}</span></div>}
         </div>
         <input ref={inputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => read(e.target.files?.[0])} />
@@ -277,15 +277,15 @@ function SitePlanBox({ site, onChange }) {
   );
 }
 
-// Contratto collegato nello Scadenziario strutture di Payments: canone vigente e scatti (gli scatti ISTAT restano di Payments)
+// Contratto collegato nello Scadenziario strutture di Finance Management: canone vigente e scatti (gli scatti ISTAT restano di Finance Management)
 function PaymentsLeaseBox({ site, f }) {
   const { data } = useApi(site?.id ? `/sites/${site.id}/lease` : null);
   const L = data?.lease;
   return (
     <div className="small muted lease-payments">
       <Icon name="finance-sign" />
-      {L ? <span>Collegato al contratto n. {L.id} dello Scadenziario strutture di Payments{L.current_amount != null ? `: rata vigente ${eurIt(L.current_amount)}` : ''}{L.steps?.length > 1 ? ` (${L.steps.length} scatti: ${L.steps.map((x) => `${x.valid_from.split('-').reverse().join('/')} ${eurIt(x.amount)}`).join(', ')})` : ''}. Le modifiche al canone qui aggiornano lo scatto iniziale; gli scatti ISTAT si registrano in Payments.</span>
-        : <span>{f.rent_amount !== '' && f.lease_start ? 'Al salvataggio il contratto viene creato nello Scadenziario strutture di Payments (se Payments è avviato), con il canone come scatto iniziale e il PDF collegato.' : 'Con canone e decorrenza, al salvataggio il contratto nasce anche nello Scadenziario strutture di Payments: non va reinserito.'}</span>}
+      {L ? <span>Collegato al contratto n. {L.id} dello Scadenziario strutture di Finance Management{L.current_amount != null ? `: rata vigente ${eurIt(L.current_amount)}` : ''}{L.steps?.length > 1 ? ` (${L.steps.length} scatti: ${L.steps.map((x) => `${x.valid_from.split('-').reverse().join('/')} ${eurIt(x.amount)}`).join(', ')})` : ''}. Le modifiche al canone qui aggiornano lo scatto iniziale; gli scatti ISTAT si registrano in Finance Management.</span>
+        : <span>{f.rent_amount !== '' && f.lease_start ? 'Al salvataggio il contratto viene creato nello Scadenziario strutture di Finance Management (se Finance Management è avviato), con il canone come scatto iniziale e il PDF collegato.' : 'Con canone e decorrenza, al salvataggio il contratto nasce anche nello Scadenziario strutture di Finance Management: non va reinserito.'}</span>}
     </div>
   );
 }
@@ -331,8 +331,8 @@ export function Sites() {
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'opened_at', label: 'Data di apertura', type: 'date', help: 'Primo giorno di attività della sede: la leggono Cash (da quando attende il rendiconto) e Retail (scheda sede).' },
     { key: 'closed_at', label: 'Data di chiusura', type: 'date', help: 'Si imposta da sola quando disattivi la sede (o alla cessazione del contratto PP non rinnovato); al salvataggio ricevi il quadro di ciò che resta collegato.' },
-    // Titolo di godimento e locazione: fonte unica letta da Payments (Scadenziario strutture) e da Facility (Immobili)
-    { key: '_tit', type: 'section', label: 'Titolo di godimento', help: 'Proprietà, locazione, comodato o ospitata. Payments e Facility lo leggono da qui: canone e contratto non vanno reinseriti altrove.' },
+    // Titolo di godimento e locazione: fonte unica letta da Finance Management (Scadenziario strutture) e da Facility (Immobili)
+    { key: '_tit', type: 'section', label: 'Titolo di godimento', help: 'Proprietà, locazione, comodato o ospitata. Finance Management e Facility lo leggono da qui: canone e contratto non vanno reinseriti altrove.' },
     { key: 'tenure', label: 'Titolo di godimento', type: 'select', required: true, init: 'LOCAZIONE', options: opts(TENURE), help: (f) => (f.tenure === 'OSPITATA' && !f.host_organization_id ? 'Ospitata richiede la Legal entity ospitante (campo sopra)' : f.host_organization_id && f.tenure !== 'OSPITATA' ? 'C\'è una Legal entity ospitante: di norma la sede è Ospitata' : f.tenure === 'OSPITATA' ? 'Nessun canone TD: la sede è nei locali della Legal entity ospitante' : null) },
     { key: '_plan', type: 'custom', render: (_f, _p, it) => <SitePlanBox site={it} onChange={reload} /> },
     { key: '_pdf', type: 'custom', when: (f) => ['LOCAZIONE', 'COMODATO'].includes(f.tenure), render: (f, patch, it) => <LeasePdfBox site={it} f={f} patch={patch} onOrgCreated={orgs.reload} /> },
@@ -374,7 +374,7 @@ export function Sites() {
     // A0/B17: alla chiusura della sede il core restituisce il quadro d'impatto (cosa resta collegato); perimetri dei partner riallineati
     if (r?.impatto?.voci?.length) toast(`Sede chiusa. Restano collegati: ${r.impatto.voci.join('; ')}`, 'warn');
     if (r?.perimetri?.some((x) => x.changed)) toast(`Perimetri degli accessi esterni riallineati (${r.perimetri.reduce((a, x) => a + (x.changed || 0), 0)} grant)`);
-    toast(ls?.status === 'ok' ? `Sede salvata · ${ls.created ? 'contratto creato' : 'contratto aggiornato'} nello Scadenziario di Payments` : ls?.status === 'error' ? `Sede salvata, ma Payments non è stato aggiornato: ${ls.reason}` : ls?.reason && /chiudilo/.test(ls.reason) ? `Sede salvata. ${ls.reason}` : 'Sede salvata', ls?.status === 'error' ? 'warn' : undefined);
+    toast(ls?.status === 'ok' ? `Sede salvata · ${ls.created ? 'contratto creato' : 'contratto aggiornato'} nello Scadenziario di Finance Management` : ls?.status === 'error' ? `Sede salvata, ma Finance Management non è stato aggiornato: ${ls.reason}` : ls?.reason && /chiudilo/.test(ls.reason) ? `Sede salvata. ${ls.reason}` : 'Sede salvata', ls?.status === 'error' ? 'warn' : undefined);
     reload();
   };
   return (
@@ -570,7 +570,16 @@ export function PeopleAdmin() {
             <td className="small">{p.email}<div className="muted">{p.phone_office || p.phone}</div></td>
             <td>{p.user_id ? <Link to={`/admin/users/${p.user_id}`}><Badge tone={p.user_level === 'OWNER' ? 'teal' : p.user_level === 'ADMIN' ? 'blue' : 'grey'}>{LEVEL[p.user_level] || 'Accesso'}</Badge></Link>
               : <span className="small"><Badge tone="amber">Senza accesso</Badge><div className="faint">{!p.email ? 'manca l\'email' : p.status !== 'ATTIVO' ? `stato ${p.status.toLowerCase()}` : 'da creare'}</div></span>}</td>
-            <td className="actions"><button className="iconbtn" aria-label="Incarichi" title="Incarichi nell'organigramma" onClick={() => setPos(p)}><Icon name="tree" /></button><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) l'eliminazione viene rifiutata: mettila in stato CESSATO." onDelete={async () => { await api.del(`/people/${p.id}`); toast('Persona eliminata'); reload(); }} /></td>
+            <td className="actions"><button className="iconbtn" aria-label="Incarichi" title="Incarichi nell'organigramma" onClick={() => setPos(p)}><Icon name="tree" /></button><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(p)}><Icon name="edit" /></button><DeleteButton label={`${p.last_name} ${p.first_name}`} text="Elimina la persona dall'anagrafica e il suo eventuale accesso. Se ha dati nei moduli (turni, contratti, rendiconti) ti viene mostrato cosa succede e puoi confermare comunque: i dati passano all'omonimo se c'è, altrimenti vengono cancellati." onDelete={async () => {
+              try { await api.del(`/people/${p.id}`); }
+              catch (e) {
+                if (e.code !== 'DATI_COLLEGATI') throw e;
+                if (!window.confirm(`${e.message}.\n\n${e.details?.effetto || ""}\n\nEliminare comunque?`)) throw new Error('Eliminazione annullata');
+                const r = await api.del(`/people/${p.id}?forza=1`);
+                toast(r.omonimo ? `Persona eliminata: dati passati a ${r.omonimo}` : 'Persona eliminata con i suoi dati collegati');
+                reload(); return;
+              }
+              toast('Persona eliminata'); reload(); }} /></td>
           </tr>)}
         </tbody></table></div>}
       </Card>

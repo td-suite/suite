@@ -201,7 +201,7 @@ r.put('/sedi/:id/apertura', ah(async (req, res) => {
   const s = await strutturaDotazione(req.params.id);
   const { opened_at } = parse(z.object({ opened_at: z.union([DATE, z.literal(''), z.null()]).transform((v) => v || null) }), req.body);
   if (s.origin === 'SITE') {
-    // A0: scrittura dalla funzione unica del core (audit SITE_UPDATED con origine, Cash e Payments allineati)
+    // A0: scrittura dalla funzione unica del core (audit SITE_UPDATED con origine, Cash e Finance Management allineati)
     await saveSite({ id: s.site_id, data: { opened_at }, origine: 'Ordini > Dotazione di avvio sedi', req });
   } else {
     await tx(async (c) => {

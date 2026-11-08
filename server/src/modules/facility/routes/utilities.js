@@ -1,7 +1,7 @@
-// Utenze: la fonte unica dei contratti di utenza e delle bollette è Payments (finance.utilities, finance.utility_bills, stesso database).
+// Utenze: la fonte unica dei contratti di utenza e delle bollette è Finance Management (finance.utilities, finance.utility_bills, stesso database).
 // Facility le legge e le scrive lì, così ogni utenza creata qui entra nelle scadenze ricorrenti dello Scadenziario strutture e ogni
 // bolletta registrata qui vi compare con la sua scadenza di pagamento. Facility aggiunge l'estensione energetica (utility_meta: vettore,
-// POD/PDR, potenza, tariffa, fattore CO2) e le letture dei contatori (meter_readings). Con Payments non avviato la sezione è disattivata.
+// POD/PDR, potenza, tariffa, fattore CO2) e le letture dei contatori (meter_readings). Con Finance Management non avviato la sezione è disattivata.
 import { Router } from 'express';
 import { z } from 'zod';
 import { q, one, many, tx } from '../db.js';
@@ -22,7 +22,7 @@ const noMaint = (req, _res, next) => (isManutentore(req) ? next(forbidden('Sezio
 async function utilityRow(id) {
   const u = await one(`SELECT u.*, coalesce(u.supplier_name, o.name) AS supplier_label, m.vector, m.pod_pdr, m.contracted_power_kw, m.tariff, m.co2_factor, m.unit AS meta_unit, m.notes AS meta_notes, s.name AS site_name
     FROM finance.utilities u LEFT JOIN public.organizations o ON o.id=u.supplier_org_id LEFT JOIN utility_meta m ON m.utility_id=u.id LEFT JOIN public.sites s ON s.id=u.site_id WHERE u.id=$1`, [id]);
-  if (!u) throw notFound('Utenza non trovata in Payments');
+  if (!u) throw notFound('Utenza non trovata in Finance Management');
   u.vector = u.vector || KIND_TO_VECTOR[u.kind] || null;
   u.unit = u.meta_unit || (u.vector ? UNIT_DEFAULT[u.vector] : null);
   return u;
@@ -44,7 +44,7 @@ r.get('/utenze', noMaint, ah(async (req, res) => {
       (SELECT count(*)::int FROM meter_readings r WHERE r.utility_id=u.id) AS n_readings
     FROM finance.utilities u JOIN public.sites s ON s.id=u.site_id LEFT JOIN public.organizations o ON o.id=u.supplier_org_id LEFT JOIN utility_meta m ON m.utility_id=u.id
     WHERE ${w.join(' AND ')} ORDER BY s.sort_order, s.name, u.kind, u.id`, params);
-  // prossima bolletta attesa (stessa logica dello scadenziario di Payments)
+  // prossima bolletta attesa (stessa logica dello scadenziario di Finance Management)
   const ids = rows.filter((u) => u.active).map((u) => u.id);
   const bills = ids.length ? await many('SELECT * FROM finance.utility_bills WHERE utility_id = ANY($1::int[])', [ids]) : [];
   const today = todayRome();
@@ -63,11 +63,11 @@ r.get('/utenze/:id', noMaint, ah(async (req, res) => {
   res.json({ ...u, bills, readings, monthly: Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })), can_edit: isFacility(req), can_read_meter: isFacility(req) || isSite(req) });
 }));
 
-// ---- Creazione e modifica: riga in finance.utilities (Payments) + estensione energetica in facility.utility_meta
+// ---- Creazione e modifica: riga in finance.utilities (Finance Management) + estensione energetica in facility.utility_meta
 const utilSchema = z.object({
   site_id: z.coerce.number().int().positive(),
   vector: z.enum(VECTORS),
-  kind: z.enum(['ENERGIA', 'GAS', 'ACQUA', 'TARI', 'TELEFONIA', 'CONDOMINIO', 'VIGILANZA', 'PULIZIE', 'ALTRO']).optional(),   // tipo Payments (vuoto = dal vettore)
+  kind: z.enum(['ENERGIA', 'GAS', 'ACQUA', 'TARI', 'TELEFONIA', 'CONDOMINIO', 'VIGILANZA', 'PULIZIE', 'ALTRO']).optional(),   // tipo Finance Management (vuoto = dal vettore)
   supplier_org_id: z.coerce.number().int().positive().nullable().optional().or(z.literal('').transform(() => null)),
   supplier_name: optText(200), code: optText(100), holder: optText(200),
   transfer_status: z.enum(['DA_AVVIARE', 'IN_CORSO', 'COMPLETATA', 'NON_NECESSARIA']).default('NON_NECESSARIA'),
@@ -87,7 +87,7 @@ r.post('/utenze', requireFacility, ah(async (req, res) => {
   await siteById(d.site_id);
   if (d.supplier_org_id && !await one('SELECT 1 FROM public.organizations WHERE id=$1', [d.supplier_org_id])) throw bad('Fornitore inesistente: scegli una Legal entity dell\'anagrafica');
   d.kind = d.kind || VECTOR_TO_KIND[d.vector];
-  if (!d.code && d.pod_pdr) d.code = d.pod_pdr;                           // il codice dell'utenza in Payments è il POD/PDR
+  if (!d.code && d.pod_pdr) d.code = d.pod_pdr;                           // il codice dell'utenza in Finance Management è il POD/PDR
   const row = await tx(async (c) => {
     const u = (await c.query(`INSERT INTO finance.utilities (${FIN_COLS.join(', ')}) VALUES (${FIN_COLS.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`, FIN_COLS.map((k) => d[k] ?? null))).rows[0];
     await upsertMeta(c, u.id, d);
@@ -115,7 +115,7 @@ r.put('/utenze/:id', requireFacility, ah(async (req, res) => {
   res.json(await utilityRow(cur.id));
 }));
 
-// ---- Bollette (finance.utility_bills): compaiono da sole nello scadenziario di Payments con la scadenza di pagamento
+// ---- Bollette (finance.utility_bills): compaiono da sole nello scadenziario di Finance Management con la scadenza di pagamento
 const billSchema = z.object({
   period_from: optDate, period_to: optDate, due_date: DATE, amount: z.coerce.number().min(0).max(100_000_000),
   consumption: optNum(0, 1e12), unit: optText(20), paid_at: optDate, notes: optText(500),
@@ -144,7 +144,7 @@ r.delete('/bollette/:id', requireFacility, ah(async (req, res) => {
   await requireFinance();
   const b = await one('SELECT * FROM finance.utility_bills WHERE id=$1', [idOf(req.params.id, 'Bolletta non trovata')]);
   if (!b) throw notFound('Bolletta non trovata');
-  if (b.paid_at) throw bad('La bolletta risulta pagata in Payments: si corregge dallo Scadenziario strutture');
+  if (b.paid_at) throw bad('La bolletta risulta pagata in Finance Management: si corregge dallo Scadenziario strutture');
   await q('DELETE FROM finance.utility_bills WHERE id=$1', [b.id]);
   await audit(req, 'FACILITY_BOLLETTA_ELIMINATA', { module: KEY, entity: 'utility', entityId: b.utility_id, data: { bill_id: b.id } });
   res.json({ ok: true });

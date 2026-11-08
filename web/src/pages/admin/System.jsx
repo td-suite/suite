@@ -134,7 +134,7 @@ export function Legacy() {
   const rows = Array.isArray(data) ? data : data?.rows || [];
   return (
     <div className="page">
-      <PageHead title="Sorgenti legacy" icon="refresh" sub="Connessione in sola lettura ai database delle app di origine: per il travaso dei moduli indipendenti (Payments, Spedizioni) e per importare i contenuti dell'app originale in Room Planning e Integration (da Travaso moduli). Le anagrafiche non si copiano: si caricano da Amministrazione." />
+      <PageHead title="Sorgenti legacy" icon="refresh" sub="Connessione in sola lettura ai database delle app di origine: per il travaso dei moduli indipendenti (Finance Management, Spedizioni) e per importare i contenuti dell'app originale in Room Planning e Integration (da Travaso moduli). Le anagrafiche non si copiano: si caricano da Amministrazione." />
       {loading && <div className="grid g3">{[1, 2, 3].map((i) => <Card key={i}><Skeleton lines={3} /></Card>)}</div>}
       {unavailable && <Card><Coming what="Il collegamento alle sorgenti legacy" /></Card>}
       {error && !unavailable && <ErrorBox error={error} />}

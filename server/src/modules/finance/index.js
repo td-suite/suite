@@ -1,4 +1,4 @@
-// Modulo Finance (Payments): autorizzazioni di pagamento con firma congiunta CEO/CFO, beneficiari, conti di addebito,
+// Modulo Finance (Finance Management): autorizzazioni di pagamento con firma congiunta CEO/CFO, beneficiari, conti di addebito,
 // moduli DOCX/PDF, link di firma via email, controllo anti-frazionamento. Travaso dell'app finance.toscanadiagnostica.it.
 // Autenticazione, utenti e profili sono della Suite: il ruolo dell'app (SUPPORT, CEO, CFO, VIEWER) è il profilo del grant,
 // il flag is_admin dell'app vale anche per i livelli OWNER e ADMIN della Suite.

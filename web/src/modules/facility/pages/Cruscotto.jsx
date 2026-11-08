@@ -19,7 +19,7 @@ export default function Cruscotto() {
     <div className="page">
       <PageHead title="Cruscotto" icon="stats" sub={site ? 'La tua sede: scadenze, controlli da confermare, guasti segnalati e consumi.' : mnt ? 'Le scadenze e gli interventi affidati a te o alla tua azienda.' : `Facility e manutenzioni della rete, anno ${d.year}.`}
         actions={!mnt && <Link className="btn" to={`${base}/interventi?nuovo=1`}><Icon name="plus" />Segnala un guasto</Link>} />
-      {!d.finance && !mnt && <Alert tone="warn" icon="alert">Payments non avviato: utenze, bollette, canoni ed energia restano disattivati finché lo Scadenziario strutture di Payments non è attivo.</Alert>}
+      {!d.finance && !mnt && <Alert tone="warn" icon="alert">Finance Management non avviato: utenze, bollette, canoni ed energia restano disattivati finché lo Scadenziario strutture di Finance Management non è attivo.</Alert>}
       <div className="fa-kpis">
         <Kpi accent label="Scadenze scadute" value={k.scadute} foot={`${k.prossimi30} nei prossimi 30 giorni`} />
         <Kpi label="Scadenze rispettate" value={k.rispettate_pct == null ? '–' : `${num(k.rispettate_pct, 1)}%`} foot={`${k.eseguite} eseguite nel ${d.year}`} />
@@ -40,7 +40,7 @@ export default function Cruscotto() {
       </div>
       {!mnt && <div className="fa-two">
         <Card title="Anomalie dei consumi (ultimi 12 mesi)" icon="alert" flush actions={<Link className="btn sm ghost" to={`${base}/energia`}>Energia</Link>}>
-          {!d.finance ? <Empty compact icon="bolt" title="Payments non avviato" /> : !d.anomalie?.length ? <Empty compact icon="check" title="Nessuna anomalia">Nessun mese oltre la soglia rispetto all'anno prima o alla media dei tre mesi precedenti.</Empty> :
+          {!d.finance ? <Empty compact icon="bolt" title="Finance Management non avviato" /> : !d.anomalie?.length ? <Empty compact icon="check" title="Nessuna anomalia">Nessun mese oltre la soglia rispetto all'anno prima o alla media dei tre mesi precedenti.</Empty> :
             <ul className="fa-list" style={{ padding: 12 }}>{d.anomalie.map((a, i) => <li key={i}><span><span className="t">{a.site_name} · {VECTOR[a.vector]}</span><div className="m">{meseLabel(a.month)}: {num(a.value)} {a.unit} contro {num(a.ref)} ({a.ref_kind === 'ANNO_PRECEDENTE' ? 'stesso mese anno prima' : 'media 3 mesi'})</div></span><b style={{ color: 'var(--red)' }}>{pct(a.delta_pct)}</b></li>)}</ul>}
         </Card>
         <Card title="Immobili senza planimetria" icon="building" flush actions={<Link className="btn sm ghost" to={`${base}/immobili`}>Immobili</Link>}>

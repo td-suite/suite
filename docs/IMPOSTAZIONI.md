@@ -70,7 +70,7 @@ da `getCompany()`.
 | business | accounts | anagrafica commerciale del DB Opportunità (tipologia, segmento, fornitore, priorità, fasi, valori) | SPECIFICO | Ragione sociale, indirizzo, email, PEC e telefono restano della Legal entity (`public.organizations`). |
 | finance | Impostazioni | company_name | CABLATO -> core | `legal_name`; in sola lettura. |
 | finance | Impostazioni | soglie, titoli, testi, mail_cc, prefisso | SPECIFICO | Poteri di firma. |
-| finance | Impostazioni (Scadenziario strutture, 28/10/2026) | schedule_alert_days (7), schedule_istat_pct (1.5), schedule_utility_growth_pct (0), schedule_notify_roles (CEO,CFO,SUPPORT) | SPECIFICO | Anticipo degli avvisi in app, ipotesi di rivalutazione ISTAT e di crescita delle utenze per la previsione, profili Payments che ricevono gli avvisi. Sedi e Legal entity (locatori, fornitori, IBAN) vengono dall'anagrafica unica; i beneficiari dall'anagrafica Payments: nessun dato ridigitato. Migrazione finance 002. |
+| finance | Impostazioni (Scadenziario strutture, 28/10/2026) | schedule_alert_days (7), schedule_istat_pct (1.5), schedule_utility_growth_pct (0), schedule_notify_roles (CEO,CFO,SUPPORT) | SPECIFICO | Anticipo degli avvisi in app, ipotesi di rivalutazione ISTAT e di crescita delle utenze per la previsione, profili Finance Management che ricevono gli avvisi. Sedi e Legal entity (locatori, fornitori, IBAN) vengono dall'anagrafica unica; i beneficiari dall'anagrafica Finance Management: nessun dato ridigitato. Migrazione finance 002. |
 | shipments | pdf/common.js | COMPANY (name, footer, website) | CABLATO -> core | `refreshCompany()` in `newDoc`; l'email resta la casella del modulo (SHIPMENTS_GRAPH_INBOX) con ripiego su `company.email`. |
 | circolari | config.footer, config.contacts, render.js, ai.js | ragione sociale, piè di pagina, contatti | CABLATO -> core | `renderDocx` carica `getCompany()`; config resta ripiego. |
 | contracts | person_ext | birth_place, vat_number, address, zip, city, province | DUPLICATO | `people.*` (migrazione 017, valori riportati nel core); nel form Nuova persona sono "Dati personali (anagrafica unica)" e si scrivono in `public.people` tramite `lib/people.js`. |
@@ -131,7 +131,7 @@ planimetria pubblicata in Room Planning ha un limite di 20 MB (Room avvisa già 
 Facility e Manutenzioni > Impostazioni, profili FACILITY/ADMIN): `sla_hours` (URGENTE 24, ALTA 72, MEDIA 240, BASSA 720), `co2_factors` e
 `kwh_factors` per vettore (indicativi), `reminder_days` (30, 7, 0), `anomaly_pct` (20), `activity_source` (AUTO, RETAIL, CASH, MANUALE),
 `notify_site_managers`. Nessun dato chiesto due volte: sedi, Legal entity ospitante, persone e site manager dall'anagrafica; contratti di
-affitto, utenze e bollette da Payments; il Catalogo dispositivi è in Amministrazione. Dati del modulo: superficie, catasto, APE, ore di
+affitto, utenze e bollette da Finance Management; il Catalogo dispositivi è in Amministrazione. Dati del modulo: superficie, catasto, APE, ore di
 apertura (proprietà dell'immobile, non dell'anagrafica sede), estensione energetica delle utenze, letture, attività manuale, obiettivi.
 
 

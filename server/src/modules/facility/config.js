@@ -24,7 +24,7 @@ export const CO2_DEFAULT = { ELETTRICO: 0.26, GAS: 1.98, GASOLIO: 2.65, TELERISC
 export const KWH_FACTOR = { ELETTRICO: 1, TELERISCALDAMENTO: 1, GAS: 10.69, GASOLIO: 10, ACQUA: 0, ALTRO: 0 };
 export const UNIT_DEFAULT = { ELETTRICO: 'kWh', GAS: 'Smc', ACQUA: 'm3', TELERISCALDAMENTO: 'kWh', GASOLIO: 'l', ALTRO: '' };
 export const VECTORS = ['ELETTRICO', 'GAS', 'ACQUA', 'TELERISCALDAMENTO', 'GASOLIO', 'ALTRO'];
-// Utenze di Payments (finance.utilities.kind) che portano consumi: corrispondenza con il vettore Facility
+// Utenze di Finance Management (finance.utilities.kind) che portano consumi: corrispondenza con il vettore Facility
 export const KIND_TO_VECTOR = { ENERGIA: 'ELETTRICO', GAS: 'GAS', ACQUA: 'ACQUA' };
 export const VECTOR_TO_KIND = { ELETTRICO: 'ENERGIA', GAS: 'GAS', ACQUA: 'ACQUA', TELERISCALDAMENTO: 'ALTRO', GASOLIO: 'ALTRO', ALTRO: 'ALTRO' };
 export const ENERGY_KINDS = ['ENERGIA', 'GAS', 'ACQUA', 'ALTRO'];

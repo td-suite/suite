@@ -1,6 +1,6 @@
 // Abbinamento alle anagrafiche uniche della Suite (docs/ANAGRAFICA.md): Legal entity (public.organizations) per partita IVA, codice
 // fiscale o nome (anche simile, pg_trgm) e sedi TD (public.sites, mai le strutture SERVICE) per codice, città e nome. Nata nel
-// caricamento dei pacchetti di Business (routes/imports.js), usata anche dallo Scadenziario strutture di Payments per il locatore e la
+// caricamento dei pacchetti di Business (routes/imports.js), usata anche dallo Scadenziario strutture di Finance Management per il locatore e la
 // sede letti da un contratto in PDF. Ogni esito porta `how`: il criterio con cui è stato trovato, da mostrare all'utente.
 import { one, many } from '../db.js';
 

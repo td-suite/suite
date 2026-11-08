@@ -47,6 +47,16 @@ const corr = {
     }
     return out;
   },
+  // D12b: contratti SRV/MDL senza account della linea → accountDaContratto
+  async d12b(righe, ctx) {
+    const { accountDaContratto } = await import('../modules/business/lib/contrattualizza.js');
+    const out = [];
+    for (const r of righe) {
+      try { const x = await accountDaContratto(r.id, { userId: ctx.req?.user?.id || null, fonte: 'Diagnostica anagrafica D12b' }); out.push({ id: r.id, esito: x ? `scheda ${x.creato ? 'creata' : 'esistente'} #${x.account_id}${x.fase ? `, fase ${x.fase}` : ''}` : 'non pertinente' }); }
+      catch (e) { out.push({ id: r.id, esito: 'errore', motivo: e.message }); }
+    }
+    return out;
+  },
   // D03b: sede OSPITATA con indirizzo diverso da quello della Legal entity ospitante → prende l'indirizzo dell'ospitante (CEO, 08/11/2026)
   async d03b(righe, ctx) {
     const { saveSite } = await sites();
@@ -91,7 +101,7 @@ const corr = {
     for (const r of righe) { const n = await tx((c) => syncCompanyToCash(c, r.id)); out.push({ id: r.id, esito: n ? 'azienda Cash = Legal entity della sede' : 'non corretta', motivo: n ? undefined : 'la Legal entity della sede manca o non è una società del gruppo: correggi la sede in Amministrazione > Sedi' }); }
     return out;
   },
-  // D10a: contratto di Payments dall'anagrafica
+  // D10a: contratto di Finance Management dall'anagrafica
   async d10a(righe) {
     const { siteToLease } = await import('./leaseSync.js');
     const out = [];
@@ -292,7 +302,7 @@ export const CONTROLLI = [
           WHERE s.active AND s.tenure = 'OSPITATA' AND (o.address IS NOT NULL OR o.city IS NOT NULL)
             AND (lower(coalesce(s.address,'')) <> lower(coalesce(o.address,'')) OR lower(coalesce(s.city,'')) <> lower(coalesce(o.city,'')) OR coalesce(s.zip,'') <> coalesce(o.zip,'')) ORDER BY s.code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Prendi l\'indirizzo dell\'ospitante', conferma: true, descrizione: 'indirizzo, CAP, città e provincia della Legal entity ospitante sulla sede (saveSite, audit); da allora la sede segue l\'indirizzo dell\'ospitante', fn: corr.d03b } },
-  { id: 'D03', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Ospitante valorizzato ma titolo diverso da Ospitata', spiegazione: 'Succedeva dopo un contratto creato in Payments o una modifica da Cash: l\'ospitante restava sulla sede in locazione.',
+  { id: 'D03', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Ospitante valorizzato ma titolo diverso da Ospitata', spiegazione: 'Succedeva dopo un contratto creato in Finance Management o una modifica da Cash: l\'ospitante restava sulla sede in locazione.',
     sql: `SELECT id, code, name, tenure, host_organization_id FROM sites WHERE active AND host_organization_id IS NOT NULL AND tenure <> 'OSPITATA' ORDER BY code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Rendi coerente', conferma: true, descrizione: 'titolo = Ospitata se c\'è un contratto PP vigente con l\'ospitante, altrimenti ospitante tolto', fn: corr.d03 } },
   { id: 'D04', area: 'SEDI', gravita: 'BLOCCANTE', titolo: 'Contratti PP vigenti con sede non ospitata dalla controparte', richiede: ['business.contracts'], spiegazione: 'Regola della firma (decisione 2): la sede del contratto PP è Ospitata dalla controparte. Se l\'ospitante è un\'altra Legal entity decide il CEO.',
@@ -310,17 +320,17 @@ export const CONTROLLI = [
   { id: 'D07', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Azienda di Cash diversa dalla Legal entity della sede', richiede: ['cash.site_ext'], spiegazione: 'B6: l\'azienda Cash della sede è la sua Legal entity proprietaria (allineata da saveSite quando cambia).',
     sql: `SELECT s.id, s.code, s.organization_id, e.company_id FROM sites s JOIN cash.site_ext e ON e.site_id = s.id WHERE e.company_id IS DISTINCT FROM s.organization_id ORDER BY s.code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Azienda = Legal entity della sede', conferma: true, descrizione: 'B6: cash.site_ext.company_id = Legal entity proprietaria della sede, se è una società del gruppo (altrimenti la riga resta: correggi la sede in Amministrazione > Sedi)', fn: corr.d07 } },
-  { id: 'D08', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi in locazione senza canone, decorrenza o locatore', spiegazione: 'Il canone si inserisce una volta sola in Amministrazione > Sedi (Payments e Facility lo leggono da lì).',
+  { id: 'D08', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi in locazione senza canone, decorrenza o locatore', spiegazione: 'Il canone si inserisce una volta sola in Amministrazione > Sedi (Finance Management e Facility lo leggono da lì).',
     sql: `SELECT id, code, name, rent_amount, lease_start, lease_landlord_org_id FROM sites WHERE active AND kind <> 'SERVICE' AND tenure = 'LOCAZIONE' AND (rent_amount IS NULL OR lease_start IS NULL OR lease_landlord_org_id IS NULL) ORDER BY code`, chiave: 'id', link: sedeLink },
   { id: 'D09', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi in locazione senza PDF del contratto', spiegazione: 'Il contratto di locazione in PDF si carica nella scheda della sede (lettura con Claude).',
     sql: `SELECT s.id, s.code, s.name FROM sites s WHERE s.active AND s.kind <> 'SERVICE' AND s.tenure = 'LOCAZIONE' AND NOT EXISTS (SELECT 1 FROM site_documents d WHERE d.site_id = s.id AND d.kind = 'CONTRATTO_LOCAZIONE') ORDER BY s.code`, chiave: 'id', link: sedeLink },
-  { id: 'D10a', area: 'SEDI', gravita: 'BLOCCANTE', titolo: 'Locazione con canone e decorrenza senza contratto Payments', richiede: ['finance.lease_contracts'], spiegazione: 'Il contratto dello Scadenziario strutture nasce dall\'anagrafica (siteToLease).',
+  { id: 'D10a', area: 'SEDI', gravita: 'BLOCCANTE', titolo: 'Locazione con canone e decorrenza senza contratto Finance Management', richiede: ['finance.lease_contracts'], spiegazione: 'Il contratto dello Scadenziario strutture nasce dall\'anagrafica (siteToLease).',
     sql: `SELECT s.id, s.code, s.name FROM sites s WHERE s.active AND s.tenure = 'LOCAZIONE' AND s.rent_amount IS NOT NULL AND s.lease_start IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM finance.lease_contracts l WHERE l.site_id = s.id AND l.active AND l.registry_sync) ORDER BY s.code`, chiave: 'id', link: sedeLink,
-    correggi: { etichetta: 'Crea il contratto in Payments', conferma: true, descrizione: 'siteToLease: contratto collegato all\'anagrafica con lo scatto iniziale', fn: corr.d10a } },
-  { id: 'D10b', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Contratto Payments attivo su sede non in locazione o chiusa', richiede: ['finance.lease_contracts'], spiegazione: 'Le scadenze continuano a correre: il contratto si chiude nello Scadenziario strutture.',
+    correggi: { etichetta: 'Crea il contratto in Finance Management', conferma: true, descrizione: 'siteToLease: contratto collegato all\'anagrafica con lo scatto iniziale', fn: corr.d10a } },
+  { id: 'D10b', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Contratto Finance Management attivo su sede non in locazione o chiusa', richiede: ['finance.lease_contracts'], spiegazione: 'Le scadenze continuano a correre: il contratto si chiude nello Scadenziario strutture.',
     sql: `SELECT l.id, l.site_id, s.code, s.tenure, s.active FROM finance.lease_contracts l JOIN sites s ON s.id = l.site_id WHERE l.active AND (s.tenure <> 'LOCAZIONE' OR NOT s.active) ORDER BY s.code`, chiave: 'id', link: sedeLink },
-  { id: 'D10c', area: 'SEDI', gravita: 'INFO', titolo: 'Canone di Sedi diverso dallo scatto iniziale di Payments', richiede: ['finance.lease_contracts', 'finance.lease_steps'], spiegazione: 'Differenza tra il canone dell\'anagrafica e il primo scatto del contratto collegato.',
+  { id: 'D10c', area: 'SEDI', gravita: 'INFO', titolo: 'Canone di Sedi diverso dallo scatto iniziale di Finance Management', richiede: ['finance.lease_contracts', 'finance.lease_steps'], spiegazione: 'Differenza tra il canone dell\'anagrafica e il primo scatto del contratto collegato.',
     sql: `SELECT s.id, s.code, s.rent_amount, st.amount FROM sites s JOIN finance.lease_contracts l ON l.site_id = s.id AND l.active AND l.registry_sync
           JOIN finance.lease_steps st ON st.lease_id = l.id AND st.reason = 'INIZIALE' WHERE st.amount IS DISTINCT FROM s.rent_amount ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D11', area: 'SEDI', gravita: 'INFO', titolo: 'Contratti SEDE ancora nel Business Hub', richiede: ['business.contracts', 'business.contract_files', 'business.dossiers'], spiegazione: 'Il contratto di locazione sta in Sedi: i contratti SEDE si eliminano con l\'operazione una tantum qui sotto (Prova, poi Esegui; A3).',
@@ -334,6 +344,10 @@ export const CONTROLLI = [
           WHERE EXISTS (SELECT 1 FROM business.contracts c WHERE c.org_id = a.organization_id AND c.kind = a.linea AND c.status IN ('FIRMATO','AUTORIZZATO','ATTIVO'))
             AND (a.prospect OR a.contrattualizzato_at IS NULL OR a.fase_corrente < 6) ORDER BY o.name`, chiave: 'id', link: (r) => `/business/account/${r.id}`,
     correggi: { etichetta: 'Segna contrattualizzati', conferma: true, descrizione: 'contrattualizzato alla data della firma, prospect tolto, fase 6, sede SERVICE per Service e MdL (senza le comunicazioni automatiche, annotato nel diario)', fn: corr.d12, richiede: ['business.accounts'] } },
+  { id: 'D12b', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Contratti Service/MdL senza scheda nella sezione della linea', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni contratto Service o Medicina del Lavoro con controparte ha il suo account nella sezione della linea (Pipeline, Clienti e prospect): "tutti i dati dei contratti finiscono nelle schede dei clienti" (CEO). Qui i contratti che compaiono solo in "Tutti i contratti".',
+    sql: `SELECT c.id, c.kind AS linea, c.status, c.protocol, c.org_id, o.name FROM business.contracts c JOIN organizations o ON o.id = c.org_id
+          WHERE c.kind IN ('SRV','MDL') AND c.status <> 'ANNULLATO' AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = c.org_id AND a.linea = c.kind) ORDER BY c.kind, o.name`, chiave: 'id', link: (r) => `/business/contratti/${r.id}`,
+    correggi: { etichetta: 'Crea le schede', conferma: true, descrizione: 'un account della linea per ogni contratto (prospect, fase dallo stato del contratto: bozza 3, proposta 4, firmato 6 con sede SERVICE), annotato nel diario', fn: corr.d12b } },
   { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL attivi senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL ATTIVO nel Business Hub (fase 7 confermata dal CEO; vista clienti_attivi_v, livello ATTIVO) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
     // solo i clienti ATTIVI nel Business Hub (CEO, 08/11/2026: "Strutture clienti service: solo quelli ATTIVI"), una riga per Legal entity
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id

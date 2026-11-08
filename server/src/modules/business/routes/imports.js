@@ -54,7 +54,7 @@ async function walkZip(file, handler) {
 }
 
 // ---- abbinamenti con l'anagrafica unica
-// Abbinamento a Legal entity e sedi: lib/anagraficaMatch.js della Suite (condiviso con lo Scadenziario strutture di Payments)
+// Abbinamento a Legal entity e sedi: lib/anagraficaMatch.js della Suite (condiviso con lo Scadenziario strutture di Finance Management)
 function clean(o, keys) { const out = {}; for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') out[k] = typeof o[k] === 'string' ? o[k].trim() : o[k]; return out; }
 const ORG_COLS = ['name', 'kind', 'vat_number', 'tax_code', 'sdi', 'pec', 'email', 'phone', 'address', 'zip', 'city', 'province', 'website', 'notes'];
 const EXT_COLS = ['legal_rep', 'signer', 'signer_role', 'contract_services', 'lab_reference', 'billing_ref', 'sales_contact', 'sales_email', 'sales_phone', 'svc_contact', 'svc_email', 'svc_mobile', 'svc_address', 'proc_contact', 'proc_email', 'proc_mobile', 'proc_address', 'pay_method', 'pay_terms', 'vat_territoriality', 'intent_declaration', 'tax_values', 'portal_url', 'portal_username', 'notes'];

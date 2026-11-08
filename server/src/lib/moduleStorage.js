@@ -1,4 +1,4 @@
-// Archivio dei documenti dei moduli (Business: contratti e fascicoli; Payments: contratti di affitto dello scadenziario) a due vie:
+// Archivio dei documenti dei moduli (Business: contratti e fascicoli; Finance Management: contratti di affitto dello scadenziario) a due vie:
 // su Azure Blob Storage quando l'archivio file della Suite è configurato (lib/blob.js, lo stesso di Cartella e Community), altrimenti
 // nel database (colonna bytea). Chi legge usa sendFile, che serve indifferentemente dal blob o dal database; chi cancella usa dropBlobs
 // per non lasciare orfani nell'archivio. `prefix` è il modulo (business, finance): i percorsi nel blob diventano "<prefix>-<scope>/...".

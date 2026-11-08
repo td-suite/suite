@@ -1,4 +1,4 @@
-// Configurazione del modulo Finance (Payments) dentro la Suite TD.
+// Configurazione del modulo Finance (Finance Management) dentro la Suite TD.
 // Stesse chiavi d'ambiente dell'app di origine; BASE_URL della Suite + '/finance' (link di firma nelle email).
 // Autenticazione, sessione, Entra e posta sono quelli della Suite (config principale).
 import { config as suite } from '../../config.js';

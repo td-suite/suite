@@ -1,6 +1,6 @@
-// Utenze per sede: lette e scritte nello Scadenziario strutture di Payments (finance.utilities e utility_bills), con l'estensione
+// Utenze per sede: lette e scritte nello Scadenziario strutture di Finance Management (finance.utilities e utility_bills), con l'estensione
 // energetica di Facility (vettore, POD/PDR, potenza, tariffa, fattore CO2) e le letture dei contatori. Bollette registrate qui = scadenze
-// di pagamento in Payments.
+// di pagamento in Finance Management.
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, useApi, qs } from '../api.js';
@@ -25,15 +25,15 @@ export default function Utenze() {
   for (const u of data.rows) { let g = bySite.find((x) => x.id === u.site_id); if (!g) bySite.push(g = { id: u.site_id, name: u.site_name, rows: [] }); g.rows.push(u); }
   return (
     <div className="page">
-      <PageHead title="Utenze" icon="bolt" sub="Contratti di fornitura e bollette vivono nello Scadenziario strutture di Payments: quelli creati qui entrano nelle scadenze ricorrenti, le bollette registrate qui compaiono con la scadenza di pagamento."
-        actions={<>{data.finance && <a className="btn ghost" href={`/finance/scadenziario${siteId ? `?site_id=${siteId}` : ''}`}><Icon name="external" />Scadenziario in Payments</a>}{data.finance && isFacility(user) && <button className="btn" onClick={() => setNuova(true)}><Icon name="plus" />Nuova utenza</button>}</>} />
+      <PageHead title="Utenze" icon="bolt" sub="Contratti di fornitura e bollette vivono nello Scadenziario strutture di Finance Management: quelli creati qui entrano nelle scadenze ricorrenti, le bollette registrate qui compaiono con la scadenza di pagamento."
+        actions={<>{data.finance && <a className="btn ghost" href={`/finance/scadenziario${siteId ? `?site_id=${siteId}` : ''}`}><Icon name="external" />Scadenziario in Finance Management</a>}{data.finance && isFacility(user) && <button className="btn" onClick={() => setNuova(true)}><Icon name="plus" />Nuova utenza</button>}</>} />
       {!data.finance ? <Alert tone="warn" icon="alert">{data.message}</Alert> : <>
         <div className="fa-filters"><SiteSelect value={siteId} onChange={setSiteId} sites={sites} /><label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />Anche le cessate</label></div>
         {!bySite.length ? <Card><Empty icon="bolt" title="Nessuna utenza">{isFacility(user) ? 'Crea le utenze di energia elettrica, gas e acqua delle sedi con "Nuova utenza".' : 'Nessuna utenza registrata per le tue sedi.'}</Empty></Card> : bySite.map((g) => (
           <Card key={g.id} title={g.name} icon="building" flush style={{ marginBottom: 14 }}>
             <table className="t fa-table"><thead><tr><th>Vettore</th><th>Fornitore</th><th>POD / PDR</th><th>Intestazione</th><th>Fatturazione</th><th>Bollette</th><th>Prossima bolletta</th><th>Letture</th></tr></thead>
               <tbody>{g.rows.map((u) => <tr key={u.id} className="click" style={{ opacity: u.active ? 1 : 0.55 }} onClick={() => setOpen(u.id)}>
-                <td className="strong">{VECTOR[u.vector] || u.kind}{!u.has_meta && <div className="small muted">creata in Payments</div>}</td><td>{u.supplier_name || '–'}</td><td className="small">{u.pod_pdr || u.code || '–'}{u.contracted_power_kw ? <div className="muted">{num(u.contracted_power_kw)} kW</div> : null}</td>
+                <td className="strong">{VECTOR[u.vector] || u.kind}{!u.has_meta && <div className="small muted">creata in Finance Management</div>}</td><td>{u.supplier_name || '–'}</td><td className="small">{u.pod_pdr || u.code || '–'}{u.contracted_power_kw ? <div className="muted">{num(u.contracted_power_kw)} kW</div> : null}</td>
                 <td><Transfer s={u.transfer_status} /></td><td className="small">{ogni(u.period_months)}{u.auto_pay ? ' · addebito' : ''}</td><td className="small">{u.n_bills}{u.unpaid ? <span style={{ color: 'var(--amber)' }}> · {u.unpaid} da pagare</span> : ''}{u.last_bill && <div className="muted">ultima {itDate(u.last_bill)}</div>}</td>
                 <td className="small">{u.next_bill ? <>{itDate(u.next_bill.date)}<div className="muted">{u.next_bill.amount != null ? `${u.next_bill.estimate ? '~' : ''}${eur(u.next_bill.amount)}` : ''}</div></> : '–'}</td><td className="small">{u.n_readings}</td></tr>)}</tbody></table>
           </Card>))}
@@ -53,7 +53,7 @@ export function UtilityModal({ sites, siteId, u, onClose, onDone }) {
   const save = async () => {
     const body = { ...f }; for (const k of Object.keys(body)) if (body[k] === '') body[k] = null;
     if (u && body.pod_pdr) body.code = body.pod_pdr;
-    try { if (u) await api.put(`/utenze/${u.id}`, body); else await api.post('/utenze', body); toast(u ? 'Utenza aggiornata (anche in Payments)' : 'Utenza creata: è nello Scadenziario di Payments'); onDone(); } catch (e) { toast(e, 'err'); }
+    try { if (u) await api.put(`/utenze/${u.id}`, body); else await api.post('/utenze', body); toast(u ? 'Utenza aggiornata (anche in Finance Management)' : 'Utenza creata: è nello Scadenziario di Finance Management'); onDone(); } catch (e) { toast(e, 'err'); }
   };
   return (
     <Modal wide title={u ? 'Modifica utenza' : 'Nuova utenza'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Salva</button></>}>
@@ -73,7 +73,7 @@ export function UtilityModal({ sites, siteId, u, onClose, onDone }) {
         <Field label="Fine offerta"><input className="fa-in w" type="date" value={f.offer_end} onChange={set('offer_end')} /></Field>
         <Field label={`Fattore CO2 (kg/${UNIT[f.vector] || 'unità'})`} help="Vuoto = valore predefinito delle impostazioni"><input className="fa-in w" type="number" min="0" step="0.001" value={f.co2_factor} onChange={set('co2_factor')} /></Field>
       </div>
-      <label className="row small" style={{ gap: 6, marginTop: 8 }}><input type="checkbox" checked={f.auto_pay} onChange={(e) => setF({ ...f, auto_pay: e.target.checked })} />Addebito automatico (in Payments le bollette non risultano da pagare a mano)</label>
+      <label className="row small" style={{ gap: 6, marginTop: 8 }}><input type="checkbox" checked={f.auto_pay} onChange={(e) => setF({ ...f, auto_pay: e.target.checked })} />Addebito automatico (in Finance Management le bollette non risultano da pagare a mano)</label>
       {u && <label className="row small" style={{ gap: 6, marginTop: 6 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Attiva</label>}
     </Modal>
   );
@@ -89,7 +89,7 @@ function UtilityDetail({ id, onClose }) {
   const [b, setB] = useState({ period_from: '', period_to: '', due_date: '', amount: '', consumption: '', paid_at: '' });
   const [r, setR] = useState({ read_at: today, value: '', source: 'MANUALE' });
   if (!u) return <Modal title="Utenza" onClose={onClose}><Loading /></Modal>;
-  const addBill = async () => { const body = { ...b }; for (const k of Object.keys(body)) if (body[k] === '') body[k] = null; try { await api.post(`/utenze/${u.id}/bollette`, body); toast('Bolletta registrata: è nello Scadenziario di Payments'); setB({ period_from: '', period_to: '', due_date: '', amount: '', consumption: '', paid_at: '' }); reload(); } catch (e) { toast(e, 'err'); } };
+  const addBill = async () => { const body = { ...b }; for (const k of Object.keys(body)) if (body[k] === '') body[k] = null; try { await api.post(`/utenze/${u.id}/bollette`, body); toast('Bolletta registrata: è nello Scadenziario di Finance Management'); setB({ period_from: '', period_to: '', due_date: '', amount: '', consumption: '', paid_at: '' }); reload(); } catch (e) { toast(e, 'err'); } };
   const delBill = async (x) => { try { await api.del(`/bollette/${x.id}`); reload(); } catch (e) { toast(e, 'err'); } };
   const addRead = async () => { try { await api.post(`/utenze/${u.id}/letture`, r); toast('Lettura registrata'); setR({ ...r, value: '' }); reload(); } catch (e) { toast(e, 'err'); } };
   return (

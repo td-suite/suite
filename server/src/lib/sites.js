@@ -1,11 +1,11 @@
 // Funzione unica di scrittura delle sedi (correzione A0 del programma "anagrafica unica", approvato dal CEO l'08/11/2026).
 // Regola di governo (docs/ANAGRAFICA.md): ogni scrittura su public.sites passa da qui. saveSite applica le regole del titolo di
 // godimento (leaseBlock), scrive l'audit del core (SITE_CREATED / SITE_UPDATED con l'origine e le modifiche prima/dopo), allinea lo
-// specchio di Cash (cash.site_ext), crea o aggiorna il contratto di Payments (siteToLease), crea o adotta il nodo Sede
+// specchio di Cash (cash.site_ext), crea o aggiorna il contratto di Finance Management (siteToLease), crea o adotta il nodo Sede
 // dell'organigramma (ensureSiteNodes), ricalcola le coordinate quando cambia l'indirizzo, riallinea i perimetri degli accessi esterni
 // delle Legal entity toccate (ospitante vecchia e nuova, proprietaria dei punti SERVICE) e, alla chiusura, restituisce il quadro
 // d'impatto (B17 minimo). La usano: Amministrazione > Sedi (routes/core.js), connettore e import XLSX (routes/ingest.js), Business
-// (contratto PP, lib/contrattoSede.js), Ordini (Dotazione, data di apertura), Retail (Intorno, coordinate), Payments (leaseToSite).
+// (contratto PP, lib/contrattoSede.js), Ordini (Dotazione, data di apertura), Retail (Intorno, coordinate), Finance Management (leaseToSite).
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { bad, notFound, audit, parse, today, diff } from './util.js';
@@ -34,7 +34,7 @@ export const siteSchema = z.object({
   closed_at: isoDate,   // data di chiusura (B17 minimo, A1): impostata da sola alla disattivazione se non indicata
   address_from_org: z.boolean().optional(),   // sede SERVICE con l'indirizzo della Legal entity: lo segue quando cambia (A7, lib/clienti.js)
   extraurbana: z.boolean().optional(),   // sede extraurbana: raggio dell'Intorno del Retail più ampio (10 km predefiniti, docs/RETAIL_INTORNO.md)
-  // Titolo di godimento e locazione (fonte unica: Payments e Facility leggono da qui, lib/leaseSync.js)
+  // Titolo di godimento e locazione (fonte unica: Finance Management e Facility leggono da qui, lib/leaseSync.js)
   tenure: z.enum(['PROPRIETA', 'LOCAZIONE', 'COMODATO', 'OSPITATA']).optional(),
   rent_amount: money, rent_period: z.enum(['MESE', 'TRIMESTRE', 'SEMESTRE', 'ANNO']).optional(),
   rent_vat: z.preprocess((v) => (v === '' ? null : v), z.enum(['PIU_IVA', 'ESENTE', 'IVA_INCLUSA']).nullable().optional()), rent_vat_rate: z.preprocess(numOrNull, z.number().min(0).max(100).nullable().optional()),
@@ -228,10 +228,10 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
   return { site, prima, campi, created, effetti };
 }
 
-// Conseguenze fuori transazione (dopo il COMMIT): Payments, ricerca, coordinate, organigramma, perimetri, quadro d'impatto
+// Conseguenze fuori transazione (dopo il COMMIT): Finance Management, ricerca, coordinate, organigramma, perimetri, quadro d'impatto
 async function effettiSede({ site: s, prima: cur, campi: b, created, origine, req, actorId }) {
   const out = { avvisi: [] };
-  // Payments: contratto della sede creato o aggiornato dall'anagrafica (gli scatti successivi registrati in Payments restano)
+  // Finance Management: contratto della sede creato o aggiornato dall'anagrafica (gli scatti successivi registrati in Finance Management restano)
   const leaseTouched = LEASE_SITE_KEYS.some((k) => b[k] !== undefined);
   const rentChanged = created || LEASE_CHANGE.some((k) => changed(b, cur, k));
   if ((created && s.tenure === 'LOCAZIONE' && s.rent_amount != null) || (!created && leaseTouched)) {
@@ -289,7 +289,7 @@ export async function impattoChiusura(siteId) {
   if (await has('business.contracts')) out.contratti_pp_vigenti = await n(`SELECT count(*)::int AS n FROM business.contracts WHERE site_id=$1 AND kind='PP' AND status IN ('FIRMATO','AUTORIZZATO','ATTIVO')`);
   if (await has('finance.lease_contracts')) out.contratti_payments_attivi = await n(`SELECT count(*)::int AS n FROM finance.lease_contracts WHERE site_id=$1 AND active`);
   const voci = [];
-  if (out.contratti_payments_attivi) voci.push(`${out.contratti_payments_attivi} contratto di locazione attivo in Payments (le scadenze continuano: chiudilo nello Scadenziario strutture)`);
+  if (out.contratti_payments_attivi) voci.push(`${out.contratti_payments_attivi} contratto di locazione attivo in Finance Management (le scadenze continuano: chiudilo nello Scadenziario strutture)`);
   if (out.persone_attive) voci.push(`${out.persone_attive} persone attive con questa sede di lavoro`);
   if (out.utenti_attivi) voci.push(`${out.utenti_attivi} utenti attivi con questa sede`);
   if (out.perimetri) voci.push(`${out.perimetri} ambiti di accesso sulla sede`);

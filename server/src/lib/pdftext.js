@@ -1,4 +1,4 @@
-// Estrazione del testo dai PDF, condivisa dai moduli (Referti esterni, Scadenziario strutture di Payments): pdftotext -layout pagina
+// Estrazione del testo dai PDF, condivisa dai moduli (Referti esterni, Scadenziario strutture di Finance Management): pdftotext -layout pagina
 // per pagina (poppler); se il PDF non ha testo estraibile, OCR con tesseract (lingua italiana) sulle immagini prodotte da pdftoppm.
 // Nessun contenuto del PDF finisce nei log. `createPdfText(opts)` costruisce le funzioni con i binari, la lingua OCR, la soglia di
 // caratteri per pagina sotto la quale si passa all'OCR e la pulizia del testo di pagina del modulo chiamante.

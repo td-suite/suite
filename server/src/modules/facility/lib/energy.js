@@ -1,4 +1,4 @@
-// Energy management: lettura dei dati (utenze e bollette da Payments, estensione energetica, letture, attività, immobili, obiettivi)
+// Energy management: lettura dei dati (utenze e bollette da Finance Management, estensione energetica, letture, attività, immobili, obiettivi)
 // e costruzione del quadro per sede e per rete (consumi e costi per mese e vettore, CO2, kWh equivalenti, intensità, anno su anno,
 // anomalie, classifica tra sedi a parità di attività, obiettivi, fasce di benchmark). Le formule sono in calc.js (pure).
 import { many } from '../db.js';
@@ -9,7 +9,7 @@ import { utilityMonthly, aggregateMonthly, yoy, anomalies, intensity, ranking, b
 const r1 = (v, d = 1) => (v == null ? null : Math.round(Number(v) * 10 ** d) / 10 ** d);
 export const vectorOf = (u) => u.vector || KIND_TO_VECTOR[u.kind] || 'ALTRO';
 
-// Utenze energetiche di Payments (energia, gas, acqua, più quelle che hanno l'estensione Facility) con bollette e letture
+// Utenze energetiche di Finance Management (energia, gas, acqua, più quelle che hanno l'estensione Facility) con bollette e letture
 export async function loadEnergyData({ siteIds = null } = {}) {
   if (!(await financeLive())) return { available: false };
   const p = siteIds ? [siteIds] : [];

@@ -1,5 +1,5 @@
-// Funzioni comuni del modulo Facility e Manutenzioni: impostazioni, sedi gestite, immobili (creati al volo), disponibilità di Payments
-// e Room Planning, contratto di affitto da Payments, catalogo dispositivi, generazione e rigenerazione del piano delle scadenze,
+// Funzioni comuni del modulo Facility e Manutenzioni: impostazioni, sedi gestite, immobili (creati al volo), disponibilità di Finance Management
+// e Room Planning, contratto di affitto da Finance Management, catalogo dispositivi, generazione e rigenerazione del piano delle scadenze,
 // destinatari delle notifiche, allegati. Nei log della Suite solo id e conteggi.
 import { q, one, many } from '../db.js';
 import { KEY, SETTINGS_DEFAULT } from '../config.js';
@@ -56,7 +56,7 @@ export async function schemaLive(key, table) {
   const ok = await one(`SELECT to_regclass($1) IS NOT NULL AS ok`, [`${key}.${table}`]);
   return Boolean(ok?.ok);
 }
-export const FINANCE_OFF = 'Payments non avviato: utenze, bollette e contratti di affitto vivono nello Scadenziario strutture di Payments, che va avviato prima (Amministrazione > Travaso moduli).';
+export const FINANCE_OFF = 'Finance Management non avviato: utenze, bollette e contratti di affitto vivono nello Scadenziario strutture di Finance Management, che va avviato prima (Amministrazione > Travaso moduli).';
 export async function requireFinance() { if (!(await financeLive())) throw Object.assign(bad(FINANCE_OFF), { code: 'FINANCE_OFF' }); }
 
 // ---- Sedi e immobili
@@ -89,7 +89,7 @@ export async function propertyBySite(siteId) {
   return one('SELECT * FROM properties WHERE site_id=$1', [siteId]);
 }
 
-// ---- Contratto di affitto da Payments (finance.lease_contracts): quello indicato nell'immobile, altrimenti il contratto attivo della sede
+// ---- Contratto di affitto da Finance Management (finance.lease_contracts): quello indicato nell'immobile, altrimenti il contratto attivo della sede
 export async function leaseInfo(siteId, leaseId = null) {
   if (!(await financeLive())) return { available: false, lease: null };
   let l = leaseId ? await one(`SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_label FROM finance.lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id WHERE l.id=$1`, [leaseId]) : null;
@@ -234,7 +234,7 @@ export async function suiteUserIdOf(moduleUserId) {
   const r = await one('SELECT u.id FROM users m JOIN public.users u ON lower(u.email)=lower(m.email) WHERE m.id=$1', [moduleUserId]);
   return r?.id || null;
 }
-// Utenti Payments che ricevono la proposta di costo di un obbligo (profili CEO, CFO, SUPPORT)
+// Utenti Finance Management che ricevono la proposta di costo di un obbligo (profili CEO, CFO, SUPPORT)
 export async function financeUserIds() {
   const rows = await many(`SELECT DISTINCT g.user_id AS id FROM public.grants g JOIN public.users u ON u.id=g.user_id WHERE g.module_key='finance' AND NOT g.proposed AND u.status='ACTIVE' AND g.profile IN ('CEO','CFO','SUPPORT')`);
   return rows.map((r) => r.id);

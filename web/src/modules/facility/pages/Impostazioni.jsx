@@ -43,7 +43,7 @@ export default function Impostazioni() {
       <div className="fa-two">
         <Card title="Integrazioni" icon="refresh">
           <ul className="fa-list">
-            <li><span>Payments (utenze, bollette, canoni)</span><Badge tone={data.finance ? 'green' : 'red'}>{data.finance ? 'attivo' : 'non avviato'}</Badge></li>
+            <li><span>Finance Management (utenze, bollette, canoni)</span><Badge tone={data.finance ? 'green' : 'red'}>{data.finance ? 'attivo' : 'non avviato'}</Badge></li>
             <li><span>Room Planning (planimetrie)</span><Badge tone={data.room ? 'green' : 'grey'}>{data.room ? 'attivo' : 'non avviato'}</Badge></li>
             <li><span>Retail Assistant (accettazioni)</span><Badge tone={data.activity.retail ? 'green' : 'grey'}>{data.activity.retail ? 'attivo' : 'non avviato'}</Badge></li>
             <li><span>Cash Management (giorni di apertura)</span><Badge tone={data.activity.cash ? 'green' : 'grey'}>{data.activity.cash ? 'attivo' : 'non avviato'}</Badge></li>

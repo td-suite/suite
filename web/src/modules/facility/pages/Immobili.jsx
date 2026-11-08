@@ -1,4 +1,4 @@
-// Immobili: una card per sede dell'anagrafica (immobile creato al volo) con titolo di godimento, superficie, canone da Payments,
+// Immobili: una card per sede dell'anagrafica (immobile creato al volo) con titolo di godimento, superficie, canone da Finance Management,
 // planimetria (dall'anagrafica Sedi) e stato in Room Planning, dispositivi, scadenze scadute, interventi aperti, utenze e volture.
 // Filtro per titolo di godimento (Tutti / Proprietà / Locazione / Comodato / Ospitata) con i conteggi, stato nel query string (?titolo=)
 import React from 'react';
@@ -12,7 +12,7 @@ import { SITE_KIND, TENURE, num, eur, itDate } from '../format.js';
 const PERIOD_MONTHS = { MESE: 1, TRIMESTRE: 3, SEMESTRE: 6, ANNO: 12 };
 const TENURE_FILTER = [['', 'Tutti'], ['PROPRIETA', 'Proprietà'], ['LOCAZIONE', 'Locazione'], ['COMODATO', 'Comodato'], ['OSPITATA', 'Ospitata']];
 
-// Titolo di godimento e canone vengono dall'anagrafica Sedi (Amministrazione), il canone vigente dal contratto di Payments se c'è
+// Titolo di godimento e canone vengono dall'anagrafica Sedi (Amministrazione), il canone vigente dal contratto di Finance Management se c'è
 export default function Immobili() {
   const { data, loading, error } = useApi('/immobili');
   // ricerca e titolo di godimento nel query string: il link all'elenco filtrato si condivide e sopravvive al ritorno dalla scheda
@@ -33,7 +33,7 @@ export default function Immobili() {
         <span className="small muted" style={{ marginRight: 4 }}>Titolo di godimento</span>
         {TENURE_FILTER.map(([k, label]) => <button key={k || 'tutti'} type="button" className={`btn sm ${titolo === k ? '' : 'ghost'}`} aria-pressed={titolo === k} onClick={() => setParam('titolo', k)} disabled={k && !count(k) && titolo !== k}>{label} <span className="fa-count">{count(k)}</span></button>)}
       </div>
-      {!data.finance && <Alert tone="warn" icon="alert">Payments non avviato: canoni e utenze non sono disponibili.</Alert>}
+      {!data.finance && <Alert tone="warn" icon="alert">Finance Management non avviato: canoni e utenze non sono disponibili.</Alert>}
       {!rows.length ? <Card>{data.rows.length ? <Empty icon="building" title="Nessun immobile con questi filtri">{titolo ? <button type="button" className="btn sm ghost" onClick={() => setParam('titolo', '')}>Mostra tutti i titoli</button> : 'Cambia la ricerca.'}</Empty> : <Empty icon="building" title="Nessun immobile">Le sedi attive dell'anagrafica (non service) compaiono qui da sole.</Empty>}</Card> : (
         <div className="fa-cards">{rows.map((s) => (
           <Card key={s.site_id} className="fa-card" title={<Link to={`${base}/immobili/${s.site_id}`}>{s.name}</Link>} actions={<Badge tone={s.tenure === 'PROPRIETA' ? 'green' : s.tenure === 'OSPITATA' ? 'mauve' : s.tenure === 'COMODATO' ? 'grey' : 'blue'} dot={false}>{TENURE[s.tenure]}</Badge>}>

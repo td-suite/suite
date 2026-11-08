@@ -5,7 +5,7 @@ che di Gestione delle Manutenzioni. Pertanto è necessario includere in Amminist
 inclusi quelli di sicurezza (penso a porte antincendio, estintori, maniglioni antipanico, ...). Inoltre, cataloghiamo tutti gli immobili da
 noi gestiti con contratti di affitto, salvando la planimetria che poi mettiamo a disposizione di Room Planning. Per ogni struttura il widget
 deve registrare le utenze, il canone di affitto, gli eventuali obblighi di controllo previsti dal contratto. Le utenze devono poi essere
-ribaltate nella sezione di Payments sullo scadenzario dei pagamenti già elaborato. Utilizza informazioni di benchmark per tutte le sezioni
+ribaltate nella sezione di Finance Management sullo scadenzario dei pagamenti già elaborato. Utilizza informazioni di benchmark per tutte le sezioni
 che ad oggi non ho previsto. Immagina sotto Facility tutto quello che può essere utile e necessario in termini di Energy Management che ha
 effetti diretti per noi sulle certificazioni di qualità in corso; prevedi quindi statistiche possibili, confronti tra gli anni, analisi dei
 consumi per sede e tra le sedi a parità di attività, ... tutto!"
@@ -26,7 +26,7 @@ della sorgente), lib/grantRules.js (regole e RANK), lib/accessProfiles.js (RANK)
 | Profilo | Chi | Poteri |
 | --- | --- | --- |
 | ADMIN | Owner e Admin della Suite | tutto |
-| FACILITY | Operations, Flow & Back Office (regole di accesso) | gestione completa: immobili, documenti e planimetrie, obblighi, utenze e bollette (in Payments), dispositivi, piano, interventi, energia, obiettivi, analisi, impostazioni |
+| FACILITY | Operations, Flow & Back Office (regole di accesso) | gestione completa: immobili, documenti e planimetrie, obblighi, utenze e bollette (in Finance Management), dispositivi, piano, interventi, energia, obiettivi, analisi, impostazioni |
 | MANUTENTORE | manutentore interno o di un fornitore (accesso esterno dalla Legal entity) | vede piano, dispositivi e interventi; se la sua organizzazione non è del gruppo vede solo dispositivi e interventi della sua Legal entity (o assegnati a lui); chiude le scadenze, avanza e chiude gli interventi; niente immobili, utenze, energia, impostazioni |
 | SITE (ambito sede) | ruolo Site Manager (regola di accesso), o manager della sede nell'organigramma | solo le proprie sedi: cruscotto, scheda immobile, dispositivi, piano; conferma le sorveglianze di sede (esecutore SEDE), segnala guasti con foto, registra letture dei contatori; 403 su sedi altrui e Impostazioni |
 | VIEWER | HSQ Management (regola di accesso) | consultazione e report; 403 su ogni scrittura |
@@ -51,7 +51,7 @@ Schema `facility` (nessuna anagrafica propria):
   `properties.tenure` e `properties.landlord_org_id` (prima l'immobile nasceva LOCAZIONE per ogni sede senza ospitante e Montemurlo,
   Poggio a Caiano, Calenzano risultavano in locazione); i valori scelti a mano in Facility (proprietà o comodato di una sede non
   ospitata, locatore diverso dall'ospitante) sono passati in anagrafica. La scheda mostra titolo, canone, IVA, garanzie, locatore, PDF
-  (`GET /api/facility/immobili/:siteId/contratto-pdf`, non per i manutentori) e il contratto Payments collegato, con il pulsante
+  (`GET /api/facility/immobili/:siteId/contratto-pdf`, non per i manutentori) e il contratto Finance Management collegato, con il pulsante
   "Modifica in Amministrazione > Sedi" (`/admin/sites?sede=<id>` apre il form della sede); nel form "Dati dell'immobile" il titolo non c'è più.
 - `property_obligations` obblighi CONTRATTUALE | NORMATIVO | ASSICURATIVO con periodicità, prima scadenza, responsabile, tipo di dispositivo
   collegato, costo stimato; `property_documents` (CONTRATTO, CERTIFICAZIONE, VERBALE, ALTRO; file a due vie con
@@ -68,24 +68,24 @@ Schema `facility` (nessuna anagrafica propria):
 - `work_orders` (codice WO-AAAA-NNNN, sede, dispositivo, scadenza d'origine, priorità URGENTE | ALTA | MEDIA | BASSA, stato APERTO |
   ASSEGNATO | IN_CORSO | SOSPESO | CHIUSO, segnalato da, manutentore utente e/o Legal entity, aperto, assegnato, iniziato, scadenza SLA,
   chiuso, risoluzione, costo, ore di fermo), `work_order_events` (cronologia), `files` (allegati di scadenze e interventi).
-- Energia: `utility_meta` (estensione delle utenze di Payments: `utility_id` = finance.utilities.id, vettore ELETTRICO | GAS | ACQUA |
+- Energia: `utility_meta` (estensione delle utenze di Finance Management: `utility_id` = finance.utilities.id, vettore ELETTRICO | GAS | ACQUA |
   TELERISCALDAMENTO | GASOLIO | ALTRO, POD/PDR, potenza impegnata, tariffa, fattore CO2 proprio, unità), `meter_readings` (MANUALE |
   BOLLETTA | SMART, una per utenza e data), `activity_metrics` (sede e mese: accettazioni, prestazioni, ore e giorni di apertura, fonte
   RETAIL | CASH | MANUALE), `energy_targets` (sede o rete, anno, vettore o totale, riduzione %, anno base), `energy_analyses`,
   `anomaly_notified`, `app_settings`.
 
 ## Integrazioni (relazioni tra schemi)
-- **Payments (finance)**: fonte unica di contratti di affitto, utenze e bollette. Facility legge e scrive `finance.utilities` e
-  `finance.utility_bills` nello stesso database (modulo finance LIVE; altrimenti la sezione mostra "Payments non avviato" e risponde 400
-  `FINANCE_OFF`). Un'utenza creata in Facility nasce in Payments con tipo dal vettore (ELETTRICO→ENERGIA, GAS→GAS, ACQUA→ACQUA, gli altri
+- **Finance Management (finance)**: fonte unica di contratti di affitto, utenze e bollette. Facility legge e scrive `finance.utilities` e
+  `finance.utility_bills` nello stesso database (modulo finance LIVE; altrimenti la sezione mostra "Finance Management non avviato" e risponde 400
+  `FINANCE_OFF`). Un'utenza creata in Facility nasce in Finance Management con tipo dal vettore (ELETTRICO→ENERGIA, GAS→GAS, ACQUA→ACQUA, gli altri
   ALTRO) e codice = POD/PDR, quindi entra nelle scadenze ricorrenti; una bolletta registrata in Facility (periodo, scadenza di pagamento,
   importo, consumo, unità) compare da sola nello Scadenziario strutture (collaudo: `GET /api/finance/scadenziario/events`). Una bolletta già
   pagata non si elimina da Facility. Il canone, gli scatti, la scadenza con rinnovi taciti e il locatore si leggono da
   `finance.lease_contracts` / `lease_steps` con le funzioni pure di `finance/lib/schedule.js` (`stepAt`, `contractEnd`); le prossime
-  bollette attese con `buildEvents`. Se il contratto manca, "Crea in Payments" porta a `/finance/scadenziario?site_id=`.
-- **Obblighi con costo**: alla chiusura di una scadenza di obbligo con costo (o costo stimato) Facility avvisa in app i profili Payments
+  bollette attese con `buildEvents`. Se il contratto manca, "Crea in Finance Management" porta a `/finance/scadenziario?site_id=`.
+- **Obblighi con costo**: alla chiusura di una scadenza di obbligo con costo (o costo stimato) Facility avvisa in app i profili Finance Management
   CEO, CFO, SUPPORT ("Costo da pagare ..."). Non crea l'istanza con `lib/requestCreate.js`: serve beneficiario con IBAN e fattura del
-  fornitore, che Facility non conosce; l'istanza la crea Payments (scelta documentata).
+  fornitore, che Facility non conosce; l'istanza la crea Finance Management (scelta documentata).
 - **Planimetria e Room Planning (room)** (aggiornato il 31/10/2026, "planimetria su Amministrazione/Sedi a disposizione di tutta la
   SUITE"): la fonte unica è l'anagrafica Sedi, `public.site_documents` kind PLANIMETRIA (docs/ANAGRAFICA.md "Sedi: planimetria"); Facility
   non è più la fonte. La logica è in `server/src/lib/roomPlan.js` (spostata da `modules/facility/lib/room.js`): la planimetria si carica
@@ -178,14 +178,14 @@ Database `suite_fac_t`, porta 3129, FACILITY_AI_MOCK=1, DISABLE_SCHEDULER=true; 
 `POST /api/travaso/<key>/run`; finance creato a mano applicando le sue migrazioni con psql e `module_state` LIVE. Sedi Quarrata (punto
 prelievi, 120 m2), Prato (centro medico, 400 m2), Sesto (laboratorio, 900 m2), Legal entity locatore e manutentore, utenti FACILITY, SITE
 (grant su Prato), VIEWER, MANUTENTORE esterno. 116 controlli API superati: catalogo con 46 voci e CRUD solo admin; 3 immobili creati al volo;
-contratto di Prato in Payments → canone 3.200 € fino al 01/03/2030 nella scheda; utenze elettrica e gas create da Facility → in
-`/api/finance/scadenziario/utilities`; 6 bollette su due anni più una da pagare → nello scadenziario di Payments con canone e bolletta;
+contratto di Prato in Finance Management → canone 3.200 € fino al 01/03/2030 nella scheda; utenze elettrica e gas create da Facility → in
+`/api/finance/scadenziario/utilities`; 6 bollette su due anni più una da pagare → nello scadenziario di Finance Management con canone e bolletta;
 letture mensili di Quarrata e Sesto, lettura del site manager (403 su sede altrui); attività manuale; indicatori di Prato (142,3 kWh/m2 anno,
 2,37 kWh per accettazione, 20,6 kWh per ora), anomalie aprile-giugno 2026 sul trimestre gonfiato (+35%), classifica tra 3 sedi, obiettivo di
 rete, analisi simulata, PDF rete e sede (controllati come PNG) e XLSX; 5 dispositivi a Prato con 12 scadenze, controllo dell'estintore
 chiuso dal manutentore esterno con rapportino → successiva al 30/04/2027, sorveglianza confermata dal site manager, 403 del site manager
 su una manutenzione, registro e QR PNG, etichette, il manutentore esterno vede solo i 2 dispositivi della sua Legal entity, porta REI non
-conforme → intervento correttivo; obbligo contrattuale semestrale → scadenza e successiva, avviso a Payments; planimetria PDF su Prato →
+conforme → intervento correttivo; obbligo contrattuale semestrale → scadenza e successiva, avviso a Finance Management; planimetria PDF su Prato →
 `room.struttura_blobs` planPdf e Room la restituisce (`hasPlanPdf`); segnalazione URGENTE del site manager con foto → notifica a Facility,
 SLA 24 ore, assegnazione alla Legal entity con notifica al manutentore, in corso, nota, chiusura con MTTR 6 ore entro SLA; KPI e registro
 PDF/XLSX; permessi (SITE 403 su sede altrui e Impostazioni, VIEWER 403 in scrittura, MANUTENTORE 403 su Energia e Impostazioni); job con
@@ -202,7 +202,7 @@ disattivata). Il titolo è quello dell'anagrafica Sedi (`public.sites.tenure`). 
 ## Da verificare / non fatto
 - Benchmark del catalogo, SLA, fattori CO2 e fasce di intensità: da confermare con RSPP, Qualità e i dati reali della rete.
 - Analisi con la chiave Anthropic reale (qui solo mock); email reali dei promemoria (qui MAIL_PROVIDER=log).
-- Nessuna istanza di pagamento automatica dagli obblighi (solo avviso a Payments); nessuna lettura automatica di bollette PDF o di contatori
+- Nessuna istanza di pagamento automatica dagli obblighi (solo avviso a Finance Management); nessuna lettura automatica di bollette PDF o di contatori
   intelligenti (le letture SMART si inseriscono come le manuali).
 - Regole di accesso nuove solo su `grant_rules` vuota; in produzione aggiungerle a mano.
 - Il QR richiede l'accesso alla Suite (nessuna pagina pubblica del dispositivo).

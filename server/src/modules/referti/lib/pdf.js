@@ -1,5 +1,5 @@
 // Estrazione del testo dai PDF dei referti: pdftotext -layout pagina per pagina (poppler); se il PDF non ha testo estraibile, OCR
-// con tesseract (lingua italiana). La logica vive in server/src/lib/pdftext.js (condivisa con Payments); qui la configurazione del modulo.
+// con tesseract (lingua italiana). La logica vive in server/src/lib/pdftext.js (condivisa con Finance Management); qui la configurazione del modulo.
 import { config } from '../config.js';
 import { createPdfText } from '../../../lib/pdftext.js';
 import { puliscaPagina } from './text.js';

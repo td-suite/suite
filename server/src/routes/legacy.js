@@ -28,7 +28,7 @@ const r = Router();
 
 // ---- Sorgenti legacy (stato e sincronizzazione)
 // Solo i moduli che si travasano dall'app di origine: quelli sull'anagrafica unica partono vuoti
-// Moduli che si travasano dall'app di origine (Payments, Spedizioni) e moduli ripartiti da zero che importano i contenuti (Room, Integration)
+// Moduli che si travasano dall'app di origine (Finance Management, Spedizioni) e moduli ripartiti da zero che importano i contenuti (Room, Integration)
 r.get('/legacy/sources', requireAdmin, ah(async (_req, res) => res.json((await listSources()).filter((s) => !FRESH_MODULES.includes(s.key) || CONTENT_IMPORT_MODULES.includes(s.key)).map((s) => ({ ...s, content_import: CONTENT_IMPORT_MODULES.includes(s.key) })))));
 
 // Stato delle credenziali impostabili dall'Amministrazione (solo titolare per vedere la provenienza e modificare)

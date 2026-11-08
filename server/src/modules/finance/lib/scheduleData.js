@@ -1,5 +1,5 @@
-// Scadenziario strutture (Payments): lettura dei dati dal database, badge, avvisi in app e aggancio alle istanze di pagamento.
-// La logica delle scadenze è in schedule.js (pura). Payments non ha un perimetro di sedi per utente: tutti gli utenti del modulo
+// Scadenziario strutture (Finance Management): lettura dei dati dal database, badge, avvisi in app e aggancio alle istanze di pagamento.
+// La logica delle scadenze è in schedule.js (pura). Finance Management non ha un perimetro di sedi per utente: tutti gli utenti del modulo
 // leggono tutto; scrivono SUPPORT e amministratori (canManage), CEO e CFO possono segnare gli esiti.
 import { many, one, q } from '../db.js';
 import { getSetting, todayRome, eur, itDate } from './util.js';
@@ -47,7 +47,7 @@ export async function scheduleBadge() {
   return events.filter((e) => isOverdue(e) || (e.days >= 0 && e.days <= 7 && !e.done && !e.auto)).length;
 }
 
-// Riquadro "Scadenze strutture" del cruscotto di Payments
+// Riquadro "Scadenze strutture" del cruscotto di Finance Management
 export async function scheduleSummary() {
   const data = await loadScheduleData(null);
   const today = todayRome();

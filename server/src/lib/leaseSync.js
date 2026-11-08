@@ -1,11 +1,11 @@
 // Titolo di godimento e locazione: allineamento a due versi tra l'anagrafica Sedi (public.sites, fonte unica: Amministrazione > Sedi) e
-// il contratto dello Scadenziario strutture di Payments (finance.lease_contracts con gli scatti finance.lease_steps). Richiesta del CEO
+// il contratto dello Scadenziario strutture di Finance Management (finance.lease_contracts con gli scatti finance.lease_steps). Richiesta del CEO
 // del 31/10/2026: il canone e il contratto si inseriscono una volta sola ("in modo da non replicare l'azione").
 //   siteToLease: al salvataggio di una sede in LOCAZIONE con canone e decorrenza crea o aggiorna il contratto collegato (registry_sync)
-//                con lo scatto INIZIALE; se Payments ha già registrato scatti successivi (ISTAT, rinegoziazioni) non li tocca e, solo
+//                con lo scatto INIZIALE; se Finance Management ha già registrato scatti successivi (ISTAT, rinegoziazioni) non li tocca e, solo
 //                se il canone dell'anagrafica è cambiato, aggiunge uno scatto dalla data di oggi con motivo ANAGRAFICA. Collega a
-//                Payments il PDF caricato in Sedi (finance.lease_documents.site_document_id, senza copiare il file).
-//   leaseToSite: un contratto creato o modificato in Payments aggiorna la sede (tenure LOCAZIONE, canone dallo scatto iniziale,
+//                Finance Management il PDF caricato in Sedi (finance.lease_documents.site_document_id, senza copiare il file).
+//   leaseToSite: un contratto creato o modificato in Finance Management aggiorna la sede (tenure LOCAZIONE, canone dallo scatto iniziale,
 //                locatore, durata, deposito, registrazione).
 // Flag antirimbalzo: le due funzioni girano in un contesto (AsyncLocalStorage) che dice chi ha avviato l'allineamento; una scrittura
 // partita da un verso non riavvia mai l'altro. Le funzioni pure in testa sono provate in test/lease-sync.test.mjs.
@@ -17,7 +17,7 @@ import { today as todayRome } from './util.js';
 
 export const TENURE = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata da Legal entity' };
 export const PERIOD_MONTHS = { MESE: 1, TRIMESTRE: 3, SEMESTRE: 6, ANNO: 12 };
-// Campi della sede che riguardano la locazione (se uno di questi cambia, si riallinea Payments)
+// Campi della sede che riguardano la locazione (se uno di questi cambia, si riallinea Finance Management)
 export const LEASE_SITE_KEYS = ['tenure', 'rent_amount', 'rent_period', 'rent_vat', 'rent_vat_rate', 'lease_start', 'lease_years', 'lease_renewal_years', 'lease_notice_months', 'lease_end',
   'lease_landlord_org_id', 'lease_registration', 'guarantee_bank_amount', 'guarantee_insurance_amount', 'deposit_amount', 'guarantee_notes'];
 // Campi che hanno senso solo in locazione (svuotati per proprietà e ospitata; il comodato tiene durata e comodante)
@@ -26,7 +26,7 @@ const LEASE_ALL = [...RENT_ONLY, 'lease_start', 'lease_years', 'lease_renewal_ye
 
 // ---------- funzioni pure ----------
 export const periodMonths = (p) => PERIOD_MONTHS[String(p || '').toUpperCase()] || 1;
-// Periodicità di Payments (1, 2, 3, 6, 12 mesi) → periodo dell'anagrafica; il bimestrale non c'è e diventa mensile (importo / 2)
+// Periodicità di Finance Management (1, 2, 3, 6, 12 mesi) → periodo dell'anagrafica; il bimestrale non c'è e diventa mensile (importo / 2)
 export function rentPeriodOf(months) {
   const m = Number(months) || 1;
   const p = { 1: 'MESE', 3: 'TRIMESTRE', 6: 'SEMESTRE', 12: 'ANNO' }[m];
@@ -34,7 +34,7 @@ export function rentPeriodOf(months) {
 }
 // Fine del primo periodo: decorrenza + anni (calcolata quando l'utente la lascia vuota)
 export const leaseEnd = (start, years) => leaseEndOf(start, years);
-// Tipologia del contratto di Payments dalla durata
+// Tipologia del contratto di Finance Management dalla durata
 export function leaseKindOf(tenure, years, renewal) {
   if (tenure === 'COMODATO') return 'COMODATO';
   const y = Number(years), r = Number(renewal);
@@ -79,13 +79,13 @@ export function leaseFieldsFromSite(s) {
     notice_months: s.lease_notice_months ?? null, period_months: periodMonths(s.rent_period), deposit: s.deposit_amount ?? null, registration: s.lease_registration ?? null,
     kind: leaseKindOf(s.tenure, s.lease_years, s.lease_renewal_years) };
 }
-// B18: titolo della sede che risulta da un contratto di Payments. Il contratto di comodato porta COMODATO, gli altri LOCAZIONE; serve
+// B18: titolo della sede che risulta da un contratto di Finance Management. Il contratto di comodato porta COMODATO, gli altri LOCAZIONE; serve
 // la conferma quando la sede ha un titolo diverso e non è già in locazione (OSPITATA, PROPRIETA, COMODATO verso LOCAZIONE).
 export function titoloDaContratto(tenureSede, kindContratto) {
   const tenure = kindContratto === 'COMODATO' ? 'COMODATO' : 'LOCAZIONE';
   return { tenure, conferma: Boolean(tenureSede) && tenureSede !== tenure && tenureSede !== 'LOCAZIONE' };
 }
-// Dal contratto di Payments (e dall'importo dello scatto iniziale) ai campi della sede
+// Dal contratto di Finance Management (e dall'importo dello scatto iniziale) ai campi della sede
 export function siteFieldsFromLease(l, initialAmount) {
   const p = rentPeriodOf(l.period_months);
   const start = l.start_date ? String(l.start_date).slice(0, 10) : null;
@@ -94,10 +94,10 @@ export function siteFieldsFromLease(l, initialAmount) {
     lease_end: leaseEnd(start, l.first_term_years), lease_landlord_org_id: l.landlord_org_id ?? null, lease_registration: l.registration ?? null, deposit_amount: l.deposit ?? null };
 }
 /**
- * Cosa fare sugli scatti del canone quando il canone dell'anagrafica è `amount` (rata nel periodo di Payments):
+ * Cosa fare sugli scatti del canone quando il canone dell'anagrafica è `amount` (rata nel periodo di Finance Management):
  * - nessuno scatto: crea l'INIZIALE alla decorrenza;
  * - nessuno scatto dopo l'iniziale: aggiorna l'INIZIALE (importo, e data = decorrenza se non ci sono rate ridotte prima);
- * - scatti successivi registrati in Payments: non si toccano; solo se il canone è cambiato in anagrafica (rentChanged) si aggiunge uno
+ * - scatti successivi registrati in Finance Management: non si toccano; solo se il canone è cambiato in anagrafica (rentChanged) si aggiunge uno
  *   scatto ANAGRAFICA dalla data di oggi (o si aggiorna quello già presente in quella data).
  * Ritorna { type: 'none' | 'insert_initial' | 'update_initial' | 'add_step' | 'update_step', ... }.
  */
@@ -113,7 +113,7 @@ export function planRentChange(steps, { amount, start, today, rentChanged = fals
     if (Number(ini.amount) === Number(amount) && ini.valid_from === from) return { type: 'none' };
     return { type: 'update_initial', id: ini.id, amount, valid_from: from };
   }
-  if (!rentChanged) return { type: 'none', reason: 'scatti successivi in Payments' };
+  if (!rentChanged) return { type: 'none', reason: 'scatti successivi in Finance Management' };
   const last = list[list.length - 1];
   if (Number(last.amount) === Number(amount)) return { type: 'none' };
   const from = today > start ? today : start;
@@ -126,7 +126,7 @@ export function planRentChange(steps, { amount, start, today, rentChanged = fals
 const origin = new AsyncLocalStorage();
 export const syncOrigin = () => origin.getStore() || null;
 
-// Payments avviato e con lo schema dello scadenziario (e la colonna registry_sync della migrazione 004)
+// Finance Management avviato e con lo schema dello scadenziario (e la colonna registry_sync della migrazione 004)
 export async function financeReady() {
   const st = await getModuleState('finance');
   if (st.mode !== 'LIVE' || !st.schema_ready) return false;
@@ -134,14 +134,14 @@ export async function financeReady() {
   return Boolean(r?.ok);
 }
 
-// Contratto di Payments collegato all'anagrafica per una sede (o null)
+// Contratto di Finance Management collegato all'anagrafica per una sede (o null)
 export async function registryLease(siteId) {
   if (!(await financeReady())) return null;
   return one(`SELECT l.*, coalesce(l.landlord_name, o.name) AS landlord_label FROM finance.lease_contracts l LEFT JOIN public.organizations o ON o.id=l.landlord_org_id
     WHERE l.site_id=$1 AND l.active ORDER BY l.registry_sync DESC, l.start_date DESC, l.id DESC LIMIT 1`, [siteId]);
 }
 
-// PDF dei contratti caricati in Sedi collegati al contratto di Payments (righe senza byte, puntano a public.site_documents)
+// PDF dei contratti caricati in Sedi collegati al contratto di Finance Management (righe senza byte, puntano a public.site_documents)
 async function linkDocuments(c, siteId, leaseId) {
   const r = await c.query(`INSERT INTO finance.lease_documents (lease_id, filename, mime, size, sha256, extracted, extracted_at, model, text_chars, ocr, site_document_id)
     SELECT $2, d.filename, d.mime, d.size, d.sha256, d.extracted, d.extracted_at, d.model, d.text_chars, d.ocr, d.id FROM public.site_documents d
@@ -150,26 +150,26 @@ async function linkDocuments(c, siteId, leaseId) {
 }
 
 /**
- * Anagrafica → Payments. Ritorna { status: 'ok' | 'skip', reason?, lease_id?, created?, step?, documents? }.
- * opts.rentChanged: il canone è cambiato in questo salvataggio (serve a non annullare gli scatti ISTAT registrati in Payments).
+ * Anagrafica → Finance Management. Ritorna { status: 'ok' | 'skip', reason?, lease_id?, created?, step?, documents? }.
+ * opts.rentChanged: il canone è cambiato in questo salvataggio (serve a non annullare gli scatti ISTAT registrati in Finance Management).
  */
 export async function siteToLease(siteId, { rentChanged = false } = {}) {
-  if (syncOrigin() === 'FINANCE') return { status: 'skip', reason: 'allineamento partito da Payments' };
+  if (syncOrigin() === 'FINANCE') return { status: 'skip', reason: 'allineamento partito da Finance Management' };
   return origin.run('CORE', async () => {
     const s = await one('SELECT * FROM public.sites WHERE id=$1', [siteId]);
     if (!s) return { status: 'skip', reason: 'sede inesistente' };
-    if (!(await financeReady())) return { status: 'skip', reason: 'Payments non avviato: il contratto resta solo in anagrafica' };
+    if (!(await financeReady())) return { status: 'skip', reason: 'Finance Management non avviato: il contratto resta solo in anagrafica' };
     if (s.tenure !== 'LOCAZIONE') {
       const l = await one('SELECT id FROM finance.lease_contracts WHERE site_id=$1 AND registry_sync AND active', [siteId]);
-      return { status: 'skip', reason: l ? 'La sede non è più in locazione: il contratto in Payments resta attivo, chiudilo nello Scadenziario strutture' : 'sede non in locazione', lease_id: l?.id || null };
+      return { status: 'skip', reason: l ? 'La sede non è più in locazione: il contratto in Finance Management resta attivo, chiudilo nello Scadenziario strutture' : 'sede non in locazione', lease_id: l?.id || null };
     }
-    if (s.rent_amount == null || !s.lease_start) return { status: 'skip', reason: 'Canone e decorrenza servono per creare il contratto in Payments' };
+    if (s.rent_amount == null || !s.lease_start) return { status: 'skip', reason: 'Canone e decorrenza servono per creare il contratto in Finance Management' };
     const f = leaseFieldsFromSite(s);
-    const amount = Math.round(Number(s.rent_amount) * 100) / 100;   // la rata dell'anagrafica è già nel periodo di Payments
+    const amount = Math.round(Number(s.rent_amount) * 100) / 100;   // la rata dell'anagrafica è già nel periodo di Finance Management
     const doc = await one(`SELECT id, extracted FROM public.site_documents WHERE site_id=$1 AND kind='CONTRATTO_LOCAZIONE' ORDER BY created_at DESC LIMIT 1`, [siteId]);
     return tx(async (c) => {
       let l = (await c.query('SELECT * FROM finance.lease_contracts WHERE site_id=$1 AND registry_sync AND active FOR UPDATE', [siteId])).rows[0];
-      if (!l) {   // contratto attivo già registrato in Payments per la sede: diventa quello dell'anagrafica
+      if (!l) {   // contratto attivo già registrato in Finance Management per la sede: diventa quello dell'anagrafica
         l = (await c.query('SELECT * FROM finance.lease_contracts WHERE site_id=$1 AND active ORDER BY start_date DESC, id DESC LIMIT 1 FOR UPDATE', [siteId])).rows[0];
         if (l) await c.query('UPDATE finance.lease_contracts SET registry_sync=TRUE WHERE id=$1', [l.id]);
       }
@@ -208,14 +208,14 @@ export async function siteToLease(siteId, { rentChanged = false } = {}) {
 }
 
 /**
- * Payments → anagrafica. Un contratto creato o modificato nello Scadenziario aggiorna la sede: tenure LOCAZIONE, canone dallo scatto
+ * Finance Management → anagrafica. Un contratto creato o modificato nello Scadenziario aggiorna la sede: tenure LOCAZIONE, canone dallo scatto
  * iniziale, locatore, durata, deposito, registrazione. Vale per il contratto collegato (registry_sync) o, se la sede non ne ha, per
  * questo contratto, che diventa quello collegato. Ritorna { status, reason?, site_id?, tenure_before? }.
  */
 export async function leaseToSite(leaseId, opts = {}) {
   if (syncOrigin() === 'CORE') return { status: 'skip', reason: 'allineamento partito dall\'anagrafica' };
   return origin.run('FINANCE', async () => {
-    if (!(await financeReady())) return { status: 'skip', reason: 'schema Payments non aggiornato' };
+    if (!(await financeReady())) return { status: 'skip', reason: 'schema Finance Management non aggiornato' };
     const l = await one('SELECT * FROM finance.lease_contracts WHERE id=$1', [leaseId]);
     if (!l || !l.active) return { status: 'skip', reason: 'contratto non attivo' };
     // B18: il titolo di una sede OSPITATA, di PROPRIETÀ o in COMODATO non cambia senza conferma esplicita (prima diventava LOCAZIONE e
@@ -237,10 +237,10 @@ export async function leaseToSite(leaseId, opts = {}) {
     const f = siteFieldsFromLease(l, ini?.amount ?? null);
     f.tenure = verifica.tenure;
     // i valori assenti nel contratto non cancellano quelli dell'anagrafica. A0: scrittura dalla funzione unica del core (regole del
-    // titolo, audit SITE_UPDATED con origine Payments, Cash, perimetri); il flag antirimbalzo impedisce che riparta siteToLease
+    // titolo, audit SITE_UPDATED con origine Finance Management, Cash, perimetri); il flag antirimbalzo impedisce che riparta siteToLease
     const data = Object.fromEntries(Object.entries(f).filter(([k, v]) => k === 'tenure' || v != null));
     const { saveSite } = await import('./sites.js');
-    await saveSite({ id: l.site_id, data, origine: verifica.conferma ? 'Payments > Scadenziario strutture (titolo confermato)' : 'Payments > Scadenziario strutture', actorId: opts.actorId || null });
+    await saveSite({ id: l.site_id, data, origine: verifica.conferma ? 'Finance Management > Scadenziario strutture (titolo confermato)' : 'Finance Management > Scadenziario strutture', actorId: opts.actorId || null });
     return { status: 'ok', site_id: l.site_id, tenure_before: before.tenure, tenure_after: verifica.tenure };
   });
 }

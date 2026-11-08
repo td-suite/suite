@@ -1,6 +1,6 @@
 // Piano delle manutenzioni: scadenze da dispositivi e obblighi degli immobili (filtri per sede, tipo, stato, periodo, esecutore),
 // chiusura con esito, rapportino allegato e costo, rigenerazione della successiva; un esito non conforme apre un intervento correttivo;
-// un obbligo con costo avvisa Payments. Il site manager conferma solo i controlli di sede (sorveglianza) delle proprie sedi.
+// un obbligo con costo avvisa Finance Management. Il site manager conferma solo i controlli di sede (sorveglianza) delle proprie sedi.
 import { Router } from 'express';
 import { z } from 'zod';
 import { q, one, many, tx } from '../db.js';
@@ -106,12 +106,12 @@ r.post('/piano/:id/chiudi', conUpload, ah(async (req, res) => {
     wo = await createWorkOrder(req, { site_id: pl.site_id, asset_id: pl.asset_id, plan_id: pl.id, title: `Non conformità: ${pl.title}`, description: b.notes || `Esito non conforme del ${pl.kind_label.toLowerCase()} del ${doneAt}.`, priority: 'ALTA', location: pl.asset_location, vendor_org_id: pl.vendor_org_id || null });
     await q('UPDATE maintenance_plans SET work_order_id=$2 WHERE id=$1', [pl.id, wo.id]);
   }
-  // obbligo con costo: proposta a Payments (avviso ai profili CEO/CFO/Support, nessuna istanza automatica: serve l'IBAN del beneficiario)
+  // obbligo con costo: proposta a Finance Management (avviso ai profili CEO/CFO/Support, nessuna istanza automatica: serve l'IBAN del beneficiario)
   let payments = 0;
   const cost = b.cost ?? pl.cost_estimate;
   if (pl.obligation_id && cost > 0) {
     const ids = await financeUserIds();
-    payments = await notify(ids, { kind: 'MODULO', module_key: 'finance', title: `Costo da pagare: ${pl.title} · ${pl.site_name}`, body: `Obbligo dell'immobile eseguito il ${doneAt}, costo ${Number(cost).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}. Crea l'istanza di pagamento in Payments con la fattura del fornitore.`, link: '/finance/istanze' });
+    payments = await notify(ids, { kind: 'MODULO', module_key: 'finance', title: `Costo da pagare: ${pl.title} · ${pl.site_name}`, body: `Obbligo dell'immobile eseguito il ${doneAt}, costo ${Number(cost).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}. Crea l'istanza di pagamento in Finance Management con la fattura del fornitore.`, link: '/finance/istanze' });
   }
   await audit(req, 'FACILITY_SCADENZA_CHIUSA', { module: KEY, entity: 'plan', entityId: pl.id, data: { site_id: pl.site_id, outcome: b.outcome, done_at: doneAt, next_id: next?.id || null, work_order: wo?.id || null, payments } });
   res.json({ ok: true, next, work_order: wo, payments_notified: payments });

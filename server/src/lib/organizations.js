@@ -8,7 +8,7 @@
 // Tipi decisi dal CEO (decisione 8): locatore = FORNITORE, partner del punto prelievi = PARTNER, cliente o prospect = CLIENTE. Il tipo di
 // una Legal entity già esistente non si cambia da qui (una Legal entity che è sia cliente sia partner resta CLIENTE, vedi la migrazione 045).
 // La usano: Amministrazione > Legal entity (POST /api/organizations), Business Hub (nuovo prospect, email da assegnare, DB Opportunità,
-// pacchetti), Spedizioni (richiedente), Payments e lettura del contratto in Sedi (locatore), connettore e file Legal entity.
+// pacchetti), Spedizioni (richiedente), Finance Management e lettura del contratto in Sedi (locatore), connettore e file Legal entity.
 import { one, many, tx } from '../db.js';
 import { audit } from './util.js';
 import { cfOrVat, norm } from './anagraficaMatch.js';
@@ -48,7 +48,7 @@ export async function nomiSimili(name, c = null, { escludi = null } = {}) {
  * opts: { origine (testo per l'audit), req | actorId, c (client di una transazione già aperta), dedupe (predefinito true),
  *         simili (cerca i nomi simili, predefinito = dedupe), needsReview (forza la spunta "da rivedere") }.
  * Ritorna { org, created, come?, simili }: come = criterio del doppione trovato (partita IVA, codice fiscale, nome).
- * Esempio: await createOrganization({ kind: 'FORNITORE', name: 'Immobiliare Rossi Srl', vat_number: '01234567890' }, { origine: 'Payments > locatore', req })
+ * Esempio: await createOrganization({ kind: 'FORNITORE', name: 'Immobiliare Rossi Srl', vat_number: '01234567890' }, { origine: 'Finance Management > locatore', req })
  */
 export async function createOrganization(dati, { origine = 'Amministrazione > Legal entity', req = null, actorId = null, c = null, dedupe = true, simili: cercaSimili = dedupe, needsReview = false } = {}) {
   if (!dati?.name || String(dati.name).trim().length < 2) throw Object.assign(new Error('Ragione sociale mancante'), { status: 400 });

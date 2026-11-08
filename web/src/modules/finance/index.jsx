@@ -1,4 +1,4 @@
-// Modulo Finance (Payments) dentro la Suite: solo il contenuto delle pagine dell'app (la cornice, la sidebar e l'accesso
+// Modulo Finance (Finance Management) dentro la Suite: solo il contenuto delle pagine dell'app (la cornice, la sidebar e l'accesso
 // sono della Suite). Percorsi relativi a /finance. Login, Onboarding, Utenti e Profilo dell'app non sono portati.
 import React from 'react';
 import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)

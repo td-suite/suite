@@ -67,7 +67,7 @@ function PlanModal({ id, onClose, onDone }) {
   const chiudi = async () => {
     const fd = new FormData(); for (const [k, v] of Object.entries(f)) if (v !== '' && v != null) fd.append(k, String(v)); for (const x of files) fd.append('file', x, x.name);
     setBusy(true);
-    try { const r = await api.upload(`/piano/${p.id}/chiudi`, fd); toast(`Scadenza chiusa${r.next ? `: prossima il ${itDate(r.next.due_date)}` : ''}${r.work_order ? ` · aperto l'intervento ${r.work_order.code}` : ''}${r.payments_notified ? ' · avvisato Payments' : ''}`); onDone(); } catch (e) { toast(e, 'err'); }
+    try { const r = await api.upload(`/piano/${p.id}/chiudi`, fd); toast(`Scadenza chiusa${r.next ? `: prossima il ${itDate(r.next.due_date)}` : ''}${r.work_order ? ` · aperto l'intervento ${r.work_order.code}` : ''}${r.payments_notified ? ' · avvisato Finance Management' : ''}`); onDone(); } catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
   const sposta = async () => { try { await api.put(`/piano/${p.id}`, { due_date: move }); toast('Scadenza spostata'); onDone(); } catch (e) { toast(e, 'err'); } };

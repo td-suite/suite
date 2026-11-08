@@ -7,11 +7,11 @@ import { useAuth, canManage, isSigner } from '../auth.jsx';
 import { useApi, Card, Kpi, Field, Modal, Badge, MoneyInput, useToast, Icon, Loading, ErrorBox, Empty } from '../components/ui.jsx';
 import { eur, itDate, STATUS } from '../format.js';
 
-// Scadenziario strutture nel widget Payments (richiesta del CEO, 28/10/2026): affitti e utenze di ogni sede, con avvisi dei
+// Scadenziario strutture nel widget Finance Management (richiesta del CEO, 28/10/2026): affitti e utenze di ogni sede, con avvisi dei
 // pagamenti, storico degli scatti del canone e delle bollette, previsione dei costi e istanze di pagamento create dalle scadenze.
 // Le scadenze non si inseriscono: si calcolano dai contratti e dalle utenze (server, lib/schedule.js); qui si segnano come pagate /
 // fatte o si trasformano in istanze. Le sedi sono quelle dell'anagrafica unica; locatore e fornitore si scelgono tra le Legal entity
-// e si agganciano a un beneficiario Payments. Finance Support e amministratori scrivono; CEO e CFO segnano gli esiti; gli altri leggono.
+// e si agganciano a un beneficiario Finance Management. Finance Support e amministratori scrivono; CEO e CFO segnano gli esiti; gli altri leggono.
 
 const LEASE_KIND = { COMMERCIALE_6_6: 'Commerciale 6+6', COMMERCIALE_9_9: 'Commerciale 9+9', ABITATIVO_4_4: 'Abitativo 4+4', ABITATIVO_3_2: 'Abitativo 3+2', TRANSITORIO: 'Transitorio', COMODATO: 'Comodato', ALTRO: 'Altro' };
 const REGISTRATION = { IMPOSTA_ANNUALE: 'Imposta annuale', UNICA_SOLUZIONE: 'Unica soluzione', CEDOLARE_SECCA: 'Cedolare secca', DA_REGISTRARE: 'Da registrare' };
@@ -26,7 +26,7 @@ function RegistryInfo({ g, siteId }) {
   if (!g) return null;
   const gar = [g.guarantee_bank_amount != null && `fideiussione bancaria ${eur(g.guarantee_bank_amount)}`, g.guarantee_insurance_amount != null && `fideiussione assicurativa ${eur(g.guarantee_insurance_amount)}`, g.deposit_amount != null && `caparra / deposito ${eur(g.deposit_amount)}`].filter(Boolean);
   return (
-    <div className="registry-info small" title="Canone, durata, locatore e garanzie si modificano in Amministrazione > Sedi; gli scatti ISTAT e le rinegoziazioni restano qui in Payments">
+    <div className="registry-info small" title="Canone, durata, locatore e garanzie si modificano in Amministrazione > Sedi; gli scatti ISTAT e le rinegoziazioni restano qui in Finance Management">
       <b>Dati dall'anagrafica Sedi (Amministrazione)</b>{' '}
       {g.rent_amount != null ? `canone ${eur(g.rent_amount)} ${RENT_PERIOD[g.rent_period] || ''}${g.rent_vat ? `, ${VAT_LABEL[g.rent_vat]}${g.rent_vat !== 'ESENTE' && g.rent_vat_rate != null ? ` ${Number(g.rent_vat_rate).toLocaleString('it-IT')}%` : ''}` : ''}` : 'canone non indicato'}
       {gar.length ? ` · garanzie: ${gar.join(', ')}` : ' · nessuna garanzia indicata'}
@@ -244,7 +244,7 @@ function Dossier({ site, leases, utilities, events, canWrite, open, onChanged })
           <tbody>{leases.map((l) => (
             <React.Fragment key={l.id}>
               <tr>
-                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div><RegistryInfo g={l.registry} siteId={l.site_id} /><LeaseDocs lease={l} canWrite={canWrite} onChanged={onChanged} />{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Payments le istanze usano l'IBAN della Legal entity">beneficiario Payments non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
+                <td><b>{l.unit || 'Immobile'}</b><div className="small muted">{l.landlord_name || 'locatore non indicato'}{l.deposit ? ` · deposito ${eur(l.deposit)}` : ''}</div><RegistryInfo g={l.registry} siteId={l.site_id} /><LeaseDocs lease={l} canWrite={canWrite} onChanged={onChanged} />{l.beneficiary_name ? <div className="small muted">beneficiario {l.beneficiary_name}</div> : <div className="small red" title="Senza beneficiario Finance Management le istanze usano l'IBAN della Legal entity">beneficiario Finance Management non indicato</div>}{!l.active && <Badge tone="red">Cessato</Badge>}</td>
                 <td>{LEASE_KIND[l.kind] || l.kind}<div className="small muted">dal {itDate(l.start_date)}{l.first_term_years ? ` · ${l.first_term_years} anni` : ''}{l.renewal_years ? ` + ${l.renewal_years}` : ''}</div></td>
                 <td className="num"><b>{l.current_amount != null ? eur(l.current_amount) : <span className="muted">non indicata</span>}</b><div className="small muted">/{PER_SHORT[l.period_months] || 'rata'}{l.auto_pay ? ' · automatico' : ''}{l.current_step_from ? ` · dal ${itDate(l.current_step_from)}` : ''}</div></td>
                 <td>{l.end_date ? <>{itDate(l.end_date)}{l.expired ? <div className="small red">scaduto</div> : l.renewals ? <div className="small muted">rinnovato {l.renewals} {l.renewals === 1 ? 'volta' : 'volte'}</div> : null}</> : <span className="muted">–</span>}</td>
@@ -448,7 +448,7 @@ function LeaseForm({ data, sites, orgs, orgsReload, onClose, onSaved }) {
         <Field label={<>Tipologia <Pin k="kind" /></>}><select value={f.kind} onChange={set('kind')}>{Object.entries(LEASE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label={<>Locatore (Legal entity) <Pin k="landlord_org_id" /></>} help={ai?.proposta?.landlord_org_id ? `Dal contratto: ${ai.proposta.landlord_label} (${ai.proposta.landlord_how})` : 'Dall\'anagrafica; se manca, scrivi il nome qui sotto'}><OrgSelect value={f.landlord_org_id} onChange={set('landlord_org_id')} orgs={orgs} /></Field>
         <Field label={<>Locatore (nome) <Pin k="landlord_name" /></>} help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : 'Nome del proprietario se non è in anagrafica'}><input value={f.landlord_name} onChange={set('landlord_name')} placeholder={org?.name || ''} /></Field>
-        <Field label="Beneficiario Payments" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle scadenze" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.landlord_name ? { name: f.landlord_name } : null} fromLabel="nuovo dal locatore" /></Field>
+        <Field label="Beneficiario Finance Management" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle scadenze" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.landlord_name ? { name: f.landlord_name } : null} fromLabel="nuovo dal locatore" /></Field>
       </div>
       <h3 style={{ margin: '16px 0 8px' }}>Durata</h3>
       <div className="form-grid">
@@ -524,7 +524,7 @@ function UtilityForm({ data, sites, orgs, onClose, onSaved }) {
         <Field label="Fatturazione"><select value={f.period_months} onChange={set('period_months')}>{[1, 2, 3, 4, 6, 12].map((n) => <option key={n} value={n}>{PERIOD[n]}</option>)}</select></Field>
         <Field label="Fornitore (Legal entity)" help="Dall'anagrafica; se manca, scrivi il nome qui sotto"><OrgSelect value={f.supplier_org_id} onChange={set('supplier_org_id')} orgs={orgs} /></Field>
         <Field label="Fornitore (nome)" help={org ? `Vale la Legal entity ${org.name} se lasci vuoto` : null}><input value={f.supplier_name} onChange={set('supplier_name')} placeholder={org?.name || ''} /></Field>
-        <Field label="Beneficiario Payments" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle bollette" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.supplier_name ? { name: f.supplier_name } : null} fromLabel="nuovo dal fornitore" /></Field>
+        <Field label="Beneficiario Finance Management" help="Anagrafica dei beneficiari con IBAN: serve a creare le istanze dalle bollette" className="span2"><BeneficiarySelect value={f.beneficiary_id} onChange={set('beneficiary_id')} fromOrg={org ? { id: org.id, name: org.name } : f.supplier_name ? { name: f.supplier_name } : null} fromLabel="nuovo dal fornitore" /></Field>
         <Field label="POD / PDR / numero cliente"><input className="mono" value={f.code} onChange={set('code')} /></Field>
         <Field label="Intestatario attuale"><input value={f.holder} onChange={set('holder')} /></Field>
         <Field label="Voltura"><select value={f.transfer_status} onChange={set('transfer_status')}>{Object.entries(TRANSFER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -586,7 +586,7 @@ function DoneForm({ event: e, error, onClose, onConfirm }) {
   );
 }
 
-// Beneficiario Payments: ricerca nell'anagrafica dei beneficiari (GET /beneficiaries?q=) e creazione dal locatore / fornitore
+// Beneficiario Finance Management: ricerca nell'anagrafica dei beneficiari (GET /beneficiaries?q=) e creazione dal locatore / fornitore
 function BeneficiarySelect({ value, onChange, fromOrg, fromLabel }) {
   const [q, setQ] = useState('');
   const [list, setList] = useState([]);
@@ -698,7 +698,7 @@ function PdfPanel({ edit, leaseId, ai, current, onAnalyzed, onApplyDiff, onOrgCr
           <div className="small"><b>{ai.filename}</b>{ai.pages ? ` · ${ai.pages} pagine` : ''}{ai.ocr ? ' · OCR' : ''}{ai.model ? ` · lettura ${ai.model === 'mock' ? 'di prova' : ai.model}` : ''}</div>
           <div className="small" style={{ marginTop: 4 }}>
             Sede: {ai.proposta?.site_id ? <><b>{ai.proposta.site_label}</b> <span className="muted">({ai.proposta.site_how})</span></> : <span className="red">non abbinata</span>} · Locatore: {ai.proposta?.landlord_org_id ? <><b>{ai.proposta.landlord_label}</b> <span className="muted">({ai.proposta.landlord_how})</span></> : <><span className="red">non in anagrafica</span> <button type="button" className="btn sm ghost" disabled={busy} onClick={createOrg}>Crea Legal entity dal contratto</button></>}
-            {ai.proposta?.beneficiary_id ? <> · Beneficiario Payments: <b>{ai.proposta.beneficiary_label}</b></> : null}
+            {ai.proposta?.beneficiary_id ? <> · Beneficiario Finance Management: <b>{ai.proposta.beneficiary_label}</b></> : null}
           </div>
           {!edit && ai.initial_steps?.length > 1 && <div className="small" style={{ marginTop: 4 }}>Scatti proposti: {ai.initial_steps.map((st) => `${itDate(st.valid_from)} ${eur(st.amount)}${st.reason === 'INIZIALE' ? ' (a regime)' : ''}`).join(' · ')}</div>}
           {ai.avvisi?.length > 0 && <div className="alert warn" style={{ marginTop: 8, flexDirection: 'column', gap: 2 }}>{ai.avvisi.map((a, i) => <div key={i} className="small">{a}</div>)}</div>}

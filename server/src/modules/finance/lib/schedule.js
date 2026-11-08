@@ -1,4 +1,4 @@
-// Scadenziario strutture (widget Payments): calcolo delle scadenze e della previsione dei costi (funzioni pure, senza database).
+// Scadenziario strutture (widget Finance Management): calcolo delle scadenze e della previsione dei costi (funzioni pure, senza database).
 // Le scadenze non si salvano: si ricavano ogni volta da contratti di affitto (con gli scatti del canone) e utenze (con le
 // bollette registrate). Gli esiti (schedule_done) e gli avvisi (schedule_notified) sono le sole cose persistite.
 // Le date sono stringhe 'YYYY-MM-DD' (come le restituisce il db della Suite); l'aritmetica è sui giorni UTC, come nella bozza.

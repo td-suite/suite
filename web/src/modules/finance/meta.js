@@ -1,8 +1,8 @@
-// Modulo Finance (Payments): voci di menu disegnate dalla Suite (la sidebar dell'app non si porta).
+// Modulo Finance (Finance Management): voci di menu disegnate dalla Suite (la sidebar dell'app non si porta).
 // profiles: profili del grant che vedono la voce (OWNER e ADMIN della Suite le vedono tutte).
 export default {
   key: 'finance',
-  title: 'Payments',
+  title: 'Finance Management',
   kicker: 'Finance',
   area: 'FINANCE',
   nav: [

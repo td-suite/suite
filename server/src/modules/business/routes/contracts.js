@@ -216,6 +216,8 @@ r.post('/', ah(async (req, res) => {
     return c;
   });
   await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, org: org?.name, site: site?.name });
+  // ogni contratto SRV/MDL con controparte ha la sua scheda nella sezione della linea (CEO, 08/11/2026)
+  if (['SRV', 'MDL'].includes(d.kind) && org) { const { accountDaContratto } = await import('../lib/contrattualizza.js'); await accountDaContratto(row.id, { userId: req.user.id, fonte: 'creazione del contratto' }).catch((e) => console.warn('[business] account dal contratto', row.id, e.message)); }
   // A1: alla creazione del contratto PP solo la verifica della sede (la scrittura avviene alla firma)
   const coerenza_sede = d.kind === 'PP' && org ? await verificaSedePP(org.id, site?.id || null) : undefined;
   res.status(201).json({ ...(await loadContract(row.id)), coerenza_sede });
@@ -301,6 +303,7 @@ r.post('/:id/generate', ah(async (req, res) => {
     const old = await client.query(`DELETE FROM contract_files WHERE contract_id=$1 AND category IN ('GENERATO_DOCX','GENERATO_PDF') RETURNING blob_path`, [c.id]);
     await dropBlobs(old.rows.map((r) => r.blob_path));
   });
+  if (['SRV', 'MDL'].includes(c.kind) && c.org_id) { const { accountDaContratto } = await import('../lib/contrattualizza.js'); await accountDaContratto(c.id, { userId: req.user.id, fonte: 'generazione della proposta' }).catch((e) => console.warn('[business] account dal contratto', c.id, e.message)); }
   c = await loadContract(c.id);
   const g = await rendiContratto(c, s, req.user.id);
   c = g.c;
@@ -420,7 +423,8 @@ r.delete('/:id/files/:fid', ah(async (req, res) => {
 
 // A5/A7: allineamento dell'account del cliente al contratto firmato o attivo (lib/contrattualizza.js); un errore non blocca la risposta
 async function allineaCliente(contrattoId, userId, fonte) {
-  const { allineaAccountAlContratto } = await import('../lib/contrattualizza.js');
+  const { accountDaContratto, allineaAccountAlContratto } = await import('../lib/contrattualizza.js');
+  await accountDaContratto(contrattoId, { userId, fonte }).catch((e) => console.warn('[business] account dal contratto', contrattoId, e.message));   // la scheda della linea esiste sempre
   return allineaAccountAlContratto(contrattoId, { userId, fonte }).catch((e) => ({ errore: e.message }));
 }
 

@@ -1,9 +1,9 @@
 // Lettura di un contratto di locazione in PDF con Claude, condivisa da Amministrazione > Sedi (titolo di godimento, canone, garanzie:
-// routes/sites-lease.js, richiesta del CEO del 31/10/2026) e dallo Scadenziario strutture di Payments (modules/finance, 28/10/2026).
+// routes/sites-lease.js, richiesta del CEO del 31/10/2026) e dallo Scadenziario strutture di Finance Management (modules/finance, 28/10/2026).
 // Il testo estratto (lib/pdftext.js: pdftotext, OCR se scansione) viene passato al modello con un prompt da trascrittore fedele; la
 // risposta JSON (locatore, conduttore, immobile, durata, canone con IVA, garanzie date al locatore, registrazione, tipo, clausole,
-// confidenza per campo con citazione) viene mappata sui campi del contratto di Payments e su quelli dell'anagrafica Sedi, e abbinata
-// alle anagrafiche (lib/anagraficaMatch.js: sede TD, Legal entity; beneficiario Payments solo se lo schema finance esiste).
+// confidenza per campo con citazione) viene mappata sui campi del contratto di Finance Management e su quelli dell'anagrafica Sedi, e abbinata
+// alle anagrafiche (lib/anagraficaMatch.js: sede TD, Legal entity; beneficiario Finance Management solo se lo schema finance esiste).
 // Lettura assistita: l'utente controlla e salva, niente salvataggio automatico. Ogni chiamata finisce in ai_log (claude.js).
 // FINANCE_AI_MOCK=1 (solo fuori produzione) sostituisce il modello con un estrattore a espressioni regolari per il collaudo del flusso.
 import { aiEnabled, askJson } from './claude.js';
@@ -219,7 +219,7 @@ export function siteFieldsFromExtract(ex, { landlordOrgId = null } = {}) {
 }
 // Legal entity dal locatore letto nel contratto (public.organizations, kind FORNITORE per la decisione 8 del CEO, needs_review): quella
 // esistente se P.IVA, CF o nome coincidono, altrimenti nuova con createOrganization (B5). Usata da Amministrazione > Sedi e dallo
-// Scadenziario di Payments. Ritorna { id, name, existing, how? }.
+// Scadenziario di Finance Management. Ritorna { id, name, existing, how? }.
 export async function landlordOrg(loc, { source, req = null, actorId = null } = {}) {
   const name = String(loc?.ragione_sociale || '').trim();
   if (name.length < 2) throw bad('Ragione sociale del locatore non letta dal contratto: crea la Legal entity in Amministrazione');
@@ -255,7 +255,7 @@ export async function buildProposal(ex, { avvisi = [] } = {}) {
     const org = await matchOrg({ vat_number: loc.piva, tax_code: loc.cf, name: loc.ragione_sociale });
     if (org) { out.landlord_org_id = org.id; out.landlord_label = org.name; out.landlord_how = org.how; }
     else avvisi.push(`Il locatore ${loc.ragione_sociale || loc.piva} non è tra le Legal entity dell'anagrafica: puoi crearlo dal contratto`);
-    // beneficiario Payments per P.IVA / nome (solo se lo schema finance esiste: la lettura da Sedi funziona anche senza Payments)
+    // beneficiario Finance Management per P.IVA / nome (solo se lo schema finance esiste: la lettura da Sedi funziona anche senza Finance Management)
     const vat = cfOrVat(loc.piva || loc.cf);
     const fin = (await one(`SELECT to_regclass('finance.beneficiaries') IS NOT NULL AS ok`))?.ok;
     const ben = fin && ((vat && await one(`SELECT id, name FROM finance.beneficiaries WHERE regexp_replace(upper(coalesce(tax_id,'')), '[^A-Z0-9]', '', 'g') IN ($1, $2)`, [vat, `IT${vat}`]))

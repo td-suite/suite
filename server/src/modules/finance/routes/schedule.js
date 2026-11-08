@@ -1,4 +1,4 @@
-// Scadenziario strutture (Payments): contratti di affitto (con gli scatti del canone), utenze (con le bollette), agenda delle
+// Scadenziario strutture (Finance Management): contratti di affitto (con gli scatti del canone), utenze (con le bollette), agenda delle
 // scadenze, esiti, istanze di pagamento create dalle scadenze, previsione dei costi ed esportazione. Montato su /api/finance/scadenziario.
 // Accesso: tutti gli utenti del modulo leggono; SUPPORT e amministratori (canManage) scrivono; CEO e CFO possono segnare gli esiti.
 import { Router } from 'express';
@@ -32,7 +32,7 @@ const optText = (max) => opt(z.string().trim().max(max));
 const money = z.coerce.number().min(0).max(100_000_000);
 const intId = z.coerce.number().int().positive();
 
-// ---- sedi (nessun perimetro per utente in Payments) ----
+// ---- sedi (nessun perimetro per utente in Finance Management) ----
 async function scopedSiteIds(req) {
   const asked = req.query.site_id ? Number(req.query.site_id) : null;
   return asked ? [asked] : null;
@@ -44,7 +44,7 @@ async function assertSiteAccess(_user, siteId) {
 }
 async function assertBeneficiary(id) {
   if (id == null) return;
-  if (!await one('SELECT 1 FROM beneficiaries WHERE id=$1', [id])) throw bad('Beneficiario Payments inesistente');
+  if (!await one('SELECT 1 FROM beneficiaries WHERE id=$1', [id])) throw bad('Beneficiario Finance Management inesistente');
 }
 async function assertOrg(id, label) {
   if (id == null) return;
@@ -159,7 +159,7 @@ r.get('/forecast', ah(async (req, res) => {
 }));
 
 // ---- istanza di pagamento da una scadenza ----
-// Crea un'istanza in bozza con le regole di POST /requests (lib/requestCreate.js): beneficiario dal beneficiario Payments del
+// Crea un'istanza in bozza con le regole di POST /requests (lib/requestCreate.js): beneficiario dal beneficiario Finance Management del
 // contratto/utenza (ultimo IBAN noto), altrimenti dal locatore/fornitore e dalla Legal entity collegata (IBAN del core).
 r.post('/events/request', requireWrite, ah(async (req, res) => {
   const d = parse(z.object({ key: z.string().regex(KEY_RE, 'chiave evento non valida'), amount: opt(money) }), req.body);
@@ -182,9 +182,9 @@ r.post('/events/request', requireWrite, ah(async (req, res) => {
       LEFT JOIN LATERAL (SELECT iban, bic, bank FROM beneficiary_ibans WHERE beneficiary_id=b.id ORDER BY verified_at DESC NULLS LAST, first_seen_at DESC LIMIT 1) i ON TRUE WHERE b.id=$1`, [owner.beneficiary_id]) : null;
   const who = type === 'lease' ? 'locatore' : 'fornitore';
   const name = ben?.name || (type === 'lease' ? owner.landlord_name : owner.supplier_name) || org?.name;
-  if (!name) throw bad(`Indica il ${who} (beneficiario Payments, Legal entity o nome) nella scheda ${type === 'lease' ? 'del contratto' : 'dell\'utenza'}`);
+  if (!name) throw bad(`Indica il ${who} (beneficiario Finance Management, Legal entity o nome) nella scheda ${type === 'lease' ? 'del contratto' : 'dell\'utenza'}`);
   const iban = ben?.iban || org?.iban;
-  if (!iban) throw bad(`Indica l'IBAN del ${who} nel beneficiario Payments o nella Legal entity`);
+  if (!iban) throw bad(`Indica l'IBAN del ${who} nel beneficiario Finance Management o nella Legal entity`);
   const period = kind === 'bolletta' && ev.bill_id ? await one('SELECT period_from, period_to FROM utility_bills WHERE id=$1', [ev.bill_id]) : null;
   const when = period?.period_from && period?.period_to ? `periodo ${itDate(period.period_from)} - ${itDate(period.period_to)}` : kind === 'canone' ? `${MESI_LUNGHI[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : `scadenza ${itDate(date)}`;
   const body = {
@@ -210,7 +210,7 @@ r.post('/events/request', requireWrite, ah(async (req, res) => {
   res.status(201).json(await out.load());
 }));
 
-// Beneficiario Payments dal locatore / fornitore: nome e codice fiscale della Legal entity (o il nome indicato), IBAN dal core se c'è
+// Beneficiario Finance Management dal locatore / fornitore: nome e codice fiscale della Legal entity (o il nome indicato), IBAN dal core se c'è
 r.post('/beneficiaries', requireWrite, ah(async (req, res) => {
   const d = parse(z.object({ org_id: opt(intId), name: optText(200), tax_id: optText(40) }), req.body);
   const org = d.org_id ? await one('SELECT name, vat_number, tax_code, iban, bic, bank_name FROM public.organizations WHERE id=$1', [d.org_id]) : null;
@@ -295,7 +295,7 @@ r.post('/organizations', requireWrite, ah(async (req, res) => {
   const name = String(loc.ragione_sociale || '').trim();
   if (name.length < 2) throw bad('Ragione sociale del locatore non letta dal contratto: crea la Legal entity in Amministrazione');
   // B5: locatore = FORNITORE, creato (o ritrovato) dalla funzione unica del core (lib/leaseAnalysis.js landlordOrg → createOrganization)
-  const row = await landlordOrg(loc, { source: 'lo Scadenziario strutture (Payments)', actorId: req.suiteUser?.id || null });
+  const row = await landlordOrg(loc, { source: 'lo Scadenziario strutture (Finance Management)', actorId: req.suiteUser?.id || null });
   if (row.existing) return res.json(row);
   await audit(req, 'ORGANIZATION_CREATE', 'organization', row.id, { name, vat_number: loc.piva, from_document_id: f.id, source: 'scadenziario' });
   res.status(201).json({ ...row, existing: false });
@@ -306,7 +306,7 @@ const leaseSchema = z.object({
   site_id: intId,
   landlord_org_id: opt(intId),
   landlord_name: optText(200),
-  beneficiary_id: opt(intId),      // beneficiario Payments del locatore
+  beneficiary_id: opt(intId),      // beneficiario Finance Management del locatore
   unit: optText(200),
   kind: z.enum(['COMMERCIALE_6_6', 'COMMERCIALE_9_9', 'ABITATIVO_4_4', 'ABITATIVO_3_2', 'TRANSITORIO', 'COMODATO', 'ALTRO']).default('COMMERCIALE_6_6'),
   start_date: DATE,
@@ -484,7 +484,7 @@ const utilitySchema = z.object({
   kind: z.enum(['ENERGIA', 'GAS', 'ACQUA', 'TARI', 'TELEFONIA', 'CONDOMINIO', 'VIGILANZA', 'PULIZIE', 'ALTRO']).default('ALTRO'),
   supplier_org_id: opt(intId),
   supplier_name: optText(200),
-  beneficiary_id: opt(intId),      // beneficiario Payments del fornitore
+  beneficiary_id: opt(intId),      // beneficiario Finance Management del fornitore
   code: optText(100),
   holder: optText(200),
   transfer_status: z.enum(['DA_AVVIARE', 'IN_CORSO', 'COMPLETATA', 'NON_NECESSARIA']).default('NON_NECESSARIA'),

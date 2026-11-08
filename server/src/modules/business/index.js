@@ -68,7 +68,7 @@ export default function mount(app) {
   r.get('/auth/config', (_req, res) => res.json({ appName: config.appName, entraEnabled: false }));
 
   // A3 (08/11/2026, decisione 3 del CEO): "Sedi TD in locazione" in sola lettura per TUTTI gli utenti del modulo, dai dati di Sedi e
-  // Payments (canone, scadenze, disdetta, locatore, PDF del contratto, fascicolo). Si modifica solo in Amministrazione > Sedi.
+  // Finance Management (canone, scadenze, disdetta, locatore, PDF del contratto, fascicolo). Si modifica solo in Amministrazione > Sedi.
   r.get('/sedi-locazione', async (req, res, next) => {
     try {
       const { sediInLocazione } = await import('../../lib/sedeBusiness.js');
@@ -119,4 +119,12 @@ export default function mount(app) {
   registerJob(`${KEY}:richiamo-prospect`, 60, async () => (await live() ? eseguiRichiamo() : { skipped: true, reason: 'modulo non LIVE' }));
   // Punti Prelievo: ripresa dei passi dell'avvio in attesa della sede o della data (mai i non riusciti, che aspettano "Riprova")
   registerJob(`${KEY}:avvio-pp`, 30, async () => (await live() ? riprendiAvvii() : { skipped: true, reason: 'modulo non LIVE' }));
+  // Schede dei clienti dai contratti (CEO, 08/11/2026): ogni contratto SRV/MDL con controparte ha il suo account nella sezione della
+  // linea; il controllo gira ogni 6 ore e crea le schede mancanti (idempotente; anche in Diagnostica D12b)
+  registerJob(`${KEY}:schede-dai-contratti`, 360, async () => {
+    if (!(await live())) return { skipped: true, reason: 'modulo non LIVE' };
+    const { contrattiSenzaAccount } = await import('./lib/contrattualizza.js');
+    const out = await contrattiSenzaAccount({ esegui: true });
+    return { create: out.filter((x) => /creata/.test(x.esito)).length, errori: out.filter((x) => x.esito === 'errore').length };
+  });
 }

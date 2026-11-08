@@ -56,7 +56,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="contratti-pp" element={<Contracts kind="PP" />} />
             <Route path="service" element={<Contracts kind="SRV" />} />
             <Route path="medicina-del-lavoro" element={<Contracts kind="MDL" />} />
-            {/* A3 (08/11/2026): vista in sola lettura delle sedi in locazione dall'anagrafica Sedi e da Payments (niente più contratti SEDE) */}
+            {/* A3 (08/11/2026): vista in sola lettura delle sedi in locazione dall'anagrafica Sedi e da Finance Management (niente più contratti SEDE) */}
             <Route path="sedi" element={<SediLocazione />} />
             <Route path="fascicoli" element={<Dossiers />} />
             <Route path="contratti" element={<Contracts />} />

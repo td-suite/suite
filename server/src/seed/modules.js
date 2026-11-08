@@ -7,7 +7,7 @@ export const MODULES = [
   // ---- (i commenti di area sotto sono storici: l'area effettiva è nel campo area)
   { key: 'business', area: 'RETAIL_FLOW', name: 'Business Hub', tagline: 'Pipeline, clienti, contratti, contatti e criticità: la centrale del business', icon: 'business-hub', kind: 'LEGACY', legacy_url: 'https://business.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('ADMIN', 'Amministratore'), P('SERVICE', 'Service'), P('RETAIL', 'Retail'), P('MDL', 'Medicina del Lavoro'), P('HQS', 'HQS'), P('VIEWER', 'Sola lettura')] },
-  { key: 'finance', area: 'FINANCE', name: 'Payments', tagline: 'Firma congiunta CEO e CFO, poteri per importo', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
+  { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firma congiunta CEO e CFO, poteri per importo', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },
   { key: 'integration', area: 'FINANCE', name: 'Integration M&A', tagline: 'Post closing dei target, GANTT e avanzamento', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,
     profiles: [P('ADMIN', 'Amministratore'), P('EDITOR', 'Editor'), P('VIEWER', 'Sola lettura')] },
@@ -73,7 +73,7 @@ export const MODULES = [
   { key: 'audit', area: 'HQS', name: 'Audit SGI', tagline: 'Auto-audit mensili delle sedi, audit interni, audit di terze parti, audit ISO 37001 sui partner, sintesi con Claude', icon: 'audit', kind: 'LEGACY', legacy_url: null, sort_order: 15, scope_type: 'SITE', open_to_all: false,
     profiles: [P('ADMIN', 'Amministratore'), P('QUALITA', 'Qualità'), P('AUDITOR', 'Auditor (Retail, Service, MDL)'), P('SITE', 'Site manager', true), P('VIEWER', 'Consultazione')] },
 
-  // Facility e Manutenzioni (31/10/2026): immobili e contratti di affitto (canone da Payments), utenze ed energia (bollette in Payments),
+  // Facility e Manutenzioni (31/10/2026): immobili e contratti di affitto (canone da Finance Management), utenze ed energia (bollette in Finance Management),
   // dispositivi dal Catalogo di Amministrazione con piano delle manutenzioni, interventi e segnalazioni guasti, scadenze normative.
   // Solo con grant (open_to_all FALSE). FACILITY = Operations; MANUTENTORE anche fornitore esterno; SITE = site manager (ambito sede).
   { key: 'facility', area: 'OPERATIONS', name: 'Facility e Manutenzioni', tagline: 'Immobili, utenze ed energia, dispositivi e manutenzioni programmate, scadenze normative', icon: 'facility', kind: 'LEGACY', legacy_url: null, sort_order: 70, scope_type: 'SITE', open_to_all: false,

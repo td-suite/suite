@@ -263,14 +263,14 @@ r.post('/punti-prelievo/da-sede', ah(async (req, res) => {
   res.status(201).json({ id: row.id });
 }));
 
-// Clienti della linea (menu "Clienti"): clienti attivi e contrattualizzati in avvio, con contratto, avvio, volumi, ultimo contatto.
-// A5 (blocco 2): per Service e Medicina del Lavoro la regola è la vista unica public.clienti_attivi_v (la stessa di Ordini, NC, Portale e
-// Circolari); per i Punti Prelievo resta quella della linea (cliente attivo, contrattualizzato o fase 6).
-const CLIENTE_DELLA_LINEA = `(CASE WHEN a.linea IN ('SRV','MDL') THEN EXISTS (SELECT 1 FROM public.clienti_attivi_v v WHERE v.account_id=a.id)
-  ELSE (a.cliente_attivo OR a.contrattualizzato_at IS NOT NULL OR a.fase_corrente >= 6) END)`;
+// Clienti della linea (menu "Clienti"): SOLO i clienti attivi, cioè con la fase 7 confermata dal CEO (accounts.cliente_attivo), la stessa
+// regola del livello ATTIVO di public.clienti_attivi_v. "Questa sezione deve contenere SOLO gli attivi! Non altri!" (CEO, 08/11/2026).
+// I contrattualizzati in avvio restano in Pipeline e in Clienti e prospect (fase 6).
+const CLIENTE_DELLA_LINEA = `a.cliente_attivo`;
 r.get('/clienti-attivi', ah(async (req, res) => {
   const linea = LINEE_KEYS.includes(req.query.linea) ? req.query.linea : 'SRV';
   const s = await getSettings();
+  if (linea === 'PP') return res.json({ linea, righe: await puntiECentriAttivi() });
   const rows = await many(`SELECT a.id, a.organization_id, o.name AS org_name, o.city AS citta, o.province AS prov, a.linea, a.fase_corrente, a.phase_dates, a.cliente_attivo, a.attivo_dal, a.contrattualizzato_at,
       a.data_avvio_prevista, a.volumi_giornalieri_attesi, a.volume_fy_atteso, a.fatturato_fy_atteso, uo.full_name AS owner_name,
       (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'signed_at', c.signed_at, 'start_date', c.start_date) FROM contracts c
@@ -284,6 +284,25 @@ r.get('/clienti-attivi', ah(async (req, res) => {
     WHERE a.linea=$1 AND ${CLIENTE_DELLA_LINEA} ORDER BY a.cliente_attivo DESC, coalesce(a.attivo_dal, a.data_avvio_prevista) DESC NULLS LAST, o.name`, [linea]);
   res.json({ linea, righe: rows.map((x) => ({ ...x, volumi: volumiGiornalieri(x, s.hub_giorni_lavorativi) })) });
 }));
+
+// Punti Prelievo e Centri Medici attivi: TUTTE le sedi attive di Toscana Diagnostica di quei tipi, dall'anagrafica Sedi (Amministrazione),
+// con l'account PP del Business Hub se c'è ("Come mai non li hai inclusi nei Centri attivi?", CEO 08/11/2026). Integrale: una riga per sede.
+async function puntiECentriAttivi() {
+  return many(`SELECT s.id AS site_id, s.code, s.name, s.kind, s.address, s.zip, s.city, s.province, s.tenure, s.opened_at, s.studiolab_code,
+      ho.name AS host_name, h.person_name AS manager_name,
+      a.id, a.fase_corrente, a.phase_dates, a.cliente_attivo, a.attivo_dal, a.contrattualizzato_at, a.data_avvio_prevista, a.volumi_giornalieri_attesi, a.fatturato_fy_atteso, uo.full_name AS owner_name,
+      (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'signed_at', c.signed_at, 'start_date', c.start_date, 'end_date', c.end_date) FROM contracts c
+        WHERE c.kind='PP' AND c.site_id=s.id AND c.status NOT IN ('ANNULLATO') ORDER BY (c.status IN ('ATTIVO','AUTORIZZATO','FIRMATO')) DESC, c.updated_at DESC NULLS LAST LIMIT 1) AS contratto,
+      (SELECT json_build_object('id', d.id, 'status', d.status) FROM dossiers d JOIN contracts c2 ON c2.id=d.contract_id WHERE c2.site_id=s.id AND c2.status <> 'ANNULLATO' ORDER BY d.updated_at DESC NULLS LAST LIMIT 1) AS fascicolo
+    FROM public.sites s
+    LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id
+    LEFT JOIN LATERAL (SELECT pp.last_name || ' ' || pp.first_name AS person_name FROM public.org_units u JOIN public.org_positions op ON op.unit_id=u.id AND op.is_head
+        JOIN public.people pp ON pp.id=op.person_id AND pp.status='ATTIVO' WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
+    LEFT JOIN accounts a ON a.pp_site_id=s.id AND a.linea='PP'
+    LEFT JOIN public.users uo ON uo.id=a.owner_user_id
+    WHERE s.active AND s.kind IN ('PUNTO_PRELIEVI','CENTRO_MEDICO','CENTRO_DIAGNOSTICO','POLIAMBULATORIO')
+    ORDER BY s.kind, lower(s.name)`);
+}
 
 // Richiamo dei prospect: anteprima (cruscotto) ed esecuzione manuale (Admin, con l'interruttore acceso)
 r.get('/richiamo/anteprima', ah(async (_req, res) => res.json(await anteprimaRichiamo())));

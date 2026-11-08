@@ -33,7 +33,7 @@ export default function Energia() {
   const repQ = qs({ year, site_id: siteId });
   return (
     <div className="page">
-      <PageHead title="Energia" icon="sun" sub={`${s ? s.site.name : 'Rete Toscana Diagnostica'} · ${year}. Consumi da bollette (Payments) e letture, intensità a parità di attività, anomalie e obiettivi: evidenze per ISO 9001 e, se intraprese, ISO 14001 / 50001.`}
+      <PageHead title="Energia" icon="sun" sub={`${s ? s.site.name : 'Rete Toscana Diagnostica'} · ${year}. Consumi da bollette (Finance Management) e letture, intensità a parità di attività, anomalie e obiettivi: evidenze per ISO 9001 e, se intraprese, ISO 14001 / 50001.`}
         actions={<><a className="btn ghost" href={`${apiBase}/report/energia.pdf${repQ}&inline=1`} target="_blank" rel="noreferrer"><Icon name="pdf" />Rapporto PDF</a><a className="btn ghost" href={`${apiBase}/report/energia.xlsx${repQ}`}><Icon name="sheet" />XLSX</a></>} />
       <div className="fa-filters">
         <SiteSelect value={siteId} onChange={setSiteId} sites={sites} all={e.limited ? null : 'Rete (tutte le sedi)'} />

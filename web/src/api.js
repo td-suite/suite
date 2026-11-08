@@ -31,7 +31,7 @@ async function doRequest(method, url, body, isForm) {
   const ct = res.headers.get('content-type') || '';
   const data = ct.includes('application/json') ? await res.json() : await res.text();
   if (!res.ok) {
-    const err = new ApiError(res.status, (data && data.error) || `Errore ${res.status}`, data?.code, data?.details);
+    const err = new ApiError(res.status, (data && data.error) || `Errore ${res.status}`, data?.code, data?.details ?? data);
     if (res.status === 401 && !url.startsWith('/auth/')) window.dispatchEvent(new Event('suite:unauthorized'));
     if (res.status === 403 && ['PENDING', 'PASSWORD_CHANGE_REQUIRED', 'TOTP_REQUIRED', 'CONSENSI_RICHIESTI'].includes(data?.code)) window.dispatchEvent(new CustomEvent('suite:authstate', { detail: data.code }));
     throw err;
