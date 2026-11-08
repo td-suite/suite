@@ -17,6 +17,7 @@ export const SYNC_USER_SQL = `UPDATE users u SET first_name=p.first_name, last_n
   site_id=p.site_id, organization_id=coalesce(p.organization_id, s.organization_id), updated_at=now()
   FROM people p LEFT JOIN sites s ON s.id=p.site_id WHERE u.person_id=p.id AND p.id=$1`;
 import { ensureUnit, upsertPosition } from './orgcat.js';
+import { scriviSede } from '../lib/sites.js';
 
 const r = Router();
 const MAX_ROWS = 1000;
@@ -150,20 +151,21 @@ export const APPLIERS = {
     return { id: ins.rows[0].id, action: 'creata' };
   },
   async sites(c, row, k) {
+    // A0: anche il connettore e il file Sedi passano dalla funzione unica del core (lib/sites.js): regole del titolo, audit, Cash.
+    // Semantica invariata: il nome si aggiorna sempre, gli altri campi solo se il file li porta (mai cancellati); le conseguenze fuori
+    // transazione (Payments, organigramma, coordinate, perimetri) partono dopo il COMMIT del lotto (k._dopo, applyBatch).
     const org = row.organization_code ? (await c.query('SELECT id FROM organizations WHERE lower(code)=lower($1)', [row.organization_code])).rows[0] : null;
     if (row.organization_code && !org) throw new Error(`organizzazione ${row.organization_code} inesistente`);
     const ex = (await c.query('SELECT id FROM sites WHERE lower(code)=lower($1)', [row.code])).rows[0];
-    const vals = [row.name, row.short_name || null, row.kind || null, org?.id || null, row.address || null, row.zip || null, row.city || null, row.province || null, row.lat ?? null, row.lng ?? null,
-      row.phone || null, row.email || null, row.manager_name || null, row.opening_hours || null, row.studiolab_code || null, row.legacy_brand || null, row.active ?? null, JSON.stringify({ [`ingest:${k.source}`]: row.code }), row.opened_at || null];
-    if (ex) {
-      await c.query(`UPDATE sites SET name=$2, short_name=coalesce($3,short_name), kind=coalesce($4,kind), organization_id=coalesce($5,organization_id), address=coalesce($6,address), zip=coalesce($7,zip), city=coalesce($8,city),
-        province=coalesce($9,province), lat=coalesce($10,lat), lng=coalesce($11,lng), phone=coalesce($12,phone), email=coalesce($13,email), manager_name=coalesce($14,manager_name), opening_hours=coalesce($15,opening_hours),
-        studiolab_code=coalesce($16,studiolab_code), legacy_brand=coalesce($17,legacy_brand), active=coalesce($18,active), legacy_refs=legacy_refs || $19::jsonb, opened_at=coalesce($20::date,opened_at), updated_at=now() WHERE id=$1`, [ex.id, ...vals]);
-      return { id: ex.id, action: 'aggiornata' };
-    }
-    const ins = await c.query(`INSERT INTO sites (code, name, short_name, kind, organization_id, address, zip, city, province, lat, lng, phone, email, manager_name, opening_hours, studiolab_code, legacy_brand, active, legacy_refs, opened_at)
-      VALUES ($1,$2,$3,coalesce($4,'PUNTO_PRELIEVI'),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,coalesce($18,TRUE),$19,$20) RETURNING id`, [row.code, ...vals]);
-    return { id: ins.rows[0].id, action: 'creata' };
+    const val = { name: row.name, short_name: row.short_name, kind: row.kind, organization_id: org?.id, address: row.address, zip: row.zip, city: row.city, province: row.province,
+      lat: row.lat, lng: row.lng, phone: row.phone, email: row.email, opening_hours: row.opening_hours, studiolab_code: row.studiolab_code, legacy_brand: row.legacy_brand,
+      active: row.active, opened_at: row.opened_at };
+    const data = Object.fromEntries(Object.entries(val).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+    if (!ex) { data.code = row.code; if (!data.kind) data.kind = 'PUNTO_PRELIEVI'; if (data.active === undefined) data.active = true; }
+    const out = await scriviSede(c, { id: ex?.id || null, data, validato: true, origine: `Connettore ${k.source || 'file Sedi'}`, actorId: k.user_id || null,
+      extra: { manager_name: row.manager_name || undefined, legacy_refs: { [`ingest:${k.source}`]: row.code } } });
+    if (Array.isArray(k._dopo)) k._dopo.push(out.effetti);
+    return { id: out.site.id, action: ex ? 'aggiornata' : 'creata' };
   },
   async organizations(c, row, k) {
     let ex = null;
@@ -220,6 +222,7 @@ export const APPLIERS = {
 export async function applyBatch(batchId, dataset, rows, k) {
   const schema = ROW_SCHEMAS[dataset];
   const errors = []; const applied = [];
+  const dopo = []; k = Object.assign(k || {}, { _dopo: dopo });
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -241,6 +244,8 @@ export async function applyBatch(batchId, dataset, rows, k) {
     const result = { errors, applied: applied.slice(0, MAX_ROWS), summary: { creati: applied.filter((a) => /^cre/.test(a.action)).length, aggiornati: applied.filter((a) => /^agg/.test(a.action)).length } };
     await c.query(`UPDATE ingest_batches SET status=$2, applied_at=now(), rows_ok=$3, rows_rejected=$4, result=$5 WHERE id=$1`, [batchId, status, ok, rej, JSON.stringify(result)]);
     await c.query('COMMIT');
+    // conseguenze fuori transazione delle scritture (es. sedi: Payments, organigramma, coordinate, perimetri) dopo il COMMIT
+    for (const f of dopo) await f().catch((e) => console.warn('[ingest] dopo il lotto:', e.message));
     return { status, rows_ok: ok, rows_rejected: rej, errors };
   } catch (e) {
     await c.query('ROLLBACK');

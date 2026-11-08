@@ -23,9 +23,10 @@ export const KIND = {
   PP: { label: 'Punti Prelievo', one: 'Punto Prelievi', doc: 'Contratto di appalto', tone: 'teal', path: 'contratti-pp' },   // elenco dei contratti PP (la pagina Punti Prelievo è l'elenco dei punti)
   SRV: { label: 'Service di Laboratorio', one: 'Service di Laboratorio', doc: 'Lettera di offerta (MOD230)', tone: 'blue', path: 'service' },
   MDL: { label: 'Medicina del Lavoro', one: 'Medicina del Lavoro', doc: 'Lettera di offerta (MOD231)', tone: 'mauve', path: 'medicina-del-lavoro' },
-  SEDE: { label: 'Sedi TD in locazione', one: 'Sede TD in locazione', doc: 'Contratto di locazione del locatore', tone: 'green', path: 'sedi' },
+  // A3: contratti SEDE residui (da migrare in Amministrazione > Diagnostica anagrafica); la voce di menu "Sedi TD in locazione" è la vista sulle sedi
+  SEDE: { label: 'Contratti SEDE da migrare', one: 'Contratto SEDE (da migrare in Sedi)', doc: 'Contratto di locazione del locatore', tone: 'grey', path: 'contratti' },
 };
-export const HAS_DOSSIER = (k) => k === 'PP' || k === 'SEDE';
+export const HAS_DOSSIER = (k) => k === 'PP';   // A3: niente più contratti SEDE (i fascicoli dei flagship si aprono dalla sede)
 // Tipi delle sedi TD dell'anagrafica unica (public.sites.kind; SERVICE sono i punti dei clienti service, fuori dal modulo)
 export const SITE_KIND = { HEADQUARTER: 'Sede direzionale', LABORATORIO: 'Laboratorio', CENTRO_DIAGNOSTICO: 'Centro diagnostico', POLIAMBULATORIO: 'Poliambulatorio', PUNTO_PRELIEVI: 'Punto prelievi', CENTRO_MEDICO: 'Centro medico', ALTRO: 'Altra sede' };
 export const SITE_TYPE = { LABORATORIO: 'Laboratorio di Analisi', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Altra sede' };

@@ -4,3 +4,4 @@ const tryImport = async (p, fn) => { try { const m = await import(p); if (m[fn])
 await tryImport('../lib/legacy.js', 'registerLegacyJobs');
 await tryImport('../lib/community.js', 'registerCommunityJobs');
 await tryImport('../lib/search.js', 'registerSearchJobs');
+await tryImport('../lib/diagnostica.js', 'registerDiagnosticaJobs');   // A13: esito giornaliero della Diagnostica anagrafica

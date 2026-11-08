@@ -832,3 +832,29 @@ referenti. Componente core `CercaRubrica` (guida, permessi e privacy in docs/RUB
   precompilati del nuovo referente; "Crea il referente e usalo" lo aggiunge all'account (POST `/hub/accounts/:id/contatti`) e lo seleziona
   nella tendina. Il referente resta anche se poi si annulla la registrazione del contatto.
 - Accesso: chi ha il Business Hub (personale interno) e gli amministratori; gli esterni no. Si salva solo il contatto scelto.
+
+## Anagrafica unica: contratto PP ↔ Sedi e fine dei contratti SEDE (08/11/2026)
+Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regola di governo in docs/ANAGRAFICA.md.
+- **Contratto PP ↔ Sedi (A1, lib/contrattoSede.js).** Alla firma (contrattualizzazione PP, stato FIRMATO/AUTORIZZATO/ATTIVO dalla scheda
+  o manuale, PDF firmato caricato su un PP senza account) la sede del contratto diventa in Amministrazione > Sedi `tenure = OSPITATA` con
+  Legal entity ospitante = controparte, se non ha ospitante, tramite `saveSite` (audit, Cash, perimetri del partner; evento
+  `SEDE_ALLINEATA` nel contratto). Se l'ospitante è un'altra Legal entity: avviso (evento `SEDE_AVVISO`), nessuna scrittura. Alla
+  creazione solo la verifica (`coerenza_sede` nella risposta). Al CESSATO senza un altro contratto PP non annullato sulla stessa sede la
+  sede si chiude (`active=false`, `closed_at` = data di cessazione; evento `SEDE_CHIUSA` con il quadro d'impatto); ANNULLATO non chiude.
+  Pagina Punti Prelievo: colonna "Coerenza con Sedi" (coerente, da impostare, ospitante diverso, senza sede).
+- **Contratti SEDE eliminati (A3).** Non si creano né si modificano più (enum senza SEDE, `PUT`, caricamento file e pacchetti rifiutati con
+  il rimando ad Amministrazione > Sedi; `HAS_DOSSIER` solo PP). I contratti esistenti restano in sola lettura con l'avviso "da migrare"
+  finché il titolare non esegue in Amministrazione > Diagnostica anagrafica l'operazione "Contratti SEDE del Business Hub": **Prova**
+  (`GET /api/admin/migrazioni/sede-business`, rapporto campo per campo Business/Sedi, piano dei file, fascicoli) ed **Esegui**
+  (`POST … { conferma: 'ESEGUI' }`, solo titolare): fascicoli staccati e conservati (evento nel fascicolo), PDF portati in
+  `site_documents` riusando byte o blob (FIRMATO → contratto se la sede non ne ha, PLANIMETRIA → planimetria se manca, il resto ALTRO; mai
+  sostituire i correnti), solo i campi vuoti della locazione riempiti con `scriviSede` (per ogni differenza **vale Sedi**), spese,
+  registrazione e note accodate alle note delle garanzie, ISTAT al contratto Payments, audit `BUSINESS_SEDE_MIGRATED` con il contratto
+  completo, cancellazione diretta, poi vincoli `contracts_kind_check` (PP, SRV, MDL) e `contracts_site_required_check` (solo PP). Verifiche
+  restituite: contratti SEDE rimasti, fascicoli senza sede né Legal entity, PDF firmati presenti in Sedi.
+- **Sedi TD in locazione** (voce di menu invariata, `/business/sedi`): vista in sola lettura per tutti gli utenti del modulo
+  (`GET /api/business/sedi-locazione`): canone e periodicità, locatore, decorrenza, fine del primo periodo, **disdetta entro** (fine meno
+  preavviso), canone vigente e prossimo scatto da Payments, PDF del contratto (`/api/business/sedi-locazione/:id/contratto`), fascicolo;
+  "Apri in Sedi" per gli amministratori.
+- **Flagship (decisione 4).** "Avvia il punto prelievi" legge la locazione dalla sede (`locazioneSede`): nessun blocco, avviso nella scheda,
+  nel diario e nella risposta se la sede in locazione non ha il PDF o il canone in Sedi.

@@ -31,7 +31,7 @@ const DB_ONLY_LIMIT = Number(process.env.BUSINESS_PACK_DB_LIMIT_MB || 60) * 1024
 const MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc: 'application/msword', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', odt: 'application/vnd.oasis.opendocument.text', zip: 'application/zip', txt: 'text/plain', p7m: 'application/pkcs7-mime', msg: 'application/vnd.ms-outlook', eml: 'message/rfc822', json: 'application/json' };
 const mimeOf = (name) => MIME[path.extname(name).slice(1).toLowerCase()] || 'application/octet-stream';
 const CONTRACT_CATS = new Set(['GENERATO_DOCX', 'GENERATO_PDF', 'FIRMATO', 'LISTINO_XLSX', 'LISTINO_PDF', 'PLANIMETRIA', 'ASSICURAZIONE', 'ALTRO']);
-const KINDS = new Set(['PP', 'SRV', 'MDL', 'SEDE']);
+const KINDS = new Set(['PP', 'SRV', 'MDL']);   // A3: le sezioni SEDE si rifiutano (il contratto di locazione si carica in Amministrazione > Sedi)
 const STATUSES = new Set(['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO', 'ANNULLATO']);
 const ORG_KINDS = new Set(['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO']);
 
@@ -128,6 +128,7 @@ r.post('/import/pack', requireAdmin, upload.single('file'), ah(async (req, res) 
     const contractIds = {};
     for (const c of manifest.contracts || []) {
       try {
+        if (c.kind === 'SEDE') throw new Error('il contratto di locazione si carica in Amministrazione > Sedi (contratti SEDE non più nel Business Hub)');
         if (!c.key || !KINDS.has(c.kind)) throw new Error('chiave o sezione mancante');
         let orgId = c.org_key ? orgIds[c.org_key] : null;
         if (c.org_key && !(c.org_key in orgIds)) {
@@ -141,7 +142,7 @@ r.post('/import/pack', requireAdmin, upload.single('file'), ah(async (req, res) 
           report.contracts.skipped.push({ key: c.key, title: c.title, reason: `sede TD non trovata nell'anagrafica (${c.site.city || ''} ${(c.site.names || []).join(' / ')}): creala in Amministrazione > Sedi e ripeti il caricamento` });
           continue;
         }
-        if ((c.kind === 'PP' || c.kind === 'SEDE') && !site) throw new Error('la sezione richiede la sede TD');
+        if (c.kind === 'PP' && !site) throw new Error('la sezione richiede la sede TD');
         if (!orgId && !site && !dryRun) throw new Error('né controparte né sede');
         const status = STATUSES.has(c.status) ? c.status : 'BOZZA';
         const cur = await one('SELECT id, status FROM contracts WHERE import_key=$1', [c.key]);

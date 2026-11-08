@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { dopoCambioStato, verificaSedePP } from '../lib/contrattoSede.js';
+const SEDE_SPOSTATO = 'Il contratto di locazione delle sedi TD si gestisce in Amministrazione > Sedi (vista "Sedi TD in locazione" del Business Hub): i contratti SEDE non si modificano più';
 import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
@@ -73,7 +75,9 @@ const DATA_SCHEMA = {
 };
 
 const contractSchema = z.object({
-  kind: z.enum(['PP', 'SRV', 'MDL', 'SEDE']),
+  // A3 (08/11/2026): niente più contratti SEDE (il contratto di locazione sta in Amministrazione > Sedi); quelli esistenti si leggono
+  // finché il titolare non esegue l'eliminazione da Amministrazione > Diagnostica anagrafica, ma non si creano né si modificano
+  kind: z.enum(['PP', 'SRV', 'MDL']),
   // controparte (Legal entity) e sede TD: almeno una delle due (contracts_party_check)
   org_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
   site_id: z.preprocess((v) => (v === '' || v === undefined ? null : v), z.coerce.number().int().positive().nullable()),
@@ -203,18 +207,21 @@ r.post('/', ah(async (req, res) => {
     if (HAS_DOSSIER(d.kind)) {
       // il fascicolo nasce con la controparte e la sede TD del contratto (dossiers.org_id / site_id) e le segue
       await client.query('INSERT INTO dossiers (contract_id, org_id, site_id, hours, checklists, doc_date, doc_state, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-        [c.id, org?.id || null, site?.id || null, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(defaultDocState(d.kind === 'SEDE' || !org)), req.user.id]);
+        [c.id, org?.id || null, site?.id || null, JSON.stringify(DEFAULT_HOURS), JSON.stringify(defaultChecklists()), d.proposal_date, JSON.stringify(defaultDocState(!org)), req.user.id]);
     }
     await addEvent(c.id, 'CREATO', req.user.id, null, null, client);
     return c;
   });
   await audit(req, 'CONTRACT_CREATE', 'contract', row.id, { kind: d.kind, org: org?.name, site: site?.name });
-  res.status(201).json(await loadContract(row.id));
+  // A1: alla creazione del contratto PP solo la verifica della sede (la scrittura avviene alla firma)
+  const coerenza_sede = d.kind === 'PP' && org ? await verificaSedePP(org.id, site?.id || null) : undefined;
+  res.status(201).json({ ...(await loadContract(row.id)), coerenza_sede });
 }));
 
 r.put('/:id', ah(async (req, res) => {
   const c = await loadContract(Number(req.params.id));
   requireKind(c.kind, req.user);
+  if (c.kind === 'SEDE') throw bad(SEDE_SPOSTATO);
   // Business Hub (06/11/2026): oltre la proposta (FIRMATO, AUTORIZZATO, ATTIVO, anche i contratti caricati dai pacchetti come AgapeLab)
   // la proposta la modifica solo un Admin del modulo, con una NUOVA REVISIONE: la versione precedente resta nello storico
   // (contract_revisions) con il motivo, i documenti già generati non si cancellano. Cessati e annullati non si modificano.
@@ -322,7 +329,6 @@ export function completenessErrors(c) {
     if (!c.start_date) e.push('Indica la data di decorrenza (apertura del Punto Prelievi).');
   }
   if (c.kind === 'SRV' && !p.pec) e.push('Indica la PEC del cliente: le fatture viaggiano via PEC.');
-  if (c.kind === 'SEDE' && !(Number(d.rent?.amount) > 0)) e.push('Indica il canone di locazione.');
   return e;
 }
 
@@ -334,7 +340,8 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
   const category = CAT[req.body.category];
   if (!category) throw bad('Categoria non valida');
   if (!req.files?.length) throw bad('Nessun file');
-  if (category === 'FIRMATO' && c.status === 'BOZZA' && c.kind !== 'SEDE') throw bad('Genera prima la proposta: il contratto firmato va caricato sulla proposta protocollata');
+  if (c.kind === 'SEDE') throw bad(SEDE_SPOSTATO);
+  if (category === 'FIRMATO' && c.status === 'BOZZA') throw bad('Genera prima la proposta: il contratto firmato va caricato sulla proposta protocollata');
   // Una sola strada per il contratto firmato (07/11/2026): per Service e Punti Prelievo con l'account nel Business Hub il PDF va nei
   // documenti dell'account e passa dalla contrattualizzazione (lib/contrattualizza.js: contratto FIRMATO, fase 6, comunicazioni e
   // attivazione una volta sola; un secondo PDF va nel contratto senza ripetere nulla), come dalla form online, dalla casella e dalla
@@ -368,10 +375,6 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
     await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: [f.originalname], account: a.id, listino_versione: out.versione });
     return res.json({ ...(await loadContract(c.id)), listino: { versione: out.versione, esami: out.riepilogo.esami } });
   }
-  if (category === 'FIRMATO' && c.kind === 'SEDE' && !c.protocol) {
-    const s = await getSettings();
-    await tx(async (client) => { const protocol = await nextProtocol('SEDE', Number(String(c.proposal_date).slice(0, 4)), s, client); await client.query('UPDATE contracts SET protocol=$2 WHERE id=$1', [c.id, protocol]); });
-  }
   for (const f of req.files) {
     const isXlsx = /\.xlsx?$/i.test(f.originalname); const isPdf = /\.pdf$/i.test(f.originalname);
     if (category === 'LISTINO_XLSX' && !isXlsx) throw bad(`${f.originalname}: il listino va caricato in formato XLSX`);
@@ -385,6 +388,8 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
     const signedAt = /^\d{4}-\d{2}-\d{2}$/.test(req.body.signed_at || '') ? req.body.signed_at : todayRome();
     await q(`UPDATE contracts SET status='FIRMATO', signed_at=$2, updated_at=now() WHERE id=$1 AND status IN ('BOZZA','PROPOSTA')`, [c.id, signedAt]);
     await addEvent(c.id, 'FIRMATO', req.user.id, `Contratto sottoscritto il ${itDate(signedAt)}`);
+    // A1: contratto PP senza account del Business Hub firmato dalla scheda: stessa regola della contrattualizzazione
+    if (c.kind === 'PP') req._sedePP = await dopoCambioStato(c.id, 'FIRMATO', { req, userId: req.user.id });
   }
   if (category.startsWith('LISTINO')) {
     const names = (await many(`SELECT filename FROM contract_files WHERE contract_id=$1 AND category IN ('LISTINO_XLSX','LISTINO_PDF') ORDER BY created_at`, [c.id])).map((f) => f.filename).join(', ');
@@ -392,7 +397,7 @@ r.post('/:id/files', upload.array('files', 10), ah(async (req, res) => {
   }
   await addEvent(c.id, 'ALLEGATO', req.user.id, `${category}: ${req.files.map((f) => f.originalname).join(', ')}`);
   await audit(req, 'CONTRACT_FILE_UPLOAD', 'contract', c.id, { category, files: req.files.map((f) => f.originalname) });
-  res.json(await loadContract(c.id));
+  res.json({ ...(await loadContract(c.id)), ...(req._sedePP || {}) });
 }));
 
 r.delete('/:id/files/:fid', ah(async (req, res) => {
@@ -422,7 +427,9 @@ r.post('/:id/status', ah(async (req, res) => {
     cancelled_at = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN now() ELSE cancelled_at END, cancel_reason = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN $4 ELSE cancel_reason END, updated_at=now() WHERE id=$1`, [c.id, status, date, reason]);
   await addEvent(c.id, status, req.user.id, reason);
   await audit(req, `CONTRACT_${status}`, 'contract', c.id, { reason });
-  res.json(await loadContract(c.id));
+  // A1: contratto PP firmato → sede ospitata dalla controparte; cessato e non rinnovato → sede chiusa (lib/contrattoSede.js)
+  const sede = c.kind === 'PP' ? await dopoCambioStato(c.id, status, { req, userId: req.user.id }) : {};
+  res.json({ ...(await loadContract(c.id)), ...sede });
 }));
 
 // Cambio di stato manuale (Business Hub, 06/11/2026): Admin del modulo o Owner della Suite, qualunque stato, con motivazione.
@@ -432,12 +439,14 @@ r.post('/:id/stato-manuale', ah(async (req, res) => {
   if (!(isAdmin(req.user) || req.suiteUser?.level === 'OWNER')) throw bad('Il cambio di stato manuale è riservato all\'Admin del modulo');
   const { status, motivo } = parse(z.object({ status: z.enum(['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO', 'ANNULLATO']), motivo: z.string().trim().min(5, 'motivazione di almeno 5 caratteri').max(1000) }), req.body);
   if (status === c.status) throw bad('Il contratto è già in questo stato');
-  if (status === 'AUTORIZZATO' && !['PP', 'SEDE'].includes(c.kind)) throw bad('Lo stato Autorizzato riguarda punti prelievo e sedi');
+  if (status === 'AUTORIZZATO' && c.kind !== 'PP') throw bad('Lo stato Autorizzato riguarda i punti prelievo');
   await q(`UPDATE contracts SET status=$2, cancelled_at = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN coalesce(cancelled_at, now()) ELSE NULL END,
     cancel_reason = CASE WHEN $2 IN ('ANNULLATO','CESSATO') THEN $3 ELSE NULL END, updated_at=now() WHERE id=$1`, [c.id, status, motivo]);
   await addEvent(c.id, 'STATO_MANUALE', req.user.id, `${c.status} → ${status}: ${motivo}`, { da: c.status, a: status });
   await audit(req, 'CONTRACT_STATUS_MANUAL', 'contract', c.id, { da: c.status, a: status, motivo });
-  res.json(await loadContract(c.id));
+  // A1: anche il cambio di stato manuale allinea o chiude la sede del contratto PP
+  const sede = c.kind === 'PP' ? await dopoCambioStato(c.id, status, { req, userId: req.user.id }) : {};
+  res.json({ ...(await loadContract(c.id)), ...sede });
 }));
 
 r.delete('/:id', ah(async (req, res) => {

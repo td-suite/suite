@@ -25,7 +25,7 @@ async function admin(sql) {
   try { await c.query(sql); } finally { await c.end(); }
 }
 
-/** Avvia la Suite su un database nuovo. Ritorna { base, stop, log }. */
+/** Avvia la Suite su un database nuovo. Ritorna { base, url, stop, log }. */
 export async function avviaSuite({ env = {} } = {}) {
   const nome = `suite_test_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
   const url = dbUrl(URL_TEST, nome);   // prima della creazione: una stringa non valida non lascia database orfani
@@ -53,7 +53,7 @@ export async function avviaSuite({ env = {} } = {}) {
     await admin(`DROP DATABASE IF EXISTS ${nome} WITH (FORCE)`).catch((e) => console.warn(`[test] database ${nome} non eliminato: ${e.message}`));
   };
   if (!ok) { await stop(); throw new Error(`La Suite non è partita:\n${righe.join('').slice(-3000)}`); }
-  return { base, stop, log: () => righe.join('') };
+  return { base, url, stop, log: () => righe.join('') };   // url: per preparare dati di prova direttamente sul database temporaneo
 }
 
 /** Client HTTP con il cookie di sessione suite.sid e l'intestazione anti CSRF della Suite */

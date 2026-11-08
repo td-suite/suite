@@ -391,7 +391,7 @@ r.post('/leases', requireWrite, ah(async (req, res) => {
     return l;
   });
   // anagrafica Sedi: una sede che non era in locazione diventa LOCAZIONE con canone, locatore e durata del contratto (lib/leaseSync.js)
-  const registry = await leaseToSite(row.id).catch((e) => ({ status: 'error', reason: e.message }));
+  const registry = await leaseToSite(row.id, { actorId: req.suiteUser?.id }).catch((e) => ({ status: 'error', reason: e.message }));
   await audit(req, 'LEASE_CREATE', 'lease', row.id, { site_id: d.site_id, unit: d.unit, amount: d.amount, steps: steps.length, document_id: doc?.id || null, registry: registry.status });
   res.status(201).json({ ...row, registry_sync_result: registry });
 }));
@@ -417,7 +417,7 @@ r.put('/leases/:id', requireWrite, ah(async (req, res) => {
       await c.query('UPDATE lease_steps SET valid_from=$2 WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM lease_steps x WHERE x.lease_id=$3 AND x.valid_from=$2 AND x.id<>$1)', [ini.id, start, l.id]);
     }
   });
-  const registry = await leaseToSite(l.id).catch((e) => ({ status: 'error', reason: e.message }));
+  const registry = await leaseToSite(l.id, { actorId: req.suiteUser?.id }).catch((e) => ({ status: 'error', reason: e.message }));
   await audit(req, 'LEASE_UPDATE', 'lease', l.id, { ...d, registry: registry.status });
   res.json({ ...(await one('SELECT * FROM lease_contracts WHERE id=$1', [l.id])), registry_sync_result: registry });
 }));
@@ -460,7 +460,7 @@ r.put('/steps/:id', requireWrite, ah(async (req, res) => {
   const cols = Object.keys(d).filter((k) => d[k] !== undefined);
   if (cols.length) await q(`UPDATE lease_steps SET ${cols.map((k, i) => `${k}=$${i + 2}`).join(', ')} WHERE id=$1`, [s.id, ...cols.map((k) => d[k])]);
   // lo scatto iniziale è il canone dell'anagrafica Sedi: si riallinea la sede (solo per il contratto collegato, vedi lib/leaseSync.js)
-  if (s.reason === 'INIZIALE' || d.reason === 'INIZIALE') await leaseToSite(l.id).catch((e) => console.warn('[scadenziario] allineamento anagrafica:', e.message));
+  if (s.reason === 'INIZIALE' || d.reason === 'INIZIALE') await leaseToSite(l.id, { actorId: req.suiteUser?.id }).catch((e) => console.warn('[scadenziario] allineamento anagrafica:', e.message));
   await audit(req, 'LEASE_STEP_UPDATE', 'lease', l.id, { step_id: s.id, ...d });
   res.json(await one('SELECT * FROM lease_steps WHERE id=$1', [s.id]));
 }));

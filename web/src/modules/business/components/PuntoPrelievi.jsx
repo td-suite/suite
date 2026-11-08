@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom';
 import { api, API_BASE, BASE } from '../api.js';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, Modal, Icon, Empty, UploadButton, useToast } from './ui.jsx';
 import { AnteprimaKit, DaVerificare } from './Proposta.jsx';
-import { itDate, itDateTime, bytes, EMAIL_STATO, DOSSIER_STATUS, STATUS, TIPO_PUNTO, STATO_PASSO, today } from '../format.js';
+import { eur, itDate, itDateTime, bytes, EMAIL_STATO, DOSSIER_STATUS, STATUS, TIPO_PUNTO, STATO_PASSO, today } from '../format.js';
 
 const docUrl = (id) => `${API_BASE}/hub/documenti/${id}`;
 
@@ -54,7 +54,8 @@ export default function PuntoPrelievi({ a, onChange, vaiA }) {
             <tr><td className="muted">Avvio effettivo</td><td>{d.date.effettiva ? <span className="strong">{itDate(d.date.effettiva)}</span> : <span className="muted">da definire (l'annuncio al laboratorio parte quando la imposti)</span>}</td></tr>
             <tr><td className="muted">Autorizzazione</td><td>{d.fascicolo ? <Link to={`${BASE}/fascicoli/${d.fascicolo.id}`}><Badge tone={DOSSIER_STATUS[d.fascicolo.status]?.tone}>{DOSSIER_STATUS[d.fascicolo.status]?.label}</Badge>{d.fascicolo.authorized_at ? ` il ${itDate(d.fascicolo.authorized_at)}` : ''}</Link> : <span className="muted">nessun fascicolo{tipo === 'CORNER' ? ' (nasce con il contratto PP)' : ''}</span>}</td></tr>
             <tr><td className="muted">{tipo === 'FLAGSHIP' ? 'Locazione della sede' : 'Contratto PP'}</td><td>{tipo === 'FLAGSHIP'
-              ? d.locazione ? <Link to={`${BASE}/contratti/${d.locazione.id}`}>{d.locazione.protocol || `#${d.locazione.id}`} <Badge tone={STATUS[d.locazione.status]?.tone}>{STATUS[d.locazione.status]?.label}</Badge></Link> : <span className="muted">nessun contratto di locazione (Sedi TD in locazione)</span>
+              ? d.locazione?.tenure === 'LOCAZIONE' ? <><Link to={`${BASE}/sedi`}>{d.locazione.rent_amount != null ? `canone ${eur(d.locazione.rent_amount)} ${String(d.locazione.rent_period || 'MESE').toLowerCase()}` : 'canone non indicato'}{d.locazione.landlord_name ? ` · ${d.locazione.landlord_name}` : ''}</Link>{d.locazione.avvisi?.length > 0 && <div className="small amber">{d.locazione.avvisi.join('; ')}</div>}</>
+                : <span className="muted">{d.locazione ? `sede ${String(d.locazione.tenure || '').toLowerCase()} (Amministrazione > Sedi)` : 'sede non collegata'}</span>
               : d.contratto ? <Link to={`${BASE}/contratti/${d.contratto.id}`}>{d.contratto.protocol || `bozza #${d.contratto.id}`} <Badge tone={STATUS[d.contratto.status]?.tone}>{STATUS[d.contratto.status]?.label}</Badge></Link> : <span className="muted">nessuno: <Link to={`${BASE}/contratti/nuovo/PP`}>nuova proposta</Link></span>}</td></tr>
           </tbody></table>
           <div className="row" style={{ marginTop: 10, gap: 6, flexWrap: 'wrap' }}>
@@ -78,6 +79,7 @@ export default function PuntoPrelievi({ a, onChange, vaiA }) {
           </Card>}
           {tipo === 'FLAGSHIP' && <Card title="Avvio del punto prelievi flagship">
             <div className="small" style={{ marginBottom: 8 }}>Il flagship non ha un contratto con un partner: vale la locazione della sede. Con "Avvia il punto prelievi" partono l'annuncio al laboratorio, il primo ordine standard, la dotazione, il fondo cassa e POS, i rifiuti speciali; la pipeline va alla fase 6 (la 7 la conferma il CEO).</div>
+            {!avviato && d.locazione?.avvisi?.length > 0 && <div className="alert warn small" style={{ marginBottom: 8 }}>{d.locazione.avvisi.join('; ')}: l'avvio non è bloccato (decisione del CEO), completa i dati in Amministrazione &gt; Sedi.</div>}
             {d.fascicolo?.status === 'AUTORIZZATO' && !avviato && <div className="alert info small" style={{ marginBottom: 8 }}>Autorizzazione sanitaria rilasciata{d.fascicolo.authorized_at ? ` il ${itDate(d.fascicolo.authorized_at)}` : ''}: il punto prelievi si può avviare.</div>}
             {avviato ? <div className="small">Avviato il {itDateTime(d.avvio.avviato_at)}{d.date.effettiva ? `, avvio effettivo ${itDate(d.date.effettiva)}` : ''}.</div>
               : edit && <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>

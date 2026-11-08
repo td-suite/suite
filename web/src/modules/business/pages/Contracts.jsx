@@ -36,7 +36,7 @@ export default function Contracts({ kind }) {
           {/* Menu del CEO (06/11/2026): i fascicoli si aprono dai Punti Prelievo; cruscotto e pipeline della linea dalle sue pagine */}
           {kind === 'PP' && <><Link className="btn ghost" to={`${BASE}/punti-prelievo`}><Icon name="pin" />Punti Prelievo</Link><Link className="btn ghost" to={`${BASE}/fascicoli`}><Icon name="folder" />Fascicoli autorizzazione</Link></>}
           {['PP', 'MDL'].includes(kind) && <><Link className="btn ghost" to={`${BASE}?linea=${kind}`}>Cruscotto {kind === 'PP' ? 'Punti Prelievo' : 'MDL'}</Link><Link className="btn ghost" to={`${BASE}/pipeline?linea=${kind}`}>Pipeline {kind === 'PP' ? 'Punti Prelievo' : 'MDL'}</Link></>}
-          {kind && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>{kind === 'SEDE' ? '+ Nuova sede' : '+ Nuova proposta'}</Link>}
+          {kind && kind !== 'SEDE' && canEditKind(user, kind) && <Link className="btn" to={`${BASE}/contratti/nuovo/${kind}`}>+ Nuova proposta</Link>}
         </div>
       </div>
       <div className="filters">

@@ -138,14 +138,11 @@ export const RUBRICA_PUBLIC_SQL = `(EXISTS (SELECT 1 FROM org_units pu WHERE pu.
 
 // ---- Letture dall'anagrafica unica
 
-/** Sedi TD ospitate dalla Legal entity (public.sites.host_organization_id, con cash.site_ext.host_org_id come riserva). */
+/** Sedi TD ospitate dalla Legal entity: solo l'anagrafica (public.sites, titolo OSPITATA e host_organization_id). A2 (08/11/2026):
+ *  niente più riserva cash.site_ext.host_org_id e nessuna sede con ospitante ma titolo diverso (controllo D03 della Diagnostica). */
 export async function hostedSiteIds(orgId) {
   if (!orgId) return [];
-  const ok = await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`);
-  // fonte: public.sites.host_organization_id (Amministrazione > Sedi > Legal entity ospitante); cash.site_ext.host_org_id come riserva
-  const rows = ok?.ok
-    ? await many(`SELECT s.id AS site_id FROM sites s LEFT JOIN cash.site_ext e ON e.site_id = s.id WHERE coalesce(s.host_organization_id, e.host_org_id) = $1 AND s.active ORDER BY s.id`, [orgId])
-    : await many(`SELECT s.id AS site_id FROM sites s WHERE s.host_organization_id = $1 AND s.active ORDER BY s.id`, [orgId]);
+  const rows = await many(`SELECT s.id AS site_id FROM sites s WHERE s.host_organization_id = $1 AND s.tenure = 'OSPITATA' AND s.active ORDER BY s.id`, [orgId]);
   return rows.map((r) => r.site_id);
 }
 

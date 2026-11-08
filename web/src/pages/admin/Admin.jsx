@@ -12,6 +12,7 @@ import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
 import { Connectors } from './Connectors.jsx';
 import { AssetTypes } from './AssetTypes.jsx';
+import { Diagnostica } from './Diagnostica.jsx';
 
 function Overview() {
   const summary = useApi('/users/summary');
@@ -74,6 +75,7 @@ export default function Admin() {
       <Route path="travaso" element={<Travaso />} />
       <Route path="imports" element={<Imports />} />
       <Route path="audit" element={<Audit />} />
+      <Route path="diagnostica" element={<Diagnostica />} />
       <Route path="settings" element={<Settings />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

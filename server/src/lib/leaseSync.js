@@ -206,7 +206,7 @@ export async function siteToLease(siteId, { rentChanged = false } = {}) {
  * iniziale, locatore, durata, deposito, registrazione. Vale per il contratto collegato (registry_sync) o, se la sede non ne ha, per
  * questo contratto, che diventa quello collegato. Ritorna { status, reason?, site_id?, tenure_before? }.
  */
-export async function leaseToSite(leaseId) {
+export async function leaseToSite(leaseId, opts = {}) {
   if (syncOrigin() === 'CORE') return { status: 'skip', reason: 'allineamento partito dall\'anagrafica' };
   return origin.run('FINANCE', async () => {
     if (!(await financeReady())) return { status: 'skip', reason: 'schema Payments non aggiornato' };
@@ -222,9 +222,11 @@ export async function leaseToSite(leaseId) {
     const f = siteFieldsFromLease(l, ini?.amount ?? null);
     const before = await one('SELECT tenure FROM public.sites WHERE id=$1', [l.site_id]);
     if (!before) return { status: 'skip', reason: 'sede inesistente' };
-    // i valori assenti nel contratto non cancellano quelli dell'anagrafica
-    const cols = Object.keys(f);
-    await one(`UPDATE public.sites SET ${cols.map((k, i) => (k === 'tenure' ? `${k}=$${i + 2}` : `${k}=coalesce($${i + 2}, ${k})`)).join(', ')}, updated_at=now() WHERE id=$1 RETURNING id`, [l.site_id, ...cols.map((k) => f[k])]);
+    // i valori assenti nel contratto non cancellano quelli dell'anagrafica. A0: scrittura dalla funzione unica del core (regole del
+    // titolo, audit SITE_UPDATED con origine Payments, Cash, perimetri); il flag antirimbalzo impedisce che riparta siteToLease
+    const data = Object.fromEntries(Object.entries(f).filter(([k, v]) => k === 'tenure' || v != null));
+    const { saveSite } = await import('./sites.js');
+    await saveSite({ id: l.site_id, data, origine: 'Payments > Scadenziario strutture', actorId: opts.actorId || null });
     return { status: 'ok', site_id: l.site_id, tenure_before: before.tenure };
   });
 }

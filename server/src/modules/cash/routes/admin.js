@@ -82,11 +82,11 @@ r.get('/companies/:id/logo', ah(async (req, res) => {
 const siteSchema = z.object({
   company_id: z.number().int().optional(),
   cash_float: z.number().min(0).max(100000),
-  ownership: z.enum(['PROPRIA', 'OSPITATA']).default('OSPITATA'),
+  // A2 (08/11/2026): titolo di godimento (ownership) e struttura ospitante (host_org_id) NON si scrivono da Cash: sono dell'anagrafica
+  // (Amministrazione > Sedi, funzione unica saveSite). Se il client li invia ancora vengono ignorati (zod scarta le chiavi non dichiarate).
   expected_registers: z.number().int().min(1).max(20).default(1),
   pos_terminals: opt(z.string().max(300)),
   float_reason: z.string().max(300).optional(),
-  host_org_id: z.number().int().nullable().optional(),
   royalty_fixed_monthly: z.number().min(0).max(1_000_000).default(0),
   royalty_pct: z.number().min(0).max(100).default(0),
   royalty_base: z.enum(['TOTALE', 'CONTANTI_POS', 'CONTANTI']).default('TOTALE'),
@@ -142,7 +142,8 @@ r.put('/companies/:id/bank-accounts/:aid', requireRole('SUPERADMIN', 'ADMIN'), a
 }));
 
 const ROYALTY_COLS = ['royalty_fixed_monthly', 'royalty_pct', 'royalty_vat_rate', 'royalty_base'];
-const EXT_COLS = ['company_id', 'cash_float', 'pos_terminals', 'ownership', 'expected_registers', 'host_org_id', ...ROYALTY_COLS, 'royalty_notes'];
+// A2: niente ownership né host_org_id (colonne di site_ext mantenute solo come specchio scritto dal core, controllo D06 della Diagnostica)
+const EXT_COLS = ['company_id', 'cash_float', 'pos_terminals', 'expected_registers', ...ROYALTY_COLS, 'royalty_notes'];
 // Operatori (utenti Suite con grant cash attivo) che hanno la sede nel perimetro del grant
 const USERS_COUNT_SQL = `(SELECT count(*)::int FROM operators_v o WHERE o.active AND s.id = ANY(o.site_ids))`;
 
@@ -200,8 +201,9 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
     if (!isSuper(req.user)) throw forbidden('Solo il super amministratore sposta una sede su un\'altra azienda');
     if (await one('SELECT 1 FROM cash_reports WHERE site_id=$1', [id])) throw bad('La sede ha rendiconti: l\'azienda non si può cambiare');
   }
-  if ((d.ownership || site?.ownership) === 'PROPRIA') Object.assign(d, { host_org_id: null, royalty_fixed_monthly: 0, royalty_pct: 0, royalty_vat_rate: 0, royalty_notes: null });
-  if (d.host_org_id != null && !await one('SELECT 1 FROM public.organizations WHERE id=$1', [d.host_org_id])) throw bad('Struttura ospitante inesistente: scegli una Legal entity dell\'anagrafica');
+  // royalty solo per le sedi Ospitate nell'anagrafica (titolo di godimento letto da public.sites, mai scritto da qui)
+  const core = await one('SELECT tenure FROM public.sites WHERE id=$1', [id]);
+  if (core?.tenure !== 'OSPITATA') Object.assign(d, { royalty_fixed_monthly: 0, royalty_pct: 0, royalty_vat_rate: 0, royalty_notes: null });
   await tx(async (c) => {
     if (!site) {
       await c.query('INSERT INTO cash_float_history (site_id, old_value, new_value, changed_by, reason) VALUES ($1,NULL,$2,$3,$4)', [id, d.cash_float, req.user.id, 'Impostazione iniziale']);
@@ -225,11 +227,10 @@ r.put('/sites/:id', requireRole('SUPERADMIN', 'ADMIN'), ah(async (req, res) => {
     // upsert: la riga di site_ext nasce alla prima scrittura (docs/ANAGRAFICA.md), poi si aggiorna
     await c.query(`INSERT INTO site_ext (site_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')})
       ON CONFLICT (site_id) DO UPDATE SET ${cols.map((k) => `${k}=EXCLUDED.${k}`).join(', ')}, updated_at=now()`, [id, ...cols.map((k) => d[k])]);
-    // la Legal entity ospitante è dell'anagrafica unica (public.sites.host_organization_id): la stessa con cui il partner accede alla Suite
-    if (d.host_org_id !== undefined) await c.query('UPDATE public.sites SET host_organization_id=$2, updated_at=now() WHERE id=$1', [id, d.host_org_id]);
-    // titolo di godimento dell'anagrafica allineato: OSPITATA ↔ struttura ospitante; PROPRIA su una sede ospitata la riporta a Locazione (da completare in Sedi)
-    if (d.ownership === 'OSPITATA') await c.query(`UPDATE public.sites SET tenure='OSPITATA', updated_at=now() WHERE id=$1 AND tenure IS DISTINCT FROM 'OSPITATA'`, [id]);
-    else if (d.ownership === 'PROPRIA') await c.query(`UPDATE public.sites SET tenure='LOCAZIONE', updated_at=now() WHERE id=$1 AND tenure='OSPITATA'`, [id]);
+    // A2: nessuna scrittura su public.sites da Cash. Titolo e Legal entity ospitante si cambiano in Amministrazione > Sedi.
+    // Lo specchio di site_ext (ownership, host_org_id) si allinea al core, così il controllo D06 resta pulito anche per le sedi nuove.
+    await c.query(`UPDATE site_ext e SET ownership = CASE WHEN s.tenure='OSPITATA' THEN 'OSPITATA' ELSE 'PROPRIA' END,
+        host_org_id = CASE WHEN s.tenure='OSPITATA' THEN s.host_organization_id END FROM public.sites s WHERE s.id=e.site_id AND e.site_id=$1`, [id]);
   });
   await audit(req, site ? 'SITE_UPDATE' : 'SITE_CONFIGURE', 'site', id, req.body);
   res.json({ ok: true, id });

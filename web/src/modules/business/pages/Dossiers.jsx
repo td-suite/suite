@@ -6,7 +6,7 @@ import { useApi, Card, Field, Loading, ErrorBox, Empty, Badge, StatusBadge, Kind
 import { DOSSIER_STATUS } from '../format.js';
 
 // Fascicoli di autorizzazione sanitaria: ciascuno con la sua sede TD e la sua controparte (anagrafica unica).
-// Nascono dai contratti di punto prelievi e di sede TD in locazione, oppure da soli su una sede TD (Nuovo fascicolo).
+// Nascono dai contratti di punto prelievi oppure da soli su una sede TD (Nuovo fascicolo: flagship e sedi in locazione, A3).
 export default function Dossiers() {
   const nav = useNavigate();
   const { user } = useAuth();
@@ -40,7 +40,7 @@ export default function Dossiers() {
               <td className="small muted">{x.missing.length ? `${x.missing.length} documenti` : 'nessuno'}</td>
             </tr>))}</tbody>
         </table></div>
-      ) : <Empty>Nessun fascicolo: nasce con un contratto di Punto Prelievi o di Sede TD in locazione, oppure da "Nuovo fascicolo" su una sede TD.</Empty>}</Card>
+      ) : <Empty>Nessun fascicolo: nasce con un contratto di Punto Prelievi oppure da "Nuovo fascicolo" su una sede TD.</Empty>}</Card>
     </div>
   );
 }

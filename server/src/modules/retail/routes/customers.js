@@ -91,7 +91,9 @@ const clean = (d) => { for (const k of Object.keys(d)) if (d[k] === '') d[k] = n
 r.post('/', requireWrite, ah(async (req, res) => {
   const d = clean(parse(schema, req.body));
   if (d.kind === 'B2C' && !(d.last_name && d.first_name)) throw bad('Cognome e nome obbligatori');
-  if (d.kind === 'B2B' && !d.company_name) throw bad('Ragione sociale obbligatoria');
+  // A6 (programma anagrafica unica, 08/11/2026): i clienti B2B non si creano a mano in Retail. Nascono dall'import delle vendite
+  // StudioLAB (codice cliente) e si abbinano alla Legal entity dell'anagrafica (Amministrazione > Legal entity); il ponte completo è B15.
+  if (d.kind === 'B2B') throw bad('I clienti B2B non si creano in Retail: arrivano dall\'import delle vendite StudioLAB e si abbinano alla Legal entity di Amministrazione');
   const cols = Object.keys(d);
   const row = await one(`INSERT INTO customers(${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`, cols.map((c) => (c === 'tags' ? JSON.stringify(d[c]) : d[c])));
   await audit(req, 'CUSTOMER_CREATE', 'customer', row.id);

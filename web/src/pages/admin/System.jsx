@@ -435,6 +435,36 @@ function CompanyEditor({ value, onSave }) {
   );
 }
 
+// A9 (08/11/2026): Legal entity di Toscana Diagnostica = Dati aziendali. Proposta automatica (stessa P.IVA, altrimenti nome "Toscana
+// Diagnostica"); impostandola, ragione sociale, P.IVA, CF, indirizzo, PEC e SDI della riga si allineano ai Dati aziendali, e da quel
+// momento ogni salvataggio dei Dati aziendali la aggiorna. Le sedi TD nuove nascono con questa Legal entity proprietaria.
+function CompanyOrgBox() {
+  const info = useApi('/company/org');
+  const orgs = useApi('/organizations');
+  const toast = useToast();
+  const [scelta, setScelta] = useState('');
+  const d = info.data;
+  const imposta = async (id) => {
+    try { const r = await api.put('/company/org', { org_id: id ? Number(id) : null }); toast(id ? `Legal entity di TD impostata${Object.keys(r.modifiche || {}).length ? `: ${Object.keys(r.modifiche).length} campi allineati ai Dati aziendali` : ''}` : 'Legal entity di TD tolta'); info.reload(); }
+    catch (e) { toast(e, 'err'); }
+  };
+  if (!d) return <Skeleton lines={2} />;
+  const ant = Object.entries(d.anteprima || {});
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)' }} data-testid="company-org">
+      <h3 style={{ margin: '0 0 6px' }}>Legal entity di Toscana Diagnostica</h3>
+      <p className="small muted" style={{ marginTop: 0 }}>La riga di Amministrazione, Legal entity che è Toscana Diagnostica: al salvataggio dei Dati aziendali si aggiornano ragione sociale, P.IVA, codice fiscale, indirizzo, PEC e SDI di quella riga. Le sedi TD nuove nascono con questa Legal entity proprietaria.</p>
+      {d.org ? <div className="row" style={{ gap: 8, alignItems: 'center' }}><Badge tone="green">impostata</Badge><span className="strong">{d.org.name}</span><span className="small muted">P.IVA {d.org.vat_number || '–'} · #{d.org.id}</span></div>
+        : <div className="alert warn small">Non impostata.{d.proposta ? <> Proposta: <b>{d.proposta.name}</b> (#{d.proposta.id}), {d.proposta.come}. <button className="btn sm" onClick={() => imposta(d.proposta.id)}>Usa la proposta</button></> : ' Nessuna Legal entity con la P.IVA dei Dati aziendali o di nome Toscana Diagnostica: creala in Amministrazione, Legal entity.'}</div>}
+      {ant.length > 0 && <div className="small" style={{ marginTop: 6 }}>Allineamento {d.org ? 'al prossimo salvataggio' : 'quando la imposti'}: {ant.map(([k, [a, b]]) => `${k}: ${a || '–'} → ${b}`).join(' · ')}</div>}
+      <div className="row" style={{ gap: 6, marginTop: 8 }}>
+        <select value={scelta} onChange={(e) => setScelta(e.target.value)} aria-label="Legal entity di Toscana Diagnostica" style={{ flex: 1 }}><option value="">Scegli un'altra Legal entity…</option>{(orgs.data || []).filter((o) => ['SOCIETA', 'GRUPPO'].includes(o.kind)).map((o) => <option key={o.id} value={o.id}>{o.name}{o.vat_number ? ` · ${o.vat_number}` : ''}</option>)}</select>
+        <button className="btn sm ghost" disabled={!scelta} onClick={() => imposta(scelta)}>Imposta</button>
+      </div>
+    </div>
+  );
+}
+
 // Informative (05/11/2026): URL e versioni di Privacy e Informativa IA, conteggio delle prese d'atto, registro CSV. Cambiare una
 // versione fa riaccettare quel documento a tutti al prossimo accesso (o al primo aggiornamento del profilo, entro un minuto).
 function InformativeBox() {
@@ -549,10 +579,10 @@ export function Settings() {
       <ErrorBox error={error} />
       <div className="col">
         {isOwner(me) && <Integrations />}
-        {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /></Card>}
+        {data && <Card title="Dati aziendali" icon="building"><CompanyEditor value={data.company} onSave={(nv) => save('company', nv)} /><CompanyOrgBox /></Card>}
         {data && <InformativeBox />}
         {data && <RubricheBox />}
-        {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'rubriche' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+        {data && Object.entries(data).filter(([k]) => k !== 'company' && k !== 'company_org_id' && k !== 'rubriche' && !k.startsWith('consensi.')).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
           <Card key={k} title={<span className="mono">{k}</span>} icon="gear">
             {k === 'community.values' ? <ValuesEditor value={v} onSave={(nv) => save(k, nv)} /> : <JsonEditor k={k} value={v} onSave={(nv) => save(k, nv)} />}
           </Card>

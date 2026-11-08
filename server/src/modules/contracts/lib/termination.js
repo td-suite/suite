@@ -3,6 +3,7 @@
 // origine (eseguita all'apertura dell'elenco risorse), qui anche come lavoro di sfondo giornaliero con modulo LIVE.
 import { many, q } from '../db.js';
 import { reindexPerson } from './people.js';
+import { effettiCessazione } from '../../../lib/cessazione.js';
 
 export async function applyDueTerminations() {
   const due = await many(`UPDATE public.people p SET status='CESSATO', updated_at=now()
@@ -14,6 +15,8 @@ export async function applyDueTerminations() {
     await q('UPDATE person_ext SET approver_id=NULL WHERE approver_id=$1', [x.id]);
     await q('UPDATE areas SET head_person_id=NULL WHERE head_person_id=$1', [x.id]);
     reindexPerson(x.id);
+    // A11: accessi disattivati (gli amministratori restano da confermare, con avviso), incarichi chiusi, avviso responsabile di sede
+    await effettiCessazione(x.id, { origine: 'Contratti del personale, cessazione con decorrenza raggiunta' }).catch((e) => console.warn('[cessazione]', x.id, e.message));
   }
   return due.length;
 }

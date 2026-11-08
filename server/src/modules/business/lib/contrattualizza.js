@@ -128,6 +128,12 @@ export async function contrattualizza(accountId, { documentoId, fonte = 'form on
   if (a.linea === 'PP') {
     // Punti Prelievo: contratto nel fascicolo di autorizzazione della sede (disponibilità dei locali) e avvio del punto in passi registrati
     const pp = await import('./puntoPrelievi.js');
+    // A1 (decisione 2 del CEO): alla firma la sede del contratto diventa Ospitata dalla controparte se non ha ospitante (avviso se ne ha un'altra)
+    if (contratto.id) {
+      const { allineaSedeAllaFirma } = await import('./contrattoSede.js');
+      const al = await allineaSedeAllaFirma(contratto.id, { userId }).catch((e) => ({ esito: 'ERRORE', avviso: e.message }));
+      if (al.avviso) avvisi.push(al.avviso);
+    }
     const fascicolo = await pp.contrattoNelFascicolo(a, doc, contratto, userId).catch((e) => ({ esito: `non aggiunto al fascicolo: ${e.message}` }));
     const avvio = await pp.avviaPuntoPrelievi(a.id, { fonte, userId, documentoId: doc.id });
     const esito = { at: new Date().toISOString(), fonte, documento_id: doc.id, contratto, fase, fascicolo, avvio: avvio.riepilogo, avvisi: [...avvisi, ...(avvio.avvisi || [])] };

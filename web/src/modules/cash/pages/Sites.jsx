@@ -24,7 +24,9 @@ function daysLabel(mask = '') {
 }
 const ADMIN_SITES = '/admin/sites';
 const ADMIN_ORGS = '/admin/organizations';
-const defaults = { company_id: '', cash_float: 0, ownership: 'OSPITATA', expected_registers: 1, pos_terminals: '', float_reason: '', host_org_id: '', royalty_fixed_monthly: 0, royalty_pct: 0, royalty_base: 'TOTALE', royalty_vat_rate: 0, royalty_notes: '' };
+// A2 (08/11/2026): ownership e host_org_id sono in sola lettura (dall'anagrafica, Amministrazione > Sedi): non si inviano più
+const TENURE_LABEL = { PROPRIETA: 'Proprietà', LOCAZIONE: 'Locazione', COMODATO: 'Comodato', OSPITATA: 'Ospitata' };
+const defaults = { company_id: '', cash_float: 0, expected_registers: 1, pos_terminals: '', float_reason: '', royalty_fixed_monthly: 0, royalty_pct: 0, royalty_base: 'TOTALE', royalty_vat_rate: 0, royalty_notes: '' };
 const BASES = { TOTALE: 'Totale incassi (contanti, POS, bonifici)', CONTANTI_POS: 'Contanti e POS', CONTANTI: 'Solo contanti' };
 
 // Riassunto orari: raggruppa i giorni con lo stesso orario
@@ -47,8 +49,8 @@ export default function Sites() {
   const save = async () => {
     setErr(null);
     const b = { company_id: Number(edit.company_id || user.company_id) || undefined, cash_float: Number(edit.cash_float),
-      ownership: edit.ownership, expected_registers: Number(edit.expected_registers) || 1, pos_terminals: edit.pos_terminals || null,
-      host_org_id: edit.host_org_id ? Number(edit.host_org_id) : null, royalty_fixed_monthly: Number(edit.royalty_fixed_monthly) || 0, royalty_pct: Number(edit.royalty_pct) || 0, royalty_base: edit.royalty_base, royalty_vat_rate: Number(edit.royalty_vat_rate) || 0, royalty_notes: edit.royalty_notes || null };
+      expected_registers: Number(edit.expected_registers) || 1, pos_terminals: edit.pos_terminals || null,
+      royalty_fixed_monthly: Number(edit.royalty_fixed_monthly) || 0, royalty_pct: Number(edit.royalty_pct) || 0, royalty_base: edit.royalty_base, royalty_vat_rate: Number(edit.royalty_vat_rate) || 0, royalty_notes: edit.royalty_notes || null };
     if (edit.configured) { delete b.company_id; if (edit.float_reason) b.float_reason = edit.float_reason; }
     try {
       await api.put(`/sites/${edit.id}`, b);
@@ -84,7 +86,7 @@ export default function Sites() {
               <td className="mono">{s.code}</td><td><b>{s.name}</b><div className="small muted">{[s.address, s.city, s.province && `(${s.province})`].filter(Boolean).join(' ')}</div>{s.configured && (s.site_email ? <div className="small muted">{s.site_email}</div> : <div className="small red" title="Email della sede mancante in Amministrazione, Sedi">email mancante</div>)}{sup && s.configured && s.company_name && <div className="small muted">{s.company_name}</div>}</td>
               {!s.configured ? <td colSpan={4} className="small muted">Impostazioni Cash non ancora definite: fondo cassa, casse attese, terminali POS e royalty si compilano con "Configura in Cash"</td> : <>
               <td className="days-cell" title={`${s.hours_from_core && Object.keys(s.hours || {}).length > 0 ? hoursSummary(s.hours) : 'Orari non indicati in Amministrazione, Sedi: vale lunedì-sabato'}${!s.opened_at ? '. Data di apertura non indicata in Amministrazione, Sedi: vale il giorno della configurazione in Cash' : ''}`}><div className="days">{daysLabel(s.operating_days)}</div><div className="small muted">dal {itDate(s.start_date)}{!s.opened_at && ' *'}</div></td>
-              <td>{s.ownership === 'PROPRIA' ? <Badge tone="teal">Sede di proprietà</Badge> : s.host_name || <span className="muted">–</span>}{s.host_email && <div className="small muted">{s.host_email}</div>}<div className="small">{s.ownership === 'PROPRIA' ? <span className="muted">nessuna royalty</span> : <>{Number(s.royalty_fixed_monthly) > 0 && <div>{eur(s.royalty_fixed_monthly)}/mese</div>}{Number(s.royalty_pct) > 0 && <div>{s.royalty_pct}% {s.royalty_base === 'TOTALE' ? 'sul totale' : s.royalty_base === 'CONTANTI_POS' ? 'su contanti e POS' : 'sui contanti'}</div>}{Number(s.royalty_fixed_monthly) > 0 || Number(s.royalty_pct) > 0 ? <div className="muted">IVA {s.royalty_vat_rate}%</div> : <span className="muted">nessuno</span>}</>}</div></td>
+              <td>{s.ownership === 'PROPRIA' ? <Badge tone="teal">Sede propria{s.tenure ? ` · ${TENURE_LABEL[s.tenure] || s.tenure}` : ''}</Badge> : s.host_name || <span className="muted">–</span>}{s.host_email && <div className="small muted">{s.host_email}</div>}<div className="small">{s.ownership === 'PROPRIA' ? <span className="muted">nessuna royalty</span> : <>{Number(s.royalty_fixed_monthly) > 0 && <div>{eur(s.royalty_fixed_monthly)}/mese</div>}{Number(s.royalty_pct) > 0 && <div>{s.royalty_pct}% {s.royalty_base === 'TOTALE' ? 'sul totale' : s.royalty_base === 'CONTANTI_POS' ? 'su contanti e POS' : 'sui contanti'}</div>}{Number(s.royalty_fixed_monthly) > 0 || Number(s.royalty_pct) > 0 ? <div className="muted">IVA {s.royalty_vat_rate}%</div> : <span className="muted">nessuno</span>}</>}</div></td>
               <td className="num strong">{eur(s.cash_float)} <button className="btn link small" onClick={() => setHist(s)}>storico</button>{Number(s.expected_registers) > 1 && <div className="small muted">{s.expected_registers} casse</div>}</td>
               <td className="num">{s.users_count}</td>
               </>}
@@ -116,15 +118,14 @@ export default function Sites() {
           </div>
           <div className="row" style={{ margin: '18px 0 8px', alignItems: 'center', gap: 14 }}>
             <h3 style={{ margin: 0 }}>Tipo di sede</h3>
-            <div className="seg" role="radiogroup">
-              <label className={edit.ownership === 'OSPITATA' ? 'on' : ''}><input type="radio" name="ownership" checked={edit.ownership === 'OSPITATA'} onChange={() => setEdit({ ...edit, ownership: 'OSPITATA' })} />Ospitata (con royalty)</label>
-              <label className={edit.ownership === 'PROPRIA' ? 'on' : ''}><input type="radio" name="ownership" checked={edit.ownership === 'PROPRIA'} onChange={() => setEdit({ ...edit, ownership: 'PROPRIA' })} />Di proprietà</label>
-            </div>
+            <span>{edit.ownership === 'OSPITATA' ? <Badge tone="teal">Ospitata (con royalty)</Badge> : <Badge>Sede propria · {TENURE_LABEL[edit.tenure] || edit.tenure || 'titolo non indicato'}</Badge>}</span>
+            <Link className="small" to={ADMIN_SITES}>Modifica in Sedi</Link>
           </div>
-          {edit.ownership === 'PROPRIA' ? <p className="small muted" style={{ marginTop: 8 }}>La sede non compare nella pagina Royalty di sede e non genera report per strutture ospitanti.</p> : <>
+          <p className="small muted" style={{ margin: '0 0 8px' }}>Titolo di godimento e struttura ospitante sono dell'anagrafica unica: si cambiano in Amministrazione, Sedi (Cash li legge da lì).</p>
+          {edit.ownership !== 'OSPITATA' ? <p className="small muted" style={{ marginTop: 8 }}>La sede non compare nella pagina Royalty di sede e non genera report per strutture ospitanti.</p> : <>
           <h3 style={{ margin: '14px 0 8px' }}>Royalty alla struttura ospitante</h3>
           <div className="form-grid">
-            <Field label="Struttura ospitante" help="Legal entity dell'anagrafica (partner che ospita il punto prelievi): si crea in Amministrazione, Legal entity"><select value={edit.host_org_id || ''} onChange={(e) => setEdit({ ...edit, host_org_id: e.target.value })}><option value="">Nessuna</option>{(hosts.data || []).map((o) => <option key={o.id} value={o.id}>{o.name}{o.city ? ` · ${o.city}` : ''}</option>)}</select></Field>
+            <Field label="Struttura ospitante" help="Dall'anagrafica della sede (Amministrazione, Sedi)"><input value={host?.name || edit.host_name || ''} disabled placeholder="non indicata in Amministrazione, Sedi" /></Field>
             <Field label="P.IVA struttura" help="Dall'anagrafica della Legal entity"><input value={host?.vat_number || ''} disabled placeholder={host ? 'non indicata' : ''} /></Field>
             <Field label="Email struttura ospitante" help={<>Riceve il report royalty confermato, per fatturare. Si modifica in <Link to={ADMIN_ORGS}>Amministrazione, Legal entity</Link></>}><input value={host?.email || ''} disabled placeholder={host ? 'non indicata' : ''} /></Field>
             <Field label="Quota fissa mensile" help="0 se non prevista"><MoneyInput value={edit.royalty_fixed_monthly} onChange={(v) => setEdit({ ...edit, royalty_fixed_monthly: v === '' ? 0 : v })} /></Field>

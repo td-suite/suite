@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, BASE } from '../api.js';
 import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Card, Field, Loading, ErrorBox, Empty, Badge, Modal, Icon, useToast } from '../components/ui.jsx';
-import { itDate, FASI, DOSSIER_STATUS, STATUS, TIPO_PUNTO } from '../format.js';
+import { eur, itDate, FASI, DOSSIER_STATUS, STATUS, TIPO_PUNTO } from '../format.js';
 
 export default function PuntiPrelievo() {
   const { user } = useAuth();
@@ -40,7 +40,7 @@ export default function PuntiPrelievo() {
       <ErrorBox error={q.error} />
       <Card flush>{!d ? <Loading /> : righe.length ? (
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Punto prelievi</th><th>Tipo</th><th>Sede TD</th><th>Partner ospitante</th><th>Fase</th><th>Contratto</th><th>Autorizzazione</th><th>Avvio</th></tr></thead>
+          <thead><tr><th>Punto prelievi</th><th>Tipo</th><th>Sede TD</th><th>Partner ospitante</th><th>Fase</th><th>Contratto</th><th>Coerenza con Sedi</th><th>Autorizzazione</th><th>Avvio</th></tr></thead>
           <tbody>{righe.map((p) => (
             <tr key={p.id} className="click" onClick={() => nav(`${BASE}/account/${p.id}?scheda=punto`)}>
               <td><div className="strong">{p.nome}</div><div className="small muted">{p.org_name}{p.owner_name ? ` · ${p.owner_name}` : ''}</div></td>
@@ -48,8 +48,9 @@ export default function PuntiPrelievo() {
               <td>{p.site_name ? <>{p.site_name !== p.nome && <div>{p.site_name}</div>}<div className="small mono">{p.site_code}</div>{p.site_city ? <div className="small muted">{p.site_city}</div> : null}</> : <span className="muted">non in anagrafica</span>}</td>
               <td className="small">{p.partner || <span className="muted">–</span>}</td>
               <td><Badge tone={FASI[p.fase_corrente].tone}>{FASI[p.fase_corrente].short}</Badge></td>
-              <td className="small">{p.tipo === 'FLAGSHIP' ? (p.locazione ? <>locazione {p.locazione.protocol || ''} <Badge tone={STATUS[p.locazione.status]?.tone}>{STATUS[p.locazione.status]?.label}</Badge></> : <span className="muted">locazione: –</span>)
+              <td className="small">{p.tipo === 'FLAGSHIP' ? (p.locazione ? <>locazione {p.locazione.rent_amount != null ? eur(p.locazione.rent_amount) : <span className="amber">canone mancante</span>}{!p.locazione.documento && <div className="amber">PDF mancante in Sedi</div>}</> : <span className="muted">locazione: –</span>)
                 : p.contratto ? <>{p.contratto.protocol || 'bozza'} <Badge tone={STATUS[p.contratto.status]?.tone}>{STATUS[p.contratto.status]?.label}</Badge></> : <span className="muted">–</span>}</td>
+              <td className="small">{p.coerenza_sedi ? <span title={p.coerenza_sedi.testo}><Badge tone={p.coerenza_sedi.stato === 'OK' ? 'green' : p.coerenza_sedi.stato === 'CONFLITTO' ? 'red' : 'amber'}>{{ OK: 'coerente', DA_IMPOSTARE: 'da impostare', CONFLITTO: 'ospitante diverso', SENZA_SEDE: 'senza sede' }[p.coerenza_sedi.stato] || p.coerenza_sedi.stato}</Badge></span> : <span className="muted">–</span>}</td>
               <td>{p.fascicolo ? <><Badge tone={DOSSIER_STATUS[p.fascicolo.status]?.tone}>{DOSSIER_STATUS[p.fascicolo.status]?.label}</Badge>{p.fascicolo.authorized_at ? <div className="small muted">{itDate(p.fascicolo.authorized_at)}</div> : null}</> : <span className="muted small">nessun fascicolo</span>}</td>
               <td className="small">{p.data_avvio_effettiva ? <div className="strong">{itDate(p.data_avvio_effettiva)}</div> : p.data_avvio_prevista ? <div>prevista {itDate(p.data_avvio_prevista)}</div> : null}
                 {p.avvio ? <Badge tone={p.avvio.completo ? 'green' : p.avvio.falliti.length ? 'red' : 'mauve'}>{p.avvio.completo ? 'passi completati' : `${p.avvio.fatti}/${p.avvio.previsti} passi`}</Badge>

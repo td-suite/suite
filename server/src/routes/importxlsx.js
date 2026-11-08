@@ -277,7 +277,7 @@ r.post('/import/:dataset', requireAdmin, upload.single('file'), ah(async (req, r
   const batchUid = `xlsx:${dataset}:${Date.now()}:${crypto.randomBytes(3).toString('hex')}`;
   const batch = await one(`INSERT INTO ingest_batches (batch_uid, source, dataset, status, rows_total, checksum, manifest) VALUES ($1,'xlsx',$2,'RECEIVED',$3,$4,$5) RETURNING *`,
     [batchUid, dataset, data.length, crypto.createHash('sha256').update(req.file.buffer).digest('hex'), JSON.stringify({ filename: req.file.originalname, by: req.user.email })]);
-  const k = { source: 'xlsx', site_id: null, id: null };
+  const k = { source: 'xlsx', site_id: null, id: null, user_id: req.user.id };   // user_id: autore dell'audit delle sedi (A0)
   let out;
   if (dataset === 'users') {
     const mods = new Map((await many('SELECT key, restricted, scope_type, profiles FROM modules')).map((m) => [m.key, m]));

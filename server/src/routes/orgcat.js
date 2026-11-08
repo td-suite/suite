@@ -64,7 +64,7 @@ async function unitRows(where = '', params = []) {
 }
 r.get('/org-units', ah(async (req, res) => {
   if (isExternal(req.user)) return res.json(await many(`SELECT u.id, u.name, u.kind, u.parent_id, u.public_contact, org_unit_path(u.id) AS path FROM org_units u WHERE u.active AND u.public_contact ORDER BY u.sort_order, lower(u.name)`));
-  await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
+  // A0: le GET non scrivono (i nodi Sede nascono da saveSite, lib/sites.js; quelli mancanti si vedono nella Diagnostica, D18c)
   const all = req.query.all === '1'; const siteId = req.query.site_id ? Number(req.query.site_id) : null; const kind = req.query.kind || null;
   // con site_id: i reparti della sede più quelli senza sede (reparti di area, es. il Laboratorio), così la tendina "Reparto" li offre entrambi
   const w = [all ? null : 'u.active', siteId ? `(u.site_id=$1 OR (u.kind='REPARTO' AND u.site_id IS NULL))` : null, kind ? `u.kind='${kind.replace(/[^A-Z_]/g, '')}'` : null].filter(Boolean);
@@ -92,19 +92,22 @@ r.put('/org-units/:id', requireAdmin, ah(async (req, res) => {
   res.json(row);
 }));
 r.delete('/org-units/:id', requireAdmin, ah(async (req, res) => {
-  // Si elimina sempre: le unità dipendenti e le persone passano all'unità superiore, gli incarichi dell'unità spariscono;
-  // se era il nodo di una sede, la sede resta in anagrafica ma senza nodo (riattivabile dal form Sedi).
-  const id = Number(req.params.id);
-  const u = await one('SELECT * FROM org_units WHERE id=$1', [id]); if (!u) throw notFound();
-  const moved = { units: 0, people: 0, positions: 0 };
-  moved.units = (await q('UPDATE org_units SET parent_id=$2 WHERE parent_id=$1', [id, u.parent_id])).rowCount;
-  moved.people = (await q('UPDATE people SET unit_id=$2, updated_at=now() WHERE unit_id=$1', [id, u.parent_id])).rowCount;
-  moved.positions = (await q('DELETE FROM org_positions WHERE unit_id=$1', [id])).rowCount;
-  if (u.site_id) await q('UPDATE sites SET org_node=FALSE WHERE id=$1', [u.site_id]);
-  await q('DELETE FROM org_units WHERE id=$1', [id]);
-  await audit(req, 'ORG_UNIT_DELETED', { entity: 'org_unit', entityId: id, label: u.name, data: moved });
-  res.json({ ok: true, ...moved });
+  const out = await eliminaUnita({ query: q }, Number(req.params.id));
+  await audit(req, 'ORG_UNIT_DELETED', { entity: 'org_unit', entityId: out.unit.id, label: out.unit.name, data: out.moved });
+  res.json({ ok: true, ...out.moved });
 }));
+// Si elimina sempre: le unità dipendenti e le persone passano all'unità superiore, gli incarichi dell'unità spariscono; se era il nodo
+// di una sede, la sede resta in anagrafica ma senza nodo (riattivabile dal form Sedi). Usata anche dalla Diagnostica (A8, "Elimina il nodo").
+export async function eliminaUnita(c, id) {
+  const u = (await c.query('SELECT * FROM org_units WHERE id=$1', [id])).rows[0]; if (!u) throw notFound();
+  const moved = { units: 0, people: 0, positions: 0 };
+  moved.units = (await c.query('UPDATE org_units SET parent_id=$2 WHERE parent_id=$1', [id, u.parent_id])).rowCount;
+  moved.people = (await c.query('UPDATE people SET unit_id=$2, updated_at=now() WHERE unit_id=$1', [id, u.parent_id])).rowCount;
+  moved.positions = (await c.query('DELETE FROM org_positions WHERE unit_id=$1', [id])).rowCount;
+  if (u.site_id && !(await c.query(`SELECT 1 FROM org_units WHERE kind='SEDE' AND site_id=$1 AND id<>$2`, [u.site_id, id])).rows[0]) await c.query('UPDATE sites SET org_node=FALSE WHERE id=$1', [u.site_id]);
+  await c.query('DELETE FROM org_units WHERE id=$1', [id]);
+  return { unit: u, moved };
+}
 // incarichi
 const posSchema = z.object({ unit_id: z.number().int(), person_id: z.number().int(), role_id: z.number().int().nullable().optional(), is_head: z.boolean().optional(), sort_order: z.number().int().optional(), note: z.string().max(300).nullable().optional() });
 r.post('/org-positions', requireAdmin, ah(async (req, res) => {
@@ -128,7 +131,6 @@ r.delete('/org-positions/:id', requireAdmin, ah(async (req, res) => {
 
 // Organigramma: persone attive con sede, ruolo e responsabile (l'albero si costruisce sul responsabile; il raggruppamento per sede è della pagina)
 r.get('/org-chart', noExternal, ah(async (_req, res) => {
-  await ensureSiteNodes().catch((e) => console.warn('[org] nodi sede', e.message));
   const units = await unitRows('WHERE u.active');
   const people = await many(`SELECT p.id, p.last_name, p.first_name, p.title, p.email, p.role_id, p.job_title, p.site_id, p.unit_id, u.name AS unit_name, p.manager_person_id, s.short_name AS site_name, s.name AS site_full_name,
     (SELECT u.avatar_file_id FROM users u WHERE u.person_id=p.id LIMIT 1) AS avatar_file_id FROM people p LEFT JOIN sites s ON s.id=p.site_id LEFT JOIN org_units u ON u.id=p.unit_id WHERE p.status='ATTIVO' ORDER BY p.last_name, p.first_name`);
@@ -213,19 +215,30 @@ r.get('/org-chart/export.:fmt', noExternal, ah(async (req, res) => {
   throw bad('Formato non previsto: xlsx, pptx o pdf');
 }));
 
-// Nodo sede e reparto nell'albero (creati se mancano). `c` è un client/pool con .query (anche dentro una transazione)
+// Nodo sede e reparto nell'albero (creati se mancano). `c` è un client/pool con .query (anche dentro una transazione).
+// A8: prima di crearne uno nuovo si ADOTTA il nodo SEDE senza sede con lo stesso nome (o nome breve) della sede, se è uno solo;
+// prima la Suite creava un secondo nodo accanto a quello caricato dal file Organigramma.
 export async function ensureSiteNode(c, siteId) {
-  const ex = (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id=$1`, [siteId])).rows[0];
+  const ex = (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id=$1 ORDER BY id LIMIT 1`, [siteId])).rows[0];
   if (ex) return ex.id;
+  const site = (await c.query('SELECT name, short_name, code FROM sites WHERE id=$1', [siteId])).rows[0];
+  const adottabili = site ? (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id IS NULL
+      AND (lower(unaccent(name)) = lower(unaccent($1)) OR lower(unaccent(name)) = lower(unaccent(coalesce($2, $1))) OR lower(unaccent(name)) = lower(unaccent($3)))
+      ORDER BY active DESC, id`, [site.name, site.short_name, site.code])).rows : [];
+  if (adottabili.length === 1) {
+    await c.query('UPDATE org_units SET site_id=$2, active=TRUE, updated_at=now() WHERE id=$1', [adottabili[0].id, siteId]);
+    await c.query(`INSERT INTO audit_log (action, entity, entity_id, label, data) VALUES ('ORG_UNIT_ADOPTED','org_unit',$1,$2,$3)`,
+      [String(adottabili[0].id), `Nodo Sede adottato dalla sede ${site.code}`, JSON.stringify({ site_id: siteId })]);
+    return adottabili[0].id;
+  }
   const root = (await c.query(`SELECT id FROM org_units WHERE kind='DIREZIONE' ORDER BY id LIMIT 1`)).rows[0]
     || (await c.query(`INSERT INTO org_units (name, kind, sort_order) VALUES ('Toscana Diagnostica','DIREZIONE',0) RETURNING id`)).rows[0];
-  const site = (await c.query('SELECT name, code FROM sites WHERE id=$1', [siteId])).rows[0];
   let name = site?.name || `Sede ${siteId}`;
   if ((await c.query('SELECT 1 FROM org_units WHERE coalesce(parent_id,0)=$1 AND lower(name)=lower($2)', [root.id, name])).rows[0]) name = `${name} (${site?.code || siteId})`;
   return (await c.query(`INSERT INTO org_units (name, kind, site_id, parent_id) VALUES ($1,'SEDE',$2,$3) RETURNING id`, [name, siteId, root.id])).rows[0].id;
 }
-// Ogni sede TD attiva (non i punti dei clienti service) ha il suo nodo Sede nell'albero: se manca nasce sotto la Direzione,
-// poi si sposta sotto l'area giusta in Organizzazione (o lo fa il file Organigramma con il codice sede).
+// Ogni sede TD attiva (non i punti dei clienti service) ha il suo nodo Sede nell'albero: se manca nasce sotto la Direzione (o si adotta
+// il nodo omonimo senza sede), poi si sposta sotto l'area giusta in Organizzazione (o lo fa il file Organigramma con il codice sede).
 export async function ensureSiteNodes(c = { query: q }) {
   const missing = (await c.query(`SELECT s.id FROM sites s WHERE s.active AND s.org_node AND s.kind <> 'SERVICE' AND NOT EXISTS (SELECT 1 FROM org_units u WHERE u.kind='SEDE' AND u.site_id=s.id) ORDER BY s.sort_order, s.name`)).rows;
   for (const s of missing) await ensureSiteNode(c, s.id);
@@ -233,6 +246,28 @@ export async function ensureSiteNodes(c = { query: q }) {
   await c.query(`UPDATE org_units u SET name = s.name, updated_at=now() FROM sites s WHERE u.kind='SEDE' AND u.site_id = s.id AND u.name <> s.name
     AND NOT EXISTS (SELECT 1 FROM org_units x WHERE x.id <> u.id AND coalesce(x.parent_id,0)=coalesce(u.parent_id,0) AND lower(x.name)=lower(s.name))`);
   return missing.length;
+}
+// A8: più nodi SEDE per la stessa sede (D18a). Resta il più vecchio; figli, persone afferenti e incarichi dei doppioni passano a lui
+// (gli incarichi uguali non si sdoppiano), poi i doppioni si eliminano. Ritorna { tenuto, uniti, spostati }.
+export async function unisciNodiSede(c, siteId) {
+  const nodi = (await c.query(`SELECT id FROM org_units WHERE kind='SEDE' AND site_id=$1 ORDER BY id`, [siteId])).rows.map((r) => r.id);
+  if (nodi.length < 2) return { tenuto: nodi[0] || null, uniti: [], spostati: { units: 0, people: 0, positions: 0 } };
+  const [keep, ...dup] = nodi; const sp = { units: 0, people: 0, positions: 0 };
+  for (const d of dup) {
+    sp.units += (await c.query('UPDATE org_units SET parent_id=$2 WHERE parent_id=$1', [d, keep])).rowCount;
+    sp.people += (await c.query('UPDATE people SET unit_id=$2, updated_at=now() WHERE unit_id=$1', [d, keep])).rowCount;
+    sp.positions += (await c.query(`UPDATE org_positions op SET unit_id=$2 WHERE op.unit_id=$1 AND NOT EXISTS (SELECT 1 FROM org_positions x WHERE x.unit_id=$2 AND x.person_id=op.person_id AND coalesce(x.role_id,0)=coalesce(op.role_id,0))`, [d, keep])).rowCount;
+    await c.query('UPDATE org_units k SET head_person_id=coalesce(k.head_person_id, d.head_person_id) FROM org_units d WHERE k.id=$1 AND d.id=$2', [keep, d]);
+    await c.query('DELETE FROM org_units WHERE id=$1', [d]);   // incarichi rimasti (doppi) in cascata
+  }
+  return { tenuto: keep, uniti: dup, spostati: sp };
+}
+// A8: indice unico parziale "un nodo SEDE per sede", creato appena non ci sono più doppioni (migrazione 043 o dopo unisciNodiSede)
+export async function assicuraIndiceNodiSede(c = { query: q }) {
+  const doppi = (await c.query(`SELECT 1 FROM org_units WHERE kind='SEDE' AND site_id IS NOT NULL GROUP BY site_id HAVING count(*) > 1 LIMIT 1`)).rows[0];
+  if (doppi) return false;
+  await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS org_units_sede_site_uq ON org_units (site_id) WHERE kind = 'SEDE' AND site_id IS NOT NULL`);
+  return true;
 }
 export async function ensureUnit(c, siteId, name, { create = true } = {}) {
   // prima il reparto della sede, poi un reparto di area con lo stesso nome (es. Core Lab sotto Laboratorio di Analisi), infine se ne crea uno nella sede

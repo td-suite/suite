@@ -37,7 +37,8 @@ export default function Customers({ kind }) {
         <div><h1>{isB2B ? 'Aziende e strutture (B2B)' : 'Clienti e profilazione (B2C)'}</h1><div className="sub">{isB2B ? 'Aziende per medicina del lavoro e welfare, strutture sanitarie e laboratori in service, assicurazioni e fondi.' : 'Chi sono i pazienti, da dove vengono, cosa comprano e quando tornano. Filtra per profilo e apri la scheda per lo storico.'}</div></div>
         <div className="row">
           <a className="btn ghost" href={`${apiBase}/customers/export.xlsx${qs({ ...f, kind })}`}>Esporta Excel</a>
-          {canWrite(user) && <button className="btn" onClick={() => setEdit({ kind, marketing_consent: false })}>+ Nuovo {isB2B ? 'cliente B2B' : 'paziente'}</button>}
+          {/* A6: niente "+ Nuovo cliente B2B": i B2B arrivano dall'import delle vendite StudioLAB e si abbinano alla Legal entity */}
+          {canWrite(user) && !isB2B && <button className="btn" onClick={() => setEdit({ kind, marketing_consent: false })}>+ Nuovo paziente</button>}
         </div>
       </div>
       <div className="filters">

@@ -67,6 +67,25 @@ export default function mount(app) {
   r.get('/auth/me', (req, res) => res.json({ user: publicUser(req.user), authMethod: 'SUITE', onboarding: null }));
   r.get('/auth/config', (_req, res) => res.json({ appName: config.appName, entraEnabled: false }));
 
+  // A3 (08/11/2026, decisione 3 del CEO): "Sedi TD in locazione" in sola lettura per TUTTI gli utenti del modulo, dai dati di Sedi e
+  // Payments (canone, scadenze, disdetta, locatore, PDF del contratto, fascicolo). Si modifica solo in Amministrazione > Sedi.
+  r.get('/sedi-locazione', async (req, res, next) => {
+    try {
+      const { sediInLocazione } = await import('../../lib/sedeBusiness.js');
+      const lvl = req.suiteUser?.level;
+      res.json({ sedi: await sediInLocazione(), amministratore: lvl === 'OWNER' || lvl === 'ADMIN' });
+    } catch (e) { next(e); }
+  });
+  r.get('/sedi-locazione/:id/contratto', async (req, res, next) => {
+    try {
+      const { one } = await import('../../db.js');
+      const { sendFile } = await import('../../lib/moduleStorage.js');
+      const d = await one(`SELECT d.* FROM public.site_documents d JOIN public.sites s ON s.id=d.site_id WHERE d.site_id=$1 AND d.kind='CONTRATTO_LOCAZIONE' AND s.kind <> 'SERVICE' ORDER BY d.created_at DESC LIMIT 1`, [Number(req.params.id)]);
+      if (!d) throw new HttpError(404, 'Nessun contratto in PDF per questa sede');
+      await sendFile(res, d, { inline: req.query.download !== '1' });
+    } catch (e) { next(e); }
+  });
+
   r.use(blockWritesInMirror);
   r.use(adminRoutes);            // settings, organizations (org_ext), sites, audit (gli utenti li gestisce la Suite)
   r.use('/contracts', contractRoutes);

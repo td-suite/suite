@@ -22,6 +22,7 @@ import usersRoutes from './routes/users.js';
 import accessProfilesRoutes from './routes/accessProfiles.js';
 import esterniRoutes from './routes/esterni.js';
 import coreRoutes from './routes/core.js';
+import diagnosticaRoutes from './routes/diagnostica.js';
 import ssoRoutes from './routes/sso.js';
 import communityRoutes from './routes/community.js';
 import filesRoutes from './routes/files.js';
@@ -141,6 +142,7 @@ app.use('/api', legacyRoutes);
 app.use('/api', travasoRoutes);
 app.use('/api', importRoutes);
 app.use('/api', orgcatRoutes);
+app.use('/api', diagnosticaRoutes);                       // Amministrazione > Diagnostica anagrafica (A13) e contratti SEDE (A3)
 app.use('/api', assetTypesRoutes);                       // Catalogo dispositivi (Amministrazione > Anagrafiche)
 app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
 app.use('/api/rubriche', rubricheRoutes);       // rubriche esterne (Outlook di francesco.epifani@, Gmail fraepi@): referenti delle Legal entity

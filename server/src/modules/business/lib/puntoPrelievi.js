@@ -26,6 +26,7 @@ import {
 import { offertaDi, modelliFlusso, suiteUrl, referentiPerLinea } from './pacchettoGenera.js';
 import { attivita, avanzaFase, referentePrincipale, accessiEsterni, statoComune, assicuraToken, linkForm, allegatiRichiesti, salvaFile } from './flusso.js';
 import { dataBreve } from './pacchetto.js';
+import { coerenzaPP } from './contrattoSede.js';
 
 const errore = (status, msg) => Object.assign(new Error(msg), { status });
 const eur = (x) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', useGrouping: 'always' }).format(Number(x));
@@ -44,10 +45,10 @@ async function fascicoloDi(a, contrattoId = null) {
   return one(`SELECT d.id, d.status, d.submitted_at, d.authorized_at, d.authorization_ref, d.contract_id, d.site_id, coalesce(d.title, s.name) AS title FROM dossiers d LEFT JOIN public.sites s ON s.id=d.site_id
     WHERE ($1::int IS NOT NULL AND d.site_id=$1) OR ($2::int IS NOT NULL AND d.contract_id=$2) ORDER BY (d.site_id IS NOT DISTINCT FROM $1::int) DESC, d.created_at DESC LIMIT 1`, [a.pp_site_id || null, contrattoId]);
 }
-/** Contratto di locazione della sede (flagship): sezione SEDE dei contratti. */
+/** Locazione della sede (flagship): dall'anagrafica Sedi (A3, 08/11/2026: i contratti SEDE del Business Hub non esistono più). */
 async function contrattoSede(siteId) {
-  if (!siteId) return null;
-  return one(`SELECT id, protocol, status, title, start_date, end_date FROM contracts WHERE kind='SEDE' AND site_id=$1 AND status NOT IN ('ANNULLATO') ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [siteId]);
+  const { locazioneSede } = await import('../../../lib/sedeBusiness.js');
+  return locazioneSede(siteId);
 }
 const indirizzoDi = (sede, a) => {
   const [via, cap, citta, prov] = sede ? [sede.address, sede.zip, sede.city, sede.province] : [a.org_address, a.org_zip, a.citta, a.prov];
@@ -421,10 +422,13 @@ export async function avviaFlagship(a, { data, userId = null } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data || ''))) throw errore(400, 'Indica la data di avvio effettiva');
   if (a.pp_avvio_at) throw errore(409, `Il punto prelievi è già stato avviato il ${dataBreve(new Date(a.pp_avvio_at).toISOString().slice(0, 10))}: usa "Riprova" sui passi da completare`);
   await q('UPDATE accounts SET data_avvio_effettiva=$2, prospect=FALSE, updated_at=now() WHERE id=$1', [a.id, data]);
-  await attivita(a.id, { tipo: 'AVVIO', oggetto: 'Avvio del punto prelievi flagship', testo: `Data di avvio effettiva: ${dataBreve(data)}.${p.locazione ? ` Sede in locazione: contratto ${p.locazione.protocol || `#${p.locazione.id}`} (${String(p.locazione.status).toLowerCase()}).` : ''}${p.fascicolo ? ` Autorizzazione: fascicolo ${DOSSIER_LABEL[p.fascicolo.status] || p.fascicolo.status}.` : ''}` }, userId);
+  // decisione 4 del CEO: nessun blocco se la sede in locazione non ha PDF o canone in Sedi, solo l'avviso (nel diario e nella risposta)
+  const loc = p.locazione;
+  const testoLoc = loc?.tenure === 'LOCAZIONE' ? ` Sede in locazione (Amministrazione > Sedi): ${loc.rent_amount != null ? `canone ${eur(loc.rent_amount)} ${String(loc.rent_period || 'MESE').toLowerCase()}` : 'canone non indicato'}${loc.landlord_name ? `, locatore ${loc.landlord_name}` : ''}${loc.documento_id ? ', contratto in PDF presente' : ', contratto in PDF mancante'}.` : '';
+  await attivita(a.id, { tipo: 'AVVIO', oggetto: 'Avvio del punto prelievi flagship', testo: `Data di avvio effettiva: ${dataBreve(data)}.${testoLoc}${p.fascicolo ? ` Autorizzazione: fascicolo ${DOSSIER_LABEL[p.fascicolo.status] || p.fascicolo.status}.` : ''}${loc?.avvisi?.length ? ` Avvisi: ${loc.avvisi.join('; ')}.` : ''}` }, userId);
   const fase = await avanzaFase(a.id, 6, data, 'Avvio del punto prelievi flagship (sede TD in locazione o di proprietà): la fase 7 la conferma il CEO.', userId);
   const out = await avviaPuntoPrelievi(a.id, { fonte: 'avvio del flagship', userId });
-  return { ...out, fase };
+  return { ...out, fase, avvisi: [...(out.avvisi || []), ...(loc?.avvisi || [])] };
 }
 
 /** Job business:avvio-pp: riprende i passi in attesa quando la data o la sede ci sono (sede collegata a mano, data salvata altrove). */
@@ -444,9 +448,10 @@ export async function elencoPuntiPrelievo() {
       a.data_avvio_prevista, a.data_avvio_effettiva, a.pp_avvio_at, a.pp_avvio, a.contrattualizzato_at, uo.full_name AS owner_name,
       s.code AS site_code, s.name AS site_name, s.city AS site_city, s.tenure, s.host_organization_id, s.kind AS site_kind, ho.name AS host_name,
       (SELECT json_build_object('id', d.id, 'status', d.status, 'authorized_at', d.authorized_at) FROM dossiers d WHERE d.site_id=a.pp_site_id ORDER BY d.created_at DESC LIMIT 1) AS fascicolo,
-      (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status) FROM contracts c WHERE c.org_id=a.organization_id AND c.kind='PP' AND c.status NOT IN ('ANNULLATO','CESSATO')
+      (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'org_id', c.org_id, 'site_id', c.site_id) FROM contracts c WHERE c.org_id=a.organization_id AND c.kind='PP' AND c.status NOT IN ('ANNULLATO','CESSATO')
          AND (a.pp_site_id IS NULL OR c.site_id IS NULL OR c.site_id=a.pp_site_id) ORDER BY CASE WHEN c.site_id=a.pp_site_id THEN 0 ELSE 1 END, c.updated_at DESC NULLS LAST LIMIT 1) AS contratto,
-      (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status) FROM contracts c WHERE c.kind='SEDE' AND c.site_id=a.pp_site_id AND c.status NOT IN ('ANNULLATO') ORDER BY c.updated_at DESC NULLS LAST LIMIT 1) AS locazione
+      CASE WHEN s.tenure='LOCAZIONE' THEN json_build_object('rent_amount', s.rent_amount, 'rent_period', s.rent_period, 'lease_end', s.lease_end,
+        'documento', EXISTS (SELECT 1 FROM public.site_documents d WHERE d.site_id=s.id AND d.kind='CONTRATTO_LOCAZIONE')) END AS locazione
     FROM accounts a JOIN public.organizations o ON o.id=a.organization_id LEFT JOIN public.users uo ON uo.id=a.owner_user_id
     LEFT JOIN public.sites s ON s.id=a.pp_site_id LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id
     WHERE a.linea='PP' ORDER BY coalesce(s.name, a.pp_nome, o.name)`);
@@ -454,7 +459,10 @@ export async function elencoPuntiPrelievo() {
     const sede = r.pp_site_id ? { kind: r.site_kind, tenure: r.tenure, host_organization_id: r.host_organization_id } : null;
     const tp = tipoPunto({ sede, previsto: r.pp_tipo_previsto });
     const { pp_avvio: avvio, ...x } = r;
-    return { ...x, nome: r.site_name || r.pp_nome || r.org_name, tipo: tp.tipo, tipo_fonte: tp.fonte, partner: tp.tipo === 'CORNER' ? r.host_name || r.org_name : null, avvio: tp.tipo && r.pp_avvio_at ? riepilogoAvvio(tp.tipo, avvio?.passi || {}) : null };
+    // A1: coerenza del contratto PP vigente con l'anagrafica Sedi (colonna "Coerenza con Sedi" della pagina Punti Prelievo)
+    const vig = r.contratto && ['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(r.contratto.status);
+    const coerenza_sedi = vig ? coerenzaPP({ sede: r.pp_site_id ? { tenure: r.tenure, host_organization_id: r.host_organization_id, host_name: r.host_name } : null, orgId: r.contratto.org_id }) : null;
+    return { ...x, nome: r.site_name || r.pp_nome || r.org_name, tipo: tp.tipo, tipo_fonte: tp.fonte, partner: tp.tipo === 'CORNER' ? r.host_name || r.org_name : null, avvio: tp.tipo && r.pp_avvio_at ? riepilogoAvvio(tp.tipo, avvio?.passi || {}) : null, coerenza_sedi };
   });
   const senza = await many(`SELECT s.id, s.code, s.name, s.city, s.tenure, s.host_organization_id, ho.name AS host_name, s.organization_id, so.name AS organization_name, s.opened_at,
       (SELECT d.status FROM dossiers d WHERE d.site_id=s.id ORDER BY d.created_at DESC LIMIT 1) AS fascicolo_status

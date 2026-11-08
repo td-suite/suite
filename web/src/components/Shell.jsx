@@ -88,6 +88,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/travaso', icon: 'import', label: 'Travaso moduli' },
         { to: '/admin/imports', icon: 'import', label: 'Importazioni' },
         { group: 'Controllo' },
+        { to: '/admin/diagnostica', icon: 'stats', label: 'Diagnostica anagrafica' },
         { to: '/admin/audit', icon: 'shield', label: 'Audit' },
         { to: '/admin/settings', icon: 'gear', label: 'Impostazioni' },
       ],

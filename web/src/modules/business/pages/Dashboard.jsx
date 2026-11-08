@@ -22,12 +22,12 @@ export default function Dashboard() {
           <div className="sub">Contratti B2B di Toscana Diagnostica: proposte, sottoscrizioni, fascicoli di autorizzazione dei punti prelievo, listini e accessi ai portali. Clicca su un numero per aprire l'elenco.</div>
         </div>
         <div className="row">
-          {Object.entries(KIND).filter(([k]) => canEditKind(user, k)).map(([k, v]) => <Link key={k} className="btn" to={`${BASE}/contratti/nuovo/${k}`}>+ {v.one}</Link>)}
+          {Object.entries(KIND).filter(([k]) => k !== 'SEDE' && canEditKind(user, k)).map(([k, v]) => <Link key={k} className="btn" to={`${BASE}/contratti/nuovo/${k}`}>+ {v.one}</Link>)}
         </div>
       </div>
 
       <div className="grid g4">
-        {Object.entries(KIND).map(([k, v]) => (
+        {Object.entries(KIND).filter(([k]) => k !== 'SEDE' || n(k, ['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO']) > 0).map(([k, v]) => (
           <div key={k} onClick={() => nav(`${BASE}/${v.path}`)} style={{ cursor: 'pointer' }}>
             <Kpi accent={k === 'PP'} label={v.label} value={n(k, LIVE)} foot={`${n(k, ['ATTIVO', 'AUTORIZZATO'])} attivi · ${n(k, ['PROPOSTA'])} proposte in attesa di firma · ${n(k, ['BOZZA'])} bozze`} />
           </div>

@@ -24,6 +24,7 @@ import Account from './pages/Account.jsx';
 import EmailDaAssegnare from './pages/EmailDaAssegnare.jsx';
 import ClientiAttivi from './pages/ClientiAttivi.jsx';
 import PuntiPrelievo from './pages/PuntiPrelievo.jsx';
+import SediLocazione from './pages/SediLocazione.jsx';
 import './business.css';
 
 // vecchio indirizzo /business/account/:accountId/contratti/:id → scheda Contratto dell'account con quel contratto scelto
@@ -55,7 +56,8 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="contratti-pp" element={<Contracts kind="PP" />} />
             <Route path="service" element={<Contracts kind="SRV" />} />
             <Route path="medicina-del-lavoro" element={<Contracts kind="MDL" />} />
-            <Route path="sedi" element={<Contracts kind="SEDE" />} />
+            {/* A3 (08/11/2026): vista in sola lettura delle sedi in locazione dall'anagrafica Sedi e da Payments (niente più contratti SEDE) */}
+            <Route path="sedi" element={<SediLocazione />} />
             <Route path="fascicoli" element={<Dossiers />} />
             <Route path="contratti" element={<Contracts />} />
             <Route path="contratti/nuovo/:kind" element={isManager(user) ? <ContractForm /> : <Forbidden />} />

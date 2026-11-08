@@ -14,7 +14,7 @@ import { ah, bad, notFound, audit, parse, todayRome, HttpError } from '../lib/ut
 import { requireRole, OPS_ROLES } from '../lib/access.js';
 import { caricoIniziale, companyInfo } from '../lib/orders.js';
 import { TIPOLOGIE, TIPOLOGIA_KINDS, SITE_KINDS_DOTAZIONE, nomeTipologia, tipologiaDaSiteKind, statoDotazione, totaliDotazione, giorniAllApertura, daAttenzionare, contaBadge } from '../lib/dotazione.js';
-import { audit as auditCore } from '../../../lib/util.js';
+import { saveSite } from '../../../lib/sites.js';
 import { creaOrdine } from './orders.js';
 import { buildDotazionePdf } from '../pdf/dotazione.js';
 
@@ -199,8 +199,8 @@ r.put('/sedi/:id/apertura', ah(async (req, res) => {
   const s = await strutturaDotazione(req.params.id);
   const { opened_at } = parse(z.object({ opened_at: z.union([DATE, z.literal(''), z.null()]).transform((v) => v || null) }), req.body);
   if (s.origin === 'SITE') {
-    await q('UPDATE public.sites SET opened_at=$2, updated_at=now() WHERE id=$1', [s.site_id, opened_at]);
-    await auditCore({ user: req.suiteUser, ip: req.ip }, 'SITE_UPDATED', { module: 'orders', entity: 'site', entityId: s.site_id, label: `${s.code} ${s.name}`, data: { opened_at, prima: s.opened_at, da: 'Ordini > Dotazione di avvio sedi' } });
+    // A0: scrittura dalla funzione unica del core (audit SITE_UPDATED con origine, Cash e Payments allineati)
+    await saveSite({ id: s.site_id, data: { opened_at }, origine: 'Ordini > Dotazione di avvio sedi', req });
   } else {
     await tx(async (c) => {
       const id = await assicuraCarico(c, s, req.user.id);

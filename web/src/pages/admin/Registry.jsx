@@ -9,6 +9,9 @@ const SitesMap = React.lazy(() => import('../../components/SitesMap.jsx'));
 import { OrgAccessModal } from './OrgAccess.jsx';
 import CercaRubrica, { SuggerimentoEmail } from '../../components/CercaRubrica.jsx';
 
+// Ricerca iniziale dall'indirizzo (?q=...): i link della Diagnostica anagrafica aprono l'elenco già filtrato sulla riga da sistemare
+const qIniziale = () => { try { return new URLSearchParams(window.location.search).get('q') || ''; } catch { return ''; } };
+
 // Chip dei riferimenti alle sorgenti legacy: { cash: 12, nc: "SITE-3", ... } oppure [{source, id}]
 export function LegacyRefs({ refs }) {
   if (!refs) return null;
@@ -292,7 +295,7 @@ export function Sites() {
   const { data, loading, error, reload } = useApi('/sites?all=1');
   const orgs = useApi('/organizations');
   const toast = useToast();
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(qIniziale);
   const [modal, setModal] = useState(null);
   const [photos, setPhotos] = useState(null);
   // Due elenchi distinti: le sedi della rete Toscana Diagnostica e le strutture dei clienti service (sedi gemelle SRV-<codice StudioLAB>, create dalle organizzazioni)
@@ -317,6 +320,7 @@ export function Sites() {
     { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'opened_at', label: 'Data di apertura', type: 'date', help: 'Primo giorno di attività della sede: la leggono Cash (da quando attende il rendiconto) e Retail (scheda sede).' },
+    { key: 'closed_at', label: 'Data di chiusura', type: 'date', help: 'Si imposta da sola quando disattivi la sede (o alla cessazione del contratto PP non rinnovato); al salvataggio ricevi il quadro di ciò che resta collegato.' },
     // Titolo di godimento e locazione: fonte unica letta da Payments (Scadenziario strutture) e da Facility (Immobili)
     { key: '_tit', type: 'section', label: 'Titolo di godimento', help: 'Proprietà, locazione, comodato o ospitata. Payments e Facility lo leggono da qui: canone e contratto non vanno reinseriti altrove.' },
     { key: 'tenure', label: 'Titolo di godimento', type: 'select', required: true, init: 'LOCAZIONE', options: opts(TENURE), help: (f) => (f.tenure === 'OSPITATA' && !f.host_organization_id ? 'Ospitata richiede la Legal entity ospitante (campo sopra)' : f.host_organization_id && f.tenure !== 'OSPITATA' ? 'C\'è una Legal entity ospitante: di norma la sede è Ospitata' : f.tenure === 'OSPITATA' ? 'Nessun canone TD: la sede è nei locali della Legal entity ospitante' : null) },
@@ -351,6 +355,9 @@ export function Sites() {
     const b = { ...body, organization_id: body.organization_id ? Number(body.organization_id) : null, host_organization_id: body.host_organization_id ? Number(body.host_organization_id) : null, lease_landlord_org_id: body.lease_landlord_org_id ? Number(body.lease_landlord_org_id) : null };
     const r = modal?.id ? await api.put(`/sites/${modal.id}`, b) : await api.post('/sites', b);
     const ls = r?.lease_sync;
+    // A0/B17: alla chiusura della sede il core restituisce il quadro d'impatto (cosa resta collegato); perimetri dei partner riallineati
+    if (r?.impatto?.voci?.length) toast(`Sede chiusa. Restano collegati: ${r.impatto.voci.join('; ')}`, 'warn');
+    if (r?.perimetri?.some((x) => x.changed)) toast(`Perimetri degli accessi esterni riallineati (${r.perimetri.reduce((a, x) => a + (x.changed || 0), 0)} grant)`);
     toast(ls?.status === 'ok' ? `Sede salvata · ${ls.created ? 'contratto creato' : 'contratto aggiornato'} nello Scadenziario di Payments` : ls?.status === 'error' ? `Sede salvata, ma Payments non è stato aggiornato: ${ls.reason}` : ls?.reason && /chiudilo/.test(ls.reason) ? `Sede salvata. ${ls.reason}` : 'Sede salvata', ls?.status === 'error' ? 'warn' : undefined);
     reload();
   };
@@ -393,7 +400,7 @@ export function Sites() {
 export function Organizations() {
   const { data, loading, error, reload } = useApi('/organizations');
   const toast = useToast();
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(qIniziale);
   const [modal, setModal] = useState(null);
   const [access, setAccess] = useState(null);   // sezione Accessi della Legal entity (utenti esterni collegati, nuovo accesso, riallineo)
   const rows = (data || []).filter((o) => !q || `${o.code || ''} ${o.name} ${o.city || ''}`.toLowerCase().includes(q.toLowerCase()));
@@ -430,8 +437,8 @@ export function Organizations() {
 
 // ---------- Persone ----------
 export function PeopleAdmin() {
-  const [q, setQ] = useState('');
-  const [status, setStatus] = useState('ATTIVO');
+  const [q, setQ] = useState(qIniziale);
+  const [status, setStatus] = useState(() => (qIniziale() ? '' : 'ATTIVO'));
   const [access, setAccess] = useState('');
   const { data: raw, loading, error, reload } = useApi(`/people${qs({ qtext: q, status, all: status ? '' : '1' })}`, [q, status]);
   const data = useMemo(() => raw ? raw.filter((p) => !access || (access === 'yes' ? p.user_id : !p.user_id)) : raw, [raw, access]);
@@ -465,7 +472,17 @@ export function PeopleAdmin() {
   ];
   const save = async (body) => {
     const b = { ...body, site_id: body.site_id ? Number(body.site_id) : null, organization_id: body.organization_id ? Number(body.organization_id) : null, role_id: body.role_id ? Number(body.role_id) : null };
-    if (modal?.id) await api.put(`/people/${modal.id}`, b); else { const created = await api.post('/people', b); toast('Persona creata: ora assegna gli incarichi'); reload(); setModal(null); setPos(created); return; }
+    if (modal?.id) {
+      // A11: cessazione di una persona con accesso da amministratore: il server chiede la conferma esplicita
+      let r;
+      try { r = await api.put(`/people/${modal.id}`, b); }
+      catch (e) {
+        if (e.details?.richiede_conferma !== 'conferma_disattivazione_admin') throw e;
+        if (!window.confirm(`${e.message}.\n\nConfermi la cessazione e la disattivazione dell'accesso da amministratore?`)) throw e;
+        r = await api.put(`/people/${modal.id}`, { ...b, conferma_disattivazione_admin: true });
+      }
+      if (r?.cessazione) toast(`Persona cessata: ${r.cessazione.utenti_disattivati.length} accessi disattivati, ${r.cessazione.incarichi_chiusi} incarichi chiusi${r.cessazione.responsabile_di.some((x) => x.kind === 'SEDE') ? '. Era responsabile di sede: nomina il nuovo responsabile in Organizzazione' : ''}`, 'warn');
+    } else { const created = await api.post('/people', b); toast('Persona creata: ora assegna gli incarichi'); reload(); setModal(null); setPos(created); return; }
     toast('Persona salvata'); reload();
   };
   return (
@@ -607,7 +624,7 @@ function Units() {
   const people = useApi('/people?all=1');
   const roles = useApi('/job-roles?all=1');
   const toast = useToast();
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(qIniziale);
   const [modal, setModal] = useState(null);
   const [pos, setPos] = useState(null);
   const [collapsed, setCollapsed] = useState({});

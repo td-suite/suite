@@ -61,7 +61,7 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
   const azioni = (
     <div className="row">
       {!embedded && c.account_id && <Link className="btn ghost" to={`${BASE}/account/${c.account_id}?scheda=contratto&contratto=${c.id}`}>Account nel Business Hub</Link>}
-      {edit && editable && <Link className="btn ghost" to={modifica}><Icon name="edit" />Modifica</Link>}
+      {edit && editable && c.kind !== 'SEDE' && <Link className="btn ghost" to={modifica}><Icon name="edit" />Modifica</Link>}
       {revisionabile && <Link className="btn ghost" to={modifica} title="Modifica della proposta con una nuova revisione (storico conservato)"><Icon name="edit" />Modifica (nuova revisione)</Link>}
       {edit && editable && c.kind !== 'SEDE' && <button className="btn" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), c.protocol ? 'Documento rigenerato' : 'Proposta protocollata e generata')}><Icon name="file" />{c.protocol ? 'Rigenera DOCX e PDF' : 'Genera proposta (DOCX e PDF)'}</button>}
       {rigenerabile && <button className="btn" title="Nessun contratto firmato caricato: il documento della versione corrente si rigenera con il template attuale (stessa versione)" onClick={() => act(() => api.post(`/contracts/${c.id}/generate`), generatoVersione ? `Documento v${c.version} rigenerato` : `Documento v${c.version} generato`)}><Icon name="file" />{generatoVersione ? 'Rigenera DOCX e PDF' : `Genera documento v${c.version}`}</button>}
@@ -93,6 +93,7 @@ export default function ContrattoDettaglio({ id, embedded = false, onChange }) {
         </div>
       )}
 
+      {c.kind === 'SEDE' && <div className="alert warn small" style={{ marginBottom: 10 }}>Contratto SEDE da migrare: il contratto di locazione delle sedi TD sta in Amministrazione, Sedi. Il titolare lo sposta con l'operazione "Contratti SEDE del Business Hub" di Amministrazione, Diagnostica anagrafica (fascicolo staccato e conservato, PDF portati nella sede, campi vuoti della locazione riempiti). Qui resta in sola lettura.</div>}
       <div className="steps">{steps.map((s, i) => <div key={s} className={`s ${i < stepIdx ? 'done' : ''} ${i === stepIdx ? 'now' : ''}`}><i>{i + 1}</i>{{ BOZZA: 'Bozza', PROPOSTA: 'Proposta generata', FIRMATO: c.kind === 'SEDE' ? 'Contratto di locazione firmato' : 'Sottoscritto', AUTORIZZATO: 'Autorizzazione sanitaria', ATTIVO: 'In vigore' }[s]}</div>)}{['CESSATO', 'ANNULLATO'].includes(c.status) && <div className="s now"><i>!</i>{c.status === 'CESSATO' ? 'Cessato' : 'Annullato'}{c.cancel_reason ? `: ${c.cancel_reason}` : ''}</div>}</div>
       {pdfErr && <div className="alert warn" style={{ marginBottom: 14 }}>PDF non prodotto: {pdfErr}. Il DOCX è disponibile.</div>}
       {avvisiGen?.avvisi?.length > 0 && <div className="alert warn" style={{ marginBottom: 14 }}><strong>Documento generato con avvisi:</strong><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{avvisiGen.avvisi.map((a, i) => <li key={i}>{a}</li>)}</ul></div>}

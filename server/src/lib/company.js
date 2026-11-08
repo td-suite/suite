@@ -80,3 +80,61 @@ export async function getCompany() {
   c.footer_text = companyFooter(c);
   return c;
 }
+
+// ---- A9 (programma anagrafica unica, 08/11/2026): Legal entity di Toscana Diagnostica = Dati aziendali.
+// app_settings.company_org_id indica la riga di public.organizations che è TD. Proposta automatica (decisione 6 del CEO): la Legal entity
+// con la stessa P.IVA dei Dati aziendali, altrimenti quella che si chiama "Toscana Diagnostica" (società del gruppo per prime).
+// Il salvataggio dei Dati aziendali aggiorna quella riga (ragione sociale, P.IVA, CF, indirizzo, PEC, SDI) nella stessa transazione.
+import { one, many } from '../db.js';
+const soloCifre = (s) => String(s || '').replace(/\D+/g, '');
+
+export async function companyOrgId() {
+  const v = await getSetting('company_org_id', null).catch(() => null);
+  const id = Number(v);
+  if (!id) return null;
+  return (await one('SELECT id FROM organizations WHERE id=$1', [id]))?.id || null;
+}
+
+/** Proposta della riga TD: { id, name, vat_number, come } oppure null. */
+export async function propostaCompanyOrg(company = null) {
+  const c = company || await getCompany();
+  const vat = soloCifre(c.vat);
+  if (vat) {
+    const r = await many(`SELECT id, name, kind, vat_number FROM organizations WHERE regexp_replace(coalesce(vat_number,''), '\\D', '', 'g') = $1
+      ORDER BY (kind IN ('SOCIETA','GRUPPO')) DESC, active DESC, id`, [vat]);
+    if (r.length) return { ...r[0], come: `stessa P.IVA dei Dati aziendali (${c.vat})${r.length > 1 ? `; ${r.length} Legal entity con questa P.IVA: le altre sono duplicati (D16a)` : ''}` };
+  }
+  const r = await many(`SELECT id, name, kind, vat_number FROM organizations WHERE lower(unaccent(name)) LIKE 'toscana diagnostica%'
+    ORDER BY (kind IN ('SOCIETA','GRUPPO')) DESC, active DESC, id`);
+  if (r.length) return { ...r[0], come: 'nome "Toscana Diagnostica" (nessuna Legal entity con la P.IVA dei Dati aziendali)' };
+  return null;
+}
+
+/** Campi della Legal entity TD dai Dati aziendali (solo quelli valorizzati: mai cancellare un valore dell'anagrafica) */
+export function orgFieldsFromCompany(c) {
+  const out = { name: c.legal_name || c.name, vat_number: soloCifre(c.vat) || null, tax_code: c.tax_code || null, address: c.address || null, zip: c.zip || null,
+    city: c.city || null, province: c.province || null, pec: c.pec || null, sdi: c.sdi_code || null };
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v != null && String(v).trim() !== ''));
+}
+
+/**
+ * Allinea la riga TD di organizations ai Dati aziendali. `c` = client della transazione (pool se assente). Ritorna { org_id, modifiche }
+ * oppure { org_id: null } se company_org_id non è impostato.
+ */
+export async function aggiornaOrgTd(client, saved) {
+  const run = (sql, p) => (client ? client.query(sql, p) : import('../db.js').then((m) => m.q(sql, p)));
+  const idRow = (await run(`SELECT value FROM app_settings WHERE key='company_org_id'`)).rows[0];
+  const id = Number(idRow?.value);
+  if (!id) return { org_id: null };
+  const cur = (await run('SELECT * FROM organizations WHERE id=$1 FOR UPDATE', [id])).rows[0];
+  if (!cur) return { org_id: null };
+  const comp = { ...DEFAULT_COMPANY };
+  if (saved && typeof saved === 'object') for (const [k, v] of Object.entries(saved)) if (v != null && String(v).trim() !== '') comp[k] = String(v);
+  const f = orgFieldsFromCompany(comp);
+  const mod = {};
+  for (const [k, v] of Object.entries(f)) if (String(cur[k] ?? '') !== String(v)) mod[k] = [cur[k] ?? null, v];
+  if (!Object.keys(mod).length) return { org_id: id, modifiche: {} };
+  const ks = Object.keys(mod);
+  await run(`UPDATE organizations SET ${ks.map((k, i) => `${k}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...ks.map((k) => mod[k][1])]);
+  return { org_id: id, modifiche: mod };
+}

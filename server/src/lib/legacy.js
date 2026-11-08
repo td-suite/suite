@@ -81,6 +81,12 @@ const isInternalEmail = (email) => config.autoInternalDomains.includes(String(em
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const SITE_KINDS = ['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO'];
 
+// A12 (programma anagrafica unica, 08/11/2026): la sincronizzazione dalle app di origine non scrive MAI sedi, Legal entity e persone.
+// Amministrazione è l'unica anagrafica (decisione 25/10/2026, docs/ANAGRAFICA.md "Regola di governo"); in particolare Finance e Spedizioni
+// sono moduli LIVE e la loro app di origine non deve creare Legal entity FORNITORE o CLIENTE. I matcher restano in sola lettura: trovano
+// la riga già presente (per i riferimenti dei grant) e contano come "non scritti" i record che prima avrebbero creato o aggiornato.
+export const ANAGRAFICA_DALLE_APP = false;
+
 class Stats {
   constructor() { this.d = {}; }
   inc(entity, what, n = 1) { const e = (this.d[entity] ||= { creati: 0, aggiornati: 0, saltati: 0 }); e[what] = (e[what] || 0) + n; }
@@ -111,6 +117,7 @@ class SiteMatcher {
     const { code, name } = data;
     if (!name) { this.stats.inc('sedi', 'saltati'); return null; }
     const hit = this.find(legacyId, data);
+    if (!ANAGRAFICA_DALLE_APP) { this.stats.inc('sedi', 'non_scritti'); return hit?.id || null; }   // A12: sola lettura
     const refs = JSON.stringify({ [this.key]: legacyId });
     const fill = ['short_name', 'kind', 'organization_id', 'address', 'zip', 'city', 'province', 'lat', 'lng', 'phone', 'email', 'manager_name', 'opening_hours', 'legacy_brand', 'studiolab_code'];
     if (hit) {
@@ -156,6 +163,7 @@ class OrgMatcher {
   async upsert(legacyId, data) {
     if (!data.name) { this.stats.inc('organizzazioni', 'saltati'); return null; }
     const hit = this.find(legacyId, data);
+    if (!ANAGRAFICA_DALLE_APP) { this.stats.inc('organizzazioni', 'non_scritti'); return hit?.id || null; }   // A12: sola lettura
     const refs = JSON.stringify({ [this.key]: legacyId });
     const fill = ['code', 'vat_number', 'tax_code', 'sdi', 'pec', 'email', 'phone', 'address', 'zip', 'city', 'province', 'website'];
     if (hit) {
@@ -414,6 +422,7 @@ class PersonMatcher {
   async upsert(legacyId, data, { reviewOnCreate = false } = {}) {
     if (!data.last_name || !data.first_name) { this.stats.inc('persone', 'saltati'); return null; }
     const hit = this.find(legacyId, data);
+    if (!ANAGRAFICA_DALLE_APP) { this.stats.inc('persone', 'non_scritti'); return hit?.id || null; }   // A12: sola lettura
     const refs = JSON.stringify({ [this.key]: legacyId });
     const fields = ['kind', 'status', 'title', 'sex', 'birth_date', 'tax_code', 'email', 'phone', 'phone_office', 'area', 'job_title', 'discipline', 'site_id', 'hired_at', 'terminated_at'];
     if (hit) {
@@ -542,11 +551,16 @@ export async function syncSource(key) {
 }
 
 export async function syncAll() {
+  // A12: il lavoro periodico non scrive l'anagrafica e non fallisce. Moduli sull'anagrafica unica: niente; moduli LIVE (Finance,
+  // Spedizioni): niente, la loro app di origine è dismessa per l'anagrafica; le altre sorgenti configurate restano solo per contatori e
+  // travaso e vengono segnate come "anagrafica dismessa" senza eccezioni (prima il job si fermava alla prima sorgente configurata).
   const results = [];
   for (const k of SYNC_ORDER) {
     if (FRESH_MODULES.includes(k)) continue; // anagrafica unica: nessuna sincronizzazione dall'app originale
     if (!sourceEnabled(k)) { await q(`UPDATE legacy_sources SET enabled=FALSE WHERE key=$1`, [k]); results.push({ key: k, status: 'NON_CONFIGURATA' }); continue; }
-    results.push(await syncSource(k));
+    if (await moduleLive(k)) { results.push({ key: k, status: 'MODULO_LIVE', reason: 'modulo LIVE nella Suite: nessuna scrittura dall\'app di origine' }); continue; }
+    try { results.push(await syncSource(k)); }
+    catch (e) { results.push({ key: k, status: 'ANAGRAFICA_DISMESSA', reason: e.message }); }
   }
   return results;
 }

@@ -1089,3 +1089,63 @@ partner ospitanti) ed è legata all'utente, non alla persona. Tabella core `cons
   quanti hanno preso atto di entrambe, conteggi per documento), `PUT /api/consensi/impostazioni` (URL https:// o percorso /..., versioni;
   audit `CONSENSI_IMPOSTAZIONI`), `GET /api/consensi/export.csv` (registro di tutte le prese d'atto, separatore ";", audit
   `CONSENSI_EXPORT`). Test: server/test/consensi.test.mjs.
+
+## Regola di governo dell'anagrafica unica e blocco 1 del programma (08/11/2026)
+Programma "anagrafica unica e Suite interconnessa" approvato dal CEO l'08/11/2026 (review seconda passata, decisioni 1-12). Da oggi la
+Suite è in produzione: **ogni modifica di dati di produzione passa da Amministrazione** (scheda o Diagnostica → Correggi con conferma),
+mai da SQL a mano; ogni migrazione è idempotente, non distruttiva e scrive il rapporto in `audit_log` (`MIGRAZIONE_RAPPORTO`).
+
+**Regola di governo.** Amministrazione è l'unica anagrafica di sedi, Legal entity e persone. **Ogni scrittura su `public.sites` passa da
+una sola funzione del core**, `saveSite` (lib/sites.js, A0), che: applica le regole del titolo di godimento (`regoleTitolo`: ospitata ⇒
+ospitante; titolo che esce da Ospitata ⇒ ospitante tolto; campi della locazione ripuliti), il vincolo "sede TD (non SERVICE) ⇒ Legal
+entity proprietaria" (alla creazione la Legal entity di TD dei Dati aziendali), scrive l'audit `SITE_CREATED`/`SITE_UPDATED` con
+`origine` e modifiche prima/dopo, allinea lo specchio di Cash (`cash.site_ext.ownership/host_org_id`), crea o aggiorna il contratto di
+Payments (`siteToLease`), crea o adotta il nodo Sede (`ensureSiteNodes`), ricalcola le coordinate quando cambia l'indirizzo, riallinea i
+perimetri degli accessi esterni delle Legal entity toccate (ospitante vecchia e nuova, proprietaria dei punti SERVICE), alla
+disattivazione imposta `closed_at` e restituisce il quadro d'impatto (`impattoChiusura`: Payments, persone, utenti, perimetri, nodo,
+account e contratti PP). La parte transazionale è `scriviSede(c, …)` (per chi scrive dentro una transazione: connettore, import XLSX,
+migrazione dei contratti SEDE); le conseguenze fuori transazione partono dopo il COMMIT. Usano `saveSite`: Amministrazione > Sedi,
+connettore e file Sedi (`routes/ingest.js`), Business (firma e cessazione PP), Ordini (Dotazione, data di apertura), Retail (Intorno,
+coordinate), Payments (`leaseToSite`), Diagnostica. Restano fuori (da portare): foto della sede (`routes/files.js`), coordinate del meteo e
+del "Completa coordinate" (solo se vuote), riferimenti legacy di Room (travaso).
+
+**Flussi chiusi in questo blocco.**
+- A12 · Sorgenti legacy: `ANAGRAFICA_DALLE_APP = false` (lib/legacy.js): i matcher di sedi, Legal entity e persone sono in sola lettura
+  (conteggio `non_scritti`); `syncAll` salta i moduli LIVE (Finance, Spedizioni: `MODULO_LIVE`) e non si ferma più alla prima sorgente.
+- A6 · Retail: niente "+ Nuovo cliente B2B" né creazione manuale di B2B (`POST /api/retail/customers` con `kind: B2B` → 400).
+- A2 · Cash: titolo e struttura ospitante in sola lettura ("Modifica in Sedi"); `PUT /api/cash/sites/:id` ignora `ownership` e `host_org_id`
+  e non scrive più `public.sites`; royalty azzerate se la sede non è Ospitata in anagrafica. Migrazione cash/016: completa l'ospitante del
+  core solo dove manca, vista `cash.sites_v` senza la riserva `site_ext.host_org_id` (stesse colonne), conteggio D06 nel rapporto; colonne
+  `site_ext.ownership/host_org_id` conservate come specchio scritto dal core. `hostedSiteIds` (perimetro partner) legge solo
+  `sites.host_organization_id` con titolo OSPITATA.
+- A9 · Legal entity di TD = Dati aziendali: `app_settings.company_org_id`, proposta automatica (stessa P.IVA, altrimenti nome "Toscana
+  Diagnostica"), `GET/PUT /api/company/org`; il salvataggio dei Dati aziendali aggiorna nella stessa transazione ragione sociale, P.IVA,
+  CF, indirizzo, PEC e SDI di quella riga (`aggiornaOrgTd`, audit `ORG_UPDATED` con origine).
+- A8 · Organigramma: `ensureSiteNode` adotta il nodo SEDE senza sede con lo stesso nome, nome breve o codice (audit `ORG_UNIT_ADOPTED`);
+  indice unico parziale `org_units_sede_site_uq` (creato dalla migrazione 043 solo senza doppioni, altrimenti dalla correzione D18a che
+  unisce i doppioni nel nodo più vecchio, `unisciNodiSede`); le GET di Organizzazione non scrivono più; responsabile di sede solo tra le
+  persone ATTIVE (GET /sites e viste `audit.sites_v`, `room.sites_v`, `facility.sites_v`, `orders.strutture_v`, ridefinite dalla funzione
+  `public.responsabili_solo_attivi`); dalla Diagnostica "Collega", "Crea la sede dal nodo", "Elimina il nodo" (decisione 7).
+- A11 · Persona cessata (lib/cessazione.js `effettiCessazione`): accessi DISABLED (un amministratore solo con conferma esplicita
+  `conferma_disattivazione_admin`, il titolare mai), incarichi chiusi, `head_person_id` azzerato, notifica agli amministratori se era
+  responsabile di sede. Dal job dei Contratti, dalla cessazione della scheda Contratti, dal cambio di stato manuale in Persone, da D19/D18e.
+- A1 · Contratto PP ↔ Sedi (decisione 2): vedi docs/BUSINESS_HUB.md. Alla firma la sede diventa Ospitata dalla controparte se non ha
+  ospitante (altrimenti avviso); al CESSATO non rinnovato la sede si chiude (`active=false`, `closed_at` = data di cessazione) con il
+  quadro d'impatto negli eventi del contratto.
+- A3 · Contratti SEDE eliminati dal Business Hub (operazione in Diagnostica, vedi sotto e docs/BUSINESS_HUB.md). `site_documents` ha
+  `label` e `origin` (migrazione 043).
+
+**Diagnostica anagrafica (A13).** Amministrazione > Controllo > Diagnostica anagrafica (`/admin/diagnostica`, lib/diagnostica.js,
+routes/diagnostica.js). Tutti i controlli della review (D01-D11, D12-D17, D20-D23, D25, D33, D18a-e, D19, D34-D36, D24, D26-D31, D39,
+D40; D22b adattato al confronto con la Legal entity di TD, D22c = copie dell'indirizzo del Laboratorio, D26 e D28 limitati alle righe
+anomale, D18d ai responsabili attivi): conteggi per area, prime 50 righe, CSV del rapporto (`/api/admin/diagnostica/export.csv`) e del
+singolo controllo, "Salva l'esito" (`diagnostica_runs`). Esecuzione in transazione READ ONLY con `statement_timeout` 5 s; "modulo non
+avviato" se manca lo schema. Correzioni (`POST /api/admin/diagnostica/:id/correggi { ids, conferma: 'CORREGGI', opzioni }`) solo con le
+funzioni del core, audit `DIAGNOSTICA_CORREZIONE` con prima/dopo: D01, D02, D03, D04, D06, D10a, D18a, D18b, D18c, D18e, D19 (opzione
+`includi_admin`), D22a, D22b, D30, D31, D33, D34. Controlli "attivi dopo": D13 (Fase 2, A5/A7), D24 (Fase 3, B1), D36 (Fase 4, C13);
+correzioni "dopo": D07 (B6), D12 (A5), D16a-c (B5b), D20 (A4), D21a-b (B15), D22c (B9), D23 (B7), D25 (B5). Lavoro giornaliero
+`core:diagnostica`: salva l'esito e notifica gli amministratori se crescono i controlli bloccanti. Schermate:
+docs/screens/admin-diagnostica.png, admin-diagnostica-sede.png.
+
+**Cash.** Vedi A2 sopra: Cash legge titolo e ospitante dall'anagrafica e conserva solo i propri campi (fondo cassa, casse, POS, royalty,
+azienda). D06 verifica lo specchio; D07 (azienda Cash ≠ Legal entity della sede) si corregge con B6.

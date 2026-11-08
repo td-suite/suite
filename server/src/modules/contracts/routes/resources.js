@@ -13,6 +13,7 @@ import { getSettings, decompose, decomposeDirigente, costCoefficient, companyCos
 import { computeDeadlines, missingDocuments } from '../lib/deadlines.js';
 import { CATEGORY_LABELS } from '../lib/seedData.js';
 import { applyDueTerminations } from '../lib/termination.js';
+import { effettiCessazione } from '../../../lib/cessazione.js';
 import { removeFromIndex } from '../../../lib/search.js';
 import { PERSON_KINDS, hrKind, createPerson, updatePerson, deletePerson, reindexPerson, syncDerived, siteLabel } from '../lib/people.js';
 
@@ -439,8 +440,10 @@ r.put('/:id/terminate', requireWrite, ah(async (req, res) => {
     return { moved, heads, up };
   };
   const h = status === 'CESSATO' ? await handover() : null;
+  // A11: accessi disattivati (amministratori solo con conferma: restano segnalati), incarichi chiusi, avviso responsabile di sede
+  const cessazione = status === 'CESSATO' ? await effettiCessazione(id, { req, confermaAdmin: req.body?.conferma_disattivazione_admin === true, origine: 'Contratti del personale, cessazione' }) : null;
   await audit(req, 'RESOURCE_TERMINATE', 'resource', id, { terminated_at: d.terminated_at, reason: d.reason, handover: h });
-  res.json({ ok: true, status, terminated_at: d.terminated_at, handover: h });
+  res.json({ ok: true, status, terminated_at: d.terminated_at, handover: h, cessazione });
 }));
 r.put('/:id/reactivate', requireWrite, ah(async (req, res) => {
   const id = Number(req.params.id);

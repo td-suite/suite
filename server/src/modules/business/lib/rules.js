@@ -117,7 +117,8 @@ export const KIND = {
   MDL: { label: 'Medicina del Lavoro', long: 'Lettera di offerta per prestazioni di Medicina del Lavoro (TD-SGI-MOD231)', role: 'MDL' },
   SEDE: { label: 'Sede TD in locazione', long: 'Sede intestata a Toscana Diagnostica con contratto di locazione (laboratorio, punto prelievi o centro polidiagnostico flagship)', role: 'RETAIL' },
 };
-export const HAS_DOSSIER = (kind) => kind === 'PP' || kind === 'SEDE';
+// A3: il fascicolo nasce solo con il contratto PP; i fascicoli dei flagship si aprono dalla sede (Nuovo fascicolo)
+export const HAS_DOSSIER = (kind) => kind === 'PP';
 export const SITE_TYPE = { LABORATORIO: 'Laboratorio di Analisi', PUNTO_PRELIEVI: 'Punto Prelievi', CENTRO_POLIDIAGNOSTICO: 'Centro Polidiagnostico', ALTRO: 'Altra sede' };
 
 export const STATUS_FLOW = ['BOZZA', 'PROPOSTA', 'FIRMATO', 'AUTORIZZATO', 'ATTIVO', 'CESSATO', 'ANNULLATO'];

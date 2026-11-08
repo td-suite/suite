@@ -304,3 +304,14 @@ dice solo se ci sono. Nessun dato chiesto due volte: "Sede extraurbana" è un ca
 migrazione core 042, Amministrazione > Sedi) e le coordinate restano `public.sites.lat/lng` (geocodifica Google con conferma dalla scheda
 Intorno o dal form Sedi). Audit: `INTORNO_IMPOSTAZIONI`, `INTORNO_PROVA`, `INTORNO_JOB`, `INTORNO_RILEVA`, `INTORNO_VALUTA`,
 `INTORNO_COORDINATE_SEDE`, `INTORNO_VALUTAZIONE_ELIMINATA`. Guida completa: docs/RETAIL_INTORNO.md.
+
+## Anagrafica unica, blocco 1 (08/11/2026)
+- `company_org_id` (app_settings, numero): Legal entity di Toscana Diagnostica. Si imposta in Impostazioni > Dati aziendali (riquadro
+  "Legal entity di Toscana Diagnostica", proposta automatica) o dalla correzione D22a; non dal generico `PUT /api/settings/:key`
+  (rifiutato). Il salvataggio di `company` aggiorna quella Legal entity (ragione sociale, P.IVA, CF, indirizzo, PEC, SDI).
+- Lavoro `core:diagnostica` (ogni 24 ore): esito della Diagnostica anagrafica in `diagnostica_runs`, notifica agli amministratori se
+  crescono i controlli bloccanti.
+- Migrazioni: core 043 (`sites.closed_at`, funzione `responsabili_solo_attivi`, indice `org_units_sede_site_uq` se non ci sono doppioni,
+  `diagnostica_runs`, `site_documents.label/origin`), cash 016 (titolo e ospitante solo dal core), audit 003, facility 004, orders 012,
+  room 010 (responsabile di sede solo attivo). Tutte idempotenti e non distruttive, con rapporto `MIGRAZIONE_RAPPORTO` in audit_log.
+- Cash: titolo di godimento e struttura ospitante non sono più impostazioni di Cash (Amministrazione > Sedi).

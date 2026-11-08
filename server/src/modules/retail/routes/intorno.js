@@ -9,6 +9,7 @@ import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireRole, requireWrite } from '../lib/access.js';
 import { toXlsx } from '../lib/exports.js';
 import { runJob } from '../../../lib/jobs.js';
+import { saveSite } from '../../../lib/sites.js';
 import {
   leggiImpostazioni, salvaImpostazioni, statoContatore, configPubblica, sedeIntorno, rilevaSede, rileva, dettaglio, storico, ultimaCompletata,
   confrontoSedi, valutazioni, geocodifica, provaChiave, chiaveIndirizzo, SOTTO, CATEGORIE, PREDEFINITI,
@@ -84,8 +85,9 @@ r.post('/sedi/:id/intorno/geocodifica', requireRole('ADMIN'), ah(async (req, res
 }));
 r.put('/sedi/:id/intorno/coordinate', requireRole('ADMIN'), ah(async (req, res) => {
   const b = parse(z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), label: z.string().max(400).nullable().optional() }), req.body);
-  const s = await one('UPDATE public.sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 RETURNING id, name, code, lat, lng', [id(req.params.id), b.lat, b.lng]);
-  if (!s) throw notFound('Sede non trovata');
+  // A0: coordinate scritte dalla funzione unica del core (audit SITE_UPDATED con origine)
+  const sv = await saveSite({ id: id(req.params.id), data: { lat: b.lat, lng: b.lng }, origine: 'Retail > Intorno', req });
+  const s = { id: sv.id, name: sv.name, code: sv.code, lat: sv.lat, lng: sv.lng };
   await audit(req, 'INTORNO_COORDINATE_SEDE', 'site', s.id, { label: `${s.name} (${s.code})`, lat: b.lat, lng: b.lng, indirizzo_trovato: b.label || null });
   res.json(s);
 }));

@@ -1,6 +1,6 @@
 // Moduli (home a widget), anagrafiche (sedi, organizzazioni, persone), rubrica, notifiche, audit
 import { getSetting, normName } from '../lib/util.js';
-import { getCompany, COMPANY_FIELDS } from '../lib/company.js';
+import { getCompany, COMPANY_FIELDS, companyOrgId, propostaCompanyOrg, orgFieldsFromCompany, aggiornaOrgTd } from '../lib/company.js';
 import { ensureUserForPerson, autoAccountForPerson, createMissingAccounts, syncUserFromPerson } from '../lib/accounts.js';
 import { syncPositionFromPerson, ensureSiteNodes } from './orgcat.js';
 import { geocodeAddress, autoGeocodeSite } from '../lib/geocode.js';
@@ -9,7 +9,7 @@ import { resolveCatalog } from './orgcat.js';
 import { Router } from 'express';
 import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
-import { one, many, q } from '../db.js';
+import { one, many, q, tx } from '../db.js';
 import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util.js';
 import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
@@ -18,7 +18,9 @@ import multer from 'multer';
 import { storeBuffer, sendFile, dropBlobs } from '../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
 import { aiEnabled } from '../lib/claude.js';
-import { siteToLease, registryLease, tenureIssue, normalizeLeaseFields, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
+import { registryLease, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
+import { saveSite, hoursText } from '../lib/sites.js';
+import { effettiCessazione, adminDaConfermare } from '../lib/cessazione.js';
 import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
 import { storePlan, listPlans, planFile, deletePlan, PLAN_MAX_BYTES } from '../lib/roomPlan.js';
 
@@ -72,41 +74,8 @@ r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---- Sedi
-const numOrNull = (v) => (v === undefined ? undefined : v === null || v === '' ? null : Number(v));
-const money = z.preprocess(numOrNull, z.number().min(0).max(100_000_000).nullable().optional());
-const smallInt = (max) => z.preprocess(numOrNull, z.number().int().min(0).max(max).nullable().optional());
-const isoDate = z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional());
-const siteSchema = z.object({
-  code: z.string().min(2).max(40), name: z.string().min(2).max(250), short_name: z.string().max(120).nullable().optional(),
-  kind: z.enum(['HEADQUARTER', 'LABORATORIO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'PUNTO_PRELIEVI', 'SERVICE', 'CENTRO_MEDICO', 'ALTRO']).optional(),
-  organization_id: z.number().int().nullable().optional(), host_organization_id: z.preprocess((v) => (v === undefined ? undefined : v === null || v === '' ? null : Number(v)), z.number().int().nullable().optional()), address: z.string().nullable().optional(), zip: z.string().nullable().optional(), city: z.string().nullable().optional(),
-  province: z.string().max(4).nullable().optional(), lat: z.number().nullable().optional(), lng: z.number().nullable().optional(), phone: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional(), org_node: z.boolean().optional(), opening_hours: z.string().nullable().optional(), opening_hours_json: z.record(z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(3)).nullable().optional(), legacy_brand: z.string().nullable().optional(),
-  studiolab_code: z.string().nullable().optional(), active: z.boolean().optional(), needs_review: z.boolean().optional(), sort_order: z.number().int().optional(), notes: z.string().nullable().optional(),
-  opened_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),   // data di apertura della sede (letta da Cash e Retail)
-  extraurbana: z.boolean().optional(),   // sede extraurbana: raggio dell'Intorno del Retail più ampio (10 km predefiniti, docs/RETAIL_INTORNO.md)
-  // Titolo di godimento e locazione (fonte unica: Payments e Facility leggono da qui, lib/leaseSync.js)
-  tenure: z.enum(['PROPRIETA', 'LOCAZIONE', 'COMODATO', 'OSPITATA']).optional(),
-  rent_amount: money, rent_period: z.enum(['MESE', 'TRIMESTRE', 'SEMESTRE', 'ANNO']).optional(),
-  rent_vat: z.preprocess((v) => (v === '' ? null : v), z.enum(['PIU_IVA', 'ESENTE', 'IVA_INCLUSA']).nullable().optional()), rent_vat_rate: z.preprocess(numOrNull, z.number().min(0).max(100).nullable().optional()),
-  lease_start: isoDate, lease_years: smallInt(99), lease_renewal_years: smallInt(99), lease_notice_months: smallInt(60), lease_end: isoDate,
-  lease_landlord_org_id: z.preprocess(numOrNull, z.number().int().nullable().optional()),
-  lease_registration: z.preprocess((v) => (v === '' ? null : v), z.enum(['IMPOSTA_ANNUALE', 'UNICA_SOLUZIONE', 'CEDOLARE_SECCA', 'DA_REGISTRARE']).nullable().optional()),
-  guarantee_bank_amount: money, guarantee_insurance_amount: money, deposit_amount: money, guarantee_notes: z.string().max(2000).nullable().optional(),
-});
-
-// Orari strutturati → testo riassuntivo (es. "Lun-Ven 7:30-12:30, 15:00-18:00; Sab 7:30-11:00"), giorni consecutivi uguali raggruppati
-const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']; const DAY_LABEL = { mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Gio', fri: 'Ven', sat: 'Sab', sun: 'Dom' };
-export function hoursText(j) {
-  if (!j) return null;
-  const fmt = (d) => (j[d] || []).map((r) => `${r.from.replace(/^0/, '')}-${r.to.replace(/^0/, '')}`).join(', ');
-  const groups = [];
-  for (const d of DAYS) { const t = fmt(d); if (!t) continue; const last = groups[groups.length - 1]; if (last && last.t === t && DAYS.indexOf(last.to) === DAYS.indexOf(d) - 1) last.to = d; else groups.push({ from: d, to: d, t }); }
-  return groups.map((g) => `${DAY_LABEL[g.from]}${g.from !== g.to ? `-${DAY_LABEL[g.to]}` : ''} ${g.t}`).join('; ') || null;
-}
-const withHours = (b) => { if (b.opening_hours_json !== undefined) { b.opening_hours_json = b.opening_hours_json ? JSON.stringify(b.opening_hours_json) : null; if (b.opening_hours_json) b.opening_hours = hoursText(JSON.parse(b.opening_hours_json)); } return b; };
-
+// ---- Sedi: schema, orari e regole del titolo sono in lib/sites.js (funzione unica saveSite, correzione A0)
+export { hoursText };
 r.get('/sites', ah(async (req, res) => {
   const all = isAdmin(req.user) || req.query.all === '1';
   // Responsabile di sede: dall'organigramma (responsabile del nodo Sede collegato), mai testo libero
@@ -118,7 +87,7 @@ r.get('/sites', ah(async (req, res) => {
       h.person_id AS manager_person_id, h.person_name AS manager_name, h.role_name AS manager_role, h.unit_id AS org_unit_id
     FROM sites s LEFT JOIN organizations o ON o.id=s.organization_id LEFT JOIN organizations ho ON ho.id=s.host_organization_id LEFT JOIN organizations lo ON lo.id=s.lease_landlord_org_id
     LEFT JOIN LATERAL (SELECT op.person_id, op.unit_id, pp.last_name || ' ' || pp.first_name AS person_name, jr.name AS role_name FROM org_units u JOIN org_positions op ON op.unit_id=u.id AND op.is_head
-        JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
+        JOIN people pp ON pp.id=op.person_id AND pp.status='ATTIVO' LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE   -- A8: solo responsabili attivi
     ${all ? '' : 'WHERE s.active'} ORDER BY lower(s.name)`);
   // esterni: solo le sedi del proprio perimetro (ambiti dei grant e sedi della Legal entity), senza responsabile né note
   if (isExternal(req.user)) {
@@ -131,21 +100,6 @@ r.get('/sites', ah(async (req, res) => {
   const hide = Object.fromEntries([...LEASE_SITE_KEYS.filter((k) => k !== 'tenure'), 'lease_landlord_name', 'lease_document', 'planimetria'].map((k) => [k, undefined]));
   res.json(rows.map((s) => (isAdmin(req.user) ? s : { ...s, ...hide, legacy_refs: undefined, notes: undefined })));
 }));
-// Legal entity ospitante: fonte unica public.sites.host_organization_id; Cash (site_ext.host_org_id, royalties) resta allineato
-// Cash legge il titolo di godimento dall'anagrafica: Ospitata = struttura ospitante con royalties (ownership OSPITATA), tutto il resto
-// (proprietà, locazione, comodato) = sede propria (ownership PROPRIA). Fonte unica: Amministrazione > Sedi. Qui si allinea cash.site_ext
-// per le sedi già configurate in Cash; le altre leggono il core dalla vista cash.sites_v.
-async function syncHostToCash(siteId, hostOrgId, tenure) {
-  if (hostOrgId === undefined && tenure === undefined) return;
-  if (hostOrgId != null && !(await one('SELECT 1 FROM organizations WHERE id=$1', [hostOrgId]))) throw bad('Legal entity ospitante inesistente');
-  if (!(await one(`SELECT to_regclass('cash.site_ext') IS NOT NULL AS ok`))?.ok) return;
-  const cur = await one('SELECT host_organization_id, tenure FROM sites WHERE id=$1', [siteId]);
-  const host = hostOrgId !== undefined ? hostOrgId : cur?.host_organization_id ?? null;
-  const ten = tenure !== undefined ? tenure : cur?.tenure;
-  const ownership = ten === 'OSPITATA' || (ten == null && host != null) ? 'OSPITATA' : 'PROPRIA';
-  await q(`UPDATE cash.site_ext SET host_org_id=$2, ownership=$3, updated_at=now() WHERE site_id=$1`, [siteId, ownership === 'OSPITATA' ? host : null, ownership])
-    .catch((e) => console.warn('[sites] allineamento Cash non riuscito:', e.message));
-}
 const saveCoords = (id, g) => q('UPDATE sites SET lat=$2, lng=$3, updated_at=now() WHERE id=$1 AND (lat IS NULL OR lng IS NULL)', [id, g.lat, g.lng]);
 // Coordinate dall'indirizzo (pulsante nel form Sedi). Non salva: restituisce lat/lng da confermare nel form.
 r.post('/geocode', requireAdmin, ah(async (req, res) => {
@@ -160,56 +114,15 @@ r.post('/sites/geocode-missing', requireAdmin, ah(async (req, res) => {
   (async () => { for (const s of rows) { try { const g = await geocodeAddress(s); if (g) await saveCoords(s.id, g); } catch (e) { console.warn('[geocode]', s.id, e.message); } } })();
   res.json({ queued: rows.length });
 }));
-// Titolo di godimento: proposto dalla Legal entity ospitante, coerente con essa, campi della locazione ripuliti secondo il titolo
-async function leaseBlock(b, cur = {}) {
-  const touched = [...LEASE_SITE_KEYS, 'host_organization_id'].some((k) => b[k] !== undefined);
-  if (!touched) return b;
-  const merged = { ...cur, ...Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) };
-  if (b.tenure === undefined) {   // titolo non indicato: segue la Legal entity ospitante
-    if (b.host_organization_id && cur.host_organization_id !== b.host_organization_id) merged.tenure = 'OSPITATA';
-    else if (b.host_organization_id === null && cur.tenure === 'OSPITATA') merged.tenure = 'LOCAZIONE';
-    else merged.tenure = cur.tenure || (merged.host_organization_id ? 'OSPITATA' : 'LOCAZIONE');
-  }
-  const issue = tenureIssue(merged);
-  if (issue) throw bad(issue);
-  if (merged.lease_landlord_org_id && !(await one('SELECT 1 FROM organizations WHERE id=$1', [merged.lease_landlord_org_id]))) throw bad('Locatore inesistente: scegli una Legal entity dell\'anagrafica');
-  if (b.lease_end === undefined && (b.lease_start !== undefined || b.lease_years !== undefined)) merged.lease_end = null;   // ricalcolata
-  const norm = normalizeLeaseFields(merged);
-  for (const k of LEASE_SITE_KEYS) if (norm[k] !== undefined) b[k] = norm[k];
-  return b;
-}
-const LEASE_CHANGE = ['rent_amount', 'rent_period'];
-
+// Creazione e modifica passano dalla funzione unica del core (lib/sites.js, A0): regole del titolo, audit, Cash, Payments,
+// organigramma, coordinate, perimetri degli accessi esterni e quadro d'impatto alla chiusura
 r.post('/sites', requireAdmin, ah(async (req, res) => {
-  const b = await leaseBlock(withHours(parse(siteSchema, req.body)));
-  const cols = Object.keys(b); const vals = Object.values(b);
-  const s = await one(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
-  await syncHostToCash(s.id, b.host_organization_id, s.tenure);
-  const lease_sync = s.tenure === 'LOCAZIONE' && s.rent_amount != null ? await siteToLease(s.id, { rentChanged: true }).catch((e) => ({ status: 'error', reason: e.message })) : null;
-  await audit(req, 'SITE_CREATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: lease_sync ? { lease_sync } : undefined });
-  indexSite(s).catch(() => {});
-  autoGeocodeSite(s, saveCoords);
-  await ensureSiteNodes().catch(() => {});
-  res.status(201).json({ ...s, lease_sync });
+  const s = await saveSite({ data: req.body, origine: 'Amministrazione > Sedi', req });
+  res.status(201).json(s);
 }));
 r.put('/sites/:id', requireAdmin, ah(async (req, res) => {
-  const cur = await one('SELECT * FROM sites WHERE id=$1', [Number(req.params.id)]);
-  if (!cur) throw notFound();
-  const b = await leaseBlock(withHours(parse(siteSchema.partial(), req.body)), cur);
-  const sets = []; const params = [Number(req.params.id)];
-  for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
-  if (!sets.length) return res.json({ ok: true });
-  const s = await one(`UPDATE sites SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
-  if (!s) throw notFound();
-  if (b.host_organization_id !== undefined || b.tenure !== undefined) await syncHostToCash(s.id, b.host_organization_id, s.tenure);
-  // Payments: contratto della sede creato o aggiornato dall'anagrafica (gli scatti successivi registrati in Payments restano)
-  const leaseTouched = LEASE_SITE_KEYS.some((k) => b[k] !== undefined);
-  const rentChanged = LEASE_CHANGE.some((k) => b[k] !== undefined && String(b[k] ?? '') !== String(cur[k] ?? ''));
-  const lease_sync = leaseTouched ? await siteToLease(s.id, { rentChanged }).catch((e) => ({ status: 'error', reason: e.message })) : null;
-  await audit(req, 'SITE_UPDATED', { entity: 'site', entityId: s.id, label: `${s.code} ${s.name}`, data: { ...b, lease_sync: lease_sync || undefined } });
-  indexSite(s).catch(() => {});
-  autoGeocodeSite(s, saveCoords);
-  res.json({ ...s, lease_sync });
+  const s = await saveSite({ id: Number(req.params.id), data: req.body, origine: 'Amministrazione > Sedi', req });
+  res.json(s);
 }));
 
 // ---- Contratto di locazione in PDF della sede (fonte unica del file: public.site_documents) letto con Claude
@@ -529,9 +442,15 @@ r.put('/people/:id', ah(async (req, res) => {
     const fuori = Object.keys(req.body || {}).filter((k) => !RUBRICA_EDITABILI.includes(k));
     if (fuori.length) throw forbidden(`Con il profilo Rubrica "Aggiornamento schede" si modificano solo telefoni, interno, ruolo, reparto e titolo: ${fuori.join(', ')} li cambia un amministratore`);
   }
-  const prima = await one('SELECT id, organization_id FROM people WHERE id=$1', [Number(req.params.id)]);
+  const prima = await one('SELECT id, organization_id, status FROM people WHERE id=$1', [Number(req.params.id)]);
   if (!prima) throw notFound();
   const b = await resolveCatalog(parse(personSchema.partial(), req.body));
+  // A11: cessazione manuale di una persona con accesso da amministratore: serve la conferma esplicita (conferma_disattivazione_admin)
+  const cessa = b.status === 'CESSATO' && prima.status !== 'CESSATO';
+  if (cessa && !req.body?.conferma_disattivazione_admin) {
+    const adm = (await adminDaConfermare(prima.id)).filter((u) => u.level === 'ADMIN');
+    if (adm.length) throw bad(`La persona ha un accesso da amministratore (${adm.map((u) => u.email).join(', ')}): conferma la disattivazione dell'accesso insieme alla cessazione`, { richiede_conferma: 'conferma_disattivazione_admin', utenti: adm });
+  }
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });
@@ -552,7 +471,9 @@ r.put('/people/:id', ah(async (req, res) => {
   }
   if (b.unit_id !== undefined || b.role_id !== undefined) await syncPositionFromPerson(row);
   if (b.phone_ext !== undefined) await applyCentralino(row.id);
-  res.json(row);
+  // A11: persona cessata → accessi disattivati, incarichi chiusi, avviso se era responsabile di sede
+  const cessazione = cessa ? await effettiCessazione(row.id, { req, confermaAdmin: Boolean(req.body?.conferma_disattivazione_admin), origine: 'Amministrazione > Persone' }) : undefined;
+  res.json(cessazione ? { ...row, cessazione } : row);
 }));
 
 // ---- Notifiche
@@ -590,9 +511,41 @@ r.get('/settings', requireAdmin, ah(async (_req, res) => {
 }));
 r.put('/settings/:key', requireAdmin, ah(async (req, res) => {
   if (req.params.key.startsWith('reset:') || req.params.key.startsWith('secret:')) throw bad('Chiave non valida');
-  await q(`INSERT INTO app_settings (key, value, updated_by) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now(), updated_by=EXCLUDED.updated_by`, [req.params.key, JSON.stringify(req.body.value), req.user.id]);
-  await audit(req, 'SETTING_UPDATED', { entity: 'setting', entityId: req.params.key });
-  res.json({ ok: true });
+  if (req.params.key === 'company_org_id') throw bad('La Legal entity di TD si imposta da Impostazioni > Dati aziendali (PUT /api/company/org)');
+  // A9: il salvataggio dei Dati aziendali aggiorna nella stessa transazione la Legal entity di TD (company_org_id)
+  const out = await tx(async (c) => {
+    await c.query(`INSERT INTO app_settings (key, value, updated_by) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now(), updated_by=EXCLUDED.updated_by`, [req.params.key, JSON.stringify(req.body.value), req.user.id]);
+    return req.params.key === 'company' ? aggiornaOrgTd(c, req.body.value) : null;
+  });
+  await audit(req, 'SETTING_UPDATED', { entity: 'setting', entityId: req.params.key, data: out?.org_id ? { legal_entity_td: out } : undefined });
+  if (out?.org_id && Object.keys(out.modifiche || {}).length) {
+    await audit(req, 'ORG_UPDATED', { entity: 'organization', entityId: out.org_id, label: 'Legal entity TD allineata ai Dati aziendali', data: { origine: 'Impostazioni > Dati aziendali', modifiche: out.modifiche } });
+    const o = await one('SELECT * FROM organizations WHERE id=$1', [out.org_id]); if (o) indexOrg(o).catch(() => {});
+  }
+  res.json({ ok: true, legal_entity_td: out || undefined });
+}));
+// A9: Legal entity di Toscana Diagnostica (app_settings.company_org_id) con proposta automatica e anteprima dell'allineamento
+r.get('/company/org', requireAdmin, ah(async (_req, res) => {
+  const id = await companyOrgId();
+  const company = await getCompany();
+  const org = id ? await one('SELECT id, name, kind, vat_number, tax_code, address, zip, city, province, pec, sdi FROM organizations WHERE id=$1', [id]) : null;
+  const proposta = await propostaCompanyOrg(company);
+  const f = orgFieldsFromCompany(company);
+  const base = org || (proposta ? await one('SELECT * FROM organizations WHERE id=$1', [proposta.id]) : null);
+  const anteprima = base ? Object.fromEntries(Object.entries(f).filter(([k, v]) => String(base[k] ?? '') !== String(v)).map(([k, v]) => [k, [base[k] ?? null, v]])) : {};
+  res.json({ company_org_id: id, org, proposta, anteprima });
+}));
+r.put('/company/org', requireAdmin, ah(async (req, res) => {
+  const b = parse(z.object({ org_id: z.number().int().nullable() }), req.body);
+  if (b.org_id != null && !(await one('SELECT 1 FROM organizations WHERE id=$1', [b.org_id]))) throw bad('Legal entity inesistente');
+  const out = await tx(async (c) => {
+    await c.query(`INSERT INTO app_settings (key, value, updated_by) VALUES ('company_org_id',$1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now(), updated_by=EXCLUDED.updated_by`, [JSON.stringify(b.org_id), req.user.id]);
+    if (b.org_id == null) return { org_id: null };
+    const saved = (await c.query(`SELECT value FROM app_settings WHERE key='company'`)).rows[0]?.value || null;
+    return aggiornaOrgTd(c, saved);
+  });
+  await audit(req, 'COMPANY_ORG_SET', { entity: 'organization', entityId: b.org_id, label: b.org_id ? 'Legal entity di TD impostata (Dati aziendali)' : 'Legal entity di TD tolta', data: out });
+  res.json({ ok: true, ...out });
 }));
 
 export default r;
