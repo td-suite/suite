@@ -9,7 +9,7 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('SERVICE', 'Service'), P('RETAIL', 'Retail'), P('MDL', 'Medicina del Lavoro'), P('HQS', 'HQS'), P('VIEWER', 'Sola lettura')] },
   { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firme, scadenze, conto economico', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },
-  { key: 'integration', area: 'FINANCE', name: 'Integration M&A', tagline: 'Post closing, GANTT', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,
+  { key: 'integration', area: 'DIREZIONE', name: 'Integration M&A', tagline: 'Post closing, GANTT', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,
     profiles: [P('ADMIN', 'Amministratore'), P('EDITOR', 'Editor'), P('VIEWER', 'Sola lettura')] },
   { key: 'cockpit', area: 'DIREZIONE', name: 'Cockpit direzionale', tagline: 'Indicatori e scadenzario', icon: 'cockpit', kind: 'NATIVE', route: '/cockpit', sort_order: 10,
     profiles: [P('DIREZIONE', 'Direzione'), P('VIEWER', 'Sola lettura')] },
@@ -45,7 +45,7 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura')] },
   { key: 'rubrica', area: 'PEOPLE', name: 'Rubrica e Organigramma', tagline: 'Chi fa cosa, contatti, Teams', icon: 'rubrica', kind: 'NATIVE', route: '/people', sort_order: 20,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Aggiornamento schede')] },
-  { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Richieste, piano per area', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'HR (tutto)'), P('RESPONSABILE', 'Responsabile (approva la propria area)'), P('VIEWER', 'Consultazione')] },
+  { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Piano annuale per area', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'Amministratore (tutte le aree)'), P('RESPONSABILE', 'Responsabile di area (approva la propria area)'), P('VIEWER', 'Consultazione (tutte le aree)')] },
 
   // ---- Retail e Comunicazione
   { key: 'retail', area: 'RETAIL_FLOW', name: 'Retail Assistant', tagline: 'Clienti, campagne, esposizione', icon: 'retail', kind: 'LEGACY', legacy_url: 'https://retail.toscanadiagnostica.it', sort_order: 30, scope_type: 'SITE',

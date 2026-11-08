@@ -95,3 +95,53 @@
 .fe-mini span { background: var(--card-2); }
 .fe-mini span.fer { background: var(--teal); } .fe-mini span.half { background: #71b1bd; } .fe-mini span.att { background: #e9a23b; }
 .fe-mini-h span.we { color: var(--muted); }
+
+/* piano annuale: stato del piano del dipendente */
+.fe-stato-piano { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 10px; background: var(--card); font-size: 14px; }
+.fe-stato-piano.st-PROPOSTO { border-left-color: #e9a23b; }
+.fe-stato-piano.st-IN_REVISIONE { border-left-color: #71b1bd; }
+.fe-stato-piano.st-APPROVATO { border-left-color: var(--green); }
+.fe-stato-piano.st-DEFINITIVO { border-left-color: var(--teal); }
+.fe-stato-piano .ico { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* calendario annuale del dipendente: 12 mesi */
+.fe-anno { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px 18px; user-select: none; }
+.fe-mese .t { font-weight: 800; font-size: 13px; color: var(--teal); margin-bottom: 4px; }
+.fe-mese-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.fe-mese-g .h { font-size: 10px; font-weight: 700; color: var(--muted); text-align: center; }
+.fe-mese-g .d { appearance: none; border: 0; padding: 0; height: 26px; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.fe-mese-g .d:hover { outline: 2px solid var(--teal-050); }
+.fe-mese-g .d.we { color: var(--muted); background: var(--card-2); cursor: default; }
+.fe-mese-g .d.fest { background: repeating-linear-gradient(135deg, var(--card-2), var(--card-2) 4px, var(--line) 4px, var(--line) 5px); }
+.fe-mese-g .d.chius { background: #dceff3; }
+.fe-mese-g .d.oggi { box-shadow: inset 0 0 0 2px var(--teal); font-weight: 800; }
+.fe-mese-g .d.fer { background: var(--teal); color: #fff; font-weight: 700; cursor: pointer; }
+.fe-mese-g .d.pian { background: #8fb8c2; color: #fff; font-weight: 700; cursor: pointer; }
+.fe-mese-g .d.att { background: #e9a23b; color: #fff; font-weight: 700; cursor: pointer; }
+.fe-mese-g .d.half.fer { background: linear-gradient(135deg, var(--teal) 50%, #71b1bd 50%); }
+.fe-mese-g .d.half.pian { background: linear-gradient(135deg, #8fb8c2 50%, #c6dde2 50%); }
+.fe-mese-g .d.sel { background: var(--teal-050); box-shadow: inset 0 0 0 2px var(--teal); color: var(--teal); font-weight: 800; }
+.fe-mese-g .d.varp { box-shadow: inset 0 0 0 2px #e9a23b; }
+
+/* griglie del piano dell'area */
+.fe-grid td.pian { background: #8fb8c2; }
+.fe-grid td.varp { box-shadow: inset 0 0 0 2px #e9a23b; }
+.fe-grid tr.io .nome { background: var(--teal-050); }
+.fe-grid.mesi th, .fe-grid.sett th { cursor: pointer; }
+.fe-grid.mesi td.strip { padding: 6px 4px; cursor: pointer; }
+.fe-strip { display: flex; gap: 0; min-width: 62px; height: 16px; align-items: stretch; border-radius: 3px; overflow: hidden; background: var(--card-2); }
+.fe-strip i { flex: 1; min-width: 2px; background: transparent; }
+.fe-strip i.we { background: var(--line); opacity: .45; }
+.fe-strip i.fer { background: var(--teal); }
+.fe-strip i.half { background: #71b1bd; }
+.fe-strip i.pian { background: #8fb8c2; }
+.fe-strip i.att { background: #e9a23b; }
+.fe-strip i.scop { background: var(--red-100, #f6d6d4); }
+.fe-grid.mesi td.tot { font-weight: 800; padding: 0 10px; font-variant-numeric: tabular-nums; }
+.fe-grid.sett td.w { min-width: 26px; height: 30px; font-size: 11px; font-weight: 700; color: #fff; }
+.fe-grid.sett td.w.fer { background: var(--teal); } .fe-grid.sett td.w.pian { background: #8fb8c2; } .fe-grid.sett td.w.half { background: #71b1bd; } .fe-grid.sett td.w.att { background: #e9a23b; }
+.fe-legenda i.pian { background: #8fb8c2; }
+.fe-mini span.pian { background: #8fb8c2; }
+.fe-row-io td { background: var(--teal-050); }
+@media (max-width: 700px) { .fe-anno { grid-template-columns: 1fr 1fr; gap: 10px; } .fe-mese-g .d { height: 24px; font-size: 11px; } }
+@media (max-width: 460px) { .fe-anno { grid-template-columns: 1fr; } }

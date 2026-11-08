@@ -37,6 +37,9 @@ const impSchema = z.object({
   promemoria_giorni: z.coerce.number().int().min(1).max(60).optional(), email_attiva: z.boolean().optional(), festa_4_ottobre: z.boolean().optional(),
   festivi_aggiunti: z.array(z.object({ data, nome: z.string().trim().min(1).max(80) })).max(100).optional(), festivi_esclusi: z.array(data).max(100).optional(),
   rol_attivi: z.boolean().optional(), avviso_dipendenti: z.string().trim().max(2000).optional(),
+  // data entro cui i dipendenti inviano il piano di un anno: { 'AAAA': 'AAAA-MM-GG' } (la data può cadere nell'anno prima)
+  scadenze_piano: z.record(z.string().regex(/^\d{4}$/, 'Anno non valido'), data).optional(),
+  promemoria_scadenza_giorni: z.coerce.number().int().min(0).max(60).optional(),
 });
 r.get('/impostazioni', ah(async (req, res) => {
   const ctx = await userContext(req);
@@ -82,7 +85,10 @@ const COP_SQL = 'SELECT c.*, jr.name AS role_name FROM coperture c LEFT JOIN pub
 r.get('/coperture', ah(async (req, res) => {
   const ctx = await userContext(req);
   const rows = await many(`${COP_SQL} ORDER BY c.ambito, jr.name NULLS FIRST`);
-  res.json(rows.map((c) => ({ ...c, ambito_nome: nomeGruppo(c.ambito, ctx.perim.siti) })));
+  // fuori da ADMIN e VIEWER: solo le regole delle aree visibili (la propria e quelle gestite)
+  const kinds = new Set(ctx.gruppi.map((g) => ctx.perim.siti?.get?.(Number(String(g).slice(5)))?.kind).filter(Boolean));
+  const visibile = (c) => ctx.tutto || ctx.vedeGruppo(c.ambito) || (c.ambito.startsWith('KIND:') && kinds.has(c.ambito.slice(5)));
+  res.json(rows.filter(visibile).map((c) => ({ ...c, ambito_nome: nomeGruppo(c.ambito, ctx.perim.siti) })));
 }));
 async function verificaCop(b) {
   if (b.ambito.startsWith('KIND:') && !SITE_KINDS.includes(b.ambito.slice(5))) throw bad('Tipo di sede sconosciuto');
@@ -219,9 +225,13 @@ r.delete('/deleghe/:id', ah(async (req, res) => {
 }));
 
 // Persone attive per la scelta del delegato (anche fuori dal perimetro: un collega responsabile)
-r.get('/delegabili', ah(async (_req, res) => res.json(await many(`SELECT id, last_name || ' ' || first_name AS nome FROM public.people WHERE status='ATTIVO' AND kind <> 'ESTERNO' ORDER BY lower(last_name), lower(first_name)`))));
+r.get('/delegabili', ah(async (req, res) => {
+  const ctx = await userContext(req);
+  if (!ctx.isAdmin && !ctx.isApprovatore) throw forbidden('Le deleghe le gestiscono il responsabile dell\'area e l\'amministratore');
+  res.json(await many(`SELECT id, last_name || ' ' || first_name AS nome FROM public.people WHERE status='ATTIVO' AND kind <> 'ESTERNO' ORDER BY lower(last_name), lower(first_name)`));
+}));
 
-// Esecuzione immediata del job giornaliero (promemoria e passaggio a GODUTA)
+// Esecuzione immediata del job giornaliero (passaggio a GODUTA, promemoria di piani non inviati, piani e variazioni da approvare)
 r.post('/admin/job', ah(async (req, res) => {
   await admin(req);
   const out = await eseguiJob();

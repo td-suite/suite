@@ -54,6 +54,39 @@ export function addMesi(d, n) {
 export const fineMese = (d) => addGiorni(addMesi(`${d.slice(0, 7)}-01`, 1), -1);
 export const itData = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '');
 
+/**
+ * Piano Ferie (piano annuale, decisione del CEO dell'08/11/2026): righe dello scadenzario dai piani raggruppati per anno e stato.
+ * scadenze: { 'AAAA': 'AAAA-MM-GG' } (impostazione scadenze_piano del modulo); piani: [{ anno, stato, n, primo_invio, prima_approvazione }]
+ * (date ISO). Righe: scadenza di invio con i piani ancora in BOZZA; piani inviati da approvare (primo invio + G giorni); piani approvati
+ * non ancora definitivi (prima approvazione + G giorni). Solo date registrate o soglie dichiarate (G = promemoria_giorni).
+ */
+export function righeFeriePiani({ scadenze = {}, piani = [], G = 3, da, a }) {
+  const out = [];
+  const conta = (anno, stati) => piani.filter((p) => Number(p.anno) === Number(anno) && stati.includes(p.stato)).reduce((t, p) => t + Number(p.n || 0), 0);
+  const dentro = (d) => d && d >= da && d <= a;
+  for (const [anno, scad] of Object.entries(scadenze || {})) {
+    const d = iso(scad);
+    const bozze = conta(anno, ['BOZZA']);
+    if (!dentro(d) || !bozze) continue;
+    out.push({ chiave: `piano_invio:${anno}`, data: d, tipo: 'Scadenza invio piano ferie', titolo: `Invio del piano ferie ${anno} da parte dei dipendenti`,
+      descrizione: `${bozze} ${bozze === 1 ? 'piano non ancora inviato' : 'piani non ancora inviati'} al responsabile`, oggetto: `Piano ferie ${anno}`, gravita: 'MEDIA', link: '/ferie/cruscotto', responsabile: 'Dipendenti e responsabili di area' });
+  }
+  const anni = [...new Set(piani.map((p) => Number(p.anno)))].sort();
+  for (const anno of anni) {
+    const inviati = piani.filter((p) => Number(p.anno) === anno && ['PROPOSTO', 'IN_REVISIONE'].includes(p.stato));
+    const nI = inviati.reduce((t, p) => t + Number(p.n || 0), 0);
+    const primo = inviati.map((p) => p.primo_invio).filter(Boolean).sort()[0];
+    if (nI && primo && dentro(addGiorni(primo, G))) out.push({ chiave: `piani_da_approvare:${anno}`, data: addGiorni(primo, G), tipo: 'Piani ferie da approvare', titolo: `Piani ferie ${anno} inviati e non ancora approvati`,
+      descrizione: `${nI} ${nI === 1 ? 'piano' : 'piani'} in attesa del responsabile da più di ${G} giorni (dal primo invio del ${itData(primo)})`, oggetto: `Piano ferie ${anno}`, gravita: 'ALTA', link: '/ferie/cruscotto', responsabile: 'Responsabili di area' });
+    const appr = piani.filter((p) => Number(p.anno) === anno && p.stato === 'APPROVATO');
+    const nA = appr.reduce((t, p) => t + Number(p.n || 0), 0);
+    const prima = appr.map((p) => p.prima_approvazione).filter(Boolean).sort()[0];
+    if (nA && prima && dentro(addGiorni(prima, G))) out.push({ chiave: `piani_non_definitivi:${anno}`, data: addGiorni(prima, G), tipo: 'Piani ferie non definitivi', titolo: `Piani ferie ${anno} approvati ma non ancora definitivi`,
+      descrizione: `${nA} ${nA === 1 ? 'piano' : 'piani'} da rendere definitivi`, oggetto: `Piano ferie ${anno}`, gravita: 'MEDIA', link: '/ferie/cruscotto', responsabile: 'Responsabili di area' });
+  }
+  return out;
+}
+
 /** Stato rispetto a oggi: SCADUTA (data passata), OGGI, ENTRO_7 (1-7 giorni), ENTRO_30 (8-30), OLTRE. */
 export function statoScadenza(data, oggi) {
   const g = giorniTra(oggi, data);
@@ -328,12 +361,15 @@ export const FONTI = [
   },
   {
     key: 'ferie', modulo: 'ferie', nome: 'Piano Ferie', area: 'PEOPLE',
-    campi: 'ferie.richieste in stato RICHIESTA (created_at + impostazione promemoria_giorni del modulo, approvatore), ferie.chiusure (data_inizio), ferie.saldi.residuo_ap meno le richieste FERIE approvate o godute dell\'anno, entro l\'impostazione scadenza_ap del modulo',
+    campi: 'ferie.impostazioni scadenze_piano (data di invio del piano per anno) con ferie.piani in BOZZA; ferie.piani PROPOSTO/IN_REVISIONE (inviato_at + promemoria_giorni) e APPROVATO non definitivi (approvato_at + promemoria_giorni); ferie.richieste in stato RICHIESTA (variazioni: created_at + promemoria_giorni, approvatore), ferie.chiusure (data_inizio), ferie.saldi.residuo_ap meno i periodi FERIE approvati o goduti dell\'anno, entro l\'impostazione scadenza_ap',
     async leggi({ da, a, oggi, db }) {
       const { DEFAULTS } = await import('../modules/ferie/lib/core.js');
       const st = { ...DEFAULTS, ...Object.fromEntries((await db.many('SELECT key, value FROM impostazioni')).map((x) => [x.key, x.value])) };
       const G = Number(st.promemoria_giorni) || 3;
-      const out = [];
+      const piani = await db.many(`SELECT pi.anno, pi.stato, count(*)::int AS n, min((pi.inviato_at AT TIME ZONE 'Europe/Rome')::date) AS primo_invio,
+          min((pi.approvato_at AT TIME ZONE 'Europe/Rome')::date) AS prima_approvazione
+        FROM piani pi JOIN public.people p ON p.id = pi.person_id AND p.status = 'ATTIVO' GROUP BY pi.anno, pi.stato`);
+      const out = righeFeriePiani({ scadenze: st.scadenze_piano || {}, piani: piani.map((x) => ({ ...x, primo_invio: iso(x.primo_invio), prima_approvazione: iso(x.prima_approvazione) })), G, da, a });
       const ric = await db.many(`SELECT r.id, r.tipo, r.data_inizio, r.data_fine, r.giorni, r.ore, (r.created_at AT TIME ZONE 'Europe/Rome')::date AS creata,
           p.last_name || ' ' || p.first_name AS persona, ap.last_name || ' ' || ap.first_name AS approvatore
         FROM richieste r JOIN public.people p ON p.id = r.person_id LEFT JOIN public.people ap ON ap.id = r.approvatore_person_id WHERE r.stato = 'RICHIESTA'`);
@@ -341,16 +377,16 @@ export const FONTI = [
         const d = addGiorni(iso(r.creata), G);
         if (d < da || d > a) continue;
         const ini = iso(r.data_inizio);
-        out.push({ chiave: `richiesta:${r.id}`, data: d, tipo: 'Richiesta da decidere', titolo: `Richiesta di ${r.tipo === 'ROL' ? 'permesso' : 'ferie'} in attesa da più di ${G} giorni`,
-          descrizione: `Dal ${itData(ini)} al ${itData(iso(r.data_fine))}${r.tipo === 'ROL' ? (r.ore ? ` · ${r.ore} ore` : '') : ` · ${Number(r.giorni)} giorni`} · richiesta il ${itData(iso(r.creata))}`,
-          oggetto: r.persona, gravita: ini <= addGiorni(oggi, 7) ? 'ALTA' : 'MEDIA', link: `/ferie/richieste/${r.id}`, responsabile: r.approvatore || 'HR' });
+        out.push({ chiave: `richiesta:${r.id}`, data: d, tipo: 'Variazione da decidere', titolo: `Variazione al piano ferie (${r.tipo === 'ROL' ? 'permesso' : 'ferie'}) in attesa da più di ${G} giorni`,
+          descrizione: `Dal ${itData(ini)} al ${itData(iso(r.data_fine))}${r.tipo === 'ROL' ? (r.ore ? ` · ${r.ore} ore` : '') : ` · ${Number(r.giorni)} giorni`} · proposta il ${itData(iso(r.creata))}`,
+          oggetto: r.persona, gravita: ini <= addGiorni(oggi, 7) ? 'ALTA' : 'MEDIA', link: `/ferie/richieste/${r.id}`, responsabile: r.approvatore || 'Amministratore' });
       }
       const ch = await db.many(`SELECT c.id, c.gruppo, c.data_inizio, c.data_fine, c.descrizione, s.name AS sede FROM chiusure c
           LEFT JOIN public.sites s ON s.id = CASE WHEN c.gruppo ~ '^SEDE:[0-9]+$' THEN substring(c.gruppo from 6)::int END WHERE c.data_inizio BETWEEN $1 AND $2`, [da, a]);
       const GR = { TUTTE: 'Tutte le aree', DIR: 'Direzione', LAB: 'Laboratorio' };
-      for (const c of ch) out.push({ chiave: `chiusura:${c.id}:${iso(c.data_inizio)}`, data: c.data_inizio, tipo: 'Chiusura collettiva', titolo: `Chiusura collettiva fino al ${itData(iso(c.data_fine))}`, descrizione: c.descrizione, oggetto: GR[c.gruppo] || c.sede || c.gruppo, gravita: 'BASSA', link: '/ferie/piano', responsabile: 'HR' });
-      // Residuo dell'anno precedente: prima della scadenza conta da pianificare (approvate e godute dell'anno), dopo conta non goduto
-      // (richieste concluse entro oggi). Stima per richieste intere: il saldo esatto per giorno è nel Cruscotto del modulo.
+      for (const c of ch) out.push({ chiave: `chiusura:${c.id}:${iso(c.data_inizio)}`, data: c.data_inizio, tipo: 'Chiusura collettiva', titolo: `Chiusura collettiva fino al ${itData(iso(c.data_fine))}`, descrizione: c.descrizione, oggetto: GR[c.gruppo] || c.sede || c.gruppo, gravita: 'BASSA', link: '/ferie/area', responsabile: 'HR' });
+      // Residuo dell'anno precedente: prima della scadenza conta da pianificare (periodi approvati e goduti dell'anno), dopo conta non
+      // goduto (periodi conclusi entro oggi). Stima per periodi interi: il saldo esatto per giorno è nel Cruscotto del modulo.
       const anno = Number(oggi.slice(0, 4));
       const scad = iso(`${anno}-${st.scadenza_ap || '06-30'}`);
       if (scad && scad >= da && scad <= a) {
@@ -360,7 +396,7 @@ export const FONTI = [
                 AND r.stato IN ('APPROVATA','GODUTA') AND ($3::boolean OR r.data_fine <= $2::date)), 0) AS resto
               FROM saldi s JOIN public.people p ON p.id = s.person_id AND p.status = 'ATTIVO' WHERE s.anno = $1 AND s.residuo_ap > 0) t WHERE resto > 0`, [anno, oggi, prima]);
         if (x?.persone) out.push({ chiave: `residuo_ap:${anno}`, data: scad, tipo: 'Residuo ferie anno precedente', titolo: prima ? 'Residuo ferie dell\'anno precedente da pianificare' : 'Residuo ferie dell\'anno precedente non goduto',
-          descrizione: `${Number(x.giorni).toLocaleString('it-IT', { maximumFractionDigits: 1 })} giorni (stima per richieste intere; dettaglio nel Cruscotto ferie)`, oggetto: `${x.persone} ${x.persone === 1 ? 'dipendente' : 'dipendenti'}`, gravita: 'MEDIA', link: '/ferie/cruscotto', responsabile: 'HR' });
+          descrizione: `${Number(x.giorni).toLocaleString('it-IT', { maximumFractionDigits: 1 })} giorni (stima per periodi interi; dettaglio nel Cruscotto ferie)`, oggetto: `${x.persone} ${x.persone === 1 ? 'dipendente' : 'dipendenti'}`, gravita: 'MEDIA', link: '/ferie/cruscotto', responsabile: 'HR' });
       }
       return out;
     },

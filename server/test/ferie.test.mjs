@@ -106,3 +106,60 @@ test('copertura minima: regole del gruppo e giorni sotto il minimo', () => {
   assert.equal(mezza[0].presenti, 2.5);
   assert.equal(valutaRichiesta({ richiesta: {}, persona: { id: 3, ruoli: [11] }, giorni: ['2026-11-24'], regole: [regole[0]], membri, assenze }).length, 0, 'regola di un altro ruolo');
 });
+
+// ------------------------------------------------------------------ piano annuale (funzionamento stabilito dal CEO, 08/11/2026)
+import { azioniPiano, statoPeriodo, statoDopoModifica, statoDaRichieste, contaPerStato } from '../src/modules/ferie/lib/pianoAnnuale.js';
+import { gruppoDiSede } from '../src/modules/ferie/lib/core.js';
+
+test('piano annuale: chi può fare cosa in ogni stato', () => {
+  const dip = (s) => azioniPiano(s, { proprio: true });
+  const resp = (s) => azioniPiano(s, { gestisce: true });
+  const collega = (s) => azioniPiano(s, {});
+  // il dipendente compila e invia finché è BOZZA, modifica finché è PROPOSTO non preso in carico, poi solo variazioni
+  assert.ok(dip('BOZZA').modifica && dip('BOZZA').invia);
+  assert.ok(dip('PROPOSTO').modifica && !dip('PROPOSTO').invia);
+  assert.ok(!dip('IN_REVISIONE').modifica && !dip('IN_REVISIONE').variazione);
+  for (const s of ['APPROVATO', 'DEFINITIVO']) { assert.ok(!dip(s).modifica && dip(s).variazione, s); assert.ok(!dip(s).approva && !dip(s).definitivo); }
+  // il responsabile: modifica fino ad APPROVATO, nel DEFINITIVO solo con motivo; approva, rende definitivo, riapre
+  for (const s of ['BOZZA', 'PROPOSTO', 'IN_REVISIONE']) assert.ok(resp(s).modifica && resp(s).approva && !resp(s).definitivo, s);
+  assert.ok(resp('PROPOSTO').prendi_in_carico && !resp('BOZZA').prendi_in_carico);
+  assert.ok(resp('APPROVATO').modifica && resp('APPROVATO').definitivo && !resp('APPROVATO').approva);
+  assert.ok(!resp('DEFINITIVO').modifica && resp('DEFINITIVO').modifica_con_motivo && resp('DEFINITIVO').riapri);
+  assert.ok(!resp('APPROVATO').variazione, 'il responsabile modifica direttamente, non propone variazioni');
+  // un collega dell'area non ha nessuna azione
+  for (const s of ['BOZZA', 'PROPOSTO', 'APPROVATO', 'DEFINITIVO']) assert.ok(!Object.values(collega(s)).some(Boolean), s);
+});
+
+test('piano annuale: stato dei periodi e del piano dopo le modifiche', () => {
+  assert.equal(statoPeriodo('BOZZA', '2026-12-31', '2026-11-08'), 'PIANIFICATA');
+  assert.equal(statoPeriodo('IN_REVISIONE', '2026-01-10', '2026-11-08'), 'PIANIFICATA', 'nei piani aperti resta da approvare anche se passato');
+  assert.equal(statoPeriodo('APPROVATO', '2026-12-31', '2026-11-08'), 'APPROVATA');
+  assert.equal(statoPeriodo('DEFINITIVO', '2026-11-02', '2026-11-08'), 'GODUTA');
+  assert.equal(statoDopoModifica('PROPOSTO', { daResponsabile: true }), 'IN_REVISIONE', 'il responsabile che modifica prende in carico');
+  assert.equal(statoDopoModifica('BOZZA', { daResponsabile: true }), 'IN_REVISIONE');
+  assert.equal(statoDopoModifica('PROPOSTO', { daResponsabile: false }), 'PROPOSTO');
+  assert.equal(statoDopoModifica('DEFINITIVO', { daResponsabile: true }), 'DEFINITIVO', 'nel definitivo la modifica è una variazione');
+});
+
+test('migrazione 002: stato iniziale del piano dalle richieste esistenti', () => {
+  assert.equal(statoDaRichieste([]), 'BOZZA', 'senza richieste il piano nasce in bozza');
+  assert.equal(statoDaRichieste([{ stato: 'APPROVATA' }, { stato: 'GODUTA' }]), 'APPROVATO');
+  assert.equal(statoDaRichieste([{ stato: 'APPROVATA' }, { stato: 'PIANIFICATA' }]), 'BOZZA', 'una richiesta in attesa (ora periodo proposto) tiene il piano in bozza');
+  assert.equal(statoDaRichieste([{ stato: 'APPROVATA' }, { stato: 'RIFIUTATA' }, { stato: 'ANNULLATA' }]), 'APPROVATO', 'rifiutate e annullate non contano');
+  assert.equal(statoDaRichieste([{ stato: 'APPROVATA' }, { stato: 'RICHIESTA', tipo: 'ROL' }]), 'APPROVATO', 'i permessi ROL restano richieste singole');
+  assert.deepEqual(contaPerStato([{ stato: 'BOZZA' }, { stato: 'BOZZA' }, { stato: 'DEFINITIVO' }, null]), { BOZZA: 2, PROPOSTO: 0, IN_REVISIONE: 0, APPROVATO: 0, DEFINITIVO: 1 });
+});
+
+test('saldo del piano: giorni da pianificare e pianificati totali', () => {
+  const s = saldo({ residuo_ap: 2, spettanza: 26, goduto: 5, pianificato: 10, in_attesa: 1 });
+  assert.equal(s.pianificato_totale, 15);
+  assert.equal(s.residuo, 13, 'spettanza + anno precedente − goduto − pianificato futuro');
+  assert.equal(s.da_pianificare, 12, 'meno le variazioni in attesa');
+});
+
+test('ambito del grant RESPONSABILE: area della sede', () => {
+  assert.equal(gruppoDiSede({ id: 4, kind: 'LABORATORIO' }), 'LAB');
+  assert.equal(gruppoDiSede({ id: 5, kind: 'HEADQUARTER' }), 'DIR');
+  assert.equal(gruppoDiSede({ id: 7, kind: 'PUNTO_PRELIEVI' }), 'SEDE:7');
+  assert.equal(gruppoDiSede({ id: 9, kind: 'SERVICE' }), null);
+});

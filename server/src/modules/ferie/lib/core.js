@@ -11,9 +11,12 @@ import { spettanza as calcSpettanza, saldo as calcSaldo, avvisiSaldo } from './s
 import { perimetro, siteDiGruppo } from './perimetro.js';
 
 export const KEY = 'ferie';
-export const STATI = ['RICHIESTA', 'APPROVATA', 'RIFIUTATA', 'GODUTA', 'ANNULLATA'];
-export const STATO_LABEL = { RICHIESTA: 'In attesa', APPROVATA: 'Approvata', RIFIUTATA: 'Rifiutata', GODUTA: 'Goduta', ANNULLATA: 'Annullata' };
-export const ATTIVI = ['RICHIESTA', 'APPROVATA', 'GODUTA'];   // occupano il calendario
+// Stati di un periodo (riga di ferie.richieste): PIANIFICATA = periodo di un piano non ancora approvato; RICHIESTA = variazione al piano
+// (o permesso ROL) in attesa di decisione singola; APPROVATA = periodo di un piano approvato o definitivo, o variazione approvata;
+// GODUTA = approvata con data passata (job); RIFIUTATA (variazione non accolta); ANNULLATA (periodo tolto dal piano dopo l'approvazione).
+export const STATI = ['PIANIFICATA', 'RICHIESTA', 'APPROVATA', 'RIFIUTATA', 'GODUTA', 'ANNULLATA'];
+export const STATO_LABEL = { PIANIFICATA: 'Nel piano', RICHIESTA: 'Variazione in attesa', APPROVATA: 'Approvata', RIFIUTATA: 'Rifiutata', GODUTA: 'Goduta', ANNULLATA: 'Tolta' };
+export const ATTIVI = ['PIANIFICATA', 'RICHIESTA', 'APPROVATA', 'GODUTA'];   // occupano il calendario
 export const escapeHtml = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const itData = (s) => (s ? `${String(s).slice(8, 10)}/${String(s).slice(5, 7)}/${String(s).slice(0, 4)}` : '');
 export const oggi = () => today();
@@ -32,7 +35,9 @@ export const DEFAULTS = {
   festivi_aggiunti: [],              // [{ data: 'AAAA-MM-GG', nome }]
   festivi_esclusi: [],               // ['AAAA-MM-GG']
   rol_attivi: false,                 // voce ROL/permessi in ore (facoltativa)
-  avviso_dipendenti: '',             // testo mostrato sopra il modulo di richiesta
+  avviso_dipendenti: '',             // testo mostrato sopra il piano del dipendente
+  scadenze_piano: {},                // { 'AAAA': 'AAAA-MM-GG' }: data entro cui i dipendenti inviano il piano di quell'anno (HR, nessun valore predefinito)
+  promemoria_scadenza_giorni: 7,     // promemoria ai piani non inviati da N giorni prima della scadenza
 };
 export async function settings() {
   const rows = await many('SELECT key, value FROM impostazioni');
@@ -44,15 +49,24 @@ export async function setSetting(key, value) {
 
 // ---------------------------------------------------------------- contesto di accesso
 /**
- * Contesto dell'utente (una volta per richiesta HTTP).
- * role: ADMIN (HR: tutto) | RESPONSABILE (approva la propria area o sede) | VIEWER (consultazione di tutto) | DIPENDENTE (implicito).
- * approva: persone di cui l'utente è approvatore (organigramma o dossier HR), comprese quelle dei deleganti con delega attiva oggi.
- * gruppi: aree/sedi di cui vede il piano (nomi e periodi); saldi: persone di cui vede i saldi.
+ * Contesto dell'utente (una volta per richiesta HTTP). Funzionamento stabilito dal CEO (08/11/2026): "Solo l'amministratore vede tutto.
+ * Ogni dipendente vede solo la propria area. Il responsabile dell'Area può modificare il piano dei dipendenti dell'area e approvarlo".
+ * role: ADMIN (Owner e Admin della Suite, HR solo con il grant ADMIN: tutto) | RESPONSABILE (grant: approva la propria area, o le sedi
+ * dell'ambito del grant) | VIEWER (consultazione di tutto) | DIPENDENTE (implicito).
+ * approva: persone di cui l'utente è responsabile (approvatore dall'organigramma o dal dossier HR, deleghe attive, grant RESPONSABILE),
+ * mai sé stesso. areeGestite: aree di quelle persone. Il dipendente vede solo la propria area (nomi e periodi dei colleghi).
  */
 export async function userContext(req) {
   if (req.ferieCtx) return req.ferieCtx;
   req.ferieCtx = await contesto(req.user, req.moduleUser?.role || 'DIPENDENTE');
   return req.ferieCtx;
+}
+/** Area (gruppo) di una sede indicata nell'ambito di un grant: laboratorio → LAB, sede direzionale → DIR, altre → SEDE:<id> */
+export function gruppoDiSede(site) {
+  if (!site || site.kind === 'SERVICE') return null;
+  if (site.kind === 'LABORATORIO') return 'LAB';
+  if (site.kind === 'HEADQUARTER') return 'DIR';
+  return `SEDE:${site.id}`;
 }
 /** Contesto per un utente della Suite e un ruolo del modulo (usato anche dal contatore della Home, senza richiesta HTTP) */
 export async function contesto(user, role) {
@@ -66,17 +80,26 @@ export async function contesto(user, role) {
   const approvatori = new Set([personId, ...deleganti].filter(Boolean));
   const approva = new Set();
   for (const p of perim.persone.values()) if (p.approvatore_id && approvatori.has(p.approvatore_id) && p.id !== personId) approva.add(p.id);
-  const gruppi = new Set();
-  if (me) gruppi.add(me.gruppo);
-  for (const id of approva) gruppi.add(perim.persone.get(id).gruppo);
-  // RESPONSABILE (grant): approva e vede i saldi di tutta la propria area o sede, anche oltre l'organigramma
-  if (role === 'RESPONSABILE' && me) for (const p of perim.persone.values()) if (p.gruppo === me.gruppo && p.id !== personId) approva.add(p.id);
+  // RESPONSABILE (grant): tutta l'area delle sedi dell'ambito del grant; senza ambito, la propria area
+  if (role === 'RESPONSABILE') {
+    const scopes = (user.grants?.[KEY]?.scopes || []).filter((x) => x.type === 'SITE').map((x) => perim.siti?.get?.(Number(x.id))).filter(Boolean);
+    const aree = new Set(scopes.map(gruppoDiSede).filter(Boolean));
+    if (!aree.size && me) aree.add(me.gruppo);
+    for (const p of perim.persone.values()) if (aree.has(p.gruppo) && p.id !== personId) approva.add(p.id);
+  }
+  const areeGestite = new Set([...approva].map((id) => perim.persone.get(id)?.gruppo).filter(Boolean));
   const tutto = isAdmin || isViewer;
+  const gruppi = new Set(areeGestite);
+  if (me) gruppi.add(me.gruppo);
   const ctx = {
-    uid: user.id, personId, role, isAdmin, isViewer, tutto, me, perim, settings: s, approva, deleganti,
+    uid: user.id, personId, role, isAdmin, isViewer, tutto, me, perim, settings: s, approva, deleganti, areeGestite,
     isApprovatore: approva.size > 0,
+    // aree visibili: ADMIN e VIEWER tutte; gli altri la propria e quelle che gestiscono
     vedeGruppo: (g) => tutto || gruppi.has(g),
+    // saldi e note di una persona: ADMIN e VIEWER, la persona stessa, il suo responsabile
     vedeSaldo: (pid) => tutto || pid === personId || approva.has(pid),
+    // modifica dei periodi, approvazione, definitivo, riapertura: ADMIN (anche il proprio piano: sopra il CEO non c'è nessuno) e il responsabile
+    puoGestire: (pid) => isAdmin || (approva.has(pid) && pid !== personId),
     puoDecidere: (pid) => isAdmin || (approva.has(pid) && pid !== personId),
     gruppi: tutto ? perim.gruppi.map((g) => g.key) : [...gruppi],
   };
@@ -122,7 +145,10 @@ export async function spettanzaAnnua(p, anno) {
   };
 }
 
-/** Somma dei giorni di un insieme di richieste FERIE, divisi tra passati (fino a oggi) e futuri, con il calendario della persona */
+/**
+ * Somma dei giorni dei periodi FERIE del piano, con il calendario della persona: goduto = giorni approvati fino a oggi; pianificato =
+ * gli altri giorni del piano (approvati futuri e periodi non ancora approvati); in_attesa = variazioni da decidere.
+ */
 export function ripartisci(richieste, cal, giorno) {
   let goduto = 0, pianificato = 0, inAttesa = 0, rolGoduto = 0, rolPianificato = 0, rolAttesa = 0;
   for (const r of richieste) {
@@ -133,9 +159,10 @@ export function ripartisci(richieste, cal, giorno) {
       continue;
     }
     if (r.stato === 'RICHIESTA') { inAttesa += Number(r.giorni || 0); continue; }
-    if (!['APPROVATA', 'GODUTA'].includes(r.stato)) continue;
+    if (!['PIANIFICATA', 'APPROVATA', 'GODUTA'].includes(r.stato)) continue;
     const c = contaGiorni({ inizio: r.data_inizio, fine: r.data_fine, mezza_inizio: r.mezza_inizio, mezza_fine: r.mezza_fine }, cal);
-    for (const d of c.dettaglio) { if (d.data <= giorno) goduto += d.quota; else pianificato += d.quota; }
+    // goduto: solo i giorni approvati già passati; i periodi di un piano non ancora approvato restano pianificati anche se passati
+    for (const d of c.dettaglio) { if (d.data <= giorno && r.stato !== 'PIANIFICATA') goduto += d.quota; else pianificato += d.quota; }
   }
   return { goduto, pianificato, in_attesa: inAttesa, rol_goduto: rolGoduto, rol_pianificato: rolPianificato, rol_in_attesa: rolAttesa };
 }
@@ -146,7 +173,7 @@ export async function saldoPersona(p, anno, s) {
   const giorno = oggi();
   const sp = await spettanzaAnnua(p, anno);
   const base = await one('SELECT residuo_ap, rol_residuo_ap_ore, note, fonte, updated_at FROM saldi WHERE person_id=$1 AND anno=$2', [p.id, anno]);
-  const rich = await many(`SELECT tipo, stato, data_inizio, data_fine, mezza_inizio, mezza_fine, giorni, ore FROM richieste WHERE person_id=$1 AND anno=$2 AND stato IN ('RICHIESTA','APPROVATA','GODUTA')`, [p.id, anno]);
+  const rich = await many(`SELECT tipo, stato, data_inizio, data_fine, mezza_inizio, mezza_fine, giorni, ore FROM richieste WHERE person_id=$1 AND anno=$2 AND stato IN ('PIANIFICATA','RICHIESTA','APPROVATA','GODUTA')`, [p.id, anno]);
   const cal = await calendarioPersona(p, [anno], st);
   const rip = ripartisci(rich, cal, giorno);
   const sp2 = calcSpettanza(anno, sp.giorni_annui, { inizio: p.inizio, fine: p.fine, oggi: giorno, soglia: Number(st.soglia_mese_giorni || 15) });
@@ -198,16 +225,16 @@ export async function utentiHr() {
  * Notifica in app (notify della Suite) e, se l'impostazione email_attiva è accesa, email con il mittente della Suite agli utenti
  * con email e notify_email. Nessuna casella inventata: solo gli indirizzi degli utenti della Suite.
  */
-export async function notifica(userIds, r, { evento: ev, title, body, exclude = [] }) {
+export async function notifica(userIds, r, { evento: ev, title, body, exclude = [], link: linkDato }) {
   const ids = [...new Set((userIds || []).map(Number).filter((x) => Number.isInteger(x) && !exclude.includes(x)))];
   if (!ids.length) return 0;
-  const link = `/ferie/richieste/${r.id}`;
+  const link = linkDato || `/ferie/richieste/${r.id}`;
   await notify(ids, { kind: 'FERIE', module_key: KEY, title: String(title).slice(0, 200), body: body || null, link });
   const s = await settings();
   if (s.email_attiva) {
     const users = await many(`SELECT id, email FROM public.users WHERE id = ANY($1::int[]) AND status='ACTIVE' AND notify_email AND email IS NOT NULL`, [ids]);
     const url = `${config.baseUrl}${link}`;
-    const html = layout('Piano Ferie', `<p><b>${escapeHtml(title)}</b></p>${body ? `<p>${escapeHtml(body)}</p>` : ''}<p><a href="${url}">Apri la richiesta nella Suite</a></p>`);
+    const html = layout('Piano Ferie', `<p><b>${escapeHtml(title)}</b></p>${body ? `<p>${escapeHtml(body)}</p>` : ''}<p><a href="${url}">Apri il Piano Ferie nella Suite</a></p>`);
     for (const u of users) {
       try { await sendMail({ to: u.email, subject: `Piano Ferie: ${title}`, html, ref: `ferie:${r.id}:${ev}` }); } catch (e) { console.error('[ferie:mail]', e.message); }
     }

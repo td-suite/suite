@@ -24,14 +24,14 @@ export async function chiusureGruppo(gruppo, da, a) {
 }
 
 /**
- * Piano di un gruppo tra due date. stati: quali richieste mostrare (predefinito: in attesa, approvate, godute).
+ * Piano di un gruppo tra due date. stati: quali periodi mostrare (predefinito: periodi del piano, variazioni in attesa, approvati, goduti).
  * Ritorna { gruppo, nome, persone, assenze, chiusure, festivi, scoperture, regole }.
  */
-export async function pianoGruppo(perim, gruppo, da, a, { stati = ['RICHIESTA', 'APPROVATA', 'GODUTA'], s } = {}) {
+export async function pianoGruppo(perim, gruppo, da, a, { stati = ['PIANIFICATA', 'RICHIESTA', 'APPROVATA', 'GODUTA'], s } = {}) {
   const st = s || (await settings());
   const membri = membriGruppo(perim, gruppo);
   const ids = membri.map((m) => m.id);
-  const assenze = ids.length ? await many(`SELECT id, person_id, tipo, stato, data_inizio, data_fine, mezza_inizio, mezza_fine, giorni, ore, note FROM richieste
+  const assenze = ids.length ? await many(`SELECT id, piano_id, person_id, tipo, stato, variazione, variazione_proposta, data_inizio, data_fine, mezza_inizio, mezza_fine, giorni, ore, note FROM richieste
       WHERE person_id = ANY($1::int[]) AND stato = ANY($2::text[]) AND data_fine >= $3 AND data_inizio <= $4 ORDER BY data_inizio`, [ids, stati, da, a]) : [];
   const chiusure = await chiusureGruppo(gruppo, da, a);
   const sid = siteDiGruppo(gruppo);
@@ -42,8 +42,9 @@ export async function pianoGruppo(perim, gruppo, da, a, { stati = ['RICHIESTA', 
   const cal = await calendarioPersona(rif, anni, st);
   const regole = regoleDelGruppo(await regoleCopertura(), gruppo, site?.kind || null);
   const rn = await ruoliNomi();
-  // scoperture con le sole assenze decise (approvate e godute): le richieste in attesa si valutano una per una
-  const decise = assenze.filter((x) => ['APPROVATA', 'GODUTA'].includes(x.stato) && x.tipo === 'FERIE');
+  // scoperture con i periodi del piano (anche quelli non ancora approvati: il piano si costruisce guardando la copertura);
+  // le variazioni in attesa si valutano una per una
+  const decise = assenze.filter((x) => ['PIANIFICATA', 'APPROVATA', 'GODUTA'].includes(x.stato) && x.tipo === 'FERIE');
   const sc = regole.length ? scoperture({ date: giorniTra(da, a), regole, membri, assenze: decise, festivi: cal.festivi, ruoliNomi: rn }) : [];
   return {
     gruppo, nome: nomeGruppo(gruppo, perim.siti), site_kind: site?.kind || null,
@@ -67,7 +68,7 @@ export async function coperturaRichiesta(perim, richiesta, persona, dettaglioGio
   if (!giorni.length) return [];
   const da = giorni[0], a = giorni[giorni.length - 1];
   const assenze = await many(`SELECT id, person_id, data_inizio, data_fine, mezza_inizio, mezza_fine FROM richieste WHERE person_id = ANY($1::int[]) AND tipo='FERIE'
-      AND stato IN ('RICHIESTA','APPROVATA','GODUTA') AND data_fine >= $2 AND data_inizio <= $3`, [membri.map((m) => m.id), da, a]);
+      AND stato IN ('PIANIFICATA','RICHIESTA','APPROVATA','GODUTA') AND data_fine >= $2 AND data_inizio <= $3`, [membri.map((m) => m.id), da, a]);
   const cal = await calendarioPersona(persona, [...new Set([Number(da.slice(0, 4)), Number(a.slice(0, 4))])], st);
   return valutaRichiesta({ richiesta, persona, giorni, regole, membri, assenze, festivi: cal.festivi, ruoliNomi: await ruoliNomi() });
 }

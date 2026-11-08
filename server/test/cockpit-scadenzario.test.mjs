@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import {
   statoScadenza, gravitaEffettiva, settimana, ordina, filtra, riepilogo, visibiliA, applicaViste, vistaPredefinita, finiLocazione, riga,
-  addMesi, fineMese, iso, testoNotifica, finestraPredefinita, raggruppaPerSettimana, FONTI,
+  addMesi, fineMese, iso, testoNotifica, finestraPredefinita, raggruppaPerSettimana, FONTI, righeFeriePiani,
 } from '../src/lib/scadenzario.js';
 import { SALTA, avviaSuite, client, entra, OWNER } from './helpers/suiteTest.mjs';
 
@@ -108,6 +108,25 @@ test('notifica: solo con scadenze entro 7 giorni, con conteggi e prime righe', (
   assert.match(t.title, /3 scadenze entro 7 giorni/);
   assert.match(t.body, /^1 oggi, 2 nei prossimi 7 giorni, 1 già scadute\./);
   assert.match(t.body, /08\/11 Richiesta ferie \(Verdi Sara\)/);
+});
+
+test('fonte Piano Ferie: scadenza di invio, piani da approvare, piani non definitivi (piano annuale)', () => {
+  const piani = [
+    { anno: 2027, stato: 'BOZZA', n: 4 }, { anno: 2027, stato: 'PROPOSTO', n: 2, primo_invio: '2026-11-03' }, { anno: 2027, stato: 'IN_REVISIONE', n: 1, primo_invio: '2026-11-01' },
+    { anno: 2026, stato: 'APPROVATO', n: 3, prima_approvazione: '2026-10-20' }, { anno: 2026, stato: 'DEFINITIVO', n: 5 },
+  ];
+  const r = righeFeriePiani({ scadenze: { 2027: '2026-11-30', 2026: '2025-12-15' }, piani, G: 3, da: '2026-10-01', a: '2026-12-31' });
+  const inv = r.find((x) => x.chiave === 'piano_invio:2027');
+  assert.equal(inv.data, '2026-11-30');
+  assert.match(inv.descrizione, /^4 piani non ancora inviati/);
+  assert.ok(!r.some((x) => x.chiave === 'piano_invio:2026'), 'scadenza fuori finestra (e nessuna bozza 2026)');
+  const da = r.find((x) => x.chiave === 'piani_da_approvare:2027');
+  assert.equal(da.data, '2026-11-04', 'primo invio + 3 giorni');
+  assert.match(da.descrizione, /^3 piani/);
+  const nd = r.find((x) => x.chiave === 'piani_non_definitivi:2026');
+  assert.equal(nd.data, '2026-10-23');
+  assert.ok(r.every((x) => x.link.startsWith('/ferie')));
+  assert.equal(righeFeriePiani({ scadenze: { 2027: '2026-11-30' }, piani: [{ anno: 2027, stato: 'DEFINITIVO', n: 9 }], da: '2026-10-01', a: '2026-12-31' }).length, 0, 'tutti inviati e definitivi: nessuna riga');
 });
 
 test('fonti: chiave unica, area valida, campi letti dichiarati', () => {

@@ -1,6 +1,6 @@
-// Cruscotto HR e saldi: richieste da approvare, residui a rischio, residui dell'anno precedente da smaltire, saldo per persona,
-// inserimento del residuo dell'anno precedente a mano o da XLSX (modello precompilato con il perimetro). HR = profilo ADMIN;
-// VIEWER consulta; i responsabili vedono i saldi delle persone che approvano.
+// Cruscotto e saldi: piani per stato per area, piani e variazioni da approvare, residui a rischio, non goduto da smaltire, saldo per
+// persona, inserimento del residuo dell'anno precedente a mano o da XLSX (modello precompilato con il perimetro). ADMIN (il CEO, HR con
+// il grant) tutto; VIEWER consulta tutto; il responsabile vede solo i dipendenti delle aree che gestisce; il dipendente non accede.
 import { Router } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
@@ -11,6 +11,7 @@ import { KEY, userContext, saldoPersona, oggi, R_COLS, R_FROM } from '../lib/cor
 import { nomeGruppo, invalidaPerimetro } from '../lib/perimetro.js';
 import { config } from '../config.js';
 import { annoQ } from './richieste.js';
+import { pianiDi, contaPerStato, STATO_PIANO_LABEL } from '../lib/pianoAnnuale.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxXlsxBytes, files: 1 } });
@@ -29,6 +30,7 @@ async function saldiDi(ctx, persone, anno) {
 // Persone del perimetro (HR, consultazione e responsabili per le persone che approvano): area, origine dell'area, approvatore
 r.get('/persone', ah(async (req, res) => {
   const ctx = await userContext(req);
+  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('L\'elenco dei dipendenti lo vedono il responsabile dell\'area e l\'amministratore');
   const rows = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id)).map((p) => ({
     id: p.id, nome: p.nome, ruolo: p.role_name, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), area_origine: p.area_origine,
     approvatore: p.approvatore_nome || null, approvatore_origine: p.approvatore_origine || null, contratto: p.contratto, inizio: p.inizio, fine: p.fine, ha_accesso: Boolean(p.user_id),
@@ -38,7 +40,7 @@ r.get('/persone', ah(async (req, res) => {
 
 r.get('/saldi', ah(async (req, res) => {
   const ctx = await userContext(req);
-  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('I saldi delle altre persone li vedono HR e i responsabili');
+  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('I saldi delle altre persone li vedono il responsabile dell\'area e l\'amministratore');
   const anno = annoQ(req.query.anno);
   const persone = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id) && p.id !== (ctx.tutto ? -1 : ctx.personId) && (!req.query.gruppo || p.gruppo === req.query.gruppo));
   res.json({ anno, rows: await saldiDi(ctx, persone, anno) });
@@ -46,30 +48,40 @@ r.get('/saldi', ah(async (req, res) => {
 
 r.get('/cruscotto', ah(async (req, res) => {
   const ctx = await userContext(req);
-  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('Cruscotto riservato a HR e ai responsabili');
+  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('Cruscotto riservato all\'amministratore e ai responsabili di area');
   const anno = annoQ(req.query.anno);
   const persone = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id) && (ctx.tutto || p.id !== ctx.personId));
   const saldi = await saldiDi(ctx, persone, anno);
   const ids = persone.map((p) => p.id);
-  const daApprovare = ids.length ? await many(`SELECT ${R_COLS} FROM ${R_FROM} WHERE r.stato='RICHIESTA' AND r.person_id = ANY($1::int[]) ORDER BY r.created_at LIMIT 50`, [ids]) : [];
+  const piani = new Map((await pianiDi(ids, anno)).map((x) => [x.person_id, x]));
+  const variazioni = ids.length ? await many(`SELECT ${R_COLS} FROM ${R_FROM} WHERE (r.stato='RICHIESTA' OR (r.variazione_proposta IS NOT NULL AND r.stato IN ('PIANIFICATA','APPROVATA'))) AND r.person_id = ANY($1::int[]) ORDER BY r.created_at LIMIT 50`, [ids]) : [];
   const g = oggi();
   const assentiOggi = ids.length ? (await one(`SELECT count(DISTINCT person_id)::int AS n FROM richieste WHERE person_id = ANY($1::int[]) AND stato IN ('APPROVATA','GODUTA') AND tipo='FERIE' AND $2::date BETWEEN data_inizio AND data_fine`, [ids, g])).n : 0;
   const perArea = new Map();
   for (const s of saldi) {
     const k = s.gruppo;
-    if (!perArea.has(k)) perArea.set(k, { gruppo: k, nome: s.gruppo_nome, persone: 0, residuo: 0, goduto: 0, pianificato: 0, in_attesa: 0 });
-    const a = perArea.get(k); a.persone++; a.residuo += s.residuo; a.goduto += s.goduto; a.pianificato += s.pianificato; a.in_attesa += s.in_attesa;
+    if (!perArea.has(k)) perArea.set(k, { gruppo: k, nome: s.gruppo_nome, persone: 0, residuo: 0, goduto: 0, pianificato: 0, in_attesa: 0, da_pianificare: 0, piani: [] });
+    const a = perArea.get(k); a.persone++; a.residuo += s.residuo; a.goduto += s.goduto; a.pianificato += s.pianificato; a.in_attesa += s.in_attesa; a.da_pianificare += Math.max(0, s.da_pianificare);
+    a.piani.push(piani.get(s.person_id) || { stato: 'BOZZA' });
   }
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const daApprovare = persone.filter((p) => ['PROPOSTO', 'IN_REVISIONE'].includes(piani.get(p.id)?.stato)).map((p) => {
+    const pi = piani.get(p.id);
+    return { piano_id: pi.id, person_id: p.id, persona: p.nome, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), stato: pi.stato, stato_label: STATO_PIANO_LABEL[pi.stato], inviato_at: pi.inviato_at,
+      giorni_attesa: pi.inviato_at ? Math.floor((Date.now() - new Date(pi.inviato_at).getTime()) / 86400000) : null, puo_decidere: ctx.puoDecidere(p.id) };
+  }).sort((a, b) => String(a.inviato_at || '').localeCompare(String(b.inviato_at || '')));
   res.json({
     anno, oggi: g, persone: persone.length, assenti_oggi: assentiOggi,
-    da_approvare: daApprovare.map((x) => ({ ...x, gruppo_nome: nomeGruppo(x.gruppo, ctx.perim.siti), giorni_attesa: Math.floor((Date.now() - new Date(x.created_at).getTime()) / 86400000), puo_decidere: ctx.puoDecidere(x.person_id) })),
+    piani_per_stato: contaPerStato(persone.map((p) => piani.get(p.id) || { stato: 'BOZZA' })),
+    da_approvare: daApprovare,
+    variazioni: variazioni.map((x) => ({ ...x, gruppo_nome: nomeGruppo(x.gruppo, ctx.perim.siti), giorni_attesa: Math.floor((Date.now() - new Date(x.created_at).getTime()) / 86400000), puo_decidere: ctx.puoDecidere(x.person_id) })),
     a_rischio: saldi.filter((s) => s.avvisi.some((a) => a.tipo === 'RISCHIO')).sort((a, b) => b.disponibile - a.disponibile),
     ap_da_smaltire: saldi.filter((s) => s.avvisi.some((a) => a.tipo === 'AP_SCADENZA')).sort((a, b) => b.ap_non_goduto - a.ap_non_goduto),
     negativi: saldi.filter((s) => s.disponibile < 0),
     senza_residuo_ap: ctx.isAdmin ? saldi.filter((s) => !s.residuo_ap_fonte).length : undefined,
-    per_area: [...perArea.values()].map((a) => ({ ...a, residuo: Math.round(a.residuo * 100) / 100, goduto: Math.round(a.goduto * 100) / 100, pianificato: Math.round(a.pianificato * 100) / 100, in_attesa: Math.round(a.in_attesa * 100) / 100 })),
+    per_area: [...perArea.values()].map((a) => ({ ...a, piani: undefined, stati: contaPerStato(a.piani), residuo: r2(a.residuo), goduto: r2(a.goduto), pianificato: r2(a.pianificato), in_attesa: r2(a.in_attesa), da_pianificare: r2(a.da_pianificare) })),
     da_assegnare: ctx.tutto ? saldi.filter((s) => s.gruppo === 'DA_ASSEGNARE').map((s) => ({ person_id: s.person_id, persona: s.persona })) : [],
-    saldi,
+    saldi: saldi.map((s) => ({ ...s, piano_stato: piani.get(s.person_id)?.stato || 'BOZZA', piano_stato_label: STATO_PIANO_LABEL[piani.get(s.person_id)?.stato || 'BOZZA'] })),
   });
 }));
 

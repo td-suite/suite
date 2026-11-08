@@ -1,14 +1,14 @@
-// Cruscotto HR (e dei responsabili per le persone che approvano): richieste da approvare, residui a rischio, residui dell'anno
-// precedente da smaltire, saldi negativi, riepilogo per area, saldo per persona con il residuo dell'anno precedente modificabile (HR)
-// e importazione dei residui da XLSX (prima la prova, poi l'importazione).
+// Cruscotto (amministratore e consultazione: tutte le aree; responsabile: solo le aree che gestisce): piani per stato per area, piani
+// e variazioni da approvare, residui a rischio, non goduto da smaltire, saldi negativi, saldo per persona con il residuo dell'anno
+// precedente modificabile (amministratore) e importazione dei residui da XLSX (prima la prova, poi l'importazione).
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, apiBase, base, qs, useApi } from '../api.js';
 import { useAuth, isHr } from '../auth.jsx';
 import { Card, Loading, Empty, PageHead, Field, Modal, Seg, SearchInput, useToast } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { StatoBadge } from '../components.jsx';
-import { num, periodo, quantita, oggiIso } from '../format.js';
+import { StatoPianoBadge } from '../components.jsx';
+import { num, periodo, quantita, oggiIso, itData, STATO_PIANO } from '../format.js';
 
 export default function Cruscotto() {
   const { user } = useAuth();
@@ -28,27 +28,34 @@ export default function Cruscotto() {
   const salva = async (b) => { try { await api.put(`/saldi/${edit.person_id}/${anno}`, b); toast('Saldo aggiornato'); setEdit(null); reload(); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title={hr ? 'Cruscotto HR' : 'Cruscotto della mia area'} icon="stats" sub={hr ? 'Approvazioni, residui a rischio, anno precedente da smaltire e saldo di ogni dipendente.' : 'Le persone che approvi: richieste in attesa e saldi.'}
+      <PageHead title={hr ? 'Cruscotto' : 'Cruscotto della mia area'} icon="stats" sub={hr ? 'Piani per stato in ogni area, approvazioni, residui a rischio, non goduto da smaltire e saldo di ogni dipendente.' : 'I dipendenti delle aree che gestisci: piani, variazioni e saldi.'}
         actions={<><Seg value={anno} onChange={setAnno} items={[anno0 - 1, anno0, anno0 + 1].map((a) => ({ value: a, label: String(a) }))} label="Anno" />
           {hr && <><a className="btn ghost" href={`${apiBase}/saldi/modello.xlsx?anno=${anno}`} target="_blank" rel="noopener"><Icon name="sheet" />Modello residui</a><button className="btn" onClick={() => setImp(true)}><Icon name="upload" />Importa residui</button></>}</>} />
       <div className="fe-kpis">
         <div className="fe-kpi"><div className="l">Dipendenti</div><div className="v">{data.persone}</div></div>
-        <Link className="fe-kpi click warn" to={`${base}/approvare`}><div className="l">Da approvare</div><div className="v">{data.da_approvare.length}</div></Link>
-        <div className="fe-kpi"><div className="l">Assenti oggi</div><div className="v">{data.assenti_oggi}</div></div>
+        {Object.entries(STATO_PIANO).map(([k, v]) => <div key={k} className={`fe-kpi ${['PROPOSTO', 'IN_REVISIONE'].includes(k) && data.piani_per_stato[k] ? 'warn' : ''}`}><div className="l">Piani: {v.breve.toLowerCase()}</div><div className="v">{data.piani_per_stato[k] || 0}</div></div>)}
+        <Link className={`fe-kpi click ${data.variazioni.length ? 'warn' : ''}`} to={`${base}/variazioni`}><div className="l">Variazioni da decidere</div><div className="v">{data.variazioni.length}</div></Link>
         <div className={`fe-kpi ${data.a_rischio.length ? 'warn' : ''}`}><div className="l">Residui a rischio</div><div className="v">{data.a_rischio.length}</div><div className="f">molti giorni ancora da pianificare</div></div>
-        <div className={`fe-kpi ${data.ap_da_smaltire.length ? 'neg' : ''}`}><div className="l">Anno precedente da smaltire</div><div className="v">{data.ap_da_smaltire.length}</div><div className="f">entro il 30 giugno (impostazione)</div></div>
+        <div className={`fe-kpi ${data.ap_da_smaltire.length ? 'neg' : ''}`}><div className="l">Non goduto da smaltire</div><div className="v">{data.ap_da_smaltire.length}</div><div className="f">anno precedente, entro la scadenza</div></div>
         {hr && <div className={`fe-kpi ${data.senza_residuo_ap ? 'warn' : ''}`}><div className="l">Residuo AP non inserito</div><div className="v">{data.senza_residuo_ap}</div><div className="f">a mano o da XLSX</div></div>}
       </div>
       {data.da_assegnare?.length > 0 && <div className="alert warn"><Icon name="alert" /><span>{data.da_assegnare.length} {data.da_assegnare.length === 1 ? 'persona non ha' : 'persone non hanno'} un'area ricavabile dall'organigramma ({data.da_assegnare.map((x) => x.persona).join(', ')}): assegnala in Impostazioni &gt; Aree forzate.</span></div>}
+      <Card title="Piani per stato in ogni area" icon="grid" flush>
+        <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Area</th><th className="num">Persone</th>{Object.values(STATO_PIANO).map((v) => <th key={v.breve} className="num">{v.breve}</th>)}<th className="num">Pianificati</th><th className="num">Da pianificare</th><th className="num">Goduti</th><th /></tr></thead>
+          <tbody>{data.per_area.map((a) => <tr key={a.gruppo}><td className="strong">{a.nome}</td><td className="num">{a.persone}</td>{Object.keys(STATO_PIANO).map((k) => <td key={k} className={`num ${['PROPOSTO', 'IN_REVISIONE'].includes(k) && a.stati[k] ? 'fe-warn strong' : ''}`}>{a.stati[k] || ''}</td>)}
+            <td className="num">{num(a.goduto + a.pianificato)}</td><td className="num strong">{num(a.da_pianificare)}</td><td className="num">{num(a.goduto)}</td>
+            <td><Link className="btn ghost sm" to={`${base}/area?gruppo=${encodeURIComponent(a.gruppo)}&anno=${anno}`}>Apri<Icon name="arrowRight" /></Link></td></tr>)}</tbody></table></div>
+      </Card>
       <div className="fe-two">
-        <Card title="Richieste in attesa" icon="check" flush actions={<Link className="btn ghost sm" to={`${base}/approvare`}>Tutte<Icon name="arrowRight" /></Link>}>
-          {!data.da_approvare.length ? <Empty icon="check" title="Nessuna richiesta in attesa" compact /> : (
-            <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Persona</th><th>Periodo</th><th className="num">Quantità</th><th>Attesa</th></tr></thead>
-              <tbody>{data.da_approvare.slice(0, 10).map((r) => <tr key={r.id} className="click" onClick={() => nav(`${base}/richieste/${r.id}`)}><td className="strong">{r.persona}<div className="small muted">{r.gruppo_nome}</div></td><td>{periodo(r)}{r.sotto_copertura && <div className="small fe-warn"><Icon name="alert" /> copertura</div>}</td><td className="num">{quantita(r)}</td><td className={r.giorni_attesa > 3 ? 'fe-neg small' : 'small'}>{r.giorni_attesa} gg</td></tr>)}</tbody></table></div>)}
+        <Card title="Piani da approvare" icon="check" flush>
+          {!data.da_approvare.length ? <Empty icon="check" title="Nessun piano in attesa" compact /> : (
+            <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Persona</th><th>Stato</th><th>Inviato</th></tr></thead>
+              <tbody>{data.da_approvare.slice(0, 20).map((r) => <tr key={r.piano_id} className="click" onClick={() => nav(`${base}/area?gruppo=${encodeURIComponent(r.gruppo)}&anno=${anno}`)}><td className="strong">{r.persona}<div className="small muted">{r.gruppo_nome}</div></td><td><StatoPianoBadge stato={r.stato} breve /></td><td className={r.giorni_attesa > 3 ? 'fe-neg small' : 'small'}>{r.inviato_at ? `${itData(String(r.inviato_at).slice(0, 10))} · ${r.giorni_attesa} gg` : ''}</td></tr>)}</tbody></table></div>)}
         </Card>
-        <Card title="Riepilogo per area" icon="grid" flush>
-          <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Area</th><th className="num">Persone</th><th className="num">Goduti</th><th className="num">Pianificati</th><th className="num">In attesa</th><th className="num">Residuo</th></tr></thead>
-            <tbody>{data.per_area.map((a) => <tr key={a.gruppo}><td className="strong">{a.nome}</td><td className="num">{a.persone}</td><td className="num">{num(a.goduto)}</td><td className="num">{num(a.pianificato)}</td><td className="num">{num(a.in_attesa)}</td><td className="num strong">{num(a.residuo)}</td></tr>)}</tbody></table></div>
+        <Card title="Variazioni in attesa" icon="refresh" flush actions={<Link className="btn ghost sm" to={`${base}/variazioni`}>Tutte<Icon name="arrowRight" /></Link>}>
+          {!data.variazioni.length ? <Empty icon="check" title="Nessuna variazione in attesa" compact /> : (
+            <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Persona</th><th>Periodo</th><th className="num">Quantità</th></tr></thead>
+              <tbody>{data.variazioni.slice(0, 10).map((r) => <tr key={r.id} className="click" onClick={() => nav(`${base}/richieste/${r.id}`)}><td className="strong">{r.persona}<div className="small muted">{r.gruppo_nome}</div></td><td>{periodo(r)}{r.variazione_proposta && <div className="small fe-warn">{r.variazione_proposta.tipo === 'RIMOZIONE' ? 'da togliere' : 'da spostare'}</div>}</td><td className="num">{quantita(r)}</td></tr>)}</tbody></table></div>)}
         </Card>
       </div>
       {(data.a_rischio.length > 0 || data.ap_da_smaltire.length > 0) && (
@@ -60,13 +67,13 @@ export default function Cruscotto() {
       <Card title={`Saldo per persona ${anno}`} icon="users" flush actions={<div className="row tight"><div style={{ width: 220 }}><SearchInput value={filtro} onChange={setFiltro} placeholder="Cerca persona" /></div>
         <select value={area} onChange={(e) => setArea(e.target.value)} aria-label="Area"><option value="">Tutte le aree</option>{data.per_area.map((a) => <option key={a.gruppo} value={a.gruppo}>{a.nome}</option>)}</select></div>}>
         <div className="table-wrap"><table className="t fe-table">
-          <thead><tr><th>Persona</th><th>Area</th><th>Approvatore</th><th className="num">Annui</th><th className="num">Spettanza</th><th className="num">Maturato</th><th className="num">Anno prec.</th><th className="num">Goduti</th><th className="num">Pianificati</th><th className="num">In attesa</th><th className="num">Residuo</th><th>Avvisi</th>{hr && <th />}</tr></thead>
+          <thead><tr><th>Persona</th><th>Area</th><th>Piano</th><th>Responsabile</th><th className="num">Annui</th><th className="num">Spettanza</th><th className="num">Maturato</th><th className="num">Anno prec.</th><th className="num">Goduti</th><th className="num">Pianificati</th><th className="num">Variaz.</th><th className="num">Da pianificare</th><th>Avvisi</th>{hr && <th />}</tr></thead>
           <tbody>{saldi.map((s) => (
             <tr key={s.person_id}>
-              <td className="strong">{s.persona}<div className="small muted">{s.ruolo}</div></td><td className="small">{s.gruppo_nome}</td><td className="small">{s.approvatore || 'HR'}</td>
+              <td className="strong">{s.persona}<div className="small muted">{s.ruolo}</div></td><td className="small">{s.gruppo_nome}</td><td><StatoPianoBadge stato={s.piano_stato} breve /></td><td className="small">{s.approvatore || 'Amministratore'}</td>
               <td className="num">{num(s.giorni_annui)}</td><td className="num">{num(s.spettanza)}{s.mesi < 12 && <div className="small muted">{s.mesi}/12</div>}</td><td className="num">{num(s.maturato)}</td>
-              <td className="num">{num(s.residuo_ap)}{!s.residuo_ap_fonte && <div className="small muted">da inserire</div>}</td><td className="num">{num(s.goduto)}</td><td className="num">{num(s.pianificato)}</td><td className="num">{num(s.in_attesa)}</td>
-              <td className={`num strong ${s.residuo < 0 ? 'fe-neg' : ''}`}>{num(s.residuo)}</td>
+              <td className="num">{num(s.residuo_ap)}{!s.residuo_ap_fonte && <div className="small muted">da inserire</div>}</td><td className="num">{num(s.goduto)}</td><td className="num">{num(s.pianificato_totale)}</td><td className="num">{num(s.in_attesa)}</td>
+              <td className={`num strong ${s.da_pianificare < 0 ? 'fe-neg' : ''}`}>{num(s.da_pianificare)}</td>
               <td className="small" style={{ minWidth: 150 }}>{s.avvisi.map((a, i) => <div key={i} className={a.grave ? 'fe-neg' : 'fe-warn'} title={a.testo}>{breve(a)}</div>)}</td>
               {hr && <td><button className="btn ghost sm" onClick={() => setEdit(s)} title="Residuo anno precedente e forzature"><Icon name="edit" /></button></td>}
             </tr>))}</tbody>

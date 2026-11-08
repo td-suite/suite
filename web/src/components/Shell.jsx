@@ -1,6 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth, isAdmin, isExternal, canManageComm, hasModule } from '../auth.jsx';
+import { useAuth, isAdmin, isExternal, canManageComm } from '../auth.jsx';
 import { api } from '../api.js';
 import { Icon } from './Icons.jsx';
 import { Avatar, Popover, useTheme, useToast, Empty } from './ui.jsx';
@@ -57,11 +57,10 @@ function sectionFor(pathname, user) {
   if (pathname.startsWith('/cockpit')) {
     return {
       key: 'cockpit', kicker: 'Direzione', title: 'Cockpit', color: AREA_COLORS.DIREZIONE,
+      // CEO, 08/11/2026: niente link ai widget dal Cockpit (si aprono dalla Home); il monitor e lo scadenzario completo
       items: [
-        { to: '/cockpit', icon: 'stats', label: 'Indicatori', end: true },
-        ...(hasModule(user, 'cash') || isAdmin(user) ? [{ href: '/go/cash', icon: 'external', label: 'Cash Management' }] : []),
-        ...(hasModule(user, 'finance') || isAdmin(user) ? [{ href: '/go/finance', icon: 'external', label: 'Autorizzazioni di pagamento' }] : []),
-        ...(hasModule(user, 'integration') || isAdmin(user) ? [{ href: '/go/integration', icon: 'external', label: 'Piano di integrazione' }] : []),
+        { to: '/cockpit', icon: 'stats', label: 'Monitor', end: true },
+        { to: '/cockpit/scadenzario', icon: 'calendar', label: 'Scadenzario completo' },
       ],
     };
   }

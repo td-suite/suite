@@ -1,5 +1,7 @@
-// Esportazioni del piano ferie per area: XLSX (un foglio per area con persone × giorni dell'anno, foglio Richieste e foglio
-// Copertura) e PDF (una pagina per area e mese, griglia persone × giorni). PDF con pdfkit e i font LiberationSans della Suite.
+// Esportazioni del piano ferie per area: XLSX (un foglio per area con persone × giorni dell'anno e lo stato del piano di ciascuno,
+// foglio Periodi e foglio Copertura) e PDF (una pagina per area e mese, griglia persone × giorni). PDF con pdfkit e i font
+// LiberationSans della Suite. Codici: F ferie approvate, ½ mezza giornata, N nel piano non ancora approvato, A variazione in attesa,
+// P permesso ROL.
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +14,7 @@ const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..
 const FONT_R = path.join(ASSETS, 'LiberationSans-Regular.ttf');
 const FONT_B = path.join(ASSETS, 'LiberationSans-Bold.ttf');
 const LOGO = fs.existsSync(path.join(ASSETS, 'logo-td.png')) ? fs.readFileSync(path.join(ASSETS, 'logo-td.png')) : null;
-const C = { teal: '#1C505E', blue: '#71B1BD', jet: '#01212C', grey: '#5B6B70', line: '#C9D9DC', ink: '#0F2A33', bg: '#F3F7F8', we: '#E6ECEE', fest: '#D4DDE0', chius: '#DCEFF3', ferie: '#1C505E', half: '#71B1BD', attesa: '#E9A23B', rol: '#8E5BA6', red: '#B3261E' };
+const C = { teal: '#1C505E', blue: '#71B1BD', jet: '#01212C', grey: '#5B6B70', line: '#C9D9DC', ink: '#0F2A33', bg: '#F3F7F8', we: '#E6ECEE', fest: '#D4DDE0', chius: '#DCEFF3', ferie: '#1C505E', half: '#71B1BD', attesa: '#E9A23B', rol: '#8E5BA6', red: '#B3261E', piano: '#8FB8C2' };
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 const GG = ['', 'L', 'M', 'M', 'G', 'V', 'S', 'D'];
 const argb = (hex) => `FF${hex.replace('#', '').toUpperCase()}`;
@@ -24,11 +26,12 @@ function cella(assenze, personId, data) {
     if (a.person_id !== personId) continue;
     const q = a.tipo === 'ROL' ? (data === String(a.data_inizio) ? 0.25 : 0) : quotaInData(a, data);
     if (!q) continue;
-    if (!best || q > best.quota || (best.stato === 'RICHIESTA' && a.stato !== 'RICHIESTA')) best = { quota: q, stato: a.stato, tipo: a.tipo };
+    if (!best || q > best.quota || (['RICHIESTA', 'PIANIFICATA'].includes(best.stato) && ['APPROVATA', 'GODUTA'].includes(a.stato))) best = { quota: q, stato: a.stato, tipo: a.tipo };
   }
   return best;
 }
-const codice = (c) => (!c ? '' : c.tipo === 'ROL' ? 'P' : c.stato === 'RICHIESTA' ? 'A' : c.quota < 1 ? '½' : 'F');
+const codice = (c) => (!c ? '' : c.tipo === 'ROL' ? 'P' : c.stato === 'RICHIESTA' ? 'A' : c.stato === 'PIANIFICATA' ? 'N' : c.quota < 1 ? '½' : 'F');
+const colore = (c) => (c.tipo === 'ROL' ? C.rol : c.stato === 'RICHIESTA' ? C.attesa : c.stato === 'PIANIFICATA' ? C.piano : c.quota < 1 ? C.half : C.ferie);
 const inChiusura = (chiusure, d) => chiusure.find((c) => d >= String(c.data_inizio) && d <= String(c.data_fine));
 
 // ------------------------------------------------------------------ XLSX
@@ -40,15 +43,15 @@ export async function pianoXlsx(piani, { anno, conDettagli = false } = {}) {
     let nome = p.nome.replace(/[\\/*?:[\]]/g, ' ').slice(0, 28) || 'Area';
     while (nomi.has(nome)) nome = `${nome.slice(0, 25)} ${nomi.size}`;
     nomi.add(nome);
-    const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }] });
-    ws.getColumn(1).width = 28; ws.getColumn(2).width = 18;
+    const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', xSplit: 3, ySplit: 3 }] });
+    ws.getColumn(1).width = 28; ws.getColumn(2).width = 18; ws.getColumn(3).width = 16;
     ws.getCell(1, 1).value = `Piano ferie ${anno} · ${p.nome}`; ws.getCell(1, 1).font = { bold: true, size: 13, color: { argb: argb(C.teal) } };
-    ws.getCell(1, 3).value = 'F ferie · ½ mezza giornata · A in attesa · P permesso ROL · grigio festivo o fine settimana · azzurro chiusura collettiva · rosso sotto la copertura minima';
-    ws.getRow(2).getCell(1).value = 'Persona'; ws.getRow(2).getCell(2).value = 'Ruolo';
+    ws.getCell(1, 4).value = 'F ferie approvate · ½ mezza giornata · N nel piano da approvare · A variazione in attesa · P permesso ROL · grigio festivo o fine settimana · azzurro chiusura collettiva · rosso sotto la copertura minima';
+    ws.getRow(2).getCell(1).value = 'Persona'; ws.getRow(2).getCell(2).value = 'Ruolo'; ws.getRow(2).getCell(3).value = 'Piano';
     const fest = new Map(p.festivi.map((f) => [f.data, f.nome]));
     const scop = new Set(p.scoperture.map((s) => s.data));
     giorni.forEach((d, i) => {
-      const col = i + 3;
+      const col = i + 4;
       ws.getColumn(col).width = 3.2;
       const h = ws.getCell(2, col); h.value = `${d.slice(8, 10)}/${d.slice(5, 7)}`; h.alignment = { textRotation: 90, horizontal: 'center' }; h.font = { size: 8, bold: d.slice(8, 10) === '01' };
       const w = ws.getCell(3, col); w.value = GG[isoWeekday(d)]; w.alignment = { horizontal: 'center' }; w.font = { size: 8 };
@@ -56,27 +59,27 @@ export async function pianoXlsx(piani, { anno, conDettagli = false } = {}) {
       else if (fest.has(d)) h.note = fest.get(d);
     });
     ws.getRow(2).height = 34;
-    ws.getRow(2).getCell(1).font = ws.getRow(2).getCell(2).font = { bold: true };
+    ws.getRow(2).getCell(1).font = ws.getRow(2).getCell(2).font = ws.getRow(2).getCell(3).font = { bold: true };
     let riga = 4;
     for (const persona of p.persone) {
       const row = ws.getRow(riga++);
-      row.getCell(1).value = persona.nome; row.getCell(2).value = persona.ruolo || '';
+      row.getCell(1).value = persona.nome; row.getCell(2).value = persona.ruolo || ''; row.getCell(3).value = persona.stato_piano || '';
       giorni.forEach((d, i) => {
-        const cell = row.getCell(i + 3);
+        const cell = row.getCell(i + 4);
         const c = cella(p.assenze, persona.id, d);
         const lavoro = (persona.settimana || [1, 2, 3, 4, 5]).includes(isoWeekday(d)) && !fest.has(d);
         const ch = inChiusura(p.chiusure, d);
         if (c) {
           cell.value = codice(c); cell.alignment = { horizontal: 'center' }; cell.font = { size: 8, bold: true, color: { argb: 'FFFFFFFF' } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(c.tipo === 'ROL' ? C.rol : c.stato === 'RICHIESTA' ? C.attesa : c.quota < 1 ? C.half : C.ferie) } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(colore(c)) } };
         } else if (!lavoro) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(fest.has(d) ? C.fest : C.we) } };
         else if (ch) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(C.chius) } };
       });
     }
     if (p.chiusure.length) { riga++; ws.getCell(riga++, 1).value = 'Chiusure collettive'; for (const c of p.chiusure) ws.getCell(riga++, 1).value = `${itData(c.data_inizio)} → ${itData(c.data_fine)} ${c.descrizione || ''}`; }
   }
-  // Richieste
-  const rs = wb.addWorksheet('Richieste');
+  // Periodi del piano
+  const rs = wb.addWorksheet('Periodi');
   rs.columns = [{ header: 'Area', key: 'area', width: 24 }, { header: 'Persona', key: 'persona', width: 28 }, { header: 'Tipo', key: 'tipo', width: 8 }, { header: 'Dal', key: 'dal', width: 12 }, { header: 'Al', key: 'al', width: 12 },
     { header: 'Mezza giornata', key: 'mezza', width: 22 }, ...(conDettagli ? [{ header: 'Giorni', key: 'giorni', width: 8 }, { header: 'Ore', key: 'ore', width: 8 }, { header: 'Note', key: 'note', width: 40 }] : []), { header: 'Stato', key: 'stato', width: 12 }];
   for (const p of piani) {
@@ -89,7 +92,7 @@ export async function pianoXlsx(piani, { anno, conDettagli = false } = {}) {
   const cs = wb.addWorksheet('Copertura');
   cs.columns = [{ header: 'Area', key: 'area', width: 24 }, { header: 'Data', key: 'data', width: 12 }, { header: 'Ruolo', key: 'ruolo', width: 24 }, { header: 'Minimo', key: 'minimo', width: 9 }, { header: 'Presenti', key: 'presenti', width: 9 }];
   for (const p of piani) for (const s of p.scoperture) cs.addRow({ area: p.nome, data: itData(s.data), ruolo: s.ruolo, minimo: s.minimo, presenti: s.presenti });
-  if (!piani.some((p) => p.scoperture.length)) cs.addRow({ area: 'Nessun giorno sotto la copertura minima con le ferie approvate' });
+  if (!piani.some((p) => p.scoperture.length)) cs.addRow({ area: 'Nessun giorno sotto la copertura minima con i periodi del piano' });
   cs.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }; cs.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(C.teal) } };
   return wb.xlsx.writeBuffer();
 }
@@ -109,7 +112,7 @@ export function pianoPdf(piani, { anno, mesi = null, generato = '' } = {}) {
       for (const mese of elencoMesi) {
         const mm = String(mese).padStart(2, '0');
         const giorni = giorniTra(`${anno}-${mm}-01`, `${anno}-${mm}-${String(new Date(Date.UTC(anno, mese, 0)).getUTCDate()).padStart(2, '0')}`);
-        const nomeW = 150, top = 78, rowH = 15;
+        const nomeW = 175, top = 78, rowH = 15;
         const cellW = (W - 2 * M - nomeW) / giorni.length;
         const perPagina = Math.max(1, Math.floor((H - top - 70) / rowH));
         const blocchi = [];
@@ -133,13 +136,13 @@ export function pianoPdf(piani, { anno, mesi = null, generato = '' } = {}) {
           persone.forEach((persona, ri) => {
             const y = top + ri * rowH;
             if (ri % 2) doc.rect(M, y, W - 2 * M, rowH).fill(C.bg);
-            doc.fillColor(C.ink).font('R').fontSize(7.5).text(persona.nome, M + 2, y + 4, { width: nomeW - 4, height: rowH, ellipsis: true, lineBreak: false });
+            doc.fillColor(C.ink).font('R').fontSize(7.5).text(`${persona.nome}${persona.stato_piano ? ` · ${persona.stato_piano}` : ''}`, M + 2, y + 4, { width: nomeW - 4, height: rowH, ellipsis: true, lineBreak: false });
             giorni.forEach((d, i) => {
               const x = M + nomeW + i * cellW;
               const lavoro = (persona.settimana || [1, 2, 3, 4, 5]).includes(isoWeekday(d)) && !fest.has(d);
               const c = cella(p.assenze, persona.id, d);
               if (c) {
-                const col = c.tipo === 'ROL' ? C.rol : c.stato === 'RICHIESTA' ? C.attesa : c.quota < 1 ? C.half : C.ferie;
+                const col = colore(c);
                 doc.rect(x + 0.5, y + 1.5, cellW - 1, rowH - 3).fill(col);
                 doc.fillColor('#FFFFFF').font('B').fontSize(6.5).text(codice(c), x, y + 4.5, { width: cellW, align: 'center' });
               } else if (!lavoro) doc.rect(x + 0.5, y + 1.5, cellW - 1, rowH - 3).fill(fest.has(d) ? C.fest : C.we);
@@ -152,7 +155,7 @@ export function pianoPdf(piani, { anno, mesi = null, generato = '' } = {}) {
           const ly = H - 58;
           const voce = (x, col, t) => { doc.rect(x, ly, 9, 9).fill(col); doc.fillColor(C.ink).font('R').fontSize(7.5).text(t, x + 12, ly + 1); return x + 14 + doc.widthOfString(t) + 10; };
           let lx = M;
-          lx = voce(lx, C.ferie, 'F ferie'); lx = voce(lx, C.half, '½ mezza giornata'); lx = voce(lx, C.attesa, 'A in attesa'); lx = voce(lx, C.rol, 'P permesso ROL');
+          lx = voce(lx, C.ferie, 'F ferie approvate'); lx = voce(lx, C.half, '½ mezza giornata'); lx = voce(lx, C.piano, 'N nel piano da approvare'); lx = voce(lx, C.attesa, 'A variazione in attesa'); lx = voce(lx, C.rol, 'P permesso ROL');
           lx = voce(lx, C.we, 'festivo o riposo'); lx = voce(lx, C.chius, 'chiusura collettiva'); voce(lx, C.red, 'giorno sotto la copertura minima');
           const sMese = p.scoperture.filter((s) => s.data.slice(5, 7) === mm);
           if (sMese.length) doc.fillColor(C.red).font('R').fontSize(7.5).text(`Sotto la copertura minima: ${sMese.slice(0, 12).map((s) => `${s.data.slice(8, 10)}/${mm} ${s.ruolo} ${s.presenti}/${s.minimo}`).join(' · ')}${sMese.length > 12 ? ` e altri ${sMese.length - 12}` : ''}`, M, ly + 16, { width: W - 2 * M });

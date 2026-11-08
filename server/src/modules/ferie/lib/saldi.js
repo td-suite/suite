@@ -44,9 +44,10 @@ export function spettanza(anno, giorniAnnui, { inizio = null, fine = null, oggi 
 }
 
 /**
- * Saldo complessivo. goduto = giorni approvati o goduti con data passata (fino a oggi compreso); pianificato = giorni approvati futuri;
- * in_attesa = giorni delle richieste non ancora decise. residuo = residuo_ap + spettanza − goduto − pianificato;
- * disponibile = residuo − in_attesa (quanto si può ancora chiedere senza andare sotto zero).
+ * Saldo complessivo (piano annuale). goduto = giorni approvati con data passata (fino a oggi compreso); pianificato = giorni del piano
+ * non ancora goduti (pianificato futuro); in_attesa = giorni delle variazioni non ancora decise.
+ * residuo = residuo_ap + spettanza − goduto − pianificato; disponibile = da_pianificare = residuo − in_attesa (giorni che il dipendente
+ * ha ancora da mettere nel piano); pianificato_totale = goduto + pianificato (somma dei periodi del piano dell'anno).
  */
 export function saldo({ residuo_ap = 0, spettanza: sp = 0, maturato = 0, goduto = 0, pianificato = 0, in_attesa = 0 }) {
   const residuo = r2(Number(residuo_ap) + Number(sp) - Number(goduto) - Number(pianificato));
@@ -54,7 +55,8 @@ export function saldo({ residuo_ap = 0, spettanza: sp = 0, maturato = 0, goduto 
   const apNonGoduto = r2(Math.max(0, Number(residuo_ap) - Number(goduto)));
   return {
     residuo_ap: r2(residuo_ap), spettanza: r2(sp), maturato: r2(maturato), goduto: r2(goduto), pianificato: r2(pianificato), in_attesa: r2(in_attesa),
-    residuo, disponibile: r2(residuo - Number(in_attesa)), ap_da_pianificare: apDaSmaltire, ap_non_goduto: apNonGoduto,
+    residuo, disponibile: r2(residuo - Number(in_attesa)), da_pianificare: r2(residuo - Number(in_attesa)), pianificato_totale: r2(Number(goduto) + Number(pianificato)),
+    ap_da_pianificare: apDaSmaltire, ap_non_goduto: apNonGoduto,
   };
 }
 

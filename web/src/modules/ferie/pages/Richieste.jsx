@@ -1,5 +1,6 @@
-// Elenco delle richieste. Viste: mie (le mie), da_approvare (in attesa delle persone che approvo; HR tutte), tutte (storico: HR e
-// consultazione tutto, responsabili le proprie e quelle della loro area). Filtri per anno, stato, area, ricerca.
+// Elenco dei periodi del piano. Viste: mie (i miei periodi e variazioni), da_approvare (variazioni in attesa dei dipendenti che gestisco;
+// ADMIN tutte), tutte (storico: ADMIN e VIEWER tutto, il responsabile solo i dipendenti delle aree che gestisce). Filtri per anno,
+// stato, area, ricerca.
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { base, qs, useApi } from '../api.js';
@@ -10,9 +11,9 @@ import { TabellaRichieste } from '../components.jsx';
 import { STATO, oggiIso } from '../format.js';
 
 const VISTE = {
-  mie: { title: 'Le mie richieste', icon: 'list', sub: 'Le tue richieste di ferie e permessi: apri una richiesta per vederne la cronologia o annullarla.' },
-  da_approvare: { title: 'Da approvare', icon: 'check', sub: 'Richieste in attesa delle persone che approvi (dall\'organigramma o per delega). L\'avviso di copertura non blocca: decidi tu.' },
-  tutte: { title: 'Storico richieste', icon: 'folder', sub: 'Tutte le richieste che puoi vedere, con filtri per anno, stato e area.' },
+  mie: { title: 'I miei periodi', icon: 'list', sub: 'Tutti i periodi dei tuoi piani e le variazioni: apri un periodo per vederne la cronologia.' },
+  da_approvare: { title: 'Variazioni da decidere', icon: 'refresh', sub: 'Variazioni ai piani approvati proposte dai dipendenti delle aree che gestisci. L\'avviso di copertura non blocca: decidi tu. I piani da approvare sono nel Piano dell\'area.' },
+  tutte: { title: 'Storico dei periodi', icon: 'folder', sub: 'Tutti i periodi che puoi vedere (la tua area, o tutte per l\'amministratore), con filtri per anno, stato e area.' },
 };
 
 export default function Richieste({ vista }) {
@@ -33,7 +34,7 @@ export default function Richieste({ vista }) {
   const anni = useMemo(() => [anno0 + 1, anno0, anno0 - 1, anno0 - 2], [anno0]);
   return (
     <div className="page">
-      <PageHead title={V.title} icon={V.icon} sub={V.sub} actions={vista === 'mie' ? <Link className="btn" to={`${base}/nuova`}><Icon name="plus" />Nuova richiesta</Link> : null} />
+      <PageHead title={V.title} icon={V.icon} sub={V.sub} actions={vista === 'mie' ? <Link className="btn" to={base}><Icon name="calendar" />Il mio piano</Link> : null} />
       <div className="filters">
         {vista !== 'mie' && <div style={{ minWidth: 240, flex: 1 }}><SearchInput value={text} onChange={setText} placeholder="Cerca per persona o note" /></div>}
         <Field label="Anno"><select value={anno} onChange={(e) => setAnno(e.target.value)}><option value="">Tutti</option>{anni.map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
@@ -43,10 +44,10 @@ export default function Richieste({ vista }) {
       </div>
       <Card flush>
         {error ? <Empty icon="alert" title="Errore">{error.message}</Empty> : !data && loading ? <Loading /> : (
-          <TabellaRichieste rows={data?.rows} mostraPersona={vista !== 'mie'} mostraArea={vista !== 'mie'} vuoto={vista === 'da_approvare' ? 'Nessuna richiesta in attesa' : 'Nessuna richiesta con questi filtri'} />)}
+          <TabellaRichieste rows={data?.rows} mostraPersona={vista !== 'mie'} mostraArea={vista !== 'mie'} vuoto={vista === 'da_approvare' ? 'Nessuna variazione in attesa' : 'Nessun periodo con questi filtri'} />)}
         {data && data.total > data.pageSize && <Pager page={data.page} pageSize={data.pageSize} total={data.total} onChange={setPage} />}
       </Card>
-      {vista === 'da_approvare' && isHr(user) && <div className="small muted" style={{ marginTop: 8 }}>Come HR vedi tutte le richieste in attesa e puoi decidere al posto del responsabile (delega HR).</div>}
+      {vista === 'da_approvare' && isHr(user) && <div className="small muted" style={{ marginTop: 8 }}>Come amministratore vedi le variazioni di tutte le aree e puoi decidere al posto del responsabile.</div>}
     </div>
   );
 }

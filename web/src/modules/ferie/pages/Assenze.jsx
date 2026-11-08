@@ -1,4 +1,5 @@
-// Oggi assenti e prossimi 14 giorni nelle aree visibili (la propria per i dipendenti, quelle che approvano per i responsabili, tutte per HR)
+// Oggi assenti e prossimi 14 giorni nelle aree visibili (la propria per i dipendenti, quelle che gestiscono per i responsabili, tutte
+// per l'amministratore e la consultazione)
 import React, { useState } from 'react';
 import { qs, useApi } from '../api.js';
 import { Card, Loading, Empty, PageHead, Field } from '../../../components/ui.jsx';
@@ -27,7 +28,7 @@ export default function Assenze() {
                 <thead><tr><th>Persona</th><th>Area</th><th>Periodo</th><th className="num">Quantità</th><th>Stato</th><th className="fe-mini-h">{giorni.map((d) => <span key={d} className={weekday(d) >= 6 ? 'we' : ''} title={itData(d)}>{GG[weekday(d)]}</span>)}</th></tr></thead>
                 <tbody>{data.prossimi.map((x) => (
                   <tr key={x.id}><td className="strong">{x.persona}<div className="small muted">{x.ruolo}</div></td><td className="small">{x.gruppo_nome}</td><td style={{ whiteSpace: 'nowrap' }}>{periodo(x)}</td><td className="num">{quantita(x)}</td><td><StatoBadge stato={x.stato} /></td>
-                    <td className="fe-mini">{giorni.map((d) => { const q = quotaInData(x, d); return <span key={d} className={`${q ? (x.stato === 'RICHIESTA' ? 'att' : q < 1 ? 'half' : 'fer') : ''} ${weekday(d) >= 6 ? 'we' : ''}`} title={itData(d)} />; })}</td></tr>))}</tbody>
+                    <td className="fe-mini">{giorni.map((d) => { const q = quotaInData(x, d); return <span key={d} className={`${q ? (x.stato === 'RICHIESTA' ? 'att' : x.stato === 'PIANIFICATA' ? 'pian' : q < 1 ? 'half' : 'fer') : ''} ${weekday(d) >= 6 ? 'we' : ''}`} title={itData(d)} />; })}</td></tr>))}</tbody>
               </table></div>)}
           </Card>
         </>

@@ -17,6 +17,7 @@ const Search = lazy(() => import('./pages/Search.jsx'));
 const Community = lazy(() => import('./pages/Community.jsx'));
 const People = lazy(() => import('./pages/People.jsx'));
 const Cockpit = lazy(() => import('./pages/Cockpit.jsx'));
+const CockpitScadenzarioPagina = lazy(() => import('./pages/CockpitScadenzarioPagina.jsx'));
 const Files = lazy(() => import('./pages/Files.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Admin = lazy(() => import('./pages/admin/Admin.jsx'));
@@ -58,6 +59,10 @@ function Gate() {
   // Presa d'atto di Privacy e Informativa IA: al primo accesso e quando cambia la versione di una delle due (pages/PresaAtto.jsx)
   if (user.consensi_da_accettare?.length) return <Suspense fallback={<Splash />}><PresaAtto /></Suspense>;
   const admin = isAdmin(user);
+  // Cockpit in modalità monitor (?monitor=1): a tutta pagina, fuori dalla Shell (senza la barra della Suite), come la presa d'atto
+  if (loc.pathname === '/cockpit' && new URLSearchParams(loc.search).get('monitor') === '1' && (admin || hasModule(user, 'cockpit'))) {
+    return <Suspense fallback={<Splash />}><Cockpit monitor /></Suspense>;
+  }
   return (
     <Suspense fallback={<Splash />}>
     <Routes>
@@ -68,6 +73,7 @@ function Gate() {
         <Route path="/community/*" element={<Community />} />
         <Route path="/people/*" element={<Guard ok={admin || hasModule(user, 'rubrica')}><People /></Guard>} />
         <Route path="/cockpit" element={<Guard ok={admin || hasModule(user, 'cockpit')}><Cockpit /></Guard>} />
+        <Route path="/cockpit/scadenzario" element={<Guard ok={admin || hasModule(user, 'cockpit')}><CockpitScadenzarioPagina /></Guard>} />
         <Route path="/files" element={<Guard ok={cfg.blobEnabled}><Files /></Guard>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin/*" element={<Guard ok={admin}><Admin /></Guard>} />

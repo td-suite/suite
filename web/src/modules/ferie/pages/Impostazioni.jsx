@@ -51,16 +51,25 @@ function Generali() {
     promemoria_giorni: Number(f.promemoria_giorni), email_attiva: f.email_attiva, festa_4_ottobre: f.festa_4_ottobre, rol_attivi: f.rol_attivi, avviso_dipendenti: f.avviso_dipendenti || '',
     festivi_aggiunti: f.festivi_aggiunti_txt.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => ({ data: x.slice(0, 10), nome: x.slice(10).trim() || 'Festivo aziendale' })),
     festivi_esclusi: f.festivi_esclusi_txt.split('\n').map((x) => x.trim().slice(0, 10)).filter(Boolean),
+    scadenze_piano: Object.fromEntries(Object.entries(f.scadenze_piano || {}).filter(([, v]) => v)), promemoria_scadenza_giorni: Number(f.promemoria_scadenza_giorni ?? 7),
   }), 'Impostazioni salvate', reload);
+  const anno0 = Number(oggiIso().slice(0, 4));
   const sw = (k, l, help) => <div className="fe-sw"><Switch checked={f[k]} onChange={(v) => set(k, v)} label={l} /><div><div className="strong small">{l}</div>{help && <div className="small muted">{help}</div>}</div></div>;
   return (
     <div className="fe-two">
+      <Card title="Piano annuale" icon="calendar">
+        <div className="fe-form">
+          <p className="small">Ogni dipendente compila il proprio piano dell'anno e lo invia al responsabile dell'area, che lo modifica, lo approva e lo rende definitivo. Qui la data entro cui i dipendenti devono inviarlo: il job manda i promemoria a chi ha ancora il piano in bozza e il Cockpit la mostra nello scadenzario.</p>
+          {[anno0, anno0 + 1].map((a) => <Field key={a} label={`Scadenza di invio del piano ${a}`} help="Vuota = nessuna scadenza"><input type="date" value={(f.scadenze_piano || {})[a] || ''} onChange={(e) => set('scadenze_piano', { ...(f.scadenze_piano || {}), [a]: e.target.value })} /></Field>)}
+          <Field label="Promemoria da quanti giorni prima della scadenza"><input type="number" min="0" max="60" value={f.promemoria_scadenza_giorni ?? 7} onChange={(e) => set('promemoria_scadenza_giorni', e.target.value)} /></Field>
+        </div>
+      </Card>
       <Card title="Perimetro e maturazione" icon="users">
         <div className="fe-form">
           {sw('includi_dirigenti', 'Includi i dirigenti con contratto subordinato', 'Persone di tipo DIRIGENTE con contratto in Contratti del personale. I liberi professionisti restano sempre fuori.')}
           <Field label="Giorni del mese per contarlo come lavorato" help="Maturazione pro rata: un mese conta se il rapporto ne copre almeno questi giorni (ipotesi 15, da verificare con il consulente)."><input type="number" min="1" max="31" value={f.soglia_mese_giorni} onChange={(e) => set('soglia_mese_giorni', e.target.value)} /></Field>
           {sw('rol_attivi', 'Voce ROL e permessi in ore', 'Facoltativa: ore annue per CCNL e livello in "Giorni annui", residuo dell\'anno precedente nel saldo.')}
-          <Field label="Avviso ai dipendenti (sopra il modulo di richiesta)"><textarea rows={3} maxLength={2000} value={f.avviso_dipendenti || ''} onChange={(e) => set('avviso_dipendenti', e.target.value)} /></Field>
+          <Field label="Avviso ai dipendenti (sopra il loro piano)"><textarea rows={3} maxLength={2000} value={f.avviso_dipendenti || ''} onChange={(e) => set('avviso_dipendenti', e.target.value)} /></Field>
         </div>
       </Card>
       <Card title="Avvisi e promemoria" icon="bell">
@@ -68,7 +77,7 @@ function Generali() {
           <Field label="Scadenza del residuo dell'anno precedente (MM-GG)" help="Predefinita 06-30, come indicato dal CEO. Verificare la regola con il consulente del lavoro (vedi Guida)."><input value={f.scadenza_ap} onChange={(e) => set('scadenza_ap', e.target.value)} maxLength={5} /></Field>
           <Field label="Mesi di controllo dei residui a rischio"><div className="fe-mesi">{MESI.map((m, i) => <label key={m} className="fe-check"><input type="checkbox" checked={(f.mesi_rischio || []).includes(i + 1)} onChange={(e) => set('mesi_rischio', e.target.checked ? [...(f.mesi_rischio || []), i + 1].sort((a, b) => a - b) : (f.mesi_rischio || []).filter((x) => x !== i + 1))} />{m.slice(0, 3)}</label>)}</div></Field>
           <Field label="Giorni non pianificati da cui scatta l'avviso"><input type="number" min="0" max="60" value={f.soglia_rischio_giorni} onChange={(e) => set('soglia_rischio_giorni', e.target.value)} /></Field>
-          <Field label="Promemoria all'approvatore dopo (giorni di attesa)"><input type="number" min="1" max="60" value={f.promemoria_giorni} onChange={(e) => set('promemoria_giorni', e.target.value)} /></Field>
+          <Field label="Promemoria al responsabile dopo (giorni di attesa di un piano inviato o di una variazione)"><input type="number" min="1" max="60" value={f.promemoria_giorni} onChange={(e) => set('promemoria_giorni', e.target.value)} /></Field>
           {sw('email_attiva', 'Email oltre alla notifica in app', 'Con il mittente della Suite, agli utenti con email e avvisi email attivi. Spenta finché HR non decide.')}
         </div>
       </Card>
@@ -81,9 +90,9 @@ function Generali() {
         </div>
       </Card>
       <Card title="Lavoro giornaliero" icon="refresh">
-        <p className="small">Una volta al giorno il job <code>ferie:promemoria</code> passa a Goduta le ferie approvate concluse e ricorda agli approvatori le richieste in attesa da più di {f.promemoria_giorni} giorni.</p>
+        <p className="small">Una volta al giorno il job <code>ferie:promemoria</code> passa a Goduti i periodi approvati conclusi, ricorda ai dipendenti di inviare il piano entro la scadenza e ai responsabili i piani e le variazioni in attesa da più di {f.promemoria_giorni} giorni.</p>
         <div className="row"><button className="btn primary" disabled={busy} onClick={salva}><Icon name="check" />Salva le impostazioni</button>
-          <button className="btn ghost" disabled={busy} onClick={() => run(() => api.post('/admin/job'), null, (r) => toast(`Job eseguito: ${r.godute} godute, ${r.promemoria} promemoria`))}><Icon name="refresh" />Esegui ora il job</button></div>
+          <button className="btn ghost" disabled={busy} onClick={() => run(() => api.post('/admin/job'), null, (r) => toast(`Job eseguito: ${r.godute} goduti, ${r.promemoria_piani_non_inviati} promemoria di invio, ${r.promemoria_piani_da_approvare} piani e ${r.promemoria} variazioni ricordati ai responsabili`))}><Icon name="refresh" />Esegui ora il job</button></div>
       </Card>
     </div>
   );
@@ -128,7 +137,7 @@ function Copertura({ cat }) {
         {!data.length ? <div className="small muted" style={{ padding: 12 }}>Nessuna regola: nessun avviso di copertura.</div> : (
           <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Ambito</th><th>Ruolo</th><th className="num">Minimo presenti</th><th>Note</th><th /></tr></thead>
             <tbody>{data.map((c) => <tr key={c.id}><td>{c.ambito_nome}</td><td>{c.role_name || 'Qualunque ruolo'}</td><td className="num strong">{c.minimo}</td><td className="small">{c.note}</td><td><button className="btn ghost sm" disabled={busy} onClick={() => run(() => api.del(`/coperture/${c.id}`), 'Regola eliminata', reload)}><Icon name="trash" /></button></td></tr>)}</tbody></table></div>)}
-        <div className="small muted" style={{ padding: 12 }}>Una richiesta che fa scendere un giorno sotto il minimo non viene bloccata: l'approvatore vede l'avviso. Contano i dipendenti del perimetro della stessa area o sede; il ruolo è quello della scheda persona o di un incarico nell'organigramma.</div>
+        <div className="small muted" style={{ padding: 12 }}>Un periodo che fa scendere un giorno sotto il minimo non viene bloccato: nel piano dell'area il giorno è rosso e il responsabile vede l'avviso. Contano i dipendenti del perimetro della stessa area o sede; il ruolo è quello della scheda persona o di un incarico nell'organigramma.</div>
       </Card>
       <Card title="Nuova regola" icon="plus">
         <div className="fe-form">
@@ -155,7 +164,7 @@ function Chiusure({ cat }) {
         {!data ? <Loading /> : !data.length ? <div className="small muted" style={{ padding: 12 }}>Nessuna chiusura nell'anno.</div> : (
           <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Area</th><th>Dal</th><th>Al</th><th>Descrizione</th><th /></tr></thead>
             <tbody>{data.map((c) => <tr key={c.id}><td>{c.gruppo_nome}</td><td>{itData(c.data_inizio)}</td><td>{itData(c.data_fine)}</td><td className="small">{c.descrizione}</td><td><button className="btn ghost sm" disabled={busy} onClick={() => run(() => api.del(`/chiusure/${c.id}`), 'Chiusura eliminata', reload)}><Icon name="trash" /></button></td></tr>)}</tbody></table></div>)}
-        <div className="small muted" style={{ padding: 12 }}>Le chiusure sono proposte ai dipendenti dell'area ("Richiedi") e compaiono nel piano. Non creano richieste da sole.</div>
+        <div className="small muted" style={{ padding: 12 }}>Le chiusure sono proposte ai dipendenti dell'area nel loro piano ("Aggiungi al piano") e compaiono nel piano dell'area. Non creano periodi da sole.</div>
       </Card>
       <Card title="Nuova chiusura" icon="plus">
         <div className="fe-form">
@@ -233,7 +242,7 @@ function Deleghe() {
         {!data?.length ? <div className="small muted" style={{ padding: 12 }}>Nessuna delega.</div> : (
           <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Delegante</th><th>Delegato</th><th>Dal</th><th>Al</th><th /></tr></thead>
             <tbody>{data.map((d) => <tr key={d.id}><td>{d.delegante}</td><td>{d.delegato}</td><td>{itData(d.dal)}</td><td>{itData(d.al)}</td><td><button className="btn ghost sm" disabled={busy} onClick={() => run(() => api.del(`/deleghe/${d.id}`), 'Delega eliminata', reload)}><Icon name="trash" /></button></td></tr>)}</tbody></table></div>)}
-        <div className="small muted" style={{ padding: 12 }}>Durante la delega il delegato riceve le richieste e i promemoria e può approvarle. HR approva sempre.</div>
+        <div className="small muted" style={{ padding: 12 }}>Durante la delega il delegato riceve i piani e le variazioni dell'area con i promemoria e può modificarli e approvarli. L'amministratore approva sempre.</div>
       </Card>
       <Card title="Nuova delega" icon="plus">
         <div className="fe-form">
