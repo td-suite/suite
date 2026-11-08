@@ -175,6 +175,19 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
   }
   // A7 (d): un indirizzo scritto a mano diverso da quello in vigore smette di seguire la Legal entity (address_from_org = FALSE)
   if (cur?.address_from_org && b.address_from_org === undefined && ADDRESS_KEYS.some((k) => changed(b, cur, k))) b.address_from_org = false;
+  // Sede OSPITATA: "quando una sede è ospitata da una Legal entity deve prendere l'indirizzo della Legal entity" (CEO, 08/11/2026).
+  // Alla creazione, al cambio dell'ospitante o con l'indirizzo vuoto la sede prende l'indirizzo dell'ospitante (address_from_org = TRUE,
+  // così lo segue quando cambia: allineaSediDaOrg). Un indirizzo indicato esplicitamente insieme all'ospitante resta e non lo segue.
+  {
+    const tenure = b.tenure ?? cur?.tenure; const host = b.host_organization_id ?? cur?.host_organization_id;
+    const indirizzoIndicato = ADDRESS_KEYS.some((k) => b[k] !== undefined && b[k] !== null && String(b[k]).trim() !== '');
+    const indirizzoVuoto = !ADDRESS_KEYS.some((k) => (b[k] ?? cur?.[k] ?? '') !== '');
+    const ospitanteCambiato = !cur || changed(b, cur, 'host_organization_id') || changed(b, cur, 'tenure');
+    if (tenure === 'OSPITATA' && host && !indirizzoIndicato && (ospitanteCambiato || indirizzoVuoto || cur?.address_from_org)) {
+      const o = (await c.query('SELECT address, zip, city, province FROM organizations WHERE id=$1', [host])).rows[0];
+      if (o && (o.address || o.city)) { b.address = o.address ?? null; b.zip = o.zip ?? null; b.city = o.city ?? null; b.province = o.province ? String(o.province).slice(0, 4) : null; b.address_from_org = true; }
+    }
+  }
   // B19: il codice StudioLAB è di una sola sede (Ordini, NC e Retail abbinano il codice a una sede): rifiutato se è già di un'altra
   if (b.studiolab_code !== undefined) b.studiolab_code = b.studiolab_code ? String(b.studiolab_code).trim() || null : null;
   if (b.studiolab_code) {

@@ -321,8 +321,13 @@ export function Sites() {
     { key: 'code', label: 'Codice', required: true, max: 40 }, { key: 'name', label: 'Nome', required: true }, { key: 'short_name', label: 'Nome breve' },
     { key: 'kind', label: 'Tipo', type: 'select', options: opts(SITE_KIND) }, { key: 'organization_id', label: 'Legal entity', type: 'select', options: (orgs.data || []).map((o) => ({ value: o.id, label: o.name })) },
     { key: 'host_organization_id', label: 'Legal entity ospitante', type: 'select', options: (orgs.data || []).filter((o) => !['GRUPPO', 'SOCIETA'].includes(o.kind)).map((o) => ({ value: o.id, label: o.name })), help: 'Il partner che ospita la sede (es. G.B. Center per il Punto Prelievi di Quarrata): è la Legal entity con cui accede alla Suite e vede le royalties in Cash. Vuoto per le sedi proprie.',
-      onSet: (v, f) => (v ? { tenure: 'OSPITATA' } : f.tenure === 'OSPITATA' ? { tenure: 'LOCAZIONE' } : {}) },
-    { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
+      onSet: (v, f) => {
+        if (!v) return f.tenure === 'OSPITATA' ? { tenure: 'LOCAZIONE' } : {};
+        // la sede ospitata prende l'indirizzo della Legal entity ospitante (CEO, 08/11/2026); il server lo fa comunque al salvataggio
+        const o = (orgs.data || []).find((x) => Number(x.id) === Number(v));
+        return { tenure: 'OSPITATA', ...(o && (o.address || o.city) ? { address: o.address || '', zip: o.zip || '', city: o.city || '', province: o.province || '' } : {}) };
+      } },
+    { key: 'address', label: 'Indirizzo', help: (f) => (f.tenure === 'OSPITATA' && f.host_organization_id ? 'Sede ospitata: l\'indirizzo è quello della Legal entity ospitante e la segue quando cambia. Se lo scrivi diverso, non la segue più.' : null) }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 },
     { key: 'phone', label: 'Telefono' }, { key: 'email', label: 'Email', type: 'email' }, { key: '_manager', label: 'Responsabile di sede', type: 'static', value: (it) => it?.manager_name ? `${it.manager_name}${it.manager_role ? ` · ${it.manager_role}` : ''}` : 'Da assegnare', help: 'Dall\'organigramma: è il responsabile del nodo Sede in Organizzazione (incarico con flag Responsabile). Non si scrive qui.' }, { key: 'opening_hours_json', label: 'Orari di apertura', type: 'hours', full: true },
     { key: 'opened_at', label: 'Data di apertura', type: 'date', help: 'Primo giorno di attività della sede: la leggono Cash (da quando attende il rendiconto) e Retail (scheda sede).' },
     { key: 'closed_at', label: 'Data di chiusura', type: 'date', help: 'Si imposta da sola quando disattivi la sede (o alla cessazione del contratto PP non rinnovato); al salvataggio ricevi il quadro di ciò che resta collegato.' },

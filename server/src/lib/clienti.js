@@ -205,7 +205,8 @@ export async function sediServiceMancanti({ esegui = false, orgIds = null, req =
 export async function allineaSediDaOrg(orgId, { req = null, actorId = null, origine = 'Amministrazione > Legal entity (indirizzo)' } = {}) {
   const o = await one('SELECT id, address, zip, city, province FROM organizations WHERE id=$1', [orgId]);
   if (!o) return 0;
-  const sedi = await many(`SELECT id FROM sites WHERE organization_id=$1 AND kind='SERVICE' AND address_from_org
+  // sedi SERVICE della Legal entity e sedi OSPITATE da questa Legal entity (CEO, 08/11/2026) con l'indirizzo ereditato
+  const sedi = await many(`SELECT id FROM sites WHERE address_from_org AND ((organization_id=$1 AND kind='SERVICE') OR (tenure='OSPITATA' AND host_organization_id=$1))
     AND (address IS DISTINCT FROM $2 OR zip IS DISTINCT FROM $3 OR city IS DISTINCT FROM $4 OR province IS DISTINCT FROM $5)`, [o.id, o.address, o.zip, o.city, o.province]);
   for (const s of sedi) await saveSite({ id: s.id, data: { address: o.address, zip: o.zip, city: o.city, province: o.province ? String(o.province).slice(0, 4) : null, address_from_org: true }, origine, req, actorId });
   return sedi.length;

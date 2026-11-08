@@ -124,6 +124,12 @@ describe('anagrafica unica, blocco 2 (integrazione)', { skip: SALTA }, () => {
 
   test('A7 (b): cliente attivo senza sede → D13 rosso; "Crea le sedi SERVICE mancanti" (Prova, Esegui, idempotente) → verde', async () => {
     must(await o.put(`/api/business/hub/accounts/${id.a_att}/attivo`, { attivo: true, dal: '2026-10-01' }), 'cliente attivo');
+    // dall'08/11/2026 la conferma del cliente attivo crea da sola la sede SERVICE (la scheda Strutture clienti service mostra solo gli attivi)
+    const prima = (await db.query(`SELECT address, city, studiolab_code, address_from_org FROM sites WHERE organization_id=$1 AND kind='SERVICE'`, [id.att])).rows;
+    assert.equal(prima.length, 1, 'sede creata alla conferma');
+    assert.deepEqual([prima[0].address, prima[0].city, prima[0].studiolab_code, prima[0].address_from_org], ['Via Tre 3', 'Pisa', 'SL-200', true], 'indirizzo della Legal entity e codice in attesa');
+    assert.equal((await diag('D13')).stato, 'OK');
+    await db.query(`DELETE FROM sites WHERE organization_id=$1 AND kind='SERVICE'`, [id.att]);   // simula un cliente attivo rimasto senza sede
     const d13 = await diag('D13');
     assert.equal(d13.stato, 'BLOCCANTE'); assert.deepEqual(d13.righe.map((r) => r.id), [id.att]);
     const prova = must(await o.get('/api/admin/migrazioni/sedi-service'), 'prova');
@@ -133,7 +139,7 @@ describe('anagrafica unica, blocco 2 (integrazione)', { skip: SALTA }, () => {
     const es = must(await o.post('/api/admin/migrazioni/sedi-service', { conferma: 'ESEGUI' }), 'esegui');
     assert.equal(es.creati, 1);
     const s = (await db.query(`SELECT address, city, studiolab_code, address_from_org FROM sites WHERE organization_id=$1 AND kind='SERVICE'`, [id.att])).rows[0];
-    assert.deepEqual([s.address, s.city, s.studiolab_code, s.address_from_org], ['Via Tre 3', 'Pisa', 'SL-200', true], 'indirizzo della Legal entity e codice in attesa');
+    assert.deepEqual([s.address, s.city, s.address_from_org], ['Via Tre 3', 'Pisa', true], 'indirizzo della Legal entity (il codice era già passato alla prima sede)');
     assert.equal(must(await o.post('/api/admin/migrazioni/sedi-service', { conferma: 'ESEGUI' }), 'di nuovo').creati, 0);
     assert.equal((await diag('D13')).stato, 'OK');
     assert.equal((await db.query(`SELECT livello FROM clienti_attivi_v WHERE org_id=$1`, [id.att])).rows[0].livello, 'ATTIVO');

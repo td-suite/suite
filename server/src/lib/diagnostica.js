@@ -47,6 +47,18 @@ const corr = {
     }
     return out;
   },
+  // D03b: sede OSPITATA con indirizzo diverso da quello della Legal entity ospitante → prende l'indirizzo dell'ospitante (CEO, 08/11/2026)
+  async d03b(righe, ctx) {
+    const { saveSite } = await sites();
+    const out = [];
+    for (const r of righe) {
+      const o = (await pp('SELECT address, zip, city, province FROM organizations WHERE id=$1', [r.host_organization_id]))[0];
+      if (!o || !(o.address || o.city)) { out.push({ id: r.id, esito: 'non corretta', motivo: 'la Legal entity ospitante non ha indirizzo: compilalo in Amministrazione > Legal entity' }); continue; }
+      await saveSite({ id: r.id, data: { address: o.address, zip: o.zip, city: o.city, province: o.province ? String(o.province).slice(0, 4) : null, address_from_org: true }, origine: 'Diagnostica anagrafica D03b', req: ctx.req });
+      out.push({ id: r.id, esito: `indirizzo = ${[o.address, o.zip, o.city].filter(Boolean).join(' ')} (Legal entity ospitante)` });
+    }
+    return out;
+  },
   // D03: ospitante con titolo diverso da OSPITATA → OSPITATA se c'è un contratto PP vigente con quella controparte, altrimenti ospitante tolto
   async d03(righe, ctx) {
     const { saveSite } = await sites();
@@ -275,6 +287,11 @@ export const CONTROLLI = [
   { id: 'D02', area: 'SEDI', gravita: 'BLOCCANTE', titolo: 'Sedi OSPITATE senza Legal entity ospitante', spiegazione: 'Una sede ospitata deve indicare chi la ospita: Cash (royalties) e l\'accesso del partner dipendono da questo dato.',
     sql: `SELECT id, code, name FROM sites WHERE active AND tenure = 'OSPITATA' AND host_organization_id IS NULL ORDER BY code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Ospitante dal contratto PP', conferma: true, descrizione: 'ospitante = controparte dell\'unico contratto PP vigente sulla sede (se manca o ce ne sono più, la riga resta da sistemare in Sedi)', fn: corr.d02, richiede: ['business.contracts'] } },
+  { id: 'D03b', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi ospitate con indirizzo diverso dalla Legal entity ospitante', spiegazione: 'Una sede ospitata sta nei locali della Legal entity ospitante: prende il suo indirizzo e lo segue quando cambia (CEO, 08/11/2026). Qui le sedi ospitate attive il cui indirizzo non coincide con quello dell\'ospitante.',
+    sql: `SELECT s.id, s.code, s.name, s.address, s.city, s.host_organization_id, o.name AS ospitante, o.address AS ospitante_address, o.city AS ospitante_city FROM sites s JOIN organizations o ON o.id = s.host_organization_id
+          WHERE s.active AND s.tenure = 'OSPITATA' AND (o.address IS NOT NULL OR o.city IS NOT NULL)
+            AND (lower(coalesce(s.address,'')) <> lower(coalesce(o.address,'')) OR lower(coalesce(s.city,'')) <> lower(coalesce(o.city,'')) OR coalesce(s.zip,'') <> coalesce(o.zip,'')) ORDER BY s.code`, chiave: 'id', link: sedeLink,
+    correggi: { etichetta: 'Prendi l\'indirizzo dell\'ospitante', conferma: true, descrizione: 'indirizzo, CAP, città e provincia della Legal entity ospitante sulla sede (saveSite, audit); da allora la sede segue l\'indirizzo dell\'ospitante', fn: corr.d03b } },
   { id: 'D03', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Ospitante valorizzato ma titolo diverso da Ospitata', spiegazione: 'Succedeva dopo un contratto creato in Payments o una modifica da Cash: l\'ospitante restava sulla sede in locazione.',
     sql: `SELECT id, code, name, tenure, host_organization_id FROM sites WHERE active AND host_organization_id IS NOT NULL AND tenure <> 'OSPITATA' ORDER BY code`, chiave: 'id', link: sedeLink,
     correggi: { etichetta: 'Rendi coerente', conferma: true, descrizione: 'titolo = Ospitata se c\'è un contratto PP vigente con l\'ospitante, altrimenti ospitante tolto', fn: corr.d03 } },

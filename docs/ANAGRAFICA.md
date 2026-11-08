@@ -1185,6 +1185,14 @@ espressamente indicato, riporta sempre quello della Legal entity." `lib/clienti.
   `address_from_org = TRUE`; orari di ritiro del contratto (`data.pickup.days`: giorni a orario fisso negli orari strutturati, riepilogo
   completo con i giorni a chiamata nelle note), referente del ritiro, telefono ed email; codice StudioLAB se già inserito nell'account.
   Idempotente: una Legal entity con una sede SERVICE attiva non ne riceve un'altra; una struttura si riconosce per nome.
+- **Sede ospitata = indirizzo della Legal entity ospitante (CEO, 08/11/2026: "Quando una sede è ospitata da una legal entity deve
+  prendere indirizzo della legal entity").** In `saveSite`: con titolo OSPITATA e ospitante indicato, alla creazione, al cambio
+  dell'ospitante o con l'indirizzo vuoto la sede prende indirizzo, CAP, città e provincia dell'ospitante e `address_from_org = TRUE`;
+  da allora segue l'indirizzo dell'ospitante quando cambia (`allineaSediDaOrg`, chiamata dal PUT della Legal entity e dal MOD173). Un
+  indirizzo scritto a mano insieme all'ospitante resta e stacca la sede (`address_from_org = FALSE`). Il form Sedi precompila
+  l'indirizzo alla scelta dell'ospitante. Migrazione core 046: riempie solo le sedi ospitate senza indirizzo; quelle con indirizzo
+  diverso dall'ospitante le elenca il controllo **D03b** con "Prendi l'indirizzo dell'ospitante". Vale anche per la firma del
+  contratto PP (A1), che imposta ospitante e titolo con `saveSite`.
 - **Solo clienti attivi (CEO, 08/11/2026: "Nella scheda Sedi/Strutture clienti service devono figurare solo quelli ATTIVI. Verifica
   sempre lo stato da Business Hub").** La scheda Amministrazione > Sedi > "Strutture clienti service" mostra solo le sedi SERVICE delle
   Legal entity con livello `ATTIVO` in `clienti_attivi_v` (`GET /api/sites` espone `cliente_livello` = `public.cliente_livello`, cioè lo
