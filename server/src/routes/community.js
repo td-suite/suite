@@ -8,7 +8,7 @@ import { ah, bad, audit, parse, notFound, forbidden, slugify, itDate, getSetting
 import { isAdmin, hasModule, canSeeSite } from '../lib/access.js';
 import { audienceSql, canSee, isInternal } from '../lib/audience.js';
 import { isExternal } from '../lib/esterni.js';
-import { sendMail, layout } from '../lib/mailer.js';
+import { sendMail, sendMailMany, layout } from '../lib/mailer.js';
 import { normalizeAudience, audienceUsers, notify, ensureDailyQuote, nextProtocol } from '../lib/community.js';
 import { aiEnabled, generateQuotes, generateQuiz } from '../lib/claude.js';
 import { weatherForSite, weatherForPoint } from '../lib/weather.js';
@@ -344,7 +344,34 @@ r.get('/community/news/:id/acks', requirePublisher, ah(async (req, res) => {
     const perQuestion = quiz.questions.map((x, i) => ({ q: x.q, options: x.options, answer: x.answer, counts: x.options.map((_, oi) => rows.filter((r) => r.answers[i] === oi).length), correct: rows.filter((r) => r.answers[i] === x.answer).length }));
     quizReport = { questions: perQuestion, answered: rows.length, avg: rows.length ? Math.round((rows.reduce((a, r) => a + r.score, 0) / rows.length) * 10) / 10 : null, total: quiz.questions.length, rows, created_at: quiz.created_at };
   }
-  res.json({ news: n, expected: expected.length, acked: acks, missing, quiz: quizReport });
+  // Email di avviso: esito per ogni destinatario previsto (registro email_log con ref news:<id>) e perché qualcuno non l'ha ricevuta
+  const log = await many(`SELECT lower(to_addr) AS to_addr, status, error, at FROM public.email_log WHERE ref=$1 ORDER BY id`, [`news:${id}`]);
+  const perAddr = new Map(); for (const l of log) perAddr.set(l.to_addr, l);   // l'ultimo tentativo vince
+  const email = expected.map((u) => {
+    const l = u.email ? perAddr.get(String(u.email).toLowerCase()) : null;
+    const stato = !n.requires_ack ? 'NON_PREVISTA' : !u.email ? 'SENZA_EMAIL' : !u.notify_email ? 'AVVISI_SPENTI' : !l ? 'NON_INVIATA' : l.status === 'SENT' ? 'INVIATA' : l.status === 'LOGGED' ? 'SOLO_REGISTRATA' : 'FALLITA';
+    return { user_id: u.id, full_name: u.full_name, email: u.email, stato, errore: l?.error || null, at: l?.at || null };
+  });
+  const riepilogo = email.reduce((m, e) => ((m[e.stato] = (m[e.stato] || 0) + 1), m), {});
+  res.json({ news: n, expected: expected.length, acked: acks, missing, quiz: quizReport, email, email_riepilogo: riepilogo });
+}));
+
+// Reinvio dell'email di avviso a chi non l'ha ricevuta (fallita o mai inviata) o, con tutti=1, a tutti i destinatari previsti
+r.post('/community/news/:id/email/reinvia', requirePublisher, ah(async (req, res) => {
+  const id = idParam(req.params.id);
+  const n = await one('SELECT * FROM news WHERE id=$1', [id]);
+  if (!n || n.status !== 'PUBLISHED' || n.kind !== 'CIRCOLARE' || !n.requires_ack) throw bad('Si reinvia solo una circolare pubblicata con presa visione obbligatoria');
+  const expected = await audienceUsers(n.audience);
+  const sent = new Set((await many(`SELECT lower(to_addr) AS a FROM public.email_log WHERE ref=$1 AND status='SENT'`, [`news:${id}`])).map((x) => x.a));
+  const targets = expected.filter((u) => u.email && u.notify_email && (req.body?.tutti || !sent.has(String(u.email).toLowerCase())));
+  const link = `/community/news/${n.slug}`; const url = `${config.baseUrl}${link}`;
+  const html = layout(`Circolare ${n.protocol}: ${n.title}`,
+    `<p>${n.summary ? escapeHtml(n.summary) : 'È stata pubblicata una nuova circolare che richiede la tua presa visione.'}</p>` +
+    `${n.ack_due ? `<p>Conferma la presa visione entro il <strong>${itDate(n.ack_due)}</strong>.</p>` : ''}` +
+    `<p><a href="${url}" style="display:inline-block;padding:10px 16px;background:#1C505E;color:#fff;border-radius:8px;text-decoration:none">Leggi e conferma</a></p>`);
+  const r2 = await sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` })));
+  await audit(req, 'NEWS_EMAIL_REINVIO', { module: MODULE, entity: 'news', entityId: id, label: n.title, data: { destinatari: targets.length, ...r2 } });
+  res.json({ destinatari: targets.length, ...r2 });
 }));
 
 // ---- Gestione redazionale
@@ -467,8 +494,9 @@ r.post('/community/manage/news/:id/publish', requirePublisher, ah(async (req, re
       `<p style="color:#5b6f75;font-size:12px">Destinatari: ${audienceLabel(n.audience)}.</p>`);
     const targets = recipients.filter((u) => u.notify_email && u.email);
     emails = targets.length;
-    // Invio in sfondo: la risposta non aspetta la posta
-    setImmediate(() => Promise.allSettled(targets.map((u) => sendMail({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` }))).catch(() => {}));
+    // Invio in sfondo, uno alla volta con ritentativi (lib/mailer.js sendMailMany): la risposta non aspetta la posta
+    setImmediate(() => sendMailMany(targets.map((u) => ({ to: u.email, subject: `Circolare ${n.protocol}: ${n.title}`, html, ref: `news:${n.id}` })))
+      .then((r) => console.log(`[community] circolare ${n.protocol}: email inviate ${r.inviati}, fallite ${r.falliti.length}`)).catch(() => {}));
   }
   res.json({ ...n, files: await newsFiles(n.id), notified, emails, quiz: publicQuiz(quiz), quiz_error: quizError });
 }));

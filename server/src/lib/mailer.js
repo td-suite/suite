@@ -57,3 +57,24 @@ export async function sendMail({ to, cc = [], subject, html, text, ref, attachme
     return { ok: true, logId: id, from: sender };
   } catch (e) { const id = await log('FAILED', e.message); console.error('[mail]', e.message); return { ok: false, error: e.message, status: e.status || null, logId: id, from: sender }; }
 }
+
+/**
+ * Invio a molti destinatari, UNO ALLA VOLTA e con ritentativi (3) su 429 e 5xx di Graph, rispettando Retry-After. Prima gli invii
+ * di una circolare partivano tutti insieme in parallelo e Graph ne rifiutava una parte per throttling (08/11/2026: la circolare di
+ * lancio è arrivata solo a una parte degli interni). Ritorna { inviati, falliti: [{ to, errore }] }. Chi chiama non deve aspettarla.
+ */
+export async function sendMailMany(list, { pausaMs = 150 } = {}) {
+  const out = { inviati: 0, falliti: [] };
+  for (const m of list) {
+    let r = null;
+    for (let tentativo = 1; tentativo <= 3; tentativo++) {
+      r = await sendMail(m);
+      if (r.ok || r.skipped) break;
+      if (![429, 500, 502, 503, 504].includes(Number(r.status))) break;
+      await new Promise((ok) => setTimeout(ok, 1500 * tentativo));
+    }
+    if (r?.ok) out.inviati++; else if (!r?.skipped) out.falliti.push({ to: Array.isArray(m.to) ? m.to.join(', ') : m.to, errore: r?.error || 'errore sconosciuto' });
+    await new Promise((ok) => setTimeout(ok, pausaMs));
+  }
+  return out;
+}

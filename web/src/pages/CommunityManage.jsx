@@ -234,10 +234,16 @@ function Editor() {
 // ---------- Presa visione ----------
 function Acks() {
   const { id } = useParams();
-  const { data, loading, unavailable, error } = useApi(`/community/news/${id}/acks`, [id]);
+  const { data, loading, unavailable, error, reload } = useApi(`/community/news/${id}/acks`, [id]);
+  const toast = useToast();
   const acked = data?.acked || data?.rows?.filter((r) => r.at || r.acked_at) || [];
   const missing = data?.missing || data?.pending || [];
   const [tab, setTab] = useState('missing');
+  const [busy, setBusy] = useState(false);
+  const email = data?.email || [];
+  const EMAIL_STATO = { INVIATA: ['green', 'inviata'], FALLITA: ['red', 'non riuscita'], NON_INVIATA: ['amber', 'mai inviata'], SOLO_REGISTRATA: ['grey', 'solo registrata (canale spento)'], SENZA_EMAIL: ['grey', 'senza indirizzo email'], AVVISI_SPENTI: ['grey', 'avvisi email spenti nel profilo'], NON_PREVISTA: ['grey', 'non prevista (senza presa visione)'] };
+  const daReinviare = email.filter((e) => ['FALLITA', 'NON_INVIATA'].includes(e.stato)).length;
+  const reinvia = async (tutti) => { if (!window.confirm(tutti ? `Reinviare l'email a tutti i ${email.filter((e) => e.email).length} destinatari con indirizzo?` : `Inviare l'email ai ${daReinviare} che non l'hanno ricevuta?`)) return; setBusy(true); try { const r = await api.post(`/community/news/${id}/email/reinvia`, { tutti }); toast(`Email inviate: ${r.inviati}${r.falliti?.length ? `, non riuscite: ${r.falliti.length}` : ''}`, r.falliti?.length ? 'err' : 'ok'); reload(); } catch (e) { toast(e, 'err'); } setBusy(false); };
   return (
     <div className="page">
       <PageHead crumb={<><Link to="/community/manage">Gestione</Link><Icon name="chevron" /><span>Presa visione</span></>} title={data?.news?.title || data?.title || 'Presa visione'} icon="eye" sub={data?.news?.protocol || data?.protocol} />
@@ -251,8 +257,20 @@ function Acks() {
             <div className="card kpi"><div className="lbl">Mancano</div><div className="val red">{missing.length}</div></div>
             <div className="card kpi"><div className="lbl">Copertura</div><div className="val">{acked.length + missing.length ? Math.round((acked.length / (acked.length + missing.length)) * 100) : 0}<small>%</small></div></div>
           </div>
-          <Tabs value={tab} onChange={setTab} items={[{ value: 'missing', label: 'Chi manca', count: missing.length }, { value: 'acked', label: 'Chi ha letto', count: acked.length }, ...(data.quiz ? [{ value: 'quiz', label: 'Questionario', count: data.quiz.answered }] : [])]} />
-          {tab === 'quiz' && data.quiz ? (
+          <Tabs value={tab} onChange={setTab} items={[{ value: 'missing', label: 'Chi manca', count: missing.length }, { value: 'acked', label: 'Chi ha letto', count: acked.length }, { value: 'email', label: 'Email di avviso', count: email.length }, ...(data.quiz ? [{ value: 'quiz', label: 'Questionario', count: data.quiz.answered }] : [])]} />
+          {tab === 'email' ? (
+            <Card flush>
+              <div className="row" style={{ padding: '10px 14px', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--line)' }}>
+                <span className="small">{Object.entries(data.email_riepilogo || {}).map(([k, n]) => `${n} ${EMAIL_STATO[k]?.[1] || k.toLowerCase()}`).join(' · ') || 'nessun destinatario'}</span>
+                <span className="spacer" />
+                {daReinviare > 0 && <button className="btn sm" disabled={busy} onClick={() => reinvia(false)}><Icon name="mail" />Invia a chi non l'ha ricevuta ({daReinviare})</button>}
+                <button className="btn sm ghost" disabled={busy} onClick={() => reinvia(true)}><Icon name="refresh" />Reinvia a tutti</button>
+              </div>
+              <div className="list">{email.map((u) => (
+                <div key={u.user_id} className="it" style={{ alignItems: 'center' }}><Avatar name={u.full_name} size="sm" /><div style={{ flex: 1, minWidth: 0 }}><div className="t">{u.full_name}</div><div className="m">{u.email || 'nessun indirizzo'}{u.errore ? ` · ${u.errore}` : ''}</div></div><Badge tone={EMAIL_STATO[u.stato]?.[0] || 'grey'}>{EMAIL_STATO[u.stato]?.[1] || u.stato}</Badge></div>
+              ))}</div>
+            </Card>
+          ) : tab === 'quiz' && data.quiz ? (
             <div className="col">
               <Card title="Esiti del questionario" icon="sparkle" sub={`${data.quiz.answered} risposte · media ${data.quiz.avg ?? '-'} su ${data.quiz.total}`}>
                 <div className="col">
