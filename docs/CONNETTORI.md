@@ -114,3 +114,8 @@ base senza percorso (es. `http://10.0.1.3:12002`). Flusso (`lib/connectors.js`):
 **Rete**: `10.0.1.3` è un indirizzo privato del laboratorio. La Suite gira su Render, fuori da quella rete: la chiamata riesce solo se
 CB Sistemi espone la WebApi su un indirizzo raggiungibile da internet (con allowlist degli IP in uscita di Render e HTTPS) oppure se
 tra Render e il laboratorio c'è una VPN. Finché non c'è, la Prova risponde "non raggiungibile" e non è un errore della Suite.
+**Via autonoma senza CB Sistemi: Cloudflare Tunnel.** Su un PC o server del laboratorio sempre acceso si installa `cloudflared` (servizio
+Windows) che apre una connessione IN USCITA verso Cloudflare e pubblica `http://10.0.1.3:12002` su un nome pubblico in HTTPS (es.
+`studiolab-api.toscanadiagnostica.it`), senza aprire porte sul router. Davanti si mette una policy Cloudflare Access con un service
+token: la Suite manda le intestazioni `CF-Access-Client-Id` e `CF-Access-Client-Secret` (impostazione `cf_access_client_id` e credenziale
+`cf_access_client_secret` del connettore) e nessun altro raggiunge la WebApi. Nel connettore la Base URL diventa il nome pubblico.

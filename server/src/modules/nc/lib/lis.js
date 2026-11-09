@@ -13,7 +13,7 @@
 import { config } from '../config.js';
 import { one, q } from '../db.js';
 import { findSedeByCodice, extOf } from './sedi.js';
-import { logConnector, connectorSync, studiolabClientToken } from '../../../lib/connectors.js';
+import { logConnector, connectorSync, studiolabClientToken, studiolabExtraHeaders } from '../../../lib/connectors.js';
 
 export const STATO_LIS = { 0: 'Prenotato', 10: 'In lavorazione', 20: 'Refertazione', 25: 'Refertato parziale', 40: 'Chiuso' };
 // Sto facendo un'ipotesi sui codici 20/25: lo swagger li elenca senza descrizione; da confermare con CB Sistemi.
@@ -61,8 +61,9 @@ async function call(method, path, body, { query } = {}) {
 
 async function intestazioneAuth(forza = false) {
   const c = connectorSync('STUDIOLAB');
-  if (c.auth_kind === 'CLIENT_JWT') { const t = await studiolabClientToken({ forza }); return { Authorization: `Bearer ${t.accessToken}` }; }
-  return { 'X-API-KEY': config.lis.apiKey };
+  const extra = studiolabExtraHeaders(c);
+  if (c.auth_kind === 'CLIENT_JWT') { const t = await studiolabClientToken({ forza }); return { Authorization: `Bearer ${t.accessToken}`, ...extra }; }
+  return { 'X-API-KEY': config.lis.apiKey, ...extra };
 }
 
 const envelope = (extra = {}) => ({ Mittente: config.lis.mittente, CodiceCliente: config.lis.codiceCliente || undefined, ...extra });

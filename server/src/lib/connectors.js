@@ -206,14 +206,14 @@ export async function testConnector(kind) {
       // WebApi StudioLAB con client registrato: login → token → GET /api/v1/auth/client/info
       endpoint = `${String(c.base_url).replace(/\/+$/, '')}/api/v1/auth/client/info`;
       const tok = await studiolabClientToken({ forza: true });
-      const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${tok.accessToken}` }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
+      const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${tok.accessToken}`, ...studiolabExtraHeaders(c) }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
       if (!r.res.ok) throw new Error(`StudioLAB risponde ${r.res.status}: ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}`);
       const info = r.data && typeof r.data === 'object' ? r.data : {};
       out = { ok: true, message: `Connessione e autenticazione riuscite · token valido fino al ${tok.validTo ? new Date(tok.validTo).toLocaleString('it-IT', { timeZone: 'Europe/Rome' }) : 'n.d.'}${info.name || info.Name ? ` · ${info.name || info.Name}` : ''} (${r.ms} ms)` };
     } else if (kind === 'STUDIOLAB') {
       if (!c.credentials.api_key) throw new Error('Chiave API non impostata');
       endpoint = studiolabUrl(c.base_url, '/api/whoami');
-      const r = await fetchJson(endpoint, { headers: { 'X-API-KEY': c.credentials.api_key }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
+      const r = await fetchJson(endpoint, { headers: { 'X-API-KEY': c.credentials.api_key, ...studiolabExtraHeaders(c) }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
       if (!r.res.ok) throw new Error(`StudioLAB risponde ${r.res.status}: ${(r.data && (r.data.Message || r.data.message)) || r.text.slice(0, 200) || r.res.statusText}`);
       const who = r.data && typeof r.data === 'object' ? r.data : {};
       out = { ok: true, message: `Connessione riuscita${who.CodiceServiceNet ? ` · nodo ${who.CodiceServiceNet}` : ''}${who.Versione || who.Version ? ` · WebApi ${who.Versione || who.Version}` : ''} (${r.ms} ms)` };
@@ -262,6 +262,12 @@ export async function testConnector(kind) {
 // Bearer su ogni chiamata. Credenziali del connettore: client_name, client_id, client_host, password (cifrate). Il token resta in
 // memoria fino a 2 minuti prima della scadenza; su 401 chi chiama ripete il login (forza: true).
 let jwtCache = { token: null, validTo: 0 };
+// Cloudflare Access (service token) davanti a un Cloudflare Tunnel che espone la WebApi del laboratorio: intestazioni aggiuntive su
+// ogni chiamata (settings.cf_access_client_id + credentials.cf_access_client_secret). Vuote = nessuna intestazione.
+export function studiolabExtraHeaders(c = connectorSync('STUDIOLAB')) {
+  const id = c.settings?.cf_access_client_id; const secret = c.credentials?.cf_access_client_secret;
+  return id && secret ? { 'CF-Access-Client-Id': id, 'CF-Access-Client-Secret': secret } : {};
+}
 const jwtBase = (c) => String(c.base_url || '').trim().replace(/\/+$/, '');
 export async function studiolabClientToken({ forza = false } = {}) {
   const c = await getConnector('STUDIOLAB');
@@ -269,7 +275,7 @@ export async function studiolabClientToken({ forza = false } = {}) {
   if (!c.credentials.client_name || !c.credentials.password) throw new Error('Nome del client e password non impostati');
   if (!forza && jwtCache.token && jwtCache.validTo - Date.now() > 120000) return { accessToken: jwtCache.token, validTo: new Date(jwtCache.validTo).toISOString(), cached: true };
   const t0 = Date.now();
-  const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c.credentials.client_name, password: c.credentials.password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
+  const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...studiolabExtraHeaders(c) }, body: JSON.stringify({ name: c.credentials.client_name, password: c.credentials.password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
   logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'core', endpoint: 'POST /api/v1/auth/client/login', status: r.res.status, ms: Date.now() - t0, message: r.res.ok ? null : r.text.slice(0, 300) });
   if (!r.res.ok) throw new Error(`Login StudioLAB rifiutato (${r.res.status}): ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}`);
   const token = r.data?.accessToken; const validTo = r.data?.validTo ? Date.parse(r.data.validTo) : Date.now() + 3600000;
@@ -285,7 +291,7 @@ export async function studiolabClientRegister() {
   if (!client_name || !client_id || !password) throw new Error('Servono nome del client, id del client e password');
   if (!/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}$/.test(password)) throw new Error('La password deve avere da 8 a 16 caratteri con maiuscola, minuscola, numero e carattere speciale');
   const t0 = Date.now();
-  const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: client_name, id: client_id, host: client_host || client_name, password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
+  const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...studiolabExtraHeaders(c) }, body: JSON.stringify({ name: client_name, id: client_id, host: client_host || client_name, password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
   logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'core', endpoint: 'POST /api/v1/auth/client/register', status: r.res.status, ms: Date.now() - t0, message: r.res.ok ? null : r.text.slice(0, 300) });
   if (!r.res.ok) throw new Error(`Registrazione rifiutata (${r.res.status}): ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}${r.res.status === 400 || r.res.status === 409 ? ' (se la password era già impostata, è normale: passa alla Prova connessione)' : ''}`);
   studiolabClientTokenReset();
