@@ -404,12 +404,28 @@ r.delete('/sites/:id', requireAdmin, ah(async (req, res) => {
 r.delete('/organizations/:id', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const o = await one('SELECT * FROM organizations WHERE id=$1', [id]); if (!o) throw notFound();
-  const sites = (await one('SELECT count(*)::int AS n FROM sites WHERE organization_id=$1', [id])).n;
-  if (sites) throw bad(`L'organizzazione ha ${sites} sed${sites === 1 ? 'e' : 'i'} collegat${sites === 1 ? 'a' : 'e'}: eliminale o spostale prima`);
+  // Sedi collegate (anche disattivate: l'elenco Sedi le nasconde, qui contano). Se non hanno dati nei moduli si eliminano insieme alla
+  // Legal entity dopo la conferma; se li hanno, il messaggio dice quale sede e perché (09/11/2026, "se ti dico elimina, elimina").
+  const sedi = await many('SELECT id, code, name, active FROM sites WHERE organization_id=$1 ORDER BY id', [id]);
   const ext = [];
   const refs = await moduleRefs('organizations', 'id', id, ext);
   if (refs.length) throw bad(`L'organizzazione ha dati collegati (${refs.join(', ')}): disattivala invece di eliminarla`);
-  if (ext.length && req.query.conferma !== '1') return res.status(409).json({ error: `Eliminando la Legal entity si cancellano anche: ${ext.join(', ')}`, code: 'ESTENSIONI', estensioni: ext });
+  const sediExt = [];
+  for (const sd of sedi) {
+    const extS = [];
+    const refsS = await moduleRefs('sites', 'id', sd.id, extS);
+    const etichetta = `${sd.code} · ${sd.name}${sd.active ? '' : ' (disattivata)'}`;
+    if (refsS.length) throw bad(`La sede collegata ${etichetta} ha dati nei moduli (${refsS.join(', ')}): spostala o disattiva la Legal entity`);
+    sediExt.push({ ...sd, etichetta, ext: extS });
+  }
+  const avvisi = [...sediExt.map((sd) => `la sede ${sd.etichetta}${sd.ext.length ? ` (con ${sd.ext.join(', ')})` : ''}`), ...ext];
+  if (avvisi.length && req.query.conferma !== '1') return res.status(409).json({ error: `Eliminando la Legal entity si cancellano anche: ${avvisi.join(', ')}`, code: 'ESTENSIONI', estensioni: avvisi, sedi: sediExt.map((sd) => ({ id: sd.id, code: sd.code, name: sd.name, active: sd.active })) });
+  for (const sd of sediExt) {
+    await q('UPDATE people SET site_id=NULL WHERE site_id=$1', [sd.id]); await q('UPDATE users SET site_id=NULL WHERE site_id=$1', [sd.id]);
+    await q('DELETE FROM grant_scopes WHERE scope_type=\'SITE\' AND scope_id=$1', [sd.id]);
+    await q('DELETE FROM sites WHERE id=$1', [sd.id]);
+    await audit(req, 'SITE_DELETED', { entity: 'site', entityId: sd.id, label: sd.etichetta, data: { estensioni: sd.ext, con_legal_entity: o.name } });
+  }
   await q('UPDATE people SET organization_id=NULL WHERE organization_id=$1', [id]); await q('UPDATE users SET organization_id=NULL WHERE organization_id=$1', [id]);
   await q('DELETE FROM grant_scopes WHERE scope_type=\'ORG\' AND scope_id=$1', [id]);
   await q('DELETE FROM organizations WHERE id=$1', [id]);
