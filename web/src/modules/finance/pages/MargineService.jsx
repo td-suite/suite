@@ -155,8 +155,8 @@ export default function MargineService() {
           <div className="grid g4" style={{ marginBottom: 16 }}>
             <Kpi label="Clienti Service" value={x.clienti.length} foot={`${x.clienti.filter((c) => c.livello === 'ATTIVO').length} attivi, ${x.clienti.filter((c) => c.livello !== 'ATTIVO').length} in avvio`} />
             <Kpi label={`Esami · ${x.periodo.etichetta}`} value={n0(T.esami)} foot={T.fonti.length ? `fonti: ${T.fonti.join(', ').toLowerCase()}` : 'nessuna produzione'} />
-            <Kpi label="Ricavo" value={eur(T.ricavo)} foot={T.ricavo_parziale ? 'in parte da indicare' : `costi diretti ${eur(T.costi_diretti)}`} />
-            <Kpi accent label="Margine di linea" value={T.margine == null ? 'n.d.' : eur(T.margine)} foot={pct(T.margine_pct)} />
+            <Kpi label="Ricavo effettivo" value={eur(T.ricavo_effettivo)} foot={<span data-testid="ms-effettivo">con stime {eur(T.ricavo)}{T.ricavo_stime ? ` · stime ${eur(T.ricavo_stime)} (${x.clienti.filter((c) => c.totale.ricavo_stime).length} clienti)` : ' · nessuna stima'}{T.ricavo_parziale ? ' · in parte da indicare' : ''}</span>} />
+            <Kpi accent label="Margine di linea effettivo" value={T.margine_effettivo == null ? 'n.d.' : eur(T.margine_effettivo)} foot={`con stime ${T.margine == null ? 'n.d.' : eur(T.margine)} · ${pct(T.margine_pct)}`} />
           </div>
           <Card title={`Clienti · ${x.periodo.etichetta}`} flush actions={manager && <div className="row">
             <button className="btn sm ghost" onClick={() => setModal('prod')} disabled={!x.clienti.length}><Icon name="plus" />Produzione</button>
@@ -183,7 +183,8 @@ export default function MargineService() {
                   );
                 })}
                 {!righe.length && <tr><td colSpan={conDoc ? 9 : 8} className="empty">Nessun cliente Service attivo o contrattualizzato nel Business Hub.</td></tr>}
-                <tr className="pl-sum"><td>Totale di linea</td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td>{conDoc && <td className="num">{eur(T.fatturato_documenti)}</td>}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td><Note t={T} /></td></tr>
+                <tr className="pl-sum" data-testid="ms-tot-effettivo"><td>Totale effettivo <span className="small muted">(produzione Synclab, StudioLAB, manuale)</span></td><td /><td className="num">{n0(T.esami - (T.esami_stimati || 0))}</td><td className="num">{eur(T.ricavo_effettivo)}</td>{conDoc && <td className="num">{eur(T.fatturato_documenti)}</td>}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine_effettivo == null ? '–' : eur(T.margine_effettivo)}</td><td /><td /></tr>
+                <tr className="pl-prev" data-testid="ms-tot-stime"><td>Totale con le stime <span className="small muted">({n0(T.esami_stimati || 0)} esami stimati, non sono produzione)</span></td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td>{conDoc && <td />}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td><Note t={T} /></td></tr>
               </tbody>
             </table></div>
           </Card>

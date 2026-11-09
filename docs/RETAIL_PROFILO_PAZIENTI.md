@@ -6,8 +6,10 @@ v0.67.1, decisioni del CEO del 09/11/2026 (sera), vincolanti:
 - Non conformità può avere il paziente quando manca con un **recupero puntuale**, una accettazione alla volta (vedi
   docs/SYNCLAB_DATA_API.md, "Dati paziente: dove e perché").
 
-Pagina: **Retail Assistant > Clienti > Profilo dei pazienti (laboratorio)** (`/retail/profilo-pazienti`), subito sotto "Clienti e
-profilazione". La vedono gli stessi profili che vedono i clienti (ADMIN, RETAIL, SEDE, VIEWER: dati aggregati, nessuna identità); la
+Pagina: **Retail Assistant > B2B > Profilo dei pazienti** (`/retail/b2b/profilo-pazienti`; dal riordino del 09/11/2026, v0.68.0: il
+vecchio indirizzo `/retail/profilo-pazienti` rimanda qui con la stessa query). **Filtro perimetro**: B2B (predefinito: client Synclab di
+Legal entity esterne o non abbinati), Laboratorio in sede (client abbinati alle sedi TD, solo con l'impostazione `synclab_privati_in_b2c`
+a true) o tutti; la regola della ripartizione è in docs/RETAIL.md. Dalla scheda di una sede il perimetro parte da "tutti" con la sede. La vedono gli stessi profili che vedono i clienti (ADMIN, RETAIL, SEDE, VIEWER: dati aggregati, nessuna identità); la
 geocodifica dei comuni la avviano ADMIN e RETAIL. Dalla scheda di una sede (Sedi del network) il pulsante "Pazienti del laboratorio" apre
 la pagina filtrata su quella sede.
 
@@ -67,6 +69,7 @@ prelievi (anche "senza sede abbinata"), tipo paziente, medicina del lavoro, sess
 | Letture | `server/src/lib/synclab/letture.js`: `periodoProfilo`, `filtriProfilo`, `profiloPazienti`, `statoProfilo`, `sintesiProfilo` (Cockpit), `comuniProfilo` (mappa) |
 | API | `server/src/modules/retail/routes/profiloPazienti.js` su `/api/retail/profilo-pazienti` (GET, `export.xlsx`, `geocodifica-comuni`) |
 | Cache comuni | `server/src/lib/geocode.js` (`comuniInCache`, `geocodificaComuni`), `server/src/migrations/053_profilo_pazienti.sql` |
+| Perimetro | `filtriProfilo` accetta `perimetro` (B2B, LAB_SEDE) con `privati_in_b2c` (la route lo legge dall'impostazione di Retail); test in `server/test/retail-riordino.test.mjs` |
 | Pagina | `web/src/modules/retail/pages/ProfiloPazienti.jsx`, mappa `web/src/modules/retail/components/MappaComuni.jsx` |
 | Cockpit | `server/src/lib/cockpitMonitor.js`, gruppo Retail e Flow: "Età mediana pazienti laboratorio (mese)" e "Quota fuori area" (docs/COCKPIT.md) |
 | Test | `server/test/synclab-profilo-nc.test.mjs` (fasce, provenienza, fuori area, anno prima, età null, export, mappa, recupero NC) |

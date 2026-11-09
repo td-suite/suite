@@ -24,7 +24,7 @@ export default function CampaignDetail() {
     <div className="page">
       <div className="page-head">
         <div><div className="row" style={{ gap: 8 }}><h1>{c.name}</h1><ToneBadge map={CAMPAIGN_STATUS} value={c.status} /></div><div className="sub">{CAMPAIGN_CHANNEL[c.channel] || c.channel} · {OBJECTIVE[c.objective] || c.objective || 'obiettivo non indicato'} · {itDate(c.start_date)}{c.end_date ? ` – ${itDate(c.end_date)}` : ''}{c.target_segment ? ` · target: ${c.target_segment}` : ''}{c.promo_code ? ` · codice ${c.promo_code}` : ''}{c.promotion_name ? ` · promozione: ${c.promotion_name}` : ''}</div></div>
-        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/campagne`)}>Tutte le campagne</button>{canWrite(user) && <button className="btn" onClick={() => setEdit({ ...c })}>Modifica</button>}{canWrite(user) && <button className="btn danger" onClick={() => setDel(true)}>Elimina</button>}</div>
+        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/b2c/campagne`)}>Tutte le campagne</button>{canWrite(user) && <button className="btn" onClick={() => setEdit({ ...c })}>Modifica</button>}{canWrite(user) && <button className="btn danger" onClick={() => setDel(true)}>Elimina</button>}</div>
       </div>
       <div className="grid g4">
         <Kpi accent label="Ricavi attribuiti" value={eur0(c.revenue)} foot={`${num(c.tickets)} prenotazioni tracciate con codice`} />
@@ -46,11 +46,11 @@ export default function CampaignDetail() {
         <Card title="Sedi">{c.sites.length ? <HBars data={c.sites.map((x) => ({ label: x.label, value: Number(x.revenue) }))} money keys={[{ key: 'value', label: 'Ricavi', color: C.mauve }]} labelWidth={200} /> : <Empty>Nessuna vendita tracciata</Empty>}</Card>
         <Card title="Note e lettura">
           <p className="small" style={{ whiteSpace: 'pre-wrap' }}>{c.notes || 'Nessuna nota.'}</p>
-          <p className="small muted">Le vendite si attribuiscono alla campagna quando in accettazione viene inserito il codice promo. Le "vendite nel periodo" sono una stima di contesto: tutte le vendite delle sedi e prestazioni coinvolte nel periodo della campagna, al netto di quelle tracciate. <Link to={`${base}/vendite?campaign_id=${c.id}`}>Vedi le righe tracciate</Link>.</p>
+          <p className="small muted">Le vendite si attribuiscono alla campagna quando in accettazione viene inserito il codice promo. Le "vendite nel periodo" sono una stima di contesto: tutte le vendite delle sedi e prestazioni coinvolte nel periodo della campagna, al netto di quelle tracciate. <Link to={`${base}/b2c/vendite?campaign_id=${c.id}`}>Vedi le righe tracciate</Link>.</p>
         </Card>
       </div>
       {edit && <CampaignModal value={edit} onChange={setEdit} onClose={() => setEdit(null)} onSave={save} />}
-      {del && <ConfirmModal danger title="Elimina campagna" text="Le vendite collegate restano, senza attribuzione." confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/campaigns/${id}`); toast('Campagna eliminata'); nav(`${base}/campagne`); }} />}
+      {del && <ConfirmModal danger title="Elimina campagna" text="Le vendite collegate restano, senza attribuzione." confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/campaigns/${id}`); toast('Campagna eliminata'); nav(`${base}/b2c/campagne`); }} />}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Donut, HBars, VBars, C } from '../components/charts.jsx';
 import { PeriodFilter, SiteSelect, KindSelect, LineSelect, defaultPeriod } from '../components/filters.jsx';
 import { qs, api, apiBase } from '../api.js';
 import { eur, eur0, num, pct, delta, monthLabel, SEX, AGE_BUCKET } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Products() {
   const { user } = useAuth();
@@ -37,6 +38,7 @@ export default function Products() {
         <div><h1>Prestazioni e prodotti</h1><div className="sub">Cosa funziona di più e cosa di meno: quantità, fatturato, clienti e confronto con il periodo precedente. Clicca una riga per il dettaglio (andamento, sedi, profilo di chi la compra, cosa si abbina).</div></div>
         <div className="row"><a className="btn ghost" href={`${apiBase}/products/export.xlsx${qs({ from: p.from, to: p.to })}`}>Esporta Excel</a>{canWrite(user) && <button className="btn" onClick={() => setEdit({ active: true, is_package: false })}>+ Nuova prestazione</button>}</div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <PeriodFilter value={p} onChange={setP}>
         <Field label="Cerca"><input value={f.q} placeholder="Codice, descrizione, specialità" onChange={(e) => setF({ ...f, q: e.target.value })} /></Field>
         <LineSelect value={f.line_id} onChange={(v) => setF({ ...f, line_id: v })} />

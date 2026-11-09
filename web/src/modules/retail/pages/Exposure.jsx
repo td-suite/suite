@@ -4,6 +4,7 @@ import { useAuth, canWrite } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, useToast, Kpi, Icon, Progress, Modal } from '../components/ui.jsx';
 import { api, base, apiBase } from '../api.js';
 import { num, itDate, SITE_KIND } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Exposure() {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ export default function Exposure() {
           {canWrite(user) && <button className="btn" onClick={rollover} title="Aggiorna le locandine promo del mese in tutte le sedi con la promozione corrente"><Icon name="refresh" />Cambio mese</button>}
         </div>
       </div>
+      <FonteB2CAuto tipo="SEDE" />
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi accent label="Conformità del network" value={tot.total ? `${Math.round((tot.ok / tot.total) * 100)}%` : '–'} foot={`${num(tot.ok)} materiali installati su ${num(tot.total)}`} />
         <Kpi label="Da sostituire o non conformi" value={num(tot.issues)} foot="interventi da fare in sede" />
@@ -42,7 +44,7 @@ export default function Exposure() {
         <Card flush>
           {!ov.data ? <Loading /> : !rows.length ? <Empty>Nessuna sede attiva</Empty> : (
             <div className="table-wrap"><table className="t"><thead><tr><th>Sede</th><th>Tipologia</th><th>Site manager</th><th>Conformità</th><th className="num">Installati</th><th className="num">Da sostituire</th><th className="num">Non conformi</th><th className="num">Da installare</th><th>Ultima verifica</th></tr></thead>
-              <tbody>{rows.map((s) => <tr key={s.id} className="click" onClick={() => nav(`${base}/esposizione/${s.id}`)}>
+              <tbody>{rows.map((s) => <tr key={s.id} className="click" onClick={() => nav(`${base}/b2c/esposizione/${s.id}`)}>
                 <td><div className="strong">{s.name}</div><div className="small muted">{s.code} · {s.city}</div></td><td className="small">{SITE_KIND[s.kind]}</td><td className="small">{s.manager || <span className="muted">da definire</span>}</td>
                 <td style={{ minWidth: 140 }}><div className="row" style={{ gap: 8 }}><Progress value={s.ok} max={s.total} /><span className="small strong">{s.compliance_pct}%</span></div>{s.total === 0 && <span className="small muted">book non ancora applicato ({s.standard_required} materiali previsti)</span>}</td>
                 <td className="num">{num(s.ok)}</td><td className="num">{s.to_replace ? <span className="strong" style={{ color: '#b8860b' }}>{num(s.to_replace)}</span> : '0'}</td><td className="num">{s.bad ? <span className="red strong">{num(s.bad)}</span> : '0'}</td><td className="num">{num(s.to_install)}</td>

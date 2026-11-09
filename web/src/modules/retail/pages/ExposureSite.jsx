@@ -34,7 +34,7 @@ export default function ExposureSite() {
       <div className="page-head">
         <div><h1>{site.name}</h1><div className="sub">{SITE_KIND[site.kind]} · {site.address || ''}{site.city ? `, ${site.city}` : ''} · site manager: {site.manager || 'da definire'}{site.sqm_waiting ? ` · sala d'attesa ${site.sqm_waiting} mq` : ''}</div></div>
         <div className="row">
-          <button className="btn ghost" onClick={() => nav(`${base}/esposizione`)}>Tutte le sedi</button>
+          <button className="btn ghost" onClick={() => nav(`${base}/b2c/esposizione`)}>Tutte le sedi</button>
           <a className="btn ghost" href={`${apiBase}/exposure/book.pptx?site_id=${id}`}><Icon name="download" />Book PPTX</a>
           {can_edit && missing.length > 0 && <button className="btn ghost" onClick={applyStd}>Applica standard ({missing.length})</button>}
           {can_edit && <button className="btn ghost" onClick={() => { setPhotoFor(null); fileInput.current?.click(); }}><Icon name="camera" />Foto sede</button>}
@@ -87,7 +87,7 @@ export default function ExposureSite() {
           <Field label="Valido al"><input type="date" value={add.valid_to || ''} onChange={(e) => setAdd({ ...add, valid_to: e.target.value })} /></Field>
         </div>
       </Modal>}
-      {user.role === 'SEDE' && !can_edit && <p className="small muted" style={{ marginTop: 12 }}>Questa non è la tua sede: puoi consultare il book ma non modificarlo. <Link to={`${base}/esposizione/${user.site_id}`}>Vai alla tua sede</Link>.</p>}
+      {user.role === 'SEDE' && !can_edit && <p className="small muted" style={{ marginTop: 12 }}>Questa non è la tua sede: puoi consultare il book ma non modificarlo. <Link to={`${base}/b2c/esposizione/${user.site_id}`}>Vai alla tua sede</Link>.</p>}
     </div>
   );
 }

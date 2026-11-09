@@ -94,7 +94,7 @@ function sintesiFatturato(x) {
   return { documenti: x.documenti, fatturato: x.con_contributo ? x.fatturato : null, note_credito: x.note_credito, annullati_proforma: x.annullati_proforma, tipo_sconosciuto: x.tipo_sconosciuto, senza_contributo: x.senza_contributo, note: note.join('. ') || null };
 }
 
-/** Fatturato del mese di un cliente dai documenti economici: netRevenueContribution una volta per documento. */
+/** Fatturato del mese di un cliente dai documenti economici: contributo netto, una volta per documento. */
 export async function fatturatoMensile({ organization_id = null, client_id = null, mese }) {
   const { da, a } = limiti(mese);
   const params = [da, a];
@@ -199,6 +199,12 @@ export function filtriProfilo(q = {}) {
   if (['si', 'no'].includes(String(q.mdl || ''))) f.mdl = String(q.mdl);
   if (q.sex && SESSI.includes(String(q.sex).toUpperCase())) f.sex = String(q.sex).toUpperCase();
   if (q.fascia && (q.fascia === FASCIA_ND || FASCE_ETA.some((x) => x.key === q.fascia))) f.fascia = String(q.fascia);
+  // perimetro (v0.68.0, riordino di Retail): B2B o Laboratorio in sede secondo la ripartizione dei client Synclab; con l'impostazione
+  // synclab_privati_in_b2c a false il Laboratorio in sede è vuoto e il B2B è tutto Synclab
+  if (q.perimetro && Object.keys(RIPARTIZIONI).includes(String(q.perimetro))) {
+    f.perimetro = String(q.perimetro);
+    f.privati = !(q.privati_in_b2c === false || q.privati_in_b2c === 'false');
+  }
   return f;
 }
 
@@ -212,12 +218,16 @@ function cteProfilo(da, a, f = {}) {
   if (f.mdl === 'si') w.push('x.occupational_medicine IS TRUE'); else if (f.mdl === 'no') w.push('x.occupational_medicine IS FALSE');
   if (f.sex) w.push(`x.sx = ${p(f.sex)}`);
   if (f.fascia) w.push(`x.fascia = ${p(f.fascia)}`);
-  const sql = `m AS MATERIALIZED (SELECT instance_id, client_id, site_id FROM synclab.clients_td),
+  if (f.perimetro) w.push(`x.ripartizione = ${p(f.perimetro)}`);
+  const m = f.perimetro ? `${ctePc(params, f.privati)}, m AS (SELECT instance_id, client_id, site_id, ripartizione FROM pc)`
+    : `m AS MATERIALIZED (SELECT instance_id, client_id, site_id, NULL::text AS ripartizione FROM synclab.clients_td)`;
+  const sql = `${m},
   x0 AS (
     SELECT r.instance_id, r.id, r.date, r.created_at_local, r.patient_type, r.occupational_medicine,
            CASE WHEN r.dem_age_years >= 0 THEN r.dem_age_years END AS eta, ${SQL_SESSO} AS sx, ${SQL_FASCIA} AS fascia,
            nullif(trim(r.dem_city), '') AS comune, nullif(upper(trim(r.dem_province)), '') AS provincia, nullif(trim(r.dem_postal_code), '') AS cap,
-           m.site_id, s.name AS sede, nullif(trim(s.city), '') AS sede_comune, nullif(upper(trim(s.province)), '') AS sede_provincia
+           m.site_id, s.name AS sede, nullif(trim(s.city), '') AS sede_comune, nullif(upper(trim(s.province)), '') AS sede_provincia,
+           coalesce(m.ripartizione, 'B2B') AS ripartizione
       FROM synclab.requests r
       LEFT JOIN m ON m.instance_id = r.instance_id AND m.client_id = r.client_id
       LEFT JOIN public.sites s ON s.id = m.site_id
@@ -382,4 +392,321 @@ export async function sintesiProfilo(da, a) {
 export async function comuniProfilo(q = {}) {
   const per = periodoProfilo(q);
   return conCte(per.da, per.a, filtriProfilo(q), `SELECT comune, provincia, count(*)::int AS n FROM x WHERE comune IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC`);
+}
+
+// ================================================================== Retail: B2B (StudioLab/Synclab) e Laboratorio in sede (v0.68.0)
+// Decisione del CEO del 09/11/2026 sera: in Retail un cruscotto complessivo e due sezioni, B2C (TuoTempo + GIPO) e B2B (tutto da
+// StudioLab). Ripartizione delle accettazioni Synclab (impostazione di Retail `synclab_privati_in_b2c`, predefinita true):
+//   - client Synclab abbinato a una SEDE TD (clients_td.site_id → sede non SERVICE della Legal entity di TD: Dati aziendali, o società
+//     del gruppo GRUPPO/SOCIETA) = "Laboratorio in sede" (LAB_SEDE, sezione B2C); un client abbinato alla Legal entity di TD senza sede
+//     è anch'esso interno (non è una Legal entity esterna) e va nel Laboratorio in sede;
+//   - client abbinato a una Legal entity esterna o non abbinato = B2B;
+//   - con l'impostazione a false tutto Synclab è B2B.
+// Cliente = Legal entity abbinata (chiave = id) oppure, per i client non abbinati, il client Synclab (chiave 'c-' + id del client).
+// Accettazioni = accettazioni ATTIVE non cancellate con almeno una riga d'esame non cancellata (stessa regola del profilo); esami = righe
+// d'esame non cancellate; valore = Σ netto di riga × quantità (le righe senza prezzo sono contate a parte: valore parziale).
+// Documenti: netRevenueContribution UNA volta per documento; note di credito separate (già negative); annullati e proforma esclusi e
+// contati; tipo sconosciuto escluso e contato.
+export const RIPARTIZIONI = { LAB_SEDE: 'Laboratorio in sede', B2B: 'B2B' };
+const SQL_TD_ORG = `(SELECT CASE WHEN jsonb_typeof(value) = 'number' THEN (value #>> '{}')::int WHEN (value #>> '{}') ~ '^[0-9]+$' THEN (value #>> '{}')::int END
+  FROM public.app_settings WHERE key = 'company_org_id')`;
+
+/** CTE "pc": client Synclab con chiave cliente, nome, sede e ripartizione. Aggiunge a params il valore dell'impostazione. */
+function ctePc(params, privatiInB2c = true) {
+  params.push(privatiInB2c !== false);
+  const p = `$${params.length}::boolean`;
+  return `pc AS MATERIALIZED (
+    SELECT m.instance_id, m.client_id, m.client_code, m.legal_name, m.organization_id, m.site_id, m.stato_abbinamento, coalesce(m.perimetro_b2b, FALSE) AS perimetro_b2b,
+           m.price_list_id, m.extra_price_list_id, m.disponibilita,
+           CASE WHEN m.organization_id IS NOT NULL THEN m.organization_id::text ELSE 'c-' || m.client_id END AS chiave,
+           coalesce(o.name, m.legal_name, m.client_code, m.client_id) AS cliente, s.name AS sede,
+           CASE WHEN ${p} AND ((s.id IS NOT NULL AND s.kind <> 'SERVICE' AND (so.kind IN ('GRUPPO','SOCIETA') OR so.id = td.id))
+                               OR (s.id IS NULL AND o.id IS NOT NULL AND (o.kind IN ('GRUPPO','SOCIETA') OR o.id = td.id)))
+                THEN 'LAB_SEDE' ELSE 'B2B' END AS ripartizione
+      FROM synclab.clients_td m
+      CROSS JOIN (SELECT ${SQL_TD_ORG} AS id) td
+      LEFT JOIN public.organizations o ON o.id = m.organization_id
+      LEFT JOIN public.sites s ON s.id = m.site_id
+      LEFT JOIN public.organizations so ON so.id = s.organization_id)`;
+}
+
+/** Accettazioni (acc) e righe d'esame (it) del periodo con cliente e ripartizione; filtri facoltativi su ripartizione, chiave, sede. */
+function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null }) {
+  const params = [da, a];
+  const pc = ctePc(params, privatiInB2c);
+  const w = [];
+  const p = (v) => { params.push(v); return `$${params.length}`; };
+  if (ripartizione) w.push(`acc.ripartizione = ${p(ripartizione)}`);
+  if (chiave != null) w.push(`acc.chiave = ${p(String(chiave))}`);
+  if (siteId === 'ND') w.push('acc.site_id IS NULL'); else if (siteId != null) w.push(`acc.site_id = ${p(Number(siteId))}`);
+  const sql = `${pc},
+  acc0 AS (
+    SELECT r.instance_id, r.id, r.date, to_char(r.date, 'YYYY-MM') AS mese, r.client_id, r.header_discount_percent,
+           coalesce(pc.chiave, 'c-' || r.client_id) AS chiave, coalesce(pc.cliente, r.client_code, r.client_id) AS cliente, pc.organization_id,
+           coalesce(pc.ripartizione, 'B2B') AS ripartizione, coalesce(pc.perimetro_b2b, FALSE) AS perimetro_b2b, pc.site_id, pc.sede,
+           coalesce(pc.stato_abbinamento, 'DA_ABBINARE') AS stato_abbinamento
+      FROM synclab.requests r LEFT JOIN pc ON pc.instance_id = r.instance_id AND pc.client_id = r.client_id
+     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date BETWEEN $1::date AND $2::date
+       AND EXISTS (SELECT 1 FROM synclab.request_items i WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE)),
+  acc AS MATERIALIZED (SELECT * FROM acc0 acc${w.length ? ` WHERE ${w.join(' AND ')}` : ''}),
+  it AS (
+    SELECT acc.instance_id, acc.id AS request_id, acc.date, acc.mese, acc.chiave, acc.cliente, acc.organization_id, acc.ripartizione, acc.site_id, acc.sede,
+           upper(coalesce(nullif(trim(i.exam_code), ''), '?')) AS codice, i.description AS descr_riga, coalesce(i.quantity, 1) AS quantita,
+           i.net_unit_price_excluding_vat AS netto, i.net_unit_price_excluding_vat * coalesce(i.quantity, 1) AS valore_riga
+      FROM acc JOIN synclab.request_items i ON i.instance_id = acc.instance_id AND i.request_id = acc.id AND coalesce(i.deleted, FALSE) = FALSE)`;
+  return { sql, params };
+}
+const conLab = async (opz, corpo) => { const c = cteLab(opz); return many(`WITH ${c.sql} ${corpo}`, c.params); };
+
+/** Documenti economici del periodo con cliente, ripartizione e classe (FATTURA, NC, ANNULLATO, SCONOSCIUTO). */
+function cteDoc({ da, a, privatiInB2c = true, ripartizione = null, chiave = null }) {
+  const params = [da, a];
+  const pc = ctePc(params, privatiInB2c);
+  const w = [];
+  if (ripartizione) { params.push(ripartizione); w.push(`doc.ripartizione = $${params.length}`); }
+  if (chiave != null) { params.push(String(chiave)); w.push(`doc.chiave = $${params.length}`); }
+  const sql = `${pc},
+  doc0 AS (
+    SELECT v.instance_id, v.id, v.invoice_number, v.date, to_char(v.date, 'YYYY-MM') AS mese, v.document_type, v.net_revenue_contribution AS contributo, v.total,
+           coalesce(pc.chiave, 'c-' || v.client_id) AS chiave, coalesce(pc.cliente, v.client_id) AS cliente, pc.organization_id, coalesce(pc.ripartizione, 'B2B') AS ripartizione,
+           CASE WHEN coalesce(v.cancelled, FALSE) OR coalesce(v.proforma, FALSE) THEN 'ANNULLATO'
+                WHEN v.document_type IS NULL OR v.document_type = 'unknown' THEN 'SCONOSCIUTO'
+                WHEN v.document_type = 'credit_note' THEN 'NC' ELSE 'FATTURA' END AS classe
+      FROM synclab.invoices v LEFT JOIN pc ON pc.instance_id = v.instance_id AND pc.client_id = v.client_id
+     WHERE v.disponibilita = 'ATTIVO' AND v.deleted_at IS NULL AND v.date BETWEEN $1::date AND $2::date),
+  doc AS MATERIALIZED (SELECT * FROM doc0 doc${w.length ? ` WHERE ${w.join(' AND ')}` : ''})`;
+  return { sql, params };
+}
+const conDoc = async (opz, corpo) => { const c = cteDoc(opz); return many(`WITH ${c.sql} ${corpo}`, c.params); };
+
+const AGG_ACC = `count(*)::int AS accettazioni`;
+const AGG_IT = `count(*)::int AS esami, sum(valore_riga) AS valore, count(*) FILTER (WHERE netto IS NULL)::int AS righe_senza_prezzo`;
+const AGG_DOC = `count(*)::int AS documenti, count(*) FILTER (WHERE classe = 'FATTURA')::int AS fatture, count(*) FILTER (WHERE classe = 'NC')::int AS note_credito,
+  count(*) FILTER (WHERE classe = 'ANNULLATO')::int AS annullati, count(*) FILTER (WHERE classe = 'SCONOSCIUTO')::int AS tipo_sconosciuto,
+  count(*) FILTER (WHERE classe IN ('FATTURA','NC') AND contributo IS NULL)::int AS senza_contributo,
+  sum(contributo) FILTER (WHERE classe = 'FATTURA') AS fatturato_fatture, sum(contributo) FILTER (WHERE classe = 'NC') AS importo_nc,
+  sum(contributo) FILTER (WHERE classe IN ('FATTURA','NC')) AS fatturato`;
+const n2 = (v) => (v == null ? null : Math.round(Number(v) * 100) / 100);
+const varPct = (cur, prev) => (prev == null || Number(prev) === 0 || cur == null ? null : Math.round(((Number(cur) - Number(prev)) / Number(prev)) * 1000) / 10);
+const formaDoc = (x) => (x ? { documenti: x.documenti, fatture: x.fatture, note_credito: x.note_credito, annullati: x.annullati, tipo_sconosciuto: x.tipo_sconosciuto, senza_contributo: x.senza_contributo,
+  fatturato_fatture: n2(x.fatturato_fatture), importo_nc: n2(x.importo_nc), fatturato: n2(x.fatturato) } : null);
+const docVuoto = { documenti: 0, fatture: 0, note_credito: 0, annullati: 0, tipo_sconosciuto: 0, senza_contributo: 0, fatturato_fatture: null, importo_nc: null, fatturato: null };
+const prodVuota = { accettazioni: 0, esami: 0, valore: null, righe_senza_prezzo: 0 };
+const formaProd = (a, i) => ({ accettazioni: a?.accettazioni || 0, esami: i?.esami || 0, valore: n2(i?.valore), righe_senza_prezzo: i?.righe_senza_prezzo || 0 });
+const mesiTra = (da, a) => { const out = []; for (let d = `${da.slice(0, 7)}-01`; d <= a; d = iso(new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 1)))) out.push(d.slice(0, 7)); return out; };
+const giorniPrima = (d, n) => iso(new Date(Date.parse(`${d}T00:00:00Z`) - n * 86400000));
+
+/** Stato della copia per insieme di dati: ultimo checkpoint, ultimo completo, ultimo esito (per dichiarare la fonte nelle pagine). */
+export async function statoCopia() {
+  const rows = await many(`SELECT dataset, max(checkpoint_at) AS checkpoint_at, max(ultimo_completo_at) AS ultimo_completo_at FROM synclab.sync_scope GROUP BY dataset`).catch(() => []);
+  const d = await disponibilita();
+  const per = Object.fromEntries(rows.map((r) => [r.dataset, { checkpoint_at: r.checkpoint_at, ultimo_completo_at: r.ultimo_completo_at }]));
+  const tutti = rows.map((r) => r.checkpoint_at).filter(Boolean).sort();
+  return { insiemi: per, ultimo_checkpoint: tutti.length ? tutti[tutti.length - 1] : null, conteggi: d || null };
+}
+
+/** Elenco dei client Synclab con chiave cliente e ripartizione (Laboratorio in sede / B2B). */
+export async function ripartizioneClienti({ privatiInB2c = true } = {}) {
+  const params = [];
+  return many(`WITH ${ctePc(params, privatiInB2c)} SELECT instance_id, client_id, client_code, legal_name, organization_id, site_id, sede, stato_abbinamento, perimetro_b2b, chiave, cliente, ripartizione, disponibilita
+    FROM pc ORDER BY ripartizione, lower(cliente), client_code`, params);
+}
+
+/**
+ * Quadro del laboratorio per il cruscotto di rete: per ripartizione accettazioni, esami, valore, clienti con produzione e documenti
+ * economici, nel periodo e nello stesso periodo dell'anno prima. { periodo, LAB_SEDE: {...}, B2B: {...}, totale }.
+ */
+export async function quadroLaboratorio({ da, a, privatiInB2c = true }) {
+  const prec = { da: annoPrima(da), a: annoPrima(a) };
+  const leggiP = async (d1, d2) => {
+    const acc = await conLab({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_ACC}, count(DISTINCT chiave)::int AS clienti FROM acc GROUP BY 1`);
+    const it = await conLab({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_IT} FROM it GROUP BY 1`);
+    const doc = await conDoc({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_DOC} FROM doc GROUP BY 1`);
+    const out = {};
+    for (const k of Object.keys(RIPARTIZIONI)) {
+      const x = acc.find((r) => r.ripartizione === k);
+      out[k] = { ...formaProd(x, it.find((r) => r.ripartizione === k)), clienti: x?.clienti || 0, documenti: formaDoc(doc.find((r) => r.ripartizione === k)) || { ...docVuoto } };
+    }
+    return out;
+  };
+  const cur = await leggiP(da, a), prev = await leggiP(prec.da, prec.a);
+  const out = { periodo: { da, a, prec }, privati_in_b2c: privatiInB2c !== false };
+  for (const k of Object.keys(RIPARTIZIONI)) out[k] = { ...cur[k], anno_prima: prev[k], var_accettazioni: varPct(cur[k].accettazioni, prev[k].accettazioni), var_valore: varPct(cur[k].valore, prev[k].valore) };
+  return out;
+}
+
+/**
+ * Produzione per cliente e mese: { mesi, clienti: [{ chiave, cliente, organization_id, perimetro_b2b, stato_abbinamento, totale, mesi: { 'AAAA-MM': {...} } }], totale }.
+ * ripartizione: 'B2B' (predefinita), 'LAB_SEDE' o null (tutte).
+ */
+export async function produzioneClientiMesi({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null }) {
+  const o = { da, a, privatiInB2c, ripartizione, chiave };
+  const acc = await conLab(o, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, bool_or(perimetro_b2b) AS perimetro_b2b, max(stato_abbinamento) AS stato_abbinamento,
+      max(ripartizione) AS ripartizione, mese, ${AGG_ACC} FROM acc GROUP BY chiave, mese`);
+  const it = await conLab(o, `SELECT chiave, mese, ${AGG_IT} FROM it GROUP BY chiave, mese`);
+  const mesi = mesiTra(da, a);
+  const m = new Map();
+  for (const r of acc) {
+    if (!m.has(r.chiave)) m.set(r.chiave, { chiave: r.chiave, cliente: r.cliente, organization_id: r.organization_id, perimetro_b2b: r.perimetro_b2b, stato_abbinamento: r.stato_abbinamento, ripartizione: r.ripartizione, mesi: {} });
+    m.get(r.chiave).mesi[r.mese] = formaProd(r, it.find((x) => x.chiave === r.chiave && x.mese === r.mese));
+  }
+  const somma = (lista) => { const t = { ...prodVuota }; let conValore = false; for (const x of lista) { t.accettazioni += x.accettazioni; t.esami += x.esami; t.righe_senza_prezzo += x.righe_senza_prezzo; if (x.valore != null) { t.valore = (t.valore || 0) + x.valore; conValore = true; } } if (conValore) t.valore = n2(t.valore); return t; };
+  const clienti = [...m.values()].map((c) => ({ ...c, totale: somma(Object.values(c.mesi)) }))
+    .sort((x, y) => (Number(y.totale.valore || 0) - Number(x.totale.valore || 0)) || (y.totale.esami - x.totale.esami) || String(x.cliente).localeCompare(String(y.cliente), 'it'));
+  const perMese = Object.fromEntries(mesi.map((mk) => [mk, somma(clienti.map((c) => c.mesi[mk]).filter(Boolean))]));
+  return { mesi, clienti, per_mese: perMese, totale: somma(clienti.map((c) => c.totale)) };
+}
+
+/** Fatturato da documenti per cliente e mese (stesse chiavi di produzioneClientiMesi). */
+export async function fatturatoClientiMesi({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null }) {
+  const rows = await conDoc({ da, a, privatiInB2c, ripartizione, chiave }, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, mese, ${AGG_DOC} FROM doc GROUP BY chiave, mese`);
+  const tot = await conDoc({ da, a, privatiInB2c, ripartizione, chiave }, `SELECT ${AGG_DOC} FROM doc`);
+  const mesi = mesiTra(da, a);
+  const m = new Map();
+  for (const r of rows) {
+    if (!m.has(r.chiave)) m.set(r.chiave, { chiave: r.chiave, cliente: r.cliente, organization_id: r.organization_id, mesi: {} });
+    m.get(r.chiave).mesi[r.mese] = formaDoc(r);
+  }
+  const somma = (lista) => { const t = { ...docVuoto }; for (const x of lista) for (const k of Object.keys(t)) { if (x[k] == null) continue; t[k] = k.startsWith('fatturato') || k === 'importo_nc' ? n2((t[k] || 0) + Number(x[k])) : t[k] + x[k]; } return t; };
+  const clienti = [...m.values()].map((c) => ({ ...c, totale: somma(Object.values(c.mesi)) }))
+    .sort((x, y) => (Number(y.totale.fatturato || 0) - Number(x.totale.fatturato || 0)) || String(x.cliente).localeCompare(String(y.cliente), 'it'));
+  const perMese = Object.fromEntries(mesi.map((mk) => [mk, somma(clienti.map((c) => c.mesi[mk]).filter(Boolean))]));
+  return { mesi, clienti, per_mese: perMese, totale: formaDoc(tot[0]) || { ...docVuoto },
+    regola: 'contributo netto, una volta per documento; note di credito separate (già negative); annullati e proforma esclusi e contati; tipo sconosciuto escluso e contato' };
+}
+
+/**
+ * Cruscotto B2B del mese: clienti con produzione, esami, valore, fatturato da documenti (con l'anno prima), top 10, clienti in calo
+ * oltre il 20% sullo stesso mese dell'anno prima, clienti senza produzione da 60 giorni (attivi negli ultimi 12 mesi), client Synclab
+ * non abbinati. mese = 'AAAA-MM' (predefinito: il mese di oggi).
+ */
+export async function cruscottoB2B({ mese = null, privatiInB2c = true, oggi = iso(new Date()), sogliaCalo = 20, giorniSenza = 60 } = {}) {
+  const mk = mese && meseRe.test(mese) ? mese : oggi.slice(0, 7);
+  const { da, a: fineMese } = limiti(mk);
+  const a = fineMese > oggi && da <= oggi ? oggi : fineMese;   // mese in corso: fino a oggi, l'anno prima allo stesso giorno
+  const prec = { da: annoPrima(da), a: annoPrima(a) };
+  const base = { privatiInB2c, ripartizione: 'B2B' };
+  const cur = await produzioneClientiMesi({ ...base, da, a });
+  const prev = await produzioneClientiMesi({ ...base, da: prec.da, a: prec.a });
+  const fat = await fatturatoClientiMesi({ ...base, da, a });
+  const fatPrev = await fatturatoClientiMesi({ ...base, da: prec.da, a: prec.a });
+  const prevDi = new Map(prev.clienti.map((c) => [c.chiave, c.totale]));
+  const fatDi = new Map(fat.clienti.map((c) => [c.chiave, c.totale]));
+  const righe = cur.clienti.map((c) => ({ chiave: c.chiave, cliente: c.cliente, organization_id: c.organization_id, perimetro_b2b: c.perimetro_b2b, stato_abbinamento: c.stato_abbinamento,
+    ...c.totale, fatturato: fatDi.get(c.chiave)?.fatturato ?? null, anno_prima: prevDi.get(c.chiave) || null }));
+  const top10 = righe.slice(0, 10);
+  // in calo: confronto sul valore quando c'è in entrambi i periodi, altrimenti sugli esami; compresi i clienti a zero nel mese
+  const curDi = new Map(cur.clienti.map((c) => [c.chiave, c]));
+  const calo = [];
+  for (const p of prev.clienti) {
+    const c = curDi.get(p.chiave)?.totale || { ...prodVuota };
+    const suValore = p.totale.valore != null && Number(p.totale.valore) > 0 && (c.valore != null || c.esami === 0);
+    const v = suValore ? varPct(c.valore || 0, p.totale.valore) : varPct(c.esami, p.totale.esami);
+    if (v != null && v <= -sogliaCalo) calo.push({ chiave: p.chiave, cliente: p.cliente, organization_id: p.organization_id, base: suValore ? 'valore' : 'esami', variazione: v, mese: c, anno_prima: p.totale });
+  }
+  calo.sort((x, y) => x.variazione - y.variazione);
+  // senza produzione da N giorni: ultima accettazione più vecchia di N giorni ma entro i 12 mesi
+  const limite = giorniPrima(oggi, giorniSenza);
+  const fermi = await conLab({ da: giorniPrima(oggi, 365), a: oggi, ...base }, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, max(date) AS ultima, count(*)::int AS accettazioni_12m
+      FROM acc GROUP BY chiave ORDER BY max(date) DESC`);
+  const senzaProduzione = fermi.filter((r) => String(r.ultima).slice(0, 10) < limite).map((r) => ({ ...r, giorni: Math.round((Date.parse(`${oggi}T00:00:00Z`) - Date.parse(`${String(r.ultima).slice(0, 10)}T00:00:00Z`)) / 86400000) }));
+  // client Synclab non abbinati (attivi nella copia), con le accettazioni degli ultimi 12 mesi
+  const pNa = [giorniPrima(oggi, 365), oggi];
+  const nonAbbinati = await many(`WITH ${ctePc(pNa, privatiInB2c)}
+    SELECT pc.client_id, pc.client_code, pc.legal_name, pc.stato_abbinamento,
+           (SELECT count(*)::int FROM synclab.requests r WHERE r.instance_id = pc.instance_id AND r.client_id = pc.client_id AND r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date BETWEEN $1::date AND $2::date) AS accettazioni_12m
+      FROM pc WHERE pc.stato_abbinamento IN ('DA_ABBINARE','PROPOSTO') AND pc.disponibilita = 'ATTIVO' ORDER BY (pc.stato_abbinamento = 'DA_ABBINARE') DESC, 5 DESC, pc.client_code`, pNa);
+  const kpi = { clienti: righe.length, accettazioni: cur.totale.accettazioni, esami: cur.totale.esami, valore: cur.totale.valore, righe_senza_prezzo: cur.totale.righe_senza_prezzo,
+    fatturato: fat.totale, anno_prima: { clienti: prev.clienti.length, accettazioni: prev.totale.accettazioni, esami: prev.totale.esami, valore: prev.totale.valore, fatturato: fatPrev.totale } };
+  return { mese: mk, periodo: { da, a, prec }, kpi, top10, clienti: righe, in_calo: calo, soglia_calo: sogliaCalo, senza_produzione: senzaProduzione, giorni_senza: giorniSenza,
+    non_abbinati: nonAbbinati.filter((x) => x.stato_abbinamento === 'DA_ABBINARE'), proposti: nonAbbinati.filter((x) => x.stato_abbinamento === 'PROPOSTO') };
+}
+
+/**
+ * Prezzi netti applicati per esame e cliente (Σ netto × quantità / Σ quantità sulle righe con prezzo) contro il listino CORRENTE di
+ * Synclab del client (listino base, poi extra). Il listino del Business Hub lo affianca il modulo Retail (non è un dato Synclab).
+ */
+export async function prezziApplicati({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null }) {
+  const c = cteLab({ da, a, privatiInB2c, ripartizione, chiave });
+  const rows = await many(`WITH ${c.sql},
+    g AS (SELECT chiave, max(cliente) AS cliente, codice, max(descr_riga) AS descr_riga, count(*)::int AS righe, sum(quantita) AS quantita,
+             sum(valore_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio, min(netto) AS prezzo_min, max(netto) AS prezzo_max,
+             count(*) FILTER (WHERE netto IS NULL)::int AS righe_senza_prezzo FROM it GROUP BY chiave, codice)
+    SELECT g.*, coalesce((SELECT ex.description FROM synclab.exams ex WHERE ex.disponibilita = 'ATTIVO' AND upper(ex.exam_code) = g.codice ORDER BY ex.updated_at DESC LIMIT 1), g.descr_riga) AS descrizione,
+           (SELECT pli.net_unit_price_excluding_vat FROM pc p2 JOIN synclab.price_lists pl ON pl.instance_id = p2.instance_id AND pl.id IN (p2.price_list_id, p2.extra_price_list_id) AND pl.disponibilita = 'ATTIVO'
+              JOIN synclab.price_list_items pli ON pli.instance_id = pl.instance_id AND pli.price_list_id = pl.id AND upper(pli.exam_code) = g.codice
+             WHERE p2.chiave = g.chiave ORDER BY (pl.id = p2.price_list_id) DESC, pli.ord LIMIT 1) AS listino_synclab
+      FROM g ORDER BY lower(g.cliente), g.righe DESC, g.codice`, c.params);
+  return rows.map((r) => {
+    const pm = n2(r.prezzo_medio), ls = r.listino_synclab != null ? Number(r.listino_synclab) : null;
+    return { chiave: r.chiave, cliente: r.cliente, codice: r.codice, descrizione: r.descrizione, righe: r.righe, quantita: Number(r.quantita), prezzo_medio: pm, prezzo_min: n2(r.prezzo_min), prezzo_max: n2(r.prezzo_max),
+      righe_senza_prezzo: r.righe_senza_prezzo, listino_synclab: ls, scost_synclab: pm != null && ls != null ? n2(pm - ls) : null, scost_synclab_pct: pm != null && ls ? varPct(pm, ls) : null };
+  });
+}
+
+/**
+ * Scheda di un cliente B2B (chiave = id della Legal entity, oppure 'c-' + id del client Synclab): client Synclab collegati, andamento
+ * mensile di produzione e fatturato, esami più richiesti, prezzi applicati, documenti del periodo.
+ */
+export async function schedaClienteSynclab({ chiave, da, a, privatiInB2c = true }) {
+  const k = String(chiave);
+  const params = [k];
+  const clients = await many(`WITH ${ctePc(params, privatiInB2c)} SELECT instance_id, client_id, client_code, legal_name, organization_id, site_id, sede, stato_abbinamento, perimetro_b2b, ripartizione, price_list_id, extra_price_list_id, disponibilita,
+      (SELECT l.code || coalesce(' · ' || l.description, '') FROM synclab.price_lists l WHERE l.instance_id = pc.instance_id AND l.id = pc.price_list_id LIMIT 1) AS listino_base,
+      (SELECT l.code || coalesce(' · ' || l.description, '') FROM synclab.price_lists l WHERE l.instance_id = pc.instance_id AND l.id = pc.extra_price_list_id LIMIT 1) AS listino_extra
+    FROM pc WHERE pc.chiave = $1 ORDER BY client_code`, params);
+  const prod = await produzioneClientiMesi({ da, a, privatiInB2c, ripartizione: null, chiave: k });
+  const fat = await fatturatoClientiMesi({ da, a, privatiInB2c, ripartizione: null, chiave: k });
+  const esami = await conLab({ da, a, privatiInB2c, chiave: k }, `SELECT codice, max(descr_riga) AS descr_riga, count(*)::int AS esami, count(DISTINCT request_id)::int AS accettazioni, sum(valore_riga) AS valore,
+      sum(valore_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio FROM it GROUP BY codice ORDER BY 3 DESC, 1 LIMIT 15`);
+  const desc = esami.length ? new Map((await many(`SELECT DISTINCT ON (upper(exam_code)) upper(exam_code) AS codice, description FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND upper(exam_code) = ANY($1::text[]) ORDER BY upper(exam_code), updated_at DESC`, [esami.map((e) => e.codice)])).map((x) => [x.codice, x.description])) : new Map();
+  const documenti = await conDoc({ da, a, privatiInB2c, chiave: k }, `SELECT id, invoice_number, date, mese, document_type, classe, contributo, total FROM doc ORDER BY date DESC, invoice_number DESC LIMIT 500`);
+  const c0 = prod.clienti[0] || fat.clienti[0] || null;
+  return {
+    chiave: k, cliente: c0?.cliente || clients[0]?.legal_name || null, organization_id: clients[0]?.organization_id ?? c0?.organization_id ?? null, clients,
+    ripartizione: clients[0]?.ripartizione || 'B2B', periodo: { da, a },
+    andamento: prod.mesi.map((mk) => ({ mese: mk, ...(prod.clienti[0]?.mesi[mk] || prodVuota), documenti: fat.clienti[0]?.mesi[mk] || { ...docVuoto } })),
+    totale: { ...(prod.clienti[0]?.totale || prodVuota), documenti: fat.totale },
+    esami: esami.map((e) => ({ codice: e.codice, descrizione: desc.get(e.codice) || e.descr_riga, esami: e.esami, accettazioni: e.accettazioni, valore: n2(e.valore), prezzo_medio: n2(e.prezzo_medio) })),
+    prezzi: await prezziApplicati({ da, a, privatiInB2c, ripartizione: null, chiave: k }),
+    documenti: documenti.map((d) => ({ ...d, contributo: n2(d.contributo), total: n2(d.total) })),
+  };
+}
+
+/**
+ * Laboratorio in sede (sezione B2C): accettazioni Synclab dei punti TD per sede e mese, esami più richiesti (rete e per sede), confronto
+ * con lo stesso periodo dell'anno prima. Con l'impostazione a false: { attivo: false } (tutto Synclab è B2B).
+ */
+export async function laboratorioInSede({ da, a, privatiInB2c = true, siteId = null }) {
+  if (privatiInB2c === false) return { attivo: false, motivo: 'Impostazione "Accettazioni dei punti TD nel B2C" spenta: tutto Synclab è B2B' };
+  const prec = { da: annoPrima(da), a: annoPrima(a) };
+  const o = { da, a, privatiInB2c, ripartizione: 'LAB_SEDE', siteId };
+  const op = { ...o, da: prec.da, a: prec.a };
+  const sedeMese = await conLab(o, `SELECT site_id, max(sede) AS sede, mese, ${AGG_ACC} FROM acc GROUP BY site_id, mese`);
+  const itSedeMese = await conLab(o, `SELECT site_id, mese, ${AGG_IT} FROM it GROUP BY site_id, mese`);
+  const sedePrev = await conLab(op, `SELECT site_id, max(sede) AS sede, ${AGG_ACC} FROM acc GROUP BY site_id`);
+  const itSedePrev = await conLab(op, `SELECT site_id, ${AGG_IT} FROM it GROUP BY site_id`);
+  const mesi = mesiTra(da, a);
+  const ks = (x) => (x == null ? 'ND' : String(x));
+  const sedi = new Map();
+  for (const r of [...sedeMese, ...sedePrev]) if (!sedi.has(ks(r.site_id))) sedi.set(ks(r.site_id), { site_id: r.site_id, sede: r.site_id == null ? 'Legal entity TD senza sede indicata' : r.sede, mesi: {} });
+  for (const r of sedeMese) sedi.get(ks(r.site_id)).mesi[r.mese] = formaProd(r, itSedeMese.find((x) => ks(x.site_id) === ks(r.site_id) && x.mese === r.mese));
+  const righe = [...sedi.values()].map((s) => {
+    const t = Object.values(s.mesi).reduce((acc, x) => ({ accettazioni: acc.accettazioni + x.accettazioni, esami: acc.esami + x.esami, valore: x.valore == null ? acc.valore : n2((acc.valore || 0) + x.valore), righe_senza_prezzo: acc.righe_senza_prezzo + x.righe_senza_prezzo }), { ...prodVuota });
+    const p = formaProd(sedePrev.find((x) => ks(x.site_id) === ks(s.site_id)), itSedePrev.find((x) => ks(x.site_id) === ks(s.site_id)));
+    return { ...s, totale: t, anno_prima: p, var_accettazioni: varPct(t.accettazioni, p.accettazioni) };
+  }).sort((x, y) => y.totale.accettazioni - x.totale.accettazioni);
+  const sommaR = (lista) => lista.reduce((acc, x) => ({ accettazioni: acc.accettazioni + x.accettazioni, esami: acc.esami + x.esami, valore: x.valore == null ? acc.valore : n2((acc.valore || 0) + x.valore), righe_senza_prezzo: acc.righe_senza_prezzo + x.righe_senza_prezzo }), { ...prodVuota });
+  const totale = sommaR(righe.map((r) => r.totale)), totPrev = sommaR(righe.map((r) => r.anno_prima));
+  const esamiRete = await conLab(o, `SELECT codice, max(descr_riga) AS descr_riga, count(*)::int AS esami, count(DISTINCT request_id)::int AS accettazioni FROM it GROUP BY codice ORDER BY 3 DESC, 1 LIMIT 15`);
+  const esamiPrev = await conLab(op, `SELECT codice, count(*)::int AS esami FROM it GROUP BY codice`);
+  const esamiSede = await conLab(o, `SELECT site_id, codice, esami FROM (SELECT site_id, codice, count(*)::int AS esami, row_number() OVER (PARTITION BY site_id ORDER BY count(*) DESC, codice) AS rn FROM it GROUP BY site_id, codice) t WHERE rn <= 5 ORDER BY site_id, esami DESC`);
+  const codici = [...new Set([...esamiRete, ...esamiSede].map((e) => e.codice))];
+  const desc = codici.length ? new Map((await many(`SELECT DISTINCT ON (upper(exam_code)) upper(exam_code) AS codice, description FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND upper(exam_code) = ANY($1::text[]) ORDER BY upper(exam_code), updated_at DESC`, [codici])).map((x) => [x.codice, x.description])) : new Map();
+  const per_mese = mesi.map((mk) => ({ mese: mk, ...sommaR(righe.map((r) => r.mesi[mk]).filter(Boolean)) }));
+  return {
+    attivo: true, periodo: { da, a, prec }, mesi, sedi: righe, per_mese, totale, anno_prima: totPrev, var_accettazioni: varPct(totale.accettazioni, totPrev.accettazioni),
+    esami: esamiRete.map((e) => { const p = esamiPrev.find((x) => x.codice === e.codice)?.esami || 0; return { codice: e.codice, descrizione: desc.get(e.codice) || e.descr_riga, esami: e.esami, accettazioni: e.accettazioni, anno_prima: p, variazione: varPct(e.esami, p) }; }),
+    esami_per_sede: righe.map((s) => ({ site_id: s.site_id, sede: s.sede, esami: esamiSede.filter((e) => ks(e.site_id) === ks(s.site_id)).map((e) => ({ codice: e.codice, descrizione: desc.get(e.codice) || null, esami: e.esami })) })),
+  };
 }

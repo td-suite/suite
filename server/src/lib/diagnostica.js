@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D50 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D52 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -387,6 +387,27 @@ export const CONTROLLI = [
     sql: `SELECT o.id, o.code, o.name, o.vat_number, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
           WHERE o.kind = 'CLIENTE' AND o.active AND EXISTS (SELECT 1 FROM synclab.clients WHERE disponibilita = 'ATTIVO')
             AND NOT EXISTS (SELECT 1 FROM synclab.clients_td t WHERE t.organization_id = o.id AND t.disponibilita = 'ATTIVO') GROUP BY o.id, o.code, o.name, o.vat_number ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name) },
+  // v0.68.1 (CEO 09/11/2026 sera): clienti attivi con il maturato del gestionale molto sotto il pro quota del fatturato dichiarato.
+  // Stesse regole di modules/business/lib/synclabAccount.js: maturato = contributo netto, una volta per documento con data
+  // nell'anno fino a oggi; pro quota = fatturato FY atteso × giorni lavorativi (lun-ven) dall'avvio (o dal 1° gennaio) / giorni dell'anno
+  // (hub_giorni_lavorativi, 250).
+  { id: 'D51', area: 'CLIENTI', gravita: 'INFO', titolo: 'Clienti attivi con maturato Synclab sotto il 75% del pro quota', richiede: ['business.accounts', 'synclab.clients_td'], spiegazione: 'Clienti Service e MdL attivi nel Business Hub, con la Legal entity abbinata a un client Synclab, il cui fatturato maturato nell\'anno (documenti del gestionale, contributo netto, una volta per documento) è sotto il 75% del pro quota del fatturato FY atteso dichiarato nella scheda (giorni lavorativi dall\'avvio, o dal 1° gennaio, su 250). Informativo: la scheda account mostra il confronto e il run rate.',
+    sql: `WITH oggi AS (SELECT (now() AT TIME ZONE 'Europe/Rome')::date AS d),
+          gl AS (SELECT coalesce((SELECT CASE WHEN value ~ '^[0-9]+(\\.[0-9]+)?$' THEN nullif(value::numeric, 0) END FROM business.app_settings WHERE key = 'hub_giorni_lavorativi'), 250) AS n),
+          a AS (SELECT a.id, a.organization_id, a.linea, o.name, a.fatturato_fy_atteso AS fy,
+                       greatest(date_trunc('year', (SELECT d FROM oggi))::date, coalesce(a.data_avvio_effettiva, a.data_avvio_prevista, a.attivo_dal, date_trunc('year', (SELECT d FROM oggi))::date)) AS inizio
+                  FROM business.accounts a JOIN organizations o ON o.id = a.organization_id
+                 WHERE a.cliente_attivo AND a.linea IN ('SRV','MDL') AND a.fatturato_fy_atteso > 0
+                   AND EXISTS (SELECT 1 FROM synclab.clients_td t WHERE t.organization_id = a.organization_id)),
+          x AS (SELECT a.*, (SELECT count(*) FROM generate_series(a.inizio, (SELECT d FROM oggi), interval '1 day') g WHERE extract(isodow FROM g) < 6) AS giorni,
+                       coalesce((SELECT sum(v.net_revenue_contribution) FROM synclab.clients_td t JOIN synclab.invoices v ON v.instance_id = t.instance_id AND v.client_id = t.client_id
+                          WHERE t.organization_id = a.organization_id AND v.disponibilita = 'ATTIVO' AND v.deleted_at IS NULL
+                            AND v.date BETWEEN date_trunc('year', (SELECT d FROM oggi))::date AND (SELECT d FROM oggi)), 0) AS maturato
+                  FROM a WHERE a.inizio <= (SELECT d FROM oggi))
+          SELECT x.id AS account_id, x.name, x.linea, round(x.maturato, 2) AS maturato, round(x.fy * least(1, x.giorni / (SELECT n FROM gl)), 2) AS pro_quota,
+                 round(x.maturato / nullif(x.fy * least(1, x.giorni / (SELECT n FROM gl)), 0) * 100, 1) AS percentuale, x.inizio AS dal
+            FROM x WHERE x.giorni > 0 AND x.maturato < 0.75 * x.fy * least(1, x.giorni / (SELECT n FROM gl)) ORDER BY 6 NULLS FIRST, x.name`,
+    chiave: 'account_id', link: (r) => `/business/account/${r.account_id}` },
   { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL attivi senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL ATTIVO nel Business Hub (fase 7 confermata dal CEO; vista clienti_attivi_v, livello ATTIVO) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
     // solo i clienti ATTIVI nel Business Hub (CEO, 08/11/2026: "Strutture clienti service: solo quelli ATTIVI"), una riga per Legal entity
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
@@ -418,7 +439,7 @@ export const CONTROLLI = [
           UNION ALL SELECT n.org_id, n.nome, n.org_kind, n.configurata, 'NC' FROM nc.sedi_v n WHERE n.origin = 'ORG' AND n.attiva AND public.cliente_livello(n.org_id) IS NULL
           ORDER BY 2`, chiave: 'org_id', link: (r) => orgLink(r.name) },
   { id: 'D21a', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Clienti B2B di Retail non abbinati a una Legal entity', richiede: ['retail.customers'], spiegazione: 'B15: ogni codice cliente StudioLAB delle vendite si abbina alla Legal entity (dalla sede con lo stesso codice, altrimenti a mano in Retail > Aziende e strutture > Da abbinare).',
-    sql: `SELECT c.id, c.external_code, c.company_name, c.vat_number, c.b2b_type FROM retail.customers c WHERE c.kind = 'B2B' AND NOT c.demo AND c.organization_id IS NULL ORDER BY c.company_name`, chiave: 'id', link: (r) => `/retail/clienti/b2b?tab=da_abbinare&q=${enc(r.external_code || '')}`,
+    sql: `SELECT c.id, c.external_code, c.company_name, c.vat_number, c.b2b_type FROM retail.customers c WHERE c.kind = 'B2B' AND NOT c.demo AND c.organization_id IS NULL ORDER BY c.company_name`, chiave: 'id', link: (r) => `/retail/b2b/clienti?tab=da_abbinare&q=${enc(r.external_code || '')}`,
     correggi: { etichetta: 'Abbina dai codici StudioLAB', conferma: true, descrizione: 'B15: codice cliente = codice StudioLAB di una sede della Suite → Legal entity della sede; i codici senza sede restano "da abbinare" (selettore nella pagina B2B di Retail)', fn: corr.d21a, richiede: ['retail.customers'] } },
   { id: 'D21b', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'B2B abbinato a una Legal entity diversa da quella della sede con lo stesso codice', richiede: ['retail.customers'], spiegazione: 'Codice cliente StudioLAB uguale al codice della sede SERVICE ma Legal entity diversa.',
     sql: `SELECT c.id, c.external_code, s.id AS site_id, s.code, s.organization_id, c.organization_id AS customer_org_id FROM retail.customers c
@@ -551,6 +572,19 @@ export const CONTROLLI = [
           (SELECT count(*)::int FROM people p WHERE p.site_id = s.id AND p.status = 'ATTIVO') AS persone, (SELECT count(*)::int FROM users u WHERE u.site_id = s.id AND u.status = 'ACTIVE') AS utenti,
           (SELECT count(*)::int FROM grant_scopes g WHERE g.scope_type = 'SITE' AND g.scope_id = s.id) AS perimetri FROM sites s WHERE NOT s.active) x
           WHERE account_pp + persone + utenti + perimetri > 0 ORDER BY code`, chiave: 'id', link: sedeLink },
+  // v0.68.1: il personale delle sedi di Room si aggancia all'anagrafica per person_id (scelto dall'elenco, v0.67.3) o, in mancanza, per
+  // chiave del nome (minuscolo, senza accenti e punteggiatura, parole in ordine): qui le righe che non si agganciano in nessuno dei due modi.
+  { id: 'D52', area: 'ORGANIGRAMMA', gravita: 'ATTENZIONE', titolo: 'Personale di sede non agganciato all\'anagrafica', richiede: ['room.site_ext'], spiegazione: 'Righe del personale delle sedi in Room Planning (medici, sanitari, accettazione) senza la persona dell\'anagrafica (person_id) e senza un omonimo in Amministrazione > Persone: turni, presenze e il piano disponibilità non le trovano. Si sistemano dalla scheda della sede (Sedi e ambulatori > Personale > "Cambia", scelta dall\'anagrafica) dopo aver creato la persona se manca. Le attività (Punto prelievi, RM, RX, ...) non contano.',
+    sql: `WITH k AS (SELECT p.id, (SELECT string_agg(w, ' ' ORDER BY w) FROM regexp_split_to_table(trim(regexp_replace(lower(translate(p.last_name || ' ' || p.first_name, 'àáâäèéêëìíîïòóôöùúûüçñÀÁÂÄÈÉÊËÌÍÎÏÒÓÔÖÙÚÛÜÇÑ', 'aaaaeeeeiiiioooouuuucnaaaaeeeeiiiioooouuuucn')), '[^a-z0-9 ]+', ' ', 'g')), '\\s+') w WHERE w <> '') AS chiave FROM people p),
+          r AS (SELECT s.id AS site_id, s.code, s.name AS sede, x->>'nome' AS nome, x->>'tipo' AS tipo, nullif(x->>'person_id', '') AS person_id,
+                       (SELECT string_agg(w, ' ' ORDER BY w) FROM regexp_split_to_table(trim(regexp_replace(lower(translate(x->>'nome', 'àáâäèéêëìíîïòóôöùúûüçñÀÁÂÄÈÉÊËÌÍÎÏÒÓÔÖÙÚÛÜÇÑ', 'aaaaeeeeiiiioooouuuucnaaaaeeeeiiiioooouuuucn')), '[^a-z0-9 ]+', ' ', 'g')), '\\s+') w WHERE w <> '') AS chiave
+                  FROM room.site_ext e JOIN sites s ON s.id = e.site_id AND s.active CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(e.data->'personale') = 'array' THEN e.data->'personale' ELSE '[]'::jsonb END) x)
+          SELECT r.site_id || '|' || coalesce(r.nome, '') AS riga, r.site_id, r.code, r.sede, r.nome, r.tipo FROM r
+           WHERE coalesce(trim(r.nome), '') <> '' AND trim(r.nome) !~* '^(punto prelievi|rm |rx|mammograf|tc\\M|moc|opt|seminolog|anatomia patolog|medicina del lavoro)'
+             AND NOT (r.person_id ~ '^[0-9]+$' AND EXISTS (SELECT 1 FROM people p WHERE p.id = r.person_id::int))
+             AND NOT EXISTS (SELECT 1 FROM k WHERE k.chiave = r.chiave)
+           ORDER BY r.sede, r.nome`,
+    chiave: 'riga', link: (r) => `/room/sedi/${r.site_id}` },
   { id: 'D29', area: 'SISTEMA', gravita: 'INFO', titolo: 'Punti SERVICE configurati in Room', richiede: ['room.site_ext'], spiegazione: 'Room riguarda le sedi TD (B10).',
     sql: `SELECT s.id, s.code FROM room.site_ext e JOIN sites s ON s.id = e.site_id WHERE s.kind = 'SERVICE' ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D30', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Planimetria di Sedi non pubblicata in Room', spiegazione: 'La planimetria corrente della sede va in Room Planning.',

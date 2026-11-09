@@ -6,6 +6,7 @@ import { VBars, C } from '../components/charts.jsx';
 import { SiteSelect, LineSelect } from '../components/filters.jsx';
 import { qs, api, apiBase } from '../api.js';
 import { eur, eur0, num, pct, MONTHS, MONTHS_SHORT, itDateTime } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Budget() {
   const [sp, setSp] = useSearchParams();
@@ -18,6 +19,7 @@ export default function Budget() {
         <div><h1>Budget e scostamenti {year}</h1><div className="sub">Budget mensile per linea e per sede, consuntivo, scostamenti con ipotesi esterne (mercato del territorio, ATECO, stagionalità) e motivazioni interne annotate; giorni lavorabili pianificati e reali; dati di mercato del bacino.</div></div>
         <div className="period"><button onClick={() => setYear(year - 1)}>‹ {year - 1}</button><button className="on">{year}</button><button onClick={() => setYear(year + 1)}>{year + 1} ›</button></div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <div className="tabs">{[['budget', 'Budget'], ['variance', 'Analisi degli scostamenti'], ['days', 'Giorni lavorati'], ['market', 'Dati di mercato']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'budget' && <BudgetGrid year={year} />}
       {tab === 'variance' && <Variance year={year} />}

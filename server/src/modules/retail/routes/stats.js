@@ -3,6 +3,9 @@ import { one, many } from '../db.js';
 import { ah } from '../lib/util.js';
 import { Params } from '../lib/access.js';
 import { getSettings } from './admin.js';
+import { periodoProfilo, annoPrima, quadroLaboratorio, profiloPazienti, statoCopia } from '../../../lib/synclab/letture.js';
+import { privatiInB2c } from '../lib/b2b.js';
+import { getConnector } from '../../../lib/connectors.js';
 
 const r = Router();
 
@@ -144,6 +147,98 @@ r.get('/summary', ah(async (req, res) => {
   const budget_period = { amount: Number((budgetSite || budget).amount), actual: Number(cur.revenue), scope: budgetSite ? 'sede' : 'network' };
 
   res.json({ b2b_patients, by_sector, by_destination, top_margin_products, low_margin_products, working_days, spend_by_sex, spend_by_age, spend_by_province, spend_by_segment, spend_by_channel, archetypes, top_operators, budget_period, period: { from, to, days, prevFrom, prevTo }, kpi: cur, prev, trend, by_line, by_site, by_channel, by_payment, by_sex, by_age, by_province, by_city, by_weekday, by_hour, by_source, by_b2b_type, top_products, bottom_products, top_b2b, top_customers, base, recalls, promo, campaigns, exposure, last_import, data_range, bands });
+}));
+
+// ---------------------------------------------------------------- Cruscotto complessivo di rete (riordino di Retail, v0.68.0)
+// Decisione del CEO del 09/11/2026 sera: B2C e B2B affiancati nello stesso periodo. B2C = accettazioni e vendite GIPO, prima disponibilità
+// TuoTempo (le prenotazioni non sono ancora esposte da Docplanner), Laboratorio in sede (accettazioni Synclab dei punti TD, se
+// l'impostazione lo prevede); B2B = accettazioni, produzione e fatturato da documenti di StudioLab (Synclab). Confronto con lo stesso
+// periodo dell'anno prima, quota fuori area, stato dei tre connettori con l'ultimo aggiornamento. Nessun dato inventato: senza dati la
+// voce è null con la nota.
+const oggiRoma = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
+r.get('/rete', ah(async (req, res) => {
+  const oggi = oggiRoma();
+  const per = periodoProfilo({ periodo: req.query.periodo || oggi.slice(0, 7), da: req.query.da || null, a: req.query.a || null, oggi });
+  // periodo in corso: fino a oggi, l'anno prima fino allo stesso giorno (confronto omogeneo)
+  if (per.a > oggi && per.da <= oggi) { per.a = oggi; per.prec = { da: annoPrima(per.da), a: annoPrima(oggi) }; per.troncato = true; }
+  const privati = await privatiInB2c();
+
+  // ---- B2C · GIPO (accettazioni e vendite dei clienti privati: righe senza committente B2B, niente dimostrative)
+  const gipo = async (da, a) => one(`SELECT count(DISTINCT s.external_ref)::int AS accettazioni, coalesce(sum(s.net_amount), 0) AS vendite, coalesce(sum(s.quantity), 0)::int AS prestazioni,
+      count(DISTINCT s.customer_id)::int AS clienti, count(*)::int AS righe
+    FROM sales s WHERE s.source = 'GIPO' AND s.b2b_customer_id IS NULL AND s.sale_date BETWEEN $1::date AND $2::date`, [da, a]);
+  const g = await gipo(per.da, per.a), gp = await gipo(per.prec.da, per.prec.a);
+  // quota fuori area dei clienti GIPO: stessa regola del laboratorio (comune diverso da quello della sede e provincia diversa)
+  const fa = async (da, a) => one(`WITH x AS (SELECT DISTINCT s.external_ref, nullif(lower(trim(c.city)), '') AS comune, nullif(upper(trim(c.province)), '') AS provincia,
+        nullif(lower(trim(st.city)), '') AS sede_comune, nullif(upper(trim(st.province)), '') AS sede_provincia
+      FROM sales s JOIN customers c ON c.id = s.customer_id LEFT JOIN public.sites st ON st.id = s.site_id
+     WHERE s.source = 'GIPO' AND s.b2b_customer_id IS NULL AND s.sale_date BETWEEN $1::date AND $2::date)
+    SELECT count(*) FILTER (WHERE comune IS NOT NULL AND sede_comune IS NOT NULL AND (comune = sede_comune OR (provincia IS NOT NULL AND sede_provincia IS NOT NULL)))::int AS valutabili,
+           count(*) FILTER (WHERE comune IS NOT NULL AND sede_comune IS NOT NULL AND comune <> sede_comune AND provincia IS NOT NULL AND sede_provincia IS NOT NULL AND provincia <> sede_provincia)::int AS fuori FROM x`, [da, a]);
+  const gfa = await fa(per.da, per.a);
+  const gconn = await one(`SELECT enabled, last_sync_at, last_status FROM connectors WHERE kind = 'GIPO'`).catch(() => null);
+  const gimp = await one(`SELECT created_at, filename, rows_ok FROM import_batches WHERE source = 'GIPO' ORDER BY created_at DESC LIMIT 1`).catch(() => null);
+  const gmax = await one(`SELECT max(sale_date) AS ultima FROM sales WHERE source = 'GIPO'`);
+
+  // ---- B2C · TuoTempo (prima disponibilità: mediana della rete nell'ultimo giorno dello storico)
+  const tt = await one(`SELECT max(data) AS d FROM tuotempo_attivita`).catch(() => null);
+  const ttRete = tt?.d ? await one(`SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY giorni_attesa) AS mediana, count(*)::int AS prestazioni FROM tuotempo_attivita WHERE data = $1`, [tt.d]) : null;
+  const ttPrima = tt?.d ? await one(`SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY giorni_attesa) AS mediana FROM tuotempo_attivita WHERE data = (SELECT max(data) FROM tuotempo_attivita WHERE data <= ($1::date - 7))`, [tt.d]) : null;
+  const ttAree = await one(`SELECT count(*) FILTER (WHERE presente AND NOT coalesce(ignorata, FALSE))::int AS aree,
+      count(*) FILTER (WHERE presente AND NOT coalesce(ignorata, FALSE) AND EXISTS (SELECT 1 FROM public.sites s WHERE s.legacy_refs->>'tuotempo' = tuotempo_aree.areaid))::int AS abbinate FROM tuotempo_aree`).catch(() => ({ aree: 0, abbinate: 0 }));
+  const ttConn = await one(`SELECT last_sync_at, last_status FROM connectors WHERE kind = 'TUOTEMPO'`).catch(() => null);
+  const r1 = (x) => (x == null ? null : Math.round(Number(x) * 10) / 10);
+
+  // ---- Synclab (B2B e Laboratorio in sede)
+  let lab = null, labNota = null, fuoriLab = { LAB_SEDE: null, B2B: null };
+  const stato = await statoCopia().catch(() => null);
+  try {
+    if (stato?.conteggi?.requests || stato?.conteggi?.invoices) {
+      lab = await quadroLaboratorio({ da: per.da, a: per.a, privatiInB2c: privati });
+      for (const k of ['LAB_SEDE', 'B2B']) {
+        if (k === 'LAB_SEDE' && !privati) continue;
+        const pp = await profiloPazienti({ da: per.da, a: per.a, perimetro: k, privati_in_b2c: privati }).catch(() => null);
+        fuoriLab[k] = pp ? { quota: pp.provenienza.fuori_area.quota, fuori: pp.provenienza.fuori_area.fuori, valutabili: pp.provenienza.fuori_area.valutabili } : null;
+      }
+    } else labNota = 'Nessuna accettazione né documento Synclab importato (Amministrazione > Connettori > StudioLAB > Dati Synclab)';
+  } catch (e) { labNota = `Synclab: lettura non riuscita (${e.message})`; }
+  const sl = await getConnector('STUDIOLAB').catch(() => null);
+  const dataApi = sl?.settings?.data_api_enabled === true || sl?.settings?.data_api_enabled === 'true';
+
+  const varPct = (c, p) => (p == null || Number(p) === 0 || c == null ? null : Math.round(((Number(c) - Number(p)) / Number(p)) * 1000) / 10);
+  const piu = (...d) => d.filter(Boolean).map((x) => new Date(x).toISOString()).sort().pop() || null;
+  res.json({
+    periodo: per, oggi, privati_in_b2c: privati,
+    b2c: {
+      gipo: { ...g, vendite: Number(g.vendite), anno_prima: { ...gp, vendite: Number(gp.vendite) }, var_accettazioni: varPct(g.accettazioni, gp.accettazioni), var_vendite: varPct(g.vendite, gp.vendite),
+        fuori_area: { quota: gfa.valutabili ? Math.round((gfa.fuori / gfa.valutabili) * 1000) / 10 : null, fuori: gfa.fuori, valutabili: gfa.valutabili, regola: 'clienti GIPO: comune di residenza diverso da quello della sede e provincia diversa' },
+        fonte: 'GIPO (vendite importate)', ultima_vendita: gmax?.ultima || null },
+      tuotempo: { prenotazioni: null, nota_prenotazioni: 'Prenotazioni online non ancora disponibili: Docplanner non ha aperto le API (Fase 2)', ultimo_giorno: tt?.d || null,
+        attesa_mediana: r1(ttRete?.mediana), attesa_settimana_prima: r1(ttPrima?.mediana), prestazioni: ttRete?.prestazioni || 0, aree: ttAree.aree, aree_abbinate: ttAree.abbinate, fonte: 'TuoTempo (Key Entities)' },
+      laboratorio: privati ? (lab ? { ...lab.LAB_SEDE, fuori_area: fuoriLab.LAB_SEDE } : null) : { spento: true, nota: 'Impostazione spenta: le accettazioni Synclab dei punti TD sono nel B2B' },
+    },
+    b2b: { synclab: lab ? { ...lab.B2B, fuori_area: fuoriLab.B2B } : null, nota: labNota, fonte: 'StudioLab (Synclab Data API)' },
+    connettori: [
+      { chiave: 'GIPO', nome: 'GIPO', ruolo: 'B2C: accettazioni e vendite dei centri medici e punti prelievo', attivo: Boolean(gconn?.enabled) || Boolean(gimp),
+        ultimo_aggiornamento: piu(gconn?.last_sync_at, gimp?.created_at), dettaglio: gimp ? `ultimo import ${gimp.filename} (${gimp.rows_ok} righe)` : gconn?.last_sync_at ? `ultima sincronizzazione: ${gconn.last_status || ''}` : 'nessun import',
+        link: '/retail/import' },
+      { chiave: 'TUOTEMPO', nome: 'TuoTempo', ruolo: 'B2C: prestazioni online, prima disponibilità, medici', attivo: Boolean((await getConnector('TUOTEMPO').catch(() => null))?.active),
+        ultimo_aggiornamento: ttConn?.last_sync_at || null, dettaglio: ttConn?.last_status ? `esito ${ttConn.last_status}` : 'mai allineato', link: '/retail/connettori' },
+      { chiave: 'SYNCLAB', nome: 'StudioLAB / Synclab', ruolo: 'B2B (e Laboratorio in sede): accettazioni, produzione, documenti, listini', attivo: dataApi,
+        ultimo_aggiornamento: stato?.ultimo_checkpoint || null, dettaglio: stato?.insiemi?.requests?.checkpoint_at ? `ultimo checkpoint delle accettazioni${dataApi ? '' : ' (Data API spenta)'}` : 'nessun checkpoint', link: '/admin/connectors/synclab' },
+    ],
+  });
+}));
+
+// Fonti delle pagine B2C (riordino del 09/11/2026): ultimo import GIPO (o sincronizzazione) e ultimo allineamento TuoTempo
+r.get('/fonti', ah(async (_req, res) => {
+  const gimp = await one(`SELECT max(created_at) AS t FROM import_batches WHERE source = 'GIPO'`).catch(() => null);
+  const gconn = await one(`SELECT last_sync_at FROM connectors WHERE kind = 'GIPO'`).catch(() => null);
+  const gmax = await one(`SELECT max(sale_date) AS d FROM sales WHERE source = 'GIPO'`);
+  const tconn = await one(`SELECT last_sync_at FROM connectors WHERE kind = 'TUOTEMPO'`).catch(() => null);
+  const tmax = await one(`SELECT max(data) AS d FROM tuotempo_attivita`).catch(() => null);
+  const piu = (...d) => d.filter(Boolean).map((x) => new Date(x).toISOString()).sort().pop() || null;
+  res.json({ gipo: { ultimo_import: piu(gimp?.t, gconn?.last_sync_at), ultima_vendita: gmax?.d || null }, tuotempo: { ultimo_allineamento: tconn?.last_sync_at || null, ultimo_giorno: tmax?.d || null } });
 }));
 
 // Richiami: clienti con esami periodici in scadenza (lista operativa per SMS/telefono)

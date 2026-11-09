@@ -7,7 +7,7 @@ import { isGestione, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from
 import { sendMail } from '../lib/mailer.js';
 import { computePlan, m2t as m2tE } from '../lib/engine.js';
 import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
-import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE } from '../lib/personale.js';
+import { personKey, stessaPersona, indicePersone, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE } from '../lib/personale.js';
 
 const r = Router();
 const gest = (req, _res, next) => (isGestione(req.user) ? next() : next(forbidden('Riservato alla gestione del personale sanitario')));
@@ -87,9 +87,8 @@ r.get('/professionisti/:id', gest, ah(async (req, res) => {
   const p = await one(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]);
   if (!p) throw notFound('Persona non trovata nell\'anagrafica unica');
   const docs = await many('SELECT id, tipo, nome, mime, size, scadenza, note, created_at FROM professionista_docs WHERE person_id=$1 ORDER BY created_at DESC', [p.id]);
-  // Presenza nelle schede di sede (stessa persona per chiave del nome)
-  const key = personKey(p.nome);
-  const sedi = (await loadSedi()).filter((x) => (x.lite.personale || []).some((y) => personKey(y.nome) === key)).map((x) => ({ id: x.row.id, label: x.lite.denominazione }));
+  // Presenza nelle schede di sede (stessa persona: prima person_id della riga, poi chiave del nome, v0.68.1)
+  const sedi = (await loadSedi()).filter((x) => (x.lite.personale || []).some((y) => stessaPersona(y, p))).map((x) => ({ id: x.row.id, label: x.lite.denominazione }));
   res.json({ ...p, anagrafica: p.dati?.anagrafica || {}, discipline: discipline(p), docs, sediPresente: sedi, suiteUser: p.suite_user, suite_user: undefined });
 }));
 // Le persone si creano in Amministrazione > Persone o in Contratti del personale
@@ -103,12 +102,11 @@ r.put('/professionisti/:id', gest, ah(async (req, res) => {
     ON CONFLICT (person_id) DO UPDATE SET tipo=EXCLUDED.tipo, profilo=EXCLUDED.profilo, dati=EXCLUDED.dati, updated_at=now(), updated_by=EXCLUDED.updated_by`, [p.id, d.tipo, profilo, JSON.stringify(dati), req.user.id]);
   // La stessa persona nelle schede di sede: email (dall'anagrafica unica) e profilo del personale sanitario seguono la scheda
   let sediAggiornate = 0;
-  const key = personKey(p.nome);
   for (const s of await loadSedi()) {
     const ok = await mutateStruttura(s.row.id, (data) => {
       let ch = false;
       for (const x of data.personale || []) {
-        if (personKey(x.nome) !== key) continue;
+        if (!stessaPersona(x, p)) continue;
         if (p.email && (p.email || '') !== (x.email || '')) { x.email = p.email; ch = true; }
         if (d.tipo === 'sanitario' && profilo && x.profilo !== profilo) { x.profilo = profilo; ch = true; }
       }
@@ -124,17 +122,18 @@ r.put('/professionisti/:id', gest, ah(async (req, res) => {
 r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
   const sedi = await loadSedi();
   const people = await many(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.attivo`);
-  const byKey = new Map(people.map((x) => [personKey(x.nome), x]));
+  const trova = indicePersone(people);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
   const seen = new Map();
   for (const s of sedi) for (const p of s.lite.personale || []) {
     if (!p.nome?.trim() || p.tipo !== 'sanitario' || isAttivita(p.nome)) continue;
-    const key = personKey(p.nome);
+    const ex0 = trova(p);
+    const key = ex0 ? `id:${ex0.id}` : `k:${personKey(p.nome)}`;
     if (seen.has(key)) { const x = seen.get(key); if (!x.sedi.includes(s.row.id)) x.sedi.push(s.row.id); continue; }
-    seen.set(key, { key, nome: p.nome.trim(), profilo: p.profilo || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.row.id] });
+    seen.set(key, { key, ex: ex0, nome: p.nome.trim(), profilo: p.profilo || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.row.id] });
   }
   let created = 0; const nonCensiti = [];
   for (const x of seen.values()) {
-    const ex = byKey.get(x.key);
+    const ex = x.ex;
     if (!ex) { nonCensiti.push(x.nome); continue; }
     if (ex.in_room) continue;
     const dati = { professionale: { discipline: x.disc, attrezzature: x.attr }, sediAbilitate: x.sedi, compenso: { tipo: 'ORARIO' } };
@@ -289,7 +288,7 @@ r.post('/turni/genera', gest, ah(async (req, res) => {
   const d = parse(z.object({ mese, sede_id: siteRef.optional(), tipo: z.enum(['tutti', 'medici', 'sanitari']).default('tutti'), sovrascrivi: z.boolean().default(false) }), req.body);
   const sedi = (await loadSedi({ ids: d.sede_id ? [d.sede_id] : null })).map((x) => ({ id: x.row.id, lite: x.lite }));
   const profs = await many('SELECT id, nome, tipo FROM professionisti_v WHERE pianificabile');
-  const byKey = Object.fromEntries(profs.map((p) => [personKey(p.nome), p]));
+  const trova = indicePersone(profs);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
   const [y, mm] = d.mese.split('-').map(Number); const days = new Date(Date.UTC(y, mm, 0)).getUTCDate();
   const chiusure = await many("SELECT sede_id, dal, al FROM eventi WHERE kind='CHIUSURA'");
   let created = 0, skipped = 0, nonCensiti = new Set();
@@ -307,9 +306,9 @@ r.post('/turni/genera', gest, ah(async (req, res) => {
       }
       // accorpa per persona le fasce contigue/sovrapposte
       const per = new Map();
-      for (const it of items) { const k = personKey(it.persona.nome); (per.get(k) || per.set(k, []).get(k)).push(it); }
-      for (const [k, list] of per) {
-        const p = byKey[k]; if (!p) { nonCensiti.add(list[0].persona.nome); continue; }
+      for (const it of items) { const pr = trova(it.persona); const k = pr ? `id:${pr.id}` : `k:${personKey(it.persona.nome)}`; (per.get(k) || per.set(k, []).get(k)).push(it); }
+      for (const [, list] of per) {
+        const p = trova(list[0].persona); if (!p) { nonCensiti.add(list[0].persona.nome); continue; }
         list.sort((a, b) => a.s - b.s); const merged = [];
         for (const it of list) { const last = merged[merged.length - 1]; if (last && it.s <= last.e) { last.e = Math.max(last.e, it.e); if (!last.att.includes(it.att)) last.att += ', ' + it.att; } else merged.push({ ...it }); }
         for (const mrg of merged) {
@@ -342,9 +341,9 @@ r.get('/presenze/giorno', ah(async (req, res) => {
   let pianificati = [];
   const s = (await loadSedi({ ids: [sede_id] }))[0];
   if (s) { try { const str = joinStruttura(s.lite, {}); const plan = computePlan(str); const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p])); const g = dow(String(data));
-    const byKey = Object.fromEntries(profs.map((p) => [personKey(p.nome), p]));
+    const trova = indicePersone(profs);
     for (const a of plan.assigns.filter((x) => x.d === g)) { const med = byId[a.medId]; const san = a.sanId ? byId[a.sanId] : null;
-      for (const per of [med, san]) if (per && !isAttivita(per.nome)) { const pr = byKey[personKey(per.nome)]; pianificati.push({ nome: per.nome, prof_id: pr?.id || null, ora_da: m2tE(a.s), ora_a: m2tE(a.e), attivita: per === med ? 'Ambulatorio ' + (byId[a.roomId]?.nome || '') : `Supporto ${med?.nome || ''}` }); } }
+      for (const per of [med, san]) if (per && !isAttivita(per.nome)) { const pr = trova(per); pianificati.push({ nome: per.nome, prof_id: pr?.id || null, ora_da: m2tE(a.s), ora_a: m2tE(a.e), attivita: per === med ? 'Ambulatorio ' + (byId[a.roomId]?.nome || '') : `Supporto ${med?.nome || ''}` }); } }
   } catch { /* */ } }
   res.json({ turni, presenze, professionisti: profs, pianificati, locked: presenze.some((p) => p.rendiconto_id) });
 }));

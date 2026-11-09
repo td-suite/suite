@@ -8,6 +8,8 @@
 //   - manuale (MANUALE) dalla pagina "Aziende e strutture (B2B)" > Da abbinare, con il selettore della Legal entity;
 //   - DA_ABBINARE finché nessuno dei due: le vendite restano agganciate al codice, nessun cliente B2B anonimo nasce più dall'import.
 import { one, many, q } from '../db.js';
+import { getModuleState, moduleDb } from '../../../lib/modules.js';
+import { versioneCorrente } from '../../business/lib/listino.js';
 
 /** Legal entity per codice StudioLAB (sede con quel codice): { org_id, site_id, site_code } oppure null */
 export async function orgDaCodice(code, client = null) {
@@ -67,4 +69,61 @@ export async function quadroB2B({ q: testo = '' } = {}) {
   const nonClienti = await many(`SELECT id, external_code, organization_id, company_name, organization_kind, visits, revenue, last_visit, abbinamento FROM b2b_v
      WHERE organization_id IS NOT NULL AND cliente_livello IS NULL AND NOT demo AND ($1::text IS NULL OR company_name ILIKE $1 OR external_code ILIKE $1) ORDER BY revenue DESC NULLS LAST`, [t]);
   return { clienti, da_abbinare: daAbbinare, non_clienti: nonClienti };
+}
+
+// ================================================================== Riordino di Retail (v0.68.0, decisione del CEO del 09/11/2026 sera)
+// Il B2B deriva da StudioLab (Synclab Data API, letture in lib/synclab/letture.js); qui solo ciò che non è Synclab: l'impostazione della
+// ripartizione, il listino del Business Hub, le NC aperte del cliente, il budget B2B e lo stato dei tre connettori.
+
+/** Impostazione `synclab_privati_in_b2c` (predefinita true): accettazioni Synclab dei punti TD nel B2C come "Laboratorio in sede". */
+export async function privatiInB2c() {
+  const r = await one(`SELECT value FROM app_settings WHERE key = 'synclab_privati_in_b2c'`).catch(() => null);
+  return !(r && String(r.value).trim().toLowerCase() === 'false');
+}
+
+/**
+ * Listino corrente del Business Hub per Legal entity (account SRV, altrimenti MDL): Map org_id → { account_id, linea, versione,
+ * prezzi: Map codice → { prezzo (offerto, altrimenti listino), listino, offerto, descrizione } }. Fonte non disponibile = nota.
+ */
+export async function listiniHub(orgIds) {
+  const out = { disponibile: false, nota: null, per_org: new Map() };
+  const ids = [...new Set((orgIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return { ...out, disponibile: true };
+  const st = await getModuleState('business').catch(() => null);
+  if (!st?.schema_ready) return { ...out, nota: 'Business Hub non avviato: listini del Business Hub non disponibili' };
+  try {
+    const db = moduleDb('business');
+    const acc = await db.many(`SELECT id, organization_id, linea, listino_corrente_id FROM accounts WHERE organization_id = ANY($1::int[]) AND linea IN ('SRV','MDL') ORDER BY organization_id, (linea = 'SRV') DESC, id`, [ids]);
+    const lis = acc.length ? await db.many('SELECT id, account_id, versione, righe FROM listini WHERE account_id = ANY($1::int[])', [acc.map((a) => a.id)]) : [];
+    for (const a of acc) {
+      if (out.per_org.has(a.organization_id)) continue;
+      const v = versioneCorrente(lis.filter((l) => l.account_id === a.id), a.listino_corrente_id);
+      if (!v) continue;
+      const prezzi = new Map();
+      for (const x of Array.isArray(v.righe) ? v.righe : []) {
+        const cod = String(x.codice || '').trim().toUpperCase(); if (!cod) continue;
+        const num = (y) => (y == null || y === '' || !Number.isFinite(Number(y)) ? null : Number(y));
+        prezzi.set(cod, { prezzo: num(x.offerto) ?? num(x.listino), offerto: num(x.offerto), listino: num(x.listino), descrizione: x.descrizione || null });
+      }
+      out.per_org.set(a.organization_id, { account_id: a.id, linea: a.linea, listino_id: v.id, versione: v.versione, prezzi });
+    }
+    return { ...out, disponibile: true };
+  } catch (e) { return { ...out, nota: `Business Hub: lettura dei listini non riuscita (${e.message})` }; }
+}
+
+/** NC aperte di una Legal entity (sue o delle sue sedi), solo con il modulo NC LIVE; altrimenti { disponibile: false, nota }. */
+export async function ncAperte(orgId) {
+  const st = await getModuleState('nc').catch(() => null);
+  if (st?.mode !== 'LIVE') return { disponibile: false, nota: 'Modulo Non conformità non LIVE: conteggio non disponibile' };
+  try {
+    const r = await moduleDb('nc').one(`SELECT count(*)::int AS aperte, count(*) FILTER (WHERE opened_at >= now() - interval '90 days')::int AS ultimi_90
+      FROM nc WHERE (org_id = $1 OR site_id IN (SELECT id FROM public.sites WHERE organization_id = $1)) AND stato NOT IN ('CHIUSA','VERIFICATA','ANNULLATA')`, [Number(orgId)]);
+    return { disponibile: true, aperte: r.aperte, ultimi_90: r.ultimi_90, link: '/nc' };
+  } catch (e) { return { disponibile: false, nota: `Non conformità: conteggio non riuscito (${e.message})` }; }
+}
+
+/** Budget B2B (retail.budget_b2b) di un anno: righe { chiave, organization_id, cliente, mese, produzione, fatturato, esami }. */
+export async function budgetB2B(anno) {
+  return many(`SELECT b.id, b.chiave, b.organization_id, coalesce(o.name, b.cliente) AS cliente, b.anno, b.mese, b.produzione, b.fatturato, b.esami, b.note, b.updated_at
+    FROM budget_b2b b LEFT JOIN public.organizations o ON o.id = b.organization_id WHERE b.anno = $1 ORDER BY lower(coalesce(o.name, b.cliente)), b.mese`, [Number(anno)]);
 }

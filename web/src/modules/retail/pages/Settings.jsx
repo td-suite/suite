@@ -17,7 +17,7 @@ export default function Settings() {
   const [confirm, setConfirm] = useState(null);
   useEffect(() => { if (d.data) setV(d.data.settings); }, [d.data]);
   if (!d.data) return <div className="page"><Loading /></div>;
-  const save = async () => { try { await api.put('/settings', v); toast('Impostazioni salvate'); d.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const save = async () => { try { await api.put('/settings', v); toast('Impostazioni salvate'); d.reload(); window.dispatchEvent(new Event('suite:badges')); } catch (e) { toast(e.message, 'err'); } };
   const c = d.data.counts;
   return (
     <div className="page">
@@ -36,7 +36,17 @@ export default function Settings() {
           </div>
         </Card>
       </div>
-      <div className="grid g2">
+      <Card title="Ripartizione delle accettazioni StudioLab (B2C / B2B)" className="mt">
+        <div className="form-grid">
+          <Field label="Accettazioni Synclab dei punti TD" className="span2" help="Decisione del CEO del 09/11/2026 (salvo contrordine): i client StudioLab abbinati a una sede TD sono il &quot;Laboratorio in sede&quot; della sezione B2C; i client di Legal entity esterne e quelli non abbinati sono B2B. Spento: tutto StudioLab è B2B e la voce &quot;Laboratorio in sede&quot; sparisce dal menu.">
+            <select data-testid="synclab-privati" value={String(v.synclab_privati_in_b2c ?? 'true')} onChange={(e) => setV({ ...v, synclab_privati_in_b2c: e.target.value })}>
+              <option value="true">Nel B2C come &quot;Laboratorio in sede&quot; (predefinito)</option>
+              <option value="false">Nel B2B (tutto StudioLab è B2B)</option>
+            </select>
+          </Field>
+        </div>
+      </Card>
+      <div className="grid g2" style={{ marginTop: 16 }}>
         {GROUPS.map((g) => <Card key={g.title} title={g.title}><div className="form-grid">{g.keys.map(([k, l]) => <Field key={k} label={l} className={k === 'age_bands' || k === 'brand_claim' ? 'span2' : ''}><input value={v[k] ?? ''} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></Field>)}</div></Card>)}
         <Card title="Variabili d'ambiente (Suite)">
           <table className="t small"><tbody>

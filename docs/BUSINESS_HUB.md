@@ -954,3 +954,26 @@ entity; conferma ("Abbina") o scelta a mano ("Scegli") in Amministrazione > Conn
 attraverso `public.cliente_livello`), più quelli inclusi a mano, meno quelli esclusi a mano. `occupationalMedicine` resta il flag della
 medicina del lavoro e non decide il perimetro. Diagnostica: D48 (client senza Legal entity), D50 (Legal entity cliente attiva senza client
 Synclab). Regola da confermare con il CEO. Dettagli: docs/SYNCLAB_DATA_API.md.
+
+## Correlazione con StudioLab (Synclab) e "FY atteso" dichiarato (09/11/2026 sera, v0.68.1)
+Per i clienti **Service e MdL** con la Legal entity abbinata a un client Synclab (`synclab.clients_td`) la Suite affianca al dichiarato ciò
+che il gestionale ha registrato (`lib/synclabAccount.js`, test `server/test/v0681-correlazioni.test.mjs`):
+- **Scheda account**, riquadro "Dal gestionale (Synclab)" (`components/SynclabAccount.jsx`, `GET /api/business/hub/accounts/:id/synclab`):
+  fatturato **maturato** dell'anno (`netRevenueContribution` una volta per documento con data nell'anno, `fatturatoPerOrg`), produzione
+  dell'anno (esami e valore netto, `produzionePerOrg`) mese per mese con l'ultimo mese, **pro quota** dell'anno = `fatturato_fy_atteso` ×
+  giorni lavorativi (lun-ven) dall'avvio (data di avvio effettiva, prevista o di cliente attivo; il 1° gennaio se è precedente o manca) /
+  giorni lavorativi dell'anno (`hub_giorni_lavorativi`, 250, come `volumiGiornalieri`), scostamento in euro e %, **run rate** dell'anno
+  seguente = media mensile degli ultimi 3 mesi pieni × 12 (con almeno 2 mesi pieni; "mese pieno" = mese trascorso e interamente dopo
+  l'avvio; senza data di avvio dal primo documento) contro il dichiarato, con la nota quando i mesi sono pochi. Collegamento alla scheda
+  B2B di Retail (`/retail/b2b/clienti/:id`). Schermata `docs/screens/business-account-synclab.png`.
+- **Semaforo** dello scostamento sul pro quota: verde entro ±10% (o sopra), giallo fino a −25%, rosso oltre.
+- **Pipeline**: le colonne mostrano il "FY atteso (dichiarato nelle schede)"; le schede dei clienti attivi abbinati hanno la riga maturato
+  dell'anno · pro quota · scostamento % · semaforo; la colonna 7 somma anche il maturato. Filtro **"Solo in ritardo"** (giallo o rosso;
+  `GET /hub/accounts?ritardo=1` o `?ritardo=1` nella pagina). Schermata `docs/screens/business-pipeline-synclab.png`.
+- **Cruscotto**: "In pipeline" con "FY atteso (dichiarato nelle schede)"; "Clienti attivi" con il FY atteso dichiarato e il **Maturato
+  dell'anno (Synclab)** dei clienti attivi abbinati, il loro pro quota e quanti sono in ritardo (`synclab` nella risposta di `/cruscotto`).
+- **Diagnostica D51** "Clienti attivi con maturato Synclab sotto il 75% del pro quota" (INFO, collegamento alla scheda account), stesse
+  regole in SQL.
+- Lettura non riuscita o copia vuota = nota, mai uno zero. Da verificare in produzione: che l'abbinamento dei client copra i clienti attivi
+  (D48, D50) e che la data di avvio sia compilata (senza, il pro quota parte dal 1° gennaio).
+

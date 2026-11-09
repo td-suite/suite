@@ -4,6 +4,7 @@ import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, Kpi } from '../co
 import { SiteSelect } from '../components/filters.jsx';
 import { qs, base } from '../api.js';
 import { num, itDate } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Recalls() {
   const nav = useNavigate();
@@ -21,6 +22,7 @@ export default function Recalls() {
         <div><h1>Richiami periodici</h1><div className="sub">Pazienti con esami a periodicità (mammografia, PSA, check-up, controlli annuali) in scadenza: la lista operativa per SMS, telefono e script di accettazione. La periodicità si imposta sulla scheda della prestazione.</div></div>
         <div className="row"><button className="btn ghost" onClick={copyList} disabled={!rows.length}>Copia lista</button></div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <div className="filters">
         <Field label="Entro"><select value={days} onChange={(e) => setDays(e.target.value)}><option value="7">7 giorni</option><option value="30">30 giorni</option><option value="60">60 giorni</option><option value="90">90 giorni</option></select></Field>
         <SiteSelect value={site} onChange={setSite} label="Sede di riferimento" />
@@ -35,7 +37,7 @@ export default function Recalls() {
       <Card flush>
         {!d.data ? <Loading /> : !rows.length ? <Empty>Nessun richiamo nel periodo</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Paziente</th><th>Contatti</th><th>Sede</th><th>Esame</th><th>Ultima volta</th><th>Scadenza</th><th /></tr></thead>
-            <tbody>{rows.map((r, i) => <tr key={i} className="click" onClick={() => nav(`${base}/clienti/${r.customer_id}`)}><td className="strong">{r.last_name} {r.first_name}</td><td className="small">{r.phone || '–'}<div className="muted">{r.email || ''}</div></td><td className="small">{r.site_name || '–'}</td><td>{r.description}<div className="small muted">{r.code}</div></td><td>{itDate(r.last_date)}</td><td>{itDate(r.due)}</td><td className="num">{r.due < today ? <Badge tone="red">scaduto</Badge> : <Badge tone="mauve">in scadenza</Badge>}{!r.marketing_consent && <span className="small muted"> · no consenso</span>}</td></tr>)}</tbody></table></div>
+            <tbody>{rows.map((r, i) => <tr key={i} className="click" onClick={() => nav(`${base}/b2c/clienti/${r.customer_id}`)}><td className="strong">{r.last_name} {r.first_name}</td><td className="small">{r.phone || '–'}<div className="muted">{r.email || ''}</div></td><td className="small">{r.site_name || '–'}</td><td>{r.description}<div className="small muted">{r.code}</div></td><td>{itDate(r.last_date)}</td><td>{itDate(r.due)}</td><td className="num">{r.due < today ? <Badge tone="red">scaduto</Badge> : <Badge tone="mauve">in scadenza</Badge>}{!r.marketing_consent && <span className="small muted"> · no consenso</span>}</td></tr>)}</tbody></table></div>
         )}
       </Card>
     </div>

@@ -1,5 +1,7 @@
 // Profilo dei pazienti del laboratorio (Synclab, proiezione standard): età, sesso, provenienza, andamento, esami e orari delle
 // accettazioni. Nessun dato identificativo: l'unità è l'accettazione, non la persona. Documentazione: docs/RETAIL_PROFILO_PAZIENTI.md.
+// Dal riordino del 09/11/2026 sta nella sezione B2B con il filtro perimetro: B2B (client di Legal entity esterne o non abbinati, predefinito),
+// Laboratorio in sede (client abbinati a sedi TD, con l'impostazione synclab_privati_in_b2c) o tutti.
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Kpi, useToast } from '../components/ui.jsx';
@@ -27,11 +29,11 @@ export default function ProfiloPazienti() {
   const [sp, setSp] = useSearchParams();
   const anno = today().slice(0, 4);
   const init = () => ({ tipo: sp.get('tipo') || '12m', mese: sp.get('mese') || today().slice(0, 7), trimestre: sp.get('trimestre') || `${anno}-Q${Math.ceil(Number(today().slice(5, 7)) / 3)}`, anno: sp.get('anno') || anno,
-    site_id: sp.get('site_id') || '', patient_type: sp.get('patient_type') || '', mdl: sp.get('mdl') || '', sex: sp.get('sex') || '', fascia: sp.get('fascia') || '' });
+    perimetro: sp.get('perimetro') ?? (sp.get('site_id') ? 'tutti' : 'B2B'), site_id: sp.get('site_id') || '', patient_type: sp.get('patient_type') || '', mdl: sp.get('mdl') || '', sex: sp.get('sex') || '', fascia: sp.get('fascia') || '' });
   const [f, setF] = useState(init);
   useEffect(() => { const o = {}; for (const [k, v] of Object.entries(f)) if (v && !(k === 'tipo' && v === '12m')) o[k] = v; setSp(o, { replace: true }); }, [f, setSp]);
   const periodo = f.tipo === 'mese' ? f.mese : f.tipo === 'trimestre' ? f.trimestre : f.tipo === 'anno' ? f.anno : '12m';
-  const query = { periodo, site_id: f.site_id, patient_type: f.patient_type, mdl: f.mdl, sex: f.sex, fascia: f.fascia };
+  const query = { periodo, perimetro: f.perimetro === 'tutti' ? '' : f.perimetro, site_id: f.site_id, patient_type: f.patient_type, mdl: f.mdl, sex: f.sex, fascia: f.fascia };
   const d = useApi(`/profilo-pazienti${qs(query)}`);
   const p = d.data;
   const set = (k, v) => setF({ ...f, [k]: v });
@@ -48,11 +50,11 @@ export default function ProfiloPazienti() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Profilo dei pazienti (laboratorio)</h1><div className="sub">Età, sesso e provenienza delle accettazioni del laboratorio, per sede e nel tempo: esami più richiesti e orari. Nessun nome, cognome o codice fiscale.</div></div>
+        <div><h1>Profilo dei pazienti</h1><div className="sub">Età, sesso e provenienza delle accettazioni del laboratorio, per sede e nel tempo: esami più richiesti e orari. Nessun nome, cognome o codice fiscale.</div></div>
         <div className="row">{p && !vuoto && <a className="btn ghost" href={`${apiBase}/profilo-pazienti/export.xlsx${qs(query)}`}>Esporta Excel</a>}</div>
       </div>
       <div className="alert info" style={{ marginBottom: 12 }}>
-        <div><b>Dati del laboratorio (Synclab).</b> I centri medici (GIPO/TuoTempo) non sono compresi finché Docplanner non apre le API dei pazienti.
+        <div><b>Fonte: StudioLab (Synclab Data API).</b> {f.perimetro === 'B2B' ? 'Perimetro B2B: client abbinati a Legal entity esterne o non abbinati.' : f.perimetro === 'LAB_SEDE' ? 'Perimetro Laboratorio in sede: client abbinati alle sedi TD.' : 'Tutti i client Synclab.'} I centri medici (GIPO/TuoTempo) non sono compresi finché Docplanner non apre le API dei pazienti.
           {p && <span className="small"> · Ultimo checkpoint Synclab delle accettazioni: <b>{p.stato.checkpoint_at ? itDateTime(p.stato.checkpoint_at) : 'nessuno'}</b></span>}</div>
       </div>
       {vuoto && <div className="alert warn" style={{ marginBottom: 12 }}><div>Nessuna accettazione importata dal gestionale. La copia si alimenta da <Link to="/admin/connectors/synclab"><b>Amministrazione &gt; Connettori &gt; StudioLAB &gt; Dati Synclab</b></Link> (primo completo delle accettazioni).</div></div>}
@@ -62,6 +64,7 @@ export default function ProfiloPazienti() {
         {f.tipo === 'mese' && <Field label="Mese"><input type="month" value={f.mese} onChange={(e) => set('mese', e.target.value)} /></Field>}
         {f.tipo === 'trimestre' && <Field label="Trimestre"><select value={f.trimestre} onChange={(e) => set('trimestre', e.target.value)}>{trimestri.map((t) => <option key={t} value={t}>{t.slice(-1)}° trimestre {t.slice(0, 4)}</option>)}</select></Field>}
         {f.tipo === 'anno' && <Field label="Anno"><select value={f.anno} onChange={(e) => set('anno', e.target.value)}>{anni.map((y) => <option key={y}>{y}</option>)}</select></Field>}
+        <Field label="Perimetro"><select value={f.perimetro} onChange={(e) => set('perimetro', e.target.value)} data-testid="perimetro"><option value="B2B">B2B (StudioLab)</option>{p?.privati_in_b2c !== false && <option value="LAB_SEDE">Laboratorio in sede (punti TD)</option>}<option value="tutti">Tutti i client Synclab</option></select></Field>
         <Field label="Sede / punto prelievi"><select value={f.site_id} onChange={(e) => set('site_id', e.target.value)}><option value="">Tutte le sedi</option>{(p?.opzioni.sedi || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}<option value="ND">Senza sede abbinata</option></select></Field>
         <Field label="Tipo paziente"><select value={f.patient_type} onChange={(e) => set('patient_type', e.target.value)}><option value="">Tutti</option>{(p?.opzioni.tipi_paziente || []).map((t) => <option key={t.v} value={t.v}>{t.label} ({num(t.n)})</option>)}</select></Field>
         <Field label="Medicina del lavoro"><select value={f.mdl} onChange={(e) => set('mdl', e.target.value)}><option value="">Tutte</option><option value="si">Sì</option><option value="no">No</option></select></Field>

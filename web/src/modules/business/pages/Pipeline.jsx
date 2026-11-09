@@ -11,6 +11,7 @@ import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Modal, Field, useToast } from '../components/ui.jsx';
 import { FASI, LINEE, PRIORITA, itDate, today } from '../format.js';
 import { useFiltri, filtra } from './Clienti.jsx';
+import { Semaforo } from '../components/SynclabAccount.jsx';
 
 const kE = (n) => (n == null || !Number(n) ? '' : Number(n) >= 1000 ? `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 }).format(Number(n) / 1000)} k€` : `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 }).format(Number(n))} €`);
 const eur = (n) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(n || 0));
@@ -56,11 +57,12 @@ export default function Pipeline() {
   const censiti = col(0);
   const prov = [...new Set(q.data.righe.filter((a) => a.linea === f.linea).map((a) => a.prov).filter(Boolean))].sort();
   const segmenti = [...new Set(q.data.righe.filter((a) => a.linea === f.linea).map((a) => a.segmento_lab).filter(Boolean))].sort();
-  const attivi = ['q', 'priorita', 'owner', 'prov', 'segmento', 'stallo', 'fase', 'attivo'].some((k) => f[k]);
+  const attivi = ['q', 'priorita', 'owner', 'prov', 'segmento', 'stallo', 'fase', 'attivo', 'ritardo'].some((k) => f[k]);
+  const syn = q.data.synclab || {};
   return (
     <div className="page wide pipe">
       <div className="page-head">
-        <div><h1>Pipeline · {LINEE[f.linea].label}</h1><div className="sub">Trascina una scheda nella fase raggiunta: la data e il passaggio finiscono nel diario dell'account. Stallo = nessun avanzamento da oltre {q.data.soglia_stallo} giorni.</div></div>
+        <div><h1>Pipeline · {LINEE[f.linea].label}</h1><div className="sub">Trascina una scheda nella fase raggiunta: la data e il passaggio finiscono nel diario dell'account. Stallo = nessun avanzamento da oltre {q.data.soglia_stallo} giorni. Importi delle colonne = FY atteso (dichiarato nelle schede); sui clienti attivi abbinati a Synclab il maturato dell'anno, il pro quota e lo scostamento (verde entro ±10%, giallo fino a −25%, rosso oltre){syn.nota ? ` · ${syn.nota}` : ''}.</div></div>
         <div className="row" style={{ gap: 6 }}>
           <StampaDB righe={righe} f={f} />
           <Link className="btn" to={`${BASE}/clienti?linea=${f.linea}&nuovo=1`}>+ Nuovo prospect</Link>
@@ -74,7 +76,8 @@ export default function Pipeline() {
         <select value={f.prov} onChange={(e) => setF({ prov: e.target.value })}><option value="">Provincia: tutte</option>{prov.map((p) => <option key={p} value={p}>{NOMI_PROV[p] || p}</option>)}</select>
         <select value={f.segmento} onChange={(e) => setF({ segmento: e.target.value })}><option value="">Segmento: tutti</option>{segmenti.map((s) => <option key={s}>{s}</option>)}</select>
         <label className="chk"><input type="checkbox" checked={f.stallo === '1'} onChange={(e) => setF({ stallo: e.target.checked ? '1' : '' })} />Solo in stallo</label>
-        {attivi && <button className="btn link small" onClick={() => setF({ q: '', priorita: '', owner: '', prov: '', segmento: '', stallo: '', fase: '', attivo: '' })}>Azzera filtri</button>}
+        {['SRV', 'MDL'].includes(f.linea) && <label className="chk" title="Clienti attivi con il maturato Synclab dell'anno sotto il pro quota del fatturato dichiarato di oltre il 10% (giallo o rosso)"><input type="checkbox" checked={f.ritardo === '1'} onChange={(e) => setF({ ritardo: e.target.checked ? '1' : '' })} />Solo in ritardo</label>}
+        {attivi && <button className="btn link small" onClick={() => setF({ q: '', priorita: '', owner: '', prov: '', segmento: '', stallo: '', fase: '', attivo: '', ritardo: '' })}>Azzera filtri</button>}
       </div>
 
       <div className={`pipe-layout ${pannello ? 'con-pannello' : ''}`}>
@@ -86,7 +89,7 @@ export default function Pipeline() {
             <div key={x.n} className={`kcol ${over === x.n ? 'over' : ''}`} {...dnd(x.n)}>
               <div className="khd">
                 <div className="kt"><span>{x.n}. {x.label}</span><span className="kn">{l.length}</span></div>
-                <div className="ke">{t ? eur(t) : '–'}</div>
+                <div className="ke" title="FY atteso (dichiarato nelle schede)">{t ? eur(t) : '–'}{x.n === 7 && l.some((a) => a.synclab) ? <span className="small muted" title="Maturato dell'anno dai documenti Synclab dei clienti attivi abbinati"> · maturato {eur(l.reduce((s2, a) => s2 + Number(a.synclab?.maturato || 0), 0))}</span> : null}</div>
                 <div className="kbar"><i className={x.n === 7 ? 'ok' : ''} style={{ width: `${Math.round((t / maxTot) * 100)}%` }} /></div>
               </div>
               <div className="kbody">
@@ -101,6 +104,11 @@ export default function Pipeline() {
                       {a.cliente_attivo && <span className="pill p-ok">cliente attivo</span>}
                       {a.owner_name && <span className="muted ow">{a.owner_name}</span>}
                     </div>
+                    {a.synclab && <div className="ksyn" data-testid="pipe-synclab" title={`Dal gestionale (Synclab): maturato ${a.synclab.anno} ${eur(a.synclab.maturato)} contro il pro quota del fatturato dichiarato ${eur(a.synclab.pro_quota)}`}>
+                      <span>Maturato <b>{a.synclab.maturato == null ? '–' : kE(a.synclab.maturato) || '0 €'}</b></span><span>pro quota {a.synclab.pro_quota == null ? '–' : kE(a.synclab.pro_quota) || '0 €'}</span>
+                      <span className={a.synclab.scostamento_pct != null && a.synclab.scostamento_pct < -10 ? 'red' : ''}>{a.synclab.scostamento_pct == null ? '–' : `${a.synclab.scostamento_pct > 0 ? '+' : ''}${String(a.synclab.scostamento_pct).replace('.', ',')}%`}</span>
+                      <Semaforo s={a.synclab.semaforo} pct={a.synclab.scostamento_pct} />
+                    </div>}
                     {a.prossima_azione && <div className={`small ${a.azione_scaduta ? 'red' : 'muted'}`}>→ {a.prossima_azione}{a.data_prossima_azione ? ` (${itDate(a.data_prossima_azione)})` : ''}</div>}
                   </div>
                 ))}

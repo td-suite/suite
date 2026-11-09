@@ -84,7 +84,7 @@ r.get('/accounts', ah(async (req, res) => {
   if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(o.name) LIKE '%'||$${i}||'%' OR lower(coalesce(a.gruppo,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(o.city,'')) LIKE '%'||$${i}||'%' OR lower(a.sedi::text) LIKE '%'||$${i}||'%')`); }
   const rows = await many(`SELECT a.id, a.organization_id, o.name AS org_name, a.linea, a.prospect, a.gruppo, a.tipologia, a.segmento_lab, coalesce(o.city, a.sedi->0->>'citta') AS citta,
       coalesce(o.province, a.sedi->0->>'prov') AS prov, a.priorita, a.fase_corrente, a.phase_dates, a.owner_user_id, uo.full_name AS owner_name, a.prossima_azione, a.data_prossima_azione,
-      a.fatturato_fy_atteso, a.fatturato_2026, a.cliente_attivo, a.attivo_dal, jsonb_array_length(a.sedi) AS n_sedi, a.fornitore_attuale, a.situazione_fornitore, a.updated_at, a.fonte_censimento,
+      a.fatturato_fy_atteso, a.fatturato_2026, a.cliente_attivo, a.attivo_dal, a.data_avvio_effettiva, a.data_avvio_prevista, jsonb_array_length(a.sedi) AS n_sedi, a.fornitore_attuale, a.situazione_fornitore, a.updated_at, a.fonte_censimento,
       (a.fonte_censimento = 'Anagrafica') AS da_anagrafica, o.code AS org_code,
       CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome,
       (SELECT count(*)::int FROM contracts c WHERE c.org_id=a.organization_id AND c.kind=a.linea AND c.status<>'ANNULLATO') AS n_contratti,
@@ -97,7 +97,20 @@ r.get('/accounts', ah(async (req, res) => {
   const oggi = todayRome();
   let out = rows.map((a) => arricchisci(a, stallo, oggi));
   if (req.query.stallo === '1') out = out.filter((a) => a.stallo);
-  res.json({ righe: out, soglia_stallo: stallo, fasi: FASI, linee: LINEE });
+  // v0.68.1: clienti attivi Service e MdL con la Legal entity abbinata a un client Synclab: maturato dell'anno, pro quota del fatturato
+  // dichiarato, scostamento e semaforo (lib/synclabAccount.js). Lettura non riuscita = nota, mai uno zero.
+  let synclab = { disponibile: false, nota: null };
+  try {
+    const attivi = out.filter((a) => a.cliente_attivo && ['SRV', 'MDL'].includes(a.linea));
+    if (attivi.length) {
+      const { correlazioneAccounts } = await import('../lib/synclabAccount.js');
+      const c = await correlazioneAccounts(attivi, { oggi });
+      synclab = { disponibile: c.disponibile, nota: c.nota };
+      out = out.map((a) => { const x = c.per_account.get(a.id); return x ? { ...a, synclab: { maturato: x.maturato, pro_quota: x.pro_quota?.importo ?? null, scostamento: x.scostamento, scostamento_pct: x.scostamento_pct, semaforo: x.semaforo, anno: x.anno } } : a; });
+    }
+  } catch (e) { console.warn(`[business:hub] synclab: ${e.message}`); synclab = { disponibile: false, nota: `Synclab: lettura non riuscita (${e.message})` }; }
+  if (req.query.ritardo === '1') out = out.filter((a) => ['GIALLO', 'ROSSO'].includes(a.synclab?.semaforo));
+  res.json({ righe: out, soglia_stallo: stallo, fasi: FASI, linee: LINEE, synclab });
 }));
 
 // Persone che possono essere owner di un account: personale interno con il widget o amministratori della Suite
@@ -143,6 +156,14 @@ r.get('/accounts/:id', ah(async (req, res) => {
   res.json({ ...arricchisci(a, stallo), contatti, persone, criticita, contratti, fascicoli, documenti, attivita, altri_account: altri, contratto_corrente_id: contrattoCorrente?.id || null,
     puo_modificare: puoLinea(req, a.linea), puo_attivo: isCeoOAdmin(req), puo_criticita: puoLinea(req, a.linea) || req.user.role === 'HQS',
     casella: casella(a.linea, await getSettings()).address, soglia_stallo: stallo, da_verificare: documenti.filter((d) => d.da_verificare).length });
+}));
+
+// Dal gestionale (Synclab): fatturato maturato e produzione dell'anno, pro quota e run rate contro il fatturato dichiarato (v0.68.1)
+r.get('/accounts/:id/synclab', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  const { bloccoAccount } = await import('../lib/synclabAccount.js');
+  try { res.json(await bloccoAccount(a, { oggi: todayRome() })); }
+  catch (e) { console.warn(`[business:hub] synclab account ${a.id}: ${e.message}`); res.json({ applicabile: true, disponibile: false, nota: `Synclab: lettura non riuscita (${e.message})` }); }
 }));
 
 // Feed dagli altri widget (sola lettura)
@@ -601,7 +622,7 @@ r.get('/cruscotto', ah(async (req, res) => {
   const { stallo, ordini } = await soglie();
   const oggi = todayRome();
   const acc = await many(`SELECT a.id, a.organization_id, o.name AS org_name, a.linea, a.fase_corrente, a.phase_dates, a.fatturato_fy_atteso, a.cliente_attivo, a.prospect, a.priorita,
-      a.prossima_azione, a.data_prossima_azione, a.owner_user_id, uo.full_name AS owner_name
+      a.data_avvio_effettiva, a.data_avvio_prevista, a.attivo_dal, a.prossima_azione, a.data_prossima_azione, a.owner_user_id, uo.full_name AS owner_name
     FROM accounts a JOIN public.organizations o ON o.id=a.organization_id LEFT JOIN public.users uo ON uo.id=a.owner_user_id WHERE ($1::text IS NULL OR a.linea=$1)`, [linea]);
   const funnel = FASI.map((f) => { const l = acc.filter((a) => a.fase_corrente === f.n); return { fase: f.n, label: f.label, n: l.length, fatturato: Math.round(l.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0)) }; });
   const stalli = acc.map((a) => arricchisci(a, stallo, oggi)).filter((a) => a.stallo).sort((x, y) => y.giorni_da_avanzamento - x.giorni_da_avanzamento);
@@ -620,6 +641,21 @@ r.get('/cruscotto', ah(async (req, res) => {
   const email = await many(`SELECT id, linea, received_at, from_email, from_name, subject, come FROM email_in WHERE stato='DA_ASSEGNARE' AND ($1::text IS NULL OR linea=$1) ORDER BY received_at DESC LIMIT 20`, [linea]);
   const nEmail = (await one(`SELECT count(*)::int AS n FROM email_in WHERE stato='DA_ASSEGNARE' AND ($1::text IS NULL OR linea=$1)`, [linea])).n;
   const pipe = acc.filter((a) => a.fase_corrente >= 1 && a.fase_corrente <= 6);
+  // v0.68.1: "FY atteso (dichiarato nelle schede)" affiancato dal maturato dell'anno da Synclab per i clienti attivi abbinati
+  let synclab = { disponibile: false, nota: null, maturato: null, pro_quota: null, clienti: 0, in_ritardo: 0, anno: Number(oggi.slice(0, 4)) };
+  try {
+    const att = attivi.filter((a) => ['SRV', 'MDL'].includes(a.linea));
+    if (att.length) {
+      const { correlazioneAccounts } = await import('../lib/synclabAccount.js');
+      const c = await correlazioneAccounts(att, { oggi });
+      const xs = [...c.per_account.values()];
+      synclab = { ...synclab, disponibile: c.disponibile, nota: c.nota, clienti: xs.length,
+        maturato: xs.some((x) => x.maturato != null) ? Math.round(xs.reduce((t, x) => t + Number(x.maturato || 0), 0)) : null,
+        pro_quota: xs.some((x) => x.pro_quota) ? Math.round(xs.reduce((t, x) => t + Number(x.pro_quota?.importo || 0), 0)) : null,
+        dichiarato_abbinati: Math.round(att.filter((a) => c.per_account.has(a.id)).reduce((t, a) => t + Number(a.fatturato_fy_atteso || 0), 0)),
+        in_ritardo: xs.filter((x) => ['GIALLO', 'ROSSO'].includes(x.semaforo)).length };
+    }
+  } catch (e) { console.warn(`[business:hub] synclab cruscotto: ${e.message}`); synclab.nota = `Synclab: lettura non riuscita (${e.message})`; }
   // Punti Prelievo: avvii con passi da completare (con "Riprova") e flagship con l'autorizzazione rilasciata ancora da avviare
   const pp = !linea || linea === 'PP' ? await (await import('../lib/puntoPrelievi.js')).promemoriaPP() : null;
   res.json({
@@ -627,7 +663,7 @@ r.get('/cruscotto', ah(async (req, res) => {
     linea, soglia_stallo: stallo, soglia_ordini: ordini,
     kpi: { account: acc.length, prospect: acc.filter((a) => a.fase_corrente === 0).length, in_pipeline: pipe.length, attivi: attivi.length, fatturato_pipeline: Math.round(pipe.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0)),
       fatturato_attivi: Math.round(attivi.reduce((s, a) => s + Number(a.fatturato_fy_atteso || 0), 0)), stalli: stalli.length, criticita: criticita.length, email_da_assegnare: nEmail, da_confermare: da_confermare.length },
-    funnel, stalli: stalli.slice(0, 30), prossime: prossime.slice(0, 30), attivita, criticita,
+    synclab, funnel, stalli: stalli.slice(0, 30), prossime: prossime.slice(0, 30), attivita, criticita,
     nc: { attivo: feed.nc.attivo, righe: feed.nc.aperte.map((n) => ({ ...n, account: nomeOrg(n.organization_id) })) },
     ordini: { attivo: feed.ordini.attivo, soglia_giorni: ordini, righe: feed.ordini.in_attesa.map((o) => ({ ...o, account: nomeOrg(o.organization_id), oltre_soglia: o.giorni > ordini })) },
     da_confermare, email,

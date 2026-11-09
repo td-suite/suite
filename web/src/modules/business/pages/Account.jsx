@@ -14,6 +14,7 @@ import Proposta from '../components/Proposta.jsx';
 import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import ScriviCliente from '../components/ScriviCliente.jsx';
 import ContrattoDettaglio from '../components/ContrattoDettaglio.jsx';
+import SynclabAccount from '../components/SynclabAccount.jsx';
 import CercaRubrica, { SuggerimentoEmail } from '../../../components/CercaRubrica.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
@@ -74,6 +75,7 @@ export default function Account() {
       {a.fase_corrente === 6 && a.phase_dates?.[7] && !a.cliente_attivo && <div className="alert warn small" style={{ marginBottom: 12 }}>Il DB indica "Attivo / Starting" dal {itDate(a.phase_dates[7])}: la fase 7 vale solo quando il CEO conferma il cliente attivo.</div>}
 
       {['SRV', 'MDL'].includes(a.linea) && <CodiceStudiolab a={a} edit={edit} onDone={q.reload} />}
+      {['SRV', 'MDL'].includes(a.linea) && <SynclabAccount a={a} />}
 
       <div className="grid g4 hubhead">
         <div className="card kpi">

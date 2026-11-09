@@ -24,6 +24,9 @@ import structureRoutes from './routes/structure.js';
 import intornoRoutes from './routes/intorno.js';
 import tuotempoRoutes from './routes/tuotempo.js';
 import profiloPazientiRoutes from './routes/profiloPazienti.js';
+import b2bRoutes from './routes/b2b.js';
+import prenotazioniRoutes from './routes/prenotazioni.js';
+import laboratorioRoutes from './routes/laboratorio.js';
 import { rilevazioneMensile, mockAttivo as intornoMock } from './lib/intorno.js';
 import { chiaveServer } from '../../lib/googleMaps.js';
 
@@ -66,7 +69,9 @@ export default function mount(app) {
       const { one } = await import('./db.js');
       const rc = await one(`SELECT count(*) FILTER (WHERE due < CURRENT_DATE)::int AS overdue FROM (SELECT s.customer_id, p.id, (max(s.sale_date) + (p.periodicity_months || ' months')::interval)::date AS due FROM sales s JOIN products p ON p.id=s.product_id WHERE s.customer_id IS NOT NULL AND p.periodicity_months IS NOT NULL GROUP BY s.customer_id, p.id) x`);
       const ca = await one(`SELECT count(*)::int AS n FROM campaigns WHERE status='ATTIVA'`);
-      res.json({ richiami_scaduti: rc.overdue, campagne_attive: ca.n });
+      // voce "Laboratorio in sede" visibile solo con l'impostazione synclab_privati_in_b2c a true (flag del menu)
+      const { privatiInB2c } = await import('./lib/b2b.js');
+      res.json({ richiami_scaduti: rc.overdue, campagne_attive: ca.n, laboratorio_in_sede: (await privatiInB2c()) ? 1 : 0 });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {
@@ -84,7 +89,10 @@ export default function mount(app) {
   r.use('/connectors', connectorRoutes);
   r.use('/tuotempo', tuotempoRoutes);   // TuoTempo Fase 1: aree ↔ sedi, risorse ↔ persone, prenotazione online, listino (docs/RETAIL_TUOTEMPO.md)
   r.use('/profilo-pazienti', profiloPazientiRoutes);   // Profilo dei pazienti del laboratorio (Synclab, proiezione standard: docs/RETAIL_PROFILO_PAZIENTI.md)
-  r.use('/stats', statsRoutes);
+  r.use('/stats', statsRoutes);           // anche /stats/rete: cruscotto complessivo B2C + B2B (riordino del 09/11/2026, docs/RETAIL.md)
+  r.use('/b2b', b2bRoutes);               // sezione B2B: tutto da StudioLab (Synclab): cruscotto, clienti, scheda, produzione, fatturato, listini, budget
+  r.use('/prenotazioni', prenotazioniRoutes);   // B2C: prenotazioni online e prima disponibilità (TuoTempo)
+  r.use('/laboratorio', laboratorioRoutes);     // B2C: Laboratorio in sede (Synclab dei punti TD, con l'impostazione synclab_privati_in_b2c)
   r.use(budgetRoutes);                // working-days, budgets, variance, market
   r.use('/structure', structureRoutes);
   r.use(intornoRoutes);               // Intorno: luoghi intorno alle sedi e indirizzi valutati (Google Places, docs/RETAIL_INTORNO.md)

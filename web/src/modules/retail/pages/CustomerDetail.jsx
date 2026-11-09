@@ -67,7 +67,7 @@ export default function CustomerDetail() {
           {c.recalls.length ? <table className="t"><thead><tr><th>Esame</th><th>Ultima volta</th><th>Prossimo</th><th /></tr></thead><tbody>{c.recalls.map((r) => <tr key={r.product_id}><td>{r.description}<div className="small muted">ogni {r.periodicity_months} mesi</div></td><td>{itDate(r.last_date)}</td><td>{itDate(r.due_date)}</td><td className="num">{r.due_date < today ? <Badge tone="red">scaduto</Badge> : r.due_date <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) ? <Badge tone="mauve">entro 30 gg</Badge> : <Badge tone="grey">pianificato</Badge>}</td></tr>)}</tbody></table> : <Empty>Nessun esame periodico nello storico</Empty>}
         </Card>
         <Card title="Proposte di cross-selling" flush actions={<span className="small muted">più acquistate da pazienti con profilo simile</span>}>
-          {c.suggestions.length ? <table className="t"><tbody>{c.suggestions.map((s) => <tr key={s.id} className="click" onClick={() => nav(`${base}/prodotti?open=${s.id}`)}><td>{s.description}<div className="small muted">{s.code}</div></td><td className="num small muted">{num(s.n)} pazienti simili</td></tr>)}</tbody></table> : <Empty>Nessuna proposta disponibile</Empty>}
+          {c.suggestions.length ? <table className="t"><tbody>{c.suggestions.map((s) => <tr key={s.id} className="click" onClick={() => nav(`${base}/b2c/prodotti?open=${s.id}`)}><td>{s.description}<div className="small muted">{s.code}</div></td><td className="num small muted">{num(s.n)} pazienti simili</td></tr>)}</tbody></table> : <Empty>Nessuna proposta disponibile</Empty>}
         </Card>
       </div>}
       <div style={{ marginTop: 16 }}>
@@ -77,7 +77,7 @@ export default function CustomerDetail() {
         </Card>
       </div>
       {edit && <CustomerModal value={edit} onChange={setEdit} onClose={() => setEdit(null)} onSave={save} />}
-      {del && <ConfirmModal danger title="Elimina cliente" text={`Eliminare definitivamente ${name}?`} confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/customers/${id}`); toast('Cliente eliminato'); nav(isB2B ? `${base}/clienti/b2b` : `${base}/clienti`); }} />}
+      {del && <ConfirmModal danger title="Elimina cliente" text={`Eliminare definitivamente ${name}?`} confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/customers/${id}`); toast('Cliente eliminato'); nav(isB2B ? `${base}/b2b/clienti` : `${base}/b2c/clienti`); }} />}
     </div>
   );
 }

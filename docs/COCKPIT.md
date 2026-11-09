@@ -127,21 +127,39 @@ Codice: `server/src/lib/cockpitMonitor.js` (indicatori, regole pure, cache), `se
 completo in pagina propria). Test: `server/test/cockpit-monitor.test.mjs`. Schermate: `docs/screens/cockpit-monitor.png` (tema scuro) e
 `docs/screens/cockpit-monitor-chiaro.png` (tema chiaro), 1920×1080.
 
-### Pagina
-- **Nessun link ai moduli**: le card non sono cliccabili, il menu della sezione Cockpit ha solo Monitor e Scadenzario completo (prima
-  c'erano Cash, Finance e Integration). L'unico collegamento è "Scadenzario completo", in fondo.
-- **Aggiornamento automatico ogni 5 minuti** (nessun pulsante Aggiorna): in alto, discreto, "Aggiornato alle HH:MM · prossimo tra N min";
-  un errore di rete lascia i dati precedenti e lo dice. Data e ora grandi in alto a destra.
-- **Tema**: segue il tema della Suite; il tema scuro riprende la fascia scura (hero) della Home.
-- **Griglia a 12 colonne**: a sinistra (4) "Questa settimana" e "Prossima settimana" (conteggi per gravità e scadute, fino a 8 righe con
-  data, titolo, oggetto, chip del modulo e barra della gravità, poi "+N altre"); a destra (8) gli indicatori per gruppo (etichetta del
-  gruppo in verticale), con valore grande (32-36 px), confronto (freccia e % o punti, verde se migliora e rosso se peggiora secondo il verso
-  dell'indicatore), sparkline degli ultimi 12 punti, dettaglio, fonte e momento dell'ultimo dato. Indicatore non disponibile = card
-  tratteggiata e attenuata con il motivo.
-- **Schermo intero** (API Fullscreen) e **`?monitor=1`**: la pagina si apre senza la barra della Suite (App.jsx la rende fuori dalla
-  Shell, come la presa d'atto). In modalità monitor su uno schermo orizzontale la pagina si compone su una tela di 1920 px e si **scala**
-  per stare tutta nello schermo (1280×720, 4K) senza barre di scorrimento; su schermi stretti o verticali resta responsive (una colonna).
-  Le colonne seguono la larghezza del cockpit (container query), non dello schermo.
+### Pagina (schermo unico, v0.68.1)
+Richiesta del CEO del 09/11/2026 sera: il monitor è **UNA schermata senza scorrimento a 1920×1080 e 1366×768** (griglia CSS a 12 colonne,
+altezze delle righe in frazioni dell'altezza della finestra, caratteri con `clamp()` sull'altezza, nessuna card alta: il contenuto si
+taglia con i puntini invece di allungare la pagina). Sotto i 1100 px di larghezza o i 600 px di altezza la pagina torna a scorrere in una
+colonna (telefono, tablet in verticale). La tela scalata a 1920 px della v0.65 non c'è più.
+
+Righe dall'alto (dati in `schermo` della risposta, `lib/cockpitMonitor.js` `schermoMonitor`):
+1. **Intestazione sottile**: logo, titolo, ora e data, fonti con la data di ciascuna (GIPO = ultima vendita importata; TuoTempo = ultimo
+   giorno della prima disponibilità; Synclab = ultimo checkpoint della copia, ora compresa), "Aggiornato alle HH:MM · prossimo tra N min
+   · v<versione>", schermo intero, "Barra" (torna alla Suite) o, fuori dal monitor, "Monitor" e "Scadenzario completo".
+2. **Ricavi**: "Fatturato di oggi" e "Fatturato del mese" = **B2C** (GIPO: vendite nette dei privati, righe senza committente B2B, senza
+   dimostrative) **+ B2B** (Synclab: `netRevenueContribution` una volta per documento dei client B2B secondo la ripartizione di Retail,
+   `synclab_privati_in_b2c`), con le due componenti sotto e il confronto con lo stesso giorno / lo stesso periodo dell'anno prima. La somma è
+   dichiarata nella fonte; con una sola componente disponibile la cella dice "parziale: manca …".
+3. **Laboratorio (Synclab)**: accettazioni di ieri, di oggi e del mese ed esami del mese (tutti i client: B2B e Laboratorio in sede, con
+   le due parti), fatturato B2B del giorno e del mese (documenti), **TOP 5 clienti Service** per fatturato del mese con la quota sul totale
+   B2B e la variazione sullo stesso periodo del mese prima ("nuovo" senza documenti nel mese prima).
+4. **Retail B2C**: accettazioni GIPO del giorno e del mese (`external_ref` distinti), scontrino medio (vendite nette del mese /
+   accettazioni), prima disponibilità online (mediana della rete, TuoTempo), quota fuori area dei clienti GIPO del mese (comune e provincia
+   diversi da quelli della sede).
+5. **Scadenze e persone**: questa settimana e la prossima (al più **6 righe** ciascuna, "+N altre"), ferie e permessi oggi (Piano Ferie),
+   NC aperte, ordini in attesa (da approvare, con in preparazione e in consegna).
+
+Ogni numero ha sotto la **fonte in 10-11 px** (e nel tooltip confronto, dettaglio e nota). Fonte assente = cella tratteggiata "Non
+disponibile" con il motivo, mai uno zero. **Nessun link ai moduli**, aggiornamento automatico ogni 5 minuti, `?monitor=1` senza la barra
+della Suite, tema chiaro e scuro della Suite. Gli indicatori per gruppo di prima restano nel JSON (`indicatori`, usati anche dallo
+schermo per ferie, NC, ordini e TuoTempo) ma la pagina mostra solo lo schermo. La pagina **Scadenzario completo** (`/cockpit/scadenzario`)
+resta separata.
+
+Collaudo v0.68.1 (db proprio, dati sintetici): Playwright a 1920×1080 e 1366×768 con `document.scrollHeight ≤ innerHeight` e nessuno
+scorrimento orizzontale; schermate `docs/screens/cockpit-monitor.png` (scuro, 1920), `cockpit-monitor-1366.png` (scuro, 1366),
+`cockpit-monitor-chiaro.png` (chiaro, 1920). Test: `server/test/v0681-correlazioni.test.mjs` (somma B2C + B2B, TOP 5, schermo calcolato
+con Synclab e GIPO sintetici).
 
 ### API
 `GET /api/cockpit/monitor[?fresco=1]` (titolare, amministratori e chi ha il modulo Cockpit; 403 agli altri) →

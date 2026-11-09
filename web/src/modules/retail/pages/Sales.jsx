@@ -5,6 +5,7 @@ import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, Modal, useToast, 
 import { PeriodFilter, SiteSelect, KindSelect, LineSelect, defaultPeriod } from '../components/filters.jsx';
 import { qs, api, base, apiBase } from '../api.js';
 import { eur, eur0, num, itDate, PAYMENT, CHANNEL, SOURCE } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Sales() {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export default function Sales() {
           {canWrite(user) && <button className="btn" onClick={() => setAdd({ sale_date: new Date().toISOString().slice(0, 10), lines: [{ product_id: '', quantity: 1, gross_amount: '', discount: 0 }] })}>+ Accettazione manuale</button>}
         </div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <PeriodFilter value={p} onChange={setP}>
         <Field label="Cerca"><input value={f.q} placeholder="Accettazione, cliente, prestazione" onChange={(e) => set('q', e.target.value)} /></Field>
         <SiteSelect value={f.site_id} onChange={(v) => set('site_id', v)} />
@@ -52,7 +54,7 @@ export default function Sales() {
               <tr key={r.id}>
                 <td>{itDate(r.sale_date)}{r.sale_time ? <div className="small muted">{String(r.sale_time).slice(0, 5)}</div> : null}</td>
                 <td className="mono small">{r.external_ref}<div className="muted">{SOURCE[r.source] || r.source}</div></td>
-                <td>{r.customer_id ? <a onClick={(e) => { e.preventDefault(); nav(`${base}/clienti/${r.customer_id}`); }} href="#">{r.last_name} {r.first_name}</a> : null}{r.b2b_customer_id ? <div><a onClick={(e) => { e.preventDefault(); nav(`${base}/clienti/${r.b2b_customer_id}`); }} href="#">{r.company_name}</a> <Badge tone="mauve">B2B</Badge></div> : null}</td>
+                <td>{r.customer_id ? <a onClick={(e) => { e.preventDefault(); nav(`${base}/b2c/clienti/${r.customer_id}`); }} href="#">{r.last_name} {r.first_name}</a> : null}{r.b2b_customer_id ? <div><a onClick={(e) => { e.preventDefault(); nav(`${base}/b2b/codici/${r.b2b_customer_id}`); }} href="#">{r.company_name}</a> <Badge tone="mauve">B2B</Badge></div> : null}</td>
                 <td className="small">{r.site_name || '–'}</td>
                 <td>{r.product_description || r.product_code}<div className="small muted">{r.product_code}{r.line_name ? ` · ${r.line_name}` : ''}{r.promotion_name ? <span className="chip">{r.promotion_name}</span> : null}{r.campaign_name ? <span className="chip">{r.campaign_name}</span> : null}</div></td>
                 <td className="num">{num(r.quantity)}</td><td className="num">{eur(r.gross_amount)}</td><td className="num">{Number(r.discount) ? eur(r.discount) : '–'}</td><td className="num strong">{eur(r.net_amount)}</td>

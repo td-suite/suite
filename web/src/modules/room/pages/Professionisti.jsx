@@ -6,6 +6,7 @@ import { itDateTime } from '../format.js';
 import { sedeLabel } from './Sedi.jsx';
 import { RAPPORTO, REGIME, DOC_LABEL, DAYS, itD, eur } from '../lib/personale.js';
 import { DISC, EQUIP } from '../planner/planner.jsx';
+import { buildNetwork, reteDi } from '../lib/network.js';
 
 const DISCIPLINE = (Array.isArray(DISC) ? DISC : Object.keys(DISC || {})).map((d) => (typeof d === 'string' ? d : d.n || d.nome || String(d)));
 const ATTREZZ = (Array.isArray(EQUIP) ? EQUIP : Object.keys(EQUIP || {})).map((d) => (typeof d === 'string' ? d : d.n || d.nome || String(d)));
@@ -23,6 +24,8 @@ export default function Professionisti() {
   const opz = useApi('/personale/professionisti/opzioni');
   const [q, setQ] = useState(''); const [tipo, setTipo] = useState('tutti'); const [soloAttivi, setSoloAttivi] = useState(true); const [soloRoom, setSoloRoom] = useState(true);
   const [sel, setSel] = useState(null);
+  // presenza nel personale delle sedi: prima person_id della riga di sede, poi chiave del nome (v0.68.1)
+  const net = useMemo(() => { try { return sedi.data ? buildNetwork(sedi.data) : null; } catch { return null; } }, [sedi.data]);
   const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (!soloRoom || p.inRoom) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi, soloRoom]);
   const importa = async () => {
     try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created ? `Create ${r.created} schede Room per il personale sanitario delle sedi` : 'Il personale sanitario delle sedi presente in anagrafica ha già la scheda Room'); if (r.nonCensiti?.length) toast(`Non in anagrafica (da creare in Amministrazione > Persone): ${r.nonCensiti.join(', ')}`, 'err'); reload(); } catch (e) { toast(e.message, 'err'); }
@@ -46,7 +49,7 @@ export default function Professionisti() {
               <button key={p.id} className={`spec-item ${sel === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)}>
                 <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}{!p.inRoom && <Badge tone="amber">senza scheda Room</Badge>}{p.planningExcluded && <Badge tone="red">esclusa</Badge>}</div>
                 <div className="small muted">{p.profilo || (p.tipo === 'medico' ? 'Medico' : 'Personale sanitario')}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''}</div>
-                <div className="small">{p.email ? <span>{p.email}</span> : <span className="red">senza email</span>}{p.userId ? <span> · <Badge tone="green">portale</Badge></span> : null}{scad(p) ? <span> · <Badge tone="amber">documento in scadenza</Badge></span> : null}</div>
+                <div className="small">{(() => { const x = reteDi(net, p); return x ? <span title={`Nel personale di ${x.nSedi} ${x.nSedi === 1 ? 'sede' : 'sedi'}${x.personId ? ' (persona dell\'anagrafica scelta nella sede)' : ' (per nome)'}`}>nelle sedi ({x.nSedi}) · </span> : <span className="muted" title="Nessun piano da inviare: non è nel personale di una sede">non nelle sedi · </span>; })()}{p.email ? <span>{p.email}</span> : <span className="red">senza email</span>}{p.userId ? <span> · <Badge tone="green">portale</Badge></span> : null}{scad(p) ? <span> · <Badge tone="amber">documento in scadenza</Badge></span> : null}</div>
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>

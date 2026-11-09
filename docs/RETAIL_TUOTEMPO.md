@@ -72,7 +72,7 @@ Sedi/Persone), `web/src/modules/retail/pages/ListinoOnline.jsx`, blocco "Prenota
   `areaid` dal titolo dell'area del primo slot (`first_availability_areaTitle`), `site_id` dalla sede abbinata (aggiornato anche quando
   l'area si abbina o la sede si crea nello stesso giorno). Ipotesi dichiarata: è la prima disponibilità della prestazione su tutta la rete,
   attribuita alla sede del primo slot (le Key Entities non danno le agende per sede: arriveranno con Availabilities, Fase 2).
-- **"Listino online vs prezzo di cassa"** (Retail > Vendite): prezzo TuoTempo contro il prezzo medio delle vendite GIPO per prodotto (netto
+- **"Listino online vs prezzo di cassa"** (Retail > B2C > Listino online vs cassa): prezzo TuoTempo contro il prezzo medio delle vendite GIPO per prodotto (netto
   diviso quantità, vendite private: `payment_kind` vuoto o PRIVATO, ultimi 3/6/12/24 mesi), differenza in euro e in %, filtro "almeno il 5%".
 
 ## Risorse → persone
@@ -91,6 +91,14 @@ Sedi/Persone), `web/src/modules/retail/pages/ListinoOnline.jsx`, blocco "Prenota
 Area abbinata (visibile o nascosta), prestazioni online dell'area presenti nel catalogo, attesa alla prima disponibilità (mediana dell'ultimo
 giorno per la sede), medici attivi (risorse attive non nascoste, non macchine, dell'area) e soddisfazione media, dati pubblicati su TuoTempo
 e differenze con l'anagrafica.
+
+## Pagina "Prenotazioni online e prima disponibilità" (v0.68.0, riordino di Retail)
+Dal 09/11/2026 i dati della Fase 1 hanno una pagina propria nella sezione B2C (`/retail/b2c/prenotazioni`, `GET /api/retail/prenotazioni`,
+`routes/prenotazioni.js`), oltre alla scheda sede e al Cockpit: attesa mediana di rete (o della sede scelta) con il confronto a 7 giorni,
+per sede e per tipologia dall'ultimo giorno dello storico `tuotempo_attivita`, andamento giornaliero (14-180 giorni), prestazioni
+prenotabili online, aree abbinate, medici attivi e soddisfazione per area. Le **prenotazioni** non ci sono: la pagina lo dichiara
+(Docplanner, Fase 2). Il Cruscotto di rete (`/retail`) riporta la mediana di rete accanto ai numeri GIPO e StudioLab. Le pagine B2C
+dichiarano la fonte con l'ultimo allineamento TuoTempo (`GET /api/retail/stats/fonti`). Mappa del modulo: docs/RETAIL.md.
 
 ## Cockpit
 Indicatore "Attesa alla prima disponibilità" nel gruppo Retail e Flow (docs/COCKPIT.md): mediana della rete e per sede dall'ultimo giorno dello

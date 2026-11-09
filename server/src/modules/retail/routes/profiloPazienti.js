@@ -10,8 +10,11 @@ import { toXlsx } from '../lib/exports.js';
 import { profiloPazienti, comuniProfilo, FASCE_ETA } from '../../../lib/synclab/letture.js';
 import { comuniInCache, geocodificaComuni, normComune, normProvincia } from '../../../lib/geocode.js';
 import { many } from '../../../db.js';
+import { privatiInB2c } from '../lib/b2b.js';
 
 const r = Router();
+// filtro perimetro (B2B, LAB_SEDE = Laboratorio in sede, vuoto = tutti) con l'impostazione della ripartizione (riordino di Retail, v0.68.0)
+const conImpostazione = async (query) => ({ ...query, privati_in_b2c: await privatiInB2c() });
 const SESSO = { F: 'Donne', M: 'Uomini', ALTRO: 'Altro codice', ND: 'Non indicato' };
 
 /** Dati della mappa a bolle: comuni con coordinate in cache, sedi con coordinate in anagrafica. */
@@ -31,13 +34,14 @@ async function mappa(p, query) {
 }
 
 r.get('/', ah(async (req, res) => {
-  const p = await profiloPazienti(req.query);
-  res.json({ ...p, mappa: p.sintesi.accettazioni ? await mappa(p, req.query) : null });
+  const query = await conImpostazione(req.query);
+  const p = await profiloPazienti(query);
+  res.json({ ...p, privati_in_b2c: query.privati_in_b2c, mappa: p.sintesi.accettazioni ? await mappa(p, query) : null });
 }));
 
 // Geocodifica a richiesta dei comuni di provenienza senza coordinate (lotti da 15: OpenStreetMap concede 1 richiesta al secondo)
 r.post('/geocodifica-comuni', requireWrite, ah(async (req, res) => {
-  const lista = await comuniProfilo({ ...req.query, ...req.body });
+  const lista = await comuniProfilo(await conImpostazione({ ...req.query, ...req.body }));
   if (!lista.length) throw bad('Nessun comune di provenienza nel periodo scelto');
   const out = await geocodificaComuni(lista.slice(0, 200), { max: 15 });
   await audit(req, 'PROFILO_PAZIENTI_GEOCODIFICA', 'geo_comuni', null, out);
@@ -45,7 +49,7 @@ r.post('/geocodifica-comuni', requireWrite, ah(async (req, res) => {
 }));
 
 r.get('/export.xlsx', ah(async (req, res) => {
-  const p = await profiloPazienti(req.query);
+  const p = await profiloPazienti(await conImpostazione(req.query));
   const n = (k, header, width) => ({ key: k, header, int: true, width });
   const pc = (k, header) => ({ key: k, header, width: 12 });
   const fascia = { key: 'etichetta', header: 'Fascia d\'età', width: 22 };
@@ -81,7 +85,7 @@ r.get('/export.xlsx', ah(async (req, res) => {
     { k: 'Periodo', v: `${p.periodo.etichetta} (${p.periodo.da} - ${p.periodo.a}); anno prima ${p.periodo.prec.da} - ${p.periodo.prec.a}` },
     { k: 'Accettazioni', v: String(p.sintesi.accettazioni) },
     { k: 'Fuori area', v: p.provenienza.fuori_area.regola },
-    { k: 'Perimetro', v: 'Dati del laboratorio (Synclab). I centri medici (GIPO/TuoTempo) non sono compresi finché Docplanner non apre le API dei pazienti' },
+    { k: 'Perimetro', v: `Dati del laboratorio (Synclab)${p.filtri.perimetro === 'B2B' ? ', solo B2B (client di Legal entity esterne o non abbinati)' : p.filtri.perimetro === 'LAB_SEDE' ? ', solo Laboratorio in sede (client abbinati a sedi TD)' : ', tutti i client'}. I centri medici (GIPO/TuoTempo) non sono compresi finché Docplanner non apre le API dei pazienti` },
     { k: 'Ultimo checkpoint accettazioni', v: p.stato.checkpoint_at ? new Date(p.stato.checkpoint_at).toISOString() : 'nessuno' },
   ] });
   const buf = await toXlsx(sheets);

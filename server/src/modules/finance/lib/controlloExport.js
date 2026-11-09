@@ -21,6 +21,7 @@ const pct = (v) => (v == null ? '' : `${Number(v).toLocaleString('it-IT', { maxi
 
 export const CALCOLO_PL = (imp, lab) => [
   'Ricavi = produzione, non fatturato (decisione 12): vendite nette di Retail per sede e data (senza dati dimostrativi; le vendite B2B dei clienti Service vanno nella riga Service) e produzione dei clienti Service attribuita alla sede del Laboratorio' + (lab ? ` (${lab.name})` : '') + '.',
+  'Ricavi Service solo dalla produzione effettiva (Synclab Data API, file StudioLAB, Retail, Ordini, inserita a mano): le stime commerciali del Business Hub (fonte STIMA) stanno nella riga "Stime commerciali (non sommate)" sotto il totale, con il numero di clienti stimati (v0.68.1).',
   'Incassi Cash: riga di controllo, non sommata ai ricavi (rendiconti da CLOSED in poi: contanti da versare + POS + bonifici); si mostra la differenza con Retail.',
   `Costi diretti di sede: canone (scatti del contratto dello Scadenziario o canone di Amministrazione > Sedi, IVA ${imp.iva_costi === 'COSTO' ? 'sommata come costo indetraibile' : 'esclusa'} quando il canone è più IVA), bollette registrate ripartite per giorni del periodo, royalties di sede confermate in Cash, personale assegnato alla sede (RAL × coefficiente oneri ${String(imp.coefficiente).replace('.', ',')} / 12, oppure il coefficiente del contratto se indicato da HR), compensi fissi dei liberi professionisti (variabili "da indicare"), manutenzioni con costo (Facility), pagamenti Finance con la sede come centro di costo (con il solo cliente: al Laboratorio).`,
   `Costi centrali (decisione 11): personale e pagamenti senza sede, costi delle sedi centrali (${imp.sedi_centrali_predefinite ? 'predefinito: sedi di tipo Sede direzionale' : 'impostazione'}), ripartiti su ogni sede in proporzione ai ricavi della sede sul totale del periodo (chiave ${imp.chiave}).`,
@@ -50,7 +51,8 @@ export async function contoXlsx(d) {
     if (!disp(k)) { ws.addRow([`${lb}: non disponibile (${d.fonti[k].nota})`]); continue; }
     riga(lb, (c) => c.voci[k].importo, { tot: d.totale.voci[k] });
   }
-  riga('Totale ricavi', (c) => c.ricavi, { tot: d.totale.ricavi, bold: true });
+  riga('Totale ricavi (produzione effettiva)', (c) => c.ricavi, { tot: d.totale.ricavi, bold: true });
+  riga(`Stime commerciali (non sommate)${d.totale.stime?.clienti ? `: ${d.totale.stime.clienti} clienti stimati` : ''}`, (c) => c.voci.stime_service.importo, { tot: d.totale.voci.stime_service });
   if (disp('incassi_cash')) {
     riga('Incassi Cash (controllo, non sommati)', (c) => c.voci.incassi_cash.importo, { tot: d.totale.voci.incassi_cash });
     riga('Differenza Cash − Retail', (c) => c.controllo_cash?.differenza ?? null, { tot: d.totale.controllo_cash?.differenza ?? null });
@@ -166,7 +168,8 @@ export async function contoPdf(d) {
     const v = (f, tot) => [...cols.map((c) => f(c)), ...(ultimo ? [tot] : [])];
     const rows = [];
     for (const k of ['ricavi_retail', 'ricavi_service']) rows.push([d.righe.find((x) => x.key === k).label, ...(disp(k) ? v((c) => eur(c.voci[k].importo), eur(d.totale.voci[k])) : v(() => 'non disp.', 'non disp.'))]);
-    rows.push(['Totale ricavi', ...v((c) => eur(c.ricavi), eur(d.totale.ricavi))]);
+    rows.push(['Totale ricavi (produzione effettiva)', ...v((c) => eur(c.ricavi), eur(d.totale.ricavi))]);
+    rows.push([`Stime commerciali (non sommate)${d.totale.stime?.clienti ? `, ${d.totale.stime.clienti} clienti` : ''}`, ...v((c) => eur(c.voci.stime_service.importo), eur(d.totale.voci.stime_service))]);
     rows.push(['Incassi Cash (controllo)', ...(disp('incassi_cash') ? v((c) => eur(c.voci.incassi_cash.importo), eur(d.totale.voci.incassi_cash)) : v(() => 'non disp.', 'non disp.'))]);
     rows.push(['Differenza Cash − Retail', ...(disp('incassi_cash') ? v((c) => eur(c.controllo_cash?.differenza), eur(d.totale.controllo_cash?.differenza)) : v(() => '', ''))]);
     for (const r of d.righe.filter((x) => x.gruppo === 'COSTI')) rows.push([r.label, ...(disp(r.key) ? v((c) => `${eur(c.voci[r.key].importo)}${c.voci[r.key].da_indicare ? ' *' : ''}`, eur(d.totale.voci[r.key])) : v(() => 'non disp.', 'non disp.'))]);

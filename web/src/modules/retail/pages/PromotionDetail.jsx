@@ -41,7 +41,7 @@ export default function PromotionDetail() {
     <div className="page">
       <div className="page-head">
         <div><div className="row" style={{ gap: 8 }}><h1>{MONTHS[p.month - 1]} {p.year} · {p.name}</h1><ToneBadge map={PROMO_STATUS} value={p.status} /></div><div className="sub">{p.discount_label} · {itDate(p.start_date)} – {itDate(p.end_date)} · codice <span className="mono">{p.promo_code}</span>{p.target ? ` · target: ${p.target}` : ''} · {p.channel_scope}</div></div>
-        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/promozioni`)}>Calendario</button>{writer && <button className="btn" disabled={!dirty} onClick={() => save()}>Salva modifiche</button>}{writer && <button className="btn danger" onClick={() => setDel(true)}>Elimina</button>}</div>
+        <div className="row"><button className="btn ghost" onClick={() => nav(`${base}/b2c/promozioni`)}>Calendario</button>{writer && <button className="btn" disabled={!dirty} onClick={() => save()}>Salva modifiche</button>}{writer && <button className="btn danger" onClick={() => setDel(true)}>Elimina</button>}</div>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
@@ -94,7 +94,7 @@ export default function PromotionDetail() {
           <Card title="Sedi coinvolte" className="card mt" actions={<span className="small muted">nessuna selezione = tutte</span>}>
             <div className="row">{(sites.data || []).map((x) => <label key={x.id} className="f inline small"><input type="checkbox" disabled={!writer} checked={(v.site_ids || []).includes(x.id)} onChange={() => s('site_ids', (v.site_ids || []).includes(x.id) ? v.site_ids.filter((i) => i !== x.id) : [...(v.site_ids || []), x.id])} />{x.name}</label>)}</div>
           </Card>
-          <Card title="Campagne collegate" className="card mt" flush>{p.campaigns.length ? <table className="t"><tbody>{p.campaigns.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${base}/campagne/${c.id}`)}><td>{c.name}<div className="small muted">{c.channel} · {c.status}</div></td><td className="num">{eur0(c.spent ?? c.budget)}</td></tr>)}</tbody></table> : <Empty>Nessuna campagna collegata. <Link to={`${base}/campagne`}>Crea una campagna</Link> e collegala a questa promozione.</Empty>}</Card>
+          <Card title="Campagne collegate" className="card mt" flush>{p.campaigns.length ? <table className="t"><tbody>{p.campaigns.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${base}/b2c/campagne/${c.id}`)}><td>{c.name}<div className="small muted">{c.channel} · {c.status}</div></td><td className="num">{eur0(c.spent ?? c.budget)}</td></tr>)}</tbody></table> : <Empty>Nessuna campagna collegata. <Link to={`${base}/b2c/campagne`}>Crea una campagna</Link> e collegala a questa promozione.</Empty>}</Card>
         </div>
       </div>
 
@@ -113,7 +113,7 @@ export default function PromotionDetail() {
           <table className="t"><tbody>{(v.materials || []).map((m, i) => <tr key={i}><td>{writer ? <input value={m.type} onChange={(e) => s('materials', v.materials.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))} style={{ height: 30 }} /> : m.type}</td><td style={{ width: 160 }}>{writer ? <select value={m.status} onChange={(e) => setMaterial(i, e.target.value)} style={{ height: 30, minHeight: 30, fontSize: 12 }}>{MATERIAL_STATUS.map((x) => <option key={x}>{x}</option>)}</select> : <Badge tone={m.status === 'DA_FARE' ? 'grey' : 'green'}>{m.status}</Badge>}</td>{writer && <td className="num"><button className="iconbtn" onClick={() => s('materials', v.materials.filter((_, j) => j !== i))}><Icon name="trash" /></button></td>}</tr>)}</tbody></table>
           {writer && <div style={{ marginTop: 8 }}><button className="btn sm ghost" onClick={() => s('materials', [...(v.materials || []), { type: '', status: 'DA_FARE' }])}>+ Materiale</button></div>}
           <div className="subhead">Esposizione in sede</div>
-          {p.exposure.length ? <div className="row">{p.exposure.map((e) => <Badge key={e.status} tone={EXPO_STATUS[e.status]?.tone}>{EXPO_STATUS[e.status]?.label}: {e.n}</Badge>)} <Link className="small" to={`${base}/esposizione`}>Book retail</Link></div> : <p className="small muted">Nessun materiale di questa promozione nel book retail: dalla pagina Esposizione usa "Cambio mese" per aggiornare le locandine di tutte le sedi.</p>}
+          {p.exposure.length ? <div className="row">{p.exposure.map((e) => <Badge key={e.status} tone={EXPO_STATUS[e.status]?.tone}>{EXPO_STATUS[e.status]?.label}: {e.n}</Badge>)} <Link className="small" to={`${base}/b2c/esposizione`}>Book retail</Link></div> : <p className="small muted">Nessun materiale di questa promozione nel book retail: dalla pagina Esposizione usa "Cambio mese" per aggiornare le locandine di tutte le sedi.</p>}
         </Card>
       </div>
 
@@ -122,7 +122,7 @@ export default function PromotionDetail() {
         <Card title="Per prestazione">{p.sales_by_product.length ? <HBars data={p.sales_by_product.map((x) => ({ label: x.label, value: Number(x.revenue) }))} money keys={[{ key: 'value', label: 'Fatturato', color: C.blue }]} labelWidth={190} /> : <Empty>Nessuna vendita</Empty>}</Card>
         <Card title="Per sede">{p.sales_by_site.length ? <HBars data={p.sales_by_site.map((x) => ({ label: x.label, value: Number(x.revenue) }))} money keys={[{ key: 'value', label: 'Fatturato', color: C.mauve }]} labelWidth={190} /> : <Empty>Nessuna vendita</Empty>}</Card>
       </div>
-      {del && <ConfirmModal danger title="Elimina promozione" text="Le vendite collegate restano, senza attribuzione." confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/promotions/${id}`); toast('Promozione eliminata'); nav(`${base}/promozioni`); }} />}
+      {del && <ConfirmModal danger title="Elimina promozione" text="Le vendite collegate restano, senza attribuzione." confirmText="Elimina" onClose={() => setDel(false)} onConfirm={async () => { await api.del(`/promotions/${id}`); toast('Promozione eliminata'); nav(`${base}/b2c/promozioni`); }} />}
     </div>
   );
 }

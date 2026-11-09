@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS = {
   top_products_limit: '15',
   exposure_check_days: '30',      // frequenza attesa delle verifiche in sede
   promo_change_day: '1',          // giorno del mese entro cui i materiali devono essere sostituiti
+  synclab_privati_in_b2c: 'true', // accettazioni Synclab dei punti TD nel B2C ("Laboratorio in sede"); false = tutto Synclab è B2B (v0.68.0)
 };
 
 export const PRODUCT_LINES = [

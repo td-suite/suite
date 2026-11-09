@@ -83,6 +83,14 @@ lettura e invio con copie fisse, cliente attivo impostato solo dal CEO o da un A
 abbinamento a contratti e Legal entity esistenti, vista navigabile con export XLSX e PDF, proposte modificabili anche dopo la firma con
 revisioni (caso AgapeLab). Migrazioni business 008 e core 041. Dettagli e numeri del collaudo in docs/BUSINESS_HUB.md.
 
+## 09/11/2026 (sera) · v0.68.1
+Richieste del CEO: Business Hub ↔ StudioLab (maturato Synclab, pro quota e run rate contro il FY atteso dichiarato in scheda, Pipeline e
+Cruscotto, filtro "Solo in ritardo", D51); Conto economico con le stime commerciali in una riga non sommata, composizione dell'effettivo e
+"Da dove viene" su ogni KPI; Cockpit a schermo unico (1920×1080 e 1366×768 senza scorrimento: Ricavi B2C + B2B, Laboratorio con TOP 5,
+Retail B2C, Scadenze e persone); Room: esterni con ruolo, sede o disciplina tra i professionisti (migrazione room 013), aggancio del
+personale di sede per person_id, D52. Test `server/test/v0681-correlazioni.test.mjs`. Dettagli: BUSINESS_HUB.md, FINANCE.md, COCKPIT.md,
+SYNCLAB_DATA_API.md, IMPOSTAZIONI.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

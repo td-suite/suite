@@ -301,6 +301,8 @@ export function ripartisciCentrali(totaleCentrali, ricaviPerSede = {}) {
 export const RIGHE = [
   { key: 'ricavi_retail', gruppo: 'RICAVI', label: 'Ricavi Retail (produzione)', modulo: 'retail' },
   { key: 'ricavi_service', gruppo: 'RICAVI', label: 'Ricavi Service (produzione dei clienti)', modulo: 'business' },
+  // v0.68.1 (CEO 09/11/2026 sera): le stime commerciali del Service (fonte STIMA) non entrano nei ricavi: riga separata, non sommata
+  { key: 'stime_service', gruppo: 'STIME', label: 'Stime commerciali (non sommate)', modulo: 'business' },
   { key: 'incassi_cash', gruppo: 'CONTROLLO', label: 'Incassi Cash (controllo, non sommati)', modulo: 'cash' },
   { key: 'canone', gruppo: 'COSTI', label: 'Canone di locazione', modulo: 'finance' },
   { key: 'utenze', gruppo: 'COSTI', label: 'Utenze e bollette', modulo: 'finance' },
@@ -312,6 +314,40 @@ export const RIGHE = [
 ];
 export const RIGHE_RICAVI = RIGHE.filter((r) => r.gruppo === 'RICAVI').map((r) => r.key);
 export const RIGHE_COSTI = RIGHE.filter((r) => r.gruppo === 'COSTI').map((r) => r.key);
+const NON_SOMMATE = ['CONTROLLO', 'STIME'];
+/** Fonti della produzione Service che entrano nei ricavi (produzione effettiva): tutte tranne STIMA. */
+export const FONTI_EFFETTIVE = ['SYNCLAB', 'STUDIOLAB', 'MANUALE'];
+export const effettiva = (prod) => Boolean(prod && !prod.stima && prod.fonte !== 'STIMA');
+
+/**
+ * Movimenti Service del conto (v0.68.1): per ogni cliente i mesi con produzione effettiva (Synclab, StudioLAB da file/Retail/Ordini,
+ * manuale) vanno nella riga "ricavi_service"; i mesi stimati (fonte STIMA, salvata o calcolata) nella riga "stime_service", che non si
+ * somma. clienti: esito di caricaService (mesi con produzione e margine); lab: { id } sede del Laboratorio; p: periodo.
+ */
+export function movimentiService(clienti = [], lab, p) {
+  const out = [];
+  const data = p.mesi.length > 1 ? `${p.anno}` : p.mesi[0];
+  for (const c of clienti) {
+    const eff = { esami: 0, ricavo: null, mesi: 0, fonti: new Set(), parziale: false };
+    const sti = { esami: 0, ricavo: null, mesi: 0 };
+    for (const m of Object.values(c.mesi || {})) {
+      if (m.futuro || !m.produzione) continue;
+      const t = effettiva(m.produzione) ? eff : sti;
+      t.esami += Number(m.esami || 0); t.mesi += 1;
+      if (m.ricavo != null) t.ricavo = r2((t.ricavo || 0) + Number(m.ricavo)); else if (Number(m.esami) > 0 && t === eff) eff.parziale = true;
+      if (t === eff && m.produzione.fonte) eff.fonti.add(m.produzione.fonte);
+    }
+    if (eff.mesi && (eff.esami || eff.ricavo != null)) {
+      out.push({ riga: 'ricavi_service', site_id: lab.id, importo: eff.ricavo, org_id: c.org_id, fonti: [...eff.fonti], modulo: 'Finance Management · Service', data,
+        descrizione: `${c.org_name}: ${eff.esami} esami (${[...eff.fonti].join(', ').toLowerCase()})${eff.parziale ? ' · valore in parte da indicare' : ''}`, link: `/finance/margine-service?org=${c.org_id}` });
+    }
+    if (sti.mesi && (sti.esami || sti.ricavo != null)) {
+      out.push({ riga: 'stime_service', site_id: lab.id, importo: sti.ricavo ?? 0, org_id: c.org_id, stima: true, modulo: 'Business Hub · stima commerciale', data,
+        descrizione: `${c.org_name}: ${sti.esami} esami stimati in ${sti.mesi} ${sti.mesi === 1 ? 'mese' : 'mesi'} (volumi e prezzo dell'account, nessuna produzione effettiva)`, link: `/finance/margine-service?org=${c.org_id}` });
+    }
+  }
+  return out;
+}
 
 const voce = () => ({ importo: 0, righe: [], da_indicare: 0 });
 const add = (v, m) => {
@@ -361,8 +397,8 @@ export function componiConto({ sedi = [], centrali = [], movimenti = [], fonti =
     const q = rip.ripartibile ? rip.quote[sede.id] : null;
     const quota = q ? q.quota : 0;
     const margine = r2(ricavi - diretti - quota);
-    const mancanti = RIGHE.filter((r) => r.gruppo !== 'CONTROLLO' && !disp(r.key)).map((r) => r.label);
-    const daIndicare = RIGHE.filter((r) => r.gruppo !== 'CONTROLLO').reduce((a, r) => a + voci[r.key].da_indicare, 0);
+    const mancanti = RIGHE.filter((r) => !NON_SOMMATE.includes(r.gruppo) && !disp(r.key)).map((r) => r.label);
+    const daIndicare = RIGHE.filter((r) => !NON_SOMMATE.includes(r.gruppo)).reduce((a, r) => a + voci[r.key].da_indicare, 0);
     // controllo Cash solo per le sedi con rendiconti nel periodo (una sede senza Cash non ha una "differenza")
     const cash = disp('incassi_cash') && voci.incassi_cash.righe.length ? voci.incassi_cash.importo : null;
     return {
@@ -382,6 +418,12 @@ export function componiConto({ sedi = [], centrali = [], movimenti = [], fonti =
   totale.margine = rip.ripartibile ? r2(totale.ricavi - totale.costi_diretti - totCentrali) : null;
   totale.margine_prima_dei_centrali = r2(totale.ricavi - totale.costi_diretti);
   totale.margine_pct = totale.margine != null && totale.ricavi > 0 ? Math.round((totale.margine / totale.ricavi) * 1000) / 10 : null;
+  // stime commerciali: totale e clienti stimati, sotto il totale dei ricavi e mai sommati (v0.68.1)
+  const righeStime = colonne.flatMap((c) => c.voci.stime_service.righe);
+  totale.stime = { importo: r2(righeStime.reduce((a, m) => a + Number(m.importo || 0), 0)), clienti: new Set(righeStime.map((m) => m.org_id ?? m.descrizione)).size };
+  const righeSrv = colonne.flatMap((c) => c.voci.ricavi_service.righe);
+  totale.service_fonti = [...new Set(righeSrv.flatMap((m) => m.fonti || []))];
+  totale.service_clienti = new Set(righeSrv.map((m) => m.org_id ?? m.descrizione)).size;
   const conCash = colonne.filter((c) => c.controllo_cash);
   totale.controllo_cash = disp('incassi_cash') && conCash.length ? (() => { const i = r2(conCash.reduce((a, c) => a + c.controllo_cash.incassi, 0)); const rr = r2(conCash.reduce((a, c) => a + c.controllo_cash.retail, 0)); return { incassi: i, retail: rr, differenza: r2(i - rr), sedi: conCash.length }; })() : null;
   return { colonne, centrali: { voci: centro, totale: totCentrali, parziale: centraliParziale, sedi: centrali }, ripartizione: { chiave: 'RICAVI', ...rip }, totale, avvisi };

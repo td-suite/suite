@@ -7,6 +7,7 @@ import { useAuth, canWrite } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, Modal, useToast, Kpi, Icon } from '../components/ui.jsx';
 import { api, base } from '../api.js';
 import { eur0, num, SITE_KIND, ADMIN_SITES } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 const EXT_KEYS = ['in_network', 'tuotempo_area_id', 'gipo_site_code', 'catchment_cities', 'sqm_waiting', 'notes'];
 
@@ -43,6 +44,7 @@ export default function Sites() {
           <Link className="btn ghost" to={ADMIN_SITES} title="Codice, nome, tipologia, indirizzo, contatti, site manager e stato della sede si modificano nell'anagrafica unica"><Icon name="external" size={16} />Apri in Amministrazione</Link>
         </div>
       </div>
+      <FonteB2CAuto tipo="GIPO+TUOTEMPO" />
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi accent label="Sedi del network" value={num(network.length)} foot={byKind.map(([l, n]) => `${n} ${l.toLowerCase()}`).join(' · ') || 'nessuna sede attiva'} />
         <Kpi label="Fatturato anno in corso" value={eur0(network.reduce((a, s) => a + Number(s.revenue_ytd || 0), 0))} foot="sedi del network" />
@@ -54,7 +56,7 @@ export default function Sites() {
       <Card flush>
         {!list.data ? <Loading /> : !rows.length ? <Empty>Nessuna sede in anagrafica: caricale da <Link to={ADMIN_SITES}>Amministrazione, Sedi</Link>.</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Sede</th><th>Tipologia</th><th>Indirizzo</th><th>Site manager</th><th className="num">Persone</th><th>Retail</th><th className="num">Fatturato YTD</th><th className="num">Esposizione</th><th /></tr></thead>
-            <tbody>{rows.map((s) => <tr key={s.id} className={`click ${!s.active ? 'muted' : ''}`} onClick={() => nav(`${base}/sedi/${s.id}`)}>
+            <tbody>{rows.map((s) => <tr key={s.id} className={`click ${!s.active ? 'muted' : ''}`} onClick={() => nav(`${base}/b2c/sedi/${s.id}`)}>
               <td><div className="strong">{s.name}{s.mine && <> <Badge tone="blue">mia sede</Badge></>}</div><div className="small muted">{s.code}{s.legacy_brand ? ` · ex ${s.legacy_brand}` : ''}{!s.active && <> <Badge tone="red">disattivata</Badge></>}</div></td>
               <td className="small">{SITE_KIND[s.kind] || s.kind}</td>
               <td className="small">{s.address}{s.city ? `${s.address ? ', ' : ''}${s.zip || ''} ${s.city}${s.province ? ` (${s.province})` : ''}` : ''}</td>
@@ -62,7 +64,7 @@ export default function Sites() {
               <td className="num">{num(s.people_count)}</td>
               <td className="small">{!s.in_network ? <Badge tone="grey">fuori network</Badge> : s.configured ? <>{s.tuotempo_area_id && <Badge tone="teal">TuoTempo {s.tuotempo_area_id}</Badge>} {s.saturday_open === false && <Badge tone="grey">sabato chiuso</Badge>} {s.configured && !s.tuotempo_area_id && s.saturday_open !== false && <span className="muted">impostata</span>}</> : <span className="muted">predefinite</span>}</td>
               <td className="num">{eur0(s.revenue_ytd)}</td>
-              <td className="num">{s.in_network && <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); nav(`${base}/esposizione/${s.id}`); }}>{s.exposure_ok}/{s.exposure_items}</button>}</td>
+              <td className="num">{s.in_network && <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); nav(`${base}/b2c/esposizione/${s.id}`); }}>{s.exposure_ok}/{s.exposure_items}</button>}</td>
               <td className="num" style={{ whiteSpace: 'nowrap' }}>{canWrite(user) && <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); openEdit(s); }}>Impostazioni</button>}</td>
             </tr>)}</tbody></table></div>
         )}

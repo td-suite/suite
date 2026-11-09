@@ -9,8 +9,23 @@ export const sedeLabel = (s) => (s.nomeSede ? `${s.denominazione} · ${s.nomeSed
 const ATTIVITA = /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i;
 export const isAttivita = (p) => ATTIVITA.test((p.nome || '').trim());
 
-// Costruisce la rete: piani per sede e indice degli specialisti (medici e professionisti sanitari)
+// Identità di una riga del personale di sede (v0.68.1): prima person_id (la persona dell'anagrafica scelta con PersonaPicker, v0.67.3),
+// poi la chiave del nome. Una riga senza person_id si unisce alla persona che ha la stessa chiave del nome in un'altra sede, se è una sola.
+export function identitaPersonale(strutture) {
+  const idByName = {};
+  for (const s of strutture || []) for (const p of s.personale || []) if (p.person_id != null && p.person_id !== '') (idByName[personKey(p.nome)] ||= new Set()).add(String(p.person_id));
+  return (p) => {
+    if (p.person_id != null && p.person_id !== '') return { id: `pid:${p.person_id}`, personId: Number(p.person_id) };
+    const ids = idByName[personKey(p.nome)];
+    if (ids && ids.size === 1) { const v = [...ids][0]; return { id: `pid:${v}`, personId: Number(v) }; }
+    return { id: personKey(p.nome), personId: null };
+  };
+}
+
+// Costruisce la rete: piani per sede e indice degli specialisti (medici e professionisti sanitari). x.key resta la chiave del nome (eventi,
+// assenze e agenda la usano); x.personId è la persona dell'anagrafica quando la riga di sede la indica (byPersonId).
 export function buildNetwork(strutture) {
+  const ident = identitaPersonale(strutture);
   const dup = {}; strutture.forEach((s) => { dup[s.denominazione] = (dup[s.denominazione] || 0) + 1; });
   const labelOf = (s) => (s.nomeSede || dup[s.denominazione] < 2 || !s.indirizzo ? sedeLabel(s) : `${s.denominazione} · ${String(s.indirizzo).split(',')[0].trim()}`);
   const sedi = strutture.map((s) => { let plan = null; try { plan = computePlan(s); } catch { plan = null; } return { s, plan, label: labelOf(s) }; });
@@ -19,8 +34,9 @@ export function buildNetwork(strutture) {
     for (const p of s.personale) {
       if (!p.nome?.trim() || !['medico', 'sanitario'].includes(p.tipo)) continue;
       const key = personKey(p.nome);
-      if (!spec.has(key)) spec.set(key, { key, nome: p.nome.trim(), tipo: p.tipo, attivita: isAttivita(p), discipline: new Set(), profili: new Set(), attrezzature: new Set(), email: '', sedi: [], sessioni: [], dispBySede: {} });
-      const x = spec.get(key);
+      const who = ident(p);
+      if (!spec.has(who.id)) spec.set(who.id, { key, personId: who.personId, nome: p.nome.trim(), tipo: p.tipo, attivita: isAttivita(p), discipline: new Set(), profili: new Set(), attrezzature: new Set(), email: '', sedi: [], sessioni: [], dispBySede: {} });
+      const x = spec.get(who.id);
       if (p.email && !x.email) x.email = p.email;
       medDisc(p).forEach((d) => x.discipline.add(d));
       if (p.profilo) x.profili.add(p.profilo);
@@ -38,7 +54,16 @@ export function buildNetwork(strutture) {
   const specialisti = [...spec.values()].map((x) => ({ ...x, discipline: [...x.discipline], profili: [...x.profili], attrezzature: [...x.attrezzature],
     ore: x.sessioni.filter((q) => q.room).reduce((t, q) => t + (q.e - q.s), 0), nSedi: new Set(x.sedi.map((z) => z.sedeId)).size,
     sessioni: x.sessioni.sort((a, b) => a.d - b.d || a.s - b.s) })).sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
-  return { sedi, specialisti, byKey: Object.fromEntries(specialisti.map((x) => [x.key, x])) };
+  return { sedi, specialisti, byKey: Object.fromEntries(specialisti.map((x) => [x.key, x])), byPersonId: Object.fromEntries(specialisti.filter((x) => x.personId).map((x) => [x.personId, x])) };
+}
+
+/** Profilo di rete di una persona dell'anagrafica: prima per person_id, poi per chiave del nome (solo se non è di un'altra persona). */
+export function reteDi(net, persona) {
+  if (!net || !persona) return null;
+  const perId = net.byPersonId?.[persona.id];
+  if (perId) return perId;
+  const x = net.byKey?.[persona.personaKey || personKey(persona.nome)];
+  return x && (!x.personId || Number(x.personId) === Number(persona.id)) ? x : null;
 }
 
 // Fasce già impegnate dello specialista in un giorno della settimana (tutte le sedi)

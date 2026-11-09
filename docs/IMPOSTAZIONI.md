@@ -7,6 +7,16 @@ si legge dal core e si modifica solo lì (pulsante o link "Apri in Amministrazio
 `strutture_v`, `orgs_v`, `companies_v`, `resources_v`, `professionisti_v` conservano i nomi di colonna che il codice dei moduli
 si aspetta, ma le colonne duplicate sono calcolate dal core.
 
+**Room · `professionisti_v` (migrazione room 013, v0.68.1)**: una persona di tipo ESTERNO è `professionista` (e, se attiva e non esclusa,
+`pianificabile`) quando ha un ruolo del catalogo (`role_id`, qualunque, anche Accettazione), una disciplina, una sede di lavoro (`site_id`),
+una scheda Room (`person_ext.tipo`) o un ruolo sanitario; restano fuori solo gli esterni senza niente di tutto questo (referenti dei
+clienti e fornitori). Il personale delle sedi si aggancia alla persona **prima per `person_id`** della riga (scelta dall'anagrafica,
+v0.67.3) e poi per chiave del nome: `lib/network.js` `buildNetwork`/`reteDi` (Specialisti e Professionisti: "nelle sedi" e il quadratino
+dell'invio; senza, il segnaposto con il tooltip "nessun piano da inviare: non è nel personale di una sede"), lato server
+`room/lib/personale.js` `stessaPersona`/`indicePersone` (scheda, sedi della persona, "Collega i sanitari delle sedi", generazione dei
+turni, presenze, allineamento del profilo in `strutture.js`). Diagnostica **D52** "Personale di sede non agganciato all'anagrafica"
+(righe senza `person_id` e senza omonimo, link alla sede).
+
 ## Core: cosa è stato aggiunto (migrazione 026_sites_opened_at.sql)
 - `sites.opened_at` (data di apertura della sede): campo "Data di apertura" nel form Sedi di Amministrazione e colonna
   `opened_at` nel modello XLSX Sedi. Era copiato in Cash (`start_date`) e Retail (`opened_at`).

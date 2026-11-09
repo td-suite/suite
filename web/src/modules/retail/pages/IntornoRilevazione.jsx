@@ -32,7 +32,7 @@ export default function IntornoRilevazione() {
           <div className="sub">{r.site_id ? 'Rilevazione dello storico della sede' : r.etichetta}{r.geocodifica?.precision ? ` · geocodificato ${r.geocodifica.precision === 'civico' ? 'al civico' : r.geocodifica.precision === 'via' ? 'alla via' : 'al comune'}` : ''} · {Number(r.lat).toFixed(5)}, {Number(r.lng).toFixed(5)}</div></div>
         <div className="row">
           <button className="btn ghost" onClick={() => nav(base)}>Cruscotto</button>
-          {r.site_id && <Link className="btn ghost" to={`${base}/sedi/${r.site_id}`}>Scheda della sede</Link>}
+          {r.site_id && <Link className="btn ghost" to={`${base}/b2c/sedi/${r.site_id}`}>Scheda della sede</Link>}
           {!r.site_id && isAdmin(user) && <button className="btn ghost" onClick={() => setElimina(true)}><Icon name="trash" />Elimina</button>}
         </div>
       </div>
@@ -96,7 +96,7 @@ export function Territorio() {
       </>}>
         {d.error ? <ErrorBox error={d.error} /> : !d.data ? <Loading /> : !sedi.length ? <Empty>Nessuna sede attiva nel network</Empty> : <div className="table-wrap"><table className="t">
           <thead><tr><th>Sede</th><th>Rilevazione</th><th className="num">Concorrenti</th><th className="num">Prescrittori</th><th className="num">Attrattori</th><th className="num">Contesto</th><th>Attrattività (componenti)</th><th>Novità</th></tr></thead>
-          <tbody>{sedi.map((s) => <tr key={s.site_id} className="click" onClick={() => nav(`${base}/sedi/${s.site_id}`)}>
+          <tbody>{sedi.map((s) => <tr key={s.site_id} className="click" onClick={() => nav(`${base}/b2c/sedi/${s.site_id}`)}>
             <td><div className="strong">{s.name}</div><div className="small muted">{s.city || ''}{s.extraurbana ? ' · extraurbana' : ''}{!s.ha_coordinate ? ' · senza coordinate' : ''}</div></td>
             <td className="small">{s.rilevazione_id ? <>{itDate(s.data)}{s.prova && <> <Badge tone="grey">prova</Badge></>}<div className="muted">raggio {metri(s.raggio_m)}</div></> : <span className="muted">mai rilevata</span>}</td>
             <td className="num strong">{s.rilevazione_id ? num(n(s, 'CONCORRENTE')) : '–'}</td><td className="num">{s.rilevazione_id ? num(n(s, 'PRESCRITTORE')) : '–'}</td>

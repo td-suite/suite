@@ -10,6 +10,7 @@
 // Indicatori, fonti, formule e ipotesi: docs/COCKPIT.md, sezione "Monitor". Test: server/test/cockpit-monitor.test.mjs.
 import { many } from '../db.js';
 import { getModuleState, moduleDb } from './modules.js';
+import { APP_VERSION } from '../version.js';
 import { scadenzeDirezione, visibiliA, settimana, addGiorni, addMesi, fineMese, oggiRoma, itData, ordina, MODULI_RISERVATI, GRAVITA } from './scadenzario.js';
 
 // ------------------------------------------------------------------ costanti
@@ -601,6 +602,171 @@ async function persone(ctx) {
   return out;
 }
 
+// ------------------------------------------------------------------ schermo unico (v0.68.1)
+// Richiesta del CEO del 09/11/2026 sera: il monitor diventa UNA schermata senza scorrimento, organizzata in righe fisse:
+//   1. intestazione (data e ora, ultimo aggiornamento, versione, fonti con la data di ciascuna: GIPO, TuoTempo, Synclab);
+//   2. Ricavi: oggi e mese = B2C (GIPO, vendite nette dei privati) + B2B (Synclab, contributo netto, una volta per documento dei
+//      client B2B secondo la ripartizione di Retail), con le due componenti e il confronto con lo stesso giorno / periodo dell'anno prima;
+//   3. Laboratorio (Synclab): accettazioni ieri e oggi, accettazioni ed esami del mese (tutti i client), fatturato B2B del giorno e del
+//      mese, TOP 5 clienti per fatturato del mese con la quota sul totale B2B e la variazione sullo stesso periodo del mese prima;
+//   4. Retail B2C: accettazioni GIPO del giorno e del mese, scontrino medio, prima disponibilità online (mediana), quota fuori area;
+//   5. Scadenze e persone: questa settimana e la prossima (al più 6 righe), ferie oggi, NC aperte, ordini in attesa.
+// Ogni cella è un indicatore (stessa forma, con la fonte); una fonte assente = "non disponibile" con il motivo, mai uno zero.
+export const MAX_RIGHE_SCHERMO = 6;
+const G_SCHERMO = 'SCHERMO';
+
+/** Somma dichiarata di due componenti (B2C + B2B): null se mancano entrambe; parziale se ne manca una. */
+export function sommaComponenti(b2c, b2b) {
+  const vals = [b2c, b2b].filter((x) => x != null && !Number.isNaN(Number(x)));
+  return { valore: vals.length ? r2(vals.reduce((t, x) => t + Number(x), 0)) : null, parziale: vals.length === 1, mancanti: [b2c == null ? 'B2C' : null, b2b == null ? 'B2B' : null].filter(Boolean) };
+}
+
+/**
+ * TOP N clienti B2B per fatturato del periodo: quota sul totale B2B (%) e variazione % sullo stesso periodo del mese prima.
+ * cur / prev: [{ chiave, cliente, fatturato }]; totale: fatturato B2B complessivo del periodo.
+ */
+export function topClienti(cur = [], prev = [], totale = null, n = 5) {
+  const pm = new Map(prev.map((x) => [String(x.chiave), x.fatturato]));
+  return [...cur].filter((x) => x.fatturato != null).sort((a, b) => Number(b.fatturato) - Number(a.fatturato) || String(a.cliente).localeCompare(String(b.cliente), 'it')).slice(0, n)
+    .map((x, i) => {
+      const p = pm.has(String(x.chiave)) ? pm.get(String(x.chiave)) : null;
+      return { pos: i + 1, chiave: String(x.chiave), cliente: x.cliente, fatturato: r2(x.fatturato), quota: totale && Number(totale) > 0 ? Math.round((Number(x.fatturato) / Number(totale)) * 1000) / 10 : null,
+        mese_prima: p == null ? null : r2(p), variazione: p == null || !Number(p) ? null : Math.round(((Number(x.fatturato) - Number(p)) / Math.abs(Number(p))) * 1000) / 10 };
+    });
+}
+
+const dataBreve = (d) => (d ? itData(String(d).slice(0, 10)).slice(0, 5) : '');
+const quandoIso = (t) => (t ? new Date(t).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') : null);
+
+async function schermoMonitor(ctx, indicatori) {
+  const { P } = ctx;
+  const ieri = addGiorni(P.oggi, -1);
+  const ap = (d) => { const [y, m, g] = d.split('-').map(Number); const fine = new Date(Date.UTC(y - 1, m, 0)).getUTCDate(); return `${y - 1}-${String(m).padStart(2, '0')}-${String(Math.min(g, fine)).padStart(2, '0')}`; };
+  const oggiAP = ap(P.oggi), inizioAP = ap(P.inizio);
+  const byKey = Object.fromEntries(indicatori.map((x) => [x.chiave, x]));
+  const out = { fonti: [], ricavi: [], laboratorio: [], top5: null, retail: [], persone: [] };
+  const etAP = `stesso giorno dell'anno prima (${dataBreve(oggiAP)}/${oggiAP.slice(0, 4)})`;
+  const etMeseAP = `stesso periodo dell'anno prima (${dataBreve(inizioAP)}-${dataBreve(P.anno_prec.a)}/${P.anno_prec.a.slice(0, 4)})`;
+
+  // ---- GIPO (Retail): vendite nette e accettazioni dei privati (righe senza committente B2B, niente dimostrative)
+  let gipo = null, gipoNota = null;
+  if (ctx.live.retail !== true) gipoNota = motivoNonLive('retail', ctx.live.retail);
+  else {
+    try {
+      const db = ctx.db('retail');
+      const W = `s.source = 'GIPO' AND s.b2b_customer_id IS NULL`;
+      const q = async (da, a) => (await db.many(`SELECT coalesce(sum(s.net_amount), 0) AS v, count(DISTINCT s.external_ref)::int AS acc, count(*)::int AS righe FROM sales s WHERE ${W} AND s.sale_date BETWEEN $1::date AND $2::date`, [da, a]))[0];
+      const [g0, g0p, gm, gmp] = [await q(P.oggi, P.oggi), await q(oggiAP, oggiAP), await q(P.inizio, P.oggi), await q(inizioAP, P.anno_prec.a)];
+      const ultima = (await db.many(`SELECT max(sale_date)::text AS d FROM sales WHERE source = 'GIPO'`))[0]?.d || null;
+      const imp = (await db.many(`SELECT max(created_at) AS t FROM import_batches WHERE source = 'GIPO'`).catch(() => [{}]))[0]?.t || null;
+      const fa = (await db.many(`WITH x AS (SELECT DISTINCT s.external_ref, nullif(lower(trim(c.city)), '') AS comune, nullif(upper(trim(c.province)), '') AS provincia,
+            nullif(lower(trim(st.city)), '') AS sede_comune, nullif(upper(trim(st.province)), '') AS sede_provincia
+          FROM sales s JOIN customers c ON c.id = s.customer_id LEFT JOIN public.sites st ON st.id = s.site_id WHERE ${W} AND s.sale_date BETWEEN $1::date AND $2::date)
+        SELECT count(*) FILTER (WHERE comune IS NOT NULL AND sede_comune IS NOT NULL AND (comune = sede_comune OR (provincia IS NOT NULL AND sede_provincia IS NOT NULL)))::int AS valutabili,
+               count(*) FILTER (WHERE comune IS NOT NULL AND sede_comune IS NOT NULL AND comune <> sede_comune AND provincia IS NOT NULL AND sede_provincia IS NOT NULL AND provincia <> sede_provincia)::int AS fuori FROM x`, [P.inizio, P.oggi]))[0];
+      gipo = { oggi: g0, oggi_ap: g0p, mese: gm, mese_ap: gmp, ultima, import: imp, fuori: fa };
+    } catch (e) { gipoNota = `Retail · GIPO: lettura non riuscita (${String(e.message).slice(0, 120)})`; }
+  }
+  // ---- Synclab: documenti B2B, accettazioni ed esami del laboratorio, top 5
+  let syn = null, synNota = null;
+  try {
+    const L = await import('./synclab/letture.js');
+    const d = await L.disponibilita();
+    if (!d || (!d.requests && !d.invoices)) synNota = 'Synclab: nessuna accettazione né documento importato (Amministrazione > Connettori > StudioLAB > Dati Synclab)';
+    else {
+      const pv = (await many(`SELECT value FROM public.app_settings WHERE key = 'synclab_privati_in_b2c'`).catch(() => []))[0];
+      const privatiInB2c = !(pv && String(typeof pv.value === 'string' ? pv.value : JSON.stringify(pv.value)).replace(/"/g, '').trim().toLowerCase() === 'false');
+      const fatt = (da, a) => L.fatturatoClientiMesi({ da, a, privatiInB2c, ripartizione: 'B2B' });
+      const [f0, f0p, fm, fmp, fmPrev] = [await fatt(P.oggi, P.oggi), await fatt(oggiAP, oggiAP), await fatt(P.inizio, P.oggi), await fatt(inizioAP, P.anno_prec.a), await fatt(P.mese_prec.da, P.mese_prec.a)];
+      const qd = (da, a) => L.quadroLaboratorio({ da, a, privatiInB2c });
+      const [qi, qo, qm] = [await qd(ieri, ieri), await qd(P.oggi, P.oggi), await qd(P.inizio, P.oggi)];
+      const tot = (q, k) => (q.LAB_SEDE?.[k] || 0) + (q.B2B?.[k] || 0);
+      const totAP = (q, k) => (q.LAB_SEDE?.anno_prima?.[k] || 0) + (q.B2B?.anno_prima?.[k] || 0);
+      const stato = await L.statoCopia().catch(() => null);
+      const run = (await many(`SELECT max(finito) AS t FROM synclab.sync_run WHERE esito = 'OK'`).catch(() => []))[0]?.t || null;
+      syn = { d, privatiInB2c, f0, f0p, fm, fmp, fmPrev, qi, qo, qm, tot, totAP, stato, run };
+    }
+  } catch (e) { synNota = `Synclab: lettura non riuscita (${String(e.message).slice(0, 120)})`; }
+
+  // ---- 1. fonti con la data di ciascuna
+  out.fonti.push({ chiave: 'GIPO', nome: 'GIPO', data: gipo ? (gipo.ultima || null) : null, testo: gipo ? (gipo.ultima ? `vendite al ${dataBreve(gipo.ultima)}${gipo.import ? ` · import ${quandoIso(gipo.import)}` : ''}` : 'nessuna vendita importata') : gipoNota, ok: Boolean(gipo?.ultima) });
+  const tt = byKey.attesa_prima_disponibilita;
+  out.fonti.push({ chiave: 'TUOTEMPO', nome: 'TuoTempo', data: tt?.aggiornato || null, testo: tt?.non_disponibile ? tt.motivo : tt?.aggiornato ? `prima disponibilità del ${dataBreve(tt.aggiornato)}` : 'nessun allineamento', ok: Boolean(tt && !tt.non_disponibile) });
+  out.fonti.push({ chiave: 'SYNCLAB', nome: 'Synclab', data: syn?.stato?.ultimo_checkpoint || syn?.run || null, testo: syn ? `copia al ${quandoIso(syn.stato?.ultimo_checkpoint || syn.run) || '—'}` : synNota, ok: Boolean(syn) });
+
+  // ---- 2. Ricavi: B2C + B2B
+  const fGipo = gipo ? `GIPO vendite nette${gipo.ultima ? ` (al ${dataBreve(gipo.ultima)})` : ''}` : null;
+  const fSyn = syn ? `Synclab documenti B2B (copia al ${quandoIso(syn.stato?.ultimo_checkpoint || syn.run) || '—'})` : null;
+  const ricavo = (chiave, titolo, b2c, b2cAP, b2b, b2bAP, et) => {
+    const s0 = sommaComponenti(b2c, b2b), sp = sommaComponenti(b2cAP, b2bAP);
+    const motivo = [gipoNota, synNota].filter(Boolean).join(' · ');
+    return indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita: 'EUR', valore: s0.valore, confronto: s0.valore != null && sp.valore != null ? confronto(s0.valore, sp.valore, { etichetta: et }) : null,
+      parti: [{ etichetta: 'B2C GIPO', valore: b2c == null ? null : r2(b2c) }, { etichetta: 'B2B Synclab', valore: b2b == null ? null : r2(b2b) }],
+      dettaglio: `Fatturato = B2C (GIPO) + B2B (Synclab)${s0.parziale ? ` · parziale: manca ${s0.mancanti.join(' e ')}` : ''}`,
+      fonte: [fGipo, fSyn].filter(Boolean).join(' + ') || 'GIPO + Synclab', aggiornato: P.oggi, nota: s0.parziale ? motivo : null, motivo: motivo || 'Nessuna fonte di ricavo' });
+  };
+  out.ricavi.push(ricavo('ricavi_oggi', 'Fatturato di oggi · B2C + B2B', gipo ? Number(gipo.oggi.v) : null, gipo ? Number(gipo.oggi_ap.v) : null, syn ? Number(syn.f0.totale.fatturato || 0) : null, syn ? Number(syn.f0p.totale.fatturato || 0) : null, etAP));
+  out.ricavi.push(ricavo('ricavi_mese', 'Fatturato del mese · B2C + B2B', gipo ? Number(gipo.mese.v) : null, gipo ? Number(gipo.mese_ap.v) : null, syn ? Number(syn.fm.totale.fatturato || 0) : null, syn ? Number(syn.fmp.totale.fatturato || 0) : null, etMeseAP));
+
+  // ---- 3. Laboratorio (Synclab)
+  const nd = (chiave, titolo, unita = 'n') => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita, fonte: 'Synclab Data API', motivo: synNota || 'Synclab non disponibile' });
+  if (!syn) {
+    out.laboratorio.push(nd('lab_acc_ieri', 'Accettazioni ieri'), nd('lab_acc_oggi', 'Accettazioni oggi'), nd('lab_acc_mese', 'Accettazioni del mese'), nd('lab_esami_mese', 'Esami del mese'), nd('lab_b2b_oggi', 'Fatturato B2B oggi', 'EUR'), nd('lab_b2b_mese', 'Fatturato B2B del mese', 'EUR'));
+    out.top5 = { righe: [], non_disponibile: true, motivo: synNota, fonte: 'Synclab Data API' };
+  } else {
+    const fonteL = `Synclab, accettazioni (copia al ${quandoIso(syn.stato?.insiemi?.requests?.checkpoint_at || syn.run) || '—'})`;
+    const fonteD = `Synclab, documenti B2B (copia al ${quandoIso(syn.stato?.insiemi?.invoices?.checkpoint_at || syn.run) || '—'})`;
+    const parti = (q, k) => [{ etichetta: 'B2B', valore: q.B2B?.[k] || 0 }, { etichetta: 'in sede', valore: q.LAB_SEDE?.[k] || 0 }];
+    const lab = (chiave, titolo, q, k, et) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, valore: syn.tot(q, k), meglio: null, parti: syn.privatiInB2c ? parti(q, k) : null,
+      confronto: confronto(syn.tot(q, k), syn.totAP(q, k), { meglio: null, etichetta: et }), dettaglio: `Tutti i client del laboratorio${syn.privatiInB2c ? ' (B2B e Laboratorio in sede)' : ''}`, fonte: fonteL, aggiornato: P.oggi });
+    out.laboratorio.push(lab('lab_acc_ieri', 'Accettazioni ieri', syn.qi, 'accettazioni', `stesso giorno dell'anno prima`));
+    out.laboratorio.push(lab('lab_acc_oggi', 'Accettazioni oggi', syn.qo, 'accettazioni', etAP));
+    out.laboratorio.push(lab('lab_acc_mese', 'Accettazioni del mese', syn.qm, 'accettazioni', etMeseAP));
+    out.laboratorio.push(lab('lab_esami_mese', 'Esami del mese', syn.qm, 'esami', etMeseAP));
+    const docB2B = (chiave, titolo, f, fp, et) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita: 'EUR', valore: Number(f.totale.fatturato || 0), secondario: { valore: f.totale.documenti || 0, unita: 'n', etichetta: 'documenti' },
+      confronto: confronto(Number(f.totale.fatturato || 0), Number(fp.totale.fatturato || 0), { etichetta: et }), dettaglio: `contributo netto, una volta per documento${f.totale.note_credito ? ` · ${f.totale.note_credito} note di credito` : ''}`, fonte: fonteD, aggiornato: P.oggi });
+    out.laboratorio.push(docB2B('lab_b2b_oggi', 'Fatturato B2B oggi', syn.f0, syn.f0p, etAP));
+    out.laboratorio.push(docB2B('lab_b2b_mese', 'Fatturato B2B del mese', syn.fm, syn.fmp, etMeseAP));
+    const cur = syn.fm.clienti.map((c) => ({ chiave: c.chiave, cliente: c.cliente, fatturato: c.totale.fatturato }));
+    const prev = syn.fmPrev.clienti.map((c) => ({ chiave: c.chiave, cliente: c.cliente, fatturato: c.totale.fatturato }));
+    out.top5 = { righe: topClienti(cur, prev, syn.fm.totale.fatturato, 5), totale_b2b: syn.fm.totale.fatturato == null ? null : r2(syn.fm.totale.fatturato), clienti: cur.length,
+      fonte: `${fonteD} · % sul totale B2B del mese · variazione sullo stesso periodo del mese prima (${dataBreve(P.mese_prec.da)}-${dataBreve(P.mese_prec.a)})` };
+  }
+
+  // ---- 4. Retail B2C (GIPO, TuoTempo, fuori area)
+  const ndR = (chiave, titolo, unita = 'n') => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita, fonte: 'Retail · GIPO', motivo: gipoNota || 'GIPO non disponibile' });
+  if (!gipo) out.retail.push(ndR('gipo_acc_oggi', 'Accettazioni GIPO oggi'), ndR('gipo_acc_mese', 'Accettazioni GIPO del mese'), ndR('gipo_scontrino', 'Scontrino medio', 'EUR'));
+  else {
+    out.retail.push(indicatore({ chiave: 'gipo_acc_oggi', titolo: 'Accettazioni GIPO oggi', gruppo: G_SCHERMO, valore: gipo.oggi.acc, meglio: 'su', confronto: confronto(gipo.oggi.acc, gipo.oggi_ap.acc, { etichetta: etAP }),
+      dettaglio: `${gipo.oggi.righe} righe di vendita dei privati`, fonte: fGipo, aggiornato: gipo.ultima }));
+    out.retail.push(indicatore({ chiave: 'gipo_acc_mese', titolo: 'Accettazioni GIPO del mese', gruppo: G_SCHERMO, valore: gipo.mese.acc, meglio: 'su', confronto: confronto(gipo.mese.acc, gipo.mese_ap.acc, { etichetta: etMeseAP }),
+      dettaglio: `dal ${dataBreve(P.inizio)} a oggi`, fonte: fGipo, aggiornato: gipo.ultima }));
+    const sc = (x) => (x.acc ? r2(Number(x.v) / x.acc) : null);
+    out.retail.push(indicatore({ chiave: 'gipo_scontrino', titolo: 'Scontrino medio', gruppo: G_SCHERMO, unita: 'EUR', valore: sc(gipo.mese), meglio: 'su', confronto: confronto(sc(gipo.mese), sc(gipo.mese_ap), { etichetta: etMeseAP }),
+      dettaglio: 'vendite nette del mese / accettazioni GIPO', fonte: fGipo, aggiornato: gipo.ultima, motivo: 'Nessuna accettazione GIPO nel mese' }));
+  }
+  const tt2 = byKey.attesa_prima_disponibilita;
+  out.retail.push(tt2 ? { ...tt2, gruppo: G_SCHERMO, titolo: 'Prima disponibilità online', tabella: null, serie: [], chiave: 'tt_prima_disponibilita' } : ndR('tt_prima_disponibilita', 'Prima disponibilità online', 'giorni'));
+  if (!gipo) out.retail.push(ndR('gipo_fuori_area', 'Quota fuori area', '%'));
+  else {
+    const q = gipo.fuori.valutabili ? Math.round((gipo.fuori.fuori / gipo.fuori.valutabili) * 1000) / 10 : null;
+    out.retail.push(indicatore({ chiave: 'gipo_fuori_area', titolo: 'Quota fuori area', gruppo: G_SCHERMO, unita: '%', valore: q, meglio: null,
+      dettaglio: gipo.fuori.valutabili ? `${gipo.fuori.fuori} accettazioni su ${gipo.fuori.valutabili} valutabili` : null, fonte: `GIPO, clienti del mese (comune e provincia diversi da quelli della sede)`, aggiornato: gipo.ultima,
+      motivo: 'Nessuna accettazione GIPO del mese con comune e provincia del cliente e della sede' }));
+  }
+
+  // ---- 5. persone e operations: dagli indicatori già calcolati
+  const prendi = (k, titolo) => (byKey[k] ? { ...byKey[k], gruppo: G_SCHERMO, titolo, serie: [] } : null);
+  const ferie = prendi('assenti_oggi', 'Ferie e permessi oggi');
+  const ncA = prendi('nc_aperte', 'NC aperte');
+  const ord = byKey.ordini_in_corso;
+  const ordAttesa = !ord ? null : ord.non_disponibile ? { ...ord, chiave: 'ordini_attesa', titolo: 'Ordini in attesa', gruppo: G_SCHERMO }
+    : indicatore({ chiave: 'ordini_attesa', titolo: 'Ordini in attesa', gruppo: G_SCHERMO, valore: ord.parti?.find((x) => x.etichetta === 'Da approvare')?.valore ?? 0, meglio: 'giu',
+      dettaglio: `da approvare · ${(ord.parti || []).filter((x) => x.etichetta !== 'Da approvare').map((x) => `${x.etichetta.toLowerCase()} ${x.valore}`).join(' · ')}`, fonte: ord.fonte, aggiornato: ord.aggiornato });
+  out.persone = [ferie, ncA, ordAttesa].filter(Boolean);
+  return out;
+}
+
 // ------------------------------------------------------------------ composizione e cache
 const MODULI_LETTI = ['cash', 'retail', 'finance', 'nc', 'orders', 'shipments', 'referti', 'room', 'business', 'ferie', 'audit', 'ticket', 'circolari'];
 const COSTRUTTORI = [['incassi', incassi, 'INCASSI'], ['conto', contoEconomicoMonitor, 'RICAVI_COSTI'], ['finance', processiFinance, 'FINANCE'], ['operations', operations, 'OPERATIONS'], ['retail_flow', retailFlow, 'RETAIL_FLOW'], ['persone', persone, 'PERSONE']];
@@ -624,7 +790,10 @@ export async function calcolaMonitor({ oggi = oggiRoma() } = {}) {
       indicatori.push(indicatore({ chiave: `${nome}_errore`, titolo: GRUPPI.find((g) => g.key === gruppo).titolo, gruppo, motivo: `Lettura non riuscita: ${String(e.message).slice(0, 160)}` }));
     }
   }
-  return { generato_at: new Date().toISOString(), oggi, settimane: S, scad, indicatori, moduli: live };
+  let schermo = null;
+  try { schermo = await schermoMonitor(ctx, indicatori); }
+  catch (e) { console.warn(`[cockpit:monitor:schermo] ${e.message}`); schermo = { errore: `Lettura non riuscita: ${String(e.message).slice(0, 160)}` }; }
+  return { generato_at: new Date().toISOString(), oggi, settimane: S, scad, indicatori, schermo, moduli: live };
 }
 
 let cache = { at: 0, oggi: null, data: null, promise: null };
@@ -655,6 +824,8 @@ export async function monitorPerUtente(user, opts = {}) {
     },
     gruppi: GRUPPI,
     indicatori: d.indicatori,
+    // schermo unico (v0.68.1): righe fisse della pagina, scadenze con al più 6 righe per settimana
+    schermo: d.schermo ? { ...d.schermo, versione: APP_VERSION, scadenze: [bloccoScadenze(righe, d.settimane.corrente, MAX_RIGHE_SCHERMO), bloccoScadenze(righe, d.settimane.prossima, MAX_RIGHE_SCHERMO)] } : null,
     moduli: Object.fromEntries(Object.entries(d.moduli).map(([k, v]) => [k, v === true ? 'LIVE' : v])),
   };
 }

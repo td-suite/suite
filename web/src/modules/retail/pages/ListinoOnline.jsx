@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { useApi, Card, Loading, ErrorBox, Empty, Badge } from '../components/ui.jsx';
 import { eur, num } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function ListinoOnline() {
   const [mesi, setMesi] = useState(12);
@@ -14,6 +15,7 @@ export default function ListinoOnline() {
   return (
     <div className="page">
       <div className="page-head"><div><h1>Listino online vs prezzo di cassa</h1><div className="sub">Prezzo pubblicato su TuoTempo per la prenotazione online e prezzo medio incassato in cassa (vendite GIPO private: netto diviso quantità). Una differenza ampia è un'incoerenza da verificare con il listino.</div></div></div>
+      <FonteB2CAuto tipo="GIPO+TUOTEMPO" />
       <div className="filters">
         <label className="f">Periodo delle vendite<select value={mesi} onChange={(e) => setMesi(Number(e.target.value))}>{[3, 6, 12, 24].map((m) => <option key={m} value={m}>ultimi {m} mesi</option>)}</select></label>
         <label className="f">Mostra<select value={solo} onChange={(e) => setSolo(e.target.value)}><option value="">Tutte le prestazioni TuoTempo</option><option value="online">Solo visibili online</option><option value="diversi">Differenza di almeno il 5%</option><option value="senza">Senza vendite GIPO nel periodo</option></select></label>

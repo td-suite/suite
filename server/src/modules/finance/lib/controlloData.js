@@ -159,11 +159,21 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
 
 /** Somma dei mesi di un cliente (ricavo e margine null se nessun mese li ha; "parziale" se manca qualche mese). */
 export function sommaMesi(ms) {
-  const s = { esami: 0, ricavo: null, fatturato_documenti: null, costo_ritiri: 0, costo_esami: 0, pagamenti: 0, costi_diretti: 0, margine: null, margine_pct: null, stime: [], da_indicare: [], ricavo_parziale: false, fonti: [] };
+  const s = { esami: 0, ricavo: null, ricavo_effettivo: null, ricavo_stime: null, esami_stimati: 0, mesi_stimati: 0, fatturato_documenti: null, costo_ritiri: 0, costo_esami: 0, pagamenti: 0, costi_diretti: 0, margine: null, margine_pct: null, stime: [], da_indicare: [], ricavo_parziale: false, fonti: [] };
   for (const m of ms) {
     s.esami += Number(m.esami || 0);
     if (m.fatturato_documenti != null) s.fatturato_documenti = CE.r2((s.fatturato_documenti || 0) + m.fatturato_documenti);   // a parte: mai nel ricavo
     if (m.ricavo != null) s.ricavo = CE.r2((s.ricavo || 0) + m.ricavo); else if (m.esami > 0) s.ricavo_parziale = true;
+    // v0.68.1: ricavo effettivo (produzione Synclab, StudioLAB, manuale) distinto da quello delle stime commerciali
+    if ('ricavo_effettivo' in m) {   // totale di un cliente (somma per il totale di linea)
+      if (m.ricavo_effettivo != null) s.ricavo_effettivo = CE.r2((s.ricavo_effettivo || 0) + m.ricavo_effettivo);
+      if (m.ricavo_stime != null) s.ricavo_stime = CE.r2((s.ricavo_stime || 0) + m.ricavo_stime);
+      s.esami_stimati += Number(m.esami_stimati || 0); s.mesi_stimati += Number(m.mesi_stimati || 0);
+    } else if (m.produzione) {       // mese di un cliente
+      const stimato = !CE.effettiva(m.produzione);
+      if (stimato) { s.esami_stimati += Number(m.esami || 0); s.mesi_stimati += 1; }
+      if (m.ricavo != null) { if (stimato) s.ricavo_stime = CE.r2((s.ricavo_stime || 0) + m.ricavo); else s.ricavo_effettivo = CE.r2((s.ricavo_effettivo || 0) + m.ricavo); }
+    }
     s.costo_ritiri = CE.r2(s.costo_ritiri + (m.costo_ritiri || 0)); s.costo_esami = CE.r2(s.costo_esami + (m.costo_esami || 0));
     s.pagamenti = CE.r2(s.pagamenti + (m.pagamenti || 0)); s.costi_diretti = CE.r2(s.costi_diretti + (m.costi_diretti || 0));
     for (const x of m.stime || []) if (!s.stime.includes(x)) s.stime.push(x);
@@ -171,6 +181,8 @@ export function sommaMesi(ms) {
     if (m.produzione?.fonte && !s.fonti.includes(m.produzione.fonte)) s.fonti.push(m.produzione.fonte);
   }
   if (s.ricavo != null) { s.margine = CE.r2(s.ricavo - s.costi_diretti); s.margine_pct = s.ricavo > 0 ? Math.round((s.margine / s.ricavo) * 1000) / 10 : null; }
+  // margine "effettivo": ricavo della sola produzione effettiva meno gli stessi costi diretti (le stime non contano)
+  s.margine_effettivo = s.ricavo_effettivo != null || s.ricavo_stime != null ? CE.r2((s.ricavo_effettivo || 0) - s.costi_diretti) : null;
   return s;
 }
 
@@ -186,23 +198,21 @@ export async function movimentiConto(p, imp, sedi) {
   const service = await caricaService(p, { imp });
   const srvIds = service.clienti.map((c) => c.org_id);
   const ret = await leggi('retail', `SELECT s.site_id, to_char(s.sale_date, '${fmt}') AS d, count(*)::int AS n, sum(s.net_amount) AS tot,
-        sum(s.net_amount) FILTER (WHERE s.b2b_customer_id IS NOT NULL) AS b2b
+        sum(s.net_amount) FILTER (WHERE s.b2b_customer_id IS NOT NULL) AS b2b, sum(s.net_amount) FILTER (WHERE s.source = 'GIPO') AS gipo, max(s.sale_date)::text AS ultima
       FROM sales s WHERE s.sale_date BETWEEN $1::date AND $2::date AND s.source <> 'DEMO' AND s.site_id IS NOT NULL
        AND NOT (s.b2b_customer_id IS NOT NULL AND EXISTS (SELECT 1 FROM customers c WHERE c.id = s.b2b_customer_id AND c.organization_id = ANY($3::int[])))
      GROUP BY 1, 2 ORDER BY 2`, [p.da, p.a, srvIds]);
   fonti.ricavi_retail = { disponibile: ret.ok, nota: ret.nota || 'Vendite nette di Retail per sede e data (produzione, non fatturato); escluse le vendite dimostrative e quelle B2B dei clienti Service (riga Service)' };
-  for (const r of ret.rows) mov.push({ riga: 'ricavi_retail', site_id: r.site_id, importo: CE.r2(r.tot), modulo: 'Retail', data: r.d, descrizione: `${r.n} righe di vendita${Number(r.b2b) ? `, di cui B2B ${eurTxt(r.b2b)}` : ''}`, link: '/retail' });
+  for (const r of ret.rows) mov.push({ riga: 'ricavi_retail', site_id: r.site_id, importo: CE.r2(r.tot), gipo: CE.r2(r.gipo || 0), ultima: r.ultima, modulo: 'Retail', data: r.d, descrizione: `${r.n} righe di vendita${Number(r.gipo) && CE.r2(r.gipo) !== CE.r2(r.tot) ? `, di cui GIPO ${eurTxt(r.gipo)}` : ''}${Number(r.b2b) ? `, di cui B2B ${eurTxt(r.b2b)}` : ''}`, link: '/retail' });
 
   // RICAVI · Service: produzione dei clienti attribuita alla sede del Laboratorio
   if (!lab) fonti.ricavi_service = { disponibile: false, nota: 'Nessuna sede LABORATORIO attiva in Amministrazione > Sedi: i ricavi Service non hanno una sede a cui attribuirli' };
   else {
     fonti.ricavi_service = { disponibile: service.fonti.clienti?.disponibile !== false, nota: [service.fonti.clienti?.nota, `Produzione dei clienti Service attribuita a ${lab.name} (pagina Margine per cliente Service)`, service.fonti.business?.nota].filter(Boolean).join('. ') };
-    for (const c of service.clienti) {
-      const t = c.totale;
-      if (!t.esami && t.ricavo == null) continue;
-      mov.push({ riga: 'ricavi_service', site_id: lab.id, importo: t.ricavo, modulo: 'Finance Management · Service', data: p.mesi.length > 1 ? `${p.anno}` : p.mesi[0], descrizione: `${c.org_name}: ${t.esami} esami${t.fonti.length ? ` (${t.fonti.join(', ').toLowerCase()})` : ''}${t.stime.length ? ' · stima' : ''}${t.ricavo_parziale ? ' · valore in parte da indicare' : ''}`, stima: t.stime.includes('produzione stimata'), link: `/finance/margine-service?org=${c.org_id}` });
-    }
+    // v0.68.1: nei ricavi solo la produzione effettiva (Synclab, StudioLAB, manuale); le stime commerciali nella riga separata non sommata
+    mov.push(...CE.movimentiService(service.clienti, lab, p));
   }
+  fonti.stime_service = { disponibile: true, nota: 'Stime dall\'account del Business Hub (volumi giornalieri attesi × giorni lavorativi del mese al prezzo medio per esame, o stima salvata): non sono produzione e non entrano nei ricavi né nel margine' };
 
   // CONTROLLO · Cash: incassi dei rendiconti da CLOSED in poi (contanti netti, POS, bonifici), non sommati ai ricavi
   const cash = await leggi('cash', `SELECT site_id, to_char(report_date, '${fmt}') AS d, count(*)::int AS n, sum(pos_total + cash_to_deposit + transfer_total) AS tot
@@ -323,15 +333,54 @@ export async function contoEconomico(p, { siteId = null } = {}) {
     c.variazione_margine = x ? CE.variazione(c.margine, x.margine) : null;
     c.variazione_ricavi = x ? CE.variazione(c.ricavi, x.ricavi) : null;
   }
-  cur.conto.totale.precedente = { ricavi: prev.conto.totale.ricavi, costi_diretti: prev.conto.totale.costi_diretti, costi_centrali: prev.conto.totale.costi_centrali, margine: prev.conto.totale.margine, margine_pct: prev.conto.totale.margine_pct };
+  // anno prima senza nessuna riga nella Suite (né ricavi né costi): si dichiara "nessun dato", non 0,00 € (v0.68.1)
+  const vuotoPrev = prev.conto.colonne.every((c) => CE.RIGHE.every((r) => !c.voci[r.key].righe.length)) && CE.RIGHE_COSTI.every((k) => !prev.conto.centrali.voci[k].righe.length);
+  cur.conto.totale.precedente = { ricavi: prev.conto.totale.ricavi, costi_diretti: prev.conto.totale.costi_diretti, costi_centrali: prev.conto.totale.costi_centrali, margine: prev.conto.totale.margine, margine_pct: prev.conto.totale.margine_pct, vuoto: vuotoPrev };
   cur.conto.totale.variazione_margine = CE.variazione(cur.conto.totale.margine, prev.conto.totale.margine);
   cur.conto.totale.variazione_ricavi = CE.variazione(cur.conto.totale.ricavi, prev.conto.totale.ricavi);
+  for (const c of cur.conto.colonne) if (c.precedente) c.precedente.vuoto = vuotoPrev || !CE.RIGHE.some((r) => prevBy.get(c.sede.id)?.voci[r.key].righe.length);
   const colonne = siteId ? cur.conto.colonne.filter((c) => c.sede.id === Number(siteId)) : cur.conto.colonne;
+  const comp = composizioneRicavi(cur.conto);
+  cur.conto.totale.composizione = comp;
   return {
+    da_dove: daDoveViene({ p, conto: cur.conto, fonti: cur.fonti, comp, imp, lab: cur.sedi.lab, prevVuoto: vuotoPrev }),
     periodo: p, precedente: CE.periodoPrecedente(p), impostazioni: imp,
     righe: CE.RIGHE, fonti: cur.fonti, colonne, totale: cur.conto.totale, centrali: cur.conto.centrali, ripartizione: cur.conto.ripartizione,
     laboratorio: cur.sedi.lab ? { id: cur.sedi.lab.id, name: cur.sedi.lab.name } : null,
     sedi: cur.sedi.sedi.map((s) => ({ id: s.id, code: s.code, name: s.name, kind: s.kind })), avvisi: cur.conto.avvisi,
     filtro_sede: siteId ? Number(siteId) : null,
   };
+}
+
+// ---------------------------------------------------------------- "Da dove viene" dei KPI (v0.68.1)
+const ggmm = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : '');
+const GIORNI_MESE = (da, a) => { const g1 = Number(String(da).slice(8, 10)), g2 = Number(String(a).slice(8, 10)); const m = CE.MESI_LUNGHI[Number(String(a).slice(5, 7)) - 1]; return String(da).slice(0, 7) === String(a).slice(0, 7) ? `${g1}-${g2} ${m}` : `dal ${ggmm(da)} al ${ggmm(a)}/${String(a).slice(0, 4)}`; };
+const NOMI_FONTE_SRV = { SYNCLAB: 'Synclab', STUDIOLAB: 'StudioLAB (file, Retail o Ordini)', MANUALE: 'inserita a mano' };
+
+/** Composizione dei ricavi del periodo: Retail (con la parte GIPO), Service effettivo con le fonti, stime escluse. */
+export function composizioneRicavi(conto) {
+  const righeRet = conto.colonne.flatMap((c) => c.voci.ricavi_retail.righe);
+  const ultima = righeRet.map((m) => m.ultima).filter(Boolean).sort().pop() || null;
+  return {
+    retail: conto.totale.voci.ricavi_retail, retail_gipo: CE.r2(righeRet.reduce((a, m) => a + Number(m.gipo || 0), 0)), retail_ultima: ultima,
+    service: conto.totale.voci.ricavi_service, service_fonti: conto.totale.service_fonti || [], service_clienti: conto.totale.service_clienti || 0,
+    stime: conto.totale.stime || { importo: 0, clienti: 0 },
+  };
+}
+
+/** Testi "Da dove viene" per i KPI della pagina: fonti e periodo effettivo (fino a oggi nel periodo in corso). */
+export function daDoveViene({ p, conto, fonti, comp, imp, lab, prevVuoto, oggi = todayRome() }) {
+  const fino = p.a < oggi ? p.a : oggi;
+  const per = GIORNI_MESE(p.da, fino);
+  const nd = (k) => (fonti[k]?.disponibile === false ? ` (non disponibile: ${fonti[k].nota})` : '');
+  const fontiSrv = comp.service_fonti.length ? comp.service_fonti.map((f) => (f === 'SYNCLAB' ? `Synclab: accettazioni ${per}, prezzi netti storici` : NOMI_FONTE_SRV[f] || f)).join('; ') : 'nessuna produzione effettiva';
+  const ricavi = [
+    `Retail${comp.retail_gipo ? ' (GIPO)' : ''}: vendite nette ${per}${comp.retail_ultima ? `, ultimo dato del ${ggmm(comp.retail_ultima)}` : ''}${nd('ricavi_retail')}`,
+    `Service: produzione effettiva di ${comp.service_clienti} ${comp.service_clienti === 1 ? 'cliente' : 'clienti'} attribuita a ${lab?.name || 'Laboratorio'} (${fontiSrv})${nd('ricavi_service')}`,
+    comp.stime.importo ? `Stime commerciali escluse: ${eurTxt(comp.stime.importo)} su ${comp.stime.clienti} ${comp.stime.clienti === 1 ? 'cliente' : 'clienti'} (Business Hub, non sommate)` : 'Nessuna stima commerciale nel periodo',
+  ];
+  const costi = [`Canoni (Scadenziario o Sedi), bollette registrate, royalties di sede (Cash), personale (RAL × ${String(imp.coefficiente).replace('.', ',')} / 12), liberi professionisti, manutenzioni (Facility), pagamenti Finance: ${per}`];
+  const centrali = [`Costi senza sede o delle sedi centrali ${per}, ripartiti sui ricavi delle sedi`];
+  const confronto = prevVuoto ? 'anno prima: nessun dato nella Suite' : `anno prima: stesso periodo (${CE.periodoPrecedente(p).etichetta})`;
+  return { periodo: per, ricavi, costi_diretti: costi, costi_centrali: centrali, margine: [...ricavi.slice(0, 2), 'meno costi diretti e quota dei costi centrali'], confronto };
 }

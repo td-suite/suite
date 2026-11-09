@@ -4,6 +4,7 @@ import { useAuth, canWrite } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, ToneBadge, Modal, useToast, Kpi, MoneyInput } from '../components/ui.jsx';
 import { api, base } from '../api.js';
 import { eur, eur0, num, itDate, pct, CAMPAIGN_CHANNEL, OBJECTIVE, CAMPAIGN_STATUS } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Campaigns() {
   const { user } = useAuth();
@@ -15,7 +16,7 @@ export default function Campaigns() {
   const rows = list.data || [];
   const tot = rows.reduce((a, c) => ({ spent: a.spent + Number(c.spent ?? c.budget ?? 0), revenue: a.revenue + Number(c.revenue || 0), tickets: a.tickets + Number(c.tickets || 0), customers: a.customers + Number(c.new_customers || 0) }), { spent: 0, revenue: 0, tickets: 0, customers: 0 });
   const save = async () => {
-    try { const r = await api.post('/campaigns', cleanBody(edit)); toast('Campagna creata'); setEdit(null); nav(`${base}/campagne/${r.id}`); } catch (e) { toast(e.message, 'err'); }
+    try { const r = await api.post('/campaigns', cleanBody(edit)); toast('Campagna creata'); setEdit(null); nav(`${base}/b2c/campagne/${r.id}`); } catch (e) { toast(e.message, 'err'); }
   };
   return (
     <div className="page">
@@ -23,6 +24,7 @@ export default function Campaigns() {
         <div><h1>Campagne</h1><div className="sub">Monitoraggio delle campagne di comunicazione: budget, speso, prenotazioni e ricavi attribuiti (codice promo o attribuzione per periodo, sede e prestazioni), nuovi pazienti, ROI.</div></div>
         <div className="row"><Field label="Anno"><select value={year} onChange={(e) => setYear(Number(e.target.value))}>{[year - 2, year - 1, year, year + 1].sort().map((y) => <option key={y} value={y}>{y}</option>)}</select></Field>{canWrite(user) && <button className="btn" onClick={() => setEdit({ channel: 'META', objective: 'ACQUISIZIONE', start_date: new Date().toISOString().slice(0, 10), status: 'PIANIFICATA', site_ids: [], product_ids: [] })}>+ Nuova campagna</button>}</div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi accent label="Investimento" value={eur0(tot.spent)} foot={`${rows.length} campagne nel ${year}`} />
         <Kpi label="Ricavi attribuiti" value={eur0(tot.revenue)} foot={`${num(tot.tickets)} prenotazioni tracciate`} />
@@ -33,7 +35,7 @@ export default function Campaigns() {
       <Card flush>
         {!list.data ? <Loading /> : !rows.length ? <Empty>Nessuna campagna nel {year}</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Campagna</th><th>Canale · obiettivo</th><th>Periodo</th><th>Stato</th><th className="num">Budget / speso</th><th className="num">Prenotazioni</th><th className="num">Ricavi</th><th className="num">Nuovi paz.</th><th className="num">ROI</th><th className="num">CPA</th></tr></thead>
-            <tbody>{rows.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${base}/campagne/${c.id}`)}>
+            <tbody>{rows.map((c) => <tr key={c.id} className="click" onClick={() => nav(`${base}/b2c/campagne/${c.id}`)}>
               <td><div className="strong">{c.name}</div><div className="small muted">{c.promo_code ? <span className="chip">{c.promo_code}</span> : null}{c.promotion_name ? `promo: ${c.promotion_name}` : ''}</div></td>
               <td className="small">{CAMPAIGN_CHANNEL[c.channel] || c.channel}<div className="muted">{OBJECTIVE[c.objective] || c.objective || ''}</div></td>
               <td className="small">{itDate(c.start_date)}{c.end_date ? ` – ${itDate(c.end_date)}` : ''}</td>

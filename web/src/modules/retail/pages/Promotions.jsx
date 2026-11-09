@@ -4,6 +4,7 @@ import { useAuth, canWrite } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Field, Badge, ToneBadge, Modal, useToast, Kpi, Icon, Progress } from '../components/ui.jsx';
 import { api, base, apiBase } from '../api.js';
 import { eur0, num, MONTHS, PROMO_STATUS, DISCOUNT } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 export default function Promotions() {
   const { user } = useAuth();
@@ -17,7 +18,7 @@ export default function Promotions() {
   const byMonth = Object.fromEntries(rows.map((p) => [p.month, p]));
   const tot = rows.reduce((a, p) => ({ revenue: a.revenue + Number(p.revenue || 0), tickets: a.tickets + Number(p.tickets || 0), customers: a.customers + Number(p.new_customers || 0), target: a.target + Number(p.kpi_target?.revenue || 0) }), { revenue: 0, tickets: 0, customers: 0, target: 0 });
   const save = async () => {
-    try { const r = await api.post('/promotions', { ...create, year, month: Number(create.month), discount_value: create.discount_value === '' || create.discount_value == null ? null : Number(create.discount_value) }); toast('Promozione creata'); setCreate(null); nav(`${base}/promozioni/${r.id}`); } catch (e) { toast(e.message, 'err'); }
+    try { const r = await api.post('/promotions', { ...create, year, month: Number(create.month), discount_value: create.discount_value === '' || create.discount_value == null ? null : Number(create.discount_value) }); toast('Promozione creata'); setCreate(null); nav(`${base}/b2c/promozioni/${r.id}`); } catch (e) { toast(e.message, 'err'); }
   };
   const clone = async () => { try { const r = await api.post('/promotions/clone-year', { from: year - 1, to: year }); toast(`${r.created} promozioni copiate come bozze dal ${year - 1}`); list.reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
@@ -31,6 +32,7 @@ export default function Promotions() {
           {canWrite(user) && <button className="btn" onClick={() => setCreate({ month: String(now.getMonth() + 1), channel_scope: 'B2C', discount_type: 'PREZZO_FISSO' })}>+ Nuova promozione</button>}
         </div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi accent label="Fatturato da promozioni" value={eur0(tot.revenue)} foot={tot.target ? `obiettivo annuo ${eur0(tot.target)} · ${Math.round((tot.revenue / tot.target) * 100)}%` : `${rows.length} promozioni pianificate`} />
         <Kpi label="Prenotazioni con codice promo" value={num(tot.tickets)} foot="accettazioni collegate" />
@@ -47,7 +49,7 @@ export default function Promotions() {
             if (!p) return <div key={m} className={`card month empty-month ${isNow ? 'now' : ''}`} onClick={() => canWrite(user) && setCreate({ month: String(i + 1), channel_scope: 'B2C', discount_type: 'PREZZO_FISSO' })}><div><div className="mname" style={{ justifyContent: 'center' }}>{m}</div><div className="small" style={{ marginTop: 8 }}>{canWrite(user) ? '+ pianifica' : 'da pianificare'}</div></div></div>;
             const target = p.kpi_target?.revenue;
             return (
-              <div key={m} className={`card month ${isNow ? 'now' : ''} ${past ? 'past' : ''}`} onClick={() => nav(`${base}/promozioni/${p.id}`)}>
+              <div key={m} className={`card month ${isNow ? 'now' : ''} ${past ? 'past' : ''}`} onClick={() => nav(`${base}/b2c/promozioni/${p.id}`)}>
                 <div className="mname"><span>{m}</span><ToneBadge map={PROMO_STATUS} value={p.status} /></div>
                 <div className="pname">{p.name}</div>
                 <div className="claim">{p.claim ? `“${p.claim}”` : <span className="muted">claim da definire</span>}</div>

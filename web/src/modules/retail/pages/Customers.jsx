@@ -5,6 +5,7 @@ import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, SegmentBadge, Mod
 import { SiteSelect, LineSelect } from '../components/filters.jsx';
 import { qs, api, base, apiBase } from '../api.js';
 import { eur, eur0, num, itDate, SEX, SEGMENT, CHANNEL, B2B_TYPE } from '../format.js';
+import { FonteB2CAuto } from '../components/fonte.jsx';
 
 const SORTS = [['revenue', 'Fatturato'], ['last_visit', 'Ultima visita'], ['first_visit', 'Prima visita'], ['visits', 'Visite'], ['name', 'Nome'], ['age', 'Età'], ['city', 'Comune']];
 
@@ -27,7 +28,7 @@ export default function Customers({ kind }) {
       const body = { ...edit, kind, employees: edit.employees === '' || edit.employees == null ? null : Number(edit.employees), home_site_id: edit.home_site_id ? Number(edit.home_site_id) : null };
       delete body.id;
       const r = edit.id ? await api.put(`/customers/${edit.id}`, body) : await api.post('/customers', body);
-      toast('Cliente salvato'); setEdit(null); if (r.id) nav(`${base}/clienti/${r.id}`); else list.reload();
+      toast('Cliente salvato'); setEdit(null); if (r.id) nav(`${base}/b2c/clienti/${r.id}`); else list.reload();
     } catch (e) { toast(e.message, 'err'); }
   };
   const isB2B = kind === 'B2B';
@@ -41,6 +42,7 @@ export default function Customers({ kind }) {
           {canWrite(user) && !isB2B && <button className="btn" onClick={() => setEdit({ kind, marketing_consent: false })}>+ Nuovo paziente</button>}
         </div>
       </div>
+      <FonteB2CAuto tipo="GIPO" />
       <div className="filters">
         <Field label="Cerca"><input placeholder={isB2B ? 'Ragione sociale, P.IVA, comune…' : 'Cognome, nome, CF, email, comune…'} value={f.q} onChange={(e) => set('q', e.target.value)} /></Field>
         {!isB2B && <Field label="Sesso"><select value={f.sex} onChange={(e) => set('sex', e.target.value)}><option value="">Tutti</option><option value="F">Donne</option><option value="M">Uomini</option></select></Field>}
@@ -67,7 +69,7 @@ export default function Customers({ kind }) {
           <div className="table-wrap"><table className="t">
             <thead><tr><th>{isB2B ? 'Azienda' : 'Paziente'}</th>{!isB2B && <th>Profilo</th>}<th>Provenienza</th><th>Sede di riferimento</th><th>Segmento</th><th>Prima / ultima visita</th><th className="num">Visite</th><th className="num">Fatturato</th></tr></thead>
             <tbody>{d.rows.map((r) => (
-              <tr key={r.id} className="click" onClick={() => nav(`${base}/clienti/${r.id}`)}>
+              <tr key={r.id} className="click" onClick={() => nav(`${base}/b2c/clienti/${r.id}`)}>
                 <td><div className="strong">{isB2B ? r.company_name : `${r.last_name} ${r.first_name}`}</div><div className="small muted">{isB2B ? `${B2B_TYPE[r.b2b_type] || r.b2b_type || ''}${r.sector ? ` · ${r.sector}` : ''}` : `${r.tax_code || ''}${r.email ? ` · ${r.email}` : ''}`}</div></td>
                 {!isB2B && <td>{r.sex ? SEX[r.sex] : '–'}{r.age != null ? `, ${r.age} anni` : ''}<div className="small muted">{CHANNEL[r.acquisition_channel] || r.acquisition_channel || ''}{r.marketing_consent ? ' · consenso mkt' : ''}</div></td>}
                 <td>{r.city || '–'}{r.province ? ` (${r.province})` : ''}</td>

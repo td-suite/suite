@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Modal, Badge, Field, useToast } from '../components/ui.jsx';
 import { durTxt } from '../planner/planner.jsx';
-import { buildNetwork, simulate, DAYS, DAYS_S, m2t } from '../lib/network.js';
+import { buildNetwork, reteDi, simulate, DAYS, DAYS_S, m2t } from '../lib/network.js';
 import { pdfAgendaSpecialista, pdfProposta, pdfPianoDisponibilita, pdfBase64 } from '../lib/exports.js';
 
 const SEDE_COLORS = ['#1C505E', '#35768A', '#7A4E9E', '#2F8F5B', '#B7791F', '#B03A2E', '#4A6FA5', '#6B8E23'];
@@ -20,7 +20,8 @@ const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 // Tutte le persone dell'anagrafica unica (public.people, stato ATTIVO) con i filtri sul modello attuale: tipo (people.kind), sede di lavoro,
 // ruolo del catalogo, disciplina, testo su cognome e nome, pianificabili / esclusi. Per chi compare nella settimana-tipo delle sedi
-// si mostrano impegni, agenda e simulatore di proposta (dati del network, agganciati per chiave del nome).
+// si mostrano impegni, agenda e simulatore di proposta (dati del network, agganciati prima per person_id della riga di sede e poi per
+// chiave del nome, v0.68.1).
 export default function Specialisti() {
   const { user } = useAuth();
   const toast = useToast();
@@ -43,7 +44,8 @@ export default function Specialisti() {
   const canEdit = user.role !== 'VIEWER';
   const canPlan = ['ADMIN', 'PLANNER', 'RESP_SAN'].includes(user.role);
   // Persone attive dell'anagrafica, con il profilo del network (se la persona compare nella settimana-tipo di qualche sede)
-  const attive = useMemo(() => (persone.data || []).filter((p) => p.status === 'ATTIVO').map((p) => ({ ...p, net: net?.byKey[p.personaKey] || null })), [persone.data, net]);
+  // aggancio alla rete: prima person_id del personale di sede, poi chiave del nome (v0.68.1)
+  const attive = useMemo(() => (persone.data || []).filter((p) => p.status === 'ATTIVO').map((p) => ({ ...p, net: reteDi(net, p) })), [persone.data, net]);
   const discipline = useMemo(() => [...new Set([...(opz.data?.discipline || []), ...attive.flatMap((p) => [...(p.discipline || []), ...(p.net?.discipline || [])])].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')), [opz.data, attive]);
   const list = useMemo(() => attive.filter((p) =>
     (!kind || p.kind === kind)
@@ -54,7 +56,7 @@ export default function Specialisti() {
     && (!q || norm(`${p.lastName} ${p.firstName} ${p.nome}`).includes(norm(q)))), [attive, q, kind, sedeF, ruoloF, discF, pian]);
   const nEsclusi = attive.filter((p) => p.planningExcluded).length;
   // Persone della settimana-tipo delle sedi che non esistono nell'anagrafica unica: si segnalano, non si perdono
-  const nonInAnagrafica = useMemo(() => { const keys = new Set(attive.map((p) => p.personaKey)); return (net?.specialisti || []).filter((x) => !x.attivita && !keys.has(x.key)); }, [net, attive]);
+  const nonInAnagrafica = useMemo(() => { const agganciati = new Set(attive.filter((p) => p.net).map((p) => p.net)); return (net?.specialisti || []).filter((x) => !x.attivita && !agganciati.has(x)); }, [net, attive]);
   const p = sel ? attive.find((z) => z.id === sel) : null;
   const sediOpz = opz.data?.sedi || [];
   const sedeNome = (id) => { const s = sediOpz.find((z) => String(z.id) === String(id)); return s ? (s.short_name || s.name) : ''; };
@@ -98,9 +100,10 @@ export default function Specialisti() {
             </div>
             <div className="spec-items">{list.map((z) => (
               <button key={z.id} className={`spec-item ${sel === z.id ? 'on' : ''} ${z.net && checked.has(z.net.key) ? 'checked' : ''}`} onClick={() => setSel(z.id)}>
-                <div className="strong row" style={{ gap: 8 }}>{canEdit && z.net && <input type="checkbox" checked={checked.has(z.net.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(z.net.key)} title="Seleziona per l'invio massivo" />}<span>{z.lastName} {z.firstName}</span>{z.planningExcluded && <span className="small muted" style={{ fontWeight: 400 }}>esclusa</span>}{!z.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
+                <div className="strong row" style={{ gap: 8 }}>{canEdit && (z.net ? <input type="checkbox" checked={checked.has(z.net.key)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(z.net.key)} title="Seleziona per l'invio massivo" />
+                  : <span className="spec-nocheck" title="Nessun piano da inviare: non è nel personale di una sede" aria-label="Nessun piano da inviare: non è nel personale di una sede" onClick={(e) => e.stopPropagation()} />)}<span>{z.lastName} {z.firstName}</span>{z.planningExcluded && <span className="small muted" style={{ fontWeight: 400 }}>esclusa</span>}{!z.email && <span className="small muted" style={{ fontWeight: 400 }}>senza email</span>}</div>
                 <div className="small muted">{KIND_LABEL[z.kind] || z.kind}{z.roleName ? ` · ${z.roleName}` : ''}{(z.discipline || []).length ? ` · ${z.discipline.join(', ')}` : z.net?.discipline?.length ? ` · ${z.net.discipline.join(', ')}` : ''}</div>
-                <div className="small">{z.siteName ? <span>{sedeNome(z.siteId) || z.siteName}</span> : <span className="muted">sede non indicata</span>}{z.net ? <span> · {z.net.nSedi} {z.net.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(z.net.ore)}/sett.{z.net.sessioni.some((w) => !w.room) ? <span className="red"> · non allocate</span> : null}</span> : <span className="muted"> · non nelle sedi</span>}</div>
+                <div className="small">{z.siteName ? <span>{sedeNome(z.siteId) || z.siteName}</span> : <span className="muted">sede non indicata</span>}{z.net ? <span> · {z.net.nSedi} {z.net.nSedi === 1 ? 'sede' : 'sedi'} · {durTxt(z.net.ore)}/sett.{z.net.sessioni.some((w) => !w.room) ? <span className="red"> · non allocate</span> : null}</span> : <span className="muted" title="Non è nel personale di nessuna sede (né per persona dell'anagrafica né per nome)"> · non nelle sedi</span>}</div>
               </button>))}
               {!list.length && <div className="empty">Nessuna persona con questi filtri.</div>}
               {nonInAnagrafica.length > 0 && <div className="bd small muted" style={{ borderTop: '1px solid var(--line)' }} title={nonInAnagrafica.map((x) => x.nome).join(', ')}>Nella settimana-tipo delle sedi ma non in anagrafica: {nonInAnagrafica.length} ({nonInAnagrafica.slice(0, 4).map((x) => x.nome).join(', ')}{nonInAnagrafica.length > 4 ? '…' : ''}). Si creano in Rubrica con la stessa grafia.</div>}

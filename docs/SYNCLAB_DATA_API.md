@@ -131,7 +131,7 @@ disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) val
    gestionale, nessun paziente nella risposta, rete: messaggio chiaro nel Desk/NC, **nessun errore bloccante**, nessuna chiamata quando
    la Data API è spenta.
 
-## Chi usa i dati (v0.67.1)
+## Chi usa i dati (v0.67.1, aggiornato v0.68.1)
 
 | Chi | Cosa legge dalla copia | Dove | Regola |
 |---|---|---|---|
@@ -141,8 +141,13 @@ disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) val
 | **Ordini · Correlazione esami e materiali** | `synclab.samples` (material, container) legati alle righe con `request_item_samples` | `orders/lib/synclab.js`, tabella `orders.contenitori_synclab` (migrazione orders 014) | coppia più frequente per esame con percentuale e osservazioni; coppia abbinata a un articolo → proposta di correlazione con fonte SYNCLAB (anteprima e conferma), mai sulle MANUALE/LISTINO |
 | **Non conformità · Desk** | `requests.request_number`, `samples.barcode`, righe e campioni | `nc/lib/synclabDesk.js` | se la cache NC non ha l'accettazione: ricerca esatta, normalizzata, anno + numero; una → importata nella cache (origine SYNCLAB, migrazione nc 009); più → elenco; nessuna → registrazione manuale con la data della copia |
 | Non conformità · paziente | dettaglio di UNA accettazione (opt-in) | `nc/lib/pazienteSynclab.js` | sotto, "Dati paziente: dove e perché" |
-| Retail · Profilo dei pazienti | demografia | `lib/synclab/letture.js` | docs/RETAIL_PROFILO_PAZIENTI.md |
-| Cockpit, Diagnostica | conteggi e indicatori | `lib/cockpitMonitor.js`, `lib/diagnostica.js` | docs/COCKPIT.md |
+| Retail · Profilo dei pazienti | demografia | `lib/synclab/letture.js` | docs/RETAIL_PROFILO_PAZIENTI.md (filtro perimetro dalla v0.68.0) |
+| **Retail · sezione B2B** (v0.68.0) | accettazioni, righe d'esame, documenti, listini correnti, `clients_td` | `lib/synclab/letture.js`: `cruscottoB2B`, `produzioneClientiMesi`, `fatturatoClientiMesi`, `prezziApplicati`, `schedaClienteSynclab`, `statoCopia` | tutto il B2B di Retail deriva da qui; fatturato una volta per documento, NC separate, annullati esclusi e contati (docs/RETAIL.md) |
+| **Retail · Cruscotto di rete e Laboratorio in sede** (v0.68.0) | come sopra, per ripartizione | `quadroLaboratorio`, `laboratorioInSede`, `ripartizioneClienti` | ripartizione: client abbinato a una sede TD = Laboratorio in sede (B2C), Legal entity esterna o non abbinato = B2B; impostazione Retail `synclab_privati_in_b2c` (false = tutto B2B) |
+| **Business Hub · correlazione** (v0.68.1) | documenti e righe d'esame per Legal entity (`fatturatoPerOrg`, `produzionePerOrg`), `clients_td` | `modules/business/lib/synclabAccount.js` | maturato dell'anno, pro quota e run rate contro il fatturato FY atteso dichiarato; scheda account, Pipeline, Cruscotto, D51 (docs/BUSINESS_HUB.md) |
+| **Finance · Conto economico** (v0.68.1) | come Margine per cliente Service | `modules/finance/lib/contoEconomico.js` `movimentiService` | nei ricavi solo la produzione effettiva (Synclab, StudioLAB, manuale); le stime commerciali in una riga non sommata (docs/FINANCE.md) |
+| **Cockpit · schermo unico** (v0.68.1) | documenti B2B (`fatturatoClientiMesi`), accettazioni ed esami (`quadroLaboratorio`), `statoCopia` | `lib/cockpitMonitor.js` `schermoMonitor` | fatturato = B2C (GIPO) + B2B (Synclab); laboratorio del giorno e del mese; TOP 5 clienti (docs/COCKPIT.md) |
+| Cockpit, Diagnostica | conteggi e indicatori | `lib/cockpitMonitor.js`, `lib/diagnostica.js` | docs/COCKPIT.md; D51 (maturato sotto il 75% del pro quota) |
 
 Dettagli di Ordini: docs/ORDINI_SYNCLAB.md.
 
@@ -161,6 +166,11 @@ Dettagli di Ordini: docs/ORDINI_SYNCLAB.md.
 - **Retail > Profilo dei pazienti (laboratorio)** (v0.67.1): demografia delle accettazioni per sede, provenienza, andamento, esami e
   orari, export Excel (docs/RETAIL_PROFILO_PAZIENTI.md).
 - **Non conformità** (v0.67.1): recupero puntuale del paziente mancante (sopra).
+- **Retail, riordino del 09/11/2026** (v0.68.0): cruscotto complessivo B2C + B2B, sezione B2B interamente da Synclab (cruscotto, aziende e
+  strutture con produzione e fatturato del mese, scheda cliente, produzione cliente × mese con Excel, fatturato da documenti, listini
+  applicati contro listino Synclab e Business Hub, budget B2B), Laboratorio in sede nel B2C. Il perimetro B2B dei numeri è la
+  ripartizione (sede TD / Legal entity esterna o non abbinato), non `perimetro_b2b`, che resta l'indicatore "cliente attivo del Business
+  Hub" mostrato accanto al cliente. Dettagli: docs/RETAIL.md.
 - Migrazione core **053** (`053_profilo_pazienti.sql`): cache `public.geo_comuni` per la mappa dei comuni e indici su
   `requests.request_number`, `samples.barcode`, `request_items (instance_id, request_id)`.
 - **Diagnostica**: D48 "Clienti Synclab senza Legal entity abbinata" (INFO), D49 "Sincronizzazione Synclab ferma" (ATTENZIONE: con la

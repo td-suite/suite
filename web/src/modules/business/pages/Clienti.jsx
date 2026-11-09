@@ -8,7 +8,7 @@ import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Badge, Modal, Field, Empty, useToast } from '../components/ui.jsx';
 import { FASI, LINEE, PRIORITA, eurK, itDate, itDateTime } from '../format.js';
 
-const CHIAVI = ['q', 'linea', 'priorita', 'owner', 'prov', 'segmento', 'fase', 'attivo', 'stallo', 'origine'];
+const CHIAVI = ['q', 'linea', 'priorita', 'owner', 'prov', 'segmento', 'fase', 'attivo', 'stallo', 'origine', 'ritardo'];
 export function useFiltri() {
   const [sp, setSp] = useSearchParams();
   const f = Object.fromEntries(CHIAVI.map((k) => [k, sp.get(k) || '']));
@@ -25,6 +25,7 @@ export function filtra(righe, f) {
     && (!f.segmento || a.segmento_lab === f.segmento) && (f.fase === '' || String(a.fase_corrente) === f.fase)
     && (!f.attivo || (f.attivo === '1' ? a.cliente_attivo : f.attivo === 'conferma' ? a.da_confermare : !a.cliente_attivo)) && (!f.stallo || a.stallo)
     && (f.origine !== 'anagrafica' || (a.da_anagrafica && Number(a.fase_corrente) === 0))
+    && (!f.ritardo || ['GIALLO', 'ROSSO'].includes(a.synclab?.semaforo))   // v0.68.1: clienti attivi in ritardo sul pro quota (Synclab)
     && (!t || norm(`${a.org_name} ${a.gruppo || ''} ${a.citta || ''} ${a.tipologia || ''}`).includes(t)));
 }
 export function FiltriAccount({ f, setF, righe, owners, fase }) {

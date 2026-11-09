@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from '../lib/seedData.js';
 const r = Router();
 
 // ---------------- Impostazioni ----------------
-const SETTING_KEYS = ['company_name', 'company_website', 'brand_claim', 'fiscal_year_start_month', 'age_bands', 'returning_days', 'churn_days', 'top_products_limit', 'exposure_check_days', 'promo_change_day'];
+const SETTING_KEYS = ['company_name', 'company_website', 'brand_claim', 'fiscal_year_start_month', 'age_bands', 'returning_days', 'churn_days', 'top_products_limit', 'exposure_check_days', 'promo_change_day', 'synclab_privati_in_b2c'];
 
 // Le impostazioni mancanti valgono il predefinito dell'app (nella Suite non c'è il seed al primo avvio: i dati arrivano dal travaso)
 export async function getSettings() {
@@ -30,6 +30,9 @@ r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
   const body = req.body || {};
   for (const k of Object.keys(body)) {
     if (!SETTING_KEYS.includes(k)) throw bad(`Impostazione sconosciuta: ${k}`);
+    // ripartizione delle accettazioni Synclab (riordino di Retail, v0.68.0): solo vero o falso
+    if (k === 'synclab_privati_in_b2c' && !['true', 'false'].includes(String(body[k]).toLowerCase())) throw bad('synclab_privati_in_b2c: true oppure false');
+    if (k === 'synclab_privati_in_b2c') body[k] = String(body[k]).toLowerCase();
     await q('INSERT INTO app_settings(key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, String(body[k] ?? '')]);
   }
   await audit(req, 'SETTINGS_UPDATE', 'settings', null, body);

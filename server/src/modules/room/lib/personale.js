@@ -20,6 +20,16 @@ export const PROFILI = ['Medico', 'Infermiere', 'Tecnico di radiologia', 'Tecnic
 export const DOC_TIPI = ['CV', 'DOCUMENTO_IDENTITA', 'CODICE_FISCALE', 'ALBO', 'ASSICURAZIONE', 'TITOLO_STUDIO', 'CONTRATTO', 'PRIVACY', 'ALTRO'];
 
 export const personKey = (nome) => (nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
+// Aggancio fra una riga del personale di sede (site_ext.data.personale) e una persona dell'anagrafica (v0.68.1): prima person_id della
+// riga (scelto dall'elenco con PersonaPicker, v0.67.3), poi la chiave del nome. Con person_id indicato vale solo quello.
+const conId = (riga) => riga?.person_id != null && riga.person_id !== '' && Number.isInteger(Number(riga.person_id));
+export const stessaPersona = (riga, persona) => (conId(riga) ? Number(riga.person_id) === Number(persona?.id) : personKey(riga?.nome) === personKey(persona?.nome));
+/** Ricerca nelle persone (con id e nome): trova(riga) usa prima person_id (se la persona è nell'elenco), poi la chiave del nome. */
+export function indicePersone(persone = []) {
+  const byId = new Map(persone.map((p) => [Number(p.id), p]));
+  const byKey = new Map(persone.map((p) => [personKey(p.nome), p]));
+  return (riga) => (conId(riga) && byId.get(Number(riga.person_id))) || byKey.get(personKey(riga?.nome)) || null;
+}
 export const isAttivita = (nome) => /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
 
 // Colonne della vista professionisti_v usate dalle route (alias p)

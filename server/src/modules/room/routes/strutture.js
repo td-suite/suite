@@ -94,14 +94,14 @@ r.put('/:id', ah(async (req, res) => {
     // conserva al massimo 500 versioni per sede
     await c.query('DELETE FROM struttura_history WHERE struttura_id=$1 AND id NOT IN (SELECT id FROM struttura_history WHERE struttura_id=$1 ORDER BY id DESC LIMIT 500)', [id]);
   });
-  // Schede Room dei professionisti allineate alla scheda di sede (stessa persona per chiave del nome): profilo del personale sanitario
+  // Schede Room dei professionisti allineate alla scheda di sede (stessa persona: person_id della riga, poi chiave del nome): profilo del personale sanitario
   try {
-    const { personKey } = await import('../lib/personale.js');
+    const { indicePersone } = await import('../lib/personale.js');
     const profs = await many('SELECT p.id, p.nome, p.tipo, p.profilo, p.in_room FROM professionisti_v p WHERE p.attivo');
-    const byKey = new Map(profs.map((p) => [personKey(p.nome), p]));
+    const trova = indicePersone(profs);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
     for (const x of data.personale || []) {
       if (!x.nome?.trim()) continue;
-      const pr = byKey.get(personKey(x.nome));
+      const pr = trova(x);
       if (!pr || !pr.in_room || pr.tipo !== 'sanitario' || !x.profilo || x.profilo === pr.profilo) continue;
       await q('UPDATE person_ext SET profilo=$2, updated_at=now(), updated_by=$3 WHERE person_id=$1', [pr.id, x.profilo, req.user.id]);
     }

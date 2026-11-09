@@ -31,8 +31,12 @@ export default function HubCruscotto() {
       </div>
 
       <div className="grid g5">
-        <div className="click-card" onClick={() => nav(`${BASE}/pipeline?linea=${linea}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} di fatturato FY atteso`} /></div>
-        <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&attivo=1`)}><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/pipeline?linea=${linea}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} FY atteso (dichiarato nelle schede)`} /></div>
+        <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&attivo=1`)} data-testid="hub-kpi-attivi"><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={<>
+          <div>{eurK(d.kpi.fatturato_attivi)} FY atteso (dichiarato nelle schede)</div>
+          {linea !== 'PP' && <div title={d.synclab?.nota || `Fatturato maturato nel ${d.synclab?.anno} dai documenti Synclab (contributo netto, una volta per documento) dei clienti attivi abbinati; pro quota del dichiarato sugli stessi clienti`}>
+            Maturato {d.synclab?.anno} (Synclab): {d.synclab?.maturato == null ? (d.synclab?.nota ? 'n.d.' : '–') : <b>{eurK(d.synclab.maturato)}</b>}{d.synclab?.clienti ? ` su ${d.synclab.clienti} clienti · pro quota ${eurK(d.synclab.pro_quota)}` : ''}{d.synclab?.in_ritardo ? <span className="red"> · {d.synclab.in_ritardo} in ritardo</span> : null}</div>}
+          <div>{d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'}</div></>} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&fase=0`)}><Kpi label="Prospect censiti" value={d.kpi.prospect} foot={`${d.kpi.account} account in tutto`} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&stallo=1`)}><Kpi label={`In stallo (> ${d.soglia_stallo} gg)`} value={d.kpi.stalli} foot="nessun avanzamento di fase" /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/email?linea=${linea}`)}><Kpi label="Email da assegnare" value={d.kpi.email_da_assegnare} foot={`${d.kpi.criticita} criticità aperte`} /></div>
@@ -50,7 +54,7 @@ export default function HubCruscotto() {
               </div>
             ))}
           </div>
-          <div className="small muted" style={{ marginTop: 8 }}>Fatturato = "Fatturato FY atteso" degli account in quella fase. La fase 7 conta solo i clienti attivi confermati.</div>
+          <div className="small muted" style={{ marginTop: 8 }}>Importi = FY atteso (dichiarato nelle schede) degli account in quella fase: non è fatturato. La fase 7 conta solo i clienti attivi confermati; il loro maturato dell'anno dal gestionale è nel riquadro "Clienti attivi" (Synclab).</div>
         </Card>
         <Card title="Clienti da confermare dal CEO" flush>
           {d.da_confermare.length ? <div className="table-wrap" style={{ maxHeight: 330 }}><table className="t"><tbody>

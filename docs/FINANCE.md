@@ -132,3 +132,23 @@ indicare), tabella costi esami. Le ipotesi compaiono nella nota "Come è calcola
 - Fonte `synclab` in `fonti` della risposta: lettura non riuscita = avviso, mai uno zero.
 - Da confermare con il CEO: la priorità della fonte SYNCLAB sopra Retail/Ordini e l'uso dei netti storici al posto del listino del
   Business Hub per il ricavo.
+
+## Conto economico senza stime nelle somme (09/11/2026 sera, v0.68.1)
+- I **ricavi Service** entrano nel totale **solo con produzione effettiva** (fonte SYNCLAB, STUDIOLAB da file, Retail o Ordini, MANUALE):
+  `contoEconomico.js movimentiService` divide ogni cliente mese per mese; i mesi con produzione STIMA (salvata o calcolata dall'account
+  del Business Hub) vanno nella riga **"Stime commerciali (non sommate)"** (gruppo `STIME`, come il controllo Cash non entra nei ricavi,
+  nel margine né nel "parziale"), sotto il totale dei ricavi, con il totale delle stime e il numero di clienti stimati (`totale.stime`).
+  Stesse righe negli export XLSX e PDF.
+- **KPI "Ricavi · mese"**: solo l'effettivo; sotto "effettivo: Retail GIPO x € · Service Synclab y € · stime escluse z €"
+  (`totale.composizione`).
+- **"Da dove viene"** su ogni KPI (riga breve con il dettaglio nel tooltip, `da_dove` della risposta): fonti e periodo effettivo, es.
+  "Retail (GIPO): vendite nette 1-9 novembre, ultimo dato del 09/11"; "Service: … (Synclab: accettazioni 1-9 novembre, prezzi netti
+  storici)"; "Stime commerciali escluse: …".
+- **Anno prima senza dati**: se nella Suite non c'è nessuna riga dello stesso periodo dell'anno prima, KPI e riga "Margine <anno prima>"
+  dicono "anno prima: nessun dato nella Suite" invece di 0,00 € (`precedente.vuoto`, anche per sede).
+- **Margine per cliente Service**: colonna Fonte (origine) come prima; KPI "Ricavo effettivo" e "Margine di linea effettivo" con accanto il
+  valore con le stime; in tabella le righe "Totale effettivo" e "Totale con le stime" (`ricavo_effettivo`, `ricavo_stime`,
+  `margine_effettivo`, `esami_stimati` in `sommaMesi`).
+- Test: `server/test/v0681-correlazioni.test.mjs` (un cliente stimato e uno Synclab: il totale esclude la stima; stima salvata fuori,
+  riga MANUALE dentro). Schermate `docs/screens/finance-conto-economico.png`, `finance-margine-service.png` (collaudo con dati sintetici).
+
