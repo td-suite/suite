@@ -1,0 +1,14 @@
+{
+  "numero": "TEST-TD-0001",
+  "urgenza": "ORDINARIA",
+  "destinazione": {
+    "codice": "10"
+  },
+  "righe": [
+    {
+      "codiceArticolo": "ART-001",
+      "unitaTotali": 1,
+      "unita": "PZ"
+    }
+  ]
+}

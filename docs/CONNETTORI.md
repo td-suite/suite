@@ -45,7 +45,10 @@ mostrano solo lo stato e il link "Configura in Amministrazione > Connettori".
    (typologies, nel perimetro Key Entities).
 3. GIPO: nessuna API documentata; eventuale base URL e chiave quando Docplanner le fornirà. I dati entrano con l'import da file di
    Retail e con le API di ingestione (`/api/ingest/*`, chiave in Amministrazione > Chiavi API).
-4. Silva: segreto in ingresso, codice cliente presso Silva, email ordini di ripiego. Nessuna chiamata in uscita.
+4. Silva: base URL (`https://silva.cloud/portaleordini`), chiave API (header X-API-KEY, la stessa per catalogo, destinazioni, ordini e
+   stato), anni del catalogo, intervallo di lettura, scadenza della chiave, interruttori "Trasmetti a Silva all'approvazione"
+   (`push_orders`, predefinito sì) e "Primo invio concordato con Silva già fatto" (`primo_invio_confermato`, predefinito no). Segreto
+   in ingresso, codice cliente ed email di ripiego servono solo ai canali storici. Prova connessione = destinazioni + catalogo.
 
 ## Cosa deve fare CB Sistemi (StudioLAB)
 - Chiamare gli endpoint della Suite con l'header `X-API-KEY` (per Non conformità va bene anche `X-Push-Secret`) uguale al segreto
@@ -61,9 +64,11 @@ mostrano solo lo stato e il link "Configura in Amministrazione > Connettori".
 - Gli IP da cui StudioLAB chiama la Suite si annotano in "IP consentiti" (per il firewall; la Suite verifica il segreto, non l'IP).
 
 ## Cosa deve fare Silva
-- Interrogare ogni 5 minuti `GET <BASE_URL>/api/orders/integrations/silva/orders` e inviare feed e avanzamenti su
+- Con la Guida tecnica API ordini v1 (09/11/2026) è la Suite a chiamare Silva: destinazioni, ordini, stato (sezione "Silva: API
+  ordini v1 definitiva" qui sotto). Silva non richiama la Suite in questa versione (niente callback).
+- Restano montati, se un giorno Silva li userà, i canali storici: `GET <BASE_URL>/api/orders/integrations/silva/orders` (polling),
   `/api/orders/integrations/silva/stock` e `/api/orders/integrations/silva/orders/:numero/(presa-in-carico|spedito|consegnato)`,
-  sempre con l'header `X-API-KEY` uguale al segreto in ingresso del connettore Silva. `GET .../silva/ping` verifica la chiave.
+  con l'header `X-API-KEY` uguale al segreto in ingresso del connettore Silva. `GET .../silva/ping` verifica la chiave.
 
 ## Moduli
 - Non conformità: `config.lis` (baseUrl, apiKey, codiceCliente, pushSecret, timeoutMs) sono getter sul connettore STUDIOLAB;
@@ -96,7 +101,7 @@ Playwright su /admin/connectors, /nc/impostazioni, /orders/impostazioni, /retail
 ## Silva: API catalogo v1 in lettura (30/10/2026)
 Silva ha attivato `https://silva.cloud/portaleordini` con header `X-API-KEY` (chiave inserita a mano in Amministrazione > Connettori > Silva, validità 365 giorni: la scadenza si annota in "Scadenza della chiave" e Magazzino Centrale avvisa 30 giorni prima). Chiamate: `GET /api/v1/catalogo?anno=` (fotografia completa; l'header `X-Catalog-Updated-At` è il riferimento) e `GET /api/v1/catalogo/modifiche?anno=&dal=` (nuovi/modificati, anche sola giacenza, più `eliminati`; nuovo riferimento in `aggiornatoAl`). La Suite (server/src/modules/orders/lib/silvaCatalog.js) tiene un riferimento per anno in `connectors.settings.cursors`, lo aggiorna solo dopo l'importazione riuscita, riparte dal completo su `409 full_sync_required`, legge gli anni di "Anni contabili da leggere" (default anno corrente) ogni "Intervallo di lettura" minuti (job `orders:silva-catalogo`, default 60) e su richiesta da Ordini > Magazzino Centrale ("Leggi da Silva", "Catalogo completo"). Le giacenze entrano in `warehouse_stock` come il feed in ingresso (gli eliminati vanno a zero); lotti, scadenze e GTIN arrivano vuoti in questa versione. "Prova" del connettore legge il catalogo dell'anno e riporta articoli e data. Il canale in ingresso (segreto X-API-KEY di Silva verso le API Ordini) resta per ordini e avanzamenti.
 
-## Silva: trasmissione degli ordini in API (31/10/2026)
+## Silva: trasmissione degli ordini in API (31/10/2026, superata dalla v0.68.2: vedi l'ultima sezione)
 All'approvazione dell'Area Operations (fase 2 → 3) la Suite invia l'ordine a `POST {base}/api/v1/ordini` con la chiave X-API-KEY del connettore e `X-Idempotency-Key` = numero d'ordine (`lib/silva.js pushOrderToSilva`); 200/201/409 = ricevuto, altrimenti ritentativi dal job `orders:silva-push` ogni 5 minuti finché l'ordine resta APPROVATO (max 50). Stato sull'ordine (`silva_send_status`, `silva_sent_at`, `silva_reference`) e in Trasmissione al magazzino con il pulsante "Trasmetti a Silva". Impostazione `push_orders` = false nel connettore per disattivare. La specifica consegnata a Silva è docs/SILVA_API_ORDINI.md con lo schema docs/silva-api-ordini-v1.openapi.yaml; gli avanzamenti restano le route in ingresso presa-in-carico / spedito / consegnato.
 
 ## Sedi dal connettore: codice, nome e orari (anagrafica unica, blocco 3, 08/11/2026)
@@ -148,3 +153,22 @@ Nuova installazione di CB Sistemi `https://synclab.toscanadiagnostica.it`, clien
   `include_patient` (spenta), `data_api_timeout_ms`, `operating_company`, `datasets`.
 - Registro: le chiamate della Data API hanno modulo `synclab`, percorso senza query, conteggi e correlationId (mai cursori o token).
 - Job `synclab:notturno` (ogni 15 minuti, esegue solo con la Data API accesa, dopo `sync_ora`, una volta al giorno).
+
+## Silva: API ordini v1 definitiva (09/11/2026, v0.68.2)
+Fonte: `docs/silva-api-ordini/` (Guida tecnica, collection Postman, esempio). Funzionamento completo: docs/SILVA_API_ORDINI.md.
+- Chiamate della Suite, tutte con `X-API-KEY` del connettore: `GET {base}/api/v1/destinazioni` (cache 10 minuti, "Aggiorna
+  destinazioni" in Ordini > Strutture > Destinazioni Silva, ultima lettura in `orders.app_settings.silva_destinazioni`),
+  `POST {base}/api/v1/ordini` con `X-Idempotency-Key` = numero, `GET {base}/api/v1/ordini/{numero}/stato`, più il catalogo.
+- Limite 30 richieste al minuto per IP e processo, condiviso con il catalogo: tutte le chiamate (anche la Prova connessione) passano da
+  `silvaCall` di `modules/orders/lib/silva.js`, finestra mobile di 60 s a 28 chiamate e pausa globale dopo un 429 (Retry-After).
+- Prova connessione: GET destinazioni (numero di sedi autorizzate; 403 = chiave senza permesso ordini) e poi catalogo dell'anno; il
+  messaggio dice anche se la trasmissione automatica è attiva, sospesa (primo invio non confermato) o spenta.
+- `push_orders` (etichetta "Trasmetti a Silva all'approvazione"): spento = solo invio a mano. `primo_invio_confermato` (predefinito
+  falso): finché è falso nessun invio automatico, Ops usa "Trasmetti a Silva (invio concordato)" nel dettaglio dell'ordine con
+  conferma esplicita. Dopo il primo 201 il connettore annota `primo_invio_at`, `primo_invio_numero`, `primo_invio_riferimento` e la
+  Suite propone di attivare l'automatismo; `primo_invio_confermato_at` (data di attivazione) delimita gli ordini che partono da soli:
+  quelli approvati prima restano da trasmettere a mano.
+- Job: `orders:silva-push` ogni 5 minuti (solo con l'automatismo attivo) e `orders:silva-stato` ogni 30 minuti (stato degli ordini
+  ricevuti e non consegnati). Diagnostica D53: strutture attive senza destinazione Silva.
+- La chiave non compare mai in file, registri o risposte: il registro del connettore riporta metodo, URL, esito e un messaggio; dopo
+  un 401/403 sull'ordine resta solo un'impronta SHA-256 troncata per capire quando la chiave è cambiata.

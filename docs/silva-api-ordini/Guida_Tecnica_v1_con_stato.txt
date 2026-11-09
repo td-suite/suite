@@ -1,0 +1,158 @@
+Guida tecnica API ordini Silva
+Toscana Diagnostica | Versione API v1 | 9 novembre 2026
+Le API ordini sono attive in produzione e la chiave di Toscana Diagnostica è abilitata. Il portale TD invia a
+Silva gli ordini già approvati. Silva verifica i dati e inserisce l’ordine nella preparazione con la propria
+numerazione.
+
+Accesso e indirizzi
+Base: https://silva.cloud/portaleordini
+GET {base}/api/v1/destinazioni
+POST {base}/api/v1/ordini
+GET {base}/api/v1/ordini/{numeroTD}/stato
+
+Inviare la chiave Silva nell’header X-API-KEY di ogni chiamata HTTPS. La chiave e la configurazione
+dell’integrazione determinano il cliente, il magazzino e l’utente di attribuzione. Una chiave valida priva del
+permesso ordini riceve 403 sulle chiamate ordini e destinazioni.
+
+Codici destinazione e articolo
+La GET delle destinazioni restituisce codice, nome, indirizzo, CAP, città e provincia delle sedi autorizzate.
+Associare ogni sede TD al codice Silva e trasmettere soltanto destinazione.codice nella POST. Silva recupera
+nome e indirizzo dalla propria anagrafica.
+Per ogni riga usare il codice esatto e l’unità principale pubblicati nel catalogo Silva. Per esempio, il catalogo
+completo dell’esercizio 2026 si legge con GET {base}/api/v1/catalogo?anno=2026. La POST ordini si invia
+senza parametri query.
+{"destinazioni":[{"codice":"10","nome":"Sede di esempio",
+ "indirizzo":"Via Test 1","cap":"50100","citta":"Firenze",
+ "provincia":"FI"}]}
+
+Prima prova in produzione
+Iniziare dalla GET delle destinazioni. Per la POST usare una sede e articoli concordati con Silva. Un invio
+valido crea un ordine operativo in preparazione.
+
+Stato per numero TD
+Usare lo stesso numero TD inviato nella POST, rispettando maiuscole e minuscole. La GET richiede X-API-
+KEY e non richiede corpo né X-Idempotency-Key. Il documento viene cercato nel cliente e magazzino della
+chiave.
+GET {base}/api/v1/ordini/TEST-TD-0001/stato
+200 {"numero":"TEST-TD-0001","presente":true,
+     "stato":"IN_PREPARAZIONE"}
+
+Gli stati sono IN_PREPARAZIONE se restano righe da preparare, EVASO se c’è un DDT collegato senza righe
+residue, ANNULLATO se tutte le righe articolo sono annullate e NON_DISPONIBILE se il documento esiste
+ma lo stato non è determinabile. EVASO descrive il completamento in Silva e non certifica la consegna
+fisica.
+404 {"numero":"TEST-TD-0001","presente":false,"stato":null}
+
+Il 404 indica che il documento è assente o fuori dal perimetro della chiave.
+
+
+
+
+Silva | API ordini v1 | 9 novembre 2026               1
+Invio di un ordine
+POST {base}/api/v1/ordini
+X-API-KEY: <chiave Silva>
+X-Idempotency-Key: TEST-TD-0001
+Content-Type: application/json
+Accept: application/json
+
+{
+    "numero": "TEST-TD-0001",
+    "urgenza": "ORDINARIA",
+    "destinazione": {
+       "codice": "10"
+    },
+    "righe": [
+       {
+         "codiceArticolo": "ART-001",
+         "unitaTotali": 1,
+         "unita": "PZ"
+       }
+    ]
+}
+
+I codici 10 e ART-001 sono dimostrativi. Sostituirli con i codici Silva autorizzati e usare PZ soltanto se è
+l’unità effettiva dell’articolo.
+
+Campo obbligatorio                    Regola
+
+numero                                Riferimento TD univoco per cliente Silva e uguale a X-Idempotency-Key. Da 1 a
+                                      64 caratteri ASCII tra lettere, numeri, punto, trattino e underscore. Il primo è
+                                      alfanumerico.
+
+urgenza                               ORDINARIA assegna priorità bassa. URGENTE assegna priorità alta.
+
+destinazione.codice                   Codice numerico positivo ottenuto dalla GET delle destinazioni.
+
+righe[].codiceArticolo                Codice esatto del catalogo, incluse maiuscole e minuscole. Una riga per
+                                      articolo.
+
+righe[].unitaTotali                   Quantità intera da 1 a 999999, espressa nell’unità del catalogo.
+
+righe[].unita                         Unità principale del catalogo. Silva accetta differenze di maiuscole e
+                                      minuscole.
+
+
+Campi facoltativi
+note, motivoUrgenza e destinazione.noteConsegna confluiscono nelle note operative. Accettano
+rispettivamente fino a 2000, 1000 e 1000 caratteri. Le note del documento hanno il limite gestionale di 300
+caratteri. I testi completi restano nel registro delle acquisizioni.
+
+dataApprovazione serve alla tracciabilità e, se inviata, richiede formato ISO 8601 con fuso esplicito, ad
+esempio 2026-11-09T09:00:00Z. Silva assegna la data del documento al momento dell’acquisizione.
+
+
+
+
+Silva | API ordini v1 | 9 novembre 2026                   2
+Risposte e prove Postman
+HTTP              Azione
+
+201 / 200         201 indica un nuovo ordine. 200 restituisce la ricevuta originale di un ordine identico già
+                  acquisito. Salvare la ricevuta e fermare gli invii.
+
+400               Leggere error, message e campo. Dati non validi o indisponibilità rifiutano l’intero ordine. Uno
+                  stesso numero con dati diversi restituisce immutable_order.
+
+401 / 403         Verificare rispettivamente validità della chiave e abilitazione a ordini e destinazioni.
+
+413 / 415         Inviare un corpo JSON fino a 1 MiB con Content-Type application/json.
+
+429               Attendere il tempo indicato in Retry-After e ripetere la richiesta originale.
+
+503 / timeout     Ripetere con stesso numero e contenuto. Il tentativo precedente potrebbe essere stato acquisito.
+
+{"numero":"TEST-TD-0001","riferimento":"OC 123 (ID 456)",
+ "ricevutoAl":"2026-11-09T09:10:00.1234567Z"}
+
+{"error":"unit_or_code_mismatch",
+ "message":"L’unità deve corrispondere al catalogo Silva",
+ "campo":"righe[0].unita"}
+
+Il limite è di 30 richieste al minuto per IP e processo, condiviso con il catalogo.
+Silva verifica fino a 200 righe per ordine e ricontrolla la disponibilità durante l’acquisizione. Un errore come
+righe[0].unita riguarda la prima riga. Il catalogo mostra la giacenza e la lettura non prenota la merce.
+
+Prova con la collection allegata
+1. Importare Silva-Ordini.postman_collection.json. Impostare baseUrl con HTTPS e senza barra finale e
+   apiKey con la chiave autorizzata.
+2. Eseguire 01 - Destinazioni Silva. Compilare il corpo della POST con destinazione, articoli, quantità e
+   unità concordati.
+3. Impostare numeroOrdine. La collection lo inserisce in numero e nell’header X-Idempotency-Key.
+4. Impostare confermaInvio a SI per inviare la POST. Se la richiesta viene saltata, controllare le variabili e il
+   JSON nella Console di Postman.
+5. Verificare 201 al primo invio e 200 ripetendo la stessa richiesta. Per un altro ordine usare un nuovo
+   numero.
+6. Eseguire 03 - Stato ordine per numero TD. Un ordine presente restituisce 200 e lo stato attuale. Usare
+   un numero inesistente per provare il 404.
+
+Perimetro della versione
+La ricevuta conferma l’acquisizione. Dopo 201 o 200 l’invio si conclude. La GET stato è una consultazione
+facoltativa. Annullamenti via API, callback, trasmissione di DDT e packing list restano fuori da questa
+versione.
+
+
+
+
+Silva | API ordini v1 | 9 novembre 2026                   3
+

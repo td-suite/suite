@@ -12,7 +12,8 @@ import { ah } from './lib/util.js';
 import { requireRole, isOps, OPS_ROLES, strutturaDiUtente } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
-import { pushPendingOrders } from './lib/silva.js';
+import { pushPendingOrders, aggiornaStatiSilva } from './lib/silva.js';
+import silvaRoutes from './routes/silva.js';
 import { getConnector } from '../../lib/connectors.js';
 import adminRoutes from './routes/admin.js';
 import orderRoutes from './routes/orders.js';
@@ -101,6 +102,7 @@ export default function mount(app) {
   r.use(blockWritesInMirror);
   r.use(synclabRoutes);   // fonte Synclab: produzione e contenitori → correlazioni (v0.67.1)
   r.use(adminRoutes);
+  r.use('/silva', silvaRoutes);   // destinazioni, abbinamento strutture, stato dell'integrazione, automatismo (v0.68.2)
   r.use('/orders', orderRoutes);
   r.use('/stock', stockRoutes);
   r.use('/production', productionRoutes);
@@ -127,11 +129,20 @@ export default function mount(app) {
     if (!d.ok) return { skipped: d.motivo };
     return aggiornaProduzioneSynclab();
   }, { runAtStart: false });
+  // Trasmissione a Silva (Guida tecnica API ordini v1): ritentativi degli ordini in coda e invio di quelli approvati, solo con
+  // l'automatismo attivo (push_orders e primo invio concordato confermato nel connettore)
   registerJob(`${KEY}:silva-push`, 5, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };
     return pushPendingOrders();
   });
+  // Stato presso Silva (GET /api/v1/ordini/{numero}/stato) degli ordini ricevuti e non ancora consegnati: IN_PREPARAZIONE → presa in
+  // carico, EVASO → spedito (DDT emesso), ANNULLATO e 404 → segnalazione all'Area Operations
+  registerJob(`${KEY}:silva-stato`, 30, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    return aggiornaStatiSilva();
+  }, { runAtStart: false });
   registerJob(`${KEY}:silva-catalogo`, 10, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };

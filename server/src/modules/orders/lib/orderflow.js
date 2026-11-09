@@ -30,18 +30,19 @@ export function assertStatus(order, ...allowed) {
 }
 
 /** Fase 3: il magazzino ha preso in carico l'ordine. */
-export async function markPicked(order, { reference, userId, actor = 'Silva' } = {}) {
+// label: testo dell'evento al posto di quello standard (stato letto con GET /api/v1/ordini/{numero}/stato di Silva, v0.68.2)
+export async function markPicked(order, { reference, userId, actor = 'Silva', label = null } = {}) {
   assertStatus(order, 'APPROVATO');
   await q("UPDATE orders SET status='PRESO_IN_CARICO', picked_at=now(), silva_reference=coalesce($2, silva_reference), updated_at=now() WHERE id=$1", [order.id, reference || null]);
-  await event(order.id, userId, `Preso in carico dal magazzino (${actor})`, { reference });
+  await event(order.id, userId, label || `Preso in carico dal magazzino (${actor})`, { reference });
   return { status: 'PRESO_IN_CARICO' };
 }
 
 /** Fase 4: spedito. */
-export async function markShipped(order, { ddt, userId, actor = 'Silva' } = {}) {
+export async function markShipped(order, { ddt, userId, actor = 'Silva', label = null, data = null } = {}) {
   assertStatus(order, 'APPROVATO', 'PRESO_IN_CARICO');
   await q("UPDATE orders SET status='SPEDITO', shipped_at=now(), picked_at=coalesce(picked_at, now()), ddt_number=coalesce($2, ddt_number), updated_at=now() WHERE id=$1", [order.id, ddt || null]);
-  await event(order.id, userId, `Spedito dal magazzino (${actor})`, { ddt });
+  await event(order.id, userId, label || `Spedito dal magazzino (${actor})`, { ddt, ...(data || {}) });
   return { status: 'SPEDITO' };
 }
 

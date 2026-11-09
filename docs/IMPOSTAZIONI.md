@@ -60,7 +60,7 @@ da `getCompany()`.
 | nc | site_ext, org_ext | email_nc | SPECIFICO | Casella NC dedicata; etichetta "se vuota si usa l'email della sede / Legal entity in Amministrazione" e fallback in `email_effettiva` della vista (usata dall'invio). |
 | nc | site_ext, org_ext | canale, email_cc, sla_ore, attiva, note, lis_json | SPECIFICO | Parametri NC. |
 | orders | site_ext, org_ext | referente, referente_phone | DUPLICATO | Sede TD: responsabile del nodo Sede dell'organigramma con telefono della persona (cellulare, poi ufficio) o della sede; Legal entity: telefono ed email di `organizations`. Migrazione 006; la vista espone anche `referente_person_id`, `referente_role`. |
-| orders | site_ext, org_ext | kind, silva_code, stock_deadline_day, delivery_mode, delivery_notes, notes | SPECIFICO | Flusso ordini e consegne. |
+| orders | site_ext, org_ext | kind, silva_code (destinazione Silva: codice numerico della GET destinazioni, v0.68.2), stock_deadline_day, delivery_mode, delivery_notes, notes | SPECIFICO | Flusso ordini e consegne. |
 | orders | company | name, vat_number, address... | DUPLICATO | `companyInfo()` legge `getCompany()`; della tabella restano logo e piè di pagina personalizzato. |
 | retail | site_ext | studiolab_code | DUPLICATO | `sites.studiolab_code` (migrazione 008, valori riportati nel core). |
 | retail | site_ext | saturday_open | DUPLICATO | Derivato da `sites.opening_hours_json` (sabato con una fascia); senza orari vale aperto. |

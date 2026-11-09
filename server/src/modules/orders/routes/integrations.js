@@ -6,7 +6,7 @@ import { interpreta, assicuraCategorie } from '../lib/silvaClassify.js';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, parse, HttpError } from '../lib/util.js';
 import { config } from '../config.js';
-import { orderPayload, silvaStatus } from '../lib/silva.js';
+import { orderPayloadEsteso as orderPayload, silvaStatus } from '../lib/silva.js';
 import { byNumber, markPicked, markShipped, markDelivered, ORDER_COLS, ORDER_JOINS } from '../lib/orderflow.js';
 import { ingestHl7, buildAck } from '../lib/studiolab.js';
 import { orderLines } from '../lib/orders.js';

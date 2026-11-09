@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D52 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D53 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -585,6 +585,11 @@ export const CONTROLLI = [
              AND NOT EXISTS (SELECT 1 FROM k WHERE k.chiave = r.chiave)
            ORDER BY r.sede, r.nome`,
     chiave: 'riga', link: (r) => `/room/sedi/${r.site_id}` },
+  // v0.68.2 (Guida tecnica API ordini v1 di Silva): l'ordine approvato si trasmette a Silva solo con la destinazione Silva della struttura
+  // (codice numerico della GET /api/v1/destinazioni, scelto in Ordini > Strutture); senza, l'ordine resta bloccato "dati da completare".
+  { id: 'D53', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Strutture attive senza destinazione Silva', richiede: ['orders.site_ext'], spiegazione: 'Sedi TD e Legal entity attive in Ordini (non i punti di consegna dei clienti service) senza destinazione Silva valida: il codice numerico delle sedi autorizzate da Silva (GET destinazioni). Gli ordini approvati per queste strutture non si trasmettono a Silva. Si sceglie in Ordini > Strutture > Destinazioni Silva, con la proposta automatica per indirizzo, CAP e città da confermare.',
+    sql: `SELECT s.id, s.code, s.name, s.city, s.silva_code FROM orders.strutture_v s WHERE s.active AND NOT s.delivery_point AND (s.silva_code IS NULL OR s.silva_code !~ '^[1-9][0-9]*$') ORDER BY s.origin DESC, s.name`,
+    chiave: 'id', link: () => '/orders/strutture' },
   { id: 'D29', area: 'SISTEMA', gravita: 'INFO', titolo: 'Punti SERVICE configurati in Room', richiede: ['room.site_ext'], spiegazione: 'Room riguarda le sedi TD (B10).',
     sql: `SELECT s.id, s.code FROM room.site_ext e JOIN sites s ON s.id = e.site_id WHERE s.kind = 'SERVICE' ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D30', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Planimetria di Sedi non pubblicata in Room', spiegazione: 'La planimetria corrente della sede va in Room Planning.',

@@ -6,9 +6,10 @@
 // tutte le cifre delle frazioni di secondo; 409 full_sync_required → ripartire dal completo. Lotti, scadenze e GTIN non ancora valorizzati.
 // I riferimenti stanno in connectors.settings.cursors ({ "2026": "2026-10-30T11:10:00.1234567Z" }), così sopravvivono ai riavvii.
 import { tx } from '../db.js';
-import { getConnector, saveConnector, logConnector } from '../../../lib/connectors.js';
+import { getConnector, saveConnector } from '../../../lib/connectors.js';
 import { setSetting } from '../routes/integrations.js';
 import { interpreta, assicuraCategorie, CATEGORIE_INTERPRETATE } from './silvaClassify.js';
+import { silvaCall } from './silva.js';
 
 const MODULE = 'orders';
 export const SILVA_DEFAULT_BASE = 'https://silva.cloud/portaleordini';
@@ -21,21 +22,11 @@ export const anniDaSincronizzare = (c) => {
   return [...new Set(anni)];
 };
 
+// Tutte le chiamate passano dal limitatore condiviso con ordini, destinazioni e stato (lib/silva.js silvaCall: 30 richieste al minuto
+// per IP e processo, pausa dopo un 429 secondo Retry-After). Errori di rete e tempo scaduto diventano un Error con il motivo.
 async function chiama(c, path, { timeoutMs = 60_000 } = {}) {
-  const url = `${base(c)}${path}`;
-  const t0 = Date.now();
-  let res, text;
-  try {
-    res = await fetch(url, { headers: { Accept: 'application/json', 'X-API-KEY': c.credentials.api_key }, signal: AbortSignal.timeout(timeoutMs) });
-    text = await res.text();
-  } catch (e) {
-    const msg = e.name === 'TimeoutError' || e.name === 'AbortError' ? 'nessuna risposta entro il tempo massimo' : `non raggiungibile: ${e.cause?.message || e.message}`;
-    logConnector({ kind: 'SILVA', direction: 'OUT', module: MODULE, endpoint: `GET ${url}`, status: 'ERRORE', ms: Date.now() - t0, message: msg });
-    throw new Error(msg);
-  }
-  let data = null; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-  logConnector({ kind: 'SILVA', direction: 'OUT', module: MODULE, endpoint: `GET ${url}`, status: res.status, ms: Date.now() - t0, message: res.ok ? `${Array.isArray(data?.articoli) ? data.articoli.length : 0} articoli` : text.slice(0, 300) });
-  return { res, data, text, ms: Date.now() - t0 };
+  const r = await silvaCall(c, 'GET', path, { timeoutMs, module: MODULE, messaggio: (res, data, t) => (res?.ok ? `${Array.isArray(data?.articoli) ? data.articoli.length : 0} articoli` : t ? String(t).slice(0, 300) : null) });
+  return { res: r.res, data: r.data, text: r.text, ms: r.ms };
 }
 
 // Articolo Silva → riga del feed interno (lib applyFeed di routes/integrations.js): codice, descrizione, quantità, unità, barcode

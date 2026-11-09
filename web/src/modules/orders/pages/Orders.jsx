@@ -5,6 +5,7 @@ import { useApi, Field, Loading, Empty, StatusBadge, Badge, Icon, ErrorBox, useT
 import { api, qs, BASE, API_BASE } from '../api.js';
 import { itDateTime, KIND, ORIGIN, STATUS } from '../format.js';
 import { PhaseBanner } from '../components/phase.jsx';
+import { SilvaBadge } from '../components/silva.jsx';
 
 export default function Orders({ verify = false }) {
   const { user } = useAuth();
@@ -42,7 +43,7 @@ export default function Orders({ verify = false }) {
       <div className="card">
         {!data ? <Loading /> : !rows.length ? <Empty>{verify ? 'Nessun ordine in attesa di verifica' : 'Nessun ordine'}</Empty> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th>Ordine</th>{ops && <th>Struttura</th>}<th>Origine</th><th>Stato</th><th className="num">Articoli</th><th className="num">Confezioni</th><th className="num">Consegnate</th><th>Segnali</th><th>Aggiornato</th>{ops && !verify && <th />}</tr></thead>
+            <thead><tr><th>Ordine</th>{ops && <th>Struttura</th>}<th>Origine</th><th>Stato</th><th className="num">Articoli</th><th className="num">Confezioni</th><th className="num">Consegnate</th>{ops && !verify && <th>Silva</th>}<th>Segnali</th><th>Aggiornato</th>{ops && !verify && <th />}</tr></thead>
             <tbody>{rows.map((o) => (
               <tr key={o.id} className="click" onClick={() => nav(`${BASE}/ordini/${o.id}`)}>
                 <td><span className="mono strong">{o.number}</span>{o.urgent && <> <Badge tone="red">Urgente</Badge></>}</td>
@@ -51,6 +52,7 @@ export default function Orders({ verify = false }) {
                 <td><StatusBadge status={o.status} /></td>
                 <td className="num">{o.lines_count}</td><td className="num">{o.packs_total}</td>
                 <td className="num">{['CONSEGNATO', 'IMMAGAZZINATO', 'CHIUSO'].includes(o.status) ? `${o.packs_delivered}` : '–'}</td>
+                {ops && !verify && <td className="small"><SilvaBadge o={o} /></td>}
                 <td className="small">{o.anomalies > 0 && <Badge tone="mauve">{o.anomalies} scostamenti &gt;50%</Badge>} {o.open_issues > 0 && <Badge tone="red">{o.open_issues} difformità</Badge>}</td>
                 <td className="small muted">{itDateTime(o.updated_at)}</td>
                 {ops && !verify && <td className="num"><button className="iconbtn" title="Elimina ordine" aria-label="Elimina" onClick={(e) => remove(e, o)}><Icon name="trash" size={16} /></button></td>}

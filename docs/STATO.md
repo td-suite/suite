@@ -91,6 +91,14 @@ Retail B2C, Scadenze e persone); Room: esterni con ruolo, sede o disciplina tra 
 personale di sede per person_id, D52. Test `server/test/v0681-correlazioni.test.mjs`. Dettagli: BUSINESS_HUB.md, FINANCE.md, COCKPIT.md,
 SYNCLAB_DATA_API.md, IMPOSTAZIONI.md.
 
+## 09/11/2026 (notte) · v0.68.2
+Ordini → Silva secondo la Guida tecnica API ordini v1 definitiva (docs/silva-api-ordini/): destinazioni Silva per struttura (GET
+destinazioni con cache, proposta per CAP/indirizzo da confermare, D53), corpo della POST con i soli campi della guida (codici e unità del
+catalogo Silva, unità totali intere, blocco locale con messaggio per Ops), risposte 201/200/400 (immutable_order)/401-403/429/503,
+limitatore condiviso con il catalogo (30 al minuto), stato presso Silva ogni 30 minuti (IN_PREPARAZIONE → presa in carico, EVASO →
+spedito, ANNULLATO e 404 → segnalazione), primo invio concordato (`primo_invio_confermato`) prima dell'automatismo, colonna e riquadro
+"Silva". Migrazione orders 015. Test `server/test/orders-silva-v1.test.mjs`. Dettagli: SILVA_API_ORDINI.md, CONNETTORI.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

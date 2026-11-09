@@ -254,21 +254,36 @@ export async function testConnector(kind) {
       const rows = Array.isArray(r.data?.return?.results) ? r.data.return.results : Array.isArray(r.data?.results) ? r.data.results : [];
       out = { ok: true, message: `Connessione riuscita: ${rows.length} tipologie (${r.ms} ms)` };
     } else if (kind === 'SILVA') {
-      // API Silva v1 (30/10/2026): catalogo e giacenze in lettura con X-API-KEY; la prova legge il catalogo dell'anno configurato
+      // Guida tecnica API ordini v1 (09/11/2026): prima la GET delle destinazioni (sedi autorizzate, verifica anche il permesso ordini
+      // della chiave), poi il catalogo dell'anno. Le chiamate passano dal limitatore condiviso (30 al minuto, modules/orders/lib/silva.js).
       if (c.credentials.api_key) {
+        const { silvaCall, memorizzaDestinazioni, validaDestinazioni, primoInvioConfermato, pushAttivo } = await import('../modules/orders/lib/silva.js');
+        const base = (c.base_url || DEFAULT_BASE_URL.SILVA).replace(/\/+$/, '');
+        const testo = (r) => (r.data && (r.data.message || r.data.error || r.data.title)) || r.text.slice(0, 200) || r.res.statusText;
+        endpoint = `${base}/api/v1/destinazioni`;
+        const d = await silvaCall(c, 'GET', '/api/v1/destinazioni', { module: 'admin', timeoutMs: 30000 });
+        if (d.status === 401) throw new Error('Silva rifiuta la chiave (401): verifica X-API-KEY e la sua scadenza');
+        let destinazioni;
+        if (d.status === 403) destinazioni = 'destinazioni non leggibili: la chiave non è abilitata a ordini e destinazioni (403)';
+        else if (!d.res.ok) destinazioni = `destinazioni: Silva risponde ${d.status}: ${testo(d)}`;
+        else if (!validaDestinazioni(d.data)) destinazioni = 'destinazioni: risposta non nel formato previsto';
+        else { await memorizzaDestinazioni(d.data.destinazioni); destinazioni = null; }
+        const nDest = destinazioni ? null : d.data.destinazioni.length;
         const anno = String(c.settings.catalog_years || '').split(/[;,\s]+/).map(Number).find((n) => n >= 2000) || new Date().getFullYear();
-        endpoint = `${(c.base_url || DEFAULT_BASE_URL.SILVA).replace(/\/+$/, '')}/api/v1/catalogo?anno=${anno}`;
-        const r = await fetchJson(endpoint, { headers: { 'X-API-KEY': c.credentials.api_key }, timeoutMs: 60000 });
-        if (r.res.status === 401 || r.res.status === 403) throw new Error(`Silva rifiuta la chiave (${r.res.status}): verifica X-API-KEY e la sua scadenza`);
-        if (!r.res.ok) throw new Error(`Silva risponde ${r.res.status}: ${(r.data && (r.data.message || r.data.error || r.data.title)) || r.text.slice(0, 200) || r.res.statusText}`);
+        endpoint = `${base}/api/v1/catalogo?anno=${anno}`;
+        const r = await silvaCall(c, 'GET', `/api/v1/catalogo?anno=${anno}`, { module: 'admin', timeoutMs: 60000 });
+        if (r.status === 401 || r.status === 403) throw new Error(`Silva rifiuta la chiave sul catalogo (${r.status}): verifica X-API-KEY e la sua scadenza`);
+        if (!r.res.ok) throw new Error(`${nDest != null ? `${nDest} destinazioni autorizzate · ` : ''}catalogo: Silva risponde ${r.status}: ${testo(r)}`);
         const n = Array.isArray(r.data?.articoli) ? r.data.articoli.length : null;
-        if (n == null) throw new Error('Risposta non nel formato previsto (manca "articoli")');
+        if (n == null) throw new Error('Risposta del catalogo non nel formato previsto (manca "articoli")');
         const upd = r.res.headers.get('x-catalog-updated-at');
         const scad = c.settings.key_expires_at ? ` · chiave valida fino al ${new Date(c.settings.key_expires_at).toLocaleDateString('it-IT')}` : '';
-        out = { ok: true, message: `Catalogo ${anno} letto: ${n} articoli con giacenza${upd ? `, aggiornato al ${new Date(upd).toLocaleString('it-IT')}` : ''} (${r.ms} ms)${scad}${c.inbound_secrets.length ? '' : ' · segreto in ingresso non impostato (Silva non può ancora leggere gli ordini)'}` };
+        const invio = !pushAttivo(c) ? 'trasmissione ordini all\'approvazione disattivata' : primoInvioConfermato(c) ? 'trasmissione ordini automatica attiva' : 'trasmissione automatica sospesa fino al primo invio concordato';
+        if (destinazioni) throw new Error(`${destinazioni} · catalogo ${anno} letto: ${n} articoli`);
+        out = { ok: true, message: `${nDest} destinazioni autorizzate · catalogo ${anno} letto: ${n} articoli con giacenza${upd ? `, aggiornato al ${new Date(upd).toLocaleString('it-IT')}` : ''} · ${invio} (${d.ms + r.ms} ms)${scad}`, destinazioni: nDest };
       } else {
         if (!c.inbound_secrets.length) throw new Error('Né chiave API Silva né segreto in ingresso impostati');
-        out = { ok: true, message: `Segreto in ingresso impostato, codice cliente ${c.settings.customer_code || 'non indicato'}. Chiave API Silva assente: il catalogo e le giacenze non vengono letti finché non la inserisci.` };
+        out = { ok: true, message: `Segreto in ingresso impostato, codice cliente ${c.settings.customer_code || 'non indicato'}. Chiave API Silva assente: destinazioni, catalogo, ordini e stato non si usano finché non la inserisci.` };
       }
     } else {
       if (c.base_url) { try { new URL(c.base_url); } catch { throw new Error('Base URL non valida'); } }

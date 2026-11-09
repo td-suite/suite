@@ -9,7 +9,7 @@ import { clausolaVisibilita } from '../lib/dotazione.js';
 import { mailStatus, sendMail } from '../lib/mailer.js';
 import { companyInfo } from '../lib/orders.js';
 import { studiolabStatus } from '../lib/studiolab.js';
-import { silvaStatus } from '../lib/silva.js';
+import { silvaStatus, statoIntegrazioneSilva, destinazioniSalvate, DESTINAZIONE_RE } from '../lib/silva.js';
 import { config } from '../config.js';
 import { config as suite } from '../../../config.js';
 import multer from 'multer';
@@ -29,7 +29,8 @@ const CODE = /^[A-Z0-9_-]{2,16}$/;
 // (docs/IMPOSTAZIONI.md): la vista strutture_v li calcola dall'organigramma e dall'anagrafica.
 const siteExtFields = {
   kind: z.enum(['CLIENTE', 'SEDE', 'LAB']).optional(),
-  silva_code: opt(z.string().max(40).transform((v) => v?.trim().toUpperCase() || null)),
+  // destinazione Silva (Guida tecnica API ordini v1): codice numerico positivo letto da GET /api/v1/destinazioni (selettore in Strutture)
+  silva_code: opt(z.string().max(12).transform((v) => v?.trim() || null).refine((v) => v == null || DESTINAZIONE_RE.test(v), 'La destinazione Silva è un codice numerico positivo: sceglila dall\'elenco delle destinazioni Silva')),
   stock_deadline_day: opt(z.coerce.number().int().min(1).max(31)),
   // referente e telefono vengono dal core (responsabile di sede dell'organigramma, contatti della Legal entity): non si scrivono qui
   delivery_mode: z.enum(['GIRO', 'RITIRO']).optional(),
@@ -70,8 +71,10 @@ r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const cols = Object.keys(d);
   if (!cols.length) throw bad('Nessun dato');
   if (d.silva_code) {
-    const dup = await one('SELECT id, name FROM strutture_v WHERE upper(silva_code)=upper($1) AND id<>$2', [d.silva_code, s.id]);
-    if (dup) throw bad(`Codice Silva già assegnato a un'altra struttura (${dup.name})`);
+    const dup = await one('SELECT id, name FROM strutture_v WHERE silva_code=$1 AND id<>$2', [d.silva_code, s.id]);
+    if (dup) throw bad(`Destinazione Silva ${d.silva_code} già assegnata a un'altra struttura (${dup.name})`);
+    const elenco = await destinazioniSalvate();
+    if (elenco?.destinazioni?.length && !elenco.destinazioni.some((x) => x.codice === d.silva_code)) throw bad(`La destinazione ${d.silva_code} non è tra le ${elenco.destinazioni.length} sedi autorizzate da Silva (lette il ${new Date(elenco.letto_al).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}): premi "Aggiorna destinazioni" o scegline una dall'elenco`);
   }
   const [table, keyCol, keyVal] = s.origin === 'ORG' ? ['org_ext', 'org_id', s.org_id] : ['site_ext', 'site_id', s.site_id];
   await q(`INSERT INTO ${table} (${keyCol}, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
@@ -186,7 +189,7 @@ const SETTING_KEYS = ['reorder_formula', 'production_months', 'alerts_enabled', 
 r.get('/settings', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [SETTING_KEYS]);
   const last = Object.fromEntries((await many("SELECT key, value FROM app_settings WHERE key IN ('silva_last_poll_at','silva_last_feed_at','studiolab_last_hl7_at')")).map((x) => [x.key, x.value]));
-  res.json({ settings: Object.fromEntries(rows.map((x) => [x.key, x.value])), mail: mailStatus(), studiolab: { ...studiolabStatus(), last_hl7_at: last.studiolab_last_hl7_at || null }, silva: { ...silvaStatus(), last_poll_at: last.silva_last_poll_at || null, last_feed_at: last.silva_last_feed_at || null }, entra: config.entra.enabled, baseUrl: config.baseUrl, integrationsUrl: `${suite.baseUrl}/api/orders/integrations` });
+  res.json({ settings: Object.fromEntries(rows.map((x) => [x.key, x.value])), mail: mailStatus(), studiolab: { ...studiolabStatus(), last_hl7_at: last.studiolab_last_hl7_at || null }, silva: { ...silvaStatus(), last_poll_at: last.silva_last_poll_at || null, last_feed_at: last.silva_last_feed_at || null, api: await statoIntegrazioneSilva().catch((e) => ({ errore: e.message })) }, entra: config.entra.enabled, baseUrl: config.baseUrl, integrationsUrl: `${suite.baseUrl}/api/orders/integrations` });
 }));
 r.put('/settings', requireRole('SUPERADMIN'), ah(async (req, res) => {
   const d = parse(z.object({

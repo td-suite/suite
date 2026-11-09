@@ -4,6 +4,7 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Card, StatusBadge, Badge, Modal, PromptModal, Field, Icon, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
+import { SilvaCard } from '../components/silva.jsx';
 import { itDate, itDateTime, dec, pct, KIND, ORIGIN, PHASES, phaseOf, STATUS_LONG, PKG_STATUS, ISSUE_KIND, STRUTTURA_ORIGIN } from '../format.js';
 
 const deltaTone = (d) => (d == null ? 'grey' : Math.abs(d) > 50 ? 'red' : Math.abs(d) > 20 ? 'mauve' : 'green');
@@ -142,6 +143,7 @@ export default function OrderDetail() {
             {o.silva_reference && <div className="small" style={{ marginTop: 8 }}>Riferimento magazzino: <span className="mono">{o.silva_reference}</span></div>}
             {o.ddt_number && <div className="small">DDT: <span className="mono">{o.ddt_number}</span></div>}
           </Card>
+          {ops && !['BOZZA', 'INVIATO'].includes(o.status) && (o.status !== 'ANNULLATO' || o.silva_send_status) && <SilvaCard o={o} onChanged={reload} />}
           <Card title="Difformità" className="mt" actions={(mine || ops) && ['SPEDITO', 'CONSEGNATO', 'IMMAGAZZINATO', 'CHIUSO'].includes(o.status) && <button className="btn sm ghost" onClick={() => setIssue({ kind: 'MANCANTE', description: '' })}>Segnala</button>}>
             {!o.issues.length ? <div className="muted small">Nessuna difformità</div> : o.issues.map((i) => (
               <div key={i.id} className={`msg ${i.status === 'CHIUSA' ? 'CHIUSURA' : ''}`} style={{ marginBottom: 8 }}>
@@ -166,7 +168,7 @@ export default function OrderDetail() {
       {cancel && <PromptModal title={`Annullare l'ordine ${o.number}?`} label="Motivazione" confirmText="Annulla ordine" danger onClose={() => setCancel(false)} onConfirm={async (reason) => { await api.post(`/orders/${o.id}/cancel`, { reason }); toast('Ordine annullato'); reload(); }} />}
       {approveAsk && (
         <Modal title="Approvare e trasmettere al fornitore?" onClose={() => setApproveAsk(false)} footer={<><button className="btn ghost" onClick={() => setApproveAsk(false)}>Indietro</button><button className="btn" onClick={() => saveVerify(true)}>Approva</button></>}>
-          <p>{totalApproved} confezioni approvate in {lines.filter((l) => Number(val(l, 'qty_approved') || 0) > 0).length} articoli. L'ordine passa alla fase 3: viene esposto sulle API che il Magazzino Centrale (Silva) legge ogni 5 minuti; la struttura riceve il PDF per email.</p>
+          <p>{totalApproved} confezioni approvate in {lines.filter((l) => Number(val(l, 'qty_approved') || 0) > 0).length} articoli. L'ordine passa alla fase 3: se la trasmissione automatica è attiva nel connettore parte subito verso Silva (POST /api/v1/ordini), altrimenti resta "da trasmettere" con il pulsante nel riquadro Silva; la struttura riceve il PDF per email.</p>
         </Modal>
       )}
       {issue && (

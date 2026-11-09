@@ -1,0 +1,179 @@
+{
+  "info": {
+    "name": "Silva - Ricezione ordini v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Prima versione: leggere le destinazioni Silva, compilare il corpo dell ordine con codici e quantità reali, poi abilitare intenzionalmente la POST. La GET stato legge il numero esterno TD. Callback e annullamenti via API restano fuori dal perimetro. La POST crea un ordine reale in preparazione. Lo stesso numero con gli stessi dati restituisce la ricevuta originale."
+  },
+  "auth": {
+    "apikey": [
+      {
+        "type": "string",
+        "value": "X-API-KEY",
+        "key": "key"
+      },
+      {
+        "type": "string",
+        "value": "{{apiKey}}",
+        "key": "value"
+      },
+      {
+        "type": "string",
+        "value": "header",
+        "key": "in"
+      }
+    ],
+    "type": "apikey"
+  },
+  "variable": [
+    {
+      "type": "string",
+      "value": "https://silva.cloud/portaleordini",
+      "key": "baseUrl"
+    },
+    {
+      "description": "Chiave Silva con Consenti ordini assegnato e integrazione abilitata; non inserire chiavi reali in file da condividere.",
+      "type": "string",
+      "value": "",
+      "key": "apiKey"
+    },
+    {
+      "description": "Numero immutabile. Ripetere con gli stessi dati; cambiare numero solo per un ordine nuovo.",
+      "type": "string",
+      "value": "TEST-TD-0001",
+      "key": "numeroOrdine"
+    },
+    {
+      "description": "Impostare SI solo dopo aver verificato ambiente, destinatario, articoli e quantità: la POST crea un ordine reale.",
+      "type": "string",
+      "value": "NO",
+      "key": "confermaInvio"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "const base = String(pm.variables.get('baseUrl') || '');",
+          "if (!base.startsWith('https://') || base.endsWith('/')) { pm.execution.skipRequest(); throw new Error('Usare baseUrl HTTPS senza barra finale.'); }",
+          "if (!pm.variables.get('apiKey')) { pm.execution.skipRequest(); throw new Error('Inserire una chiave Silva abilitata agli ordini.'); }"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "item": [
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Destinazioni leggibili', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().destinazioni).to.be.an('array'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "01 - Destinazioni Silva",
+      "request": {
+        "description": "Leggere i destinatari autorizzati e copiare soltanto il codice nella POST. Nome e indirizzo sono recuperati da Silva alla creazione dell’ordine.",
+        "url": "{{baseUrl}}/api/v1/destinazioni",
+        "method": "GET",
+        "header": [
+          {
+            "value": "application/json",
+            "key": "Accept"
+          }
+        ]
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "if (String(pm.variables.get('confermaInvio')) !== 'SI') { pm.execution.skipRequest(); throw new Error('La POST crea un ordine reale: impostare confermaInvio=SI solo dopo il controllo dei dati.'); }",
+              "let payload; try { payload = JSON.parse(pm.variables.replaceIn(pm.request.body.raw)); } catch (e) { pm.execution.skipRequest(); throw e; }",
+              "if (payload.numero !== String(pm.variables.get('numeroOrdine'))) { pm.execution.skipRequest(); throw new Error('numero deve coincidere con numeroOrdine.'); }",
+              "if (!Array.isArray(payload.righe) || !payload.righe.length) { pm.execution.skipRequest(); throw new Error('Compilare le righe con i codici del catalogo Silva.'); }"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Acquisito oppure già ricevuto', function () { pm.expect([200,201]).to.include(pm.response.code); });",
+              "if ([200,201].includes(pm.response.code)) { pm.test('Riscontro presente', function () { const r = pm.response.json(); pm.expect(r.numero).to.equal(String(pm.variables.get('numeroOrdine'))); pm.expect(r.riferimento).to.be.a('string'); pm.expect(r.ricevutoAl).to.be.a('string'); }); }"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "02 - Invia ordine approvato - CREA UN ORDINE REALE",
+      "request": {
+        "description": "Campi obbligatori: numero esterno, urgenza (ORDINARIA o URGENTE), codice destinazione Silva e righe con codice articolo, unitaTotali e unita. Urgenza determina la priorità operativa Silva: ORDINARIA=Bassa, URGENTE=Alta. Nome, indirizzo e descrizioni provengono da Silva. Note, motivoUrgenza e destinazione.noteConsegna sono facoltativi e confluiscono nelle note operative. dataApprovazione è facoltativa per la sola tracciabilità; il documento usa la data di creazione Silva. Modalità non gestita. Impostare confermaInvio=SI per creare un ordine reale; ripetere lo stesso contenuto e numero per verificare il 200 senza duplicati.",
+        "body": {
+          "raw": "{\n  \"numero\": \"{{numeroOrdine}}\",\n  \"urgenza\": \"ORDINARIA\",\n  \"destinazione\": {\n    \"codice\": \"10\"\n  },\n  \"righe\": [\n    {\n      \"codiceArticolo\": \"ART-001\",\n      \"unitaTotali\": 1,\n      \"unita\": \"PZ\"\n    }\n  ]\n}\n",
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/v1/ordini",
+        "method": "POST",
+        "header": [
+          {
+            "value": "application/json",
+            "key": "Content-Type"
+          },
+          {
+            "value": "application/json",
+            "key": "Accept"
+          },
+          {
+            "value": "{{numeroOrdine}}",
+            "key": "X-Idempotency-Key"
+          }
+        ]
+      }
+    },
+    {
+      "name": "03 - Stato ordine per numero TD",
+      "request": {
+        "description": "Usa il numero TD della POST. 200 indica documento presente; 404 restituisce presente=false e stato=null. Usa la stessa chiave abilitata agli ordini. Non serve confermaInvio.",
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/ordini/{{numeroOrdine}}/stato"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Stato presente o ordine assente', function () {",
+              "  pm.expect([200, 404]).to.include(pm.response.code);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.numero).to.equal(String(pm.variables.get('numeroOrdine')));",
+              "  pm.expect(body.presente).to.equal(pm.response.code === 200);",
+              "  if (body.presente) pm.expect(['IN_PREPARAZIONE','EVASO','ANNULLATO','NON_DISPONIBILE']).to.include(body.stato);",
+              "  else pm.expect(body.stato).to.equal(null);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

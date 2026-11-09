@@ -11,14 +11,20 @@ const DESC = {
   STUDIOLAB: 'LIS di laboratorio di CB Sistemi: API REST ServiceNET (chiave X-API-KEY) per Non conformità e Ordini, canali HL7 e push in ingresso con il segreto qui sotto. Alimenta anche le sedi dei clienti service (codice cliente). Con il client registrato (Synclab) anche la Data API v1: copia in sola lettura di clienti, esami, listini, accettazioni e documenti economici (scheda "Dati Synclab").',
   GIPO: 'Gestionale di accettazione e prenotazione B2C (Docplanner). Nessuna API documentata: i dati entrano dall\'import da file di Retail e dalle API di ingestione della Suite.',
   TUOTEMPO: 'Prenotazione online (Docplanner): API v3 con api_key fissa per istanza, chiamate dagli IP statici in uscita di Render autorizzati da Docplanner. Usata da Retail per il catalogo prenotabile.',
-  SILVA: 'Gestore del magazzino. API Silva v1 (dal 30/10/2026): la Suite legge catalogo e giacenze con la chiave X-API-KEY qui sotto (completo la prima volta per anno, poi sole modifiche con riferimento per anno); Silva interroga le API di Ordini con il segreto in ingresso.',
+  SILVA: 'Gestore del magazzino. API Silva v1 con la chiave X-API-KEY qui sotto (30 richieste al minuto, condivise): catalogo e giacenze (dal 30/10/2026), destinazioni autorizzate, trasmissione degli ordini approvati e loro stato (Guida tecnica API ordini v1, 09/11/2026). "Prova connessione" legge le destinazioni e il catalogo. Il primo invio di un ordine va concordato con Silva: finché non è confermato la trasmissione automatica non parte. Il segreto in ingresso serve solo ai canali storici in cui Silva chiama la Suite.',
 };
+// Impostazioni sì/no (interruttori): chiave, etichetta, valore predefinito, spiegazione
+const BOOL_SETTINGS = {
+  SILVA: [['push_orders', 'Trasmetti a Silva all\'approvazione', true, 'Regola del CEO: l\'ordine approvato da Ops parte verso Silva. Spento: si trasmette solo a mano dal dettaglio dell\'ordine.'],
+    ['primo_invio_confermato', 'Primo invio concordato con Silva già fatto', false, 'Finché è spento la trasmissione automatica non parte: Ops usa "Trasmetti a Silva (invio concordato)" nel dettaglio dell\'ordine. Dopo il primo 201 la Suite propone di accenderlo; vale per gli ordini approvati da quel momento.']],
+};
+const boolVal = (v, def) => (v === undefined || v === null || v === '' ? def : v === true || String(v).toLowerCase() === 'true');
 const CRED_FIELDS = { API_KEY: [['api_key', 'Chiave API']], BASIC: [['user', 'Utente'], ['password', 'Password']], OAUTH2: [['client_id', 'Client ID'], ['client_secret', 'Client secret']], CLIENT_JWT: [['client_name', 'Nome del client (name)'], ['client_id', 'Id del client (GUID)'], ['client_host', 'Host del client'], ['password', 'Password del client (8-16 caratteri, maiuscola, minuscola, numero, speciale)'], ['cf_access_client_secret', 'Cloudflare Access: Client Secret (facoltativo)']], NONE: [] };
 const SETTINGS = {
   STUDIOLAB: [['client_code', 'Codice cliente (CodiceCliente)', 'Codice di Toscana Diagnostica su ServiceNET, di norma TD'], ['timeout_ms', 'Timeout chiamate (ms)', ''], ['cf_access_client_id', 'Cloudflare Access: Client ID (facoltativo)', 'Se la WebApi è esposta con un Cloudflare Tunnel protetto da Access, il Client ID del service token; il secret va tra le credenziali']],
   TUOTEMPO: [['instance', 'Istanza (dbName)', 'es. tt_giponext_2313, una api_key per istanza'], ['lang', 'Lingua', 'it']],
   GIPO: [['client_code', 'Codice cliente', '']],
-  SILVA: [['customer_code', 'Codice cliente presso Silva', 'Compare negli ordini inviati al fornitore'], ['order_email', 'Email ordini (ripiego)', 'Casella a cui inviare l\'ordine in PDF se le API non sono in uso'], ['catalog_years', 'Anni contabili da leggere', 'es. 2026 oppure 2026, 2027 (vuoto = anno corrente)'], ['sync_minutes', 'Intervallo di lettura (minuti)', 'predefinito 60'], ['key_expires_at', 'Scadenza della chiave (AAAA-MM-GG)', 'La chiave Silva vale 365 giorni: avviso in Magazzino 30 giorni prima']],
+  SILVA: [['customer_code', 'Codice cliente presso Silva (canali storici)', 'Solo nel JSON del polling e dell\'email di ripiego: la API ordini v1 ricava il cliente dalla chiave'], ['order_email', 'Email ordini (ripiego)', 'Casella a cui inviare l\'ordine in PDF se le API non sono in uso'], ['catalog_years', 'Anni contabili da leggere', 'es. 2026 oppure 2026, 2027 (vuoto = anno corrente)'], ['sync_minutes', 'Intervallo di lettura (minuti)', 'predefinito 60'], ['key_expires_at', 'Scadenza della chiave (AAAA-MM-GG)', 'La chiave Silva vale 365 giorni: avviso in Magazzino 30 giorni prima']],
 };
 
 function ConnectorCard({ c, onChanged }) {
@@ -41,6 +47,12 @@ function ConnectorCard({ c, onChanged }) {
       const settings = { ...f.settings };
       settings.ip_allowlist = String(settings.ip_allowlist || '').split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
       if (settings.timeout_ms !== undefined && settings.timeout_ms !== '') settings.timeout_ms = Number(settings.timeout_ms); else delete settings.timeout_ms;
+      // Silva: l'automatismo vale per gli ordini approvati da quando si accende (l'arretrato non parte da solo)
+      if (c.kind === 'SILVA') {
+        const prima = boolVal(c.settings.primo_invio_confermato, false); const dopo = boolVal(settings.primo_invio_confermato, false);
+        if (dopo && !prima) settings.primo_invio_confermato_at = new Date().toISOString();
+        if (!dopo && prima) settings.primo_invio_confermato_at = null;
+      }
       const credentials = Object.fromEntries(Object.entries(creds).filter(([, v]) => v && v.trim()));
       const body = { enabled: f.enabled, base_url: f.base_url || null, auth_kind: f.auth_kind, settings, ...(Object.keys(credentials).length ? { credentials } : {}), ...(inbound.trim() ? { inbound_secret: inbound.trim() } : {}) };
       await api.put(`/connectors/${c.kind}`, body);
@@ -70,6 +82,8 @@ function ConnectorCard({ c, onChanged }) {
         {needsOutbound && f.auth_kind === 'CLIENT_JWT' && <div className="small muted" style={{ margin: '4px 0 10px' }}>Indirizzo base senza percorso (es. https://synclab.toscanadiagnostica.it). Salva le credenziali, registra la password del client una volta sola, poi la Suite fa il login e rinnova il token da sola.</div>}
         {needsOutbound && (CRED_FIELDS[f.auth_kind] || []).map(([k, l]) => <Field key={k} label={l} help={c.credentials.keys[k] ? `Impostata, termina con "${c.credentials.keys[k].hint}". Scrivi un nuovo valore per sostituirla.` : 'Scrittura sola: non sarà più leggibile'}><input type="password" autoComplete="new-password" value={creds[k] || ''} onChange={(e) => setCreds({ ...creds, [k]: e.target.value })} placeholder={c.credentials.keys[k] ? `impostata ••••${c.credentials.keys[k].hint}` : ''} /></Field>)}
         {(SETTINGS[c.kind] || []).map(([k, l, h]) => <Field key={k} label={l} help={h}><input value={f.settings[k] ?? ''} onChange={(e) => setF({ ...f, settings: { ...f.settings, [k]: e.target.value } })} /></Field>)}
+        {(BOOL_SETTINGS[c.kind] || []).map(([k, l, def, h]) => <Field key={k} label={l} help={h}><label className="row tight small"><input type="checkbox" checked={boolVal(f.settings[k], def)} onChange={(e) => setF({ ...f, settings: { ...f.settings, [k]: e.target.checked } })} />{boolVal(f.settings[k], def) ? 'Sì' : 'No'}</label></Field>)}
+        {c.kind === 'SILVA' && c.settings.primo_invio_at && <div className="small muted">Primo invio concordato riuscito: {c.settings.primo_invio_numero}{c.settings.primo_invio_riferimento ? ` (rif. ${c.settings.primo_invio_riferimento})` : ''} il {fmtDateTime(c.settings.primo_invio_at)}.</div>}
         <Field label="IP consentiti" help="Indirizzi dai quali il fornitore chiama la Suite, separati da virgola (informativo, per il firewall)"><input value={f.settings.ip_allowlist || ''} onChange={(e) => setF({ ...f, settings: { ...f.settings, ip_allowlist: e.target.value } })} placeholder="es. 185.10.20.30" /></Field>
       </div>
       {needsInbound && (

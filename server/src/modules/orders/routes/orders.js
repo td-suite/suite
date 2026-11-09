@@ -4,7 +4,7 @@ import { one, many, q, tx } from '../db.js';
 import { ah, bad, forbidden, notFound, audit, parse, itDate } from '../lib/util.js';
 import { requireRole, isOps, Params, assertStruttura, OPS_ROLES } from '../lib/access.js';
 import { nextOrderNumber, orderLines, enrichLines, assertStatus, ARTICLE_COLS, companyInfo } from '../lib/orders.js';
-import { emailOrder, pushOrderToSilva } from '../lib/silva.js';
+import { emailOrder, pushOrderToSilva, anteprimaSilva, statoOrdineSilva } from '../lib/silva.js';
 import { ORDER_COLS, ORDER_JOINS as JOINS, event, markPicked, markShipped, markDelivered, markStored } from '../lib/orderflow.js';
 import { buildOrderPdf } from '../pdf/order.js';
 import { sendMail, opsEmails } from '../lib/mailer.js';
@@ -150,7 +150,8 @@ async function approve(req, id) {
   });
   await event(id, req.user.id, 'Approvato dall\'Area Operations: in attesa del magazzino', { packs: n.n });
   await audit(req, 'ORDER_APPROVE', 'order', id);
-  // fase 3: trasmissione in API al gestionale Silva (se il connettore ha la chiave); in caso di errore ritenta il job orders:silva-push
+  // fase 3: trasmissione a Silva all'approvazione (regola del CEO) se l'automatismo è attivo nel connettore (chiave, push_orders e primo
+  // invio concordato confermato); altrimenti resta "da trasmettere" con il pulsante nel dettaglio. Errori ritentabili: job orders:silva-push
   pushOrderToSilva(id, { actor: req.user.full_name }).catch((e) => console.warn('[orders] trasmissione Silva:', e.message));
   // PDF archiviato sull'ordine e inviato alla struttura
   const full = await fullDetail(req, id);
@@ -165,11 +166,24 @@ async function approve(req, id) {
 }
 r.post('/:id/approve', requireRole(...OPS_ROLES), ah(async (req, res) => res.json(await approve(req, req.params.id))));
 
-// Fase 3: ritrasmissione in API al gestionale Silva su richiesta dell'Area Operations
+// Fase 3: trasmissione a Silva su richiesta dell'Area Operations (Guida tecnica API ordini v1). Finché il primo invio concordato con
+// Silva non è confermato nel connettore serve { conferma: true }: la POST crea un ordine reale in preparazione presso Silva.
+r.get('/:id/silva', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const o = await loadOrder(req, req.params.id);
+  res.json(await anteprimaSilva(o.id));
+}));
 r.post('/:id/silva-push', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const o = await loadOrder(req, req.params.id);
-  const out = await pushOrderToSilva(o.id, { actor: req.user.full_name });
-  await audit(req, 'ORDER_SILVA_PUSH', 'order', o.id, out);
+  const d = parse(z.object({ conferma: z.boolean().optional() }), req.body || {});
+  const out = await pushOrderToSilva(o.id, { actor: req.user.full_name, manuale: true, conferma: Boolean(d.conferma) });
+  await audit(req, 'ORDER_SILVA_PUSH', 'order', o.id, { conferma: Boolean(d.conferma), ok: out.ok, stato: out.stato || null, status: out.status || null, riferimento: out.riferimento || null, message: out.message || out.skipped || null });
+  res.json(out);
+}));
+// Stato presso Silva (GET /api/v1/ordini/{numero}/stato) su richiesta: "Aggiorna stato da Silva"
+r.post('/:id/silva-stato', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const o = await loadOrder(req, req.params.id);
+  const out = await statoOrdineSilva(o.id);
+  await audit(req, 'ORDER_SILVA_STATO', 'order', o.id, out);
   res.json(out);
 }));
 // Ripiego quando il fornitore non legge le API: ordine PDF via email alla casella del magazzino
