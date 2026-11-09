@@ -4,7 +4,7 @@
 // cattura, pagine con nextCursor opaco (con caratteri da codificare), syncToken solo all'ultima pagina, delta su /sync/changes con since
 // ripetuto, /sync/status a blocchi di 200 id, ProblemDetails in application/problem+json. Iniezioni: 401, 429, 500, 503, 409.
 // Avvio da riga di comando (collaudo): node test/helpers/fakeSynclab.mjs --port 7199 (password del client nella variabile
-// FAKE_SYNCLAB_PASSWORD, mai in argomento).
+// FAKE_SYNCLAB_PASSWORD, mai in argomento; FAKE_SYNCLAB_PROFILO=72 per le accettazioni sintetiche del profilo pazienti).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +25,63 @@ export function datiIniziali({ copie = 0 } = {}) {
     const r = copia(ESEMPI.optInRequest); r.id = `${r.id}-${i}`; r.requestNumber = `${r.requestNumber}-${i}`; r.items = r.items.map((x) => ({ ...x, id: `${x.id}-${i}` })); d.requests.push(r);
   }
   return d;
+}
+
+// Profilo dei pazienti (v0.67.1): accettazioni sintetiche per i test e il collaudo, costruite SOLO dalla forma di standardRequest (nessun
+// paziente: la proiezione standard non lo ha) con demografia variata (età, sesso, comune/provincia/CAP pubblici di Toscana ed Emilia) e
+// codici d'esame copia di quello degli esempi. Tre client (copie del client degli esempi) = tre sedi; date negli ultimi `mesi` mesi fino a
+// `oggi` e, con annoPrima, una parte nello stesso periodo dell'anno prima. Generatore pseudo-casuale con seme fisso: dati ripetibili.
+export const COMUNI_PROVA = [['Firenze', 'FI', '50100'], ['Sesto Fiorentino', 'FI', '50019'], ['Campi Bisenzio', 'FI', '50013'], ['Scandicci', 'FI', '50018'], ['Calenzano', 'FI', '50041'],
+  ['Prato', 'PO', '59100'], ['Montemurlo', 'PO', '59013'], ['Pistoia', 'PT', '51100'], ['Quarrata', 'PT', '51039'], ['Empoli', 'FI', '50053'], ['Lucca', 'LU', '55100'], ['Pisa', 'PI', '56100'],
+  ['Bologna', 'BO', '40100'], ['Arezzo', 'AR', '52100'], ['Siena', 'SI', '53100'], ['Poggio a Caiano', 'PO', '59016'], ['Signa', 'FI', '50058'], ['Lastra a Signa', 'FI', '50055'],
+  ['Bagno a Ripoli', 'FI', '50012'], ['Fiesole', 'FI', '50014'], ['Agliana', 'PT', '51031'], ['Carmignano', 'PO', '59015'], ['Vaiano', 'PO', '59021'], ['Livorno', 'LI', '57100']];
+// coppie materiale/contenitore dimostrative per codice d'esame (solo per il server finto)
+export const CONTENITORI_PROVA = { GLU: ['SIERO', 'PROVETTA'], GLU1: ['SANGUE INTERO', 'PROVETTA EDTA'], GLU2: ['SIERO', 'PROVETTA'], GLU3: ['URINE', 'CONTENITORE STERILE'],
+  GLU4: ['PLASMA', 'PROVETTA CITRATO'], GLU5: ['SANGUE INTERO', 'PROVETTA EDTA'], GLU6: ['SIERO', 'PROVETTA'], altro: ['PLASMA', 'PROVETTA CITRATO'] };
+export function datiProfilo({ n = 72, oggi = new Date().toISOString().slice(0, 10), mesi = 2, annoPrima = true, conPaziente = true } = {}) {
+  let seme = 20261109;
+  const rnd = () => { seme = (seme * 1103515245 + 12345) % 2147483648; return seme / 2147483648; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const clienti = ['A', 'B', 'C'].map((x) => { const c = copia(ESEMPI.client); c.id = `${c.id}-${x}`; c.clientCode = `${c.clientCode}-${x}`; c.legalName = `${c.legalName} ${x}`; return c; });
+  const esami = [copia(ESEMPI.exam), ...[1, 2, 3, 4, 5, 6].map((i) => { const e = copia(ESEMPI.exam); e.id = `${e.id}-${i}`; e.examCode = `${e.examCode}${i}`; e.description = `Esame dimostrativo ${i}`; return e; })];
+  const [y, m] = oggi.split('-').map(Number);
+  const inizio = new Date(Date.UTC(y, m - mesi, 1)).getTime(), fine = Date.parse(`${oggi}T00:00:00Z`);
+  const richieste = [];
+  const totale = n + (annoPrima ? Math.round(n / 3) : 0);
+  for (let i = 1; i <= totale; i++) {
+    const r = copia(ESEMPI.standardRequest); delete r.patient;
+    const prima = i > n;
+    let t = inizio + Math.floor(rnd() * Math.max(1, fine - inizio + 86400000));
+    if (prima) { const d = new Date(t); d.setUTCFullYear(d.getUTCFullYear() - 1); t = d.getTime(); }
+    const data = new Date(t).toISOString().slice(0, 10);
+    const ora = 7 + Math.floor(rnd() * 5) + (rnd() < 0.2 ? 7 : 0);
+    const cli = clienti[i % 3 === 0 ? 2 : i % 2 === 0 ? 1 : 0];
+    const com = rnd() < 0.08 ? [null, null, null] : rnd() < 0.55 ? COMUNI_PROVA[[0, 5, 7][clienti.indexOf(cli)]] : pick(COMUNI_PROVA);
+    r.id = `${r.id}-P${i}`; r.requestNumber = `2026/P${String(i).padStart(4, '0')}`; r.date = data;
+    r.clientId = cli.id; r.clientCode = cli.clientCode;
+    r.createdAtLocal = `${data}T${String(ora).padStart(2, '0')}:${String(Math.floor(rnd() * 60)).padStart(2, '0')}:00`;
+    r.patientType = rnd() < 0.75 ? 'PRIVATO' : 'CONVENZIONATO';
+    r.occupationalMedicine = rnd() < 0.15;
+    r.demographics = { ageYears: rnd() < 0.07 ? null : Math.floor(rnd() * 90), sex: rnd() < 0.53 ? 'F' : rnd() < 0.96 ? 'M' : null, city: com[0], province: com[1], postalCode: com[2] };
+    const k = 1 + Math.floor(rnd() * 3);
+    // campioni: un campione per coppia materiale/contenitore dell'accettazione, legato alle righe con sampleIds (circa il 10% con il
+    // contenitore "sbagliato", per provare la percentuale della coppia più frequente)
+    r.samples = []; r.invoiceIds = [];
+    const campione = (pair) => {
+      let c = r.samples.find((x) => x.material === pair[0] && x.container === pair[1]);
+      if (!c) { c = { ...copia(ESEMPI.optInRequest.samples[0]), id: `${r.id}-S${r.samples.length + 1}`, barcode: `BC${String(i).padStart(4, '0')}${r.samples.length + 1}`, material: pair[0], container: pair[1], sampleAtLocal: r.createdAtLocal, collectedAtLocal: r.createdAtLocal, checkedInAtLocal: r.createdAtLocal }; r.samples.push(c); }
+      return c.id;
+    };
+    r.items = Array.from({ length: k }, (_, j) => { const e = pick(esami); const pair = rnd() < 0.1 ? CONTENITORI_PROVA.altro : CONTENITORI_PROVA[e.examCode] || CONTENITORI_PROVA.altro;
+      return { ...copia(ESEMPI.standardRequest.items[0]), id: `${r.id}-${j}`, examId: e.id, examCode: e.examCode, description: e.description, invoiceIds: [], sampleIds: [campione(pair)] }; });
+    if (i % 5 === 0) r.requestNumber = `P26-${String(6700 + i).padStart(6, '0')}`;   // numeri nel formato "P26-00NNNN
+    richieste.push(r);
+  }
+  // un'accettazione con tutte le righe cancellate: non entra nel profilo
+  const canc = copia(richieste[0]); canc.id = `${canc.id}-CANC`; canc.requestNumber = '2026/PCANC'; canc.items = canc.items.map((x) => ({ ...x, id: `${x.id}-c`, deleted: true })); richieste.push(canc);
+  // l'accettazione degli esempi con il paziente nella proiezione opt-in (Persona Dimostrativa di CB Sistemi): per il recupero puntuale di NC
+  if (conPaziente) richieste.push(copia(ESEMPI.optInRequest));
+  return { clients: clienti, exams: esami, 'price-lists': [copia(ESEMPI.priceList)], requests: richieste, invoices: [] };
 }
 
 const proietta = (dataset, x, includePatient) => {
@@ -172,7 +229,8 @@ export function creaFakeSynclab({ password = 'Fittizia-1!', clientName = 'TDSuit
 if (process.argv[1] && process.argv[1].endsWith('fakeSynclab.mjs')) {
   const i = process.argv.indexOf('--port');
   const port = i > 0 ? Number(process.argv[i + 1]) : 7199;
-  const f = creaFakeSynclab({ password: process.env.FAKE_SYNCLAB_PASSWORD || 'Fittizia-1!', copie: 0, dati: datiIniziali({ copie: Number(process.env.FAKE_SYNCLAB_COPIE || 3) }), retryAfter: 1 });
+  const dati = process.env.FAKE_SYNCLAB_PROFILO ? datiProfilo({ n: Number(process.env.FAKE_SYNCLAB_PROFILO) || 72 }) : datiIniziali({ copie: Number(process.env.FAKE_SYNCLAB_COPIE || 3) });
+  const f = creaFakeSynclab({ password: process.env.FAKE_SYNCLAB_PASSWORD || 'Fittizia-1!', copie: 0, dati, retryAfter: 1 });
   f.avvia(port).then((u) => console.log(`[fakeSynclab] in ascolto su ${u}`));
   // cambi dimostrativi per il delta, dopo il primo completo: si attivano con SIGUSR2
   process.on('SIGUSR2', () => {

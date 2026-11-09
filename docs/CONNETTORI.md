@@ -67,7 +67,15 @@ mostrano solo lo stato e il link "Configura in Amministrazione > Connettori".
 
 ## Moduli
 - Non conformità: `config.lis` (baseUrl, apiKey, codiceCliente, pushSecret, timeoutMs) sono getter sul connettore STUDIOLAB;
-  `routes/inbound.js` verifica con `verifyInbound`; `lib/lis.js` registra le chiamate in uscita.
+  `routes/inbound.js` verifica con `verifyInbound`; `lib/lis.js` registra le chiamate in uscita. Dalla v0.67.1 `lib/pazienteSynclab.js`
+  recupera il paziente mancante di UNA accettazione dalla Synclab Data API (`GET /api/v1/data/requests/{id}?includePatient=true`, id
+  trovato nella copia per numero o barcode, al più una chiamata ogni 10 minuti per accettazione, solo con `data_api_enabled` attivo) e lo
+  scrive nella sola cache delle accettazioni di NC con il merge di ServiceNET; audit `ACC_PAZIENTE_SYNCLAB` senza il nome
+  (docs/SYNCLAB_DATA_API.md, "Dati paziente: dove e perché"). Il Desk (`GET /api/nc/accettazioni/:id`), se la cache non ha
+  l'accettazione, la cerca nella copia Synclab (`lib/synclabDesk.js`: numero o barcode, esatto, normalizzato, anno + ultimo gruppo di
+  cifre) e la importa con origine SYNCLAB (numero del gestionale, data, stato tradotto dal dizionario, esami non cancellati, campioni,
+  sede dal client abbinato); più corrispondenze → `409 ACC_SYNCLAB_SCELTA` con l'elenco e scelta con `?synclab_id=`.
+- Ordini: dalla v0.67.1 produzione e correlazioni anche dalla copia Synclab (`lib/synclab.js`, docs/ORDINI_SYNCLAB.md).
 - Ordini: `config.studiolab` e `config.silva` sono getter sui connettori STUDIOLAB e SILVA; `routes/integrations.js` verifica con
   `verifyInbound` e registra ogni chiamata del fornitore; `lib/studiolab.js` registra le chiamate in uscita.
 - Retail: la pagina Connettori del modulo resta per le sincronizzazioni (pianificazione, giorni, esiti, import da file); credenziali,

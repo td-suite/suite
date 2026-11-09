@@ -4,8 +4,10 @@ Consegna di CB Sistemi del 09/11/2026 (documentazione in `docs/synclab-data-api/
 openapi.json, esempi_sintetici.json, postman_collection.json). Installazione: `https://synclab.toscanadiagnostica.it`, client `TDSuite`,
 ruolo `DataAPI`, contratto 1.0. La Suite tiene una **copia locale in sola lettura** dei cinque insiemi di dati del gestionale (clienti,
 esami, listini, accettazioni, documenti economici) e la usa per il Controllo di gestione, il catalogo esami di Ordini, il Cockpit e la
-Diagnostica. Non scrive nulla nel gestionale. Non conformità e Ordini continuano a usare ServiceNET per le loro scritture e letture per
-accettazione.
+Diagnostica, e dalla v0.67.1 per il **Profilo dei pazienti** di Retail (docs/RETAIL_PROFILO_PAZIENTI.md). Non scrive nulla nel
+gestionale. Non conformità e Ordini continuano a usare ServiceNET per le loro scritture; dalla v0.67.1 il Desk NC cerca le accettazioni anche
+nella copia, la produzione e le correlazioni di Ordini la leggono, e NC usa la Data API per il **recupero puntuale del paziente**
+quando manca (sotto, "Chi usa i dati" e "Dati paziente: dove e perché").
 
 ## Architettura
 
@@ -15,7 +17,8 @@ accettazione.
 | Client HTTP | `server/src/lib/synclab/client.js` | `get(path, query, {timeoutMs})`, `metadata()`, `pagina()`, `delta()`, `stato()` (blocchi di 200 id), `dettaglio()`. Gestione 202/401/429/5xx/409, decimali esatti, limitatore 60 chiamate al minuto, registro. |
 | Persistenza | `server/src/lib/synclab/persistenza.js` | Upsert = sostituzione completa dell'aggregato e dei figli; marcatura delle uscite; appartenenze per ambito; svuotamento dei dati paziente. |
 | Motore | `server/src/lib/synclab/sync.js` | `eseguiCiclo(dataset, {modo, filtri, includePatient})`, `eseguiTutti()`, lock per ambito, coda di processo, riconciliazione, job `synclab:notturno`, stato per l'interfaccia. |
-| Letture | `server/src/lib/synclab/letture.js` | `produzioneMensile`, `fatturatoMensile`, `produzionePerOrg`, `fatturatoPerOrg`, `catalogoEsami`, `listinoCliente`, `indicatoriLaboratorio`. |
+| Letture | `server/src/lib/synclab/letture.js` | `produzioneMensile`, `fatturatoMensile`, `produzionePerOrg`, `fatturatoPerOrg`, `catalogoEsami`, `listinoCliente`, `indicatoriLaboratorio`; dalla v0.67.1 `profiloPazienti`, `sintesiProfilo`, `comuniProfilo`, `statoProfilo` (solo demografia). |
+| Recupero puntuale NC | `server/src/modules/nc/lib/pazienteSynclab.js` | `recuperaPaziente(acc)`: ricerca nella copia per numero o barcode, `dettaglio('requests', id, { includePatient: true })`, merge nella cache di NC. |
 | API | `server/src/routes/synclab.js` su `/api/synclab` (solo amministratori) | stato, impostazioni, sincronizza/riprendi/completo, storico, clienti Synclab e abbinamento, listino di un client. |
 | Pagina | `web/src/pages/admin/SynclabDati.jsx` → `/admin/connectors/synclab` | Amministrazione > Connettori > StudioLAB > "Dati Synclab (Data API)": schede Stato, Clienti Synclab, Impostazioni, Storico dei cicli. |
 | Schema | `server/src/migrations/052_synclab_data_api.sql` (core) | Schema `synclab`, tabelle, ponti, vista `clients_td`. |
@@ -102,6 +105,47 @@ Con `CLIENT_JWT`: health (senza token) → login → **`GET /api/v1/data/metadat
 delta) → `/api/v1/auth/client/info` solo come secondo passo: con il ruolo DataAPI risponde 403 e la Prova dice "ruolo DataAPI: info non
 disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) vale ancora la verifica di prima su info.
 
+## Dati paziente: dove e perché (decisione del CEO del 09/11/2026 sera)
+
+| Dove | Cosa c'è | Perché |
+|---|---|---|
+| Copia `synclab.requests` (proiezione **standard**, `include_patient` = false: impostazione da lasciare spenta) | `dem_age_years`, `dem_sex`, `dem_city`, `dem_province`, `dem_postal_code`; `patient_*` e `historical_description` **vuoti** | La BI e la profilazione servono con provenienza, età e sesso; nessuna identità in massa nella Suite. Il CEO spegne la proiezione paziente anche lato connettore. |
+| Retail > Profilo dei pazienti (laboratorio) | Solo aggregati della demografia (accettazioni, non persone) | Profilazione per sede, provenienza, fasce d'età e sesso (docs/RETAIL_PROFILO_PAZIENTI.md). Le query non leggono mai `patient_*`. |
+| Cache delle accettazioni di Non conformità (`nc.accettazioni.paziente_*`) | Cognome, nome, data di nascita, sesso, codice fiscale **di una accettazione** | La NC deve poter avere il paziente quando HL7/ServiceNET non lo hanno dato: **recupero puntuale**, una accettazione alla volta. Lo vedono gli stessi profili che già vedono il paziente nella NC (laboratorio, qualità, direzione, consultazione interna e la sede inviante della propria accettazione); mai nelle email. |
+
+**Recupero puntuale (NC, `modules/nc/lib/pazienteSynclab.js`)**
+1. Quando? Il Desk richiama un'accettazione (`GET /api/nc/accettazioni/:id`) e dopo ServiceNET (non collegato, non risponde, non trova
+   l'accettazione o non restituisce il paziente) `paziente_cognome` è ancora vuoto; oppure "Recupera dal gestionale" nel Desk o nella
+   scheda NC (`POST /api/nc/accettazioni/:id/paziente`, che prima riprova ServiceNET se collegato).
+2. Ricerca nella copia: `synclab.requests.request_number` = numero dell'accettazione **oppure** `synclab.samples.barcode` = codice
+   letto; se le corrispondenze sono più di una, nessuna scelta a caso (messaggio "verificare in StudioLAB").
+3. Una chiamata: `GET /api/v1/data/requests/{id}?includePatient=true` (`client.js` `dettaglio`); il dettaglio deve corrispondere
+   (stesso numero o un campione con quel barcode), altrimenti nessuna scrittura.
+4. Scrittura **solo** nella cache di NC con la stessa funzione di merge di ServiceNET (`lis.upsertAccettazione`, l'origine della riga non
+   cambia); **niente** nelle tabelle synclab (la copia resta in proiezione standard). Il sesso è il codice della demografia del record.
+5. Limite: al più **una chiamata per accettazione ogni 10 minuti** (memoria del processo), dentro le 60 chiamate al minuto del contratto.
+6. Registro: audit di NC `ACC_PAZIENTE_SYNCLAB` "Paziente recuperato dal gestionale per la NC <codice>" (o "per la NC in compilazione
+   sull'accettazione <numero>") **senza il nome**; `lis_eventi` canale SYNCLAB con l'esito senza dati personali; registro dei connettori
+   con il percorso `/api/v1/data/requests/{id}` senza query.
+7. Data API spenta (connettore StudioLAB non attivo, non `CLIENT_JWT` o `data_api_enabled` off), accettazione non nella copia, 404 del
+   gestionale, nessun paziente nella risposta, rete: messaggio chiaro nel Desk/NC, **nessun errore bloccante**, nessuna chiamata quando
+   la Data API è spenta.
+
+## Chi usa i dati (v0.67.1)
+
+| Chi | Cosa legge dalla copia | Dove | Regola |
+|---|---|---|---|
+| Finance Management | righe d'esame e documenti | `modules/finance` (Margine per cliente Service) | sotto, "Uso dei dati nella Suite" |
+| Ordini · catalogo esami | `synclab.exams` | `orders/lib/studiolab.js` `syncExamCatalog` | descrizione e settore; materiale da ServiceNET |
+| **Ordini · Produzione StudioLab** | righe d'esame non cancellate delle accettazioni ATTIVE, per client abbinato | `orders/lib/synclab.js` `aggiornaProduzioneSynclab`, job `orders:produzione-synclab` (60 min, solo con `data_api_enabled` e dati), pulsante "Aggiorna da Synclab" | conteggio per struttura (sede TD = id sede; punto SERVICE = id del punto, letto dalla Legal entity; solo Legal entity = −id), mese e codice esame → `orders.production` source STUDIOLAB; una riga **MANUALE o IMPORT** dello stesso mese ed esame **vince**; tutti i mesi presenti ricalcolati (il corrente compreso); tolte le righe STUDIOLAB di quei mesi che la copia non conferma |
+| **Ordini · Correlazione esami e materiali** | `synclab.samples` (material, container) legati alle righe con `request_item_samples` | `orders/lib/synclab.js`, tabella `orders.contenitori_synclab` (migrazione orders 014) | coppia più frequente per esame con percentuale e osservazioni; coppia abbinata a un articolo → proposta di correlazione con fonte SYNCLAB (anteprima e conferma), mai sulle MANUALE/LISTINO |
+| **Non conformità · Desk** | `requests.request_number`, `samples.barcode`, righe e campioni | `nc/lib/synclabDesk.js` | se la cache NC non ha l'accettazione: ricerca esatta, normalizzata, anno + numero; una → importata nella cache (origine SYNCLAB, migrazione nc 009); più → elenco; nessuna → registrazione manuale con la data della copia |
+| Non conformità · paziente | dettaglio di UNA accettazione (opt-in) | `nc/lib/pazienteSynclab.js` | sotto, "Dati paziente: dove e perché" |
+| Retail · Profilo dei pazienti | demografia | `lib/synclab/letture.js` | docs/RETAIL_PROFILO_PAZIENTI.md |
+| Cockpit, Diagnostica | conteggi e indicatori | `lib/cockpitMonitor.js`, `lib/diagnostica.js` | docs/COCKPIT.md |
+
+Dettagli di Ordini: docs/ORDINI_SYNCLAB.md.
+
 ## Uso dei dati nella Suite
 
 - **Finance Management > Margine per cliente Service**: fonte di produzione `SYNCLAB` subito dopo la riga salvata a mano e prima di
@@ -112,7 +156,13 @@ disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) val
 - **Ordini**: `syncExamCatalog` usa gli esami di Synclab se la Data API è abilitata e il catalogo è importato (code = examCode,
   description, sector = category o branchCode; materiale e "esame service" restano quelli presenti); altrimenti ServiceNET `/api/esami`.
 - **Cockpit**, gruppo Operations: "Accettazioni ieri (Synclab)" e "Fatturato laboratorio mese (Synclab)" solo se ci sono dati importati
-  (altrimenti non compaiono).
+  (altrimenti non compaiono); gruppo Retail e Flow (v0.67.1): "Età mediana pazienti laboratorio (mese)" e "Quota fuori area", con la
+  stessa regola.
+- **Retail > Profilo dei pazienti (laboratorio)** (v0.67.1): demografia delle accettazioni per sede, provenienza, andamento, esami e
+  orari, export Excel (docs/RETAIL_PROFILO_PAZIENTI.md).
+- **Non conformità** (v0.67.1): recupero puntuale del paziente mancante (sopra).
+- Migrazione core **053** (`053_profilo_pazienti.sql`): cache `public.geo_comuni` per la mappa dei comuni e indici su
+  `requests.request_number`, `samples.barcode`, `request_items (instance_id, request_id)`.
 - **Diagnostica**: D48 "Clienti Synclab senza Legal entity abbinata" (INFO), D49 "Sincronizzazione Synclab ferma" (ATTENZIONE: con la
   Data API abilitata, insieme mai sincronizzato, checkpoint più vecchio di 2 giorni o ultimo ciclo in errore), D50 "Legal entity cliente
   attiva senza cliente Synclab" (INFO, solo quando i clienti sono stati importati).
@@ -141,7 +191,9 @@ tre pagine con syncToken solo all'ultima e checkpoint solo dopo il commit, pagin
 delta con figlio modificato e figlio rimosso, le quattro operazioni, due ambiti con filtri diversi, 409 full_sync_required con
 `/sync/status` a blocchi di 200, 429/500/503, null e precisione (12.5, 20, 10; decimali oltre il double), nota di credito manuale,
 proiezione paziente (default e opt-in, svuotamento), produzioneMensile e fatturatoMensile, scegliProduzione con SYNCLAB, D48-D50, Prova
-connessione con i metadati, regola del ciclo notturno.
+connessione con i metadati, regola del ciclo notturno. `server/test/synclab-profilo-nc.test.mjs` (v0.67.1): profilo pazienti (fasce,
+provenienza, fuori area, anno prima, età null, export, mappa e cache dei comuni) e recupero puntuale NC (cache vuota → dettaglio opt-in →
+cache valorizzata, nulla nella copia e nei registri; limite dei 10 minuti; barcode; Data API spenta → nessuna chiamata).
 
 Prova sull'istanza vera (credenziali solo da ambiente o connettore): `cd server && node scripts/synclab-smoke.mjs` (vedi intestazione
 dello script).

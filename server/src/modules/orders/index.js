@@ -5,6 +5,8 @@ import express, { Router } from 'express';
 import { requireAuth } from '../../lib/access.js';
 import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../lib/modules.js';
 import { registerJob } from '../../lib/jobs.js';
+import synclabRoutes from './routes/synclab.js';
+import { aggiornaProduzioneSynclab, synclabDisponibile } from './lib/synclab.js';
 import { one } from './db.js';
 import { ah } from './lib/util.js';
 import { requireRole, isOps, OPS_ROLES, strutturaDiUtente } from './lib/access.js';
@@ -97,6 +99,7 @@ export default function mount(app) {
   r.get('/auth/me', (req, res) => res.json({ user: publicUser(req.user), authMethod: 'SUITE', onboarding: null }));
   r.get('/auth/config', (_req, res) => res.json({ entraEnabled: false, studiolabEnabled: false, appName: 'Toscana Diagnostica · Orders Management' }));
   r.use(blockWritesInMirror);
+  r.use(synclabRoutes);   // fonte Synclab: produzione e contenitori → correlazioni (v0.67.1)
   r.use(adminRoutes);
   r.use('/orders', orderRoutes);
   r.use('/stock', stockRoutes);
@@ -116,6 +119,14 @@ export default function mount(app) {
   // Catalogo e giacenze dall'API Silva (chiave X-API-KEY del connettore): completo la prima volta per anno, poi sole modifiche.
   // Il job gira ogni 10 minuti e sincronizza quando è passato l'intervallo impostato nel connettore (sync_minutes, default 60).
   // Trasmissione in API degli ordini approvati non ancora ricevuti da Silva (ritentativi)
+  // Produzione dalla copia Synclab del gestionale (ogni ora, solo con la Data API abilitata e dati importati; righe MANUALE/IMPORT intatte)
+  registerJob(`${KEY}:produzione-synclab`, 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    const d = await synclabDisponibile();
+    if (!d.ok) return { skipped: d.motivo };
+    return aggiornaProduzioneSynclab();
+  }, { runAtStart: false });
   registerJob(`${KEY}:silva-push`, 5, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };

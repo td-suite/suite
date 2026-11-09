@@ -23,6 +23,7 @@ import budgetRoutes from './routes/budget.js';
 import structureRoutes from './routes/structure.js';
 import intornoRoutes from './routes/intorno.js';
 import tuotempoRoutes from './routes/tuotempo.js';
+import profiloPazientiRoutes from './routes/profiloPazienti.js';
 import { rilevazioneMensile, mockAttivo as intornoMock } from './lib/intorno.js';
 import { chiaveServer } from '../../lib/googleMaps.js';
 
@@ -82,6 +83,7 @@ export default function mount(app) {
   r.use('/exposure', exposureRoutes);
   r.use('/connectors', connectorRoutes);
   r.use('/tuotempo', tuotempoRoutes);   // TuoTempo Fase 1: aree ↔ sedi, risorse ↔ persone, prenotazione online, listino (docs/RETAIL_TUOTEMPO.md)
+  r.use('/profilo-pazienti', profiloPazientiRoutes);   // Profilo dei pazienti del laboratorio (Synclab, proiezione standard: docs/RETAIL_PROFILO_PAZIENTI.md)
   r.use('/stats', statsRoutes);
   r.use(budgetRoutes);                // working-days, budgets, variance, market
   r.use('/structure', structureRoutes);

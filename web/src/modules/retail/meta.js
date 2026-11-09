@@ -10,6 +10,7 @@ export default {
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { group: 'Clienti' },
     { to: 'clienti', icon: 'users', label: 'Clienti e profilazione', end: true },
+    { to: 'profilo-pazienti', icon: 'stats', label: 'Profilo dei pazienti (laboratorio)' },
     { to: 'clienti/b2b', icon: 'building', label: 'Aziende e strutture (B2B)' },
     { to: 'richiami', icon: 'bell', label: 'Richiami periodici', badge: 'richiami_scaduti' },
     { group: 'Vendite' },

@@ -30,7 +30,7 @@ function fmt(v, unita) {
   if (unita === '%') return `${n.toLocaleString(IT, { maximumFractionDigits: 1 })}`;
   return n.toLocaleString(IT, { maximumFractionDigits: 1, useGrouping: 'always' });
 }
-const UNITA_SUFFISSO = { '%': '%', sedi: 'sedi', giorni: 'gg' };
+const UNITA_SUFFISSO = { '%': '%', sedi: 'sedi', giorni: 'gg', anni: 'anni' };
 
 function Sparkline({ serie }) {
   if (!serie || serie.length < 2) return null;

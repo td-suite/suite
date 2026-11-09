@@ -221,3 +221,14 @@ Nel gruppo **Operations** (il monitor non ha un gruppo Laboratorio/Service: le c
 numero di documenti e di note di credito). Compaiono **solo se ci sono dati importati**: con la Data API spenta o vuota non ci sono
 (non sono "non disponibili", perché l'assenza è una scelta). Fonte con l'ora dell'ultima sincronizzazione riuscita. Il fatturato dei
 documenti non è la produzione del conto economico.
+
+### Profilo dei pazienti del laboratorio (Synclab, proiezione standard, v0.67.1)
+| Gruppo | Indicatore | Fonte e formula |
+|---|---|---|
+| Retail e Flow | Età mediana pazienti laboratorio (mese) (`synclab_eta_mediana`, anni) | Mediana di `demographics.ageYears` (età alla data dell'accettazione) delle accettazioni ATTIVE con almeno una riga non cancellata, dal primo del mese a oggi; confronto con lo stesso periodo del mese scorso; dettaglio con accettazioni, quota donne/uomini e quota con età non disponibile. Accettazioni, non persone |
+| Retail e Flow | Quota fuori area (`synclab_fuori_area`, %) | Accettazioni del mese con comune di residenza diverso da quello della sede **e** provincia diversa, sulle valutabili (sede abbinata con `synclab.clients_td.site_id` e comune/provincia noti); confronto in punti con lo stesso periodo del mese scorso |
+
+Come gli altri indicatori Synclab compaiono **solo se ci sono accettazioni importate**; con accettazioni nella copia ma nessuna nel mese
+la card è "non disponibile" con il motivo. Stesse regole della pagina Retail > Profilo dei pazienti (docs/RETAIL_PROFILO_PAZIENTI.md,
+`sintesiProfilo` in `lib/synclab/letture.js`). Verifica in produzione: dopo il primo completo delle accettazioni le due card sono nel
+gruppo Retail e Flow e l'età mediana coincide con quella della pagina sul mese in corso.

@@ -49,6 +49,7 @@ export default function Desk({ readOnly = false }) {
   const [wizard, setWizard] = useState(false);
   const [fixSede, setFixSede] = useState(false);
   const inputRef = useRef();
+  const ultimo = useRef(null);
   const { data: sedi } = useApi('/sedi');
   const [filter, setFilter] = useState({ q: '', sede: '', from: '', to: '', solo_nc: sede ? '1' : '' });
   const { data: recent, reload } = useApi(`/accettazioni${qs({ ...filter, limit: 60 })}`, [live.tick]);
@@ -58,14 +59,20 @@ export default function Desk({ readOnly = false }) {
     try { await api.del(`/accettazioni/${encodeURIComponent(acc.id)}`); toast('Accettazione eliminata'); setAcc(null); setCode(''); nav(`${base}/desk`, { replace: true }); reload(); }
     catch (e) { toast(e.message, 'err'); }
   };
-  const lookup = async (id, refresh = false) => {
+  // Recupero puntuale del paziente (ServiceNET, poi Synclab Data API: una accettazione, al più una chiamata ogni 10 minuti)
+  const recuperaPaziente = async () => {
+    try { const r = await api.post(`/accettazioni/${encodeURIComponent(acc.id)}/paziente`, {}); toast(r.messaggio, r.esito === 'RECUPERATO' || r.esito === 'PRESENTE' ? 'ok' : 'err'); if (r.esito === 'RECUPERATO') lookup(acc.id); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const lookup = async (id, refresh = false, synclabId = null) => {
     const v = String(id || code).trim();
     if (!v) return;
     setErr(null); setAcc(null);
-    try { const a = await api.get(`/accettazioni/${encodeURIComponent(v)}${refresh ? '?refresh=1' : ''}`); setAcc(a); if (params.id !== v) nav(`${base}/desk/${encodeURIComponent(v)}`, { replace: true }); }
+    try { const a = await api.get(`/accettazioni/${encodeURIComponent(v)}${qs({ refresh: refresh ? '1' : '', synclab_id: synclabId || '' })}`); setAcc(a); setCode(a.id); ultimo.current = a.id; if (params.id !== a.id) nav(`${base}/desk/${encodeURIComponent(a.id)}`, { replace: true }); if (a.synclabImport) reload(); }
     catch (e) { setErr(e); if (e.code === 'ACC_NOT_FOUND' && !sede) setManual(v); }
   };
-  useEffect(() => { if (params.id) { setCode(params.id); lookup(params.id); } else inputRef.current?.focus(); /* eslint-disable-next-line */ }, [params.id]);
+  // dopo una ricerca l'indirizzo passa al numero trovato (es. dalla copia Synclab): nessun secondo richiamo per lo stesso numero
+  useEffect(() => { if (params.id) { if (params.id === ultimo.current) return; setCode(params.id); lookup(params.id); } else inputRef.current?.focus(); /* eslint-disable-next-line */ }, [params.id]);
   useEffect(() => { if (acc && live.tick) lookup(acc.id); /* eslint-disable-next-line */ }, [live.tick]);
 
   const S = sede ? STATO_SEDE : STATO;
@@ -80,14 +87,18 @@ export default function Desk({ readOnly = false }) {
           <input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Numero accettazione / barcode" autoComplete="off" />
           <button className="btn lg"><Icon name="search" /> Cerca</button>
         </form>
-        {err && err.code !== 'ACC_NOT_FOUND' && <div className="mt"><ErrorBox error={err} /></div>}
+        {err && err.code === 'ACC_SYNCLAB_SCELTA' && <div className="mt"><div className="alert warn">{err.message}</div>
+          <table className="t mt"><thead><tr><th>Numero nel gestionale</th><th>Data</th><th>Cliente inviante</th><th>Stato</th><th className="num">Esami</th><th /></tr></thead>
+            <tbody>{(err.details?.candidati || []).map((c) => <tr key={c.synclab_id}><td className="mono strong">{c.numero}</td><td>{itDate(c.data)}</td><td className="small">{c.cliente || '–'}</td><td className="small">{c.stato || '–'}{!c.attiva ? ' · non attiva' : ''}</td><td className="num">{c.esami}</td>
+              <td className="num"><button className="btn sm" onClick={() => lookup(code, false, c.synclab_id)}>Apri</button></td></tr>)}</tbody></table></div>}
+        {err && err.code !== 'ACC_NOT_FOUND' && err.code !== 'ACC_SYNCLAB_SCELTA' && <div className="mt"><ErrorBox error={err} /></div>}
         {err && err.code === 'ACC_NOT_FOUND' && !manual && <div className="alert warn mt">{err.message}. <button className="btn sm" onClick={() => setManual(String(code).trim())}>Registra manualmente</button></div>}
       </Card>}
 
       {acc && <div className="grid g3 mt" style={{ marginTop: 16 }}>
         <Card className="span2" title={`Accettazione ${acc.id}`} actions={<>
           {acc.lisError && <Badge tone="red">LIS non raggiungibile</Badge>}
-          <Badge tone={acc.origine === 'MANUALE' ? 'mauve' : 'blue'}>{acc.origine === 'MANUALE' ? 'registrata manualmente' : `da ${acc.origine}`}</Badge>
+          <Badge tone={acc.origine === 'MANUALE' ? 'mauve' : 'blue'}>{acc.origine === 'MANUALE' ? 'registrata manualmente' : acc.origine === 'SYNCLAB' ? 'dalla copia Synclab' : `da ${acc.origine}`}</Badge>
           {!sede && acc.origine !== 'MANUALE' && <button className="btn sm ghost" onClick={() => lookup(acc.id, true)}>Aggiorna dal LIS</button>}
           {!sede && acc.origine === 'MANUALE' && <button className="btn sm danger" disabled={(acc.nc || []).length > 0} title={(acc.nc || []).length ? 'Ha non conformità collegate: annullale prima' : 'Elimina la registrazione manuale'} onClick={removeAcc}>Elimina</button>}
           {!sede && <button className="btn" onClick={() => setWizard(true)}><Icon name="plus" /> Nuova NC</button>}
@@ -100,6 +111,8 @@ export default function Desk({ readOnly = false }) {
               {!acc.sede_email && !sede && acc.sede_id && <div className="small red">La sede non ha un'email per le NC: impostala in Sedi invianti prima di inviare.</div>}
               <div className="small muted mt">Paziente</div>
               <div className="strong">{[acc.paziente_cognome, acc.paziente_nome].filter(Boolean).join(' ') || '–'} {acc.paziente_nascita && <span className="muted small">· {itDate(acc.paziente_nascita)} · {acc.paziente_sesso || ''}</span>}</div>
+              {acc.pazienteSynclab?.esito === 'RECUPERATO' && <div className="small muted">Paziente recuperato dal gestionale (Synclab)</div>}
+              {!acc.paziente_cognome && <div className="small muted">{acc.pazienteSynclab?.messaggio || 'Paziente non presente nella scheda.'} <button className="btn link small" onClick={recuperaPaziente}>Recupera dal gestionale</button></div>}
             </div>
             <div>
               <div className="small muted">Stato LIS</div><div className="strong">{acc.lisStatoLabel || STATO_LIS[acc.stato_lis] || '–'}</div>
@@ -107,6 +120,8 @@ export default function Desk({ readOnly = false }) {
               {acc.id_richiesta_cliente && <><div className="small muted mt">Rif. cliente</div><div className="mono">{acc.id_richiesta_cliente}</div></>}
             </div>
           </div>
+          {acc.synclabImport && <div className="alert info mt small">Accettazione trovata nella copia Synclab{acc.synclabImport.cercato !== acc.id ? ` cercando "${acc.synclabImport.cercato}"` : ''} e importata nell'archivio delle NC.{acc.synclabImport.sede === 'DA_ASSEGNARE' ? ` Il cliente del gestionale non è abbinato a una sede: assegna la sede inviante${acc.synclabImport.sede_proposta ? ` (proposta: ${acc.synclabImport.sede_proposta.nome})` : ''}.` : acc.synclabImport.sede === 'PROPOSTA_CODICE' ? ' Sede inviante proposta dal codice StudioLAB: verificala.' : ''}</div>}
+          {acc.campioniSynclab?.length > 0 && <><div className="small muted mt">Campioni (gestionale)</div><div className="esami" style={{ marginTop: 6 }}>{acc.campioniSynclab.map((c, i) => <label key={(c.barcode || '') + i}><b className="mono">{c.barcode || 'senza barcode'}</b> {[c.material, c.container].filter(Boolean).join(' · ')}</label>)}</div></>}
           <div className="small muted mt">Esami ({acc.esami?.length || 0})</div>
           <div className="esami mt" style={{ marginTop: 6 }}>{(acc.esami || []).map((e) => <label key={e.cod + (e.idEsame || '')} className={e.bloccato ? 'blocked' : ''} title={e.nc || ''}><b>{e.cod}</b> {e.descrizione}{e.bloccato ? ' · bloccato' : ''}{e.numReferto ? ' · refertato' : ''}</label>)}{!acc.esami?.length && <span className="muted small">nessun esame in archivio</span>}</div>
         </Card>

@@ -14,6 +14,13 @@ export default function Production() {
   const [manual, setManual] = useState(null);
   const strutture = useApi(ops ? '/strutture' : null);
   const settings = useApi(ops ? '/settings' : null);
+  const syn = useApi(ops ? '/production/synclab' : null);
+  const [synBusy, setSynBusy] = useState(false);
+  const aggiornaSynclab = async () => {
+    setErr(null); setSynBusy(true);
+    try { const r = await api.post('/production/synclab/aggiorna'); toast(`Produzione da Synclab: ${r.nuove} righe nuove, ${r.aggiornate} aggiornate, ${r.invariate} invariate${r.manuali_mantenute ? `, ${r.manuali_mantenute} lasciate alle righe manuali o importate` : ''}`); syn.reload(); reload(); }
+    catch (e) { setErr(e); } finally { setSynBusy(false); }
+  };
   const target = ops ? sid : user.struttura_id;
   const { data, reload } = useApi(target ? `/production${qs({ struttura_id: ops ? sid : undefined, months: 6 })}` : null, [sid]);
   const cons = useApi(target ? `/stock/consumption${qs({ struttura_id: ops ? sid : undefined })}` : null, [sid, data]);
@@ -36,12 +43,14 @@ export default function Production() {
           {ops && <a className="btn ghost" href={`${API_BASE}/production/import/template.xlsx`}><Icon name="download" size={16} />Modello</a>}
           {ops && <label className="btn ghost"><Icon name="upload" size={16} />Importa file<input type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && importFile(e.target.files[0])} /></label>}
           {ops && sid && <button className="btn ghost" onClick={() => setManual({ month: currentMonth(), items: [{ examCode: '', examName: '', qty: '' }] })}><Icon name="plus" size={16} />Inserisci mese</button>}
+          {ops && <button className="btn" disabled={!syn.data?.disponibile || synBusy} title={syn.data && !syn.data.disponibile ? syn.data.motivo : 'Ricalcola la produzione di tutti i mesi presenti nella copia Synclab'} onClick={aggiornaSynclab}><Icon name="flask" size={16} />{synBusy ? 'Aggiornamento…' : 'Aggiorna da Synclab'}</button>}
           {ops && <button className="btn ghost" disabled={!sl?.configured} title={!sl?.configured ? 'STUDIOLAB_API_KEY non impostata nella Suite' : ''} onClick={testSl}><Icon name="link" size={16} />Prova ServiceNET</button>}
           {ops && <button className="btn ghost" disabled={!sl?.configured} onClick={syncExams}><Icon name="link" size={16} />Sincronizza catalogo esami</button>}
         </div>
       </div>
       <ErrorBox error={err} />
-      {ops && sl && <div className="alert info" style={{ marginBottom: 14 }}>La produzione arriva in tempo reale dai messaggi HL7 che StudioLab invia a Orders Management (ultimo: {sl.last_hl7_at ? itDateTime(sl.last_hl7_at) : 'nessuno ancora'}); in alternativa dal file esportato dal gestionale o a mano. Le API REST di ServiceNET servono per il catalogo esami, non per la produzione.</div>}
+      {ops && <div className="alert info" style={{ marginBottom: 14 }}><div>La produzione arriva dalla copia Synclab del gestionale (ultimo aggiornamento: {syn.data?.ultimo?.at ? `${itDateTime(syn.data.ultimo.at)}, ${syn.data.ultimo.strutture} strutture, mesi ${syn.data.ultimo.dal ? `${monthLabel(syn.data.ultimo.dal)} – ${monthLabel(syn.data.ultimo.al)}` : '–'}` : 'mai'}), dai messaggi HL7 (ultimo: {sl?.last_hl7_at ? itDateTime(sl.last_hl7_at) : 'nessuno'}) e dai file importati.
+        <div className="small" style={{ marginTop: 4 }}>Regola: per lo stesso mese ed esame una riga inserita a mano o importata da file vince sul conteggio di Synclab, che non la sovrascrive. Synclab conta le righe d'esame non cancellate delle accettazioni attive dei client abbinati a una struttura; ricalcola tutti i mesi, il mese in corso compreso, ogni ora e con "Aggiorna da Synclab".{syn.data?.client_senza_struttura ? ` ${syn.data.client_senza_struttura} client Synclab con accettazioni non sono abbinati a una sede o Legal entity (Amministrazione > Connettori > StudioLAB > Dati Synclab): la loro produzione non è contata.` : ''}{syn.data && !syn.data.disponibile ? ` Synclab non disponibile: ${syn.data.motivo}.` : ''}</div></div></div>}
       {!target ? <Card><Empty>Scegli una struttura</Empty></Card> : !data ? <Loading /> : (
         <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)' }}>
           <Card title="Esami per mese" flush>

@@ -35,7 +35,7 @@ r.get('/', ah(async (req, res) => {
   await assertStruttura(req.user, sid);
   const months = Math.min(24, Number(req.query.months || 6));
   const ids = await productionStrutture(sid);
-  const rows = await many(`SELECT p.month, p.exam_code, max(p.exam_name) AS exam_name, sum(p.qty)::int AS qty, string_agg(DISTINCT p.source, ', ') AS source,
+  const rows = await many(`SELECT p.month, p.exam_code, coalesce((SELECT e.description FROM synclab.exams e WHERE e.disponibilita = 'ATTIVO' AND e.exam_code = p.exam_code ORDER BY e.updated_at DESC LIMIT 1), max(p.exam_name)) AS exam_name, sum(p.qty)::int AS qty, string_agg(DISTINCT p.source, ', ') AS source,
       (SELECT json_agg(json_build_object('article', a.name, 'qty_per_exam', m.qty_per_exam)) FROM exam_mappings m JOIN articles a ON a.id=m.article_id WHERE m.exam_code=p.exam_code AND m.active) AS materials
     FROM production p WHERE p.struttura_id = ANY($1::int[]) AND p.month >= (date_trunc('month', now()) - ($2 || ' months')::interval)::date
     GROUP BY p.month, p.exam_code ORDER BY p.month DESC, p.exam_code`, [ids, months]);

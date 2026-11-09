@@ -519,6 +519,26 @@ async function retailFlow(ctx) {
     out.push(indicatore({ chiave: 'contratti_firmati', titolo: 'Contratti firmati nel mese', gruppo: G, valore: n, confronto: confronto(n, await firm(P.mese_prec.da, P.mese_prec.a), { etichetta: 'stesso periodo del mese scorso' }),
       dettaglio: 'Contratti Service, Punti prelievo e MdL con data di firma nel mese', serie: serieMesi(P.mesi12, fm), fonte: 'Business Hub, contratti (data di firma)', aggiornato: P.oggi }));
   }
+  // Profilo dei pazienti del laboratorio (Synclab, proiezione standard: Retail > Profilo dei pazienti): età mediana e quota fuori area
+  // del mese in corso, confronto con lo stesso periodo del mese scorso. Compaiono SOLO se ci sono accettazioni importate.
+  try {
+    const { sintesiProfilo } = await import('./synclab/letture.js');
+    const cur = await sintesiProfilo(P.inizio, P.oggi);
+    if (cur) {
+      const prev = await sintesiProfilo(P.mese_prec.da, P.mese_prec.a);
+      const fonte = 'Synclab Data API, accettazioni del laboratorio (proiezione standard, nessuna identità)';
+      const et = 'stesso periodo del mese scorso';
+      out.push(indicatore({ chiave: 'synclab_eta_mediana', titolo: 'Età mediana pazienti laboratorio (mese)', gruppo: G, unita: 'anni', valore: cur.eta_mediana, meglio: null,
+        confronto: confronto(cur.eta_mediana, prev?.eta_mediana, { meglio: null, etichetta: et }),
+        dettaglio: cur.accettazioni ? `${cur.accettazioni} accettazioni del mese · donne ${cur.quota_donne ?? 0}% · uomini ${cur.quota_uomini ?? 0}% · età non disponibile ${cur.quota_eta_nd ?? 0}%` : null,
+        nota: 'Accettazioni, non persone: età alla data dell\'accettazione', fonte, aggiornato: P.oggi, motivo: cur.accettazioni ? 'Nessuna accettazione del mese con l\'età disponibile' : 'Nessuna accettazione del laboratorio nel mese in corso' }));
+      out.push(indicatore({ chiave: 'synclab_fuori_area', titolo: 'Quota fuori area', gruppo: G, unita: '%', valore: cur.quota_fuori_area, meglio: null,
+        confronto: confronto(cur.quota_fuori_area, prev?.quota_fuori_area, { meglio: null, unita: '%', etichetta: et }),
+        dettaglio: cur.area_valutabili ? `${cur.fuori_area} accettazioni su ${cur.area_valutabili} valutabili da comune e provincia diversi da quelli della sede` : null,
+        nota: 'Fuori area = comune di residenza diverso da quello della sede e provincia diversa; valutabili le accettazioni con sede abbinata e provenienza nota', fonte, aggiornato: P.oggi,
+        motivo: cur.accettazioni ? 'Nessuna accettazione del mese con sede abbinata e provenienza nota' : 'Nessuna accettazione del laboratorio nel mese in corso' }));
+    }
+  } catch (e) { console.warn(`[cockpit:monitor] profilo pazienti: ${e.message}`); }
   return out;
 }
 

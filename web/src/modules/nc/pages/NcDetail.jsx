@@ -242,6 +242,11 @@ export default function NcDetail() {
   if (error) return <div className="page"><ErrorBox error={error} /><Link to={`${base}/nc`}>Torna all'elenco</Link></div>;
   if (!data) return <Loading />;
   const { nc, messaggi, allegati, azioni, email, storico, sede } = data;
+  // paziente mancante: recupero puntuale dal gestionale (ServiceNET, poi Synclab Data API), audit senza il nome
+  const recuperaPaziente = async () => {
+    try { const r = await api.post(`/accettazioni/${encodeURIComponent(nc.accettazione_id)}/paziente`, { nc_id: nc.id }); toast(r.messaggio, r.esito === 'RECUPERATO' || r.esito === 'PRESENTE' ? 'ok' : 'err'); if (r.esito === 'RECUPERATO') reload(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
   const sedeUser = isSede(user);
   const lab = isLab(user);
   const S = sedeUser ? STATO_SEDE : STATO;
@@ -273,7 +278,8 @@ export default function NcDetail() {
             <div className="grid g2">
               <div>
                 <div className="small muted">Accettazione</div><div className="strong mono">{lab ? <Link to={`${base}/desk/${encodeURIComponent(nc.accettazione_id)}`}>{nc.accettazione_id}</Link> : nc.accettazione_id} <span className="muted small">· {data.lisStatoLabel || STATO_LIS[nc.stato_lis] || 'stato LIS non noto'} · {itDateTime(nc.data_accettazione)}</span></div>
-                <div className="small muted mt">Paziente</div><div>{[nc.paziente_cognome, nc.paziente_nome].filter(Boolean).join(' ') || '–'}{nc.paziente_nascita ? <span className="muted small"> · {itDate(nc.paziente_nascita)}</span> : ''}</div>
+                <div className="small muted mt">Paziente</div><div>{[nc.paziente_cognome, nc.paziente_nome].filter(Boolean).join(' ') || '–'}{nc.paziente_nascita ? <span className="muted small"> · {itDate(nc.paziente_nascita)}</span> : ''}
+                  {!nc.paziente_cognome && <button className="btn link small" style={{ marginLeft: 8 }} onClick={recuperaPaziente}>Recupera dal gestionale</button>}</div>
                 <div className="small muted mt">Esami coinvolti</div><div className="esami" style={{ marginTop: 4 }}>{(nc.esami_coinvolti || []).length ? nc.esami_coinvolti.map((e) => <label key={e.cod} className="on"><b>{e.cod}</b> {e.descrizione}</label>) : <span className="small">tutta l'accettazione</span>}</div>
               </div>
               <div>

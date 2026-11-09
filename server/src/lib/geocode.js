@@ -57,3 +57,80 @@ export function autoGeocodeSite(site, save) {
   if (!site || (site.lat != null && site.lng != null) || (!site.address && !site.city)) return;
   geocodeAddress(site).then((g) => { if (g) return save(site.id, g); }).catch((e) => console.warn('[geocode]', e.message));
 }
+
+// ---- Comuni di provenienza (profilo dei pazienti del laboratorio in Retail, v0.67.1): coordinate del COMUNE (non di un indirizzo) con
+// cache in public.geo_comuni (migrazione core 053). La pagina disegna le bolle solo per i comuni già in cache; la geocodifica dei mancanti
+// si fa a richiesta, a piccoli lotti (OpenStreetMap: 1 richiesta al secondo). Un comune non trovato resta NON_TROVATO e non si ripete
+// prima di 30 giorni; un errore di rete resta ERRORE e si ritenta al giro dopo. Nessun dato inventato: senza coordinate il comune resta solo in tabella.
+export const normComune = (s) => String(s ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+export const normProvincia = (s) => String(s ?? '').trim().toUpperCase();
+
+/**
+ * Coordinate di un COMUNE (centro): Google Geocoding se c'è la chiave server, altrimenti Nominatim (ricerca strutturata per città in
+ * Italia), poi Open-Meteo. A differenza di geocodeAddress gli errori di rete NON diventano "non trovato": si propagano, così la cache
+ * registra ERRORE e il comune si ritenta al giro dopo. Ritorna { lat, lng, label, precision: 'citta', source } oppure null (non trovato).
+ */
+export async function geocodeComune({ city, province = null }) {
+  const nome = String(city || '').trim();
+  if (!nome) return null;
+  let errore = null;
+  if (chiaveServer()) {
+    try { const g = await geocodificaGoogle(`${nome}${province ? ` (${province})` : ''}, Italia`); if (g) return { lat: g.lat, lng: g.lng, label: g.label, precision: 'citta', source: g.source }; }
+    catch (e) { errore = new Error(senzaChiave(e.message)); }
+  }
+  try {
+    const hit = await nominatim({ city: nome });
+    if (hit) return { lat: Number(hit.lat), lng: Number(hit.lon), label: hit.display_name, precision: 'citta', source: 'OpenStreetMap Nominatim' };
+    errore = null;
+  } catch (e) { errore = e; }
+  let c = null;
+  try { c = await geocodeCity(nome); } catch (e) { throw errore || e; }
+  if (c) return { lat: c.lat, lng: c.lng, label: c.name, precision: 'citta', source: 'Open-Meteo' };
+  if (errore) throw errore;   // Nominatim non raggiungibile e Open-Meteo senza risultato: non è un "non trovato" certo
+  return null;
+}
+
+/** Coordinate in cache per un elenco [{ comune, provincia }]: Map 'comune|PR' → riga di geo_comuni (solo esito OK). */
+export async function comuniInCache(lista) {
+  const { many } = await import('../db.js');
+  const out = new Map();
+  if (!lista?.length) return out;
+  const rows = await many(`SELECT comune_norm, provincia_norm, lat, lng, precision, source, esito, tentato_at FROM public.geo_comuni
+     WHERE (comune_norm, provincia_norm) IN (SELECT * FROM unnest($1::text[], $2::text[]))`, [lista.map((x) => normComune(x.comune)), lista.map((x) => normProvincia(x.provincia))]);
+  for (const r of rows) out.set(`${r.comune_norm}|${r.provincia_norm}`, r);
+  return out;
+}
+
+/**
+ * Geocodifica dei comuni non ancora in cache (al più `max` per chiamata) con geocodeAddress (città + provincia). trova: funzione
+ * sostituibile nei test. Ritorna { tentati, trovati, non_trovati, errori, restanti }.
+ */
+export async function geocodificaComuni(lista, { max = 15, trova = geocodeComune } = {}) {
+  const { q } = await import('../db.js');
+  const cache = await comuniInCache(lista);
+  const daFare = [];
+  const visti = new Set();
+  for (const x of lista) {
+    const k = `${normComune(x.comune)}|${normProvincia(x.provincia)}`;
+    if (!normComune(x.comune) || visti.has(k)) continue;
+    visti.add(k);
+    const c = cache.get(k);
+    if (c && (c.esito === 'OK' || (c.esito === 'NON_TROVATO' && Date.now() - new Date(c.tentato_at).getTime() < 30 * 86400_000))) continue;   // ERRORE (rete): si ritenta
+    daFare.push(x);
+  }
+  const out = { tentati: 0, trovati: 0, non_trovati: 0, errori: 0, restanti: Math.max(0, daFare.length - max) };
+  for (const x of daFare.slice(0, max)) {
+    out.tentati++;
+    let g = null, esito = 'NON_TROVATO';
+    try { g = await trova({ city: String(x.comune).trim(), province: normProvincia(x.provincia) || null }); if (g && Number.isFinite(Number(g.lat)) && Number.isFinite(Number(g.lng))) esito = 'OK'; }
+    catch (e) { esito = 'ERRORE'; console.warn('[geocode] comune:', e.message); }
+    out[esito === 'OK' ? 'trovati' : esito === 'ERRORE' ? 'errori' : 'non_trovati']++;
+    await q(`INSERT INTO public.geo_comuni (comune_norm, provincia_norm, comune, provincia, lat, lng, precision, source, label, esito, tentato_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
+       ON CONFLICT (comune_norm, provincia_norm) DO UPDATE SET comune=EXCLUDED.comune, provincia=EXCLUDED.provincia, lat=EXCLUDED.lat, lng=EXCLUDED.lng,
+         precision=EXCLUDED.precision, source=EXCLUDED.source, label=EXCLUDED.label, esito=EXCLUDED.esito, tentato_at=now()`,
+    [normComune(x.comune), normProvincia(x.provincia), String(x.comune).trim(), normProvincia(x.provincia) || null, esito === 'OK' ? g.lat : null, esito === 'OK' ? g.lng : null,
+      esito === 'OK' ? g.precision || null : null, esito === 'OK' ? g.source || null : null, esito === 'OK' ? String(g.label || '').slice(0, 300) : null, esito]);
+  }
+  return out;
+}
