@@ -117,3 +117,18 @@ indicare), tabella costi esami. Le ipotesi compaiono nella nota "Come è calcola
 - Clienti Service senza listino o senza volumi attesi (ricavo da indicare o niente stima): pagina Margine clienti Service, badge
   "senza listino" e "da indicare".
 - Impostare costo per ritiro e costo medio per esame (o caricare i costi esami) prima di leggere il margine Service.
+
+## Synclab Data API nel Controllo di gestione (09/11/2026)
+- **Fonte SYNCLAB** della produzione Service (lib/contoEconomico.js `scegliProduzione`): dopo la riga salvata a mano (MANUALE o file
+  STUDIOLAB) e **prima** di Retail e Ordini, perché è il dato del gestionale e non una stima; origine "Synclab Data API: accettazioni del
+  gestionale". Dati: `lib/synclab/letture.js produzionePerOrg` = righe d'esame non cancellate delle accettazioni ATTIVE con data nel mese,
+  dei client Synclab abbinati alla Legal entity (`synclab.clients_td`), per codice d'esame e prezzo netto storico.
+- **Ricavo con fonte SYNCLAB** (`margineCliente`, `ricavo_da = SYNCLAB`): somma dei netti di riga del gestionale; le righe senza prezzo
+  nel gestionale al listino corrente del Business Hub se lo ha, altrimenti "da indicare". Lo sconto di testata (`headerDiscountPercent`) non
+  si applica di nuovo: è riportato nella nota della produzione con il numero di accettazioni scontate.
+- **"Fatturato da documenti (Synclab)"**: colonna separata nella tabella dei clienti, nel dettaglio mese per mese e negli export XLSX
+  (`fatturato_documenti`): `netRevenueContribution` una volta per documento con data nel mese (NC già negative, annullati e proforma a
+  zero, tipo sconosciuto escluso e contato). È una grandezza diversa dalla produzione del mese: non entra nel ricavo né nel margine.
+- Fonte `synclab` in `fonti` della risposta: lettura non riuscita = avviso, mai uno zero.
+- Da confermare con il CEO: la priorità della fonte SYNCLAB sopra Retail/Ordini e l'uso dei netti storici al posto del listino del
+  Business Hub per il ricavo.

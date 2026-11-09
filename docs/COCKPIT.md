@@ -213,3 +213,11 @@ stesso giorno; percentuali: differenza in punti con il mese precedente. Indicato
 | Retail e Flow | Attesa alla prima disponibilità (giorni) | `retail.tuotempo_attivita` dell'ultimo giorno allineato: per ogni prestazione prenotabile online, giorni dal momento dell'allineamento notturno al primo slot libero (`first_availability` di TuoTempo), attribuita alla sede del primo slot (area abbinata). Valore = mediana della rete; tabella = mediana per sede (prime 8, dalla più lunga); confronto con lo stesso dato di una settimana prima; serie degli ultimi 12 giorni. Senza allineamenti: "non disponibile" con il motivo. **Ipotesi dichiarata**: è la prima disponibilità della prestazione su tutta la rete (Key Entities), non l'agenda di ogni sede (servirà Availabilities, Fase 2). Docs: docs/RETAIL_TUOTEMPO.md |
 
 Verifica in produzione: dopo il primo allineamento la card ha un valore e la tabella per sede; `SELECT data, count(*) FROM retail.tuotempo_attivita GROUP BY 1 ORDER BY 1 DESC LIMIT 3;`.
+
+### Indicatori dal gestionale (Synclab Data API, 09/11/2026)
+Nel gruppo **Operations** (il monitor non ha un gruppo Laboratorio/Service: le chiavi dei gruppi restano le sei di prima):
+"Accettazioni ieri (Synclab)" (`synclab_accettazioni_ieri`: accettazioni ATTIVE con data di ieri) e "Fatturato laboratorio mese
+(Synclab)" (`synclab_fatturato_mese`: `netRevenueContribution` dei documenti dal primo del mese a oggi, una volta per documento, con il
+numero di documenti e di note di credito). Compaiono **solo se ci sono dati importati**: con la Data API spenta o vuota non ci sono
+(non sono "non disponibili", perché l'assenza è una scelta). Fonte con l'ora dell'ultima sincronizzazione riuscita. Il fatturato dei
+documenti non è la produzione del conto economico.

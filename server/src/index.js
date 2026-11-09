@@ -17,6 +17,7 @@ import { startScheduler, listJobs } from './lib/jobs.js';
 import { loadSecrets } from './lib/secrets.js';
 import { loadConnectors } from './lib/connectors.js';
 import connectorsRoutes from './routes/connectors.js';
+import synclabRoutes from './routes/synclab.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import accessProfilesRoutes from './routes/accessProfiles.js';
@@ -151,6 +152,7 @@ app.use('/api', orgcatRoutes);
 app.use('/api', diagnosticaRoutes);                       // Amministrazione > Diagnostica anagrafica (A13) e contratti SEDE (A3)
 app.use('/api', assetTypesRoutes);                       // Catalogo dispositivi (Amministrazione > Anagrafiche)
 app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
+app.use('/api/synclab', synclabRoutes);         // Dati Synclab (Data API v1 di CB Sistemi): stato, impostazioni, sincronizzazione, client ↔ Legal entity
 app.use('/api/rubriche', rubricheRoutes);       // rubriche esterne (Outlook di francesco.epifani@, Gmail fraepi@): referenti delle Legal entity
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));

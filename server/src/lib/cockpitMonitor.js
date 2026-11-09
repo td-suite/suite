@@ -407,6 +407,21 @@ async function operations(ctx) {
     out.push(indicatore({ chiave: 'referti_da_trascrivere', titolo: 'Referti da trascrivere', gruppo: G, valore: x.bozze, meglio: 'giu',
       dettaglio: `Schede in bozza da confermare${vecchia ? `, la più vecchia del ${itData(vecchia)}` : ''}${x.caricati ? ` · ${x.caricati} PDF caricati non ancora elaborati` : ''}`, fonte: `Referti esterni${aggTxt ? ` (ultimo caricamento del ${ggmm(aggTxt)})` : ''}`, aggiornato: aggTxt }));
   }
+  // Laboratorio e Service dal gestionale (Synclab Data API, schema synclab del core): gli indicatori compaiono SOLO se ci sono dati
+  // importati; senza dati non compaiono affatto (non sono "non disponibili": la Data API può essere spenta per scelta).
+  try {
+    const { indicatoriLaboratorio } = await import('./synclab/letture.js');
+    const ieri = addGiorni(P.oggi, -1);
+    const lab = await indicatoriLaboratorio({ ieri, inizioMese: P.inizio, oggi: P.oggi });
+    const agg = lab ? (await many(`SELECT max(finito) AS t FROM synclab.sync_run WHERE esito = 'OK'`))[0]?.t : null;
+    const aggTxt = agg ? new Date(agg).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+    if (lab?.accettazioni_ieri != null && lab.disponibilita.requests > 0) out.push(indicatore({ chiave: 'synclab_accettazioni_ieri', titolo: 'Accettazioni ieri (Synclab)', gruppo: G, valore: lab.accettazioni_ieri, meglio: null,
+      dettaglio: `Accettazioni del gestionale con data ${itData(ieri)} (esclusi gli stati 0, 1 e 29, come da contratto)`, fonte: `Synclab Data API${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
+    if (lab?.fatturato_mese && lab.fatturato_mese.fatturato != null) out.push(indicatore({ chiave: 'synclab_fatturato_mese', titolo: 'Fatturato laboratorio mese (Synclab)', gruppo: G, unita: 'EUR', valore: Number(lab.fatturato_mese.fatturato), meglio: 'su',
+      secondario: { valore: lab.fatturato_mese.documenti, unita: 'n', etichetta: 'documenti' },
+      dettaglio: `Contributo al fatturato netto dei documenti economici dal ${itData(P.inizio)} a oggi, una volta per documento (note di credito già negative: ${lab.fatturato_mese.note_credito})`,
+      nota: lab.fatturato_mese.note || 'Documenti emessi nel mese: grandezza diversa dalla produzione del conto economico', fonte: `Synclab Data API${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
+  } catch (e) { console.warn(`[cockpit:monitor] synclab: ${e.message}`); }
   return out;
 }
 

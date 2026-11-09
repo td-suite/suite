@@ -6,3 +6,4 @@ await tryImport('../lib/community.js', 'registerCommunityJobs');
 await tryImport('../lib/search.js', 'registerSearchJobs');
 await tryImport('../lib/diagnostica.js', 'registerDiagnosticaJobs');   // A13: esito giornaliero della Diagnostica anagrafica
 await tryImport('../lib/scadenzario.js', 'registerScadenzarioJobs');   // Cockpit: notifica giornaliera dello scadenzario di direzione
+await tryImport('../lib/synclab/sync.js', 'registerSynclabJobs');   // Synclab Data API: ciclo notturno (ogni 15 minuti verifica ora e Data API accesa)

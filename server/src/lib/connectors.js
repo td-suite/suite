@@ -210,12 +210,33 @@ export async function testConnector(kind) {
       const h = await fetchJson(`${base}/api/v1/health`, { headers: studiolabExtraHeaders(c), timeoutMs: Number(c.settings.timeout_ms) || 12000 }).catch((e) => ({ errore: e.message }));
       if (h.errore) throw new Error(`StudioLAB non raggiungibile su ${base}/api/v1/health: ${h.errore}`);
       if (!h.res.ok) throw new Error(`StudioLAB /api/v1/health risponde ${h.res.status}: ${h.text.slice(0, 200)}`);
-      endpoint = `${base}/api/v1/auth/client/info`;
+      // Synclab Data API v1 (09/11/2026): la verifica autenticata è GET /api/v1/data/metadata (ruolo DataAPI); /auth/client/info si prova
+      // dopo e un suo 403 non è un errore (richiede il ruolo Application). Installazione senza Data API (metadata 404): vale info, come prima.
       const tok = await studiolabClientToken({ forza: true });
-      const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${tok.accessToken}`, ...studiolabExtraHeaders(c) }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
-      if (!r.res.ok) throw new Error(`StudioLAB risponde ${r.res.status}: ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}`);
-      const info = r.data && typeof r.data === 'object' ? r.data : {};
-      out = { ok: true, message: `Connessione e autenticazione riuscite · token valido fino al ${tok.validTo ? new Date(tok.validTo).toLocaleString('it-IT', { timeZone: 'Europe/Rome' }) : 'n.d.'}${info.name || info.Name ? ` · ${info.name || info.Name}` : ''} (${r.ms} ms)` };
+      const auth = { Authorization: `Bearer ${tok.accessToken}`, 'User-Agent': `TD-Suite/${APP_VERSION}`, ...studiolabExtraHeaders(c) };
+      const tmo = Number(c.settings.timeout_ms) || 12000;
+      const scad = `token valido fino al ${tok.validTo ? new Date(tok.validTo).toLocaleString('it-IT', { timeZone: 'Europe/Rome' }) : 'n.d.'}`;
+      const testo = (r) => (r.data && (r.data.title || r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText;
+      endpoint = `${base}/api/v1/data/metadata`;
+      const t1 = Date.now();
+      const m = await fetchJson(endpoint, { headers: auth, timeoutMs: tmo });
+      logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'synclab', endpoint: 'GET /api/v1/data/metadata', status: m.res.status, ms: Date.now() - t1, message: m.res.ok ? null : testo(m) });
+      const infoUrl = `${base}/api/v1/auth/client/info`;
+      const i = await fetchJson(infoUrl, { headers: auth, timeoutMs: tmo }).catch((e) => ({ errore: e.message }));
+      const infoOk = !i.errore && i.res.ok; const info = infoOk && i.data && typeof i.data === 'object' ? i.data : {};
+      if (m.res.ok && m.data && typeof m.data === 'object') {
+        const d = m.data;
+        const ds = Array.isArray(d.datasets) ? d.datasets.join(', ') : 'n.d.';
+        const nota = infoOk ? `${info.name || info.Name ? ` · client ${info.name || info.Name}` : ''}` : !i.errore && i.res.status === 403 ? ' · ruolo DataAPI: info non disponibile, metadati ok' : '';
+        out = { ok: true, message: `Connessione e autenticazione riuscite · Data API: istanza ${d.instanceId || 'n.d.'}, contratto ${d.contractVersion || 'n.d.'}, insiemi di dati ${ds}, pagina massima ${d.maxPageSize ?? 'n.d.'}, finestra delta ${d.deltaWindowDays ?? 'n.d.'} giorni · ${scad}${nota} (${m.ms} ms)`, metadata: { instanceId: d.instanceId || null, contractVersion: d.contractVersion || null, datasets: Array.isArray(d.datasets) ? d.datasets : [], maxPageSize: d.maxPageSize ?? null, deltaWindowDays: d.deltaWindowDays ?? null } };
+      } else if (m.res.status === 404 && infoOk) {
+        endpoint = infoUrl;
+        out = { ok: true, message: `Connessione e autenticazione riuscite · ${scad}${info.name || info.Name ? ` · ${info.name || info.Name}` : ''} · Data API non pubblicata su questa installazione (metadata 404) (${i.ms} ms)` };
+      } else if (m.res.status === 403) {
+        throw new Error(`login riuscito ma /api/v1/data/metadata risponde 403: il client non ha il ruolo DataAPI (${testo(m)})`);
+      } else {
+        throw new Error(`StudioLAB /api/v1/data/metadata risponde ${m.res.status}: ${testo(m)}`);
+      }
     } else if (kind === 'STUDIOLAB') {
       if (!c.credentials.api_key) throw new Error('Chiave API non impostata');
       endpoint = studiolabUrl(c.base_url, '/api/whoami');
@@ -287,7 +308,9 @@ export async function studiolabClientToken({ forza = false } = {}) {
     const errs = Array.isArray(r.data?.errors) ? r.data.errors.map((e) => e.errorMessage || e.message).filter(Boolean) : [];
     throw new Error(`Login StudioLAB rifiutato (${r.res.status}): ${errs.length ? errs.join('; ') : (r.data && (r.data.message || r.data.Message || r.data.title)) || r.text.slice(0, 300) || r.res.statusText}`);
   }
-  const token = r.data?.accessToken; const validTo = r.data?.validTo ? Date.parse(r.data.validTo) : Date.now() + 3600000;
+  // scadenza = validTo restituito dal login (in questa installazione circa 15 minuti), mai un'ipotesi: senza validTo leggibile il token
+  // vale per la sola richiesta in corso e la successiva rifà il login
+  const token = r.data?.accessToken; const vt = r.data?.validTo ? Date.parse(r.data.validTo) : NaN; const validTo = Number.isFinite(vt) ? vt : Date.now();
   if (!token) throw new Error('Login StudioLAB senza accessToken nella risposta');
   jwtCache = { token, validTo };
   return { accessToken: token, validTo: new Date(validTo).toISOString(), cached: false };

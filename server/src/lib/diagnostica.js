@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D47 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D50 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -379,6 +379,14 @@ export const CONTROLLI = [
     sql: `SELECT o.id, o.code, o.name, o.city, CASE WHEN upper(coalesce(o.code,'')) LIKE 'SER%' THEN 'SRV' WHEN upper(coalesce(o.code,'')) LIKE 'MDL%' THEN 'MDL' WHEN upper(coalesce(o.code,'')) LIKE 'PP%' THEN 'PP' ELSE 'SRV' END AS linea
           FROM organizations o WHERE o.kind = 'CLIENTE' AND coalesce(o.active, TRUE) AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = o.id) ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
     correggi: { etichetta: 'Crea le schede', conferma: true, descrizione: 'un account per Legal entity come prospect censito (fase 0), linea dedotta dal codice (SER → Service, MDL → Medicina del Lavoro, PP → Punti Prelievo, altrimenti Service), con l\'attività "Scheda creata dall\'anagrafica"', fn: corr.d47 } },
+  // Synclab Data API (09/11/2026): abbinamento dei client del gestionale alle Legal entity (synclab.clients_td, migrazione 052)
+  { id: 'D48', area: 'CLIENTI', gravita: 'INFO', titolo: 'Clienti Synclab senza Legal entity abbinata', richiede: ['synclab.clients_td'], spiegazione: 'Client del gestionale importati con la Data API (attivi) che non si abbinano a nessuna Legal entity: né per codice StudioLAB di una sede né per partita IVA o codice fiscale. Si abbinano a mano in Amministrazione > Connettori > Dati Synclab > Clienti Synclab ("Scegli"). Senza abbinamento la loro produzione e i loro documenti non arrivano a Finance Management.',
+    sql: `SELECT v.client_id, v.client_code, v.legal_name, v.operating_company, v.vat_number FROM synclab.clients_td v WHERE v.disponibilita = 'ATTIVO' AND coalesce(v.active, TRUE) AND v.organization_id IS NULL ORDER BY v.legal_name NULLS LAST, v.client_code`,
+    chiave: 'client_id', link: (r) => `/admin/connectors/synclab?tab=clienti&q=${enc(r.client_code || r.legal_name || '')}` },
+  { id: 'D50', area: 'CLIENTI', gravita: 'INFO', titolo: 'Legal entity cliente attiva senza cliente Synclab', richiede: ['synclab.clients_td'], spiegazione: 'Clienti attivi o contrattualizzati del Business Hub (clienti_attivi_v) a cui non corrisponde nessun client del gestionale importato con la Data API. Il controllo vale solo quando i clienti Synclab sono stati importati.',
+    sql: `SELECT o.id, o.code, o.name, o.vat_number, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
+          WHERE o.kind = 'CLIENTE' AND o.active AND EXISTS (SELECT 1 FROM synclab.clients WHERE disponibilita = 'ATTIVO')
+            AND NOT EXISTS (SELECT 1 FROM synclab.clients_td t WHERE t.organization_id = o.id AND t.disponibilita = 'ATTIVO') GROUP BY o.id, o.code, o.name, o.vat_number ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name) },
   { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL attivi senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL ATTIVO nel Business Hub (fase 7 confermata dal CEO; vista clienti_attivi_v, livello ATTIVO) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
     // solo i clienti ATTIVI nel Business Hub (CEO, 08/11/2026: "Strutture clienti service: solo quelli ATTIVI"), una riga per Legal entity
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
@@ -567,6 +575,15 @@ export const CONTROLLI = [
     chiave: 'id', link: (r) => (r.slug ? `/community/news/${enc(r.slug)}` : null),
     correggi: { etichetta: 'Registra', conferma: true, richiede: ['circolari.circolari'], fn: corr.d42,
       descrizione: 'prossimo numero TD-AAAA/NNN del registro Circolari (anno di pubblicazione), protocollo della news aggiornato (lo storico CIRC-… resta in protocol_legacy), riga PUBBLICATA in Circolari con PDF e diffusione al segmento Personale con gli esiti delle email già inviate; nessuna nuova notifica né email' } },
+  { id: 'D49', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Sincronizzazione Synclab ferma', richiede: ['synclab.sync_scope'], spiegazione: 'Con la Data API Synclab abilitata (connettore StudioLAB, scheda Dati Synclab) ogni insieme di dati deve avere un checkpoint confermato da meno di 2 giorni e l\'ultimo ciclo riuscito. Qui gli insiemi fermi, mai sincronizzati o con l\'ultimo ciclo in errore: "Sincronizza adesso" o "Riprendi" nella scheda, l\'errore e il correlationId sono nello storico dei cicli.',
+    sql: `WITH c AS (SELECT coalesce(settings->'datasets', '["exams","clients","price-lists","requests","invoices"]'::jsonb) AS ds FROM public.connectors WHERE kind = 'STUDIOLAB' AND (settings->>'data_api_enabled') = 'true'),
+               d AS (SELECT jsonb_array_elements_text(c.ds) AS dataset FROM c),
+               s AS (SELECT DISTINCT ON (dataset) * FROM synclab.sync_scope ORDER BY dataset, updated_at DESC)
+          SELECT d.dataset, s.id AS scope_id, s.checkpoint_at, s.ultimo_esito->>'stato' AS ultimo_esito, s.ultimo_esito->>'errore' AS errore, s.ultimo_esito->>'correlationId' AS correlation_id,
+                 CASE WHEN s.id IS NULL OR s.checkpoint IS NULL THEN 'mai sincronizzato' WHEN s.ultimo_esito->>'stato' = 'ERRORE' THEN 'ultimo ciclo in errore' ELSE 'checkpoint più vecchio di 2 giorni' END AS motivo
+            FROM d LEFT JOIN s ON s.dataset = d.dataset
+           WHERE s.id IS NULL OR s.checkpoint IS NULL OR s.checkpoint_at < now() - interval '2 days' OR s.ultimo_esito->>'stato' = 'ERRORE' ORDER BY d.dataset`,
+    chiave: 'dataset', link: () => '/admin/connectors/synclab' },
   { id: 'D39', area: 'SISTEMA', gravita: 'BLOCCANTE', titolo: 'Colonne di riferimento a sedi e Legal entity senza chiave esterna', spiegazione: 'Un riferimento senza FK può puntare a una sede o Legal entity inesistente.',
     sql: `SELECT c.table_schema, c.table_name, c.column_name FROM information_schema.columns c
           WHERE c.table_schema NOT IN ('pg_catalog','information_schema') AND c.column_name ~ '(^|_)(site_id|sede_id|struttura_id|org_id|organization_id|company_id|host_org_id)$'

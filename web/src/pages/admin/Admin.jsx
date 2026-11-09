@@ -11,6 +11,7 @@ import { Organization, Roles } from './Registry.jsx';
 import { NotFound } from '../Misc.jsx';
 import { Travaso } from './Travaso.jsx';
 import { Connectors } from './Connectors.jsx';
+import { SynclabDati } from './SynclabDati.jsx';
 import { AssetTypes } from './AssetTypes.jsx';
 import { Diagnostica } from './Diagnostica.jsx';
 
@@ -71,6 +72,7 @@ export default function Admin() {
       <Route path="asset-types" element={<AssetTypes />} />
       <Route path="legacy" element={<Legacy />} />
       <Route path="connectors" element={<Connectors />} />
+      <Route path="connectors/synclab" element={<SynclabDati />} />
       <Route path="api-keys" element={<ApiKeys />} />
       <Route path="travaso" element={<Travaso />} />
       <Route path="imports" element={<Imports />} />

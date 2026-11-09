@@ -193,8 +193,9 @@ export async function contoPdf(d) {
 // ------------------------------------------------------------------ margine per cliente Service
 export const CALCOLO_SRV = (imp, giorni) => [
   'Clienti: Service ATTIVI (conferma del CEO) e CONTRATTUALIZZATI della vista clienti_attivi_v.',
-  'Produzione del mese dalla fonte migliore: riga inserita o caricata in Finance Management (MANUALE o STUDIOLAB), poi StudioLAB arrivato alla Suite (vendite B2B di Retail, poi produzione di Ordini), infine la STIMA: volumi giornalieri attesi dell\'account del Business Hub (o volume annuo / giorni lavorativi) × giorni lavorativi del mese (' + giorni + ' / 12), al prezzo medio per esame dell\'account.',
-  'Ricavo: esami ai prezzi del listino corrente del cliente (prezzo offerto, altrimenti listino) quando la produzione ha il dettaglio per esame; altrimenti il valore caricato o stimato.',
+  'Produzione del mese dalla fonte migliore: riga inserita o caricata in Finance Management (MANUALE o STUDIOLAB), poi SYNCLAB (accettazioni del gestionale importate con la Data API: righe d\'esame non cancellate delle accettazioni attive con data nel mese, al prezzo netto storico di riga), poi StudioLAB arrivato alla Suite (vendite B2B di Retail, poi produzione di Ordini), infine la STIMA: volumi giornalieri attesi dell\'account del Business Hub (o volume annuo / giorni lavorativi) × giorni lavorativi del mese (' + giorni + ' / 12), al prezzo medio per esame dell\'account.',
+  'Ricavo: con la fonte SYNCLAB la somma dei netti di riga del gestionale (lo sconto di testata è riportato a parte, non applicato; le righe senza prezzo al listino corrente se c\'è); con le altre fonti gli esami ai prezzi del listino corrente del cliente (prezzo offerto, altrimenti listino) quando la produzione ha il dettaglio per esame; altrimenti il valore caricato o stimato.',
+  'Fatturato da documenti (Synclab): contributo al fatturato netto dei documenti economici con data nel mese (una volta per documento, note di credito già negative). È una grandezza diversa dalla produzione del mese: è mostrato accanto e non entra nel ricavo né nel margine.',
   `Costi diretti: ritiri del mese (giorni a orario fisso del contratto Service × costo per ritiro ${imp.costo_ritiro != null ? eur(imp.costo_ritiro) : 'da indicare'}; ritiri a chiamata non quantificabili), costo analitico degli esami (tabella costi esami per codice, altrimenti costo medio ${imp.costo_medio_esame != null ? eur(imp.costo_medio_esame) : 'da indicare'}), pagamenti Finance con il cliente indicato.`,
   'Le ipotesi (stima della produzione, costo medio per esame, costo per ritiro) sono segnate "stima".',
 ];
@@ -203,22 +204,22 @@ export async function margineXlsx(d) {
   const ws = wb.addWorksheet('Margine Service', { views: [{ state: 'frozen', ySplit: 3 }] });
   ws.addRow([`Margine per cliente Service · ${d.periodo.etichetta}`]).font = { bold: true, size: 13 };
   ws.addRow(['Valori in euro; "stima" = contiene ipotesi; "da indicare" = dato mancante']);
-  const h = ws.addRow(['Cliente', 'Livello', 'Fonte produzione', 'Esami', 'Ricavo', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Costi diretti', 'Margine', 'Margine %', 'Stime', 'Da indicare']);
+  const h = ws.addRow(['Cliente', 'Livello', 'Fonte produzione', 'Esami', 'Ricavo', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Costi diretti', 'Margine', 'Margine %', 'Stime', 'Da indicare', 'Fatturato da documenti (Synclab, non sommato)']);
   h.font = { bold: true, color: { argb: 'FFFFFFFF' } }; h.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C505E' } }; });
   for (const c of d.clienti) {
     const t = c.totale;
-    const r = ws.addRow([c.org_name, c.livello, t.fonti.join(', '), t.esami, t.ricavo, Object.values(c.mesi).reduce((a, m) => a + (m.ritiri || 0), 0), t.costo_ritiri, t.costo_esami, t.pagamenti, t.costi_diretti, t.margine, t.margine_pct == null ? null : t.margine_pct / 100, t.stime.join(', '), t.da_indicare.join('; ')]);
-    [5, 7, 8, 9, 10, 11].forEach((i) => { r.getCell(i).numFmt = EUR; }); r.getCell(12).numFmt = '0.0%';
+    const r = ws.addRow([c.org_name, c.livello, t.fonti.join(', '), t.esami, t.ricavo, Object.values(c.mesi).reduce((a, m) => a + (m.ritiri || 0), 0), t.costo_ritiri, t.costo_esami, t.pagamenti, t.costi_diretti, t.margine, t.margine_pct == null ? null : t.margine_pct / 100, t.stime.join(', '), t.da_indicare.join('; '), t.fatturato_documenti ?? null]);
+    [5, 7, 8, 9, 10, 11, 15].forEach((i) => { r.getCell(i).numFmt = EUR; }); r.getCell(12).numFmt = '0.0%';
   }
   const T = d.totale;
   const tr = ws.addRow(['Totale linea', '', '', T.esami, T.ricavo, null, T.costo_ritiri, T.costo_esami, T.pagamenti, T.costi_diretti, T.margine, T.margine_pct == null ? null : T.margine_pct / 100]);
   tr.font = { bold: true }; [5, 7, 8, 9, 10, 11].forEach((i) => { tr.getCell(i).numFmt = EUR; }); tr.getCell(12).numFmt = '0.0%';
   [38, 18, 18, 10, 16, 8, 14, 14, 14, 16, 16, 10, 30, 50].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
   const wm = wb.addWorksheet('Mese per mese');
-  wm.addRow(['Cliente', 'Mese', 'Fonte', 'Origine', 'Esami', 'Ricavo', 'Ricavo da', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Margine']).font = { bold: true };
+  wm.addRow(['Cliente', 'Mese', 'Fonte', 'Origine', 'Esami', 'Ricavo', 'Ricavo da', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Margine', 'Fatturato da documenti (Synclab)']).font = { bold: true };
   for (const c of d.clienti) for (const [mk, m] of Object.entries(c.mesi)) {
-    const r = wm.addRow([c.org_name, mk, m.produzione?.fonte || '', m.produzione?.origine || 'nessuna produzione', m.esami, m.ricavo, m.ricavo_da || '', m.ritiri, m.costo_ritiri, m.costo_esami, m.pagamenti, m.margine]);
-    [6, 9, 10, 11, 12].forEach((i) => { r.getCell(i).numFmt = EUR; });
+    const r = wm.addRow([c.org_name, mk, m.produzione?.fonte || '', m.produzione?.origine || 'nessuna produzione', m.esami, m.ricavo, m.ricavo_da || '', m.ritiri, m.costo_ritiri, m.costo_esami, m.pagamenti, m.margine, m.fatturato_documenti ?? null]);
+    [6, 9, 10, 11, 12, 13].forEach((i) => { r.getCell(i).numFmt = EUR; });
   }
   [38, 9, 12, 44, 8, 14, 10, 8, 14, 14, 14, 14].forEach((w, i) => { wm.getColumn(i + 1).width = w; });
   const wn = wb.addWorksheet('Come è calcolato');

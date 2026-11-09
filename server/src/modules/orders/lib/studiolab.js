@@ -36,8 +36,14 @@ async function call(path, params = {}) {
 
 export const whoAmI = () => call('/api/whoami');
 
-/** Sincronizza il catalogo esami (codice, descrizione, materiale) da ServiceNET nella tabella exam_catalog. */
+/**
+ * Sincronizza il catalogo esami nella tabella exam_catalog. Con la Synclab Data API abilitata e il catalogo già importato (schema
+ * synclab, insieme exams) la fonte è Synclab: code = examCode, description, sector = category (in mancanza branchCode); materiale e
+ * "esame service" non sono nel DTO e restano quelli già presenti. Altrimenti ServiceNET /api/esami (codice, descrizione, materiale).
+ */
 export async function syncExamCatalog() {
+  const syn = await catalogoDaSynclab().catch((e) => { console.warn(`[orders] catalogo da Synclab non letto: ${e.message}`); return null; });
+  if (syn) return syn;
   const esami = await call('/api/esami', { CodiceCliente: config.studiolab.clientCode, IncludiEtichette: true });
   if (!Array.isArray(esami)) throw new Error('Risposta inattesa da /api/esami');
   let n = 0;
@@ -53,7 +59,21 @@ export async function syncExamCatalog() {
     [code, e.Descrizione ?? e.DescBreve ?? e.Description ?? null, matCode ? String(matCode) : null, matDesc ? String(matDesc) : null, e.SettoreCommerciale ?? e.Settore ?? null, e.EsameService ?? e.IsService ?? null]);
     n++;
   }
-  return { exams: n };
+  return { exams: n, fonte: 'SERVICENET' };
+}
+
+async function catalogoDaSynclab() {
+  const c = connectorSync('STUDIOLAB');
+  if (!(c.settings?.data_api_enabled === true || c.settings?.data_api_enabled === 'true')) return null;
+  const n0 = await one(`SELECT count(*)::int AS n FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND coalesce(exam_code, '') <> ''`);
+  if (!n0?.n) return null;
+  // un codice può comparire su più id (esami non più utilizzati): vale quello attivo, poi il più recente
+  const r = await q(`INSERT INTO exam_catalog (code, description, sector, updated_at)
+      SELECT DISTINCT ON (trim(exam_code)) trim(exam_code), description, coalesce(nullif(category, ''), nullif(branch_code, '')), now()
+        FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND coalesce(trim(exam_code), '') <> '' ORDER BY trim(exam_code), active DESC NULLS LAST, updated_at DESC
+      ON CONFLICT (code) DO UPDATE SET description = EXCLUDED.description, sector = EXCLUDED.sector, updated_at = now()`);
+  logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'orders', endpoint: 'catalogo esami da Synclab (copia locale)', status: 'OK', ms: 0, message: `${r.rowCount} esami` });
+  return { exams: r.rowCount, fonte: 'SYNCLAB' };
 }
 
 export const listMaterials = () => call('/api/esami/Materiali', { CodiceCliente: config.studiolab.clientCode });

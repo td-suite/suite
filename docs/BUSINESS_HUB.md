@@ -945,3 +945,12 @@ Schermata `docs/screens/business-punti-centri.png`.
 **Verifiche in produzione**: D47 (atteso > 0 al primo avvio, poi 0 dopo il job; UNIFARM SPA in Clienti e prospect con "Da anagrafica
 (censiti)"); che le Legal entity CLIENTE create in passato per Spedizioni (richiedenti) siano davvero clienti: ora ricevono una scheda come le
 altre (se non lo sono, cambiarne il tipo); pagina Punti Prelievo e Centri con tutte le sedi; "Locazioni" da Amministrazione > Sedi.
+
+## Clienti Synclab e perimetro B2B (09/11/2026, Synclab Data API)
+I client del gestionale importati con la Data API (`synclab.clients`) si abbinano alle Legal entity nella vista `synclab.clients_td`:
+proposta dal codice StudioLAB della sede (stessa regola del ponte B2B di Retail), poi da partita IVA o codice fiscale di una sola Legal
+entity; conferma ("Abbina") o scelta a mano ("Scegli") in Amministrazione > Connettori > Dati Synclab > Clienti Synclab.
+**Perimetro B2B della Suite** = client abbinati a una Legal entity CLIENTE attiva con livello ATTIVO o CONTRATTUALIZZATO (clienti_attivi_v,
+attraverso `public.cliente_livello`), più quelli inclusi a mano, meno quelli esclusi a mano. `occupationalMedicine` resta il flag della
+medicina del lavoro e non decide il perimetro. Diagnostica: D48 (client senza Legal entity), D50 (Legal entity cliente attiva senza client
+Synclab). Regola da confermare con il CEO. Dettagli: docs/SYNCLAB_DATA_API.md.

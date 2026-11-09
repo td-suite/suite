@@ -203,14 +203,18 @@ export function stimaProduzione(acc, mk, giorniLavorativiAnno = 250, avvio = nul
 /**
  * Produzione del cliente nel mese, dalla fonte migliore disponibile:
  *  1. riga salvata in Finance Management con fonte MANUALE o STUDIOLAB (scelta esplicita di chi la inserisce o carica il file);
- *  2. StudioLAB arrivato alla Suite: vendite B2B di Retail (codice StudioLAB abbinato alla Legal entity, con valore e codici d'esame);
- *  3. StudioLAB arrivato alla Suite: produzione di Ordini (HL7 / import, per codice d'esame, senza valore);
- *  4. stima salvata (fonte STIMA) o, in mancanza, stima calcolata al momento dall'account del Business Hub.
+ *  2. Synclab Data API (09/11/2026): accettazioni del gestionale importate nella Suite, con il prezzo netto storico di ogni riga
+ *     (lib/synclab/letture.js produzionePerOrg). È il dato del gestionale, non una stima: viene prima di Retail e Ordini;
+ *  3. StudioLAB arrivato alla Suite: vendite B2B di Retail (codice StudioLAB abbinato alla Legal entity, con valore e codici d'esame);
+ *  4. StudioLAB arrivato alla Suite: produzione di Ordini (HL7 / import, per codice d'esame, senza valore);
+ *  5. stima salvata (fonte STIMA) o, in mancanza, stima calcolata al momento dall'account del Business Hub.
  * Ritorna { fonte, origine, esami, valore, righe, stima, calcolata, note } oppure null (nessuna produzione né stima).
  */
-export function scegliProduzione({ salvata = null, retail = null, ordini = null, stima = null } = {}) {
+export const ORIGINE_SYNCLAB = 'Synclab Data API: accettazioni del gestionale';
+export function scegliProduzione({ salvata = null, synclab = null, retail = null, ordini = null, stima = null } = {}) {
   const base = (x) => ({ esami: Number(x.esami || 0), valore: x.valore == null ? null : r2(x.valore), righe: Array.isArray(x.righe) && x.righe.length ? x.righe : null, note: x.note || null });
   if (salvata && salvata.fonte !== 'STIMA') return { ...base(salvata), fonte: salvata.fonte, origine: salvata.fonte === 'STUDIOLAB' ? 'File StudioLAB caricato in Finance Management' : 'Inserita in Finance Management', stima: false, calcolata: false, id: salvata.id };
+  if (synclab && Number(synclab.esami) > 0) return { ...base(synclab), fonte: 'SYNCLAB', origine: ORIGINE_SYNCLAB, stima: false, calcolata: false };
   if (retail && Number(retail.esami) > 0) return { ...base(retail), fonte: 'STUDIOLAB', origine: 'Retail: vendite B2B dal gestionale StudioLAB', stima: false, calcolata: false };
   if (ordini && Number(ordini.esami) > 0) return { ...base(ordini), fonte: 'STUDIOLAB', origine: 'Ordini: produzione StudioLAB (HL7 o import)', stima: false, calcolata: false };
   if (salvata) return { ...base(salvata), fonte: 'STIMA', origine: 'Stima salvata in Finance Management', stima: true, calcolata: false, id: salvata.id };
@@ -223,13 +227,27 @@ export function scegliProduzione({ salvata = null, retail = null, ordini = null,
  * costiEsami: Map codice → costo; impostazioni { costo_medio_esame, costo_ritiro }; ritiri: esito di ritiriNelMese (o null senza
  * contratto); pagamenti: importo dei pagamenti Finance con org_id = cliente.
  */
-export function margineCliente({ produzione = null, listino = [], costiEsami = new Map(), costoMedio = null, costoRitiro = null, ritiri = null, pagamenti = 0 }) {
-  const out = { esami: 0, valore_produzione: null, ricavo: null, ricavo_da: null, costo_ritiri: null, costo_esami: null, pagamenti: r2(pagamenti || 0), costi_diretti: null, margine: null, margine_pct: null, stime: [], da_indicare: [] };
+export function margineCliente({ produzione = null, listino = [], costiEsami = new Map(), costoMedio = null, costoRitiro = null, ritiri = null, pagamenti = 0, documenti = null }) {
+  // documenti: fatturato del mese dai documenti economici di Synclab (netRevenueContribution): grandezza diversa dalla produzione,
+  // mostrata accanto e MAI sommata al ricavo né usata nel margine
+  const out = { fatturato_documenti: documenti && documenti.fatturato != null ? r2(documenti.fatturato) : null, documenti: documenti || null, esami: 0, valore_produzione: null, ricavo: null, ricavo_da: null, costo_ritiri: null, costo_esami: null, pagamenti: r2(pagamenti || 0), costi_diretti: null, margine: null, margine_pct: null, stime: [], da_indicare: [] };
   if (produzione) {
     out.esami = produzione.esami; out.valore_produzione = produzione.valore;
     if (produzione.stima) out.stime.push('produzione stimata');
-    const conPrezzi = produzione.righe && (listino || []).length ? ricavoDaListino(produzione.righe, listino) : null;
-    if (conPrezzi && conPrezzi.esami_prezzati > 0) {
+    // Synclab: le righe hanno il prezzo netto storico applicato dal gestionale (valore). Si usa quello; solo le righe senza prezzo nel
+    // gestionale si valorizzano al listino corrente del Business Hub, se lo ha (altrimenti restano "da indicare").
+    if (produzione.fonte === 'SYNCLAB' && produzione.righe) {
+      const conValore = produzione.righe.filter((x) => num(x.valore) != null);
+      const senza = produzione.righe.filter((x) => num(x.valore) == null).map((x) => ({ ...x, quantita: Number(x.quantita ?? x.righe ?? 0), valore: null }));
+      const daListino = senza.length && (listino || []).length ? ricavoDaListino(senza, listino) : null;
+      const scoperti = senza.reduce((a, x) => a + Number(x.quantita || 0), 0) - (daListino ? daListino.esami_prezzati : 0);
+      out.ricavo = r2(conValore.reduce((a, x) => a + Number(x.valore), 0) + (daListino ? daListino.ricavo : 0)); out.ricavo_da = 'SYNCLAB';
+      if (daListino) out.listino = daListino;
+      if (scoperti > 0) out.da_indicare.push(`${scoperti} esami senza prezzo nel gestionale né nel listino`);
+    }
+    const conPrezzi = produzione.fonte !== 'SYNCLAB' && produzione.righe && (listino || []).length ? ricavoDaListino(produzione.righe, listino) : null;
+    if (produzione.fonte === 'SYNCLAB' && out.ricavo_da === 'SYNCLAB') { /* già valorizzato */ }
+    else if (conPrezzi && conPrezzi.esami_prezzati > 0) {
       out.ricavo = conPrezzi.ricavo; out.ricavo_da = 'LISTINO'; out.listino = conPrezzi;
       if (conPrezzi.esami_senza_prezzo > 0 && conPrezzi.valore_senza_prezzo < 0.005) out.da_indicare.push(`${conPrezzi.esami_senza_prezzo} esami senza prezzo nel listino`);
     } else if (produzione.valore != null) { out.ricavo = r2(produzione.valore); out.ricavo_da = produzione.stima ? 'STIMA' : 'VALORE'; }

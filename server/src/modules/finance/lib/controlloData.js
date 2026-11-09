@@ -10,6 +10,7 @@ import { contractEnd, parseDate, UTILITY_LABEL } from './schedule.js';
 import { todayRome } from './util.js';
 import { versioneCorrente } from '../../business/lib/listino.js';
 import * as CE from './contoEconomico.js';
+import { produzionePerOrg, fatturatoPerOrg } from '../../../lib/synclab/letture.js';
 
 export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Contratti del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management' };
 const num = (v) => (v == null || v === '' ? null : Number(v));
@@ -100,6 +101,10 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
         FROM production p LEFT JOIN public.sites si ON si.id = p.site_id AND si.kind = 'SERVICE'
        WHERE coalesce(p.org_id, si.organization_id) = ANY($1::int[]) AND p.month BETWEEN $2::date AND $3::date GROUP BY 1, 2, 3`, [ids, da, a]),
   ]) : [vuoto, vuoto, vuoto, vuoto, vuoto];
+  // Synclab Data API (core, schema synclab): produzione dalle accettazioni del gestionale e fatturato dai documenti economici
+  let syn = new Map(), fat = new Map();
+  try { [syn, fat] = ids.length ? await Promise.all([produzionePerOrg(ids, da, a), fatturatoPerOrg(ids, da, a)]) : [syn, fat]; fonti.synclab = { disponibile: true, nota: syn.size || fat.size ? null : 'Synclab Data API: nessuna accettazione né documento dei clienti nel periodo (o client Synclab non abbinati alle Legal entity)' }; }
+  catch (e) { console.warn(`[finance:controllo] synclab: ${e.message}`); fonti.synclab = { disponibile: false, nota: `Synclab Data API: lettura non riuscita (${e.message})` }; }
   fonti.business = { disponibile: acc.ok, nota: acc.ok ? null : `${acc.nota}: niente listini, contratti (ritiri) né stime` };
   fonti.retail = { disponibile: retail.ok, nota: retail.nota };
   fonti.orders = { disponibile: ordini.ok, nota: ordini.nota };
@@ -136,10 +141,10 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
       const k = `${c.org_id}|${mk}`;
       const sal = salvate.find((x) => x.org_id === c.org_id && x.mese === mk) || null;
       const stima = account ? CE.stimaProduzione(account, mk, giorniAnno, avvio) : null;
-      const prod = CE.scegliProduzione({ salvata: sal, retail: rRetail.get(k), ordini: rOrdini.get(k), stima });
+      const prod = CE.scegliProduzione({ salvata: sal, synclab: syn.get(k), retail: rRetail.get(k), ordini: rOrdini.get(k), stima });
       const ritiri = contratto ? CE.ritiriNelMese(Array.isArray(contratto.days) ? contratto.days : [], mk, contratto.start_date, contratto.end_date) : null;
       const pags = pagOrg.get(k) || [];
-      const m = CE.margineCliente({ produzione: prod, listino: listino?.righe || [], costiEsami: costi, costoMedio: imp.costo_medio_esame, costoRitiro: imp.costo_ritiro, ritiri, pagamenti: pags.reduce((s, x) => s + Number(x.amount), 0) });
+      const m = CE.margineCliente({ produzione: prod, listino: listino?.righe || [], costiEsami: costi, costoMedio: imp.costo_medio_esame, costoRitiro: imp.costo_ritiro, ritiri, pagamenti: pags.reduce((s, x) => s + Number(x.amount), 0), documenti: fat.get(k) || null });
       mesi[mk] = { ...m, produzione: prod ? { fonte: prod.fonte, origine: prod.origine, stima: prod.stima, calcolata: prod.calcolata, id: prod.id || null, note: prod.note, righe: prod.righe ? prod.righe.length : 0, dettaglio_stima: prod.dettaglio_stima || null } : null,
         pagamenti_righe: pags.map((x) => ({ id: x.id, protocol: x.protocol, beneficiary_name: x.beneficiary_name, purpose: x.purpose, amount: Number(x.amount), data: x.data })) };
     }
@@ -154,9 +159,10 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
 
 /** Somma dei mesi di un cliente (ricavo e margine null se nessun mese li ha; "parziale" se manca qualche mese). */
 export function sommaMesi(ms) {
-  const s = { esami: 0, ricavo: null, costo_ritiri: 0, costo_esami: 0, pagamenti: 0, costi_diretti: 0, margine: null, margine_pct: null, stime: [], da_indicare: [], ricavo_parziale: false, fonti: [] };
+  const s = { esami: 0, ricavo: null, fatturato_documenti: null, costo_ritiri: 0, costo_esami: 0, pagamenti: 0, costi_diretti: 0, margine: null, margine_pct: null, stime: [], da_indicare: [], ricavo_parziale: false, fonti: [] };
   for (const m of ms) {
     s.esami += Number(m.esami || 0);
+    if (m.fatturato_documenti != null) s.fatturato_documenti = CE.r2((s.fatturato_documenti || 0) + m.fatturato_documenti);   // a parte: mai nel ricavo
     if (m.ricavo != null) s.ricavo = CE.r2((s.ricavo || 0) + m.ricavo); else if (m.esami > 0) s.ricavo_parziale = true;
     s.costo_ritiri = CE.r2(s.costo_ritiri + (m.costo_ritiri || 0)); s.costo_esami = CE.r2(s.costo_esami + (m.costo_esami || 0));
     s.pagamenti = CE.r2(s.pagamenti + (m.pagamenti || 0)); s.costi_diretti = CE.r2(s.costi_diretti + (m.costi_diretti || 0));

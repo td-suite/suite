@@ -12,7 +12,9 @@ import { eur } from '../format.js';
 const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 const pct = (v) => (v == null ? '' : `${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 })}%`);
 const n0 = (v) => Number(v || 0).toLocaleString('it-IT');
-const FONTE_TONE = { STUDIOLAB: 'teal', MANUALE: 'blue', STIMA: 'mauve' };
+const FONTE_TONE = { STUDIOLAB: 'teal', SYNCLAB: 'green', MANUALE: 'blue', STIMA: 'mauve' };
+// Fatturato da documenti (Synclab Data API): documenti emessi nel mese, grandezza diversa dalla produzione: colonna a parte, mai sommata
+const DOC_TITLE = 'Contributo al fatturato netto dei documenti economici Synclab con data nel mese (note di credito già negative). Non è sommato al ricavo né al margine: la produzione del mese e i documenti emessi nel mese sono grandezze diverse.';
 const LIVELLO = { ATTIVO: ['green', 'attivo'], CONTRATTUALIZZATO: ['blue', 'in avvio'] };
 const meseLabel = (mk) => { const [y, m] = mk.split('-'); return `${MESI[Number(m) - 1]} ${y}`; };
 
@@ -31,14 +33,15 @@ function DettaglioCliente({ orgId, anno, onClose }) {
         <>
           <p className="small muted" style={{ marginTop: 0 }}>Listino corrente: {c.listino ? `versione ${c.listino.versione} (${c.listino.esami} esami)` : 'nessuno nel Business Hub'} · contratto Service: {c.contratto ? `${c.contratto.status.toLowerCase()}, ritiri fissi il ${c.contratto.giorni_ritiro.map((g) => ({ mon: 'lun', tue: 'mar', wed: 'mer', thu: 'gio', fri: 'ven', sat: 'sab' }[g])).join(', ') || 'nessun giorno'}` : 'nessuno vigente'}</p>
           <div className="table-wrap"><table className="t" data-testid="margine-cliente-mesi">
-            <thead><tr><th>Mese</th><th>Fonte</th><th className="num">Esami</th><th className="num">Ricavo</th><th className="num">Ritiri</th><th className="num">Costo ritiri</th><th className="num">Costo esami</th><th className="num">Pagamenti</th><th className="num">Margine</th><th>Note</th></tr></thead>
+            <thead><tr><th>Mese</th><th>Fonte</th><th className="num">Esami</th><th className="num">Ricavo</th>{c.totale.fatturato_documenti != null && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<th className="num">Ritiri</th><th className="num">Costo ritiri</th><th className="num">Costo esami</th><th className="num">Pagamenti</th><th className="num">Margine</th><th>Note</th></tr></thead>
             <tbody>
-              {Object.entries(c.mesi).map(([mk, m]) => m.futuro ? <tr key={mk} className="muted"><td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td><td colSpan={9} className="small">mese futuro</td></tr> : (
+              {Object.entries(c.mesi).map(([mk, m]) => m.futuro ? <tr key={mk} className="muted"><td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td><td colSpan={c.totale.fatturato_documenti != null ? 10 : 9} className="small">mese futuro</td></tr> : (
                 <tr key={mk}>
                   <td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td>
                   <td>{m.produzione ? <span title={m.produzione.origine}><Badge tone={FONTE_TONE[m.produzione.fonte]}>{m.produzione.fonte.toLowerCase()}</Badge></span> : <span className="muted small">nessuna</span>}</td>
                   <td className="num">{n0(m.esami)}</td>
-                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : null}</td>
+                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : m.ricavo_da === 'SYNCLAB' ? <div className="small muted">netti del gestionale</div> : null}{m.produzione?.note ? <div className="small muted" title={m.produzione.note}>vedi nota</div> : null}</td>
+                  {c.totale.fatturato_documenti != null && <td className="num" title={m.documenti?.note || DOC_TITLE}>{m.fatturato_documenti == null ? '–' : eur(m.fatturato_documenti)}</td>}
                   <td className="num">{m.ritiri ?? '–'}{m.ritiri_a_chiamata ? <div className="small muted">+{m.ritiri_a_chiamata} a chiamata</div> : null}</td>
                   <td className="num">{m.costo_ritiri == null ? <Badge tone="red">da indicare</Badge> : eur(m.costo_ritiri)}</td>
                   <td className="num">{m.costo_esami == null ? <Badge tone="red">da indicare</Badge> : eur(m.costo_esami)}</td>
@@ -47,7 +50,7 @@ function DettaglioCliente({ orgId, anno, onClose }) {
                   <td><Note t={m} /></td>
                 </tr>
               ))}
-              <tr className="pl-sum"><td>Totale {anno}</td><td /><td className="num">{n0(c.totale.esami)}</td><td className="num">{eur(c.totale.ricavo)}</td><td /><td className="num">{eur(c.totale.costo_ritiri)}</td><td className="num">{eur(c.totale.costo_esami)}</td><td className="num">{eur(c.totale.pagamenti)}</td><td className="num">{eur(c.totale.margine)}<div className="small muted">{pct(c.totale.margine_pct)}</div></td><td><Note t={c.totale} /></td></tr>
+              <tr className="pl-sum"><td>Totale {anno}</td><td /><td className="num">{n0(c.totale.esami)}</td><td className="num">{eur(c.totale.ricavo)}</td>{c.totale.fatturato_documenti != null && <td className="num">{eur(c.totale.fatturato_documenti)}</td>}<td /><td className="num">{eur(c.totale.costo_ritiri)}</td><td className="num">{eur(c.totale.costo_esami)}</td><td className="num">{eur(c.totale.pagamenti)}</td><td className="num">{eur(c.totale.margine)}<div className="small muted">{pct(c.totale.margine_pct)}</div></td><td><Note t={c.totale} /></td></tr>
             </tbody>
           </table></div>
         </>
@@ -132,6 +135,7 @@ export default function MargineService() {
   const del = async (id) => { try { await api.del(`/controllo/produzione/${id}`); saved('Produzione eliminata'); } catch (e) { toast(e.message, 'err'); } };
   const anni = [oggi.getFullYear() + 1, oggi.getFullYear(), oggi.getFullYear() - 1, oggi.getFullYear() - 2];
   const T = x?.totale;
+  const conDoc = T?.fatturato_documenti != null;
   return (
     <div className="page">
       <div className="page-head">
@@ -160,7 +164,7 @@ export default function MargineService() {
             <button className="btn sm ghost" onClick={stime} title="Salva come STIMA la produzione stimata dei clienti senza dati (le righe già presenti non cambiano)">Salva le stime</button>
           </div>}>
             <div className="table-wrap"><table className="t" data-testid="margine-service">
-              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th><Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th>Note</th></tr></thead>
+              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th>{conDoc && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th>Note</th></tr></thead>
               <tbody>
                 {righe.map((c) => {
                   const t = c.totale; const [tone, lab] = LIVELLO[c.livello] || ['grey', c.livello];
@@ -170,6 +174,7 @@ export default function MargineService() {
                       <td>{t.fonti.length ? t.fonti.map((f) => <Badge key={f} tone={FONTE_TONE[f]}>{f.toLowerCase()}</Badge>) : <span className="small muted">nessuna produzione</span>}</td>
                       <td className="num">{n0(t.esami)}</td>
                       <td className="num">{t.ricavo == null ? (t.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(t.ricavo)}</td>
+                      {conDoc && <td className="num" title={DOC_TITLE}>{t.fatturato_documenti == null ? '–' : eur(t.fatturato_documenti)}</td>}
                       <td className="num" title={`Ritiri ${eur(t.costo_ritiri)} · esami ${eur(t.costo_esami)} · pagamenti ${eur(t.pagamenti)}`}>{eur(t.costi_diretti)}</td>
                       <td className="num strong">{t.margine == null ? '–' : eur(t.margine)}</td>
                       <td className="num">{pct(t.margine_pct)}</td>
@@ -177,8 +182,8 @@ export default function MargineService() {
                     </tr>
                   );
                 })}
-                {!righe.length && <tr><td colSpan={8} className="empty">Nessun cliente Service attivo o contrattualizzato nel Business Hub.</td></tr>}
-                <tr className="pl-sum"><td>Totale di linea</td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td><td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td><Note t={T} /></td></tr>
+                {!righe.length && <tr><td colSpan={conDoc ? 9 : 8} className="empty">Nessun cliente Service attivo o contrattualizzato nel Business Hub.</td></tr>}
+                <tr className="pl-sum"><td>Totale di linea</td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td>{conDoc && <td className="num">{eur(T.fatturato_documenti)}</td>}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td><Note t={T} /></td></tr>
               </tbody>
             </table></div>
           </Card>

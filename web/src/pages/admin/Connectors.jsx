@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useApi, Card, Badge, Skeleton, ErrorBox, PageHead, Field, useToast, Modal, Switch, CopyButton, ConfirmModal } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
@@ -7,7 +8,7 @@ import { fmtDateTime, timeAgo } from '../../format.js';
 // Amministrazione > Connettori: un connettore per sistema esterno, configurato una volta e valido per tutta la Suite.
 // Le credenziali non si rileggono mai: il server espone solo "impostata" e gli ultimi 4 caratteri.
 const DESC = {
-  STUDIOLAB: 'LIS di laboratorio di CB Sistemi: API REST ServiceNET (chiave X-API-KEY) per Non conformità e Ordini, canali HL7 e push in ingresso con il segreto qui sotto. Alimenta anche le sedi dei clienti service (codice cliente).',
+  STUDIOLAB: 'LIS di laboratorio di CB Sistemi: API REST ServiceNET (chiave X-API-KEY) per Non conformità e Ordini, canali HL7 e push in ingresso con il segreto qui sotto. Alimenta anche le sedi dei clienti service (codice cliente). Con il client registrato (Synclab) anche la Data API v1: copia in sola lettura di clienti, esami, listini, accettazioni e documenti economici (scheda "Dati Synclab").',
   GIPO: 'Gestionale di accettazione e prenotazione B2C (Docplanner). Nessuna API documentata: i dati entrano dall\'import da file di Retail e dalle API di ingestione della Suite.',
   TUOTEMPO: 'Prenotazione online (Docplanner): API v3 con api_key fissa per istanza, chiamate dagli IP statici in uscita di Render autorizzati da Docplanner. Usata da Retail per il catalogo prenotabile.',
   SILVA: 'Gestore del magazzino. API Silva v1 (dal 30/10/2026): la Suite legge catalogo e giacenze con la chiave X-API-KEY qui sotto (completo la prima volta per anno, poi sole modifiche con riferimento per anno); Silva interroga le API di Ordini con il segreto in ingresso.',
@@ -87,6 +88,7 @@ function ConnectorCard({ c, onChanged }) {
       <div className="row mt wrap" style={{ gap: 8 }}>
         <button className="btn sm" disabled={busy === 'save'} onClick={save}><Icon name="check" />Salva</button>
         <button className="btn sm ghost" disabled={busy === 'test'} onClick={test}><Icon name="refresh" />{busy === 'test' ? 'Prova in corso' : 'Prova connessione'}</button>
+        {c.kind === 'STUDIOLAB' && <Link className="btn sm ghost" to="/admin/connectors/synclab" title="Synclab Data API v1: stato, impostazioni, clienti Synclab e storico dei cicli"><Icon name="stats" />Dati Synclab (Data API){c.settings?.data_api_enabled === true ? '' : ' · spenta'}</Link>}
         {c.kind === 'STUDIOLAB' && c.auth_kind === 'CLIENT_JWT' && c.credentials.configured && <button className="btn sm ghost" disabled={busy === 'reg'} onClick={async () => { if (!window.confirm('Registrare la password del client su StudioLAB? Si fa una sola volta.')) return; setBusy('reg'); try { const r = await api.post(`/connectors/${c.kind}/registra-client`); toast(r.message, r.ok ? 'ok' : 'err'); onChanged(); } catch (e) { toast(e, 'err'); } setBusy(null); }}><Icon name="key" />Registra la password del client</button>}
         <button className="btn sm ghost" onClick={() => setShowLog(!showLog)}><Icon name="list" />{showLog ? 'Nascondi registro' : 'Registro chiamate'}</button>
         {c.credentials.configured && <button className="btn sm ghost danger" disabled={busy} onClick={removeCreds}><Icon name="trash" />Rimuovi credenziali</button>}

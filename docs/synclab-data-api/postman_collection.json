@@ -1,0 +1,407 @@
+{
+  "info": {
+    "name": "Synclab Data API v1",
+    "_postman_id": "96684a51-e307-4ab4-9839-068f3c9b6720",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Consegna del 9 novembre 2026. URL e clientName già impostati; inserire clientPassword solo a runtime. Primo completo senza filtro data. Per il polling ripetere lo stesso ambito con nextCursor; rispettare Retry-After. candidateSyncToken va confermato come syncToken solo dopo il commit locale dell'ultima pagina. Token e password non vanno esportati. Vedere 00_LEGGIMI.md e 01_CONTRATTO_API.md."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://synclab.toscanadiagnostica.it"
+    },
+    {
+      "key": "clientName",
+      "value": "TDSuite"
+    },
+    {
+      "key": "clientPassword",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "nextCursor",
+      "value": ""
+    },
+    {
+      "key": "syncToken",
+      "value": ""
+    },
+    {
+      "key": "candidateSyncToken",
+      "value": ""
+    },
+    {
+      "key": "requestId",
+      "value": ""
+    },
+    {
+      "key": "priceListId",
+      "value": ""
+    },
+    {
+      "key": "invoiceId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/auth/client/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{clientName}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) pm.collectionVariables.set('accessToken', pm.response.json().accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metadati",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/metadata",
+        "description": "Capacità e limiti dell'installazione."
+      },
+      "event": []
+    },
+    {
+      "name": "Completo clients",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/clients?pageSize=100",
+        "description": "Prima cattura. Per il polling ripetere questo URL aggiungendo cursor={{nextCursor}}. Conservare checkpoint indipendenti per ogni dataset."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Completo exams",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/exams?pageSize=100",
+        "description": "Prima cattura. Per il polling ripetere questo URL aggiungendo cursor={{nextCursor}}. Conservare checkpoint indipendenti per ogni dataset."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Completo price-lists",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/price-lists?pageSize=10",
+        "description": "Prima cattura. Per il polling ripetere questo URL aggiungendo cursor={{nextCursor}}. Conservare checkpoint indipendenti per ogni dataset."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Completo invoices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/invoices?pageSize=100",
+        "description": "Prima cattura. Per il polling ripetere questo URL aggiungendo cursor={{nextCursor}}. Conservare checkpoint indipendenti per ogni dataset."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accettazioni — completo standard",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/requests?includePatient=false&pageSize=100",
+        "description": "Esempio di sottoinsieme temporale; nessun identificativo paziente."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accettazioni — pagina o polling",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/requests?includePatient=false&pageSize=100&cursor={{nextCursor}}",
+        "description": "Ripetere su202; continuare su200 finché nextCursor diventa null."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accettazioni — delta",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/sync/changes?dataset=requests&since={{syncToken}}&includePatient=false&pageSize=100",
+        "description": "Usare il checkpoint confermato dopo il commit dell'ultima pagina del completo."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accettazioni — pagina o polling delta",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/sync/changes?dataset=requests&since={{syncToken}}&includePatient=false&pageSize=100&cursor={{nextCursor}}",
+        "description": "Non cambiare since durante le pagine dello stesso delta."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accettazione — dettaglio standard",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/requests/{{requestId}}?includePatient=false",
+        "description": "ID ottenuto dall'export, non numero documento."
+      },
+      "event": []
+    },
+    {
+      "name": "Accettazione — dettaglio opt-in",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/requests/{{requestId}}?includePatient=true",
+        "description": "Stesso ruolo DataAPI; aggiunge anagrafica e descrizioni storiche libere."
+      },
+      "event": []
+    },
+    {
+      "name": "Listino — righe paginate",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/price-lists/{{priceListId}}/items?pageSize=100",
+        "description": "Polling/pagine con cursor. Nessun syncToken per la sola risorsa figlia."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.nextCursor) pm.collectionVariables.set('nextCursor', body.nextCursor);",
+              "if (body.syncToken) pm.collectionVariables.set('candidateSyncToken', body.syncToken);",
+              "// Confermare syncToken soltanto dopo il commit dell'importazione nel database consumer."
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fattura — dettaglio",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/invoices/{{invoiceId}}",
+        "description": "Fatture e note di credito con namespace di ID distinti."
+      },
+      "event": []
+    },
+    {
+      "name": "Riconciliazione dopo riallineamento",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/data/sync/status?dataset=requests&id={{requestId}}",
+        "description": "Ripetere id per una lista fino a200. available richiede dettaglio; archived/unavailable conservano la copia locale."
+      },
+      "event": []
+    }
+  ]
+}

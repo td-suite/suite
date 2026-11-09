@@ -1,0 +1,492 @@
+{
+  "descrizione": "Dati interamente sintetici. Token/cursori dimostrativi non utilizzabili.",
+  "client": {
+    "id": "Q0xJRU5URS1ERU1P",
+    "clientCode": "CLIENTE-DEMO",
+    "legalName": "Laboratorio Dimostrativo Srl",
+    "billingClientId": null,
+    "operatingCompany": "LAB",
+    "vatNumber": "00000000000",
+    "fiscalCode": null,
+    "address": "Via Esempio1",
+    "city": "Comune di esempio",
+    "province": "PD",
+    "postalCode": "35000",
+    "phone1": null,
+    "phone2": null,
+    "email": "api@example.invalid",
+    "invoiceEmail": "amministrazione@example.invalid",
+    "nonConformityEmail": "qualita@example.invalid",
+    "priceListId": "QkFTRQ",
+    "extraPriceListId": null,
+    "active": true,
+    "site": {
+      "description": "Sede dimostrativa",
+      "address": "Via Esempio1",
+      "city": "Comune di esempio",
+      "province": "PD",
+      "postalCode": "35000",
+      "phone": null
+    }
+  },
+  "exam": {
+    "id": "R0xV",
+    "examCode": "GLU",
+    "description": "Glucosio",
+    "category": "CHIMICA",
+    "branchCode": "LAB",
+    "specialtyCode": null,
+    "regionalCode": null,
+    "active": true
+  },
+  "priceList": {
+    "id": "QkFTRQ",
+    "code": "BASE",
+    "description": "Listino dimostrativo",
+    "type": 1,
+    "state": 10,
+    "active": true,
+    "operatingCompany": "LAB",
+    "items": [
+      {
+        "id": "QkFTRQBHTFU",
+        "examId": "R0xV",
+        "examCode": "GLU",
+        "description": "Glucosio",
+        "grossUnitPriceExcludingVat": 12.5,
+        "discountPercent": 20,
+        "netUnitPriceExcludingVat": 10,
+        "vatCode": null,
+        "vatRate": null,
+        "vatAmount": null,
+        "vatTreatment": "not_available"
+      }
+    ]
+  },
+  "standardRequest": {
+    "id": "MjAyNi8xMjM",
+    "requestNumber": "2026/123",
+    "date": "2026-07-14",
+    "clientId": "Q0xJRU5URS1ERU1P",
+    "clientCode": "CLIENTE-DEMO",
+    "operatingCompany": "LAB",
+    "state": 50,
+    "patientType": "PRIVATO",
+    "occupationalMedicine": false,
+    "createdAtLocal": "2026-07-14T08:30:00",
+    "modifiedAtLocal": "2026-07-14T10:30:00",
+    "bookingAtLocal": null,
+    "reportAtLocal": "2026-07-14T10:00:00",
+    "sourceAmount": 10,
+    "headerDiscountPercent": 0,
+    "demographics": {
+      "ageYears": 42,
+      "sex": "F",
+      "city": "Comune di esempio",
+      "province": "PD",
+      "postalCode": "35000"
+    },
+    "items": [
+      {
+        "id": "12345",
+        "examId": "R0xV",
+        "examCode": "GLU",
+        "description": "Glucosio",
+        "quantity": 1,
+        "grossUnitPriceExcludingVat": 12.5,
+        "discountPercent": 20,
+        "netUnitPriceExcludingVat": 10,
+        "vatCode": null,
+        "vatRate": null,
+        "vatAmount": null,
+        "vatTreatment": "not_available",
+        "deleted": false,
+        "notPerformedCode": null,
+        "reportReady": true,
+        "executedAtLocal": "2026-07-14T09:00:00",
+        "validatedAtLocal": "2026-07-14T09:30:00",
+        "invoiceIds": [
+          "s_MjAyNi9GMDAx"
+        ],
+        "sampleIds": [
+          "REVNTzEyMw"
+        ]
+      }
+    ],
+    "samples": [
+      {
+        "id": "REVNTzEyMw",
+        "barcode": "DEMO123",
+        "material": "SIERO",
+        "container": "PROVETTA",
+        "sampleAtLocal": "2026-07-14T08:40:00",
+        "collectedAtLocal": "2026-07-14T08:40:00",
+        "checkedInAtLocal": "2026-07-14T08:50:00",
+        "preparedAtLocal": null,
+        "checkedOutAtLocal": null
+      }
+    ],
+    "invoiceIds": [
+      "s_MjAyNi9GMDAx"
+    ]
+  },
+  "optInRequest": {
+    "id": "MjAyNi8xMjM",
+    "requestNumber": "2026/123",
+    "date": "2026-07-14",
+    "clientId": "Q0xJRU5URS1ERU1P",
+    "clientCode": "CLIENTE-DEMO",
+    "operatingCompany": "LAB",
+    "state": 50,
+    "patientType": "PRIVATO",
+    "occupationalMedicine": false,
+    "createdAtLocal": "2026-07-14T08:30:00",
+    "modifiedAtLocal": "2026-07-14T10:30:00",
+    "bookingAtLocal": null,
+    "reportAtLocal": "2026-07-14T10:00:00",
+    "sourceAmount": 10,
+    "headerDiscountPercent": 0,
+    "demographics": {
+      "ageYears": 42,
+      "sex": "F",
+      "city": "Comune di esempio",
+      "province": "PD",
+      "postalCode": "35000"
+    },
+    "items": [
+      {
+        "id": "12345",
+        "examId": "R0xV",
+        "examCode": "GLU",
+        "description": "Glucosio",
+        "quantity": 1,
+        "grossUnitPriceExcludingVat": 12.5,
+        "discountPercent": 20,
+        "netUnitPriceExcludingVat": 10,
+        "vatCode": null,
+        "vatRate": null,
+        "vatAmount": null,
+        "vatTreatment": "not_available",
+        "deleted": false,
+        "notPerformedCode": null,
+        "reportReady": true,
+        "executedAtLocal": "2026-07-14T09:00:00",
+        "validatedAtLocal": "2026-07-14T09:30:00",
+        "invoiceIds": [
+          "s_MjAyNi9GMDAx"
+        ],
+        "sampleIds": [
+          "REVNTzEyMw"
+        ],
+        "historicalDescription": "Descrizione storica dimostrativa"
+      }
+    ],
+    "samples": [
+      {
+        "id": "REVNTzEyMw",
+        "barcode": "DEMO123",
+        "material": "SIERO",
+        "container": "PROVETTA",
+        "sampleAtLocal": "2026-07-14T08:40:00",
+        "collectedAtLocal": "2026-07-14T08:40:00",
+        "checkedInAtLocal": "2026-07-14T08:50:00",
+        "preparedAtLocal": null,
+        "checkedOutAtLocal": null
+      }
+    ],
+    "invoiceIds": [
+      "s_MjAyNi9GMDAx"
+    ],
+    "patient": {
+      "id": "UEFUSUVOVC1ERU1P",
+      "lastName": "Persona",
+      "firstName": "Dimostrativa",
+      "birthDate": "1984-02-01",
+      "fiscalCode": "NON_VALIDO_ESEMPIO"
+    }
+  },
+  "invoice": {
+    "id": "s_MjAyNi9GMDAx",
+    "invoiceNumber": "2026/F001",
+    "source": "requests",
+    "documentType": "invoice",
+    "sourceDocumentType": null,
+    "cancelled": false,
+    "proforma": false,
+    "state": 50,
+    "date": "2026-07-14",
+    "competenceFrom": null,
+    "competenceTo": null,
+    "clientId": "Q0xJRU5URS1ERU1P",
+    "operatingCompany": "LAB",
+    "vatRegister": "F",
+    "sourceGrossTaxableAmount": 10,
+    "discountPercent": 0,
+    "netTaxableAmount": 10,
+    "vatAmount": 0,
+    "stampDuty": 0,
+    "pensionContribution": 0,
+    "transportAmount": 0,
+    "total": 10,
+    "netRevenueContribution": 10,
+    "requestIds": [
+      "MjAyNi8xMjM"
+    ],
+    "items": [
+      {
+        "id": "s_10001",
+        "code": "GLU",
+        "description": "Glucosio",
+        "requestId": "MjAyNi8xMjM",
+        "requestItemId": "12345",
+        "parentCode": null,
+        "prescriptionId": null,
+        "quantity": 1,
+        "sourceUnitPriceExcludingVat": 10,
+        "sourceAmountExcludingVat": 10,
+        "discountPercent": 20,
+        "netAmountExcludingVat": null,
+        "vatCode": "ES",
+        "vatRate": 0,
+        "vatAmount": null,
+        "sourceVatAmount": null,
+        "vatTreatment": "zero_rate_or_exempt",
+        "competenceDate": null
+      }
+    ]
+  },
+  "manualCreditNote": {
+    "id": "m_MjAyNi9OQzE",
+    "invoiceNumber": "2026/NC1",
+    "source": "manual",
+    "documentType": "credit_note",
+    "sourceDocumentType": "3",
+    "cancelled": false,
+    "proforma": false,
+    "state": 50,
+    "date": "2026-07-15",
+    "competenceFrom": null,
+    "competenceTo": null,
+    "clientId": "Q0xJRU5URS1ERU1P",
+    "operatingCompany": "LAB",
+    "vatRegister": "F",
+    "sourceGrossTaxableAmount": -10,
+    "discountPercent": 0,
+    "netTaxableAmount": -10,
+    "vatAmount": -2.2,
+    "stampDuty": 0,
+    "pensionContribution": 0,
+    "transportAmount": 0,
+    "total": -12.2,
+    "netRevenueContribution": -10,
+    "requestIds": [
+      "MjAyNi8xMjM"
+    ],
+    "items": [
+      {
+        "id": "m_10002",
+        "code": "GLU",
+        "description": null,
+        "requestId": null,
+        "requestItemId": null,
+        "parentCode": null,
+        "prescriptionId": null,
+        "quantity": 1,
+        "sourceUnitPriceExcludingVat": 10,
+        "sourceAmountExcludingVat": 10,
+        "discountPercent": 0,
+        "netAmountExcludingVat": -10,
+        "vatCode": "22",
+        "vatRate": 22,
+        "sourceVatAmount": 2.2,
+        "vatAmount": -2.2,
+        "vatTreatment": "taxable",
+        "competenceDate": "2026-07-14"
+      }
+    ]
+  },
+  "pending": {
+    "snapshotId": "SNAPSHOT_DIMOSTRATIVO",
+    "nextCursor": "CURSORE_OPACO",
+    "status": "capturing"
+  },
+  "finalPage": {
+    "items": [
+      {
+        "id": "MjAyNi8xMjM",
+        "requestNumber": "2026/123",
+        "date": "2026-07-14",
+        "clientId": "Q0xJRU5URS1ERU1P",
+        "clientCode": "CLIENTE-DEMO",
+        "operatingCompany": "LAB",
+        "state": 50,
+        "patientType": "PRIVATO",
+        "occupationalMedicine": false,
+        "createdAtLocal": "2026-07-14T08:30:00",
+        "modifiedAtLocal": "2026-07-14T10:30:00",
+        "bookingAtLocal": null,
+        "reportAtLocal": "2026-07-14T10:00:00",
+        "sourceAmount": 10,
+        "headerDiscountPercent": 0,
+        "demographics": {
+          "ageYears": 42,
+          "sex": "F",
+          "city": "Comune di esempio",
+          "province": "PD",
+          "postalCode": "35000"
+        },
+        "items": [
+          {
+            "id": "12345",
+            "examId": "R0xV",
+            "examCode": "GLU",
+            "description": "Glucosio",
+            "quantity": 1,
+            "grossUnitPriceExcludingVat": 12.5,
+            "discountPercent": 20,
+            "netUnitPriceExcludingVat": 10,
+            "vatCode": null,
+            "vatRate": null,
+            "vatAmount": null,
+            "vatTreatment": "not_available",
+            "deleted": false,
+            "notPerformedCode": null,
+            "reportReady": true,
+            "executedAtLocal": "2026-07-14T09:00:00",
+            "validatedAtLocal": "2026-07-14T09:30:00",
+            "invoiceIds": [
+              "s_MjAyNi9GMDAx"
+            ],
+            "sampleIds": [
+              "REVNTzEyMw"
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "REVNTzEyMw",
+            "barcode": "DEMO123",
+            "material": "SIERO",
+            "container": "PROVETTA",
+            "sampleAtLocal": "2026-07-14T08:40:00",
+            "collectedAtLocal": "2026-07-14T08:40:00",
+            "checkedInAtLocal": "2026-07-14T08:50:00",
+            "preparedAtLocal": null,
+            "checkedOutAtLocal": null
+          }
+        ],
+        "invoiceIds": [
+          "s_MjAyNi9GMDAx"
+        ]
+      }
+    ],
+    "nextCursor": null,
+    "snapshotId": "SNAPSHOT_DIMOSTRATIVO",
+    "syncToken": "CHECKPOINT_OPACO",
+    "capturedAt": "2026-07-16T00:00:00Z",
+    "totalCount": 1
+  },
+  "changes": [
+    {
+      "id": "MjAyNi8xMjM",
+      "revision": "REVISIONE_UPSERT",
+      "operation": "upsert",
+      "reason": null,
+      "data": {
+        "id": "MjAyNi8xMjM",
+        "requestNumber": "2026/123",
+        "date": "2026-07-14",
+        "clientId": "Q0xJRU5URS1ERU1P",
+        "clientCode": "CLIENTE-DEMO",
+        "operatingCompany": "LAB",
+        "state": 50,
+        "patientType": "PRIVATO",
+        "occupationalMedicine": false,
+        "createdAtLocal": "2026-07-14T08:30:00",
+        "modifiedAtLocal": "2026-07-14T10:30:00",
+        "bookingAtLocal": null,
+        "reportAtLocal": "2026-07-14T10:00:00",
+        "sourceAmount": 10,
+        "headerDiscountPercent": 0,
+        "demographics": {
+          "ageYears": 42,
+          "sex": "F",
+          "city": "Comune di esempio",
+          "province": "PD",
+          "postalCode": "35000"
+        },
+        "items": [
+          {
+            "id": "12345",
+            "examId": "R0xV",
+            "examCode": "GLU",
+            "description": "Glucosio",
+            "quantity": 1,
+            "grossUnitPriceExcludingVat": 12.5,
+            "discountPercent": 20,
+            "netUnitPriceExcludingVat": 10,
+            "vatCode": null,
+            "vatRate": null,
+            "vatAmount": null,
+            "vatTreatment": "not_available",
+            "deleted": false,
+            "notPerformedCode": null,
+            "reportReady": true,
+            "executedAtLocal": "2026-07-14T09:00:00",
+            "validatedAtLocal": "2026-07-14T09:30:00",
+            "invoiceIds": [
+              "s_MjAyNi9GMDAx"
+            ],
+            "sampleIds": [
+              "REVNTzEyMw"
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "REVNTzEyMw",
+            "barcode": "DEMO123",
+            "material": "SIERO",
+            "container": "PROVETTA",
+            "sampleAtLocal": "2026-07-14T08:40:00",
+            "collectedAtLocal": "2026-07-14T08:40:00",
+            "checkedInAtLocal": "2026-07-14T08:50:00",
+            "preparedAtLocal": null,
+            "checkedOutAtLocal": null
+          }
+        ],
+        "invoiceIds": [
+          "s_MjAyNi9GMDAx"
+        ]
+      }
+    },
+    {
+      "id": "SUQtRVNDTFVTTw",
+      "revision": "REVISIONE_ESCLUSIONE",
+      "operation": "remove",
+      "reason": "excluded_state",
+      "data": null
+    },
+    {
+      "id": "SUQtQVJDSElWSU8",
+      "revision": "REVISIONE_ARCHIVIO",
+      "operation": "archived",
+      "reason": "confirmed_archive",
+      "data": null
+    },
+    {
+      "id": "SUQtSU5DRVJUTw",
+      "revision": "REVISIONE_INCERTA",
+      "operation": "unavailable",
+      "reason": "source_exit_unknown",
+      "data": null
+    }
+  ],
+  "expired": {
+    "type": "about:blank",
+    "title": "Superata la finestra di30giorni: ripetere il completo preservando gli archivi.",
+    "status": 409,
+    "code": "full_sync_required",
+    "correlationId": "CORRELAZIONE_DIMOSTRATIVA"
+  }
+}

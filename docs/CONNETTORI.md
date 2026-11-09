@@ -127,3 +127,16 @@ chiamate al minuto per IP), job notturno `retail:tuotempo` (tra le 2 e le 5) e "
 aree alle sedi per nome da sola: propone (salvato, legacyid, indirizzo + CAP, nome simile nella stessa città) e l'abbinamento si conferma in
 Retail > Connettori o in Amministrazione > Sedi > Aree TuoTempo; la fonte è `public.sites.legacy_refs->>'tuotempo'`. Le risorse si abbinano
 alle persone (`public.people.legacy_refs->>'tuotempo'`) con la conferma. Il prezzo online va in `retail.products.tt_price`, non più nel listino.
+
+## StudioLAB: Synclab Data API v1 (09/11/2026)
+Nuova installazione di CB Sistemi `https://synclab.toscanadiagnostica.it`, client `TDSuite`, ruolo `DataAPI` (stesso connettore STUDIOLAB in
+`CLIENT_JWT`, password già salvata cifrata). Dettagli: docs/SYNCLAB_DATA_API.md.
+- **Prova connessione** con `CLIENT_JWT`: health → login → `GET /api/v1/data/metadata` (istanza, contratto, insiemi di dati, pagina massima,
+  finestra delta); `/api/v1/auth/client/info` solo come secondo passo: il suo 403 con il ruolo DataAPI non è un errore ("ruolo DataAPI: info
+  non disponibile, metadati ok"). Installazione senza Data API (metadata 404): vale info come prima.
+- Il token del login vale fino al `validTo` restituito (circa 15 minuti): cache fino a 2 minuti prima, senza ipotesi.
+- Pulsante **"Dati Synclab (Data API)"** nella card StudioLAB → `/admin/connectors/synclab` (stato, impostazioni, clienti Synclab, storico).
+  Nuove impostazioni nel `settings` del connettore: `data_api_enabled` (spenta), `sync_ora`, `page_size`, `page_size_listini`,
+  `include_patient` (spenta), `data_api_timeout_ms`, `operating_company`, `datasets`.
+- Registro: le chiamate della Data API hanno modulo `synclab`, percorso senza query, conteggi e correlationId (mai cursori o token).
+- Job `synclab:notturno` (ogni 15 minuti, esegue solo con la Data API accesa, dopo `sync_ora`, una volta al giorno).
