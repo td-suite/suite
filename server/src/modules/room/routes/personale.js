@@ -42,7 +42,7 @@ const SUITE_USER = `(SELECT json_build_object('id', u.id, 'email', u.email, 'sta
 // ?pianificabili=1 restituisce solo chi può essere scelto in turni, disponibilità, presenze e calendario (attivo e non escluso)
 r.get('/professionisti', ah(async (req, res) => {
   const soloPian = ['1', 'true'].includes(String(req.query.pianificabili || ''));
-  const rows = await many(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE ($1::bool IS FALSE OR p.pianificabile) ORDER BY lower(p.nome)`, [soloPian]);
+  const rows = await many(`SELECT ${PROF_COLS}, ${SUITE_USER} FROM professionisti_v p WHERE p.professionista AND ($1::bool IS FALSE OR p.pianificabile) ORDER BY lower(p.nome)`, [soloPian]);   // gli esterni senza ruolo sanitario (referenti dei clienti) non compaiono
   if (!isGestione(req.user)) return res.json(rows.filter((p) => p.attivo).map(profLite));
   const docs = await many('SELECT person_id, count(*)::int AS n, min(scadenza) FILTER (WHERE scadenza IS NOT NULL) AS prossima_scadenza FROM professionista_docs GROUP BY person_id');
   const dm = Object.fromEntries(docs.map((d) => [d.person_id, d]));
@@ -66,14 +66,14 @@ r.put('/professionisti/:id/pianificazione', plan, ah(async (req, res) => {
   await audit(req, d.excluded ? 'PROF_ESCLUDI' : 'PROF_INCLUDI', 'professionista', p.id, { nome: p.nome });
   res.json({ ok: true, planningExcluded: d.excluded });
 }));
-// Azioni di massa: "Escludi tutti i non sanitari" (kind DIPENDENTE/ESTERNO/DIRIGENTE senza disciplina, senza ruolo sanitario e senza scheda
+// Azioni di massa: "Escludi tutti i non sanitari" (kind DIPENDENTE/ESTERNO senza disciplina, senza ruolo sanitario e senza scheda
 // Room compilata; MEDICO, SANITARIO e LP restano dentro) e "Includi tutti" (riporta dentro chiunque).
 r.post('/professionisti/pianificazione/massa', plan, ah(async (req, res) => {
   const d = parse(z.object({ azione: z.enum(['ESCLUDI_NON_SANITARI', 'INCLUDI_TUTTI']) }), req.body);
   let n = 0;
   if (d.azione === 'ESCLUDI_NON_SANITARI') {
     const rows = await many(`SELECT p.id FROM professionisti_v p WHERE p.attivo AND NOT p.planning_excluded AND NOT p.in_room
-      AND p.kind IN ('DIPENDENTE', 'ESTERNO', 'DIRIGENTE') AND coalesce(p.discipline, '') = '' AND NOT coalesce(p.role_name, '') ~* $1`, [RUOLO_SANITARIO_RE]);
+      AND p.kind IN ('DIPENDENTE', 'ESTERNO') AND coalesce(p.discipline, '') = '' AND NOT coalesce(p.role_name, '') ~* $1`, [RUOLO_SANITARIO_RE]);
     for (const { id } of rows) await q(`INSERT INTO person_ext (person_id, planning_excluded, updated_by) VALUES ($1,TRUE,$2) ON CONFLICT (person_id) DO UPDATE SET planning_excluded=TRUE, updated_at=now(), updated_by=EXCLUDED.updated_by`, [id, req.user.id]);
     n = rows.length;
   } else {

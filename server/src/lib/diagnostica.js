@@ -495,7 +495,7 @@ export const CONTROLLI = [
           WHERE u.is_external AND u.status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM grant_scopes gs WHERE gs.grant_id = g.id AND gs.scope_type = 'SITE' AND gs.scope_id = s.id) ORDER BY u.email`, chiave: 'user_id', link: (r) => `/admin/users/${r.user_id}`,
     correggi: { etichetta: 'Riallinea i perimetri', conferma: true, descrizione: 'realignOrgPerimeters per le Legal entity dei partner', fn: corr.d34 } },
   { id: 'D35', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Personale attivo senza sede di afferenza', spiegazione: 'Dipendenti, LP e dirigenti senza sede di lavoro.',
-    sql: `SELECT p.id, p.last_name, p.kind FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','LP','DIRIGENTE') AND p.site_id IS NULL ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
+    sql: `SELECT p.id, p.last_name, p.kind FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','LP') AND p.site_id IS NULL ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
   { id: 'D36', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Sede del contratto di lavoro diversa dalla sede di afferenza', richiede: ['contracts.employments'], spiegazione: 'C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (allineata da Contratti del personale; in Persone non si cambia).',
     // adattata a C13: solo i contratti in corso con la sede di lavoro indicata
     sql: `SELECT p.id, p.last_name, p.site_id, e.work_site_id FROM people p JOIN contracts.employments e ON e.resource_id = p.id
@@ -507,7 +507,7 @@ export const CONTROLLI = [
     spiegazione: 'Il piano ferie lo approva il superiore diretto ("Dipende da" in Amministrazione > Persone: dall\'organigramma per chi ha incarichi, a mano per gli altri). Al vertice c\'è una sola persona, l\'Owner, esclusa dal controllo. Senza superiore il piano non può essere approvato dal responsabile (lo può decidere solo l\'amministratore): indica "Dipende da" nella scheda persona. "Vertice dichiarato" = opzione "Nessuno (vertice)" scelta a mano.',
     sql: `SELECT p.id, p.last_name, p.first_name, p.kind, p.no_manager AS vertice_dichiarato,
             (SELECT u.email FROM users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' ORDER BY u.id LIMIT 1) AS accesso
-          FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','DIRIGENTE') AND people_manager(p.id) IS NULL
+          FROM people p WHERE p.status = 'ATTIVO' AND p.kind = 'DIPENDENTE' AND people_manager(p.id) IS NULL
            AND NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' AND u.level = 'OWNER')
           ORDER BY p.last_name, p.first_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
   { id: 'D44', area: 'ORGANIGRAMMA', gravita: 'ATTENZIONE', titolo: 'Superiore cessato o senza accesso',
@@ -516,7 +516,7 @@ export const CONTROLLI = [
             EXISTS (SELECT 1 FROM users u WHERE u.person_id = s.id AND u.status = 'ACTIVE') AS superiore_con_accesso,
             (SELECT x.last_name || ' ' || x.first_name FROM people x WHERE x.id = people_manager(s.id)) AS sopra_il_superiore
           FROM people p JOIN people s ON s.id = people_manager(p.id)
-          WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','DIRIGENTE')
+          WHERE p.status = 'ATTIVO' AND p.kind = 'DIPENDENTE'
             AND (s.status <> 'ATTIVO' OR NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id = s.id AND u.status = 'ACTIVE'))
           ORDER BY p.last_name, p.first_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
   // ---------------- Processi e sistema

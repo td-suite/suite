@@ -12,7 +12,7 @@ const ATTREZZ = (Array.isArray(EQUIP) ? EQUIP : Object.keys(EQUIP || {})).map((d
 const TABS = [['anagrafica', 'Anagrafica'], ['professionale', 'Professionale'], ['contratto', 'Contratto e assicurazione'], ['compenso', 'Compenso'], ['documenti', 'Documenti'], ['accesso', 'Accesso'], ['disponibilita', 'Disponibilità']];
 // Scheda Room vuota: le persone vivono nell'anagrafica unica della Suite (public.people), qui si compilano solo i dati operativi
 const empty = (tipo = 'sanitario') => ({ tipo, profilo: tipo === 'medico' ? 'Medico' : 'Infermiere', dati: { anagrafica: {}, professionale: { discipline: [], attrezzature: [], specializzazioni: [] }, contratto: { rapporto: 'LP' }, assicurazione: {}, compenso: { tipo: 'ORARIO', eccezioniSede: [], regime: 'FORFETTARIO' }, sediAbilitate: [], note: '' } });
-const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
+const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente', ESTERNO: 'Esterno' };
 const STATUS = { ATTIVO: ['Attivo', 'green'], IMPEGNO: ['In impegno', 'teal'], CANDIDATO: ['Candidato', 'amber'], CESSATO: ['Cessato', 'red'] };
 export const personaHref = (id) => `/people/${id}`;
 
@@ -45,7 +45,7 @@ export default function Professionisti() {
             <div className="spec-items">{list.map((p) => (
               <button key={p.id} className={`spec-item ${sel === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)}>
                 <div className="strong">{p.nome}{!p.attivo && <Badge>non attivo</Badge>}{!p.inRoom && <Badge tone="amber">senza scheda Room</Badge>}{p.planningExcluded && <Badge tone="red">esclusa</Badge>}</div>
-                <div className="small muted">{p.profilo || (p.tipo === 'medico' ? 'Medico' : 'Sanitario')}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''}</div>
+                <div className="small muted">{p.profilo || (p.tipo === 'medico' ? 'Medico' : 'Personale sanitario')}{p.discipline?.length ? ' · ' + p.discipline.join(', ') : ''}</div>
                 <div className="small">{p.email ? <span>{p.email}</span> : <span className="red">senza email</span>}{p.userId ? <span> · <Badge tone="green">portale</Badge></span> : null}{scad(p) ? <span> · <Badge tone="amber">documento in scadenza</Badge></span> : null}</div>
               </button>))}</div>
           </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { api } from '../api.js';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 // SheetJS e jsPDF si scaricano solo al primo export (debug pre-produzione M8: niente librerie pesanti nel caricamento del modulo)
 let XLSX = null;
@@ -1338,6 +1339,34 @@ function AmbulatoriTab({
     onClose: () => setEdit(null)
   }));
 }
+// Nome e cognome vengono dall'anagrafica unica (Amministrazione > Persone): il personale di sede si sceglie fra i professionisti
+// pianificabili di Personale sanitario, non si scrive a mano (CEO 09/11/2026). Chi manca si crea prima in Amministrazione > Persone.
+let _profCache = null;
+function PersonaPicker({ p, onPick }) {
+  const [lista, setLista] = useState(_profCache || []);
+  const [q, setQ] = useState('');
+  const [aperto, setAperto] = useState(!p.nome);
+  useEffect(() => {
+    if (_profCache) return;
+    api.get('/personale/professionisti?pianificabili=1').then(r => { _profCache = Array.isArray(r) ? r : (r.items || []); setLista(_profCache); }).catch(() => setLista([]));
+  }, []);
+  const tipoOk = x => p.tipo === 'medico' ? x.tipo === 'medico' : true;
+  const norm = t => (t || '').toLowerCase();
+  const filtrate = lista.filter(tipoOk).filter(x => !q || norm(x.nome).includes(norm(q)) || norm(x.profilo).includes(norm(q))).slice(0, 12);
+  return React.createElement(Field, { l: "Nome e cognome (dall'anagrafica)" },
+    !aperto ? React.createElement("div", { className: "rowline" },
+      React.createElement("strong", null, p.nome || '—'),
+      React.createElement("span", { className: "sp" }),
+      React.createElement("button", { className: "btn sm", type: "button", onClick: () => setAperto(true) }, "Cambia"))
+    : React.createElement("div", null,
+      React.createElement("input", { autoFocus: true, value: q, placeholder: "Cerca cognome o nome…", onChange: e => setQ(e.target.value) }),
+      React.createElement("div", { className: "list", style: { maxHeight: 220, overflow: 'auto', marginTop: 4 } },
+        filtrate.map(x => React.createElement("button", { key: x.id, type: "button", className: "list-item", style: { width: '100%', textAlign: 'left', cursor: 'pointer' },
+          onClick: () => { onPick(x); setAperto(false); setQ(''); } },
+          React.createElement("div", null, React.createElement("strong", null, x.nome), React.createElement("div", { className: "note" }, [x.profilo, x.site_name, (x.discipline || []).join(', ')].filter(Boolean).join(' · '))))),
+        !filtrate.length && React.createElement("div", { className: "note" }, lista.length ? 'Nessuna persona trovata fra i professionisti pianificabili.' : 'Elenco non disponibile.')),
+      React.createElement("div", { className: "note", style: { marginTop: 4 } }, "Chi manca si crea in Amministrazione > Persone e, se escluso, si riporta tra i pianificabili in Personale sanitario > Professionisti.")));
+}
 function PersonEditor({
   person,
   str,
@@ -1373,12 +1402,10 @@ function PersonEditor({
     onClick: onClose
   }, "Chiudi")), React.createElement("div", {
     className: "grid2"
-  }, React.createElement(Field, {
-    l: "Nome e cognome"
-  }, React.createElement("input", {
-    value: p.nome,
-    onChange: e => set(x => x.nome = e.target.value)
-  })), React.createElement(Field, {
+  }, React.createElement(PersonaPicker, {
+    p,
+    onPick: a => set(x => { x.nome = a.nome; x.person_id = a.id; if (a.email) x.email = a.email; if (!x.disciplina && Array.isArray(a.discipline) && a.discipline[0]) x.disciplina = a.discipline[0]; })
+  }), React.createElement(Field, {
     l: "Email (per agenda e proposte)"
   }, React.createElement("input", {
     type: "email",

@@ -14,7 +14,7 @@ const sediOf = (x) => [...new Set(x.sedi.map((z) => z.sede))];
 const pianoText = (x, p) => `Gentile ${x.nome},\n\nin allegato trovi il piano delle disponibilità nelle strutture del network Toscana Diagnostica, costruito in rapporto agli impegni che hai già in calendario con noi (${durTxt(x.ore)} a settimana${sediOf(x).length ? ', ' + sediOf(x).join(', ') : ''}).\n\nNella prima parte sono riepilogati i tuoi impegni attuali; nella seconda gli spazi ambulatoriali liberi e compatibili con la tua attività (${x.discipline.join(', ') || x.profili.join(', ')}) nelle nostre sedi, al di fuori delle fasce in cui sei già impegnato con noi: ${p.perSede.length ? p.perSede.map((q) => `${q.sede} (${durTxt(q.min)})`).join(', ') : 'al momento nessuno spazio libero compatibile'}.\n\nSe alcune di queste fasce fossero di tuo interesse per ampliare la collaborazione, rispondi a questa email indicando giorni e orari preferiti: definiremo insieme l'inserimento.\n\nCordiali saluti`;
 const PIANO_SUBJECT = 'Piano delle disponibilità nelle strutture Toscana Diagnostica';
 
-const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
+const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', ESTERNO: 'Esterno' };
 const KIND_TONE = { MEDICO: 'teal', SANITARIO: 'mauve', LP: 'green', DIPENDENTE: 'grey', ESTERNO: 'amber', DIRIGENTE: 'grey' };
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -64,7 +64,7 @@ export default function Specialisti() {
     setBusy(false);
   };
   const massa = async (azione) => {
-    const msg = azione === 'ESCLUDI_NON_SANITARI' ? 'Escludere dalla pianificazione tutte le persone di tipo Dipendente, Esterno o Dirigente senza disciplina e senza ruolo sanitario? Medici, professionisti sanitari e liberi professionisti restano dentro. Chiunque si può riportare tra i pianificabili dalla sua scheda.' : 'Riportare tra i pianificabili tutte le persone escluse?';
+    const msg = azione === 'ESCLUDI_NON_SANITARI' ? 'Escludere dalla pianificazione tutte le persone di tipo Dipendente o Esterno senza disciplina e senza ruolo sanitario? Medici, professionisti sanitari e liberi professionisti restano dentro. Chiunque si può riportare tra i pianificabili dalla sua scheda.' : 'Riportare tra i pianificabili tutte le persone escluse?';
     if (!window.confirm(msg)) return;
     setBusy(true);
     try { const r = await api.post('/personale/professionisti/pianificazione/massa', { azione }); toast(azione === 'ESCLUDI_NON_SANITARI' ? `Escluse ${r.n} persone` : `Riportate tra i pianificabili ${r.n} persone`); persone.reload(); } catch (e) { toast(e.message, 'err'); }

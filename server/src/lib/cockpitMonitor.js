@@ -548,7 +548,7 @@ async function persone(ctx) {
   const out = [];
   const nd = (k, t, mod, u = 'n') => indicatore({ chiave: k, titolo: t, gruppo: G, unita: u, fonte: NOMI_MODULI[mod], motivo: motivoNonLive(mod, ctx.live[mod]) });
   // anagrafica della Suite: sempre leggibile
-  const p = (await many(`SELECT count(*) FILTER (WHERE kind IN ('DIPENDENTE','DIRIGENTE'))::int AS dip, count(*) FILTER (WHERE kind = 'DIRIGENTE')::int AS dir,
+  const p = (await many(`SELECT count(*) FILTER (WHERE kind = 'DIPENDENTE')::int AS dip, 0::int AS dir,
       count(*) FILTER (WHERE kind IN ('LP','MEDICO','SANITARIO'))::int AS prof, max(updated_at) AS agg FROM public.people WHERE status = 'ATTIVO'`))[0];
   out.push(indicatore({ chiave: 'dipendenti_attivi', titolo: 'Dipendenti attivi', gruppo: G, valore: p.dip, meglio: null, dettaglio: `di cui ${p.dir} dirigenti · ${p.prof} professionisti (LP, medici, sanitari) attivi`,
     fonte: 'Anagrafica della Suite (persone ATTIVE)', aggiornato: P.oggi }));

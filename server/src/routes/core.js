@@ -316,7 +316,7 @@ r.post('/organizations/fusione', requireAdmin, ah(async (req, res) => {
 
 // ---- Persone e rubrica (modulo "rubrica"; i dati contrattuali restano in Contracts: qui solo chi è, dove, cosa fa)
 const personSchema = z.object({
-  kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
+  kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
   last_name: z.string().trim().min(1).max(120), first_name: z.string().trim().min(1).max(120), title: z.string().max(20).nullable().optional(),   // max: L12 sex: z.enum(['F', 'M']).nullable().optional(),
   email: z.string().email().max(200).nullable().optional(), phone: z.string().max(40).nullable().optional(), phone_office: z.string().max(40).nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().max(160).nullable().optional(),
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), no_manager: z.boolean().optional(), site_id: z.number().int().nullable().optional(),

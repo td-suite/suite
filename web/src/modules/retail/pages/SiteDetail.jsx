@@ -9,7 +9,7 @@ import { useAuth, canWrite, isAdmin } from '../auth.jsx';
 
 const ROLES = ['Site manager', 'Accettazione', 'Infermiere', 'Tecnico di radiologia', 'Tecnico di laboratorio', 'Medico', 'Anestesista', 'Biologo', 'Amministrativo', 'Pulizie', 'Altro'];
 const ASSET_KINDS = { RM: 'Risonanza magnetica', TC: 'TC', MAMMOGRAFO: 'Mammografo', ECOGRAFO: 'Ecografo', RX: 'Radiologia', MOC: 'MOC / densitometro', EMG: 'Elettromiografo', AMBULATORIO: 'Ambulatorio', BOX_PRELIEVO: 'Box prelievo', MONITOR: 'Monitor', TOTEM: 'Totem', ALTRO: 'Altro' };
-const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Sanitario', ESTERNO: 'Esterno', DIRIGENTE: 'Dirigente' };
+const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario', ESTERNO: 'Esterno' };
 
 export default function SiteDetail() {
   const { id } = useParams();

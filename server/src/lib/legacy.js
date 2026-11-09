@@ -461,7 +461,7 @@ async function syncContractsPeople(stats) {
   try { extraAreas = await lq('contracts', 'SELECT ra.resource_id, a.name FROM resource_areas ra JOIN areas a ON a.id = ra.area_id'); } catch { /* tabella assente nelle versioni precedenti */ }
   const legacyToSuite = {};
   for (const r of rows) {
-    const kind = r.contract_type === 'DIRIGENTE' ? 'DIRIGENTE' : r.kind === 'LP' ? 'LP' : 'DIPENDENTE';
+    const kind = r.kind === 'LP' ? 'LP' : 'DIPENDENTE';   // i dirigenti sono dipendenti (via la qualifica Dirigente, 09/11/2026)
     const status = ['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'].includes(r.status) ? r.status : 'ATTIVO';
     const id = await pm.upsert(r.id, {
       kind, status, last_name: clean(r.last_name), first_name: clean(r.first_name), title: clean(r.title), sex: r.sex || null, birth_date: r.birth_date || null,

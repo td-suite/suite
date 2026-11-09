@@ -23,6 +23,8 @@ r.get('/accettazioni', ah(async (req, res) => {
   if (text) { p.push(`%${String(text).trim()}%`); w.push(`(a.id ILIKE $${p.length} OR a.paziente_cognome ILIKE $${p.length} OR a.id_richiesta_cliente ILIKE $${p.length})`); }
   if (from) { p.push(from); w.push(`coalesce(a.data_accettazione, a.created_at) >= $${p.length}::date`); }
   if (to) { p.push(to); w.push(`coalesce(a.data_accettazione, a.created_at) < ($${p.length}::date + 1)`); }
+  // accettazioni richiamate dalla copia Synclab senza NC: provvisorie, non restano in archivio (il job nc:pulizia-synclab le toglie)
+  w.push(`NOT (a.origine = 'SYNCLAB' AND NOT EXISTS (SELECT 1 FROM nc n0 WHERE n0.accettazione_id = a.id))`);
   if (solo_nc === '1') w.push(`EXISTS (SELECT 1 FROM nc n WHERE n.accettazione_id=a.id AND n.stato <> 'ANNULLATA'${isSede(req.user) ? ' AND n.sent_at IS NOT NULL' : ''})`);
   p.push(Math.min(Number(limit) || 100, 500));
   const rows = await many(`SELECT ${ACC_COLS} FROM accettazioni a LEFT JOIN sedi_v s ON s.id=a.sede_id ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY coalesce(a.data_accettazione, a.created_at) DESC LIMIT $${p.length}`, p);

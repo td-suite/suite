@@ -25,7 +25,7 @@ const bad = (m) => new HttpError(400, m);
 
 import { SITE_KINDS } from '../lib/tipiSede.js';   // C7: costante unica dei tipi di struttura
 const ORG_KINDS = ['GRUPPO', 'SOCIETA', 'CLIENTE', 'PARTNER', 'FORNITORE', 'TARGET', 'ALTRO'];
-const PERSON_KINDS = ['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'];
+const PERSON_KINDS = ['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO'];
 const PERSON_STATUS = ['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'];
 
 // Colonne dei modelli: chiave tecnica (intestazione), etichetta e spiegazione in italiano, valori ammessi

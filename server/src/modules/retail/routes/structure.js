@@ -14,7 +14,7 @@ const guard = (req, siteId) => { if (!canEditSite(req.user, siteId)) throw forbi
 
 // Persone della sede: anagrafica unica + piano di lavoro Retail
 const PEOPLE = `SELECT p.id, p.kind, p.status, p.last_name, p.first_name, p.title, p.email, p.phone, p.phone_office, p.job_title, p.discipline, p.site_id,
-    (p.status = 'ATTIVO') AS active, coalesce(e.retail_role, p.job_title, CASE p.kind WHEN 'MEDICO' THEN 'Medico' WHEN 'SANITARIO' THEN 'Sanitario' WHEN 'LP' THEN 'Libero professionista' ELSE NULL END) AS role,
+    (p.status = 'ATTIVO') AS active, coalesce(e.retail_role, p.job_title, CASE p.kind WHEN 'MEDICO' THEN 'Medico' WHEN 'SANITARIO' THEN 'Personale sanitario' WHEN 'LP' THEN 'Libero professionista' ELSE NULL END) AS role,
     e.retail_role, e.weekly_hours, e.days, e.notes, coalesce(e.sort_order, 100) AS sort_order, (e.person_id IS NOT NULL) AS configured
   FROM public.people p LEFT JOIN person_ext e ON e.person_id = p.id`;
 

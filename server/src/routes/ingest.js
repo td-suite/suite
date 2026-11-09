@@ -84,7 +84,7 @@ const email = opt(z.string().trim().toLowerCase().email());
 const dateStr = opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data AAAA-MM-GG'));
 export const ROW_SCHEMAS = {
   people: z.object({
-    last_name: str(80).min(1), first_name: str(80).min(1), email, tax_code: opt(str(16)), kind: opt(z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO', 'DIRIGENTE'])),
+    last_name: str(80).min(1), first_name: str(80).min(1), email, tax_code: opt(str(16)), kind: opt(z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO'])),
     status: opt(z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO'])), area: opt(str(160)), job_title: opt(str(200)), discipline: opt(str(160)), title: opt(str(20)),
     site_code: opt(str(40)), unit: opt(str(160)), phone: opt(str(40)), phone_office: opt(str(40)), phone_ext: opt(str(10)), manager_email: email, hired_at: dateStr, terminated_at: dateStr, external_id: opt(str(80)),
     sex: opt(z.enum(['F', 'M'])), birth_date: dateStr, birth_place: opt(str(120)), vat_number: opt(str(20)), address: opt(str(250)), zip: opt(str(10)), city: opt(str(120)), province: opt(str(4)),

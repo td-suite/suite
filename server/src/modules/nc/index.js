@@ -89,4 +89,13 @@ export default function mount(app) {
     if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
     return runSlaCheck();
   });
+  // Le accettazioni richiamate dal Desk dalla copia Synclab sono provvisorie: se entro 30 minuti non si apre una NC spariscono
+  // (CEO 09/11/2026: "se non viene aperta nessuna NC non registrare"). Con la riga se ne vanno anche gli eventuali dati del paziente.
+  registerJob(`${KEY}:pulizia-synclab`, 10, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
+    const r = await q(`DELETE FROM accettazioni a WHERE a.origine = 'SYNCLAB' AND a.updated_at < now() - interval '30 minutes'
+      AND NOT EXISTS (SELECT 1 FROM nc n WHERE n.accettazione_id = a.id)`);
+    return { eliminate: r.rowCount };
+  }, { runAtStart: true });
 }
