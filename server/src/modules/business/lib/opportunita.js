@@ -203,7 +203,7 @@ export async function esegui(file, decisioni, userId) {
         // B5: createOrganization (doppioni per P.IVA, CF o nome ritrovati; nomi simili con la spunta "da rivedere")
         const { createOrganization } = await import('../../../lib/organizations.js');
         const out = await createOrganization({ kind: 'CLIENTE', name: p.nome, email: multi ? null : em.email, pec: multi ? null : em.pec, phone: multi ? null : r0.telefono, address: multi ? null : r0.indirizzo,
-          city: multi ? null : r0.citta, province: multi ? null : (r0.prov && r0.prov.length <= 3 ? r0.prov : null), notes, legacy_refs: { db_opportunita: multi ? ids : ids[0] } }, { origine: 'Business Hub, import del DB Opportunità' });
+          city: multi ? null : r0.citta, province: multi ? null : (r0.prov && r0.prov.length <= 3 ? r0.prov : null), notes, legacy_refs: { db_opportunita: multi ? ids : ids[0] } }, { origine: 'Business Hub, import del DB Opportunità', schedaBusiness: false });
         orgId = out.org.id;
         if (out.created) rep.legal_entity_nuove++;
         else { rep.legal_entity_abbinate++; await q(`UPDATE public.organizations SET legacy_refs = coalesce(legacy_refs, '{}'::jsonb) || $2::jsonb, updated_at=now() WHERE id=$1`, [orgId, JSON.stringify({ db_opportunita: multi ? ids : ids[0] })]); }

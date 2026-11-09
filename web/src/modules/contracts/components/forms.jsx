@@ -117,7 +117,9 @@ export function PersonForm({ value: v, onChange, kind }) {
       <AreaSelects areas={areas.data || []} value={v.area_id} onChange={(id) => s('area_id', id)} />
       <ExtraAreas areas={areas.data || []} primary={v.area_id} value={v.extra_area_ids || []} onChange={(ids) => s('extra_area_ids', ids)} />
       <Field label="Riporta a (responsabile gerarchico)" help="Definisce l'organigramma delle persone"><select value={v.manager_id || ''} onChange={(e) => s('manager_id', e.target.value ? Number(e.target.value) : null)}><option value="">–</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
-      <Field label="Approva ferie, permessi e richieste" help="Vuoto = il responsabile gerarchico"><select value={v.approver_id || ''} onChange={(e) => s('approver_id', e.target.value ? Number(e.target.value) : null)}><option value="">come il responsabile</option>{(people.data || []).filter((p) => p.id !== v.id).map((p) => <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>)}</select></Field>
+      {/* Approvatore ferie: non si sceglie più (CEO, 09/11/2026). Il Piano Ferie lo legge dall'anagrafica: il superiore diretto. Il campo
+          approver_id resta nel dossier, invariato, ma non è più usato. */}
+      <Field label="Approva ferie e permessi" help="Il superiore diretto in anagrafica (Dipende da), come indicato in organigramma: non si sceglie qui"><input value="il superiore diretto (Dipende da)" readOnly disabled /></Field>
     </div>
     <div className="subhead">Dati personali (anagrafica unica, visibili solo agli amministratori)</div>
     <div className="form-grid">

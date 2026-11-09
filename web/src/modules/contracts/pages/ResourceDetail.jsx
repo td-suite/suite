@@ -91,7 +91,7 @@ export default function ResourceDetail() {
             <Row k="Emergenze" v={r.emergency_contact} />
             <Row k="Area" v={r.area_path || r.area_name} />{(r.extra_areas || []).length > 0 && <Row k="Altre funzioni" v={r.extra_areas.map((x) => x.path).join(" | ")} />}
             <Row k="Riporta a" v={r.manager_id ? <Link to={`${BASE}/risorse/${r.manager_id}`}>{r.manager_name}</Link> : null} />
-            <Row k="Approva ferie e permessi" v={r.approver_id ? <Link to={`${BASE}/risorse/${r.approver_id}`}>{r.approver_name}</Link> : r.manager_id ? <span>{r.manager_name} <span className="small muted">(responsabile)</span></span> : null} />
+            <Row k="Approva ferie e permessi" v={<span>{r.manager_id ? `${r.manager_name} ` : ''}<span className="small muted">il superiore diretto in anagrafica (Dipende da in Amministrazione &gt; Persone), come nel Piano Ferie</span></span>} />
             {(d.data.org_units || []).length > 0 && <Row k="Referente di" v={<Link to={`${BASE}/organigramma`}>{d.data.org_units.map((u) => u.path).join('; ')}</Link>} />}
             <Row k="Ingresso" v={itDate(r.hired_at)} />
             <Row k="Cessazione" v={r.terminated_at ? `${r.status === 'CESSATO' ? 'dal' : 'programmata dal'} ${itDate(r.terminated_at)}${r.termination_reason ? ` · ${TERMINATION_LABEL[r.termination_reason] || r.termination_reason}` : ''}${r.termination_notes ? ` · ${r.termination_notes}` : ''}` : null} />

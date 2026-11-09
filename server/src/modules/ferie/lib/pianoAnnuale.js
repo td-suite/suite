@@ -1,5 +1,6 @@
 // Piano ferie annuale per persona (funzionamento stabilito dal CEO, 08/11/2026): il dipendente compila il piano dell'anno, lo invia al
-// responsabile dell'area, che lo può modificare, approvare e rendere definitivo. Il piano dell'area (i piani di tutti i suoi dipendenti)
+// suo superiore diretto in anagrafica (CEO, 09/11/2026: lib/superiori.js), che lo può modificare, approvare e rendere definitivo; chi non
+// ha nessuno sopra (il vertice) non ha approvazione: all'invio il piano diventa definitivo "senza approvatore in organigramma". Il piano dell'area (i piani di tutti i suoi dipendenti)
 // è trasparente a tutta l'area e solo all'area.
 // Stati: BOZZA → PROPOSTO → IN_REVISIONE → APPROVATO → DEFINITIVO (riapertura: DEFINITIVO → APPROVATO, con motivo).
 // I periodi del piano sono righe di ferie.richieste con piano_id: PIANIFICATA finché il piano non è approvato, APPROVATA dopo (GODUTA a
@@ -13,6 +14,18 @@ export const STATI_PIANO = ['BOZZA', 'PROPOSTO', 'IN_REVISIONE', 'APPROVATO', 'D
 export const STATO_PIANO_LABEL = { BOZZA: 'Bozza', PROPOSTO: 'Inviato al responsabile', IN_REVISIONE: 'In revisione dal responsabile', APPROVATO: 'Approvato', DEFINITIVO: 'Definitivo' };
 export const APERTI = ['BOZZA', 'PROPOSTO', 'IN_REVISIONE'];        // periodi PIANIFICATA
 export const CHIUSI = ['APPROVATO', 'DEFINITIVO'];                  // periodi APPROVATA; il dipendente propone solo variazioni
+// Annotazione dei piani e delle variazioni di chi non ha nessuno sopra in organigramma (il vertice): definitivi senza approvazione
+export const NOTA_SENZA_APPROVATORE = 'senza approvatore in organigramma';
+
+/** Chi approva il piano di una persona del perimetro, letto dall'anagrafica (per le pagine: "approva: <nome>") */
+export function approvazioneDi(p) {
+  return {
+    superiore: p.superiore_nome || null, superiore_id: p.superiore_id || null,
+    approvatore: p.vertice ? null : p.approvatore_nome || null, approvatore_id: p.vertice ? null : p.approvatore_id || null, approvatore_origine: p.approvatore_origine || null,
+    risalito: (p.approvatore_saltati || []).length > 0 ? p.approvatore_saltati : undefined,
+    vertice: Boolean(p.vertice), senza_superiore: Boolean(p.senza_superiore && !p.vertice), approvatore_irraggiungibile: Boolean(p.approvatore_irraggiungibile),
+  };
+}
 
 // ------------------------------------------------------------------ funzioni pure (test: server/test/ferie.test.mjs)
 /**
@@ -104,7 +117,10 @@ export async function eventiPiano(pianoId) {
 export const linkMioPiano = (anno) => `/ferie?anno=${anno}`;
 export const linkArea = (gruppo, anno) => `/ferie/area?gruppo=${encodeURIComponent(gruppo)}&anno=${anno}`;
 
-/** Utenti da avvisare per il piano di una persona: il suo approvatore e i delegati attivi; senza nessuno, gli amministratori del modulo */
+/**
+ * Utenti da avvisare per il piano di una persona: il suo superiore diretto (o, se cessato o senza accesso, il primo superiore attivo
+ * risalendo) e i suoi delegati attivi; senza approvatore raggiungibile (anagrafica incompleta), gli amministratori del modulo.
+ */
 export async function destinatariResponsabile(persona) {
   const delegati = persona.approvatore_id ? (await many(`SELECT delegato_person_id AS id FROM deleghe WHERE delegante_person_id=$1 AND $2::date BETWEEN dal AND al`, [persona.approvatore_id, oggi()])).map((x) => x.id) : [];
   let dest = await utentiDiPersone([persona.approvatore_id, ...delegati]);

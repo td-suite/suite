@@ -1,5 +1,5 @@
 // Elenco dei periodi del piano. Viste: mie (i miei periodi e variazioni), da_approvare (variazioni in attesa dei dipendenti che gestisco;
-// ADMIN tutte), tutte (storico: ADMIN e VIEWER tutto, il responsabile solo i dipendenti delle aree che gestisce). Filtri per anno,
+// ADMIN tutte), tutte (storico: ADMIN tutto, il responsabile la propria catena dall'anagrafica). Filtri per anno,
 // stato, area, ricerca.
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -12,7 +12,7 @@ import { STATO, oggiIso } from '../format.js';
 
 const VISTE = {
   mie: { title: 'I miei periodi', icon: 'list', sub: 'Tutti i periodi dei tuoi piani e le variazioni: apri un periodo per vederne la cronologia.' },
-  da_approvare: { title: 'Variazioni da decidere', icon: 'refresh', sub: 'Variazioni ai piani approvati proposte dai dipendenti delle aree che gestisci. L\'avviso di copertura non blocca: decidi tu. I piani da approvare sono nel Piano dell\'area.' },
+  da_approvare: { title: 'Variazioni da decidere', icon: 'refresh', sub: 'Variazioni ai piani approvati proposte dai tuoi diretti (chi ha te come superiore in anagrafica). L\'avviso di copertura non blocca: decidi tu. I piani da approvare sono nella tua catena e nel Piano dell\'area.' },
   tutte: { title: 'Storico dei periodi', icon: 'folder', sub: 'Tutti i periodi che puoi vedere (la tua area, o tutte per l\'amministratore), con filtri per anno, stato e area.' },
 };
 
@@ -47,7 +47,7 @@ export default function Richieste({ vista }) {
           <TabellaRichieste rows={data?.rows} mostraPersona={vista !== 'mie'} mostraArea={vista !== 'mie'} vuoto={vista === 'da_approvare' ? 'Nessuna variazione in attesa' : 'Nessun periodo con questi filtri'} />)}
         {data && data.total > data.pageSize && <Pager page={data.page} pageSize={data.pageSize} total={data.total} onChange={setPage} />}
       </Card>
-      {vista === 'da_approvare' && isHr(user) && <div className="small muted" style={{ marginTop: 8 }}>Come amministratore vedi le variazioni di tutte le aree e puoi decidere al posto del responsabile.</div>}
+      {vista === 'da_approvare' && isHr(user) && <div className="small muted" style={{ marginTop: 8 }}>Come amministratore vedi le variazioni di tutte le aree e puoi intervenire al posto del superiore diretto.</div>}
     </div>
   );
 }

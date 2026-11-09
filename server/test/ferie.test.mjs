@@ -157,9 +157,76 @@ test('saldo del piano: giorni da pianificare e pianificati totali', () => {
   assert.equal(s.da_pianificare, 12, 'meno le variazioni in attesa');
 });
 
-test('ambito del grant RESPONSABILE: area della sede', () => {
+test('ambito del grant RESPONSABILE: area della sede (solo visibilità, non approva)', () => {
   assert.equal(gruppoDiSede({ id: 4, kind: 'LABORATORIO' }), 'LAB');
   assert.equal(gruppoDiSede({ id: 5, kind: 'HEADQUARTER' }), 'DIR');
   assert.equal(gruppoDiSede({ id: 7, kind: 'PUNTO_PRELIEVI' }), 'SEDE:7');
   assert.equal(gruppoDiSede({ id: 9, kind: 'SERVICE' }), null);
+});
+
+// ------------------------------------------------------------------ approvatore = superiore diretto (CEO, 09/11/2026)
+import { approvatoreDa, discendenti, alberoDi, figliDi } from '../src/modules/ferie/lib/superiori.js';
+import { azioniPiano as azioni2 } from '../src/modules/ferie/lib/pianoAnnuale.js';
+
+// Organigramma di prova: CEO (Owner, nessuno sopra) → Malenchini (responsabile) → Masseria (dipendente); Stabile agganciato a mano
+// a Epifani, che dipende dal CEO; Rossi dipende da Bianchi (cessato) che dipende da Malenchini; Verdi dipende da Neri, senza accesso,
+// che dipende da Gialli, cessato e senza superiore; Orfano non ha superiore e non è l'Owner.
+const nodo = (id, nome, manager_id, x = {}) => [id, { id, nome, manager_id, attivo: true, user_id: 100 + id, owner: false, ...x }];
+const ORG = new Map([
+  nodo(1, 'CEO', null, { owner: true }), nodo(2, 'Malenchini', 1), nodo(3, 'Masseria', 2), nodo(4, 'Epifani', 1), nodo(5, 'Stabile', 4),
+  nodo(6, 'Bianchi', 2, { attivo: false }), nodo(7, 'Rossi', 6), nodo(8, 'Gialli', null, { attivo: false }), nodo(9, 'Neri', 8, { user_id: null }),
+  nodo(10, 'Verdi', 9), nodo(11, 'Orfano', null),
+]);
+
+test('approvatore: il superiore diretto dell\'anagrafica, a ogni livello', () => {
+  const m = approvatoreDa(3, ORG);
+  assert.equal(m.approvatore_id, 2, 'Masseria la approva Malenchini, non il CEO');
+  assert.equal(m.superiore_id, 2);
+  assert.equal(m.origine, 'superiore diretto (anagrafica)');
+  assert.equal(approvatoreDa(2, ORG).approvatore_id, 1, 'il responsabile lo approva il CEO');
+  assert.equal(approvatoreDa(5, ORG).approvatore_id, 4, '"Stabile aggancialo a me": Stabile lo approva Epifani, letto dall\'anagrafica');
+});
+
+test('approvatore: il vertice non ha approvazione, chi è senza superiore è un\'anomalia', () => {
+  const ceo = approvatoreDa(1, ORG);
+  assert.ok(ceo.vertice && ceo.senza_superiore && ceo.approvatore_id == null, 'il CEO non ha nessuno sopra');
+  const o = approvatoreDa(11, ORG);
+  assert.ok(o.senza_superiore && !o.vertice && o.approvatore_id == null, 'senza superiore ma non Owner: nessun approvatore');
+  assert.match(o.origine, /amministratore/);
+});
+
+test('approvatore: superiore cessato o senza accesso, si risale e lo si dice', () => {
+  const r = approvatoreDa(7, ORG);
+  assert.equal(r.approvatore_id, 2, 'Bianchi è cessato: approva Malenchini');
+  assert.equal(r.superiore_id, 6);
+  assert.deepEqual(r.saltati.map((x) => x.motivo), ['è cessato']);
+  assert.match(r.origine, /risale a Malenchini: Bianchi è cessato/);
+  const v = approvatoreDa(10, ORG);
+  assert.ok(v.irraggiungibile && v.approvatore_id == null, 'Neri senza accesso, Gialli cessato e in cima: decide l\'amministratore');
+  assert.deepEqual(v.saltati.map((x) => x.motivo), ['non ha accesso alla Suite', 'è cessato']);
+  // mai sé stesso, nemmeno con un ciclo nell'anagrafica
+  const ciclo = new Map([nodo(20, 'A', 21, { user_id: null }), nodo(21, 'B', 20, { user_id: null })]);
+  assert.equal(approvatoreDa(20, ciclo).approvatore_id, null);
+  assert.ok(approvatoreDa(20, ciclo).irraggiungibile);
+});
+
+test('catena: riporti a ogni livello e albero', () => {
+  assert.deepEqual(discendenti(2, ORG).sort((a, b) => a - b), [3, 6, 7], 'Malenchini: Masseria, Bianchi e sotto Bianchi Rossi');
+  assert.deepEqual(discendenti(1, ORG).sort((a, b) => a - b), [2, 3, 4, 5, 6, 7], 'il CEO vede tutta la sua catena');
+  assert.deepEqual(discendenti(3, ORG), [], 'un dipendente non ha catena');
+  const al = alberoDi(1, ORG, { figli: figliDi(ORG) });
+  assert.equal(al.id, 1);
+  assert.deepEqual(al.figli.map((x) => x.id).sort(), [2, 4]);
+  assert.equal(al.figli.find((x) => x.id === 2).figli.find((x) => x.id === 6).figli[0].id, 7);
+  const ciclo = new Map([nodo(20, 'A', 21), nodo(21, 'B', 20)]);
+  assert.deepEqual(discendenti(20, ciclo), [21], 'cicli fermati');
+});
+
+test('azioni: chi vede la catena in sola lettura non approva; il proprio piano non si approva da sé', () => {
+  // il responsabile su un riporto dei livelli sotto (sola lettura): gestisce = false → nessuna azione
+  for (const s of ['PROPOSTO', 'IN_REVISIONE', 'APPROVATO', 'DEFINITIVO']) assert.ok(!Object.values(azioni2(s, { proprio: false, gestisce: false })).some(Boolean), s);
+  // il proprio piano: invio in bozza, poi solo variazioni (per il vertice applicate subito)
+  assert.ok(azioni2('BOZZA', { proprio: true }).invia);
+  assert.ok(!azioni2('BOZZA', { proprio: true }).approva);
+  assert.ok(azioni2('DEFINITIVO', { proprio: true }).variazione);
 });

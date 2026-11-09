@@ -127,4 +127,12 @@ export default function mount(app) {
     const out = await contrattiSenzaAccount({ esegui: true });
     return { create: out.filter((x) => /creata/.test(x.esito)).length, errori: out.filter((x) => x.esito === 'errore').length };
   });
+  // Legal entity cliente sempre nel Business Hub (CEO, 09/11/2026): ogni Legal entity CLIENTE attiva senza account riceve la sua scheda
+  // (prospect censito, linea dal codice), all'avvio e ogni ora; alla creazione e al cambio di tipo la crea già il core con l'hook
+  registerJob(`${KEY}:schede-da-anagrafica`, 60, async () => {
+    if (!(await live())) return { skipped: true, reason: 'modulo non LIVE' };
+    const { schedeDaAnagrafica } = await import('./lib/schedeAnagrafica.js');
+    const out = await schedeDaAnagrafica({ esegui: true });
+    return { create: out.filter((x) => /creata/.test(x.esito)).length, errori: out.filter((x) => x.esito === 'errore').length };
+  }, { runAtStart: true });
 }

@@ -589,12 +589,20 @@ export const TIPI_PUNTO = { FLAGSHIP: 'Flagship (sede TD in locazione o di propr
  * con la Legal entity ospitante) = CORNER; proprietà, locazione o comodato senza ospitante = FLAGSHIP. Senza sede vale il "tipo previsto"
  * dell'account, da confermare quando la sede viene creata. Ritorna { tipo, fonte: 'sede'|'previsto'|null, label, avvisi }.
  */
-export function tipoPunto({ sede = null, previsto = null } = {}) {
+// Sedi su cui gira il processo dei punti (pagina "Punti Prelievo e Centri", CEO 09/11/2026: "I punti prelievo/centri medici li hai già: sono sedi")
+export const SEDI_PUNTO = ['PUNTO_PRELIEVI', 'CENTRO_MEDICO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO'];
+export function tipoPunto({ sede = null, previsto = null, orgAccount = null } = {}) {
   const avvisi = [];
   if (sede) {
+    // Processo avviato con un partner su una sede non ancora ospitata (pagina "Punti Prelievo e Centri", CEO 09/11/2026): l'account è sulla
+    // Legal entity del partner (diversa da quella della sede) con il tipo previsto CORNER; finché la sede non ha un ospitante vale il previsto,
+    // alla firma del contratto PP la sede diventa Ospitata dalla controparte (A1). Senza account di un partner vale sempre la sede.
+    if (previsto === 'CORNER' && sede.tenure !== 'OSPITATA' && !sede.host_organization_id && orgAccount && sede.organization_id && Number(orgAccount) !== Number(sede.organization_id)) {
+      return { tipo: 'CORNER', fonte: 'previsto', label: TIPI_PUNTO.CORNER, avvisi: ['Processo con un partner: la sede diventa Ospitata dal partner alla firma del contratto PP'] };
+    }
     const corner = sede.tenure === 'OSPITATA' || (!sede.tenure && Boolean(sede.host_organization_id));
     const tipo = corner ? 'CORNER' : 'FLAGSHIP';
-    if (sede.kind && sede.kind !== 'PUNTO_PRELIEVI') avvisi.push(`La sede collegata è di tipo ${sede.kind}, non Punto prelievi`);
+    if (sede.kind && !SEDI_PUNTO.includes(sede.kind)) avvisi.push(`La sede collegata è di tipo ${sede.kind}, non un punto prelievi o un centro`);
     if (corner && !sede.host_organization_id) avvisi.push('Sede ospitata senza Legal entity ospitante: indicala in Amministrazione > Sedi');
     if (previsto && previsto !== tipo) avvisi.push(`Il tipo previsto era ${previsto === 'CORNER' ? 'corner' : 'flagship'}, la sede dice ${corner ? 'corner' : 'flagship'}: vale la sede`);
     return { tipo, fonte: 'sede', label: TIPI_PUNTO[tipo], avvisi };

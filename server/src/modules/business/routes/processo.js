@@ -23,7 +23,7 @@ import { modelliFlusso } from '../lib/pacchettoGenera.js';
 import { salvaFile, creaAccessiReferenti, accessiEsterni } from '../lib/flusso.js';
 import { svuotaCache } from '../lib/feed.js';
 import {
-  statoPuntoPrelievi, aggiornaPunto, preparaContrattoPartner, avviaFlagship, eseguiAvvio, elencoPuntiPrelievo, sedeDi,
+  statoPuntoPrelievi, aggiornaPunto, preparaContrattoPartner, avviaFlagship, eseguiAvvio, elencoPuntiPrelievo, sedeDi, puntiECentri, accountPerSede,
 } from '../lib/puntoPrelievi.js';
 import { PASSI_AVVIO_PP, tipoPunto } from '../lib/processo.js';
 import { config } from '../config.js';
@@ -247,20 +247,26 @@ r.post('/punti-prelievo/:siteId/royalty', ah(async (req, res) => {
   await audit(req, 'HUB_ROYALTY_CASH', 'site', Number(req.params.siteId), { esito: out.esito });
   res.json(out);
 }));
-// Account PP dalla sede: Legal entity = ospitante (corner) o Legal entity della sede (flagship), sede collegata
+// Account PP dalla sede: Legal entity = ospitante (corner) o Legal entity della sede (flagship), sede collegata (anche centri, 09/11/2026)
 r.post('/punti-prelievo/da-sede', ah(async (req, res) => {
   if (!canEditKind(req.user, 'PP')) throw forbidden('Operazione riservata a chi gestisce la linea Punti Prelievo');
   const d = parse(z.object({ site_id: z.number().int().positive() }), req.body || {});
-  const sede = await sedeDi(d.site_id);
-  if (!sede || sede.kind !== 'PUNTO_PRELIEVI') throw bad('Sede Punto prelievi non trovata');
-  if (await one('SELECT 1 FROM accounts WHERE pp_site_id=$1', [sede.id])) throw bad('Questa sede ha già il suo punto prelievi nel Business Hub');
-  const tp = tipoPunto({ sede });
-  const orgId = tp.tipo === 'CORNER' ? sede.host_organization_id : sede.organization_id;
-  if (!orgId) throw bad(tp.tipo === 'CORNER' ? 'Indica la Legal entity ospitante della sede (Amministrazione > Sedi)' : 'La sede non ha una Legal entity (Amministrazione > Sedi)');
-  const row = await one(`INSERT INTO accounts (organization_id, linea, pp_site_id, prospect, created_by) VALUES ($1,'PP',$2,TRUE,$3) RETURNING id`, [orgId, sede.id, req.user.id]);
-  await q(`INSERT INTO activities (account_id, tipo, user_id, oggetto, testo) VALUES ($1,'SISTEMA',$2,'Account creato dalla sede',$3)`, [row.id, req.user.id, `Punto prelievi ${sede.name} (${sede.code}), ${tp.tipo === 'CORNER' ? 'corner' : 'flagship'} dalla sede.`]);
-  await audit(req, 'HUB_ACCOUNT_CREATE', 'account', row.id, { linea: 'PP', site_id: sede.id });
-  res.status(201).json({ id: row.id });
+  if (await one('SELECT 1 FROM accounts WHERE pp_site_id=$1', [d.site_id])) throw bad('Questa sede ha già il suo punto prelievi nel Business Hub');
+  const out = await accountPerSede(d.site_id, { userId: req.user.id, fonte: 'pagina Punti Prelievo' });
+  await audit(req, 'HUB_ACCOUNT_CREATE', 'account', out.id, { linea: 'PP', site_id: d.site_id });
+  res.status(201).json({ id: out.id });
+}));
+
+// Pagina unica "Punti Prelievo e Centri" (CEO, 09/11/2026): dalle sedi dell'anagrafica, con il processo del Business Hub quando c'è
+r.get('/punti-centri', ah(async (_req, res) => res.json(await puntiECentri())));
+// Account PP della sede creato al volo dalle azioni del processo (idempotente); partner_org_id = "Avvia il processo con un partner"
+r.post('/punti-centri/:siteId/account', ah(async (req, res) => {
+  if (!canEditKind(req.user, 'PP')) throw forbidden('Operazione riservata a chi gestisce la linea Punti Prelievo');
+  const d = parse(z.object({ partner_org_id: optInt.optional(), azione: z.enum(['PARTNER', 'CONTRATTO', 'FASCICOLO', 'AVVIO', 'SCHEDA']).optional() }), req.body || {});
+  const out = await accountPerSede(Number(req.params.siteId), { partnerOrgId: d.partner_org_id || null, userId: req.user.id, fonte: `pagina Punti Prelievo e Centri (${({ PARTNER: 'Avvia il processo con un partner', CONTRATTO: 'Contratto PP', FASCICOLO: 'Fascicolo', AVVIO: 'Avvia il punto prelievi', SCHEDA: 'Apri il processo' })[d.azione || 'SCHEDA']})` });
+  if (out.creato) await audit(req, 'HUB_ACCOUNT_CREATE', 'account', out.id, { linea: 'PP', site_id: Number(req.params.siteId), azione: d.azione || null, partner: d.partner_org_id || null });
+  const a = await one('SELECT id, organization_id, pp_site_id FROM accounts WHERE id=$1', [out.id]);
+  res.status(out.creato ? 201 : 200).json({ ...out, organization_id: a.organization_id, site_id: a.pp_site_id });
 }));
 
 // Clienti della linea (menu "Clienti"): SOLO i clienti attivi, cioè con la fase 7 confermata dal CEO (accounts.cliente_attivo), la stessa

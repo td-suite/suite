@@ -30,7 +30,7 @@ function fmt(v, unita) {
   if (unita === '%') return `${n.toLocaleString(IT, { maximumFractionDigits: 1 })}`;
   return n.toLocaleString(IT, { maximumFractionDigits: 1, useGrouping: 'always' });
 }
-const UNITA_SUFFISSO = { '%': '%', sedi: 'sedi' };
+const UNITA_SUFFISSO = { '%': '%', sedi: 'sedi', giorni: 'gg' };
 
 function Sparkline({ serie }) {
   if (!serie || serie.length < 2) return null;
@@ -80,7 +80,16 @@ function Indicatore({ x }) {
   return (
     <div className={`ckm-card ${w > 1 ? `w${w}` : ''}`} data-gruppo={x.gruppo} role="group" aria-label={x.titolo}>
       <div className="lbl" title={x.titolo}>{x.titolo}</div>
-      {x.tabella ? (
+      {x.tabella && x.unita === 'giorni' ? (
+        // attesa alla prima disponibilità (TuoTempo): mediana della rete e mediana per sede
+        <>
+          <div className="riga"><div className="val">{testo}<small>gg</small></div><span className="sec"><i>mediana della rete</i></span></div>
+          <div className="ckm-tab">
+            {x.tabella.map((r, i) => <div key={r.etichetta}><i>{i + 1}</i><span title={r.etichetta}>{r.etichetta}</span><b>{fmt(r.valore)} gg</b></div>)}
+            {!x.tabella.length && <div><span>Nessuna sede con l'area TuoTempo abbinata</span></div>}
+          </div>
+        </>
+      ) : x.tabella ? (
         <div className="ckm-tab">
           {x.tabella.map((r, i) => <div key={r.etichetta}><i>{i + 1}</i><span title={r.etichetta}>{r.etichetta}</span><b>{fmt(r.valore, 'EUR')}</b></div>)}
           {!x.tabella.length && <div><span>Nessun incasso nel mese</span></div>}

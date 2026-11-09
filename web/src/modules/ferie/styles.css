@@ -145,3 +145,10 @@
 .fe-row-io td { background: var(--teal-050); }
 @media (max-width: 700px) { .fe-anno { grid-template-columns: 1fr 1fr; gap: 10px; } .fe-mese-g .d { height: 24px; font-size: 11px; } }
 @media (max-width: 460px) { .fe-anno { grid-template-columns: 1fr; } }
+
+/* La mia catena: albero dei riporti dall'anagrafica */
+.fe-catena td { vertical-align: middle; }
+.fe-ramo { display: flex; gap: 6px; align-items: flex-start; }
+.fe-ramo-segno { color: var(--muted); font-size: 14px; line-height: 1.4; }
+.fe-approva { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 12px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; }
+.fe-approva.warn { background: #fff4d6; border-color: #f0d48a; }

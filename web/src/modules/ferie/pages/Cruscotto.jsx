@@ -1,4 +1,4 @@
-// Cruscotto (amministratore e consultazione: tutte le aree; responsabile: solo le aree che gestisce): piani per stato per area, piani
+// Cruscotto (amministratore: tutte le aree; responsabile: la propria catena dall'anagrafica, diretti e livelli sotto): piani per stato per area, piani
 // e variazioni da approvare, residui a rischio, non goduto da smaltire, saldi negativi, saldo per persona con il residuo dell'anno
 // precedente modificabile (amministratore) e importazione dei residui da XLSX (prima la prova, poi l'importazione).
 import React, { useMemo, useState } from 'react';

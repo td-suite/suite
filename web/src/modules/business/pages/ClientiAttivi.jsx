@@ -4,7 +4,7 @@
 // Toscana Diagnostica di tipo punto prelievi, centro medico, centro diagnostico e poliambulatorio dall'anagrafica Sedi, con l'account PP
 // del Business Hub quando c'è (CEO, 08/11/2026: "ci devono essere TUTTE le sedi attive di Toscana Diagnostica. Integrale").
 import React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { BASE } from '../api.js';
 import { useApi, Loading, ErrorBox, Badge, Empty, StatusBadge, Card } from '../components/ui.jsx';
 import { FASI, LINEE, itDate, itDateTime, eurK, num } from '../format.js';
@@ -16,7 +16,9 @@ export default function ClientiAttivi() {
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
   const linea = ['SRV', 'PP', 'MDL'].includes(sp.get('linea')) ? sp.get('linea') : 'SRV';
-  const q = useApi(`/hub/clienti-attivi?linea=${linea}`);
+  const q = useApi(linea === 'PP' ? null : `/hub/clienti-attivi?linea=${linea}`);
+  // 09/11/2026: "Punti e centri attivi" è confluita nella pagina unica "Punti Prelievo e Centri" (dalle sedi dell'anagrafica)
+  if (linea === 'PP') return <Navigate replace to={`${BASE}/punti-prelievo`} />;
   if (q.error) return <div className="page"><ErrorBox error={q.error} /></div>;
   if (!q.data) return <div className="page"><Loading /></div>;
   const righe = q.data.righe;

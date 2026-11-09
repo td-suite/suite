@@ -8,6 +8,7 @@ import { SITE_KIND, ORG_KIND, PERSON_KIND, LEVEL } from '../../format.js';
 const SitesMap = React.lazy(() => import('../../components/SitesMap.jsx'));
 import { OrgAccessModal } from './OrgAccess.jsx';
 import CercaRubrica, { SuggerimentoEmail } from '../../components/CercaRubrica.jsx';
+import { AreeTuotempo, RisorseTuotempo } from '../../components/TuotempoAnagrafica.jsx';
 
 // Ricerca iniziale dall'indirizzo (?q=...): i link della Diagnostica anagrafica aprono l'elenco già filtrato sulla riga da sistemare
 const qIniziale = () => { try { return new URLSearchParams(window.location.search).get('q') || ''; } catch { return ''; } };
@@ -299,7 +300,7 @@ export function Sites() {
   const [modal, setModal] = useState(null);
   const [photos, setPhotos] = useState(null);
   // Due elenchi distinti: le sedi della rete Toscana Diagnostica e le strutture dei clienti service (sedi gemelle SRV-<codice StudioLAB>, create dalle organizzazioni)
-  const [tab, setTab] = useState('td');
+  const [tab, setTab] = useState(() => { try { return new URLSearchParams(window.location.search).get('tab') === 'tuotempo' ? 'tuotempo' : 'td'; } catch { return 'td'; } });
   const [showMap, setShowMap] = useState(true);
   const [focusId, setFocusId] = useState(null);
   // ?sede=<id>: apre direttamente il form della sede (rimando "Modifica in Amministrazione > Sedi" da Facility)
@@ -379,10 +380,13 @@ export function Sites() {
   };
   return (
     <div className="page">
-      <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<><button className="btn ghost" title="Ricava latitudine e longitudine dall'indirizzo per le sedi che non le hanno" onClick={async () => { try { const r = await api.post('/sites/geocode-missing'); toast(r.queued ? `${r.queued} sedi in coda: coordinate pronte tra circa ${Math.max(5, r.queued * 2)} secondi` : 'Tutte le sedi hanno già le coordinate'); setTimeout(reload, Math.min(60000, Math.max(5000, r.queued * 2500))); } catch (e) { toast(e, 'err'); } }}><Icon name="pin" />Completa coordinate</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button></>} />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(serviceAttiva).length }]} />
+      <PageHead title="Sedi" icon="building" sub="Laboratori, centri, punti prelievo e strutture ospitanti della rete" actions={<><a className="btn ghost" href="/business/sedi" title="Sedi in locazione: canone, locatore, disdetta, contratto (vista del Business Hub)"><Icon name="file" />Locazioni</a><button className="btn ghost" title="Ricava latitudine e longitudine dall'indirizzo per le sedi che non le hanno" onClick={async () => { try { const r = await api.post('/sites/geocode-missing'); toast(r.queued ? `${r.queued} sedi in coda: coordinate pronte tra circa ${Math.max(5, r.queued * 2)} secondi` : 'Tutte le sedi hanno già le coordinate'); setTimeout(reload, Math.min(60000, Math.max(5000, r.queued * 2500))); } catch (e) { toast(e, 'err'); } }}><Icon name="pin" />Completa coordinate</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova sede</button></>} />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'td', label: 'Sedi Toscana Diagnostica', count: all.filter((s) => !isService(s)).length }, { value: 'service', label: 'Strutture clienti service', count: all.filter(serviceAttiva).length }, { value: 'tuotempo', label: 'Aree TuoTempo' }]} />
+      {/* TuoTempo (CEO, 09/11/2026): stessa tabella di Retail > Connettori, le sedi restano solo qui */}
+      {tab === 'tuotempo' && <div style={{ marginTop: 12 }}><div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Le aree (centri) pubblicate su TuoTempo e la sede TD a cui corrispondono. L'abbinamento si salva nella sede (riferimento "tuotempo"); "Crea la sede" crea la sede qui con i dati dell'area. Le differenze di indirizzo, telefono e orari compaiono anche in Diagnostica anagrafica (D45).</span></div><AreeTuotempo onChange={reload} /></div>}
       {tab === 'service' && serviceNonAttive.length > 0 && <div className="alert info small" style={{ marginTop: 8 }}><Icon name="info" /><span>Qui compaiono solo le strutture dei clienti <b>attivi</b> nel Business Hub (fase 7 confermata dal CEO). {serviceNonAttive.length} struttur{serviceNonAttive.length === 1 ? 'a' : 'e'} di clienti non attivi {mostraNonAttivi ? 'mostrat' : 'nascost'}{serviceNonAttive.length === 1 ? 'a' : 'e'}. <button className="linklike" onClick={() => setMostraNonAttivi((v) => !v)}>{mostraNonAttivi ? 'Nascondi' : 'Mostra per correggere'}</button></span></div>}
       {tab === 'service' && <div className="alert info small" style={{ marginBottom: 12 }}><Icon name="info" /><span>Punti dei clienti del service di laboratorio (tipo SERVICE): una riga per codice cliente StudioLAB, agganciata alla legal entity del cliente. Sono il punto inviante su cui lavorano Non conformità, Ordini e gli accessi dei clienti. Si caricano dal file Sedi o dal connettore StudioLAB.</span></div>}
+      {tab !== 'tuotempo' && <>
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder={tab === 'service' ? 'Codice StudioLAB, cliente, indirizzo o città' : 'Codice, nome, indirizzo o città'} /><div className="spacer" /><button className={`btn ghost sm${showMap ? ' active' : ''}`} onClick={() => setShowMap((v) => !v)}><Icon name="pin" />{showMap ? 'Nascondi mappa' : 'Mappa'}</button></div>
       {showMap && <Card flush style={{ marginBottom: 14 }}>
         <React.Suspense fallback={<div className="small muted">Caricamento della mappa…</div>}><SitesMap sites={rows} kinds={SITE_KIND} focusId={focusId} /></React.Suspense>
@@ -407,6 +411,7 @@ export function Sites() {
           </tr>)}
         </tbody></table></div>}
       </Card>
+      </>}
       {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova sede'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
       {photos && <SitePhotos site={photos} onClose={() => { setPhotos(null); reload(); }} />}
     </div>
@@ -432,9 +437,9 @@ export function Organizations() {
   ];
   // B5: una Legal entity con la stessa P.IVA, lo stesso CF o lo stesso nome esiste già → 409 DUPLICATO: si crea solo con la conferma
   const save = async (body) => {
-    if (modal?.id) await api.put(`/organizations/${modal.id}`, body);
+    if (modal?.id) { const o = await api.put(`/organizations/${modal.id}`, body); if (o?.scheda_business?.creato) toast('Legal entity cliente: scheda creata nel Business Hub (prospect censito)'); }
     else {
-      try { const o = await api.post('/organizations', body); if (o?.simili?.length) toast(`Creata con la spunta "da rivedere": nome simile a ${o.simili.map((x) => x.name).join(', ')}`, 'warn'); }
+      try { const o = await api.post('/organizations', body); if (o?.simili?.length) toast(`Creata con la spunta "da rivedere": nome simile a ${o.simili.map((x) => x.name).join(', ')}`, 'warn'); if (o?.scheda_business?.creato) toast('Scheda creata nel Business Hub (prospect censito)'); }
       catch (e) { if (e.code !== 'DUPLICATO' || !window.confirm(`${e.message}.\n\nCreare comunque una nuova Legal entity?`)) throw e; await api.post('/organizations', { ...body, forza_duplicato: true }); }
     }
     toast('Legal entity salvata'); reload();
@@ -456,9 +461,31 @@ export function Organizations() {
           </tr>)}
         </tbody></table></div>}
       </Card>
-      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova legal entity'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} />}
+      {modal && <EditModal title={modal.id ? `Modifica ${modal.name}` : 'Nuova legal entity'} fields={fields} item={modal.id ? modal : null} onSave={save} onClose={() => setModal(null)} extra={modal.id ? <BusinessLegalEntity org={modal} /> : null} />}
       {access && <OrgAccessModal org={access} onClose={() => setAccess(null)} onChanged={reload} />}
       {unisci && <UnisciModal orgs={data || []} ids={unisci.ids} onClose={() => setUnisci(null)} onDone={() => { setUnisci(null); reload(); }} />}
+    </div>
+  );
+}
+
+// Scheda Legal entity ↔ Business Hub (CEO, 09/11/2026: "Legal entity che ho in anagrafica come cliente non le ritrovo in Business Hub B2B"):
+// "Apri nel Business Hub" (l'account della linea, o l'elenco se più linee) e "Aggiungi la linea …" per un secondo account (es. un cliente Service
+// che diventa anche MdL). Le Legal entity CLIENTE ricevono la scheda da sole (creazione, cambio di tipo, job orario).
+function BusinessLegalEntity({ org }) {
+  const toast = useToast();
+  const q = useApi(`/organizations/${org.id}/business`);
+  const d = q.data;
+  const aggiungi = async (l) => { try { const r = await api.post(`/organizations/${org.id}/business`, { linea: l.linea }); toast(r.creato ? `Scheda ${l.label} creata nel Business Hub` : 'La scheda c\'era già'); q.reload(); } catch (e) { toast(e, 'err'); } };
+  if (!d) return null;
+  const FASE = ['Prospect censito', 'Lead', 'Primo contatto', 'Sopralluogo', 'Offerta inviata', 'In negoziazione', 'Contratto firmato', 'Attivo'];
+  return (
+    <div className="mt2" data-testid="le-business">
+      <div className="strong" style={{ marginBottom: 6 }}>Business Hub</div>
+      {!d.disponibile ? <p className="small muted">{d.motivo}</p> : <>
+        {!d.accounts.length ? <p className="small muted">Nessuna scheda nel Business Hub{org.kind === 'CLIENTE' ? ': si crea da sola entro un\'ora (o subito con "Aggiungi la linea")' : ''}.</p>
+          : <div style={{ display: 'grid', gap: 4 }}>{d.accounts.map((a) => <div key={a.id} className="row small" style={{ gap: 8 }}><a className="btn sm" href={`/business/account/${a.id}${a.linea === 'PP' ? '?scheda=punto' : ''}`}>Apri nel Business Hub</a><span><b>{a.linea_label}</b>{a.punto ? ` · ${a.punto}` : ''} · {a.cliente_attivo ? 'cliente attivo' : FASE[a.fase_corrente] || `fase ${a.fase_corrente}`}{a.fonte_censimento === 'Anagrafica' ? ' · scheda creata dall\'anagrafica' : ''}</span></div>)}</div>}
+        {d.aggiungibili.length > 0 && <div className="row small" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>{d.aggiungibili.map((l) => <button key={l.linea} type="button" className="btn sm ghost" onClick={() => aggiungi(l)} data-testid={`aggiungi-${l.linea}`}><Icon name="plus" />Aggiungi la linea {l.label}</button>)}</div>}
+      </>}
     </div>
   );
 }
@@ -512,6 +539,7 @@ export function PeopleAdmin() {
   const toast = useToast();
   const [modal, setModal] = useState(null);
   const [pos, setPos] = useState(null);
+  const [risorseTT, setRisorseTT] = useState(() => { try { return new URLSearchParams(window.location.search).get('tab') === 'tuotempo'; } catch { return false; } });
   const people = useMemo(() => (data || []).map((p) => ({ value: p.id, label: `${p.last_name} ${p.first_name}` })), [data]);
   // contatto scelto dalle rubriche (Outlook, Gmail): compila solo i campi che la rubrica conosce, tutti modificabili prima di Salva;
   // la Legal entity si propone se l'azienda del contatto ha lo stesso nome di una Legal entity in anagrafica
@@ -587,6 +615,8 @@ export function PeopleAdmin() {
         extra={<div className="mt2"><div className="row tight" style={{ justifyContent: 'space-between', marginBottom: 6 }}><span className="strong">Incarichi nell'organigramma</span></div>
           {modal.id ? <PositionsEditor person={(data || []).find((x) => x.id === modal.id) || modal} onChange={reload} /> : <p className="small muted">Salva la persona: subito dopo si aprono gli incarichi (unità, ruolo, responsabile), quanti servono.</p>}</div>} />}
       {pos && <PersonPositionsModal person={(data || []).find((x) => x.id === pos.id) || pos} onClose={() => setPos(null)} onChange={reload} />}
+      {/* TuoTempo (CEO, 09/11/2026): medici e professionisti pubblicati su TuoTempo abbinati alle persone (proposta per email, poi per nome) */}
+      <div className="mt">{risorseTT ? <RisorseTuotempo /> : <button className="btn ghost sm" onClick={() => setRisorseTT(true)} data-testid="mostra-risorse-tt"><Icon name="users" />Risorse TuoTempo da abbinare alle persone</button>}</div>
     </div>
   );
 }

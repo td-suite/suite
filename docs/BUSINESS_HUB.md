@@ -901,3 +901,47 @@ Programma "anagrafica unica" (decisioni 2, 3 e 4 del CEO dell'08/11/2026). Regol
   della proposta, firmato/attivo 6 con sede SERVICE), mai indietro. Job `business:schede-dai-contratti` ogni 6 ore e controllo
   Diagnostica **D12b** con "Crea le schede" per i contratti esistenti (caso CNA Firenze e ACF Fiorentina, Medicina del Lavoro).
 - Il widget Payments si chiama **Finance Management** (chiave `finance` invariata, migrazione core 047).
+
+## Richieste del CEO del 09/11/2026 (v0.66.0)
+**B. "Sedi TD in locazione non serve. I punti prelievo/centri medici li hai già: sono sedi."**
+- Menu della sezione Punti Prelievo (`meta.js`): tolte "Sedi TD in locazione" e "Punti e centri attivi"; resta **"Punti Prelievo e Centri"**
+  (`/business/punti-prelievo`) con il contatore "fascicoli aperti". La pagina `/business/sedi` (locazioni) resta raggiungibile solo da
+  Amministrazione > Sedi, pulsante "Locazioni"; `/business/clienti-attivi?linea=PP` porta alla pagina nuova.
+- **Una pagina sola che parte dalle SEDI** (`pages/PuntiPrelievo.jsx`, `GET /hub/punti-centri`, `puntiECentri` in `lib/puntoPrelievi.js`): tutte le
+  sedi attive di tipo PUNTO_PRELIEVI, CENTRO_MEDICO, CENTRO_DIAGNOSTICO, POLIAMBULATORIO più quelle in apertura (non attive con `opened_at`
+  futura). Per ogni sede: tipo (flagship/corner), titolo di godimento e ospitante/partner, apertura, responsabile (organigramma), area TuoTempo
+  (abbinata o no, docs/RETAIL_TUOTEMPO.md) e, se c'è l'account PP (`accounts.pp_site_id`), fase, contratto PP, fascicolo, avvio e royalty.
+  Filtri per tipo, "con il processo", "in apertura", "senza area TuoTempo"; in fondo i processi senza sede (account PP nati prima della sede).
+- **Azioni del processo con l'account creato al volo** (`POST /hub/punti-centri/:siteId/account { azione, partner_org_id? }`, `accountPerSede`,
+  idempotente): "Avvia il processo con un partner" (scelta della Legal entity: account sul partner con `pp_tipo_previsto = CORNER`; `tipoPunto`
+  considera corner previsto la sede non ancora ospitata, che diventa Ospitata dal partner alla firma del contratto PP, A1), "Contratto PP"
+  (form del contratto con sede e controparte precompilate), "Fascicolo" (fascicolo della sede o nuovo con `?site=&org=`), "Avvia il punto
+  prelievi" (flagship: data di avvio e passi c-g), "Scheda in Amministrazione". La sede non deve "diventare" un punto prelievi: il processo vale
+  anche per centri medici, centri diagnostici e poliambulatori (`SEDI_PUNTO`; collegamento della sede e `da-sede` accettano i quattro tipi).
+- **Nessun "Nuovo punto prelievi"** dal Business Hub: le sedi nascono solo in Amministrazione > Sedi (pulsante "Nuova sede in Amministrazione").
+  La scheda account (scheda "Punto prelievi": fascicoli, contratto al partner, email, avvio) resta la scheda del processo.
+
+**C. "Legal entity che ho in anagrafica come cliente non le ritrovo in Business Hub B2B" (es. UNIFARM SPA, SER0033).**
+- Regola: ogni Legal entity di tipo CLIENTE attiva ha almeno un account (`lib/schedeAnagrafica.js`). L'account mancante nasce come prospect in
+  fase 0 (censito), `fonte_censimento = 'Anagrafica'`, linea dal codice (SER → SRV, MDL → MDL, PP → PP, altrimenti SRV) e attività SISTEMA
+  "Scheda creata dall'anagrafica".
+- Chi la crea: il **core** alla creazione (`createOrganization`, opzione `schedaBusiness`, predefinita sì; non dentro la transazione di un
+  chiamante; i chiamanti del Business Hub la spengono perché creano l'account della linea giusta) e al cambio di tipo in CLIENTE o alla
+  riattivazione (`PUT /api/organizations/:id`), con `hookBusinessLegalEntity` (import dinamico con try/catch, solo con il Business Hub LIVE:
+  nessuna dipendenza rigida); il **job `business:schede-da-anagrafica`** (all'avvio e ogni ora); la **Diagnostica D47** "Legal entity cliente
+  senza scheda nel Business Hub" con "Crea le schede".
+- Scheda Legal entity in Amministrazione: sezione "Business Hub" con "Apri nel Business Hub" per ogni account (linea, fase, se creata
+  dall'anagrafica) e **"Aggiungi la linea …"** (Service o Medicina del Lavoro) per un secondo account (`GET|POST /api/organizations/:id/business`).
+- Clienti e prospect (e Pipeline): filtro **"Da anagrafica (censiti)"** (`?origine=anagrafica`: schede create dall'anagrafica ancora in fase 0)
+  e badge "da anagrafica · codice" sulla riga.
+
+**Collaudo del 09/11/2026** (db `suite_tt_t`, porta 3162): pagina con 6 sedi (5 attive + 1 in apertura, niente laboratorio), area TuoTempo per 4;
+"Avvia il processo con un partner" su PP-EMP (account creato al volo, seconda azione idempotente, scheda: corner previsto) e dall'interfaccia sulla
+sede in apertura; flagship su un centro medico con "Avvia il punto prelievi" (4/5 passi: il primo ordine non riesce perché Ordini non è avviato
+nel collaudo, come previsto); `/api/business/sedi-locazione` 200; D47 = 2 prima del job (SER0033, MDL0901), hook alla creazione (SRV) e al
+cambio di tipo FORNITORE → CLIENTE (MDL), job "2 create", D47 = 0; "Aggiungi la linea Medicina del Lavoro"; filtro "Da anagrafica (censiti)".
+Schermata `docs/screens/business-punti-centri.png`.
+
+**Verifiche in produzione**: D47 (atteso > 0 al primo avvio, poi 0 dopo il job; UNIFARM SPA in Clienti e prospect con "Da anagrafica
+(censiti)"); che le Legal entity CLIENTE create in passato per Spedizioni (richiedenti) siano davvero clienti: ora ricevono una scheda come le
+altre (se non lo sono, cambiarne il tipo); pagina Punti Prelievo e Centri con tutte le sedi; "Locazioni" da Amministrazione > Sedi.

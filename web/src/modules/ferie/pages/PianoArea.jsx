@@ -1,8 +1,9 @@
 // Piano dell'area <nome> <anno>: tutte le persone dell'area (persone × mesi, persone × settimane, persone × giorni del mese), stato del
 // piano di ciascuna, copertura minima con i giorni scoperti in rosso, modifica dei periodi direttamente nella griglia del mese (con nota;
 // motivo obbligatorio nei piani definitivi), "Approva" e "Rendi definitivo" per persona e per tutta l'area, riapertura con motivo,
-// variazioni da decidere, export XLSX e PDF dell'area. Il responsabile vede solo le aree che gestisce; il selettore delle aree serve
-// all'amministratore (e a chi gestisce più aree); il dipendente vede la propria area in sola lettura, senza saldi e note.
+// variazioni da decidere, export XLSX e PDF dell'area. Per ogni persona "approva: <nome>" dall'anagrafica (superiore diretto, CEO
+// 09/11/2026): le azioni compaiono solo su chi l'utente approva; i riporti dei livelli sotto sono in sola lettura. Il selettore delle
+// aree serve all'amministratore e a chi ha riporti in più aree; il dipendente vede la propria area, senza saldi e note.
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiBase, qs, useApi } from '../api.js';
@@ -45,7 +46,7 @@ export default function PianoArea() {
   return (
     <div className="page">
       <PageHead title={data ? `Piano dell'area ${data.nome} ${anno}` : 'Piano dell\'area'} icon="calendar"
-        sub={gestisce ? 'Rivedi i piani delle persone dell\'area: modifica i periodi nella griglia del mese, approva e rendi definitivo.' : 'Il piano della tua area: nomi e periodi dei colleghi.'}
+        sub={gestisce ? 'Rivedi i piani dei tuoi diretti: modifica i periodi nella griglia del mese, approva e rendi definitivo. Gli altri piani dell\'area li vedi in sola lettura: li approva il superiore diretto indicato.' : 'Il piano della tua area: nomi, periodi e chi approva ciascun piano (dall\'anagrafica).'}
         actions={<>
           {gestisce && data.azioni.approva_area > 0 && <button className="btn primary" onClick={() => setModal({ tipo: 'blocco', azione: 'approva' })}><Icon name="check" />Approva tutta l'area ({data.azioni.approva_area})</button>}
           {gestisce && data.azioni.definitivi_area > 0 && <button className="btn" onClick={() => setModal({ tipo: 'blocco', azione: 'definitivi' })}><Icon name="lock" />Rendi definitivi ({data.azioni.definitivi_area})</button>}
@@ -83,13 +84,14 @@ export default function PianoArea() {
         </Card>
         <Card title="Persone e stato del piano" icon="users" flush>
           <div className="table-wrap"><table className="t fe-table">
-            <thead><tr><th>Persona</th><th>Piano</th>{gestisce && <><th className="num">Spettanti</th><th className="num">Pianificati</th><th className="num">Da pianificare</th></>}<th>Inviato</th><th>Approvato</th>{gestisce && <th>Azioni</th>}</tr></thead>
+            <thead><tr><th>Persona</th><th>Piano</th><th>Approva</th>{gestisce && <><th className="num">Spettanti</th><th className="num">Pianificati</th><th className="num">Da pianificare</th></>}<th>Inviato</th><th>Approvato</th>{gestisce && <th>Azioni</th>}</tr></thead>
             <tbody>{persone.map((p) => {
               const a = p.piano?.azioni || {};
               return (
                 <tr key={p.id} className={p.io ? 'fe-row-io' : ''}>
                   <td className="strong">{p.nome}{p.io && <span className="small muted"> (tu)</span>}<div className="small muted">{p.ruolo}{p.ha_accesso === false ? ' · senza accesso alla Suite' : ''}</div>{p.piano?.note && <div className="small">Note: {p.piano.note}</div>}</td>
                   <td>{p.piano ? <StatoPianoBadge stato={p.piano.stato} /> : '-'}{p.piano && <div className="small muted">versione {p.piano.versione}</div>}</td>
+                  <td className="small">{p.gestisce ? <b>tu</b> : <span className={p.senza_superiore ? 'fe-neg' : ''}>{p.approva}</span>}{p.sola_lettura && <div className="muted">sola lettura</div>}{p.senza_superiore && <div className="muted">senza superiore in anagrafica</div>}</td>
                   {gestisce && <><td className="num">{p.saldo ? num(p.saldo.spettanza + p.saldo.residuo_ap) : ''}</td><td className="num">{p.saldo ? num(p.saldo.pianificato_totale) : ''}</td>
                     <td className={`num strong ${p.saldo?.da_pianificare < 0 ? 'fe-neg' : ''}`}>{p.saldo ? num(p.saldo.da_pianificare) : ''}</td></>}
                   <td className="small">{p.piano?.inviato_at ? itDataOra(p.piano.inviato_at) : ''}</td>

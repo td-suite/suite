@@ -7,10 +7,13 @@
 //   DIR  = l'unità di primo livello sotto la radice è di tecnostruttura (STAFF), la persona afferisce alla radice, o la sede è HEADQUARTER
 //   SEDE:<id> = tutte le altre, una colonna per sede (la sede dell'unità, o la sede di lavoro della persona)
 //   DA_ASSEGNARE = nessun indizio (né unità con sede né sede di lavoro): HR la forza da Impostazioni > Aree forzate
-// Approvatore: approvatore ferie del dossier HR (contracts.person_ext.approver_id) se c'è; altrimenti il responsabile della sede
-// (SEDE) o dell'unità di primo livello (DIR, LAB) dall'organigramma; altrimenti il responsabile calcolato (people_manager). HR (ADMIN
-// del modulo) approva sempre, i delegati (ferie.deleghe) durante il periodo della delega.
+// L'area serve SOLO alla visibilità (il piano dell'area è trasparente a tutta l'area, decisione dell'08/11/2026).
+// Approvatore (decisione del CEO, 09/11/2026): il superiore diretto dell'anagrafica, public.people_manager(id) ("Dipende da" di
+// Amministrazione > Persone), con la risalita se è cessato o senza accesso (lib/superiori.js). Nessun altro criterio: non più il
+// dossier HR (contracts.person_ext.approver_id), né il responsabile della sede o dell'unità di primo livello, né le aree forzate.
+// L'amministratore del modulo interviene sempre, i delegati (ferie.deleghe) durante il periodo della delega.
 import { many, one } from '../db.js';
+import { approvatoreDa, figliDi } from './superiori.js';
 
 export const GRUPPI_FISSI = { DIR: 'Direzione', LAB: 'Laboratorio' };
 export const isGruppo = (g) => /^(DIR|LAB|SEDE:\d+)$/.test(String(g || ''));
@@ -58,18 +61,16 @@ export const invalidaPerimetro = () => { cache = { at: 0, data: null, includiDir
 export async function perimetro({ includiDirigenti = true } = {}) {
   if (cache.data && Date.now() - cache.at < 30_000 && cache.includiDirigenti === includiDirigenti) return cache.data;
   const disp = await contrattiDisponibili();
-  if (!disp.employments) { const vuoto = { persone: new Map(), gruppi: [], contratti: false }; cache = { at: Date.now(), data: vuoto, includiDirigenti }; return vuoto; }
+  if (!disp.employments) { const vuoto = { persone: new Map(), gruppi: [], contratti: false, siti: new Map(), nodi: new Map(), figli: new Map() }; cache = { at: Date.now(), data: vuoto, includiDirigenti }; return vuoto; }
   const kinds = includiDirigenti ? ['DIPENDENTE', 'DIRIGENTE'] : ['DIPENDENTE'];
   const persone = await many(`SELECT p.id, p.last_name, p.first_name, p.email, p.kind, p.site_id, p.unit_id, p.role_id, p.hired_at, p.terminated_at,
         jr.name AS role_name, public.people_manager(p.id) AS manager_id,
         e.ccnl, e.level, e.contract_type, e.weekly_days, e.days_label, e.start_date, e.end_date,
-        ${disp.person_ext ? 'x.approver_id' : 'NULL::int AS approver_id'},
         af.gruppo AS gruppo_forzato,
         (SELECT u.id FROM public.users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' ORDER BY u.id LIMIT 1) AS user_id
       FROM public.people p
       JOIN contracts.employments e ON e.resource_id = p.id
       LEFT JOIN public.job_roles jr ON jr.id = p.role_id
-      ${disp.person_ext ? 'LEFT JOIN contracts.person_ext x ON x.person_id = p.id' : ''}
       LEFT JOIN aree_forzate af ON af.person_id = p.id
      WHERE p.status = 'ATTIVO' AND p.kind = ANY($1::text[])
      ORDER BY lower(p.last_name), lower(p.first_name)`, [kinds]);
@@ -80,14 +81,11 @@ export async function perimetro({ includiDirigenti = true } = {}) {
   const sById = new Map(sites.map((s) => [s.id, s]));
   const catena = (uid) => { const out = []; let u = uById.get(uid); const seen = new Set(); while (u && !seen.has(u.id) && out.length < 15) { seen.add(u.id); out.push(u); u = u.parent_id ? uById.get(u.parent_id) : null; } return out; };
   const sedeUnita = (ch) => { for (const u of ch) if (u.site_id) return sById.get(u.site_id) || null; return null; };
-  // responsabili di ogni unità: incarichi is_head e head_person_id allineato
-  const heads = new Map();
-  const addHead = (uid, pid) => { if (!uid || !pid) return; if (!heads.has(uid)) heads.set(uid, []); if (!heads.get(uid).includes(pid)) heads.get(uid).push(pid); };
-  for (const p of pos) if (p.is_head) addHead(p.unit_id, p.person_id);
-  for (const u of units) if (u.active && u.head_person_id) addHead(u.id, u.head_person_id);
   const posByPerson = new Map();
   for (const p of pos) { if (!posByPerson.has(p.person_id)) posByPerson.set(p.person_id, []); posByPerson.get(p.person_id).push(p); }
-  const sedeNode = new Map(units.filter((u) => u.kind === 'SEDE' && u.site_id && u.active).map((u) => [u.site_id, u.id]));
+  // catena dei superiori dall'anagrafica: le persone del perimetro e, risalendo, i loro superiori (anche fuori perimetro: un responsabile
+  // libero professionista, un superiore cessato). UNION ferma i cicli.
+  const nodi = await nodiSuperiori(persone.map((p) => p.id));
 
   const out = new Map();
   for (const p of persone) {
@@ -97,29 +95,19 @@ export async function perimetro({ includiDirigenti = true } = {}) {
     const area = areaPersona({ chain: ch, site: sedeUnita(ch), personSite: p.site_id ? sById.get(p.site_id) : null, forzata: p.gruppo_forzato });
     // ruoli: principale + incarichi (per la copertura minima per ruolo)
     const ruoli = [...new Set([p.role_id, ...ps.map((x) => x.role_id)].filter(Boolean))];
-    // approvatore dall'organigramma
-    let candidati = [];
-    const sid = siteDiGruppo(area.gruppo);
-    if (sid && sedeNode.has(sid)) candidati = heads.get(sedeNode.get(sid)) || [];
-    else if (area.primo_livello_id) candidati = heads.get(area.primo_livello_id) || [];
-    let approvatore = null, approvatore_origine = null;
-    if (p.approver_id && p.approver_id !== p.id) { approvatore = p.approver_id; approvatore_origine = 'dossier HR'; }
-    else if (candidati.find((x) => x !== p.id)) { approvatore = candidati.find((x) => x !== p.id); approvatore_origine = sid ? 'responsabile della sede' : 'responsabile dell\'area'; }
-    else if (p.manager_id && p.manager_id !== p.id) { approvatore = p.manager_id; approvatore_origine = 'responsabile dall\'organigramma'; }
+    // approvatore = superiore diretto dell'anagrafica (con la risalita se cessato o senza accesso)
+    const ap = approvatoreDa(p.id, nodi);
     out.set(p.id, {
       id: p.id, nome: `${p.last_name} ${p.first_name}`.trim(), last_name: p.last_name, first_name: p.first_name, email: p.email, kind: p.kind, user_id: p.user_id,
       role_id: p.role_id, role_name: p.role_name || ps.find((x) => x.role_name)?.role_name || null, ruoli,
       gruppo: area.gruppo, area_origine: area.origine, site_id: area.site_id || p.site_id || null, unit_id: unitId,
-      approvatore_id: approvatore, approvatore_origine,
+      superiore_id: ap.superiore_id, superiore_nome: ap.superiore_nome,
+      approvatore_id: ap.approvatore_id, approvatore_nome: ap.approvatore_nome, approvatore_user_id: ap.approvatore_user_id, approvatore_origine: ap.origine,
+      approvatore_saltati: ap.saltati, senza_superiore: ap.senza_superiore, vertice: ap.vertice, approvatore_irraggiungibile: ap.irraggiungibile,
       contratto: { ccnl: p.ccnl, level: p.level, contract_type: p.contract_type, weekly_days: p.weekly_days, days_label: p.days_label },
       inizio: isoOrNull(p.start_date || p.hired_at), fine: isoOrNull(p.end_date || p.terminated_at),
     });
   }
-  // nomi degli approvatori (anche fuori perimetro: un responsabile può essere un libero professionista o un dirigente)
-  const ids = [...new Set([...out.values()].map((x) => x.approvatore_id).filter(Boolean))];
-  const nomi = ids.length ? await many(`SELECT p.id, p.last_name || ' ' || p.first_name AS nome, (SELECT u.id FROM public.users u WHERE u.person_id = p.id AND u.status='ACTIVE' ORDER BY u.id LIMIT 1) AS user_id FROM public.people p WHERE p.id = ANY($1::int[])`, [ids]) : [];
-  const nById = new Map(nomi.map((n) => [n.id, n]));
-  for (const x of out.values()) if (x.approvatore_id) { x.approvatore_nome = nById.get(x.approvatore_id)?.nome || null; x.approvatore_user_id = nById.get(x.approvatore_id)?.user_id || null; }
   // gruppi presenti (colonne del piano): Direzione, Laboratorio, poi le sedi in ordine alfabetico, infine Da assegnare
   const gs = new Set([...out.values()].map((x) => x.gruppo));
   const gruppi = [];
@@ -129,9 +117,26 @@ export async function perimetro({ includiDirigenti = true } = {}) {
   sedi.sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
   gruppi.push(...sedi);
   if (gs.has('DA_ASSEGNARE')) gruppi.push({ key: 'DA_ASSEGNARE', nome: 'Da assegnare', area: 'Da assegnare' });
-  const data = { persone: out, gruppi, contratti: true, siti: sById };
+  const data = { persone: out, gruppi, contratti: true, siti: sById, nodi, figli: figliDi(nodi) };
   cache = { at: Date.now(), data, includiDirigenti };
   return data;
+}
+
+/**
+ * Nodi della catena dei superiori a partire dalle persone indicate: Map id → { id, nome, manager_id, attivo, user_id, owner }.
+ * manager_id = public.people_manager(id) ("Dipende da"); owner = la persona ha un accesso attivo di livello OWNER (il vertice).
+ */
+export async function nodiSuperiori(ids) {
+  if (!ids.length) return new Map();
+  const rows = await many(`WITH RECURSIVE c(id) AS (
+        SELECT unnest($1::int[])
+        UNION
+        SELECT public.people_manager(c.id) FROM c WHERE public.people_manager(c.id) IS NOT NULL)
+      SELECT p.id, p.last_name || ' ' || p.first_name AS nome, p.status, public.people_manager(p.id) AS manager_id,
+        (SELECT u.id FROM public.users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' ORDER BY u.id LIMIT 1) AS user_id,
+        EXISTS (SELECT 1 FROM public.users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' AND u.level = 'OWNER') AS owner
+      FROM public.people p WHERE p.id IN (SELECT id FROM c)`, [ids]);
+  return new Map(rows.map((r) => [r.id, { id: r.id, nome: r.nome, manager_id: r.manager_id, attivo: r.status === 'ATTIVO', user_id: r.user_id, owner: r.owner }]));
 }
 
 const isoOrNull = (d) => { if (!d) return null; if (d instanceof Date) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return String(d).slice(0, 10); };

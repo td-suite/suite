@@ -1,5 +1,6 @@
 // Adattatore di autenticazione: l'utente arriva dalla Suite (ModuleFrame → moduleUser, da GET /api/ferie/state).
-// role: ADMIN (HR) | RESPONSABILE | VIEWER | DIPENDENTE (implicito); isApprovatore: approva almeno una persona (organigramma, dossier HR, delega).
+// role: ADMIN (HR) | RESPONSABILE | DIPENDENTE (implicito); isApprovatore: è il superiore diretto (o il delegato) di almeno una persona;
+// haCatena: ha riporti nell'anagrafica (li vede in "La mia catena", in sola lettura oltre i diretti).
 import React, { createContext, useContext } from 'react';
 
 const AuthCtx = createContext({ user: null });

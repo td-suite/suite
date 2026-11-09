@@ -119,3 +119,11 @@ Windows) che apre una connessione IN USCITA verso Cloudflare e pubblica `http://
 `studiolab-api.toscanadiagnostica.it`), senza aprire porte sul router. Davanti si mette una policy Cloudflare Access con un service
 token: la Suite manda le intestazioni `CF-Access-Client-Id` e `CF-Access-Client-Secret` (impostazione `cf_access_client_id` e credenziale
 `cf_access_client_secret` del connettore) e nessun altro raggiunge la WebApi. Nel connettore la Base URL diventa il nome pubblico.
+
+## TuoTempo, Fase 1 (09/11/2026, v0.66.0)
+Dettagli in docs/RETAIL_TUOTEMPO.md. In sintesi: User-Agent `TD-Suite/<APP_VERSION>` su ogni chiamata (anche la "Prova connessione" del core),
+`fields` sempre valorizzato con i soli campi usati, al massimo una chiamata ogni 110 ms e una pausa tra le pagine (limite di Docplanner: 600
+chiamate al minuto per IP), job notturno `retail:tuotempo` (tra le 2 e le 5) e "Allinea adesso". La sincronizzazione TuoTempo non abbina più le
+aree alle sedi per nome da sola: propone (salvato, legacyid, indirizzo + CAP, nome simile nella stessa città) e l'abbinamento si conferma in
+Retail > Connettori o in Amministrazione > Sedi > Aree TuoTempo; la fonte è `public.sites.legacy_refs->>'tuotempo'`. Le risorse si abbinano
+alle persone (`public.people.legacy_refs->>'tuotempo'`) con la conferma. Il prezzo online va in `retail.products.tt_price`, non più nel listino.

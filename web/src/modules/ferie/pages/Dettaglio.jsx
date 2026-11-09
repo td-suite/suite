@@ -46,7 +46,7 @@ export default function Dettaglio() {
               <dt>Area</dt><dd>{r.gruppo_nome}</dd>
               {r.piano && <><dt>Piano</dt><dd>{r.piano.anno} · {r.piano.stato_label} (versione {r.piano.versione})</dd></>}
               {r.variazione && <><dt>Origine</dt><dd>Variazione al piano approvato</dd></>}
-              <dt>Responsabile</dt><dd>{r.approvatore_nome || 'Amministratore'}</dd>
+              <dt>Approva</dt><dd>{r.approvatore_nome || 'Amministratore o nessuno (vertice)'}</dd>
               {r.chiusura_descrizione && <><dt>Chiusura</dt><dd>{r.chiusura_descrizione}</dd></>}
               {r.note && <><dt>Note</dt><dd className="fe-pre">{r.note}</dd></>}
               {r.deciso_at && <><dt>Decisione</dt><dd>{r.deciso_da_nome} · {itDataOra(r.deciso_at)}{r.nota_decisione ? <div className="fe-pre">{r.nota_decisione}</div> : null}</dd></>}

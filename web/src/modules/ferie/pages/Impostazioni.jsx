@@ -1,5 +1,6 @@
 // Impostazioni del Piano Ferie (HR): parametri generali, giorni annui per CCNL e livello, copertura minima per area o sede, chiusure
-// collettive, aree forzate, santi patroni delle sedi, deleghe di approvazione, esecuzione del job giornaliero.
+// collettive, aree forzate (solo per la visibilità del piano dell'area), santi patroni delle sedi, deleghe di approvazione a tempo, esecuzione
+// del job giornaliero. Nessuna impostazione sceglie l'approvatore: è il superiore diretto dell'anagrafica (CEO, 09/11/2026).
 import React, { useEffect, useState } from 'react';
 import { api, useApi } from '../api.js';
 import { Card, Loading, PageHead, Field, Tabs, Switch, useToast } from '../../../components/ui.jsx';
@@ -12,7 +13,7 @@ export default function Impostazioni() {
   return (
     <div className="page">
       <PageHead title="Impostazioni del Piano Ferie" icon="gear" sub="Valori di lavoro del modulo. Ogni modifica finisce nel registro delle attività della Suite." />
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'generali', label: 'Generali' }, { value: 'spettanze', label: 'Giorni annui' }, { value: 'copertura', label: 'Copertura minima' }, { value: 'chiusure', label: 'Chiusure collettive' }, { value: 'aree', label: 'Aree forzate' }, { value: 'patroni', label: 'Santi patroni' }, { value: 'deleghe', label: 'Deleghe' }]} />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'generali', label: 'Generali' }, { value: 'spettanze', label: 'Giorni annui' }, { value: 'copertura', label: 'Copertura minima' }, { value: 'chiusure', label: 'Chiusure collettive' }, { value: 'aree', label: 'Aree (visibilità)' }, { value: 'patroni', label: 'Santi patroni' }, { value: 'deleghe', label: 'Deleghe' }]} />
       {!cat.data ? <Loading /> : (
         <>
           {tab === 'generali' && <Generali />}
@@ -59,7 +60,7 @@ function Generali() {
     <div className="fe-two">
       <Card title="Piano annuale" icon="calendar">
         <div className="fe-form">
-          <p className="small">Ogni dipendente compila il proprio piano dell'anno e lo invia al responsabile dell'area, che lo modifica, lo approva e lo rende definitivo. Qui la data entro cui i dipendenti devono inviarlo: il job manda i promemoria a chi ha ancora il piano in bozza e il Cockpit la mostra nello scadenzario.</p>
+          <p className="small">Ogni dipendente compila il proprio piano dell'anno e lo invia al suo superiore diretto in anagrafica ("Dipende da" in Amministrazione &gt; Persone), che lo modifica, lo approva e lo rende definitivo; chi è al vertice non ha approvazione. Qui la data entro cui i dipendenti devono inviarlo: il job manda i promemoria a chi ha ancora il piano in bozza e il Cockpit la mostra nello scadenzario.</p>
           {[anno0, anno0 + 1].map((a) => <Field key={a} label={`Scadenza di invio del piano ${a}`} help="Vuota = nessuna scadenza"><input type="date" value={(f.scadenze_piano || {})[a] || ''} onChange={(e) => set('scadenze_piano', { ...(f.scadenze_piano || {}), [a]: e.target.value })} /></Field>)}
           <Field label="Promemoria da quanti giorni prima della scadenza"><input type="number" min="0" max="60" value={f.promemoria_scadenza_giorni ?? 7} onChange={(e) => set('promemoria_scadenza_giorni', e.target.value)} /></Field>
         </div>
@@ -186,12 +187,13 @@ function AreeForzate({ cat }) {
   return (
     <div className="fe-two">
       <Card title="Area di ogni persona" icon="tree" flush>
+        <div className="small muted" style={{ padding: '10px 12px 0' }}>L'area decide solo chi vede il piano dell'area (trasparenza interna all'area). Chi approva non si sceglie qui: è il superiore diretto in anagrafica ("Dipende da" in Amministrazione &gt; Persone), letto così com'è.</div>
         {!persone.data ? <Loading /> : (
-          <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Persona</th><th>Area</th><th>Da dove</th><th>Approvatore</th></tr></thead>
-            <tbody>{persone.data.rows.map((p) => <tr key={p.id} className={p.gruppo === 'DA_ASSEGNARE' ? 'fe-row-warn' : ''}><td className="strong">{p.nome}</td><td>{p.gruppo_nome}</td><td className="small muted">{p.area_origine}</td><td className="small">{p.approvatore || 'HR'}{p.approvatore_origine && <span className="muted"> ({p.approvatore_origine})</span>}</td></tr>)}</tbody></table></div>)}
+          <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Persona</th><th>Area</th><th>Da dove</th><th>Approva (dall'anagrafica)</th></tr></thead>
+            <tbody>{persone.data.rows.map((p) => <tr key={p.id} className={p.gruppo === 'DA_ASSEGNARE' || p.senza_superiore ? 'fe-row-warn' : ''}><td className="strong">{p.nome}</td><td>{p.gruppo_nome}</td><td className="small muted">{p.area_origine}</td><td className="small">{p.approvatore || 'amministratore'}{p.approvatore_origine && <span className="muted"> ({p.approvatore_origine})</span>}</td></tr>)}</tbody></table></div>)}
       </Card>
       <div className="grid">
-        <Card title="Forza l'area di una persona" icon="edit">
+        <Card title="Forza l'area di una persona (solo visibilità)" icon="edit">
           <div className="fe-form">
             <Field label="Persona"><select value={f.person_id} onChange={(e) => setF({ ...f, person_id: e.target.value })}><option value="">Scegli</option>{(persone.data?.rows || []).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></Field>
             <Field label="Area"><select value={f.gruppo} onChange={(e) => setF({ ...f, gruppo: e.target.value })}>{gruppoOpzioni(cat).map((a) => <option key={a.v} value={a.v}>{a.l}</option>)}</select></Field>
@@ -242,7 +244,7 @@ function Deleghe() {
         {!data?.length ? <div className="small muted" style={{ padding: 12 }}>Nessuna delega.</div> : (
           <div className="table-wrap"><table className="t fe-table"><thead><tr><th>Delegante</th><th>Delegato</th><th>Dal</th><th>Al</th><th /></tr></thead>
             <tbody>{data.map((d) => <tr key={d.id}><td>{d.delegante}</td><td>{d.delegato}</td><td>{itData(d.dal)}</td><td>{itData(d.al)}</td><td><button className="btn ghost sm" disabled={busy} onClick={() => run(() => api.del(`/deleghe/${d.id}`), 'Delega eliminata', reload)}><Icon name="trash" /></button></td></tr>)}</tbody></table></div>)}
-        <div className="small muted" style={{ padding: 12 }}>Durante la delega il delegato riceve i piani e le variazioni dell'area con i promemoria e può modificarli e approvarli. L'amministratore approva sempre.</div>
+        <div className="small muted" style={{ padding: 12 }}>Durante la delega il delegato riceve i piani e le variazioni dei diretti del delegante (chi ha il delegante come superiore in anagrafica), con i promemoria, e può modificarli e approvarli. L'amministratore interviene sempre.</div>
       </Card>
       <Card title="Nuova delega" icon="plus">
         <div className="fe-form">

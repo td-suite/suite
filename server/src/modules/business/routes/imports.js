@@ -81,7 +81,7 @@ async function upsertOrg(o, userId, dryRun, report) {
   if (dryRun) return null;
   // B5: creazione dalla funzione unica del core (audit ORG_CREATED, nomi simili con la spunta "da rivedere")
   const { createOrganization } = await import('../../../lib/organizations.js');
-  const { org: row } = await createOrganization({ ...data, legacy_refs: { business_pack: o.key } }, { origine: `Business Hub, pacchetto ${o.key}` });
+  const { org: row } = await createOrganization({ ...data, legacy_refs: { business_pack: o.key } }, { origine: `Business Hub, pacchetto ${o.key}`, schedaBusiness: false });
   await upsertExt(row.id, o.ext, userId);
   return row.id;
 }

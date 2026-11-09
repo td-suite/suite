@@ -10,6 +10,9 @@
 // Laboratorio con Cruscotto, Pipeline, Clienti e prospect, DB Opportunità, Email da assegnare, Clienti. Poi Punti Prelievo con Punti Prelievo
 // e Sedi TD in locazione. Poi Medicina del Lavoro. Infine Amministrazione." Cruscotto e Pipeline della sezione Service sono filtrati sulla
 // linea SRV (?linea=SRV, dalla pagina si vedono anche tutte le linee); i Fascicoli autorizzazione si aprono dalla pagina Punti Prelievo.
+// 09/11/2026 (CEO: "Sedi TD in locazione non serve. I punti prelievo/centri medici li hai già: sono sedi"): via "Sedi TD in locazione" (la pagina
+// /business/sedi resta raggiungibile da Amministrazione > Sedi, link "Locazioni") e "Punti e centri attivi" e "Punti Prelievo" diventano una
+// pagina sola, "Punti Prelievo e Centri", che parte dalle sedi dell'anagrafica. Il contatore resta "fascicoli aperti".
 // Una voce con `to` che inizia per "?" resta sulla pagina principale del modulo con il filtro nell'indirizzo (components/Shell.jsx).
 export default {
   key: 'business',
@@ -31,10 +34,8 @@ export default {
     { to: '?linea=PP', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'pipeline?linea=PP', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=PP', icon: 'users', label: 'Partner e prospect' },
-    { to: 'punti-prelievo', icon: 'pin', label: 'Punti Prelievo', badge: 'fascicoli_aperti' },
+    { to: 'punti-prelievo', icon: 'pin', label: 'Punti Prelievo e Centri', badge: 'fascicoli_aperti' },
     { to: 'email?linea=PP', icon: 'mail', label: 'Email da assegnare' },
-    { to: 'sedi', icon: 'room', label: 'Sedi TD in locazione' },
-    { to: 'clienti-attivi?linea=PP', icon: 'check', label: 'Punti e centri attivi' },
     { group: 'Medicina del Lavoro' },
     { to: '?linea=MDL', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'pipeline?linea=MDL', icon: 'stats', label: 'Pipeline' },

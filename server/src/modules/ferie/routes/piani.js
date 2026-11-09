@@ -1,9 +1,11 @@
 // Piano ferie annuale (funzionamento stabilito dal CEO, 08/11/2026): il mio piano, il piano dell'area, periodi, invio, presa in carico,
 // approvazione, definitivo, riapertura (per persona e per tutta l'area), variazioni al piano approvato.
 // Chi fa cosa: il dipendente compila il proprio piano (BOZZA o PROPOSTO non ancora preso in carico) e lo invia; dopo l'approvazione
-// propone solo variazioni. Il responsabile dell'area (approvatore dall'organigramma, deleghe, grant RESPONSABILE) modifica i periodi dei
-// dipendenti dell'area, approva, rende definitivo e riapre; ADMIN (il CEO, HR con il grant) fa lo stesso su tutte le aree. Visibilità:
-// il dipendente vede solo la propria area (nomi e periodi dei colleghi, senza saldi né note), il responsabile solo le aree che gestisce.
+// propone solo variazioni. Approva il SUPERIORE DIRETTO dell'anagrafica (CEO, 09/11/2026: "Segui pedissequamente quanto indicato in
+// organigramma"; lib/superiori.js), o il suo delegato: modifica i periodi dei diretti, approva, rende definitivo e riapre; i livelli sotto
+// li vede in sola lettura ("La mia catena"). ADMIN (il CEO, HR con il grant) vede e fa tutto su tutti. Chi non ha nessuno sopra (il
+// vertice, l'Owner) non ha approvazione: all'invio il piano diventa DEFINITIVO "senza approvatore in organigramma", e così le sue
+// variazioni. Visibilità del piano per area: il dipendente vede la propria area (nomi e periodi dei colleghi, senza saldi né note).
 import { Router } from 'express';
 import { z } from 'zod';
 import { q, one, tx } from '../db.js';
@@ -11,10 +13,11 @@ import { ah, parse, audit, notFound, forbidden, bad } from '../../../lib/util.js
 import { KEY, userContext, saldoPersona, calendarioPersona, evento, oggi } from '../lib/core.js';
 import { pianoGruppo, chiusureGruppo, coperturaRichiesta, membriGruppo } from '../lib/piano.js';
 import { nomeGruppo } from '../lib/perimetro.js';
+import { alberoDi } from '../lib/superiori.js';
 import { analizza, testoConflitti } from '../lib/periodi.js';
 import {
   STATO_PIANO_LABEL, APERTI, CHIUSI, azioniPiano, statoPeriodo, statoDopoModifica, contaPerStato, assicuraPiani, pianiDi, loadPiano,
-  periodiPiano, eventoPiano, eventiPiano, avvisaResponsabile, avvisaDipendente, descriviPeriodo, anniGestiti,
+  periodiPiano, eventoPiano, eventiPiano, avvisaResponsabile, avvisaDipendente, descriviPeriodo, anniGestiti, NOTA_SENZA_APPROVATORE, approvazioneDi,
 } from '../lib/pianoAnnuale.js';
 
 const r = Router();
@@ -30,7 +33,10 @@ const periodoSchema = z.object({
 const notaSchema = z.object({ nota: z.string().trim().max(1000).optional().default('') });
 
 // ---------------------------------------------------------------- contesto del piano
-/** Piano visibile all'utente, con la persona e i flag: proprio, gestisce (responsabile della persona o ADMIN), dettagli (saldi e note) */
+/**
+ * Piano visibile all'utente, con la persona e i flag: proprio, gestisce (superiore diretto della persona, delegato o ADMIN), sola_lettura
+ * (riporto dei livelli sotto: lo vede, non lo approva). Le azioni di chi non gestisce sono tutte false: le route rispondono 403.
+ */
 async function caricaPiano(ctx, id) {
   const piano = await loadPiano(Number(id));
   if (!piano) throw notFound('Piano non trovato');
@@ -38,9 +44,11 @@ async function caricaPiano(ctx, id) {
   if (!persona) throw bad('La persona di questo piano non è più nel perimetro del Piano Ferie (dipendenti attivi con contratto)');
   const proprio = piano.person_id === ctx.personId;
   const gestisce = ctx.puoGestire(piano.person_id);
-  if (!(proprio || gestisce || ctx.tutto)) throw forbidden('Piano di un\'altra persona: lo vedono solo il dipendente, il responsabile dell\'area e l\'amministratore');
-  return { piano, persona, proprio, gestisce, azioni: azioniPiano(piano.stato, { proprio, gestisce }) };
+  if (!(proprio || gestisce || ctx.tutto || ctx.catena.has(piano.person_id))) throw forbidden(`Piano di un'altra persona: lo approva ${persona.approvatore_nome || 'l\'amministratore'} (superiore diretto in anagrafica)`);
+  return { piano, persona, proprio, gestisce, sola_lettura: !proprio && !gestisce, azioni: azioniPiano(piano.stato, { proprio, gestisce }) };
 }
+/** Errore delle azioni del responsabile su un piano che l'utente non gestisce: dice chi lo approva */
+const nonTuo = (c) => forbidden(`Il piano di ${c.persona.nome} lo approva ${c.persona.approvatore_nome || 'l\'amministratore'} (superiore diretto in anagrafica)${c.sola_lettura ? ': tu lo vedi in sola lettura' : ''}`);
 
 /** Aggiorna lo stato del piano dopo una modifica dei periodi; versione +1 per i piani già approvati */
 async function dopoModifica(ctx, c, { tipo, dati, client }) {
@@ -59,6 +67,7 @@ async function dopoModifica(ctx, c, { tipo, dati, client }) {
 
 /** Controlli comuni prima di scrivere un periodo: chi può e con quali vincoli */
 function verificaScrittura(ctx, c, b) {
+  if (!c.proprio && !c.gestisce) throw nonTuo(c);
   if (!(c.azioni.modifica || c.azioni.modifica_con_motivo)) {
     if (c.proprio && CHIUSI.includes(c.piano.stato)) throw forbidden('Il piano è approvato: proponi una variazione al responsabile');
     if (c.proprio && c.piano.stato === 'IN_REVISIONE') throw forbidden('Il responsabile sta rivedendo il tuo piano: le modifiche ora le fa lui');
@@ -90,7 +99,8 @@ r.get('/mio-piano', ah(async (req, res) => {
   const gestisce = ctx.puoGestire(p.id);
   res.json({
     ...base,
-    persona: { id: p.id, nome: p.nome, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), area_origine: p.area_origine, ruolo: p.role_name, approvatore: p.approvatore_nome || null, approvatore_origine: p.approvatore_origine, contratto: p.contratto, inizio: p.inizio, fine: p.fine },
+    persona: { id: p.id, nome: p.nome, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), area_origine: p.area_origine, ruolo: p.role_name, contratto: p.contratto, inizio: p.inizio, fine: p.fine,
+      ...approvazioneDi(p) },
     piano: piano ? { ...piano, stato_label: STATO_PIANO_LABEL[piano.stato], azioni: azioniPiano(piano.stato, { proprio: true, gestisce }), eventi: await eventiPiano(piano.id) } : null,
     scadenza: (ctx.settings.scadenze_piano || {})[String(anno)] || null,
     saldo, periodi: attivi, storico: periodi.filter((x) => !attivi.includes(x)),
@@ -136,6 +146,9 @@ async function datiArea(ctx, gruppo, anno) {
     const gestisce = ctx.puoGestire(m.id);
     persone.push({
       id: m.id, nome: m.nome, ruolo: m.role_name, settimana: m.settimana, io: m.id === ctx.personId, gestisce,
+      // chi approva, letto dall'anagrafica (superiore diretto, con la risalita); sola lettura = riporto dei livelli sotto
+      approva: p.vertice ? 'nessuno (vertice)' : p.approvatore_nome || 'amministratore', approva_origine: p.approvatore_origine,
+      senza_superiore: p.senza_superiore && !p.vertice ? true : undefined, sola_lettura: ctx.soloLettura(m.id) || undefined,
       piano: pi ? { id: pi.id, stato: pi.stato, stato_label: STATO_PIANO_LABEL[pi.stato], versione: pi.versione, inviato_at: pi.inviato_at, approvato_at: pi.approvato_at, definitivo_at: pi.definitivo_at,
         note: dettagli ? pi.note : undefined, approvato_da_nome: dettagli ? pi.approvato_da_nome : undefined,
         azioni: pi ? azioniPiano(pi.stato, { proprio: m.id === ctx.personId, gestisce }) : null } : null,
@@ -173,6 +186,53 @@ r.get('/area', ah(async (req, res) => {
   if (!gruppo) return res.json({ gruppo: null, anno, persone: [], periodi: [], chiusure: [], festivi: [], regole: [], scoperture: [], variazioni: [], stati: {}, azioni: {} });
   if (!ctx.vedeGruppo(gruppo)) throw forbidden('Piano di un\'altra area: ogni dipendente vede solo la propria area');
   res.json(await datiArea(ctx, gruppo, anno));
+}));
+
+// ---------------------------------------------------------------- la mia catena
+// Albero dei riporti dell'utente secondo l'anagrafica (superiore diretto, "Dipende da"), con lo stato del piano e i saldi di ciascuno:
+// i diretti li approva l'utente (azioni), i livelli sotto li vede in sola lettura con "approva: <nome>". L'ADMIN può partire da
+// qualunque persona (?person_id); senza persona collegata parte dal vertice.
+r.get('/catena', ah(async (req, res) => {
+  const ctx = await userContext(req);
+  const anno = annoQ(req.query.anno);
+  const nodi = ctx.perim.nodi || new Map();
+  let radice = ctx.personId || null;
+  if (ctx.tutto && req.query.person_id) radice = Number(req.query.person_id) || radice;
+  if (!radice && ctx.tutto) radice = [...nodi.values()].find((n) => !n.manager_id && n.owner)?.id || [...nodi.values()].find((n) => !n.manager_id)?.id || null;
+  if (!radice) return res.json({ anno, radice: null, motivo: 'Il tuo account non è collegato a una persona dell\'anagrafica.' });
+  if (!ctx.tutto && radice !== ctx.personId) throw forbidden('Vedi solo la tua catena');
+  const albero = alberoDi(radice, nodi, { figli: ctx.perim.figli });
+  const ids = []; const giro = (n) => { ids.push(n.id); n.figli.forEach(giro); }; giro(albero);
+  const inPerimetro = ids.filter((id) => ctx.perim.persone.has(id));
+  await assicuraPiani(inPerimetro, anno, null);
+  const piani = new Map((await pianiDi(inPerimetro, anno)).map((x) => [x.person_id, x]));
+  const fuori = ids.filter((id) => !nodi.has(id));
+  const nomiFuori = new Map(fuori.length ? (await q('SELECT id, last_name || \' \' || first_name AS nome FROM public.people WHERE id = ANY($1::int[])', [fuori])).rows.map((x) => [x.id, x.nome]) : []);
+  const conta = { persone: 0, diretti: 0, stati: {} };
+  const arricchisci = async (n) => {
+    const nodo = nodi.get(n.id) || { id: n.id, nome: nomiFuori.get(n.id) || `persona ${n.id}`, attivo: true };
+    const p = ctx.perim.persone.get(n.id) || null;
+    const pi = p ? piani.get(n.id) || null : null;
+    const gestisce = p ? ctx.puoGestire(n.id) : false;
+    const io = n.id === ctx.personId;
+    const diretto = ctx.approva.has(n.id);
+    if (p && !io) { conta.persone++; if (diretto) conta.diretti++; if (pi) conta.stati[pi.stato] = (conta.stati[pi.stato] || 0) + 1; }
+    const sal = p && ctx.vedeSaldo(n.id) ? await saldoPersona(p, anno, ctx.settings) : null;
+    return {
+      id: n.id, nome: nodo.nome, livello: n.livello, io, in_perimetro: Boolean(p), cessato: nodo.attivo === false, senza_accesso: nodo.attivo !== false && !nodo.user_id,
+      ruolo: p?.role_name || null, gruppo: p?.gruppo || null, gruppo_nome: p ? nomeGruppo(p.gruppo, ctx.perim.siti) : null,
+      // diretto = l'utente è il superiore diretto (o il delegato); l'ADMIN interviene anche sugli altri (azioni) senza che siano suoi diretti
+      ...(p ? approvazioneDi(p) : {}), diretto, interviene_admin: gestisce && !diretto, sola_lettura: Boolean(p) && !io && !gestisce,
+      piano: pi ? { id: pi.id, stato: pi.stato, stato_label: STATO_PIANO_LABEL[pi.stato], versione: pi.versione, inviato_at: pi.inviato_at, approvato_at: pi.approvato_at, definitivo_at: pi.definitivo_at, nota_approvatore: pi.nota_approvatore,
+        azioni: azioniPiano(pi.stato, { proprio: io, gestisce }) } : null,
+      saldo: sal ? { spettanza: sal.spettanza, residuo_ap: sal.residuo_ap, pianificato_totale: sal.pianificato_totale, goduto: sal.goduto, da_pianificare: sal.da_pianificare, in_attesa: sal.in_attesa } : null,
+      figli: await Promise.all(n.figli.map(arricchisci)),
+    };
+  };
+  const out = await arricchisci(albero);
+  // per l'ADMIN: chi ha riporti, per scegliere da dove partire
+  const radici = ctx.tutto ? [...nodi.values()].filter((n) => (ctx.perim.figli.get(n.id) || []).length).map((n) => ({ id: n.id, nome: n.nome, riporti: ctx.perim.figli.get(n.id).length })).sort((a, b) => a.nome.localeCompare(b.nome, 'it')) : [];
+  res.json({ anno, anni: anniGestiti(), radice: out, conta, admin: ctx.tutto, radici });
 }));
 
 // ---------------------------------------------------------------- periodi del piano
@@ -275,18 +335,42 @@ r.post('/piani/:id/invia', ah(async (req, res) => {
   const b = parse(z.object({ note: z.string().trim().max(1000).optional().default('') }), req.body || {});
   if (!c.azioni.invia) throw forbidden(c.proprio ? `Il piano è già ${STATO_PIANO_LABEL[c.piano.stato].toLowerCase()}` : 'Il piano lo invia il dipendente');
   const n = (await one(`SELECT count(*)::int AS n, coalesce(sum(giorni),0) AS g FROM richieste WHERE piano_id=$1 AND tipo='FERIE' AND stato IN ('PIANIFICATA','APPROVATA','GODUTA')`, [c.piano.id]));
+  const dati = { periodi: n.n, giorni: Number(n.g) };
+  // Chi non ha nessuno sopra (il vertice, l'Owner): nessuna approvazione, il piano diventa subito DEFINITIVO
+  if (c.persona.vertice) {
+    const g = oggi();
+    await tx(async (cl) => {
+      const upd = await cl.query(`UPDATE piani SET stato='DEFINITIVO', inviato_at=now(), inviato_da=$2, note=coalesce(nullif($3,''), note), approvato_at=now(), approvato_da=NULL,
+          definitivo_at=now(), definitivo_da=NULL, nota_approvatore=$4, versione=versione+1, promemoria_at=NULL, updated_at=now() WHERE id=$1 AND stato='BOZZA'`, [c.piano.id, ctx.uid, b.note, NOTA_SENZA_APPROVATORE]);
+      if (!upd.rowCount) throw bad('Il piano è cambiato nel frattempo: ricarica la pagina');
+      const per = (await cl.query(`UPDATE richieste SET stato = CASE WHEN data_fine < $2::date THEN 'GODUTA' ELSE 'APPROVATA' END, deciso_da_user_id=NULL, deciso_at=now(),
+          approvatore_person_id=NULL, goduta_at = CASE WHEN data_fine < $2::date THEN now() END, updated_at=now() WHERE piano_id=$1 AND stato='PIANIFICATA' RETURNING id`, [c.piano.id, g])).rows;
+      for (const x of per) await evento(x.id, 'APPROVATA', ctx.uid, { con_il_piano: true, senza_approvatore: true, nota: NOTA_SENZA_APPROVATORE }, cl);
+      await eventoPiano(c.piano.id, 'INVIATO', ctx.uid, { ...dati, note: b.note || undefined }, cl);
+      await eventoPiano(c.piano.id, 'DEFINITIVO', ctx.uid, { senza_approvatore: true, nota: NOTA_SENZA_APPROVATORE, periodi: per.length }, cl);
+    });
+    await audit(req, 'FERIE_PIANO_DEFINITIVO', { module: KEY, entity: 'piano', entityId: c.piano.id, label: `${c.persona.nome} ${c.piano.anno}: ${NOTA_SENZA_APPROVATORE}`, data: { ...dati, senza_approvatore: true } });
+    return res.json({ ...(await loadPiano(c.piano.id)), avviso: `Piano definitivo: ${NOTA_SENZA_APPROVATORE}, nessuna approvazione richiesta.` });
+  }
   const upd = await q(`UPDATE piani SET stato='PROPOSTO', inviato_at=now(), inviato_da=$2, note=coalesce(nullif($3,''), note), promemoria_at=NULL, updated_at=now() WHERE id=$1 AND stato='BOZZA'`, [c.piano.id, ctx.uid, b.note]);
   if (!upd.rowCount) throw bad('Il piano è cambiato nel frattempo: ricarica la pagina');
-  await eventoPiano(c.piano.id, 'INVIATO', ctx.uid, { periodi: n.n, giorni: Number(n.g), note: b.note || undefined });
-  await audit(req, 'FERIE_PIANO_INVIATO', { module: KEY, entity: 'piano', entityId: c.piano.id, label: `${c.persona.nome} ${c.piano.anno}`, data: { periodi: n.n, giorni: Number(n.g) } });
-  await avvisaResponsabile(c.persona, c.piano, { evento: 'invio', title: `${c.persona.nome} ha inviato il piano ferie ${c.piano.anno}`, body: `${n.n} ${n.n === 1 ? 'periodo' : 'periodi'}, ${Number(n.g).toLocaleString('it-IT')} giorni${b.note ? ` · ${b.note}` : ''}`, exclude: [ctx.uid] });
-  res.json(await loadPiano(c.piano.id));
+  await q(`UPDATE richieste SET approvatore_person_id=$2, updated_at=now() WHERE piano_id=$1 AND stato IN ('PIANIFICATA','RICHIESTA') AND approvatore_person_id IS DISTINCT FROM $2`, [c.piano.id, c.persona.approvatore_id || null]);
+  await eventoPiano(c.piano.id, 'INVIATO', ctx.uid, { ...dati, note: b.note || undefined, approvatore: c.persona.approvatore_nome || undefined, approvatore_origine: c.persona.approvatore_origine || undefined });
+  await audit(req, 'FERIE_PIANO_INVIATO', { module: KEY, entity: 'piano', entityId: c.piano.id, label: `${c.persona.nome} ${c.piano.anno}`, data: { ...dati, approvatore_person_id: c.persona.approvatore_id || null } });
+  const senza = !c.persona.approvatore_id;
+  await avvisaResponsabile(c.persona, c.piano, { evento: 'invio', title: `${c.persona.nome} ha inviato il piano ferie ${c.piano.anno}`,
+    body: `${n.n} ${n.n === 1 ? 'periodo' : 'periodi'}, ${Number(n.g).toLocaleString('it-IT')} giorni${b.note ? ` · ${b.note}` : ''}${senza ? ` · ATTENZIONE: ${c.persona.approvatore_origine}` : ''}`, exclude: [ctx.uid] });
+  const avviso = c.persona.senza_superiore
+    ? 'Non hai un superiore in anagrafica ("Dipende da" vuoto in Amministrazione > Persone): il piano non può essere approvato dal responsabile finché non viene indicato. L\'amministratore è stato avvisato.'
+    : c.persona.approvatore_irraggiungibile ? `Nessun superiore attivo con accesso alla Suite (${c.persona.approvatore_origine}): l'amministratore è stato avvisato.`
+      : c.persona.approvatore_saltati?.length ? `Inviato a ${c.persona.approvatore_nome}: ${c.persona.approvatore_origine}.` : null;
+  res.json({ ...(await loadPiano(c.piano.id)), avviso });
 }));
 
 r.post('/piani/:id/prendi-in-carico', ah(async (req, res) => {
   const ctx = await userContext(req);
   const c = await caricaPiano(ctx, req.params.id);
-  if (!c.azioni.prendi_in_carico) throw forbidden('Solo il responsabile prende in carico un piano inviato');
+  if (!c.azioni.prendi_in_carico) throw c.gestisce ? forbidden('Si prende in carico un piano inviato') : nonTuo(c);
   await q(`UPDATE piani SET stato='IN_REVISIONE', in_revisione_da=$2, updated_at=now() WHERE id=$1 AND stato='PROPOSTO'`, [c.piano.id, ctx.uid]);
   await eventoPiano(c.piano.id, 'IN_REVISIONE', ctx.uid, { da: 'PROPOSTO' });
   res.json(await loadPiano(c.piano.id));
@@ -294,7 +378,7 @@ r.post('/piani/:id/prendi-in-carico', ah(async (req, res) => {
 
 /** Approvazione di un piano (anche in blocco): i periodi PIANIFICATA diventano APPROVATA (GODUTA se già passati) */
 async function approvaPiano(ctx, c, nota) {
-  if (!c.azioni.approva) throw forbidden(c.gestisce ? `Il piano è già ${STATO_PIANO_LABEL[c.piano.stato].toLowerCase()}` : 'Il piano lo approva il responsabile dell\'area o l\'amministratore');
+  if (!c.azioni.approva) throw c.gestisce ? forbidden(`Il piano è già ${STATO_PIANO_LABEL[c.piano.stato].toLowerCase()}`) : nonTuo(c);
   const g = oggi();
   const n = await tx(async (cl) => {
     const upd = await cl.query(`UPDATE piani SET stato='APPROVATO', approvato_at=now(), approvato_da=$2, nota_approvatore=nullif($3,''), versione=versione+1, updated_at=now() WHERE id=$1 AND stato = ANY($4::text[])`, [c.piano.id, ctx.uid, nota, APERTI]);
@@ -309,7 +393,7 @@ async function approvaPiano(ctx, c, nota) {
   return n;
 }
 async function definitivoPiano(ctx, c, nota) {
-  if (!c.azioni.definitivo) throw forbidden(c.gestisce ? 'Si rende definitivo un piano approvato' : 'Il piano lo rende definitivo il responsabile dell\'area o l\'amministratore');
+  if (!c.azioni.definitivo) throw c.gestisce ? forbidden('Si rende definitivo un piano approvato') : nonTuo(c);
   const upd = await q(`UPDATE piani SET stato='DEFINITIVO', definitivo_at=now(), definitivo_da=$2, nota_approvatore=coalesce(nullif($3,''), nota_approvatore), versione=versione+1, updated_at=now() WHERE id=$1 AND stato='APPROVATO'`, [c.piano.id, ctx.uid, nota]);
   if (!upd.rowCount) throw bad('Il piano è cambiato nel frattempo: ricarica la pagina');
   await eventoPiano(c.piano.id, 'DEFINITIVO', ctx.uid, { nota: nota || undefined });
@@ -336,7 +420,7 @@ r.post('/piani/:id/riapri', ah(async (req, res) => {
   const ctx = await userContext(req);
   const c = await caricaPiano(ctx, req.params.id);
   const b = parse(z.object({ nota: z.string().trim().min(3, 'Scrivi il motivo della riapertura').max(1000) }), req.body || {});
-  if (!c.azioni.riapri) throw forbidden('Si riapre un piano definitivo (responsabile dell\'area o amministratore)');
+  if (!c.azioni.riapri) throw c.gestisce ? forbidden('Si riapre un piano definitivo') : nonTuo(c);
   const upd = await q(`UPDATE piani SET stato='APPROVATO', definitivo_at=NULL, definitivo_da=NULL, nota_approvatore=$2, versione=versione+1, updated_at=now() WHERE id=$1 AND stato='DEFINITIVO'`, [c.piano.id, b.nota]);
   if (!upd.rowCount) throw bad('Il piano è cambiato nel frattempo: ricarica la pagina');
   await eventoPiano(c.piano.id, 'RIAPERTO', ctx.uid, { motivo: b.nota });
@@ -352,12 +436,12 @@ async function inBlocco(req, res, azione) {
   const b = parse(areaSchema, req.body || {});
   if (!ctx.vedeGruppo(b.gruppo)) throw forbidden('Area non tua');
   const membri = membriGruppo(ctx.perim, b.gruppo).filter((m) => ctx.puoGestire(m.id));
-  if (!membri.length) throw forbidden('Non sei responsabile di nessun dipendente di quest\'area');
+  if (!membri.length) throw forbidden('Non approvi il piano di nessun dipendente di quest\'area: approva il superiore diretto di ciascuno');
   const piani = await pianiDi(membri.map((m) => m.id), b.anno);
   const fatti = [], saltati = [];
   for (const pi of piani) {
     const persona = ctx.perim.persone.get(pi.person_id);
-    const c = { piano: pi, persona, proprio: pi.person_id === ctx.personId, gestisce: true, azioni: azioniPiano(pi.stato, { proprio: pi.person_id === ctx.personId, gestisce: true }) };
+    const c = { piano: pi, persona, proprio: false, gestisce: true, azioni: azioniPiano(pi.stato, { proprio: false, gestisce: true }) };
     try {
       if (azione === 'approva') {
         if (!['PROPOSTO', 'IN_REVISIONE'].includes(pi.stato)) { if (pi.stato === 'BOZZA') saltati.push({ persona: persona.nome, motivo: 'piano non ancora inviato' }); continue; }
@@ -434,6 +518,13 @@ r.post('/piani/:id/variazioni', ah(async (req, res) => {
     testo = b.tipo === 'RIMOZIONE' ? `togliere il periodo ${descriviPeriodo(x)}` : `spostare ${descriviPeriodo(x)} al ${proposta.data_inizio.split('-').reverse().join('/')} → ${proposta.data_fine.split('-').reverse().join('/')}`;
   }
   await audit(req, 'FERIE_VARIAZIONE_PROPOSTA', { module: KEY, entity: 'piano', entityId: c.piano.id, label: `${c.persona.nome} ${c.piano.anno}: ${testo}`, data: { tipo: b.tipo, periodo_id: row.id } });
+  // Chi non ha nessuno sopra (il vertice): la variazione entra subito nel piano, "senza approvatore in organigramma"
+  if (c.persona.vertice) {
+    const x = await one('SELECT * FROM richieste WHERE id=$1', [row.id]);
+    const t = await applicaVariazione(ctx, { x, persona: c.persona, piano: c.piano }, '', { automatica: true });
+    await audit(req, 'FERIE_VARIAZIONE_APPROVATA', { module: KEY, entity: 'piano', entityId: c.piano.id, label: `${c.persona.nome} ${c.piano.anno}: ${t} (${NOTA_SENZA_APPROVATORE})`, data: { periodo_id: row.id, senza_approvatore: true } });
+    return res.status(201).json({ ...(await one('SELECT * FROM richieste WHERE id=$1', [row.id])), avviso: `Variazione applicata: ${NOTA_SENZA_APPROVATORE}.` });
+  }
   await avvisaResponsabile(c.persona, c.piano, { evento: 'variazione', title: `${c.persona.nome} propone una variazione al piano ferie ${c.piano.anno}`, body: `${testo}${b.note ? ` · ${b.note}` : ''}`, exclude: [ctx.uid] });
   res.status(201).json(row);
 }));
@@ -445,48 +536,59 @@ async function caricaVariazione(ctx, rid) {
   if (!(x.stato === 'RICHIESTA' || (x.variazione_proposta && ['APPROVATA', 'PIANIFICATA'].includes(x.stato)))) throw bad('Nessuna variazione in attesa su questo periodo');
   const persona = ctx.perim.persone.get(x.person_id);
   const proprio = x.person_id === ctx.personId;
-  if (!(proprio || ctx.puoDecidere(x.person_id))) throw forbidden('Variazione di un\'altra persona');
+  if (!(proprio || ctx.puoDecidere(x.person_id) || ctx.tutto)) throw forbidden('Variazione di un\'altra persona');
   if (!persona) throw bad('Persona fuori dal perimetro del Piano Ferie');
   if (!x.piano_id) { await assicuraPiani([x.person_id], x.anno); x.piano_id = (await pianiDi([x.person_id], x.anno))[0]?.id || null; if (x.piano_id) await q('UPDATE richieste SET piano_id=$2 WHERE id=$1', [x.id, x.piano_id]); }
   const piano = x.piano_id ? await loadPiano(x.piano_id) : { id: null, anno: x.anno };
   return { x, persona, piano, proprio };
 }
 
-r.post('/variazioni/:rid/approva', ah(async (req, res) => {
-  const ctx = await userContext(req);
-  const { x, persona, piano } = await caricaVariazione(ctx, req.params.rid);
-  if (!ctx.puoDecidere(x.person_id)) throw forbidden('La variazione la decide il responsabile dell\'area o l\'amministratore');
-  const b = parse(notaSchema, req.body || {});
+/**
+ * Applica una variazione in attesa (approvazione del responsabile, o automatica per chi non ha nessuno sopra): l'aggiunta diventa periodo
+ * approvato, lo spostamento cambia le date, la rimozione toglie il periodo; il piano sale di versione. Ritorna il testo della variazione.
+ */
+async function applicaVariazione(ctx, { x, persona, piano }, nota, { automatica = false } = {}) {
   const g = oggi();
+  const extra = automatica ? { senza_approvatore: true, nota: NOTA_SENZA_APPROVATORE } : { nota: nota || undefined };
+  const notaDec = automatica ? NOTA_SENZA_APPROVATORE : nota;
   let testo;
   await tx(async (cl) => {
     if (x.stato === 'RICHIESTA') {
       const stato = x.data_fine < g ? 'GODUTA' : 'APPROVATA';
-      const u = await cl.query(`UPDATE richieste SET stato=$2, deciso_da_user_id=$3, deciso_at=now(), nota_decisione=nullif($4,''), goduta_at=CASE WHEN $2='GODUTA' THEN now() END, updated_at=now() WHERE id=$1 AND stato='RICHIESTA'`, [x.id, stato, ctx.uid, b.nota]);
+      const u = await cl.query(`UPDATE richieste SET stato=$2, deciso_da_user_id=$3, deciso_at=now(), nota_decisione=nullif($4,''), goduta_at=CASE WHEN $2='GODUTA' THEN now() END, updated_at=now() WHERE id=$1 AND stato='RICHIESTA'`, [x.id, stato, automatica ? null : ctx.uid, notaDec]);
       if (!u.rowCount) throw bad('La variazione è stata decisa da un altro nel frattempo');
-      await evento(x.id, 'APPROVATA', ctx.uid, { variazione: true, nota: b.nota || undefined }, cl);
+      await evento(x.id, 'APPROVATA', ctx.uid, { variazione: true, ...extra }, cl);
       testo = x.tipo === 'ROL' ? `permesso ROL del ${x.data_inizio.split('-').reverse().join('/')}` : `aggiunta di ${descriviPeriodo(x)}`;
     } else {
       const v = x.variazione_proposta;
       if (v.tipo === 'RIMOZIONE') {
-        await cl.query(`UPDATE richieste SET stato='ANNULLATA', annullata_da_user_id=$2, annullata_at=now(), variazione_proposta=NULL, nota_decisione=nullif($3,''), updated_at=now() WHERE id=$1`, [x.id, ctx.uid, b.nota]);
+        await cl.query(`UPDATE richieste SET stato='ANNULLATA', annullata_da_user_id=$2, annullata_at=now(), variazione_proposta=NULL, nota_decisione=nullif($3,''), updated_at=now() WHERE id=$1`, [x.id, ctx.uid, notaDec]);
         testo = `rimozione di ${descriviPeriodo(x)}`;
       } else {
         const a = await analizza(ctx, persona, { tipo: 'FERIE', data_inizio: v.data_inizio, data_fine: v.data_fine, mezza_inizio: v.mezza_inizio, mezza_fine: v.mezza_fine }, x.id);
         if (a.conflitti.length) throw bad(testoConflitti(a.conflitti));
         const cop = await coperturaRichiesta(ctx.perim, { ...x, data_inizio: v.data_inizio, data_fine: v.data_fine, mezza_inizio: v.mezza_inizio, mezza_fine: v.mezza_fine }, persona, a.dettaglio, ctx.settings);
         await cl.query(`UPDATE richieste SET data_inizio=$2, data_fine=$3, mezza_inizio=$4, mezza_fine=$5, giorni=$6, variazione_proposta=NULL, sotto_copertura=$7, copertura=$8,
-            deciso_da_user_id=$9, deciso_at=now(), nota_decisione=nullif($10,''), modificata_da_user_id=$9, modificata_at=now(), updated_at=now() WHERE id=$1`,
-        [x.id, v.data_inizio, v.data_fine, Boolean(v.mezza_inizio), Boolean(v.mezza_fine), a.giorni, cop.length > 0, JSON.stringify(cop), ctx.uid, b.nota]);
+            deciso_da_user_id=$9, deciso_at=now(), nota_decisione=nullif($10,''), modificata_da_user_id=$11, modificata_at=now(), updated_at=now() WHERE id=$1`,
+        [x.id, v.data_inizio, v.data_fine, Boolean(v.mezza_inizio), Boolean(v.mezza_fine), a.giorni, cop.length > 0, JSON.stringify(cop), automatica ? null : ctx.uid, notaDec, ctx.uid]);
         testo = `spostamento di ${descriviPeriodo(x)} al ${v.data_inizio.split('-').reverse().join('/')} → ${v.data_fine.split('-').reverse().join('/')}`;
       }
-      await evento(x.id, 'VARIAZIONE_APPROVATA', ctx.uid, { tipo: v.tipo, nota: b.nota || undefined }, cl);
+      await evento(x.id, 'VARIAZIONE_APPROVATA', ctx.uid, { tipo: v.tipo, ...extra }, cl);
     }
     if (piano.id) {
       await cl.query('UPDATE piani SET versione = versione + 1, updated_at=now() WHERE id=$1', [piano.id]);
-      await eventoPiano(piano.id, 'VARIAZIONE_APPROVATA', ctx.uid, { periodo_id: x.id, testo, nota: b.nota || undefined }, cl);
+      await eventoPiano(piano.id, 'VARIAZIONE_APPROVATA', ctx.uid, { periodo_id: x.id, testo, ...extra }, cl);
     }
   });
+  return testo;
+}
+
+r.post('/variazioni/:rid/approva', ah(async (req, res) => {
+  const ctx = await userContext(req);
+  const { x, persona, piano } = await caricaVariazione(ctx, req.params.rid);
+  if (!ctx.puoDecidere(x.person_id)) throw forbidden(`La variazione la decide ${persona.approvatore_nome || 'l\'amministratore'} (superiore diretto in anagrafica)`);
+  const b = parse(notaSchema, req.body || {});
+  const testo = await applicaVariazione(ctx, { x, persona, piano }, b.nota);
   await audit(req, 'FERIE_VARIAZIONE_APPROVATA', { module: KEY, entity: 'piano', entityId: piano.id, label: `${persona.nome} ${x.anno}: ${testo}`, data: { periodo_id: x.id } });
   if (piano.id) await avvisaDipendente(persona, piano, { evento: 'variazione_approvata', title: `Variazione al piano ferie ${x.anno} approvata`, body: `${testo}${b.nota ? ` · ${b.nota}` : ''}`, exclude: [ctx.uid] });
   res.json(await one('SELECT * FROM richieste WHERE id=$1', [x.id]));
@@ -495,7 +597,7 @@ r.post('/variazioni/:rid/approva', ah(async (req, res) => {
 r.post('/variazioni/:rid/rifiuta', ah(async (req, res) => {
   const ctx = await userContext(req);
   const { x, persona, piano } = await caricaVariazione(ctx, req.params.rid);
-  if (!ctx.puoDecidere(x.person_id)) throw forbidden('La variazione la decide il responsabile dell\'area o l\'amministratore');
+  if (!ctx.puoDecidere(x.person_id)) throw forbidden(`La variazione la decide ${persona.approvatore_nome || 'l\'amministratore'} (superiore diretto in anagrafica)`);
   const b = parse(z.object({ nota: z.string().trim().min(3, 'Scrivi il motivo (lo legge il dipendente)').max(1000) }), req.body || {});
   let testo;
   await tx(async (cl) => {

@@ -1,7 +1,8 @@
 // Il mio piano <anno>: calendario dei 12 mesi in cui il dipendente aggiunge i periodi cliccando o trascinando, riepilogo dei giorni
 // (spettanti, residuo dell'anno precedente, pianificati, da pianificare, goduti), chiusure collettive proposte, "Invia al responsabile",
-// stato del piano con la cronologia. Dopo l'approvazione si propongono solo variazioni. Sotto, "Il piano della mia area" (persone ×
-// mesi, solo periodi: trasparente a tutta l'area e solo all'area).
+// stato del piano con la cronologia. Dopo l'approvazione si propongono solo variazioni. Chi approva lo dice l'anagrafica: il superiore
+// diretto ("Dipende da"), con la risalita se è cessato o senza accesso; chi non ha nessuno sopra (il vertice) non ha approvazione e il suo
+// piano diventa definitivo all'invio (CEO, 09/11/2026). Sotto, "Il piano della mia area" (persone × mesi, solo periodi).
 import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, base, useApi } from '../api.js';
@@ -17,6 +18,13 @@ const SPIEGA = {
   IN_REVISIONE: 'Il responsabile sta rivedendo il piano: le modifiche ora le fa lui. Riceverai una notifica.',
   APPROVATO: 'Il piano è approvato. Per cambiare un periodo proponi una variazione: clicca il periodo o trascina su giorni liberi.',
   DEFINITIVO: 'Il piano è definitivo. Per cambiare un periodo proponi una variazione: il responsabile la approva o la rifiuta.',
+};
+
+// Il vertice (nessuno sopra in organigramma): nessuna approvazione, le variazioni entrano subito nel piano
+const SPIEGA_VERTICE = {
+  BOZZA: 'Il piano è in bozza: aggiungi i periodi trascinando sul calendario, poi premi "Rendi definitivo" (non hai nessuno sopra in organigramma: nessuna approvazione).',
+  APPROVATO: 'Il piano è approvato. Per cambiare un periodo clicca il periodo o trascina su giorni liberi: la variazione entra subito.',
+  DEFINITIVO: 'Il piano è definitivo. Per cambiare un periodo clicca il periodo o trascina su giorni liberi: la variazione entra subito, senza approvazione.',
 };
 
 export default function MioPiano() {
@@ -70,20 +78,29 @@ export default function MioPiano() {
     return setModal({ tipo: 'info', periodo: x });
   };
   const pid = piano?.id;
+  const vertice = p.vertice;
+  const chiApprova = vertice ? 'nessuno: sei al vertice dell\'organigramma' : p.approvatore || 'l\'amministratore'; 
   return (
     <div className="page">
-      <PageHead title={`Il mio piano ${anno}`} icon="calendar" sub={`${p.nome} · ${p.gruppo_nome}${p.approvatore ? ` · responsabile: ${p.approvatore}` : ' · approva l\'amministratore'}`}
+      <PageHead title={`Il mio piano ${anno}`} icon="calendar" sub={`${p.nome} · ${p.gruppo_nome} · approva: ${chiApprova}`}
         actions={<>
           <Seg value={anno} onChange={setAnno} items={data.anni.map((a) => ({ value: a, label: String(a) }))} label="Anno" />
-          {az.invia && <button className="btn primary" onClick={() => setInvio(true)}><Icon name="send" />Invia al responsabile</button>}
+          {az.invia && <button className="btn primary" onClick={() => setInvio(true)}><Icon name="send" />{vertice ? 'Rendi definitivo' : 'Invia al responsabile'}</button>}
         </>} />
       {data.settings.avviso_dipendenti && <div className="alert info"><Icon name="info" /><span>{data.settings.avviso_dipendenti}</span></div>}
+      <div className={`fe-approva ${p.senza_superiore || p.approvatore_irraggiungibile ? 'warn' : ''}`}>
+        <span><Icon name="user" /> Chi approva il tuo piano: <b>{vertice ? 'nessuno' : p.approvatore || 'l\'amministratore'}</b></span>
+        {p.superiore && <span className="small muted">superiore diretto in anagrafica: {p.superiore}</span>}
+        <span className="small muted">{vertice ? 'Sei al vertice dell\'organigramma: il piano non richiede approvazione e all\'invio diventa definitivo ("senza approvatore in organigramma"); le variazioni entrano subito.'
+          : p.senza_superiore ? 'Non hai un superiore in anagrafica ("Dipende da" in Amministrazione > Persone): il piano non può essere approvato dal responsabile finché non viene indicato.'
+            : p.approvatore_origine && p.approvatore_origine !== 'superiore diretto (anagrafica)' ? p.approvatore_origine : 'dall\'anagrafica (Dipende da)'}</span>
+      </div>
       {piano && (
         <div className={`fe-stato-piano st-${piano.stato}`}>
           <StatoPianoBadge stato={piano.stato} />
-          <span>{SPIEGA[piano.stato]}</span>
+          <span>{vertice && SPIEGA_VERTICE[piano.stato] ? SPIEGA_VERTICE[piano.stato] : SPIEGA[piano.stato]}</span>
           {data.scadenza && ['BOZZA'].includes(piano.stato) && <span className={`small ${g > data.scadenza ? 'fe-neg' : ''}`}><Icon name="clock" /> da inviare entro il {itData(data.scadenza)}</span>}
-          {piano.nota_approvatore && <span className="small muted">Nota del responsabile: {piano.nota_approvatore}</span>}
+          {piano.nota_approvatore && <span className="small muted">{vertice ? 'Annotazione' : 'Nota del responsabile'}: {piano.nota_approvatore}</span>}
         </div>
       )}
       <Saldo s={s} />
@@ -131,19 +148,19 @@ export default function MioPiano() {
         <Legenda variazioni={false} />
       </Card>
 
-      {invio && <InvioModal piano={piano} saldo={s} onClose={() => setInvio(false)} onDone={() => { setInvio(false); toast('Piano inviato al responsabile'); ricarica(); }} />}
+      {invio && <InvioModal piano={piano} saldo={s} persona={p} onClose={() => setInvio(false)} onDone={(r) => { setInvio(false); toast(r?.avviso || (vertice ? 'Piano definitivo' : `Piano inviato a ${p.approvatore || 'l\'amministratore'}`), r?.avviso && !vertice ? 'err' : undefined); ricarica(); }} />}
       {modal?.tipo === 'nuovo' && <PeriodoModal pianoId={pid} titolo="Nuovo periodo nel piano" iniziale={modal.iniziale} chiusuraId={modal.chiusura} onClose={chiudi}
         onSalva={async (b) => { await api.post(`/piani/${pid}/periodi`, b); fatto('Periodo aggiunto al piano'); }} />}
       {modal?.tipo === 'modifica' && <PeriodoModal pianoId={pid} titolo="Periodo del piano" iniziale={modal.periodo} esistente={modal.periodo} onClose={chiudi}
         onSalva={async (b) => { await api.put(`/piani/${pid}/periodi/${modal.periodo.id}`, b); fatto('Periodo aggiornato'); }}
         onTogli={async () => { await api.del(`/piani/${pid}/periodi/${modal.periodo.id}`, {}); fatto('Periodo tolto dal piano'); }} />}
       {modal?.tipo === 'var_aggiunta' && <PeriodoModal pianoId={pid} titolo="Variazione al piano: aggiungi un periodo" modo="variazione" iniziale={modal.iniziale} onClose={chiudi}
-        avviso="Il piano è approvato: il nuovo periodo va al responsabile, che lo approva o lo rifiuta."
-        onSalva={async (b) => { await api.post(`/piani/${pid}/variazioni`, { tipo: 'AGGIUNTA', ...b }); fatto('Variazione inviata al responsabile'); }} />}
+        avviso={vertice ? 'Sei al vertice: il nuovo periodo entra subito nel piano.' : `Il piano è approvato: il nuovo periodo va a ${p.approvatore || 'l\'amministratore'}, che lo approva o lo rifiuta.`}
+        onSalva={async (b) => { const r = await api.post(`/piani/${pid}/variazioni`, { tipo: 'AGGIUNTA', ...b }); fatto(r.avviso || 'Variazione inviata al responsabile'); }} />}
       {modal?.tipo === 'var_modifica' && <PeriodoModal pianoId={pid} titolo="Variazione al piano: sposta o togli il periodo" modo="variazione" iniziale={modal.periodo} esistente={modal.periodo} onClose={chiudi}
         avviso={`Periodo approvato: ${periodo(modal.periodo)}. Cambia le date per proporre lo spostamento, oppure proponi di toglierlo.`}
-        onSalva={async (b) => { await api.post(`/piani/${pid}/variazioni`, { tipo: 'SPOSTAMENTO', periodo_id: modal.periodo.id, ...b }); fatto('Spostamento proposto al responsabile'); }}
-        onTogli={async (nota) => { await api.post(`/piani/${pid}/variazioni`, { tipo: 'RIMOZIONE', periodo_id: modal.periodo.id, note: nota }); fatto('Proposta di togliere il periodo inviata'); }} />}
+        onSalva={async (b) => { const r = await api.post(`/piani/${pid}/variazioni`, { tipo: 'SPOSTAMENTO', periodo_id: modal.periodo.id, ...b }); fatto(r.avviso || 'Spostamento proposto al responsabile'); }}
+        onTogli={async (nota) => { const r = await api.post(`/piani/${pid}/variazioni`, { tipo: 'RIMOZIONE', periodo_id: modal.periodo.id, note: nota }); fatto(r.avviso || 'Proposta di togliere il periodo inviata'); }} />}
       {modal?.tipo === 'attesa' && (
         <Modal title="Variazione in attesa" onClose={chiudi} footer={<><Link className="btn ghost" to={`${base}/richieste/${modal.periodo.id}`}>Dettaglio</Link>
           <button className="btn danger" onClick={async () => { try { await api.post(`/variazioni/${modal.periodo.id}/ritira`); fatto('Variazione ritirata'); } catch (e) { toast(e, 'err'); } }}>Ritira la variazione</button></>}>
@@ -160,15 +177,19 @@ export default function MioPiano() {
   );
 }
 
-function InvioModal({ piano, saldo, onClose, onDone }) {
+function InvioModal({ piano, saldo, persona, onClose, onDone }) {
   const toast = useToast();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const invia = async () => { setBusy(true); try { await api.post(`/piani/${piano.id}/invia`, { note }); onDone(); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const invia = async () => { setBusy(true); try { const r = await api.post(`/piani/${piano.id}/invia`, { note }); onDone(r); } catch (e) { toast(e, 'err'); } setBusy(false); };
+  const vertice = persona?.vertice;
   return (
-    <Modal title={`Invia il piano ${piano.anno} al responsabile`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn primary" disabled={busy} onClick={invia}><Icon name="send" />Invia</button></>}>
+    <Modal title={vertice ? `Rendi definitivo il piano ${piano.anno}` : `Invia il piano ${piano.anno} a ${persona?.approvatore || 'l\'amministratore'}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn primary" disabled={busy} onClick={invia}><Icon name="send" />{vertice ? 'Rendi definitivo' : 'Invia'}</button></>}>
       <div className="fe-form">
-        <p className="small">Il responsabile della tua area riceve il piano, può modificarlo, approvarlo e renderlo definitivo. Finché non lo prende in carico puoi ancora cambiarlo.</p>
+        {vertice ? <p className="small">Non hai nessuno sopra in organigramma: il piano non richiede approvazione e diventa subito <b>definitivo</b>, con l'annotazione "senza approvatore in organigramma". Da quel momento i cambi sono variazioni, che entrano subito nel piano.</p>
+          : <p className="small">Il piano va a <b>{persona?.approvatore || 'l\'amministratore'}</b> (superiore diretto in anagrafica), che può modificarlo, approvarlo e renderlo definitivo. Finché non lo prende in carico puoi ancora cambiarlo.</p>}
+        {persona?.senza_superiore && <div className="alert warn"><Icon name="alert" /><span>Non hai un superiore in anagrafica ("Dipende da" in Amministrazione &gt; Persone): il piano non può essere approvato dal responsabile finché non viene indicato. Puoi inviarlo lo stesso: l'amministratore viene avvisato.</span></div>}
+        {persona?.approvatore_irraggiungibile && <div className="alert warn"><Icon name="alert" /><span>{persona.approvatore_origine}.</span></div>}
         <div className="small">Pianificati <b>{num(saldo.pianificato_totale)}</b> giorni · da pianificare <b className={saldo.da_pianificare < 0 ? 'fe-neg' : ''}>{num(saldo.da_pianificare)}</b></div>
         {saldo.da_pianificare > 0 && <div className="alert warn"><Icon name="alert" /><span>Restano {num(saldo.da_pianificare)} giorni non pianificati: puoi inviare lo stesso e completarli dopo con il responsabile.</span></div>}
         <Field label="Note per il responsabile"><textarea rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Facoltative" /></Field>

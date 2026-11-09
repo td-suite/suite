@@ -13,6 +13,7 @@ import B2B from './pages/B2B.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
 import Recalls from './pages/Recalls.jsx';
 import Products from './pages/Products.jsx';
+import ListinoOnline from './pages/ListinoOnline.jsx';
 import Sales from './pages/Sales.jsx';
 import Import from './pages/Import.jsx';
 import Campaigns from './pages/Campaigns.jsx';
@@ -44,6 +45,7 @@ export default function Module({ moduleUser }) {
           <Route path="clienti/:id" element={<CustomerDetail />} />
           <Route path="richiami" element={<Recalls />} />
           <Route path="prodotti" element={<Products />} />
+          <Route path="listino-online" element={<ListinoOnline />} />
           <Route path="vendite" element={<Sales />} />
           <Route path="import" element={writer ? <Import /> : <Forbidden />} />
           <Route path="campagne" element={<Campaigns />} />

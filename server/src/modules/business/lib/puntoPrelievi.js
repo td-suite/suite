@@ -21,7 +21,7 @@ import { storeBuffer, readBuffer } from './storage.js';
 import { todayRome } from './util.js';
 import {
   tipoPunto, prerequisitiContrattoPartner, precompilaPartner, validaPartner, SEZIONI_PARTNER, CAMPI_PARTNER, pianoAvvio, riepilogoAvvio, composizionePrimoOrdine,
-  destinatariLinea, elencoDotazione, compila, referentiTesto, etichettaRif, PASSI_AVVIO_PP, STATI_PASSO, TIPI_PUNTO,
+  destinatariLinea, elencoDotazione, compila, referentiTesto, etichettaRif, PASSI_AVVIO_PP, STATI_PASSO, TIPI_PUNTO, SEDI_PUNTO,
 } from './processo.js';
 import { offertaDi, modelliFlusso, suiteUrl, referentiPerLinea } from './pacchettoGenera.js';
 import { attivita, avanzaFase, referentePrincipale, accessiEsterni, statoComune, assicuraToken, linkForm, allegatiRichiesti, salvaFile } from './flusso.js';
@@ -60,7 +60,7 @@ export const nomePunto = (a, sede) => sede?.name || a.pp_nome || a.org_name;
 /** Quadro del punto prelievi per la scheda account e per le comunicazioni. */
 export async function quadroPunto(a) {
   const sede = await sedeDi(a.pp_site_id);
-  const tp = tipoPunto({ sede, previsto: a.pp_tipo_previsto });
+  const tp = tipoPunto({ sede, previsto: a.pp_tipo_previsto, orgAccount: a.organization_id });
   const off = await offertaDi(a);
   const [fascicolo, locazione, ref] = await Promise.all([fascicoloDi(a, off.contratto?.id || null), contrattoSede(a.pp_site_id), referentePrincipale(a.id)]);
   const partner = tp.tipo === 'CORNER' ? (sede?.host_organization_id ? { id: sede.host_organization_id, name: sede.host_name } : { id: a.organization_id, name: a.org_name }) : null;
@@ -78,7 +78,7 @@ export async function statoPuntoPrelievi(a) {
   const comune = await statoComune(a, s);
   // sedi Punto prelievi non ancora collegate a un account: le ospitate da questa Legal entity prima, poi le sedi TD (flagship)
   const candidate = await many(`SELECT s.id, s.code, s.name, s.city, s.tenure, s.host_organization_id, ho.name AS host_name FROM public.sites s LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id
-    WHERE s.kind='PUNTO_PRELIEVI' AND s.active AND NOT EXISTS (SELECT 1 FROM accounts x WHERE x.pp_site_id=s.id AND x.id<>$2)
+    WHERE s.kind IN ('PUNTO_PRELIEVI','CENTRO_MEDICO','CENTRO_DIAGNOSTICO','POLIAMBULATORIO') AND (s.active OR s.opened_at > CURRENT_DATE) AND NOT EXISTS (SELECT 1 FROM accounts x WHERE x.pp_site_id=s.id AND x.id<>$2)
     ORDER BY (s.host_organization_id=$1) DESC NULLS LAST, s.name`, [a.organization_id, a.id]);
   const accessi = await accessiEsterni(a.organization_id);
   return {
@@ -102,9 +102,9 @@ export async function aggiornaPunto(a, d, { userId = null } = {}) {
     if (d.pp_site_id) {
       const sede = await sedeDi(d.pp_site_id);
       if (!sede) throw errore(400, 'Sede non trovata');
-      if (sede.kind !== 'PUNTO_PRELIEVI') throw errore(400, 'Collega una sede di tipo Punto prelievi (Amministrazione > Sedi)');
+      if (!SEDI_PUNTO.includes(sede.kind)) throw errore(400, 'Collega una sede di tipo punto prelievi, centro medico, centro diagnostico o poliambulatorio (Amministrazione > Sedi)');
       if (await one('SELECT 1 FROM accounts WHERE pp_site_id=$1 AND id<>$2', [sede.id, a.id])) throw errore(400, 'Questa sede è già collegata a un altro punto prelievi');
-      const tp = tipoPunto({ sede });
+      const tp = tipoPunto({ sede, previsto: d.pp_tipo_previsto !== undefined ? d.pp_tipo_previsto : a.pp_tipo_previsto, orgAccount: a.organization_id });
       if (tp.tipo === 'CORNER' && sede.host_organization_id && Number(sede.host_organization_id) !== Number(a.organization_id)) throw errore(400, `La sede è ospitata da ${sede.host_name}: il punto corner va sull'account di quella Legal entity`);
       note.push(`Sede collegata: ${sede.name} (${sede.code}), ${tp.tipo === 'CORNER' ? 'corner' : 'flagship'} dalla sede`);
     } else note.push('Sede scollegata');
@@ -465,7 +465,7 @@ export async function riprendiAvvii() {
 export async function elencoPuntiPrelievo() {
   const rows = await many(`SELECT a.id, a.organization_id, o.name AS org_name, o.city AS org_city, a.fase_corrente, a.phase_dates, a.cliente_attivo, a.pp_site_id, a.pp_nome, a.pp_tipo_previsto,
       a.data_avvio_prevista, a.data_avvio_effettiva, a.pp_avvio_at, a.pp_avvio, a.contrattualizzato_at, uo.full_name AS owner_name,
-      s.code AS site_code, s.name AS site_name, s.city AS site_city, s.tenure, s.host_organization_id, s.kind AS site_kind, ho.name AS host_name,
+      s.code AS site_code, s.name AS site_name, s.city AS site_city, s.tenure, s.host_organization_id, s.kind AS site_kind, s.organization_id AS site_org_id, ho.name AS host_name,
       (SELECT json_build_object('id', d.id, 'status', d.status, 'authorized_at', d.authorized_at) FROM dossiers d WHERE d.site_id=a.pp_site_id ORDER BY d.created_at DESC LIMIT 1) AS fascicolo,
       (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'org_id', c.org_id, 'site_id', c.site_id) FROM contracts c WHERE c.org_id=a.organization_id AND c.kind='PP' AND c.status NOT IN ('ANNULLATO','CESSATO')
          AND (a.pp_site_id IS NULL OR c.site_id IS NULL OR c.site_id=a.pp_site_id) ORDER BY CASE WHEN c.site_id=a.pp_site_id THEN 0 ELSE 1 END, c.updated_at DESC NULLS LAST LIMIT 1) AS contratto,
@@ -476,7 +476,7 @@ export async function elencoPuntiPrelievo() {
     WHERE a.linea='PP' ORDER BY coalesce(s.name, a.pp_nome, o.name)`);
   const punti = rows.map((r) => {
     const sede = r.pp_site_id ? { kind: r.site_kind, tenure: r.tenure, host_organization_id: r.host_organization_id } : null;
-    const tp = tipoPunto({ sede, previsto: r.pp_tipo_previsto });
+    const tp = tipoPunto({ sede: { ...sede, organization_id: r.site_org_id }, previsto: r.pp_tipo_previsto, orgAccount: r.organization_id });
     const { pp_avvio: avvio, ...x } = r;
     // A1: coerenza del contratto PP vigente con l'anagrafica Sedi (colonna "Coerenza con Sedi" della pagina Punti Prelievo)
     const vig = r.contratto && ['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(r.contratto.status);
@@ -495,6 +495,92 @@ export async function elencoPuntiPrelievo() {
     if (r) p.royalty = { stato: r.stato, differenze: r.differenze || [], voci: r.contratto?.voci || [] };
   }
   return { punti, sedi_senza_account: senza.map((s) => ({ ...s, tipo: tipoPunto({ sede: s }).tipo, org_account: s.tenure === 'OSPITATA' || (!s.tenure && s.host_organization_id) ? s.host_organization_id : s.organization_id })) };
+}
+
+/**
+ * Pagina "Punti Prelievo e Centri" (CEO, 09/11/2026: "I punti prelievo/centri medici li hai già: sono sedi"). Parte dalle SEDI dell'anagrafica:
+ * tutte le sedi attive di tipo punto prelievi, centro medico, centro diagnostico e poliambulatorio, più quelle in apertura (non attive con
+ * data di apertura futura). Per ognuna: tipo, titolo di godimento e ospitante/partner, apertura, responsabile, area TuoTempo (abbinata o no) e,
+ * se c'è, il processo del Business Hub (account PP: fase, contratto PP, fascicolo, avvio, royalty). In fondo i processi senza sede.
+ */
+export async function puntiECentri() {
+  const rows = await many(`SELECT s.id AS site_id, s.code, s.name, s.kind, s.active, s.opened_at, s.address, s.zip, s.city, s.province, s.tenure, s.host_organization_id, ho.name AS host_name,
+      s.organization_id, so.name AS organization_name, s.legacy_refs->>'tuotempo' AS tuotempo_area, h.person_name AS manager_name,
+      (NOT s.active AND s.opened_at > CURRENT_DATE) AS in_apertura,
+      a.id AS account_id, a.organization_id AS account_org_id, ao.name AS account_org_name, a.fase_corrente, a.cliente_attivo, a.pp_avvio_at, a.pp_avvio, a.pp_tipo_previsto,
+      a.data_avvio_prevista, a.data_avvio_effettiva, a.contrattualizzato_at, uo.full_name AS owner_name,
+      (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'org_id', c.org_id, 'start_date', c.start_date, 'end_date', c.end_date) FROM contracts c
+        WHERE c.kind='PP' AND c.status NOT IN ('ANNULLATO') AND (c.site_id=s.id OR (c.site_id IS NULL AND a.id IS NOT NULL AND c.org_id=a.organization_id))
+        ORDER BY (c.site_id=s.id) DESC NULLS LAST, (c.status IN ('ATTIVO','AUTORIZZATO','FIRMATO')) DESC, c.updated_at DESC NULLS LAST LIMIT 1) AS contratto,
+      (SELECT json_build_object('id', d.id, 'status', d.status, 'authorized_at', d.authorized_at) FROM dossiers d LEFT JOIN contracts c2 ON c2.id=d.contract_id
+        WHERE d.site_id=s.id OR (c2.site_id=s.id AND c2.status <> 'ANNULLATO') ORDER BY d.created_at DESC LIMIT 1) AS fascicolo
+    FROM public.sites s
+    LEFT JOIN public.organizations ho ON ho.id=s.host_organization_id LEFT JOIN public.organizations so ON so.id=s.organization_id
+    LEFT JOIN LATERAL (SELECT pp.last_name || ' ' || pp.first_name AS person_name FROM public.org_units u JOIN public.org_positions op ON op.unit_id=u.id AND op.is_head
+        JOIN public.people pp ON pp.id=op.person_id AND pp.status='ATTIVO' WHERE u.kind='SEDE' AND u.site_id=s.id ORDER BY op.sort_order, op.id LIMIT 1) h ON TRUE
+    LEFT JOIN accounts a ON a.pp_site_id=s.id AND a.linea='PP'
+    LEFT JOIN public.organizations ao ON ao.id=a.organization_id LEFT JOIN public.users uo ON uo.id=a.owner_user_id
+    WHERE s.kind IN ('PUNTO_PRELIEVI','CENTRO_MEDICO','CENTRO_DIAGNOSTICO','POLIAMBULATORIO') AND (s.active OR s.opened_at > CURRENT_DATE)
+    ORDER BY (NOT s.active), s.kind, lower(s.name)`);
+  // area TuoTempo abbinata (fonte: legacy_refs della sede; titolo dalla tabella del Retail se il modulo è avviato)
+  const aree = (await one(`SELECT to_regclass('retail.tuotempo_aree') IS NOT NULL AS ok`))?.ok ? await many('SELECT areaid, titolo, is_hidden FROM retail.tuotempo_aree') : null;
+  const { propostaRoyalty } = await import('../../../lib/royaltyPP.js');
+  const sedi = [];
+  for (const r of rows) {
+    const sede = { kind: r.kind, tenure: r.tenure, host_organization_id: r.host_organization_id, organization_id: r.organization_id };
+    const tp = tipoPunto({ sede, previsto: r.account_id ? r.pp_tipo_previsto : null, orgAccount: r.account_org_id });
+    const { pp_avvio: avvio, ...x } = r;
+    const area = r.tuotempo_area ? (aree?.find((y) => y.areaid === r.tuotempo_area) || { areaid: r.tuotempo_area, titolo: null }) : null;
+    const vig = r.contratto && ['FIRMATO', 'AUTORIZZATO', 'ATTIVO'].includes(r.contratto.status);
+    const out = {
+      ...x, tipo: tp.tipo, tipo_fonte: tp.fonte, area_tuotempo: area, area_tuotempo_note: aree === null ? 'Retail non avviato' : null,
+      partner: tp.tipo === 'CORNER' ? r.host_name || r.account_org_name || null : null,
+      avvio: r.account_id && tp.tipo && r.pp_avvio_at ? riepilogoAvvio(tp.tipo, avvio?.passi || {}) : null,
+      coerenza_sedi: vig ? coerenzaPP({ sede: { tenure: r.tenure, host_organization_id: r.host_organization_id, host_name: r.host_name }, orgId: r.contratto.org_id }) : null,
+    };
+    if (vig) { const ro = await propostaRoyalty(r.site_id).catch(() => null); if (ro) out.royalty = { stato: ro.stato, differenze: ro.differenze || [], voci: ro.contratto?.voci || [] }; }
+    sedi.push(out);
+  }
+  const senzaSede = await many(`SELECT a.id, a.organization_id, o.name AS org_name, a.pp_nome, a.pp_tipo_previsto, a.fase_corrente, a.data_avvio_prevista, uo.full_name AS owner_name
+    FROM accounts a JOIN public.organizations o ON o.id=a.organization_id LEFT JOIN public.users uo ON uo.id=a.owner_user_id
+    WHERE a.linea='PP' AND a.pp_site_id IS NULL ORDER BY lower(coalesce(a.pp_nome, o.name))`);
+  const fascicoliAperti = (await one(`SELECT count(*)::int AS n FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')`))?.n ?? 0;
+  return {
+    sedi, processi_senza_sede: senzaSede,
+    riepilogo: { sedi: sedi.length, attive: sedi.filter((x) => x.active).length, in_apertura: sedi.filter((x) => x.in_apertura).length, con_processo: sedi.filter((x) => x.account_id).length,
+      con_area_tuotempo: sedi.filter((x) => x.area_tuotempo).length, fascicoli_aperti: fascicoliAperti },
+  };
+}
+
+/**
+ * Account PP della sede creato al volo quando un'azione del processo lo richiede ("Avvia il processo con un partner", "Contratto PP",
+ * "Fascicolo", "Avvia il punto prelievi"): la sede non deve "diventare" un punto prelievi. Idempotente: se la sede ha già il suo account lo
+ * restituisce. Legal entity dell'account: il partner indicato (processo con un partner: corner previsto, la sede diventa Ospitata alla firma),
+ * altrimenti l'ospitante della sede (corner) o la Legal entity della sede (flagship).
+ */
+export async function accountPerSede(siteId, { partnerOrgId = null, userId = null, fonte = 'pagina Punti Prelievo e Centri' } = {}) {
+  const sede = await sedeDi(siteId);
+  if (!sede || !SEDI_PUNTO.includes(sede.kind)) throw errore(400, 'Sede non trovata o di un tipo senza processo (punto prelievi, centro medico, centro diagnostico, poliambulatorio)');
+  const esiste = await one('SELECT id, organization_id FROM accounts WHERE pp_site_id=$1', [sede.id]);
+  if (esiste) {
+    if (partnerOrgId && Number(esiste.organization_id) !== Number(partnerOrgId)) throw errore(409, 'La sede ha già un processo con un\'altra Legal entity: aprilo dalla sua scheda');
+    return { id: esiste.id, creato: false };
+  }
+  let orgId; let previsto = null; let tipo;
+  if (partnerOrgId) {
+    const p = await one('SELECT id, name FROM public.organizations WHERE id=$1', [partnerOrgId]);
+    if (!p) throw errore(400, 'Legal entity del partner non trovata');
+    if (sede.host_organization_id && Number(sede.host_organization_id) !== Number(p.id)) throw errore(400, `La sede è ospitata da ${sede.host_name}: il processo va con quella Legal entity`);
+    orgId = p.id; previsto = 'CORNER'; tipo = 'corner';
+  } else {
+    const tp = tipoPunto({ sede });
+    orgId = tp.tipo === 'CORNER' ? sede.host_organization_id : sede.organization_id;
+    tipo = tp.tipo === 'CORNER' ? 'corner' : 'flagship';
+    if (!orgId) throw errore(400, tp.tipo === 'CORNER' ? 'Indica la Legal entity ospitante della sede (Amministrazione > Sedi) o avvia il processo con un partner' : 'La sede non ha una Legal entity (Amministrazione > Sedi)');
+  }
+  const row = await one(`INSERT INTO accounts (organization_id, linea, pp_site_id, pp_tipo_previsto, prospect, created_by) VALUES ($1,'PP',$2,$3,TRUE,$4) RETURNING id`, [orgId, sede.id, previsto, userId]);
+  await attivita(row.id, { tipo: 'SISTEMA', oggetto: 'Processo avviato dalla sede', testo: `${sede.name} (${sede.code}): processo ${tipo} avviato dalla ${fonte}. La sede resta quella di Amministrazione > Sedi.` }, userId);
+  return { id: row.id, creato: true };
 }
 
 /** Cruscotto PP: avvii con passi da completare (non riusciti o in attesa) e flagship autorizzati da avviare (promemoria). */

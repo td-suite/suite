@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D40 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D47 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -286,6 +286,23 @@ const corr = {
     }
     return out;
   },
+  // D45: "Copia da TuoTempo" (indirizzo, telefono od orari dell'area abbinata nella sede, con saveSite) — azione scelta sulla riga
+  async d45(righe, ctx) {
+    const { copiaDaTuotempo } = await import('../modules/retail/lib/tuotempo.js');
+    const campo = ['indirizzo', 'telefono', 'orari'].includes(ctx.opzioni?.azione) ? ctx.opzioni.azione : null;
+    if (!campo) throw bad('Scegli cosa copiare da TuoTempo: indirizzo, telefono o orari');
+    const out = [];
+    for (const r of righe) {
+      try { const x = await copiaDaTuotempo(r.id, [campo], { req: ctx.req, origine: 'Diagnostica anagrafica D45 (Copia da TuoTempo)' }); out.push({ id: r.id, esito: x.copiati.length ? `copiato da TuoTempo: ${campo}` : 'niente da copiare', motivo: x.non_copiati.join('; ') || undefined }); }
+      catch (e) { out.push({ id: r.id, esito: 'non copiato', motivo: e.message }); }
+    }
+    return out;
+  },
+  // D47: Legal entity CLIENTE attive senza account → scheda nel Business Hub (prospect censito, linea dal codice)
+  async d47(righe) {
+    const { schedeDaAnagrafica } = await import('../modules/business/lib/schedeAnagrafica.js');
+    return schedeDaAnagrafica({ esegui: true, fonte: 'Diagnostica anagrafica D47', ids: righe.map((r) => r.id) });
+  },
   // D34: perimetri dei partner riallineati alle sedi ospitate
   async d34(righe, ctx) {
     const { realignOrgPerimeters } = await import('./esterni.js');
@@ -358,6 +375,10 @@ export const CONTROLLI = [
     sql: `SELECT c.id, c.kind AS linea, c.status, c.protocol, c.org_id, o.name FROM business.contracts c JOIN organizations o ON o.id = c.org_id
           WHERE c.kind IN ('SRV','MDL') AND c.status <> 'ANNULLATO' AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = c.org_id AND a.linea = c.kind) ORDER BY c.kind, o.name`, chiave: 'id', link: (r) => `/business/contratti/${r.id}`,
     correggi: { etichetta: 'Crea le schede', conferma: true, descrizione: 'un account della linea per ogni contratto (prospect, fase dallo stato del contratto: bozza 3, proposta 4, firmato 6 con sede SERVICE), annotato nel diario', fn: corr.d12b } },
+  { id: 'D47', area: 'CLIENTI', gravita: 'ATTENZIONE', titolo: 'Legal entity cliente senza scheda nel Business Hub', richiede: ['business.accounts'], spiegazione: 'Ogni Legal entity di tipo CLIENTE attiva ha almeno un account nel Business Hub (CEO, 09/11/2026: "Legal entity che ho in anagrafica come cliente non le ritrovo in Business Hub B2B"). La scheda nasce da sola alla creazione e al cambio di tipo e con il job orario; qui quelle rimaste senza.',
+    sql: `SELECT o.id, o.code, o.name, o.city, CASE WHEN upper(coalesce(o.code,'')) LIKE 'SER%' THEN 'SRV' WHEN upper(coalesce(o.code,'')) LIKE 'MDL%' THEN 'MDL' WHEN upper(coalesce(o.code,'')) LIKE 'PP%' THEN 'PP' ELSE 'SRV' END AS linea
+          FROM organizations o WHERE o.kind = 'CLIENTE' AND coalesce(o.active, TRUE) AND NOT EXISTS (SELECT 1 FROM business.accounts a WHERE a.organization_id = o.id) ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name),
+    correggi: { etichetta: 'Crea le schede', conferma: true, descrizione: 'un account per Legal entity come prospect censito (fase 0), linea dedotta dal codice (SER → Service, MDL → Medicina del Lavoro, PP → Punti Prelievo, altrimenti Service), con l\'attività "Scheda creata dall\'anagrafica"', fn: corr.d47 } },
   { id: 'D13', area: 'CLIENTI', gravita: 'BLOCCANTE', titolo: 'Clienti Service/MdL attivi senza sede SERVICE', richiede: ['business.accounts', 'business.contracts'], spiegazione: 'Ogni cliente Service o MdL ATTIVO nel Business Hub (fase 7 confermata dal CEO; vista clienti_attivi_v, livello ATTIVO) ha il suo punto SERVICE con il codice StudioLAB (decisione 5): la contrattualizzazione lo crea da sola; per i clienti già attivi "Crea le sedi SERVICE" (o l\'operazione qui sotto).',
     // solo i clienti ATTIVI nel Business Hub (CEO, 08/11/2026: "Strutture clienti service: solo quelli ATTIVI"), una riga per Legal entity
     sql: `SELECT o.id, o.name, string_agg(DISTINCT v.linea, ', ') AS linea, string_agg(DISTINCT v.livello, ', ') AS livello FROM public.clienti_attivi_v v JOIN organizations o ON o.id = v.org_id
@@ -472,12 +493,43 @@ export const CONTROLLI = [
     sql: `SELECT p.id, p.last_name, p.site_id, e.work_site_id FROM people p JOIN contracts.employments e ON e.resource_id = p.id
           WHERE e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE) AND e.work_site_id IS DISTINCT FROM p.site_id ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}`,
     correggi: { etichetta: 'Sede = sede del contratto', conferma: true, descrizione: 'people.site_id = sede di lavoro del contratto in corso (e l\'utente la segue)', fn: corr.d36 } },
+  // Piano Ferie (CEO, 09/11/2026): approva il superiore diretto dell'anagrafica ("Dipende da" = people_manager); al vertice una sola persona,
+  // l'Owner. Chi è sotto senza superiore non ha nessuno che approvi il suo piano; un superiore cessato o senza accesso fa risalire l'approvazione.
+  { id: 'D43', area: 'ORGANIGRAMMA', gravita: 'BLOCCANTE', titolo: 'Dipendenti senza superiore in anagrafica',
+    spiegazione: 'Il piano ferie lo approva il superiore diretto ("Dipende da" in Amministrazione > Persone: dall\'organigramma per chi ha incarichi, a mano per gli altri). Al vertice c\'è una sola persona, l\'Owner, esclusa dal controllo. Senza superiore il piano non può essere approvato dal responsabile (lo può decidere solo l\'amministratore): indica "Dipende da" nella scheda persona. "Vertice dichiarato" = opzione "Nessuno (vertice)" scelta a mano.',
+    sql: `SELECT p.id, p.last_name, p.first_name, p.kind, p.no_manager AS vertice_dichiarato,
+            (SELECT u.email FROM users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' ORDER BY u.id LIMIT 1) AS accesso
+          FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','DIRIGENTE') AND people_manager(p.id) IS NULL
+           AND NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id = p.id AND u.status = 'ACTIVE' AND u.level = 'OWNER')
+          ORDER BY p.last_name, p.first_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
+  { id: 'D44', area: 'ORGANIGRAMMA', gravita: 'ATTENZIONE', titolo: 'Superiore cessato o senza accesso',
+    spiegazione: 'Il superiore diretto (che approva il piano ferie) non è più attivo o non ha un accesso attivo alla Suite: l\'approvazione risale al superiore del superiore, e la scheda del piano lo dice. Aggiorna "Dipende da" nella scheda persona o dai l\'accesso al superiore.',
+    sql: `SELECT p.id, p.last_name, p.first_name, s.id AS superiore_id, s.last_name || ' ' || s.first_name AS superiore, s.status AS stato_superiore,
+            EXISTS (SELECT 1 FROM users u WHERE u.person_id = s.id AND u.status = 'ACTIVE') AS superiore_con_accesso,
+            (SELECT x.last_name || ' ' || x.first_name FROM people x WHERE x.id = people_manager(s.id)) AS sopra_il_superiore
+          FROM people p JOIN people s ON s.id = people_manager(p.id)
+          WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','DIRIGENTE')
+            AND (s.status <> 'ATTIVO' OR NOT EXISTS (SELECT 1 FROM users u WHERE u.person_id = s.id AND u.status = 'ACTIVE'))
+          ORDER BY p.last_name, p.first_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
   // ---------------- Processi e sistema
   { id: 'D24', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Account PP con sede chiusa o non PP, o data di avvio diversa dall\'apertura', richiede: ['business.accounts'], spiegazione: 'B1: la data di avvio effettiva del punto è l\'apertura della sede in Amministrazione > Sedi (scritta da sola se la sede non ce l\'ha).',
     // adattata a B1: la data dell'account conta solo se c'è (collegare una sede già aperta a un punto non ancora avviato non è un'anomalia)
     sql: `SELECT a.id, a.pp_site_id, s.code, s.active, s.kind, a.data_avvio_effettiva, s.opened_at FROM business.accounts a JOIN sites s ON s.id = a.pp_site_id
           WHERE a.linea = 'PP' AND (NOT s.active OR s.kind <> 'PUNTO_PRELIEVI' OR (a.data_avvio_effettiva IS NOT NULL AND a.data_avvio_effettiva IS DISTINCT FROM s.opened_at)) ORDER BY s.code`, chiave: 'id', link: (r) => `/business/account/${r.id}`,
     correggi: { etichetta: 'Allinea la data di apertura', conferma: true, descrizione: 'sede senza data di apertura: riceve la data di avvio (saveSite); sede con un\'altra data: l\'account prende quella della sede. Sedi chiuse o non PP restano da sistemare a mano', fn: corr.d24 } },
+  // TuoTempo (Fase 1, CEO 09/11/2026: "Le sedi sono sedi [...] E devono quadrare con TuoTempo"): confronto dei dati delle sedi abbinate (vista
+  // retail.tuotempo_confronto_v, stessa regola della tabella "Aree TuoTempo") e sedi prenotabili senza area. Solo dopo il primo allineamento.
+  { id: 'D45', area: 'SEDI', gravita: 'INFO', titolo: 'Sedi con dati diversi da TuoTempo', richiede: ['retail.tuotempo_confronto_v'], spiegazione: 'Indirizzo, CAP, città, telefono o orari pubblicati su TuoTempo diversi da quelli di Amministrazione > Sedi, per le sedi abbinate a un\'area. Informativo: vale l\'anagrafica; "Copia da TuoTempo" porta nella sede il dato di TuoTempo (con conferma, saveSite). Gli orari si confrontano solo se il testo di TuoTempo è interpretabile.',
+    sql: `SELECT c.site_id AS id, c.code, c.name, c.titolo AS area_tuotempo,
+            concat_ws(', ', CASE WHEN c.diff_indirizzo THEN 'indirizzo' END, CASE WHEN c.diff_cap THEN 'CAP' END, CASE WHEN c.diff_citta THEN 'città' END, CASE WHEN c.diff_telefono THEN 'telefono' END, CASE WHEN c.diff_orari THEN 'orari' END) AS diversi,
+            CASE WHEN c.diff_indirizzo OR c.diff_cap OR c.diff_citta THEN concat_ws(' ', c.tt_indirizzo, c.tt_cap, c.tt_citta) END AS indirizzo_tuotempo,
+            CASE WHEN c.diff_telefono THEN c.tt_telefono END AS telefono_tuotempo, CASE WHEN c.diff_orari THEN c.tt_orari_norm END AS orari_tuotempo
+          FROM retail.tuotempo_confronto_v c WHERE c.diff_indirizzo OR c.diff_cap OR c.diff_citta OR c.diff_telefono OR c.diff_orari ORDER BY c.code`, chiave: 'id', link: sedeLink,
+    correggi: { etichetta: 'Copia da TuoTempo', conferma: true, descrizione: 'il dato pubblicato su TuoTempo (indirizzo con CAP e città, telefono oppure orari) sostituisce quello della sede in Amministrazione > Sedi, con saveSite e audit', fn: corr.d45,
+      azioni: ['indirizzo', 'telefono', 'orari'], etichetteAzioni: { indirizzo: 'Copia l\'indirizzo', telefono: 'Copia il telefono', orari: 'Copia gli orari' } } },
+  { id: 'D46', area: 'SEDI', gravita: 'ATTENZIONE', titolo: 'Sedi attive senza area TuoTempo', richiede: ['retail.tuotempo_aree'], spiegazione: 'Punti prelievo, centri medici, centri diagnostici e poliambulatori attivi non abbinati a un\'area di TuoTempo: non sono prenotabili online o l\'abbinamento manca. Si abbinano da Retail > Connettori o da Amministrazione > Sedi (Aree TuoTempo). Compare solo dopo il primo allineamento con TuoTempo.',
+    sql: `SELECT s.id, s.code, s.name, s.kind, s.city FROM sites s WHERE s.active AND s.kind IN ('PUNTO_PRELIEVI','CENTRO_MEDICO','CENTRO_DIAGNOSTICO','POLIAMBULATORIO')
+            AND NOT (coalesce(s.legacy_refs, '{}'::jsonb) ? 'tuotempo') AND EXISTS (SELECT 1 FROM retail.tuotempo_aree) ORDER BY s.code`, chiave: 'id', link: () => '/admin/sites?tab=tuotempo' },
   { id: 'D26', area: 'SISTEMA', gravita: 'BLOCCANTE', titolo: 'Sorgenti legacy che hanno scritto l\'anagrafica di recente', spiegazione: 'A12: la sincronizzazione dalle app di origine non scrive più sedi, Legal entity e persone. Controlla anche, in Render, LEGACY_FINANCE_DATABASE_URL e LEGACY_SHIPMENTS_DATABASE_URL.',
     // adattata ad A12: solo le sorgenti che negli ultimi 7 giorni hanno creato o aggiornato sedi, organizzazioni o persone
     sql: `SELECT key, enabled, last_sync_at, last_status, stats FROM legacy_sources WHERE enabled AND last_sync_at > now() - interval '7 days'
@@ -544,7 +596,7 @@ export async function esegui({ ids = null, limite = 50 } = {}) {
     await c.query(`SET LOCAL statement_timeout = '5s'`);
     for (const k of scelti) {
       const base = { id: k.id, area: k.area, area_nome: AREE[k.area], gravita: k.gravita, titolo: k.titolo, spiegazione: k.spiegazione,
-        correggi: k.correggi ? { etichetta: k.correggi.etichetta, conferma: k.correggi.conferma !== false, descrizione: k.correggi.descrizione, tutte: Boolean(k.correggi.tutte), azioni: k.correggi.azioni || null, opzione_admin: Boolean(k.correggi.opzioneAdmin) } : null,
+        correggi: k.correggi ? { etichetta: k.correggi.etichetta, conferma: k.correggi.conferma !== false, descrizione: k.correggi.descrizione, tutte: Boolean(k.correggi.tutte), azioni: k.correggi.azioni || null, etichette_azioni: k.correggi.etichetteAzioni || null, opzione_admin: Boolean(k.correggi.opzioneAdmin) } : null,
         correggi_dopo: k.correggiDopo || null, chiave: k.chiave };
       if (k.attivoDopo) { out.push({ ...base, stato: 'DOPO', n: null, righe: [], nota: `controllo attivo dopo ${k.attivoDopo}` }); continue; }
       const mancano = await esistono(c, k.richiede || []);

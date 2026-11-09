@@ -42,7 +42,7 @@ export function descriviEvento(e) {
   const d = e.dati || {};
   switch (e.tipo) {
     case 'RICHIESTA': return `Richiesta di ${d.ore ? `${num(d.ore)} ore` : `${num(d.giorni)} giorni`}${d.per_conto ? ' inserita da HR' : ''}${d.sotto_copertura ? ` · ${d.sotto_copertura} giorni sotto la copertura minima` : ''}`;
-    case 'APPROVATA': return `Approvata${d.registrata_da_hr ? ' (registrata da HR)' : ''}${d.hr ? ' da HR' : ''}${d.nota ? `: ${d.nota}` : ''}${d.sotto_copertura ? ' nonostante l\'avviso di copertura' : ''}`;
+    case 'APPROVATA': if (d.senza_approvatore) return `Approvata: ${d.nota || 'senza approvatore in organigramma'}`; return `Approvata${d.registrata_da_hr ? ' (registrata da HR)' : ''}${d.hr ? ' da HR' : ''}${d.nota ? `: ${d.nota}` : ''}${d.sotto_copertura ? ' nonostante l\'avviso di copertura' : ''}`;
     case 'RIFIUTATA': return `Rifiutata: ${d.nota || ''}`;
     case 'GODUTA': return d.automatico ? 'Goduta (passata automaticamente a data conclusa)' : 'Goduta';
     case 'ANNULLATA': return `Annullata${d.da_stato ? ` (era ${STATO[d.da_stato]?.label?.toLowerCase() || d.da_stato})` : ''}${d.motivo ? `: ${d.motivo}` : ''}`;
@@ -62,6 +62,7 @@ const P_EV = {
   CREATO: 'Piano creato', MIGRATO: 'Piano creato dalla migrazione al piano annuale', PERIODO_AGGIUNTO: 'Periodo aggiunto', PERIODO_MODIFICATO: 'Periodo spostato', PERIODO_TOLTO: 'Periodo tolto',
   INVIATO: 'Inviato al responsabile', IN_REVISIONE: 'Preso in carico dal responsabile', APPROVATO: 'Approvato', DEFINITIVO: 'Reso definitivo', RIAPERTO: 'Riaperto',
   VARIAZIONE_PROPOSTA: 'Variazione proposta', VARIAZIONE_APPROVATA: 'Variazione approvata', VARIAZIONE_RIFIUTATA: 'Variazione non accolta', VARIAZIONE: 'Variazione al piano definitivo', PROMEMORIA: 'Promemoria',
+  RIASSEGNATO: 'Riassegnato al superiore diretto in anagrafica',
 };
 export function descriviEventoPiano(e) {
   const d = e.dati || {};
@@ -71,7 +72,9 @@ export function descriviEventoPiano(e) {
     case 'MIGRATO': return `${P_EV.MIGRATO} (${STATO_PIANO[d.stato]?.label?.toLowerCase() || d.stato}, ${d.periodi} periodi)`;
     case 'PERIODO_MODIFICATO': return `Periodo spostato${d.prima ? ` da ${itData(d.prima.dal)} → ${itData(d.prima.al)}` : ''} a${per}${d.da_responsabile ? ' dal responsabile' : ''}${nota ? `: ${nota}` : ''}`;
     case 'PERIODO_AGGIUNTO': case 'PERIODO_TOLTO': case 'VARIAZIONE': return `${P_EV[e.tipo]}${per}${d.da_responsabile ? ' dal responsabile' : ''}${nota ? `: ${nota}` : ''}`;
-    case 'INVIATO': return `Inviato al responsabile: ${d.periodi} periodi, ${num(d.giorni)} giorni${nota ? ` · ${nota}` : ''}`;
+    case 'INVIATO': return `Inviato${d.approvatore ? ` a ${d.approvatore}` : ''}: ${d.periodi} periodi, ${num(d.giorni)} giorni${nota ? ` · ${nota}` : ''}`;
+    case 'DEFINITIVO': return d.senza_approvatore ? `Reso definitivo all'invio: ${d.nota || 'senza approvatore in organigramma'}` : `${P_EV.DEFINITIVO}${nota ? `: ${nota}` : ''}`;
+    case 'RIASSEGNATO': return d.senza_superiore ? `Nessun superiore in anagrafica: decide l'amministratore` : `${P_EV.RIASSEGNATO}: approva ${d.approvatore || 'l\'amministratore'}${(d.saltati || []).length ? ` (${d.saltati.map((x) => `${x.nome} ${x.motivo}`).join(', ')})` : ''}`;
     case 'APPROVATO': return `Approvato${d.periodi != null ? ` (${d.periodi} periodi)` : ''}${nota ? `: ${nota}` : ''}`;
     case 'VARIAZIONE_PROPOSTA': return `Variazione proposta: ${d.tipo === 'AGGIUNTA' ? `aggiunta${per}` : d.tipo === 'RIMOZIONE' ? `togliere ${itData(d.prima?.dal)} → ${itData(d.prima?.al)}` : `spostare ${itData(d.prima?.dal)} → ${itData(d.prima?.al)} al ${itData(d.data_inizio)} → ${itData(d.data_fine)}`}${nota ? ` · ${nota}` : ''}`;
     case 'VARIAZIONE_APPROVATA': case 'VARIAZIONE_RIFIUTATA': return `${P_EV[e.tipo]}${d.ritirata ? ' (ritirata dal dipendente)' : ''}${d.testo ? `: ${d.testo}` : ''}${nota ? ` · ${nota}` : ''}`;

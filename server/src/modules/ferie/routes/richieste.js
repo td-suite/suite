@@ -1,6 +1,6 @@
 // Periodi e variazioni del piano ferie come elenco (storico) e dettaglio con la cronologia. Le scritture passano tutte dal piano annuale
-// (routes/piani.js): periodi, invio, approvazione, definitivo, variazioni. Visibilità: il dipendente i propri periodi; il responsabile
-// quelli dei dipendenti della propria area; ADMIN e VIEWER tutti.
+// (routes/piani.js): periodi, invio, approvazione, definitivo, variazioni. Visibilità: il dipendente i propri periodi; il superiore
+// quelli della propria catena (diretti e livelli sotto, in sola lettura oltre i diretti); ADMIN tutti.
 import { Router } from 'express';
 import { one, many } from '../db.js';
 import { ah, notFound, forbidden } from '../../../lib/util.js';
@@ -25,9 +25,10 @@ r.get('/richieste', ah(async (req, res) => {
   else if (vista === 'da_approvare') {
     where.push(`(r.stato = 'RICHIESTA' OR (r.variazione_proposta IS NOT NULL AND r.stato IN ('PIANIFICATA','APPROVATA')))`);
     if (!ctx.isAdmin) where.push(`r.person_id = ANY(${p([...ctx.approva])}::int[])`);
+    else if (req.query.miei === '1') where.push(`r.person_id = ANY(${p([...ctx.approva, ...ctx.orfani])}::int[])`);
   } else if (!ctx.tutto) {
-    if (!ctx.isApprovatore) throw forbidden('Lo storico dei periodi lo vedono il responsabile dell\'area e l\'amministratore');
-    where.push(`r.person_id = ANY(${p([...ctx.approva])}::int[])`);
+    if (!ctx.haCatena) throw forbidden('Lo storico dei periodi lo vedono i responsabili (per la propria catena) e l\'amministratore');
+    where.push(`r.person_id = ANY(${p([...ctx.catena])}::int[])`);
   }
   if (req.query.anno) where.push(`r.anno = ${p(annoQ(req.query.anno))}`);
   if (req.query.stato && STATO_LABEL[req.query.stato]) where.push(`r.stato = ${p(req.query.stato)}`);
@@ -48,7 +49,7 @@ r.get('/richieste', ah(async (req, res) => {
 async function caricaVisibile(ctx, id) {
   const x = await loadRichiesta(Number(id));
   if (!x) throw notFound('Periodo non trovato');
-  if (!(ctx.tutto || x.person_id === ctx.personId || ctx.approva.has(x.person_id))) throw forbidden('Periodo di un\'altra persona');
+  if (!(ctx.tutto || x.person_id === ctx.personId || ctx.catena.has(x.person_id))) throw forbidden('Periodo di un\'altra persona');
   return x;
 }
 r.get('/richieste/:id', ah(async (req, res) => {

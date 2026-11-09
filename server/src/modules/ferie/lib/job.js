@@ -2,9 +2,9 @@
 // 1. i periodi APPROVATI con data di fine passata diventano GODUTI (evento di sistema);
 // 2. piani non inviati: da `promemoria_scadenza_giorni` (7) giorni prima della scadenza di invio dell'anno (Impostazioni > scadenza del
 //    piano) e dopo, promemoria al dipendente per i piani ancora in BOZZA, al massimo uno ogni `promemoria_giorni` giorni;
-// 3. piani inviati (PROPOSTO, IN_REVISIONE) da più di `promemoria_giorni` (3) giorni: promemoria al responsabile (e ai delegati attivi;
-//    senza responsabile agli amministratori), al massimo uno al giorno per piano;
-// 4. variazioni in attesa (righe RICHIESTA) da più di `promemoria_giorni` giorni: promemoria al responsabile, al massimo uno al giorno.
+// 3. piani inviati (PROPOSTO, IN_REVISIONE) da più di `promemoria_giorni` (3) giorni: promemoria al superiore diretto dell'anagrafica
+//    (con la risalita se cessato o senza accesso) e ai suoi delegati attivi; senza approvatore agli amministratori; uno al giorno per piano;
+// 4. variazioni in attesa (righe RICHIESTA) da più di `promemoria_giorni` giorni: stessi destinatari, al massimo uno al giorno.
 import { q, many } from '../db.js';
 import { settings, evento, notifica, utentiDiPersone, utentiHr, loadRichiesta, periodoTesto, quantitaTesto, oggi, itData } from './core.js';
 import { perimetro } from './perimetro.js';
@@ -55,13 +55,19 @@ export async function eseguiJob() {
   }
 
   // variazioni in attesa
-  const attesa = await many(`SELECT id, approvatore_person_id FROM richieste WHERE stato='RICHIESTA' AND created_at < now() - ($1 || ' days')::interval
+  const attesa = await many(`SELECT id, person_id, approvatore_person_id FROM richieste WHERE stato='RICHIESTA' AND created_at < now() - ($1 || ' days')::interval
       AND (promemoria_at IS NULL OR promemoria_at < now() - interval '20 hours') ORDER BY created_at`, [String(giorni)]);
   for (const a of attesa) {
     const rr = await loadRichiesta(a.id);
-    const delegati = a.approvatore_person_id ? (await many(`SELECT delegato_person_id AS id FROM deleghe WHERE delegante_person_id=$1 AND $2::date BETWEEN dal AND al`, [a.approvatore_person_id, g])).map((x) => x.id) : [];
-    let dest = await utentiDiPersone([a.approvatore_person_id, ...delegati]);
-    if (!dest.length) dest = await utentiHr();
+    // destinatari dall'anagrafica di oggi (il superiore può essere cambiato dopo la proposta); fuori perimetro, l'approvatore registrato
+    const persona = perim.persone.get(a.person_id);
+    let dest;
+    if (persona) dest = await destinatariResponsabile(persona);
+    else {
+      const delegati = a.approvatore_person_id ? (await many(`SELECT delegato_person_id AS id FROM deleghe WHERE delegante_person_id=$1 AND $2::date BETWEEN dal AND al`, [a.approvatore_person_id, g])).map((x) => x.id) : [];
+      dest = await utentiDiPersone([a.approvatore_person_id, ...delegati]);
+      if (!dest.length) dest = await utentiHr();
+    }
     const gg = Math.floor((Date.now() - new Date(rr.created_at).getTime()) / 86400000);
     await notifica(dest, rr, { evento: 'promemoria', title: `Promemoria: variazione di ${rr.persona} in attesa da ${gg} giorni`, body: `${quantitaTesto(rr)} ${periodoTesto(rr)}` });
     await q('UPDATE richieste SET promemoria_at=now() WHERE id=$1', [a.id]);

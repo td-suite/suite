@@ -20,7 +20,7 @@ import { extractText, analyzeText, buildProposal, mockEnabled, landlordOrg, AI_N
 import { aiEnabled } from '../lib/claude.js';
 import { registryLease, LEASE_SITE_KEYS } from '../lib/leaseSync.js';
 import { saveSite, hoursText, impattoChiusura } from '../lib/sites.js';
-import { createOrganization } from '../lib/organizations.js';
+import { createOrganization, hookBusinessLegalEntity } from '../lib/organizations.js';
 import { allineaSediDaOrg } from '../lib/clienti.js';
 import { effettiCessazione, adminDaConfermare } from '../lib/cessazione.js';
 import { stepAt, parseDate as fParse } from '../modules/finance/lib/schedule.js';
@@ -251,21 +251,49 @@ r.post('/organizations', requireAdmin, ah(async (req, res) => {
   const forza = req.body?.forza_duplicato === true;
   const out = await createOrganization(b, { origine: 'Amministrazione > Legal entity', req, dedupe: !forza, needsReview: forza });
   if (!out.created) return res.status(409).json({ error: `Esiste già la Legal entity "${out.org.name}" (#${out.org.id}) con ${out.come === 'nome' ? 'lo stesso nome' : `la stessa ${out.come}`}: usa quella oppure conferma la creazione del doppione`, code: 'DUPLICATO', esistente: { id: out.org.id, name: out.org.name, kind: out.org.kind }, come: out.come });
-  res.status(201).json({ ...out.org, simili: out.simili });
+  res.status(201).json({ ...out.org, simili: out.simili, scheda_business: out.scheda_business || null });
 }));
 r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
   const b = parse(orgSchema.partial(), req.body);
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });
+  const prima = await one('SELECT kind, active FROM organizations WHERE id=$1', [Number(req.params.id)]);
   const o = await one(`UPDATE organizations SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
   if (!o) throw notFound();
+  // Legal entity diventata CLIENTE (o riattivata): scheda nel Business Hub se manca (hook senza dipendenza rigida, CEO 09/11/2026)
+  let scheda_business = null;
+  if (o.kind === 'CLIENTE' && o.active !== false && (prima?.kind !== 'CLIENTE' || prima?.active === false)) scheda_business = await hookBusinessLegalEntity(o.id, { evento: 'cambio di tipo' });
   await audit(req, 'ORG_UPDATED', { entity: 'organization', entityId: o.id, label: o.name, data: b });
   indexOrg(o).catch(() => {});
   // A7 (d): le sedi SERVICE con l'indirizzo ereditato seguono il nuovo indirizzo della Legal entity (saveSite, audit SITE_UPDATED)
   let sedi_service_allineate = 0;
   if (['address', 'zip', 'city', 'province'].some((k) => b[k] !== undefined)) sedi_service_allineate = await allineaSediDaOrg(o.id, { req }).catch((e) => { console.warn('[sedi SERVICE]', o.id, e.message); return 0; });
-  res.json({ ...o, sedi_service_allineate });
+  res.json({ ...o, sedi_service_allineate, scheda_business });
+}));
+
+// ---- Scheda Legal entity ↔ Business Hub (CEO, 09/11/2026): account della Legal entity per "Apri nel Business Hub" e "Aggiungi la linea …".
+// Import dinamico del modulo: senza Business Hub LIVE la sezione dice "modulo non avviato".
+async function businessLegalEntity() {
+  const { getModuleState } = await import('../lib/modules.js');
+  const st = await getModuleState('business');
+  if (st.mode !== 'LIVE' || st.schema_ready === false) return null;
+  return import('../modules/business/lib/schedeAnagrafica.js');
+}
+r.get('/organizations/:id/business', requireAdmin, ah(async (req, res) => {
+  const m = await businessLegalEntity();
+  if (!m) return res.json({ disponibile: false, motivo: 'Business Hub non avviato', accounts: [], aggiungibili: [] });
+  res.json({ disponibile: true, ...(await m.accountsDiLegalEntity(Number(req.params.id))) });
+}));
+r.post('/organizations/:id/business', requireAdmin, ah(async (req, res) => {
+  const b = parse(z.object({ linea: z.enum(['SRV', 'MDL']) }), req.body);
+  const m = await businessLegalEntity();
+  if (!m) throw bad('Business Hub non avviato');
+  const o = await one('SELECT id, name FROM organizations WHERE id=$1', [Number(req.params.id)]);
+  if (!o) throw notFound();
+  const out = await m.creaScheda(o.id, { linea: b.linea, fonte: 'Amministrazione > Legal entity, "Aggiungi la linea"' });
+  await audit(req, 'BUSINESS_LINEA_AGGIUNTA', { entity: 'organization', entityId: o.id, label: o.name, data: out });
+  res.status(out.creato ? 201 : 200).json(out);
 }));
 
 // ---- B5b: fusione di Legal entity duplicate (decisione 9). Anteprima (prova, nessuna scrittura) e poi esecuzione con conferma "UNISCI".

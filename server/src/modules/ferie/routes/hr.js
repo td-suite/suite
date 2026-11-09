@@ -1,6 +1,6 @@
 // Cruscotto e saldi: piani per stato per area, piani e variazioni da approvare, residui a rischio, non goduto da smaltire, saldo per
 // persona, inserimento del residuo dell'anno precedente a mano o da XLSX (modello precompilato con il perimetro). ADMIN (il CEO, HR con
-// il grant) tutto; VIEWER consulta tutto; il responsabile vede solo i dipendenti delle aree che gestisce; il dipendente non accede.
+// il grant) tutto; il responsabile vede la propria catena (diretti e livelli sotto, dall'anagrafica); il dipendente non accede.
 import { Router } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
@@ -22,25 +22,26 @@ async function saldiDi(ctx, persone, anno) {
   const out = [];
   for (const p of persone) {
     const s = await saldoPersona(p, anno, ctx.settings);
-    out.push({ person_id: p.id, persona: p.nome, ruolo: p.role_name, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), approvatore: p.approvatore_nome || null, contratto: p.contratto, ...s });
+    out.push({ person_id: p.id, persona: p.nome, ruolo: p.role_name, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), approvatore: p.vertice ? 'nessuno (vertice)' : p.approvatore_nome || null, contratto: p.contratto, ...s });
   }
   return out;
 }
 
-// Persone del perimetro (HR, consultazione e responsabili per le persone che approvano): area, origine dell'area, approvatore
+// Persone del perimetro (ADMIN tutte, il responsabile la propria catena): area (solo visibilità), superiore e approvatore dall'anagrafica
 r.get('/persone', ah(async (req, res) => {
   const ctx = await userContext(req);
-  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('L\'elenco dei dipendenti lo vedono il responsabile dell\'area e l\'amministratore');
+  if (!ctx.tutto && !ctx.haCatena) throw forbidden('L\'elenco dei dipendenti lo vedono i responsabili (la propria catena) e l\'amministratore');
   const rows = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id)).map((p) => ({
     id: p.id, nome: p.nome, ruolo: p.role_name, gruppo: p.gruppo, gruppo_nome: nomeGruppo(p.gruppo, ctx.perim.siti), area_origine: p.area_origine,
-    approvatore: p.approvatore_nome || null, approvatore_origine: p.approvatore_origine || null, contratto: p.contratto, inizio: p.inizio, fine: p.fine, ha_accesso: Boolean(p.user_id),
+    approvatore: p.vertice ? 'nessuno (vertice)' : p.approvatore_nome || null, approvatore_origine: p.approvatore_origine || null, superiore: p.superiore_nome || null,
+    senza_superiore: Boolean(p.senza_superiore && !p.vertice), contratto: p.contratto, inizio: p.inizio, fine: p.fine, ha_accesso: Boolean(p.user_id),
   }));
   res.json({ rows, contratti: ctx.perim.contratti });
 }));
 
 r.get('/saldi', ah(async (req, res) => {
   const ctx = await userContext(req);
-  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('I saldi delle altre persone li vedono il responsabile dell\'area e l\'amministratore');
+  if (!ctx.tutto && !ctx.haCatena) throw forbidden('I saldi delle altre persone li vedono i responsabili (la propria catena) e l\'amministratore');
   const anno = annoQ(req.query.anno);
   const persone = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id) && p.id !== (ctx.tutto ? -1 : ctx.personId) && (!req.query.gruppo || p.gruppo === req.query.gruppo));
   res.json({ anno, rows: await saldiDi(ctx, persone, anno) });
@@ -48,7 +49,7 @@ r.get('/saldi', ah(async (req, res) => {
 
 r.get('/cruscotto', ah(async (req, res) => {
   const ctx = await userContext(req);
-  if (!ctx.tutto && !ctx.isApprovatore) throw forbidden('Cruscotto riservato all\'amministratore e ai responsabili di area');
+  if (!ctx.tutto && !ctx.haCatena) throw forbidden('Cruscotto riservato all\'amministratore e ai responsabili (la propria catena)');
   const anno = annoQ(req.query.anno);
   const persone = [...ctx.perim.persone.values()].filter((p) => ctx.vedeSaldo(p.id) && (ctx.tutto || p.id !== ctx.personId));
   const saldi = await saldiDi(ctx, persone, anno);

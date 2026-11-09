@@ -22,6 +22,7 @@ import statsRoutes from './routes/stats.js';
 import budgetRoutes from './routes/budget.js';
 import structureRoutes from './routes/structure.js';
 import intornoRoutes from './routes/intorno.js';
+import tuotempoRoutes from './routes/tuotempo.js';
 import { rilevazioneMensile, mockAttivo as intornoMock } from './lib/intorno.js';
 import { chiaveServer } from '../../lib/googleMaps.js';
 
@@ -39,6 +40,12 @@ export const publicUser = (u) => ({
 export async function afterStart() {
   const st = await getModuleState(KEY);
   if (st.schema_ready) await migrateCredentialsToCore();
+  // TuoTempo: gli abbinamenti area ↔ sede salvati finora solo nello specchio (retail.site_ext) passano nella fonte (public.sites.legacy_refs,
+  // con saveSite e audit); idempotente, non fa nulla quando fonte e specchio coincidono
+  if (st.schema_ready) {
+    try { const { portaSpecchioNellaFonte } = await import('./lib/tuotempo.js'); const r = await portaSpecchioNellaFonte(); if (r.portati) console.log(`[retail] TuoTempo: abbinamenti area ↔ sede portati nell'anagrafica: ${r.portati}`); }
+    catch (e) { console.warn('[retail] TuoTempo, abbinamenti nello specchio:', e.message); }
+  }
 }
 
 export default function mount(app) {
@@ -74,6 +81,7 @@ export default function mount(app) {
   r.use('/promotions', promotionRoutes);
   r.use('/exposure', exposureRoutes);
   r.use('/connectors', connectorRoutes);
+  r.use('/tuotempo', tuotempoRoutes);   // TuoTempo Fase 1: aree ↔ sedi, risorse ↔ persone, prenotazione online, listino (docs/RETAIL_TUOTEMPO.md)
   r.use('/stats', statsRoutes);
   r.use(budgetRoutes);                // working-days, budgets, variance, market
   r.use('/structure', structureRoutes);
@@ -91,7 +99,8 @@ export default function mount(app) {
   registerJob(`${KEY}:sync-connettori`, 15, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
-    const rows = await many("SELECT kind, schedule, last_sync_at FROM connectors WHERE enabled AND schedule<>'MANUALE'");
+    // TuoTempo ha il suo job notturno (retail:tuotempo): qui solo gli altri connettori con una pianificazione
+    const rows = await many("SELECT kind, schedule, last_sync_at FROM connectors WHERE enabled AND schedule<>'MANUALE' AND kind<>'TUOTEMPO'");
     const done = [];
     for (const c of rows) {
       const hours = c.schedule === 'HOURLY' ? 1 : 24;
@@ -99,6 +108,23 @@ export default function mount(app) {
       try { await syncConnector(c.kind, null); done.push({ kind: c.kind, ok: true }); } catch (e) { done.push({ kind: c.kind, error: e.message }); }
     }
     return { synced: done };
+  });
+
+  // TuoTempo, Fase 1: allineamento notturno delle Key Entities (aree, attività con la prima disponibilità del giorno, risorse,
+  // assicurazioni). Il job si controlla ogni ora e lavora una volta per notte, tra le 2 e le 5 (ora di Roma), se il connettore della
+  // Suite è attivo; "Allinea adesso" fa lo stesso a richiesta. Solo con modulo LIVE.
+  registerJob(`${KEY}:tuotempo`, 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
+    const ora = Number(new Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+    if (ora < 2 || ora >= 5) return { skipped: true, reason: 'fuori dalla finestra notturna (2-5)' };
+    const { getConnector: core } = await import('../../lib/connectors.js');
+    const c = await core('TUOTEMPO').catch(() => null);
+    if (!c?.active) return { skipped: true, reason: 'connettore TuoTempo non attivo (Amministrazione > Connettori)' };
+    const ult = (await many("SELECT last_sync_at FROM connectors WHERE kind='TUOTEMPO'"))[0]?.last_sync_at;
+    if (ult && Date.now() - new Date(ult).getTime() < 20 * 3600 * 1000) return { skipped: true, reason: 'già allineato nelle ultime 20 ore' };
+    const out = await syncConnector('TUOTEMPO', null);
+    return { aree: out.aree, abbinate: out.aree_abbinate, attivita: out.attivita, risorse: out.risorse };
   });
 
   // Intorno: rilevazione mensile di tutte le sedi attive del network (docs/RETAIL_INTORNO.md). Il job gira ogni giorno e rileva solo

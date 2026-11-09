@@ -9,6 +9,7 @@ import { today } from '../../../lib/util.js';
 import { festiviPer, settimanaDaContratto, contaGiorni } from './calendario.js';
 import { spettanza as calcSpettanza, saldo as calcSaldo, avvisiSaldo } from './saldi.js';
 import { perimetro, siteDiGruppo } from './perimetro.js';
+import { discendenti } from './superiori.js';
 
 export const KEY = 'ferie';
 // Stati di un periodo (riga di ferie.richieste): PIANIFICATA = periodo di un piano non ancora approvato; RICHIESTA = variazione al piano
@@ -49,12 +50,14 @@ export async function setSetting(key, value) {
 
 // ---------------------------------------------------------------- contesto di accesso
 /**
- * Contesto dell'utente (una volta per richiesta HTTP). Funzionamento stabilito dal CEO (08/11/2026): "Solo l'amministratore vede tutto.
- * Ogni dipendente vede solo la propria area. Il responsabile dell'Area può modificare il piano dei dipendenti dell'area e approvarlo".
- * role: ADMIN (Owner e Admin della Suite, HR solo con il grant ADMIN: tutto) | RESPONSABILE (grant: approva la propria area, o le sedi
- * dell'ambito del grant) | DIPENDENTE (= Utente: compila il proprio piano e vede la propria area; implicito per ogni interno).
- * approva: persone di cui l'utente è responsabile (approvatore dall'organigramma o dal dossier HR, deleghe attive, grant RESPONSABILE),
- * mai sé stesso. areeGestite: aree di quelle persone. Il dipendente vede solo la propria area (nomi e periodi dei colleghi).
+ * Contesto dell'utente (una volta per richiesta HTTP). Regole del CEO: "Solo l'amministratore vede tutto. Ogni dipendente vede solo la
+ * propria area" (08/11/2026); "Segui pedissequamente quanto indicato in organigramma. Segui quindi chi approva" (09/11/2026).
+ * role: ADMIN (Owner e Admin della Suite, HR solo con il grant ADMIN: vede e fa tutto su tutti) | RESPONSABILE (grant: vede in sola
+ * lettura le aree delle sedi dell'ambito, non approva) | DIPENDENTE (= Utente: compila il proprio piano e vede la propria area).
+ * approva: i DIRETTI, cioè le persone il cui approvatore effettivo (superiore diretto dell'anagrafica, con la risalita se cessato o
+ * senza accesso) è l'utente o un suo delegante con delega attiva; mai sé stesso. Li modifica, approva e rende definitivi.
+ * catena: tutti i riporti dell'utente nell'anagrafica (diretti, diretti dei diretti, ...): li vede con stato e saldi, in sola lettura
+ * oltre i diretti. Aree visibili: la propria, quelle dei diretti e della catena, quelle del grant RESPONSABILE.
  */
 export async function userContext(req) {
   if (req.ferieCtx) return req.ferieCtx;
@@ -73,34 +76,44 @@ export async function contesto(user, role) {
   const s = await settings();
   const perim = await perimetro({ includiDirigenti: s.includi_dirigenti !== false });
   const isAdmin = role === 'ADMIN';
-  const isViewer = false;   // il profilo Consultazione non esiste più (CEO, 08/11/2026): chi non è ADMIN né responsabile è Utente della propria area
+  const isViewer = false;   // il profilo Consultazione non esiste più (CEO, 08/11/2026)
   const personId = user.person_id || null;
   const me = personId ? perim.persone.get(personId) || null : null;
   const deleganti = personId ? (await many(`SELECT delegante_person_id AS id FROM deleghe WHERE delegato_person_id=$1 AND $2::date BETWEEN dal AND al`, [personId, oggi()])).map((r) => r.id) : [];
   const approvatori = new Set([personId, ...deleganti].filter(Boolean));
+  // diretti: approvatore effettivo = io (o chi mi ha delegato)
   const approva = new Set();
   for (const p of perim.persone.values()) if (p.approvatore_id && approvatori.has(p.approvatore_id) && p.id !== personId) approva.add(p.id);
-  // RESPONSABILE (grant): tutta l'area delle sedi dell'ambito del grant; senza ambito, la propria area
+  // catena: i riporti dell'anagrafica, a ogni livello (sola lettura oltre i diretti)
+  const catena = new Set(personId ? discendenti(personId, perim.nodi || new Map(), perim.figli).filter((id) => perim.persone.has(id) && id !== personId) : []);
+  for (const id of approva) catena.add(id);
+  // senza approvatore raggiungibile (né vertice): li decide solo l'amministratore
+  const orfani = new Set([...perim.persone.values()].filter((p) => !p.approvatore_id && !p.vertice).map((p) => p.id));
+  // RESPONSABILE (grant): solo visibilità delle aree delle sedi dell'ambito (senza ambito la propria); non approva (regola del 09/11/2026)
+  const areeGrant = new Set();
   if (role === 'RESPONSABILE') {
     const scopes = (user.grants?.[KEY]?.scopes || []).filter((x) => x.type === 'SITE').map((x) => perim.siti?.get?.(Number(x.id))).filter(Boolean);
-    const aree = new Set(scopes.map(gruppoDiSede).filter(Boolean));
-    if (!aree.size && me) aree.add(me.gruppo);
-    for (const p of perim.persone.values()) if (aree.has(p.gruppo) && p.id !== personId) approva.add(p.id);
+    for (const g of scopes.map(gruppoDiSede).filter(Boolean)) areeGrant.add(g);
+    if (!areeGrant.size && me) areeGrant.add(me.gruppo);
   }
   const areeGestite = new Set([...approva].map((id) => perim.persone.get(id)?.gruppo).filter(Boolean));
   const tutto = isAdmin || isViewer;
-  const gruppi = new Set(areeGestite);
+  const gruppi = new Set([...areeGestite, ...areeGrant, ...[...catena].map((id) => perim.persone.get(id)?.gruppo).filter(Boolean)]);
   if (me) gruppi.add(me.gruppo);
   const ctx = {
-    uid: user.id, personId, role, isAdmin, isViewer, tutto, me, perim, settings: s, approva, deleganti, areeGestite,
+    uid: user.id, personId, role, isAdmin, isViewer, tutto, me, perim, settings: s, approva, catena, orfani, deleganti, areeGestite,
     isApprovatore: approva.size > 0,
-    // aree visibili: ADMIN e VIEWER tutte; gli altri la propria e quelle che gestiscono
+    haCatena: catena.size > 0,
+    // aree visibili: ADMIN tutte; gli altri la propria, quelle dei riporti e quelle del grant RESPONSABILE
     vedeGruppo: (g) => tutto || gruppi.has(g),
-    // saldi e note di una persona: ADMIN e VIEWER, la persona stessa, il suo responsabile
-    vedeSaldo: (pid) => tutto || pid === personId || approva.has(pid),
-    // modifica dei periodi, approvazione, definitivo, riapertura: ADMIN (anche il proprio piano: sopra il CEO non c'è nessuno) e il responsabile
-    puoGestire: (pid) => isAdmin || (approva.has(pid) && pid !== personId),
-    puoDecidere: (pid) => isAdmin || (approva.has(pid) && pid !== personId),
+    // saldi e note di una persona: ADMIN, la persona stessa, chi la ha nella propria catena (diretti e livelli sotto)
+    vedeSaldo: (pid) => tutto || pid === personId || catena.has(pid),
+    // modifica dei periodi, approvazione, definitivo, riapertura: il superiore diretto (o il delegato) e l'ADMIN; mai sul proprio piano
+    // (chi non ha nessuno sopra non ha approvazione: il suo piano diventa definitivo all'invio)
+    puoGestire: (pid) => pid !== personId && (isAdmin || approva.has(pid)),
+    puoDecidere: (pid) => pid !== personId && (isAdmin || approva.has(pid)),
+    // piano di un riporto non diretto: visibile, non modificabile
+    soloLettura: (pid) => !tutto && pid !== personId && catena.has(pid) && !approva.has(pid),
     gruppi: tutto ? perim.gruppi.map((g) => g.key) : [...gruppi],
   };
   return ctx;

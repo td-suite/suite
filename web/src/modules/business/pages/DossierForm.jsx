@@ -13,7 +13,8 @@ export default function DossierForm() {
   const { user } = useAuth();
   const orgs = useApi('/organizations');
   const sites = useApi('/sites?all=1');
-  const [f, setF] = useState({ org_id: '', site_id: '', title: '', doc_date: today() });
+  // ?site=<id>&org=<id>: aperto dalla pagina "Punti Prelievo e Centri" con la sede (e il partner) già scelti
+  const [f, setF] = useState(() => { const qs = new URLSearchParams(window.location.search); return { org_id: qs.get('org') || '', site_id: qs.get('site') || '', title: '', doc_date: today() }; });
   const [err, setErr] = useState(null);
   if (!canEditDossier(user)) return <div className="page"><ErrorBox error={new Error('Il fascicolo è riservato a HQS Manager e Retail Manager')} /></div>;
   const org = (orgs.data || []).find((x) => x.id === Number(f.org_id));

@@ -48,6 +48,7 @@ export default function SiteDetail() {
       </div>
       <div className="tabs">{[['profilo', 'Profilo'], ['persone', 'Persone'], ['orari', 'Orari'], ['dotazioni', 'Dotazioni'], ['bacino', 'Bacino e vendite'], ['intorno', 'Intorno']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
 
+      {tab === 'profilo' && <div style={{ marginBottom: 16 }}><PrenotazioneOnline siteId={id} /></div>}
       {tab === 'profilo' && <div className="grid g2">
         <Card title="Anagrafica (Amministrazione)" actions={<Link className="btn sm ghost" to={ADMIN_SITES}>Apri in Amministrazione</Link>}>
           <div className="form-grid">
@@ -184,5 +185,27 @@ function IntornoSede({ siteId }) {
         <p className="small muted">Coordinate {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}{sede.lat != null ? ` (oggi ${Number(sede.lat).toFixed(6)}, ${Number(sede.lng).toFixed(6)})` : ''}. Confermando si aggiornano latitudine e longitudine della sede nell'anagrafica unica.</p>
       </Modal>}
     </div>
+  );
+}
+
+// Blocco "Prenotazione online" (TuoTempo, Fase 1, CEO 09/11/2026): area abbinata, prestazioni online, attesa alla prima disponibilità (mediana
+// delle prestazioni con il primo slot in questa sede, dall'ultimo allineamento), medici attivi e soddisfazione media dalle risorse di TuoTempo
+function PrenotazioneOnline({ siteId }) {
+  const q = useApi(`/tuotempo/sedi/${siteId}`);
+  const d = q.data;
+  if (!d) return null;
+  const CAMPO = { indirizzo: 'indirizzo', cap: 'CAP', citta: 'città', telefono: 'telefono', orari: 'orari' };
+  return (
+    <Card title="Prenotazione online (TuoTempo)" actions={<Link className="btn sm ghost" to={`${base}/connettori#aree-tuotempo`}>Aree TuoTempo</Link>}>
+      {!d.abbinata ? <p className="small muted" style={{ margin: 0 }}>La sede non è abbinata a un'area di TuoTempo: abbinala in Connettori (o in Amministrazione &gt; Sedi, Aree TuoTempo).</p> : <>
+        <div className="grid g4" data-testid="prenotazione-online">
+          <Kpi label="Area TuoTempo" value={d.area.titolo || d.area.areaid} foot={d.area.is_hidden ? 'nascosta alla prenotazione online' : 'visibile online'} />
+          <Kpi label="Prestazioni online" value={num(d.prestazioni_online)} foot={`${num(d.prestazioni_area)} prenotabili nell'area`} />
+          <Kpi accent label="Attesa alla prima disponibilità" value={d.attesa_mediana_giorni != null ? `${String(d.attesa_mediana_giorni).replace('.', ',')} gg` : '–'} foot={d.attesa_data ? `mediana di ${d.attesa_prestazioni} prestazioni, ${itDate(d.attesa_data)}` : 'nessun primo slot in questa sede'} />
+          <Kpi label="Medici attivi" value={num(d.medici_attivi)} foot={d.soddisfazione_media != null ? `soddisfazione media ${String(d.soddisfazione_media).replace('.', ',')} (${d.con_soddisfazione} con valutazione)` : 'soddisfazione non disponibile'} />
+        </div>
+        <p className="small muted" style={{ marginBottom: 0 }}>Su TuoTempo: {d.area.indirizzo || '–'} · tel. {d.area.telefono || '–'} · orari {d.area.orari || '–'}.{d.differenze.length ? <span className="amber"> Diverso dall'anagrafica: {d.differenze.map((x) => CAMPO[x.campo]).join(', ')} (vedi Connettori o Diagnostica anagrafica).</span> : ' Dati uguali all\'anagrafica.'}</p>
+      </>}
+    </Card>
   );
 }

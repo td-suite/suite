@@ -461,6 +461,29 @@ async function retailFlow(ctx) {
     out.push(indicatore({ chiave: 'richiami_scaduti', titolo: 'Richiami Retail scaduti', gruppo: G, valore: x.n, meglio: 'giu', dettaglio: `Pazienti con un esame periodico da ripetere già scaduto · ${x.prossimi} in scadenza nei prossimi 30 giorni`,
       fonte: 'Retail, ultima vendita per paziente e prodotto + periodicità del prodotto', aggiornato: P.oggi }));
   }
+  // Retail · TuoTempo: attesa alla prima disponibilità (giorni dal momento dell'allineamento notturno al primo slot libero delle prestazioni
+  // online), mediana della rete e mediana per sede dall'ultimo giorno dello storico retail.tuotempo_attivita (docs/RETAIL_TUOTEMPO.md)
+  if (ctx.live.retail !== true) out.push(nd('attesa_prima_disponibilita', 'Attesa alla prima disponibilità', 'retail', 'giorni'));
+  else {
+    const db = ctx.db('retail');
+    const ok = (await db.many(`SELECT to_regclass('retail.tuotempo_attivita') IS NOT NULL AS ok`))[0]?.ok;
+    const ultimo = ok ? (await db.many('SELECT max(data)::text AS d FROM tuotempo_attivita'))[0]?.d : null;
+    if (!ultimo) out.push(indicatore({ chiave: 'attesa_prima_disponibilita', titolo: 'Attesa alla prima disponibilità', gruppo: G, unita: 'giorni', meglio: 'giu', fonte: 'Retail · TuoTempo (prima disponibilità delle prestazioni online)', motivo: 'Nessun allineamento con TuoTempo ancora eseguito (Retail > Connettori, "Allinea adesso")' }));
+    else {
+      const med = (rows) => { const v = rows.map((x) => Number(x.g)).filter(Number.isFinite).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : r2((v[m - 1] + v[m]) / 2); };
+      const righe = await db.many(`SELECT t.site_id, s.name AS sede, t.giorni_attesa AS g FROM tuotempo_attivita t LEFT JOIN public.sites s ON s.id = t.site_id WHERE t.data = $1::date`, [ultimo]);
+      const perSede = Object.values(righe.filter((x) => x.site_id).reduce((acc, x) => { (acc[x.site_id] ||= { sede: x.sede, rows: [] }).rows.push(x); return acc; }, {}))
+        .map((x) => ({ etichetta: x.sede, valore: med(x.rows) })).sort((a, b) => b.valore - a.valore);
+      const storia = await db.many(`SELECT data::text AS d, percentile_cont(0.5) WITHIN GROUP (ORDER BY giorni_attesa) AS v FROM tuotempo_attivita WHERE data > $1::date - 12 GROUP BY data ORDER BY data`, [ultimo]);
+      const rete = med(righe);
+      const sett = (await db.many(`SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY giorni_attesa) AS v FROM tuotempo_attivita WHERE data = $1::date - 7`, [ultimo]))[0]?.v;
+      out.push(indicatore({ chiave: 'attesa_prima_disponibilita', titolo: 'Attesa alla prima disponibilità', gruppo: G, unita: 'giorni', meglio: 'giu', valore: rete,
+        confronto: confronto(rete, sett != null ? Number(sett) : null, { meglio: 'giu', etichetta: 'una settimana prima' }),
+        tabella: perSede.slice(0, 8), dettaglio: `Mediana di ${righe.length} prestazioni online · ${perSede.length} ${perSede.length === 1 ? 'sede' : 'sedi'} con l'area abbinata${righe.some((x) => !x.site_id) ? ` · ${righe.filter((x) => !x.site_id).length} prestazioni con il primo slot in un'area non abbinata` : ''}`,
+        serie: storia.map((x) => ({ etichetta: ggmm(x.d), valore: r2(Number(x.v)) })), fonte: `Retail · TuoTempo, prima disponibilità del ${ggmm(ultimo)}`, aggiornato: ultimo,
+        nota: 'Giorni dall\'allineamento notturno al primo slot libero di ogni prestazione prenotabile online, attribuita alla sede del primo slot; è il dato del "tempo dei pazienti" (Key Entities: nessuna prenotazione letta)' }));
+    }
+  }
   // Business Hub: clienti attivi Service e MdL, pipeline, contratti firmati nel mese
   if (ctx.live.business !== true) out.push(nd('clienti_attivi', 'Clienti attivi Service e MdL', 'business'), nd('pipeline', 'Pipeline in fase 4-5', 'business'), nd('contratti_firmati', 'Contratti firmati nel mese', 'business'));
   else {

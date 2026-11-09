@@ -1415,3 +1415,29 @@ listini e volumi dal Business Hub, produzione StudioLAB da Retail (ponte B2B) e 
 `public.sites` e `org_id` → `public.organizations` (facoltativi, fuori dal contenuto firmato); la migrazione finance 006 abbina il
 centro di costo testuale alle sedi senza toccarlo. Fonte non LIVE = "non disponibile", mai zero. Dettagli, ipotesi e verifiche di
 produzione in docs/FINANCE.md.
+
+## Sedi uniche allineate a TuoTempo; punti dalle sedi; Legal entity cliente nel Business Hub (09/11/2026, v0.66.0)
+Tre richieste del CEO del 09/11/2026. La regola di governo non cambia: le sedi esistono una volta sola in Amministrazione > Sedi
+(`public.sites`), ogni scrittura passa da `saveSite`, le Legal entity nascono da `createOrganization`.
+- **A. "Le sedi sono sedi, su Retail, ovunque. E devono quadrare con TuoTempo."** L'area di TuoTempo è un riferimento esterno della sede:
+  `public.sites.legacy_refs->>'tuotempo'` (fonte, scritta con saveSite: `extra.legacy_refs`, una chiave a `null` si toglie);
+  `retail.site_ext.tuotempo_area_id` è solo lo specchio. Allo stesso modo la risorsa (medico) è un riferimento della persona:
+  `public.people.legacy_refs->>'tuotempo'` (audit PERSON_UPDATED). Abbinamento con proposta e conferma, "Crea la sede" dall'area con saveSite,
+  "Copia da TuoTempo" con saveSite e conferma: dettagli in docs/RETAIL_TUOTEMPO.md. Tabella "Aree TuoTempo" anche in Amministrazione > Sedi
+  (scheda "Aree TuoTempo", `?tab=tuotempo`) e "Risorse TuoTempo" in Amministrazione > Persone (`?tab=tuotempo`).
+- **Diagnostica**: **D45** "Sedi con dati diversi da TuoTempo" (INFO, vista `retail.tuotempo_confronto_v`, azioni di riga "Copia l'indirizzo",
+  "Copia il telefono", "Copia gli orari" con saveSite; la Diagnostica ora accetta etichette proprie per le azioni, `etichetteAzioni`);
+  **D46** "Sedi attive senza area TuoTempo" (ATTENZIONE, tipi prenotabili, dopo il primo allineamento); **D47** "Legal entity cliente senza
+  scheda nel Business Hub" (ATTENZIONE, "Crea le schede").
+- **B. Punti dalle sedi**: la pagina "Punti Prelievo e Centri" del Business Hub legge le sedi dell'anagrafica e crea l'account del processo al
+  volo; le sedi non si creano dal Business Hub (docs/BUSINESS_HUB.md, "Richieste del CEO del 09/11/2026"). "Locazioni" in Amministrazione >
+  Sedi apre la vista delle sedi in locazione del Business Hub.
+- **C. Legal entity CLIENTE ⇒ almeno una scheda nel Business Hub**: hook del core in `createOrganization` e nel `PUT /api/organizations/:id`
+  (`hookBusinessLegalEntity`, import dinamico con try/catch, solo con il Business Hub LIVE), job orario, D47; nella scheda Legal entity la
+  sezione "Business Hub" con "Apri nel Business Hub" e "Aggiungi la linea …".
+- **Migrazione** retail 014 (idempotente, non distruttiva: tabelle e colonne nuove, vista, funzioni `retail.tt_norm`, `tt_nome`, `tt_tel`; rapporto
+  MIGRAZIONE_RAPPORTO con le sedi abbinate nello specchio e nella fonte). Nessuna migrazione del core: `legacy_refs` esisteva già su sedi e persone.
+
+**Verifiche in produzione dopo il rilascio**: `SELECT entity_id, data FROM audit_log WHERE action='MIGRAZIONE_RAPPORTO' AND entity_id='retail/014_tuotempo_fase1.sql';`
+`SELECT code, legacy_refs->>'tuotempo' FROM sites WHERE legacy_refs ? 'tuotempo';` (attese le 4 sedi già abbinate, portate nella fonte all'avvio);
+D45, D46 dopo "Allinea adesso"; D47 prima e dopo il job orario; `SELECT action, count(*) FROM audit_log WHERE data->>'origine' LIKE 'Retail > TuoTempo%' GROUP BY 1;`.

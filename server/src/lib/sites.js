@@ -201,22 +201,29 @@ export async function scriviSede(c, { id = null, data = {}, origine = 'Amministr
   if (cur) for (const k of Object.keys(b)) if (JSON.stringify(b[k] ?? null) === JSON.stringify(cur[k] instanceof Date ? cur[k].toISOString() : cur[k] ?? null) || String(b[k] ?? '') === String(cur[k] ?? '')) delete b[k];
   const ext = {};
   if (extra.manager_name !== undefined && (!cur || String(extra.manager_name ?? '') !== String(cur.manager_name ?? ''))) ext.manager_name = extra.manager_name;
-  const refs = extra.legacy_refs && Object.keys(extra.legacy_refs).length ? extra.legacy_refs : null;
+  // riferimenti esterni (connettore, TuoTempo): una chiave con valore null si toglie (es. abbinamento all'area TuoTempo scollegato)
+  const refsAll = extra.legacy_refs && Object.keys(extra.legacy_refs).length ? extra.legacy_refs : null;
+  const refs = refsAll ? Object.fromEntries(Object.entries(refsAll).filter(([, v]) => v != null)) : null;
+  const refsDel = refsAll ? Object.keys(refsAll).filter((k) => refsAll[k] == null && cur?.legacy_refs && Object.prototype.hasOwnProperty.call(cur.legacy_refs, k)) : [];
   let site; let created = false;
   if (!cur) {
     const cols = [...Object.keys(b), ...Object.keys(ext)]; const vals = [...Object.values(b), ...Object.values(ext)];
-    if (refs) { cols.push('legacy_refs'); vals.push(JSON.stringify(refs)); }
+    if (refs && Object.keys(refs).length) { cols.push('legacy_refs'); vals.push(JSON.stringify(refs)); }
     site = (await c.query(`INSERT INTO sites (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals)).rows[0];
     created = true;
   } else {
     const sets = []; const params = [cur.id];
     for (const [k, v] of Object.entries({ ...b, ...ext })) { params.push(v); sets.push(`${k}=$${params.length}`); }
     const refsNew = refs && Object.entries(refs).some(([k, v]) => String(cur.legacy_refs?.[k] ?? '') !== String(v));
-    if (refsNew) { params.push(JSON.stringify(refs)); sets.push(`legacy_refs = legacy_refs || $${params.length}::jsonb`); }
+    if (refsNew || refsDel.length) {
+      params.push(JSON.stringify(refsNew ? refs : {})); const iSet = params.length;
+      params.push(refsDel); const iDel = params.length;
+      sets.push(`legacy_refs = (coalesce(legacy_refs, '{}'::jsonb) || $${iSet}::jsonb) - $${iDel}::text[]`);
+    }
     if (!sets.length) return { site: cur, prima: cur, campi: {}, created: false, effetti: async () => ({}) };
     site = (await c.query(`UPDATE sites SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params)).rows[0];
   }
-  const campi = { ...b, ...ext };
+  const campi = { ...b, ...ext, ...(refsAll && (refsDel.length || (refs && Object.keys(refs).length)) ? { legacy_refs: refsAll } : {}) };
   const titoloCambiato = created || ['tenure', 'host_organization_id'].some((k) => b[k] !== undefined);
   if (titoloCambiato) await syncHostToCash(c, site.id);
   if (!created && b.organization_id !== undefined) await syncCompanyToCash(c, site.id);   // B6

@@ -80,10 +80,12 @@ r.get('/accounts', ah(async (req, res) => {
   if (fase !== undefined && fase !== '') add('a.fase_corrente = ?', Number(fase));
   if (attivo === '1') where.push('a.cliente_attivo'); else if (attivo === '0') where.push('NOT a.cliente_attivo');
   if (prospect === '1') where.push('a.prospect'); else if (prospect === '0') where.push('NOT a.prospect');
+  if (req.query.origine === 'anagrafica') where.push("a.fonte_censimento = 'Anagrafica' AND a.fase_corrente = 0");   // Clienti e prospect: "Da anagrafica (censiti)"
   if (qs) { p.push(String(qs).toLowerCase()); const i = p.length; where.push(`(lower(o.name) LIKE '%'||$${i}||'%' OR lower(coalesce(a.gruppo,'')) LIKE '%'||$${i}||'%' OR lower(coalesce(o.city,'')) LIKE '%'||$${i}||'%' OR lower(a.sedi::text) LIKE '%'||$${i}||'%')`); }
   const rows = await many(`SELECT a.id, a.organization_id, o.name AS org_name, a.linea, a.prospect, a.gruppo, a.tipologia, a.segmento_lab, coalesce(o.city, a.sedi->0->>'citta') AS citta,
       coalesce(o.province, a.sedi->0->>'prov') AS prov, a.priorita, a.fase_corrente, a.phase_dates, a.owner_user_id, uo.full_name AS owner_name, a.prossima_azione, a.data_prossima_azione,
-      a.fatturato_fy_atteso, a.fatturato_2026, a.cliente_attivo, a.attivo_dal, jsonb_array_length(a.sedi) AS n_sedi, a.fornitore_attuale, a.situazione_fornitore, a.updated_at,
+      a.fatturato_fy_atteso, a.fatturato_2026, a.cliente_attivo, a.attivo_dal, jsonb_array_length(a.sedi) AS n_sedi, a.fornitore_attuale, a.situazione_fornitore, a.updated_at, a.fonte_censimento,
+      (a.fonte_censimento = 'Anagrafica') AS da_anagrafica, o.code AS org_code,
       CASE WHEN a.linea='PP' THEN coalesce((SELECT ps.name FROM public.sites ps WHERE ps.id=a.pp_site_id), a.pp_nome) END AS punto_nome,
       (SELECT count(*)::int FROM contracts c WHERE c.org_id=a.organization_id AND c.kind=a.linea AND c.status<>'ANNULLATO') AS n_contratti,
       (SELECT max(x.at) FROM activities x WHERE x.account_id=a.id AND x.tipo<>'SISTEMA') AS ultimo_contatto,
@@ -192,14 +194,27 @@ r.post('/accounts', ah(async (req, res) => {
     // acquisire di Integration). B5: createOrganization ritrova la Legal entity esistente (P.IVA, CF, nome) invece di creare un doppione
     const o = d.nuova_org;
     const out = await createOrganization({ kind: d.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: o.name, city: o.city, province: o.province, email: o.email, phone: o.phone, address: o.address, vat_number: o.vat_number,
-      notes: d.linea === 'PP' ? 'Creata dal Business Hub (partner di un punto prelievi)' : 'Creata dal Business Hub (prospect)' }, { origine: 'Business Hub, nuovo account', req });
+      notes: d.linea === 'PP' ? 'Creata dal Business Hub (partner di un punto prelievi)' : 'Creata dal Business Hub (prospect)' }, { origine: 'Business Hub, nuovo account', req, schedaBusiness: false });
     orgId = out.org.id;
   } else if (!(await one('SELECT 1 FROM public.organizations WHERE id=$1', [orgId]))) throw bad('Legal entity non trovata');
-  if (d.linea !== 'PP' && await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [orgId, d.linea])) throw bad('Questa Legal entity ha già un account su questa linea');
+  if (d.linea !== 'PP') {
+    const es = await one('SELECT id, fonte_censimento, fase_corrente FROM accounts WHERE organization_id=$1 AND linea=$2', [orgId, d.linea]);
+    // scheda nata dall'anagrafica (Legal entity CLIENTE, prospect censito in fase 0, CEO 09/11/2026): il nuovo account la completa con i dati
+    // indicati invece di rifiutare il doppione (chi crea la Legal entity in Amministrazione e poi l'account qui non trova un errore)
+    if (es && es.fonte_censimento === 'Anagrafica' && Number(es.fase_corrente) === 0) {
+      const { linea: _l, organization_id: _o2, nuova_org: _n2, pp_site_id: _s, pp_nome: _p, pp_tipo_previsto: _t, ...campi } = d;
+      const cc = Object.keys(campi).filter((k) => campi[k] !== undefined);
+      if (cc.length) await q(`UPDATE accounts SET ${cc.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [es.id, ...cc.map((c) => campi[c])]);
+      await addActivity(es.id, { tipo: 'SISTEMA', oggetto: 'Scheda dell\'anagrafica completata', testo: `Account ${LINEE[d.linea].label} creato dal Business Hub sulla scheda già nata dall'anagrafica` }, req.user.id);
+      await audit(req, 'HUB_ACCOUNT_CREATE', 'account', es.id, { linea: d.linea, org_id: orgId, scheda_anagrafica: true });
+      return res.status(201).json({ id: es.id, scheda_anagrafica: true });
+    }
+    if (es) throw bad('Questa Legal entity ha già un account su questa linea');
+  }
   if (d.linea === 'PP') {
     if (d.pp_site_id) {
       const sd = await one('SELECT kind FROM public.sites WHERE id=$1', [d.pp_site_id]);
-      if (sd?.kind !== 'PUNTO_PRELIEVI') throw bad('Collega una sede di tipo Punto prelievi');
+      if (!['PUNTO_PRELIEVI', 'CENTRO_MEDICO', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO'].includes(sd?.kind)) throw bad('Collega una sede di tipo punto prelievi, centro medico, centro diagnostico o poliambulatorio');
       if (await one('SELECT 1 FROM accounts WHERE pp_site_id=$1', [d.pp_site_id])) throw bad('Questa sede ha già il suo punto prelievi nel Business Hub');
     }
     if (await one(`SELECT 1 FROM accounts WHERE organization_id=$1 AND linea='PP' AND coalesce(pp_site_id,0)=coalesce($2::int,0) AND lower(coalesce(pp_nome,''))=lower(coalesce($3::text,''))`, [orgId, d.pp_site_id || null, d.pp_nome || null])) throw bad('Questa Legal entity ha già un punto prelievi con questa sede o questo nome: indica il nome del nuovo punto');
@@ -559,7 +574,7 @@ r.post('/email/:id/assegna', ah(async (req, res) => {
   let accountId = d.account_id;
   if (!accountId && d.crea_prospect) {
     richiediLinea(req, m.linea);
-    const { org: row } = await createOrganization({ kind: m.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: d.crea_prospect.nome, city: d.crea_prospect.city || null, email: m.from_email, notes: 'Creata dal Business Hub da un\'email in arrivo (prospect)' }, { origine: 'Business Hub, email da assegnare', req });   // B5
+    const { org: row } = await createOrganization({ kind: m.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: d.crea_prospect.nome, city: d.crea_prospect.city || null, email: m.from_email, notes: 'Creata dal Business Hub da un\'email in arrivo (prospect)' }, { origine: 'Business Hub, email da assegnare', req, schedaBusiness: false });   // B5
     if (await one('SELECT 1 FROM accounts WHERE organization_id=$1 AND linea=$2', [row.id, m.linea]) && m.linea !== 'PP') throw bad(`La Legal entity ${row.name} esiste già con un account su questa linea: assegna l'email a quell'account`);
     accountId = (await one(`INSERT INTO accounts (organization_id, linea, prospect, created_by) VALUES ($1,$2,TRUE,$3) RETURNING id`, [row.id, m.linea, req.user.id])).id;
     await addActivity(accountId, { tipo: 'SISTEMA', oggetto: 'Prospect creato da un\'email in arrivo', testo: `Casella ${m.casella}` }, req.user.id);

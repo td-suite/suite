@@ -14,6 +14,7 @@ export default {
     { to: 'richiami', icon: 'bell', label: 'Richiami periodici', badge: 'richiami_scaduti' },
     { group: 'Vendite' },
     { to: 'prodotti', icon: 'list', label: 'Prestazioni e prodotti' },
+    { to: 'listino-online', icon: 'cash', label: 'Listino online vs cassa' },
     { to: 'vendite', icon: 'cash', label: 'Accettazioni e vendite' },
     { to: 'import', icon: 'upload', label: 'Import dai gestionali', profiles: WRITERS },
     { group: 'Controllo e marketing' },

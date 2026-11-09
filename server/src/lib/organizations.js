@@ -50,7 +50,7 @@ export async function nomiSimili(name, c = null, { escludi = null } = {}) {
  * Ritorna { org, created, come?, simili }: come = criterio del doppione trovato (partita IVA, codice fiscale, nome).
  * Esempio: await createOrganization({ kind: 'FORNITORE', name: 'Immobiliare Rossi Srl', vat_number: '01234567890' }, { origine: 'Finance Management > locatore', req })
  */
-export async function createOrganization(dati, { origine = 'Amministrazione > Legal entity', req = null, actorId = null, c = null, dedupe = true, simili: cercaSimili = dedupe, needsReview = false } = {}) {
+export async function createOrganization(dati, { origine = 'Amministrazione > Legal entity', req = null, actorId = null, c = null, dedupe = true, simili: cercaSimili = dedupe, needsReview = false, schedaBusiness = true } = {}) {
   if (!dati?.name || String(dati.name).trim().length < 2) throw Object.assign(new Error('Ragione sociale mancante'), { status: 400 });
   const lavora = async (cl) => {
     if (dedupe) {
@@ -73,8 +73,26 @@ export async function createOrganization(dati, { origine = 'Amministrazione > Le
     const attore = req ? { user: req.suiteUser || req.user, ip: req.ip } : { user: actorId ? { id: actorId } : null, ip: null };
     await audit(attore, 'ORG_CREATED', { entity: 'organization', entityId: out.org.id, label: out.org.name, data: { origine, kind: out.org.kind, needs_review: out.org.needs_review, simili: out.simili } });
     indexOrg(out.org).catch(() => {});
+    // Legal entity CLIENTE sempre nel Business Hub (CEO, 09/11/2026): scheda creata subito se il modulo è LIVE. Non dentro la transazione di
+    // un chiamante (la riga non è ancora visibile al modulo: la crea il job orario business:schede-da-anagrafica) e non per i chiamanti del
+    // Business Hub, che creano da sé l'account della linea giusta (schedaBusiness: false)
+    if (schedaBusiness && !c && out.org.kind === 'CLIENTE') out.scheda_business = await hookBusinessLegalEntity(out.org.id, { evento: 'creazione' });
   }
   return out;
+}
+
+/**
+ * Hook verso il Business Hub (nessuna dipendenza rigida: import dinamico con try/catch, solo con il modulo LIVE): crea la scheda della
+ * Legal entity CLIENTE attiva che non ne ha (prospect censito, linea dal codice). Ritorna { account_id, creato, linea } o null.
+ */
+export async function hookBusinessLegalEntity(orgId, { evento = 'creazione' } = {}) {
+  try {
+    const { getModuleState } = await import('./modules.js');
+    const st = await getModuleState('business');
+    if (st.mode !== 'LIVE' || st.schema_ready === false) return null;
+    const m = await import('../modules/business/lib/schedeAnagrafica.js');
+    return await m.hookLegalEntity(orgId, { evento });
+  } catch (e) { console.warn(`[business] scheda dall'anagrafica per la Legal entity ${orgId}: ${e.message}`); return null; }
 }
 
 /** Versione comoda: solo l'id (crea o ritrova). */

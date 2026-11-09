@@ -1,18 +1,20 @@
-// Guida del Piano Ferie: il piano ferie annuale per area come stabilito dal CEO (08/11/2026), per dipendenti, responsabili e amministratore
+// Guida del Piano Ferie: il piano ferie annuale per area come stabilito dal CEO (08/11/2026), approvato dal superiore diretto in anagrafica
+// (09/11/2026), per dipendenti, responsabili e amministratore
 import React from 'react';
 import { Card, PageHead } from '../../../components/ui.jsx';
 
 export default function Guida() {
   return (
     <div className="page">
-      <PageHead title="Guida" icon="info" sub="Il piano ferie annuale di ogni area: lo compila il dipendente, lo approva il responsabile dell'area o il CEO" />
-      <div className="alert info" style={{ marginBottom: 16 }}><span>"Serve per pianificare il piano ferie annuale per singola area in modo che sia trasparente a tutta l'area il piano. Visibilità solo all'interno dell'area. Approva il responsabile o il CEO." (CEO, 08/11/2026)</span></div>
+      <PageHead title="Guida" icon="info" sub="Il piano ferie annuale: lo compila il dipendente, lo approva il suo superiore diretto in anagrafica; è trasparente a tutta l'area" />
+      <div className="alert info" style={{ marginBottom: 16 }}><span>"Serve per pianificare il piano ferie annuale per singola area in modo che sia trasparente a tutta l'area il piano." (CEO, 08/11/2026) · "Segui pedissequamente quanto indicato in organigramma. Segui quindi chi approva, come indicato in organigramma." (CEO, 09/11/2026)</span></div>
       <div className="fe-two">
         <Card title="Per i dipendenti" icon="user">
           <ul className="fe-guida">
             <li>Il Piano Ferie riguarda i dipendenti con contratto di lavoro subordinato registrato in Contratti del personale. I liberi professionisti non sono compresi.</li>
             <li><b>Il mio piano</b>: nel calendario dei 12 mesi trascina sui giorni (o cliccane uno) per aggiungere un periodo; puoi indicare mezza giornata il primo o l'ultimo giorno. I giorni lavorativi si contano da soli: festivi nazionali, santo patrono della sede e la tua settimana lavorativa.</li>
             <li>In alto vedi sempre quanti giorni hai <b>da pianificare</b>: spettanti dell'anno + residuo dell'anno precedente − giorni già nel piano.</li>
+            <li>In cima al piano vedi <b>chi approva</b> il tuo piano: il tuo superiore diretto in anagrafica ("Dipende da" in Amministrazione &gt; Persone). Se è cessato o non ha accesso alla Suite, approva il superiore del superiore, e la pagina lo dice.</li>
             <li>Quando il piano è pronto premi <b>Invia al responsabile</b>. Finché il responsabile non lo prende in carico puoi ancora modificarlo.</li>
             <li>Dopo l'approvazione il piano non si modifica più direttamente: per aggiungere, spostare o togliere un periodo proponi una <b>variazione</b>, che il responsabile approva o rifiuta.</li>
             <li>Sotto il tuo piano vedi <b>il piano della tua area</b>: nomi e periodi dei colleghi della tua area, mai di altre aree. Saldi e note restano riservati.</li>
@@ -21,10 +23,11 @@ export default function Guida() {
         </Card>
         <Card title="Per i responsabili di area" icon="users">
           <ul className="fe-guida">
-            <li>Il responsabile dell'area è l'approvatore dall'organigramma (responsabile della sede o dell'unità di primo livello), chi ha il profilo Responsabile o chi lo sostituisce per delega. Vede solo la propria area.</li>
-            <li><b>Piano dell'area</b>: tutte le persone dell'area per mesi, settimane o giorni, con lo stato del piano di ciascuno e i giorni sotto la <b>copertura minima</b> in rosso.</li>
+            <li>Approvi i piani dei tuoi <b>diretti</b>: le persone che in anagrafica dipendono da te (o da chi ti ha delegato, per il periodo della delega). Nessun altro criterio: non l'area, non la sede.</li>
+            <li><b>La mia catena</b>: l'albero dei tuoi riporti a ogni livello, con lo stato del piano e i saldi. I diretti li approvi tu; quelli dei livelli sotto li vedi in sola lettura (li approva il loro superiore diretto, indicato in "Approva").</li>
+            <li><b>Piano dell'area</b>: tutte le persone dell'area per mesi, settimane o giorni, con lo stato del piano di ciascuno, chi lo approva e i giorni sotto la <b>copertura minima</b> in rosso. Le azioni compaiono solo sui tuoi diretti.</li>
             <li>Nella vista <b>Mese</b> clicca un giorno per aggiungere un periodo a una persona, o un periodo per spostarlo o toglierlo. Modificando un piano inviato lo prendi in carico (stato "In revisione").</li>
-            <li><b>Approva</b> il piano di una persona o <b>tutta l'area</b> in un colpo; poi <b>Rendi definitivo</b>. Un piano definitivo lo cambi solo tu (o l'amministratore) con un motivo, e il dipendente riceve la notifica; puoi anche <b>riaprirlo</b> con un motivo.</li>
+            <li><b>Approva</b> il piano di un diretto o tutti i tuoi diretti dell'area in un colpo ("Approva tutta l'area"); poi <b>Rendi definitivo</b>. Un piano definitivo lo cambi solo tu (o l'amministratore) con un motivo, e il dipendente riceve la notifica; puoi anche <b>riaprirlo</b> con un motivo.</li>
             <li>Le <b>variazioni</b> proposte dopo l'approvazione arrivano in "Variazioni da decidere": approva o rifiuta con il motivo.</li>
             <li>Ricevi un promemoria per i piani inviati e le variazioni in attesa da qualche giorno (predefiniti 3).</li>
           </ul>
@@ -52,12 +55,15 @@ export default function Guida() {
             <li><b>Direzione</b>: tecnostruttura (unità STAFF sotto il vertice), vertice e sede direzionale.</li>
             <li><b>Laboratorio</b>: unità della sede di tipo Laboratorio o sotto l'area "Laboratorio".</li>
             <li><b>Sedi</b>: tutte le altre, un'area per sede (la sede dell'unità nell'organigramma o la sede di lavoro della persona).</li>
-            <li>Chi non ha né unità con sede né sede di lavoro finisce in "Da assegnare": l'amministratore lo sistema in Impostazioni &gt; Aree forzate.</li>
+            <li>Chi non ha né unità con sede né sede di lavoro finisce in "Da assegnare": l'amministratore lo sistema in Impostazioni &gt; Aree (visibilità).</li>
+            <li>L'area decide solo chi <b>vede</b> il piano; chi <b>approva</b> lo decide l'anagrafica (superiore diretto).</li>
           </ul>
         </Card>
         <Card title="Amministratore" icon="shield">
           <ul className="fe-guida">
-            <li>L'amministratore (il CEO; HR solo se ha il profilo Amministratore del modulo) vede tutte le aree e può fare tutto ciò che fa il responsabile su ogni area.</li>
+            <li>L'amministratore (il CEO; HR solo se ha il profilo Amministratore del modulo) vede tutte le aree e può intervenire su ogni piano al posto del superiore diretto.</li>
+            <li>Chi non ha nessuno sopra in organigramma (il vertice, il CEO) non ha approvazione: all'invio il suo piano diventa <b>definitivo</b> con l'annotazione "senza approvatore in organigramma", e così le sue variazioni.</li>
+            <li>Diagnostica (Amministrazione): "Dipendenti senza superiore in anagrafica" (il loro piano non può essere approvato dal responsabile) e "Superiore cessato o senza accesso".</li>
             <li>Gestisce le impostazioni: giorni annui, patroni, copertura minima, chiusure collettive, promemoria e la <b>scadenza di invio del piano</b> di ogni anno.</li>
             <li>Il cruscotto mostra i piani per stato in ogni area, i residui a rischio e il non goduto da smaltire.</li>
           </ul>

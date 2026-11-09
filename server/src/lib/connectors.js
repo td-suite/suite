@@ -3,6 +3,7 @@
 // credenziali e segreto in ingresso (getConnector / connectorSync), verificano le chiamate in ingresso (verifyInbound) e
 // registrano le chiamate (logConnector). Finché la riga non è configurata valgono le variabili d'ambiente storiche dei moduli
 // (LIS_*, STUDIOLAB_*, SILVA_*), così la produzione continua a funzionare senza interventi.
+import { APP_VERSION } from '../version.js';
 import crypto from 'node:crypto';
 import { q, one, many } from '../db.js';
 import { encrypt, decrypt } from './secrets.js';
@@ -222,7 +223,7 @@ export async function testConnector(kind) {
       if (!token) throw new Error('api_key TuoTempo non impostata');
       if (!c.settings.instance) throw new Error('Istanza TuoTempo (dbName) non impostata nelle impostazioni');
       endpoint = `${c.base_url.replace(/\/+$/, '')}/${c.settings.instance}/typologies?fields=typologyid,typologyTitle&lang=${c.settings.lang || 'it'}`;
-      const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'td-suite/1.0 (Toscana Diagnostica)', 'Content-Type': 'application/json; charset=utf-8' } });
+      const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${token}`, 'User-Agent': `TD-Suite/${APP_VERSION}`, 'Content-Type': 'application/json; charset=utf-8' } });
       if (!r.res.ok || (r.data && r.data.result && r.data.result !== 'OK')) throw new Error(`TuoTempo risponde ${r.res.status}${r.data?.exception ? ` ${r.data.exception}` : ''}: ${r.data?.msg || r.text.slice(0, 200)}`);
       const rows = Array.isArray(r.data?.return?.results) ? r.data.return.results : Array.isArray(r.data?.results) ? r.data.results : [];
       out = { ok: true, message: `Connessione riuscita: ${rows.length} tipologie (${r.ms} ms)` };

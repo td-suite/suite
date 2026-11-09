@@ -8,7 +8,7 @@ import { useAuth, canEditKind } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Badge, Modal, Field, Empty, useToast } from '../components/ui.jsx';
 import { FASI, LINEE, PRIORITA, eurK, itDate, itDateTime } from '../format.js';
 
-const CHIAVI = ['q', 'linea', 'priorita', 'owner', 'prov', 'segmento', 'fase', 'attivo', 'stallo'];
+const CHIAVI = ['q', 'linea', 'priorita', 'owner', 'prov', 'segmento', 'fase', 'attivo', 'stallo', 'origine'];
 export function useFiltri() {
   const [sp, setSp] = useSearchParams();
   const f = Object.fromEntries(CHIAVI.map((k) => [k, sp.get(k) || '']));
@@ -24,6 +24,7 @@ export function filtra(righe, f) {
     && (!f.owner || (f.owner === 'nessuno' ? !a.owner_user_id : String(a.owner_user_id) === f.owner)) && (!f.prov || String(a.prov || '').toUpperCase() === f.prov)
     && (!f.segmento || a.segmento_lab === f.segmento) && (f.fase === '' || String(a.fase_corrente) === f.fase)
     && (!f.attivo || (f.attivo === '1' ? a.cliente_attivo : f.attivo === 'conferma' ? a.da_confermare : !a.cliente_attivo)) && (!f.stallo || a.stallo)
+    && (f.origine !== 'anagrafica' || (a.da_anagrafica && Number(a.fase_corrente) === 0))
     && (!t || norm(`${a.org_name} ${a.gruppo || ''} ${a.citta || ''} ${a.tipologia || ''}`).includes(t)));
 }
 export function FiltriAccount({ f, setF, righe, owners, fase }) {
@@ -40,6 +41,8 @@ export function FiltriAccount({ f, setF, righe, owners, fase }) {
       {fase && <label className="f">Fase<select value={f.fase} onChange={(e) => setF({ fase: e.target.value })}><option value="">Tutte</option>{FASI.map((x) => <option key={x.n} value={x.n}>{x.label}</option>)}</select></label>}
       <label className="f">Stato<select value={f.attivo} onChange={(e) => setF({ attivo: e.target.value })}><option value="">Tutti</option><option value="1">Clienti attivi</option><option value="0">Non attivi</option><option value="conferma">Da confermare dal CEO</option></select></label>
       <label className="f inline" style={{ alignSelf: 'center' }}><input type="checkbox" checked={f.stallo === '1'} onChange={(e) => setF({ stallo: e.target.checked ? '1' : '' })} />Solo in stallo</label>
+      {/* CEO, 09/11/2026: le Legal entity cliente dell'anagrafica si ritrovano subito (schede create dall'anagrafica, prospect censiti) */}
+      <label className="f inline" style={{ alignSelf: 'center' }} title="Schede create dall'anagrafica (Amministrazione > Legal entity di tipo cliente), ancora in fase 0"><input type="checkbox" data-testid="filtro-anagrafica" checked={f.origine === 'anagrafica'} onChange={(e) => setF({ origine: e.target.checked ? 'anagrafica' : '' })} />Da anagrafica (censiti)</label>
       {attivi && <button className="btn sm ghost" style={{ alignSelf: 'center' }} onClick={() => setF(Object.fromEntries(CHIAVI.map((k) => [k, k === 'linea' ? f.linea : ''])))}>Azzera filtri</button>}
     </div>
   );
@@ -80,7 +83,7 @@ export default function Clienti() {
           <tbody>
             {righe.map((a) => (
               <tr key={a.id} className="click" onClick={() => nav(`${BASE}/account/${a.id}`)}>
-                <td><div className="strong">{a.org_name}</div><div className="small muted">{[a.punto_nome && a.punto_nome !== a.org_name ? a.punto_nome : null, a.gruppo && a.gruppo !== a.org_name ? a.gruppo : null, a.tipologia, a.n_sedi ? `${a.n_sedi} strutture` : null].filter(Boolean).join(' · ')}</div></td>
+                <td><div className="strong">{a.org_name}{a.da_anagrafica && Number(a.fase_corrente) === 0 && <> <Badge tone="grey" title="Scheda creata dall'anagrafica (Legal entity di tipo cliente)">da anagrafica{a.org_code ? ` · ${a.org_code}` : ''}</Badge></>}</div><div className="small muted">{[a.punto_nome && a.punto_nome !== a.org_name ? a.punto_nome : null, a.gruppo && a.gruppo !== a.org_name ? a.gruppo : null, a.tipologia, a.n_sedi ? `${a.n_sedi} strutture` : null].filter(Boolean).join(' · ')}</div></td>
                 <td><Badge tone={LINEE[a.linea].tone}>{LINEE[a.linea].short}</Badge></td>
                 <td style={{ whiteSpace: 'nowrap' }}><Badge tone={FASI[a.fase_corrente].tone}>{FASI[a.fase_corrente].short}</Badge>{a.cliente_attivo ? <div className="small green strong">cliente attivo</div> : a.da_confermare ? <div className="small" style={{ color: '#6d3f8a' }}>da confermare dal CEO</div> : null}</td>
                 <td>{a.priorita ? <Badge tone={PRIORITA[a.priorita].tone}>{PRIORITA[a.priorita].label}</Badge> : '–'}</td>

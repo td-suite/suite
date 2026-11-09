@@ -90,7 +90,7 @@ function Righe({ k, onCorreggi }) {
             <td style={{ whiteSpace: 'nowrap' }}>
               {r.__link && (r.__link.startsWith('/business') || r.__link.startsWith('/retail') ? <a href={r.__link}>Apri</a> : <Link to={r.__link}>{r.__link.includes('unisci=') ? 'Unisci' : 'Apri'}</Link>)}
               {k.correggi && !k.correggi.tutte && (k.correggi.azioni ? k.correggi.azioni : [null]).map((a) => (
-                <button key={a || 'x'} className="btn sm ghost" style={{ marginLeft: 6 }} onClick={() => onCorreggi([r[k.chiave]], a)}>{a === 'crea_sede' ? 'Crea la sede dal nodo' : a === 'elimina_nodo' ? 'Elimina il nodo' : a === 'collega' ? 'Collega' : 'Correggi'}</button>
+                <button key={a || 'x'} className="btn sm ghost" style={{ marginLeft: 6 }} onClick={() => onCorreggi([r[k.chiave]], a)}>{k.correggi.etichette_azioni?.[a] || (a === 'crea_sede' ? 'Crea la sede dal nodo' : a === 'elimina_nodo' ? 'Elimina il nodo' : a === 'collega' ? 'Collega' : 'Correggi')}</button>
               ))}
             </td>
           </tr>
@@ -112,7 +112,7 @@ function CorreggiModal({ corr, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState(null);
   const serveConferma = k.correggi.conferma;
-  const etichetta = azione === 'crea_sede' ? 'Crea la sede dal nodo' : azione === 'elimina_nodo' ? 'Elimina il nodo' : k.correggi.etichetta;
+  const etichetta = k.correggi.etichette_azioni?.[azione] || (azione === 'crea_sede' ? 'Crea la sede dal nodo' : azione === 'elimina_nodo' ? 'Elimina il nodo' : k.correggi.etichetta);
   const go = async () => {
     setBusy(true); setErr(null);
     try {

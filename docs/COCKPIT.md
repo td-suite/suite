@@ -206,3 +206,10 @@ stesso giorno; percentuali: differenza in punti con il mese precedente. Indicato
   (`SELECT count(*) FROM room.turni WHERE prof_id IS NOT NULL AND room_id IS NULL AND mese = to_char(CURRENT_DATE,'YYYY-MM');`).
 - Monitor fisso: aprire `/cockpit?monitor=1` sul PC collegato allo schermo, poi "Schermo intero"; la sessione deve restare valida
   (utente dedicato con il solo modulo Cockpit, profilo VIEWER).
+
+### Attesa alla prima disponibilità (TuoTempo, 09/11/2026)
+| Gruppo | Indicatore | Fonte e formula |
+|---|---|---|
+| Retail e Flow | Attesa alla prima disponibilità (giorni) | `retail.tuotempo_attivita` dell'ultimo giorno allineato: per ogni prestazione prenotabile online, giorni dal momento dell'allineamento notturno al primo slot libero (`first_availability` di TuoTempo), attribuita alla sede del primo slot (area abbinata). Valore = mediana della rete; tabella = mediana per sede (prime 8, dalla più lunga); confronto con lo stesso dato di una settimana prima; serie degli ultimi 12 giorni. Senza allineamenti: "non disponibile" con il motivo. **Ipotesi dichiarata**: è la prima disponibilità della prestazione su tutta la rete (Key Entities), non l'agenda di ogni sede (servirà Availabilities, Fase 2). Docs: docs/RETAIL_TUOTEMPO.md |
+
+Verifica in produzione: dopo il primo allineamento la card ha un valore e la tabella per sede; `SELECT data, count(*) FROM retail.tuotempo_attivita GROUP BY 1 ORDER BY 1 DESC LIMIT 3;`.
