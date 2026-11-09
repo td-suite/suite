@@ -5,6 +5,7 @@ WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ .
+COPY server/src/version.js ./version.js
 RUN npm run build
 
 FROM node:22-bookworm-slim

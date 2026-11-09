@@ -4,7 +4,14 @@ import moduleCss from './vite.plugin.modcss.js';
 import { readFileSync } from 'node:fs';
 
 // Versione della Suite dentro la build (per capire quando il browser ha una versione vecchia): la stessa di server/src/version.js
-const APP_VERSION = (readFileSync(new URL('../server/src/version.js', import.meta.url), 'utf8').match(/'(\d+\.\d+\.\d+)'/) || [])[1] || '0.0.0';
+// (nel Dockerfile il file viene copiato in web/version.js prima della build; in locale si legge dal server; senza nessuno dei due '0.0.0')
+function leggiVersione() {
+  for (const f of ['./version.js', '../server/src/version.js']) {
+    try { const m = readFileSync(new URL(f, import.meta.url), 'utf8').match(/'(\d+\.\d+\.\d+)'/); if (m) return m[1]; } catch { /* prossimo */ }
+  }
+  return process.env.APP_VERSION || '0.0.0';
+}
+const APP_VERSION = leggiVersione();
 
 // Librerie in chunk separati (debug pre-produzione M8): la pagina di login scarica solo React, il router e l'avvio della Suite;
 // grafici, mappe, SheetJS, PDF e il visore PDF arrivano solo nelle pagine che li usano (import dinamici e moduli a richiesta)

@@ -124,7 +124,23 @@ async function ackRemindersJob() {
   return { circolari: rows.length, promemoria: sent };
 }
 
+// Registro unico delle circolari (CEO, 09/11/2026: "non voglio perderla nell'archivio"): ogni circolare pubblicata in Comunicazione con
+// il protocollo provvisorio CIRC-… viene portata da sola nel registro del modulo Circolari (TD-AAAA/NNN, PDF, Archivio) appena il modulo
+// è LIVE, all'avvio e poi ogni ora; stessa operazione di Diagnostica D42 "Registra", senza passaggi manuali. Idempotente.
+export async function circolariNelRegistroJob() {
+  const { registraEsistente, registroAttivo } = await import('../modules/circolari/lib/ponte.js');
+  if (!(await registroAttivo())) return { skipped: true, reason: 'modulo Circolari non LIVE' };
+  const righe = await many(`SELECT id, protocol FROM news WHERE kind='CIRCOLARE' AND status='PUBLISHED' AND circolare_id IS NULL ORDER BY published_at, id`);
+  const out = { registrate: 0, errori: [] };
+  for (const r of righe) {
+    try { const x = await registraEsistente(r.id, {}); if (/^registrata/.test(x.esito)) { out.registrate++; console.log(`[community] ${r.protocol || `news ${r.id}`} → ${x.esito}`); } else if (!/già nel registro/.test(x.esito)) out.errori.push(`${r.protocol || r.id}: ${x.motivo || x.esito}`); }
+    catch (e) { out.errori.push(`${r.protocol || r.id}: ${e.message}`); }
+  }
+  return out;
+}
+
 export function registerCommunityJobs(registerJob) {
   registerJob('community:daily-quote', 60, dailyQuoteJob, { runAtStart: true });
   registerJob('community:ack-reminders', 720, ackRemindersJob, { runAtStart: false });
+  registerJob('community:circolari-registro', 60, circolariNelRegistroJob, { runAtStart: true });
 }
