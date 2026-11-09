@@ -205,7 +205,12 @@ export async function testConnector(kind) {
   try {
     if (kind === 'STUDIOLAB' && c.auth_kind === 'CLIENT_JWT') {
       // WebApi StudioLAB con client registrato: login → token → GET /api/v1/auth/client/info
-      endpoint = `${String(c.base_url).replace(/\/+$/, '')}/api/v1/auth/client/info`;
+      // prima la salute del servizio (senza token): distingue "non raggiungibile" da "credenziali sbagliate"
+      const base = String(c.base_url).replace(/\/+$/, '');
+      const h = await fetchJson(`${base}/api/v1/health`, { headers: studiolabExtraHeaders(c), timeoutMs: Number(c.settings.timeout_ms) || 12000 }).catch((e) => ({ errore: e.message }));
+      if (h.errore) throw new Error(`StudioLAB non raggiungibile su ${base}/api/v1/health: ${h.errore}`);
+      if (!h.res.ok) throw new Error(`StudioLAB /api/v1/health risponde ${h.res.status}: ${h.text.slice(0, 200)}`);
+      endpoint = `${base}/api/v1/auth/client/info`;
       const tok = await studiolabClientToken({ forza: true });
       const r = await fetchJson(endpoint, { headers: { Authorization: `Bearer ${tok.accessToken}`, ...studiolabExtraHeaders(c) }, timeoutMs: Number(c.settings.timeout_ms) || 12000 });
       if (!r.res.ok) throw new Error(`StudioLAB risponde ${r.res.status}: ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}`);
