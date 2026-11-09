@@ -54,7 +54,7 @@ function ConnectorCard({ c, onChanged }) {
   const needsInbound = c.kind === 'STUDIOLAB' || c.kind === 'SILVA';
   const needsOutbound = true;   // anche Silva: chiave X-API-KEY per catalogo e giacenze (API v1)
   return (
-    <Card title={c.name} icon="cloud" className="connector-card" actions={<div className="row tight"><Badge tone={tone}>{stateLabel}</Badge><Switch checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={`Abilita ${c.name}`} /></div>}>
+    <Card title={c.name} icon="cloud" className="connector-card" actions={<div className="row tight"><Badge tone={tone}>{stateLabel}</Badge><Switch checked={f.enabled} onChange={async (v) => { setF({ ...f, enabled: v }); try { await api.put(`/connectors/${c.kind}`, { enabled: v }); toast(v ? `${c.name}: attivato` : `${c.name}: disabilitato`); onChanged(); } catch (e) { toast(e, 'err'); setF({ ...f, enabled: !v }); } }} label={`Abilita ${c.name}`} /></div>}>
       <p className="small muted" style={{ marginTop: 0 }}>{DESC[c.kind]}</p>
       <div className="row tight wrap small" style={{ gap: 14, marginBottom: 10 }}>
         <span>Credenziali: {c.credentials.configured ? <Badge tone="green">impostate{Object.values(c.credentials.keys)[0]?.hint ? ` ••••${Object.values(c.credentials.keys)[0].hint}` : ''}</Badge> : <Badge tone="grey">non impostate</Badge>}</span>
