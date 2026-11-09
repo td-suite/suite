@@ -283,7 +283,10 @@ export async function studiolabClientToken({ forza = false } = {}) {
   const t0 = Date.now();
   const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...studiolabExtraHeaders(c) }, body: JSON.stringify({ name: c.credentials.client_name, password: c.credentials.password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
   logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'core', endpoint: 'POST /api/v1/auth/client/login', status: r.res.status, ms: Date.now() - t0, message: r.res.ok ? null : r.text.slice(0, 300) });
-  if (!r.res.ok) throw new Error(`Login StudioLAB rifiutato (${r.res.status}): ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}`);
+  if (!r.res.ok) {
+    const errs = Array.isArray(r.data?.errors) ? r.data.errors.map((e) => e.errorMessage || e.message).filter(Boolean) : [];
+    throw new Error(`Login StudioLAB rifiutato (${r.res.status}): ${errs.length ? errs.join('; ') : (r.data && (r.data.message || r.data.Message || r.data.title)) || r.text.slice(0, 300) || r.res.statusText}`);
+  }
   const token = r.data?.accessToken; const validTo = r.data?.validTo ? Date.parse(r.data.validTo) : Date.now() + 3600000;
   if (!token) throw new Error('Login StudioLAB senza accessToken nella risposta');
   jwtCache = { token, validTo };
@@ -299,7 +302,12 @@ export async function studiolabClientRegister() {
   const t0 = Date.now();
   const r = await fetchJson(`${jwtBase(c)}/api/v1/auth/client/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...studiolabExtraHeaders(c) }, body: JSON.stringify({ name: client_name, id: client_id, host: client_host || client_name, password }), timeoutMs: Number(c.settings.timeout_ms) || 12000 });
   logConnector({ kind: 'STUDIOLAB', direction: 'OUT', module: 'core', endpoint: 'POST /api/v1/auth/client/register', status: r.res.status, ms: Date.now() - t0, message: r.res.ok ? null : r.text.slice(0, 300) });
-  if (!r.res.ok) throw new Error(`Registrazione rifiutata (${r.res.status}): ${(r.data && (r.data.message || r.data.Message)) || r.text.slice(0, 200) || r.res.statusText}${r.res.status === 400 || r.res.status === 409 ? ' (se la password era già impostata, è normale: passa alla Prova connessione)' : ''}`);
+  if (!r.res.ok) {
+    // la WebApi risponde con una validazione { isValid, errors: [{ propertyName, errorMessage }] }: si mostra il messaggio, non il JSON
+    const errs = Array.isArray(r.data?.errors) ? r.data.errors.map((e) => e.errorMessage || e.message).filter(Boolean) : [];
+    const msg = errs.length ? errs.join('; ') : (r.data && (r.data.message || r.data.Message || r.data.title)) || r.text.slice(0, 300) || r.res.statusText;
+    throw new Error(`Registrazione rifiutata (${r.res.status}): ${msg}. Se dice che la password è già impostata, è normale: passa alla Prova connessione; se la Prova dà "credenziali errate", la password registrata in passato è diversa da quella salvata qui e va riallineata con CB Sistemi.`);
+  }
   studiolabClientTokenReset();
   return { ok: true, message: `Password del client ${client_name} registrata (${Date.now() - t0} ms)` };
 }
