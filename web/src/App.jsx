@@ -28,7 +28,11 @@ class ErrorBoundary extends React.Component {
   constructor(p) { super(p); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
   componentDidCatch(error) { console.error(error); }
-  render() { return this.state.error ? <ErrorPage error={this.state.error} onRetry={() => this.setState({ error: null })} /> : this.props.children; }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const vecchiaVersione = /dynamically imported module|Loading chunk|Importing a module script failed/i.test(String(this.state.error?.message || ''));
+    return <ErrorPage error={vecchiaVersione ? { message: 'È stata pubblicata una nuova versione della Suite mentre questa pagina era aperta: ricaricala per continuare.' } : this.state.error} onRetry={() => (vecchiaVersione ? location.reload() : this.setState({ error: null }))} />;
+  }
 }
 
 function Splash() { return <div className="splash" aria-busy="true"><img src="/logo-light.svg" alt="Toscana Diagnostica" /></div>; }

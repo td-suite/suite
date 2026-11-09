@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import moduleCss from './vite.plugin.modcss.js';
+import { readFileSync } from 'node:fs';
+
+// Versione della Suite dentro la build (per capire quando il browser ha una versione vecchia): la stessa di server/src/version.js
+const APP_VERSION = (readFileSync(new URL('../server/src/version.js', import.meta.url), 'utf8').match(/'(\d+\.\d+\.\d+)'/) || [])[1] || '0.0.0';
 
 // Librerie in chunk separati (debug pre-produzione M8): la pagina di login scarica solo React, il router e l'avvio della Suite;
 // grafici, mappe, SheetJS, PDF e il visore PDF arrivano solo nelle pagine che li usano (import dinamici e moduli a richiesta)
@@ -15,6 +19,7 @@ const CHUNK = [
 
 export default defineConfig({
   plugins: [moduleCss(), react()],
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   server: { port: 5173, proxy: { '/api': 'http://localhost:3000' } },
   build: {
     outDir: 'dist',

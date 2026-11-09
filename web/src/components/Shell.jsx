@@ -159,6 +159,21 @@ export function TopBar({ onMenu, hasSide }) {
   );
 }
 
+// Controllo della versione: ogni 5 minuti confronta la versione in esecuzione sul server (/api/health) con quella della build caricata
+// nel browser (__APP_VERSION__); se il server è più nuovo mostra un avviso con "Aggiorna" (ricarica la pagina). Evita l'errore del
+// chunk mancante dopo un rilascio e fa arrivare subito le correzioni a chi tiene la Suite aperta tutto il giorno.
+function AvvisoVersione() {
+  const [nuova, setNuova] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    const controlla = async () => { try { const h = await api.get('/health'); if (vivo && h?.version && typeof __APP_VERSION__ !== 'undefined' && h.version !== __APP_VERSION__) setNuova(h.version); } catch { /* offline: niente */ } };
+    const iv = setInterval(controlla, 5 * 60 * 1000); const t = setTimeout(controlla, 20000);
+    return () => { vivo = false; clearInterval(iv); clearTimeout(t); };
+  }, []);
+  if (!nuova) return null;
+  return <div className="versione-nuova" role="status"><Icon name="refresh" /><span>È disponibile la versione {nuova} della Suite.</span><button className="btn sm" onClick={() => location.reload()}>Aggiorna</button></div>;
+}
+
 export default function Shell() {
   const { user } = useAuth();
   const loc = useLocation();
@@ -200,6 +215,7 @@ export default function Shell() {
           </aside>
         </>}
         <main className="main" id="main">
+          <AvvisoVersione />
           <Suspense fallback={<div className="page" aria-busy="true" />}><Outlet /></Suspense>
         </main>
       </div>

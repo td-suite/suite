@@ -170,8 +170,9 @@ app.get('/go/:module', async (req, res, next) => {
 // Frontend (build Vite)
 const webDir = process.env.WEB_DIR || path.join(__dirname, '..', 'public');
 if (fs.existsSync(webDir)) {
-  app.use(express.static(webDir, { index: false, maxAge: '1h' }));
-  app.get('*', (_req, res) => res.sendFile(path.join(webDir, 'index.html')));
+  // /assets/* hanno l'hash nel nome: cache lunga; index.html mai in cache, così dopo un rilascio il browser prende subito la lista nuova dei chunk
+  app.use(express.static(webDir, { index: false, setHeaders: (res, filePath) => { res.setHeader('Cache-Control', /[\\/]assets[\\/]/.test(filePath) ? 'public, max-age=31536000, immutable' : 'no-cache'); } }));
+  app.get('*', (_req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(webDir, 'index.html')); });
 }
 
 app.use(gestoreErrori);
