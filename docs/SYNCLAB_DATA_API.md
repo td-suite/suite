@@ -22,7 +22,8 @@ quando manca (sotto, "Chi usa i dati" e "Dati paziente: dove e perché").
 | Listini (v0.68.5) | `server/src/lib/synclab/listini.js` | `listiniDiOrg`, `confrontoConHub`, `xlsxListiniOrg`, `xlsxListiniAggregato` (Business Hub). |
 | Recupero puntuale NC | `server/src/modules/nc/lib/pazienteSynclab.js` | `recuperaPaziente(acc)`: ricerca nella copia per numero o barcode, `dettaglio('requests', id, { includePatient: true })`, merge nella cache di NC. |
 | API | `server/src/routes/synclab.js` su `/api/synclab` (solo amministratori) | stato, impostazioni, sincronizza/riprendi/completo, storico, clienti Synclab e abbinamento, listino di un client. |
-| Pagina | `web/src/pages/admin/SynclabDati.jsx` → `/admin/connectors/synclab` | Amministrazione > Connettori > StudioLAB > "Dati Synclab (Data API)": schede Stato, Clienti Synclab, Impostazioni, Storico dei cicli. |
+| Pagina | `web/src/pages/admin/SynclabDati.jsx` → `/admin/connectors/synclab` | Amministrazione > Connettori > StudioLAB > "Dati Synclab (Data API)": schede Stato, Clienti Synclab, **Quadratura** (v0.68.6), Impostazioni, Storico dei cicli. |
+| Quadratura (v0.68.6) | `server/src/lib/synclab/quadratura.js` + `quadratura()` in `letture.js` | Lettura del report "Riepilogo Esami" di StudioLab, confronto nelle 4 varianti, cause per cliente, XLSX (sotto, "Quadratura con StudioLab"). |
 | Schema | `server/src/migrations/052_synclab_data_api.sql` (core) | Schema `synclab`, tabelle, ponti, vista `clients_td`. |
 | Prova a riga di comando | `server/scripts/synclab-smoke.mjs` | health, login, metadata, prima pagina di exams (con il 202), conteggi. |
 | Server finto | `server/test/helpers/fakeSynclab.mjs` | Solo dati sintetici di CB Sistemi; usato dai test e dal collaudo. |
@@ -100,7 +101,8 @@ percorsi di dettaglio sono scritti come `/api/v1/data/requests/{id}`.
 | `data_api_timeout_ms` | 120000 | Tempo massimo per pagina. Chiave distinta da `timeout_ms` (12 s, usato da login, NC e Ordini). |
 | `operating_company` | vuoto | Filtro facoltativo; cambiarlo crea un nuovo ambito (nuovo completo); i record del vecchio ambito restano nella copia. |
 | `datasets` | tutti e 5 | Insiemi del ciclo notturno. |
-| `stati_erogati` | 18, 20, 25, 40, 50 | v0.68.5. Stati dell'accettazione che valgono **produzione erogata** in tutta la Suite (sotto). Scheda Impostazioni con la legenda dei codici. **Ipotesi da confermare** con il CEO e CB Sistemi. Letti anche in SQL da `synclab.stati_erogati()` (migrazione core 055). |
+| `stati_erogati` | 10, 15, 18, 20, 25, 30, 40, 50 | v0.68.5; **v0.68.6: etichetta "Stati che contano come produzione accettata", predefinito = ACCETTATO** (tutti gli stati inclusi dal gestionale tranne 11 NC mai arrivato). La migrazione core 056 porta il valore salvato al nuovo predefinito **solo se era ancora il vecchio** (18, 20, 25, 40, 50, in qualunque ordine); una scelta diversa non si tocca. Letti anche in SQL da `synclab.stati_erogati()`. |
+| `sconto_testata` | NON_APPLICARE | v0.68.6. `APPLICA` = netto vero (netto di riga × quantità × (1 − sconto di testata)); `NON_APPLICARE` = importi di riga, come il report "Riepilogo Esami" del gestionale. In SQL `synclab.sconto_testata_applicato()` (migrazione 056, usata dal D51). La fonte di ogni numero dice quale regola vale; gli sconti di testata si mostrano a parte ("di cui sconti di testata"). |
 | `sync_intraday_minuti` | 60 | v0.68.5. Fra le 7 e le 21 ora di Roma il job `synclab:intraday` (controllo ogni 5 minuti) esegue il **delta delle accettazioni** ogni N minuti, un ciclo alla volta (stessa coda e stesso lock del notturno; un ciclo in corso fa saltare il turno). 0 = spento. Solo con `data_api_enabled`. Esito in `app_settings` `synclab.intraday`; nei run l'origine è "di giorno" (`GIORNO`). |
 
 ## Prova connessione
@@ -182,7 +184,7 @@ Dettagli di Ordini: docs/ORDINI_SYNCLAB.md.
   Data API abilitata, insieme mai sincronizzato, checkpoint più vecchio di 2 giorni o ultimo ciclo in errore), D50 "Legal entity cliente
   attiva senza cliente Synclab" (INFO, solo quando i clienti sono stati importati).
 
-## Produzione erogata (v0.68.5, richiesta del CEO del 10/11/2026)
+## Produzione erogata (v0.68.5, richiesta del CEO del 10/11/2026) · dalla v0.68.6 "produzione accettata" (sezione in fondo)
 
 "A me non interessa il dato delle fatture ma il dato delle accettazioni in stato erogato: altrimenti non vedrei la progressione quotidiana
 finché non fatturi a inizio del mese successivo. Mi serve nei vari cruscotti." La **produzione erogata** è la grandezza principale dei
@@ -276,3 +278,72 @@ dello script).
 - Comportamento di `/sync/status` per id mai esistiti e significato operativo di `unavailable` nel lungo periodo (quando ricontrollare).
 - Tempi e dimensioni reali della prima importazione completa di accettazioni e documenti (pagine da 100 sufficienti? timeout di 120 s?).
 - Il caso nota di credito standard (non esercitato nel loro collaudo per assenza di dati).
+
+## v0.68.6 · Produzione ACCETTATA e quadratura con StudioLab (CEO, 10/11/2026)
+
+"C'è una discrepanza tra il valore dell'accettato di StudioLab a ieri e quello del Cockpit o comunque della Suite. Trovare l'errore e
+correggere." Il CEO ha confrontato il report StudioLab **"Riepilogo Esami"** per cliente (01/11-09/11/2026) con il Cockpit. Senza accesso al
+database di produzione le differenze di definizione **certe** fra il report e la Suite 0.68.5 erano:
+
+| Differenza | v0.68.5 | Report del gestionale | v0.68.6 |
+|---|---|---|---|
+| Stati | solo "erogati" 18, 20, 25, 40, 50 | ACCETTATO: tutte le accettazioni del periodo | predefinito **10, 15, 18, 20, 25, 30, 40, 50** (tutti tranne 11), modificabile |
+| Perimetro | Ricavi del Cockpit = B2C + solo la parte **B2B** di Synclab: il Laboratorio in sede non entrava in nessuna cifra | tutti i client | "Produzione laboratorio (StudioLab)" = **tutto** Synclab (B2B + Laboratorio in sede); Ricavi = B2C GIPO + tutto il laboratorio |
+| Sconto di testata | applicato | somma degli importi di riga | impostazione `sconto_testata`, predefinita **NON_APPLICARE** |
+| Righe a prezzo nullo | contate negli esami e a parte | contano nella Q.ta | contate negli esami (come il report) e mostrate a parte "di cui senza prezzo" |
+| Righe `deleted`, data, ora della copia | escluse; data dell'accettazione | da verificare | invariato; la quadratura le misura come cause |
+
+**Definizione unica** (`lib/synclab/letture.js`): accettazioni ATTIVE della copia, stato in `stati_erogati` (`statiErogati()`), righe d'esame
+non cancellate; valore = Σ netto di riga × quantità, × (1 − sconto di testata) solo con `sconto_testata` = APPLICA (`scontoTestata()`,
+`regolaProduzione()`); esami = righe non cancellate comprese quelle senza prezzo; data = data dell'accettazione. Le funzioni hanno conservato
+i nomi (`produzioneErogata`, `produzioneGiornaliera`, `topClientiProduzione`, …) e accettano `stati` e `sconto` per le varianti. Fonte:
+"Synclab, produzione accettata (stati 10, 15, 18, 20, 25, 30, 40, 50), importi di riga (sconto di testata non applicato), copia al … ·
+aggiornato alle HH:MM" (`fonteProduzione(stati, checkpoint, sconto)`). Etichette nei cruscotti: "Produzione accettata".
+
+### Quadratura con StudioLab (strumento permanente)
+Dati Synclab > **Quadratura**: si carica il PDF "Riepilogo Esami" (pdftotext lato server con `lib/pdftext.js`, in memoria per la sola richiesta:
+**nessun file conservato**), oppure si incolla il testo, oppure si scrivono periodo e totali. Il report non contiene nomi di pazienti.
+- **Lettura** (`leggiRiepilogoEsami`, verificata sul layout reale del PDF il 10/11/2026): a ogni pagina la ragione sociale del laboratorio
+  (la riga prima di "Riepilogo Esami … Dal … al …"), il periodo, la riga delle colonne "Codice Descrizione Q.ta Privati Ticket ULSS Costo" e
+  "Pagina n di m" si ignorano ovunque; un blocco che continua dopo il salto pagina resta lo stesso cliente. Riga cliente = testo senza colonne
+  numeriche (anche su due righe, con il reparto "… - Medicina"); riga d'esame = codice, descrizione, Q.ta ed eventuali Privati e Costo, con
+  ogni numero assegnato alla colonna dell'intestazione più vicina **per posizione** (`colonneIntestazione`, `analizzaRiga`: una riga con Q.ta e
+  solo Costo non diventa un importo Privati); riga di **sottototale = solo numeri** (Q.ta, Privati, Ticket, ULSS, Costo), **fonte autorevole**
+  del cliente (le righe d'esame servono solo da controllo; accettate anche le forme "Totale cliente:" / "Totale <nome>"); "Totale globale:".
+  `controllo` = numero di sottototali, somme di Q.ta e Privati e se coincidono col totale globale; avvisi se non coincidono o se le righe di
+  un cliente non tornano col suo sottototale. Sul PDF del CEO (01-09/11/2026): 33 sottototali, Q.ta 2.578 e Privati 18.672,22, uguali al
+  Totale globale.
+- **Suite** (`quadratura({ da, a, variante })` in letture.js): per client Synclab e per stato, righe vive e cancellate, quantità (null = 1),
+  importi di riga, sconto di testata, righe senza prezzo; `calcolaVariante` (pura) dà totale, stati esclusi, righe cancellate.
+- **Totale nelle 4 varianti**: accettato / erogati (18, 20, 25, 40, 50) × sconto di testata non applicato / applicato (+ l'impostazione in
+  vigore se diversa); "coincide" entro 5 centesimi, altrimenti "più vicina". **"Adotta questa definizione"** salva stati e sconto.
+- **Per cliente**: nome del report ↔ client Synclab per ragione sociale normalizzata (senza S.r.l., S.p.A., punteggiatura, accenti), poi senza
+  il suffisso di reparto, poi per prefisso se il nome del report è lungo almeno 40 caratteri (troncamento a ~45); più client candidati e un
+  reparto: si sceglie il client il cui nome o sede del gestionale contiene il reparto; altrimenti i client e i sottototali collegati formano
+  **una riga sola** (si sommano). Esiti: quadra, spiegata, non spiegata, solo nel report (client non trovato), solo nella Suite.
+- **Cause calcolate**: stati esclusi dalla variante (n e valore per stato), righe cancellate, sconto di testata, righe senza prezzo
+  (informativa: contano nella Q.ta), accettazioni del periodo arrivate dopo l'ultima copia (se il checkpoint delle accettazioni non copre
+  tutto l'ultimo giorno e resta una differenza positiva), differenza residua non spiegata. Si sceglie il sottoinsieme di cause quantificate la
+  cui somma è più vicina alla differenza (`scegliCause`).
+- **Export XLSX** (fogli Varianti, Per cliente, Cause sul totale, Note). Audit `SYNCLAB_QUADRATURA` con solo periodo, totali e numero di clienti.
+- API (amministratori): `POST /api/synclab/quadratura` (multipart `file` oppure JSON `testo` | `da, a, importo, qta` | `report`; `variante`),
+  `POST /api/synclab/quadratura/xlsx`; `PUT /api/synclab/impostazioni` accetta `sconto_testata`.
+
+### Altre modifiche della pagina
+- Clienti Synclab: "Riallinea abbinamenti" e il riepilogo degli abbinamenti automatici **in testa** alla scheda.
+- Stato: con `include_patient` acceso, avviso con il pulsante **"Spegni e svuota i dati paziente"** (stessa funzione dell'impostazione).
+
+### Verifiche in produzione dopo il rilascio
+- `SELECT name FROM schema_migrations WHERE name = '056_produzione_accettata.sql';` e il rapporto
+  `SELECT data FROM audit_log WHERE entity_id = '056_produzione_accettata.sql';` (valore trovato e se è stato portato al nuovo predefinito).
+- `SELECT synclab.stati_erogati(), synclab.sconto_testata_applicato();` → `{10,15,18,20,25,30,40,50}`, `false` salvo scelte diverse.
+- Quadratura del 01/11-09/11 con il PDF del CEO: la variante "Accettato · importi di riga" deve coincidere col Totale globale; le righe "non
+  spiegata" dicono dove guardare (nomi diversi, client non abbinati, copia più vecchia della fine del periodo: rilanciare "Sincronizza").
+
+### Punti aperti
+- **Possibile doppio conteggio con GIPO**: con `synclab_privati_in_b2c` acceso le accettazioni Synclab dei punti TD sono il "Laboratorio in
+  sede"; se GIPO registra anche le vendite di laboratorio delle stesse sedi, Ricavi = B2C GIPO + laboratorio le conta due volte. Nei dati GIPO
+  **non c'è un criterio certo** per riconoscerle (la linea di prodotto LAB è dedotta dal testo all'import, `lineGuess` di retail/lib/importer.js):
+  la Suite **non toglie nulla** e lo dichiara nella nota dei Ricavi e della ripartizione del Cockpit quando GIPO ha vendite in quelle sedi.
+  Da decidere con il CEO (es. una categoria certa nel tracciato GIPO).
+- Se il report del gestionale comprenda lo stato 11 e le righe `deleted`: la quadratura lo mostrerà sui dati veri.

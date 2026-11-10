@@ -29,14 +29,15 @@ describe('v0.68.5 · regole pure', () => {
     LI = await import('../src/lib/synclab/listini.js');
   });
 
-  test('stati erogati: predefiniti 18, 20, 25, 40, 50; normalizzazione; fonte dichiarata con stati, netto e ora della copia', () => {
-    assert.deepEqual(L.STATI_EROGATI_PREDEFINITI, [18, 20, 25, 40, 50]);
+  test('stati: v0.68.6 predefiniti = accettato (tutti tranne 11), la definizione 18, 20, 25, 40, 50 resta come variante; fonte dichiarata', () => {
+    assert.deepEqual(L.STATI_EROGATI_PREDEFINITI, [10, 15, 18, 20, 25, 30, 40, 50]);
+    assert.deepEqual(L.STATI_EROGATI_STORICI, [18, 20, 25, 40, 50]);
     assert.deepEqual(L.normalizzaStati('50, 18;20 x 18'), [18, 20, 50]);
-    assert.deepEqual(L.normalizzaStati([]), [18, 20, 25, 40, 50], 'vuoto = predefiniti');
-    for (const s of [10, 11, 15, 30]) assert.ok(!L.STATI_EROGATI_PREDEFINITI.includes(s), `${s} escluso`);
+    assert.deepEqual(L.normalizzaStati([]), [10, 15, 18, 20, 25, 30, 40, 50], 'vuoto = predefiniti');
+    assert.ok(!L.STATI_EROGATI_PREDEFINITI.includes(11), '11 escluso');
     assert.equal(L.LEGENDA_STATI[18], 'prelievo eseguito'); assert.equal(L.LEGENDA_STATI[30], 'attende prelievo');
-    const f = L.fonteProduzione([18, 20, 25, 40, 50], '2026-11-10T13:05:00Z');
-    assert.equal(f, 'Synclab, accettazioni erogate (stati 18, 20, 25, 40, 50), netto di riga e sconto di testata, copia al 10/11/2026 · aggiornato alle 14:05');
+    const f = L.fonteProduzione([18, 20, 25, 40, 50], '2026-11-10T13:05:00Z', 'APPLICA');
+    assert.equal(f, 'Synclab, produzione accettata (stati 18, 20, 25, 40, 50), netto di riga e sconto di testata, copia al 10/11/2026 · aggiornato alle 14:05');
     assert.equal(L.aggiornatoAlle('2026-11-10T13:05:00Z', '2026-11-10'), 'aggiornato alle 14:05');
     assert.equal(L.aggiornatoAlle('2026-11-09T13:05:00Z', '2026-11-10'), 'aggiornato al 09/11/2026 14:05');
     assert.match(L.descriviStati([18, 50]), /18 prelievo eseguito, 50 chiuso/);
@@ -54,7 +55,8 @@ describe('v0.68.5 · regole pure', () => {
     assert.equal(Y.intradayDaEseguire({ imp, ora: '11:00', adesso: ora, stato: { at: '2026-11-10T09:30:00Z' } }).esegui, false, '30 minuti fa: aspetta');
     assert.equal(Y.intradayDaEseguire({ imp, ora: '11:00', adesso: ora, stato: { at: '2026-11-10T08:59:00Z' } }).esegui, true, '61 minuti fa: riparte');
     assert.equal(Y.IMPOSTAZIONI_PREDEFINITE.sync_intraday_minuti, 60);
-    assert.deepEqual(Y.IMPOSTAZIONI_PREDEFINITE.stati_erogati, [18, 20, 25, 40, 50]);
+    assert.deepEqual(Y.IMPOSTAZIONI_PREDEFINITE.stati_erogati, [10, 15, 18, 20, 25, 30, 40, 50]);
+    assert.equal(Y.IMPOSTAZIONI_PREDEFINITE.sconto_testata, 'NON_APPLICARE');
   });
 
   test('abbinamento: nomi e indirizzi normalizzati, sede scelta per indirizzo, comune o nome; ambiguo con due Legal entity', () => {
@@ -159,6 +161,9 @@ describe('v0.68.5 con database e dati sintetici', { skip: SALTA }, () => {
       r('TD-1', OGGI, 50, [riga('g1', 'GLU', 10)]),                                                                // Laboratorio in sede
       r('SER0099', '2026-11-03', 25, [riga('h1', 'GLU', 5)]),                                                      // in firma: 5
     ]);
+    // v0.68.6: questi test verificano la definizione della v0.68.5 (stati 18, 20, 25, 40, 50 e sconto di testata applicato): si fissa
+    // nell'impostazione del connettore; la nuova definizione predefinita è verificata in v0686-produzione-accettata.test.mjs
+    await db.query(`UPDATE public.connectors SET settings = settings || '{"stati_erogati":[18,20,25,40,50],"sconto_testata":"APPLICA"}'::jsonb WHERE kind = 'STUDIOLAB'`);
     M.L = await import('../src/lib/synclab/letture.js');
     M.A = await import('../src/lib/synclab/abbinamenti.js');
     M.LI = await import('../src/lib/synclab/listini.js');
@@ -237,7 +242,7 @@ describe('v0.68.5 con database e dati sintetici', { skip: SALTA }, () => {
     await db.query(`UPDATE public.connectors SET settings = settings || '{"stati_erogati":[50]}'::jsonb WHERE kind = 'STUDIOLAB'`);
     assert.deepEqual(await M.L.statiErogati(), [50]);
     assert.equal((await M.L.produzioneErogata({ da: '2026-11-01', a: OGGI, ripartizione: 'B2B' })).totale.valore, 27);
-    await db.query(`UPDATE public.connectors SET settings = settings - 'stati_erogati' WHERE kind = 'STUDIOLAB'`);
+    await db.query(`UPDATE public.connectors SET settings = settings || '{"stati_erogati":[18,20,25,40,50]}'::jsonb WHERE kind = 'STUDIOLAB'`);
     assert.deepEqual(await M.L.statiErogati(), [18, 20, 25, 40, 50]);
   });
 
@@ -248,11 +253,12 @@ describe('v0.68.5 con database e dati sintetici', { skip: SALTA }, () => {
     assert.ok(S && !S.errore, S?.errore);
     const by = (l) => Object.fromEntries(l.map((x) => [x.chiave, x]));
     const R = by(S.ricavi), L = by(S.laboratorio);
-    assert.equal(R.ricavi_mese.titolo, 'Ricavi del mese · B2C + B2B');
-    assert.equal(R.ricavi_mese.parti.find((p) => p.etichetta === 'B2B produzione erogata').valore, 54.5);
-    assert.equal(R.ricavi_oggi.parti.find((p) => p.etichetta === 'B2B produzione erogata').valore, 12.5);
+    // v0.68.6: ricavi = B2C + laboratorio TUTTO (B2B 54,5 + in sede 10); produzione B2B nelle celle del laboratorio
+    assert.equal(R.ricavi_mese.titolo, 'Ricavi del mese');
+    assert.equal(R.ricavi_mese.parti.find((p) => p.etichetta === 'Laboratorio StudioLab').valore, 64.5);
+    assert.equal(R.ricavi_oggi.parti.find((p) => p.etichetta === 'Laboratorio StudioLab').valore, 22.5);
     assert.equal(L.lab_prod_oggi.valore, 12.5); assert.equal(L.lab_prod_mese.valore, 54.5);
-    assert.match(L.lab_prod_mese.fonte, /^Synclab, accettazioni erogate \(stati 18, 20, 25, 40, 50\), netto di riga e sconto di testata, /);
+    assert.match(L.lab_prod_mese.fonte, /^Synclab, produzione accettata \(stati 18, 20, 25, 40, 50\), netto di riga e sconto di testata, /);
     assert.equal(L.lab_acc_oggi.valore, 2, 'accettazioni erogate di oggi: K2 e il punto TD');
     assert.equal(S.andamento.giorni.length, 10); assert.equal(S.andamento.totale, 54.5);
     assert.deepEqual(S.top5.righe.map((x) => [x.cliente, x.valore]), [['Gruppo Prova Kappa', 49.5], ['Cliente Codice Prova', 5]]);
@@ -268,7 +274,7 @@ describe('v0.68.5 con database e dati sintetici', { skip: SALTA }, () => {
     assert.equal(b.confronto.mesi.at(-1).produzione, 49.5);
     assert.equal(b.giornaliero.giorni.length, 10); assert.equal(b.giornaliero.totale.valore, 49.5);
     assert.deepEqual(b.clients.map((c) => [c.client_code, c.site_id]), [['K1', M.kA], ['K2', M.kB]]);
-    assert.match(b.fonte.testo, /accettazioni erogate/);
+    assert.match(b.fonte.testo, /produzione accettata/);
     const [k] = await M.diag.esegui({ ids: ['D51'] });
     assert.notEqual(k.stato, 'ERRORE', k.nota);
     const x = k.righe.find((r) => Number(r.account_id) === M.accKappa);

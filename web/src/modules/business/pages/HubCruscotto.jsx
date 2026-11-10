@@ -34,8 +34,8 @@ export default function HubCruscotto() {
         <div className="click-card" onClick={() => nav(`${BASE}/pipeline?linea=${linea}`)}><Kpi accent label="In pipeline (fasi 1-6)" value={d.kpi.in_pipeline} foot={`${eurK(d.kpi.fatturato_pipeline)} FY atteso (dichiarato nelle schede)`} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&attivo=1`)} data-testid="hub-kpi-attivi"><Kpi label="Clienti attivi (confermati dal CEO)" value={d.kpi.attivi} foot={<>
           <div>{eurK(d.kpi.fatturato_attivi)} FY atteso (dichiarato nelle schede)</div>
-          {linea !== 'PP' && <div title={d.synclab?.nota || `Maturato nel ${d.synclab?.anno} = produzione erogata del gestionale (accettazioni in stato erogato, netto di riga e sconto di testata) dei clienti attivi abbinati; pro quota del dichiarato sugli stessi clienti`}>
-            Maturato {d.synclab?.anno} (produzione erogata): {d.synclab?.maturato == null ? (d.synclab?.nota ? 'n.d.' : '–') : <b>{eurK(d.synclab.maturato)}</b>}{d.synclab?.clienti ? ` su ${d.synclab.clienti} clienti · pro quota ${eurK(d.synclab.pro_quota)}` : ''}{d.synclab?.in_ritardo ? <span className="red"> · {d.synclab.in_ritardo} in ritardo</span> : null}</div>}
+          {linea !== 'PP' && <div title={d.synclab?.nota || `Maturato nel ${d.synclab?.anno} = produzione accettata del gestionale (accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni) dei clienti attivi abbinati; pro quota del dichiarato sugli stessi clienti`}>
+            Maturato {d.synclab?.anno} (produzione accettata): {d.synclab?.maturato == null ? (d.synclab?.nota ? 'n.d.' : '–') : <b>{eurK(d.synclab.maturato)}</b>}{d.synclab?.clienti ? ` su ${d.synclab.clienti} clienti · pro quota ${eurK(d.synclab.pro_quota)}` : ''}{d.synclab?.in_ritardo ? <span className="red"> · {d.synclab.in_ritardo} in ritardo</span> : null}</div>}
           <div>{d.kpi.da_confermare ? `${d.kpi.da_confermare} da confermare` : 'nessuno in attesa di conferma'}</div></>} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&fase=0`)}><Kpi label="Prospect censiti" value={d.kpi.prospect} foot={`${d.kpi.account} account in tutto`} /></div>
         <div className="click-card" onClick={() => nav(`${BASE}/clienti?linea=${linea}&stallo=1`)}><Kpi label={`In stallo (> ${d.soglia_stallo} gg)`} value={d.kpi.stalli} foot="nessun avanzamento di fase" /></div>
@@ -54,7 +54,7 @@ export default function HubCruscotto() {
               </div>
             ))}
           </div>
-          <div className="small muted" style={{ marginTop: 8 }}>Importi = FY atteso (dichiarato nelle schede) degli account in quella fase: non è fatturato. La fase 7 conta solo i clienti attivi confermati; il loro maturato dell'anno (produzione erogata dal gestionale) è nel riquadro "Clienti attivi".</div>
+          <div className="small muted" style={{ marginTop: 8 }}>Importi = FY atteso (dichiarato nelle schede) degli account in quella fase: non è fatturato. La fase 7 conta solo i clienti attivi confermati; il loro maturato dell'anno (produzione accettata dal gestionale) è nel riquadro "Clienti attivi".</div>
         </Card>
         <Card title="Clienti da confermare dal CEO" flush>
           {d.da_confermare.length ? <div className="table-wrap" style={{ maxHeight: 330 }}><table className="t"><tbody>

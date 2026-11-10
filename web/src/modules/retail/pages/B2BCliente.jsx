@@ -1,4 +1,4 @@
-// Retail · Scheda cliente B2B (riordino del 09/11/2026; v0.68.5: grandezza principale = PRODUZIONE EROGATA con la progressione giornaliera
+// Retail · Scheda cliente B2B (riordino del 09/11/2026; v0.68.5: grandezza principale = PRODUZIONE ACCETTATA con la progressione giornaliera
 // dell'ultimo mese, documenti emessi come dato secondario): andamento mensile di produzione e documenti, esami più richiesti, prezzi netti
 // applicati contro il listino corrente Synclab e il listino del Business Hub, documenti del periodo, NC aperte (se il modulo NC è LIVE).
 // Cliente = Legal entity (id) oppure client Synclab non abbinato ('c-<id>'). Fonte: GET /api/retail/b2b/clienti/:chiave.
@@ -37,12 +37,12 @@ export default function B2BCliente() {
       <ErrorBox error={q.error} />
       {!d ? <Loading /> : <>
         <div className="grid g4" style={{ marginBottom: 16 }}>
-          <div className="card kpi accent" data-testid="kpi-produzione"><div className="lbl">Produzione erogata</div><div className="val">{eur0(d.totale.valore)}</div><div className="delta"><span className="muted">{num(d.totale.esami)} esami · {num(d.totale.accettazioni)} accettazioni erogate</span></div></div>
+          <div className="card kpi accent" data-testid="kpi-produzione"><div className="lbl">Produzione accettata</div><div className="val">{eur0(d.totale.valore)}</div><div className="delta"><span className="muted">{num(d.totale.esami)} esami{d.totale.righe_senza_prezzo ? ` (di cui ${num(d.totale.righe_senza_prezzo)} senza prezzo)` : ''} · {num(d.totale.accettazioni)} accettazioni</span></div>{d.totale.sconto_testata ? <div className="small muted" data-testid="sconti-testata">di cui sconti di testata: {eur0(d.totale.sconto_testata)} {d.sconto_testata === 'APPLICA' ? '(applicati)' : '(non applicati: importi di riga come il report)'}</div> : null}</div>
           <div className="card kpi"><div className="lbl">Documenti emessi (secondario)</div><div className="val" style={{ fontSize: 20 }}>{eur0(d.totale.documenti.fatturato)}</div><div className="delta"><span className="muted">non sommati · {num(d.totale.documenti.fatture)} fatture · NC {eur0(d.totale.documenti.importo_nc || 0)}</span></div></div>
           <div className="card kpi"><div className="lbl">Listino del Business Hub</div><div className="val">{d.hub.versione ? `v${d.hub.versione}` : '–'}</div><div className="delta"><span className="muted">{d.hub.versione ? `linea ${d.hub.linea}` : d.hub.nota || 'non disponibile'}</span></div></div>
           <div className="card kpi"><div className="lbl">NC aperte</div><div className="val">{d.nc.disponibile ? num(d.nc.aperte) : '–'}</div><div className="delta"><span className="muted">{d.nc.disponibile ? <Link to="/nc">Apri Non conformità</Link> : d.nc.nota}</span></div></div>
         </div>
-        {d.giornaliero && <Card title={`Produzione erogata giorno per giorno · ${monthLabel(d.giornaliero.periodo.a.slice(0, 7))} · ${eur0(d.giornaliero.totale.valore)}`} className="mb" actions={<span className="small muted">{d.aggiornato || ''}</span>}>
+        {d.giornaliero && <Card title={`Produzione accettata giorno per giorno · ${monthLabel(d.giornaliero.periodo.a.slice(0, 7))} · ${eur0(d.giornaliero.totale.valore)}`} className="mb" actions={<span className="small muted">{d.aggiornato || ''}</span>}>
           <BarreGiorni giorni={d.giornaliero.giorni} fmtValore={eur0} />
         </Card>}
         <Card title="Client Synclab collegati" flush>
@@ -53,7 +53,7 @@ export default function B2BCliente() {
         </Card>
         <div className="grid g2" style={{ marginTop: 16 }}>
           <Card title="Andamento mensile" flush>
-            <div className="table-wrap"><table className="t" data-testid="andamento"><thead><tr><th>Mese</th><th className="num">Accettazioni</th><th className="num">Esami</th><th className="num">Produzione erogata</th><th className="num">Documenti emessi</th></tr></thead>
+            <div className="table-wrap"><table className="t" data-testid="andamento"><thead><tr><th>Mese</th><th className="num">Accettazioni</th><th className="num">Esami</th><th className="num">Produzione accettata</th><th className="num">Documenti emessi</th></tr></thead>
               <tbody>{d.andamento.map((m) => <tr key={m.mese}><td>{monthLabel(m.mese)}</td><td className="num">{num(m.accettazioni)}</td><td className="num">{num(m.esami)}</td><td className="num strong">{eur0(m.valore)}</td><td className="num muted">{eur0(m.documenti.fatturato)}</td></tr>)}</tbody></table></div>
           </Card>
           <Card title="Esami più richiesti" flush>

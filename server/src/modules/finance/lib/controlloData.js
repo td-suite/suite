@@ -398,7 +398,7 @@ export function daDoveViene({ p, conto, fonti, comp, imp, lab, prevVuoto, oggi =
   const fino = p.a < oggi ? p.a : oggi;
   const per = GIORNI_MESE(p.da, fino);
   const nd = (k) => (fonti[k]?.disponibile === false ? ` (non disponibile: ${fonti[k].nota})` : '');
-  const fontiSrv = comp.service_fonti.length ? comp.service_fonti.map((f) => (f === 'SYNCLAB' ? `Synclab: produzione erogata ${per} (accettazioni in stato erogato, netto di riga e sconto di testata)` : NOMI_FONTE_SRV[f] || f)).join('; ') : 'nessuna produzione effettiva';
+  const fontiSrv = comp.service_fonti.length ? comp.service_fonti.map((f) => (f === 'SYNCLAB' ? `Synclab: produzione accettata ${per} (accettazioni negli stati della produzione, importi di riga; sconto di testata secondo l'impostazione)` : NOMI_FONTE_SRV[f] || f)).join('; ') : 'nessuna produzione effettiva';
   const ricavi = [
     `Retail${comp.retail_gipo ? ' (GIPO)' : ''}: vendite nette ${per}${comp.retail_ultima ? `, ultimo dato del ${ggmm(comp.retail_ultima)}` : ''}${nd('ricavi_retail')}`,
     `Service: produzione effettiva di ${comp.service_clienti} ${comp.service_clienti === 1 ? 'cliente' : 'clienti'} attribuita a ${lab?.name || 'Laboratorio'} (${fontiSrv})${nd('ricavi_service')}`,

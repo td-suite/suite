@@ -58,7 +58,7 @@ export default function B2B() {
       <Card flush>
         {!x ? <Loading /> : tab === 'clienti' ? (!x.clienti.length ? <Empty>Nessun cliente attivo o contrattualizzato nella Suite</Empty> : (
           <div className="table-wrap"><table className="t" data-testid="b2b-clienti">
-            <thead><tr><th>Cliente</th><th>Linee</th><th>Stato</th><th>Codici StudioLAB</th><th className="num">Produzione erogata {mese}</th><th className="num">Documenti emessi {mese}</th><th>Listino applicato</th><th className="num">Vendite importate</th><th /></tr></thead>
+            <thead><tr><th>Cliente</th><th>Linee</th><th>Stato</th><th>Codici StudioLAB</th><th className="num">Produzione accettata {mese}</th><th className="num">Documenti emessi {mese}</th><th>Listino applicato</th><th className="num">Vendite importate</th><th /></tr></thead>
             <tbody>{x.clienti.map((c) => (
               <tr key={c.organization_id} className="click" onClick={() => nav(`${base}/b2b/clienti/${c.organization_id}`)}>
                 <td><div className="strong">{c.name}</div><div className="small muted">{[c.vat_number, c.city && `${c.city}${c.province ? ` (${c.province})` : ''}`].filter(Boolean).join(' · ')}</div></td>
@@ -74,7 +74,7 @@ export default function B2B() {
           </table></div>
         )) : tab === 'altri' ? (!x.synclab_altri.length ? <Empty>Nessun altro client StudioLab con produzione nel mese</Empty> : (
           <div className="table-wrap"><table className="t" data-testid="b2b-altri">
-            <thead><tr><th>Cliente</th><th>Abbinamento</th><th className="num">Produzione erogata {mese}</th><th className="num">Documenti emessi {mese}</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Abbinamento</th><th className="num">Produzione accettata {mese}</th><th className="num">Documenti emessi {mese}</th></tr></thead>
             <tbody>{x.synclab_altri.map((c) => <tr key={c.chiave} className="click" onClick={() => nav(`${base}/b2b/clienti/${encodeURIComponent(c.chiave)}`)}>
               <td className="strong">{c.cliente}<div className="small muted">{c.organization_id ? 'Legal entity non cliente attivo del Business Hub' : 'client Synclab non abbinato a una Legal entity'}</div></td>
               <td className="small">{c.stato_abbinamento}</td><td className="num">{eur0(c.produzione?.valore)}<div className="small muted">{num(c.produzione?.esami)} esami</div></td><td className="num">{eur0(c.fatturato?.fatturato)}</td></tr>)}</tbody>

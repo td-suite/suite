@@ -222,8 +222,9 @@ export function fatturatoFyAtteso(acc, giorniAnno = 250) {
 /**
  * Produzione del cliente nel mese, dalla fonte migliore disponibile:
  *  1. riga salvata in Finance Management con fonte MANUALE o STUDIOLAB (scelta esplicita di chi la inserisce o carica il file);
- *  2. Synclab Data API (09/11/2026): PRODUZIONE EROGATA (v0.68.5, definizione unica di lib/synclab/letture.js: accettazioni in stato
- *     erogato, netto di riga × quantità × (1 − sconto di testata); produzionePerOrg). È il dato del gestionale, non una stima: viene
+ *  2. Synclab Data API (09/11/2026): PRODUZIONE (v0.68.5; v0.68.6: ACCETTATA, definizione unica di lib/synclab/letture.js: accettazioni
+ *     negli stati dell'impostazione, predefiniti tutti tranne 11; netto di riga × quantità, sconto di testata solo se l'impostazione lo
+ *     applica; produzionePerOrg). È il dato del gestionale, non una stima: viene
  *     prima di Retail e Ordini;
  *  3. StudioLAB arrivato alla Suite: vendite B2B di Retail (codice StudioLAB abbinato alla Legal entity, con valore e codici d'esame);
  *  4. StudioLAB arrivato alla Suite: produzione di Ordini (HL7 / import, per codice d'esame, senza valore);
@@ -231,7 +232,7 @@ export function fatturatoFyAtteso(acc, giorniAnno = 250) {
  *     prevale su una stima salvata, che era calcolata con la regola precedente); in mancanza, stima salvata (fonte STIMA).
  * Ritorna { fonte, origine, esami, valore, righe, stima, calcolata, note } oppure null (nessuna produzione né stima).
  */
-export const ORIGINE_SYNCLAB = 'Synclab Data API: produzione erogata (accettazioni in stato erogato, netto di riga e sconto di testata)';
+export const ORIGINE_SYNCLAB = 'Synclab Data API: produzione accettata (accettazioni negli stati della produzione, importi di riga; sconto di testata secondo l\'impostazione del connettore)';
 export function scegliProduzione({ salvata = null, synclab = null, retail = null, ordini = null, stima = null } = {}) {
   const base = (x) => ({ esami: Number(x.esami || 0), valore: x.valore == null ? null : r2(x.valore), righe: Array.isArray(x.righe) && x.righe.length ? x.righe : null, note: x.note || null });
   if (salvata && salvata.fonte !== 'STIMA') return { ...base(salvata), fonte: salvata.fonte, origine: salvata.fonte === 'STUDIOLAB' ? 'File StudioLAB caricato in Finance Management' : 'Inserita in Finance Management', stima: false, calcolata: false, id: salvata.id };

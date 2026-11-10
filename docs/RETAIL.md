@@ -130,3 +130,13 @@ link alle vecchie rotte.
 - Il Cruscotto B2C (ex Dashboard) mostra ancora le righe delle vendite importate con committente B2B (codici StudioLAB): restano per
   continuità finché il B2B importato da file non viene spento a favore di Synclab.
 - Prenotazioni online, pazienti e NPS di TuoTempo: in attesa di Docplanner (Fase 2-3).
+
+## v0.68.6 · Produzione accettata (CEO, 10/11/2026)
+La grandezza principale delle pagine B2B, del Laboratorio in sede e del cruscotto di rete è la **produzione accettata** (definizione unica in
+docs/SYNCLAB_DATA_API.md, "v0.68.6"): accettazioni negli stati dell'impostazione `stati_erogati` (predefiniti tutti tranne 11 NC mai
+arrivato), importi di riga con lo sconto di testata **non applicato** salvo impostazione `sconto_testata` = APPLICA. Etichette "Produzione
+accettata", "Accettazioni", "Esami" (non più "erogata/erogate"); la riga "Produzione accettata · fonte" dichiara stati, regola dello sconto e
+ora della copia. Esami = righe d'esame non cancellate **comprese quelle senza prezzo** (come il report del gestionale), mostrate anche a
+parte ("di cui … senza prezzo"). In B2B > Produzione e nella scheda cliente: "di cui sconti di testata: x €" (applicati o no).
+Le API B2B espongono `sconto_testata` e `regola_sconto` accanto a `fonte_produzione`.
+Punto aperto: possibile doppio conteggio fra GIPO e Laboratorio in sede nel Cockpit (docs/SYNCLAB_DATA_API.md, "Punti aperti").

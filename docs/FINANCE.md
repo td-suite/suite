@@ -188,3 +188,10 @@ CONTRATTUALIZZATO** (anche senza avvio: senza data di avvio la stima partiva dal
   cliente_attivo;` (più gli equivalenti da volumi e prezzo). Stime salvate con la regola vecchia, da rivedere o eliminare:
   `SELECT org_id, mese, valore, note FROM finance.produzione_service WHERE fonte='STIMA' AND coalesce(note,'') NOT LIKE 'Stima in pro quota%';`
 
+## v0.68.6 · Produzione accettata da Synclab
+Margine per cliente Service e Conto economico: la fonte `SYNCLAB` è ora la **produzione accettata** (accettazioni negli stati
+dell'impostazione `stati_erogati`, predefiniti tutti tranne 11 NC mai arrivato; Σ netto di riga × quantità, con lo sconto di testata solo se
+l'impostazione `sconto_testata` del connettore è APPLICA, predefinita NON_APPLICARE come il report del gestionale). Testi e origine
+(`ORIGINE_SYNCLAB`) aggiornati; nessun cambio nelle altre fonti né nelle stime commerciali. Verifica: dopo il rilascio i ricavi Service di
+novembre con fonte Synclab crescono delle accettazioni non ancora erogate e degli sconti di testata non più tolti (vedi la scheda Quadratura
+di Dati Synclab per il confronto con il report del gestionale).

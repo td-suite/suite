@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
-import { useApi, Card, Badge, Skeleton, ErrorBox, PageHead, Field, useToast, Modal, Switch, ConfirmModal, Tabs, Seg, SearchInput } from '../../components/ui.jsx';
+import { useApi, Card, Badge, Skeleton, ErrorBox, PageHead, Field, useToast, Modal, Switch, ConfirmModal, Tabs, Seg, SearchInput, DropZone } from '../../components/ui.jsx';
 import { Icon } from '../../components/Icons.jsx';
 import { fmtDateTime, timeAgo } from '../../format.js';
 
@@ -29,10 +29,22 @@ function EsitoRun({ r }) {
   );
 }
 
-function Stato({ s, onAvvia }) {
+function Stato({ s, onAvvia, onSaved }) {
+  const toast = useToast();
   const [conferma, setConferma] = useState(null);
+  const [spegni, setSpegni] = useState(false);
+  // v0.68.6: con la proiezione paziente accesa, avviso in testa con lo spegnimento (che svuota i dati paziente già importati)
+  const spegniPaziente = async () => {
+    try { const r = await api.put('/synclab/impostazioni', { include_patient: false }); toast(r.svuotati ? `Dati paziente spenti e tolti da ${n0(r.svuotati.accettazioni)} accettazioni` : 'Dati paziente spenti'); onSaved?.(); }
+    catch (e) { toast(e, 'err'); }
+  };
   return (
     <>
+      {s.impostazioni.include_patient && (
+        <div className="alert warn mb" data-testid="avviso-dati-paziente"><Icon name="alert" /><span style={{ flex: 1 }}><b>Importazione dei dati identificativi dei pazienti accesa.</b> La copia delle accettazioni riceve cognome, nome, data di nascita e codice fiscale: la decisione del CEO del 09/11/2026 è di tenerla spenta (la profilazione usa solo la demografia e la NC recupera il paziente una accettazione alla volta).</span>
+          <button className="btn sm danger" onClick={() => setSpegni(true)} data-testid="spegni-dati-paziente">Spegni e svuota i dati paziente</button></div>
+      )}
+      {spegni && <ConfirmModal danger title="Spegni e svuota i dati paziente" text="La proiezione paziente viene spenta e dalla copia vengono tolti cognome, nome, data di nascita, codice fiscale e i testi storici delle righe già importati. La demografia (età, sesso, provenienza) resta. Il prossimo ciclo delle accettazioni usa l'ambito standard." confirmText="Spegni e svuota" onConfirm={() => { setSpegni(false); spegniPaziente(); }} onClose={() => setSpegni(false)} />}
       <Card title="Insiemi di dati" icon="stats" flush actions={<div className="row tight wrap">
         <button className="btn sm" disabled={!!s.in_corso} onClick={() => onAvvia(null, 'AUTO')}><Icon name="refresh" />Sincronizza adesso</button>
         <button className="btn sm ghost danger" disabled={!!s.in_corso} onClick={() => setConferma({ dataset: null })}>Completo forzato di tutti</button>
@@ -80,8 +92,8 @@ function Impostazioni({ s, onSaved }) {
     try {
       const body = { data_api_enabled: f.data_api_enabled, sync_ora: f.sync_ora, page_size: Number(f.page_size), page_size_listini: Number(f.page_size_listini), include_patient: f.include_patient,
         data_api_timeout_ms: Number(f.data_api_timeout_s) * 1000, operating_company: f.operating_company || '', datasets: f.datasets,
-        stati_erogati: [...f.stati_erogati].map(Number).sort((a, b) => a - b), sync_intraday_minuti: Number(f.sync_intraday_minuti) };
-      if (!body.stati_erogati.length) throw new Error('Indica almeno uno stato erogato');
+        stati_erogati: [...f.stati_erogati].map(Number).sort((a, b) => a - b), sync_intraday_minuti: Number(f.sync_intraday_minuti), sconto_testata: f.sconto_testata === 'APPLICA' ? 'APPLICA' : 'NON_APPLICARE' };
+      if (!body.stati_erogati.length) throw new Error('Indica almeno uno stato che conta come produzione accettata');
       const r = await api.put('/synclab/impostazioni', body);
       toast(r.svuotati ? `Impostazioni salvate; dati paziente tolti da ${r.svuotati.accettazioni} accettazioni` : 'Impostazioni salvate'); onSaved();
     } catch (e) { toast(e, 'err'); }
@@ -103,9 +115,12 @@ function Impostazioni({ s, onSaved }) {
           <input type="number" min={0} max={720} value={f.sync_intraday_minuti} onChange={(e) => set('sync_intraday_minuti', e.target.value)} data-testid="intraday-minuti" />
           {s.intraday ? <div className="small muted">Ultimo: {fmtDateTime(s.intraday.at)} · {s.intraday.esito === 'OK' ? `riuscito${s.intraday.record != null ? `, ${n0(s.intraday.record)} record` : ''}` : (s.intraday.errore || s.intraday.motivo || s.intraday.esito)}</div> : null}
         </Field>
-        <Field label="Stati erogati (produzione erogata)" className="span2" help="Stati dell'accettazione che valgono come produzione erogata in tutti i cruscotti (Cockpit, Retail, Business Hub, Finance, Diagnostica). Ipotesi da confermare con il CEO e CB Sistemi: predefiniti dal prelievo eseguito in poi.">
+        <Field label="Stati che contano come produzione accettata" className="span2" help="Stati dell'accettazione che valgono come produzione in tutti i cruscotti (Cockpit, Retail, Business Hub, Finance, Diagnostica). Dalla v0.68.6 il predefinito è l'ACCETTATO, come il report Riepilogo Esami del gestionale: tutti gli stati tranne 11 (NC mai arrivato). La scheda Quadratura dice quale definizione coincide con il report.">
           <div className="row wrap" style={{ gap: 12 }} data-testid="stati-erogati">{Object.entries(s.legenda_stati || {}).map(([k, l]) => <label key={k} className="row tight small"><input type="checkbox" checked={f.stati_erogati.map(Number).includes(Number(k))} onChange={(e) => set('stati_erogati', e.target.checked ? [...new Set([...f.stati_erogati.map(Number), Number(k)])] : f.stati_erogati.map(Number).filter((x) => x !== Number(k)))} /><span className="mono">{k}</span> {l}</label>)}</div>
-          <div className="small muted" style={{ marginTop: 6 }}>Predefiniti: {(s.stati_erogati_predefiniti || []).join(', ')} (18 prelievo eseguito, 20 in lavorazione, 25 in firma, 40 referto pronto, 50 chiuso); esclusi 10 prenotata, 11 NC mai arrivato, 15 in attesa, 30 attende prelievo. Valore = Σ netto di riga × quantità × (1 − sconto di testata), una volta.{f.stati_erogati.some((x) => !(s.legenda_stati || {})[x]) ? ` Altri codici in uso: ${f.stati_erogati.filter((x) => !(s.legenda_stati || {})[x]).join(', ')}.` : ''}</div>
+          <div className="small muted" style={{ marginTop: 6 }}>Predefiniti (accettato): {(s.stati_erogati_predefiniti || []).join(', ')}; escluso 11 NC mai arrivato. La definizione della v0.68.5 ("erogati", dal prelievo eseguito in poi) era {(s.stati_erogati_v0685 || []).join(', ')}. Esami = righe d'esame non cancellate, comprese quelle senza prezzo (contate anche a parte).{f.stati_erogati.some((x) => !(s.legenda_stati || {})[x]) ? ` Altri codici in uso: ${f.stati_erogati.filter((x) => !(s.legenda_stati || {})[x]).join(', ')}.` : ''}</div>
+        </Field>
+        <Field label="Sconto di testata nella produzione" className="span2" help="Il report Riepilogo Esami del gestionale somma gli importi di riga: con &quot;Non applicare&quot; (predefinito) i cruscotti coincidono con il report; con &quot;Applica&quot; il valore è il netto vero (meno lo sconto di testata). I cruscotti dicono nella fonte quale regola vale e mostrano a parte gli sconti di testata.">
+          <Seg value={f.sconto_testata || 'NON_APPLICARE'} onChange={(v) => set('sconto_testata', v)} label="Sconto di testata" items={[{ value: 'NON_APPLICARE', label: 'Non applicare (importi di riga, come il report)' }, { value: 'APPLICA', label: 'Applica (netto vero)' }]} />
         </Field>
         <Field label="Dati identificativi dei pazienti" className="span2"><Switch checked={f.include_patient} onChange={(v) => set('include_patient', v)} label="Importa nome, cognome, data di nascita e codice fiscale dei pazienti" /></Field>
       </div>
@@ -148,7 +163,9 @@ function Clienti({ qIniziale }) {
   const k = d.data?.conteggi;
   return (
     <>
-    <Card title="Clienti Synclab" icon="building" flush actions={<div className="row tight wrap">
+    {/* v0.68.6: "Riallinea abbinamenti" e il riepilogo degli abbinamenti automatici in testa alla scheda */}
+    <Abbinamenti onDone={d.reload} onScegli={(c) => setScegli(c)} />
+    <Card title="Clienti Synclab" icon="building" className="mt" flush actions={<div className="row tight wrap">
       <SearchInput value={qq} onChange={setQq} placeholder="Cerca codice, ragione sociale, P.IVA" />
       <Seg value={filtro} onChange={setFiltro} label="Filtro" items={[{ value: '', label: 'Tutti' }, { value: 'DA_ABBINARE', label: 'Da abbinare' }, { value: 'B2B', label: 'Perimetro B2B' }, { value: 'NON_B2B', label: 'Fuori perimetro' }]} />
     </div>}>
@@ -183,7 +200,6 @@ function Clienti({ qIniziale }) {
       <p className="small muted" style={{ padding: '0 16px 12px' }}>Proposta automatica: codice cliente uguale al codice StudioLAB di una sede della Suite (la Legal entity è quella della sede), altrimenti partita IVA o codice fiscale di una sola Legal entity. Perimetro B2B calcolato: client abbinati a una Legal entity cliente attiva o contrattualizzata del Business Hub; "Escludi" e "Includi" lo forzano. La medicina del lavoro (occupationalMedicine) non decide il perimetro.</p>
       {scegli && <ScegliModal c={scegli} onClose={() => setScegli(null)} onSaved={() => { setScegli(null); d.reload(); }} />}
     </Card>
-    <Abbinamenti onDone={d.reload} onScegli={(c) => setScegli(c)} />
     </>
   );
 }
@@ -202,7 +218,7 @@ function Abbinamenti({ onDone, onScegli }) {
   };
   const ambigui = [...(u?.ambigui || []), ...(u?.sede_da_scegliere || [])];
   return (
-    <Card title="Abbinamenti automatici" icon="tree" className="mt" flush actions={<button className="btn sm" disabled={busy} onClick={riallinea} data-testid="riallinea-abbinamenti"><Icon name="refresh" />Riallinea abbinamenti</button>}>
+    <Card title="Abbinamenti automatici" icon="tree" flush actions={<button className="btn sm" disabled={busy} onClick={riallinea} data-testid="riallinea-abbinamenti"><Icon name="refresh" />Riallinea abbinamenti</button>}>
       <ErrorBox error={d.error} />
       <div className="small" style={{ padding: '10px 16px 0' }}>{u ? <>Ultimo allineamento {fmtDateTime(u.at)} ({u.origine}): {n0(u.esaminati)} client esaminati, {n0(u.abbinati)} abbinati, {n0(u.sedi_completate)} sedi completate, {n0((u.codici_scritti || []).length)} codici StudioLAB scritti nelle sedi, {n0(u.gia_abbinati)} già abbinati, {n0(u.senza_candidati)} senza candidati, {n0((u.ambigui || []).length)} ambigui, {n0((u.sede_da_scegliere || []).length)} con la sede da scegliere, {n0((u.conflitti || []).length)} conflitti di codice.</> : <span className="muted">Mai eseguito: parte da solo dopo ogni sincronizzazione dei clienti e ogni 6 ore.</span>}</div>
       {ambigui.length > 0 && <div className="table-wrap"><table className="t small" data-testid="synclab-ambigui">
@@ -214,6 +230,131 @@ function Abbinamenti({ onDone, onScegli }) {
       {(u?.conflitti || []).length > 0 && <div className="small" style={{ padding: '6px 16px' }}><b>Conflitti di codice (nessuna sovrascrittura):</b> {u.conflitti.map((c) => `${c.client_code} → ${c.site_name}: ${c.motivo}`).join(' · ')}</div>}
       <p className="small muted" style={{ padding: '8px 16px 12px', margin: 0 }}>Regole, in ordine: codice cliente = codice StudioLAB di una sede; = codice della Legal entity (es. SER0033) o di una sede; partita IVA o codice fiscale di una sola Legal entity; ragione sociale normalizzata identica e stesso comune. Più Legal entity con la stessa regola = ambiguo. La sede è quella con lo stesso indirizzo, comune o nome della sede del client nel gestionale (per Toscana Diagnostica fra i punti e i centri, per i clienti fra le sedi SERVICE). Il codice StudioLAB si scrive nella sede solo se è vuota e se nessun'altra sede lo ha (audit "codice StudioLAB dal gestionale"); un abbinamento tolto a mano non viene rifatto.</p>
     </Card>
+  );
+}
+
+// v0.68.6 (CEO 10/11/2026: discrepanza fra l'accettato di StudioLab e la Suite): quadratura con il report "Riepilogo Esami" del gestionale.
+// Si carica il PDF (letto lato server con pdftotext, nessun file conservato) o si incolla il testo o si scrivono periodo e totali; la
+// Suite confronta il totale nelle 4 varianti (stati accettato/erogati × sconto di testata sì/no) e, per cliente, attribuisce le cause.
+// Regole: server/src/lib/synclab/quadratura.js; dati della Suite: lettura `quadratura` di lib/synclab/letture.js.
+const eur2 = (v) => (v == null ? '–' : Number(v).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, useGrouping: 'always' }));
+const ggmmaaaa = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
+const ESITI_Q = { QUADRA: ['green', 'quadra'], SPIEGATA: ['blue', 'spiegata'], NON_SPIEGATA: ['red', 'non spiegata'], SOLO_REPORT: ['amber', 'solo nel report'], SOLO_SUITE: ['amber', 'solo nella Suite'] };
+function Diff({ v, eur = true }) {
+  if (v == null) return <span className="faint">–</span>;
+  const z = Math.abs(Number(v)) <= (eur ? 0.05 : 0);
+  return <span className={z ? 'green' : 'red'}>{Number(v) > 0 ? '+' : ''}{eur ? eur2(v) : n0(v)}</span>;
+}
+function Cause({ cause }) {
+  if (!cause?.length) return <span className="faint small">–</span>;
+  return <ul className="small" style={{ margin: 0, paddingLeft: 16 }}>{cause.map((c) => <li key={c.codice} className={c.spiega ? '' : 'muted'}>{c.spiega ? <b>{c.testo}</b> : c.testo}{c.n != null ? ` · ${n0(c.n)}` : ''}{c.effetto != null && Number(c.effetto) !== 0 ? ` · ${eur2(c.effetto)}` : ''}{c.effetto_qta ? ` · ${n0(c.effetto_qta)} esami` : ''}{c.spiega ? ' ✓' : ''}</li>)}</ul>;
+}
+function Quadratura({ s, onSaved }) {
+  const toast = useToast();
+  const [file, setFile] = useState(null);
+  const [testo, setTesto] = useState('');
+  const [man, setMan] = useState({ da: '', a: '', importo: '', qta: '' });
+  const [out, setOut] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [filtro, setFiltro] = useState('');
+  const [adotta, setAdotta] = useState(null);
+  const invia = async (extra = {}) => {
+    setBusy(true);
+    try {
+      let r;
+      if (extra.report) r = await api.post('/synclab/quadratura', { report: extra.report, variante: extra.variante || '' });
+      else if (file) { const fd = new FormData(); fd.append('file', file); if (man.da && man.a) { fd.append('da', man.da); fd.append('a', man.a); } r = await api.upload('/synclab/quadratura', fd); }
+      else if (testo.trim()) r = await api.post('/synclab/quadratura', { testo, da: man.da || undefined, a: man.a || undefined });
+      else r = await api.post('/synclab/quadratura', { da: man.da, a: man.a, importo: man.importo, qta: man.qta });
+      setOut(r);
+    } catch (e) { toast(e, 'err'); } finally { setBusy(false); }
+  };
+  const esporta = async () => {
+    try {
+      const res = await fetch('/api/synclab/quadratura/xlsx', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'td-suite', 'Content-Type': 'application/json' }, body: JSON.stringify({ report: out.report, variante: out.risultato.variante.chiave }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Errore ${res.status}`);
+      const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `Quadratura_StudioLab_${out.report.periodo.da}_${out.report.periodo.a}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) { toast(e, 'err'); }
+  };
+  const salvaDefinizione = async (v) => {
+    try { await api.put('/synclab/impostazioni', { stati_erogati: v.stati, sconto_testata: v.sconto }); toast(`Definizione adottata: stati ${v.stati.join(', ')}, sconto di testata ${v.sconto === 'APPLICA' ? 'applicato' : 'non applicato'}`); onSaved?.(); invia({ report: out.report, variante: v.chiave }); }
+    catch (e) { toast(e, 'err'); }
+  };
+  const q = out?.risultato;
+  const righe = (q?.righe || []).filter((r) => !filtro || (filtro === 'DA_VEDERE' ? ['NON_SPIEGATA', 'SOLO_REPORT', 'SOLO_SUITE'].includes(r.esito) : ['QUADRA', 'SPIEGATA'].includes(r.esito)));
+  return (
+    <>
+      <Card title="Report di StudioLab" icon="upload" data-testid="quadratura-input">
+        <p className="small muted" style={{ marginTop: 0 }}>Il report <b>Riepilogo Esami</b> del gestionale (per cliente, dal … al …) è l'accettato: tutte le accettazioni del periodo, una riga per codice esame con Q.ta e importo, comprese le righe senza importo (componenti di profilo). Il PDF si legge sul server e non viene conservato; il report non contiene dati di pazienti.</p>
+        <div className="grid2" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+          <div>
+            <DropZone accept="application/pdf,.pdf" multiple={false} compact onFiles={(fs) => { setFile(fs[0]); setTesto(''); }}>
+              <Icon name="upload" /><div className="small">{file ? <><b>{file.name}</b> · {(file.size / 1024).toLocaleString('it-IT', { maximumFractionDigits: 0 })} KB</> : 'Trascina qui il PDF "Riepilogo Esami" oppure clicca per sceglierlo'}</div>
+            </DropZone>
+            {file && <button className="btn sm ghost mt" onClick={() => setFile(null)}>Togli il PDF</button>}
+            <Field label="oppure incolla il testo del report" className="mt"><textarea rows={4} value={testo} onChange={(e) => { setTesto(e.target.value); if (e.target.value) setFile(null); }} placeholder={'Riepilogo Esami  Dal 01/11/2026 al 09/11/2026\n…\nTotale globale:   …'} data-testid="quadratura-testo" /></Field>
+          </div>
+          <div>
+            <div className="small muted" style={{ marginBottom: 6 }}>oppure periodo e totali a mano (il periodo vale anche per il PDF o il testo che non lo riportano)</div>
+            <div className="form-grid">
+              <Field label="Dal"><input type="date" value={man.da} onChange={(e) => setMan({ ...man, da: e.target.value })} data-testid="quadratura-da" /></Field>
+              <Field label="Al"><input type="date" value={man.a} onChange={(e) => setMan({ ...man, a: e.target.value })} data-testid="quadratura-a" /></Field>
+              <Field label="Totale globale (importo, €)"><input inputMode="decimal" value={man.importo} onChange={(e) => setMan({ ...man, importo: e.target.value })} placeholder="es. 18.672,22" data-testid="quadratura-importo" /></Field>
+              <Field label="Totale esami (Q.ta)"><input inputMode="numeric" value={man.qta} onChange={(e) => setMan({ ...man, qta: e.target.value })} placeholder="es. 2.578" /></Field>
+            </div>
+          </div>
+        </div>
+        <div className="row mt"><button className="btn" disabled={busy || (!file && !testo.trim() && !(man.da && man.a && man.importo))} onClick={() => invia()} data-testid="quadratura-confronta"><Icon name="stats" />{busy ? 'Confronto in corso…' : 'Confronta con la Suite'}</button></div>
+      </Card>
+      {q && (
+        <>
+          <Card title={`Totale: report e Suite dal ${ggmmaaaa(q.periodo.da)} al ${ggmmaaaa(q.periodo.a)}`} icon="stats" className="mt" flush data-testid="quadratura-varianti"
+            actions={<button className="btn sm ghost" onClick={esporta} data-testid="quadratura-xlsx"><Icon name="download" />Esporta XLSX</button>}>
+            <div className="small" style={{ padding: '10px 16px 0' }}>Report ({out.report.origine || 'letto'}): <b>{n0(q.totale.report.qta)} esami</b> · <b>{eur2(q.totale.report.importo)}</b>{out.report.clienti?.length ? ` · ${n0(out.report.clienti.length)} sottototali per cliente` : ''}. Copia delle accettazioni: {q.copia?.checkpoint_at ? fmtDateTime(q.copia.checkpoint_at) : 'nessuna'}{q.copia_prima_della_fine ? <span className="amber"> (non copre tutto l'ultimo giorno del periodo)</span> : null}.</div>
+            {(q.report.avvisi || []).length > 0 && <div className="alert warn small" style={{ margin: '8px 16px 0' }}><Icon name="alert" /><span>{q.report.avvisi.join(' · ')}</span></div>}
+            <div className="table-wrap"><table className="t">
+              <thead><tr><th>Variante</th><th className="num">Esami Suite</th><th className="num">Importo Suite</th><th className="num">Differenza</th><th>Esito</th><th /></tr></thead>
+              <tbody>{q.varianti.map((v) => (
+                <tr key={v.chiave} className={v.coincide ? 'sel' : ''} data-testid={`variante-${v.chiave}`}>
+                  <td><b>{v.etichetta}</b> {v.in_vigore ? <Badge tone="blue" dot={false}>in vigore</Badge> : null}<div className="small muted">stati <span className="mono">{v.stati.join(', ')}</span> · sconto di testata {v.sconto === 'APPLICA' ? 'applicato' : 'non applicato'}</div></td>
+                  <td className="num">{n0(v.quantita)}<div className="small muted">{n0(v.righe_senza_prezzo)} senza prezzo</div></td>
+                  <td className="num"><b>{eur2(v.importo)}</b></td>
+                  <td className="num nowrap"><Diff v={v.differenza} /><div className="small"><Diff v={v.differenza_qta} eur={false} /> esami</div></td>
+                  <td>{v.coincide ? <Badge tone="green" dot={false}>coincide</Badge> : v.migliore ? <Badge tone="amber" dot={false}>più vicina</Badge> : null}</td>
+                  <td className="nowrap"><div className="row tight">
+                    <button className={`btn sm ${q.variante.chiave === v.chiave ? '' : 'ghost'}`} onClick={() => invia({ report: out.report, variante: v.chiave })}>Per cliente</button>
+                    {!v.in_vigore && <button className="btn sm ghost" onClick={() => setAdotta(v)} data-testid={`adotta-${v.chiave}`}>Adotta questa definizione</button>}
+                  </div></td>
+                </tr>))}</tbody>
+            </table></div>
+            <div style={{ padding: '4px 16px 12px' }}>
+              <div className="small"><b>Cause sul totale ({q.variante.etichetta}):</b> differenza {eur2(q.totale.differenza.importo)} e {n0(q.totale.differenza.qta)} esami</div>
+              <Cause cause={q.totale.cause} />
+            </div>
+          </Card>
+          <Card title={`Per cliente · ${q.variante.etichetta}`} icon="building" className="mt" flush data-testid="quadratura-clienti"
+            actions={<Seg value={filtro} onChange={setFiltro} label="Filtro" items={[{ value: '', label: `Tutti (${q.righe.length})` }, { value: 'DA_VEDERE', label: `Da vedere (${(q.conteggi.NON_SPIEGATA || 0) + (q.conteggi.SOLO_REPORT || 0) + (q.conteggi.SOLO_SUITE || 0)})` }, { value: 'OK', label: `Quadrano o spiegate (${(q.conteggi.QUADRA || 0) + (q.conteggi.SPIEGATA || 0)})` }]} />}>
+            <div className="table-wrap"><table className="t small">
+              <thead><tr><th>Esito</th><th>Nel report</th><th>Client Synclab</th><th className="num">Report</th><th className="num">Suite</th><th className="num">Differenza</th><th>Causa</th></tr></thead>
+              <tbody>{righe.map((r, i) => { const [tone, lab] = ESITI_Q[r.esito] || ['grey', r.esito]; return (
+                <tr key={i}>
+                  <td><Badge tone={tone} dot={false}>{lab}</Badge></td>
+                  <td>{(r.report?.nomi || []).map((n) => <div key={n}>{n}</div>)}{!r.report && <span className="faint">–</span>}</td>
+                  <td>{r.clienti.map((c) => <div key={c.client_id}><span className="mono">{c.client_code || c.client_id}</span> {c.legal_name}{c.sede_gestionale ? <span className="muted"> · {c.sede_gestionale}</span> : null}{c.ripartizione === 'LAB_SEDE' ? <span className="muted"> · in sede</span> : null}</div>)}{!r.clienti.length && <span className="faint">–</span>}</td>
+                  <td className="num nowrap">{r.report ? <><b>{eur2(r.report.importo)}</b><div>{n0(r.report.qta)} esami</div></> : '–'}</td>
+                  <td className="num nowrap">{r.suite ? <><b>{eur2(r.suite.importo)}</b><div>{n0(r.suite.quantita)} esami</div>{r.suite.righe_senza_prezzo ? <div className="muted">di cui {n0(r.suite.righe_senza_prezzo)} senza prezzo</div> : null}{r.suite.sconto_testata ? <div className="muted">sconti di testata {eur2(r.suite.sconto_testata)}</div> : null}</> : '–'}</td>
+                  <td className="num nowrap"><Diff v={r.differenza.importo} /><div><Diff v={r.differenza.qta} eur={false} /> esami</div></td>
+                  <td style={{ minWidth: 240 }}>{r.esito === 'QUADRA' ? <span className="faint">nessuna differenza</span> : <Cause cause={r.cause} />}</td>
+                </tr>); })}
+              {!righe.length && <tr><td colSpan={7} className="empty">{q.report.clienti ? 'Nessun cliente con questo filtro.' : 'Report senza sottototali per cliente: confronto solo sul totale.'}</td></tr>}</tbody>
+            </table></div>
+            <div className="small muted" style={{ padding: '8px 16px 12px' }}>{q.note.join(' · ')}. Abbinamento dei nomi: ragione sociale normalizzata (senza S.r.l., S.p.A. e punteggiatura), suffisso di reparto " - …" tollerato (con più client dello stesso cliente si sceglie quello del reparto, altrimenti si sommano), nomi troncati dal report a circa 45 caratteri.</div>
+          </Card>
+        </>
+      )}
+      {adotta && <ConfirmModal title="Adotta questa definizione" text={`Tutti i cruscotti useranno: stati ${adotta.stati.join(', ')}; sconto di testata ${adotta.sconto === 'APPLICA' ? 'applicato (netto vero)' : 'non applicato (importi di riga, come il report)'}. Si può cambiare in ogni momento da Impostazioni.`} confirmText="Adotta" onConfirm={() => { const v = adotta; setAdotta(null); salvaDefinizione(v); }} onClose={() => setAdotta(null)} />}
+    </>
   );
 }
 
@@ -274,9 +415,10 @@ export function SynclabDati() {
             {s.in_corso && <span><Badge tone="blue">in corso: {NOMI[s.in_corso.dataset]}</Badge> dal {timeAgo(s.in_corso.dal)}</span>}
           </div>
           {s.connettore.auth_kind !== 'CLIENT_JWT' && <div className="alert warn small mb"><Icon name="alert" /><span>Il connettore StudioLAB non usa il "Client registrato con token": la Data API richiede il login del client (nome e password) in <Link to="/admin/connectors">Connettori</Link>.</span></div>}
-          <Tabs value={tab} onChange={(v) => { const n = new URLSearchParams(sp); n.set('tab', v); n.delete('q'); setSp(n, { replace: true }); }} items={[{ value: 'stato', label: 'Stato' }, { value: 'clienti', label: 'Clienti Synclab' }, { value: 'impostazioni', label: 'Impostazioni' }, { value: 'storico', label: 'Storico dei cicli' }]} />
+          <Tabs value={tab} onChange={(v) => { const n = new URLSearchParams(sp); n.set('tab', v); n.delete('q'); setSp(n, { replace: true }); }} items={[{ value: 'stato', label: 'Stato' }, { value: 'clienti', label: 'Clienti Synclab' }, { value: 'quadratura', label: 'Quadratura' }, { value: 'impostazioni', label: 'Impostazioni' }, { value: 'storico', label: 'Storico dei cicli' }]} />
           <div className="mt">
-            {tab === 'stato' && <Stato s={s} onAvvia={avvia} />}
+            {tab === 'stato' && <Stato s={s} onAvvia={avvia} onSaved={d.reload} />}
+            {tab === 'quadratura' && <Quadratura s={s} onSaved={d.reload} />}
             {tab === 'clienti' && <Clienti qIniziale={sp.get('q') || ''} />}
             {tab === 'impostazioni' && <Impostazioni s={s} onSaved={d.reload} />}
             {tab === 'storico' && <Storico />}

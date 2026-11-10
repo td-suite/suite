@@ -1008,3 +1008,8 @@ che il gestionale ha registrato (`lib/synclabAccount.js`, test `server/test/v068
   univoco. D48/D50 aggiornati (motivo ambiguo/nessun candidato; codice della sede e presenza nel gestionale).
 - Schermata `docs/screens/business-account-synclab.png` (v0.68.5). Test `server/test/v0685-produzione-erogata.test.mjs`.
 
+## v0.68.6 · Maturato = produzione accettata
+Il maturato dell'anno (scheda account, Pipeline, Cruscotto, D51) usa la **produzione accettata** del gestionale (docs/SYNCLAB_DATA_API.md,
+"v0.68.6"): stati dell'impostazione `stati_erogati` (predefiniti tutti tranne 11), importi di riga con lo sconto di testata solo se
+`sconto_testata` = APPLICA (il D51 lo legge con `synclab.sconto_testata_applicato()`). Pro quota, run rate e semaforo non cambiano regola. Il
+Cockpit conta i "clienti in ritardo sul pro quota" con lo stesso semaforo (giallo o rosso). Etichette: "Maturato … (produzione accettata)".

@@ -259,3 +259,38 @@ Come gli altri indicatori Synclab compaiono **solo se ci sono accettazioni impor
 la card è "non disponibile" con il motivo. Stesse regole della pagina Retail > Profilo dei pazienti (docs/RETAIL_PROFILO_PAZIENTI.md,
 `sintesiProfilo` in `lib/synclab/letture.js`). Verifica in produzione: dopo il primo completo delle accettazioni le due card sono nel
 gruppo Retail e Flow e l'età mediana coincide con quella della pagina sul mese in corso.
+
+### Monitor ridisegnato sulla produzione (v0.68.6, CEO 10/11/2026)
+"Troppa enfasi sulle attività in scadenza, poca sui numeri e sui grafici della produzione che mi interessano ben di più. Aggiungi almeno una
+statistica significativa per ogni widget." Sempre UNA schermata senza scorrimento a 1920×1080 e 1366×768 (verificato: `scrollHeight ≤
+innerHeight`, nessuno scorrimento orizzontale), tema scuro e chiaro, `?monitor=1`, aggiornamento ogni 5 minuti, fonte sotto ogni numero,
+nessun link ai moduli. Fasce (righe della griglia 23/37/25/13):
+1. **Produzione** (~60% con la fascia 2): 4 grandi KPI (`schermo.kpi`): Ricavi di oggi, Ricavi del mese (= B2C GIPO + **produzione laboratorio
+   StudioLab tutta**, B2B + Laboratorio in sede), Produzione laboratorio oggi e del mese (con le componenti B2B e in sede). Ognuno con il
+   confronto con l'anno prima e le statistiche (`statistiche`): oggi = **vs media giornaliera del mese**; mese = **proiezione a fine mese** e **%
+   sul mese precedente allo stesso giorno**. Media = produzione dei giorni completi (dal 1° a ieri) / giorni lavorativi (lun-ven, regola del pro
+   quota del Business Hub); proiezione = media × giorni lavorativi del mese (`statisticheMese`, pura). Il primo del mese: "non disponibile".
+2. **Andamento** (`schermo.grafici`, SVG disegnati in pixel, nessuna libreria): barre giornaliere del mese della produzione laboratorio (B2B e in
+   sede impilate, B2C GIPO affiancato), linea della media e del mese precedente (giorno per giorno); ultimi 12 mesi (laboratorio impilato + B2C);
+   TOP 5 clienti Service come barre orizzontali con % sul B2B e variazione sul mese prima; ripartizione B2B / in sede / B2C del mese (anello).
+3. **Operatività** (`schermo.operativita`, 10 tessere con numero e statistica): accettazioni oggi (vs media dello stesso giorno della settimana
+   nelle 8 settimane precedenti coperte dai dati), esami del mese (esami per accettazione; di cui senza prezzo), scontrino medio GIPO (vs mese
+   prima), prima disponibilità online (vs una settimana prima), quota fuori area (vs mese prima, in punti), NC aperte (NC aperte nel mese ogni
+   1.000 accettazioni Synclab del mese, % oltre il termine), ordini da approvare (tempo medio di approvazione degli ultimi 90 giorni), ferie e
+   permessi oggi (% sui dipendenti attivi), clienti Service attivi con produzione nel mese (n e % sui clienti attivi), clienti in ritardo sul pro
+   quota (semaforo giallo/rosso del Business Hub, con i rossi).
+4. **Scadenze** (`schermo.scadenze_sintesi`, per utente): contatori di questa settimana, della prossima e delle scadute (ultimi 30 giorni:
+   lo scadenzario si legge ora da 30 giorni fa) e le 3 più vicine da oggi in una riga; il dettaglio resta nello Scadenzario completo.
+- **Mai zeri finti**: un periodo di confronto anteriore al primo dato importato (Synclab o GIPO) non vale zero ma "non disponibile"; i mesi e i
+  giorni dei grafici prima del primo dato sono null ("n.d.").
+- Nell'intestazione la regola in vigore ("Produzione accettata · importi di riga"). Le chiavi della v0.68.5 (`ricavi`, `laboratorio`, `top5`,
+  `andamento`, `retail`, `persone`, `scadenze`) restano nel JSON; `ricavi` ora somma tutto il laboratorio.
+- **Punto aperto**: possibile doppio conteggio fra GIPO e Laboratorio in sede (nessun criterio certo nei dati GIPO, nulla viene tolto: nota
+  dei Ricavi e della ripartizione; docs/SYNCLAB_DATA_API.md, "Punti aperti").
+- Indicatori del gruppo Operations rinominati: "Accettazioni ieri (Synclab)", "Produzione accettata laboratorio mese (Synclab)".
+
+Collaudo v0.68.6 (db proprio, dati sintetici con nomi inventati): schermate `docs/screens/cockpit-monitor.png` (scuro, 1920×1080),
+`cockpit-monitor-1366.png` (scuro, 1366×768), `cockpit-monitor-chiaro.png` (chiaro, 1920×1080), tutte senza scorrimento. Test
+`server/test/v0686-produzione-accettata.test.mjs` (KPI e statistiche, grafici, tessere, sintesi delle scadenze, funzioni pure).
+Verifica in produzione: `GET /api/cockpit/monitor` → `schermo.kpi` con 4 voci e `statistiche`, `schermo.operativita` con 10 tessere (le "non
+disponibili" con il motivo), `schermo.scadenze_sintesi`.

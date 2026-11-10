@@ -22,10 +22,10 @@ export default function Laboratorio() {
       <ErrorBox error={q.error} />
       {!d ? <Loading /> : !d.attivo ? <div className="alert info"><div>{d.motivo}. Si cambia in Retail &gt; Impostazioni.</div></div> : <>
         <div className="grid g4" style={{ marginBottom: 16 }}>
-          <div className="card kpi accent"><div className="lbl">Accettazioni erogate</div><div className="val">{num(d.totale.accettazioni)}</div><div className="delta"><VarPct v={d.var_accettazioni} /> <span className="muted">anno prima {num(d.anno_prima.accettazioni)}</span></div></div>
+          <div className="card kpi accent"><div className="lbl">Accettazioni</div><div className="val">{num(d.totale.accettazioni)}</div><div className="delta"><VarPct v={d.var_accettazioni} /> <span className="muted">anno prima {num(d.anno_prima.accettazioni)}</span></div></div>
           <div className="card kpi"><div className="lbl">Esami</div><div className="val">{num(d.totale.esami)}</div><div className="delta"><span className="muted">anno prima {num(d.anno_prima.esami)}</span></div></div>
           <div className="card kpi"><div className="lbl">Sedi con accettazioni</div><div className="val">{num(d.sedi.filter((s) => s.totale.accettazioni).length)}</div><div className="delta"><span className="muted">nel periodo</span></div></div>
-          <div className="card kpi"><div className="lbl">Produzione erogata</div><div className="val">{eur0(d.totale.valore)}</div><div className="delta"><span className="muted">{d.totale.righe_senza_prezzo ? `${num(d.totale.righe_senza_prezzo)} esami senza prezzo` : 'netto di riga e sconto di testata'}</span></div></div>
+          <div className="card kpi"><div className="lbl">Produzione accettata</div><div className="val">{eur0(d.totale.valore)}</div><div className="delta"><span className="muted">{d.totale.righe_senza_prezzo ? `${num(d.totale.righe_senza_prezzo)} esami senza prezzo` : 'importi di riga e sconto di testata come da impostazioni'}</span></div></div>
         </div>
         <Card title="Accettazioni per sede e mese" flush>
           {!d.sedi.length ? <Empty>Nessuna accettazione dei punti TD nel periodo (i client StudioLab vanno abbinati alle sedi in Amministrazione &gt; Connettori &gt; Dati Synclab)</Empty> : <div className="table-wrap"><table className="t" data-testid="lab-sedi">

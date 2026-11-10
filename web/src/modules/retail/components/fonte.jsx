@@ -9,16 +9,16 @@ const NOMI = { requests: 'accettazioni', invoices: 'documenti', clients: 'client
 
 /**
  * Riga "Fonte: StudioLab (Synclab Data API) · checkpoint accettazioni … · documenti …"; insiemi = quali checkpoint mostrare.
- * v0.68.5: con `d` (risposta delle API B2B) dichiara la grandezza principale: "Produzione erogata: Synclab, accettazioni erogate (stati …),
- * netto di riga e sconto di testata, copia al … · aggiornato alle HH:MM".
+ * v0.68.5: con `d` (risposta delle API B2B) dichiara la grandezza principale: "Produzione accettata: Synclab, accettazioni (stati …),
+ * importi di riga e sconto di testata come da impostazioni, copia al … · aggiornato alle HH:MM".
  */
 export function FonteSynclab({ stato, insiemi = ['requests', 'invoices'], extra, d }) {
   const ins = stato?.insiemi || {};
   const vuoto = stato && !stato.conteggi?.requests && !stato.conteggi?.invoices;
   return (
     <>
-      {d?.fonte_produzione && <div className="small fonte" data-testid="fonte-produzione" style={{ margin: '-6px 0 4px' }} title={d.stati_descritti ? `Stati erogati: ${d.stati_descritti}` : undefined}>
-        <b>Produzione erogata</b> · {d.fonte_produzione}</div>}
+      {d?.fonte_produzione && <div className="small fonte" data-testid="fonte-produzione" style={{ margin: '-6px 0 4px' }} title={d.stati_descritti ? `Stati della produzione accettata: ${d.stati_descritti}` : undefined}>
+        <b>Produzione accettata</b> · {d.fonte_produzione}</div>}
       <div className="small muted fonte" data-testid="fonte-synclab" style={{ margin: d?.fonte_produzione ? '0 0 12px' : '-6px 0 12px' }}>
         <b>Fonte: StudioLab (Synclab Data API)</b>, copia locale in sola lettura · {insiemi.map((k) => `${NOMI[k] || k}: ${ins[k]?.checkpoint_at ? `checkpoint ${itDateTime(ins[k].checkpoint_at)}` : 'nessun checkpoint'}`).join(' · ')}{extra ? ` · ${extra}` : ''}
       </div>
@@ -71,7 +71,7 @@ export function FonteB2CAuto({ tipo = 'GIPO' }) {
   return <div className="small muted fonte" data-testid="fonte-b2c" style={{ margin: '-6px 0 12px' }}><b>Fonte</b> · {testo}</div>;
 }
 
-/** Mini barre della produzione erogata giorno per giorno (cruscotti di Retail e scheda cliente). giorni = [{ giorno, valore, esami }]. */
+/** Mini barre della produzione accettata giorno per giorno (cruscotti di Retail e scheda cliente). giorni = [{ giorno, valore, esami }]. */
 export function BarreGiorni({ giorni = [], altezza = 70, fmtValore = (v) => String(v) }) {
   if (!giorni.length) return null;
   const max = Math.max(1, ...giorni.map((g) => Number(g.valore) || 0));

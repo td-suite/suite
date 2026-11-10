@@ -16,33 +16,60 @@
 // Un client Synclab appartiene a una Legal entity secondo synclab.clients_td (abbinamento confermato, altrimenti proposto).
 import { one, many } from '../../db.js';
 
-// ------------------------------------------------------------------ stati erogati (v0.68.5)
+// ------------------------------------------------------------------ stati e sconto di testata (v0.68.5, v0.68.6)
 /** Legenda dei codici di stato dell'accettazione (docs/synclab-data-api/02_DIZIONARIO_BI.md). */
 export const LEGENDA_STATI = { 10: 'prenotata', 11: 'NC mai arrivato', 15: 'in attesa', 18: 'prelievo eseguito', 20: 'in lavorazione', 25: 'in firma', 30: 'attende prelievo', 40: 'referto pronto', 50: 'chiuso' };
-/** Stati "erogati" predefiniti: dal prelievo eseguito in poi (ipotesi da confermare con il CEO e CB Sistemi). */
-export const STATI_EROGATI_PREDEFINITI = [18, 20, 25, 40, 50];
+/**
+ * v0.68.6 (CEO 10/11/2026, discrepanza con il report "Riepilogo Esami" di StudioLab): la produzione dei cruscotti è l'ACCETTATO = tutte
+ * le accettazioni del periodo negli stati inclusi dal gestionale tranne 11 (NC mai arrivato). È il predefinito dell'impostazione
+ * `stati_erogati` (nome storico della chiave; etichetta "Stati che contano come produzione accettata").
+ */
+export const STATI_ACCETTATO = [10, 15, 18, 20, 25, 30, 40, 50];
+/** Definizione della v0.68.5 ("erogati": dal prelievo eseguito in poi): resta come variante della quadratura. */
+export const STATI_EROGATI_STORICI = [18, 20, 25, 40, 50];
+/** Predefinito in vigore (dalla v0.68.6 = accettato). */
+export const STATI_EROGATI_PREDEFINITI = STATI_ACCETTATO;
+/** Sconto di testata: APPLICA (netto vero, v0.68.5) o NON_APPLICARE (importi di riga, come il report del gestionale: predefinito v0.68.6). */
+export const SCONTO_TESTATA = { APPLICA: 'applicato (netto di riga meno lo sconto di testata)', NON_APPLICARE: 'non applicato (importi di riga, come il report del gestionale)' };
+export const SCONTO_TESTATA_PREDEFINITO = 'NON_APPLICARE';
+export const normalizzaSconto = (v) => (v === true || String(v ?? '').trim().toUpperCase() === 'APPLICA' ? 'APPLICA' : 'NON_APPLICARE');
 /** Normalizza un elenco di stati (array o testo "18, 20"): interi 0-999 distinti e ordinati; vuoto o non valido = predefiniti. */
 export function normalizzaStati(v) {
   const lista = Array.isArray(v) ? v : String(v ?? '').split(/[,;\s]+/);
   const out = [...new Set(lista.map((x) => String(x).trim()).filter((x) => /^\d{1,3}$/.test(x)).map(Number))].sort((x, y) => x - y);
   return out.length ? out : [...STATI_EROGATI_PREDEFINITI];
 }
-/** Stati erogati in vigore (impostazione `stati_erogati` del connettore StudioLAB, letta da synclab.stati_erogati(): fonte unica). */
+/** Stati in vigore (impostazione `stati_erogati` del connettore StudioLAB, letta da synclab.stati_erogati(): fonte unica). */
 export async function statiErogati() {
   const r = await one('SELECT synclab.stati_erogati() AS s').catch(() => null);
   return normalizzaStati(r?.s);
 }
+/** Regola dello sconto di testata in vigore (impostazione `sconto_testata`, letta da synclab.sconto_testata_applicato()). */
+export async function scontoTestata() {
+  const r = await one('SELECT synclab.sconto_testata_applicato() AS a').catch(() => null);
+  return r?.a === true ? 'APPLICA' : 'NON_APPLICARE';
+}
+/** Regola completa della produzione in vigore: { stati, sconto: 'APPLICA'|'NON_APPLICARE', applica }. */
+export async function regolaProduzione() {
+  const [stati, sconto] = [await statiErogati(), await scontoTestata()];
+  return { stati, sconto, applica: sconto === 'APPLICA' };
+}
+// opzione `sconto` delle letture: true/'APPLICA' = applica; false/'NON_APPLICARE' = importi di riga; null/undefined = impostazione
+const applicaDa = async (sconto) => (sconto == null ? (await scontoTestata()) === 'APPLICA' : normalizzaSconto(sconto) === 'APPLICA');
 /** "18 prelievo eseguito, 20 in lavorazione, …" */
 export const descriviStati = (stati) => normalizzaStati(stati).map((s) => `${s}${LEGENDA_STATI[s] ? ` ${LEGENDA_STATI[s]}` : ''}`).join(', ');
 const oraRoma = (t) => new Date(t).toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', hour12: false });
 const dataRoma = (t) => new Date(t).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' });
+/** "importi di riga (sconto di testata non applicato)" oppure "netto di riga e sconto di testata" */
+export const descriviSconto = (sconto) => (normalizzaSconto(sconto) === 'APPLICA' ? 'netto di riga e sconto di testata' : 'importi di riga (sconto di testata non applicato)');
 /**
- * Fonte dichiarata della produzione erogata sotto ogni numero: "Synclab, accettazioni erogate (stati 18, 20, 25, 40, 50), netto di riga e
- * sconto di testata, copia al 10/11/2026 · aggiornato alle 14:05". checkpointAt = capturedAt dell'ultima copia delle accettazioni.
+ * Fonte dichiarata della produzione sotto ogni numero: "Synclab, produzione accettata (stati 10, 15, 18, 20, 25, 30, 40, 50), importi di
+ * riga (sconto di testata non applicato), copia al 10/11/2026 · aggiornato alle 14:05". checkpointAt = capturedAt dell'ultima copia delle
+ * accettazioni; sconto = regola dello sconto di testata (predefinita NON_APPLICARE).
  */
-export function fonteProduzione(stati, checkpointAt = null) {
+export function fonteProduzione(stati, checkpointAt = null, sconto = SCONTO_TESTATA_PREDEFINITO) {
   const copia = checkpointAt ? `copia al ${dataRoma(checkpointAt)} · aggiornato alle ${oraRoma(checkpointAt)}` : 'nessuna copia delle accettazioni';
-  return `Synclab, accettazioni erogate (stati ${normalizzaStati(stati).join(', ')}), netto di riga e sconto di testata, ${copia}`;
+  return `Synclab, produzione accettata (stati ${normalizzaStati(stati).join(', ')}), ${descriviSconto(sconto)}, ${copia}`;
 }
 /** "aggiornato alle HH:MM" (oggi) oppure "aggiornato al gg/mm/aaaa HH:MM" */
 export function aggiornatoAlle(t, oggi = null) {
@@ -51,8 +78,10 @@ export function aggiornatoAlle(t, oggi = null) {
   const o = oggi || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' });
   return g === o ? `aggiornato alle ${oraRoma(t)}` : `aggiornato al ${dataRoma(t)} ${oraRoma(t)}`;
 }
-// valore di una riga d'esame: netto di riga × quantità × (1 − sconto di testata); null se prezzo o quantità mancano
-const SQL_VALORE_RIGA = (i = 'i', r = 'r') => `(${i}.net_unit_price_excluding_vat * ${i}.quantity * (1 - coalesce(${r}.header_discount_percent, 0) / 100.0))`;
+// valore di una riga d'esame: netto di riga × quantità, × (1 − sconto di testata) solo se la regola lo applica; null se prezzo o quantità mancano
+const SQL_VALORE_RIGA = (i = 'i', r = 'r', applica = false) => (applica ? `(${i}.net_unit_price_excluding_vat * ${i}.quantity * (1 - coalesce(${r}.header_discount_percent, 0) / 100.0))`
+  : `(${i}.net_unit_price_excluding_vat * ${i}.quantity)`);
+// parte di sconto di testata della riga (sempre calcolata: "di cui sconti di testata")
 const SQL_SCONTO_RIGA = (i = 'i', r = 'r') => `(${i}.net_unit_price_excluding_vat * ${i}.quantity * coalesce(${r}.header_discount_percent, 0) / 100.0)`;
 
 const meseRe = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -80,11 +109,11 @@ export async function disponibilita() {
  * produzionePerOrg. pStati = segnaposto dell'elenco degli stati erogati (es. '$3'). valore = netto di riga × quantità × (1 − sconto di
  * testata), una volta: la Finance e il Business Hub sommano questi valori.
  */
-function sqlProduzione(where, pStati) {
+function sqlProduzione(where, pStati, applica = false) {
   return `SELECT to_char(r.date, 'YYYY-MM') AS mese, upper(coalesce(nullif(i.exam_code, ''), '?')) AS codice, max(i.description) AS descrizione,
         i.net_unit_price_excluding_vat AS prezzo_netto, count(*)::int AS righe, sum(i.quantity) AS quantita,
-        sum(${SQL_VALORE_RIGA()}) AS valore, sum(i.net_unit_price_excluding_vat * i.quantity) AS valore_righe,
-        count(*) FILTER (WHERE ${SQL_VALORE_RIGA()} IS NULL)::int AS senza_prezzo
+        sum(${SQL_VALORE_RIGA('i', 'r', applica)}) AS valore, sum(i.net_unit_price_excluding_vat * i.quantity) AS valore_righe,
+        count(*) FILTER (WHERE ${SQL_VALORE_RIGA('i', 'r', applica)} IS NULL)::int AS senza_prezzo
       FROM synclab.requests r JOIN synclab.request_items i ON i.instance_id = r.instance_id AND i.request_id = r.id
      WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY(${pStati}::int[]) AND coalesce(i.deleted, FALSE) = FALSE AND ${where}
      GROUP BY 1, 2, 4 ORDER BY 2, 4`;
@@ -95,7 +124,7 @@ const sqlTestate = (where, pStati, gruppo = '') => `SELECT ${gruppo}count(*)::in
       sum((SELECT sum(${SQL_SCONTO_RIGA('i2', 'r')}) FROM synclab.request_items i2 WHERE i2.instance_id = r.instance_id AND i2.request_id = r.id AND coalesce(i2.deleted, FALSE) = FALSE)) AS sconto_importo
     FROM synclab.requests r WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY(${pStati}::int[])
       AND EXISTS (SELECT 1 FROM synclab.request_items i WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE) AND ${where}`;
-function sintesiProduzione(rows, testate) {
+function sintesiProduzione(rows, testate, applica = false) {
   const righe = rows.map((x) => ({ codice: x.codice, descrizione: x.descrizione, prezzo_netto: x.prezzo_netto, righe: x.righe, quantita: x.quantita, valore: x.valore }));
   const esami = rows.reduce((a, x) => a + Number(x.righe), 0);
   const senza = rows.reduce((a, x) => a + Number(x.senza_prezzo), 0);
@@ -104,30 +133,34 @@ function sintesiProduzione(rows, testate) {
   const note = [];
   if (senza) note.push(`${senza} esami senza prezzo su ${esami}: valore parziale`);
   const sconto = testate?.sconto_importo != null && Number(testate.sconto_importo) !== 0 ? Math.round(Number(testate.sconto_importo) * 100) / 100 : null;
-  if (testate?.con_sconto) note.push(`${testate.con_sconto} accettazioni con sconto di testata (${testate.percentuali}): applicato una volta ai netti di riga${sconto != null ? ` (−${sconto.toLocaleString('it-IT', { minimumFractionDigits: 2 })} €)` : ''}`);
-  return { esami, valore, righe_senza_prezzo: senza, righe, accettazioni: testate?.accettazioni ?? null, sconto_testata: testate?.con_sconto ? { accettazioni: testate.con_sconto, percentuali: testate.percentuali, importo: sconto } : null, note: note.join('. ') || null };
+  const imp = sconto != null ? ` (${applica ? '−' : ''}${sconto.toLocaleString('it-IT', { minimumFractionDigits: 2 })} €)` : '';
+  if (testate?.con_sconto) note.push(applica ? `${testate.con_sconto} accettazioni con sconto di testata (${testate.percentuali}): applicato una volta ai netti di riga${imp}`
+    : `${testate.con_sconto} accettazioni con sconto di testata (${testate.percentuali}): non applicato, importi di riga come il report del gestionale${imp}`);
+  return { esami, valore, righe_senza_prezzo: senza, righe, accettazioni: testate?.accettazioni ?? null, sconto_testata: testate?.con_sconto ? { accettazioni: testate.con_sconto, percentuali: testate.percentuali, importo: sconto, applicato: applica } : null, note: note.join('. ') || null };
 }
 
 /**
  * Produzione erogata del mese di un cliente (Legal entity o client Synclab): { esami (righe), valore (netto vero, null se nessun
  * prezzo), righe: [{ codice, descrizione, prezzo_netto, righe, quantita, valore }], righe_senza_prezzo, accettazioni, sconto_testata, note }.
  */
-export async function produzioneMensile({ organization_id = null, client_id = null, mese, stati = null }) {
+export async function produzioneMensile({ organization_id = null, client_id = null, mese, stati = null, sconto = null }) {
   const { da, a } = limiti(mese);
   const params = [da, a, stati ? normalizzaStati(stati) : await statiErogati()];
+  const applica = await applicaDa(sconto);
   const fc = filtroCliente('r', { organization_id, client_id }, params);
-  const rows = await many(sqlProduzione(`r.date BETWEEN $1::date AND $2::date AND ${fc}`, '$3'), params);
+  const rows = await many(sqlProduzione(`r.date BETWEEN $1::date AND $2::date AND ${fc}`, '$3', applica), params);
   const t = await one(sqlTestate(`r.date BETWEEN $1::date AND $2::date AND ${fc}`, '$3'), params);
-  return { mese, ...sintesiProduzione(rows, t) };
+  return { mese, ...sintesiProduzione(rows, t, applica) };
 }
 
 /** Produzione erogata per Legal entity e mese nel periodo [da, a] (Finance, Business Hub): Map 'org|AAAA-MM' → sintesi come produzioneMensile. */
-export async function produzionePerOrg(orgIds, da, a, { stati = null } = {}) {
+export async function produzionePerOrg(orgIds, da, a, { stati = null, sconto = null } = {}) {
   const out = new Map();
   if (!orgIds?.length) return out;
   const st = stati ? normalizzaStati(stati) : await statiErogati();
+  const applica = await applicaDa(sconto);
   const rows = await many(`WITH m AS (SELECT instance_id, client_id, organization_id FROM synclab.clients_td WHERE organization_id = ANY($1::int[]))
-    SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlProduzione(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`, '$4')}) x`, [orgIds, da, a, st]);
+    SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlProduzione(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`, '$4', applica)}) x`, [orgIds, da, a, st]);
   const t = await many(`WITH m AS (SELECT instance_id, client_id, organization_id FROM synclab.clients_td WHERE organization_id = ANY($1::int[]))
     SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlTestate(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`, '$4', "to_char(r.date, 'YYYY-MM') AS mese, ")} GROUP BY 1) x`, [orgIds, da, a, st]);
   // più client Synclab della stessa Legal entity: testate sommate per mese
@@ -147,7 +180,7 @@ export async function produzionePerOrg(orgIds, da, a, { stati = null } = {}) {
       fuse.set(kk, p ? { ...p, righe: p.righe + r.righe, quantita: Number(p.quantita || 0) + Number(r.quantita || 0), senza_prezzo: p.senza_prezzo + r.senza_prezzo,
         valore: p.valore == null && r.valore == null ? null : Number(p.valore || 0) + Number(r.valore || 0) } : r);
     }
-    out.set(k, sintesiProduzione([...fuse.values()], testate.get(k)));
+    out.set(k, sintesiProduzione([...fuse.values()], testate.get(k), applica));
   }
   return out;
 }
@@ -192,11 +225,11 @@ export async function fatturatoPerOrg(orgIds, da, a) {
 export async function indicatoriLaboratorio({ ieri, inizioMese, oggi }) {
   const d = await disponibilita();
   if (!d) return null;
-  const stati = await statiErogati();
+  const { stati, sconto } = await regolaProduzione();
   const acc = d.requests ? await one(`SELECT count(*)::int AS n FROM synclab.requests WHERE disponibilita='ATTIVO' AND deleted_at IS NULL AND date = $1::date AND state = ANY($2::int[])`, [ieri, stati]) : null;
-  const prod = d.requests ? (await produzioneErogata({ da: inizioMese, a: oggi, stati })).totale : null;
+  const prod = d.requests ? (await produzioneErogata({ da: inizioMese, a: oggi, stati, sconto })).totale : null;
   const fat = d.invoices ? sintesiFatturato(await one(sqlFatturato('v.date BETWEEN $1::date AND $2::date'), [inizioMese, oggi])) : null;
-  return { accettazioni_ieri: acc ? acc.n : null, produzione_mese: prod, fatturato_mese: fat, stati, disponibilita: d };
+  return { accettazioni_ieri: acc ? acc.n : null, produzione_mese: prod, fatturato_mese: fat, stati, sconto, disponibilita: d };
 }
 
 /** Catalogo esami di Synclab (tutti, anche inattivi: il catalogo li comprende). */
@@ -512,10 +545,10 @@ function ctePc(params, privatiInB2c = true) {
  * Accettazioni (acc) e righe d'esame (it) del periodo con cliente e ripartizione; filtri facoltativi su ripartizione, chiave, sede.
  * v0.68.5: produzione erogata. stati = stati erogati (obbligatorio: conLab lo legge se manca); soloErogate (predefinito) tiene solo le
  * accettazioni erogate, altrimenti tutte con la colonna `erogata` (per contare anche le registrate). it.valore_riga = netto di riga ×
- * quantità × (1 − sconto di testata) (null senza prezzo o quantità); it.netto_riga = netto di riga × quantità (senza lo sconto di
+ * quantità, × (1 − sconto di testata) solo con applica (v0.68.6: regola `sconto_testata`; null senza prezzo o quantità); it.netto_riga = netto di riga × quantità (senza lo sconto di
  * testata: è il prezzo confrontabile con i listini); it.sconto_riga = la parte di sconto di testata.
  */
-function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, stati, soloErogate = true }) {
+function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, stati, soloErogate = true, applica = false }) {
   const params = [da, a];
   const pc = ctePc(params, privatiInB2c);
   const w = [];
@@ -540,11 +573,11 @@ function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null
     SELECT acc.instance_id, acc.id AS request_id, acc.date, acc.mese, acc.chiave, acc.cliente, acc.organization_id, acc.ripartizione, acc.site_id, acc.sede, acc.erogata,
            upper(coalesce(nullif(trim(i.exam_code), ''), '?')) AS codice, i.description AS descr_riga, i.quantity AS quantita,
            i.net_unit_price_excluding_vat AS netto, i.net_unit_price_excluding_vat * i.quantity AS netto_riga,
-           ${SQL_VALORE_RIGA('i', 'acc')} AS valore_riga, ${SQL_SCONTO_RIGA('i', 'acc')} AS sconto_riga
+           ${SQL_VALORE_RIGA('i', 'acc', applica)} AS valore_riga, ${SQL_SCONTO_RIGA('i', 'acc')} AS sconto_riga
       FROM acc JOIN synclab.request_items i ON i.instance_id = acc.instance_id AND i.request_id = acc.id AND coalesce(i.deleted, FALSE) = FALSE)`;
   return { sql, params };
 }
-const conLab = async (opz, corpo) => { const c = cteLab({ ...opz, stati: opz.stati || await statiErogati() }); return many(`WITH ${c.sql} ${corpo}`, c.params); };
+const conLab = async (opz, corpo) => { const c = cteLab({ ...opz, stati: opz.stati || await statiErogati(), applica: await applicaDa(opz.sconto) }); return many(`WITH ${c.sql} ${corpo}`, c.params); };
 
 /** Documenti economici del periodo con cliente, ripartizione e classe (FATTURA, NC, ANNULLATO, SCONOSCIUTO). */
 function cteDoc({ da, a, privatiInB2c = true, ripartizione = null, chiave = null }) {
@@ -608,11 +641,12 @@ export async function ripartizioneClienti({ privatiInB2c = true } = {}) {
  * Quadro del laboratorio per il cruscotto di rete: per ripartizione accettazioni, esami, valore, clienti con produzione e documenti
  * economici, nel periodo e nello stesso periodo dell'anno prima. { periodo, LAB_SEDE: {...}, B2B: {...}, totale }.
  */
-export async function quadroLaboratorio({ da, a, privatiInB2c = true, stati = null }) {
+export async function quadroLaboratorio({ da, a, privatiInB2c = true, stati = null, sconto = null }) {
   stati = stati ? normalizzaStati(stati) : await statiErogati();
+  sconto = sconto == null ? await scontoTestata() : normalizzaSconto(sconto);
   const prec = { da: annoPrima(da), a: annoPrima(a) };
   const leggiP = async (d1, d2) => {
-    const o = { da: d1, a: d2, privatiInB2c, stati, soloErogate: false };
+    const o = { da: d1, a: d2, privatiInB2c, stati, sconto, soloErogate: false };
     const acc = await conLab(o, `SELECT ripartizione, ${AGG_ACC}, count(DISTINCT chiave) FILTER (WHERE erogata)::int AS clienti FROM acc GROUP BY 1`);
     const it = await conLab(o, `SELECT ripartizione, ${AGG_IT} FROM it GROUP BY 1`);
     const doc = await conDoc({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_DOC} FROM doc GROUP BY 1`);
@@ -624,7 +658,7 @@ export async function quadroLaboratorio({ da, a, privatiInB2c = true, stati = nu
     return out;
   };
   const cur = await leggiP(da, a), prev = await leggiP(prec.da, prec.a);
-  const out = { periodo: { da, a, prec }, privati_in_b2c: privatiInB2c !== false, stati };
+  const out = { periodo: { da, a, prec }, privati_in_b2c: privatiInB2c !== false, stati, sconto };
   for (const k of Object.keys(RIPARTIZIONI)) out[k] = { ...cur[k], anno_prima: prev[k], var_accettazioni: varPct(cur[k].accettazioni, prev[k].accettazioni), var_valore: varPct(cur[k].valore, prev[k].valore) };
   return out;
 }
@@ -633,8 +667,8 @@ export async function quadroLaboratorio({ da, a, privatiInB2c = true, stati = nu
  * Produzione per cliente e mese: { mesi, clienti: [{ chiave, cliente, organization_id, perimetro_b2b, stato_abbinamento, totale, mesi: { 'AAAA-MM': {...} } }], totale }.
  * ripartizione: 'B2B' (predefinita), 'LAB_SEDE' o null (tutte).
  */
-export async function produzioneClientiMesi({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null }) {
-  const o = { da, a, privatiInB2c, ripartizione, chiave };
+export async function produzioneClientiMesi({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null, sconto = null }) {
+  const o = { da, a, privatiInB2c, ripartizione, chiave, stati, sconto };
   const acc = await conLab(o, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, bool_or(perimetro_b2b) AS perimetro_b2b, max(stato_abbinamento) AS stato_abbinamento,
       max(ripartizione) AS ripartizione, mese, ${AGG_ACC} FROM acc GROUP BY chiave, mese`);
   const it = await conLab(o, `SELECT chiave, mese, ${AGG_IT} FROM it GROUP BY chiave, mese`);
@@ -642,9 +676,10 @@ export async function produzioneClientiMesi({ da, a, privatiInB2c = true, ripart
   const m = new Map();
   for (const r of acc) {
     if (!m.has(r.chiave)) m.set(r.chiave, { chiave: r.chiave, cliente: r.cliente, organization_id: r.organization_id, perimetro_b2b: r.perimetro_b2b, stato_abbinamento: r.stato_abbinamento, ripartizione: r.ripartizione, mesi: {} });
-    m.get(r.chiave).mesi[r.mese] = formaProd(r, it.find((x) => x.chiave === r.chiave && x.mese === r.mese));
+    m.get(r.chiave).mesi[r.mese] = formaProdR(r, it.find((x) => x.chiave === r.chiave && x.mese === r.mese));
   }
-  const somma = (lista) => { const t = { ...prodVuota }; let conValore = false; for (const x of lista) { t.accettazioni += x.accettazioni; t.esami += x.esami; t.righe_senza_prezzo += x.righe_senza_prezzo; if (x.valore != null) { t.valore = (t.valore || 0) + x.valore; conValore = true; } } if (conValore) t.valore = n2(t.valore); return t; };
+  // v0.68.6: anche "di cui sconti di testata" (sconto_testata) e le registrate
+  const somma = sommaProd;
   const clienti = [...m.values()].map((c) => ({ ...c, totale: somma(Object.values(c.mesi)) }))
     .sort((x, y) => (Number(y.totale.valore || 0) - Number(x.totale.valore || 0)) || (y.totale.esami - x.totale.esami) || String(x.cliente).localeCompare(String(y.cliente), 'it'));
   const perMese = Object.fromEntries(mesi.map((mk) => [mk, somma(clienti.map((c) => c.mesi[mk]).filter(Boolean))]));
@@ -722,7 +757,7 @@ export async function cruscottoB2B({ mese = null, privatiInB2c = true, oggi = is
  */
 export async function prezziApplicati({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null }) {
   // prezzo applicato = netto di riga (prima dello sconto di testata): è quello confrontabile con il listino
-  const c = cteLab({ da, a, privatiInB2c, ripartizione, chiave, stati: stati || await statiErogati() });
+  const c = cteLab({ da, a, privatiInB2c, ripartizione, chiave, stati: stati || await statiErogati(), applica: await applicaDa(null) });
   const rows = await many(`WITH ${c.sql},
     g AS (SELECT chiave, max(cliente) AS cliente, codice, max(descr_riga) AS descr_riga, count(*)::int AS righe, sum(quantita) AS quantita,
              sum(netto_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio, min(netto) AS prezzo_min, max(netto) AS prezzo_max,
@@ -835,12 +870,13 @@ const sommaProd = (lista) => {
  * l'impostazione del connettore). Ritorna { periodo, stati, totale: { accettazioni, esami, valore, righe_senza_prezzo, sconto_testata },
  * righe: [{ chiave, nome, ...totale }], anno_prima, regola }. Per giorno e mese le righe coprono tutto il periodo (anche a zero).
  */
-export async function produzioneErogata({ da, a, per = null, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, annoPrima: conAnnoPrima = false, stati = null } = {}) {
+export async function produzioneErogata({ da, a, per = null, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, annoPrima: conAnnoPrima = false, stati = null, sconto = null } = {}) {
   if (!giornoRe.test(String(da)) || !giornoRe.test(String(a)) || da > a) throw Object.assign(new Error('Periodo non valido (da/a nel formato AAAA-MM-GG)'), { status: 400 });
   if (per && !PER[per]) throw Object.assign(new Error(`Raggruppamento non valido: ${per}`), { status: 400 });
   const st = stati ? normalizzaStati(stati) : await statiErogati();
+  const sc = sconto == null ? await scontoTestata() : normalizzaSconto(sconto);
   const leggi = async (d1, d2) => {
-    const o = { da: d1, a: d2, privatiInB2c, ripartizione, chiave, siteId, stati: st };
+    const o = { da: d1, a: d2, privatiInB2c, ripartizione, chiave, siteId, stati: st, sconto: sc };
     const g = per ? PER[per] : null;
     const sel = g ? `${g.k} AS k, ${g.nome} AS nome${g.extra ? `, ${g.extra}` : ''},` : '';
     const grp = g ? 'GROUP BY 1' : '';
@@ -858,8 +894,8 @@ export async function produzioneErogata({ da, a, per = null, privatiInB2c = true
     const m = new Map(righe.map((x) => [x.chiave, x]));
     righe = chiavi.map((k) => m.get(k) || { chiave: k, nome: null, ...prodVuotaR });
   } else if (per) righe = [...righe].sort((x, y) => (Number(y.valore || 0) - Number(x.valore || 0)) || (y.esami - x.esami) || String(x.nome ?? x.chiave).localeCompare(String(y.nome ?? y.chiave), 'it'));
-  const out = { periodo: { da, a }, per, stati: st, totale: cur.totale, righe,
-    regola: `Accettazioni erogate (stati ${st.join(', ')}); valore = Σ netto di riga × quantità × (1 − sconto di testata), righe d'esame non cancellate; righe senza prezzo contate a parte; data = data dell'accettazione` };
+  const out = { periodo: { da, a }, per, stati: st, sconto: sc, totale: cur.totale, righe,
+    regola: `Produzione accettata (stati ${st.join(', ')}); valore = Σ netto di riga × quantità${sc === 'APPLICA' ? ' × (1 − sconto di testata)' : ' (sconto di testata non applicato, come il report del gestionale)'}, righe d'esame non cancellate; esami = righe non cancellate comprese quelle senza prezzo (contate anche a parte); data = data dell'accettazione` };
   if (conAnnoPrima) {
     const prec = { da: annoPrima(da), a: annoPrima(a) };
     const p = await leggi(prec.da, prec.a);
@@ -873,17 +909,18 @@ export async function produzioneErogata({ da, a, per = null, privatiInB2c = true
 /** Produzione erogata giorno per giorno nel periodo (tutti i giorni, anche a zero): { giorni: [{ giorno, ...totale }], totale, stati }. */
 export async function produzioneGiornaliera(opz) {
   const p = await produzioneErogata({ ...opz, per: 'giorno' });
-  return { periodo: p.periodo, stati: p.stati, totale: p.totale, giorni: p.righe.map(({ chiave, nome, ...x }) => ({ giorno: chiave, ...x })), regola: p.regola };
+  return { periodo: p.periodo, stati: p.stati, sconto: p.sconto, totale: p.totale, giorni: p.righe.map(({ chiave, nome, ...x }) => ({ giorno: chiave, ...x })), regola: p.regola };
 }
 
 /**
  * TOP N clienti per produzione erogata del periodo con la quota sul totale della ripartizione e la variazione sullo stesso periodo del
  * mese prima (prec = { da, a }, facoltativo). { righe: [{ pos, chiave, cliente, valore, esami, quota, prima, variazione }], totale, clienti }.
  */
-export async function topClientiProduzione({ da, a, prec = null, n = 5, privatiInB2c = true, ripartizione = 'B2B', stati = null }) {
+export async function topClientiProduzione({ da, a, prec = null, n = 5, privatiInB2c = true, ripartizione = 'B2B', stati = null, sconto = null }) {
   const st = stati ? normalizzaStati(stati) : await statiErogati();
-  const cur = await produzioneErogata({ da, a, per: 'cliente', privatiInB2c, ripartizione, stati: st });
-  const pr = prec ? await produzioneErogata({ da: prec.da, a: prec.a, per: 'cliente', privatiInB2c, ripartizione, stati: st }) : null;
+  const sc = sconto == null ? await scontoTestata() : normalizzaSconto(sconto);
+  const cur = await produzioneErogata({ da, a, per: 'cliente', privatiInB2c, ripartizione, stati: st, sconto: sc });
+  const pr = prec ? await produzioneErogata({ da: prec.da, a: prec.a, per: 'cliente', privatiInB2c, ripartizione, stati: st, sconto: sc }) : null;
   const pm = new Map((pr?.righe || []).map((x) => [String(x.chiave), x.valore]));
   const tot = cur.totale.valore;
   const righe = cur.righe.filter((x) => x.valore != null).slice(0, n).map((x, i) => {
@@ -899,9 +936,10 @@ export async function topClientiProduzione({ da, a, prec = null, n = 5, privatiI
  * Produzione erogata per cliente e giorno (Retail > B2B > Produzione, dettaglio giornaliero): { giorni, clienti: [{ chiave, cliente,
  * organization_id, stato_abbinamento, totale, giorni: { 'AAAA-MM-GG': {...} } }], per_giorno, totale, stati }.
  */
-export async function produzioneClientiGiorni({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null }) {
+export async function produzioneClientiGiorni({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null, sconto = null }) {
   const st = stati ? normalizzaStati(stati) : await statiErogati();
-  const o = { da, a, privatiInB2c, ripartizione, chiave, stati: st };
+  const sc = sconto == null ? await scontoTestata() : normalizzaSconto(sconto);
+  const o = { da, a, privatiInB2c, ripartizione, chiave, stati: st, sconto: sc };
   const acc = await conLab(o, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, max(stato_abbinamento) AS stato_abbinamento, to_char(date, 'YYYY-MM-DD') AS giorno, ${AGG_ACC} FROM acc GROUP BY chiave, giorno`);
   const it = await conLab(o, `SELECT chiave, to_char(date, 'YYYY-MM-DD') AS giorno, ${AGG_IT} FROM it GROUP BY chiave, giorno`);
   const giorni = giorniTra(da, a);
@@ -913,5 +951,105 @@ export async function produzioneClientiGiorni({ da, a, privatiInB2c = true, ripa
   const clienti = [...m.values()].map((c) => ({ ...c, totale: sommaProd(Object.values(c.giorni)) }))
     .sort((x, y) => (Number(y.totale.valore || 0) - Number(x.totale.valore || 0)) || String(x.cliente).localeCompare(String(y.cliente), 'it'));
   const perGiorno = Object.fromEntries(giorni.map((g) => [g, sommaProd(clienti.map((c) => c.giorni[g]).filter(Boolean))]));
-  return { giorni, clienti, per_giorno: perGiorno, totale: sommaProd(clienti.map((c) => c.totale)), stati: st };
+  return { giorni, clienti, per_giorno: perGiorno, totale: sommaProd(clienti.map((c) => c.totale)), stati: st, sconto: sc };
+}
+
+// ================================================================== Quadratura con il report di StudioLab (v0.68.6)
+// Richiesta del CEO del 10/11/2026: "C'è una discrepanza tra il valore dell'accettato di StudioLab a ieri e quello del Cockpit o comunque
+// della Suite. Trovare l'errore e correggere." Il report "Riepilogo Esami" del gestionale è per CLIENTE (tutti i client: B2B e Laboratorio
+// in sede), una riga per codice esame con Q.ta e importo (righe senza importo comprese). Questa lettura dà, per client Synclab e per il
+// periodo, tutto quello che serve per confrontarlo con le quattro varianti (stati accettato / erogati × sconto di testata sì / no) e per
+// attribuire le cause (stati esclusi, righe cancellate, righe senza prezzo, sconto di testata, copia più vecchia della fine del periodo).
+// Il confronto con il report e l'attribuzione delle cause sono in lib/synclab/quadratura.js (funzioni pure, testate).
+export const VARIANTI_QUADRATURA = [
+  { chiave: 'ACCETTATO_RIGA', stati: STATI_ACCETTATO, sconto: 'NON_APPLICARE', etichetta: 'Accettato · importi di riga' },
+  { chiave: 'ACCETTATO_SCONTO', stati: STATI_ACCETTATO, sconto: 'APPLICA', etichetta: 'Accettato · sconto di testata applicato' },
+  { chiave: 'EROGATI_RIGA', stati: STATI_EROGATI_STORICI, sconto: 'NON_APPLICARE', etichetta: 'Erogati (v0.68.5) · importi di riga' },
+  { chiave: 'EROGATI_SCONTO', stati: STATI_EROGATI_STORICI, sconto: 'APPLICA', etichetta: 'Erogati (v0.68.5) · sconto di testata applicato' },
+];
+/** Variante della quadratura: chiave di VARIANTI_QUADRATURA oppure { stati, sconto } (per esempio l'impostazione in vigore). */
+export function varianteQuadratura(v) {
+  if (v && typeof v === 'object') return { chiave: 'PERSONALIZZATA', stati: normalizzaStati(v.stati), sconto: normalizzaSconto(v.sconto), etichetta: 'Impostazione in vigore' };
+  return VARIANTI_QUADRATURA.find((x) => x.chiave === String(v || '')) || VARIANTI_QUADRATURA[0];
+}
+const somma0 = (rows, f) => rows.reduce((t, x) => t + Number(f(x) || 0), 0);
+/**
+ * Calcolo di una variante sulle righe aggregate di quadratura (pura): per client e in totale.
+ * righe: [{ instance_id, client_id, state, deleted, accettazioni, righe, quantita, importo_riga, sconto, senza_prezzo }]
+ */
+export function calcolaVariante(righe, variante) {
+  const v = varianteQuadratura(variante);
+  const st = new Set(v.stati);
+  const applica = v.sconto === 'APPLICA';
+  const dentro = righe.filter((x) => st.has(Number(x.state)));
+  const fuori = righe.filter((x) => !st.has(Number(x.state)));
+  const vive = dentro.filter((x) => !x.deleted), cancellate = dentro.filter((x) => x.deleted);
+  const valore = (rr) => somma0(rr, (x) => x.importo_riga) - (applica ? somma0(rr, (x) => x.sconto) : 0);
+  const accettazioni = (rr) => somma0(rr.filter((x) => !x.deleted), (x) => x.accettazioni);
+  const statiEsclusi = {};
+  for (const x of fuori.filter((y) => !y.deleted)) {
+    const k = String(x.state ?? 'ND');
+    const t = (statiEsclusi[k] ||= { stato: x.state == null ? null : Number(x.state), etichetta: LEGENDA_STATI[x.state] || (x.state == null ? 'stato non indicato' : 'altro codice'), accettazioni: 0, righe: 0, quantita: 0, importo: 0 });
+    t.accettazioni += Number(x.accettazioni || 0); t.righe += Number(x.righe || 0); t.quantita += Number(x.quantita || 0); t.importo += Number(x.importo_riga || 0) - (applica ? Number(x.sconto || 0) : 0);
+  }
+  return {
+    variante: v,
+    accettazioni: accettazioni(dentro), righe: somma0(vive, (x) => x.righe), quantita: somma0(vive, (x) => x.quantita), importo: n2(valore(vive)) ?? 0,
+    righe_senza_prezzo: somma0(vive, (x) => x.senza_prezzo), sconto_testata: n2(somma0(vive, (x) => x.sconto)) ?? 0, sconto_applicato: applica,
+    stati_esclusi: Object.values(statiEsclusi).map((x) => ({ ...x, importo: n2(x.importo) })).sort((a, b) => b.importo - a.importo),
+    esclusi: { accettazioni: accettazioni(fuori), righe: somma0(fuori.filter((x) => !x.deleted), (x) => x.righe), quantita: somma0(fuori.filter((x) => !x.deleted), (x) => x.quantita), importo: n2(valore(fuori.filter((x) => !x.deleted))) ?? 0 },
+    cancellate: { righe: somma0(cancellate, (x) => x.righe), quantita: somma0(cancellate, (x) => x.quantita), importo: n2(somma0(cancellate, (x) => x.importo_riga)) ?? 0 },
+  };
+}
+
+/**
+ * Dati della Suite per la quadratura del periodo [da, a] (data dell'accettazione), per client Synclab: tutte le accettazioni ATTIVE della
+ * copia (qualunque stato), righe d'esame cancellate e no, quantità (null = 1, come una riga del report), importi di riga, sconto di testata,
+ * righe senza prezzo. variante: chiave di VARIANTI_QUADRATURA o { stati, sconto } (predefinita: l'impostazione in vigore).
+ * { periodo, variante, varianti: [{ chiave, etichetta, stati, sconto, totale }], clienti: [{ client_id, client_code, legal_name, sede_gestionale,
+ *   organization_id, cliente, ripartizione, righe (aggregate), calcolo }], totale, copia: { checkpoint_at, ultimo_completo_at }, regola }
+ */
+export async function quadratura({ da, a, variante = null, privatiInB2c = true } = {}) {
+  if (!giornoRe.test(String(da)) || !giornoRe.test(String(a)) || da > a) throw Object.assign(new Error('Periodo non valido (da/a nel formato AAAA-MM-GG)'), { status: 400 });
+  const vigore = await regolaProduzione();
+  const v = variante == null ? varianteQuadratura({ stati: vigore.stati, sconto: vigore.sconto }) : varianteQuadratura(variante);
+  const params = [da, a];
+  const righe = await many(`WITH ${ctePc(params, privatiInB2c)},
+    rq AS (SELECT r.instance_id, r.id, r.client_id, r.state, r.header_discount_percent FROM synclab.requests r
+            WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date BETWEEN $1::date AND $2::date)
+    SELECT rq.instance_id, rq.client_id, rq.state, coalesce(i.deleted, FALSE) AS deleted, count(DISTINCT rq.id)::int AS accettazioni, count(i.ord)::int AS righe,
+           coalesce(sum(CASE WHEN i.ord IS NOT NULL THEN coalesce(i.quantity, 1) END), 0) AS quantita, coalesce(sum(i.net_unit_price_excluding_vat * i.quantity), 0) AS importo_riga,
+           coalesce(sum(${SQL_SCONTO_RIGA('i', 'rq')}), 0) AS sconto, count(*) FILTER (WHERE i.ord IS NOT NULL AND (i.net_unit_price_excluding_vat IS NULL OR i.quantity IS NULL))::int AS senza_prezzo
+      FROM rq LEFT JOIN synclab.request_items i ON i.instance_id = rq.instance_id AND i.request_id = rq.id
+     GROUP BY 1, 2, 3, 4`, params);
+  const pc = await ripartizioneClienti({ privatiInB2c });
+  const cl = await many(`SELECT instance_id, id AS client_id, client_code, legal_name, site_description, site_city FROM synclab.clients`);
+  const anag = new Map(cl.map((c) => [`${c.instance_id}|${c.client_id}`, c]));
+  const rip = new Map(pc.map((c) => [`${c.instance_id}|${c.client_id}`, c]));
+  const perClient = new Map();
+  for (const r of righe) {
+    const k = `${r.instance_id}|${r.client_id}`;
+    if (!perClient.has(k)) {
+      const c = anag.get(k) || {}, p = rip.get(k) || {};
+      perClient.set(k, { instance_id: r.instance_id, client_id: r.client_id, client_code: c.client_code || null, legal_name: c.legal_name || null, sede_gestionale: c.site_description || null,
+        comune: c.site_city || null, organization_id: p.organization_id ?? null, cliente: p.cliente || c.legal_name || r.client_id, ripartizione: p.ripartizione || 'B2B', righe: [] });
+    }
+    perClient.get(k).righe.push({ ...r, quantita: Number(r.quantita), importo_riga: Number(r.importo_riga), sconto: Number(r.sconto) });
+  }
+  // anche i client senza accettazioni nel periodo (per abbinare i nomi del report)
+  for (const c of cl) {
+    const k = `${c.instance_id}|${c.client_id}`;
+    if (!perClient.has(k)) { const p = rip.get(k) || {}; perClient.set(k, { instance_id: c.instance_id, client_id: c.client_id, client_code: c.client_code, legal_name: c.legal_name, sede_gestionale: c.site_description || null, comune: c.site_city || null, organization_id: p.organization_id ?? null, cliente: p.cliente || c.legal_name || c.client_id, ripartizione: p.ripartizione || 'B2B', righe: [] }); }
+  }
+  const clienti = [...perClient.values()].map((c) => ({ ...c, calcolo: calcolaVariante(c.righe, v) }));
+  const varianti = [...VARIANTI_QUADRATURA, ...(VARIANTI_QUADRATURA.some((x) => String(x.stati) === String(vigore.stati) && x.sconto === vigore.sconto) ? [] : [varianteQuadratura({ stati: vigore.stati, sconto: vigore.sconto })])]
+    .map((x) => { const t = calcolaVariante(righe.map((r) => ({ ...r, quantita: Number(r.quantita), importo_riga: Number(r.importo_riga), sconto: Number(r.sconto) })), x);
+      return { chiave: x.chiave, etichetta: x.etichetta, stati: x.stati, sconto: x.sconto, in_vigore: String(x.stati) === String(vigore.stati) && x.sconto === vigore.sconto, totale: t }; });
+  const cp = await one(`SELECT max(checkpoint_at) AS checkpoint_at, max(ultimo_completo_at) AS ultimo_completo_at FROM synclab.sync_scope WHERE dataset = 'requests'`).catch(() => null);
+  return {
+    periodo: { da, a }, variante: v, in_vigore: vigore, varianti, clienti,
+    totale: calcolaVariante(righe.map((r) => ({ ...r, quantita: Number(r.quantita), importo_riga: Number(r.importo_riga), sconto: Number(r.sconto) })), v),
+    copia: { checkpoint_at: cp?.checkpoint_at || null, ultimo_completo_at: cp?.ultimo_completo_at || null },
+    regola: 'Accettazioni ATTIVE della copia con data nel periodo, tutti i client (B2B e Laboratorio in sede); righe d\'esame non cancellate comprese quelle senza prezzo; quantità mancante = 1; importo = Σ netto di riga × quantità (meno lo sconto di testata solo nelle varianti che lo applicano)',
+  };
 }

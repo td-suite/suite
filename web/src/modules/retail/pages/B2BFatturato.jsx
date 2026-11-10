@@ -1,5 +1,5 @@
 // Retail · B2B · Documenti emessi (ex "Fatturato da documenti", riordino del 09/11/2026; v0.68.5: dato SECONDARIO, la grandezza principale è la
-// produzione erogata): per cliente e mese dai documenti economici di StudioLab (Synclab):
+// produzione accettata): per cliente e mese dai documenti economici di StudioLab (Synclab):
 // contributo netto una volta per documento, note di credito separate, annullati/proforma e tipo sconosciuto esclusi e contati.
 // Fonte: GET /api/retail/b2b/fatturato.
 import React, { useState } from 'react';
@@ -18,7 +18,7 @@ export default function B2BFatturato() {
   const t = d?.totale;
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Documenti emessi</h1><div className="sub">Dato secondario: la grandezza dei ricavi B2B è la produzione erogata (B2B &gt; Produzione). Documenti economici B2B del gestionale per cliente e mese. Le note di credito sono separate (importi negativi), i documenti annullati e i proforma sono esclusi e contati.</div></div></div>
+      <div className="page-head"><div><h1>Documenti emessi</h1><div className="sub">Dato secondario: la grandezza dei ricavi B2B è la produzione accettata (B2B &gt; Produzione). Documenti economici B2B del gestionale per cliente e mese. Le note di credito sono separate (importi negativi), i documenti annullati e i proforma sono esclusi e contati.</div></div></div>
       {d && <FonteSynclab stato={d.stato} insiemi={['invoices']} />}
       <div className="filters"><PeriodoSelect value={p} onChange={setP} oggi={oggi} /><div className="spacer" />{d && <div className="small muted" style={{ alignSelf: 'center' }}>{intervallo(d.periodo)}</div>}</div>
       <ErrorBox error={q.error} />

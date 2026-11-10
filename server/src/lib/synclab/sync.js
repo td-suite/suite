@@ -12,11 +12,15 @@ import * as API from './client.js';
 import { upsertAggregato, appartenenza, applicaOperazione, svuotaDatiPaziente, TABELLE } from './persistenza.js';
 
 export const { DATASETS, NOMI_DATASET } = API;
-// v0.68.5: stati_erogati (stati dell'accettazione che valgono "produzione erogata", ipotesi da confermare) e sync_intraday_minuti (delta
-// delle accettazioni ogni N minuti fra le 7 e le 21 ora di Roma; 0 = spento)
-export const STATI_EROGATI_PREDEFINITI = [18, 20, 25, 40, 50];
+// v0.68.5: stati_erogati (stati dell'accettazione che valgono come produzione) e sync_intraday_minuti (delta delle accettazioni ogni N minuti
+// fra le 7 e le 21 ora di Roma; 0 = spento). v0.68.6 (CEO 10/11/2026, quadratura con il report del gestionale): predefinito = ACCETTATO,
+// tutti gli stati tranne 11 (NC mai arrivato); nuova sconto_testata (APPLICA | NON_APPLICARE, predefinita NON_APPLICARE = importi di riga
+// come il report "Riepilogo Esami" di StudioLab).
+export const STATI_EROGATI_PREDEFINITI = [10, 15, 18, 20, 25, 30, 40, 50];
+export const STATI_EROGATI_V0685 = [18, 20, 25, 40, 50];
+export const SCONTI_TESTATA = ['APPLICA', 'NON_APPLICARE'];
 export const IMPOSTAZIONI_PREDEFINITE = { data_api_enabled: false, sync_ora: '02:30', page_size: 100, page_size_listini: 10, include_patient: false, data_api_timeout_ms: 120000, operating_company: '', datasets: [...API.DATASETS],
-  stati_erogati: [...STATI_EROGATI_PREDEFINITI], sync_intraday_minuti: 60 };
+  stati_erogati: [...STATI_EROGATI_PREDEFINITI], sync_intraday_minuti: 60, sconto_testata: 'NON_APPLICARE' };
 export const INTRADAY_DALLE = '07:00';
 export const INTRADAY_ALLE = '21:00';
 const LOCK_STANTIO_MS = 2 * 3600_000;
@@ -39,6 +43,7 @@ export async function impostazioni() {
   x.operating_company = String(x.operating_company || '').trim();
   const se = (Array.isArray(x.stati_erogati) ? x.stati_erogati : String(x.stati_erogati || '').split(/[,;\s]+/)).map((v) => String(v).trim()).filter((v) => /^\d{1,3}$/.test(v)).map(Number);
   x.stati_erogati = se.length ? [...new Set(se)].sort((a, b) => a - b) : [...STATI_EROGATI_PREDEFINITI];
+  x.sconto_testata = String(x.sconto_testata || '').trim().toUpperCase() === 'APPLICA' ? 'APPLICA' : 'NON_APPLICARE';
   const im = Number(x.sync_intraday_minuti);
   x.sync_intraday_minuti = Number.isFinite(im) && im >= 0 ? Math.min(720, Math.round(im)) : 60;
   return { ...x, client_name: c.credentials?.client_name || null, auth_kind: c.auth_kind, base_url: c.base_url, connettore_attivo: c.active };

@@ -396,10 +396,10 @@ export const CONTROLLI = [
           WHERE o.kind = 'CLIENTE' AND o.active AND EXISTS (SELECT 1 FROM synclab.clients WHERE disponibilita = 'ATTIVO')
             AND NOT EXISTS (SELECT 1 FROM synclab.clients_td t WHERE t.organization_id = o.id AND t.disponibilita = 'ATTIVO') GROUP BY o.id, o.code, o.name, o.vat_number ORDER BY o.name`, chiave: 'id', link: (r) => orgLink(r.name) },
   // v0.68.1 (CEO 09/11/2026 sera): clienti attivi con il maturato del gestionale molto sotto il pro quota del fatturato dichiarato.
-  // Stesse regole di modules/business/lib/synclabAccount.js: maturato = PRODUZIONE EROGATA (v0.68.5: accettazioni in stato erogato,
-  // synclab.stati_erogati(), netto di riga × quantità × (1 − sconto di testata)) con data nell'anno fino a oggi; pro quota = fatturato FY atteso × giorni lavorativi (lun-ven) dall'avvio (o dal 1° gennaio) / giorni dell'anno
+  // Stesse regole di modules/business/lib/synclabAccount.js: maturato = PRODUZIONE (v0.68.6: accettata; accettazioni negli stati di
+  // synclab.stati_erogati(), netto di riga × quantità, × (1 − sconto di testata) solo se synclab.sconto_testata_applicato()) con data nell'anno fino a oggi; pro quota = fatturato FY atteso × giorni lavorativi (lun-ven) dall'avvio (o dal 1° gennaio) / giorni dell'anno
   // (hub_giorni_lavorativi, 250).
-  { id: 'D51', area: 'CLIENTI', gravita: 'INFO', titolo: 'Clienti attivi con maturato Synclab sotto il 75% del pro quota', richiede: ['business.accounts', 'synclab.clients_td'], spiegazione: 'Clienti Service e MdL attivi nel Business Hub, con la Legal entity abbinata a un client Synclab, il cui maturato nell\'anno (produzione erogata del gestionale: accettazioni in stato erogato, netto di riga e sconto di testata; dalla v0.68.5 non più i documenti) è sotto il 75% del pro quota del fatturato FY atteso dichiarato nella scheda (giorni lavorativi dall\'avvio, o dal 1° gennaio, su 250). Informativo: la scheda account mostra il confronto e il run rate.',
+  { id: 'D51', area: 'CLIENTI', gravita: 'INFO', titolo: 'Clienti attivi con maturato Synclab sotto il 75% del pro quota', richiede: ['business.accounts', 'synclab.clients_td'], spiegazione: 'Clienti Service e MdL attivi nel Business Hub, con la Legal entity abbinata a un client Synclab, il cui maturato nell\'anno (produzione accettata del gestionale: accettazioni negli stati della produzione, importi di riga e sconto di testata secondo l\'impostazione; dalla v0.68.5 non più i documenti) è sotto il 75% del pro quota del fatturato FY atteso dichiarato nella scheda (giorni lavorativi dall\'avvio, o dal 1° gennaio, su 250). Informativo: la scheda account mostra il confronto e il run rate.',
     sql: `WITH oggi AS (SELECT (now() AT TIME ZONE 'Europe/Rome')::date AS d),
           gl AS (SELECT coalesce((SELECT CASE WHEN value ~ '^[0-9]+(\\.[0-9]+)?$' THEN nullif(value::numeric, 0) END FROM business.app_settings WHERE key = 'hub_giorni_lavorativi'), 250) AS n),
           a AS (SELECT a.id, a.organization_id, a.linea, o.name, a.fatturato_fy_atteso AS fy,
@@ -408,7 +408,7 @@ export const CONTROLLI = [
                  WHERE a.cliente_attivo AND a.linea IN ('SRV','MDL') AND a.fatturato_fy_atteso > 0
                    AND EXISTS (SELECT 1 FROM synclab.clients_td t WHERE t.organization_id = a.organization_id)),
           x AS (SELECT a.*, (SELECT count(*) FROM generate_series(a.inizio, (SELECT d FROM oggi), interval '1 day') g WHERE extract(isodow FROM g) < 6) AS giorni,
-                       coalesce((SELECT sum(i.net_unit_price_excluding_vat * i.quantity * (1 - coalesce(r.header_discount_percent, 0) / 100.0))
+                       coalesce((SELECT sum(i.net_unit_price_excluding_vat * i.quantity * (1 - CASE WHEN synclab.sconto_testata_applicato() THEN coalesce(r.header_discount_percent, 0) / 100.0 ELSE 0 END))
                           FROM synclab.clients_td t JOIN synclab.requests r ON r.instance_id = t.instance_id AND r.client_id = t.client_id
                           JOIN synclab.request_items i ON i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE
                           WHERE t.organization_id = a.organization_id AND r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY(synclab.stati_erogati())

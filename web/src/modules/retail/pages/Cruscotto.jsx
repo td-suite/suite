@@ -1,7 +1,7 @@
 // Retail · Cruscotto complessivo di rete (riordino del 09/11/2026, decisione del CEO): B2C e B2B affiancati nello stesso periodo, confronto
 // con lo stesso periodo dell'anno prima, quota fuori area, stato dei tre connettori (GIPO, TuoTempo, StudioLAB/Synclab) e link alle due
 // sezioni. Niente grafici decorativi: tabella e indicatori essenziali. Fonte: GET /api/retail/stats/rete. v0.68.5 (CEO 10/11/2026): per il B2B
-// la grandezza è la PRODUZIONE EROGATA (accettazioni in stato erogato, netto di riga e sconto di testata); i documenti emessi sono secondari.
+// la grandezza è la PRODUZIONE ACCETTATA (accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni); i documenti emessi sono secondari.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, Card, Loading, ErrorBox, Badge } from '../components/ui.jsx';
@@ -26,14 +26,14 @@ export default function Cruscotto() {
     ['B2C', 'Prenotazioni online', <span className="muted small">non ancora disponibili</span>, '–', null, 'TuoTempo'],
     ['B2C', `Prima disponibilità, mediana di rete${tt.ultimo_giorno ? ` (${itDate(tt.ultimo_giorno)})` : ''}`, tt.attesa_mediana == null ? <span className="muted">nessuno storico</span> : `${d1(tt.attesa_mediana)} giorni`, tt.attesa_settimana_prima == null ? '–' : `${d1(tt.attesa_settimana_prima)} gg (7 giorni prima)`, null, 'TuoTempo'],
     ...(lab && !lab.spento ? [
-      ['B2C', 'Laboratorio in sede: produzione erogata', eur0(lab.valore), eur0(lab.anno_prima.valore), lab.var_valore, 'StudioLab'],
-      ['B2C', 'Laboratorio in sede: accettazioni erogate', num(lab.accettazioni), num(lab.anno_prima.accettazioni), lab.var_accettazioni, 'StudioLab'],
+      ['B2C', 'Laboratorio in sede: produzione accettata', eur0(lab.valore), eur0(lab.anno_prima.valore), lab.var_valore, 'StudioLab'],
+      ['B2C', 'Laboratorio in sede: accettazioni', num(lab.accettazioni), num(lab.anno_prima.accettazioni), lab.var_accettazioni, 'StudioLab'],
       ['B2C', 'Laboratorio in sede: esami', num(lab.esami), num(lab.anno_prima.esami), lab.anno_prima.esami ? Math.round(((lab.esami - lab.anno_prima.esami) / lab.anno_prima.esami) * 1000) / 10 : null, 'StudioLab'],
     ] : []),
     ...(b2b ? [
-      ['B2B', 'Produzione erogata', eur0(b2b.valore), eur0(b2b.anno_prima.valore), b2b.var_valore, 'StudioLab'],
-      ['B2B', 'Accettazioni erogate', num(b2b.accettazioni), num(b2b.anno_prima.accettazioni), b2b.var_accettazioni, 'StudioLab'],
-      ['B2B', 'Esami erogati', num(b2b.esami), num(b2b.anno_prima.esami), b2b.anno_prima.esami ? Math.round(((b2b.esami - b2b.anno_prima.esami) / b2b.anno_prima.esami) * 1000) / 10 : null, 'StudioLab'],
+      ['B2B', 'Produzione accettata', eur0(b2b.valore), eur0(b2b.anno_prima.valore), b2b.var_valore, 'StudioLab'],
+      ['B2B', 'Accettazioni', num(b2b.accettazioni), num(b2b.anno_prima.accettazioni), b2b.var_accettazioni, 'StudioLab'],
+      ['B2B', 'Esami', num(b2b.esami), num(b2b.anno_prima.esami), b2b.anno_prima.esami ? Math.round(((b2b.esami - b2b.anno_prima.esami) / b2b.anno_prima.esami) * 1000) / 10 : null, 'StudioLab'],
       ['B2B', 'Clienti con produzione', num(b2b.clienti), num(b2b.anno_prima.clienti), null, 'StudioLab'],
       ['B2B', 'Documenti emessi (secondario, non sommati)', eur0(b2b.documenti.fatturato), eur0(b2b.anno_prima.documenti.fatturato), b2b.anno_prima.documenti.fatturato ? Math.round(((Number(b2b.documenti.fatturato || 0) - b2b.anno_prima.documenti.fatturato) / Math.abs(b2b.anno_prima.documenti.fatturato)) * 1000) / 10 : null, 'StudioLab'],
     ] : []),
@@ -50,8 +50,8 @@ export default function Cruscotto() {
         <div className="grid g4" style={{ marginBottom: 16 }}>
           <div className="card kpi accent"><div className="lbl">B2C · accettazioni GIPO</div><div className="val">{num(g.accettazioni)}</div><div className="delta"><VarPct v={g.var_accettazioni} /> <span className="muted">vs anno prima · {eur0(g.vendite)}</span></div></div>
           <div className="card kpi"><div className="lbl">B2C · prima disponibilità</div><div className="val">{tt.attesa_mediana == null ? '–' : `${d1(tt.attesa_mediana)} gg`}</div><div className="delta"><span className="muted">{tt.ultimo_giorno ? `mediana di rete al ${itDate(tt.ultimo_giorno)} · ${num(tt.prestazioni)} prestazioni` : 'nessuno storico TuoTempo'}</span></div></div>
-          <div className="card kpi" data-testid="kpi-b2b-produzione"><div className="lbl">B2B · produzione erogata</div><div className="val">{b2b ? eur0(b2b.valore) : '–'}</div><div className="delta">{b2b ? <><VarPct v={b2b.var_valore} /> <span className="muted">vs anno prima · {num(b2b.clienti)} clienti</span></> : <span className="muted">{d.b2b.nota}</span>}</div></div>
-          <div className="card kpi"><div className="lbl">B2B · accettazioni erogate</div><div className="val">{b2b ? num(b2b.accettazioni) : '–'}</div><div className="delta"><span className="muted">{b2b ? `${num(b2b.esami)} esami · documenti emessi ${eur0(b2b.documenti.fatturato)} (secondario)` : 'nessuna accettazione'}</span></div></div>
+          <div className="card kpi" data-testid="kpi-b2b-produzione"><div className="lbl">B2B · produzione accettata</div><div className="val">{b2b ? eur0(b2b.valore) : '–'}</div><div className="delta">{b2b ? <><VarPct v={b2b.var_valore} /> <span className="muted">vs anno prima · {num(b2b.clienti)} clienti</span></> : <span className="muted">{d.b2b.nota}</span>}</div></div>
+          <div className="card kpi"><div className="lbl">B2B · accettazioni</div><div className="val">{b2b ? num(b2b.accettazioni) : '–'}</div><div className="delta"><span className="muted">{b2b ? `${num(b2b.esami)} esami · documenti emessi ${eur0(b2b.documenti.fatturato)} (secondario)` : 'nessuna accettazione'}</span></div></div>
         </div>
         <Card title="B2C e B2B affiancati" flush>
           <div className="table-wrap"><table className="t" data-testid="rete">
@@ -60,7 +60,7 @@ export default function Cruscotto() {
           </table></div>
           {lab?.spento && <div className="small muted" style={{ padding: 12 }}>{lab.nota}</div>}
           {!b2b && <div className="small muted" style={{ padding: 12 }}>{d.b2b.nota}</div>}
-          <div className="small muted" style={{ padding: '4px 12px 12px' }}>{tt.nota_prenotazioni}. Produzione erogata = accettazioni in stato erogato, Σ netto di riga × quantità × (1 − sconto di testata); documenti emessi (secondari, mai sommati) = contributo netto una volta per documento (note di credito comprese, annullati esclusi).{d.b2b.fonte_produzione ? ` Fonte: ${d.b2b.fonte_produzione}.` : ''}</div>
+          <div className="small muted" style={{ padding: '4px 12px 12px' }}>{tt.nota_prenotazioni}. Produzione accettata = accettazioni negli stati della produzione, Σ netto di riga × quantità (sconto di testata come da impostazioni); documenti emessi (secondari, mai sommati) = contributo netto una volta per documento (note di credito comprese, annullati esclusi).{d.b2b.fonte_produzione ? ` Fonte: ${d.b2b.fonte_produzione}.` : ''}</div>
         </Card>
         <div className="grid g2" style={{ marginTop: 16 }}>
           <Card title="Quota fuori area" flush>

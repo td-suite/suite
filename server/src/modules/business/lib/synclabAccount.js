@@ -143,7 +143,7 @@ export async function correlazioneAccounts(accounts, { oggi }) {
       WHERE m.organization_id = ANY($1::int[]) AND r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY($2::int[]) GROUP BY 1`, [ids, stati]),
     giorniAnnoHub(), L.statoCopia().catch(() => null),
   ]);
-  out.disponibile = true; out.stato = stato; out.stati = stati;
+  out.disponibile = true; out.stato = stato; out.stati = stati; out.sconto = await L.scontoTestata();
   const perOrg = (mappa, org) => { const m = new Map(); for (const [k, v] of mappa) { const [o, mk] = k.split('|'); if (Number(o) === Number(org)) m.set(mk, v); } return m; };
   for (const a of acc) {
     if (!abbinate.has(Number(a.organization_id))) continue;
@@ -173,7 +173,7 @@ export async function bloccoAccount(a, { oggi }) {
     giornaliero: giornaliero ? { giorni: giornaliero.giorni.map((g) => ({ giorno: g.giorno, valore: g.valore, esami: g.esami, accettazioni: g.accettazioni })), totale: giornaliero.totale } : null,
     chiave_b2b: String(a.organization_id),
     fonte: {
-      testo: L.fonteProduzione(c.stati || L.STATI_EROGATI_PREDEFINITI, cp.requests?.checkpoint_at || null),
+      testo: L.fonteProduzione(c.stati || L.STATI_EROGATI_PREDEFINITI, cp.requests?.checkpoint_at || null, c.sconto || await L.scontoTestata()),
       aggiornato: L.aggiornatoAlle(cp.requests?.checkpoint_at || null, oggi),
       checkpoint_documenti: data('invoices'), checkpoint_accettazioni: data('requests'),
       documenti: 'Documenti emessi (secondari): contributo netto dei documenti economici, una volta per documento, data del documento; mai sommati alla produzione',

@@ -1,8 +1,8 @@
 // Business Hub · "Dal gestionale (Synclab)" nella scheda account Service/MdL (richiesta del CEO del 09/11/2026 sera, v0.68.1; rivisto il
-// 10/11/2026, v0.68.5: "Maturato 2026: NON il fatturato ma il valore netto, cioè il valore della produzione erogata per mese, aggiornato
+// 10/11/2026, v0.68.5: "Maturato 2026: NON il fatturato ma il valore netto, cioè il valore della produzione accettata per mese, aggiornato
 // per singolo giorno"). Per i clienti con la Legal entity abbinata a un client Synclab (synclab.clients_td): maturato dell'anno = produzione
-// erogata (accettazioni in stato erogato, netto di riga e sconto di testata), progressione giornaliera del mese e mensile dell'anno, pro
-// quota e run rate calcolati sulla produzione erogata, documenti emessi come dato secondario (mai sommato). Regole e fonti in
+// accettata (accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni), progressione giornaliera del mese e mensile dell'anno, pro
+// quota e run rate calcolati sulla produzione accettata, documenti emessi come dato secondario (mai sommato). Regole e fonti in
 // server/src/modules/business/lib/synclabAccount.js; nessun numero inventato: senza dati la voce lo dice.
 import React from 'react';
 import { useApi, Card, Badge } from './ui.jsx';
@@ -19,7 +19,7 @@ export function Semaforo({ s, pct }) {
   return <span title={`Scostamento sul pro quota ${pctTxt(pct)} · verde entro ±10%, giallo fino a −25%, rosso oltre`}><Badge tone={tone}>{label}</Badge></span>;
 }
 
-/** Barre della produzione erogata giorno per giorno (mese in corso). */
+/** Barre della produzione accettata giorno per giorno (mese in corso). */
 function Giorni({ g }) {
   if (!g?.giorni?.length) return null;
   const max = Math.max(1, ...g.giorni.map((x) => Number(x.valore) || 0));
@@ -51,9 +51,9 @@ export default function SynclabAccount({ a }) {
           <>
             <div className="grid g4">
               <div className="kpi card accent" data-testid="hub-synclab-maturato">
-                <div className="lbl">Maturato {anno} (produzione erogata)</div>
+                <div className="lbl">Maturato {anno} (produzione accettata)</div>
                 <div className="val">{x.maturato == null ? '–' : eurK(x.maturato)}</div>
-                <div className="foot">{num(x.produzione.esami)} esami erogati nel {anno} · netto di riga e sconto di testata{x.produzione.righe_senza_prezzo ? ` · ${num(x.produzione.righe_senza_prezzo)} senza prezzo` : ''}</div>
+                <div className="foot">{num(x.produzione.esami)} esami nel {anno} · importi di riga e sconto di testata come da impostazioni{x.produzione.righe_senza_prezzo ? ` · ${num(x.produzione.righe_senza_prezzo)} senza prezzo` : ''}</div>
               </div>
               <div className="kpi card">
                 <div className="lbl">Pro quota {anno} del dichiarato</div>
@@ -81,14 +81,14 @@ export default function SynclabAccount({ a }) {
                 <div className="small muted" style={{ marginTop: 4 }}>Documenti emessi nel {anno} (secondario, non sommati): {x.documenti_emessi?.importo == null ? '–' : eurK(x.documenti_emessi.importo)}{x.documenti_emessi?.documenti ? ` in ${num(x.documenti_emessi.documenti)} documenti` : ''}.</div>
               </div>
               <div className="table-wrap" style={{ maxHeight: 260 }}>
-                <table className="t" style={{ minWidth: 0 }} data-testid="hub-synclab-mesi"><thead><tr><th>Mese</th><th className="num" title="Produzione erogata: accettazioni in stato erogato, netto di riga e sconto di testata">Produzione</th><th className="num">Esami</th><th className="num" title="Accettazioni erogate">Acc.</th><th className="num" title="Documenti emessi: dato secondario, non sommato">Doc. emessi</th></tr></thead>
+                <table className="t" style={{ minWidth: 0 }} data-testid="hub-synclab-mesi"><thead><tr><th>Mese</th><th className="num" title="Produzione accettata: accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni">Produzione</th><th className="num">Esami</th><th className="num" title="Accettazioni">Acc.</th><th className="num" title="Documenti emessi: dato secondario, non sommato">Doc. emessi</th></tr></thead>
                   <tbody>{[...x.mesi].reverse().map((m) => <tr key={m.mese} className={x.ultimo_mese?.mese === m.mese ? 'strong' : ''}><td>{m.etichetta}{m.in_corso ? <span className="small muted"> (in corso)</span> : null}</td><td className="num">{m.produzione == null ? '–' : eurK(m.produzione)}</td><td className="num">{m.esami ? num(m.esami) : '–'}</td><td className="num">{m.accettazioni ? num(m.accettazioni) : '–'}</td><td className="num muted">{m.documenti_emessi == null ? '–' : eurK(m.documenti_emessi)}</td></tr>)}</tbody>
                 </table>
               </div>
             </div>
           </>
         )}
-        <div className="small muted" style={{ marginTop: 10 }} data-testid="hub-synclab-fonte">Fonte: {d.fonte?.testo || 'Synclab Data API'}. Stati erogati da confermare (Amministrazione &gt; Connettori &gt; Dati Synclab &gt; Impostazioni). {d.fonte?.documenti ? `${d.fonte.documenti}${d.fonte.checkpoint_documenti ? ` (copia al ${itDateTime(d.fonte.checkpoint_documenti)})` : ''}. ` : ''}Dichiarato: {d.fonte?.dichiarato || 'Dati economici'}.</div>
+        <div className="small muted" style={{ marginTop: 10 }} data-testid="hub-synclab-fonte">Fonte: {d.fonte?.testo || 'Synclab Data API'}. Stati della produzione accettata e sconto di testata in Amministrazione &gt; Connettori &gt; Dati Synclab &gt; Impostazioni (la scheda Quadratura li confronta con il report del gestionale). {d.fonte?.documenti ? `${d.fonte.documenti}${d.fonte.checkpoint_documenti ? ` (copia al ${itDateTime(d.fonte.checkpoint_documenti)})` : ''}. ` : ''}Dichiarato: {d.fonte?.dichiarato || 'Dati economici'}.</div>
       </div>
     </Card></div>
   );

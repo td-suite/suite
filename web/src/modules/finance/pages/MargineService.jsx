@@ -15,8 +15,8 @@ const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'lug
 const pct = (v) => (v == null ? '' : `${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 })}%`);
 const n0 = (v) => Number(v || 0).toLocaleString('it-IT');
 const FONTE_TONE = { STUDIOLAB: 'teal', SYNCLAB: 'green', MANUALE: 'blue', STIMA: 'mauve' };
-// Documenti emessi (Synclab Data API, ex "Fatturato da documenti"; v0.68.5 il ricavo Service è la PRODUZIONE EROGATA): documenti emessi nel mese, grandezza diversa dalla produzione: colonna a parte, mai sommata
-const DOC_TITLE = 'Dato secondario: contributo al fatturato netto dei documenti economici Synclab con data nel mese (note di credito già negative). Non è sommato al ricavo né al margine: il ricavo Service è la produzione erogata del mese (accettazioni in stato erogato, netto di riga e sconto di testata), i documenti emessi sono un\'altra grandezza.';
+// Documenti emessi (Synclab Data API, ex "Fatturato da documenti"; v0.68.5 il ricavo Service è la PRODUZIONE ACCETTATA): documenti emessi nel mese, grandezza diversa dalla produzione: colonna a parte, mai sommata
+const DOC_TITLE = 'Dato secondario: contributo al fatturato netto dei documenti economici Synclab con data nel mese (note di credito già negative). Non è sommato al ricavo né al margine: il ricavo Service è la produzione accettata del mese (accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni), i documenti emessi sono un\'altra grandezza.';
 const LIVELLO = { ATTIVO: ['green', 'attivo'], CONTRATTUALIZZATO: ['blue', 'in avvio'] };
 const meseLabel = (mk) => { const [y, m] = mk.split('-'); return `${MESI[Number(m) - 1]} ${y}`; };
 
@@ -42,7 +42,7 @@ function DettaglioCliente({ orgId, anno, onClose }) {
                   <td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td>
                   <td>{m.produzione ? <span title={m.produzione.origine}><Badge tone={FONTE_TONE[m.produzione.fonte]}>{m.produzione.fonte.toLowerCase()}</Badge></span> : <span className="muted small">nessuna</span>}</td>
                   <td className="num">{n0(m.esami)}</td>
-                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : m.ricavo_da === 'SYNCLAB' ? <div className="small muted">produzione erogata</div> : null}{m.produzione?.note ? <div className="small muted" title={m.produzione.note}>vedi nota</div> : null}</td>
+                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : m.ricavo_da === 'SYNCLAB' ? <div className="small muted">produzione accettata</div> : null}{m.produzione?.note ? <div className="small muted" title={m.produzione.note}>vedi nota</div> : null}</td>
                   {c.totale.fatturato_documenti != null && <td className="num" title={m.documenti?.note || DOC_TITLE}>{m.fatturato_documenti == null ? '–' : eur(m.fatturato_documenti)}</td>}
                   <td className="num">{m.ritiri ?? '–'}{m.ritiri_a_chiamata ? <div className="small muted">+{m.ritiri_a_chiamata} a chiamata</div> : null}</td>
                   <td className="num">{m.costo_ritiri == null ? <Badge tone="red">da indicare</Badge> : eur(m.costo_ritiri)}</td>

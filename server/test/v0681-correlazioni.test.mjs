@@ -247,7 +247,7 @@ describe('v0.68.1 con database e dati sintetici', { skip: SALTA }, () => {
     assert.equal(y.semaforo, 'ROSSO', 'molto sotto il pro quota di 120.000');
     assert.equal(y.run_rate.importo, 0, 'agosto, settembre e ottobre senza produzione erogata');
     const b = await M.S.bloccoAccount({ id: M.accX, linea: 'SRV', organization_id: M.org.X, fatturato_fy_atteso: 60000, data_avvio_effettiva: '2026-09-01' }, { oggi: OGGI });
-    assert.equal(b.applicabile, true); assert.equal(b.chiave_b2b, String(M.org.X)); assert.match(b.fonte.testo, /accettazioni erogate \(stati 18, 20, 25, 40, 50\), netto di riga e sconto di testata/);
+    assert.equal(b.applicabile, true); assert.equal(b.chiave_b2b, String(M.org.X)); assert.match(b.fonte.testo, /produzione accettata \(stati 10, 15, 18, 20, 25, 30, 40, 50\), importi di riga \(sconto di testata non applicato\)/);
     assert.equal(b.giornaliero.giorni.length, 9, 'progressione giornaliera dal 1° a oggi'); assert.equal(b.giornaliero.giorni.at(-1).valore, 27);
     const none = await M.S.bloccoAccount({ id: 0, linea: 'PP', organization_id: M.org.X }, { oggi: OGGI });
     assert.equal(none.applicabile, false);
@@ -267,12 +267,12 @@ describe('v0.68.1 con database e dati sintetici', { skip: SALTA }, () => {
     assert.ok(S && !S.errore, S?.errore);
     const by = (l) => Object.fromEntries(l.map((x) => [x.chiave, x]));
     const R = by(S.ricavi), L = by(S.laboratorio), T = by(S.retail);
-    // v0.68.5: B2B = PRODUZIONE EROGATA (accettazioni in stato erogato dei client B2B), non più i documenti
-    assert.equal(R.ricavi_oggi.valore, 102, 'B2C GIPO 75 + B2B produzione erogata 27 (Alfa: 9 + 18)');
-    assert.deepEqual(R.ricavi_oggi.parti.map((p) => p.valore), [75, 27]);
-    assert.equal(R.ricavi_oggi.confronto.valore_precedente, 20, 'anno prima: GIPO 20, nessuna produzione B2B');
-    assert.equal(R.ricavi_mese.valore, 100 + 45, 'GIPO 30 + 45 + 25; B2B 27 + 9 + 9');
-    assert.match(R.ricavi_mese.fonte, /GIPO.*Synclab produzione erogata/);
+    // v0.68.6: Ricavi = B2C GIPO + produzione laboratorio StudioLab TUTTA (B2B + Laboratorio in sede), produzione accettata
+    assert.equal(R.ricavi_oggi.valore, 122, 'B2C GIPO 75 + laboratorio 47 (Alfa 9 + 18, punto TD in sede 10 + 10)');
+    assert.deepEqual(R.ricavi_oggi.parti.map((p) => p.valore), [75, 47]);
+    assert.equal(R.ricavi_oggi.confronto, null, 'anno prima: la copia Synclab inizia il 10/10/2026, nessun confronto con zeri finti');
+    assert.equal(R.ricavi_mese.valore, 100 + 65, 'GIPO 30 + 45 + 25; laboratorio B2B 27 + 9 + 9 e in sede 20');
+    assert.match(R.ricavi_mese.fonte, /GIPO.*Synclab produzione accettata/);
     assert.equal(L.lab_acc_oggi.valore, 3); assert.deepEqual(L.lab_acc_oggi.parti.map((p) => p.valore), [1, 2], 'B2B 1 · in sede 2');
     assert.equal(L.lab_acc_ieri.valore, 1); assert.equal(L.lab_acc_mese.valore, 5); assert.equal(L.lab_esami_mese.valore, 6);
     assert.equal(L.lab_prod_oggi.valore, 27); assert.equal(L.lab_prod_mese.valore, 45);

@@ -13,19 +13,21 @@ import { toXlsx } from '../lib/exports.js';
 import { privatiInB2c, listiniHub, ncAperte, budgetB2B, quadroB2B } from '../lib/b2b.js';
 import {
   cruscottoB2B, produzioneClientiMesi, fatturatoClientiMesi, prezziApplicati, schedaClienteSynclab, statoCopia, periodoProfilo,
-  produzioneGiornaliera, produzioneClientiGiorni, statiErogati, fonteProduzione, aggiornatoAlle, descriviStati,
+  produzioneGiornaliera, produzioneClientiGiorni, statiErogati, scontoTestata, fonteProduzione, aggiornatoAlle, descriviStati, descriviSconto,
 } from '../../../lib/synclab/letture.js';
 
 const r = Router();
 const oggiRoma = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
 /** Periodo dai parametri (periodo = 12m | AAAA-MM | AAAA-Qn | AAAA, oppure da/a); predefinito: ultimi 12 mesi fino a oggi. */
 const periodo = (query) => periodoProfilo({ periodo: query.periodo || '12m', da: query.da || null, a: query.a || null, oggi: oggiRoma() });
-// v0.68.5: ogni pagina dichiara la grandezza principale (produzione erogata) con gli stati, il netto e l'ora della copia
+// v0.68.5: ogni pagina dichiara la grandezza principale con gli stati, la regola dello sconto di testata e l'ora della copia (v0.68.6:
+// produzione ACCETTATA, sconto di testata dall'impostazione del connettore)
 const fonte = async () => {
   const stato = await statoCopia();
   const stati = await statiErogati();
+  const sconto = await scontoTestata();
   const cp = stato?.insiemi?.requests?.checkpoint_at || null;
-  return { fonte: 'StudioLab (Synclab Data API, copia locale in sola lettura)', stato, stati, stati_descritti: descriviStati(stati), fonte_produzione: fonteProduzione(stati, cp), aggiornato: aggiornatoAlle(cp, oggiRoma()) };
+  return { fonte: 'StudioLab (Synclab Data API, copia locale in sola lettura)', stato, stati, sconto_testata: sconto, regola_sconto: descriviSconto(sconto), stati_descritti: descriviStati(stati), fonte_produzione: fonteProduzione(stati, cp, sconto), aggiornato: aggiornatoAlle(cp, oggiRoma()) };
 };
 
 // Stato della copia Synclab (fonte e ultimo checkpoint), per le pagine che non chiamano altro

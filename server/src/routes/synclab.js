@@ -7,13 +7,20 @@ import { ah, bad, audit, parse, notFound } from '../lib/util.js';
 import { requireAdmin } from '../lib/access.js';
 import { one, many, q } from '../db.js';
 import { DATASETS, eseguiCiclo, eseguiTutti, statoSincronizzazione, ultimiRun, salvaImpostazioni, impostazioni, inCorso } from '../lib/synclab/sync.js';
-import { listinoCliente, LEGENDA_STATI, STATI_EROGATI_PREDEFINITI } from '../lib/synclab/letture.js';
+import { listinoCliente, LEGENDA_STATI, STATI_EROGATI_PREDEFINITI, STATI_EROGATI_STORICI, SCONTO_TESTATA } from '../lib/synclab/letture.js';
 import { allineaAbbinamenti, ultimoAllineamento, abbinaManuale } from '../lib/synclab/abbinamenti.js';
+import multer from 'multer';
+import { estraiTesto } from '../lib/pdftext.js';
+import { quadratura as quadraturaSuite } from '../lib/synclab/letture.js';
+import { leggiRiepilogoEsami, reportManuale, confrontaQuadratura, xlsxQuadratura } from '../lib/synclab/quadratura.js';
+
+// PDF del report "Riepilogo Esami" in memoria per la sola richiesta: nessun file conservato (v0.68.6)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
 const r = Router();
 r.use(requireAdmin);
 
-r.get('/stato', ah(async (_req, res) => res.json({ ...(await statoSincronizzazione()), legenda_stati: LEGENDA_STATI, stati_erogati_predefiniti: STATI_EROGATI_PREDEFINITI })));
+r.get('/stato', ah(async (_req, res) => res.json({ ...(await statoSincronizzazione()), legenda_stati: LEGENDA_STATI, stati_erogati_predefiniti: STATI_EROGATI_PREDEFINITI, stati_erogati_v0685: STATI_EROGATI_STORICI, sconti_testata: SCONTO_TESTATA })));
 r.get('/run', ah(async (req, res) => res.json(await ultimiRun(Math.min(200, Math.max(1, Number(req.query.limit) || 20))))));
 
 r.put('/impostazioni', ah(async (req, res) => {
@@ -29,10 +36,12 @@ r.put('/impostazioni', ah(async (req, res) => {
     // v0.68.5: stati dell'accettazione che valgono "produzione erogata" (codici interi) e delta di giorno ogni N minuti (0 = spento)
     stati_erogati: z.array(z.coerce.number().int().min(0).max(999)).min(1, 'Indica almeno uno stato erogato').max(30).optional(),
     sync_intraday_minuti: z.coerce.number().int().min(0).max(720).optional(),
+    // v0.68.6: sconto di testata nella produzione (APPLICA = netto vero; NON_APPLICARE = importi di riga come il report del gestionale)
+    sconto_testata: z.enum(['APPLICA', 'NON_APPLICARE']).optional(),
   }), req.body);
   const out = await salvaImpostazioni(b, req.user.id);
-  await audit(req, 'SYNCLAB_IMPOSTAZIONI', { entity: 'connector', entityId: 'STUDIOLAB', label: 'Dati Synclab (Data API): impostazioni', data: { campi: Object.keys(b), data_api_enabled: b.data_api_enabled, include_patient: b.include_patient, stati_erogati: b.stati_erogati, sync_intraday_minuti: b.sync_intraday_minuti, svuotati: out.svuotati } });
-  if (b.stati_erogati) { const { svuotaCacheMonitor } = await import('../lib/cockpitMonitor.js'); svuotaCacheMonitor(); }
+  await audit(req, 'SYNCLAB_IMPOSTAZIONI', { entity: 'connector', entityId: 'STUDIOLAB', label: 'Dati Synclab (Data API): impostazioni', data: { campi: Object.keys(b), data_api_enabled: b.data_api_enabled, include_patient: b.include_patient, stati_erogati: b.stati_erogati, sconto_testata: b.sconto_testata, sync_intraday_minuti: b.sync_intraday_minuti, svuotati: out.svuotati } });
+  if (b.stati_erogati || b.sconto_testata) { const { svuotaCacheMonitor } = await import('../lib/cockpitMonitor.js'); svuotaCacheMonitor(); }
   res.json(out);
 }));
 
@@ -110,6 +119,60 @@ r.post('/abbinamenti/riallinea', ah(async (req, res) => {
   await audit(req, 'SYNCLAB_ABBINAMENTI', { entity: 'connector', entityId: 'STUDIOLAB', label: `Riallinea abbinamenti: ${out.abbinati.length} abbinati, ${out.codici_scritti.length} codici StudioLAB scritti, ${out.ambigui.length} ambigui`,
     data: { abbinati: out.abbinati.length, sedi_completate: out.sedi_completate.length, codici_scritti: out.codici_scritti.length, ambigui: out.ambigui.length, sede_da_scegliere: out.sede_da_scegliere.length, conflitti: out.conflitti.length } });
   res.json(out);
+}));
+
+// ---------------------------------------------------------------- quadratura con il report di StudioLab (v0.68.6)
+// POST /quadratura: PDF "Riepilogo Esami" (campo file, pdftotext lato server) oppure testo incollato (testo) oppure periodo e totali a mano
+// (da, a, importo, qta) oppure il report già letto (report, per cambiare variante); variante facoltativa. Nessun file conservato, nessun
+// contenuto del report nei log: l'audit registra solo periodo, totali e numero di clienti.
+const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+async function reportDa(req) {
+  const b = req.body || {};
+  let report = null;
+  if (req.file) {
+    if (!/pdf/i.test(req.file.mimetype || '') && !/\.pdf$/i.test(req.file.originalname || '')) throw bad('Serve il PDF "Riepilogo Esami" di StudioLab');
+    let t;
+    try { t = await estraiTesto(req.file.buffer); } catch (e) { throw bad(`PDF non leggibile: ${e.message}`); }
+    report = leggiRiepilogoEsami(t.pagine.join('\n'));
+    report.origine = t.ocr ? 'PDF (OCR)' : 'PDF';
+  } else if (b.report) {
+    const x = typeof b.report === 'string' ? JSON.parse(b.report) : b.report;
+    if (!x || typeof x !== 'object' || !x.totale) throw bad('Report non valido');
+    report = { periodo: x.periodo || {}, clienti: Array.isArray(x.clienti) ? x.clienti.slice(0, 5000).map((c) => ({ nome: String(c.nome || '').slice(0, 300), base: c.base ? String(c.base).slice(0, 300) : null, reparto: c.reparto ? String(c.reparto).slice(0, 200) : null,
+      qta: c.qta == null ? null : Number(c.qta), importo: c.importo == null ? null : Number(c.importo), righe: Number(c.righe || 0), righe_senza_importo: Number(c.righe_senza_importo || 0) })) : [],
+    totale: { qta: x.totale.qta == null ? null : Number(x.totale.qta), importo: x.totale.importo == null ? null : Number(x.totale.importo), ticket: x.totale.ticket ?? null, ulss: x.totale.ulss ?? null, costo: x.totale.costo ?? null },
+    controllo: x.controllo || null, avvisi: Array.isArray(x.avvisi) ? x.avvisi.slice(0, 50).map(String) : [], manuale: Boolean(x.manuale), origine: x.origine ? String(x.origine).slice(0, 30) : null };
+  } else if (b.testo && String(b.testo).trim()) {
+    report = leggiRiepilogoEsami(String(b.testo).slice(0, 5_000_000));
+    report.origine = 'testo incollato';
+  } else {
+    const imp = String(b.importo ?? '').replace(/\./g, '').replace(',', '.');
+    if (!imp || Number.isNaN(Number(imp))) throw bad('Carica il PDF, incolla il testo del report oppure indica il totale (importo)');
+    report = reportManuale({ da: b.da, a: b.a, qta: b.qta === '' || b.qta == null ? null : Number(String(b.qta).replace(/\./g, '')), importo: Number(imp) });
+    report.origine = 'totali a mano';
+  }
+  // periodo indicato a mano: vale se il report non lo ha
+  if (isoRe.test(String(b.da || '')) && isoRe.test(String(b.a || '')) && (!report.periodo?.da || b.forza_periodo === 'true' || b.forza_periodo === true)) report.periodo = { da: b.da, a: b.a };
+  if (!isoRe.test(String(report.periodo?.da || '')) || !isoRe.test(String(report.periodo?.a || ''))) throw bad('Periodo del report non trovato: indicare "dal" e "al"');
+  return report;
+}
+const varianteDa = (v) => (typeof v === 'string' && /^[A-Z_]{3,40}$/.test(v) ? v : null);
+r.post('/quadratura', upload.single('file'), ah(async (req, res) => {
+  const report = await reportDa(req);
+  const base = await quadraturaSuite({ da: report.periodo.da, a: report.periodo.a });
+  const risultato = confrontaQuadratura(report, base, { variante: varianteDa(req.body?.variante) });
+  await audit(req, 'SYNCLAB_QUADRATURA', { entity: 'connector', entityId: 'STUDIOLAB', label: `Quadratura con StudioLab dal ${report.periodo.da} al ${report.periodo.a}`,
+    data: { origine: report.origine || null, clienti_report: report.clienti.length, totale_report: report.totale?.importo ?? null, variante: risultato.variante.chiave, coincide: risultato.varianti.filter((v) => v.coincide).map((v) => v.chiave) } });
+  res.json({ report, risultato });
+}));
+r.post('/quadratura/xlsx', ah(async (req, res) => {
+  const report = await reportDa(req);
+  const base = await quadraturaSuite({ da: report.periodo.da, a: report.periodo.a });
+  const q = confrontaQuadratura(report, base, { variante: varianteDa(req.body?.variante) });
+  const buf = await xlsxQuadratura(q);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="Quadratura_StudioLab_${report.periodo.da}_${report.periodo.a}.xlsx"`);
+  res.end(Buffer.from(buf));
 }));
 
 // Listino corrente di un client (dettaglio a richiesta)
