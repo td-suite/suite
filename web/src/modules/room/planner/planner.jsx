@@ -1346,9 +1346,10 @@ function PersonaPicker({ p, onPick }) {
   const [lista, setLista] = useState(_profCache || []);
   const [q, setQ] = useState('');
   const [aperto, setAperto] = useState(!p.nome);
+  // elenco sempre riletto all'apertura (la cache serve solo a mostrare subito qualcosa): chi è appena stato creato in Amministrazione >
+  // Persone compare senza ricaricare la pagina (v0.68.4)
   useEffect(() => {
-    if (_profCache) return;
-    api.get('/personale/professionisti?pianificabili=1').then(r => { _profCache = Array.isArray(r) ? r : (r.items || []); setLista(_profCache); }).catch(() => setLista([]));
+    api.get('/personale/professionisti?pianificabili=1').then(r => { _profCache = Array.isArray(r) ? r : (r.items || []); setLista(_profCache); }).catch(() => setLista(_profCache || []));
   }, []);
   const tipoOk = x => p.tipo === 'medico' ? x.tipo === 'medico' : true;
   const norm = t => (t || '').toLowerCase();
@@ -1363,9 +1364,9 @@ function PersonaPicker({ p, onPick }) {
       React.createElement("div", { className: "list", style: { maxHeight: 220, overflow: 'auto', marginTop: 4 } },
         filtrate.map(x => React.createElement("button", { key: x.id, type: "button", className: "list-item", style: { width: '100%', textAlign: 'left', cursor: 'pointer' },
           onClick: () => { onPick(x); setAperto(false); setQ(''); } },
-          React.createElement("div", null, React.createElement("strong", null, x.nome), React.createElement("div", { className: "note" }, [x.profilo, x.site_name, (x.discipline || []).join(', ')].filter(Boolean).join(' · '))))),
+          React.createElement("div", null, React.createElement("strong", null, x.nome), React.createElement("div", { className: "note" }, [x.profilo, x.siteName || x.site_name, (x.discipline || []).join(', ')].filter(Boolean).join(' · '))))),
         !filtrate.length && React.createElement("div", { className: "note" }, lista.length ? 'Nessuna persona trovata fra i professionisti pianificabili.' : 'Elenco non disponibile.')),
-      React.createElement("div", { className: "note", style: { marginTop: 4 } }, "Chi manca si crea in Amministrazione > Persone e, se escluso, si riporta tra i pianificabili in Personale sanitario > Professionisti.")));
+      React.createElement("div", { className: "note", style: { marginTop: 4 } }, "Chi manca si crea in Amministrazione > Persone e, se escluso, si riporta tra i pianificabili in Personale sanitario > Professionisti. Chi scegli qui riceve da solo la scheda Room e compare subito in Turni, Presenze e Calendario.")));
 }
 function PersonEditor({
   person,

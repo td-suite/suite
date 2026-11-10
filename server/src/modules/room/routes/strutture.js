@@ -36,11 +36,22 @@ async function load(req, id, { withPdf = false } = {}) {
   return { row, full: joinStruttura(liteOf(row), blobs), hasPdf };
 }
 
+// Righe del personale di sede non agganciabili (v0.68.4): senza persona dell'anagrafica, non attive o escluse dalla pianificazione
+async function nonAgganciatiDi(personale) {
+  try {
+    const { agganciatore, isAttivita, PROF_COLS } = await import('../lib/personale.js');
+    const righe = (personale || []).filter((x) => x.nome?.trim() && ['medico', 'sanitario', 'accettazione'].includes(x.tipo) && !isAttivita(x.nome));
+    if (!righe.length) return [];
+    const aggancia = agganciatore(await many(`SELECT ${PROF_COLS} FROM professionisti_v p`));
+    return righe.map((x) => ({ nome: x.nome.trim(), gruppo: x.tipo, ...aggancia(x) })).filter((x) => !x.persona).map(({ persona, ...x }) => x);
+  } catch (e) { console.error('[aggancio personale]', e.message); return []; }
+}
+
 // Sede completa (senza PDF della planimetria, che si scarica a parte per non appesantire)
 r.get('/:id', ah(async (req, res) => {
   const id = siteId(req.params.id);
   const { row, full, hasPdf } = await load(req, id);
-  res.json({ struttura: full, version: row.version || 0, updatedAt: row.updated_at, updatedBy: row.updated_by_name, hasPlanPdf: hasPdf, deletedAt: null,
+  res.json({ nonAgganciati: await nonAgganciatiDi(full.personale), diagnostica: '/admin/diagnostica', struttura: full, version: row.version || 0, updatedAt: row.updated_at, updatedBy: row.updated_by_name, hasPlanPdf: hasPdf, deletedAt: null,
     configurata: Boolean(row.configurata), active: row.active, canEdit: canEditStruttura(req.user, id) && row.active });
 }));
 
@@ -95,19 +106,26 @@ r.put('/:id', ah(async (req, res) => {
     await c.query('DELETE FROM struttura_history WHERE struttura_id=$1 AND id NOT IN (SELECT id FROM struttura_history WHERE struttura_id=$1 ORDER BY id DESC LIMIT 500)', [id]);
   });
   // Schede Room dei professionisti allineate alla scheda di sede (stessa persona: person_id della riga, poi chiave del nome): profilo del personale sanitario
+  // v0.68.4: chi è assegnato alla sede (medico, personale sanitario, accettazione) ed è attivo e non escluso riceve SUBITO la scheda Room
+  // se non l'ha (tipo dal gruppo): così è professionista e pianificabile in Turni, Presenze e Calendario senza passaggi manuali
+  let schede = 0; const nonAgganciati = [];
   try {
-    const { indicePersone } = await import('../lib/personale.js');
-    const profs = await many('SELECT p.id, p.nome, p.tipo, p.profilo, p.in_room FROM professionisti_v p WHERE p.attivo');
-    const trova = indicePersone(profs);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
+    const { agganciatore, assicuraSchedeRoom, isAttivita, PROF_COLS } = await import('../lib/personale.js');
+    const profs = await many(`SELECT ${PROF_COLS} FROM professionisti_v p`);
+    const aggancia = agganciatore(profs);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
+    const righe = [];
     for (const x of data.personale || []) {
-      if (!x.nome?.trim()) continue;
-      const pr = trova(x);
-      if (!pr || !pr.in_room || pr.tipo !== 'sanitario' || !x.profilo || x.profilo === pr.profilo) continue;
+      if (!x.nome?.trim() || !['medico', 'sanitario', 'accettazione'].includes(x.tipo) || isAttivita(x.nome)) continue;
+      const { persona: pr, motivo } = aggancia(x);
+      if (!pr) { nonAgganciati.push({ nome: x.nome.trim(), gruppo: x.tipo, motivo }); continue; }
+      righe.push({ riga: x, persona: pr });
+      if (!pr.in_room || pr.tipo !== 'sanitario' || x.tipo !== 'sanitario' || !x.profilo || x.profilo === pr.profilo) continue;
       await q('UPDATE person_ext SET profilo=$2, updated_at=now(), updated_by=$3 WHERE person_id=$1', [pr.id, x.profilo, req.user.id]);
     }
+    schede = await assicuraSchedeRoom(id, righe, req.user.id);
   } catch (e) { console.error('[sync professionisti]', e.message); }
-  await audit(req, 'STRUTTURA_SAVE', 'struttura', id, { version: newVersion, blobs: blobs ? Object.keys(blobs) : [] });
-  res.json({ ok: true, version: newVersion, updatedAt: new Date().toISOString(), updatedBy: req.user.full_name });
+  await audit(req, 'STRUTTURA_SAVE', 'struttura', id, { version: newVersion, blobs: blobs ? Object.keys(blobs) : [], schede_room: schede || undefined });
+  res.json({ ok: true, version: newVersion, updatedAt: new Date().toISOString(), updatedBy: req.user.full_name, schede_create: schede, nonAgganciati, diagnostica: '/admin/diagnostica' });
 }));
 
 // Rimuove la configurazione Room della sede (ambulatori, personale pianificato, planimetria, cronologia). La sede resta nell'anagrafica unica.

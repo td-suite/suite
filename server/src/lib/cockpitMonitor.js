@@ -151,7 +151,8 @@ export function coperturaAmbulatori({ sedi = [], turni = [], chiusure = [], gior
       }
     }
   }
-  const senzaAmb = turni.filter((t) => t.prof_id != null && (!t.room_id || !idsAmb.has(`${t.sede_id}|${t.room_id}`))).length;
+  // i turni del desk di accettazione (generati dal piano dalla v0.68.4, profilo 'Accettazione') non sono sessioni d'ambulatorio: non si segnalano
+  const senzaAmb = turni.filter((t) => t.prof_id != null && t.profilo !== 'Accettazione' && (!t.room_id || !idsAmb.has(`${t.sede_id}|${t.room_id}`))).length;
   return { minuti_aperti: aperti, minuti_coperti: coperti, ore_aperte: r2(aperti / 60), ore_coperte: r2(coperti / 60), pct: aperti ? Math.round((coperti / aperti) * 1000) / 10 : null, ambulatori, sedi: sedi.length, turni_senza_ambulatorio: senzaAmb };
 }
 
@@ -450,7 +451,7 @@ async function retailFlow(ctx) {
     // % copertura ambulatori: ore prenotabili degli ambulatori coperte da un professionista (turni con ambulatorio) sul totale del mese
     const { loadSedi, joinStruttura } = await import('../modules/room/lib/strutture.js');
     const sedi = (await loadSedi({ onlyConfigured: true })).map((x) => { const s = joinStruttura(x.lite, {}); return { id: x.row.id, hours: s.hours, ambulatori: s.ambulatori || [] }; });
-    const turni = await db.many(`SELECT sede_id, data::text AS data, ora_da, ora_a, room_id, prof_id FROM turni WHERE mese = $1`, [mese]);
+    const turni = await db.many(`SELECT sede_id, data::text AS data, ora_da, ora_a, room_id, prof_id, profilo FROM turni WHERE mese = $1`, [mese]);
     const chiusure = (await db.many(`SELECT sede_id, dal::text AS dal, al::text AS al FROM eventi WHERE kind = 'CHIUSURA' AND al >= $1::date AND dal <= $2::date`, [P.inizio, P.fine]));
     const giorni = []; for (let d = P.inizio; d <= P.fine; d = addGiorni(d, 1)) giorni.push(d);
     const cop = coperturaAmbulatori({ sedi, turni, chiusure, giorni });

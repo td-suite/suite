@@ -11,6 +11,7 @@ import { todayRome } from './util.js';
 import { versioneCorrente } from '../../business/lib/listino.js';
 import * as CE from './contoEconomico.js';
 import { produzionePerOrg, fatturatoPerOrg } from '../../../lib/synclab/letture.js';
+import { giorniLavorativi } from '../../business/lib/proQuota.js';
 
 export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Contratti del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management' };
 const num = (v) => (v == null || v === '' ? null : Number(v));
@@ -72,8 +73,12 @@ async function pagamenti(p) {
 
 // ---------------------------------------------------------------- Service: produzione e margine per cliente
 /**
- * Margine per cliente Service nei mesi del periodo. Clienti = public.clienti_attivi_v linea SRV (ATTIVI e CONTRATTUALIZZATI).
- * Ritorna { clienti: [{ org_id, org_name, livello, dal, account_id, mesi: { mk: margine }, totale }], fonti, avvisi, impostazioni }.
+ * Margine per cliente Service nei mesi del periodo. Clienti = public.clienti_attivi_v linea SRV. v0.68.4 (CEO 10/11/2026): la stima
+ * commerciale e la proiezione FY valgono SOLO per i clienti ATTIVI (livello ATTIVO = accounts.cliente_attivo, la regola unica del
+ * Business Hub) e la stima è in pro quota sul periodo (CE.stimaProQuota); i CONTRATTUALIZZATI non avviati restano fuori, salvo che
+ * abbiano produzione effettiva nel periodo (Synclab, StudioLAB, manuale), che si mostra sempre.
+ * Ritorna { clienti: [{ org_id, org_name, livello, attivo, dal, account_id, mesi: { mk: margine }, totale, proiezione_fy }], proiezione,
+ * esclusi_non_attivi, fonti, avvisi, impostazioni }.
  */
 export async function caricaService(p, { imp = null, orgId = null } = {}) {
   imp = imp || await impostazioniControllo();
@@ -128,19 +133,29 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
   for (const r of pg.rows) if (r.org_id) { const k = `${r.org_id}|${r.data.slice(0, 7)}`; if (!pagOrg.has(k)) pagOrg.set(k, []); pagOrg.get(k).push(r); }
   const raggruppa = (rows) => { const m = new Map(); for (const r of rows) { const k = `${r.org_id}|${r.mese}`; if (!m.has(k)) m.set(k, { esami: 0, valore: 0, haValore: false, righe: [] }); const x = m.get(k); x.esami += Number(r.quantita || 0); if (r.valore != null) { x.valore += Number(r.valore); x.haValore = true; } x.righe.push({ codice: r.codice, descrizione: r.descrizione, quantita: Number(r.quantita || 0), valore: r.valore != null ? CE.r2(r.valore) : null }); } for (const x of m.values()) x.valore = x.haValore ? CE.r2(x.valore) : null; return m; };
   const rRetail = raggruppa(retail.rows), rOrdini = raggruppa(ordini.rows);
+  const oggi = todayRome();
+  const annoFy = p.anno + 1;
   const out = clienti.map((c) => {
     const account = accById.get(c.org_id) || null;
     const listino = listinoDi(c.org_id);
     const contratto = contrattoDi.get(c.org_id) || null;
+    const attivo = c.livello === 'ATTIVO';
     const avvio = account?.data_avvio_effettiva || account?.data_avvio_prevista || c.dal || null;
     const mesi = {};
-    const meseOggi = todayRome().slice(0, 7);
+    const meseOggi = oggi.slice(0, 7);
+    // giorni lavorativi già trascorsi nell'anno prima del periodo (dall'avvio): la somma dei mesi non supera il fatturato FY atteso
+    const inizioAnno = `${p.anno}-01-01`, primo = `${p.mesi[0]}-01`;
+    const da0 = avvio && avvio > inizioAnno ? avvio : inizioAnno;
+    const prima = new Date(Date.parse(`${primo}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+    let usati = primo > inizioAnno && prima >= da0 ? Math.min(giorniAnno, giorniLavorativi(da0, prima < oggi ? prima : oggi)) : 0;
     for (const mk of p.mesi) {
       // mesi futuri: nessuna stima né ritiri (il conto registra ciò che è avvenuto)
       if (mk > meseOggi) { mesi[mk] = { ...CE.margineCliente({}), produzione: null, futuro: true, pagamenti_righe: [] }; continue; }
       const k = `${c.org_id}|${mk}`;
-      const sal = salvate.find((x) => x.org_id === c.org_id && x.mese === mk) || null;
-      const stima = account ? CE.stimaProduzione(account, mk, giorniAnno, avvio) : null;
+      const sal0 = salvate.find((x) => x.org_id === c.org_id && x.mese === mk) || null;
+      const sal = sal0 && (attivo || sal0.fonte !== 'STIMA') ? sal0 : null;   // stima salvata solo per i clienti attivi
+      const stima = attivo && account ? CE.stimaProQuota(account, mk, { giorniAnno, avvio, oggi, giorniUsati: usati }) : null;
+      if (stima) usati += stima.giorni;
       const prod = CE.scegliProduzione({ salvata: sal, synclab: syn.get(k), retail: rRetail.get(k), ordini: rOrdini.get(k), stima });
       const ritiri = contratto ? CE.ritiriNelMese(Array.isArray(contratto.days) ? contratto.days : [], mk, contratto.start_date, contratto.end_date) : null;
       const pags = pagOrg.get(k) || [];
@@ -148,13 +163,21 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
       mesi[mk] = { ...m, produzione: prod ? { fonte: prod.fonte, origine: prod.origine, stima: prod.stima, calcolata: prod.calcolata, id: prod.id || null, note: prod.note, righe: prod.righe ? prod.righe.length : 0, dettaglio_stima: prod.dettaglio_stima || null } : null,
         pagamenti_righe: pags.map((x) => ({ id: x.id, protocol: x.protocol, beneficiary_name: x.beneficiary_name, purpose: x.purpose, amount: Number(x.amount), data: x.data })) };
     }
-    return { org_id: c.org_id, org_name: c.org_name, livello: c.livello, dal: c.dal, account_id: account?.id || c.account_id || null, listino: listino ? { id: listino.id, versione: listino.versione, esami: listino.righe.length } : null,
+    const fy = attivo ? CE.fatturatoFyAtteso(account, giorniAnno) : null;
+    return { org_id: c.org_id, org_name: c.org_name, livello: c.livello, attivo, dal: c.dal, avvio, account_id: account?.id || c.account_id || null,
+      proiezione_fy: fy != null ? { anno: annoFy, importo: fy, fonte: account?.fatturato_fy_atteso > 0 ? 'fatturato FY atteso' : 'volumi giornalieri attesi × prezzo medio per esame' } : null, listino: listino ? { id: listino.id, versione: listino.versione, esami: listino.righe.length } : null,
       contratto: contratto ? { id: contratto.id, status: contratto.status, giorni_ritiro: CE.ritiriNelMese(Array.isArray(contratto.days) ? contratto.days : [], p.mesi[0]).giorni_settimana } : null,
       mesi, totale: sommaMesi(Object.values(mesi)) };
   });
+  // contrattualizzati non avviati (livello CONTRATTUALIZZATO) senza produzione effettiva nel periodo: fuori (niente stime né proiezione)
+  const esclusi = out.filter((c) => !c.attivo && !Object.values(c.mesi).some((m) => m.produzione && CE.effettiva(m.produzione)));
+  const tenuti = out.filter((c) => !esclusi.includes(c));
+  const proiezione = { anno: annoFy, importo: CE.r2(tenuti.reduce((a, c) => a + Number(c.proiezione_fy?.importo || 0), 0)), clienti: tenuti.filter((c) => c.proiezione_fy).length,
+    attivi_senza_fy: tenuti.filter((c) => c.attivo && !c.proiezione_fy).map((c) => c.org_name) };
+  if (proiezione.attivi_senza_fy.length) avvisi.push(`Clienti attivi senza fatturato FY atteso né volumi e prezzo nella scheda account del Business Hub (nessuna stima né proiezione): ${proiezione.attivi_senza_fy.join(', ')}`);
   if (!imp.costo_ritiro) avvisi.push('Costo per ritiro non indicato (Impostazioni > Controllo di gestione): i ritiri restano "da indicare"');
   if (!imp.costo_medio_esame && !costi.size) avvisi.push('Né costo medio per esame né tabella "costi esami" (Impostazioni > Controllo di gestione): il costo analitico resta "da indicare"');
-  return { clienti: out, fonti, avvisi, giorni_lavorativi_anno: giorniAnno, impostazioni: imp, costi_esami: costi.size };
+  return { clienti: tenuti, proiezione, esclusi_non_attivi: esclusi.map((c) => ({ org_id: c.org_id, org_name: c.org_name, livello: c.livello })), fonti, avvisi, giorni_lavorativi_anno: giorniAnno, impostazioni: imp, costi_esami: costi.size };
 }
 
 /** Somma dei mesi di un cliente (ricavo e margine null se nessun mese li ha; "parziale" se manca qualche mese). */
@@ -212,7 +235,8 @@ export async function movimentiConto(p, imp, sedi) {
     // v0.68.1: nei ricavi solo la produzione effettiva (Synclab, StudioLAB, manuale); le stime commerciali nella riga separata non sommata
     mov.push(...CE.movimentiService(service.clienti, lab, p));
   }
-  fonti.stime_service = { disponibile: true, nota: 'Stime dall\'account del Business Hub (volumi giornalieri attesi × giorni lavorativi del mese al prezzo medio per esame, o stima salvata): non sono produzione e non entrano nei ricavi né nel margine' };
+  fonti.stime_service = { disponibile: true, nota: `Solo clienti Service ATTIVI (regola del Business Hub: niente prospect né contrattualizzati non avviati), nei mesi senza produzione effettiva: fatturato FY atteso × giorni lavorativi del periodo dopo l'avvio (fino a oggi) / ${service.giorni_lavorativi_anno}. Non sono produzione e non entrano nei ricavi né nel margine` };
+  fonti.proiezione_fy = { disponibile: true, nota: `Fatturato FY atteso pieno dei ${service.proiezione?.clienti ?? 0} clienti Service attivi (schede account del Business Hub): proiezione dell'anno ${service.proiezione?.anno ?? p.anno + 1}, mai sommata` };
 
   // CONTROLLO · Cash: incassi dei rendiconti da CLOSED in poi (contanti netti, POS, bonifici), non sommati ai ricavi
   const cash = await leggi('cash', `SELECT site_id, to_char(report_date, '${fmt}') AS d, count(*)::int AS n, sum(pos_total + cash_to_deposit + transfer_total) AS tot
@@ -365,6 +389,7 @@ export function composizioneRicavi(conto) {
     retail: conto.totale.voci.ricavi_retail, retail_gipo: CE.r2(righeRet.reduce((a, m) => a + Number(m.gipo || 0), 0)), retail_ultima: ultima,
     service: conto.totale.voci.ricavi_service, service_fonti: conto.totale.service_fonti || [], service_clienti: conto.totale.service_clienti || 0,
     stime: conto.totale.stime || { importo: 0, clienti: 0 },
+    proiezione: conto.totale.proiezione || { importo: 0, clienti: 0, anno: null },
   };
 }
 
@@ -377,7 +402,8 @@ export function daDoveViene({ p, conto, fonti, comp, imp, lab, prevVuoto, oggi =
   const ricavi = [
     `Retail${comp.retail_gipo ? ' (GIPO)' : ''}: vendite nette ${per}${comp.retail_ultima ? `, ultimo dato del ${ggmm(comp.retail_ultima)}` : ''}${nd('ricavi_retail')}`,
     `Service: produzione effettiva di ${comp.service_clienti} ${comp.service_clienti === 1 ? 'cliente' : 'clienti'} attribuita a ${lab?.name || 'Laboratorio'} (${fontiSrv})${nd('ricavi_service')}`,
-    comp.stime.importo ? `Stime commerciali escluse: ${eurTxt(comp.stime.importo)} su ${comp.stime.clienti} ${comp.stime.clienti === 1 ? 'cliente' : 'clienti'} (Business Hub, non sommate)` : 'Nessuna stima commerciale nel periodo',
+    comp.stime.importo ? `Stime commerciali escluse: ${eurTxt(comp.stime.importo)}, pro quota ${per} di ${comp.stime.clienti} ${comp.stime.clienti === 1 ? 'cliente attivo' : 'clienti attivi'} senza produzione effettiva (Business Hub, non sommate)` : 'Nessuna stima commerciale nel periodo (solo clienti attivi, in pro quota)',
+    comp.proiezione?.clienti ? `Proiezione FY ${comp.proiezione.anno}: ${eurTxt(comp.proiezione.importo)}, fatturato atteso pieno di ${comp.proiezione.clienti} ${comp.proiezione.clienti === 1 ? 'cliente attivo' : 'clienti attivi'} (non sommata)` : 'Nessuna proiezione FY: nessun cliente attivo con fatturato FY atteso',
   ];
   const costi = [`Canoni (Scadenziario o Sedi), bollette registrate, royalties di sede (Cash), personale (RAL × ${String(imp.coefficiente).replace('.', ',')} / 12), liberi professionisti, manutenzioni (Facility), pagamenti Finance: ${per}`];
   const centrali = [`Costi senza sede o delle sedi centrali ${per}, ripartiti sui ricavi delle sedi`];

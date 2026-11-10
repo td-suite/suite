@@ -99,6 +99,17 @@ limitatore condiviso con il catalogo (30 al minuto), stato presso Silva ogni 30 
 spedito, ANNULLATO e 404 → segnalazione), primo invio concordato (`primo_invio_confermato`) prima dell'automatismo, colonna e riquadro
 "Silva". Migrazione orders 015. Test `server/test/orders-silva-v1.test.mjs`. Dettagli: SILVA_API_ORDINI.md, CONNETTORI.md.
 
+## 10/11/2026 · v0.68.3
+Ordini, punto di consegna per le Legal entity cliente con più sedi service (richiesta del CEO: Kos S.p.A. con Ville di Nozzano e Villa
+dei Pini). Ordini, giacenze, produzione e dotazione restano sulla Legal entity (A4); l'ordine ha `delivery_site_id` ("Consegnare a":
+obbligatorio con 2 o più punti, preselezionato con uno, perimetro dell'utente), cambiabile da Ops fino alla ricevuta di Silva, mostrato
+come "Kos S.p.A. · Villa dei Pini" ovunque (lista con filtro, dettaglio, PDF, email, trasmissione, export) e trasmesso con la
+destinazione Silva del punto; ordini di prima senza punto: avviso e approvazione bloccata finché Ops non lo indica. Destinazioni Silva:
+unità = sedi TD, Legal entity senza punti, punti service; abbinamento automatico delle coincidenze univoche (CAP + via e civico o CAP +
+nome, codice libero) su "Aggiorna destinazioni" e con il job `orders:silva-destinazioni` ogni 6 ore; gruppi Abbinate / Da scegliere /
+Non presenti in Silva e destinazioni presenti in Silva non in anagrafica; D53 sulle unità. Giacenza per punto non gestita (decisione
+aperta). Migrazione orders 016, test `server/test/orders-punto-consegna.test.mjs`. Dettagli: SILVA_API_ORDINI.md sezioni 2 e 2 bis.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

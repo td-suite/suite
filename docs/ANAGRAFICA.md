@@ -252,6 +252,9 @@ clienti del service di laboratorio, partner, fornitori, società del gruppo; imp
 campi di site_ext: ruolo nel flusso, codice Silva, giorno della giacenza, referente, modalità e note di consegna). I punti dei clienti
 service (`sites.kind = 'SERVICE'`) non sono strutture: compaiono come punti di consegna della loro Legal entity (`organization_id`) e
 la produzione StudioLab attribuita al loro codice cliente si somma sulla Legal entity (`productionStrutture` in lib/studiolab.js).
+Dalla 0.68.3 (10/11/2026) l'ordine della Legal entity indica il **punto di consegna** (`orders.delivery_site_id`, "Consegnare a",
+obbligatorio con 2 o più punti attivi) e il punto ha la propria destinazione Silva, modalità e note di consegna (`site_ext`); ordini,
+giacenze, produzione e dotazione restano sulla Legal entity (A4). Dettagli in docs/SILVA_API_ORDINI.md, sezione 2 bis.
 Chiave unica `struttura_id` in orders, packages, stock_counts, production, issues, email_log: `> 0` id della sede, `< 0` opposto
 dell'id della Legal entity; le colonne generate `site_id` e `org_id` (una sola valorizzata) portano le FK reali verso `public.sites`
 e `public.organizations`, così le query del modulo restano a un solo intero. Vista `orders.strutture_v` (origin SITE/ORG, site_id,

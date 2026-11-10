@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { api, API_BASE } from '../api.js';
+import { api, API_BASE, BASE } from '../api.js';
 import { useApi, Field, Loading, ErrorBox, Card, Badge, Icon, Modal, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 import { PhaseBanner } from '../components/phase.jsx';
+import { Link } from 'react-router-dom';
 import { itDate, itDateTime, dec } from '../format.js';
+import { linkArticolo } from '../lib/magazzino.js';
 
 // Fase 0 · Magazzino Centrale (gestito dal fornitore Silva, letto dall'API Silva): giacenze (lotti, scadenze, quantità) e visibilità
 // degli articoli per tipologia di struttura: Tutti, Punti Prelievo, Centro Polidiagnostico, Laboratorio di Analisi, Service
@@ -15,7 +17,9 @@ const VIS = [
   { k: 'visible_service', label: 'Service', title: 'Clienti service e Legal entity' },
 ];
 const visibile = (r) => VIS.some((v) => r[v.k]);
-export default function Warehouse() {
+// v0.68.4: scheda "Giacenze Silva" del Magazzino Centrale (tabs = barra delle schede); per ogni articolo "Ordinabile" sì/no con il link
+// alla riga nella scheda "Articoli ordinabili".
+export default function Warehouse({ tabs = null }) {
   const toast = useToast();
   const { data, reload } = useApi('/warehouse');
   const [err, setErr] = useState(null);
@@ -50,12 +54,13 @@ export default function Warehouse() {
           <label className="btn ghost"><Icon name="upload" size={16} />Importa feed<input type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && importFile(e.target.files[0])} /></label>
         </div>
       </div>
+      {tabs}
       <ErrorBox error={err} />
       {sel.size > 0 && <div className="alert info" style={{ marginBottom: 12 }}><div className="row"><b>{sel.size} selezionati:</b>{VIS.map((v) => <button key={v.k} className="btn sm ghost" onClick={() => bulk(v.k, true)}>{v.k === 'visible_all' ? 'Visibili a tutti' : `+ ${v.label}`}</button>)}<button className="btn sm danger" onClick={async () => { await bulk('visible_all', false); }}>Togli "tutti"</button><button className="btn sm link" onClick={() => setSel(new Set())}>Annulla selezione</button></div></div>}
       <Card flush>
         {!data ? <Loading /> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th>Codice Silva</th><th className="num">Giacenza magazzino</th><th className="num">Lotti</th><th>Prima scadenza</th>{VIS.map((v) => <th key={v.k} title={v.title} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 92 }}>{v.label}</th>)}<th /></tr></thead>
+            <thead><tr><th><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th>Codice Silva</th><th className="num">Giacenza magazzino</th><th className="num">Lotti</th><th>Prima scadenza</th><th title="Compare in Nuovo ordine per almeno una tipologia di struttura">Ordinabile</th>{VIS.map((v) => <th key={v.k} title={v.title} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 92 }}>{v.label}</th>)}<th /></tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.article_id} className={!visibile(r) ? 'warnrow' : ''}>
                 <td><input type="checkbox" checked={sel.has(r.article_id)} onChange={(e) => { const s = new Set(sel); e.target.checked ? s.add(r.article_id) : s.delete(r.article_id); setSel(s); }} /></td>
@@ -64,6 +69,7 @@ export default function Warehouse() {
                 <td className="num strong">{dec(r.qty, 0)} <span className="small muted">{r.unit}</span></td>
                 <td className="num">{r.lots}</td>
                 <td className="small">{r.next_expiry ? itDate(r.next_expiry) : '–'}</td>
+                <td className="small"><Link to={`${BASE}/${linkArticolo(r.article_id)}`} title={r.ordinabile ? 'Apri la riga in Articoli ordinabili' : `Non ordinabile: ${r.non_ordinabile_motivo}`}>{r.ordinabile ? <Badge tone="green">sì</Badge> : <Badge tone="red">no</Badge>}</Link>{!r.ordinabile && r.non_ordinabile_motivo && <div className="muted" style={{ fontSize: 11 }}>{r.non_ordinabile_motivo}</div>}</td>
                 {VIS.map((v) => <td key={v.k} style={{ textAlign: 'center' }}><Chk r={r} k={v.k} /></td>)}
                 <td className="num"><button className="btn sm ghost" onClick={() => setDetail(r)}>Lotti</button></td>
               </tr>))}</tbody>

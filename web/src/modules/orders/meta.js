@@ -13,6 +13,7 @@ export default {
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     // Menu Operations riordinato dal CEO (31/10/2026): Set up, Ordini, Giacenze, Gestione
     { group: 'Set up', profiles: OPS },
+    // v0.68.4: una sola voce con due schede, Giacenze Silva e Articoli ordinabili (l'ex Catalogo articoli, /orders/articoli rimanda qui)
     { to: 'magazzino', icon: 'folder', label: 'Magazzino Centrale', profiles: OPS },
     // Dotazione di avvio delle sedi: modelli per tipologia, sedi e Legal entity con data di apertura e Giacenza 0 (badge: aperture entro 60 giorni senza Giacenza 0)
     { to: 'dotazione', icon: 'building', label: 'Dotazione di avvio', badge: 'dotazione', profiles: OPS },
@@ -29,7 +30,6 @@ export default {
     { to: 'rete', icon: 'grid', label: 'Scorte della rete', profiles: OPS },
     { group: 'Gestione', profiles: OPS },
     { to: 'strutture', icon: 'building', label: 'Strutture', profiles: OPS },
-    { to: 'articoli', icon: 'sheet', label: 'Catalogo articoli', profiles: OPS },
     { to: 'produzione', icon: 'stats', label: 'Produzione StudioLab', profiles: OPS },
     { to: 'correlazioni', icon: 'tree', label: 'Correlazione esami e materiali', profiles: OPS },
     { to: 'ordini', icon: 'list', label: 'Archivio ordini', profiles: OPS },

@@ -84,7 +84,7 @@ describe('B · Conto economico: le stime non entrano nel totale', () => {
   test('scegliProduzione → margineCliente → movimentiService → componiConto: un cliente stimato e uno Synclab', () => {
     const p = CE.periodo(2026, 11);
     const synclab = { esami: 3, valore: 90, righe: [{ codice: 'GLU', quantita: 3, righe: 3, valore: 90, prezzo_netto: 30 }] };
-    const stima = CE.stimaProduzione({ volumi_giornalieri_attesi: 10, prezzo_medio_esame: 5 }, '2026-11', 250, null);
+    const stima = CE.stimaProQuota({ fatturato_fy_atteso: 12500, volumi_giornalieri_attesi: 10 }, '2026-11', { giorniAnno: 250, oggi: '2026-11-09' });   // v0.68.4: pro quota
     const prodS = CE.scegliProduzione({ synclab });
     const prodE = CE.scegliProduzione({ stima });
     assert.equal(prodS.fonte, 'SYNCLAB'); assert.equal(prodS.stima, false);

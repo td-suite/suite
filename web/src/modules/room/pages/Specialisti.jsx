@@ -173,7 +173,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload, persona }) {
       <div className="card"><div className="bd">
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: 18 }}>Nelle sedi come {x.nome} <Badge tone={x.tipo === 'medico' ? 'teal' : 'mauve'}>{x.tipo === 'medico' ? 'medico' : x.profili.join(', ') || 'sanitario'}</Badge></h2>
+            <h2 style={{ fontSize: 18 }}>Nelle sedi come {x.nome} <Badge tone={x.tipo === 'medico' ? 'teal' : 'mauve'}>{x.tipo === 'medico' ? 'medico' : x.tipo === 'accettazione' ? 'accettazione' : x.profili.join(', ') || 'sanitario'}</Badge></h2>
             <div className="muted">{x.discipline.join(', ')}{x.attrezzature.length ? ` · richiede ${x.attrezzature.join(', ')}` : ''}</div>
             <div className="row small" style={{ marginTop: 6, gap: 14 }}><span><b>{durTxt(x.ore)}</b>/settimana</span><span><b>{x.sessioni.filter((q) => q.room).length}</b> sessioni</span><span>sedi: {sedeList.map((n, i) => <span key={n} className="chip" style={{ background: colorOf[x.sedi.find((z) => z.sede === n)?.sedeId] + '22' }}>{n}</span>)}</span></div>
           </div>

@@ -82,7 +82,7 @@ export function SilvaCard({ o, onChanged }) {
         </div>
       )}
       {o.silva_send_status === 'ERRORE_DATI' && o.silva_error_code && <div className="small muted" style={{ marginTop: 6 }}>Codice di Silva: <span className="mono">{o.silva_error_code}</span>{o.silva_error_field ? <> · campo <span className="mono">{o.silva_error_field}</span></> : null}</div>}
-      {problemi?.length > 0 && <div className="alert err small" style={{ marginTop: 8 }}><div>Non si può trasmettere:<ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{problemi.map((x) => <li key={x}>{x}</li>)}</ul><a href={`${BASE}/strutture`}>Strutture</a> · <a href={`${BASE}/articoli`}>Catalogo articoli</a></div></div>}
+      {problemi?.length > 0 && <div className="alert err small" style={{ marginTop: 8 }}><div>Non si può trasmettere:<ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{problemi.map((x) => <li key={x}>{x}</li>)}</ul><a href={`${BASE}/strutture?vista=silva`}>Destinazioni Silva</a> · <a href={`${BASE}/magazzino?scheda=articoli`}>Magazzino Centrale · Articoli ordinabili</a></div></div>}
       {p?.avvisi?.length > 0 && o.silva_send_status !== 'INVIATO' && <div className="small muted" style={{ marginTop: 6 }}>{p.avvisi.join(' · ')}</div>}
       {k && !k.chiave && <div className="small muted" style={{ marginTop: 6 }}>Chiave API Silva non impostata (Amministrazione &gt; Connettori &gt; Silva).</div>}
       {k && inviabile && !k.automatico && k.chiave && <div className="small muted" style={{ marginTop: 6 }}>{k.motivo_non_automatico}.</div>}
@@ -102,7 +102,7 @@ export function SilvaCard({ o, onChanged }) {
           <button className="btn" disabled={(concordato && !ok) || busy === 'push'} onClick={invia}>{busy === 'push' ? 'Trasmissione…' : 'Trasmetti a Silva'}</button>
         </>}>
           <div className="alert warn small" style={{ marginBottom: 10 }}><span>La trasmissione <b>crea un ordine reale in preparazione</b> presso Silva. {concordato ? 'Silva chiede che il primo invio sia concordato: usa una sede e articoli concordati con Silva.' : 'Una volta ricevuto, l\'ordine non si modifica né si annulla via API.'}</span></div>
-          <div className="small">Destinazione Silva <span className="mono strong">{p.payload.destinazione?.codice}</span> · urgenza {p.payload.urgenza}{p.payload.destinazione?.noteConsegna ? ` · note di consegna: ${p.payload.destinazione.noteConsegna}` : ''}</div>
+          <div className="small">Consegna a <b>{p.destinazione?.label || o.struttura_label}</b>{p.destinazione?.implicito ? ' (unica sede service attiva)' : ''} · destinazione Silva {p.destinazione?.punto ? 'del punto ' : ''}<span className="mono strong">{p.payload.destinazione?.codice}</span> · urgenza {p.payload.urgenza}{p.payload.destinazione?.noteConsegna ? ` · note di consegna: ${p.payload.destinazione.noteConsegna}` : ''}</div>
           <div className="table-wrap" style={{ marginTop: 8 }}><table className="t small"><thead><tr><th>#</th><th>Articolo</th><th>Codice Silva</th><th className="num">Confezioni</th><th className="num">Unità totali</th><th>Unità</th></tr></thead><tbody>
             {p.righe.map((r, i) => <tr key={r.codice}><td className="muted">{i + 1}</td><td>{r.nome}</td><td className="mono">{r.codice}</td><td className="num">{r.confezioni} × {r.per_confezione}</td><td className="num strong">{r.unitaTotali}</td><td>{r.unita}</td></tr>)}
           </tbody></table></div>

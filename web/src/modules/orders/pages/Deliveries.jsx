@@ -22,19 +22,19 @@ export default function Deliveries() {
       <Card title={`Spediti, in consegna (${shipped.length})`} flush className="mb">
         {!data ? <Loading /> : !shipped.length ? <Empty>Nessuna spedizione in corso</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Ordine</th><th>Destinazione</th><th className="num">Confezioni</th><th>DDT</th><th>Spedito</th><th /></tr></thead>
-            <tbody>{shipped.map((o) => <tr key={o.id}><td><span className="mono strong" style={{ cursor: 'pointer' }} onClick={() => nav(`${BASE}/ordini/${o.id}`)}>{o.number}</span><div className="small muted">{KIND[o.kind]}</div></td><td>{o.struttura_name}</td><td className="num">{o.packs_total}</td><td className="mono small">{o.ddt_number || '–'}</td><td className="small muted">{itDateTime(o.shipped_at)}</td><td className="num"><button className="btn sm" onClick={() => setDeliver(o)}>Consegnato</button></td></tr>)}</tbody></table></div>
+            <tbody>{shipped.map((o) => <tr key={o.id}><td><span className="mono strong" style={{ cursor: 'pointer' }} onClick={() => nav(`${BASE}/ordini/${o.id}`)}>{o.number}</span><div className="small muted">{KIND[o.kind]}</div></td><td>{o.struttura_label || o.struttura_name}</td><td className="num">{o.packs_total}</td><td className="mono small">{o.ddt_number || '–'}</td><td className="small muted">{itDateTime(o.shipped_at)}</td><td className="num"><button className="btn sm" onClick={() => setDeliver(o)}>Consegnato</button></td></tr>)}</tbody></table></div>
         )}
       </Card>
       <Card title={`Consegnati alle strutture TD, in attesa del carico interno (${delivered.length})`} flush className="mb">
         {!data ? <Loading /> : !delivered.length ? <Empty>Nessun carico in attesa</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Ordine</th><th>Struttura</th><th className="num">Confezioni consegnate</th><th className="num">Caricate</th><th>Consegnato</th></tr></thead>
-            <tbody>{delivered.map((o) => <tr key={o.id} className="click" onClick={() => nav(`${BASE}/ordini/${o.id}`)}><td className="mono strong">{o.number}</td><td>{o.struttura_name}<div className="small muted">{KIND[o.kind]}</div></td><td className="num">{o.packs_delivered}</td><td className="num">{o.packs_received}/{o.packs_delivered}</td><td className="small muted">{itDateTime(o.delivered_at)}{Date.now() - new Date(o.delivered_at) > 5 * 86400000 && <> <Badge tone="red">in ritardo</Badge></>}</td></tr>)}</tbody></table></div>
+            <tbody>{delivered.map((o) => <tr key={o.id} className="click" onClick={() => nav(`${BASE}/ordini/${o.id}`)}><td className="mono strong">{o.number}</td><td>{o.struttura_label || o.struttura_name}<div className="small muted">{KIND[o.kind]}</div></td><td className="num">{o.packs_delivered}</td><td className="num">{o.packs_received}/{o.packs_delivered}</td><td className="small muted">{itDateTime(o.delivered_at)}{Date.now() - new Date(o.delivered_at) > 5 * 86400000 && <> <Badge tone="red">in ritardo</Badge></>}</td></tr>)}</tbody></table></div>
         )}
       </Card>
       <Card title={`Caricati, da concludere (${stored.length})`} flush>
         {!data ? <Loading /> : !stored.length ? <Empty>Nessun ordine da concludere</Empty> : (
           <div className="table-wrap"><table className="t"><thead><tr><th>Ordine</th><th>Struttura</th><th className="num">Caricate</th><th>Caricato il</th><th>Difformità</th><th /></tr></thead>
-            <tbody>{stored.map((o) => <tr key={o.id}><td><span className="mono strong" style={{ cursor: 'pointer' }} onClick={() => nav(`${BASE}/ordini/${o.id}`)}>{o.number}</span></td><td>{o.struttura_name}</td><td className="num">{o.packs_received}/{o.packs_delivered}</td><td className="small muted">{itDateTime(o.stored_at)}</td><td>{o.open_issues ? <Badge tone="red">{o.open_issues} aperte</Badge> : <span className="muted small">nessuna</span>}</td><td className="num"><button className="btn sm" disabled={o.open_issues > 0} title={o.open_issues ? 'Chiudi prima le difformità' : ''} onClick={() => close(o)}><Icon name="check" size={14} />Concludi</button></td></tr>)}</tbody></table></div>
+            <tbody>{stored.map((o) => <tr key={o.id}><td><span className="mono strong" style={{ cursor: 'pointer' }} onClick={() => nav(`${BASE}/ordini/${o.id}`)}>{o.number}</span></td><td>{o.struttura_label || o.struttura_name}</td><td className="num">{o.packs_received}/{o.packs_delivered}</td><td className="small muted">{itDateTime(o.stored_at)}</td><td>{o.open_issues ? <Badge tone="red">{o.open_issues} aperte</Badge> : <span className="muted small">nessuna</span>}</td><td className="num"><button className="btn sm" disabled={o.open_issues > 0} title={o.open_issues ? 'Chiudi prima le difformità' : ''} onClick={() => close(o)}><Icon name="check" size={14} />Concludi</button></td></tr>)}</tbody></table></div>
         )}
       </Card>
       {deliver && <DeliverModal o={deliver} onClose={() => setDeliver(null)} onDone={() => { setDeliver(null); reload(); }} />}
@@ -59,7 +59,7 @@ function DeliverModal({ o, onClose, onDone }) {
     } catch (e) { setErr(e); }
   };
   return (
-    <Modal title={`Consegna di ${o.number} a ${o.struttura_name}`} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Registra consegna</button></>}>
+    <Modal title={`Consegna di ${o.number} a ${o.struttura_label || o.struttura_name}`} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" onClick={save}>Registra consegna</button></>}>
       <ErrorBox error={err} />
       <Field label="Numero DDT"><input value={ddt} onChange={(e) => setDdt(e.target.value)} style={{ maxWidth: 240 }} /></Field>
       <div className="small muted" style={{ margin: '10px 0' }}>Confezioni consegnate per articolo, con lotto e scadenza se noti: per ogni confezione nasce una riga da caricare in fase 5. Se il fornitore chiama l'API, questi dati arrivano da soli.</div>

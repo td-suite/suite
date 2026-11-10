@@ -12,7 +12,7 @@ r.get('/dashboard', ah(async (req, res) => {
   const P = new Params();
   const scope = isOps(req.user) ? 'TRUE' : `o.struttura_id=${P.add(req.user.struttura_id)}`;
   const byStatus = await many(`SELECT o.status, count(*)::int AS n, coalesce(sum(CASE WHEN o.urgent THEN 1 ELSE 0 END),0)::int AS urgent FROM orders o WHERE ${scope} AND o.status NOT IN ('CHIUSO','ANNULLATO') GROUP BY o.status`, P.values);
-  const recent = await many(`SELECT o.id, o.number, o.status, o.kind, o.urgent, o.created_at, o.updated_at, s.name AS struttura_name,
+  const recent = await many(`SELECT o.id, o.number, o.status, o.kind, o.urgent, o.created_at, o.updated_at, s.name || coalesce(' · ' || (SELECT ds.name FROM public.sites ds WHERE ds.id=o.delivery_site_id), '') AS struttura_name,
       (SELECT coalesce(sum(coalesce(l.qty_approved, l.qty_requested)),0)::int FROM order_lines l WHERE l.order_id=o.id) AS packs_total,
       (SELECT count(*)::int FROM order_lines l WHERE l.order_id=o.id AND l.delta_pct IS NOT NULL AND abs(l.delta_pct) > 50) AS anomalies
     FROM orders o JOIN strutture_v s ON s.id=o.struttura_id WHERE ${scope} ORDER BY o.updated_at DESC LIMIT 12`, P.values);
@@ -60,12 +60,12 @@ const xlsxHeaders = (ws, headers) => { ws.addRow(headers); ws.getRow(1).font = {
 r.get('/export/orders.xlsx', ah(async (req, res) => {
   const P = new Params();
   const scope = isOps(req.user) ? 'TRUE' : `o.struttura_id=${P.add(req.user.struttura_id)}`;
-  const rows = await many(`SELECT o.number, o.status, o.kind, o.origin, o.urgent, o.created_at, o.submitted_at, o.approved_at, o.shipped_at AS transmitted_at, o.delivered_at AS received_at, o.closed_at, o.silva_reference, s.code AS scode, s.name AS sname,
+  const rows = await many(`SELECT o.number, o.status, o.kind, o.origin, o.urgent, o.created_at, o.submitted_at, o.approved_at, o.shipped_at AS transmitted_at, o.delivered_at AS received_at, o.closed_at, o.silva_reference, s.code AS scode, s.name AS sname, ds.code AS pcode, ds.name AS pname, s.name || coalesce(' · ' || ds.name, '') AS slabel,
       a.code AS acode, a.name AS aname, a.pack_label, l.qty_requested, l.qty_proposed, l.qty_approved, l.prod_packs_avg, l.delta_pct, l.stock_packs, l.qty_received, l.note_client, l.note_ops
-    FROM orders o JOIN strutture_v s ON s.id=o.struttura_id JOIN order_lines l ON l.order_id=o.id JOIN articles a ON a.id=l.article_id WHERE ${scope} ORDER BY o.created_at DESC, a.sort`, P.values);
+    FROM orders o JOIN strutture_v s ON s.id=o.struttura_id LEFT JOIN public.sites ds ON ds.id=o.delivery_site_id JOIN order_lines l ON l.order_id=o.id JOIN articles a ON a.id=l.article_id WHERE ${scope} ORDER BY o.created_at DESC, a.sort`, P.values);
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Ordini');
-  xlsxHeaders(ws, ['Ordine', 'Stato', 'Tipo', 'Origine', 'Urgente', 'Creato', 'Inviato', 'Approvato', 'Trasmesso', 'Ricevuto', 'Chiuso', 'Rif. fornitore', 'Cod. struttura', 'Struttura', 'Cod. articolo', 'Articolo', 'Confezione', 'Richiesto', 'Proposto', 'Approvato', 'Produzione media (conf.)', 'Delta %', 'Giacenza', 'Ricevuto', 'Note richiedente', 'Note Operations']);
-  for (const x of rows) ws.addRow([x.number, x.status, x.kind, x.origin, x.urgent ? 'Sì' : 'No', itDate(x.created_at), itDate(x.submitted_at), itDate(x.approved_at), itDate(x.transmitted_at), itDate(x.received_at), itDate(x.closed_at), x.silva_reference, x.scode, x.sname, x.acode, x.aname, x.pack_label, x.qty_requested, x.qty_proposed, x.qty_approved, x.prod_packs_avg, x.delta_pct, x.stock_packs, x.qty_received, x.note_client, x.note_ops]);
+  xlsxHeaders(ws, ['Ordine', 'Stato', 'Tipo', 'Origine', 'Urgente', 'Creato', 'Inviato', 'Approvato', 'Trasmesso', 'Ricevuto', 'Chiuso', 'Rif. fornitore', 'Cod. struttura', 'Struttura', 'Cod. punto di consegna', 'Punto di consegna', 'Struttura · punto', 'Cod. articolo', 'Articolo', 'Confezione', 'Richiesto', 'Proposto', 'Approvato', 'Produzione media (conf.)', 'Delta %', 'Giacenza', 'Ricevuto', 'Note richiedente', 'Note Operations']);
+  for (const x of rows) ws.addRow([x.number, x.status, x.kind, x.origin, x.urgent ? 'Sì' : 'No', itDate(x.created_at), itDate(x.submitted_at), itDate(x.approved_at), itDate(x.transmitted_at), itDate(x.received_at), itDate(x.closed_at), x.silva_reference, x.scode, x.sname, x.pcode, x.pname, x.slabel, x.acode, x.aname, x.pack_label, x.qty_requested, x.qty_proposed, x.qty_approved, x.prod_packs_avg, x.delta_pct, x.stock_packs, x.qty_received, x.note_client, x.note_ops]);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="ordini_${todayRome()}.xlsx"`);
   res.send(Buffer.from(await wb.xlsx.writeBuffer()));
@@ -74,11 +74,11 @@ r.get('/export/orders.xlsx', ah(async (req, res) => {
 r.get('/export/stock.xlsx', ah(async (req, res) => {
   const P = new Params();
   const scope = isOps(req.user) ? 'TRUE' : `p.struttura_id=${P.add(req.user.struttura_id)}`;
-  const rows = await many(`SELECT s.code AS scode, s.name AS sname, a.code AS acode, a.name AS aname, a.pack_label, p.status, p.lot, p.expiry, p.received_at, p.used_at, p.origin, o.number
-    FROM packages p JOIN strutture_v s ON s.id=p.struttura_id JOIN articles a ON a.id=p.article_id LEFT JOIN orders o ON o.id=p.order_id WHERE ${scope} AND p.status IN ('RICEVUTO','ATTESO') ORDER BY s.name, a.sort, p.expiry NULLS LAST`, P.values);
+  const rows = await many(`SELECT s.code AS scode, s.name AS sname, a.code AS acode, a.name AS aname, a.pack_label, p.status, p.lot, p.expiry, p.received_at, p.used_at, p.origin, o.number, ds.name AS pname
+    FROM packages p JOIN strutture_v s ON s.id=p.struttura_id JOIN articles a ON a.id=p.article_id LEFT JOIN orders o ON o.id=p.order_id LEFT JOIN public.sites ds ON ds.id=p.delivery_site_id WHERE ${scope} AND p.status IN ('RICEVUTO','ATTESO') ORDER BY s.name, a.sort, p.expiry NULLS LAST`, P.values);
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Giacenza');
-  xlsxHeaders(ws, ['Cod. struttura', 'Struttura', 'Cod. articolo', 'Articolo', 'Confezione', 'Stato', 'Lotto', 'Scadenza', 'Ricevuto il', 'Origine', 'Ordine']);
-  for (const x of rows) ws.addRow([x.scode, x.sname, x.acode, x.aname, x.pack_label, x.status, x.lot, itDate(x.expiry), itDate(x.received_at), x.origin, x.number]);
+  xlsxHeaders(ws, ['Cod. struttura', 'Struttura', 'Cod. articolo', 'Articolo', 'Confezione', 'Stato', 'Lotto', 'Scadenza', 'Ricevuto il', 'Origine', 'Ordine', 'Consegnato al punto (informativo)']);
+  for (const x of rows) ws.addRow([x.scode, x.sname, x.acode, x.aname, x.pack_label, x.status, x.lot, itDate(x.expiry), itDate(x.received_at), x.origin, x.number, x.pname]);
   const sum = wb.addWorksheet('Riepilogo');
   xlsxHeaders(sum, ['Struttura', 'Articolo', 'Confezioni in giacenza', 'In arrivo']);
   const agg = new Map();

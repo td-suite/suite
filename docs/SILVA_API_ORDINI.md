@@ -1,6 +1,7 @@
 # Integrazione Silva: come funziona nella Suite
 
-Versione della Suite: **0.68.2** (09/11/2026). Fonte del contratto: **Guida tecnica API ordini v1 di Silva** del 9 novembre 2026, in
+Versione della Suite: **0.68.3** (10/11/2026: punto di consegna per le Legal entity con più sedi service e abbinamento automatico
+delle destinazioni, sezioni 2 e 2 bis; prima 0.68.2 del 09/11/2026). Fonte del contratto: **Guida tecnica API ordini v1 di Silva** del 9 novembre 2026, in
 `docs/silva-api-ordini/` (testo `Guida_Tecnica_v1_con_stato.txt`, PDF, `postman_collection.json`, `esempio_ordine.json`). Dove la nostra
 proposta del 31/10 (sezione finale "Storico") differisce dalla guida, vale la guida.
 
@@ -11,7 +12,7 @@ concordata**: per questo la trasmissione automatica parte solo dopo il primo inv
 
 | Chiamata | Quando | Esito nella Suite |
 |---|---|---|
-| `GET {base}/api/v1/destinazioni` | "Aggiorna destinazioni" in Ordini > Strutture, Prova connessione del connettore, cache di 10 minuti | elenco delle sedi autorizzate da Silva, salvato anche in `orders.app_settings.silva_destinazioni` |
+| `GET {base}/api/v1/destinazioni` | "Aggiorna destinazioni" in Ordini > Strutture, job `orders:silva-destinazioni` ogni 6 ore (0.68.3), Prova connessione del connettore, cache di 10 minuti | elenco delle sedi autorizzate da Silva, salvato anche in `orders.app_settings.silva_destinazioni`; dopo la lettura, abbinamento automatico delle coincidenze univoche (sezione 2) |
 | `POST {base}/api/v1/ordini` | all'approvazione di Ops (automatismo attivo), dal job `orders:silva-push` ogni 5 minuti, dal pulsante nel dettaglio dell'ordine | ricevuta Silva (riferimento e ricevutoAl) sull'ordine |
 | `GET {base}/api/v1/ordini/{numero}/stato` | job `orders:silva-stato` ogni 30 minuti, pulsante "Aggiorna stato da Silva", "Aggiorna ora lo stato da Silva" in Impostazioni | avanzamento interno dell'ordine (sezione 4) |
 | `GET {base}/api/v1/catalogo` e `/catalogo/modifiche` | job `orders:silva-catalogo` (invariato dalla 0.33) | catalogo e giacenze del Magazzino Centrale |
@@ -24,23 +25,85 @@ concordata**: per questo la trasmissione automatica parte solo dopo il primo inv
   60 secondi a 28 chiamate (margine di 2 per le prove a mano con Postman) e, dopo un 429, pausa di tutte le chiamate fino al
   `Retry-After`. Lo stato del limitatore è in Ordini > Impostazioni.
 
-## 2. Destinazioni: le strutture associate alle sedi Silva
+## 2. Destinazioni: le unità associate alle sedi Silva
 
-Ogni struttura che riceve materiale (sede TD o Legal entity cliente del service) va associata a una **destinazione Silva**: il codice
-numerico della GET destinazioni. Nella POST parte **solo** `destinazione.codice`; nome e indirizzo li prende Silva dalla sua anagrafica.
+Ogni **unità che riceve merce** va associata a una **destinazione Silva**: il codice numerico della GET destinazioni. Nella POST parte
+**solo** `destinazione.codice`; nome e indirizzo li prende Silva dalla sua anagrafica.
 
-- Ordini > Strutture > scheda **Destinazioni Silva** (`/orders/strutture?vista=silva`): per ogni struttura attiva il selettore
-  "codice · nome · indirizzo" alimentato dalla GET, lo stato (autorizzata, proposta, manca, codice non valido, non più autorizzata) e
-  il pulsante **Aggiorna destinazioni**. Schermata: `docs/screens/orders-silva-destinazioni.png`.
-- **Proposta automatica** per le strutture senza destinazione: stesso CAP (+3), stessa città (+2), parole dell'indirizzo in comune
-  (fino a +4, +1 se coincide il civico), parole del nome in comune (fino a +3); proposta solo sopra 4 punti e con almeno 0,75 di
-  distacco dalla seconda, tra le destinazioni non ancora usate. La proposta si **conferma** riga per riga ("Conferma") o tutte insieme.
-- Il codice si salva in `site_ext.silva_code` / `org_ext.silva_code` (vista `strutture_v.silva_code`). Validazione: numerico positivo,
-  non già usato da un'altra struttura e, se l'elenco è stato letto, presente tra le destinazioni autorizzate. Il vecchio campo libero
-  "Codice cliente Silva" è sostituito dal selettore anche nella modale Impostazioni della struttura; un codice storico non numerico non
-  blocca il salvataggio degli altri campi ma l'ordine non parte finché non si sceglie la destinazione.
-- **Strutture attive senza destinazione**: elenco in Ordini > Impostazioni (riquadro "Silva: trasmissione ordini") e controllo **D53**
-  della Diagnostica.
+**Unità da abbinare** (dalla 0.68.3, vista `orders.silva_unita_v`, migrazione `orders/016_punto_consegna.sql`):
+
+| Tipo | Quali | Chiave (`PUT /api/orders/strutture/:id`) |
+|---|---|---|
+| Sede TD | sedi TD attive che ricevono merce (non i punti SERVICE; la Direzione `HEADQUARTER` solo se ha già una destinazione o degli ordini) | id della sede, `site_ext.silva_code` |
+| Legal entity | Legal entity cliente attive in Ordini **senza** punti service attivi (consegna all'indirizzo della Legal entity) | `-org_id`, `org_ext.silva_code` |
+| Punto service | **ogni** punto service attivo delle Legal entity cliente attive (la Legal entity con punti non si abbina: si abbinano i suoi punti) | id del punto, `site_ext.silva_code` |
+
+Nell'elenco l'unità punto si legge "Legal entity · punto" (per esempio "Kos S.p.A. · Villa dei Pini").
+
+**Abbinamento automatico** (senza conferma): una destinazione **coincide** con un'unità quando hanno lo stesso CAP e
+- la stessa via normalizzata e lo stesso civico (minuscole, senza accenti e punteggiatura, abbreviazioni sciolte: "V.le" = "viale",
+  "P.zza" = "piazza", "C.so" = "corso"; civico come ultimo numero dell'indirizzo con lettera o barra: "88/C" = "88 C" = "88c"),
+  oppure
+- lo stesso nome normalizzato (nome dell'unità o "Legal entity · punto" uguale al nome della destinazione).
+
+La Suite salva `silva_code` con `silva_match = 'AUTO'` e una riga di audit `STRUTTURA_SILVA_AUTO` "abbinata automaticamente" (unità,
+codice, destinazione, motivo) **solo se**: una sola destinazione coincide con l'unità, nessun'altra unità senza destinazione coincide con
+la stessa destinazione e il codice non è già usato da un'altra struttura (anche disattivata). Gira dopo **"Aggiorna destinazioni"** e
+dal job **`orders:silva-destinazioni` ogni 6 ore** (solo con modulo LIVE e connettore Silva attivo con la chiave; rilegge le
+destinazioni e poi abbina). Una destinazione **tolta a mano** resta tolta (`silva_match = 'ESCLUSA'`): l'automatismo non la rimette.
+Una scelta a mano salva `silva_match = 'MANUALE'`; le destinazioni scelte prima della 0.68.3 sono marcate MANUALE dalla migrazione.
+
+**Ordini > Strutture > Destinazioni Silva** (`/orders/strutture?vista=silva`, schermata `docs/screens/orders-silva-destinazioni.png`):
+- **Da scegliere**: unità con più destinazioni plausibili (per esempio due destinazioni allo stesso indirizzo), con una sola plausibile
+  ma non coincidente (proposta per somiglianza da confermare: CAP +3, città +2, parole dell'indirizzo fino a +4 con +1 per il civico,
+  parole del nome fino a +3; plausibile da 4 punti), con la coincidente già usata da un'altra unità (si vede da chi: il codice non si
+  riassegna da solo) o con un codice non autorizzato.
+- **Non presenti in Silva**: unità attive senza alcuna destinazione plausibile, "Silva non l'ha censita sulla nostra chiave": va chiesta
+  a Silva. Una destinazione somigliante ma già usata da un'altra unità (per esempio l'altro punto della stessa Legal entity nello stesso
+  CAP) non conta come plausibile.
+- **Abbinate**: con la destinazione autorizzata e il modo (automatico o manuale) con data; si può cambiare o togliere.
+- **Presenti in Silva, non in anagrafica**: destinazioni autorizzate da Silva che non corrispondono a nessuna unità (sede chiusa, unità da
+  creare in Amministrazione o errore di censimento presso Silva).
+- Validazione del codice: numerico positivo, non già usato da un'altra struttura e, se l'elenco è stato letto, presente tra le
+  destinazioni autorizzate. Il punto service ha in più, in Ordini > Strutture (pulsante "consegna" accanto al punto), **solo**
+  destinazione Silva, modalità e note di consegna; ogni altro campo sul punto è rifiutato (si configura la Legal entity).
+- **Unità senza destinazione**: riquadro "Silva: trasmissione ordini" in Ordini > Impostazioni e controllo **D53** della Diagnostica
+  ("Unità senza destinazione Silva", sulla vista `orders.silva_unita_v`: la Legal entity con punti non compare, i suoi punti sì).
+
+## 2 bis. Punto di consegna (Legal entity cliente con più sedi service)
+
+Richiesta del CEO del 10/11/2026: la Legal entity Kos S.p.A. ha due sedi service (Ville di Nozzano e Villa dei Pini); in Ordini si vedeva
+solo Kos S.p.A. e non si poteva spedire alle due sedi. **Regola che resta** (decisione A4 dell'anagrafica unica): ordini, giacenze,
+produzione e dotazione si gestiscono sulla Legal entity cliente. Cambia solo la **consegna**: l'ordine ha un punto di consegna
+(`orders.delivery_site_id`, riferimento logico a `public.sites` senza chiave esterna rigida, con indice; codice `lib/punti.js`).
+
+- **Nuovo ordine** (`/orders/catalogo`), struttura = Legal entity con punti service attivi: campo **"Consegnare a"** con i punti attivi
+  (nome, indirizzo, città). Obbligatorio con 2 o più punti, preselezionato con uno solo, assente senza punti (consegna all'indirizzo
+  della Legal entity, come prima). L'utente del cliente con perimetro su alcune sedi della Legal entity (sedi nell'ambito del grant)
+  sceglie solo tra quelle e con una sola la trova preselezionata. Il server rifiuta l'ordine senza punto ("Indica il punto di consegna: …
+  ha 2 sedi service attive"), un punto di un'altra Legal entity o fuori perimetro. Schermata `docs/screens/orders-punto-consegna.png`.
+- **Cambio del punto**: l'Area Operations lo cambia fino all'approvazione e anche dopo, finché Silva non ha ricevuto l'ordine
+  (`PUT /api/orders/orders/:id/punto-consegna`); la struttura solo in bozza. Dopo la ricevuta di Silva (o con un invio dall'esito incerto
+  in coda) il punto è **immutabile** ("già presso Silva: il punto di consegna non si cambia più"). Evento in cronologia e audit
+  `ORDER_PUNTO_CONSEGNA`; il PDF archiviato si rigenera; un ordine bloccato si ricontrolla alla trasmissione successiva.
+- **Ordini esistenti** di Legal entity con più punti e senza punto: restano come sono. Nel dettaglio compare l'avviso **"Indica il punto
+  di consegna"** con il selettore; l'approvazione è rifiutata finché Ops non lo indica. Con un solo punto attivo il punto si assegna
+  all'approvazione (evento "unica sede service attiva"). La Dotazione di avvio crea l'ordine senza punto: si indica all'approvazione.
+- **Dove si vede** "Kos S.p.A. · Villa dei Pini" (`struttura_label`): archivio ordini (con il filtro **Punto di consegna**, anche "Senza
+  punto indicato"), dettaglio (riquadro "Punto di consegna" in testa alla colonna laterale, con indirizzo del punto e destinazione Silva del
+  punto), PDF (Sezione A: "Ragione sociale · punto di consegna", indirizzo di consegna del punto), email (nuovo ordine, approvazione,
+  consegna, carico, ordine al magazzino via email), 3 · Trasmissione al magazzino, 4 · Consegne, Carico, Cruscotto, Il mio spazio del
+  Portale Service, export Excel degli ordini (colonne "Cod. punto di consegna", "Punto di consegna", "Struttura · punto").
+- **Trasmissione a Silva**: `destinazione.codice` = `silva_code` del **punto** se l'ordine ne ha uno, altrimenti quello della struttura;
+  `noteConsegna` = note del punto se presenti, altrimenti della Legal entity. Blocco locale con messaggio chiaro: "punto di consegna Ville di
+  Nozzano (Kos S.p.A.) senza destinazione Silva: sceglila in Ordini > Strutture > Destinazioni Silva"; per un ordine senza punto di una
+  Legal entity con 2 o più punti: "… ha 2 sedi service attive (…): indica il punto di consegna nel dettaglio dell'ordine". La modale
+  dell'invio concordato mostra "Consegna a Kos S.p.A. · Villa dei Pini · destinazione Silva del punto 30".
+- **Giacenze e carichi**: restano sulla Legal entity (nessun cambio). Alla consegna le confezioni annotano il punto dell'ordine
+  (`packages.delivery_site_id`, solo informativo; evento "Consegnato al cliente … · punto di consegna Villa dei Pini"; colonna
+  "Consegnato al punto (informativo)" nell'export della giacenza). **La giacenza per punto NON è gestita e resta una decisione aperta**:
+  oggi la Legal entity ha un'unica giacenza, la somma di quanto consegnato ai suoi punti; il consumo e la giacenza mensile per sede
+  service andrebbero decisi con il CEO (chi scarica, chi dichiara, come si ripartisce la produzione Synclab tra i punti).
 
 ## 3. Trasmissione dell'ordine approvato
 
@@ -65,8 +128,8 @@ numerico della GET destinazioni. Nella POST parte **solo** `destinazione.codice`
 |---|---|---|
 | `numero` (= `X-Idempotency-Key`) | numero dell'ordine TD (`ORD-2026-0142`) | 1-64 caratteri ASCII `[A-Za-z0-9._-]`, il primo alfanumerico; verificato prima dell'invio |
 | `urgenza` | ordine urgente sì/no | `URGENTE` (priorità alta) o `ORDINARIA` (priorità bassa) |
-| `destinazione.codice` | destinazione Silva della struttura | numerico positivo; senza, l'ordine non parte |
-| `destinazione.noteConsegna` | note per la consegna della struttura | facoltativo, troncato a 1000 caratteri |
+| `destinazione.codice` | destinazione Silva del **punto di consegna** dell'ordine (0.68.3), altrimenti della struttura | numerico positivo; senza, l'ordine non parte |
+| `destinazione.noteConsegna` | note per la consegna del punto, altrimenti della struttura | facoltativo, troncato a 1000 caratteri |
 | `righe[].codiceArticolo` | `articles.silva_code` | codice **esatto** del catalogo Silva, maiuscole comprese; senza, l'ordine non parte |
 | `righe[].unitaTotali` | confezioni approvate × unità per confezione | intero da 1 a 999999 |
 | `righe[].unita` | unità principale del catalogo Silva | dall'ultima riga di giacenza letta dal catalogo per quel codice, altrimenti `articles.unit` se l'articolo viene dal catalogo Silva (`source = SILVA`, non il segnaposto `n.`); altrimenti l'ordine non parte |
@@ -83,7 +146,8 @@ l'invio). La POST si invia senza parametri query.
 
 Se qualcosa manca l'ordine **non si trasmette**, resta "dati da completare" (`silva_send_status = BLOCCATO`, motivi in
 `silva_problemi`) e Ops vede nel riquadro Silva del dettaglio, per esempio: "articolo Tampone X senza codice Silva: abbinalo nel
-catalogo", "struttura Punto Prelievi Prato senza destinazione Silva: sceglila in Ordini > Strutture", "articolo Busta Y: unità del
+catalogo", "struttura Punto Prelievi Prato senza destinazione Silva: sceglila in Ordini > Strutture", "punto di consegna Ville di
+Nozzano (Kos S.p.A.) senza destinazione Silva", "articolo Busta Y: unità del
 catalogo Silva non nota". Con l'automatismo attivo il job ricontrolla gli ordini bloccati ogni 5 minuti e li invia appena i dati sono
 completi.
 
@@ -148,10 +212,15 @@ Impostazioni del connettore SILVA (Amministrazione > Connettori):
   trasmettere / in coda / in errore / presso Silva, ultimo controllo dello stato, limitatore, strutture senza destinazione.
 - **Amministrazione > Connettori > Silva**: Prova connessione (destinazioni autorizzate, poi catalogo), interruttori, primo invio,
   registro chiamate (metodo, URL, esito, numero d'ordine; mai la chiave).
-- Audit del modulo: `ORDER_SILVA_PUSH`, `ORDER_SILVA_STATO`, `SILVA_AUTOMATISMO`, `SILVA_STATO_JOB`, `STRUTTURA_UPDATE`.
+- Audit del modulo: `ORDER_SILVA_PUSH`, `ORDER_SILVA_STATO`, `SILVA_AUTOMATISMO`, `SILVA_STATO_JOB`, `STRUTTURA_UPDATE` (con
+  `abbinamento: manuale | tolto`), `STRUTTURA_SILVA_AUTO` (abbinata automaticamente), `SILVA_ABBINAMENTO_AUTO` (riepilogo di "Aggiorna
+  destinazioni"), `ORDER_PUNTO_CONSEGNA`.
 
-API interne della Suite (sessione, Area Operations): `GET /api/orders/silva/stato`, `GET /api/orders/silva/destinazioni[?refresh=1]`,
-`GET /api/orders/silva/strutture` (strutture con destinazione e proposta), `POST /api/orders/silva/automatismo {attiva}`,
+API interne della Suite (sessione, Area Operations): `GET /api/orders/silva/stato`, `GET /api/orders/silva/destinazioni[?refresh=1]`
+(con `refresh=1` anche l'abbinamento automatico: `abbinate_auto`), `GET /api/orders/silva/strutture` (unità con stato ABBINATA,
+DA_SCEGLIERE, NON_IN_SILVA o NON_AUTORIZZATA, candidate, proposta, modo di abbinamento, conteggi e `non_in_anagrafica`),
+`GET /api/orders/orders/punti-consegna[?struttura_id=]` (punti per "Consegnare a", anche per i profili di struttura),
+`PUT /api/orders/orders/:id/punto-consegna {delivery_site_id}`, `GET /api/orders/orders?delivery_site_id=<id>|nessuno`, `POST /api/orders/silva/automatismo {attiva}`,
 `POST /api/orders/silva/stato/aggiorna`, `GET /api/orders/orders/:id/silva` (anteprima del corpo e controlli),
 `POST /api/orders/orders/:id/silva-push {conferma}`, `POST /api/orders/orders/:id/silva-stato`.
 
@@ -161,8 +230,9 @@ API interne della Suite (sessione, Area Operations): `GET /api/orders/silva/stat
    produzione: la versione precedente, con la chiave impostata, prova a inviare ogni ordine approvato con il JSON esteso.
 2. Amministrazione > Connettori > Silva: **Prova connessione** → "N destinazioni autorizzate · catalogo … letto" (403 sulle
    destinazioni = chiave senza permesso ordini: chiedere l'abilitazione a Silva).
-3. Ordini > Strutture > Destinazioni Silva: **Aggiorna destinazioni**, confermare le proposte, scegliere a mano le altre; D53 a zero
-   per le strutture che ordinano.
+3. Ordini > Strutture > Destinazioni Silva: **Aggiorna destinazioni** (le coincidenze univoche si abbinano da sole), poi a mano il
+   gruppo "Da scegliere"; chiedere a Silva le unità del gruppo "Non presenti in Silva" (per Kos: i due punti Ville di Nozzano e Villa
+   dei Pini, ciascuno con la sua destinazione); D53 a zero per le unità che ordinano.
 4. Verificare che gli articoli da ordinare abbiano il codice Silva (Catalogo articoli; quelli letti dal catalogo Silva lo hanno già).
 5. Concordare con Silva sede, articoli e quantità del primo ordine; approvarlo; nel dettaglio **"Trasmetti a Silva (invio
    concordato)"** con la spunta. Atteso 201 con riferimento; ripetendo con lo stesso numero Silva risponderebbe 200 (la Suite non
@@ -181,6 +251,23 @@ catalogo 2026 letto: 3 articoli"; proposte per CAP/indirizzo su 3 strutture su 4
 POST; invio senza conferma rifiutato; invio concordato dalla modale → 201 rif. "OC 123 (ID 456)" con il corpo della guida e
 X-Idempotency-Key = numero; stato IN_PREPARAZIONE → presa in carico, EVASO → spedito; struttura senza destinazione → bloccato;
 automatismo attivato → l'ordine approvato successivo parte da solo.
+
+## 9. Collaudo 0.68.3 (10/11/2026, database `suite_pc_t`, finto Silva)
+
+Test `server/test/orders-punto-consegna.test.mjs` (8 casi): destinazione dell'ordine dal punto (codice e note), blocco del punto senza
+destinazione e della Legal entity con 2 punti senza scelta, via e civico normalizzati, classificazione (coincidenza univoca automatica,
+due coincidenze = da scegliere, codice già usato non si riassegna, nessuna plausibile = non presente in Silva, CAP + nome, tolta a mano
+non si rimette); con database: vista delle unità, ordine senza punto rifiutato e con punto ok, perimetro dell'utente, 1 punto
+preselezionato, approvazione che chiede il punto, abbinamento automatico con audit, D53, POST con il codice del punto, immutabilità dopo
+la ricevuta, confezioni con il punto alla consegna. Collaudo con la Suite vera (porta 3169) e `/tmp/claude-0/silva_mock.cjs`, dati
+sintetici (Kos Collaudo S.p.A. con Villa dei Pini e Ville di Nozzano, un cliente con un solo punto, sedi TD Firenze, Prato, Bari,
+Laboratorio e Direzione): Prova connessione "4 destinazioni autorizzate"; Aggiorna destinazioni → 3 abbinate automaticamente
+(Laboratorio, Firenze, Villa dei Pini per CAP, via e civico), Prato da scegliere (proposta), Bari, Nozzano e il punto unico non presenti
+in Silva, la destinazione 11 presente in Silva e non in anagrafica, Direzione esclusa; D53 con le 4 unità senza destinazione; ordine Kos
+senza punto rifiutato, con Villa dei Pini → POST con `destinazione.codice` 30 e ricevuta 201; cambio del punto dopo la ricevuta rifiutato;
+ordine per Nozzano bloccato con il messaggio del punto, punto cambiato in Villa dei Pini → trasmesso; ordine "di prima" senza punto con
+l'avviso e l'approvazione rifiutata; filtro per punto, PDF, email ed Excel con "Kos Collaudo S.p.A. · Villa dei Pini"; job
+`orders:silva-destinazioni` eseguito da Amministrazione > Moduli.
 
 ## Storico: proposta del 31/10 e differenze
 

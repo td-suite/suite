@@ -3,7 +3,8 @@
 // costi centrali ripartita sui ricavi, margine e confronto con lo stesso periodo dell'anno precedente. Ogni cella apre le righe che la
 // compongono con il modulo di provenienza; una fonte non disponibile si vede come tale (mai uno zero). Calcoli sul server
 // (GET /api/finance/controllo/conto-economico). v0.68.1: le stime commerciali del Service non entrano nei ricavi (riga "Stime commerciali
-// (non sommate)" sotto il totale), il KPI dei ricavi mostra la composizione dell'effettivo e ogni KPI dice da dove viene.
+// (non sommate)" sotto il totale), il KPI dei ricavi mostra la composizione dell'effettivo e ogni KPI dice da dove viene. v0.68.4: le stime
+// sono dei soli clienti ATTIVI e in pro quota sul periodo; la "Proiezione FY" (fatturato atteso pieno) è una riga a parte, mai sommata.
 import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { qs, fileUrl } from '../api.js';
@@ -92,7 +93,7 @@ export default function ContoEconomico() {
           {(x.avvisi || []).map((a, i) => <div key={i} className="alert warn small" style={{ marginBottom: 8 }}>{a}</div>)}
           <div className="grid g4" style={{ marginBottom: 16 }} data-testid="pl-kpi">
             <Kpi label={`Ricavi · ${x.periodo.etichetta}`} value={eur(tot.ricavi)} foot={<>
-              <div className="small" data-testid="pl-composizione">effettivo: Retail{comp?.retail_gipo ? ' GIPO' : ''} {eur(comp?.retail)} · Service{comp?.service_fonti?.length === 1 && comp.service_fonti[0] === 'SYNCLAB' ? ' Synclab' : comp?.service_fonti?.length ? ` (${comp.service_fonti.join(', ').toLowerCase()})` : ''} {eur(comp?.service)} · stime escluse {eur(comp?.stime?.importo)}</div>
+              <div className="small" data-testid="pl-composizione">effettivo: Retail{comp?.retail_gipo ? ' GIPO' : ''} {eur(comp?.retail)} · Service{comp?.service_fonti?.length === 1 && comp.service_fonti[0] === 'SYNCLAB' ? ' Synclab' : comp?.service_fonti?.length ? ` (${comp.service_fonti.join(', ').toLowerCase()})` : ''} {eur(comp?.service)} · stime escluse {eur(comp?.stime?.importo)} · proiezione FY {comp?.proiezione?.anno || ''} a parte</div>
               <Prec v={tot.precedente?.ricavi} vuoto={tot.precedente?.vuoto} et={x.precedente.etichetta} d={tot.variazione_ricavi} />
               <DaDove righe={x.da_dove?.ricavi} /></>} />
             <Kpi label="Costi diretti di sede" value={eur(tot.costi_diretti)} foot={<>{`Margine prima dei centrali ${eur(tot.margine_prima_dei_centrali)}`}<DaDove righe={x.da_dove?.costi_diretti} /></>} />
@@ -106,7 +107,8 @@ export default function ContoEconomico() {
                 <tr className="pl-group"><td colSpan={cols.length + 2}>Ricavi (produzione)</td></tr>
                 {['ricavi_retail', 'ricavi_service'].map((k) => <tr key={k}><td>{label(k)}</td>{cols.map((c) => <Cell key={c.sede.id} k={k} c={c} />)}{!x.filtro_sede && <Cell k={k} c={null} />}</tr>)}
                 <tr className="pl-sum"><td>Totale ricavi <span className="small muted">(produzione effettiva)</span></td>{cols.map((c) => <td key={c.sede.id} className="num">{eur(c.ricavi)}</td>)}{!x.filtro_sede && <td className="num">{eur(tot.ricavi)}</td>}</tr>
-                <tr className="pl-control" data-testid="pl-stime"><td title={x.fonti.stime_service?.nota}>{label('stime_service')}{tot.stime?.clienti ? <div className="small muted">{tot.stime.clienti} {tot.stime.clienti === 1 ? 'cliente stimato' : 'clienti stimati'} · totale {eur(tot.stime.importo)}</div> : <div className="small muted">nessun cliente stimato</div>}</td>{cols.map((c) => <Cell key={c.sede.id} k="stime_service" c={c} />)}{!x.filtro_sede && <Cell k="stime_service" c={null} />}</tr>
+                <tr className="pl-control" data-testid="pl-stime"><td title={x.fonti.stime_service?.nota}>{label('stime_service')}{tot.stime?.clienti ? <div className="small muted">pro quota {x.da_dove?.periodo || x.periodo.etichetta} · {tot.stime.clienti} {tot.stime.clienti === 1 ? 'cliente attivo' : 'clienti attivi'} senza produzione · {eur(tot.stime.importo)}</div> : <div className="small muted">nessuna stima: solo clienti attivi, in pro quota</div>}</td>{cols.map((c) => <Cell key={c.sede.id} k="stime_service" c={c} />)}{!x.filtro_sede && <Cell k="stime_service" c={null} />}</tr>
+                <tr className="pl-control" data-testid="pl-proiezione"><td title={x.fonti.proiezione_fy?.nota}>Proiezione FY {tot.proiezione?.anno || x.periodo.anno + 1} <span className="small muted">(non sommata)</span><div className="small muted">fatturato FY atteso pieno di {tot.proiezione?.clienti || 0} {tot.proiezione?.clienti === 1 ? 'cliente attivo' : 'clienti attivi'}</div></td>{cols.map((c) => <Cell key={c.sede.id} k="proiezione_fy" c={c} />)}{!x.filtro_sede && <Cell k="proiezione_fy" c={null} />}</tr>
                 <tr className="pl-control"><td>Incassi Cash <span className="small muted">(controllo, non sommati)</span></td>{cols.map((c) => <Cell key={c.sede.id} k="incassi_cash" c={c} />)}{!x.filtro_sede && <Cell k="incassi_cash" c={null} />}</tr>
                 {disp('incassi_cash') && <tr className="pl-control"><td>Differenza Cash − Retail</td>{cols.map((c) => <td key={c.sede.id} className="num small">{c.controllo_cash ? eur(c.controllo_cash.differenza) : <span className="muted">nessun rendiconto</span>}</td>)}{!x.filtro_sede && <td className="num small">{tot.controllo_cash ? <span title={`Solo le ${tot.controllo_cash.sedi} sedi con rendiconti Cash`}>{eur(tot.controllo_cash.differenza)}</span> : ''}</td>}</tr>}
                 <tr className="pl-group"><td colSpan={cols.length + 2}>Costi diretti di sede</td></tr>

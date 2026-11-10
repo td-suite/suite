@@ -19,6 +19,7 @@ import { sendMail, opsEmails } from './mailer.js';
 import { itDate, bad, HttpError } from './util.js';
 import { one, many, q } from '../db.js';
 import { event, markPicked, markShipped } from './orderflow.js';
+import { puntiAttivi, puntoById } from './punti.js';
 
 export const SILVA_DEFAULT_BASE = 'https://silva.cloud/portaleordini';
 export const baseSilva = (c) => String(c?.base_url || SILVA_DEFAULT_BASE).replace(/\/+$/, '');
@@ -157,25 +158,152 @@ const PAROLE_VUOTE = new Set(['via', 'viale', 'v', 'le', 'piazza', 'p', 'za', 'p
 export const normTesto = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const parole = (s) => new Set(normTesto(s).split(' ').filter((t) => t && !PAROLE_VUOTE.has(t) && (t.length > 1 || /\d/.test(t))));
 const jaccard = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; for (const x of a) if (b.has(x)) n++; return n / (a.size + b.size - n); };
+/** Punteggio di una destinazione per una struttura: CAP +3, città +2, parole dell'indirizzo fino a +4 (+1 civico), del nome fino a +3 */
+export function valutaDestinazione(s, d) {
+  const pi = parole(s.address), pn = parole(s.name), civ = (normTesto(s.address).match(/\b\d+[a-z]?\b/g) || []);
+  const motivi = []; let p = 0;
+  if (s.zip && d.cap && String(s.zip).trim() === String(d.cap).trim()) { p += 3; motivi.push('CAP'); }
+  if (s.city && d.citta && normTesto(s.city) === normTesto(d.citta)) { p += 2; motivi.push('città'); }
+  const ji = jaccard(pi, parole(d.indirizzo));
+  if (ji > 0) { p += 4 * ji; motivi.push('indirizzo'); }
+  const dc = normTesto(d.indirizzo).match(/\b\d+[a-z]?\b/g) || [];
+  if (ji > 0 && civ.length && dc.some((x) => civ.includes(x))) { p += 1; motivi.push('civico'); }
+  const jn = jaccard(pn, parole(d.nome));
+  if (jn > 0) { p += 3 * jn; motivi.push('nome'); }
+  return { d, p: Math.round(p * 100) / 100, motivi };
+}
 export function proponiDestinazione(s, destinazioni) {
   if (!s || !Array.isArray(destinazioni) || !destinazioni.length) return null;
-  const pi = parole(s.address), pn = parole(s.name), civ = (normTesto(s.address).match(/\b\d+[a-z]?\b/g) || []);
-  const valutate = destinazioni.map((d) => {
-    const motivi = []; let p = 0;
-    if (s.zip && d.cap && String(s.zip).trim() === String(d.cap).trim()) { p += 3; motivi.push('CAP'); }
-    if (s.city && d.citta && normTesto(s.city) === normTesto(d.citta)) { p += 2; motivi.push('città'); }
-    const ji = jaccard(pi, parole(d.indirizzo));
-    if (ji > 0) { p += 4 * ji; motivi.push('indirizzo'); }
-    const dc = normTesto(d.indirizzo).match(/\b\d+[a-z]?\b/g) || [];
-    if (ji > 0 && civ.length && dc.some((x) => civ.includes(x))) { p += 1; motivi.push('civico'); }
-    const jn = jaccard(pn, parole(d.nome));
-    if (jn > 0) { p += 3 * jn; motivi.push('nome'); }
-    return { d, p: Math.round(p * 100) / 100, motivi };
-  }).sort((a, b) => b.p - a.p);
+  const valutate = destinazioni.map((d) => valutaDestinazione(s, d)).sort((a, b) => b.p - a.p);
   const [best, second] = valutate;
   if (!best || best.p < 4) return null;
   if (second && best.p - second.p < 0.75) return null;   // ambigua: nessuna proposta
   return { codice: best.d.codice, punteggio: best.p, motivo: best.motivi.join(', '), destinazione: best.d };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Abbinamento automatico (v0.68.3). Le unità da abbinare sono quelle della vista silva_unita_v (migrazione 016): sedi TD attive che
+// ricevono merce, Legal entity cliente senza punti service, ogni punto service attivo delle Legal entity cliente attive.
+// Una destinazione "coincide" con un'unità quando hanno lo stesso CAP e (stessa via normalizzata e stesso civico) oppure (stesso nome
+// normalizzato). Abbinamento automatico, senza conferma, solo se: una sola destinazione coincide con l'unità, nessun'altra unità senza
+// destinazione coincide con quella destinazione e il codice non è già usato. Tutto il resto resta a mano: più candidate (Da scegliere)
+// o nessuna destinazione plausibile (Non presenti in Silva: "Silva non l'ha censita sulla nostra chiave"). Una destinazione tolta a mano
+// (silva_match = ESCLUSA) non si rimette in automatico.
+const ABBREVIAZIONI = { v: 'via', vle: 'viale', 'v le': 'viale', pza: 'piazza', pzza: 'piazza', 'p za': 'piazza', 'p zza': 'piazza', p: 'piazza', pzle: 'piazzale', 'p le': 'piazzale', cso: 'corso', 'c so': 'corso', loc: 'localita', fraz: 'frazione', str: 'strada', lgo: 'largo', vic: 'vicolo', sp: 'strada provinciale', ss: 'strada statale' };
+const espandi = (t) => {
+  let x = ` ${t} `;
+  for (const [k, v] of Object.entries(ABBREVIAZIONI).sort((a, b) => b[0].length - a[0].length)) x = x.replace(new RegExp(`^ ${k} `), ` ${v} `);
+  return x.trim();
+};
+/** Via e civico normalizzati: "V.le della Repubblica, 88/C" → { via: 'viale della repubblica', civico: '88c' } */
+export function chiaveIndirizzo(addr) {
+  const raw = String(addr || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const re = /\b(\d+)\s*(?:\/\s*([a-z0-9]+)|([a-z])\b)?/g;
+  let m, ultimo = null;
+  while ((m = re.exec(raw))) ultimo = m;
+  const civico = ultimo ? `${ultimo[1]}${ultimo[2] || ultimo[3] || ''}` : '';
+  let via = ultimo ? raw.slice(0, ultimo.index) + raw.slice(ultimo.index + ultimo[0].length) : raw;
+  via = normTesto(via).replace(/\b(n|nr|num|civ|snc)\b\s*$/, '').trim();
+  return { via: espandi(via), civico };
+}
+const capNorm = (c) => String(c || '').replace(/\D/g, '');
+/** Destinazione che coincide con l'unità: stesso CAP e (via + civico) o nome identico normalizzato. Ritorna il motivo o null */
+export function coincide(u, d) {
+  const cap = capNorm(u.zip);
+  if (!cap || cap !== capNorm(d.cap)) return null;
+  const a = chiaveIndirizzo(u.address); const b = chiaveIndirizzo(d.indirizzo);
+  if (a.via && a.civico && a.via === b.via && a.civico === b.civico) return 'CAP, via e civico';
+  const nd = normTesto(d.nome);
+  if (nd && [u.name, u.label].some((n) => n && normTesto(n) === nd)) return 'CAP e nome';
+  return null;
+}
+/** Punteggio di somiglianza (lo stesso della proposta): candidate plausibili da 4 punti o coincidenti */
+const somiglianza = (u, d) => valutaDestinazione({ name: u.label || u.name, address: u.address, zip: u.zip, city: u.city }, d).p;
+
+/**
+ * Classifica le unità rispetto alle destinazioni lette (pura). unita: righe di silva_unita_v (id, tipo, label, name, address, zip, city,
+ * silva_code, silva_match); usati: Map codice → { id, label } della struttura che lo usa (tutte le strutture, anche disattivate).
+ * Ritorna { unita: [{ ...u, stato, destinazione, candidate, auto, proposta }], non_in_anagrafica }.
+ * stato: ABBINATA | NON_AUTORIZZATA | DA_SCEGLIERE | NON_IN_SILVA.
+ */
+export function classificaUnita(unita, destinazioni, usati = new Map()) {
+  const perCodice = new Map(destinazioni.map((d) => [d.codice, d]));
+  const valida = (c) => c && DESTINAZIONE_RE.test(String(c).trim());
+  const senza = unita.filter((u) => !valida(u.silva_code));
+  // per ogni destinazione: quante unità senza destinazione coincidono (se più d'una l'abbinamento è ambiguo)
+  const quante = new Map();
+  const coincidenze = new Map(senza.map((u) => [u.id, destinazioni.map((d) => ({ d, motivo: coincide(u, d) })).filter((x) => x.motivo)]));
+  for (const lista of coincidenze.values()) for (const x of lista) quante.set(x.d.codice, (quante.get(x.d.codice) || 0) + 1);
+  const out = unita.map((u) => {
+    const codice = valida(u.silva_code) ? String(u.silva_code).trim() : null;
+    if (codice && (perCodice.has(codice) || !destinazioni.length)) return { ...u, stato: 'ABBINATA', destinazione: perCodice.get(codice) || null, candidate: [], auto: null, proposta: null };
+    const esatte = coincidenze.get(u.id) || destinazioni.map((d) => ({ d, motivo: coincide(u, d) })).filter((x) => x.motivo);
+    const plausibili = destinazioni.map((d) => {
+      const es = esatte.find((x) => x.d.codice === d.codice);
+      const p = es ? 100 : somiglianza(u, d);
+      return { codice: d.codice, nome: d.nome, indirizzo: d.indirizzo, cap: d.cap, citta: d.citta, provincia: d.provincia, punteggio: p, coincide: es?.motivo || null, usata_da: usati.get(d.codice) && usati.get(d.codice).id !== u.id ? usati.get(d.codice).label : null };
+    // plausibili: le coincidenti (anche se già usate: si vede da chi) e le somiglianti libere; una somigliante già usata da un'altra
+    // unità non conta (per esempio l'altro punto della stessa Legal entity nello stesso CAP)
+    }).filter((c) => c.coincide || (c.punteggio >= 4 && !c.usata_da)).sort((a, b) => b.punteggio - a.punteggio);
+    let auto = null;
+    if (!codice && esatte.length === 1 && u.silva_match !== 'ESCLUSA') {   // ESCLUSA: tolta a mano, mai rimessa in automatico
+      const d = esatte[0].d;
+      if (!usati.has(d.codice) && quante.get(d.codice) === 1) auto = { codice: d.codice, motivo: esatte[0].motivo, destinazione: d };
+    }
+    const libere = plausibili.filter((c) => !c.usata_da);
+    const proposta = !auto && libere.length && (libere.length === 1 || libere[0].punteggio - libere[1].punteggio >= 0.75) && libere[0].punteggio >= 4 ? libere[0] : null;
+    const stato = codice ? 'NON_AUTORIZZATA' : plausibili.length ? 'DA_SCEGLIERE' : 'NON_IN_SILVA';
+    return { ...u, stato, destinazione: null, candidate: plausibili, auto, proposta };
+  });
+  const assegnati = new Set([...usati.keys(), ...out.filter((u) => u.auto).map((u) => u.auto.codice)]);
+  return { unita: out, non_in_anagrafica: destinazioni.filter((d) => !assegnati.has(d.codice)) };
+}
+
+/** Unità da abbinare (vista silva_unita_v) e codici già usati da tutte le strutture (anche disattivate) */
+export async function elencoUnitaSilva() {
+  const unita = await many(`SELECT * FROM silva_unita_v ORDER BY CASE tipo WHEN 'SEDE' THEN 0 WHEN 'PUNTO' THEN 1 ELSE 2 END, label`);
+  const usati = new Map((await many(`SELECT id, silva_code, CASE WHEN delivery_point THEN coalesce(organization_name || ' · ', '') || name ELSE name END AS label FROM strutture_v WHERE silva_code ~ '^[1-9][0-9]*$'`)).map((x) => [String(x.silva_code).trim(), { id: x.id, label: x.label }]));
+  return { unita, usati };
+}
+
+/** Salva la destinazione di un'unità (sede/punto in site_ext, Legal entity in org_ext) con il modo di abbinamento */
+export async function salvaDestinazione(id, codice, modo) {
+  const [table, keyCol, keyVal] = Number(id) < 0 ? ['org_ext', 'org_id', -Number(id)] : ['site_ext', 'site_id', Number(id)];
+  await q(`INSERT INTO ${table} (${keyCol}, silva_code, silva_match, silva_match_at) VALUES ($1,$2,$3, CASE WHEN $2::text IS NULL THEN NULL ELSE now() END)
+    ON CONFLICT (${keyCol}) DO UPDATE SET silva_code=EXCLUDED.silva_code, silva_match=EXCLUDED.silva_match, silva_match_at=EXCLUDED.silva_match_at, updated_at=now()`, [keyVal, codice || null, codice ? modo : null]);
+}
+
+/**
+ * Abbinamento automatico sulle ultime destinazioni lette: salva silva_code con silva_match = AUTO e una riga di audit
+ * "abbinata automaticamente" per ogni unità con una sola destinazione coincidente e libera. Ritorna { abbinate: [...] }.
+ */
+export async function abbinaAutomaticamente({ actor = 'sistema' } = {}) {
+  const elenco = await destinazioniSalvate();
+  if (!elenco?.destinazioni?.length) return { abbinate: [], motivo: 'destinazioni Silva non ancora lette' };
+  const { unita, usati } = await elencoUnitaSilva();
+  const { unita: cl } = classificaUnita(unita, elenco.destinazioni, usati);
+  const abbinate = [];
+  for (const u of cl.filter((x) => x.auto)) {
+    try {
+      // il codice potrebbe essere stato preso nel frattempo (Strutture aperta da un altro utente): si ricontrolla
+      if (await one(`SELECT 1 FROM strutture_v WHERE silva_code=$1 AND id<>$2`, [u.auto.codice, u.id])) continue;
+      await salvaDestinazione(u.id, u.auto.codice, 'AUTO');
+      await q('INSERT INTO audit_log (user_id, action, entity, entity_id, data, ip) VALUES (NULL,$1,$2,$3,$4,NULL)', ['STRUTTURA_SILVA_AUTO', 'struttura', String(u.id),
+        JSON.stringify({ esito: 'abbinata automaticamente', unita: u.label, tipo: u.tipo, codice: u.auto.codice, destinazione: u.auto.destinazione.nome, motivo: u.auto.motivo, actor })]);
+      abbinate.push({ id: u.id, label: u.label, tipo: u.tipo, codice: u.auto.codice, motivo: u.auto.motivo });
+    } catch (e) { console.warn('[silva] abbinamento automatico non riuscito per', u.label, e.message); }
+  }
+  if (abbinate.length) await salvaImpostazione('silva_ultimo_abbinamento', JSON.stringify({ at: new Date().toISOString(), n: abbinate.length, actor }));
+  return { abbinate };
+}
+
+/** Job orders:silva-destinazioni (ogni 6 ore, solo con connettore attivo e chiave): rilegge le destinazioni e abbina in automatico */
+export async function aggiornaDestinazioniEAbbina({ actor = 'job orders:silva-destinazioni' } = {}) {
+  const c = await getConnector('SILVA');
+  if (!c.enabled || !c.credentials?.api_key) return { skipped: !c.enabled ? 'connettore Silva disattivato' : 'chiave API Silva assente' };
+  const d = await destinazioniSilva({ force: true });
+  const a = await abbinaAutomaticamente({ actor });
+  return { destinazioni: d.destinazioni.length, abbinate: a.abbinate.length, dettaglio: a.abbinate };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -198,8 +326,11 @@ export function componiOrdineSilva(order, struttura, lines) {
   const numero = String(order.number || '');
   if (!NUMERO_RE.test(numero)) problemi.push(`numero d'ordine ${numero || '(vuoto)'} non accettato da Silva (1-64 caratteri tra lettere, numeri, punto, trattino e underscore, il primo alfanumerico)`);
   const dest = struttura?.silva_code ? String(struttura.silva_code).trim() : '';
-  if (!dest) problemi.push(`struttura ${struttura?.name || ''} senza destinazione Silva: sceglila in Ordini > Strutture`.replace('  ', ' '));
-  else if (!DESTINAZIONE_RE.test(dest)) problemi.push(`struttura ${struttura?.name || ''}: il codice Silva "${dest}" non è un codice destinazione (numerico): sceglila dall'elenco in Ordini > Strutture`);
+  // punto di consegna (v0.68.3): la destinazione è quella del punto dell'ordine (destinazioneOrdine); senza punto, quella della struttura
+  const chi = struttura?.punto_name ? `punto di consegna ${struttura.punto_name} (${struttura.organization_name || ''})`.replace(' ()', '') : `struttura ${struttura?.name || ''}`.trim();
+  if (struttura?.problema_punto) problemi.push(struttura.problema_punto);
+  else if (!dest) problemi.push(struttura?.punto_name ? `${chi} senza destinazione Silva: sceglila in Ordini > Strutture > Destinazioni Silva` : `${chi} senza destinazione Silva: sceglila in Ordini > Strutture`);
+  else if (!DESTINAZIONE_RE.test(dest)) problemi.push(`${chi}: il codice Silva "${dest}" non è un codice destinazione (numerico): sceglila dall'elenco in Ordini > Strutture`);
   const approvate = (lines || []).filter((l) => Number(l.qty_approved || 0) > 0);
   if (!approvate.length) problemi.push('nessuna riga con quantità approvata');
   if (approvate.length > MAX_RIGHE) problemi.push(`${approvate.length} righe: Silva accetta al massimo ${MAX_RIGHE} righe per ordine, dividere l'ordine`);
@@ -242,6 +373,30 @@ export function ordinaPayload(p) {
   for (const k of ['note', 'motivoUrgenza', 'dataApprovazione']) if (k in p) out[k] = p[k];
   return out;
 }
+/**
+ * Destinazione dell'ordine (v0.68.3). La struttura è la Legal entity (o la sede TD); il punto è la sede SERVICE scelta sull'ordine.
+ *  - con il punto: codice Silva e note di consegna del punto (le note della Legal entity se il punto non ne ha);
+ *  - senza punto e con 2 o più punti attivi: problema "indica il punto di consegna" (ordini creati prima della 0.68.3);
+ *  - senza punto e con un solo punto attivo: quel punto (implicito);
+ *  - senza punti: la struttura, come prima.
+ * Ritorna l'oggetto da passare a componiOrdineSilva come "struttura" (name, silva_code, delivery_notes, punto_name, problema_punto).
+ */
+export function destinazioneOrdine(struttura, punto, punti = []) {
+  const usa = (p, implicito) => ({
+    name: `${struttura.name} · ${p.name}`, punto_id: p.id, punto_name: p.name, organization_name: struttura.name, implicito,
+    silva_code: p.silva_code || null, delivery_notes: p.delivery_notes || struttura.delivery_notes || null,
+  });
+  if (punto) {
+    if (struttura.origin === 'ORG' && punto.organization_id != null && Number(punto.organization_id) !== Number(struttura.org_id)) {
+      return { ...usa(punto, false), problema_punto: `il punto di consegna ${punto.name} non appartiene a ${struttura.name}: correggilo nel dettaglio dell'ordine` };
+    }
+    return usa(punto, false);
+  }
+  if (punti.length >= 2) return { name: struttura.name, silva_code: null, delivery_notes: struttura.delivery_notes, problema_punto: `${struttura.name} ha ${punti.length} sedi service attive (${punti.map((p) => p.name).join(', ')}): indica il punto di consegna nel dettaglio dell'ordine` };
+  if (punti.length === 1) return usa(punti[0], true);
+  return { name: struttura.name, silva_code: struttura.silva_code, delivery_notes: struttura.delivery_notes };
+}
+
 /** Solo il corpo conforme (per chi non ha bisogno dei controlli) */
 export const orderPayload = (order, struttura, lines) => componiOrdineSilva(order, struttura, lines).payload;
 
@@ -267,7 +422,11 @@ export function orderPayloadEsteso(order, struttura, lines) {
     tipoDestinatario: order.kind === 'CLIENTE' ? 'CLIENTE_SERVICE' : order.kind === 'SEDE' ? 'SEDE_TD' : 'LABORATORIO_TD',
     origineDestinatario: struttura.origin === 'ORG' ? 'LEGAL_ENTITY' : 'SEDE',
     note: order.ops_notes || null,
-    destinazione: {
+    destinazione: order.delivery_site_id ? {
+      codice: order.delivery_site_code, codiceSede: order.delivery_site_code, nome: order.struttura_label || struttura.name, indirizzo: order.delivery_site_address, cap: order.delivery_site_zip, citta: order.delivery_site_city, provincia: order.delivery_site_province,
+      referente: null, telefono: struttura.referente_phone || struttura.phone, email: struttura.email, noteConsegna: struttura.delivery_notes,
+      modalita: struttura.delivery_mode === 'RITIRO' ? 'RITIRO_PRESSO_TD' : 'CONSEGNA',
+    } : {
       codice: struttura.silva_code || struttura.code, codiceSede: struttura.code, nome: struttura.name, indirizzo: struttura.address, cap: struttura.zip, citta: struttura.city, provincia: struttura.province,
       referente: struttura.referente, telefono: struttura.referente_phone || struttura.phone, email: struttura.email, noteConsegna: struttura.delivery_notes,
       modalita: struttura.delivery_mode === 'RITIRO' ? 'RITIRO_PRESSO_TD' : 'CONSEGNA',
@@ -286,8 +445,8 @@ export async function emailOrder({ order, struttura, lines, pdf }) {
   const payload = orderPayloadEsteso(order, struttura, lines);
   return sendMail({
     kind: 'ORDINE_FORNITORE', refKey: `SILVA:${order.id}:${Date.now()}`, to: config.silva.email, strutturaId: struttura.id,
-    subject: `Ordine ${order.number}${order.urgent ? ' URGENTE' : ''} · consegna a ${struttura.name}`, title: `Ordine di materiale ${order.number}`,
-    body: `In allegato l'ordine ${order.number} del ${itDate(payload.dataApprovazione)} da consegnare a ${struttura.name}, ${[struttura.address, struttura.zip, struttura.city].filter(Boolean).join(' ')}.\n\nRighe: ${payload.righe.length}. ${order.urgent ? 'Ordine urgente: ' + (order.urgent_reason || '') : 'Consegna con il primo giro utile.'}\n\nL'avanzamento (presa in carico, spedizione, consegna) va comunicato tramite le API di Orders Management.`,
+    subject: `Ordine ${order.number}${order.urgent ? ' URGENTE' : ''} · consegna a ${order.struttura_label || struttura.name}`, title: `Ordine di materiale ${order.number}`,
+    body: `In allegato l'ordine ${order.number} del ${itDate(payload.dataApprovazione)} da consegnare a ${order.struttura_label || struttura.name}, ${(order.delivery_site_id ? [order.delivery_site_address, order.delivery_site_zip, order.delivery_site_city] : [struttura.address, struttura.zip, struttura.city]).filter(Boolean).join(' ')}.\n\nRighe: ${payload.righe.length}. ${order.urgent ? 'Ordine urgente: ' + (order.urgent_reason || '') : 'Consegna con il primo giro utile.'}\n\nL'avanzamento (presa in carico, spedizione, consegna) va comunicato tramite le API di Orders Management.`,
     attachment: pdf ? { filename: `${order.number}.pdf`, content: pdf } : null,
   });
 }
@@ -301,7 +460,9 @@ export async function datiOrdineSilva(orderId) {
   const lines = await many(`SELECT l.id, l.article_id, l.qty_approved, l.qty_requested, a.code AS article_code, a.name AS article_name, a.silva_code, a.source, a.unit, a.pack_size,
       (SELECT w.unit FROM warehouse_stock w WHERE w.article_id=a.id AND w.silva_code=a.silva_code AND w.unit IS NOT NULL AND btrim(w.unit) <> '' ORDER BY w.current DESC, w.id DESC LIMIT 1) AS unit_silva
     FROM order_lines l JOIN articles a ON a.id=l.article_id WHERE l.order_id=$1 ORDER BY a.sort, a.code`, [orderId]);
-  return { o, s, lines };
+  const punto = o.delivery_site_id ? await puntoById(o.delivery_site_id) : null;
+  const dest = destinazioneOrdine(s, punto, punto ? [] : await puntiAttivi(o.struttura_id));
+  return { o, s: dest, struttura: s, punto, lines };
 }
 
 /** Anteprima per il dettaglio ordine: corpo che partirebbe, problemi, avvisi e stato del connettore */
@@ -310,7 +471,7 @@ export async function anteprimaSilva(orderId) {
   const comp = componiOrdineSilva(o, s, lines);
   const c = await getConnector('SILVA');
   const payload = o.silva_send_status === 'IN_CODA' && o.silva_payload ? ordinaPayload(o.silva_payload) : comp.payload;
-  return { ...comp, payload, connettore: connettorePubblico(c) };
+  return { ...comp, payload, connettore: connettorePubblico(c), destinazione: { label: s.name, punto: s.punto_name || null, implicito: Boolean(s.implicito), silva_code: s.silva_code || null } };
 }
 export const connettorePubblico = (c) => ({
   attivo: Boolean(c.enabled), chiave: Boolean(c.credentials?.api_key), push_orders: pushAttivo(c), primo_invio_confermato: primoInvioConfermato(c),
@@ -566,8 +727,9 @@ export async function statoIntegrazioneSilva() {
   const ultimo = await one(`SELECT number, silva_sent_at, silva_reference FROM orders WHERE silva_sent_at IS NOT NULL ORDER BY silva_sent_at DESC LIMIT 1`);
   const destinazioni = dest?.destinazioni || [];
   const codici = new Set(destinazioni.map((d) => d.codice));
-  const senza = await many(`SELECT id, code, name, city, silva_code, origin FROM strutture_v WHERE active AND NOT delivery_point AND (silva_code IS NULL OR silva_code !~ '^[1-9][0-9]*$') ORDER BY origin DESC, name`);
-  const nonAutorizzate = dest ? (await many(`SELECT id, code, name, silva_code FROM strutture_v WHERE active AND NOT delivery_point AND silva_code ~ '^[1-9][0-9]*$' ORDER BY name`)).filter((x) => !codici.has(String(x.silva_code))) : [];
+  // unità da abbinare (v0.68.3): sedi TD, Legal entity cliente senza punti, punti service ("Legal entity · punto")
+  const senza = await many(`SELECT id, code, label AS name, city, silva_code, origin, tipo FROM silva_unita_v WHERE silva_code IS NULL OR silva_code !~ '^[1-9][0-9]*$' ORDER BY CASE tipo WHEN 'SEDE' THEN 0 WHEN 'PUNTO' THEN 1 ELSE 2 END, label`);
+  const nonAutorizzate = dest ? (await many(`SELECT id, code, label AS name, silva_code, tipo FROM silva_unita_v WHERE silva_code ~ '^[1-9][0-9]*$' ORDER BY label`)).filter((x) => !codici.has(String(x.silva_code))) : [];
   return {
     connettore: connettorePubblico(c),
     destinazioni: { lette: destinazioni.length, letto_al: dest?.letto_al || null },

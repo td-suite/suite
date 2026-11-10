@@ -36,7 +36,7 @@ function Giornata({ sede, data, setData, toast, gest }) {
     const r = g.presenze.map((p) => ({ id: p.id, prof_id: p.prof_id, nome: p.prof_nome, profilo: p.prof_profilo, ora_da: p.ora_da, ora_a: p.ora_a, stato: p.stato, origine: p.origine, turno_id: p.turno_id, attivita: p.attivita || '', nota: p.nota || '', locked: !!p.rendiconto_id, confermato: `${p.confermato_da_nome || ''} ${itDateTime(p.confermato_at)}`, sel: true }));
     const has = (pid, da) => r.some((x) => x.prof_id === pid && x.ora_da === da);
     for (const t of g.turni.filter((t) => t.prof_id)) if (!has(t.prof_id, t.ora_da)) r.push({ prof_id: t.prof_id, nome: t.prof_nome, profilo: t.prof_profilo, ora_da: t.ora_da, ora_a: t.ora_a, stato: 'CONFERMATA', origine: 'TURNO', turno_id: t.id, attivita: t.attivita || '', nota: '', sel: false, previsto: 'turno' });
-    for (const p of g.pianificati.filter((p) => p.prof_id)) if (!has(p.prof_id, p.ora_da) && !r.some((x) => x.prof_id === p.prof_id && x.ora_da <= p.ora_da && x.ora_a >= p.ora_a)) r.push({ prof_id: p.prof_id, nome: p.nome, profilo: '', ora_da: p.ora_da, ora_a: p.ora_a, stato: 'CONFERMATA', origine: 'PIANIFICAZIONE', attivita: p.attivita || '', nota: '', sel: false, previsto: 'pianificazione' });
+    for (const p of g.pianificati.filter((p) => p.prof_id)) if (!has(p.prof_id, p.ora_da) && !r.some((x) => x.prof_id === p.prof_id && x.ora_da <= p.ora_da && x.ora_a >= p.ora_a)) r.push({ prof_id: p.prof_id, nome: p.nome, profilo: p.profilo || '', ora_da: p.ora_da, ora_a: p.ora_a, stato: 'CONFERMATA', origine: 'PIANIFICAZIONE', attivita: p.attivita || '', nota: '', sel: false, previsto: 'pianificazione' });
     setRows(r.sort((a, b) => a.ora_da.localeCompare(b.ora_da) || a.nome.localeCompare(b.nome)));
   }, [g]);
   const upd = (i, patch) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -58,6 +58,7 @@ function Giornata({ sede, data, setData, toast, gest }) {
         <button className="btn" disabled={busy || !g} onClick={salva}>{busy ? 'Salvo…' : 'Conferma le presenze selezionate'}</button>
       </div>
       <ErrorBox error={error} />
+      {g && <Avvisi g={g} />}
       {!g ? <Loading /> : (
         <Card flush>
           <div className="table-wrap"><table className="t">
@@ -88,17 +89,44 @@ function Giornata({ sede, data, setData, toast, gest }) {
   );
 }
 
+// Avvisi della giornata (v0.68.4): persone della sede che il piano prevede ma che non si possono registrare (non agganciate
+// all'anagrafica, non attive, escluse), con il motivo e i link alla sede e alla Diagnostica (D52); sede chiusa o piano non calcolabile.
+function Avvisi({ g }) {
+  const senza = (g.pianificati || []).filter((p) => !p.prof_id);
+  const altri = (g.nonAgganciati || []).filter((x) => !senza.some((p) => p.nome === x.nome));
+  if (!g.pianoErrore && !senza.length && !altri.length) return null;
+  return (
+    <div className="alert warn" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, marginBottom: 12 }} data-testid="presenze-avvisi">
+      {g.pianoErrore && <div className="small"><b>{g.pianoErrore}</b></div>}
+      {senza.length > 0 && <div className="small"><b>Nel piano di oggi ma non registrabili:</b> {senza.map((p, i) => <span key={i}>{i ? '; ' : ''}{p.nome} {p.ora_da}–{p.ora_a} ({p.motivo})</span>)}</div>}
+      {altri.length > 0 && <div className="small"><b>Persone della sede non agganciabili:</b> {altri.map((x, i) => <span key={i}>{i ? '; ' : ''}{x.nome} ({x.motivo})</span>)}</div>}
+      {(senza.length > 0 || altri.length > 0) && <div className="small"><a href={(g.nonAgganciati?.[0]?.link) || '/room/sedi'}>Apri la sede in Sedi e ambulatori</a> · <a href="/admin/diagnostica">Diagnostica anagrafica (D52)</a></div>}
+    </div>
+  );
+}
+
 function Riepilogo({ sede, sedi }) {
   const [mese, setMese] = useState(thisMonth());
-  const dal = `${mese}-01`, al = `${mese}-31`;
+  // ultimo giorno vero del mese (con '-31' fisso i mesi di 30 giorni e febbraio davano "Parametro non valido")
+  const dal = `${mese}-01`, al = `${mese}-${String(new Date(Date.UTC(Number(mese.slice(0, 4)), Number(mese.slice(5, 7)), 0)).getUTCDate()).padStart(2, '0')}`;
   const { data, error } = useApi(sede ? `/personale/presenze?sede_id=${sede}&dal=${dal}&al=${al}` : null, [sede, mese]);
+  const ass = useApi(sede ? `/personale/presenze/mese?sede_id=${sede}&mese=${mese}` : null, [sede, mese]);   // persone assegnate alla sede, con turni e presenze del mese
+  const GR = { medico: 'Medico', sanitario: 'Personale sanitario', accettazione: 'Accettazione' };
   const perProf = useMemo(() => { const m = {}; (data || []).filter((p) => p.stato === 'CONFERMATA').forEach((p) => { const x = (m[p.prof_id] ||= { nome: p.prof_nome, profilo: p.prof_profilo, n: 0, ore: 0 }); x.n++; x.ore += ore(p.ora_da, p.ora_a); }); return Object.values(m).sort((a, b) => b.ore - a.ore); }, [data]);
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, -1))}>‹</button><b style={{ minWidth: 130, textAlign: 'center' }}>{meseTxt(mese)}</b><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, 1))}>›</button><span className="small muted">{sedi.find((s) => String(s.id) === String(sede))?.label}</span></div>
-      <ErrorBox error={error} />
+      <ErrorBox error={error || ass.error} />
+      {ass.data && <Card title={`Persone assegnate alla sede · ${meseTxt(mese)}`} flush>
+        <div className="table-wrap"><table className="t" data-testid="presenze-assegnate"><thead><tr><th>Persona</th><th>Gruppo</th><th className="num">Ore/sett. nel piano</th><th className="num">Turni</th><th className="num">Ore a turno</th><th className="num">Presenze</th><th className="num">Ore presenti</th><th>Stato</th></tr></thead>
+          <tbody>{ass.data.persone.map((x) => <tr key={x.prof_id}><td className="strong">{x.nome}<div className="small muted" style={{ fontWeight: 400 }}>{x.profilo}</div></td><td className="small">{GR[x.gruppo] || x.gruppo}{!x.in_sede && <div className="muted">fuori dal personale della sede</div>}</td>
+            <td className="num">{x.ore_settimana_piano == null ? '–' : oreTxt(x.ore_settimana_piano)}</td><td className="num">{x.turni}</td><td className="num">{oreTxt(x.ore_turni)}</td><td className="num">{x.presenze}{x.assenze ? <div className="small red">{x.assenze} assenze</div> : null}</td><td className="num">{oreTxt(x.ore_presenze)}</td>
+            <td className="small">{x.presenze ? <Badge tone="green">registrate</Badge> : x.turni ? <Badge tone="teal">turni generati</Badge> : <Badge tone="amber">nessun turno: Turni &gt; Genera</Badge>}</td></tr>)}
+            {!ass.data.persone.length && <tr><td colSpan={8} className="empty">Nessuna persona nel personale della sede (Sedi e ambulatori &gt; Personale)</td></tr>}</tbody></table></div>
+        {ass.data.nonAgganciati.length > 0 && <div className="bd small" style={{ borderTop: '1px solid var(--line)' }}><b>Non agganciabili:</b> {ass.data.nonAgganciati.map((x, i) => <span key={i}>{i ? '; ' : ''}{x.nome} ({x.motivo})</span>)} · <a href={ass.data.nonAgganciati[0].link}>Apri la sede</a> · <a href={ass.data.diagnostica}>Diagnostica (D52)</a></div>}
+      </Card>}
       {!data ? <Loading /> : (
-        <div className="grid g2">
+        <div className="grid g2 mt">
           <Card title="Ore confermate per professionista" flush><div className="table-wrap"><table className="t"><thead><tr><th>Professionista</th><th className="num">Presenze</th><th className="num">Ore</th></tr></thead><tbody>{perProf.map((x, i) => <tr key={i}><td className="strong">{x.nome}<div className="small muted" style={{ fontWeight: 400 }}>{x.profilo}</div></td><td className="num">{x.n}</td><td className="num">{oreTxt(x.ore)}</td></tr>)}{!perProf.length && <tr><td colSpan={3} className="empty">Nessuna presenza confermata nel mese</td></tr>}</tbody></table></div></Card>
           <Card title="Dettaglio" flush><div className="table-wrap" style={{ maxHeight: 520, overflow: 'auto' }}><table className="t"><thead><tr><th>Data</th><th>Professionista</th><th>Orario</th><th>Esito</th><th>Attività</th><th>Da</th></tr></thead><tbody>{data.map((p) => <tr key={p.id}><td>{itD(p.data)}</td><td className="strong">{p.prof_nome}</td><td className="mono">{p.ora_da}–{p.ora_a}</td><td>{p.stato === 'CONFERMATA' ? <Badge tone="green">presente</Badge> : <Badge tone="red">assente</Badge>}{p.rendiconto_id ? <Badge tone="amber">rendicontata</Badge> : null}</td><td className="small">{p.attivita}</td><td className="small muted">{p.confermato_da_nome}</td></tr>)}</tbody></table></div></Card>
         </div>)}

@@ -20,7 +20,7 @@ export default function Supplier() {
   const Row = ({ o }) => (
     <tr key={o.id}>
       <td><span className="mono strong" style={{ cursor: 'pointer' }} onClick={() => nav(`${BASE}/ordini/${o.id}`)}>{o.number}</span>{o.urgent && <> <Badge tone="red">Urgente</Badge></>}<div className="small muted">{KIND[o.kind]}</div></td>
-      <td>{o.struttura_name}<div className="small muted">{o.struttura_city}</div></td>
+      <td>{o.struttura_label || o.struttura_name}<div className="small muted">{o.struttura_city}{o.delivery_site_name ? " · punto di consegna" : ""}</div></td>
       <td className="num">{o.lines_count}</td><td className="num">{o.packs_total}</td>
       <td className="small muted">{itDateTime(o.approved_at)}</td>
       <td className="small"><SilvaBadge o={o} />{!o.silva_send_status && o.polled_at && <div className="muted">letto in polling {itDateTime(o.polled_at)}</div>}</td>

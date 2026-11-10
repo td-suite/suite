@@ -168,7 +168,9 @@ Fonte: `docs/silva-api-ordini/` (Guida tecnica, collection Postman, esempio). Fu
   conferma esplicita. Dopo il primo 201 il connettore annota `primo_invio_at`, `primo_invio_numero`, `primo_invio_riferimento` e la
   Suite propone di attivare l'automatismo; `primo_invio_confermato_at` (data di attivazione) delimita gli ordini che partono da soli:
   quelli approvati prima restano da trasmettere a mano.
-- Job: `orders:silva-push` ogni 5 minuti (solo con l'automatismo attivo) e `orders:silva-stato` ogni 30 minuti (stato degli ordini
-  ricevuti e non consegnati). Diagnostica D53: strutture attive senza destinazione Silva.
+- Job: `orders:silva-push` ogni 5 minuti (solo con l'automatismo attivo), `orders:silva-stato` ogni 30 minuti (stato degli ordini
+  ricevuti e non consegnati) e, dalla 0.68.3, `orders:silva-destinazioni` ogni 6 ore (rilegge le destinazioni e abbina in automatico le
+  unità con una sola destinazione coincidente per CAP + via e civico o CAP + nome, se il codice è libero). Diagnostica D53: unità senza
+  destinazione Silva (sedi TD, Legal entity cliente senza punti service, punti service delle Legal entity cliente).
 - La chiave non compare mai in file, registri o risposte: il registro del connettore riporta metodo, URL, esito e un messaggio; dopo
   un 401/403 sull'ordine resta solo un'impronta SHA-256 troncata per capire quando la chiave è cambiata.

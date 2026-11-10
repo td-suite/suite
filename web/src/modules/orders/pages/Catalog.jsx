@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, BASE } from '../api.js';
 import { useAuth, isOps } from '../auth.jsx';
 import { useApi, Field, Loading, ErrorBox, Icon, useToast, Modal, StrutturaOptions } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 import { PhaseBanner } from '../components/phase.jsx';
+import { puntoLabel } from '../format.js';
 
 // Catalogo a carrello (modello e-commerce): elenco chiuso del MOD252, grafica dell'oggetto, confezionamento, aggiunta al carrello.
 export default function Catalog() {
@@ -22,6 +23,15 @@ export default function Catalog() {
   const [head, setHead] = useState({ notes: '', urgent: false, urgent_reason: '', client_ref: '' });
   const [err, setErr] = useState(null);
   const [confirm, setConfirm] = useState(false);
+  // "Consegnare a" (v0.68.3): punti service attivi della Legal entity; obbligatorio con 2 o più, preselezionato con uno, assente senza punti
+  const puntiUrl = ops ? (strutturaId ? `/orders/punti-consegna?struttura_id=${strutturaId}` : null) : '/orders/punti-consegna';
+  const punti = useApi(puntiUrl);
+  const [deliverySite, setDeliverySite] = useState('');
+  useEffect(() => { setDeliverySite(punti.data?.preselezionato ? String(punti.data.preselezionato) : ''); }, [punti.data]);
+  const listaPunti = punti.data?.punti || [];
+  const puntoObbligatorio = Boolean(punti.data?.obbligatorio);
+  const manca = puntoObbligatorio && !deliverySite;
+  const puntoScelto = listaPunti.find((p) => String(p.id) === deliverySite);
 
   const list = (articles.data || []).filter((a) => (!cat || a.category_code === cat) && (!search || `${a.name} ${a.code}`.toLowerCase().includes(search.toLowerCase())));
   const items = Object.entries(cart).filter(([, q]) => q > 0).map(([id, q]) => ({ a: articles.data.find((x) => x.id === Number(id)), q }));
@@ -31,7 +41,7 @@ export default function Catalog() {
   const send = async (submit) => {
     setErr(null);
     try {
-      const r = await api.post('/orders', { struttura_id: ops ? Number(strutturaId) : undefined, lines: items.map((x) => ({ article_id: x.a.id, qty: x.q })), submit, ...head });
+      const r = await api.post('/orders', { struttura_id: ops ? Number(strutturaId) : undefined, lines: items.map((x) => ({ article_id: x.a.id, qty: x.q })), submit, ...head, delivery_site_id: deliverySite ? Number(deliverySite) : undefined });
       toast(submit ? 'Ordine inviato a Toscana Diagnostica' : 'Bozza salvata');
       nav(`${BASE}/ordini/${r.id}`);
     } catch (e) { setErr(e); setConfirm(false); }
@@ -52,6 +62,16 @@ export default function Catalog() {
               {ops && <Field label="Ordine per conto della struttura" style={{ flex: 2 }}><select value={strutturaId} onChange={(e) => setStrutturaId(e.target.value)}><option value="">Scegli la sede TD o la Legal entity…</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
               <Field label="Cerca nel catalogo" style={{ flex: 1, minWidth: 220 }}><input placeholder="Nome o codice articolo" value={search} onChange={(e) => setSearch(e.target.value)} /></Field>
             </div>
+            {listaPunti.length > 0 && (
+              <div className="row" style={{ marginTop: 4 }}>
+                <Field label={puntoObbligatorio ? 'Consegnare a (obbligatorio)' : 'Consegnare a'} style={{ flex: 1, maxWidth: 640 }} help={puntoObbligatorio ? `${listaPunti.length} sedi service attive: indica dove consegnare. Ordine e giacenza restano della Legal entity.` : 'Unica sede service della Legal entity: preselezionata.'}>
+                  <select value={deliverySite} onChange={(e) => setDeliverySite(e.target.value)} className={manca ? 'invalid' : ''}>
+                    {puntoObbligatorio && <option value="">Scegli il punto di consegna…</option>}
+                    {listaPunti.map((p) => <option key={p.id} value={p.id}>{puntoLabel(p)}</option>)}
+                  </select>
+                </Field>
+              </div>
+            )}
             <div className="chips">
               <button className={`chipbtn ${!cat ? 'on' : ''}`} onClick={() => setCat('')}>Tutti</button>
               {(categories.data || []).map((c) => <button key={c.code} className={`chipbtn ${cat === c.code ? 'on' : ''}`} onClick={() => setCat(c.code)}>{c.name}</button>)}
@@ -98,9 +118,10 @@ export default function Catalog() {
                 <label className="f inline"><input type="checkbox" checked={head.urgent} onChange={(e) => setHead({ ...head, urgent: e.target.checked })} />Richiesta urgente</label>
                 {head.urgent && <Field label="Motivazione dell'urgenza (obbligatoria)"><input value={head.urgent_reason} onChange={(e) => setHead({ ...head, urgent_reason: e.target.value })} /></Field>}
               </div>
+              {listaPunti.length > 0 && <div className={`small ${manca ? 'red' : 'muted'}`} style={{ marginTop: 10 }}>{manca ? 'Indica il punto di consegna (Consegnare a) prima di inviare.' : <>Consegna a <b>{puntoScelto?.name}</b>{puntoScelto?.city ? `, ${puntoScelto.city}` : ''}.</>}</div>}
               <div className="row" style={{ marginTop: 14 }}>
-                <button className="btn ghost" disabled={!items.length || (ops && !strutturaId)} onClick={() => send(false)}>Salva bozza</button>
-                <button className="btn" disabled={!items.length || (ops && !strutturaId) || (head.urgent && !head.urgent_reason)} onClick={() => setConfirm(true)}>Approva e invia</button>
+                <button className="btn ghost" disabled={!items.length || (ops && !strutturaId) || manca} onClick={() => send(false)}>Salva bozza</button>
+                <button className="btn" disabled={!items.length || (ops && !strutturaId) || (head.urgent && !head.urgent_reason) || manca} onClick={() => setConfirm(true)}>Approva e invia</button>
               </div>
               <div className="small muted" style={{ marginTop: 10 }}>Le richieste ordinarie sono evase con il primo giro logistico utile, di norma entro 5 giorni lavorativi. Alla consegna va confermata la ricezione confezione per confezione.</div>
             </div>
@@ -109,10 +130,11 @@ export default function Catalog() {
       </div>
       {confirm && (
         <Modal title="Approvi e invii l'ordine a Toscana Diagnostica?" onClose={() => setConfirm(false)} footer={<><button className="btn ghost" onClick={() => setConfirm(false)}>Annulla</button><button className="btn" onClick={() => send(true)}>Approva e invia</button></>}>
-          <p>{packs} confezioni in {items.length} articoli{head.urgent ? ', con richiesta di urgenza' : ''}. L'Area Operations verifica le quantità rispetto alla tua produzione e trasmette l'ordine al magazzino.</p>
+          <p>{packs} confezioni in {items.length} articoli{head.urgent ? ', con richiesta di urgenza' : ''}{puntoScelto ? <>, da consegnare a <b>{puntoScelto.name}</b></> : ''}. L'Area Operations verifica le quantità rispetto alla tua produzione e trasmette l'ordine al magazzino.</p>
           <ul className="small">{items.map((x) => <li key={x.a.id}>{x.q} × {x.a.name} ({x.a.pack_label})</li>)}</ul>
         </Modal>
       )}
     </div>
   );
 }
+

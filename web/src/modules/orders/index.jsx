@@ -7,8 +7,9 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, isOps } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import { BASE } from './api.js';
+import { REDIRECT_ARTICOLI } from './lib/magazzino.js';
 import Dashboard from './pages/Dashboard.jsx';
-import Warehouse from './pages/Warehouse.jsx';
+import MagazzinoCentrale from './pages/MagazzinoCentrale.jsx';
 import Dotazione from './pages/Dotazione.jsx';
 import DotazioneSede from './pages/DotazioneSede.jsx';
 import Catalog from './pages/Catalog.jsx';
@@ -25,7 +26,6 @@ import Production from './pages/Production.jsx';
 import Issues from './pages/Issues.jsx';
 import NetworkStock from './pages/NetworkStock.jsx';
 import Strutture from './pages/Strutture.jsx';
-import Articles from './pages/Articles.jsx';
 import Mappings from './pages/Mappings.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
@@ -43,7 +43,7 @@ function Gate() {
   return (
     <Routes>
       <Route index element={<Dashboard />} />
-      <Route path="magazzino" element={ops ? <Warehouse /> : <Forbidden />} />
+      <Route path="magazzino" element={ops ? <MagazzinoCentrale /> : <Forbidden />} />
       <Route path="dotazione" element={ops ? <Dotazione /> : <Forbidden />} />
       <Route path="dotazione/sedi/:id" element={ops ? <DotazioneSede /> : <Forbidden />} />
       <Route path="catalogo" element={(ops || kind === 'CLIENTE') ? <Catalog /> : <Navigate to={BASE} replace />} />
@@ -63,7 +63,8 @@ function Gate() {
       <Route path="rete" element={ops ? <NetworkStock /> : <Forbidden />} />
       <Route path="correlazioni" element={ops ? <Mappings /> : <Forbidden />} />
       <Route path="strutture" element={ops ? <Strutture /> : <Forbidden />} />
-      <Route path="articoli" element={ops ? <Articles /> : <Forbidden />} />
+      {/* v0.68.4: "Catalogo articoli" è la scheda "Articoli ordinabili" del Magazzino Centrale */}
+      <Route path="articoli" element={ops ? <Navigate to={`${BASE}/${REDIRECT_ARTICOLI}`} replace /> : <Forbidden />} />
       <Route path="invii" element={ops ? <EmailLog /> : <Forbidden />} />
       <Route path="audit" element={ops ? <Audit /> : <Forbidden />} />
       <Route path="impostazioni" element={sup ? <Settings /> : <Forbidden />} />

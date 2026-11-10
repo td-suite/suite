@@ -80,8 +80,8 @@ async function ordiniStruttura(struttura) {
   if (struttura == null) return { disponibile: true, totale: 0, per_fase: {}, righe: [], struttura: null, link: '/orders/ordini', nota: 'Nessuna struttura collegata al tuo accesso' };
   const s = await ordDb.one('SELECT id, name, code, kind FROM strutture_v WHERE id=$1', [struttura]);
   if (!s) return { disponibile: true, totale: 0, per_fase: {}, righe: [], struttura: null, link: '/orders/ordini', nota: 'Struttura non trovata' };
-  const rows = await ordDb.many(`SELECT o.id, o.number, o.created_at, o.submitted_at, o.status, o.urgent, o.ddt_number, st.name AS struttura
-      FROM orders o JOIN strutture_v st ON st.id = o.struttura_id
+  const rows = await ordDb.many(`SELECT o.id, o.number, o.created_at, o.submitted_at, o.status, o.urgent, o.ddt_number, st.name || coalesce(' · ' || ds.name, '') AS struttura
+      FROM orders o JOIN strutture_v st ON st.id = o.struttura_id LEFT JOIN public.sites ds ON ds.id = o.delivery_site_id
      WHERE o.struttura_id = $1 AND o.status = ANY($2::text[]) ORDER BY o.created_at DESC`, [s.id, statiOrdiniInCorso(s.kind)]);
   const righe = rows.map((o) => { const f = faseOrdine(o.status, s.kind); return { id: o.id, numero: o.number, data: o.submitted_at || o.created_at, stato: o.status, fase: f.n, fase_label: f.label, urgente: o.urgent, ddt: o.ddt_number, struttura: o.struttura, link: `/orders/ordini/${o.id}` }; });
   return { disponibile: true, totale: righe.length, per_fase: conteggiPer(righe, 'fase_label'), righe: righe.slice(0, 50), struttura: { name: s.name, code: s.code }, link: '/orders/ordini' };

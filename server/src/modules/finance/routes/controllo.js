@@ -75,7 +75,7 @@ r.get('/margine-service/export.pdf', ah(async (req, res) => {
 r.get('/margine-service/cliente/:orgId', ah(async (req, res) => {
   let p; try { p = CE.periodo(req.query.anno || new Date().getFullYear(), null); } catch (e) { throw bad(e.message); }   // dettaglio: i 12 mesi (i futuri vuoti)
   const d = await margine(p, Number(req.params.orgId));
-  if (!d.clienti.length) throw notFound('Cliente non trovato tra i clienti Service attivi o contrattualizzati');
+  if (!d.clienti.length) throw notFound('Cliente non trovato tra i clienti Service attivi (o contrattualizzati con produzione effettiva nell\'anno)');
   res.json({ periodo: p, cliente: d.clienti[0], fonti: d.fonti, avvisi: d.avvisi, impostazioni: d.impostazioni });
 }));
 
@@ -117,7 +117,7 @@ r.delete('/produzione/:id', requireManage, ah(async (req, res) => {
   await audit(req, 'PRODUZIONE_SRV_DELETE', 'produzione_service', row.id, row);
   res.json({ ok: true });
 }));
-// Stime del periodo salvate (fonte STIMA) per i clienti senza produzione salvata: le righe esistenti non si toccano
+// Stime del periodo salvate (fonte STIMA) per i clienti ATTIVI senza produzione salvata, in pro quota (v0.68.4): le righe esistenti non si toccano
 r.post('/produzione/stime', requireManage, ah(async (req, res) => {
   let p; try { p = CE.periodo(req.body?.anno, req.body?.mese || null, todayRome()); } catch (e) { throw bad(e.message); }
   const s = await caricaService(p);
@@ -126,7 +126,7 @@ r.post('/produzione/stime', requireManage, ah(async (req, res) => {
     if (!m.produzione || !m.produzione.calcolata) continue;   // solo dove si userebbe la stima calcolata al momento
     const st = m.produzione.dettaglio_stima;
     const row = await one(`INSERT INTO produzione_service (org_id, mese, esami, valore, fonte, note, created_by, updated_by) VALUES ($1, ($2 || '-01')::date, $3, $4, 'STIMA', $5, $6, $6)
-        ON CONFLICT (org_id, mese) DO NOTHING RETURNING id`, [c.org_id, mk, m.esami, m.valore_produzione, `Stima: ${String(st?.volumi_giornalieri ?? '').replace('.', ',')} esami al giorno × ${String(st?.giorni_mese ?? '').replace('.', ',')} giorni${st?.prezzo_medio != null ? ` × ${String(st.prezzo_medio).replace('.', ',')} € per esame` : ''} (Business Hub)`, req.user.id]);
+        ON CONFLICT (org_id, mese) DO NOTHING RETURNING id`, [c.org_id, mk, m.esami, m.valore_produzione, `Stima in pro quota (Business Hub): ${st?.nota || ''}${st?.fatturato_fy != null ? `, FY atteso ${String(st.fatturato_fy).replace('.', ',')} €` : ''}`, req.user.id]);
     if (row) salvate.push({ org_id: c.org_id, org_name: c.org_name, mese: mk, esami: m.esami, valore: m.valore_produzione });
   }
   await audit(req, 'PRODUZIONE_SRV_STIME', 'produzione_service', null, { periodo: p.etichetta, salvate: salvate.length });

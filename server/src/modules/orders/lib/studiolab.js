@@ -10,6 +10,7 @@
 import { config } from '../config.js';
 import { many, one, q } from '../db.js';
 import { connectorSync, logConnector, studiolabClientToken, studiolabExtraHeaders } from '../../../lib/connectors.js';
+import { consumoDaCampioni, SEP_ETICHETTE } from './synclab.js';
 
 export const studiolabStatus = () => { const c = connectorSync('STUDIOLAB'); return { configured: config.studiolab.enabled, baseUrl: config.studiolab.baseUrl, clientCode: config.studiolab.clientCode, inboundConfigured: Boolean(config.studiolab.inboundKey), connector: { source: c.source, configured: c.configured, active: c.active, last_test_at: c.last_test_at, last_status: c.last_status } }; };
 
@@ -43,7 +44,11 @@ export const whoAmI = () => call('/api/whoami');
  */
 export async function syncExamCatalog() {
   const syn = await catalogoDaSynclab().catch((e) => { console.warn(`[orders] catalogo da Synclab non letto: ${e.message}`); return null; });
-  if (syn) return syn;
+  if (syn) {
+    // v0.68.4: testo delle etichette per esame da ServiceNET, se il connettore risponde (seconda fonte dopo synclab.samples.container)
+    if (config.studiolab.enabled) syn.etichette = await etichetteDaServiceNet().catch((e) => ({ errore: e.message }));
+    return syn;
+  }
   const esami = await call('/api/esami', { CodiceCliente: config.studiolab.clientCode, IncludiEtichette: true });
   if (!Array.isArray(esami)) throw new Error('Risposta inattesa da /api/esami');
   let n = 0;
@@ -54,12 +59,41 @@ export async function syncExamCatalog() {
     const et = Array.isArray(e.Etichette) ? e.Etichette[0] : Array.isArray(e.Campioni) ? e.Campioni[0] : null;
     const matCode = e.CodiceMateriale ?? e.Materiale ?? et?.CodiceMateriale ?? et?.Materiale ?? null;
     const matDesc = e.DescrizioneMateriale ?? et?.DescrizioneMateriale ?? et?.Descrizione ?? null;
-    await q(`INSERT INTO exam_catalog (code, description, material_code, material_desc, sector, is_service, updated_at) VALUES ($1,$2,$3,$4,$5,$6,now())
-             ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description, material_code=coalesce(EXCLUDED.material_code, exam_catalog.material_code), material_desc=coalesce(EXCLUDED.material_desc, exam_catalog.material_desc), sector=EXCLUDED.sector, is_service=EXCLUDED.is_service, updated_at=now()`,
-    [code, e.Descrizione ?? e.DescBreve ?? e.Description ?? null, matCode ? String(matCode) : null, matDesc ? String(matDesc) : null, e.SettoreCommerciale ?? e.Settore ?? null, e.EsameService ?? e.IsService ?? null]);
+    await q(`INSERT INTO exam_catalog (code, description, material_code, material_desc, sector, is_service, label_text, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+             ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description, material_code=coalesce(EXCLUDED.material_code, exam_catalog.material_code), material_desc=coalesce(EXCLUDED.material_desc, exam_catalog.material_desc), sector=EXCLUDED.sector, is_service=EXCLUDED.is_service, label_text=coalesce(EXCLUDED.label_text, exam_catalog.label_text), updated_at=now()`,
+    [code, e.Descrizione ?? e.DescBreve ?? e.Description ?? null, matCode ? String(matCode) : null, matDesc ? String(matDesc) : null, e.SettoreCommerciale ?? e.Settore ?? null, e.EsameService ?? e.IsService ?? null, testoEtichette(e)]);
     n++;
   }
-  return { exams: n, fonte: 'SERVICENET' };
+  return { exams: n, fonte: 'SERVICENET', etichette: { esami: (await one(`SELECT count(*)::int AS n FROM exam_catalog WHERE label_text IS NOT NULL`))?.n ?? 0 } };
+}
+
+/**
+ * Testo delle etichette di un esame di /api/esami (IncludiEtichette): Etichette[] come stringhe o oggetti; del singolo oggetto si prende
+ * la descrizione dell'etichetta (DescrizioneEtichetta, Descrizione, Etichetta, Testo, nell'ordine). Più etichette distinte unite da " | ".
+ * null se l'esame non ne ha. Funzione pura (test).
+ */
+export function testoEtichette(e) {
+  const et = Array.isArray(e?.Etichette) ? e.Etichette : [];
+  const t = et.map((x) => (x && typeof x === 'object' ? x.DescrizioneEtichetta ?? x.Descrizione ?? x.Etichetta ?? x.Testo ?? '' : x ?? ''))
+    .map((v) => String(v).trim().replace(/\s+/g, ' ')).filter(Boolean);
+  const uniche = []; for (const v of t) if (!uniche.some((u) => u.toUpperCase() === v.toUpperCase())) uniche.push(v);   // la prima scrittura vince
+  return uniche.length ? uniche.join(SEP_ETICHETTE) : null;
+}
+
+/** Solo il testo delle etichette per esame da ServiceNET (catalogo già letto da Synclab): aggiorna exam_catalog.label_text. */
+async function etichetteDaServiceNet() {
+  const esami = await call('/api/esami', { CodiceCliente: config.studiolab.clientCode, IncludiEtichette: true });
+  if (!Array.isArray(esami)) throw new Error('Risposta inattesa da /api/esami');
+  let n = 0;
+  for (const e of esami) {
+    const code = String(e.CodEsame ?? e.Codice ?? e.Code ?? '').trim();
+    const label = testoEtichette(e);
+    if (!code || !label) continue;
+    await q(`INSERT INTO exam_catalog (code, description, label_text, updated_at) VALUES ($1,$2,$3,now())
+             ON CONFLICT (code) DO UPDATE SET label_text = EXCLUDED.label_text, updated_at = now()`, [code, e.Descrizione ?? e.DescBreve ?? e.Description ?? null, label]);
+    n++;
+  }
+  return { esami: n, fonte: 'SERVICENET' };
 }
 
 async function catalogoDaSynclab() {
@@ -178,9 +212,17 @@ export async function productionStrutture(strutturaId) {
   return [id, ...pts.map((p) => p.id)];
 }
 
-/** Consumo medio mensile di materiale per struttura (unità e confezioni) dagli ultimi N mesi, via correlazione esame -> articolo. */
+/**
+ * Consumo medio mensile di materiale per struttura (unità e confezioni) dagli ultimi N mesi.
+ * v0.68.4: quando la struttura ha campioni nella copia Synclab, gli articoli abbinati a un'etichetta (contenitori) si misurano dai
+ * CAMPIONI (pivot per articolo, lib/synclab.js consumoDaCampioni: un campione = un contenitore, anche se serve più esami) e non più da
+ * esami × correlazione, che sovrastima quando più esami condividono la provetta. Esami × correlazione resta per le strutture senza
+ * campioni e, nelle altre, per i soli articoli non abbinati ad alcuna etichetta (materiale che un campione non misura). Ogni voce porta
+ * fonte 'CAMPIONI' o 'ESAMI'.
+ */
 export async function consumptionByArticle(strutturaId, months = 3) {
   const ids = await productionStrutture(strutturaId);
+  const camp = await consumoDaCampioni(ids, months).catch((e) => { console.warn(`[orders] consumo dai campioni non calcolato: ${e.message}`); return null; });
   const rows = await many(`
     WITH mesi AS (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2)
     SELECT m.article_id, a.pack_size, sum(p.qty * m.qty_per_exam)::numeric AS units, count(DISTINCT p.month)::int AS n_months,
@@ -192,10 +234,12 @@ export async function consumptionByArticle(strutturaId, months = 3) {
   const nMonths = (await one(`SELECT count(*)::int AS n FROM (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2) x`, [ids, months]))?.n || 0;
   const map = new Map();
   for (const r of rows) {
+    if (camp && camp.articoliEtichetta.has(r.article_id)) continue;   // articolo di un'etichetta: lo misurano i campioni
     const units = Number(r.units) / Math.max(1, nMonths);
-    map.set(r.article_id, { units: Math.round(units * 100) / 100, packs: Math.round((units / r.pack_size) * 100) / 100, months: nMonths, detail: r.detail });
+    map.set(r.article_id, { units: Math.round(units * 100) / 100, packs: Math.round((units / r.pack_size) * 100) / 100, months: nMonths, fonte: 'ESAMI', detail: r.detail });
   }
-  return { map, months: nMonths };
+  if (camp) for (const [id, v] of camp.map) map.set(id, v);
+  return { map, months: camp ? Math.max(camp.months, nMonths) : nMonths, fonte: camp ? 'CAMPIONI' : 'ESAMI', mesi_campioni: camp?.months ?? 0, mesi_esami: nMonths };
 }
 
 export { parseHl7 };

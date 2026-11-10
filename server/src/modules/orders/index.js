@@ -12,7 +12,7 @@ import { ah } from './lib/util.js';
 import { requireRole, isOps, OPS_ROLES, strutturaDiUtente } from './lib/access.js';
 import { runDailyAlerts } from './lib/alerts.js';
 import { sincronizzaCatalogo, statoCatalogo } from './lib/silvaCatalog.js';
-import { pushPendingOrders, aggiornaStatiSilva } from './lib/silva.js';
+import { pushPendingOrders, aggiornaStatiSilva, aggiornaDestinazioniEAbbina } from './lib/silva.js';
 import silvaRoutes from './routes/silva.js';
 import { getConnector } from '../../lib/connectors.js';
 import adminRoutes from './routes/admin.js';
@@ -142,6 +142,14 @@ export default function mount(app) {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: 'not_live' };
     return aggiornaStatiSilva();
+  }, { runAtStart: false });
+  // Destinazioni Silva (v0.68.3): ogni 6 ore rilegge GET /api/v1/destinazioni e abbina in automatico le unità (sedi TD, Legal entity
+  // senza punti, punti service) con una sola destinazione coincidente per CAP + via e civico o CAP + nome, se il codice è libero.
+  // Solo con modulo LIVE e connettore Silva attivo con la chiave.
+  registerJob(`${KEY}:silva-destinazioni`, 360, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: 'not_live' };
+    return aggiornaDestinazioniEAbbina();
   }, { runAtStart: false });
   registerJob(`${KEY}:silva-catalogo`, 10, async () => {
     const st = await getModuleState(KEY);

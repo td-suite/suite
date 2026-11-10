@@ -8,11 +8,23 @@ import { emailOrder, pushOrderToSilva, anteprimaSilva, statoOrdineSilva } from '
 import { ORDER_COLS, ORDER_JOINS as JOINS, event, markPicked, markShipped, markDelivered, markStored } from '../lib/orderflow.js';
 import { buildOrderPdf } from '../pdf/order.js';
 import { sendMail, opsEmails } from '../lib/mailer.js';
+import { risolviPunto, opzioniPunto, puntoById, puntiAttivi } from '../lib/punti.js';
 
 const r = Router();
 const opt = (s) => s.optional().nullable().transform((v) => (v === '' ? null : v));
 const lineSchema = z.array(z.object({ article_id: z.coerce.number().int(), qty: z.coerce.number().int().min(0).max(9999), note: opt(z.string().max(300)) })).max(200);
-const headSchema = { notes: opt(z.string().max(1000)), urgent: z.boolean().optional(), urgent_reason: opt(z.string().max(300)), client_ref: opt(z.string().max(60)) };
+const headSchema = { notes: opt(z.string().max(1000)), urgent: z.boolean().optional(), urgent_reason: opt(z.string().max(300)), client_ref: opt(z.string().max(60)), delivery_site_id: z.coerce.number().int().positive().optional().nullable() };
+
+// Il punto di consegna si cambia fino alla trasmissione a Silva: l'Area Operations in bozza, inviato e approvato non ancora ricevuto da
+// Silva (né in coda dopo un esito incerto, né immutable_order); la struttura solo in bozza. Dopo la ricevuta di Silva è immutabile.
+const SILVA_BLOCCA_PUNTO = ['INVIATO', 'IN_CODA'];
+export function puntoModificabile(user, o) {
+  if (isOps(user)) {
+    if (['BOZZA', 'INVIATO'].includes(o.status)) return true;
+    return o.status === 'APPROVATO' && !SILVA_BLOCCA_PUNTO.includes(o.silva_send_status) && o.silva_error_code !== 'immutable_order';
+  }
+  return o.status === 'BOZZA' && o.struttura_id === user.struttura_id;
+}
 
 async function loadOrder(req, id) {
   const o = await one(`SELECT ${ORDER_COLS} ${JOINS} WHERE o.id=$1`, [id]);
@@ -39,8 +51,24 @@ async function fullDetail(req, id) {
     FROM packages p JOIN articles a ON a.id=p.article_id WHERE p.order_id=$1 ORDER BY a.sort, p.seq`, [id]);
   o.issues = await many('SELECT i.*, u.full_name AS opened_by_name, c.full_name AS closed_by_name FROM issues i LEFT JOIN users u ON u.id=i.opened_by LEFT JOIN users c ON c.id=i.closed_by WHERE i.order_id=$1 ORDER BY i.opened_at', [id]);
   o.struttura = await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]);
+  // punto di consegna (v0.68.3): il punto scelto, i punti attivi della Legal entity e se si può ancora cambiare
+  o.punto_consegna = o.delivery_site_id ? await puntoById(o.delivery_site_id) : null;
+  const opz = o.struttura?.origin === 'ORG' ? await opzioniPunto(req.user, o.struttura_id, isOps(req.user)) : { punti: [], totale: 0, obbligatorio: false, preselezionato: null };
+  o.punti_consegna = opz.punti;
+  o.punto_obbligatorio = opz.totale >= 2;
+  o.punto_mancante = !o.delivery_site_id && opz.totale >= 2 && !['ANNULLATO', 'CHIUSO'].includes(o.status);
+  o.punto_modificabile = opz.totale > 0 && puntoModificabile(req.user, o);
   return o;
 }
+
+// Punti di consegna di una struttura per il form "Consegnare a" del nuovo ordine: punti attivi della Legal entity (nel perimetro
+// dell'utente), obbligatorietà con 2 o più punti, preselezione con uno solo. Sedi TD: elenco vuoto.
+r.get('/punti-consegna', ah(async (req, res) => {
+  const sid = isOps(req.user) ? Number(req.query.struttura_id) || 0 : req.user.struttura_id;
+  if (!sid) return res.json({ punti: [], totale: 0, obbligatorio: false, preselezionato: null });
+  const s = await assertStruttura(req.user, sid);
+  res.json(s.origin === 'ORG' ? await opzioniPunto(req.user, s.id, isOps(req.user)) : { punti: [], totale: 0, obbligatorio: false, preselezionato: null });
+}));
 
 // ---------------- Elenco e dettaglio ----------------
 r.get('/', ah(async (req, res) => {
@@ -49,6 +77,9 @@ r.get('/', ah(async (req, res) => {
   if (req.query.status) where.push(`o.status = ANY(${P.add(String(req.query.status).split(','))}::text[])`);
   if (req.query.kind) where.push(`o.kind=${P.add(req.query.kind)}`);
   if (req.query.struttura_id) where.push(`o.struttura_id=${P.add(Number(req.query.struttura_id))}`);
+  // filtro per punto di consegna (archivio ordini): id del punto, oppure "nessuno" = ordini della Legal entity senza punto indicato
+  if (req.query.delivery_site_id === 'nessuno') where.push('o.delivery_site_id IS NULL');
+  else if (req.query.delivery_site_id) where.push(`o.delivery_site_id=${P.add(Number(req.query.delivery_site_id))}`);
   if (req.query.month) where.push(`to_char(o.created_at AT TIME ZONE 'Europe/Rome', 'YYYY-MM')=${P.add(req.query.month)}`);
   const rows = await many(`SELECT ${ORDER_COLS} ${JOINS} WHERE ${where.join(' AND ')} ORDER BY o.created_at DESC LIMIT 500`, P.values);
   res.json(rows.map(({ pdf, silva_payload, ...o }) => o));
@@ -71,22 +102,26 @@ r.post('/', ah(async (req, res) => {
 
 // Creazione di un ordine in BOZZA per una struttura (carrello e Dotazione di avvio, routes/dotazione.js): controlli di
 // perimetro, numerazione, righe con articoli attivi, evento e audit. Ritorna { id, number }.
-export async function creaOrdine(req, { strutturaId, lines, notes = null, urgent = false, urgent_reason = null, client_ref = null, eventLabel = 'Creato' }) {
+// delivery_site_id: punto di consegna della Legal entity (obbligatorio con 2 o più sedi service attive, preselezionato con una);
+// puntoRichiesto = false per la Dotazione di avvio (il punto si indica all'approvazione).
+export async function creaOrdine(req, { strutturaId, lines, notes = null, urgent = false, urgent_reason = null, client_ref = null, eventLabel = 'Creato', delivery_site_id = null, puntoRichiesto = true }) {
   if (!strutturaId) throw bad('Sede obbligatoria');
   const s = await assertStruttura(req.user, strutturaId);
   if (!s.active) throw bad('Sede disattivata');
   if (urgent && !urgent_reason) throw bad('Motivare la richiesta urgente');
   if (!lines.some((l) => l.qty > 0)) throw bad('Il carrello è vuoto');
+  const punto = await risolviPunto(req.user, s, delivery_site_id, { ops: isOps(req.user), richiesto: puntoRichiesto });
   const origin = isOps(req.user) ? 'OPERATIONS' : 'CLIENTE';
   const out = await tx(async (c) => {
     const number = await nextOrderNumber(c);
-    const row = await c.query(`INSERT INTO orders (number, struttura_id, kind, origin, status, urgent, urgent_reason, notes, client_ref, requested_by)
-      VALUES ($1,$2,$3,$4,'BOZZA',$5,$6,$7,$8,$9) RETURNING id`, [number, s.id, s.kind, origin, Boolean(urgent), urgent_reason, notes, client_ref, req.user.id]);
+    const row = await c.query(`INSERT INTO orders (number, struttura_id, kind, origin, status, urgent, urgent_reason, notes, client_ref, requested_by, delivery_site_id)
+      VALUES ($1,$2,$3,$4,'BOZZA',$5,$6,$7,$8,$9,$10) RETURNING id`, [number, s.id, s.kind, origin, Boolean(urgent), urgent_reason, notes, client_ref, req.user.id, punto]);
     await saveLines(c, row.rows[0].id, lines);
     return { id: row.rows[0].id, number };
   });
-  await event(out.id, req.user.id, eventLabel);
-  await audit(req, 'ORDER_CREATE', 'order', out.id, { struttura: s.code, lines: lines.length });
+  const p = punto ? await puntoById(punto) : null;
+  await event(out.id, req.user.id, p ? `${eventLabel} · consegna a ${p.name}` : eventLabel, p ? { delivery_site_id: p.id } : undefined);
+  await audit(req, 'ORDER_CREATE', 'order', out.id, { struttura: s.code, lines: lines.length, delivery_site_id: punto });
   return out;
 }
 
@@ -95,8 +130,10 @@ r.put('/:id', ah(async (req, res) => {
   assertStatus(o, 'BOZZA');
   const d = parse(z.object({ lines: lineSchema, ...headSchema }), req.body);
   if (d.urgent && !d.urgent_reason) throw bad('Motivare la richiesta urgente');
+  // punto di consegna: se indicato si valida; se assente resta quello dell'ordine
+  const punto = d.delivery_site_id ? await risolviPunto(req.user, o.struttura || await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]), d.delivery_site_id, { ops: isOps(req.user) }) : o.delivery_site_id;
   await tx(async (c) => {
-    await c.query('UPDATE orders SET urgent=$2, urgent_reason=$3, notes=$4, client_ref=$5, updated_at=now() WHERE id=$1', [o.id, Boolean(d.urgent), d.urgent_reason, d.notes, d.client_ref]);
+    await c.query('UPDATE orders SET urgent=$2, urgent_reason=$3, notes=$4, client_ref=$5, delivery_site_id=$6, updated_at=now() WHERE id=$1', [o.id, Boolean(d.urgent), d.urgent_reason, d.notes, d.client_ref, punto]);
     await saveLines(c, o.id, d.lines);
   });
   res.json({ ok: true });
@@ -112,8 +149,8 @@ async function submit(req, id) {
   await event(id, req.user.id, 'Inviato a Toscana Diagnostica', { production_months: months });
   await audit(req, 'ORDER_SUBMIT', 'order', id);
   const to = await opsEmails();
-  if (to.length) await sendMail({ kind: 'NUOVO_ORDINE', refKey: `NUOVO:${id}`, to, strutturaId: o.struttura_id, subject: `Nuovo ordine ${o.number}${o.urgent ? ' URGENTE' : ''} · ${o.struttura_name}`, title: `Ordine ${o.number} da verificare`,
-    body: `${o.struttura_name} ha inviato l'ordine ${o.number}${o.urgent ? ' con richiesta di urgenza: ' + (o.urgent_reason || '') : ''}.\n\nVerificalo in Orders Management: confronto con la produzione media e quantità da approvare.` });
+  if (to.length) await sendMail({ kind: 'NUOVO_ORDINE', refKey: `NUOVO:${id}`, to, strutturaId: o.struttura_id, subject: `Nuovo ordine ${o.number}${o.urgent ? ' URGENTE' : ''} · ${o.struttura_label || o.struttura_name}`, title: `Ordine ${o.number} da verificare`,
+    body: `${o.struttura_label || o.struttura_name} ha inviato l'ordine ${o.number}${o.urgent ? ' con richiesta di urgenza: ' + (o.urgent_reason || '') : ''}.\n\nVerificalo in Orders Management: confronto con la produzione media e quantità da approvare.` });
 }
 r.post('/:id/submit', ah(async (req, res) => { await submit(req, req.params.id); res.json({ ok: true }); }));
 
@@ -143,6 +180,16 @@ async function approve(req, id) {
   assertStatus(o, 'INVIATO', 'BOZZA');
   const n = await one('SELECT coalesce(sum(coalesce(qty_approved, qty_requested)),0)::int AS n FROM order_lines WHERE order_id=$1', [id]);
   if (!n.n) throw bad('Nessuna quantità approvata: annulla l\'ordine invece di approvarlo');
+  // punto di consegna: con 2 o più sedi service attive Ops lo indica prima di approvare (ordini creati prima della 0.68.3 compresi);
+  // con una sola sede si usa quella
+  if (!o.delivery_site_id) {
+    const punti = await puntiAttivi(o.struttura_id);
+    if (punti.length >= 2) throw bad(`Indica il punto di consegna prima di approvare: ${o.struttura_name} ha ${punti.length} sedi service attive (${punti.map((p) => p.name).join(', ')})`);
+    if (punti.length === 1) {
+      await q('UPDATE orders SET delivery_site_id=$2 WHERE id=$1', [id, punti[0].id]);
+      await event(id, req.user.id, `Punto di consegna: ${punti[0].name} (unica sede service attiva)`, { delivery_site_id: punti[0].id });
+    }
+  }
   if (o.kind === 'LAB' && o.status === 'BOZZA') await enrichLines(id, o.struttura_id, o.kind);
   await tx(async (c) => {
     await c.query("UPDATE order_lines SET qty_approved = coalesce(qty_approved, qty_requested) WHERE order_id=$1", [id]);
@@ -160,11 +207,42 @@ async function approve(req, id) {
   const lines = full.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
   const pdf = await buildOrderPdf({ order: full, struttura: full.struttura, lines, company, packages: [], events: full.events });
   await q('UPDATE orders SET pdf=$2 WHERE id=$1', [id, pdf]);
-  if (full.struttura.email) await sendMail({ kind: 'ORDINE_APPROVATO', refKey: `APPROVATO:${id}`, to: full.struttura.email, strutturaId: o.struttura_id, subject: `Ordine ${o.number} approvato`, title: `Ordine ${o.number} approvato`,
-    body: `L'ordine ${o.number} è stato approvato da Toscana Diagnostica ed è in preparazione presso il magazzino. Riceverete un avviso alla consegna.`, attachment: { filename: `${o.number}.pdf`, content: pdf } });
+  if (full.struttura.email) await sendMail({ kind: 'ORDINE_APPROVATO', refKey: `APPROVATO:${id}`, to: full.struttura.email, strutturaId: o.struttura_id, subject: `Ordine ${o.number} approvato${full.delivery_site_name ? ` · ${full.delivery_site_name}` : ''}`, title: `Ordine ${o.number} approvato`,
+    body: `L'ordine ${o.number} (${full.struttura_label}) è stato approvato da Toscana Diagnostica ed è in preparazione presso il magazzino.${full.punto_consegna ? ` Consegna a ${full.punto_consegna.name}, ${[full.punto_consegna.address, [full.punto_consegna.zip, full.punto_consegna.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}.` : ''} Riceverete un avviso alla consegna.`, attachment: { filename: `${o.number}.pdf`, content: pdf } });
   return { ok: true, status: 'APPROVATO' };
 }
 r.post('/:id/approve', requireRole(...OPS_ROLES), ah(async (req, res) => res.json(await approve(req, req.params.id))));
+
+// Cambio del punto di consegna: Ops fino alla trasmissione a Silva (anche dopo l'approvazione, se Silva non ha ancora ricevuto l'ordine),
+// la struttura in bozza. Dopo la ricevuta di Silva (o con un invio dall'esito incerto in coda) l'ordine è immutabile.
+r.put('/:id/punto-consegna', ah(async (req, res) => {
+  const o = await loadOrder(req, req.params.id);
+  const d = parse(z.object({ delivery_site_id: z.coerce.number().int().positive() }), req.body || {});
+  if (!puntoModificabile(req.user, o)) {
+    if (o.silva_send_status === 'INVIATO') throw bad(`L'ordine ${o.number} è già presso Silva: il punto di consegna non si cambia più (ordine immutabile)`);
+    if (o.silva_send_status === 'IN_CODA') throw bad(`L'ordine ${o.number} ha un invio a Silva dall'esito incerto: il punto di consegna non si cambia (Silva potrebbe averlo già acquisito)`);
+    throw bad(isOps(req.user) ? `Ordine ${o.status}: il punto di consegna si cambia fino alla trasmissione a Silva` : 'Il punto di consegna si cambia solo in bozza: dopo l\'invio lo cambia l\'Area Operations');
+  }
+  const s = await one('SELECT * FROM strutture_v WHERE id=$1', [o.struttura_id]);
+  const punto = await risolviPunto(req.user, s, d.delivery_site_id, { ops: isOps(req.user) });
+  if (punto === o.delivery_site_id) return res.json({ ok: true, invariato: true });
+  const prima = o.delivery_site_id ? await puntoById(o.delivery_site_id) : null;
+  const dopo = await puntoById(punto);
+  await q('UPDATE orders SET delivery_site_id=$2, updated_at=now() WHERE id=$1', [o.id, punto]);
+  // un ordine bloccato per il punto (o per la destinazione del punto precedente) si ricontrolla alla prossima trasmissione
+  if (o.silva_send_status === 'BLOCCATO' || o.silva_send_status === 'ERRORE_DATI') await q("UPDATE orders SET silva_send_status=CASE WHEN silva_send_status='BLOCCATO' THEN NULL ELSE silva_send_status END, silva_problemi=NULL WHERE id=$1", [o.id]);
+  await event(o.id, req.user.id, prima ? `Punto di consegna cambiato: da ${prima.name} a ${dopo.name}` : `Punto di consegna indicato: ${dopo.name}`, { da: prima?.id || null, a: punto });
+  await audit(req, 'ORDER_PUNTO_CONSEGNA', 'order', o.id, { da: prima?.id || null, a: punto });
+  // il PDF archiviato all'approvazione riporta il punto: si rigenera
+  if (o.pdf || o.status === 'APPROVATO') {
+    const full = await fullDetail(req, o.id);
+    const company = await companyInfo();
+    const cats = await many('SELECT code, name FROM categories');
+    const lines = full.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
+    await q('UPDATE orders SET pdf=$2 WHERE id=$1', [o.id, await buildOrderPdf({ order: full, struttura: full.struttura, lines, company, packages: [], events: full.events })]);
+  }
+  res.json({ ok: true, delivery_site_id: punto });
+}));
 
 // Fase 3: trasmissione a Silva su richiesta dell'Area Operations (Guida tecnica API ordini v1). Finché il primo invio concordato con
 // Silva non è confermato nel connettore serve { conferma: true }: la POST crea un ordine reale in preparazione presso Silva.
@@ -359,3 +437,5 @@ function parseGs1(code) {
 
 export default r;
 export { itDate, ARTICLE_COLS };
+// per i test (approvazione con il controllo del punto di consegna, v0.68.3)
+export { approve as approvaOrdine, fullDetail as dettaglioOrdine };

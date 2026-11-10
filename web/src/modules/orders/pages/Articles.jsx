@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useApi, Field, Loading, ErrorBox, Badge, Modal, Card, useToast } from '../components/ui.jsx';
@@ -7,8 +7,9 @@ import { ProductArt } from '../components/art.jsx';
 // Visibilità a quattro tipologie di struttura più "Tutti" (stesse colonne del Magazzino Centrale)
 const VIS = [['visible_all', 'Tutti'], ['visible_sedi', 'Punti Prelievo'], ['visible_poli', 'Centro Polidiagnostico'], ['visible_lab', 'Laboratorio di Analisi'], ['visible_service', 'Service']];
 
-// Catalogo articoli: elenco chiuso del MOD252 (48 voci). Il confezionamento è un'ipotesi da validare: si modifica qui.
-export default function Articles() {
+// Magazzino Centrale · scheda "Articoli ordinabili" (v0.68.4, l'ex Catalogo articoli): visibilità, confezione, categoria, codice Silva ed
+// etichetta del gestionale abbinata (Correlazione esami e materiali). evidenzia = id dell'articolo da mostrare (link dalle giacenze).
+export default function Articles({ tabs = null, evidenzia = null }) {
   const { user } = useAuth();
   const sup = user.role === 'SUPERADMIN';
   const toast = useToast();
@@ -30,6 +31,8 @@ export default function Articles() {
     } catch (e) { setErr(e); }
   };
   const reinterpreta = async () => { setErr(null); try { const r = await api.post('/warehouse/silva/reinterpreta', {}); toast(`Icone interpretate: ${r.cambiati} articoli ricollocati su ${r.esaminati}`); reload(); } catch (e) { setErr(e); } };
+  // riga evidenziata dal link "ordinabile" della scheda Giacenze Silva
+  useEffect(() => { if (evidenzia && data) document.getElementById(`art-${evidenzia}`)?.scrollIntoView({ block: 'center' }); }, [evidenzia, data]);
   let lastCat = null;
   return (
     <div className="page">
@@ -39,22 +42,23 @@ export default function Articles() {
         <div className="small" style={{ marginTop: 6 }}><b>{plan.disattivati.length}</b> da disattivare{plan.disattivati.length > 0 && <>: {plan.disattivati.slice(0, 60).map((a) => `${a.code} (${a.riferimenti})`).join(', ')}{plan.disattivati.length > 60 ? '…' : ''}</>}</div>
       </Modal>}
       <div className="page-head">
-        <div><h1>Catalogo articoli</h1><div className="sub">Articoli del Magazzino Centrale (letti dall'API Silva, con categoria e icona per interpretazione della descrizione). Confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui.</div></div>
+        <div><h1>Magazzino Centrale</h1><div className="sub">Articoli ordinabili: gli articoli del Magazzino Centrale (letti dall'API Silva, con categoria e icona per interpretazione della descrizione). Visibilità, confezionamento, codice a barre, fattore di copertura e soglia di scorta si gestiscono qui; l'etichetta è quella del gestionale abbinata in Correlazione esami e materiali.</div></div>
         {sup && <button className="btn ghost danger" title="Elimina o disattiva gli articoli non importati da Silva" onClick={() => pulizia(true)}>Pulisci il caricato a mano</button>}
         {sup && <button className="btn ghost" title="Categoria, icona e colore dalla descrizione degli articoli Silva ancora in Altri articoli" onClick={reinterpreta}>Icone per interpretazione</button>}
         {sup && <button className="btn" onClick={() => setEdit({ code: '', category_code: 'PROVETTE', name: '', unit: 'n.', pack_size: 1, pack_label: '', color: '#71B1BD', gtin: '', silva_code: '', coverage_factor: 1.5, min_stock_packs: 0, lab_only: false, active: true, visible_all: true })}>+ Nuovo articolo</button>}
       </div>
+      {tabs}
       <div className="alert info" style={{ marginBottom: 14 }}>Le quantità arrivano dall'API Silva come giacenza fisica, senza conversione in confezioni; il confezionamento si imposta qui per articolo. Lotti, scadenze e GTIN non sono ancora valorizzati da Silva.</div>
       <ErrorBox error={err} />
       <Card flush>
         {!data ? <Loading /> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th /><th>Codice</th><th>Articolo</th><th>Unità del modulo</th><th className="num">Unità/conf.</th><th>Confezione</th><th>GTIN</th>{VIS.map(([k, l]) => <th key={k} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 84 }}>{l}</th>)}<th className="num">Fattore</th><th className="num">Soglia</th><th className="num">Correlazioni</th><th>Stato</th><th /></tr></thead>
+            <thead><tr><th /><th>Codice</th><th>Articolo</th><th>Codice Silva</th><th>Etichetta abbinata</th><th>Unità del modulo</th><th className="num">Unità/conf.</th><th>Confezione</th><th>GTIN</th>{VIS.map(([k, l]) => <th key={k} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 84 }}>{l}</th>)}<th className="num">Fattore</th><th className="num">Soglia</th><th className="num">Correlazioni</th><th>Stato</th><th /></tr></thead>
             <tbody>{data.map((a) => { const catRow = a.category_code !== lastCat ? (lastCat = a.category_code, true) : false; return [
-              catRow && <tr key={`c${a.category_code}`}><td colSpan={17} style={{ background: 'var(--teal-050)', color: 'var(--teal)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{a.category_name}</td></tr>,
-              <tr key={a.id}>
+              catRow && <tr key={`c${a.category_code}`}><td colSpan={19} style={{ background: 'var(--teal-050)', color: 'var(--teal)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{a.category_name}</td></tr>,
+              <tr key={a.id} id={`art-${a.id}`} style={evidenzia === a.id ? { background: 'var(--teal-050)', outline: '2px solid var(--teal)' } : undefined}>
                 <td><ProductArt icon={a.icon} color={a.color} size={34} /></td>
-                <td className="mono">{a.code}</td><td className="strong">{a.name}{a.source === 'SILVA' && <> <Badge tone="mauve">dal feed Silva</Badge></>}</td><td className="small">{a.unit}</td>
+                <td className="mono">{a.code}</td><td className="strong">{a.name}{a.source === 'SILVA' && <> <Badge tone="mauve">dal feed Silva</Badge></>}</td><td className="mono small">{a.silva_code || <span className="muted">–</span>}</td><td className="small">{a.etichette || <span className="muted">–</span>}</td><td className="small">{a.unit}</td>
                 <td className="num">{a.pack_size}</td><td className="small">{a.pack_label}</td><td className="mono small">{a.gtin || '–'}</td>
                 {VIS.map(([k, l]) => <td key={k} style={{ textAlign: 'center' }} title={l}>{a[k] ? <span className="green strong">✓</span> : <span className="muted">–</span>}</td>)}
                 <td className="num">{Number(a.coverage_factor).toLocaleString('it-IT')}</td><td className="num">{a.min_stock_packs || '–'}</td><td className="num">{a.mappings_count}</td>

@@ -22,7 +22,7 @@ export default function Turni() {
   const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Turni</h1><div className="sub">Pianificazione mensile del personale medico e sanitario per sede. Il mese diventa visibile a tutti quando viene confermato.</div></div>
+      <div className="page-head"><div><h1>Turni</h1><div className="sub">Turni del mese per sede: medici, personale sanitario e accettazione, generati dal piano di Sedi e ambulatori o inseriti a mano. Il mese diventa visibile a tutti quando viene confermato.</div></div>
         <div className="row">
           <button className="btn ghost sm" onClick={() => setMese(addMonths(mese, -1))}>‹</button><b style={{ minWidth: 130, textAlign: 'center' }}>{meseTxt(mese)}</b><button className="btn ghost sm" onClick={() => setMese(addMonths(mese, 1))}>›</button>
           <select value={sede} onChange={(e) => setSede(e.target.value)} style={{ width: 'auto' }}><option value="">Tutte le sedi</option>{(sedi.data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
@@ -44,13 +44,13 @@ export default function Turni() {
             {days.map((d) => { const g = dow(d); const list = byDay[d] || []; return (
               <div key={d} className={`turni-day ${g === 6 ? 'off' : ''} ${d === today ? 'today' : ''}`}>
                 <div className="dn"><span>{Number(d.slice(8))}</span>{gest && <button className="iconbtn" title="Aggiungi turno" onClick={() => setEdit({ sede_id: sede || sedi.data[0].id, data: d, ora_da: '08:00', ora_a: '14:00', prof_id: '', profilo: '', attivita: '', nota: '' })}>+</button>}</div>
-                {list.map((t) => <div key={t.id} className={`turno ${!t.prof_id ? 'scoperto' : t.prof_tipo === 'medico' ? 'medico' : ''}`} title={`${sm[t.sede_id] || t.sede_id} · ${t.attivita || ''}`} onClick={() => gest && setEdit({ ...t, prof_id: t.prof_id || '', profilo: t.profilo || '', attivita: t.attivita || '', nota: t.nota || '' })}>
+                {list.map((t) => <div key={t.id} className={`turno ${!t.prof_id ? 'scoperto' : t.prof_tipo === 'medico' ? 'medico' : t.profilo === 'Accettazione' ? 'accettazione' : ''}`} title={`${sm[t.sede_id] || t.sede_id} · ${t.attivita || ''}`} onClick={() => gest && setEdit({ ...t, prof_id: t.prof_id || '', profilo: t.profilo || '', attivita: t.attivita || '', nota: t.nota || '' })}>
                   <div className="who">{t.ora_da}–{t.ora_a} {t.prof_nome || `SCOPERTO${t.profilo ? ' · ' + t.profilo : ''}`}</div>{!sede && <div style={{ opacity: .8 }}>{(sm[t.sede_id] || '').split(' · ').pop()}</div>}</div>)}
               </div>); })}
           </div>)}
       </>)}
       {edit && <TurnoModal t={edit} sedi={sedi.data} profs={(profs.data || []).filter((p) => p.attivo !== false)} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} toast={toast} />}
-      {gen && <GeneraModal mese={mese} sedi={sedi.data} onClose={() => setGen(false)} onDone={() => { setGen(false); reload(); }} toast={toast} />}
+      {gen && <GeneraModal mese={mese} sedi={sedi.data} sedeIniziale={sede} onClose={() => setGen(false)} onDone={() => { setGen(false); reload(); }} toast={toast} />}
     </div>
   );
 }
@@ -79,17 +79,49 @@ function TurnoModal({ t, sedi, profs, onClose, onSaved, toast }) {
   );
 }
 
-function GeneraModal({ mese, sedi, onClose, onDone, toast }) {
-  const [f, setF] = useState({ sede_id: '', tipo: 'tutti', sovrascrivi: false }); const [busy, setBusy] = useState(false);
-  const run = async () => { setBusy(true); try { const r = await api.post('/personale/turni/genera', { mese, sede_id: f.sede_id || null, tipo: f.tipo, sovrascrivi: f.sovrascrivi }); toast(`Creati ${r.created} turni${r.skipped ? `, ${r.skipped} già presenti` : ''}${r.nonCensiti.length ? ` · non censiti come professionisti: ${r.nonCensiti.join(', ')}` : ''}`); onDone(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
+// Genera dalla pianificazione (v0.68.4): impegni della settimana-tipo di ogni sede (medici in ambulatorio, personale sanitario di
+// supporto e del Punto prelievi, accettazione al desk) applicati al mese o a una settimana. L'esito resta nella finestra: turni creati,
+// schede Room create in automatico, persone della sede non agganciabili (con il motivo, il link alla sede e alla Diagnostica D52).
+function GeneraModal({ mese, sedi, sedeIniziale = '', onClose, onDone, toast }) {
+  const lunedi = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+  const oggi = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState({ periodo: 'mese', settimana: lunedi(oggi.startsWith(mese) ? oggi : `${mese}-01`), sede_id: sedeIniziale, tipo: 'tutti', sovrascrivi: false }); const [busy, setBusy] = useState(false);
+  const [esito, setEsito] = useState(null);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const body = { sede_id: f.sede_id || null, tipo: f.tipo, sovrascrivi: f.sovrascrivi, ...(f.periodo === 'settimana' ? { settimana: f.settimana } : { mese }) };
+      const r = await api.post('/personale/turni/genera', body);
+      setEsito(r); toast(`Creati ${r.created} turni${r.skipped ? `, ${r.skipped} già presenti` : ''}${r.nonAgganciati?.length ? ` · ${r.nonAgganciati.length === 1 ? '1 persona della sede non agganciabile' : `${r.nonAgganciati.length} persone della sede non agganciabili`}` : ''}`);
+    } catch (e) { toast(e.message, 'err'); }
+    setBusy(false);
+  };
+  const GR = { medico: 'medico', sanitario: 'personale sanitario', accettazione: 'accettazione' };
   return (
-    <Modal title={`Genera i turni di ${meseTxt(mese)} dalla pianificazione`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={run}>{busy ? 'Genero…' : 'Genera'}</button></>}>
-      <p>Applica la settimana-tipo di ogni sede (assegnazioni medico → ambulatorio e sanitario di supporto) ai giorni del mese, saltando le chiusure di sede. I turni già esistenti nella stessa fascia non vengono duplicati. Le persone non ancora censite come professionisti vengono segnalate: importale dalla pagina Professionisti e rigenera.</p>
-      <div className="form-grid">
-        <Field label="Sede"><select value={f.sede_id} onChange={(e) => setF({ ...f, sede_id: e.target.value })}><option value="">Tutte</option>{sedi.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select></Field>
-        <Field label="Chi"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}><option value="tutti">Medici e sanitari</option><option value="sanitari">Solo personale sanitario</option><option value="medici">Solo medici</option></select></Field>
-      </div>
-      <label className="f inline" style={{ marginTop: 8 }}><input type="checkbox" checked={f.sovrascrivi} onChange={(e) => setF({ ...f, sovrascrivi: e.target.checked })} />Rigenera: elimina prima i turni generati in precedenza (non quelli con presenze confermate)</label>
+    <Modal wide title={`Genera i turni dalla pianificazione`} onClose={esito ? onDone : onClose} footer={esito ? <><span className="spacer" /><button className="btn" onClick={onDone}>Chiudi e mostra i turni</button></> : <><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy} onClick={run}>{busy ? 'Genero…' : 'Genera'}</button></>}>
+      {!esito ? <>
+        <p>Applica il piano calcolato di ogni sede (Sedi e ambulatori) alle date: <b>medici</b> con ambulatorio e fascia, <b>personale sanitario</b> di supporto e del Punto prelievi, <b>accettazione</b> con i turni del desk (settimane A e B alternate se c'è la turnazione). Salta i giorni di chiusura della sede e le chiusure del Calendario; i turni già presenti nella stessa fascia non si duplicano. Chi è nel personale della sede riceve da solo la scheda Room se non l'ha.</p>
+        <div className="form-grid">
+          <Field label="Periodo"><select value={f.periodo} onChange={(e) => setF({ ...f, periodo: e.target.value })}><option value="mese">Tutto {meseTxt(mese)}</option><option value="settimana">Una settimana</option></select></Field>
+          {f.periodo === 'settimana' && <Field label="Settimana dal lunedì"><input type="date" value={f.settimana} onChange={(e) => e.target.value && setF({ ...f, settimana: lunedi(e.target.value) })} /></Field>}
+          <Field label="Sede"><select value={f.sede_id} onChange={(e) => setF({ ...f, sede_id: e.target.value })}><option value="">Tutte</option>{sedi.map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select></Field>
+          <Field label="Chi"><select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}><option value="tutti">Tutti: medici, personale sanitario, accettazione</option><option value="medici">Solo medici</option><option value="sanitari">Solo personale sanitario</option><option value="accettazione">Solo accettazione</option></select></Field>
+        </div>
+        <label className="f inline" style={{ marginTop: 8 }}><input type="checkbox" checked={f.sovrascrivi} onChange={(e) => setF({ ...f, sovrascrivi: e.target.checked })} />Rigenera: elimina prima i turni generati in precedenza nel periodo (non quelli con presenze confermate)</label>
+      </> : <div data-testid="genera-esito">
+        <div className="alert info" style={{ marginBottom: 10 }}>Dal {itD(esito.dal)} al {itD(esito.al)}: <b>{esito.created}</b> turni creati{esito.skipped ? `, ${esito.skipped} già presenti` : ''}{esito.schede_create ? ` · ${esito.schede_create} schede Room create in automatico` : ''}.{esito.perSede?.length > 1 ? ' ' + esito.perSede.map((x) => `${x.sede}: ${x.creati}`).join(' · ') : ''}</div>
+        {esito.nonAgganciati?.length > 0 && <div className="alert warn" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, marginBottom: 10 }}>
+          <b>Persone della sede non agganciabili: nessun turno per loro</b>
+          {esito.nonAgganciati.map((x, i) => <div key={i} className="small">· <b>{x.nome}</b> ({GR[x.gruppo] || x.gruppo}, {x.sede}): {x.motivo}. <a href={x.link}>Apri la sede</a></div>)}
+          <div className="small">Elenco completo in <a href={esito.diagnostica}>Diagnostica anagrafica (D52)</a>.</div>
+        </div>}
+        {esito.senzaImpegni?.length > 0 && <div className="alert" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, marginBottom: 10 }}>
+          <b>Nel personale della sede ma senza fasce nel piano</b>
+          {esito.senzaImpegni.map((x, i) => <div key={i} className="small">· {x.nome} ({GR[x.gruppo] || x.gruppo}, {x.sede}): {x.motivo}</div>)}
+        </div>}
+        {esito.sediSenzaPiano?.length > 0 && <div className="alert warn small">{esito.sediSenzaPiano.map((x) => `${x.sede}: ${x.motivo}`).join(' · ')}</div>}
+        {!esito.created && !esito.nonAgganciati?.length && !esito.senzaImpegni?.length && <div className="small muted">Nessun turno nuovo: il periodo era già generato o le sedi non hanno impegni nel piano.</div>}
+      </div>}
     </Modal>
   );
 }

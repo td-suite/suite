@@ -34,7 +34,7 @@ export default function Calendario() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Calendario</h1><div className="sub">La settimana-tipo applicata alle date reali: assenze, sostituzioni, chiusure e sessioni extra. È il controllo operativo di ciò che accade davvero in ogni sede.</div></div>
+        <div><h1>Calendario</h1><div className="sub">La settimana-tipo di ogni sede applicata alle date reali (ambulatori, accettazione, Punto prelievi): assenze, sostituzioni, chiusure e sessioni extra. È il controllo operativo di ciò che accade davvero in ogni sede.</div></div>
         <div className="row">
           {week && (view === 'giorno' ? <button className="btn ghost" onClick={async () => { const g = week.giorni.find((x) => x.iso === day); const { doc } = await pdfCalendario({ ...week, giorni: g ? [g] : [], mondayISO: day, sundayISO: day }, label); doc.save(`Calendario_${day}_${label.replace(/[^\w]+/g, '_')}.pdf`); }}>Scarica PDF giornata</button>
             : <button className="btn ghost" onClick={async () => { const { doc, filename } = await pdfCalendario(week, label); doc.save(filename); }}>Scarica PDF settimana</button>)}
@@ -139,10 +139,11 @@ function SessModal({ sess, net, canEdit, onClose, onAssenza }) {
     <Modal title={`${sess.nome} · ${DAYS[sess.d]} ${itDate(sess.iso)}`} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button>{canEdit && sess.stato !== 'extra' && <button className="btn" onClick={onAssenza}>Segna assenza / sostituzione</button>}</>}>
       <p><b>{sess.sede}</b> · {sess.room} · {m2t(sess.s)}–{m2t(sess.e)}{sess.disciplina ? ` · ${sess.disciplina}` : ''}{sess.san ? ` · supporto ${sess.san}` : ''}</p>
       {STATO[sess.stato] && <p><Badge tone={STATO[sess.stato][0]}>{STATO[sess.stato][1]}</Badge> {sess.sostituto ? `→ ${sess.sostituto}` : ''} {sess.evento?.nota}</p>}
+      {sess.tipo ? <div className="muted small">{sess.tipo === 'accettazione' ? 'Turno del desk di accettazione dal piano della sede (Sedi e ambulatori > Personale): le ore a contratto e la turnazione si cambiano lì.' : 'Copertura del Punto prelievi dal piano della sede.'} I turni del mese si generano da Turni &gt; Genera dalla pianificazione.</div> : <>
       <h3 style={{ marginTop: 10 }}>Sostituti possibili in questa fascia</h3>
       {!subs.length ? <div className="muted small">Nessun altro medico della stessa disciplina libero in questa fascia.</div> : (
         <table className="t"><thead><tr><th>Medico</th><th>Discipline</th><th>Sede</th><th>Disponibilità dichiarata</th></tr></thead>
-          <tbody>{subs.slice(0, 12).map((s) => <tr key={s.key}><td className="strong">{s.nome}</td><td className="small">{s.discipline.join(', ')}</td><td className="small">{s.inSede ? <Badge tone="green">stessa sede</Badge> : <span className="muted">{s.sedi.join('; ')}</span>}</td><td className="small">{s.disponibile ? <Badge tone="green">in orario</Badge> : <span className="muted">fuori dalla sua disponibilità</span>}</td></tr>)}</tbody></table>)}
+          <tbody>{subs.slice(0, 12).map((s) => <tr key={s.key}><td className="strong">{s.nome}</td><td className="small">{s.discipline.join(', ')}</td><td className="small">{s.inSede ? <Badge tone="green">stessa sede</Badge> : <span className="muted">{s.sedi.join('; ')}</span>}</td><td className="small">{s.disponibile ? <Badge tone="green">in orario</Badge> : <span className="muted">fuori dalla sua disponibilità</span>}</td></tr>)}</tbody></table>)}</>}
     </Modal>
   );
 }

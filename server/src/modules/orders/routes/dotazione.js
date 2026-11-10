@@ -266,7 +266,7 @@ r.post('/sedi/:id/ordine', ah(async (req, res) => {
   if (s.stato === 'NON_PIANIFICATA') throw bad('Salva prima il piano');
   if (s.order_id && s.order_status !== 'ANNULLATO') throw conflict(`Ordine già creato: ${s.order_number}`);
   const lines = (await righeCarico(s.load_id)).filter((l) => l.packs_planned > 0).map((l) => ({ article_id: l.article_id, qty: l.packs_planned, note: l.note }));
-  const o = await creaOrdine(req, { strutturaId: s.id, lines, notes: `Dotazione di avvio${s.opened_at ? ` (apertura ${s.opened_at.split('-').reverse().join('/')})` : ''}`, eventLabel: 'Creato dalla Dotazione di avvio' });
+  const o = await creaOrdine(req, { strutturaId: s.id, lines, notes: `Dotazione di avvio${s.opened_at ? ` (apertura ${s.opened_at.split('-').reverse().join('/')})` : ''}`, eventLabel: 'Creato dalla Dotazione di avvio', puntoRichiesto: false });
   await q('UPDATE startup_loads SET order_id=$2, updated_at=now() WHERE id=$1', [s.load_id, o.id]);
   await audit(req, 'DOTAZIONE_ORDINE', 'struttura', s.id, { order_id: o.id, number: o.number });
   res.status(201).json({ ...o, dettaglio: await dettaglio(s.id) });

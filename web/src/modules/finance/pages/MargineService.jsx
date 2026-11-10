@@ -2,6 +2,8 @@
 // CONTRATTUALIZZATI (public.clienti_attivi_v), produzione del mese dalla fonte migliore (inserita o caricata qui, StudioLAB da Retail o
 // Ordini, stima dall'account del Business Hub), ricavo ai prezzi del listino del cliente, costi diretti (ritiri, costo analitico degli
 // esami, pagamenti Finance del cliente), margine. Le ipotesi hanno il badge "stima". Calcoli sul server (GET /controllo/margine-service).
+// v0.68.4 (CEO 10/11/2026): stime solo dei clienti ATTIVI e in pro quota sul periodo (FY atteso × giorni lavorativi dopo l'avvio / 250);
+// colonna "Proiezione FY" (fatturato atteso pieno) a parte, mai sommata; i contrattualizzati non avviati senza produzione non compaiono.
 import React, { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, qs, fileUrl } from '../api.js';
@@ -139,7 +141,7 @@ export default function MargineService() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Margine per cliente Service</h1><div className="sub">Produzione, ricavo ai prezzi dell'offerta, costi diretti e margine dei clienti Service attivi e in avvio.</div></div>
+        <div><h1>Margine per cliente Service</h1><div className="sub">Produzione, ricavo ai prezzi dell'offerta, costi diretti e margine dei clienti Service attivi; stime in pro quota e proiezione FY a parte.</div></div>
         <div className="row">
           <select style={{ width: "auto" }} value={anno} onChange={(e) => set('anno', e.target.value)} aria-label="Anno">{anni.map((a) => <option key={a} value={a}>{a}</option>)}</select>
           <select style={{ width: "auto" }} value={mese} onChange={(e) => set('mese', e.target.value)} aria-label="Mese"><option value="">Anno intero</option>{MESI.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
@@ -153,18 +155,19 @@ export default function MargineService() {
           {Object.entries(x.fonti).filter(([, f]) => f && f.disponibile === false).map(([k, f]) => <div key={k} className="alert warn small" style={{ marginBottom: 8 }}>{f.nota}</div>)}
           {x.avvisi.map((a, i) => <div key={i} className="alert info small" style={{ marginBottom: 8 }}>{a}</div>)}
           <div className="grid g4" style={{ marginBottom: 16 }}>
-            <Kpi label="Clienti Service" value={x.clienti.length} foot={`${x.clienti.filter((c) => c.livello === 'ATTIVO').length} attivi, ${x.clienti.filter((c) => c.livello !== 'ATTIVO').length} in avvio`} />
+            <Kpi label="Clienti Service" value={x.clienti.length} foot={`${x.clienti.filter((c) => c.livello === 'ATTIVO').length} attivi${x.clienti.some((c) => c.livello !== 'ATTIVO') ? `, ${x.clienti.filter((c) => c.livello !== 'ATTIVO').length} in avvio con produzione` : ''}${x.esclusi_non_attivi?.length ? ` · ${x.esclusi_non_attivi.length} contrattualizzati non avviati esclusi` : ''}`} />
             <Kpi label={`Esami · ${x.periodo.etichetta}`} value={n0(T.esami)} foot={T.fonti.length ? `fonti: ${T.fonti.join(', ').toLowerCase()}` : 'nessuna produzione'} />
             <Kpi label="Ricavo effettivo" value={eur(T.ricavo_effettivo)} foot={<span data-testid="ms-effettivo">con stime {eur(T.ricavo)}{T.ricavo_stime ? ` · stime ${eur(T.ricavo_stime)} (${x.clienti.filter((c) => c.totale.ricavo_stime).length} clienti)` : ' · nessuna stima'}{T.ricavo_parziale ? ' · in parte da indicare' : ''}</span>} />
             <Kpi accent label="Margine di linea effettivo" value={T.margine_effettivo == null ? 'n.d.' : eur(T.margine_effettivo)} foot={`con stime ${T.margine == null ? 'n.d.' : eur(T.margine)} · ${pct(T.margine_pct)}`} />
           </div>
+          <div className="alert info small" style={{ marginBottom: 12 }} data-testid="ms-proiezione">Stime in pro quota sul periodo (solo clienti attivi, mesi senza produzione effettiva): <b>{eur(T.ricavo_stime || 0)}</b> · <b>Proiezione FY {x.proiezione?.anno}</b> (fatturato atteso pieno di {x.proiezione?.clienti || 0} clienti attivi, non sommata): <b>{eur(x.proiezione?.importo || 0)}</b></div>
           <Card title={`Clienti · ${x.periodo.etichetta}`} flush actions={manager && <div className="row">
             <button className="btn sm ghost" onClick={() => setModal('prod')} disabled={!x.clienti.length}><Icon name="plus" />Produzione</button>
             <button className="btn sm ghost" onClick={() => setModal('import')}><Icon name="upload" />Carica XLSX</button>
-            <button className="btn sm ghost" onClick={stime} title="Salva come STIMA la produzione stimata dei clienti senza dati (le righe già presenti non cambiano)">Salva le stime</button>
+            <button className="btn sm ghost" onClick={stime} title="Salva come STIMA la stima in pro quota dei clienti attivi senza produzione (le righe già presenti non cambiano)">Salva le stime</button>
           </div>}>
             <div className="table-wrap"><table className="t" data-testid="margine-service">
-              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th>{conDoc && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th>Note</th></tr></thead>
+              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th>{conDoc && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th className="num" title="Fatturato FY atteso pieno della scheda account (solo clienti attivi): non sommato">Proiezione FY {x.proiezione?.anno}</th><th>Note</th></tr></thead>
               <tbody>
                 {righe.map((c) => {
                   const t = c.totale; const [tone, lab] = LIVELLO[c.livello] || ['grey', c.livello];
@@ -178,13 +181,14 @@ export default function MargineService() {
                       <td className="num" title={`Ritiri ${eur(t.costo_ritiri)} · esami ${eur(t.costo_esami)} · pagamenti ${eur(t.pagamenti)}`}>{eur(t.costi_diretti)}</td>
                       <td className="num strong">{t.margine == null ? '–' : eur(t.margine)}</td>
                       <td className="num">{pct(t.margine_pct)}</td>
+                      <td className="num muted">{c.proiezione_fy ? eur(c.proiezione_fy.importo) : '–'}</td>
                       <td><Note t={t} /></td>
                     </tr>
                   );
                 })}
-                {!righe.length && <tr><td colSpan={conDoc ? 9 : 8} className="empty">Nessun cliente Service attivo o contrattualizzato nel Business Hub.</td></tr>}
-                <tr className="pl-sum" data-testid="ms-tot-effettivo"><td>Totale effettivo <span className="small muted">(produzione Synclab, StudioLAB, manuale)</span></td><td /><td className="num">{n0(T.esami - (T.esami_stimati || 0))}</td><td className="num">{eur(T.ricavo_effettivo)}</td>{conDoc && <td className="num">{eur(T.fatturato_documenti)}</td>}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine_effettivo == null ? '–' : eur(T.margine_effettivo)}</td><td /><td /></tr>
-                <tr className="pl-prev" data-testid="ms-tot-stime"><td>Totale con le stime <span className="small muted">({n0(T.esami_stimati || 0)} esami stimati, non sono produzione)</span></td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td>{conDoc && <td />}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td><Note t={T} /></td></tr>
+                {!righe.length && <tr><td colSpan={conDoc ? 10 : 9} className="empty">Nessun cliente Service attivo nel Business Hub.</td></tr>}
+                <tr className="pl-sum" data-testid="ms-tot-effettivo"><td>Totale effettivo <span className="small muted">(produzione Synclab, StudioLAB, manuale)</span></td><td /><td className="num">{n0(T.esami - (T.esami_stimati || 0))}</td><td className="num">{eur(T.ricavo_effettivo)}</td>{conDoc && <td className="num">{eur(T.fatturato_documenti)}</td>}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine_effettivo == null ? '–' : eur(T.margine_effettivo)}</td><td /><td /><td /></tr>
+                <tr className="pl-prev" data-testid="ms-tot-stime"><td>Totale con le stime <span className="small muted">({n0(T.esami_stimati || 0)} esami stimati, non sono produzione)</span></td><td /><td className="num">{n0(T.esami)}</td><td className="num">{eur(T.ricavo)}</td>{conDoc && <td />}<td className="num">{eur(T.costi_diretti)}</td><td className="num">{T.margine == null ? '–' : eur(T.margine)}</td><td className="num">{pct(T.margine_pct)}</td><td className="num muted">{eur(x.proiezione?.importo || 0)}</td><td><Note t={T} /></td></tr>
               </tbody>
             </table></div>
           </Card>

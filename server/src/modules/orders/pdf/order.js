@@ -71,13 +71,16 @@ export async function buildOrderPdf({ order, struttura, lines, company, packages
 
   y = section(doc, y, 'Sezione A · Struttura richiedente e punto di consegna');
   const cw = W / 3;
-  kv(doc, M.left, y, cw * 1.5, 'Ragione sociale', struttura.name); kv(doc, M.left + cw * 1.5, y, cw * 0.75, 'Codice', struttura.code); kv(doc, M.left + cw * 2.25, y, cw * 0.75, 'Codice StudioLab', struttura.studiolab_code);
+  // punto di consegna (v0.68.3): per le Legal entity con più sedi service l'ordine resta della Legal entity, la consegna va al punto
+  const punto = order.punto_consegna || (order.delivery_site_id ? { name: order.delivery_site_name, code: order.delivery_site_code, address: order.delivery_site_address, zip: order.delivery_site_zip, city: order.delivery_site_city, province: order.delivery_site_province } : null);
+  const dove = punto || struttura;
+  kv(doc, M.left, y, cw * 1.5, punto ? 'Ragione sociale · punto di consegna' : 'Ragione sociale', punto ? `${struttura.name} · ${punto.name}` : struttura.name); kv(doc, M.left + cw * 1.5, y, cw * 0.75, 'Codice', punto ? `${struttura.code} · ${punto.code || ''}` : struttura.code); kv(doc, M.left + cw * 2.25, y, cw * 0.75, 'Codice StudioLab', punto ? punto.studiolab_code || struttura.studiolab_code : struttura.studiolab_code);
   y += 24;
-  kv(doc, M.left, y, cw * 1.5, 'Indirizzo di consegna', [struttura.address, [struttura.zip, struttura.city, struttura.province && `(${struttura.province})`].filter(Boolean).join(' ')].filter(Boolean).join(', '));
+  kv(doc, M.left, y, cw * 1.5, punto ? `Indirizzo di consegna (${punto.name})` : 'Indirizzo di consegna', [dove.address, [dove.zip, dove.city, dove.province && `(${dove.province})`].filter(Boolean).join(' ')].filter(Boolean).join(', '));
   kv(doc, M.left + cw * 1.5, y, cw * 0.75, 'Referente', struttura.referente); kv(doc, M.left + cw * 2.25, y, cw * 0.75, 'Telefono', struttura.referente_phone || struttura.phone);
   y += 24;
   kv(doc, M.left, y, cw * 0.75, 'Data richiesta', itDate(order.submitted_at || order.created_at)); kv(doc, M.left + cw * 0.75, y, cw * 0.75, 'Rif. cliente', order.client_ref);
-  kv(doc, M.left + cw * 1.5, y, cw * 0.75, 'Tipo', order.urgent ? 'Urgente' : 'Ordinaria'); kv(doc, M.left + cw * 2.25, y, cw * 0.75, 'Consegna', struttura.delivery_mode === 'RITIRO' ? 'Ritiro presso TD' : 'Giro logistico TD');
+  kv(doc, M.left + cw * 1.5, y, cw * 0.75, 'Tipo', order.urgent ? 'Urgente' : 'Ordinaria'); kv(doc, M.left + cw * 2.25, y, cw * 0.75, 'Consegna', (punto?.configured ? punto.delivery_mode : struttura.delivery_mode) === 'RITIRO' ? 'Ritiro presso TD' : 'Giro logistico TD');
   y += 24;
   if (order.notes || order.urgent_reason) { kv(doc, M.left, y, W, 'Note', [order.urgent_reason && `Urgenza: ${order.urgent_reason}`, order.notes].filter(Boolean).join(' · ')); y += 24; }
 

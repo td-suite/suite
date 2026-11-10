@@ -64,17 +64,16 @@ ripartizione non si fa e la pagina lo dice. Chiave `pl_chiave_ripartizione`: per
 variazione. Ricavi registrati su sedi fuori dal conto (centrali, SERVICE, chiuse) compaiono negli avvisi.
 
 ## Margine per cliente Service
-Clienti: `public.clienti_attivi_v` linea SRV, livelli ATTIVO e CONTRATTUALIZZATO ("in avvio"). Per ogni mese:
+Clienti: `public.clienti_attivi_v` linea SRV. Dalla v0.68.4 stime e proiezione valgono **solo per i clienti ATTIVI**; i
+CONTRATTUALIZZATI non avviati compaiono solo se hanno produzione effettiva nel periodo (vedi "Stime in pro quota", sotto). Per ogni mese:
 - **Produzione**: StudioLAB non ha un'API di produzione per cliente (orders/lib/studiolab.js), ma la Suite la riceve già in due moduli:
   le **vendite B2B di Retail** (codice StudioLAB abbinato alla Legal entity, con codice d'esame e valore) e la **produzione di Ordini**
   (HL7 OML/ORU o import, per codice d'esame, sulla Legal entity o sui suoi punti SERVICE). In più la tabella
   `finance.produzione_service` (org_id, mese, esami, valore, fonte `STUDIOLAB` | `MANUALE` | `STIMA`, righe per esame, note) per
-  l'inserimento manuale e da XLSX nella pagina. Priorità: riga salvata MANUALE/STUDIOLAB → Retail → Ordini → stima salvata → stima
-  calcolata al momento.
-- **Stima** (badge "stima"): volumi giornalieri attesi dell'account del Business Hub (o volume annuo / giorni lavorativi) × giorni
-  lavorativi del mese (`hub_giorni_lavorativi` del Business Hub / 12), al prezzo medio per esame dell'account (o fatturato annuo /
-  volume annuo); nessuna stima prima della data di avvio (effettiva, prevista, o la data di cliente attivo/contrattualizzato) né per i
-  mesi futuri. "Salva le stime" la registra come fonte STIMA senza toccare le righe presenti.
+  l'inserimento manuale e da XLSX nella pagina. Priorità: riga salvata MANUALE/STUDIOLAB → Synclab → Retail → Ordini → stima in pro
+  quota calcolata al momento (solo clienti attivi) → stima salvata.
+- **Stima** (badge "stima", v0.68.4): pro quota del fatturato FY atteso, vedi "Stime in pro quota" sotto. "Salva le stime" la registra
+  come fonte STIMA senza toccare le righe presenti.
 - **Ricavo**: esami ai prezzi del **listino corrente** del cliente (`business.listini`, versione scelta o ultima: `versioneCorrente` di
   business/lib/listino.js; prezzo offerto, altrimenti di listino) quando la produzione ha le righe per esame; i codici fuori listino
   valgono il valore registrato. Altrimenti il valore caricato o stimato.
@@ -151,4 +150,35 @@ indicare), tabella costi esami. Le ipotesi compaiono nella nota "Come è calcola
   `margine_effettivo`, `esami_stimati` in `sommaMesi`).
 - Test: `server/test/v0681-correlazioni.test.mjs` (un cliente stimato e uno Synclab: il totale esclude la stima; stima salvata fuori,
   riga MANUALE dentro). Schermate `docs/screens/finance-conto-economico.png`, `finance-margine-service.png` (collaudo con dati sintetici).
+
+## Stime in pro quota sui soli clienti attivi e Proiezione FY (10/11/2026, v0.68.4)
+Richiesta del CEO: la riga "Stime commerciali (non sommate)" mostrava "22 clienti stimati · totale 1.483.814,01 €", cioè in pratica il
+fatturato FY dichiarato: la stima mensile era volumi × (250/12) giorni × prezzo per **ogni** mese e per ogni cliente ATTIVO **o
+CONTRATTUALIZZATO** (anche senza avvio: senza data di avvio la stima partiva dal 1° gennaio), con il mese in corso contato per intero.
+- **Chi**: solo i clienti con livello **ATTIVO** di `public.clienti_attivi_v` (= `business.accounts.cliente_attivo`, la regola unica del
+  Business Hub): niente prospect, niente contrattualizzati non avviati (questi restano fuori anche dal Margine Service, salvo produzione
+  effettiva nel periodo; la risposta li elenca in `esclusi_non_attivi`).
+- **Quanto**: `contoEconomico.js stimaProQuota` = fatturato FY atteso × giorni lavorativi del mese successivi alla data di avvio e non
+  successivi a oggi / giorni lavorativi dell'anno (`hub_giorni_lavorativi`, 250). È la stessa regola del pro quota della scheda account:
+  le funzioni pure stanno in `business/lib/proQuota.js` (`giorniLavorativi`, `dataAvvio`, `proQuota`, nuova `proQuotaPeriodo`;
+  `synclabAccount.js` le riesporta) ed esami stimati = `volumiGiornalieri` di `business/lib/processo.js` × gli stessi giorni.
+  Mese selezionato = giorni lavorativi di quel mese dall'avvio (il mese in corso fino a oggi); anno = somma dei mesi dall'avvio a fine
+  periodo/oggi, mai oltre il FY atteso pieno (`giorniUsati`). Avvio = data effettiva, prevista o di cliente attivo (`attivo_dal`); senza
+  nessuna data si parte dall'inizio del periodo (dichiarato nella descrizione). Senza fatturato FY atteso vale l'equivalente volumi
+  giornalieri × 250 × prezzo medio; senza nemmeno quelli, nessuna stima e un avviso con i nomi dei clienti.
+- **Stima salvata** (fonte STIMA in `produzione_service`): il pro quota calcolato prevale; la riga salvata vale solo se il cliente attivo
+  non ha dati economici nella scheda. Le stime salvate prima della v0.68.4 (regola vecchia) restano visibili in "Produzione inserita".
+- **Proiezione FY** (`RIGHE` `proiezione_fy`, gruppo `PROIEZIONE`, non sommato come `STIME` e `CONTROLLO`): fatturato FY atteso pieno dei
+  clienti attivi, anno del periodo + 1 ("Proiezione FY 2027" sul conto 2026), una riga per cliente al Laboratorio, `totale.proiezione`
+  { importo, clienti, anno }. Nel Margine Service: colonna "Proiezione FY", `proiezione` nella risposta, riquadro sopra la tabella.
+- Stessa regola negli export XLSX e PDF di conto economico e margine (righe "Stime commerciali in pro quota" e "Proiezione FY …";
+  colonne "Di cui stima in pro quota" e "Proiezione FY" nel margine), nel "Da dove viene" e nella nota "Come è calcolato".
+- Test: `server/test/finance-controllo.test.mjs`, `server/test/v0684-stime-room.test.mjs` (cliente attivo avviato il 16/10 → stima di
+  ottobre = 50.000 × 11 / 250 = 2.200 €; prospect e contrattualizzato esclusi; proiezione FY 2027 separata e mai nei ricavi).
+  Schermata `docs/screens/finance-conto-economico.png`.
+- Verifica in produzione: Conto economico, anno in corso e mese in corso: la riga "Stime commerciali" deve dire "pro quota … · N clienti
+  attivi" con N = `SELECT count(*) FROM public.clienti_attivi_v WHERE linea='SRV' AND livello='ATTIVO';` (meno quelli con produzione
+  effettiva nel periodo) e la "Proiezione FY 2027" = `SELECT sum(fatturato_fy_atteso) FROM business.accounts WHERE linea='SRV' AND
+  cliente_attivo;` (più gli equivalenti da volumi e prezzo). Stime salvate con la regola vecchia, da rivedere o eliminare:
+  `SELECT org_id, mese, valore, note FROM finance.produzione_service WHERE fonte='STIMA' AND coalesce(note,'') NOT LIKE 'Stima in pro quota%';`
 

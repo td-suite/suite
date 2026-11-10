@@ -330,6 +330,7 @@ th.sortable:hover { color: var(--teal); }
 .turno { font-size: 11px; line-height: 1.25; padding: 3px 6px; border-radius: 6px; margin-bottom: 3px; background: var(--teal-050); color: var(--teal); cursor: pointer; border-left: 3px solid var(--teal); }
 .turno.scoperto { background: var(--red-100); color: var(--red); border-left-color: var(--red); }
 .turno.medico { background: var(--mauve-100); color: #6d3f8a; border-left-color: #7A4E9E; }
+.turno.accettazione { background: var(--amber-100); color: var(--amber); border-left-color: var(--amber); }
 .turno .who { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pres-row td { vertical-align: middle; }
 .pres-row.assente { opacity: .6; }

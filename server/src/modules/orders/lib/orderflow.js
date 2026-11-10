@@ -5,7 +5,11 @@ import { one, many, q, tx } from '../db.js';
 import { bad, notFound } from './util.js';
 import { sendMail, opsEmails } from './mailer.js';
 
-export const ORDER_COLS = `o.*, s.name AS struttura_name, s.code AS struttura_code, s.kind AS struttura_kind, s.city AS struttura_city, s.email AS struttura_email,
+// Punto di consegna (v0.68.3): per le Legal entity con più sedi service l'ordine dice dove consegnare (o.delivery_site_id); ovunque si
+// mostra l'ordine si usa struttura_label = "Legal entity · punto" (lista, dettaglio, PDF, email, trasmissione al magazzino, export)
+export const ORDER_COLS = `o.*, s.name AS struttura_name, s.code AS struttura_code, s.kind AS struttura_kind, coalesce(ds.city, s.city) AS struttura_city, s.email AS struttura_email,
+  ds.name AS delivery_site_name, ds.code AS delivery_site_code, ds.city AS delivery_site_city, ds.address AS delivery_site_address, ds.zip AS delivery_site_zip, ds.province AS delivery_site_province,
+  s.name || coalesce(' · ' || ds.name, '') AS struttura_label,
   ru.full_name AS requested_by_name, au.full_name AS approved_by_name, cu.full_name AS received_by_name, ku.full_name AS closed_by_name, su.full_name AS stored_by_name,
   (SELECT count(*)::int FROM order_lines l WHERE l.order_id=o.id AND coalesce(l.qty_approved, l.qty_requested) > 0) AS lines_count,
   (SELECT coalesce(sum(coalesce(l.qty_approved, l.qty_requested)),0)::int FROM order_lines l WHERE l.order_id=o.id) AS packs_total,
@@ -14,7 +18,7 @@ export const ORDER_COLS = `o.*, s.name AS struttura_name, s.code AS struttura_co
   (SELECT count(*)::int FROM packages p WHERE p.order_id=o.id AND p.status='ATTESO') AS packs_pending,
   (SELECT count(*)::int FROM issues i WHERE i.order_id=o.id AND i.status='APERTA') AS open_issues,
   (SELECT count(*)::int FROM order_lines l WHERE l.order_id=o.id AND l.delta_pct IS NOT NULL AND abs(l.delta_pct) > 50) AS anomalies`;
-export const ORDER_JOINS = `FROM orders o JOIN strutture_v s ON s.id=o.struttura_id LEFT JOIN users ru ON ru.id=o.requested_by LEFT JOIN users au ON au.id=o.approved_by
+export const ORDER_JOINS = `FROM orders o JOIN strutture_v s ON s.id=o.struttura_id LEFT JOIN public.sites ds ON ds.id=o.delivery_site_id LEFT JOIN users ru ON ru.id=o.requested_by LEFT JOIN users au ON au.id=o.approved_by
   LEFT JOIN users cu ON cu.id=o.received_by LEFT JOIN users ku ON ku.id=o.closed_by LEFT JOIN users su ON su.id=o.stored_by`;
 
 export async function event(orderId, userId, ev, data) {
@@ -67,8 +71,8 @@ export async function markDelivered(order, { ddt, lines, userId, actor = 'Silva'
         const barcodes = Array.isArray(dl.barcodes) ? dl.barcodes : Array.isArray(dl.codiciBarre) ? dl.codiciBarre : [];
         const expiry = dl.scadenza || dl.expiry || null;
         for (let i = 1; i <= packs; i++) {
-          await c.query(`INSERT INTO packages (struttura_id, article_id, order_id, line_id, seq, status, origin, lot, expiry, barcode) VALUES ($1,$2,$3,$4,$5,'ATTESO','ORDINE',$6,$7,$8)`,
-            [order.struttura_id, ol.article_id, order.id, ol.id, i, dl.lotto || dl.lot || null, expiry ? String(expiry).slice(0, 10) : null, barcodes[i - 1] || null]);
+          await c.query(`INSERT INTO packages (struttura_id, article_id, order_id, line_id, seq, status, origin, lot, expiry, barcode, delivery_site_id) VALUES ($1,$2,$3,$4,$5,'ATTESO','ORDINE',$6,$7,$8,$9)`,
+            [order.struttura_id, ol.article_id, order.id, ol.id, i, dl.lotto || dl.lot || null, expiry ? String(expiry).slice(0, 10) : null, barcodes[i - 1] || null, order.delivery_site_id || null]);
           n++;
         }
         await c.query('UPDATE order_lines SET qty_delivered = coalesce(qty_delivered, 0) + $2 WHERE id=$1', [ol.id, packs]);
@@ -76,7 +80,7 @@ export async function markDelivered(order, { ddt, lines, userId, actor = 'Silva'
     } else {
       for (const ol of olines) {
         for (let i = 1; i <= (ol.qty_approved || 0); i++) {
-          await c.query(`INSERT INTO packages (struttura_id, article_id, order_id, line_id, seq, status, origin) VALUES ($1,$2,$3,$4,$5,'ATTESO','ORDINE')`, [order.struttura_id, ol.article_id, order.id, ol.id, i]);
+          await c.query(`INSERT INTO packages (struttura_id, article_id, order_id, line_id, seq, status, origin, delivery_site_id) VALUES ($1,$2,$3,$4,$5,'ATTESO','ORDINE',$6)`, [order.struttura_id, ol.article_id, order.id, ol.id, i, order.delivery_site_id || null]);
           n++;
         }
         await c.query('UPDATE order_lines SET qty_delivered=$2 WHERE id=$1', [ol.id, ol.qty_approved || 0]);
@@ -90,11 +94,11 @@ export async function markDelivered(order, { ddt, lines, userId, actor = 'Silva'
       await c.query("UPDATE packages SET status='RICEVUTO', received_at=now() WHERE order_id=$1 AND status='ATTESO'", [order.id]);
       await c.query(`UPDATE order_lines l SET qty_received = (SELECT count(*) FROM packages p WHERE p.line_id=l.id AND p.status IN ('RICEVUTO','IN_USO')) WHERE l.order_id=$1`, [order.id]);
     }
-    await c.query('INSERT INTO order_events (order_id, user_id, event, data) VALUES ($1,$2,$3,$4)', [order.id, userId || null, isService ? `Consegnato al cliente (${actor}): processo concluso` : `Consegnato alla struttura (${actor}): da caricare nel magazzino interno`, JSON.stringify({ ddt, packages: n, unknown })]);
+    await c.query('INSERT INTO order_events (order_id, user_id, event, data) VALUES ($1,$2,$3,$4)', [order.id, userId || null, `${isService ? `Consegnato al cliente (${actor})` : `Consegnato alla struttura (${actor})`}${order.delivery_site_name ? ` · punto di consegna ${order.delivery_site_name}` : ''}: ${isService ? 'processo concluso' : 'da caricare nel magazzino interno'}`, JSON.stringify({ ddt, packages: n, unknown, delivery_site_id: order.delivery_site_id || null })]);
   });
   if (order.struttura_email) {
-    await sendMail({ kind: 'CONSEGNA', refKey: `CONSEGNA:${order.id}`, to: order.struttura_email, strutturaId: order.struttura_id, subject: `Ordine ${order.number} consegnato`, title: `Ordine ${order.number} consegnato`,
-      body: order.kind === 'CLIENTE' ? `Il materiale dell'ordine ${order.number} risulta consegnato${ddt ? ` (DDT ${ddt})` : ''}. Eventuali difformità vanno segnalate in Orders Management entro 3 giorni lavorativi.` : `Il materiale dell'ordine ${order.number} risulta consegnato${ddt ? ` (DDT ${ddt})` : ''}. Caricatelo nel magazzino interno dalla pagina "Carico magazzino" leggendo i codici a barre delle confezioni.` });
+    await sendMail({ kind: 'CONSEGNA', refKey: `CONSEGNA:${order.id}`, to: order.struttura_email, strutturaId: order.struttura_id, subject: `Ordine ${order.number} consegnato${order.delivery_site_name ? ` · ${order.delivery_site_name}` : ''}`, title: `Ordine ${order.number} consegnato`,
+      body: order.kind === 'CLIENTE' ? `Il materiale dell'ordine ${order.number} (${order.struttura_label || order.struttura_name}) risulta consegnato${ddt ? ` (DDT ${ddt})` : ''}. Eventuali difformità vanno segnalate in Orders Management entro 3 giorni lavorativi.` : `Il materiale dell'ordine ${order.number} risulta consegnato${ddt ? ` (DDT ${ddt})` : ''}. Caricatelo nel magazzino interno dalla pagina "Carico magazzino" leggendo i codici a barre delle confezioni.` });
   }
   return { status: order.kind === 'CLIENTE' ? 'CHIUSO' : 'CONSEGNATO', unknown };
 }
@@ -117,7 +121,7 @@ export async function markStored(order, { userId, note } = {}) {
   });
   await event(order.id, userId, missing.length ? `Carico completato con ${missing.length} confezioni mancanti` : 'Carico nel magazzino interno completato', { missing: missing.length, note });
   const to = await opsEmails();
-  if (to.length) await sendMail({ kind: 'CARICO', refKey: `CARICO:${order.id}`, to, strutturaId: order.struttura_id, subject: `Ordine ${order.number} caricato da ${order.struttura_name}${missing.length ? ` · ${missing.length} confezioni mancanti` : ''}`, title: `Carico magazzino ${order.number}`,
+  if (to.length) await sendMail({ kind: 'CARICO', refKey: `CARICO:${order.id}`, to, strutturaId: order.struttura_id, subject: `Ordine ${order.number} caricato da ${order.struttura_label || order.struttura_name}${missing.length ? ` · ${missing.length} confezioni mancanti` : ''}`, title: `Carico magazzino ${order.number}`,
     body: missing.length ? `${order.struttura_name} ha caricato l'ordine ${order.number} segnalando ${missing.length} confezioni mancanti: è aperta una difformità.` : `${order.struttura_name} ha caricato per intero l'ordine ${order.number}. Puoi concludere il processo.` });
   return { status: 'IMMAGAZZINATO', missing: missing.length };
 }

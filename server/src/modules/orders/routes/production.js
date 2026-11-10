@@ -6,6 +6,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireRole, isOps, assertStruttura, OPS_ROLES } from '../lib/access.js';
 import { saveProduction, studiolabStatus, whoAmI, syncExamCatalog, productionStrutture } from '../lib/studiolab.js';
+import { pivotArticoli } from '../lib/synclab.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -40,6 +41,37 @@ r.get('/', ah(async (req, res) => {
     FROM production p WHERE p.struttura_id = ANY($1::int[]) AND p.month >= (date_trunc('month', now()) - ($2 || ' months')::interval)::date
     GROUP BY p.month, p.exam_code ORDER BY p.month DESC, p.exam_code`, [ids, months]);
   res.json(rows);
+}));
+
+// v0.68.4 · Pivot per ARTICOLO di magazzino dai campioni della copia Synclab (un campione = un contenitore): colonne mesi, riga per
+// articolo (via etichetta → articolo), totale, media mensile; riga delle etichette non abbinate con il dettaglio. Calcolo a richiesta.
+async function pivotRichiesta(req) {
+  const sid = isOps(req.user) ? Number(req.query.struttura_id) : req.user.struttura_id;
+  if (!sid) throw bad('Sede obbligatoria');
+  const s = await assertStruttura(req.user, sid);
+  const months = Math.min(24, Math.max(1, Number(req.query.months || 6)));
+  return { s, months, pivot: await pivotArticoli(await productionStrutture(sid), months) };
+}
+r.get('/articoli', ah(async (req, res) => { const { pivot, months } = await pivotRichiesta(req); res.json({ ...pivot, months }); }));
+r.get('/articoli.xlsx', ah(async (req, res) => {
+  const { s, pivot } = await pivotRichiesta(req);
+  const mesi = [...pivot.mesi].reverse();   // in Excel dal più vecchio al più recente
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Per articolo');
+  const etMese = (m) => { const [y, mm] = m.split('-'); return `${mm}/${y}`; };
+  ws.addRow([`Produzione per articolo di magazzino (campioni Synclab) · ${s.name}`]); ws.getRow(1).font = { bold: true, size: 13 };
+  ws.addRow(['Un campione = un contenitore consumato, anche quando serve più esami. Fonte: campioni delle accettazioni attive della copia Synclab.']);
+  ws.addRow([]);
+  const head = ws.addRow(['Codice articolo', 'Articolo', 'Confezione', 'Etichette', ...mesi.map(etMese), 'Totale', 'Media mensile', 'Confezioni/mese']); head.font = { bold: true };
+  for (const a of pivot.articoli) ws.addRow([a.code, a.name, a.pack_label, a.etichette.map((e) => e.etichetta || '(non indicata)').join(', '), ...mesi.map((m) => a.mesi[m] || 0), a.totale, a.media, a.confezioni_mese]);
+  if (pivot.non_abbinate.totale) {
+    const rn = ws.addRow(['', 'Etichette non abbinate a un articolo', '', '', ...mesi.map((m) => pivot.non_abbinate.mesi[m] || 0), pivot.non_abbinate.totale, pivot.non_abbinate.media, '']); rn.font = { bold: true, italic: true };
+    for (const e of pivot.non_abbinate.etichette) ws.addRow(['', `   ${e.etichetta || '(non indicata)'}`, '', e.etichetta, ...mesi.map((m) => e.mesi[m] || 0), e.totale, e.media, '']);
+  }
+  const tot = ws.addRow(['', 'Totale campioni', '', '', ...mesi.map((m) => pivot.articoli.reduce((t, a) => t + (a.mesi[m] || 0), 0) + (pivot.non_abbinate.mesi[m] || 0)), pivot.campioni, '', '']); tot.font = { bold: true };
+  ws.columns.forEach((c, i) => { c.width = i === 1 ? 40 : i === 3 ? 28 : 14; });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="produzione_per_articolo_${String(s.code || s.id).replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx"`);
+  res.send(Buffer.from(await wb.xlsx.writeBuffer()));
 }));
 
 // Inserimento manuale di un mese

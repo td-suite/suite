@@ -53,3 +53,5 @@ export const ROLE_HELP = {
 export const PKG_STATUS = { ATTESO: { label: 'Da caricare', tone: 'grey' }, RICEVUTO: { label: 'In giacenza', tone: 'green' }, IN_USO: { label: 'In uso', tone: 'blue' }, NON_RICEVUTO: { label: 'Non ricevuto', tone: 'red' }, RETTIFICATO: { label: 'Rettificato', tone: 'mauve' } };
 export const ISSUE_KIND = { MANCANTE: 'Materiale mancante', DANNEGGIATO: 'Materiale danneggiato', ERRATO: 'Articolo errato', ALTRO: 'Altro' };
 export const PROVIDER = { LOCAL: 'Email e password', ENTRA: 'Solo Microsoft 365', BOTH: 'Microsoft 365 o password', STUDIOLAB: 'Credenziali StudioLab' };
+// Punto di consegna (v0.68.3): "Villa dei Pini · Via Roma 1, 55100 Lucca"
+export const puntoLabel = (p) => { const ind = [p.address, [p.zip, p.city].filter(Boolean).join(' ')].filter(Boolean).join(', '); return `${p.name}${ind ? ` · ${ind}` : ''}`; };

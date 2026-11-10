@@ -31,8 +31,9 @@ export async function assertStruttura(user, strutturaId) {
   const s = await one('SELECT * FROM strutture_v WHERE id=$1', [Number(strutturaId) || 0]);
   if (!s) throw notFound('Struttura non trovata');
   if (!isOps(user) && s.id !== user.struttura_id) throw forbidden('Struttura non autorizzata');
-  // I punti dei clienti service non sono strutture a sé: ordini, giacenze e consegne stanno sulla loro Legal entity
-  if (s.delivery_point) throw bad(s.organization_id ? `${s.name} è un punto di consegna: ordini e giacenze si gestiscono sulla Legal entity ${s.organization_name}` : `${s.name} è un punto service senza Legal entity: collegalo a una Legal entity in Amministrazione > Sedi`);
+  // I punti dei clienti service non sono strutture a sé: ordini e giacenze stanno sulla loro Legal entity (decisione A4); dalla 0.68.3 il
+  // punto si sceglie sull'ordine come punto di consegna ("Consegnare a", orders.delivery_site_id, lib/punti.js)
+  if (s.delivery_point) throw bad(s.organization_id ? `${s.name} è un punto di consegna: l'ordine si fa sulla Legal entity ${s.organization_name} scegliendo ${s.name} in "Consegnare a"` : `${s.name} è un punto service senza Legal entity: collegalo a una Legal entity in Amministrazione > Sedi`);
   return s;
 }
 

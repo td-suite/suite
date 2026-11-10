@@ -1,5 +1,6 @@
 // Vista di rete: specialisti su tutte le sedi, simulatore di proposta, calendario reale. Codice puro (nessun DOM).
 import { computePlan, medDisc, rangesM, intersectM, subtractM, sumM, t2m, m2t, roomExclusive, isPrelievi, DAYS, DAYS_S } from './engine.js';
+import { impegniSettimana, impegniDelGiorno } from './impegni.js';
 
 export { DAYS, DAYS_S, m2t, t2m };
 
@@ -22,17 +23,19 @@ export function identitaPersonale(strutture) {
   };
 }
 
-// Costruisce la rete: piani per sede e indice degli specialisti (medici e professionisti sanitari). x.key resta la chiave del nome (eventi,
-// assenze e agenda la usano); x.personId è la persona dell'anagrafica quando la riga di sede la indica (byPersonId).
+// Costruisce la rete: piani per sede e indice delle persone del personale di sede (medici, professionisti sanitari e, dalla v0.68.4,
+// accettazione). x.key resta la chiave del nome (eventi, assenze e agenda la usano); x.personId è la persona dell'anagrafica quando la
+// riga di sede la indica (byPersonId). Oltre alle sessioni in ambulatorio, le sessioni comprendono i turni del desk di accettazione e la
+// copertura del Punto prelievi (lib/impegni.js, gli stessi impegni da cui Turni genera i turni).
 export function buildNetwork(strutture) {
   const ident = identitaPersonale(strutture);
   const dup = {}; strutture.forEach((s) => { dup[s.denominazione] = (dup[s.denominazione] || 0) + 1; });
   const labelOf = (s) => (s.nomeSede || dup[s.denominazione] < 2 || !s.indirizzo ? sedeLabel(s) : `${s.denominazione} · ${String(s.indirizzo).split(',')[0].trim()}`);
-  const sedi = strutture.map((s) => { let plan = null; try { plan = computePlan(s); } catch { plan = null; } return { s, plan, label: labelOf(s) }; });
+  const sedi = strutture.map((s) => { let plan = null, impegni = []; try { plan = computePlan(s); impegni = impegniSettimana(s, plan); } catch { plan = null; } return { s, plan, impegni, label: labelOf(s) }; });
   const spec = new Map();
-  for (const { s, plan, label } of sedi) {
+  for (const { s, plan, impegni, label } of sedi) {
     for (const p of s.personale) {
-      if (!p.nome?.trim() || !['medico', 'sanitario'].includes(p.tipo)) continue;
+      if (!p.nome?.trim() || !['medico', 'sanitario', 'accettazione'].includes(p.tipo)) continue;
       const key = personKey(p.nome);
       const who = ident(p);
       if (!spec.has(who.id)) spec.set(who.id, { key, personId: who.personId, nome: p.nome.trim(), tipo: p.tipo, attivita: isAttivita(p), discipline: new Set(), profili: new Set(), attrezzature: new Set(), email: '', sedi: [], sessioni: [], dispBySede: {} });
@@ -48,6 +51,8 @@ export function buildNetwork(strutture) {
         if (a.medId === p.id) x.sessioni.push({ sedeId: s.id, sede: label, d: a.d, s: a.s, e: a.e, room: plan.byId[a.roomId].nome, roomId: a.roomId, ruolo: 'titolare', disciplina: medDisc(p).join(', '), personaId: p.id, slots: a.slots, sanId: a.sanId, note: p.note || '' });
         if (a.sanId === p.id) x.sessioni.push({ sedeId: s.id, sede: label, d: a.d, s: a.s, e: a.e, room: plan.byId[a.roomId].nome, roomId: a.roomId, ruolo: 'supporto a ' + plan.byId[a.medId].nome, disciplina: medDisc(plan.byId[a.medId]).join(', '), personaId: p.id, medId: a.medId });
       }
+      // desk di accettazione e Punto prelievi (settimana A con la turnazione)
+      for (const i of impegni) if (i.rowId === p.id && (i.sett == null || i.sett === 0) && (i.gruppo === 'accettazione' || /^Punto prelievi/.test(i.attivita))) x.sessioni.push({ sedeId: s.id, sede: label, d: i.d, s: i.s, e: i.e, room: i.room, roomId: i.roomId || 'desk', ruolo: i.gruppo === 'accettazione' ? 'accettazione (desk)' : 'punto prelievi', disciplina: '', personaId: p.id });
       if (p.tipo === 'medico') for (const u of plan.unassigned) if (u.medId === p.id) x.sessioni.push({ sedeId: s.id, sede: label, d: u.d, s: u.s, e: u.e, room: null, ruolo: 'non allocata', reason: u.reason, personaId: p.id, disciplina: medDisc(p).join(', ') });
     }
   }
@@ -124,7 +129,7 @@ export function datedWeek(net, eventi, mondayISO, filter = {}) {
   for (let d = 0; d < 7; d++) {
     const iso = addDays(mondayISO, d);
     const sessioni = [], chiusure = [];
-    for (const { s, plan, label } of net.sedi) {
+    for (const { s, plan, impegni, label } of net.sedi) {
       if (filter.sedeId && s.id !== filter.sedeId) continue;
       if (!plan || !plan.open[d]) continue;
       const chiusa = eventi.find((e) => e.kind === 'CHIUSURA' && e.sede_id === s.id && inRange(iso, e));
@@ -139,6 +144,16 @@ export function datedWeek(net, eventi, mondayISO, filter = {}) {
         const ass = eventi.find((e) => e.kind === 'ASSENZA' && e.persona_key === key && (!e.sede_id || e.sede_id === s.id) && inRange(iso, e));
         if (ass) sessioni.push({ ...base, stato: ass.sost_nome ? 'sostituita' : 'assente', sostituto: ass.sost_nome || null, evento: ass });
         else sessioni.push({ ...base, stato: 'ok' });
+      }
+      // v0.68.4: turni del desk di accettazione e copertura del Punto prelievi del piano della sede, sulle date reali
+      for (const i of impegniDelGiorno(s, plan, iso, impegni || [])) {
+        if (i.gruppo !== 'accettazione' && !/^Punto prelievi/.test(i.attivita)) continue;
+        const key = personKey(i.nome);
+        if (filter.key && key !== filter.key) continue;
+        const base = { sedeId: s.id, sede: label, roomId: i.roomId || 'desk', room: i.room || 'Accettazione', s: i.s, e: i.e, medId: i.rowId, nome: i.nome, key, disciplina: i.gruppo === 'accettazione' ? (i.sett != null ? i.attivita.replace(/^Accettazione \(desk, (.*)\)$/, '$1') : '') : 'Punto prelievi', tipo: i.gruppo, iso, d };
+        if (chiusa) { sessioni.push({ ...base, stato: 'chiusa', evento: chiusa }); continue; }
+        const ass = eventi.find((e) => e.kind === 'ASSENZA' && e.persona_key === key && (!e.sede_id || e.sede_id === s.id) && inRange(iso, e));
+        sessioni.push(ass ? { ...base, stato: ass.sost_nome ? 'sostituita' : 'assente', sostituto: ass.sost_nome || null, evento: ass } : { ...base, stato: 'ok' });
       }
       for (const e of eventi) {
         if (e.kind !== 'SESSIONE_EXTRA' || e.sede_id !== s.id || !inRange(iso, e)) continue;

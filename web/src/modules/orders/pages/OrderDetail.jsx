@@ -5,7 +5,7 @@ import { useAuth, isOps } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Card, StatusBadge, Badge, Modal, PromptModal, Field, Icon, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
 import { SilvaCard } from '../components/silva.jsx';
-import { itDate, itDateTime, dec, pct, KIND, ORIGIN, PHASES, phaseOf, STATUS_LONG, PKG_STATUS, ISSUE_KIND, STRUTTURA_ORIGIN } from '../format.js';
+import { itDate, itDateTime, dec, pct, KIND, ORIGIN, PHASES, phaseOf, STATUS_LONG, PKG_STATUS, ISSUE_KIND, STRUTTURA_ORIGIN, puntoLabel } from '../format.js';
 
 const deltaTone = (d) => (d == null ? 'grey' : Math.abs(d) > 50 ? 'red' : Math.abs(d) > 20 ? 'mauve' : 'green');
 
@@ -23,7 +23,8 @@ export default function OrderDetail() {
   const [cancel, setCancel] = useState(false);
   const [issue, setIssue] = useState(null);
   const [approveAsk, setApproveAsk] = useState(false);
-  useEffect(() => { if (o) { setEdit({}); setOpsNotes(o.ops_notes || ''); } }, [o]);
+  const [punto, setPunto] = useState('');
+  useEffect(() => { if (o) { setEdit({}); setOpsNotes(o.ops_notes || ''); setPunto(o.delivery_site_id ? String(o.delivery_site_id) : ''); } }, [o]);
   if (!o) return <div className="page"><Loading /></div>;
 
   const mine = o.struttura_id === user.struttura_id;
@@ -54,6 +55,8 @@ export default function OrderDetail() {
       reload();
     } catch (e) { setErr(e); }
   };
+  // punto di consegna (v0.68.3): Ops lo cambia fino alla trasmissione a Silva, la struttura in bozza
+  const salvaPunto = async (id) => { setErr(null); try { await api.put(`/orders/${o.id}/punto-consegna`, { delivery_site_id: Number(id) }); toast('Punto di consegna salvato'); reload(); } catch (e) { setErr(e); } };
   const act = async (path, body, msg) => { setErr(null); try { const r = await api.post(`/orders/${o.id}/${path}`, body); toast(msg || 'Fatto'); reload(); return r; } catch (e) { setErr(e); } };
 
   return (
@@ -61,7 +64,7 @@ export default function OrderDetail() {
       <div className="page-head">
         <div>
           <div className="row"><h1>Ordine {o.number}</h1><StatusBadge status={o.status} />{o.urgent && <Badge tone="red">Urgente</Badge>}</div>
-          <div className="sub">{o.struttura_name} · {KIND[o.kind]} · {ORIGIN[o.origin]}{o.requested_by_name ? ` · ${o.requested_by_name}` : ''} · {STATUS_LONG[o.status]}</div>
+          <div className="sub">{o.struttura_label || o.struttura_name} · {KIND[o.kind]} · {ORIGIN[o.origin]}{o.requested_by_name ? ` · ${o.requested_by_name}` : ''} · {STATUS_LONG[o.status]}</div>
         </div>
         <div className="row">
           <a className="btn ghost" href={`${API_BASE}/orders/${o.id}/pdf`} target="_blank" rel="noreferrer"><Icon name="print" size={16} />PDF</a>
@@ -75,6 +78,18 @@ export default function OrderDetail() {
       <ErrorBox error={err} />
       {o.status !== 'ANNULLATO' && (
         <div className="steps">{steps.map((p, i) => <div key={p.key} className={`s ${i < stepIdx ? 'done' : i === stepIdx ? 'now' : ''}`}><i>{i < stepIdx ? '✓' : p.n === 9 ? '✓' : p.n}</i>{p.label}</div>)}</div>
+      )}
+      {o.punto_mancante && (
+        <div className="alert warn" style={{ marginBottom: 16 }}>
+          <div><b>Indica il punto di consegna.</b> {o.struttura_name} ha {o.punti_consegna.length} sedi service attive: {ops ? "l'ordine non si approva né si trasmette a Silva finché non scegli dove consegnare." : "l'Area Operations lo indicherà in approvazione."}
+            {o.punto_modificabile && (
+              <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'nowrap' }}>
+                <select value={punto} onChange={(e) => setPunto(e.target.value)} style={{ flex: '0 1 560px', minWidth: 0 }}><option value="">Scegli il punto di consegna…</option>{o.punti_consegna.map((p) => <option key={p.id} value={p.id}>{puntoLabel(p)}</option>)}</select>
+                <button className="btn sm" disabled={!punto} onClick={() => salvaPunto(punto)}>Salva il punto</button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
       {o.status === 'ANNULLATO' && <div className="alert err" style={{ marginBottom: 16 }}>Annullato il {itDateTime(o.cancelled_at)}: {o.cancel_reason}</div>}
       {(o.notes || o.urgent_reason || o.client_ref) && <div className="alert info" style={{ marginBottom: 16 }}>{o.urgent_reason && <span><b>Urgenza:</b> {o.urgent_reason}. </span>}{o.notes && <span><b>Note:</b> {o.notes}. </span>}{o.client_ref && <span><b>Rif. cliente:</b> {o.client_ref}</span>}</div>}
@@ -115,7 +130,7 @@ export default function OrderDetail() {
                 <div className="row" style={{ marginTop: 10 }}>
                   <button className="btn ghost" onClick={() => act('refresh-production', {}, 'Produzione e giacenze ricalcolate')}>Ricalcola produzione</button>
                   <button className="btn ghost" onClick={() => saveVerify(false)}>Salva verifica</button>
-                  <button className="btn" disabled={!totalApproved} onClick={() => setApproveAsk(true)}><Icon name="check" size={16} />Approva: passa al magazzino</button>
+                  <button className="btn" disabled={!totalApproved || o.punto_mancante} title={o.punto_mancante ? 'Indica prima il punto di consegna' : ''} onClick={() => setApproveAsk(true)}><Icon name="check" size={16} />Approva: passa al magazzino</button>
                 </div>
               </div>
             )}
@@ -138,6 +153,29 @@ export default function OrderDetail() {
           )}
         </div>
         <div>
+          {o.struttura && (() => {
+            const pc = o.punto_consegna;
+            const dove = pc || o.struttura;
+            return (
+              <Card title="Punto di consegna" className="mb">
+                <div className="strong">{o.struttura.name}{pc && <> · {pc.name}</>} <Badge tone={pc ? 'mauve' : o.struttura.origin === 'ORG' ? 'blue' : 'teal'}>{pc ? 'Sede service' : STRUTTURA_ORIGIN[o.struttura.origin] || 'Sede TD'}</Badge></div>
+                <div className="small">{[dove.address, [dove.zip, dove.city, dove.province].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</div>
+                {o.punto_mancante && <div className="small red" style={{ marginTop: 4 }}>Punto di consegna da indicare: {o.punti_consegna.length} sedi service attive</div>}
+                {!pc && <div className="small muted">{o.struttura.referente}{o.struttura.referente_phone ? ` · ${o.struttura.referente_phone}` : ''}{o.struttura.email ? ` · ${o.struttura.email}` : ''}</div>}
+                {pc && <div className="small muted">Ordine e giacenza della Legal entity {o.struttura.name}{o.struttura.email ? ` · ${o.struttura.email}` : ''}</div>}
+                {(pc?.delivery_notes || o.struttura.delivery_notes) && <div className="small" style={{ marginTop: 6 }}>{pc?.delivery_notes || o.struttura.delivery_notes}</div>}
+                {ops && pc && <div className="small muted" style={{ marginTop: 4 }}>Destinazione Silva del punto: <span className="mono">{pc.silva_code || '–'}</span></div>}
+                <div className="small muted" style={{ marginTop: 6 }}>{(pc?.configured ? pc.delivery_mode : o.struttura.delivery_mode) === 'RITIRO' ? 'Ritiro presso TD' : 'Giro logistico TD'}{ops && <> · <Link to={`${BASE}/giacenza?struttura_id=${o.struttura_id}`}>giacenza della struttura</Link></>}</div>
+                {o.punto_modificabile && o.punti_consegna.length > 1 && !o.punto_mancante && (
+                  <div className="row" style={{ marginTop: 8, gap: 6 }}>
+                    <select value={punto} onChange={(e) => setPunto(e.target.value)} style={{ flex: 1, minWidth: 0 }}>{o.punti_consegna.map((p) => <option key={p.id} value={p.id}>{p.name}{p.city ? ` (${p.city})` : ''}</option>)}</select>
+                    <button className="btn sm ghost" disabled={!punto || punto === String(o.delivery_site_id || '')} onClick={() => salvaPunto(punto)}>Cambia</button>
+                  </div>
+                )}
+                {pc && !o.punto_modificabile && o.silva_send_status === 'INVIATO' && <div className="small muted" style={{ marginTop: 6 }}>Ordine già presso Silva: il punto di consegna non si cambia più.</div>}
+              </Card>
+            );
+          })()}
           <Card title="Cronologia">
             <ul className="timeline">{o.events.map((e) => <li key={e.id}><div className="ev">{e.event}</div><div className="small muted">{itDateTime(e.at)}{e.full_name ? ` · ${e.full_name}` : ''}{e.data?.reference ? ` · rif. ${e.data.reference}` : ''}{e.data?.error ? ` · ${e.data.error}` : ''}</div></li>)}</ul>
             {o.silva_reference && <div className="small" style={{ marginTop: 8 }}>Riferimento magazzino: <span className="mono">{o.silva_reference}</span></div>}
@@ -153,15 +191,6 @@ export default function OrderDetail() {
                 {ops && i.status === 'APERTA' && <CloseIssue id={i.id} onDone={reload} />}
               </div>))}
           </Card>
-          {o.struttura && (
-            <Card title="Punto di consegna" className="mt">
-              <div className="strong">{o.struttura.name} <Badge tone={o.struttura.origin === 'ORG' ? 'blue' : 'teal'}>{STRUTTURA_ORIGIN[o.struttura.origin] || 'Sede TD'}</Badge></div>
-              <div className="small">{[o.struttura.address, [o.struttura.zip, o.struttura.city, o.struttura.province].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</div>
-              <div className="small muted">{o.struttura.referente}{o.struttura.referente_phone ? ` · ${o.struttura.referente_phone}` : ''}{o.struttura.email ? ` · ${o.struttura.email}` : ''}</div>
-              {o.struttura.delivery_notes && <div className="small" style={{ marginTop: 6 }}>{o.struttura.delivery_notes}</div>}
-              <div className="small muted" style={{ marginTop: 6 }}>{o.struttura.delivery_mode === 'RITIRO' ? 'Ritiro presso TD' : 'Giro logistico TD'}{ops && <> · <Link to={`${BASE}/giacenza?struttura_id=${o.struttura_id}`}>giacenza della struttura</Link></>}</div>
-            </Card>
-          )}
         </div>
       </div>
 

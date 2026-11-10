@@ -82,18 +82,24 @@ test('ricavo ai prezzi del listino del cliente e costo analitico per codice o me
   assert.equal(CE.costoAnalitico({ righe: null, esami: 50 }, new Map(), null).esami_scoperti, 50);
 });
 
-test('produzione: priorità delle fonti e stima dall\'account del Business Hub', () => {
-  const st = CE.stimaProduzione({ volumi_giornalieri_attesi: 24, prezzo_medio_esame: 5 }, '2026-10', 240);
-  assert.deepEqual([st.esami, st.valore], [480, 2400]);   // 24 × 240/12 = 480 esami × 5 €
-  assert.equal(CE.stimaProduzione({ volume_fy_atteso: 6000, fatturato_fy_atteso: 30000 }, '2026-10', 250).esami, 500);   // 6000/250 × 250/12
-  assert.equal(CE.stimaProduzione({}, '2026-10', 250), null);
-  assert.equal(CE.stimaProduzione({ volumi_giornalieri_attesi: 10 }, '2026-10', 240, '2026-11-01'), null);   // prima dell'avvio
+test('produzione: priorità delle fonti e stima in pro quota dall\'account del Business Hub (v0.68.4)', () => {
+  // ottobre 2026: 22 giorni lavorativi; FY atteso 25.000 € su 250 giorni = 100 € al giorno lavorativo
+  const st = CE.stimaProQuota({ fatturato_fy_atteso: 25000, volumi_giornalieri_attesi: 24 }, '2026-10', { giorniAnno: 250, oggi: '2026-11-10' });
+  assert.deepEqual([st.giorni, st.valore, st.esami], [22, 2200, 528]);   // 25.000 × 22/250; 24 esami × 22 giorni
+  // senza fatturato FY atteso: equivalente annuo volumi × giorni dell'anno × prezzo medio (24 × 240 × 5 = 28.800), pro quota 22/240
+  assert.equal(CE.stimaProQuota({ volumi_giornalieri_attesi: 24, prezzo_medio_esame: 5 }, '2026-10', { giorniAnno: 240, oggi: '2026-11-10' }).valore, 2640);
+  assert.equal(CE.stimaProQuota({}, '2026-10', { oggi: '2026-11-10' }), null);
+  assert.equal(CE.stimaProQuota({ volumi_giornalieri_attesi: 10 }, '2026-10', { oggi: '2026-11-10' }), null, 'volumi senza prezzo né FY: nessun valore da stimare');
+  assert.equal(CE.stimaProQuota({ fatturato_fy_atteso: 1000 }, '2026-10', { avvio: '2026-11-01', oggi: '2026-11-10' }), null, 'prima dell\'avvio');
+  assert.equal(CE.stimaProQuota({ fatturato_fy_atteso: 1000 }, '2026-12', { oggi: '2026-11-10' }), null, 'mese futuro');
+  assert.equal(CE.fatturatoFyAtteso({ fatturato_fy_atteso: 60000 }), 60000);
   const retail = { esami: 50, valore: 300, righe: [{ codice: 'GLU', quantita: 50 }] };
   assert.equal(CE.scegliProduzione({ salvata: { fonte: 'MANUALE', esami: 40, valore: 200 }, retail, stima: st }).fonte, 'MANUALE');
   assert.equal(CE.scegliProduzione({ salvata: { fonte: 'STIMA', esami: 40 }, retail }).origine, 'Retail: vendite B2B dal gestionale StudioLAB');
   assert.equal(CE.scegliProduzione({ ordini: { esami: 7, righe: [] } }).origine, 'Ordini: produzione StudioLAB (HL7 o import)');
   const s = CE.scegliProduzione({ stima: st });
   assert.equal(s.fonte, 'STIMA'); assert.equal(s.calcolata, true);
+  assert.equal(CE.scegliProduzione({ salvata: { id: 9, fonte: 'STIMA', esami: 1, valore: 99999 }, stima: st }).valore, 2200, 'il pro quota prevale sulla stima salvata con la regola vecchia');
   assert.equal(CE.scegliProduzione({}), null);
 });
 

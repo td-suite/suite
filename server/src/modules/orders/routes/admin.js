@@ -37,6 +37,8 @@ const siteExtFields = {
   delivery_notes: opt(z.string().max(500)),
   notes: opt(z.string().max(1000)),
 };
+// impostazioni proprie di un punto service (v0.68.3)
+const PUNTO_FIELDS = ['silva_code', 'delivery_mode', 'delivery_notes'];
 const STRUTTURA_COLS = `s.*,
   (SELECT count(*)::int FROM orders o WHERE o.struttura_id=s.id AND o.status NOT IN ('CHIUSO','ANNULLATO')) AS open_orders,
   (SELECT max(month) FROM stock_counts c WHERE c.struttura_id=s.id AND c.status='CONFERMATO') AS last_stock_month,
@@ -64,10 +66,15 @@ r.get('/strutture/:id', ah(async (req, res) => {
 // I dati anagrafici (nome, indirizzo, contatti, stato) non si toccano qui.
 r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const id = Number(req.params.id) || 0;
-  const s = await one('SELECT id, origin, site_id, org_id, code, name, delivery_point FROM strutture_v WHERE id=$1', [id]);
+  const s = await one('SELECT id, origin, site_id, org_id, code, name, delivery_point, active FROM strutture_v WHERE id=$1', [id]);
   if (!s) throw notFound('Struttura non trovata: sedi e Legal entity si creano in Amministrazione');
-  if (s.delivery_point) throw bad('Un punto di un cliente service non ha impostazioni proprie: si configura la sua Legal entity');
-  const d = parse(z.object(siteExtFields), req.body);
+  // punto service di una Legal entity (v0.68.3): ordini e giacenze restano sulla Legal entity, ma il punto ha le proprie impostazioni di
+  // CONSEGNA: destinazione Silva, modalità e note di consegna. Nient'altro.
+  if (s.delivery_point) {
+    const extra = Object.keys(req.body || {}).filter((k) => !PUNTO_FIELDS.includes(k));
+    if (extra.length) throw bad(`Un punto di un cliente service ha solo destinazione Silva, modalità e note di consegna (non ${extra.join(', ')}): il resto si configura sulla sua Legal entity`);
+  }
+  const d = parse(z.object(s.delivery_point ? Object.fromEntries(PUNTO_FIELDS.map((k) => [k, siteExtFields[k]])) : siteExtFields), req.body);
   const cols = Object.keys(d);
   if (!cols.length) throw bad('Nessun dato');
   if (d.silva_code) {
@@ -77,9 +84,13 @@ r.put('/strutture/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
     if (elenco?.destinazioni?.length && !elenco.destinazioni.some((x) => x.codice === d.silva_code)) throw bad(`La destinazione ${d.silva_code} non è tra le ${elenco.destinazioni.length} sedi autorizzate da Silva (lette il ${new Date(elenco.letto_al).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}): premi "Aggiorna destinazioni" o scegline una dall'elenco`);
   }
   const [table, keyCol, keyVal] = s.origin === 'ORG' ? ['org_ext', 'org_id', s.org_id] : ['site_ext', 'site_id', s.site_id];
+  // destinazione scelta a mano (v0.68.3): silva_match = MANUALE; tolta a mano = ESCLUSA, così l'abbinamento automatico (Aggiorna
+  // destinazioni e job ogni 6 ore) non la rimette: torna automatica solo se si sceglie di nuovo
+  const vals = cols.map((c) => d[c]);
+  if ('silva_code' in d) { cols.push('silva_match', 'silva_match_at'); vals.push(d.silva_code ? 'MANUALE' : 'ESCLUSA', new Date()); }
   await q(`INSERT INTO ${table} (${keyCol}, ${cols.join(',')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(',')})
-    ON CONFLICT (${keyCol}) DO UPDATE SET ${cols.map((c) => `${c}=EXCLUDED.${c}`).join(',')}, updated_at=now()`, [keyVal, ...cols.map((c) => d[c])]);
-  await audit(req, 'STRUTTURA_UPDATE', 'struttura', s.id, { origin: s.origin, code: s.code, ...d });
+    ON CONFLICT (${keyCol}) DO UPDATE SET ${cols.map((c) => `${c}=EXCLUDED.${c}`).join(',')}, updated_at=now()`, [keyVal, ...vals]);
+  await audit(req, 'STRUTTURA_UPDATE', 'struttura', s.id, { origin: s.origin, code: s.code, ...(s.delivery_point ? { punto: true } : {}), ...d, ...('silva_code' in d ? { abbinamento: d.silva_code ? 'manuale' : 'tolto' } : {}) });
   res.json(await one(`SELECT ${STRUTTURA_COLS} FROM strutture_v s WHERE s.id=$1`, [s.id]));
 }));
 
@@ -101,7 +112,9 @@ export const soloSilvaClause = (alias = 'a') => `(${alias}.source = 'SILVA' OR N
 r.get('/articles', ah(async (req, res) => {
   const all = req.query.all === '1' && isOps(req.user);
   res.json(await many(`SELECT a.*, c.name AS category_name, c.icon,
-      (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id AND m.active) AS mappings_count
+      (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id AND m.active) AS mappings_count,
+      -- v0.68.4 · etichette del gestionale abbinate all'articolo (Correlazione esami e materiali), solo per l'Area Operations
+      ${isOps(req.user) ? `(SELECT string_agg(e.etichetta, ', ' ORDER BY e.campioni DESC, e.etichetta) FROM etichette_synclab e WHERE e.articolo_id = a.id)` : 'NULL::text'} AS etichette
     FROM articles a JOIN categories c ON c.code=a.category_code WHERE ($1 OR (a.active AND ${soloSilvaClause()})) AND ${visibleClause(req.user)} ORDER BY c.sort, a.sort, a.code`, [all]));
 }));
 

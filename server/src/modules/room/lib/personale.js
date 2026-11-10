@@ -30,7 +30,44 @@ export function indicePersone(persone = []) {
   const byKey = new Map(persone.map((p) => [personKey(p.nome), p]));
   return (riga) => (conId(riga) && byId.get(Number(riga.person_id))) || byKey.get(personKey(riga?.nome)) || null;
 }
-export const isAttivita = (nome) => /^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
+/**
+ * Aggancio delle righe del personale di sede per turni, presenze e calendario (v0.68.4). persone: TUTTE le righe di professionisti_v
+ * (con attivo e planning_excluded), non solo i pianificabili: essere nel personale di una sede è già l'aggancio con l'attività di sede,
+ * quindi una persona attiva e non esclusa è pianificabile anche senza scheda Room (la scheda si crea da sola, assicuraSchedeRoom).
+ * Ritorna (riga) → { persona, motivo }: persona null con il motivo leggibile quando la riga non è agganciabile.
+ */
+export const LINK_D52 = '/admin/diagnostica';
+export function agganciatore(persone = []) {
+  const trova = indicePersone(persone);
+  return (riga) => {
+    const p = trova(riga);
+    if (!p) return { persona: null, motivo: conId(riga) ? 'la persona scelta non c\'è più nell\'anagrafica: sceglierla di nuovo in Sedi e ambulatori > Personale' : 'non agganciata all\'anagrafica (nessuna persona con questo nome): sceglierla dall\'elenco in Sedi e ambulatori > Personale ("Cambia"), creandola prima in Amministrazione > Persone se manca (Diagnostica D52)' };
+    if (p.attivo === false) return { persona: null, motivo: `${p.nome} non è attiva nell'anagrafica (Amministrazione > Persone)` };
+    if (p.planning_excluded) return { persona: null, motivo: `${p.nome} è esclusa dalla pianificazione: riportarla tra i pianificabili in Personale sanitario > Professionisti` };
+    return { persona: p, motivo: null };
+  };
+}
+/** Tipo della scheda Room dal gruppo del personale di sede: medico → medico; personale sanitario e accettazione → sanitario. */
+export const tipoScheda = (gruppo) => (gruppo === 'medico' ? 'medico' : 'sanitario');
+/**
+ * Scheda Room creata in automatico per chi è nel personale di una sede (v0.68.4, CEO 10/11/2026: niente passaggi manuali). Solo per le
+ * persone attive, non escluse e ancora senza scheda (person_ext.tipo vuoto); chi ha già la scheda non si tocca. La sede entra tra le
+ * sedi abilitate. righe: [{ riga, persona }] già agganciate. Ritorna il numero di schede create.
+ */
+export async function assicuraSchedeRoom(sedeId, righe, userId = null) {
+  let n = 0;
+  for (const { riga, persona: p } of righe) {
+    if (!p || p.in_room || p.attivo === false || p.planning_excluded) continue;
+    const profilo = riga.profilo || p.profilo || (riga.tipo === 'accettazione' ? 'Accettazione' : riga.tipo === 'medico' ? 'Medico' : null);
+    const dati = { sediAbilitate: [Number(sedeId)].filter((x) => x > 0), compenso: { tipo: 'ORARIO' }, origine: `personale della sede ${sedeId} (${riga.tipo})` };
+    const r = await one(`INSERT INTO person_ext (person_id, tipo, profilo, dati, updated_by) VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (person_id) DO UPDATE SET tipo=EXCLUDED.tipo, profilo=coalesce(person_ext.profilo, EXCLUDED.profilo), dati=person_ext.dati || EXCLUDED.dati, updated_at=now(), updated_by=EXCLUDED.updated_by
+        WHERE person_ext.tipo IS NULL AND NOT person_ext.planning_excluded RETURNING person_id`, [p.id, tipoScheda(riga.tipo), profilo, JSON.stringify(dati), userId]);
+    if (r) { n++; p.in_room = true; }
+  }
+  return n;
+}
+export const isAttivita = (nome) =>/^(punto prelievi|rm |rx|mammograf|tc\b|moc|opt|seminolog|anatomia patolog|medicina del lavoro)/i.test((nome || '').trim());
 
 // Colonne della vista professionisti_v usate dalle route (alias p)
 export const PROF_COLS = 'p.id, p.nome, p.last_name, p.first_name, p.kind, p.status, p.title, p.tipo, p.profilo, p.email, p.phone, p.phone_office, p.tax_code, p.discipline, p.job_title, p.sex, p.birth_date, p.birth_place, p.vat_number, p.address, p.zip, p.city, p.province, p.site_id, p.site_name, p.role_id, p.role_name, p.attivo, p.dati, p.in_room, p.planning_excluded, p.pianificabile, p.created_at, p.updated_at, p.updated_by';

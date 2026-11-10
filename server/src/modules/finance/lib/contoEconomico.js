@@ -4,6 +4,9 @@
 // proporzione ai ricavi della sede sul totale; 12) la fatturazione attiva è fuori perimetro: i ricavi sono la PRODUZIONE.
 // Date: stringhe 'YYYY-MM-DD'; mesi: 'YYYY-MM'. Aritmetica sui giorni UTC come lo Scadenziario (lib/schedule.js).
 
+import { proQuotaPeriodo } from '../../business/lib/proQuota.js';
+import { volumiGiornalieri } from '../../business/lib/processo.js';
+
 export const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const DAY = 86400000;
@@ -183,21 +186,37 @@ export function costoAnalitico({ righe = null, esami = 0 }, costiEsami = new Map
   return { costo: r2(costo), esami_per_codice: perCodice, esami_al_medio: alMedio, esami_scoperti: scoperti, stima: alMedio > 0 };
 }
 /**
- * Stima della produzione del mese dall'account del Business Hub: volumi giornalieri attesi (o volume annuo / giorni lavorativi) ×
- * giorni lavorativi del mese (hub_giorni_lavorativi / 12); valore al prezzo medio per esame dell'account, altrimenti fatturato annuo
- * atteso / volume annuo atteso. Prima della data di avvio (o di contrattualizzazione) nessuna stima. null se mancano i volumi.
+ * Stima commerciale del mese dall'account del Business Hub, IN PRO QUOTA (v0.68.4, CEO 10/11/2026): fatturato FY atteso dichiarato ×
+ * giorni lavorativi del mese successivi alla data di avvio (e non successivi a oggi) / giorni lavorativi dell'anno (hub_giorni_lavorativi,
+ * 250): la stessa regola del pro quota della scheda account (business/lib/proQuota.js). Si usa SOLO per i clienti ATTIVI (regola unica
+ * del Business Hub, public.clienti_attivi_v livello ATTIVO): la scelta del cliente la fa chi chiama (controlloData.caricaService).
+ * Senza fatturato FY atteso vale l'equivalente annuo volumi giornalieri attesi × giorni lavorativi dell'anno × prezzo medio per esame.
+ * Esami stimati = volumi giornalieri attesi (o volume annuo / giorni lavorativi, volumiGiornalieri di business/lib/processo.js) × giorni.
+ * giorniUsati: giorni già contati per il cliente nell'anno (la somma dei mesi non supera mai il fatturato FY atteso pieno).
+ * null prima dell'avvio, nei mesi futuri o senza dati economici.
  */
-export function stimaProduzione(acc, mk, giorniLavorativiAnno = 250, avvio = null) {
+export function stimaProQuota(acc, mk, { giorniAnno = 250, avvio = null, oggi = null, giorniUsati = 0 } = {}) {
   if (!acc) return null;
-  const gl = Number(giorniLavorativiAnno) > 0 ? Number(giorniLavorativiAnno) : 250;
-  const g = num(acc.volumi_giornalieri_attesi) > 0 ? Number(acc.volumi_giornalieri_attesi) : num(acc.volume_fy_atteso) > 0 ? Number(acc.volume_fy_atteso) / gl : null;
-  if (g == null) return null;
-  const quota = avvio ? copertura(avvio, null, mk) : 1;
-  if (!quota) return null;
-  const esami = Math.round(g * (gl / 12) * quota);
-  const prezzo = num(acc.prezzo_medio_esame) > 0 ? Number(acc.prezzo_medio_esame)
-    : (num(acc.fatturato_fy_atteso) > 0 && num(acc.volume_fy_atteso) > 0 ? Number(acc.fatturato_fy_atteso) / Number(acc.volume_fy_atteso) : null);
-  return { esami, valore: prezzo != null ? r2(esami * prezzo) : null, prezzo_medio: prezzo != null ? r2(prezzo) : null, volumi_giornalieri: r2(g), giorni_mese: r2(gl / 12 * quota) };
+  const gl = Number(giorniAnno) > 0 ? Number(giorniAnno) : 250;
+  const [y, m] = mk.split('-').map(Number);
+  const vg = volumiGiornalieri(acc, gl).valore;
+  let fy = num(acc.fatturato_fy_atteso) > 0 ? Number(acc.fatturato_fy_atteso) : null;
+  let fonte = 'fatturato FY atteso';
+  if (fy == null && vg != null && num(acc.prezzo_medio_esame) > 0) { fy = r2(vg * gl * Number(acc.prezzo_medio_esame)); fonte = 'volumi giornalieri attesi × prezzo medio per esame'; }
+  if (fy == null) return null;
+  const pq = proQuotaPeriodo({ fatturato_fy_atteso: fy, avvio, da: `${mk}-01`, a: `${mk}-${String(giorniMese(y, m)).padStart(2, '0')}`, oggi, giorniAnno: gl, giorniUsati });
+  if (!pq || !pq.giorni) return null;
+  const esami = vg != null ? Math.round(vg * pq.giorni) : 0;
+  return { esami, valore: pq.importo, giorni: pq.giorni, giorni_anno: gl, quota: pq.quota, fatturato_fy: fy, fonte_fy: fonte, inizio: pq.inizio, fine: pq.fine, nota: pq.nota,
+    volumi_giornalieri: vg != null ? r2(vg) : null, prezzo_medio: esami > 0 ? r2(pq.importo / esami) : null };
+}
+/** Fatturato FY atteso pieno di un cliente attivo (o l'equivalente annuo dai volumi e dal prezzo medio): la "Proiezione FY". */
+export function fatturatoFyAtteso(acc, giorniAnno = 250) {
+  if (!acc) return null;
+  if (num(acc.fatturato_fy_atteso) > 0) return r2(acc.fatturato_fy_atteso);
+  const gl = Number(giorniAnno) > 0 ? Number(giorniAnno) : 250;
+  const vg = volumiGiornalieri(acc, gl).valore;
+  return vg != null && num(acc.prezzo_medio_esame) > 0 ? r2(vg * gl * Number(acc.prezzo_medio_esame)) : null;
 }
 
 /**
@@ -207,7 +226,8 @@ export function stimaProduzione(acc, mk, giorniLavorativiAnno = 250, avvio = nul
  *     (lib/synclab/letture.js produzionePerOrg). È il dato del gestionale, non una stima: viene prima di Retail e Ordini;
  *  3. StudioLAB arrivato alla Suite: vendite B2B di Retail (codice StudioLAB abbinato alla Legal entity, con valore e codici d'esame);
  *  4. StudioLAB arrivato alla Suite: produzione di Ordini (HL7 / import, per codice d'esame, senza valore);
- *  5. stima salvata (fonte STIMA) o, in mancanza, stima calcolata al momento dall'account del Business Hub.
+ *  5. stima in pro quota calcolata al momento dall'account del Business Hub (solo clienti ATTIVI, v0.68.4: è la regola del CEO e
+ *     prevale su una stima salvata, che era calcolata con la regola precedente); in mancanza, stima salvata (fonte STIMA).
  * Ritorna { fonte, origine, esami, valore, righe, stima, calcolata, note } oppure null (nessuna produzione né stima).
  */
 export const ORIGINE_SYNCLAB = 'Synclab Data API: accettazioni del gestionale';
@@ -217,8 +237,8 @@ export function scegliProduzione({ salvata = null, synclab = null, retail = null
   if (synclab && Number(synclab.esami) > 0) return { ...base(synclab), fonte: 'SYNCLAB', origine: ORIGINE_SYNCLAB, stima: false, calcolata: false };
   if (retail && Number(retail.esami) > 0) return { ...base(retail), fonte: 'STUDIOLAB', origine: 'Retail: vendite B2B dal gestionale StudioLAB', stima: false, calcolata: false };
   if (ordini && Number(ordini.esami) > 0) return { ...base(ordini), fonte: 'STUDIOLAB', origine: 'Ordini: produzione StudioLAB (HL7 o import)', stima: false, calcolata: false };
+  if (stima) return { esami: stima.esami, valore: stima.valore, righe: null, note: null, fonte: 'STIMA', origine: 'Stima in pro quota dall\'account del Business Hub (cliente attivo)', stima: true, calcolata: true, dettaglio_stima: stima };
   if (salvata) return { ...base(salvata), fonte: 'STIMA', origine: 'Stima salvata in Finance Management', stima: true, calcolata: false, id: salvata.id };
-  if (stima) return { esami: stima.esami, valore: stima.valore, righe: null, note: null, fonte: 'STIMA', origine: 'Stima dall\'account del Business Hub', stima: true, calcolata: true, dettaglio_stima: stima };
   return null;
 }
 
@@ -303,6 +323,8 @@ export const RIGHE = [
   { key: 'ricavi_service', gruppo: 'RICAVI', label: 'Ricavi Service (produzione dei clienti)', modulo: 'business' },
   // v0.68.1 (CEO 09/11/2026 sera): le stime commerciali del Service (fonte STIMA) non entrano nei ricavi: riga separata, non sommata
   { key: 'stime_service', gruppo: 'STIME', label: 'Stime commerciali (non sommate)', modulo: 'business' },
+  // v0.68.4 (CEO 10/11/2026): stime solo dei clienti ATTIVI e in pro quota sul periodo; il fatturato FY atteso pieno a parte, mai sommato
+  { key: 'proiezione_fy', gruppo: 'PROIEZIONE', label: 'Proiezione FY (fatturato atteso pieno dei clienti attivi, non sommata)', modulo: 'business' },
   { key: 'incassi_cash', gruppo: 'CONTROLLO', label: 'Incassi Cash (controllo, non sommati)', modulo: 'cash' },
   { key: 'canone', gruppo: 'COSTI', label: 'Canone di locazione', modulo: 'finance' },
   { key: 'utenze', gruppo: 'COSTI', label: 'Utenze e bollette', modulo: 'finance' },
@@ -314,7 +336,7 @@ export const RIGHE = [
 ];
 export const RIGHE_RICAVI = RIGHE.filter((r) => r.gruppo === 'RICAVI').map((r) => r.key);
 export const RIGHE_COSTI = RIGHE.filter((r) => r.gruppo === 'COSTI').map((r) => r.key);
-const NON_SOMMATE = ['CONTROLLO', 'STIME'];
+const NON_SOMMATE = ['CONTROLLO', 'STIME', 'PROIEZIONE'];
 /** Fonti della produzione Service che entrano nei ricavi (produzione effettiva): tutte tranne STIMA. */
 export const FONTI_EFFETTIVE = ['SYNCLAB', 'STUDIOLAB', 'MANUALE'];
 export const effettiva = (prod) => Boolean(prod && !prod.stima && prod.fonte !== 'STIMA');
@@ -335,6 +357,7 @@ export function movimentiService(clienti = [], lab, p) {
       const t = effettiva(m.produzione) ? eff : sti;
       t.esami += Number(m.esami || 0); t.mesi += 1;
       if (m.ricavo != null) t.ricavo = r2((t.ricavo || 0) + Number(m.ricavo)); else if (Number(m.esami) > 0 && t === eff) eff.parziale = true;
+      if (t === sti && m.produzione.dettaglio_stima) { sti.giorni = (sti.giorni || 0) + Number(m.produzione.dettaglio_stima.giorni || 0); sti.fy = m.produzione.dettaglio_stima.fatturato_fy; sti.gl = m.produzione.dettaglio_stima.giorni_anno; }
       if (t === eff && m.produzione.fonte) eff.fonti.add(m.produzione.fonte);
     }
     if (eff.mesi && (eff.esami || eff.ricavo != null)) {
@@ -343,12 +366,17 @@ export function movimentiService(clienti = [], lab, p) {
     }
     if (sti.mesi && (sti.esami || sti.ricavo != null)) {
       out.push({ riga: 'stime_service', site_id: lab.id, importo: sti.ricavo ?? 0, org_id: c.org_id, stima: true, modulo: 'Business Hub · stima commerciale', data,
-        descrizione: `${c.org_name}: ${sti.esami} esami stimati in ${sti.mesi} ${sti.mesi === 1 ? 'mese' : 'mesi'} (volumi e prezzo dell'account, nessuna produzione effettiva)`, link: `/finance/margine-service?org=${c.org_id}` });
+        descrizione: `${c.org_name}: pro quota del fatturato FY atteso${sti.giorni ? ` su ${sti.giorni} giorni lavorativi` : ''}${sti.fy ? ` (FY ${eurIt(sti.fy)} / ${sti.gl || 250})` : ''} in ${sti.mesi} ${sti.mesi === 1 ? 'mese' : 'mesi'}${sti.esami ? `, circa ${sti.esami} esami` : ''}: cliente attivo senza produzione effettiva`, link: `/finance/margine-service?org=${c.org_id}` });
+    }
+    if (c.proiezione_fy && c.proiezione_fy.importo != null) {
+      out.push({ riga: 'proiezione_fy', site_id: lab.id, importo: c.proiezione_fy.importo, org_id: c.org_id, stima: true, anno_fy: c.proiezione_fy.anno, modulo: 'Business Hub · fatturato FY atteso', data: `FY ${c.proiezione_fy.anno}`,
+        descrizione: `${c.org_name}: fatturato FY atteso pieno (scheda account${c.proiezione_fy.fonte && c.proiezione_fy.fonte !== 'fatturato FY atteso' ? `, ${c.proiezione_fy.fonte}` : ''}), cliente attivo`, link: `/finance/margine-service?org=${c.org_id}` });
     }
   }
   return out;
 }
 
+const eurIt = (n) => Number(n || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', useGrouping: 'always' });
 const voce = () => ({ importo: 0, righe: [], da_indicare: 0 });
 const add = (v, m) => {
   if (m.importo == null) v.da_indicare += 1; else v.importo = r2(v.importo + Number(m.importo));
@@ -421,6 +449,9 @@ export function componiConto({ sedi = [], centrali = [], movimenti = [], fonti =
   // stime commerciali: totale e clienti stimati, sotto il totale dei ricavi e mai sommati (v0.68.1)
   const righeStime = colonne.flatMap((c) => c.voci.stime_service.righe);
   totale.stime = { importo: r2(righeStime.reduce((a, m) => a + Number(m.importo || 0), 0)), clienti: new Set(righeStime.map((m) => m.org_id ?? m.descrizione)).size };
+  // proiezione FY: fatturato atteso pieno dei clienti attivi (v0.68.4), anche questa mai sommata
+  const righeFy = colonne.flatMap((c) => c.voci.proiezione_fy.righe);
+  totale.proiezione = { importo: r2(righeFy.reduce((a, m) => a + Number(m.importo || 0), 0)), clienti: new Set(righeFy.map((m) => m.org_id ?? m.descrizione)).size, anno: righeFy[0]?.anno_fy ?? null };
   const righeSrv = colonne.flatMap((c) => c.voci.ricavi_service.righe);
   totale.service_fonti = [...new Set(righeSrv.flatMap((m) => m.fonti || []))];
   totale.service_clienti = new Set(righeSrv.map((m) => m.org_id ?? m.descrizione)).size;

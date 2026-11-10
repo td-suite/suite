@@ -11,8 +11,13 @@ export default function Orders({ verify = false }) {
   const { user } = useAuth();
   const ops = isOps(user);
   const nav = useNavigate();
-  const [f, setF] = useState({ status: verify ? 'INVIATO' : '', kind: '', struttura_id: '' });
+  const [f, setF] = useState({ status: verify ? 'INVIATO' : '', kind: '', struttura_id: '', delivery_site_id: '' });
   const strutture = useApi(ops ? '/strutture' : null);
+  // filtro per punto di consegna (v0.68.3): i punti service delle Legal entity (Ops: di tutte o di quella scelta; cliente: i suoi)
+  const mieiPunti = useApi(!ops && !verify ? '/orders/punti-consegna' : null);
+  const gruppiPunti = ops
+    ? (strutture.data || []).filter((s) => s.origin === 'ORG' && (s.points || []).some((p) => p.active) && (!f.struttura_id || String(s.id) === String(f.struttura_id))).map((s) => ({ le: s.name, punti: s.points.filter((p) => p.active) }))
+    : (mieiPunti.data?.punti?.length ? [{ le: user.struttura_name, punti: mieiPunti.data.punti }] : []);
   const toast = useToast();
   const [err, setErr] = useState(null);
   const { data, reload } = useApi(`/orders${qs(verify ? { status: 'INVIATO,BOZZA' } : f)}`, [verify]);
@@ -36,7 +41,8 @@ export default function Orders({ verify = false }) {
         <div className="filters">
           <Field label="Stato"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="">Tutti</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
           {ops && <Field label="Tipo"><select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="">Tutti</option>{Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>}
-          {ops && <Field label="Struttura"><select value={f.struttura_id} onChange={(e) => setF({ ...f, struttura_id: e.target.value })}><option value="">Tutte</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
+          {ops && <Field label="Struttura"><select value={f.struttura_id} onChange={(e) => setF({ ...f, struttura_id: e.target.value, delivery_site_id: '' })}><option value="">Tutte</option><StrutturaOptions strutture={strutture.data} /></select></Field>}
+          {gruppiPunti.length > 0 && <Field label="Punto di consegna"><select value={f.delivery_site_id} onChange={(e) => setF({ ...f, delivery_site_id: e.target.value })}><option value="">Tutti</option><option value="nessuno">Senza punto indicato</option>{gruppiPunti.map((g) => <optgroup key={g.le} label={g.le}>{g.punti.map((p) => <option key={p.id} value={p.id}>{p.name}{p.city ? ` (${p.city})` : ''}</option>)}</optgroup>)}</select></Field>}
         </div>
       )}
       <ErrorBox error={err} />
@@ -46,8 +52,8 @@ export default function Orders({ verify = false }) {
             <thead><tr><th>Ordine</th>{ops && <th>Struttura</th>}<th>Origine</th><th>Stato</th><th className="num">Articoli</th><th className="num">Confezioni</th><th className="num">Consegnate</th>{ops && !verify && <th>Silva</th>}<th>Segnali</th><th>Aggiornato</th>{ops && !verify && <th />}</tr></thead>
             <tbody>{rows.map((o) => (
               <tr key={o.id} className="click" onClick={() => nav(`${BASE}/ordini/${o.id}`)}>
-                <td><span className="mono strong">{o.number}</span>{o.urgent && <> <Badge tone="red">Urgente</Badge></>}</td>
-                {ops && <td>{o.struttura_name}<div className="small muted">{KIND[o.kind]}</div></td>}
+                <td><span className="mono strong">{o.number}</span>{o.urgent && <> <Badge tone="red">Urgente</Badge></>}{!ops && o.delivery_site_name && <div className="small muted">consegna a {o.delivery_site_name}</div>}</td>
+                {ops && <td>{o.struttura_label || o.struttura_name}<div className="small muted">{KIND[o.kind]}{o.delivery_site_city ? ` · ${o.delivery_site_city}` : ''}</div></td>}
                 <td className="small">{ORIGIN[o.origin]}</td>
                 <td><StatusBadge status={o.status} /></td>
                 <td className="num">{o.lines_count}</td><td className="num">{o.packs_total}</td>

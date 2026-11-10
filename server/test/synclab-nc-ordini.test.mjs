@@ -1,6 +1,6 @@
 // v0.67.1, integrazioni dopo il primo completo in produzione: Desk NC che cerca anche nella copia Synclab (numero/barcode, esatto,
-// normalizzato, anno + numero), produzione di Ordini dalla copia Synclab (la riga manuale vince) e correlazione esami → materiali dai
-// contenitori dei campioni. Solo fixture sintetiche (forma degli esempi di CB Sistemi, nessun paziente). Il database del processo si
+// normalizzato, anno + numero), produzione di Ordini dalla copia Synclab (la riga manuale vince) e correlazione esami → materiali dalle
+// etichette dei campioni (v0.68.4: chiave = testo dell'etichetta, synclab.samples.container). Solo fixture sintetiche (forma degli esempi di CB Sistemi, nessun paziente). Il database del processo si
 // fissa PRIMA di importare la Suite (mai il database "suite").
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -146,20 +146,21 @@ describe('Synclab nel Desk NC e in Ordini (fixture sintetiche)', { skip: SALTA }
     assert.equal(cons.months, 2); assert.equal(cons.map.get(ID.artX).units, (99 + 2) / 2);
   });
 
-  test('contenitori e proposta di correlazioni: anteprima (nuove, cambiano, conflitti), applicazione, MANUALE intatte', async () => {
-    await M.ord.aggiornaContenitori();
-    const el = await M.ord.elencoContenitori();
-    const sp = el.find((c) => c.material === 'SIERO' && c.container === 'PROVETTA');
-    assert.ok(sp && sp.osservazioni >= 6 && sp.esami >= 3);
-    let cp = await M.ord.coppiePerEsame();
+  test('etichette e proposta di correlazioni: anteprima (nuove, cambiano, conflitti), applicazione, MANUALE intatte', async () => {
+    await M.ord.aggiornaEtichette();
+    const el = await M.ord.elencoEtichette();
+    const sp = el.find((c) => c.etichetta === 'PROVETTA');
+    assert.ok(sp && sp.campioni === 7 && sp.esami >= 3, 'una riga per etichetta: 7 campioni PROVETTA');
+    assert.equal(sp.materiali, 'SIERO 7', 'materiale solo informativo');
+    let cp = await M.ord.etichettePerEsame();
     const e1 = cp.get('E1');
-    assert.deepEqual([e1.material, e1.container, e1.n, e1.tot, e1.pct, e1.descrizione], ['SIERO', 'PROVETTA', 6, 7, 85.7, 'Esame dimostrativo E1']);
+    assert.deepEqual([e1.etichetta, e1.materiale, e1.n, e1.tot, e1.pct, e1.descrizione], ['PROVETTA', 'SIERO', 6, 7, 85.7, 'Esame dimostrativo E1']);
     assert.equal(cp.get('E2'), undefined, 'solo righe non cancellate');
-    // abbinamenti: SIERO/PROVETTA → X, URINE → Y; E3 ha una correlazione MANUALE verso Z (conflitto); E5 una SYNCLAB verso Y (cambia)
+    // abbinamenti: etichetta PROVETTA → X, CONTENITORE STERILE → Y; E3 ha una correlazione MANUALE verso Z (conflitto); E5 una SYNCLAB verso Y (cambia)
     const artY = (await uno(`INSERT INTO orders.articles (code, category_code, name, unit, pack_label) VALUES ('T-URI', 'TST', 'Contenitore urine prova', 'pezzi', 'conf.') RETURNING id`)).id;
     const artZ = (await uno(`INSERT INTO orders.articles (code, category_code, name, unit, pack_label) VALUES ('T-ALT', 'TST', 'Altro prova', 'pezzi', 'conf.') RETURNING id`)).id;
-    await db.query(`UPDATE orders.contenitori_synclab SET articolo_id = $1 WHERE material = 'SIERO' AND container = 'PROVETTA'`, [ID.artX]);
-    await db.query(`UPDATE orders.contenitori_synclab SET articolo_id = $1 WHERE material = 'URINE'`, [artY]);
+    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave = 'PROVETTA'`, [ID.artX]);
+    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave = 'CONTENITORE STERILE'`, [artY]);
     await db.query(`INSERT INTO orders.exam_mappings (exam_code, article_id, source) VALUES ('E3', $1, 'MANUALE'), ('E5', $2, 'SYNCLAB')`, [artZ, artY]);
     const pv = await M.ord.proponiCorrelazioni();
     assert.equal(pv.anteprima, true);
@@ -173,7 +174,7 @@ describe('Synclab nel Desk NC e in Ordini (fixture sintetiche)', { skip: SALTA }
     assert.deepEqual(mm.map((x) => [x.exam_code, x.article_id, x.source]), [['E1', ID.artX, 'MANUALE'], ['E3', artZ, 'MANUALE'], ['E4', ID.artX, 'SYNCLAB'], ['E5', ID.artX, 'SYNCLAB']]);
     const pv2 = await M.ord.proponiCorrelazioni();
     assert.deepEqual([pv2.sintesi.nuove, pv2.sintesi.cambiano, pv2.sintesi.conflitti], [0, 0, 1]);
-    cp = await M.ord.coppiePerEsame();
-    assert.equal(cp.get('E3').articolo_id, artY, 'badge "diverso": la correlazione manuale di E3 non è il contenitore più frequente');
+    cp = await M.ord.etichettePerEsame();
+    assert.equal(cp.get('E3').articolo_id, artY, 'badge "diverso": la correlazione manuale di E3 non è l\'etichetta più frequente');
   });
 });

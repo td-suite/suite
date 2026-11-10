@@ -21,6 +21,7 @@ export default function SedePage() {
   const [brand, setBrand] = useState({ logo: null, c: DEF_C });
   const [status, setStatus] = useState('idle'); // idle | dirty | saving | error
   const [err, setErr] = useState(null);
+  const [aggancio, setAggancio] = useState(null);
   const [history, setHistory] = useState(null);
   const [cmp, setCmp] = useState({ a: null, b: null, rows: null, busy: false });
   const base = useRef(null);        // ultimo stato salvato: {lite: json string, blobs:{logo,planPdf,planImg}}
@@ -34,6 +35,7 @@ export default function SedePage() {
     const s = r.struttura;
     base.current = { lite: JSON.stringify(split(s).lite), blobs: { logo: s.logo || null, planPdf: undefined, planImg: s.plan.imgUrl || null } };
     setMeta({ version: r.version, updatedAt: r.updatedAt, updatedBy: r.updatedBy, canEdit: r.canEdit, deletedAt: r.deletedAt, hasPlanPdf: r.hasPlanPdf, configurata: r.configurata, active: r.active });
+    setAggancio({ nonAgganciati: r.nonAgganciati || [], diagnostica: r.diagnostica || '/admin/diagnostica' });
     setStr(s); setStatus('idle');
     pdfLoaded.current = false;
     if (r.hasPlanPdf) {
@@ -74,6 +76,8 @@ export default function SedePage() {
       const r = await api.put(`/strutture/${id}`, { data: d.lite, version: metaRef.current.version, blobs: d.changedBlobs }, { silent: true });
       base.current = { lite: d.liteJson, blobs: { ...base.current.blobs, ...Object.fromEntries(Object.entries(d.changedBlobs)) } };
       setMeta((m) => ({ ...m, version: r.version, updatedAt: r.updatedAt, updatedBy: r.updatedBy }));
+      setAggancio({ nonAgganciati: r.nonAgganciati || [], diagnostica: r.diagnostica || '/admin/diagnostica' });   // v0.68.4: chi della sede non arriva in Turni/Presenze/Calendario
+      if (r.schede_create) toast(`${r.schede_create} ${r.schede_create === 1 ? 'scheda Room creata' : 'schede Room create'} in automatico: ${r.schede_create === 1 ? 'la persona è' : 'le persone sono'} pianificabili in Turni, Presenze e Calendario`);
       setStatus(diff(strRef.current)?.dirty ? 'dirty' : 'idle');
     } catch (e) {
       setStatus('error');
@@ -161,6 +165,11 @@ export default function SedePage() {
       </div>
       {meta.active === false && <div className="alert err" style={{ marginBottom: 10 }}>Questa sede non è attiva nell'anagrafica della Suite: si consulta soltanto. Per riattivarla usa Amministrazione &gt; Sedi.</div>}
       {!meta.configurata && meta.active !== false && <div className="alert info" style={{ marginBottom: 10 }}>Sede dell'anagrafica non ancora configurata in Room Planning: aggiungi ambulatori, personale e orari. Il primo salvataggio crea la configurazione.</div>}
+      {aggancio?.nonAgganciati?.length > 0 && <div className="alert warn" style={{ marginBottom: 10, flexDirection: 'column', alignItems: 'stretch', gap: 2 }} data-testid="sede-non-agganciati">
+        <b>Persone del personale non agganciate all'anagrafica: non arrivano in Turni, Presenze e Calendario</b>
+        {aggancio.nonAgganciati.map((x, i) => <div key={i} className="small">· {x.nome}: {x.motivo}</div>)}
+        <div className="small">Personale &gt; scheda della persona &gt; "Cambia" per sceglierla dall'anagrafica · <a href={aggancio.diagnostica}>Diagnostica anagrafica (D52)</a></div>
+      </div>}
       <Struttura str={str} upd={upd} brand={brand} onBack={() => nav(`${base}/sedi`)} />
       {history && (
         <Modal title={`Cronologia · ${sedeLabel(str)}`} onClose={() => setHistory(null)} wide footer={<button className="btn ghost" onClick={() => setHistory(null)}>Chiudi</button>}>

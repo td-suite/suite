@@ -6,8 +6,9 @@ import { ah, bad, notFound, forbidden, audit, parse, getSetting, r2, eur, itDate
 import { isGestione, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from '../lib/access.js';
 import { sendMail } from '../lib/mailer.js';
 import { computePlan, m2t as m2tE } from '../lib/engine.js';
+import { impegniSettimana, impegniDelGiorno, personeDiSede } from '../lib/impegni.js';
 import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
-import { personKey, stessaPersona, indicePersone, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE } from '../lib/personale.js';
+import { personKey, stessaPersona, indicePersone, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE, agganciatore, assicuraSchedeRoom, LINK_D52 } from '../lib/personale.js';
 
 const r = Router();
 const gest = (req, _res, next) => (isGestione(req.user) ? next() : next(forbidden('Riservato alla gestione del personale sanitario')));
@@ -283,44 +284,88 @@ r.post('/turni/mesi/:mese/riapri', gest, ah(async (req, res) => {
   await q(`INSERT INTO turni_mesi (mese, stato) VALUES ($1,'BOZZA') ON CONFLICT (mese) DO UPDATE SET stato='BOZZA', confermato_da=NULL, confermato_at=NULL`, [req.params.mese]);
   await audit(req, 'TURNI_RIAPRI', 'turni_mesi', req.params.mese); res.json({ ok: true });
 }));
-// Genera i turni del mese dalla pianificazione delle sedi (settimana-tipo applicata ai giorni del mese)
+// ---------- Piano della sede → turni, presenze (v0.68.4) ----------
+// Causa delle segnalazioni del 10/11/2026: la generazione dei turni e la giornata delle presenze leggevano dal piano solo le assegnazioni
+// medico → ambulatorio (e il sanitario di supporto): il personale di accettazione (turni del desk) e la copertura del Punto prelievi non
+// diventavano mai turni né presenze, e chi era nel personale di sede ma senza scheda Room (es. ESTERNO senza ruolo) restava "non censito".
+// Ora gli impegni vengono da lib/impegni.js (tutti i gruppi) e l'aggancio da agganciatore() (persona attiva e non esclusa = pianificabile).
+const personeTutte = () => many(`SELECT ${PROF_COLS} FROM professionisti_v p`);
+function pianoDi(s) {
+  try { const str = joinStruttura(s.lite, {}); const plan = computePlan(str); return { str, plan, settimana: impegniSettimana(str, plan), errore: null }; }
+  catch (e) { return { str: null, plan: null, settimana: [], errore: `piano della sede non calcolabile (${e.message})` }; }
+}
+// Fasce contigue o sovrapposte della stessa persona nella stessa giornata: un turno solo, con le attività elencate e l'ambulatorio della
+// parte più lunga (il Cockpit misura la copertura degli ambulatori sui turni con room_id)
+const accorpa = (list) => {
+  const merged = [];
+  for (const it of [...list].sort((a, b) => a.s - b.s)) {
+    const last = merged[merged.length - 1];
+    if (last && it.s <= last.e) { last.e = Math.max(last.e, it.e); if (!last.attivita.includes(it.attivita)) last.attivita += ', ' + it.attivita; if (it.e - it.s > last._lung) { last._lung = it.e - it.s; last.roomId = it.roomId; } }
+    else merged.push({ ...it, _lung: it.e - it.s });
+  }
+  return merged;
+};
+const GRUPPO_TIPO = { tutti: null, medici: ['medico'], sanitari: ['sanitario'], accettazione: ['accettazione'] };
+/** Persone della sede: agganciate (con la scheda Room creata se manca) e non agganciabili con il motivo. */
+async function personaleDiSede(s, piano, aggancia, userId = null) {
+  const doc = piano.str?.personale || [];
+  const righe = (piano.str ? personeDiSede(piano.str) : []).map((r) => { const riga = doc.find((x) => x.id === r.rowId) || r; return { ...r, riga, ...aggancia(riga) }; });
+  const schede = userId === false ? 0 : await assicuraSchedeRoom(s.id, righe.filter((x) => x.persona), userId);
+  return { righe, schede };
+}
+
+// Genera i turni dalla pianificazione delle sedi: il mese (o una settimana) con gli impegni della settimana-tipo di ogni sede applicati
+// alle date, saltando i giorni chiusi e le chiusure di sede. Accettazione, personale sanitario e medici con ambulatorio e fascia.
 r.post('/turni/genera', gest, ah(async (req, res) => {
-  const d = parse(z.object({ mese, sede_id: siteRef.optional(), tipo: z.enum(['tutti', 'medici', 'sanitari']).default('tutti'), sovrascrivi: z.boolean().default(false) }), req.body);
-  const sedi = (await loadSedi({ ids: d.sede_id ? [d.sede_id] : null })).map((x) => ({ id: x.row.id, lite: x.lite }));
-  const profs = await many('SELECT id, nome, tipo FROM professionisti_v WHERE pianificabile');
-  const trova = indicePersone(profs);   // prima person_id della riga di sede, poi chiave del nome (v0.68.1)
-  const [y, mm] = d.mese.split('-').map(Number); const days = new Date(Date.UTC(y, mm, 0)).getUTCDate();
-  const chiusure = await many("SELECT sede_id, dal, al FROM eventi WHERE kind='CHIUSURA'");
-  let created = 0, skipped = 0, nonCensiti = new Set();
+  const d = parse(z.object({ mese: mese.optional(), settimana: date.optional(), sede_id: siteRef.optional(), tipo: z.enum(['tutti', 'medici', 'sanitari', 'accettazione']).default('tutti'), sovrascrivi: z.boolean().default(false) })
+    .refine((x) => x.mese || x.settimana, { message: 'Indica il mese (aaaa-mm) o la settimana (lunedì aaaa-mm-gg)' }), req.body);
+  let giorni;
+  if (d.settimana) { const l = new Date(`${d.settimana}T12:00:00Z`); l.setUTCDate(l.getUTCDate() - dow(d.settimana)); giorni = Array.from({ length: 7 }, (_, i) => { const x = new Date(l); x.setUTCDate(l.getUTCDate() + i); return x.toISOString().slice(0, 10); }); }
+  else { const [y, mm] = d.mese.split('-').map(Number); giorni = Array.from({ length: new Date(Date.UTC(y, mm, 0)).getUTCDate() }, (_, i) => `${d.mese}-${String(i + 1).padStart(2, '0')}`); }
+  const dal = giorni[0], al = giorni[giorni.length - 1];
+  const sedi = (await loadSedi({ ids: d.sede_id ? [d.sede_id] : null })).map((x) => ({ id: x.row.id, lite: x.lite, nome: x.lite.denominazione }));
+  if (d.sede_id && !sedi.length) throw bad('Sede non configurata in Room Planning (Sedi e ambulatori)');
+  const aggancia = agganciatore(await personeTutte());
+  const chiusure = await many("SELECT sede_id, dal::text AS dal, al::text AS al FROM eventi WHERE kind='CHIUSURA' AND al >= $1 AND dal <= $2", [dal, al]);
+  const gruppi = GRUPPO_TIPO[d.tipo];
+  let created = 0, skipped = 0, schede = 0;
+  const nonAgganciati = [], senzaImpegni = [], sediSenzaPiano = [], perSede = [];
   for (const s of sedi) {
-    const str = joinStruttura(s.lite, {}); let plan; try { plan = computePlan(str); } catch { continue; }
-    const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p]));
-    if (d.sovrascrivi) await q("DELETE FROM turni WHERE mese=$1 AND sede_id=$2 AND nota='generato dalla pianificazione' AND id NOT IN (SELECT turno_id FROM presenze WHERE turno_id IS NOT NULL)", [d.mese, s.id]);
-    for (let day = 1; day <= days; day++) {
-      const iso = `${d.mese}-${String(day).padStart(2, '0')}`; const g = dow(iso);
-      if (chiusure.some((c) => c.sede_id === s.id && isoDate(c.dal) <= iso && isoDate(c.al) >= iso)) continue;
-      const items = [];
-      for (const a of plan.assigns.filter((x) => x.d === g)) {
-        const med = byId[a.medId]; if (med && d.tipo !== 'sanitari' && !isAttivita(med.nome)) items.push({ persona: med, s: a.s, e: a.e, room: a.roomId, att: 'Ambulatorio ' + (byId[a.roomId]?.nome || '') });
-        const san = a.sanId ? byId[a.sanId] : null; if (san && san.tipo === 'sanitario' && d.tipo !== 'medici') items.push({ persona: san, s: a.s, e: a.e, room: a.roomId, att: `Supporto ${med?.nome || ''}` });
-      }
-      // accorpa per persona le fasce contigue/sovrapposte
+    const piano = pianoDi(s);
+    if (piano.errore) { sediSenzaPiano.push({ sede_id: s.id, sede: s.nome, motivo: piano.errore }); continue; }
+    const { righe, schede: n } = await personaleDiSede(s, piano, aggancia, req.user.id); schede += n;
+    const byRow = new Map(righe.map((x) => [x.rowId, x]));
+    for (const x of righe) {
+      if (gruppi && !gruppi.includes(x.gruppo)) continue;
+      if (!x.persona) nonAgganciati.push({ sede_id: s.id, sede: s.nome, nome: x.nome, gruppo: x.gruppo, motivo: x.motivo, link: `/room/sedi/${s.id}`, diagnostica: LINK_D52 });
+      else if (!piano.settimana.some((i) => i.rowId === x.rowId)) senzaImpegni.push({ sede_id: s.id, sede: s.nome, nome: x.nome, gruppo: x.gruppo, motivo: x.gruppo === 'accettazione' ? 'nessun turno di desk nel piano (ore a contratto non indicate?)' : x.gruppo === 'medico' ? 'nessuna sessione allocata (disponibilità, ambulatori compatibili)' : 'nessun supporto né fascia prelievi nel piano' });
+    }
+    if (d.sovrascrivi) await q("DELETE FROM turni WHERE sede_id=$1 AND data BETWEEN $2 AND $3 AND nota='generato dalla pianificazione' AND id NOT IN (SELECT turno_id FROM presenze WHERE turno_id IS NOT NULL)", [s.id, dal, al]);
+    let cs = 0;
+    for (const iso of giorni) {
+      const g = dow(iso);
+      if (!piano.plan.open[g]) continue;
+      if (chiusure.some((c) => c.sede_id === s.id && c.dal <= iso && c.al >= iso)) continue;
       const per = new Map();
-      for (const it of items) { const pr = trova(it.persona); const k = pr ? `id:${pr.id}` : `k:${personKey(it.persona.nome)}`; (per.get(k) || per.set(k, []).get(k)).push(it); }
-      for (const [, list] of per) {
-        const p = trova(list[0].persona); if (!p) { nonCensiti.add(list[0].persona.nome); continue; }
-        list.sort((a, b) => a.s - b.s); const merged = [];
-        for (const it of list) { const last = merged[merged.length - 1]; if (last && it.s <= last.e) { last.e = Math.max(last.e, it.e); if (!last.att.includes(it.att)) last.att += ', ' + it.att; } else merged.push({ ...it }); }
-        for (const mrg of merged) {
+      for (const it of impegniDelGiorno(piano.str, piano.plan, iso, piano.settimana)) {
+        if (gruppi && !gruppi.includes(it.gruppo)) continue;
+        const x = byRow.get(it.rowId); if (!x?.persona) continue;
+        (per.get(x.persona.id) || per.set(x.persona.id, []).get(x.persona.id)).push(it);
+      }
+      for (const [profId, list] of per) {
+        for (const mrg of accorpa(list)) {
           const da = m2tE(mrg.s), a = m2tE(mrg.e);
-          if (await one('SELECT id FROM turni WHERE sede_id=$1 AND data=$2 AND prof_id=$3 AND ora_da<$5 AND ora_a>$4', [s.id, iso, p.id, da, a])) { skipped++; continue; }
-          await q("INSERT INTO turni (mese, sede_id, data, ora_da, ora_a, prof_id, attivita, room_id, nota, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'generato dalla pianificazione',$9)", [d.mese, s.id, iso, da, a, p.id, mrg.att.slice(0, 120), mrg.room, req.user.id]); created++;
+          if (await one('SELECT id FROM turni WHERE sede_id=$1 AND data=$2 AND prof_id=$3 AND ora_da<$5 AND ora_a>$4', [s.id, iso, profId, da, a])) { skipped++; continue; }
+          await q("INSERT INTO turni (mese, sede_id, data, ora_da, ora_a, prof_id, profilo, attivita, room_id, nota, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'generato dalla pianificazione',$10)",
+            [iso.slice(0, 7), s.id, iso, da, a, profId, mrg.gruppo === 'accettazione' ? 'Accettazione' : mrg.profilo || null, mrg.attivita.slice(0, 120), mrg.roomId || null, req.user.id]);
+          created++; cs++;
         }
       }
     }
+    perSede.push({ sede_id: s.id, sede: s.nome, creati: cs });
   }
-  await audit(req, 'TURNI_GENERA', 'turni_mesi', d.mese, { created, skipped });
-  res.json({ created, skipped, nonCensiti: [...nonCensiti] });
+  await audit(req, 'TURNI_GENERA', 'turni_mesi', d.mese || d.settimana, { dal, al, created, skipped, schede, nonAgganciati: nonAgganciati.length });
+  res.json({ dal, al, created, skipped, schede_create: schede, perSede, nonAgganciati, senzaImpegni, sediSenzaPiano, nonCensiti: [...new Set(nonAgganciati.map((x) => x.nome))], diagnostica: LINK_D52 });
 }));
 
 // ---------- Presenze ----------
@@ -330,22 +375,67 @@ r.get('/presenze/sedi-gestite', ah(async (req, res) => {
   const ids = isGestione(req.user) ? all.map((s) => s.id) : await siteManagerSedi(req.user);
   res.json(all.filter((s) => ids.includes(s.id)).sort((a, b) => a.label.localeCompare(b.label, 'it')));
 }));
-// Giornata di una sede: turni previsti, presenze già confermate, professionisti abbinabili per presenze extra
+// Giornata di una sede: turni previsti, presenze già confermate, impegni del piano della sede per quel giorno (tutte le persone del
+// personale di sede: medici, sanitari, accettazione) e chi della sede non è agganciabile, con il motivo
 r.get('/presenze/giorno', ah(async (req, res) => {
   const sede_id = Number(req.query.sede_id), data = req.query.data; if (!sede_id || !/^\d{4}-\d{2}-\d{2}$/.test(String(data))) throw bad('sede_id e data richiesti');
   if (!(await canConfirmPresenze(req.user, sede_id))) throw forbidden('Non sei il gestore di questa sede');
   const turni = await many('SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.sede_id=$1 AND t.data=$2 ORDER BY t.ora_da', [sede_id, data]);
   const presenze = await many('SELECT pr.*, p.nome AS prof_nome, p.profilo AS prof_profilo, u.full_name AS confermato_da_nome FROM presenze pr JOIN professionisti_v p ON p.id=pr.prof_id LEFT JOIN users u ON u.id=pr.confermato_da WHERE pr.sede_id=$1 AND pr.data=$2 ORDER BY pr.ora_da', [sede_id, data]);
-  const profs = await many('SELECT id, nome, tipo, profilo FROM professionisti_v WHERE pianificabile ORDER BY in_room DESC, lower(nome)');
-  // dalla pianificazione (settimana-tipo) per il giorno, utile se i turni non sono stati generati
-  let pianificati = [];
+  const tutte = await personeTutte();
+  const profs = tutte.filter((p) => p.pianificabile).sort((a, b) => Number(b.in_room) - Number(a.in_room) || a.nome.localeCompare(b.nome, 'it')).map((p) => ({ id: p.id, nome: p.nome, tipo: p.tipo, profilo: p.profilo }));
+  const pianificati = [], nonAgganciati = [];
   const s = (await loadSedi({ ids: [sede_id] }))[0];
-  if (s) { try { const str = joinStruttura(s.lite, {}); const plan = computePlan(str); const byId = Object.fromEntries((str.personale || []).map((p) => [p.id, p])); const g = dow(String(data));
-    const trova = indicePersone(profs);
-    for (const a of plan.assigns.filter((x) => x.d === g)) { const med = byId[a.medId]; const san = a.sanId ? byId[a.sanId] : null;
-      for (const per of [med, san]) if (per && !isAttivita(per.nome)) { const pr = trova(per); pianificati.push({ nome: per.nome, prof_id: pr?.id || null, ora_da: m2tE(a.s), ora_a: m2tE(a.e), attivita: per === med ? 'Ambulatorio ' + (byId[a.roomId]?.nome || '') : `Supporto ${med?.nome || ''}` }); } }
-  } catch { /* */ } }
-  res.json({ turni, presenze, professionisti: profs, pianificati, locked: presenze.some((p) => p.rendiconto_id) });
+  let pianoErrore = null;
+  if (s) {
+    const piano = pianoDi({ id: s.row.id, lite: s.lite });
+    pianoErrore = piano.errore;
+    if (!piano.errore) {
+      const { righe } = await personaleDiSede({ id: sede_id }, piano, agganciatore(tutte), false);
+      const byRow = new Map(righe.map((x) => [x.rowId, x]));
+      const chiusa = await one("SELECT nota FROM eventi WHERE kind='CHIUSURA' AND sede_id=$1 AND $2::date BETWEEN dal AND al LIMIT 1", [sede_id, data]);
+      const per = new Map();
+      if (!chiusa) for (const it of impegniDelGiorno(piano.str, piano.plan, data, piano.settimana)) { const x = byRow.get(it.rowId); const k = x?.persona ? x.persona.id : `r:${it.rowId}`; (per.get(k) || per.set(k, []).get(k)).push(it); }
+      for (const [k, list] of per) {
+        const x = byRow.get(list[0].rowId);
+        for (const m of accorpa(list)) pianificati.push({ nome: x?.persona?.nome || m.nome, prof_id: x?.persona?.id || null, profilo: x?.persona?.profilo || m.profilo || (m.gruppo === 'accettazione' ? 'Accettazione' : ''), gruppo: m.gruppo, ora_da: m2tE(m.s), ora_a: m2tE(m.e), attivita: m.attivita, motivo: x?.motivo || null, chiave: String(k) });
+      }
+      for (const x of righe) if (!x.persona) nonAgganciati.push({ nome: x.nome, gruppo: x.gruppo, motivo: x.motivo, link: `/room/sedi/${sede_id}`, diagnostica: LINK_D52 });
+      if (chiusa) pianoErrore = `Sede chiusa in questa data${chiusa.nota ? `: ${chiusa.nota}` : ''} (Calendario)`;
+    }
+  }
+  res.json({ turni, presenze, professionisti: profs, pianificati, nonAgganciati, pianoErrore, locked: presenze.some((p) => p.rendiconto_id) });
+}));
+// Mese di una sede: le persone assegnate alla sede (personale di sede agganciato) con turni previsti e presenze confermate del mese,
+// più chi ha turni o presenze nella sede senza esserne nel personale; e chi della sede non è agganciabile (motivo, link a D52)
+r.get('/presenze/mese', ah(async (req, res) => {
+  const sede_id = Number(req.query.sede_id), m = String(req.query.mese || '');
+  if (!sede_id || !validMese(m)) throw bad('sede_id e mese (aaaa-mm) richiesti');
+  if (!(await canConfirmPresenze(req.user, sede_id))) throw forbidden('Non sei il gestore di questa sede');
+  const tutte = await personeTutte();
+  const byId = new Map(tutte.map((p) => [p.id, p]));
+  const turni = await many("SELECT prof_id, count(*)::int AS n, sum(EXTRACT(EPOCH FROM (ora_a::time - ora_da::time)) / 3600)::float AS ore FROM turni WHERE sede_id=$1 AND mese=$2 AND prof_id IS NOT NULL GROUP BY prof_id", [sede_id, m]);
+  const pres = await many("SELECT prof_id, count(*) FILTER (WHERE stato='CONFERMATA')::int AS n, count(*) FILTER (WHERE stato='ASSENTE')::int AS assenze, coalesce(sum(EXTRACT(EPOCH FROM (ora_a::time - ora_da::time)) / 3600) FILTER (WHERE stato='CONFERMATA'), 0)::float AS ore FROM presenze WHERE sede_id=$1 AND to_char(data,'YYYY-MM')=$2 GROUP BY prof_id", [sede_id, m]);
+  const T = new Map(turni.map((x) => [x.prof_id, x])), P = new Map(pres.map((x) => [x.prof_id, x]));
+  const persone = new Map(); const nonAgganciati = [];
+  const s = (await loadSedi({ ids: [sede_id] }))[0];
+  if (s) {
+    const piano = pianoDi({ id: s.row.id, lite: s.lite });
+    const str = piano.str || joinStruttura(s.lite, {});
+    const aggancia = agganciatore(tutte);
+    for (const r0 of personeDiSede(str)) {
+      const riga = (str.personale || []).find((x) => x.id === r0.rowId) || r0;
+      const { persona, motivo } = aggancia(riga);
+      if (!persona) { nonAgganciati.push({ nome: r0.nome, gruppo: r0.gruppo, motivo, link: `/room/sedi/${sede_id}`, diagnostica: LINK_D52 }); continue; }
+      if (persone.has(persona.id)) continue;
+      const ore = piano.settimana.filter((i) => i.rowId === r0.rowId && (i.sett == null || i.sett === 0)).reduce((a, i) => a + (i.e - i.s), 0) / 60;
+      persone.set(persona.id, { prof_id: persona.id, nome: persona.nome, profilo: persona.profilo || (r0.gruppo === 'accettazione' ? 'Accettazione' : ''), gruppo: r0.gruppo, in_sede: true, ore_settimana_piano: r2(ore) });
+    }
+  }
+  for (const id of new Set([...T.keys(), ...P.keys()])) if (!persone.has(id)) { const p = byId.get(id); persone.set(id, { prof_id: id, nome: p?.nome || `persona ${id}`, profilo: p?.profilo || '', gruppo: p?.tipo || '', in_sede: false, ore_settimana_piano: null }); }
+  const out = [...persone.values()].map((x) => ({ ...x, turni: T.get(x.prof_id)?.n || 0, ore_turni: r2(T.get(x.prof_id)?.ore || 0), presenze: P.get(x.prof_id)?.n || 0, assenze: P.get(x.prof_id)?.assenze || 0, ore_presenze: r2(P.get(x.prof_id)?.ore || 0) }))
+    .sort((a, b) => Number(b.in_sede) - Number(a.in_sede) || a.nome.localeCompare(b.nome, 'it'));
+  res.json({ mese: m, persone: out, nonAgganciati, diagnostica: LINK_D52 });
 }));
 r.post('/presenze/conferma', ah(async (req, res) => {
   const d = parse(z.object({ sede_id: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive()), data: date, items: z.array(z.object({ id: z.number().int().optional().nullable(), prof_id: z.number().int(), ora_da: time, ora_a: time, stato: z.enum(['CONFERMATA', 'ASSENTE']).default('CONFERMATA'), turno_id: z.number().int().optional().nullable(), origine: z.enum(['TURNO', 'PIANIFICAZIONE', 'EXTRA']).default('TURNO'), attivita: z.string().max(120).optional().nullable(), nota: z.string().max(300).optional().nullable() }).refine(ordered, { message: "L'ora di fine deve seguire quella di inizio" })).max(200) }), req.body);

@@ -23,35 +23,9 @@ const pct = (num, den) => (num == null || den == null || !Number(den) ? null : M
 export const MESI_IT = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 export const etichettaMese = (mk) => `${MESI_IT[Number(mk.slice(5, 7)) - 1]} ${mk.slice(0, 4)}`;
 
-/** Giorni lavorativi (lunedì-venerdì, festivi non considerati: approssimazione dichiarata) fra da e a compresi. */
-export function giorniLavorativi(da, a) {
-  const s = Date.parse(`${giorno(da)}T00:00:00Z`), e = Date.parse(`${giorno(a)}T00:00:00Z`);
-  if (!(e >= s)) return 0;
-  let n = 0;
-  for (let t = s; t <= e; t += 86400000) { const w = new Date(t).getUTCDay(); if (w !== 0 && w !== 6) n++; }
-  return n;
-}
-
-/** Data di avvio dell'account: effettiva, prevista, cliente attivo dal (la prima che c'è). */
-export const dataAvvio = (a = {}) => giorno(a.data_avvio_effettiva) || giorno(a.data_avvio_prevista) || giorno(a.data_avvio) || giorno(a.attivo_dal) || null;
-
-/**
- * Pro quota del fatturato dichiarato maturato a oggi nell'anno di oggi.
- * { anno, inizio, avvio, giorni, giorni_anno, quota, importo, nota } oppure null senza fatturato dichiarato.
- */
-export function proQuota({ fatturato_fy_atteso: fy, avvio = null, oggi, giorniAnno = 250 }) {
-  if (fy == null || !(Number(fy) > 0)) return null;
-  const anno = Number(String(oggi).slice(0, 4));
-  const gl = Number(giorniAnno) > 0 ? Number(giorniAnno) : 250;
-  const inizioAnno = `${anno}-01-01`;
-  const av = giorno(avvio);
-  if (av && av > oggi) return { anno, inizio: av, avvio: av, giorni: 0, giorni_anno: gl, quota: 0, importo: 0, nota: `Avvio previsto il ${av.split('-').reverse().join('/')}: nessun pro quota maturato` };
-  const inizio = av && av > inizioAnno ? av : inizioAnno;
-  const giorni = giorniLavorativi(inizio, oggi);
-  const quota = Math.min(1, giorni / gl);
-  return { anno, inizio, avvio: av, giorni, giorni_anno: gl, quota: Math.round(quota * 10000) / 10000, importo: r2(Number(fy) * quota),
-    nota: `${giorni} giorni lavorativi dal ${inizio.split('-').reverse().join('/')}${av && av <= inizioAnno ? ' (avvio precedente: dal 1° gennaio)' : !av ? ' (data di avvio non indicata: dal 1° gennaio)' : ''} su ${gl}` };
-}
+// Giorni lavorativi, data di avvio e pro quota sono in lib/proQuota.js (pure, senza database: le usa anche Finance Management, v0.68.4)
+import { giorniLavorativi, dataAvvio, proQuota } from './proQuota.js';
+export { giorniLavorativi, dataAvvio, proQuota };
 
 /** Mesi 'AAAA-MM' interamente trascorsi prima del mese di oggi e interamente dopo l'inizio (inizio = primo giorno utile). */
 export function mesiPieni(inizio, oggi) {

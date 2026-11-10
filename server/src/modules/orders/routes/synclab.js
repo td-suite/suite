@@ -1,12 +1,12 @@
-// Ordini e Magazzino · fonte Synclab (v0.67.1): produzione dalla copia Synclab del gestionale e correlazione esami → materiali dai
-// contenitori osservati nei campioni. Logica in lib/synclab.js; documentazione in docs/SYNCLAB_DATA_API.md ("Chi usa i dati") e
+// Ordini e Magazzino · fonte Synclab (v0.67.1): produzione dalla copia Synclab del gestionale e correlazione esami → materiali dalle
+// etichette osservate nei campioni (v0.68.4; prima coppie materiale/contenitore). Logica in lib/synclab.js; documentazione in docs/SYNCLAB_DATA_API.md ("Chi usa i dati") e
 // docs/ORDINI_SYNCLAB.md. Solo profili Operations (come Produzione StudioLab e Correlazione).
 import { Router } from 'express';
 import { z } from 'zod';
 import { one } from '../db.js';
 import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireRole, OPS_ROLES } from '../lib/access.js';
-import { aggiornaProduzioneSynclab, statoProduzioneSynclab, aggiornaContenitori, elencoContenitori, coppiePerEsame, proponiCorrelazioni, synclabDisponibile } from '../lib/synclab.js';
+import { aggiornaProduzioneSynclab, statoProduzioneSynclab, aggiornaEtichette, elencoEtichette, etichettePerEsame, proponiCorrelazioni, synclabDisponibile } from '../lib/synclab.js';
 
 const r = Router();
 const ops = requireRole(...OPS_ROLES);
@@ -19,30 +19,31 @@ r.post('/production/synclab/aggiorna', ops, ah(async (req, res) => {
   res.json(out);
 }));
 
-// Contenitori visti nel gestionale (coppie materiale/contenitore) e abbinamento a un articolo
-r.get('/mappings/synclab/contenitori', ops, ah(async (_req, res) => {
+// Etichette viste nel gestionale (v0.68.4: una riga per testo di etichetta, prima per coppia materiale/contenitore) e abbinamento a un articolo
+r.get('/mappings/synclab/etichette', ops, ah(async (_req, res) => {
   const disp = await synclabDisponibile();
-  res.json({ disponibile: disp.ok, motivo: disp.motivo || null, contenitori: disp.ok ? await elencoContenitori() : [] });
+  res.json({ disponibile: disp.ok, motivo: disp.motivo || null, etichette: disp.ok ? await elencoEtichette() : [] });
 }));
-r.post('/mappings/synclab/contenitori/aggiorna', ops, ah(async (req, res) => {
+r.post('/mappings/synclab/etichette/aggiorna', ops, ah(async (req, res) => {
   const disp = await synclabDisponibile();
   if (!disp.ok) throw bad(disp.motivo);
-  const out = await aggiornaContenitori();
-  await audit(req, 'MAPPINGS_SYNCLAB_CONTENITORI', 'contenitori_synclab', null, out);
+  const out = await aggiornaEtichette();
+  await audit(req, 'MAPPINGS_SYNCLAB_ETICHETTE', 'etichette_synclab', null, out);
   res.json(out);
 }));
-r.put('/mappings/synclab/contenitori/:id', ops, ah(async (req, res) => {
+r.put('/mappings/synclab/etichette/:id', ops, ah(async (req, res) => {
   const b = parse(z.object({ articolo_id: z.number().int().nullable() }), req.body);
   if (b.articolo_id && !(await one('SELECT 1 FROM articles WHERE id=$1', [b.articolo_id]))) throw bad('Articolo inesistente');
-  const row = await one('UPDATE contenitori_synclab SET articolo_id=$2 WHERE id=$1 RETURNING *', [Number(req.params.id), b.articolo_id]);
-  if (!row) throw bad('Coppia non trovata');
-  await audit(req, 'MAPPINGS_SYNCLAB_ABBINA', 'contenitori_synclab', row.id, { material: row.material, container: row.container, articolo_id: b.articolo_id });
+  // l'abbinamento scelto a mano chiude la segnalazione della rifusione (migrazione 017)
+  const row = await one('UPDATE etichette_synclab SET articolo_id=$2, nota_rifusione=NULL WHERE id=$1 RETURNING *', [Number(req.params.id), b.articolo_id]);
+  if (!row) throw bad('Etichetta non trovata');
+  await audit(req, 'MAPPINGS_SYNCLAB_ABBINA', 'etichette_synclab', row.id, { etichetta: row.etichetta, articolo_id: b.articolo_id });
   res.json(row);
 }));
-// Per la tabella delle correlazioni: coppia più frequente di ogni esame (colonna "Dal gestionale") e descrizione dal catalogo Synclab
+// Per la tabella delle correlazioni: etichetta più frequente di ogni esame (colonna "Dal gestionale") e descrizione dal catalogo Synclab
 r.get('/mappings/synclab/esami', ops, ah(async (_req, res) => {
   const disp = await synclabDisponibile();
-  res.json(disp.ok ? Object.fromEntries(await coppiePerEsame()) : {});
+  res.json(disp.ok ? Object.fromEntries(await etichettePerEsame()) : {});
 }));
 // Proposta di correlazioni: anteprima (conferma false) e applicazione (conferma true); le MANUALE e LISTINO non si toccano
 r.post('/mappings/synclab/proponi', ops, ah(async (req, res) => {

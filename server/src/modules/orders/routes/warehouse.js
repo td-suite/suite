@@ -17,6 +17,11 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   const rows = await many(`SELECT a.id AS article_id, a.code, a.silva_code, a.name, a.category_code, c.name AS category_name, c.icon, a.color, a.unit, a.pack_size, a.pack_label, a.gtin, a.source, a.active,
       a.visible_all, a.visible_sedi, a.visible_poli, a.visible_lab, a.visible_service,
+      -- v0.68.4 · ordinabile = compare in "Nuovo ordine" per almeno una tipologia: attivo, del catalogo Silva (o nessun articolo Silva
+      -- ancora) e visibile ad almeno una colonna; motivo se non lo è
+      (a.active AND (a.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active)) AND (a.visible_all OR a.visible_sedi OR a.visible_poli OR a.visible_lab OR a.visible_service)) AS ordinabile,
+      CASE WHEN NOT a.active THEN 'disattivo' WHEN NOT (a.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active)) THEN 'caricato a mano, fuori dal catalogo Silva'
+           WHEN NOT (a.visible_all OR a.visible_sedi OR a.visible_poli OR a.visible_lab OR a.visible_service) THEN 'non visibile a nessuna tipologia' END AS non_ordinabile_motivo,
       coalesce((SELECT sum(w.qty) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current),0)::numeric AS qty,
       (SELECT min(w.expiry) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS next_expiry,
       (SELECT count(*)::int FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS lots,

@@ -22,6 +22,7 @@ const pct = (v) => (v == null ? '' : `${Number(v).toLocaleString('it-IT', { maxi
 export const CALCOLO_PL = (imp, lab) => [
   'Ricavi = produzione, non fatturato (decisione 12): vendite nette di Retail per sede e data (senza dati dimostrativi; le vendite B2B dei clienti Service vanno nella riga Service) e produzione dei clienti Service attribuita alla sede del Laboratorio' + (lab ? ` (${lab.name})` : '') + '.',
   'Ricavi Service solo dalla produzione effettiva (Synclab Data API, file StudioLAB, Retail, Ordini, inserita a mano): le stime commerciali del Business Hub (fonte STIMA) stanno nella riga "Stime commerciali (non sommate)" sotto il totale, con il numero di clienti stimati (v0.68.1).',
+  'Stime commerciali (v0.68.4): solo i clienti Service ATTIVI (regola del Business Hub: niente prospect né contrattualizzati non avviati), nei mesi senza produzione effettiva, IN PRO QUOTA sul periodo: fatturato FY atteso × giorni lavorativi del periodo successivi alla data di avvio (fino a oggi) / giorni lavorativi dell\'anno. A parte la "Proiezione FY" dell\'anno seguente: fatturato FY atteso pieno dei clienti attivi. Né le stime né la proiezione si sommano ai ricavi o al margine.',
   'Incassi Cash: riga di controllo, non sommata ai ricavi (rendiconti da CLOSED in poi: contanti da versare + POS + bonifici); si mostra la differenza con Retail.',
   `Costi diretti di sede: canone (scatti del contratto dello Scadenziario o canone di Amministrazione > Sedi, IVA ${imp.iva_costi === 'COSTO' ? 'sommata come costo indetraibile' : 'esclusa'} quando il canone è più IVA), bollette registrate ripartite per giorni del periodo, royalties di sede confermate in Cash, personale assegnato alla sede (RAL × coefficiente oneri ${String(imp.coefficiente).replace('.', ',')} / 12, oppure il coefficiente del contratto se indicato da HR), compensi fissi dei liberi professionisti (variabili "da indicare"), manutenzioni con costo (Facility), pagamenti Finance con la sede come centro di costo (con il solo cliente: al Laboratorio).`,
   `Costi centrali (decisione 11): personale e pagamenti senza sede, costi delle sedi centrali (${imp.sedi_centrali_predefinite ? 'predefinito: sedi di tipo Sede direzionale' : 'impostazione'}), ripartiti su ogni sede in proporzione ai ricavi della sede sul totale del periodo (chiave ${imp.chiave}).`,
@@ -52,7 +53,8 @@ export async function contoXlsx(d) {
     riga(lb, (c) => c.voci[k].importo, { tot: d.totale.voci[k] });
   }
   riga('Totale ricavi (produzione effettiva)', (c) => c.ricavi, { tot: d.totale.ricavi, bold: true });
-  riga(`Stime commerciali (non sommate)${d.totale.stime?.clienti ? `: ${d.totale.stime.clienti} clienti stimati` : ''}`, (c) => c.voci.stime_service.importo, { tot: d.totale.voci.stime_service });
+  riga(`Stime commerciali in pro quota (non sommate)${d.totale.stime?.clienti ? `: ${d.totale.stime.clienti} clienti attivi` : ''}`, (c) => c.voci.stime_service.importo, { tot: d.totale.voci.stime_service });
+  riga(`Proiezione FY ${d.totale.proiezione?.anno || d.periodo.anno + 1} (fatturato atteso pieno dei clienti attivi, non sommata)${d.totale.proiezione?.clienti ? `: ${d.totale.proiezione.clienti} clienti` : ''}`, (c) => c.voci.proiezione_fy.importo, { tot: d.totale.voci.proiezione_fy });
   if (disp('incassi_cash')) {
     riga('Incassi Cash (controllo, non sommati)', (c) => c.voci.incassi_cash.importo, { tot: d.totale.voci.incassi_cash });
     riga('Differenza Cash − Retail', (c) => c.controllo_cash?.differenza ?? null, { tot: d.totale.controllo_cash?.differenza ?? null });
@@ -169,7 +171,8 @@ export async function contoPdf(d) {
     const rows = [];
     for (const k of ['ricavi_retail', 'ricavi_service']) rows.push([d.righe.find((x) => x.key === k).label, ...(disp(k) ? v((c) => eur(c.voci[k].importo), eur(d.totale.voci[k])) : v(() => 'non disp.', 'non disp.'))]);
     rows.push(['Totale ricavi (produzione effettiva)', ...v((c) => eur(c.ricavi), eur(d.totale.ricavi))]);
-    rows.push([`Stime commerciali (non sommate)${d.totale.stime?.clienti ? `, ${d.totale.stime.clienti} clienti` : ''}`, ...v((c) => eur(c.voci.stime_service.importo), eur(d.totale.voci.stime_service))]);
+    rows.push([`Stime commerciali in pro quota (non sommate)${d.totale.stime?.clienti ? `, ${d.totale.stime.clienti} clienti attivi` : ''}`, ...v((c) => eur(c.voci.stime_service.importo), eur(d.totale.voci.stime_service))]);
+    rows.push([`Proiezione FY ${d.totale.proiezione?.anno || d.periodo.anno + 1} (non sommata)${d.totale.proiezione?.clienti ? `, ${d.totale.proiezione.clienti} clienti attivi` : ''}`, ...v((c) => eur(c.voci.proiezione_fy.importo), eur(d.totale.voci.proiezione_fy))]);
     rows.push(['Incassi Cash (controllo)', ...(disp('incassi_cash') ? v((c) => eur(c.voci.incassi_cash.importo), eur(d.totale.voci.incassi_cash)) : v(() => 'non disp.', 'non disp.'))]);
     rows.push(['Differenza Cash − Retail', ...(disp('incassi_cash') ? v((c) => eur(c.controllo_cash?.differenza), eur(d.totale.controllo_cash?.differenza)) : v(() => '', ''))]);
     for (const r of d.righe.filter((x) => x.gruppo === 'COSTI')) rows.push([r.label, ...(disp(r.key) ? v((c) => `${eur(c.voci[r.key].importo)}${c.voci[r.key].da_indicare ? ' *' : ''}`, eur(d.totale.voci[r.key])) : v(() => 'non disp.', 'non disp.'))]);
@@ -195,8 +198,9 @@ export async function contoPdf(d) {
 
 // ------------------------------------------------------------------ margine per cliente Service
 export const CALCOLO_SRV = (imp, giorni) => [
-  'Clienti: Service ATTIVI (conferma del CEO) e CONTRATTUALIZZATI della vista clienti_attivi_v.',
-  'Produzione del mese dalla fonte migliore: riga inserita o caricata in Finance Management (MANUALE o STUDIOLAB), poi SYNCLAB (accettazioni del gestionale importate con la Data API: righe d\'esame non cancellate delle accettazioni attive con data nel mese, al prezzo netto storico di riga), poi StudioLAB arrivato alla Suite (vendite B2B di Retail, poi produzione di Ordini), infine la STIMA: volumi giornalieri attesi dell\'account del Business Hub (o volume annuo / giorni lavorativi) × giorni lavorativi del mese (' + giorni + ' / 12), al prezzo medio per esame dell\'account.',
+  'Clienti: Service ATTIVI (conferma del CEO, regola unica del Business Hub) della vista clienti_attivi_v; i CONTRATTUALIZZATI non avviati compaiono solo se hanno produzione effettiva nel periodo, mai con stime né proiezione (v0.68.4).',
+  'Produzione del mese dalla fonte migliore: riga inserita o caricata in Finance Management (MANUALE o STUDIOLAB), poi SYNCLAB (accettazioni del gestionale importate con la Data API: righe d\'esame non cancellate delle accettazioni attive con data nel mese, al prezzo netto storico di riga), poi StudioLAB arrivato alla Suite (vendite B2B di Retail, poi produzione di Ordini), infine, solo per i clienti ATTIVI, la STIMA in pro quota: fatturato FY atteso della scheda account × giorni lavorativi del mese successivi alla data di avvio (fino a oggi) / ' + giorni + ' (senza fatturato FY atteso: volumi giornalieri attesi × ' + giorni + ' × prezzo medio per esame); esami stimati = volumi giornalieri attesi × gli stessi giorni.',
+  'Proiezione FY dell\'anno seguente: fatturato FY atteso pieno dei clienti attivi, mostrato a parte e mai sommato.',
   'Ricavo: con la fonte SYNCLAB la somma dei netti di riga del gestionale (lo sconto di testata è riportato a parte, non applicato; le righe senza prezzo al listino corrente se c\'è); con le altre fonti gli esami ai prezzi del listino corrente del cliente (prezzo offerto, altrimenti listino) quando la produzione ha il dettaglio per esame; altrimenti il valore caricato o stimato.',
   'Fatturato da documenti (Synclab): contributo al fatturato netto dei documenti economici con data nel mese (una volta per documento, note di credito già negative). È una grandezza diversa dalla produzione del mese: è mostrato accanto e non entra nel ricavo né nel margine.',
   `Costi diretti: ritiri del mese (giorni a orario fisso del contratto Service × costo per ritiro ${imp.costo_ritiro != null ? eur(imp.costo_ritiro) : 'da indicare'}; ritiri a chiamata non quantificabili), costo analitico degli esami (tabella costi esami per codice, altrimenti costo medio ${imp.costo_medio_esame != null ? eur(imp.costo_medio_esame) : 'da indicare'}), pagamenti Finance con il cliente indicato.`,
@@ -207,17 +211,20 @@ export async function margineXlsx(d) {
   const ws = wb.addWorksheet('Margine Service', { views: [{ state: 'frozen', ySplit: 3 }] });
   ws.addRow([`Margine per cliente Service · ${d.periodo.etichetta}`]).font = { bold: true, size: 13 };
   ws.addRow(['Valori in euro; "stima" = contiene ipotesi; "da indicare" = dato mancante']);
-  const h = ws.addRow(['Cliente', 'Livello', 'Fonte produzione', 'Esami', 'Ricavo', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Costi diretti', 'Margine', 'Margine %', 'Stime', 'Da indicare', 'Fatturato da documenti (Synclab, non sommato)']);
+  const annoFy = d.proiezione?.anno || d.periodo.anno + 1;
+  const h = ws.addRow(['Cliente', 'Livello', 'Fonte produzione', 'Esami', 'Ricavo', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Costi diretti', 'Margine', 'Margine %', 'Stime', 'Da indicare', 'Fatturato da documenti (Synclab, non sommato)', 'Di cui stima in pro quota (non effettiva)', `Proiezione FY ${annoFy} (non sommata)`]);
   h.font = { bold: true, color: { argb: 'FFFFFFFF' } }; h.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C505E' } }; });
   for (const c of d.clienti) {
     const t = c.totale;
-    const r = ws.addRow([c.org_name, c.livello, t.fonti.join(', '), t.esami, t.ricavo, Object.values(c.mesi).reduce((a, m) => a + (m.ritiri || 0), 0), t.costo_ritiri, t.costo_esami, t.pagamenti, t.costi_diretti, t.margine, t.margine_pct == null ? null : t.margine_pct / 100, t.stime.join(', '), t.da_indicare.join('; '), t.fatturato_documenti ?? null]);
-    [5, 7, 8, 9, 10, 11, 15].forEach((i) => { r.getCell(i).numFmt = EUR; }); r.getCell(12).numFmt = '0.0%';
+    const r = ws.addRow([c.org_name, c.livello, t.fonti.join(', '), t.esami, t.ricavo, Object.values(c.mesi).reduce((a, m) => a + (m.ritiri || 0), 0), t.costo_ritiri, t.costo_esami, t.pagamenti, t.costi_diretti, t.margine, t.margine_pct == null ? null : t.margine_pct / 100, t.stime.join(', '), t.da_indicare.join('; '), t.fatturato_documenti ?? null, t.ricavo_stime ?? null, c.proiezione_fy?.importo ?? null]);
+    [5, 7, 8, 9, 10, 11, 15, 16, 17].forEach((i) => { r.getCell(i).numFmt = EUR; }); r.getCell(12).numFmt = '0.0%';
   }
   const T = d.totale;
-  const tr = ws.addRow(['Totale linea', '', '', T.esami, T.ricavo, null, T.costo_ritiri, T.costo_esami, T.pagamenti, T.costi_diretti, T.margine, T.margine_pct == null ? null : T.margine_pct / 100]);
-  tr.font = { bold: true }; [5, 7, 8, 9, 10, 11].forEach((i) => { tr.getCell(i).numFmt = EUR; }); tr.getCell(12).numFmt = '0.0%';
-  [38, 18, 18, 10, 16, 8, 14, 14, 14, 16, 16, 10, 30, 50].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  const tr = ws.addRow(['Totale linea', '', '', T.esami, T.ricavo, null, T.costo_ritiri, T.costo_esami, T.pagamenti, T.costi_diretti, T.margine, T.margine_pct == null ? null : T.margine_pct / 100, '', '', T.fatturato_documenti ?? null, T.ricavo_stime ?? null, d.proiezione?.importo ?? null]);
+  tr.font = { bold: true }; [5, 7, 8, 9, 10, 11, 15, 16, 17].forEach((i) => { tr.getCell(i).numFmt = EUR; }); tr.getCell(12).numFmt = '0.0%';
+  const te = ws.addRow(['Totale effettivo (senza stime)', '', '', T.esami - (T.esami_stimati || 0), T.ricavo_effettivo, null, null, null, null, T.costi_diretti, T.margine_effettivo]);
+  te.font = { italic: true }; [5, 10, 11].forEach((i) => { te.getCell(i).numFmt = EUR; });
+  [38, 18, 18, 10, 16, 8, 14, 14, 14, 16, 16, 10, 30, 50, 18, 18, 20].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
   const wm = wb.addWorksheet('Mese per mese');
   wm.addRow(['Cliente', 'Mese', 'Fonte', 'Origine', 'Esami', 'Ricavo', 'Ricavo da', 'Ritiri', 'Costo ritiri', 'Costo esami', 'Pagamenti', 'Margine', 'Fatturato da documenti (Synclab)']).font = { bold: true };
   for (const c of d.clienti) for (const [mk, m] of Object.entries(c.mesi)) {
@@ -242,7 +249,9 @@ export async function marginePdf(d) {
   const rows = d.clienti.map((c) => { const t = c.totale; return [c.org_name, t.fonti.join(', ') || 'nessuna', String(t.esami), eur(t.ricavo), eur(t.costo_ritiri), eur(t.costo_esami), eur(t.pagamenti), eur(t.margine), pct(t.margine_pct), [t.stime.length ? 'stima' : '', t.da_indicare.length ? 'da indicare' : ''].filter(Boolean).join(', ')]; });
   const T = d.totale;
   rows.push(['Totale linea', '', String(T.esami), eur(T.ricavo), eur(T.costo_ritiri), eur(T.costo_esami), eur(T.pagamenti), eur(T.margine), pct(T.margine_pct), '']);
+  rows.push(['Totale effettivo (senza stime)', '', String(T.esami - (T.esami_stimati || 0)), eur(T.ricavo_effettivo), '', '', '', eur(T.margine_effettivo), '', '']);
   st.table([3.4, 1.2, 0.8, 1.3, 1.2, 1.2, 1.2, 1.3, 0.8, 1.4], head, rows, { bold: (r) => r[0] === 'Totale linea' });
+  st.p(`Di cui stime in pro quota (clienti attivi, non effettive): ${eur(T.ricavo_stime)} · Proiezione FY ${d.proiezione?.anno || d.periodo.anno + 1}: ${eur(d.proiezione?.importo)} su ${d.proiezione?.clienti || 0} clienti attivi (fatturato atteso pieno, non sommata)`, { size: 8 });
   st.p('Come è calcolato', { size: 10, font: 'B', color: C.teal });
   for (const t of CALCOLO_SRV(d.impostazioni, d.giorni_lavorativi_anno)) st.p(`· ${t}`, { size: 7.5 });
   for (const a of d.avvisi || []) st.p(`Avviso: ${a}`, { size: 7.5, color: C.amber });

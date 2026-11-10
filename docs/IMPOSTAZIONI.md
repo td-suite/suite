@@ -16,6 +16,8 @@ dell'invio; senza, il segnaposto con il tooltip "nessun piano da inviare: non è
 `room/lib/personale.js` `stessaPersona`/`indicePersone` (scheda, sedi della persona, "Collega i sanitari delle sedi", generazione dei
 turni, presenze, allineamento del profilo in `strutture.js`). Diagnostica **D52** "Personale di sede non agganciato all'anagrafica"
 (righe senza `person_id` e senza omonimo, link alla sede).
+Dalla v0.68.4 chi è nel personale di una sede, attivo e non escluso, è pianificabile anche senza scheda Room e la scheda si crea da sola
+(tipo dal gruppo); turni, presenze e calendario prendono dal piano tutti i gruppi (medici, sanitari, accettazione): vedi `docs/ROOM.md`.
 
 ## Core: cosa è stato aggiunto (migrazione 026_sites_opened_at.sql)
 - `sites.opened_at` (data di apertura della sede): campo "Data di apertura" nel form Sedi di Amministrazione e colonna
