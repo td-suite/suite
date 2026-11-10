@@ -417,12 +417,13 @@ async function operations(ctx) {
     const lab = await indicatoriLaboratorio({ ieri, inizioMese: P.inizio, oggi: P.oggi });
     const agg = lab ? (await many(`SELECT max(finito) AS t FROM synclab.sync_run WHERE esito = 'OK'`))[0]?.t : null;
     const aggTxt = agg ? new Date(agg).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
-    if (lab?.accettazioni_ieri != null && lab.disponibilita.requests > 0) out.push(indicatore({ chiave: 'synclab_accettazioni_ieri', titolo: 'Accettazioni ieri (Synclab)', gruppo: G, valore: lab.accettazioni_ieri, meglio: null,
-      dettaglio: `Accettazioni del gestionale con data ${itData(ieri)} (esclusi gli stati 0, 1 e 29, come da contratto)`, fonte: `Synclab Data API${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
-    if (lab?.fatturato_mese && lab.fatturato_mese.fatturato != null) out.push(indicatore({ chiave: 'synclab_fatturato_mese', titolo: 'Fatturato laboratorio mese (Synclab)', gruppo: G, unita: 'EUR', valore: Number(lab.fatturato_mese.fatturato), meglio: 'su',
-      secondario: { valore: lab.fatturato_mese.documenti, unita: 'n', etichetta: 'documenti' },
-      dettaglio: `Contributo al fatturato netto dei documenti economici dal ${itData(P.inizio)} a oggi, una volta per documento (note di credito già negative: ${lab.fatturato_mese.note_credito})`,
-      nota: lab.fatturato_mese.note || 'Documenti emessi nel mese: grandezza diversa dalla produzione del conto economico', fonte: `Synclab Data API${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
+    if (lab?.accettazioni_ieri != null && lab.disponibilita.requests > 0) out.push(indicatore({ chiave: 'synclab_accettazioni_ieri', titolo: 'Accettazioni erogate ieri (Synclab)', gruppo: G, valore: lab.accettazioni_ieri, meglio: null,
+      dettaglio: `Accettazioni del gestionale con data ${itData(ieri)} in stato erogato (stati ${lab.stati.join(', ')})`, fonte: `Synclab Data API${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
+    // v0.68.5 (CEO 10/11/2026): la grandezza del mese è la PRODUZIONE EROGATA; i documenti emessi restano un dato secondario, mai sommato
+    if (lab?.produzione_mese && lab.produzione_mese.valore != null) out.push(indicatore({ chiave: 'synclab_produzione_mese', titolo: 'Produzione erogata laboratorio mese (Synclab)', gruppo: G, unita: 'EUR', valore: Number(lab.produzione_mese.valore), meglio: 'su',
+      secondario: lab.fatturato_mese?.fatturato != null ? { valore: Number(lab.fatturato_mese.fatturato), unita: 'EUR', etichetta: 'documenti emessi (secondario)' } : { valore: lab.produzione_mese.esami, unita: 'n', etichetta: 'esami' },
+      dettaglio: `Accettazioni erogate dal ${itData(P.inizio)} a oggi, tutti i client: ${lab.produzione_mese.esami} esami, netto di riga e sconto di testata${lab.produzione_mese.righe_senza_prezzo ? ` · ${lab.produzione_mese.righe_senza_prezzo} esami senza prezzo` : ''}`,
+      nota: 'I documenti emessi sono un dato secondario: non si sommano alla produzione', fonte: `Synclab, accettazioni erogate (stati ${lab.stati.join(', ')})${aggTxt ? ` (ultima sincronizzazione ${aggTxt})` : ''}`, aggiornato: P.oggi }));
   } catch (e) { console.warn(`[cockpit:monitor] synclab: ${e.message}`); }
   return out;
 }
@@ -603,13 +604,15 @@ async function persone(ctx) {
   return out;
 }
 
-// ------------------------------------------------------------------ schermo unico (v0.68.1)
+// ------------------------------------------------------------------ schermo unico (v0.68.1, v0.68.5)
 // Richiesta del CEO del 09/11/2026 sera: il monitor diventa UNA schermata senza scorrimento, organizzata in righe fisse:
-//   1. intestazione (data e ora, ultimo aggiornamento, versione, fonti con la data di ciascuna: GIPO, TuoTempo, Synclab);
-//   2. Ricavi: oggi e mese = B2C (GIPO, vendite nette dei privati) + B2B (Synclab, contributo netto, una volta per documento dei
-//      client B2B secondo la ripartizione di Retail), con le due componenti e il confronto con lo stesso giorno / periodo dell'anno prima;
-//   3. Laboratorio (Synclab): accettazioni ieri e oggi, accettazioni ed esami del mese (tutti i client), fatturato B2B del giorno e del
-//      mese, TOP 5 clienti per fatturato del mese con la quota sul totale B2B e la variazione sullo stesso periodo del mese prima;
+//   1. intestazione (data e ora, ultimo aggiornamento, versione, fonti con la data di ciascuna: GIPO, TuoTempo, Synclab "aggiornato alle");
+//   2. Ricavi: oggi e mese = B2C (GIPO, vendite nette dei privati) + B2B (Synclab, PRODUZIONE EROGATA dei client B2B secondo la
+//      ripartizione di Retail: v0.68.5, CEO 10/11/2026 "non il dato delle fatture ma quello delle accettazioni in stato erogato"), con le
+//      due componenti e il confronto con lo stesso giorno / periodo dell'anno prima;
+//   3. Laboratorio (Synclab): accettazioni erogate ieri e oggi, accettazioni ed esami del mese (tutti i client), produzione B2B del giorno e
+//      del mese (documenti emessi solo come dato secondario), andamento giornaliero del mese (mini barre), TOP 5 clienti Service per
+//      produzione erogata del mese con la quota sul totale B2B e la variazione sullo stesso periodo del mese prima;
 //   4. Retail B2C: accettazioni GIPO del giorno e del mese, scontrino medio, prima disponibilità online (mediana), quota fuori area;
 //   5. Scadenze e persone: questa settimana e la prossima (al più 6 righe), ferie oggi, NC aperte, ordini in attesa.
 // Ogni cella è un indicatore (stessa forma, con la fonte); una fonte assente = "non disponibile" con il motivo, mai uno zero.
@@ -645,7 +648,7 @@ async function schermoMonitor(ctx, indicatori) {
   const ap = (d) => { const [y, m, g] = d.split('-').map(Number); const fine = new Date(Date.UTC(y - 1, m, 0)).getUTCDate(); return `${y - 1}-${String(m).padStart(2, '0')}-${String(Math.min(g, fine)).padStart(2, '0')}`; };
   const oggiAP = ap(P.oggi), inizioAP = ap(P.inizio);
   const byKey = Object.fromEntries(indicatori.map((x) => [x.chiave, x]));
-  const out = { fonti: [], ricavi: [], laboratorio: [], top5: null, retail: [], persone: [] };
+  const out = { fonti: [], ricavi: [], laboratorio: [], top5: null, andamento: null, retail: [], persone: [] };
   const etAP = `stesso giorno dell'anno prima (${dataBreve(oggiAP)}/${oggiAP.slice(0, 4)})`;
   const etMeseAP = `stesso periodo dell'anno prima (${dataBreve(inizioAP)}-${dataBreve(P.anno_prec.a)}/${P.anno_prec.a.slice(0, 4)})`;
 
@@ -668,24 +671,31 @@ async function schermoMonitor(ctx, indicatori) {
       gipo = { oggi: g0, oggi_ap: g0p, mese: gm, mese_ap: gmp, ultima, import: imp, fuori: fa };
     } catch (e) { gipoNota = `Retail · GIPO: lettura non riuscita (${String(e.message).slice(0, 120)})`; }
   }
-  // ---- Synclab: documenti B2B, accettazioni ed esami del laboratorio, top 5
+  // ---- Synclab (v0.68.5, CEO 10/11/2026): PRODUZIONE EROGATA B2B (accettazioni in stato erogato, netto di riga e sconto di testata),
+  // accettazioni ed esami del laboratorio, andamento giornaliero del mese, top 5; i documenti emessi restano un dato secondario
   let syn = null, synNota = null;
   try {
     const L = await import('./synclab/letture.js');
     const d = await L.disponibilita();
-    if (!d || (!d.requests && !d.invoices)) synNota = 'Synclab: nessuna accettazione né documento importato (Amministrazione > Connettori > StudioLAB > Dati Synclab)';
+    if (!d || !d.requests) synNota = 'Synclab: nessuna accettazione importata (Amministrazione > Connettori > StudioLAB > Dati Synclab)';
     else {
       const pv = (await many(`SELECT value FROM public.app_settings WHERE key = 'synclab_privati_in_b2c'`).catch(() => []))[0];
       const privatiInB2c = !(pv && String(typeof pv.value === 'string' ? pv.value : JSON.stringify(pv.value)).replace(/"/g, '').trim().toLowerCase() === 'false');
-      const fatt = (da, a) => L.fatturatoClientiMesi({ da, a, privatiInB2c, ripartizione: 'B2B' });
-      const [f0, f0p, fm, fmp, fmPrev] = [await fatt(P.oggi, P.oggi), await fatt(oggiAP, oggiAP), await fatt(P.inizio, P.oggi), await fatt(inizioAP, P.anno_prec.a), await fatt(P.mese_prec.da, P.mese_prec.a)];
-      const qd = (da, a) => L.quadroLaboratorio({ da, a, privatiInB2c });
+      const stati = await L.statiErogati();
+      const prod = (da, a) => L.produzioneErogata({ da, a, privatiInB2c, ripartizione: 'B2B', stati });
+      const [p0, p0p, pm, pmp] = [await prod(P.oggi, P.oggi), await prod(oggiAP, oggiAP), await prod(P.inizio, P.oggi), await prod(inizioAP, P.anno_prec.a)];
+      const top = await L.topClientiProduzione({ da: P.inizio, a: P.oggi, prec: P.mese_prec, n: 5, privatiInB2c, ripartizione: 'B2B', stati });
+      const giorni = await L.produzioneGiornaliera({ da: P.inizio, a: P.oggi, privatiInB2c, ripartizione: 'B2B', stati });
+      const qd = (da, a) => L.quadroLaboratorio({ da, a, privatiInB2c, stati });
       const [qi, qo, qm] = [await qd(ieri, ieri), await qd(P.oggi, P.oggi), await qd(P.inizio, P.oggi)];
+      const docMese = d.invoices ? await L.fatturatoClientiMesi({ da: P.inizio, a: P.oggi, privatiInB2c, ripartizione: 'B2B' }).catch(() => null) : null;
       const tot = (q, k) => (q.LAB_SEDE?.[k] || 0) + (q.B2B?.[k] || 0);
       const totAP = (q, k) => (q.LAB_SEDE?.anno_prima?.[k] || 0) + (q.B2B?.anno_prima?.[k] || 0);
       const stato = await L.statoCopia().catch(() => null);
       const run = (await many(`SELECT max(finito) AS t FROM synclab.sync_run WHERE esito = 'OK'`).catch(() => []))[0]?.t || null;
-      syn = { d, privatiInB2c, f0, f0p, fm, fmp, fmPrev, qi, qo, qm, tot, totAP, stato, run };
+      const cpAcc = stato?.insiemi?.requests?.checkpoint_at || null;
+      syn = { d, privatiInB2c, stati, p0, p0p, pm, pmp, top, giorni, qi, qo, qm, docMese, tot, totAP, stato, run, cpAcc,
+        fonteProd: L.fonteProduzione(stati, cpAcc || run), aggiornato: L.aggiornatoAlle(cpAcc || run, P.oggi) };
     }
   } catch (e) { synNota = `Synclab: lettura non riuscita (${String(e.message).slice(0, 120)})`; }
 
@@ -693,45 +703,50 @@ async function schermoMonitor(ctx, indicatori) {
   out.fonti.push({ chiave: 'GIPO', nome: 'GIPO', data: gipo ? (gipo.ultima || null) : null, testo: gipo ? (gipo.ultima ? `vendite al ${dataBreve(gipo.ultima)}${gipo.import ? ` · import ${quandoIso(gipo.import)}` : ''}` : 'nessuna vendita importata') : gipoNota, ok: Boolean(gipo?.ultima) });
   const tt = byKey.attesa_prima_disponibilita;
   out.fonti.push({ chiave: 'TUOTEMPO', nome: 'TuoTempo', data: tt?.aggiornato || null, testo: tt?.non_disponibile ? tt.motivo : tt?.aggiornato ? `prima disponibilità del ${dataBreve(tt.aggiornato)}` : 'nessun allineamento', ok: Boolean(tt && !tt.non_disponibile) });
-  out.fonti.push({ chiave: 'SYNCLAB', nome: 'Synclab', data: syn?.stato?.ultimo_checkpoint || syn?.run || null, testo: syn ? `copia al ${quandoIso(syn.stato?.ultimo_checkpoint || syn.run) || '—'}` : synNota, ok: Boolean(syn) });
+  out.fonti.push({ chiave: 'SYNCLAB', nome: 'Synclab', data: syn?.cpAcc || syn?.run || null, testo: syn ? `accettazioni ${syn.aggiornato || 'mai aggiornate'}` : synNota, ok: Boolean(syn) });
 
-  // ---- 2. Ricavi: B2C + B2B
+  // ---- 2. Ricavi: B2C (GIPO) + B2B (produzione erogata Synclab)
   const fGipo = gipo ? `GIPO vendite nette${gipo.ultima ? ` (al ${dataBreve(gipo.ultima)})` : ''}` : null;
-  const fSyn = syn ? `Synclab documenti B2B (copia al ${quandoIso(syn.stato?.ultimo_checkpoint || syn.run) || '—'})` : null;
+  const fSyn = syn ? `Synclab produzione erogata B2B (${syn.aggiornato || 'copia'})` : null;
   const ricavo = (chiave, titolo, b2c, b2cAP, b2b, b2bAP, et) => {
     const s0 = sommaComponenti(b2c, b2b), sp = sommaComponenti(b2cAP, b2bAP);
     const motivo = [gipoNota, synNota].filter(Boolean).join(' · ');
     return indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita: 'EUR', valore: s0.valore, confronto: s0.valore != null && sp.valore != null ? confronto(s0.valore, sp.valore, { etichetta: et }) : null,
-      parti: [{ etichetta: 'B2C GIPO', valore: b2c == null ? null : r2(b2c) }, { etichetta: 'B2B Synclab', valore: b2b == null ? null : r2(b2b) }],
-      dettaglio: `Fatturato = B2C (GIPO) + B2B (Synclab)${s0.parziale ? ` · parziale: manca ${s0.mancanti.join(' e ')}` : ''}`,
+      parti: [{ etichetta: 'B2C GIPO', valore: b2c == null ? null : r2(b2c) }, { etichetta: 'B2B produzione erogata', valore: b2b == null ? null : r2(b2b) }],
+      dettaglio: `Ricavi = B2C (GIPO, vendite nette) + B2B (Synclab, produzione erogata: accettazioni erogate al netto di riga e sconto di testata)${s0.parziale ? ` · parziale: manca ${s0.mancanti.join(' e ')}` : ''}`,
       fonte: [fGipo, fSyn].filter(Boolean).join(' + ') || 'GIPO + Synclab', aggiornato: P.oggi, nota: s0.parziale ? motivo : null, motivo: motivo || 'Nessuna fonte di ricavo' });
   };
-  out.ricavi.push(ricavo('ricavi_oggi', 'Fatturato di oggi · B2C + B2B', gipo ? Number(gipo.oggi.v) : null, gipo ? Number(gipo.oggi_ap.v) : null, syn ? Number(syn.f0.totale.fatturato || 0) : null, syn ? Number(syn.f0p.totale.fatturato || 0) : null, etAP));
-  out.ricavi.push(ricavo('ricavi_mese', 'Fatturato del mese · B2C + B2B', gipo ? Number(gipo.mese.v) : null, gipo ? Number(gipo.mese_ap.v) : null, syn ? Number(syn.fm.totale.fatturato || 0) : null, syn ? Number(syn.fmp.totale.fatturato || 0) : null, etMeseAP));
+  const vB2B = (x) => (x ? Number(x.totale.valore || 0) : null);
+  out.ricavi.push(ricavo('ricavi_oggi', 'Ricavi di oggi · B2C + B2B', gipo ? Number(gipo.oggi.v) : null, gipo ? Number(gipo.oggi_ap.v) : null, syn ? vB2B(syn.p0) : null, syn ? vB2B(syn.p0p) : null, etAP));
+  out.ricavi.push(ricavo('ricavi_mese', 'Ricavi del mese · B2C + B2B', gipo ? Number(gipo.mese.v) : null, gipo ? Number(gipo.mese_ap.v) : null, syn ? vB2B(syn.pm) : null, syn ? vB2B(syn.pmp) : null, etMeseAP));
 
   // ---- 3. Laboratorio (Synclab)
   const nd = (chiave, titolo, unita = 'n') => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita, fonte: 'Synclab Data API', motivo: synNota || 'Synclab non disponibile' });
   if (!syn) {
-    out.laboratorio.push(nd('lab_acc_ieri', 'Accettazioni ieri'), nd('lab_acc_oggi', 'Accettazioni oggi'), nd('lab_acc_mese', 'Accettazioni del mese'), nd('lab_esami_mese', 'Esami del mese'), nd('lab_b2b_oggi', 'Fatturato B2B oggi', 'EUR'), nd('lab_b2b_mese', 'Fatturato B2B del mese', 'EUR'));
+    out.laboratorio.push(nd('lab_acc_ieri', 'Accettazioni ieri'), nd('lab_acc_oggi', 'Accettazioni oggi'), nd('lab_acc_mese', 'Accettazioni del mese'), nd('lab_esami_mese', 'Esami del mese'), nd('lab_prod_oggi', 'Produzione B2B oggi', 'EUR'), nd('lab_prod_mese', 'Produzione B2B del mese', 'EUR'));
     out.top5 = { righe: [], non_disponibile: true, motivo: synNota, fonte: 'Synclab Data API' };
+    out.andamento = { giorni: [], non_disponibile: true, motivo: synNota };
   } else {
-    const fonteL = `Synclab, accettazioni (copia al ${quandoIso(syn.stato?.insiemi?.requests?.checkpoint_at || syn.run) || '—'})`;
-    const fonteD = `Synclab, documenti B2B (copia al ${quandoIso(syn.stato?.insiemi?.invoices?.checkpoint_at || syn.run) || '—'})`;
+    const fonteL = `Synclab, accettazioni erogate (stati ${syn.stati.join(', ')}), ${syn.aggiornato || 'copia'}`;
     const parti = (q, k) => [{ etichetta: 'B2B', valore: q.B2B?.[k] || 0 }, { etichetta: 'in sede', valore: q.LAB_SEDE?.[k] || 0 }];
-    const lab = (chiave, titolo, q, k, et) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, valore: syn.tot(q, k), meglio: null, parti: syn.privatiInB2c ? parti(q, k) : null,
-      confronto: confronto(syn.tot(q, k), syn.totAP(q, k), { meglio: null, etichetta: et }), dettaglio: `Tutti i client del laboratorio${syn.privatiInB2c ? ' (B2B e Laboratorio in sede)' : ''}`, fonte: fonteL, aggiornato: P.oggi });
+    const lab = (chiave, titolo, q, k, et, det) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, valore: syn.tot(q, k), meglio: null, parti: syn.privatiInB2c ? parti(q, k) : null,
+      confronto: confronto(syn.tot(q, k), syn.totAP(q, k), { meglio: null, etichetta: et }), dettaglio: det || `Accettazioni erogate di tutti i client${syn.privatiInB2c ? ' (B2B e Laboratorio in sede)' : ''} · registrate ${syn.tot(q, 'registrate')}`, fonte: fonteL, aggiornato: P.oggi });
     out.laboratorio.push(lab('lab_acc_ieri', 'Accettazioni ieri', syn.qi, 'accettazioni', `stesso giorno dell'anno prima`));
     out.laboratorio.push(lab('lab_acc_oggi', 'Accettazioni oggi', syn.qo, 'accettazioni', etAP));
     out.laboratorio.push(lab('lab_acc_mese', 'Accettazioni del mese', syn.qm, 'accettazioni', etMeseAP));
-    out.laboratorio.push(lab('lab_esami_mese', 'Esami del mese', syn.qm, 'esami', etMeseAP));
-    const docB2B = (chiave, titolo, f, fp, et) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita: 'EUR', valore: Number(f.totale.fatturato || 0), secondario: { valore: f.totale.documenti || 0, unita: 'n', etichetta: 'documenti' },
-      confronto: confronto(Number(f.totale.fatturato || 0), Number(fp.totale.fatturato || 0), { etichetta: et }), dettaglio: `contributo netto, una volta per documento${f.totale.note_credito ? ` · ${f.totale.note_credito} note di credito` : ''}`, fonte: fonteD, aggiornato: P.oggi });
-    out.laboratorio.push(docB2B('lab_b2b_oggi', 'Fatturato B2B oggi', syn.f0, syn.f0p, etAP));
-    out.laboratorio.push(docB2B('lab_b2b_mese', 'Fatturato B2B del mese', syn.fm, syn.fmp, etMeseAP));
-    const cur = syn.fm.clienti.map((c) => ({ chiave: c.chiave, cliente: c.cliente, fatturato: c.totale.fatturato }));
-    const prev = syn.fmPrev.clienti.map((c) => ({ chiave: c.chiave, cliente: c.cliente, fatturato: c.totale.fatturato }));
-    out.top5 = { righe: topClienti(cur, prev, syn.fm.totale.fatturato, 5), totale_b2b: syn.fm.totale.fatturato == null ? null : r2(syn.fm.totale.fatturato), clienti: cur.length,
-      fonte: `${fonteD} · % sul totale B2B del mese · variazione sullo stesso periodo del mese prima (${dataBreve(P.mese_prec.da)}-${dataBreve(P.mese_prec.a)})` };
+    out.laboratorio.push(lab('lab_esami_mese', 'Esami del mese', syn.qm, 'esami', etMeseAP, 'Righe d\'esame delle accettazioni erogate'));
+    const senza = (x) => (x.totale.righe_senza_prezzo ? ` · ${x.totale.righe_senza_prezzo} esami senza prezzo` : '');
+    const prodB2B = (chiave, titolo, x, xp, et, secondario = null) => indicatore({ chiave, titolo, gruppo: G_SCHERMO, unita: 'EUR', valore: Number(x.totale.valore || 0),
+      secondario: secondario || { valore: x.totale.esami || 0, unita: 'n', etichetta: 'esami' },
+      confronto: confronto(Number(x.totale.valore || 0), Number(xp.totale.valore || 0), { etichetta: et }),
+      dettaglio: `${x.totale.accettazioni} accettazioni erogate · netto di riga e sconto di testata${senza(x)}`, fonte: syn.fonteProd, aggiornato: P.oggi });
+    out.laboratorio.push(prodB2B('lab_prod_oggi', 'Produzione B2B oggi', syn.p0, syn.p0p, etAP));
+    const doc = syn.docMese?.totale?.fatturato;
+    out.laboratorio.push(prodB2B('lab_prod_mese', 'Produzione B2B del mese', syn.pm, syn.pmp, etMeseAP, doc != null ? { valore: Number(doc), unita: 'EUR', etichetta: 'documenti emessi (secondario, non sommati)' } : null));
+    out.top5 = { righe: syn.top.righe.map((x) => ({ ...x, produzione: x.valore })), totale_b2b: syn.top.totale, clienti: syn.top.clienti,
+      fonte: `${syn.fonteProd} · % sul totale B2B del mese · variazione sullo stesso periodo del mese prima (${dataBreve(P.mese_prec.da)}-${dataBreve(P.mese_prec.a)})` };
+    out.andamento = { titolo: 'Produzione B2B giorno per giorno', giorni: syn.giorni.giorni.map((g) => ({ giorno: g.giorno, valore: g.valore == null ? 0 : r2(g.valore), esami: g.esami })),
+      totale: syn.giorni.totale.valore, fonte: syn.fonteProd };
   }
 
   // ---- 4. Retail B2C (GIPO, TuoTempo, fuori area)

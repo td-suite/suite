@@ -137,13 +137,19 @@ Righe dall'alto (dati in `schermo` della risposta, `lib/cockpitMonitor.js` `sche
 1. **Intestazione sottile**: logo, titolo, ora e data, fonti con la data di ciascuna (GIPO = ultima vendita importata; TuoTempo = ultimo
    giorno della prima disponibilità; Synclab = ultimo checkpoint della copia, ora compresa), "Aggiornato alle HH:MM · prossimo tra N min
    · v<versione>", schermo intero, "Barra" (torna alla Suite) o, fuori dal monitor, "Monitor" e "Scadenzario completo".
-2. **Ricavi**: "Fatturato di oggi" e "Fatturato del mese" = **B2C** (GIPO: vendite nette dei privati, righe senza committente B2B, senza
-   dimostrative) **+ B2B** (Synclab: `netRevenueContribution` una volta per documento dei client B2B secondo la ripartizione di Retail,
-   `synclab_privati_in_b2c`), con le due componenti sotto e il confronto con lo stesso giorno / lo stesso periodo dell'anno prima. La somma è
-   dichiarata nella fonte; con una sola componente disponibile la cella dice "parziale: manca …".
-3. **Laboratorio (Synclab)**: accettazioni di ieri, di oggi e del mese ed esami del mese (tutti i client: B2B e Laboratorio in sede, con
-   le due parti), fatturato B2B del giorno e del mese (documenti), **TOP 5 clienti Service** per fatturato del mese con la quota sul totale
-   B2B e la variazione sullo stesso periodo del mese prima ("nuovo" senza documenti nel mese prima).
+2. **Ricavi** (v0.68.5): "Ricavi di oggi" e "Ricavi del mese" = **B2C** (GIPO: vendite nette dei privati, righe senza committente B2B,
+   senza dimostrative) **+ B2B produzione erogata** (Synclab: accettazioni in stato erogato dei client B2B secondo la ripartizione di Retail,
+   `synclab_privati_in_b2c`; netto di riga × quantità × (1 − sconto di testata); definizione unica in docs/SYNCLAB_DATA_API.md "Produzione
+   erogata"), con le due componenti sotto e il confronto con lo stesso giorno / lo stesso periodo dell'anno prima. La somma è dichiarata nella
+   fonte; con una sola componente disponibile la cella dice "parziale: manca …". Fino alla v0.68.4 il B2B erano i documenti emessi: il CEO
+   (10/11/2026) vuole la progressione quotidiana, che i documenti (emessi a inizio del mese successivo) non danno.
+3. **Laboratorio (Synclab)**: accettazioni **erogate** di ieri, di oggi e del mese ed esami del mese (tutti i client: B2B e Laboratorio in
+   sede, con le due parti; nel dettaglio anche le accettazioni registrate in tutto), **Produzione B2B oggi** e **Produzione B2B del mese**
+   (con i documenti emessi del mese solo come dato secondario, "non sommati"), **andamento giornaliero del mese** (mini barre, una per giorno,
+   oggi evidenziato, fine settimana attenuati; cella da due colonne nella riga, senza scorrimento), **TOP 5 clienti Service per produzione
+   erogata del mese** con la quota sul totale B2B e la variazione sullo stesso periodo del mese prima ("nuovo" senza produzione nel mese
+   prima). Fonte sotto ogni numero: "Synclab, accettazioni erogate (stati 18, 20, 25, 40, 50), netto di riga e sconto di testata, copia al
+   … · aggiornato alle HH:MM"; nell'intestazione "Synclab · accettazioni aggiornato alle HH:MM" (delta di giorno ogni ora, docs/SYNCLAB_DATA_API.md).
 4. **Retail B2C**: accettazioni GIPO del giorno e del mese (`external_ref` distinti), scontrino medio (vendite nette del mese /
    accettazioni), prima disponibilità online (mediana della rete, TuoTempo), quota fuori area dei clienti GIPO del mese (comune e provincia
    diversi da quelli della sede).
@@ -155,6 +161,9 @@ disponibile" con il motivo, mai uno zero. **Nessun link ai moduli**, aggiornamen
 della Suite, tema chiaro e scuro della Suite. Gli indicatori per gruppo di prima restano nel JSON (`indicatori`, usati anche dallo
 schermo per ferie, NC, ordini e TuoTempo) ma la pagina mostra solo lo schermo. La pagina **Scadenzario completo** (`/cockpit/scadenzario`)
 resta separata.
+
+Collaudo v0.68.5 (db proprio, dati sintetici): riga Laboratorio a 4 colonne con l'andamento giornaliero, ancora senza scorrimento a
+1920×1080 e 1366×768; schermata `docs/screens/cockpit-monitor.png` aggiornata. Test `server/test/v0685-produzione-erogata.test.mjs`.
 
 Collaudo v0.68.1 (db proprio, dati sintetici): Playwright a 1920×1080 e 1366×768 con `document.scrollHeight ≤ innerHeight` e nessuno
 scorrimento orizzontale; schermate `docs/screens/cockpit-monitor.png` (scuro, 1920), `cockpit-monitor-1366.png` (scuro, 1366),
@@ -234,11 +243,11 @@ Verifica in produzione: dopo il primo allineamento la card ha un valore e la tab
 
 ### Indicatori dal gestionale (Synclab Data API, 09/11/2026)
 Nel gruppo **Operations** (il monitor non ha un gruppo Laboratorio/Service: le chiavi dei gruppi restano le sei di prima):
-"Accettazioni ieri (Synclab)" (`synclab_accettazioni_ieri`: accettazioni ATTIVE con data di ieri) e "Fatturato laboratorio mese
-(Synclab)" (`synclab_fatturato_mese`: `netRevenueContribution` dei documenti dal primo del mese a oggi, una volta per documento, con il
-numero di documenti e di note di credito). Compaiono **solo se ci sono dati importati**: con la Data API spenta o vuota non ci sono
-(non sono "non disponibili", perché l'assenza è una scelta). Fonte con l'ora dell'ultima sincronizzazione riuscita. Il fatturato dei
-documenti non è la produzione del conto economico.
+"Accettazioni erogate ieri (Synclab)" (`synclab_accettazioni_ieri`: accettazioni ATTIVE in stato erogato con data di ieri) e, dalla
+v0.68.5, "Produzione erogata laboratorio mese (Synclab)" (`synclab_produzione_mese`: produzione erogata di tutti i client dal primo del
+mese a oggi, con i documenti emessi del mese come dato secondario mai sommato; prima era "Fatturato laboratorio mese", dai documenti).
+Compaiono **solo se ci sono dati importati**: con la Data API spenta o vuota non ci sono (non sono "non disponibili", perché l'assenza è una
+scelta). Fonte con l'ora dell'ultima sincronizzazione riuscita.
 
 ### Profilo dei pazienti del laboratorio (Synclab, proiezione standard, v0.67.1)
 | Gruppo | Indicatore | Fonte e formula |

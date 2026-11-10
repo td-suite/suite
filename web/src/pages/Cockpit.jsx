@@ -8,8 +8,9 @@ import './cockpit-monitor.css';
 // Cockpit direzionale · Monitor a schermo unico (CEO, 08/11/2026 e 09/11/2026 sera, v0.68.1): UNA schermata senza scorrimento a
 // 1920×1080 e 1366×768 (griglia a 12 colonne, altezze in vh, caratteri che scalano con clamp, nessuna card alta). Righe dall'alto:
 //   1. intestazione sottile: data e ora, ultimo aggiornamento, versione, fonti con la data di ciascuna (GIPO, TuoTempo, Synclab);
-//   2. Ricavi: oggi e mese = B2C (GIPO) + B2B (Synclab), con le due componenti e il confronto con l'anno prima;
-//   3. Laboratorio (Synclab): accettazioni ieri/oggi/mese, esami del mese, fatturato B2B del giorno e del mese, TOP 5 clienti;
+//   2. Ricavi: oggi e mese = B2C (GIPO) + B2B (Synclab, PRODUZIONE EROGATA: v0.68.5), con le due componenti e il confronto con l'anno prima;
+//   3. Laboratorio (Synclab): accettazioni erogate ieri/oggi/mese, esami del mese, produzione B2B del giorno e del mese, andamento
+//      giornaliero del mese (mini barre), TOP 5 clienti Service per produzione erogata;
 //   4. Retail B2C: accettazioni GIPO, scontrino medio, prima disponibilità online, quota fuori area;
 //   5. Scadenze e persone: questa settimana e la prossima (al più 6 righe), ferie oggi, NC aperte, ordini in attesa.
 // Ogni numero ha sotto la sua fonte. Nessun link ai moduli (le celle non sono cliccabili), aggiornamento ogni 5 minuti, `?monitor=1`
@@ -86,25 +87,45 @@ function Cella({ x, grande = false, area }) {
 function Top5({ t }) {
   if (!t) return null;
   return (
-    <div className={`ckx-top5 ${t.non_disponibile ? 'nd' : ''}`} role="group" aria-label="TOP 5 clienti B2B per fatturato del mese">
-      <div className="lbl">TOP 5 clienti Service · fatturato del mese</div>
-      {t.non_disponibile ? <div className="vuoto">{t.motivo}</div> : !t.righe.length ? <div className="vuoto">Nessun documento B2B nel mese</div> : (
+    <div className={`ckx-top5 ${t.non_disponibile ? 'nd' : ''}`} role="group" aria-label="TOP 5 clienti Service per produzione erogata del mese">
+      <div className="lbl">TOP 5 clienti Service · produzione erogata del mese</div>
+      {t.non_disponibile ? <div className="vuoto">{t.motivo}</div> : !t.righe.length ? <div className="vuoto">Nessuna produzione B2B erogata nel mese</div> : (
         <table>
-          <thead><tr><th>#</th><th>Cliente</th><th className="n">Fatturato</th><th className="n">% B2B</th><th className="n">vs mese prima</th></tr></thead>
+          <thead><tr><th>#</th><th>Cliente</th><th className="n">Produzione</th><th className="n">% B2B</th><th className="n">vs mese prima</th></tr></thead>
           <tbody>
             {t.righe.map((r) => (
               <tr key={r.chiave}>
                 <td className="pos">{r.pos}</td>
                 <td className="cli" title={r.cliente}>{r.cliente}</td>
-                <td className="n b">{fmt(r.fatturato, 'EUR')}</td>
+                <td className="n b">{fmt(r.valore, 'EUR')}</td>
                 <td className="n">{r.quota == null ? '–' : `${fmt(r.quota)}%`}</td>
-                <td className="n">{r.variazione == null ? <span className="muto" title={r.mese_prima == null ? 'Nessun documento nello stesso periodo del mese prima' : 'Mese prima a zero'}>nuovo</span> : <span className={r.variazione >= 0 ? 'su' : 'giu'}>{r.variazione > 0 ? '+' : ''}{fmt(r.variazione)}%</span>}</td>
+                <td className="n">{r.variazione == null ? <span className="muto" title={r.prima == null ? 'Nessuna produzione nello stesso periodo del mese prima' : 'Mese prima a zero'}>nuovo</span> : <span className={r.variazione >= 0 ? 'su' : 'giu'}>{r.variazione > 0 ? '+' : ''}{fmt(r.variazione)}%</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <div className="fonte">{t.totale_b2b != null ? `Totale B2B del mese ${fmt(t.totale_b2b, 'EUR')} su ${t.clienti} clienti · ` : ''}{t.fonte}</div>
+      <div className="fonte" title={t.fonte}>{t.totale_b2b != null ? `Totale B2B del mese ${fmt(t.totale_b2b, 'EUR')} su ${t.clienti} clienti · ` : ''}{t.fonte}</div>
+    </div>
+  );
+}
+
+/** Andamento giornaliero della produzione B2B del mese: mini barre (una per giorno), oggi evidenziato, totale e fonte sotto. */
+function Andamento({ a, oggi }) {
+  if (!a) return null;
+  if (a.non_disponibile) return <div className="ckx-cella nd ckx-andamento"><div className="lbl">Produzione B2B giorno per giorno</div><div className="val nd">Non disponibile</div><div className="fonte">{a.motivo}</div></div>;
+  const max = Math.max(1, ...a.giorni.map((g) => Number(g.valore) || 0));
+  return (
+    <div className="ckx-cella ckx-andamento" role="group" aria-label="Produzione B2B giorno per giorno del mese" title={`${a.titolo}\nFonte: ${a.fonte}`}>
+      <div className="lbl">{a.titolo} · {fmt(a.totale, 'EUR')}</div>
+      <div className="barre" aria-hidden="true">
+        {a.giorni.map((g) => {
+          const fest = [0, 6].includes(new Date(`${g.giorno}T12:00:00Z`).getUTCDay());
+          return <span key={g.giorno} className={`${g.giorno === oggi ? 'oggi' : ''} ${fest ? 'fest' : ''}`} style={{ height: `${Math.max(g.valore ? 4 : 1, (Number(g.valore) / max) * 100)}%` }} title={`${ggmm(g.giorno)}: ${fmt(g.valore, 'EUR')} · ${g.esami} esami`} />;
+        })}
+      </div>
+      <div className="assi"><span>{a.giorni.length ? ggmm(a.giorni[0].giorno) : ''}</span><span>{a.giorni.length ? ggmm(a.giorni[a.giorni.length - 1].giorno) : ''}</span></div>
+      <div className="fonte">{a.fonte}</div>
     </div>
   );
 }
@@ -181,7 +202,7 @@ export default function Cockpit({ monitor = false }) {
         </div>
         <div className="quando"><b>{ora(adesso)}</b><span>{dataLunga(adesso)}</span></div>
         <div className="fonti" aria-label="Fonti dei dati">
-          {(S?.fonti || []).map((f) => <span key={f.chiave} className={f.ok ? '' : 'ko'} title={`${f.nome}: ${f.testo || ''}`}><i />{f.nome} <em>{dataFonte(f.data)}</em></span>)}
+          {(S?.fonti || []).map((f) => <span key={f.chiave} className={f.ok ? '' : 'ko'} title={`${f.nome}: ${f.testo || ''}`}><i />{f.nome} <em>{f.chiave === 'SYNCLAB' && /aggiornato alle/.test(f.testo || '') ? f.testo.replace(/^accettazioni /, '') : dataFonte(f.data)}</em></span>)}
         </div>
         <div className="stato" aria-live="polite">
           {data && <span>Aggiornato alle {ora(new Date(data.generato_at))} · prossimo tra {minuti} min{S?.versione ? ` · v${S.versione}` : ''}</span>}
@@ -202,7 +223,7 @@ export default function Cockpit({ monitor = false }) {
             {S.ricavi.map((x) => <Cella key={x.chiave} x={x} grande />)}
           </Riga>
           <Riga titolo="Laboratorio (Synclab)" area="var(--area-OPERATIONS)" className="r-lab">
-            <div className="celle">{S.laboratorio.map((x) => <Cella key={x.chiave} x={x} />)}</div>
+            <div className="celle">{S.laboratorio.map((x) => <Cella key={x.chiave} x={x} />)}<Andamento a={S.andamento} oggi={data.oggi} /></div>
             <Top5 t={S.top5} />
           </Riga>
           <Riga titolo="Retail B2C" area="var(--area-RETAIL_FLOW)" className="r-retail">

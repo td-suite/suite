@@ -12,7 +12,8 @@ const NOMI = { exams: 'Esami', clients: 'Clienti', 'price-lists': 'Listini', req
 const TIPI = { COMPLETO: 'completo', DELTA: 'variazioni', RICONCILIAZIONE: 'riallineamento' };
 const ESITO_TONE = { OK: 'green', ERRORE: 'red', IN_CORSO: 'blue', INTERROTTO: 'amber' };
 const ABBINAMENTO = { CONFERMATO: ['green', 'confermato'], MANUALE: ['blue', 'scelto a mano'], PROPOSTO: ['amber', 'proposto'], DA_ABBINARE: ['grey', 'da abbinare'] };
-const REGOLA = { CODICE_STUDIOLAB: 'codice StudioLAB della sede', PARTITA_IVA: 'partita IVA o codice fiscale' };
+const REGOLA = { CODICE_STUDIOLAB: 'codice StudioLAB della sede', PARTITA_IVA: 'partita IVA o codice fiscale', CODICE: 'codice della Legal entity o della sede', NOME_COMUNE: 'ragione sociale e comune' };
+const ORIGINI = { NOTTURNO: 'notturno', MANUALE: 'manuale', RIPRESA: 'ripresa', GIORNO: 'di giorno' };
 const durata = (ms) => (ms == null ? '' : ms < 1000 ? `${ms} ms` : ms < 60000 ? `${(ms / 1000).toLocaleString('it-IT', { maximumFractionDigits: 1 })} s` : `${Math.floor(ms / 60000)} min ${Math.round((ms % 60000) / 1000)} s`);
 const n0 = (v) => Number(v || 0).toLocaleString('it-IT');
 
@@ -78,7 +79,9 @@ function Impostazioni({ s, onSaved }) {
   const save = async () => {
     try {
       const body = { data_api_enabled: f.data_api_enabled, sync_ora: f.sync_ora, page_size: Number(f.page_size), page_size_listini: Number(f.page_size_listini), include_patient: f.include_patient,
-        data_api_timeout_ms: Number(f.data_api_timeout_s) * 1000, operating_company: f.operating_company || '', datasets: f.datasets };
+        data_api_timeout_ms: Number(f.data_api_timeout_s) * 1000, operating_company: f.operating_company || '', datasets: f.datasets,
+        stati_erogati: [...f.stati_erogati].map(Number).sort((a, b) => a - b), sync_intraday_minuti: Number(f.sync_intraday_minuti) };
+      if (!body.stati_erogati.length) throw new Error('Indica almeno uno stato erogato');
       const r = await api.put('/synclab/impostazioni', body);
       toast(r.svuotati ? `Impostazioni salvate; dati paziente tolti da ${r.svuotati.accettazioni} accettazioni` : 'Impostazioni salvate'); onSaved();
     } catch (e) { toast(e, 'err'); }
@@ -95,6 +98,14 @@ function Impostazioni({ s, onSaved }) {
         <Field label="Azienda operativa (facoltativa)" help="Vuota = tutte. Vale per clienti, listini, accettazioni e documenti; cambiarla avvia un ambito nuovo con un completo"><input value={f.operating_company || ''} onChange={(e) => set('operating_company', e.target.value)} placeholder="es. LAB" /></Field>
         <Field label="Insiemi di dati da sincronizzare" className="span2">
           <div className="row wrap" style={{ gap: 14 }}>{tutti.map((d) => <label key={d} className="row tight small"><input type="checkbox" checked={f.datasets.includes(d)} onChange={(e) => set('datasets', e.target.checked ? tutti.filter((x) => x === d || f.datasets.includes(x)) : f.datasets.filter((x) => x !== d))} />{NOMI[d]}</label>)}</div>
+        </Field>
+        <Field label="Aggiornamento di giorno delle accettazioni (minuti)" help={`Fra le ${s.giorno?.dalle || '07:00'} e le ${s.giorno?.alle || '21:00'} ora di Roma il delta delle accettazioni ogni N minuti (un ciclo alla volta, stesso lock del notturno), così la produzione del giorno si aggiorna nei cruscotti. 0 = spento. Solo con la Data API abilitata.`}>
+          <input type="number" min={0} max={720} value={f.sync_intraday_minuti} onChange={(e) => set('sync_intraday_minuti', e.target.value)} data-testid="intraday-minuti" />
+          {s.intraday ? <div className="small muted">Ultimo: {fmtDateTime(s.intraday.at)} · {s.intraday.esito === 'OK' ? `riuscito${s.intraday.record != null ? `, ${n0(s.intraday.record)} record` : ''}` : (s.intraday.errore || s.intraday.motivo || s.intraday.esito)}</div> : null}
+        </Field>
+        <Field label="Stati erogati (produzione erogata)" className="span2" help="Stati dell'accettazione che valgono come produzione erogata in tutti i cruscotti (Cockpit, Retail, Business Hub, Finance, Diagnostica). Ipotesi da confermare con il CEO e CB Sistemi: predefiniti dal prelievo eseguito in poi.">
+          <div className="row wrap" style={{ gap: 12 }} data-testid="stati-erogati">{Object.entries(s.legenda_stati || {}).map(([k, l]) => <label key={k} className="row tight small"><input type="checkbox" checked={f.stati_erogati.map(Number).includes(Number(k))} onChange={(e) => set('stati_erogati', e.target.checked ? [...new Set([...f.stati_erogati.map(Number), Number(k)])] : f.stati_erogati.map(Number).filter((x) => x !== Number(k)))} /><span className="mono">{k}</span> {l}</label>)}</div>
+          <div className="small muted" style={{ marginTop: 6 }}>Predefiniti: {(s.stati_erogati_predefiniti || []).join(', ')} (18 prelievo eseguito, 20 in lavorazione, 25 in firma, 40 referto pronto, 50 chiuso); esclusi 10 prenotata, 11 NC mai arrivato, 15 in attesa, 30 attende prelievo. Valore = Σ netto di riga × quantità × (1 − sconto di testata), una volta.{f.stati_erogati.some((x) => !(s.legenda_stati || {})[x]) ? ` Altri codici in uso: ${f.stati_erogati.filter((x) => !(s.legenda_stati || {})[x]).join(', ')}.` : ''}</div>
         </Field>
         <Field label="Dati identificativi dei pazienti" className="span2"><Switch checked={f.include_patient} onChange={(v) => set('include_patient', v)} label="Importa nome, cognome, data di nascita e codice fiscale dei pazienti" /></Field>
       </div>
@@ -136,6 +147,7 @@ function Clienti({ qIniziale }) {
   const azione = async (c, a) => { try { await api.put(`/synclab/clienti/${encodeURIComponent(c.client_id)}`, { azione: a }); toast('Salvato'); d.reload(); } catch (e) { toast(e, 'err'); } };
   const k = d.data?.conteggi;
   return (
+    <>
     <Card title="Clienti Synclab" icon="building" flush actions={<div className="row tight wrap">
       <SearchInput value={qq} onChange={setQq} placeholder="Cerca codice, ragione sociale, P.IVA" />
       <Seg value={filtro} onChange={setFiltro} label="Filtro" items={[{ value: '', label: 'Tutti' }, { value: 'DA_ABBINARE', label: 'Da abbinare' }, { value: 'B2B', label: 'Perimetro B2B' }, { value: 'NON_B2B', label: 'Fuori perimetro' }]} />
@@ -154,7 +166,7 @@ function Clienti({ qIniziale }) {
                 <td>{c.legal_name}{c.disponibilita !== 'ATTIVO' ? <div><Badge tone="grey" dot={false}>{c.disponibilita.toLowerCase().replace(/_/g, ' ')}</Badge></div> : null}</td>
                 <td>{c.active ? 'sì' : <span className="muted">no</span>}</td>
                 <td>{c.operating_company || ''}</td>
-                <td><Badge tone={tone} dot={false}>{lab}</Badge>{c.organization_name ? <div className="small"><b>{c.organization_name}</b>{c.site_code ? <span className="muted"> · sede {c.site_code}</span> : null}</div> : null}{c.stato_abbinamento === 'PROPOSTO' && c.regola_proposta ? <div className="small muted">dal {REGOLA[c.regola_proposta]}</div> : null}</td>
+                <td><Badge tone={tone} dot={false}>{lab}</Badge>{c.organization_name ? <div className="small"><b>{c.organization_name}</b>{c.site_code ? <span className="muted"> · sede {c.site_code}{c.site_studiolab_code ? ` (codice ${c.site_studiolab_code})` : ' (senza codice)'}</span> : null}</div> : null}{c.stato_abbinamento === 'PROPOSTO' && c.regola_proposta ? <div className="small muted">dal {REGOLA[c.regola_proposta]}</div> : null}</td>
                 <td>{c.perimetro_b2b ? <Badge tone="green" dot={false}>dentro</Badge> : <Badge tone="grey" dot={false}>fuori</Badge>} <span className="small muted">{c.perimetro_forzato == null ? 'calcolato' : 'forzato a mano'}</span></td>
                 <td className="nowrap"><div className="row tight">
                   {c.stato_abbinamento === 'PROPOSTO' && <button className="btn sm" onClick={() => azione(c, 'ABBINA')} title="Conferma la Legal entity proposta">Abbina</button>}
@@ -170,6 +182,37 @@ function Clienti({ qIniziale }) {
       </table></div>
       <p className="small muted" style={{ padding: '0 16px 12px' }}>Proposta automatica: codice cliente uguale al codice StudioLAB di una sede della Suite (la Legal entity è quella della sede), altrimenti partita IVA o codice fiscale di una sola Legal entity. Perimetro B2B calcolato: client abbinati a una Legal entity cliente attiva o contrattualizzata del Business Hub; "Escludi" e "Includi" lo forzano. La medicina del lavoro (occupationalMedicine) non decide il perimetro.</p>
       {scegli && <ScegliModal c={scegli} onClose={() => setScegli(null)} onSaved={() => { setScegli(null); d.reload(); }} />}
+    </Card>
+    <Abbinamenti onDone={d.reload} onScegli={(c) => setScegli(c)} />
+    </>
+  );
+}
+
+// v0.68.5: allineamento automatico degli abbinamenti (codice StudioLAB, codice della Legal entity o sede, partita IVA, nome e comune; la sede
+// giusta per i gruppi con più sedi service) e casi ambigui da scegliere a mano. Regole: server/src/lib/synclab/abbinamenti.js.
+function Abbinamenti({ onDone, onScegli }) {
+  const toast = useToast();
+  const d = useApi('/synclab/abbinamenti');
+  const [busy, setBusy] = useState(false);
+  const u = d.data?.ultimo;
+  const riallinea = async () => {
+    setBusy(true);
+    try { const r = await api.post('/synclab/abbinamenti/riallinea', {}); toast(`Riallineati: ${r.abbinati.length} abbinati, ${r.codici_scritti.length} codici StudioLAB scritti, ${r.ambigui.length} ambigui`); d.reload(); onDone(); }
+    catch (e) { toast(e, 'err'); } finally { setBusy(false); }
+  };
+  const ambigui = [...(u?.ambigui || []), ...(u?.sede_da_scegliere || [])];
+  return (
+    <Card title="Abbinamenti automatici" icon="tree" className="mt" flush actions={<button className="btn sm" disabled={busy} onClick={riallinea} data-testid="riallinea-abbinamenti"><Icon name="refresh" />Riallinea abbinamenti</button>}>
+      <ErrorBox error={d.error} />
+      <div className="small" style={{ padding: '10px 16px 0' }}>{u ? <>Ultimo allineamento {fmtDateTime(u.at)} ({u.origine}): {n0(u.esaminati)} client esaminati, {n0(u.abbinati)} abbinati, {n0(u.sedi_completate)} sedi completate, {n0((u.codici_scritti || []).length)} codici StudioLAB scritti nelle sedi, {n0(u.gia_abbinati)} già abbinati, {n0(u.senza_candidati)} senza candidati, {n0((u.ambigui || []).length)} ambigui, {n0((u.sede_da_scegliere || []).length)} con la sede da scegliere, {n0((u.conflitti || []).length)} conflitti di codice.</> : <span className="muted">Mai eseguito: parte da solo dopo ogni sincronizzazione dei clienti e ogni 6 ore.</span>}</div>
+      {ambigui.length > 0 && <div className="table-wrap"><table className="t small" data-testid="synclab-ambigui">
+        <thead><tr><th>Client</th><th>Motivo</th><th>Candidati</th><th /></tr></thead>
+        <tbody>{ambigui.map((x) => <tr key={`${x.client_id}-${x.organization_id || ''}`}><td><span className="mono">{x.client_code}</span> {x.legal_name}</td><td>{x.motivo}{x.organization_name ? <div className="muted">Legal entity: {x.organization_name}</div> : null}</td>
+          <td>{(x.candidati || []).map((c) => c.name || c.code).join(' · ') || <span className="muted">–</span>}</td>
+          <td><button className="btn sm ghost" onClick={() => onScegli({ client_id: x.client_id, client_code: x.client_code, legal_name: x.legal_name, organization_id: x.organization_id || null, site_id: null })}>Scegli</button></td></tr>)}</tbody>
+      </table></div>}
+      {(u?.conflitti || []).length > 0 && <div className="small" style={{ padding: '6px 16px' }}><b>Conflitti di codice (nessuna sovrascrittura):</b> {u.conflitti.map((c) => `${c.client_code} → ${c.site_name}: ${c.motivo}`).join(' · ')}</div>}
+      <p className="small muted" style={{ padding: '8px 16px 12px', margin: 0 }}>Regole, in ordine: codice cliente = codice StudioLAB di una sede; = codice della Legal entity (es. SER0033) o di una sede; partita IVA o codice fiscale di una sola Legal entity; ragione sociale normalizzata identica e stesso comune. Più Legal entity con la stessa regola = ambiguo. La sede è quella con lo stesso indirizzo, comune o nome della sede del client nel gestionale (per Toscana Diagnostica fra i punti e i centri, per i clienti fra le sedi SERVICE). Il codice StudioLAB si scrive nella sede solo se è vuota e se nessun'altra sede lo ha (audit "codice StudioLAB dal gestionale"); un abbinamento tolto a mano non viene rifatto.</p>
     </Card>
   );
 }
@@ -187,7 +230,7 @@ function Storico() {
               <td className="nowrap">{fmtDateTime(r.iniziato)}</td>
               <td>{NOMI[r.dataset]}{r.prima_importazione ? <div><Badge tone="blue" dot={false}>prima importazione</Badge></div> : null}</td>
               <td>{TIPI[r.tipo]}</td>
-              <td>{(r.origine || '').toLowerCase()}</td>
+              <td>{ORIGINI[r.origine] || (r.origine || '').toLowerCase()}</td>
               <td><Badge tone={ESITO_TONE[r.esito] || 'grey'} dot={false}>{r.esito.toLowerCase().replace('_', ' ')}</Badge></td>
               <td className="num">{n0(r.pagine)}</td>
               <td className="num">{n0(r.record)}</td>

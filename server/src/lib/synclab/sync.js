@@ -12,7 +12,13 @@ import * as API from './client.js';
 import { upsertAggregato, appartenenza, applicaOperazione, svuotaDatiPaziente, TABELLE } from './persistenza.js';
 
 export const { DATASETS, NOMI_DATASET } = API;
-export const IMPOSTAZIONI_PREDEFINITE = { data_api_enabled: false, sync_ora: '02:30', page_size: 100, page_size_listini: 10, include_patient: false, data_api_timeout_ms: 120000, operating_company: '', datasets: [...API.DATASETS] };
+// v0.68.5: stati_erogati (stati dell'accettazione che valgono "produzione erogata", ipotesi da confermare) e sync_intraday_minuti (delta
+// delle accettazioni ogni N minuti fra le 7 e le 21 ora di Roma; 0 = spento)
+export const STATI_EROGATI_PREDEFINITI = [18, 20, 25, 40, 50];
+export const IMPOSTAZIONI_PREDEFINITE = { data_api_enabled: false, sync_ora: '02:30', page_size: 100, page_size_listini: 10, include_patient: false, data_api_timeout_ms: 120000, operating_company: '', datasets: [...API.DATASETS],
+  stati_erogati: [...STATI_EROGATI_PREDEFINITI], sync_intraday_minuti: 60 };
+export const INTRADAY_DALLE = '07:00';
+export const INTRADAY_ALLE = '21:00';
 const LOCK_STANTIO_MS = 2 * 3600_000;
 const ATTESA_MASSIMA_CATTURA_MS = 2 * 3600_000;   // oltre: errore, la pagina in sospeso resta e "Riprendi" continua con lo stesso cursor
 
@@ -31,6 +37,10 @@ export async function impostazioni() {
   const ds = Array.isArray(x.datasets) ? x.datasets : String(x.datasets || '').split(/[,\s]+/);
   x.datasets = API.DATASETS.filter((d) => ds.includes(d));
   x.operating_company = String(x.operating_company || '').trim();
+  const se = (Array.isArray(x.stati_erogati) ? x.stati_erogati : String(x.stati_erogati || '').split(/[,;\s]+/)).map((v) => String(v).trim()).filter((v) => /^\d{1,3}$/.test(v)).map(Number);
+  x.stati_erogati = se.length ? [...new Set(se)].sort((a, b) => a - b) : [...STATI_EROGATI_PREDEFINITI];
+  const im = Number(x.sync_intraday_minuti);
+  x.sync_intraday_minuti = Number.isFinite(im) && im >= 0 ? Math.min(720, Math.round(im)) : 60;
   return { ...x, client_name: c.credentials?.client_name || null, auth_kind: c.auth_kind, base_url: c.base_url, connettore_attivo: c.active };
 }
 
@@ -85,7 +95,15 @@ function inCoda(fn) { const p = coda.then(fn, fn); coda = p.catch(() => {}); ret
  * se manca il checkpoint). prova: { primaDelCommit(p), dopoCommit(p) } agganci per i test di interruzione.
  * Ritorna { dataset, scope_id, run_id, tipo, esito, pagine, record, conteggi, durata_ms } oppure { saltato }.
  */
-export function eseguiCiclo(dataset, opzioni = {}) { return inCoda(() => cicloInterno(dataset, opzioni)); }
+export function eseguiCiclo(dataset, opzioni = {}) {
+  const p = inCoda(() => cicloInterno(dataset, opzioni));
+  // v0.68.5: dopo ogni ciclo riuscito dei clienti (completo o delta) si riallineano gli abbinamenti client ↔ Legal entity e sede
+  if (dataset === 'clients' && opzioni.abbinamenti !== false) {
+    p.then((r) => { if (r?.esito === 'OK') return import('./abbinamenti.js').then((A) => A.allineaAbbinamenti({ origine: `dopo il ciclo dei clienti (${(r.tipo || '').toLowerCase()})` })); return null; })
+      .catch((e) => console.warn(`[synclab:abbinamenti] ${e.message}`));
+  }
+  return p;
+}
 
 async function cicloInterno(dataset, { modo = 'AUTO', filtri = null, includePatient = null, origine = 'MANUALE', prova = {} } = {}) {
   if (!API.DATASETS.includes(dataset)) throw new API.SynclabError(`Insieme di dati sconosciuto: ${dataset}`, { tipo: 'CONFIGURAZIONE' });
@@ -291,8 +309,10 @@ export async function statoSincronizzazione() {
     return { dataset: d, nome: NOMI_DATASET[d], abilitato: imp.datasets.includes(d), ambito: corrente, altri_ambiti: mine.filter((s) => s !== corrente), locali: conteggi[d] };
   });
   const notturno = (await one(`SELECT value FROM app_settings WHERE key='synclab.notturno'`))?.value || null;
+  const intraday = (await one(`SELECT value FROM app_settings WHERE key='synclab.intraday'`))?.value || null;
   const { client_name, auth_kind, base_url, connettore_attivo, ...impostazioniPubbliche } = imp;
-  return { impostazioni: impostazioniPubbliche, connettore: { client_name, auth_kind, base_url, attivo: connettore_attivo }, insiemi, in_corso: inEsecuzione, notturno };
+  return { impostazioni: impostazioniPubbliche, connettore: { client_name, auth_kind, base_url, attivo: connettore_attivo }, insiemi, in_corso: inEsecuzione, notturno, intraday,
+    giorno: { dalle: INTRADAY_DALLE, alle: INTRADAY_ALLE } };
 }
 export const ultimiRun = (limit = 20) => many(`SELECT r.id, r.scope_id, r.dataset, r.tipo, r.origine, r.iniziato, r.finito, r.esito, r.pagine, r.record, r.upsert, r.remove, r.fuori_ambito, r.archived, r.unavailable,
     r.gia_applicati, r.verificati, r.durata_ms, r.attesa_ms, r.prima_importazione, r.errore, r.correlation_id, s.include_patient, s.filtri_canonici
@@ -321,6 +341,44 @@ export async function cicloNotturno({ adesso = new Date() } = {}) {
   await q(`INSERT INTO app_settings (key, value) VALUES ('synclab.notturno', $1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`, [JSON.stringify(v)]);
   return v;
 }
+// ---------------------------------------------------------------- aggiornamento di giorno (v0.68.5)
+// "Il delta delle accettazioni oggi gira solo di notte": con sync_intraday_minuti > 0 (predefinito 60) fra le 7 e le 21 ora di Roma il
+// job esegue il DELTA delle accettazioni ogni N minuti, così la produzione erogata del giorno si aggiorna nei cruscotti. Un ciclo alla
+// volta: stessa coda e stesso lock dell'ambito del notturno (un ciclo in corso fa saltare il turno). Solo con la Data API accesa.
+/** Il delta di giorno è da eseguire? Puro: { esegui, motivo }. stato = { at, esito } dell'ultimo delta di giorno. */
+export function intradayDaEseguire({ imp, stato = null, ora, adesso = new Date(), inCorso: occupato = null }) {
+  if (!imp.data_api_enabled) return { esegui: false, motivo: 'Data API non abilitata' };
+  const n = Number(imp.sync_intraday_minuti) || 0;
+  if (n <= 0) return { esegui: false, motivo: 'aggiornamento di giorno spento (0 minuti)' };
+  if (ora < INTRADAY_DALLE || ora >= INTRADAY_ALLE) return { esegui: false, motivo: `fuori dalla fascia ${INTRADAY_DALLE}-${INTRADAY_ALLE}` };
+  if (occupato) return { esegui: false, motivo: 'un ciclo è già in corso' };
+  if (stato?.at && adesso.getTime() - Date.parse(stato.at) < n * 60_000 - 30_000) return { esegui: false, motivo: `ultimo aggiornamento meno di ${n} minuti fa` };
+  return { esegui: true };
+}
+export async function cicloIntraday({ adesso = new Date() } = {}) {
+  const imp = await impostazioni();
+  const stato = (await one(`SELECT value FROM app_settings WHERE key='synclab.intraday'`))?.value || null;
+  const d = intradayDaEseguire({ imp, stato, ora: oraRoma(adesso), adesso, inCorso: inEsecuzione });
+  if (!d.esegui) return { saltato: d.motivo };
+  const t0 = Date.now();
+  let v;
+  try {
+    const r = await eseguiCiclo('requests', { modo: 'DELTA', origine: 'GIORNO' });
+    v = { at: new Date().toISOString(), esito: r.saltato ? 'SALTATO' : r.esito, record: r.record ?? null, motivo: r.saltato || null, durata_ms: Date.now() - t0 };
+  } catch (e) { v = { at: new Date().toISOString(), esito: 'ERRORE', errore: String(e.message).slice(0, 300), durata_ms: Date.now() - t0 }; }
+  await q(`INSERT INTO app_settings (key, value) VALUES ('synclab.intraday', $1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`, [JSON.stringify(v)]);
+  return v;
+}
+
 export function registerSynclabJobs(registerJob) {
   registerJob('synclab:notturno', 15, () => cicloNotturno(), { runAtStart: false });
+  registerJob('synclab:intraday', 5, () => cicloIntraday(), { runAtStart: false });
+  // abbinamenti client ↔ Legal entity e sede: dopo ogni ciclo riuscito dei clients (eseguiCiclo) e comunque ogni 6 ore
+  registerJob('synclab:abbinamenti', 360, async () => {
+    const d = await one(`SELECT count(*)::int AS n FROM synclab.clients WHERE disponibilita = 'ATTIVO'`).catch(() => null);
+    if (!d?.n) return { saltato: 'nessun client Synclab importato' };
+    const A = await import('./abbinamenti.js');
+    const r = await A.allineaAbbinamenti({ origine: 'job synclab:abbinamenti' });
+    return { abbinati: r.abbinati.length, codici_scritti: r.codici_scritti.length, ambigui: r.ambigui.length, sede_da_scegliere: r.sede_da_scegliere.length };
+  }, { runAtStart: false });
 }

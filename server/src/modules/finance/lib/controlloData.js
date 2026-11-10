@@ -106,7 +106,7 @@ export async function caricaService(p, { imp = null, orgId = null } = {}) {
         FROM production p LEFT JOIN public.sites si ON si.id = p.site_id AND si.kind = 'SERVICE'
        WHERE coalesce(p.org_id, si.organization_id) = ANY($1::int[]) AND p.month BETWEEN $2::date AND $3::date GROUP BY 1, 2, 3`, [ids, da, a]),
   ]) : [vuoto, vuoto, vuoto, vuoto, vuoto];
-  // Synclab Data API (core, schema synclab): produzione dalle accettazioni del gestionale e fatturato dai documenti economici
+  // Synclab Data API (core, schema synclab): produzione EROGATA (v0.68.5, definizione unica) e, a parte, i documenti emessi (secondari)
   let syn = new Map(), fat = new Map();
   try { [syn, fat] = ids.length ? await Promise.all([produzionePerOrg(ids, da, a), fatturatoPerOrg(ids, da, a)]) : [syn, fat]; fonti.synclab = { disponibile: true, nota: syn.size || fat.size ? null : 'Synclab Data API: nessuna accettazione né documento dei clienti nel periodo (o client Synclab non abbinati alle Legal entity)' }; }
   catch (e) { console.warn(`[finance:controllo] synclab: ${e.message}`); fonti.synclab = { disponibile: false, nota: `Synclab Data API: lettura non riuscita (${e.message})` }; }
@@ -398,7 +398,7 @@ export function daDoveViene({ p, conto, fonti, comp, imp, lab, prevVuoto, oggi =
   const fino = p.a < oggi ? p.a : oggi;
   const per = GIORNI_MESE(p.da, fino);
   const nd = (k) => (fonti[k]?.disponibile === false ? ` (non disponibile: ${fonti[k].nota})` : '');
-  const fontiSrv = comp.service_fonti.length ? comp.service_fonti.map((f) => (f === 'SYNCLAB' ? `Synclab: accettazioni ${per}, prezzi netti storici` : NOMI_FONTE_SRV[f] || f)).join('; ') : 'nessuna produzione effettiva';
+  const fontiSrv = comp.service_fonti.length ? comp.service_fonti.map((f) => (f === 'SYNCLAB' ? `Synclab: produzione erogata ${per} (accettazioni in stato erogato, netto di riga e sconto di testata)` : NOMI_FONTE_SRV[f] || f)).join('; ') : 'nessuna produzione effettiva';
   const ricavi = [
     `Retail${comp.retail_gipo ? ' (GIPO)' : ''}: vendite nette ${per}${comp.retail_ultima ? `, ultimo dato del ${ggmm(comp.retail_ultima)}` : ''}${nd('ricavi_retail')}`,
     `Service: produzione effettiva di ${comp.service_clienti} ${comp.service_clienti === 1 ? 'cliente' : 'clienti'} attribuita a ${lab?.name || 'Laboratorio'} (${fontiSrv})${nd('ricavi_service')}`,

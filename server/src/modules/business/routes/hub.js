@@ -35,8 +35,14 @@ function richiediLinea(req, linea) { if (!puoLinea(req, linea)) throw forbidden(
 // sede non c'è vale il codice salvato nell'account (accounts.studiolab_code). Livello di cliente della vista unica clienti_attivi_v.
 export const STUDIOLAB_SELECT = `(SELECT ps.id FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active ORDER BY (coalesce(ps.studiolab_code,'')<>'') DESC, ps.id LIMIT 1) AS sede_service_id,
     (SELECT count(*)::int FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active) AS sedi_service,
-    coalesce((SELECT ps.studiolab_code FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active AND coalesce(ps.studiolab_code,'')<>'' ORDER BY ps.id LIMIT 1), nullif(a.studiolab_code,'')) AS codice_studiolab,
-    (SELECT v.livello FROM public.clienti_attivi_v v WHERE v.account_id=a.id) AS cliente_livello`;
+    coalesce((SELECT ps.studiolab_code FROM public.sites ps WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active AND coalesce(ps.studiolab_code,'')<>'' ORDER BY ps.id LIMIT 1), nullif(a.studiolab_code,''), (SELECT sv0.client_code FROM synclab.clients_td sv0 WHERE sv0.organization_id=a.organization_id AND sv0.disponibilita='ATTIVO' ORDER BY sv0.client_code LIMIT 1)) AS codice_studiolab,   -- in mancanza, il codice del client del gestionale già abbinato (10/11/2026: non si richiede ciò che la Suite ha già)
+    (SELECT v.livello FROM public.clienti_attivi_v v WHERE v.account_id=a.id) AS cliente_livello,
+    (SELECT json_agg(json_build_object('id', ps.id, 'code', ps.code, 'name', ps.name, 'city', ps.city, 'studiolab_code', ps.studiolab_code) ORDER BY ps.id) FROM public.sites ps
+      WHERE ps.organization_id=a.organization_id AND ps.kind='SERVICE' AND ps.active) AS sedi_service_elenco,
+    (SELECT json_agg(json_build_object('client_id', sv.client_id, 'client_code', sv.client_code, 'legal_name', sv.legal_name, 'active', sv.active, 'site_id', sv.site_id, 'stato', sv.stato_abbinamento) ORDER BY sv.client_code)
+       FROM synclab.clients_td sv WHERE sv.organization_id=a.organization_id AND sv.disponibilita='ATTIVO') AS synclab_clients`;
+// v0.68.5: codice StudioLAB e client Synclab corrispondenti: STUDIOLAB_SELECT porta l'elenco delle sedi SERVICE con il loro codice e i
+// client del gestionale abbinati alla Legal entity (synclab.clients_td: codice, ragione sociale nel gestionale, attivo, sede)
 export const ACCOUNT_SELECT = `SELECT a.*, o.name AS org_name, o.kind AS org_kind, o.code AS org_code, o.vat_number, o.address AS org_address, o.zip AS org_zip,
     coalesce(o.city, a.sedi->0->>'citta') AS citta, coalesce(o.province, a.sedi->0->>'prov') AS prov, o.email AS org_email, o.pec AS org_pec, o.phone AS org_phone, o.active AS org_active,
     uo.full_name AS owner_name, ua.full_name AS attivo_da_name, jsonb_array_length(a.sedi) AS n_sedi,
@@ -164,6 +170,64 @@ r.get('/accounts/:id/synclab', ah(async (req, res) => {
   const { bloccoAccount } = await import('../lib/synclabAccount.js');
   try { res.json(await bloccoAccount(a, { oggi: todayRome() })); }
   catch (e) { console.warn(`[business:hub] synclab account ${a.id}: ${e.message}`); res.json({ applicabile: true, disponibile: false, nota: `Synclab: lettura non riuscita (${e.message})` }); }
+}));
+
+// v0.68.5 · Listino del gestionale (Synclab) della Legal entity: listini base ed extra dei client abbinati, anteprima, confronto con il
+// listino del Business Hub; XLSX per il cliente (un foglio per listino + riepilogo + confronto) e aggregato del perimetro (Clienti)
+r.get('/accounts/:id/listino-synclab', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  const { listinoGestionaleAccount } = await import('../lib/synclabAccount.js');
+  try { res.json(await listinoGestionaleAccount(a)); }
+  catch (e) { console.warn(`[business:hub] listino synclab ${a.id}: ${e.message}`); res.json({ applicabile: false, motivo: `Synclab: lettura non riuscita (${e.message})`, clients: [] }); }
+}));
+const nomeFile = (s) => String(s || 'cliente').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'cliente';
+r.get('/accounts/:id/listino-synclab.xlsx', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  const { listinoGestionaleAccount } = await import('../lib/synclabAccount.js');
+  const d = await listinoGestionaleAccount(a, { tutte: true });
+  if (!d.applicabile) throw bad(d.motivo || 'Nessun listino del gestionale per questa Legal entity');
+  const { xlsxListiniOrg } = await import('../../../lib/synclab/listini.js');
+  const buf = await xlsxListiniOrg({ org: { id: a.organization_id, name: a.org_name }, dati: d, confronti: d.confronti });
+  await audit(req, 'HUB_LISTINO_SYNCLAB_EXPORT', 'account', a.id, { client: d.clients.length, listini: d.clients.reduce((t, c) => t + c.listini.length, 0) });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="listino-gestionale_${nomeFile(a.org_name)}.xlsx"`);
+  res.send(buf);
+}));
+// Aggregato del perimetro: clienti in perimetro B2B abbinati; con ?linea=SRV|MDL solo le Legal entity con un account di quella linea (o senza
+// account Service/MdL: inclusi a mano in Dati Synclab)
+r.get('/listini-synclab.xlsx', ah(async (req, res) => {
+  const linea = ['SRV', 'MDL'].includes(req.query.linea) ? req.query.linea : null;
+  let orgIds = null;
+  if (linea) {
+    orgIds = (await many(`SELECT DISTINCT v.organization_id AS id FROM synclab.clients_td v WHERE v.organization_id IS NOT NULL AND coalesce(v.perimetro_b2b, FALSE)
+        AND (EXISTS (SELECT 1 FROM accounts a WHERE a.organization_id = v.organization_id AND a.linea = $1)
+             OR NOT EXISTS (SELECT 1 FROM accounts a WHERE a.organization_id = v.organization_id AND a.linea IN ('SRV','MDL')))`, [linea])).map((x) => x.id);
+  }
+  const { xlsxListiniAggregato } = await import('../../../lib/synclab/listini.js');
+  const out = await xlsxListiniAggregato({ orgIds });
+  await audit(req, 'HUB_LISTINI_SYNCLAB_EXPORT', 'synclab', null, { linea, clienti: out.clienti, righe: out.righe, non_associati: out.non_associati.length });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="listini-gestionale${linea ? `_${linea}` : ''}_${todayRome()}.xlsx"`);
+  res.send(out.buffer);
+}));
+
+// v0.68.5 · "Abbina al cliente del gestionale": client Synclab proposti per la Legal entity (regole dell'allineamento automatico, ambigui
+// compresi) e abbinamento manuale a Legal entity e sede, con il codice StudioLAB scritto nella sede se manca
+r.get('/accounts/:id/abbina-synclab', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  const { candidatiPerOrg } = await import('../../../lib/synclab/abbinamenti.js');
+  res.json(await candidatiPerOrg(a.organization_id, { cerca: String(req.query.q || '') }));
+}));
+r.post('/accounts/:id/abbina-synclab', ah(async (req, res) => {
+  const a = await loadAccount(req.params.id);
+  richiediLinea(req, a.linea);
+  const d = parse(z.object({ client_id: z.string().min(1).max(200), site_id: optInt.optional() }), req.body || {});
+  const { abbinaManuale } = await import('../../../lib/synclab/abbinamenti.js');
+  const out = await abbinaManuale({ clientId: d.client_id, organizationId: a.organization_id, siteId: d.site_id || null, userId: req.user.id, req, origine: 'Business Hub, scheda account' });
+  await addActivity(a.id, { tipo: 'SISTEMA', oggetto: `Abbinato al cliente del gestionale ${out.client_code || out.client_id}`,
+    testo: out.codice?.scritto ? `Codice StudioLAB ${out.codice.codice} scritto nella sede (dal gestionale).` : out.codice?.motivo ? `Codice StudioLAB non scritto: ${out.codice.motivo}.` : null }, req.user.id);
+  await audit(req, 'HUB_ABBINA_SYNCLAB', 'account', a.id, { client_id: out.client_id, site_id: out.site_id, codice: out.codice });
+  res.json(out);
 }));
 
 // Feed dagli altri widget (sola lettura)

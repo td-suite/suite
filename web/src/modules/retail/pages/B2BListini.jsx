@@ -21,7 +21,7 @@ export default function B2BListini() {
   return (
     <div className="page">
       <div className="page-head"><div><h1>Listini applicati</h1><div className="sub">Prezzo netto medio applicato per esame e cliente (accettazioni del gestionale) contro il listino corrente di Synclab e il listino del Business Hub.</div></div></div>
-      {d && <FonteSynclab stato={d.stato} insiemi={['requests', 'price-lists']} extra={d.hub?.nota || undefined} />}
+      {d && <FonteSynclab stato={d.stato} d={d} insiemi={['requests', 'price-lists']} extra={d.hub?.nota || undefined} />}
       <div className="filters">
         <PeriodoSelect value={p} onChange={setP} oggi={oggi} />
         <label className="f">Cliente<select value={chiave} onChange={(e) => { setChiave(e.target.value); setSp(e.target.value ? { chiave: e.target.value } : {}, { replace: true }); }}><option value="">Tutti i clienti B2B</option>{(d?.clienti || []).map((c) => <option key={c.chiave} value={c.chiave}>{c.cliente}</option>)}</select></label>

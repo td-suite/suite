@@ -13,13 +13,20 @@ import { toXlsx } from '../lib/exports.js';
 import { privatiInB2c, listiniHub, ncAperte, budgetB2B, quadroB2B } from '../lib/b2b.js';
 import {
   cruscottoB2B, produzioneClientiMesi, fatturatoClientiMesi, prezziApplicati, schedaClienteSynclab, statoCopia, periodoProfilo,
+  produzioneGiornaliera, produzioneClientiGiorni, statiErogati, fonteProduzione, aggiornatoAlle, descriviStati,
 } from '../../../lib/synclab/letture.js';
 
 const r = Router();
 const oggiRoma = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
 /** Periodo dai parametri (periodo = 12m | AAAA-MM | AAAA-Qn | AAAA, oppure da/a); predefinito: ultimi 12 mesi fino a oggi. */
 const periodo = (query) => periodoProfilo({ periodo: query.periodo || '12m', da: query.da || null, a: query.a || null, oggi: oggiRoma() });
-const fonte = async () => ({ fonte: 'StudioLab (Synclab Data API, copia locale in sola lettura)', stato: await statoCopia() });
+// v0.68.5: ogni pagina dichiara la grandezza principale (produzione erogata) con gli stati, il netto e l'ora della copia
+const fonte = async () => {
+  const stato = await statoCopia();
+  const stati = await statiErogati();
+  const cp = stato?.insiemi?.requests?.checkpoint_at || null;
+  return { fonte: 'StudioLab (Synclab Data API, copia locale in sola lettura)', stato, stati, stati_descritti: descriviStati(stati), fonte_produzione: fonteProduzione(stati, cp), aggiornato: aggiornatoAlle(cp, oggiRoma()) };
+};
 
 // Stato della copia Synclab (fonte e ultimo checkpoint), per le pagine che non chiamano altro
 r.get('/stato', ah(async (_req, res) => res.json({ ...(await fonte()), privati_in_b2c: await privatiInB2c() })));
@@ -29,7 +36,8 @@ r.get('/cruscotto', ah(async (req, res) => {
   const mese = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.mese || '')) ? req.query.mese : null;
   const privati = await privatiInB2c();
   const c = await cruscottoB2B({ mese, privatiInB2c: privati, oggi: oggiRoma() });
-  res.json({ ...c, privati_in_b2c: privati, ...(await fonte()) });
+  const giornaliero = await produzioneGiornaliera({ da: c.periodo.da, a: c.periodo.a, privatiInB2c: privati, ripartizione: 'B2B' });
+  res.json({ ...c, giornaliero, privati_in_b2c: privati, ...(await fonte()) });
 }));
 
 // Aziende e strutture: clienti attivi e contrattualizzati della Suite (quadro esistente, ponte dei codici delle vendite) con i numeri di
@@ -99,17 +107,17 @@ r.get('/produzione', ah(async (req, res) => {
 r.get('/produzione/export.xlsx', ah(async (req, res) => {
   const { p, rip, dati } = await leggiProduzione(req.query);
   const stato = await statoCopia();
-  const colMese = (mk) => [{ key: `${mk}_e`, header: `${mk} esami`, int: true, width: 12 }, { key: `${mk}_v`, header: `${mk} valore`, money: true, width: 14 }];
+  const colMese = (mk) => [{ key: `${mk}_e`, header: `${mk} esami`, int: true, width: 12 }, { key: `${mk}_v`, header: `${mk} produzione erogata`, money: true, width: 16 }];
   const righe = dati.clienti.map((c) => ({ cliente: c.cliente, chiave: c.chiave, abbinamento: c.stato_abbinamento, acc: c.totale.accettazioni, esami: c.totale.esami, valore: c.totale.valore,
     ...Object.fromEntries(dati.mesi.flatMap((mk) => [[`${mk}_e`, c.mesi[mk]?.esami || 0], [`${mk}_v`, c.mesi[mk]?.valore ?? null]])) }));
   const buf = await toXlsx([
     { name: 'Produzione cliente × mese', columns: [{ key: 'cliente', header: 'Cliente', width: 40 }, { key: 'chiave', header: 'Chiave', width: 14 }, { key: 'abbinamento', header: 'Abbinamento', width: 14 },
       { key: 'acc', header: 'Accettazioni', int: true }, { key: 'esami', header: 'Esami', int: true }, { key: 'valore', header: 'Valore', money: true, width: 14 }, ...dati.mesi.flatMap(colMese)], rows: righe },
     { name: 'Note', columns: [{ key: 'k', header: 'Voce', width: 28 }, { key: 'v', header: 'Valore', width: 110 }], rows: [
-      { k: 'Fonte', v: 'StudioLab (Synclab Data API): accettazioni ATTIVE con almeno una riga d\'esame non cancellata' },
+      { k: 'Fonte', v: 'StudioLab (Synclab Data API): produzione erogata (accettazioni ATTIVE in stato erogato con almeno una riga d\'esame non cancellata)' },
       { k: 'Perimetro', v: rip === 'LAB_SEDE' ? 'Laboratorio in sede (client abbinati a sedi TD)' : rip ? 'B2B (client abbinati a Legal entity esterne o non abbinati)' : 'Tutti i client Synclab' },
       { k: 'Esami', v: 'Righe d\'esame non cancellate' },
-      { k: 'Valore', v: 'Somma dei netti di riga storici × quantità; righe senza prezzo escluse dal valore (valore parziale), sconto di testata non applicato' },
+      { k: 'Valore', v: 'Σ netto di riga × quantità × (1 − sconto di testata), applicato una volta; righe senza prezzo escluse dal valore e contate (valore parziale)' },
       { k: 'Periodo', v: `${p.etichetta} (${p.da} - ${p.a})` },
       { k: 'Ultimo checkpoint accettazioni', v: stato.insiemi.requests?.checkpoint_at ? new Date(stato.insiemi.requests.checkpoint_at).toISOString() : 'nessuno' },
     ] },
@@ -120,7 +128,38 @@ r.get('/produzione/export.xlsx', ah(async (req, res) => {
   res.send(buf);
 }));
 
-// Fatturato da documenti per cliente e mese
+// Produzione erogata per cliente e GIORNO di un mese (dettaglio giornaliero, v0.68.5) e il suo export Excel
+const leggiGiorni = async (query) => {
+  const privati = await privatiInB2c();
+  const oggi = oggiRoma();
+  const mese = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(query.mese || '')) ? query.mese : oggi.slice(0, 7);
+  const p = periodoProfilo({ periodo: mese, oggi });
+  const a = p.a > oggi && p.da <= oggi ? oggi : p.a;   // mese in corso: fino a oggi
+  return { mese, p: { ...p, a }, privati, dati: await produzioneClientiGiorni({ da: p.da, a, privatiInB2c: privati, ripartizione: 'B2B' }) };
+};
+r.get('/produzione/giorni', ah(async (req, res) => {
+  const { mese, p, privati, dati } = await leggiGiorni(req.query);
+  res.json({ ...dati, mese, periodo: p, privati_in_b2c: privati, ...(await fonte()) });
+}));
+r.get('/produzione/giorni/export.xlsx', ah(async (req, res) => {
+  const { mese, p, dati } = await leggiGiorni(req.query);
+  const f = await fonte();
+  const righe = dati.clienti.map((c) => ({ cliente: c.cliente, chiave: c.chiave, acc: c.totale.accettazioni, esami: c.totale.esami, valore: c.totale.valore,
+    ...Object.fromEntries(dati.giorni.map((g) => [`g${g}`, c.giorni[g]?.valore ?? null])) }));
+  const buf = await toXlsx([
+    { name: 'Produzione cliente × giorno', columns: [{ key: 'cliente', header: 'Cliente', width: 40 }, { key: 'chiave', header: 'Chiave', width: 14 }, { key: 'acc', header: 'Accettazioni erogate', int: true },
+      { key: 'esami', header: 'Esami', int: true }, { key: 'valore', header: 'Produzione erogata', money: true, width: 16 }, ...dati.giorni.map((g) => ({ key: `g${g}`, header: g.slice(8, 10) + '/' + g.slice(5, 7), money: true, width: 11 }))], rows: righe },
+    { name: 'Note', columns: [{ key: 'k', header: 'Voce', width: 28 }, { key: 'v', header: 'Valore', width: 110 }], rows: [
+      { k: 'Fonte', v: f.fonte_produzione }, { k: 'Stati erogati', v: f.stati_descritti }, { k: 'Mese', v: `${mese} (${p.da} - ${p.a})` },
+      { k: 'Valore', v: 'Σ netto di riga × quantità × (1 − sconto di testata) delle righe d\'esame non cancellate; righe senza prezzo escluse dal valore e contate' } ] },
+  ]);
+  await audit(req, 'B2B_PRODUZIONE_GIORNI_EXPORT', 'synclab', null, { mese, clienti: dati.clienti.length });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="produzione-b2b-giornaliera_${mese}.xlsx"`);
+  res.send(buf);
+}));
+
+// Fatturato da documenti per cliente e mese (dato secondario: "Documenti emessi")
 r.get('/fatturato', ah(async (req, res) => {
   const privati = await privatiInB2c();
   const p = periodo(req.query);

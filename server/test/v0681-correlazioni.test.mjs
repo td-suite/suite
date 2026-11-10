@@ -61,16 +61,18 @@ describe('A · Business Hub ↔ Synclab: regole pure', () => {
     assert.deepEqual([S.semaforo(12), S.semaforo(-10), S.semaforo(-10.1), S.semaforo(-25), S.semaforo(-25.1), S.semaforo(null)], ['VERDE', 'VERDE', 'GIALLO', 'GIALLO', 'ROSSO', null]);
   });
 
-  test('confronto di un account con fixture: maturato, pro quota, scostamento, ultimo mese, run rate', () => {
-    const fat = new Map([['2026-08', { fatturato: 1000, documenti: 1 }], ['2026-09', { fatturato: 2000, documenti: 2, note_credito: 1 }], ['2026-10', { fatturato: 3000, documenti: 1 }], ['2026-11', { fatturato: 500, documenti: 1 }]]);
-    const prod = new Map([['2026-10', { esami: 40, valore: 2800 }], ['2026-11', { esami: 5, valore: 450 }]]);
+  test('confronto di un account con fixture: maturato (produzione erogata, v0.68.5), pro quota, scostamento, ultimo mese, run rate', () => {
+    // v0.68.5: il maturato è la PRODUZIONE EROGATA (prod); i documenti emessi (fat) sono un dato secondario, mai sommato
+    const prod = new Map([['2026-08', { valore: 1000, esami: 10 }], ['2026-09', { valore: 2000, esami: 20 }], ['2026-10', { valore: 3000, esami: 40, accettazioni: 30 }], ['2026-11', { valore: 500, esami: 5 }]]);
+    const fat = new Map([['2026-10', { fatturato: 2800, documenti: 1 }], ['2026-11', { fatturato: 450, documenti: 2, note_credito: 1 }]]);
     const c = S.confronta({ account: { fatturato_fy_atteso: 36000, data_avvio_effettiva: '2026-08-01' }, fat, prod, oggi: '2026-11-09' });
-    assert.equal(c.maturato, 6500); assert.equal(c.documenti, 5);
+    assert.equal(c.maturato, 6500); assert.equal(c.grandezza, 'PRODUZIONE_EROGATA');
+    assert.equal(c.documenti_emessi.importo, 3250, 'documenti emessi a parte'); assert.equal(c.documenti, 3);
     assert.equal(c.pro_quota.inizio, '2026-08-01');
     assert.equal(c.scostamento, Math.round((6500 - c.pro_quota.importo) * 100) / 100);
     assert.equal(c.semaforo, S.semaforo(c.scostamento_pct));
     assert.equal(c.ultimo_mese.mese, '2026-11'); assert.equal(c.ultimo_mese.in_corso, true);
-    assert.deepEqual(c.produzione, { esami: 45, valore: 3250 });
+    assert.deepEqual([c.produzione.esami, c.produzione.valore], [75, 6500]);
     assert.equal(c.run_rate.importo, 24000, '(1000 + 2000 + 3000) / 3 × 12');
     assert.equal(c.run_rate.scostamento_pct, -33.3);
   });
@@ -228,23 +230,25 @@ describe('v0.68.1 con database e dati sintetici', { skip: SALTA }, () => {
     await adm(`DROP DATABASE IF EXISTS ${nomeDb} WITH (FORCE)`).catch((e) => console.warn(`database ${nomeDb} non eliminato: ${e.message}`));
   });
 
-  test('A · correlazione per account: maturato dei documenti, pro quota dall\'avvio, run rate, semaforo', async () => {
+  test('A · correlazione per account: maturato = produzione erogata (v0.68.5), pro quota dall\'avvio, run rate, semaforo', async () => {
     const acc = (await db.query(`SELECT id, organization_id, linea, fatturato_fy_atteso, data_avvio_effettiva::text, data_avvio_prevista::text, attivo_dal::text, cliente_attivo FROM business.accounts`)).rows;
     const c = await M.S.correlazioneAccounts(acc, { oggi: OGGI });
     assert.equal(c.disponibile, true);
     const x = c.per_account.get(M.accX), y = c.per_account.get(M.accY);
-    assert.equal(x.maturato, 8200, 'Alfa: 4.000 + 4.000 + 200 nel 2026');
+    assert.equal(x.maturato, 36, 'Alfa: produzione erogata 2026 = 9 + 18 (oggi) + 9 (ottobre); i documenti non contano');
+    assert.equal(x.documenti_emessi.importo, 8200, 'Alfa: documenti emessi 4.000 + 4.000 + 200, dato secondario');
     assert.equal(x.pro_quota.inizio, '2026-09-01');
     assert.equal(x.pro_quota.importo, Math.round(60000 * (M.S.giorniLavorativi('2026-09-01', OGGI) / 250) * 100) / 100);
-    assert.equal(x.run_rate.calcolabile, true); assert.deepEqual(x.run_rate.mesi, ['2026-09', '2026-10']); assert.equal(x.run_rate.importo, 48000);
+    assert.equal(x.run_rate.calcolabile, true); assert.deepEqual(x.run_rate.mesi, ['2026-09', '2026-10']); assert.equal(x.run_rate.importo, 54, '(0 + 9) / 2 × 12');
     assert.match(x.run_rate.nota, /Solo 2 mesi pieni/);
-    assert.equal(x.produzione.esami, 3, 'righe d\'esame di Alfa nel 2026');
-    assert.equal(y.maturato, 9500, 'Beta: 8 × 1.000 + 500 + 1.000; il documento del 2025 non conta');
+    assert.equal(x.produzione.esami, 3, 'righe d\'esame erogate di Alfa nel 2026');
+    assert.equal(y.maturato, 18, 'Beta: due accettazioni erogate di novembre');
     assert.equal(y.pro_quota.inizio, '2026-01-01', 'avvio nel 2025: pro quota dal 1° gennaio');
     assert.equal(y.semaforo, 'ROSSO', 'molto sotto il pro quota di 120.000');
-    assert.equal(y.run_rate.importo, Math.round(((1000 + 0 + 500) / 3) * 12 * 100) / 100, 'agosto, settembre (zero) e ottobre');
+    assert.equal(y.run_rate.importo, 0, 'agosto, settembre e ottobre senza produzione erogata');
     const b = await M.S.bloccoAccount({ id: M.accX, linea: 'SRV', organization_id: M.org.X, fatturato_fy_atteso: 60000, data_avvio_effettiva: '2026-09-01' }, { oggi: OGGI });
-    assert.equal(b.applicabile, true); assert.equal(b.chiave_b2b, String(M.org.X)); assert.ok(b.fonte.testo.includes('contributo netto'));
+    assert.equal(b.applicabile, true); assert.equal(b.chiave_b2b, String(M.org.X)); assert.match(b.fonte.testo, /accettazioni erogate \(stati 18, 20, 25, 40, 50\), netto di riga e sconto di testata/);
+    assert.equal(b.giornaliero.giorni.length, 9, 'progressione giornaliera dal 1° a oggi'); assert.equal(b.giornaliero.giorni.at(-1).valore, 27);
     const none = await M.S.bloccoAccount({ id: 0, linea: 'PP', organization_id: M.org.X }, { oggi: OGGI });
     assert.equal(none.applicabile, false);
   });
@@ -263,17 +267,19 @@ describe('v0.68.1 con database e dati sintetici', { skip: SALTA }, () => {
     assert.ok(S && !S.errore, S?.errore);
     const by = (l) => Object.fromEntries(l.map((x) => [x.chiave, x]));
     const R = by(S.ricavi), L = by(S.laboratorio), T = by(S.retail);
-    assert.equal(R.ricavi_oggi.valore, 275, 'B2C GIPO 75 + B2B Synclab 200');
-    assert.deepEqual(R.ricavi_oggi.parti.map((p) => p.valore), [75, 200]);
-    assert.equal(R.ricavi_oggi.confronto.valore_precedente, 70, 'anno prima: GIPO 20 + Beta 50');
-    assert.equal(R.ricavi_mese.valore, 100 + 1500, 'GIPO 30 + 45 + 25; B2B 200 + 1.000 + 300');
-    assert.match(R.ricavi_mese.fonte, /GIPO.*Synclab/);
+    // v0.68.5: B2B = PRODUZIONE EROGATA (accettazioni in stato erogato dei client B2B), non più i documenti
+    assert.equal(R.ricavi_oggi.valore, 102, 'B2C GIPO 75 + B2B produzione erogata 27 (Alfa: 9 + 18)');
+    assert.deepEqual(R.ricavi_oggi.parti.map((p) => p.valore), [75, 27]);
+    assert.equal(R.ricavi_oggi.confronto.valore_precedente, 20, 'anno prima: GIPO 20, nessuna produzione B2B');
+    assert.equal(R.ricavi_mese.valore, 100 + 45, 'GIPO 30 + 45 + 25; B2B 27 + 9 + 9');
+    assert.match(R.ricavi_mese.fonte, /GIPO.*Synclab produzione erogata/);
     assert.equal(L.lab_acc_oggi.valore, 3); assert.deepEqual(L.lab_acc_oggi.parti.map((p) => p.valore), [1, 2], 'B2B 1 · in sede 2');
     assert.equal(L.lab_acc_ieri.valore, 1); assert.equal(L.lab_acc_mese.valore, 5); assert.equal(L.lab_esami_mese.valore, 6);
-    assert.equal(L.lab_b2b_oggi.valore, 200); assert.equal(L.lab_b2b_mese.valore, 1500);
-    assert.deepEqual(S.top5.righe.map((x) => [x.cliente, x.fatturato, x.quota]), [['Cliente Prova Beta', 1000, 66.7], ['Cliente Prova Gamma', 300, 20], ['Cliente Prova Alfa', 200, 13.3]]);
-    assert.equal(S.top5.righe[0].variazione, 100, 'Beta: 1.000 contro 500 nello stesso periodo di ottobre');
-    assert.equal(S.top5.righe[2].variazione, -95, 'Alfa: 200 contro 4.000');
+    assert.equal(L.lab_prod_oggi.valore, 27); assert.equal(L.lab_prod_mese.valore, 45);
+    assert.equal(L.lab_prod_mese.secondario.valore, 1500, 'documenti emessi del mese come dato secondario');
+    assert.deepEqual(S.top5.righe.map((x) => [x.cliente, x.valore, x.quota]), [['Cliente Prova Alfa', 27, 60], ['Cliente Prova Beta', 18, 40]]);
+    assert.equal(S.top5.righe[0].variazione, null, 'Alfa: nessuna produzione dal 1° al 9 ottobre (quella del 10 è fuori dal periodo)');
+    assert.equal(S.andamento.giorni.length, 9); assert.equal(S.andamento.giorni.at(-1).valore, 27); assert.equal(S.andamento.totale, 45);
     assert.equal(T.gipo_acc_oggi.valore, 2); assert.equal(T.gipo_acc_mese.valore, 3); assert.equal(T.gipo_scontrino.valore, 33.33);
     assert.equal(T.gipo_fuori_area.valore, 33.3, 'Bologna per una sede di Firenze: 1 accettazione su 3 valutabili nel mese');
     assert.deepEqual(S.fonti.map((f) => f.chiave), ['GIPO', 'TUOTEMPO', 'SYNCLAB']);

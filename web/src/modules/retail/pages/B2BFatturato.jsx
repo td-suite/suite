@@ -1,4 +1,5 @@
-// Retail · B2B · Fatturato da documenti (riordino del 09/11/2026): per cliente e mese dai documenti economici di StudioLab (Synclab):
+// Retail · B2B · Documenti emessi (ex "Fatturato da documenti", riordino del 09/11/2026; v0.68.5: dato SECONDARIO, la grandezza principale è la
+// produzione erogata): per cliente e mese dai documenti economici di StudioLab (Synclab):
 // contributo netto una volta per documento, note di credito separate, annullati/proforma e tipo sconosciuto esclusi e contati.
 // Fonte: GET /api/retail/b2b/fatturato.
 import React, { useState } from 'react';
@@ -17,13 +18,13 @@ export default function B2BFatturato() {
   const t = d?.totale;
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Fatturato da documenti</h1><div className="sub">Documenti economici B2B del gestionale per cliente e mese. Le note di credito sono separate (importi negativi), i documenti annullati e i proforma sono esclusi e contati.</div></div></div>
+      <div className="page-head"><div><h1>Documenti emessi</h1><div className="sub">Dato secondario: la grandezza dei ricavi B2B è la produzione erogata (B2B &gt; Produzione). Documenti economici B2B del gestionale per cliente e mese. Le note di credito sono separate (importi negativi), i documenti annullati e i proforma sono esclusi e contati.</div></div></div>
       {d && <FonteSynclab stato={d.stato} insiemi={['invoices']} />}
       <div className="filters"><PeriodoSelect value={p} onChange={setP} oggi={oggi} /><div className="spacer" />{d && <div className="small muted" style={{ alignSelf: 'center' }}>{intervallo(d.periodo)}</div>}</div>
       <ErrorBox error={q.error} />
       {!d ? <Loading /> : <>
         <div className="grid g4" style={{ marginBottom: 16 }}>
-          <div className="card kpi accent"><div className="lbl">Fatturato netto</div><div className="val">{eur0(t.fatturato)}</div><div className="delta"><span className="muted">fatture {eur0(t.fatturato_fatture)} · NC {eur0(t.importo_nc || 0)}</span></div></div>
+          <div className="card kpi accent"><div className="lbl">Documenti emessi (netto)</div><div className="val">{eur0(t.fatturato)}</div><div className="delta"><span className="muted">fatture {eur0(t.fatturato_fatture)} · NC {eur0(t.importo_nc || 0)}</span></div></div>
           <div className="card kpi"><div className="lbl">Fatture</div><div className="val">{num(t.fatture)}</div><div className="delta"><span className="muted">{num(t.documenti)} documenti in tutto</span></div></div>
           <div className="card kpi"><div className="lbl">Note di credito</div><div className="val">{num(t.note_credito)}</div><div className="delta"><span className="muted">{eur0(t.importo_nc || 0)}</span></div></div>
           <div className="card kpi"><div className="lbl">Esclusi</div><div className="val">{num(t.annullati + t.tipo_sconosciuto + t.senza_contributo)}</div><div className="delta"><span className="muted">{num(t.annullati)} annullati/proforma · {num(t.tipo_sconosciuto)} tipo sconosciuto · {num(t.senza_contributo)} senza contributo</span></div></div>

@@ -76,7 +76,7 @@ export default function Pipeline() {
         <select value={f.prov} onChange={(e) => setF({ prov: e.target.value })}><option value="">Provincia: tutte</option>{prov.map((p) => <option key={p} value={p}>{NOMI_PROV[p] || p}</option>)}</select>
         <select value={f.segmento} onChange={(e) => setF({ segmento: e.target.value })}><option value="">Segmento: tutti</option>{segmenti.map((s) => <option key={s}>{s}</option>)}</select>
         <label className="chk"><input type="checkbox" checked={f.stallo === '1'} onChange={(e) => setF({ stallo: e.target.checked ? '1' : '' })} />Solo in stallo</label>
-        {['SRV', 'MDL'].includes(f.linea) && <label className="chk" title="Clienti attivi con il maturato Synclab dell'anno sotto il pro quota del fatturato dichiarato di oltre il 10% (giallo o rosso)"><input type="checkbox" checked={f.ritardo === '1'} onChange={(e) => setF({ ritardo: e.target.checked ? '1' : '' })} />Solo in ritardo</label>}
+        {['SRV', 'MDL'].includes(f.linea) && <label className="chk" title="Clienti attivi con il maturato dell'anno (produzione erogata del gestionale) sotto il pro quota del fatturato dichiarato di oltre il 10% (giallo o rosso)"><input type="checkbox" checked={f.ritardo === '1'} onChange={(e) => setF({ ritardo: e.target.checked ? '1' : '' })} />Solo in ritardo</label>}
         {attivi && <button className="btn link small" onClick={() => setF({ q: '', priorita: '', owner: '', prov: '', segmento: '', stallo: '', fase: '', attivo: '', ritardo: '' })}>Azzera filtri</button>}
       </div>
 
@@ -89,7 +89,7 @@ export default function Pipeline() {
             <div key={x.n} className={`kcol ${over === x.n ? 'over' : ''}`} {...dnd(x.n)}>
               <div className="khd">
                 <div className="kt"><span>{x.n}. {x.label}</span><span className="kn">{l.length}</span></div>
-                <div className="ke" title="FY atteso (dichiarato nelle schede)">{t ? eur(t) : '–'}{x.n === 7 && l.some((a) => a.synclab) ? <span className="small muted" title="Maturato dell'anno dai documenti Synclab dei clienti attivi abbinati"> · maturato {eur(l.reduce((s2, a) => s2 + Number(a.synclab?.maturato || 0), 0))}</span> : null}</div>
+                <div className="ke" title="FY atteso (dichiarato nelle schede)">{t ? eur(t) : '–'}{x.n === 7 && l.some((a) => a.synclab) ? <span className="small muted" title="Maturato dell'anno: produzione erogata del gestionale dei clienti attivi abbinati"> · maturato {eur(l.reduce((s2, a) => s2 + Number(a.synclab?.maturato || 0), 0))}</span> : null}</div>
                 <div className="kbar"><i className={x.n === 7 ? 'ok' : ''} style={{ width: `${Math.round((t / maxTot) * 100)}%` }} /></div>
               </div>
               <div className="kbody">
@@ -104,7 +104,7 @@ export default function Pipeline() {
                       {a.cliente_attivo && <span className="pill p-ok">cliente attivo</span>}
                       {a.owner_name && <span className="muted ow">{a.owner_name}</span>}
                     </div>
-                    {a.synclab && <div className="ksyn" data-testid="pipe-synclab" title={`Dal gestionale (Synclab): maturato ${a.synclab.anno} ${eur(a.synclab.maturato)} contro il pro quota del fatturato dichiarato ${eur(a.synclab.pro_quota)}`}>
+                    {a.synclab && <div className="ksyn" data-testid="pipe-synclab" title={`Dal gestionale (Synclab): maturato ${a.synclab.anno} (produzione erogata) ${eur(a.synclab.maturato)} contro il pro quota del fatturato dichiarato ${eur(a.synclab.pro_quota)}`}>
                       <span>Maturato <b>{a.synclab.maturato == null ? '–' : kE(a.synclab.maturato) || '0 €'}</b></span><span>pro quota {a.synclab.pro_quota == null ? '–' : kE(a.synclab.pro_quota) || '0 €'}</span>
                       <span className={a.synclab.scostamento_pct != null && a.synclab.scostamento_pct < -10 ? 'red' : ''}>{a.synclab.scostamento_pct == null ? '–' : `${a.synclab.scostamento_pct > 0 ? '+' : ''}${String(a.synclab.scostamento_pct).replace('.', ',')}%`}</span>
                       <Semaforo s={a.synclab.semaforo} pct={a.synclab.scostamento_pct} />

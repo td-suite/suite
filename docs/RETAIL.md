@@ -77,19 +77,35 @@ link alle vecchie rotte.
 
 | Voce | Regola |
 |---|---|
-| Accettazioni (Synclab) | `requests` ATTIVE, non cancellate, con almeno una riga d'esame non cancellata, data nel periodo |
-| Esami | righe d'esame non cancellate |
-| Valore della produzione | Σ netto di riga × quantità (prezzo storico); righe senza prezzo contate a parte (valore parziale); sconto di testata non applicato |
-| Fatturato da documenti | `netRevenueContribution` una volta per documento; **note di credito separate** (già negative); annullati e proforma **esclusi e contati**; tipo sconosciuto escluso e contato |
+| Accettazioni (Synclab) | v0.68.5: accettazioni **erogate**: `requests` ATTIVE, non cancellate, con almeno una riga d'esame non cancellata, **stato in `stati_erogati`** (predefiniti 18, 20, 25, 40, 50: ipotesi da confermare), data nel periodo |
+| Esami | righe d'esame non cancellate delle accettazioni erogate |
+| Produzione erogata (ex "Valore della produzione") | v0.68.5: Σ netto di riga × quantità × (1 − sconto di testata), lo sconto di testata applicato **una volta**; righe senza prezzo contate a parte ("n esami senza prezzo", valore parziale). È la **grandezza principale** del B2B (definizione unica: docs/SYNCLAB_DATA_API.md "Produzione erogata") |
+| Documenti emessi (ex "Fatturato da documenti"), dato secondario mai sommato | `netRevenueContribution` una volta per documento; **note di credito separate** (già negative); annullati e proforma **esclusi e contati**; tipo sconosciuto escluso e contato |
 | In calo | stesso mese dell'anno prima, variazione ≤ −20% sul valore (se c'è in entrambi i periodi) altrimenti sugli esami; compresi i clienti a zero nel mese |
 | Senza produzione da 60 giorni | ultima accettazione più vecchia di 60 giorni ma entro i 12 mesi |
 | Non abbinati | client Synclab ATTIVI in stato `DA_ABBINARE`; quelli `PROPOSTO` sono contati a parte (i numeri usano già la proposta) |
-| Prezzi applicati | prezzo netto medio = Σ netto × quantità / Σ quantità (righe con prezzo) contro il listino **corrente** Synclab del client (base, poi extra) e il listino **corrente** del Business Hub |
+| Prezzi applicati | prezzo netto medio = Σ netto di riga × quantità / Σ quantità (righe con prezzo, **prima** dello sconto di testata: è il prezzo confrontabile con i listini) contro il listino **corrente** Synclab del client (base, poi extra) e il listino **corrente** del Business Hub |
 | Mese in corso | fino a oggi; l'anno prima fino allo stesso giorno |
 | GIPO (B2C) | vendite `source = 'GIPO'` senza committente B2B: accettazioni = riferimenti distinti, vendite = netto |
 | Fuori area | comune di residenza diverso da quello della sede **e** provincia diversa (stessa regola per GIPO e laboratorio) |
 | Prima disponibilità | mediana di `tuotempo_attivita.giorni_attesa` dell'ultimo giorno, confronto con 7 giorni prima (ipotesi dichiarata in RETAIL_TUOTEMPO.md) |
 | Prenotazioni online | **non disponibili** finché Docplanner non apre le API (Fase 2): la pagina e il cruscotto lo dicono |
+
+## v0.68.5: produzione erogata (CEO 10/11/2026)
+"A me non interessa il dato delle fatture ma il dato delle accettazioni in stato erogato … Mi serve nei vari cruscotti." In Retail:
+- **Cruscotto di rete**: righe e KPI B2B e Laboratorio in sede sulla **produzione erogata** (accettazioni erogate, esami, produzione);
+  "Documenti emessi (secondario, non sommati)" resta come riga a parte; la fonte della produzione è dichiarata sotto la tabella.
+- **Cruscotto B2B**: KPI principale "Produzione erogata B2B", "Esami erogati", "Documenti emessi (secondario)"; **barre giorno per giorno** del
+  mese (`giornaliero` di `GET /b2b/cruscotto`); top 10 con le colonne Produzione erogata e Documenti emessi.
+- **Scheda cliente B2B**: KPI "Produzione erogata" e "Documenti emessi (secondario)", **barre giornaliere** dell'ultimo mese del periodo,
+  andamento mensile con produzione e documenti, "Documenti emessi nel periodo".
+- **B2B > Produzione**: vista **Mensile** (cliente × mese, come prima) e **Giornaliera** (cliente × giorno di un mese, fino a oggi per il mese
+  in corso, con le barre del totale giornaliero), export Excel per entrambe (`GET /b2b/produzione/giorni?mese=AAAA-MM` e
+  `/produzione/giorni/export.xlsx`). Schermata `docs/screens/retail-b2b-produzione-giornaliera.png`.
+- **Laboratorio in sede**: accettazioni e produzione erogate.
+- Ogni pagina B2B dichiara sopra la fonte della produzione: "Produzione erogata · Synclab, accettazioni erogate (stati …), netto di riga e
+  sconto di testata, copia al … · aggiornato alle HH:MM" (`fonte_produzione`, `aggiornato`, `stati_descritti` nelle risposte).
+- Menu: "Fatturato da documenti" → **"Documenti emessi"** (stessa pagina, dato secondario).
 
 ## Test e collaudo
 - `server/test/retail-riordino.test.mjs` (13 test): menu, redirect e link (grep); ripartizione con l'impostazione vera e falsa, cruscotto

@@ -93,7 +93,7 @@ export default function ContoEconomico() {
           {(x.avvisi || []).map((a, i) => <div key={i} className="alert warn small" style={{ marginBottom: 8 }}>{a}</div>)}
           <div className="grid g4" style={{ marginBottom: 16 }} data-testid="pl-kpi">
             <Kpi label={`Ricavi · ${x.periodo.etichetta}`} value={eur(tot.ricavi)} foot={<>
-              <div className="small" data-testid="pl-composizione">effettivo: Retail{comp?.retail_gipo ? ' GIPO' : ''} {eur(comp?.retail)} · Service{comp?.service_fonti?.length === 1 && comp.service_fonti[0] === 'SYNCLAB' ? ' Synclab' : comp?.service_fonti?.length ? ` (${comp.service_fonti.join(', ').toLowerCase()})` : ''} {eur(comp?.service)} · stime escluse {eur(comp?.stime?.importo)} · proiezione FY {comp?.proiezione?.anno || ''} a parte</div>
+              <div className="small" data-testid="pl-composizione">effettivo: Retail{comp?.retail_gipo ? ' GIPO' : ''} {eur(comp?.retail)} · Service{comp?.service_fonti?.length === 1 && comp.service_fonti[0] === 'SYNCLAB' ? ' Synclab (produzione erogata)' : comp?.service_fonti?.length ? ` (${comp.service_fonti.join(', ').toLowerCase()})` : ''} {eur(comp?.service)} · stime escluse {eur(comp?.stime?.importo)} · proiezione FY {comp?.proiezione?.anno || ''} a parte</div>
               <Prec v={tot.precedente?.ricavi} vuoto={tot.precedente?.vuoto} et={x.precedente.etichetta} d={tot.variazione_ricavi} />
               <DaDove righe={x.da_dove?.ricavi} /></>} />
             <Kpi label="Costi diretti di sede" value={eur(tot.costi_diretti)} foot={<>{`Margine prima dei centrali ${eur(tot.margine_prima_dei_centrali)}`}<DaDove righe={x.da_dove?.costi_diretti} /></>} />

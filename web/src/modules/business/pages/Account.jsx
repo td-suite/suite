@@ -15,6 +15,7 @@ import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import ScriviCliente from '../components/ScriviCliente.jsx';
 import ContrattoDettaglio from '../components/ContrattoDettaglio.jsx';
 import SynclabAccount from '../components/SynclabAccount.jsx';
+import { ClientiGestionale, ListinoGestionale } from '../components/GestionaleSynclab.jsx';
 import CercaRubrica, { SuggerimentoEmail } from '../../../components/CercaRubrica.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
 import {
@@ -109,6 +110,7 @@ export default function Account() {
       {tab === 'diario' && <Diario a={a} onChange={q.reload} />}
       {tab === 'referenti' && <Referenti a={a} onChange={q.reload} />}
       {tab === 'contratto' && <SchedaContratto a={a} onChange={q.reload} />}
+      {tab === 'listino' && ['SRV', 'MDL'].includes(a.linea) && <ListinoGestionale a={a} />}
       {tab === 'listino' && <Listino a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'proposta' && <Proposta a={a} onChange={q.reload} vaiA={setTab} />}
       {tab === 'punto' && a.linea === 'PP' && <PuntoPrelievi a={a} onChange={q.reload} vaiA={setTab} />}
@@ -589,7 +591,8 @@ function CodiceStudiolab({ a, edit, onDone }) {
   const cliente = Boolean(a.cliente_livello || a.contrattualizzato_at || a.cliente_attivo);
   const salva = async () => { try { await api.put(`/hub/accounts/${a.id}/studiolab`, { codice: v.trim() || null }); toast('Codice StudioLAB salvato'); setV(null); onDone(); } catch (e) { toast(e.message, 'err'); } };
   return (
-    <div className={`alert ${!a.codice_studiolab && cliente ? 'warn' : 'info'} small`} style={{ marginBottom: 12, alignItems: 'center' }} data-testid="codice-studiolab">
+    <div className={`alert ${!a.codice_studiolab && cliente ? 'warn' : 'info'} small`} style={{ marginBottom: 12, display: 'block' }} data-testid="codice-studiolab">
+      <div className="row" style={{ alignItems: 'center', gap: 8 }}>
       <Icon name={!a.codice_studiolab && cliente ? 'alert' : 'scan'} size={18} />
       <span style={{ flex: 1 }}>
         <b>Codice StudioLAB:</b> {a.codice_studiolab ? <span className="mono strong">{a.codice_studiolab}</span> : <span>{cliente ? 'da inserire: Ordini, Non conformità e Retail riconoscono il cliente da questo codice' : 'non ancora indicato'}</span>}
@@ -597,6 +600,9 @@ function CodiceStudiolab({ a, edit, onDone }) {
       </span>
       {edit && v === null && <button className="btn sm ghost" onClick={() => setV(a.codice_studiolab || '')}><Icon name="edit" />{a.codice_studiolab ? 'Modifica' : 'Inserisci'}</button>}
       {v !== null && <span className="row" style={{ gap: 6 }}><input value={v} onChange={(e) => setV(e.target.value)} maxLength={40} placeholder="es. 1234" aria-label="Codice StudioLAB" style={{ width: 140 }} autoFocus /><button className="btn sm" onClick={salva}>Salva</button><button className="btn sm ghost" onClick={() => setV(null)}>Annulla</button></span>}
+      </div>
+      {/* v0.68.5: sedi SERVICE con il loro codice e client del gestionale abbinati; "Abbina al cliente del gestionale" */}
+      <ClientiGestionale a={a} edit={edit} onDone={onDone} />
     </div>
   );
 }

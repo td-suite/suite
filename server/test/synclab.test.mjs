@@ -20,7 +20,7 @@ describe('Synclab: regole pure', () => {
     const retail = { esami: 5, valore: 50, righe: [{ codice: 'GLU', quantita: 5, valore: 50 }] };
     const ordini = { esami: 7, valore: null, righe: [{ codice: 'GLU', quantita: 7 }] };
     const p = CE.scegliProduzione({ synclab, retail, ordini });
-    assert.equal(p.fonte, 'SYNCLAB'); assert.equal(p.origine, 'Synclab Data API: accettazioni del gestionale'); assert.equal(p.esami, 3); assert.equal(p.stima, false);
+    assert.equal(p.fonte, 'SYNCLAB'); assert.equal(p.origine, CE.ORIGINE_SYNCLAB); assert.match(p.origine, /produzione erogata/); assert.equal(p.esami, 3); assert.equal(p.stima, false);
     assert.equal(CE.scegliProduzione({ salvata: { id: 1, fonte: 'MANUALE', esami: 1, valore: 9 }, synclab, retail }).fonte, 'MANUALE');
     assert.equal(CE.scegliProduzione({ salvata: { id: 2, fonte: 'STIMA', esami: 1, valore: 9 }, synclab }).fonte, 'SYNCLAB');   // la stima salvata non prevale
     assert.equal(CE.scegliProduzione({ synclab: { esami: 0 }, retail }).origine, 'Retail: vendite B2B dal gestionale StudioLAB');
@@ -355,17 +355,18 @@ describe('Synclab: sincronizzazione con il server finto', { skip: SALTA }, () =>
     k = await esegui({ ids: ['D48'] }); assert.equal(k[0].stato, 'OK');
     const p = await M.let.produzioneMensile({ organization_id: org.id, mese: '2026-07' });
     assert.equal(p.esami, 3, 'righe non cancellate delle accettazioni attive: 1 + 2');
-    assert.equal(p.valore, 17.25, 'somma dei netti di riga; la riga senza prezzo non conta');
-    assert.equal(p.righe_senza_prezzo, 1); assert.match(p.note, /senza prezzo/); assert.match(p.note, /sconto di testata/);
+    // v0.68.5: produzione erogata = netto di riga × quantità × (1 − sconto di testata), una volta: 10 + 7,25 × 0,95 = 16,8875
+    assert.equal(p.valore, 16.8875, 'netti di riga con lo sconto di testata del 5% applicato una volta; la riga senza prezzo non conta');
+    assert.equal(p.righe_senza_prezzo, 1); assert.match(p.note, /senza prezzo/); assert.match(p.note, /sconto di testata \(5%\): applicato una volta/);
     assert.equal(p.sconto_testata.accettazioni, 1);
-    assert.deepEqual(await M.let.produzioneMensile({ client_id: ESEMPI.client.id, mese: '2026-07' }).then((x) => [x.esami, x.valore]), [3, 17.25]);
+    assert.deepEqual(await M.let.produzioneMensile({ client_id: ESEMPI.client.id, mese: '2026-07' }).then((x) => [x.esami, x.valore]), [3, 16.8875]);
     const f = await M.let.fatturatoMensile({ organization_id: org.id, mese: '2026-07' });
     assert.equal(f.fatturato, 0); assert.equal(f.documenti, 2);
     const mappa = await M.let.produzionePerOrg([org.id], '2026-07-01', '2026-07-31');
     assert.equal(mappa.get(`${org.id}|2026-07`).esami, 3);
     // scegliProduzione con la fonte SYNCLAB su dati veri della copia
     const prod = CE.scegliProduzione({ synclab: mappa.get(`${org.id}|2026-07`), retail: { esami: 99, valore: 1 } });
-    assert.equal(prod.fonte, 'SYNCLAB'); assert.equal(prod.valore, 17.25);
+    assert.equal(prod.fonte, 'SYNCLAB'); assert.equal(prod.valore, 16.89, 'arrotondato ai centesimi dal conto economico');
   });
 
   test('Prova connessione: metadati della Data API; il 403 di /auth/client/info non è un errore', async () => {

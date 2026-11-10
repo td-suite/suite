@@ -7,13 +7,19 @@ import { api } from '../api.js';
 
 const NOMI = { requests: 'accettazioni', invoices: 'documenti', clients: 'clienti', 'price-lists': 'listini', exams: 'esami' };
 
-/** Riga "Fonte: StudioLab (Synclab Data API) · checkpoint accettazioni … · documenti …"; insiemi = quali checkpoint mostrare. */
-export function FonteSynclab({ stato, insiemi = ['requests', 'invoices'], extra }) {
+/**
+ * Riga "Fonte: StudioLab (Synclab Data API) · checkpoint accettazioni … · documenti …"; insiemi = quali checkpoint mostrare.
+ * v0.68.5: con `d` (risposta delle API B2B) dichiara la grandezza principale: "Produzione erogata: Synclab, accettazioni erogate (stati …),
+ * netto di riga e sconto di testata, copia al … · aggiornato alle HH:MM".
+ */
+export function FonteSynclab({ stato, insiemi = ['requests', 'invoices'], extra, d }) {
   const ins = stato?.insiemi || {};
   const vuoto = stato && !stato.conteggi?.requests && !stato.conteggi?.invoices;
   return (
     <>
-      <div className="small muted fonte" data-testid="fonte-synclab" style={{ margin: '-6px 0 12px' }}>
+      {d?.fonte_produzione && <div className="small fonte" data-testid="fonte-produzione" style={{ margin: '-6px 0 4px' }} title={d.stati_descritti ? `Stati erogati: ${d.stati_descritti}` : undefined}>
+        <b>Produzione erogata</b> · {d.fonte_produzione}</div>}
+      <div className="small muted fonte" data-testid="fonte-synclab" style={{ margin: d?.fonte_produzione ? '0 0 12px' : '-6px 0 12px' }}>
         <b>Fonte: StudioLab (Synclab Data API)</b>, copia locale in sola lettura · {insiemi.map((k) => `${NOMI[k] || k}: ${ins[k]?.checkpoint_at ? `checkpoint ${itDateTime(ins[k].checkpoint_at)}` : 'nessun checkpoint'}`).join(' · ')}{extra ? ` · ${extra}` : ''}
       </div>
       {vuoto && <div className="alert warn" style={{ marginBottom: 12 }}><div>Nessuna accettazione né documento importato dal gestionale: la copia si alimenta da <Link to="/admin/connectors/synclab"><b>Amministrazione &gt; Connettori &gt; StudioLAB &gt; Dati Synclab</b></Link>.</div></div>}
@@ -63,4 +69,24 @@ export function FonteB2CAuto({ tipo = 'GIPO' }) {
   const t = `TuoTempo: ${d.tuotempo.ultimo_allineamento ? `ultimo allineamento ${itDateTime(d.tuotempo.ultimo_allineamento)}` : 'mai allineato'}`;
   const testo = tipo === 'TUOTEMPO' ? t : tipo === 'GIPO+TUOTEMPO' ? `${t} · ${g}` : tipo === 'SEDE' ? `registrazioni in sede (Retail) · ${g}` : g;
   return <div className="small muted fonte" data-testid="fonte-b2c" style={{ margin: '-6px 0 12px' }}><b>Fonte</b> · {testo}</div>;
+}
+
+/** Mini barre della produzione erogata giorno per giorno (cruscotti di Retail e scheda cliente). giorni = [{ giorno, valore, esami }]. */
+export function BarreGiorni({ giorni = [], altezza = 70, fmtValore = (v) => String(v) }) {
+  if (!giorni.length) return null;
+  const max = Math.max(1, ...giorni.map((g) => Number(g.valore) || 0));
+  const oggi = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' });
+  return (
+    <div data-testid="barre-giorni">
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: altezza }} aria-hidden="true">
+        {giorni.map((g) => {
+          const fest = [0, 6].includes(new Date(`${g.giorno}T12:00:00Z`).getUTCDay());
+          return <span key={g.giorno} title={`${g.giorno.slice(8, 10)}/${g.giorno.slice(5, 7)}: ${fmtValore(g.valore)} · ${g.esami} esami`}
+            style={{ flex: 1, minWidth: 0, height: `${Math.max(g.valore ? 4 : 1, (Number(g.valore || 0) / max) * 100)}%`, borderRadius: '2px 2px 0 0',
+              background: g.giorno === oggi ? 'var(--blue)' : fest ? 'color-mix(in srgb, var(--blue) 25%, transparent)' : 'color-mix(in srgb, var(--blue) 60%, transparent)' }} />;
+        })}
+      </div>
+      <div className="small muted" style={{ display: 'flex', justifyContent: 'space-between' }}><span>{giorni[0].giorno.slice(8, 10)}/{giorni[0].giorno.slice(5, 7)}</span><span>{giorni[giorni.length - 1].giorno.slice(8, 10)}/{giorni[giorni.length - 1].giorno.slice(5, 7)}</span></div>
+    </div>
+  );
 }

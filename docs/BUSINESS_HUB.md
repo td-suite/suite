@@ -977,3 +977,34 @@ che il gestionale ha registrato (`lib/synclabAccount.js`, test `server/test/v068
 - Lettura non riuscita o copia vuota = nota, mai uno zero. Da verificare in produzione: che l'abbinamento dei client copra i clienti attivi
   (D48, D50) e che la data di avvio sia compilata (senza, il pro quota parte dal 1° gennaio).
 
+### v0.68.5 (CEO 10/11/2026): maturato = produzione erogata, listini del gestionale, codice StudioLab
+- **Maturato = PRODUZIONE EROGATA** ("Maturato 2026: NON il fatturato ma il valore netto, cioè il valore della produzione erogata per mese,
+  aggiornato per singolo giorno"): nel riquadro "Dal gestionale (Synclab)" il KPI è "Maturato 2026 (produzione erogata)" = accettazioni in
+  stato erogato dell'anno, netto di riga × quantità × (1 − sconto di testata) (definizione unica: docs/SYNCLAB_DATA_API.md "Produzione
+  erogata"); progressione **giornaliera** del mese in corso (barre) e **mensile** dell'anno (tabella con produzione, esami, accettazioni e,
+  in grigio, i documenti emessi come dato secondario mai sommato); **pro quota, scostamento, semaforo e run rate** calcolati sulla produzione
+  erogata (run rate senza data di avvio: dalla prima accettazione erogata). Stessa grandezza nella Pipeline (riga maturato), nel Cruscotto
+  ("Maturato 2026 (produzione erogata)") e nella Diagnostica **D51** (SQL con `synclab.stati_erogati()`). Fonte sotto il riquadro con
+  "aggiornato alle HH:MM".
+- **Listino del gestionale (Synclab)** nella scheda **Listino e offerta** dei clienti Service e MdL abbinati (`components/GestionaleSynclab.jsx`
+  `ListinoGestionale`, `GET /hub/accounts/:id/listino-synclab`): per ogni client del gestionale il listino base (`priceListId`) ed extra
+  (`extraPriceListId`) con codice, descrizione, stato (bozza, in revisione, approvato, annullato), tipo, numero di righe, anteprima, confronto
+  con il listino corrente del Business Hub (prezzo offerto, altrimenti di listino: prezzi diversi, uguali, solo nel gestionale, solo nel
+  Business Hub, con l'elenco delle differenze) e **"Scarica XLSX"** (`/hub/accounts/:id/listino-synclab.xlsx`: Riepilogo, un foglio per
+  listino con codice esame, descrizione, prezzo lordo, sconto %, prezzo netto, IVA, i fogli di confronto e le note; decimali esatti).
+- **Clienti > "Listini del gestionale (XLSX aggregato)"** (`/hub/listini-synclab.xlsx?linea=SRV|MDL`): foglio **Riepilogo** (cliente, codice
+  StudioLab, ragione sociale nel gestionale, listino, ruolo, stato, righe) con in fondo i **listini Synclab non associati ad alcun client
+  abbinato**, e **un foglio unico lungo cliente × esame** (scelta: più usabile in pivot) con cliente, codice StudioLab, listino, ruolo e le
+  colonne del listino. Solo i clienti del **perimetro B2B** (clienti attivi o contrattualizzati abbinati, più gli inclusi a mano); con la linea,
+  le Legal entity con un account di quella linea. Decimali come nel gestionale.
+- **Codice StudioLab e client del gestionale** (CEO: "Perché in Business Hub lato service e lato Punti Prelievo non li associ correttamente
+  al codice StudioLab relativo? Correggi!"): ogni account Service/MdL mostra sotto il codice StudioLAB le sedi SERVICE con il loro codice (più
+  sedi: tutte) e i client Synclab abbinati (codice, ragione sociale nel gestionale, attivo, sede); **"Abbina al cliente del gestionale"**
+  propone i client con le regole dell'allineamento automatico (ambigui compresi) e la sede giusta, e scrive il codice nella sede se manca
+  (`GET/POST /hub/accounts/:id/abbina-synclab`, attività SISTEMA nel diario). **Clienti** (Service e MdL): colonne "Codice StudioLAB" (con le
+  sedi se più d'una) e "Client nel gestionale", filtro **"Solo senza codice StudioLAB"**. **Punti Prelievo e Centri**: colonna "Codice
+  StudioLAB" della sede con il client del gestionale corrispondente, filtro "Senza codice StudioLAB" e conteggio nel riepilogo. Fonte unica
+  resta `public.sites.studiolab_code`; l'abbinamento automatico (job `synclab:abbinamenti`, docs/SYNCLAB_DATA_API.md) lo scrive quando è
+  univoco. D48/D50 aggiornati (motivo ambiguo/nessun candidato; codice della sede e presenza nel gestionale).
+- Schermata `docs/screens/business-account-synclab.png` (v0.68.5). Test `server/test/v0685-produzione-erogata.test.mjs`.
+

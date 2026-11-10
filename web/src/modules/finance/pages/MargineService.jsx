@@ -15,8 +15,8 @@ const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'lug
 const pct = (v) => (v == null ? '' : `${Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 })}%`);
 const n0 = (v) => Number(v || 0).toLocaleString('it-IT');
 const FONTE_TONE = { STUDIOLAB: 'teal', SYNCLAB: 'green', MANUALE: 'blue', STIMA: 'mauve' };
-// Fatturato da documenti (Synclab Data API): documenti emessi nel mese, grandezza diversa dalla produzione: colonna a parte, mai sommata
-const DOC_TITLE = 'Contributo al fatturato netto dei documenti economici Synclab con data nel mese (note di credito già negative). Non è sommato al ricavo né al margine: la produzione del mese e i documenti emessi nel mese sono grandezze diverse.';
+// Documenti emessi (Synclab Data API, ex "Fatturato da documenti"; v0.68.5 il ricavo Service è la PRODUZIONE EROGATA): documenti emessi nel mese, grandezza diversa dalla produzione: colonna a parte, mai sommata
+const DOC_TITLE = 'Dato secondario: contributo al fatturato netto dei documenti economici Synclab con data nel mese (note di credito già negative). Non è sommato al ricavo né al margine: il ricavo Service è la produzione erogata del mese (accettazioni in stato erogato, netto di riga e sconto di testata), i documenti emessi sono un\'altra grandezza.';
 const LIVELLO = { ATTIVO: ['green', 'attivo'], CONTRATTUALIZZATO: ['blue', 'in avvio'] };
 const meseLabel = (mk) => { const [y, m] = mk.split('-'); return `${MESI[Number(m) - 1]} ${y}`; };
 
@@ -35,14 +35,14 @@ function DettaglioCliente({ orgId, anno, onClose }) {
         <>
           <p className="small muted" style={{ marginTop: 0 }}>Listino corrente: {c.listino ? `versione ${c.listino.versione} (${c.listino.esami} esami)` : 'nessuno nel Business Hub'} · contratto Service: {c.contratto ? `${c.contratto.status.toLowerCase()}, ritiri fissi il ${c.contratto.giorni_ritiro.map((g) => ({ mon: 'lun', tue: 'mar', wed: 'mer', thu: 'gio', fri: 'ven', sat: 'sab' }[g])).join(', ') || 'nessun giorno'}` : 'nessuno vigente'}</p>
           <div className="table-wrap"><table className="t" data-testid="margine-cliente-mesi">
-            <thead><tr><th>Mese</th><th>Fonte</th><th className="num">Esami</th><th className="num">Ricavo</th>{c.totale.fatturato_documenti != null && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<th className="num">Ritiri</th><th className="num">Costo ritiri</th><th className="num">Costo esami</th><th className="num">Pagamenti</th><th className="num">Margine</th><th>Note</th></tr></thead>
+            <thead><tr><th>Mese</th><th>Fonte</th><th className="num">Esami</th><th className="num">Ricavo</th>{c.totale.fatturato_documenti != null && <th className="num" title={DOC_TITLE}>Documenti emessi (secondario)</th>}<th className="num">Ritiri</th><th className="num">Costo ritiri</th><th className="num">Costo esami</th><th className="num">Pagamenti</th><th className="num">Margine</th><th>Note</th></tr></thead>
             <tbody>
               {Object.entries(c.mesi).map(([mk, m]) => m.futuro ? <tr key={mk} className="muted"><td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td><td colSpan={c.totale.fatturato_documenti != null ? 10 : 9} className="small">mese futuro</td></tr> : (
                 <tr key={mk}>
                   <td style={{ whiteSpace: 'nowrap' }}>{meseLabel(mk)}</td>
                   <td>{m.produzione ? <span title={m.produzione.origine}><Badge tone={FONTE_TONE[m.produzione.fonte]}>{m.produzione.fonte.toLowerCase()}</Badge></span> : <span className="muted small">nessuna</span>}</td>
                   <td className="num">{n0(m.esami)}</td>
-                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : m.ricavo_da === 'SYNCLAB' ? <div className="small muted">netti del gestionale</div> : null}{m.produzione?.note ? <div className="small muted" title={m.produzione.note}>vedi nota</div> : null}</td>
+                  <td className="num">{m.ricavo == null ? (m.esami ? <Badge tone="red">da indicare</Badge> : '–') : eur(m.ricavo)}{m.ricavo_da === 'LISTINO' ? <div className="small muted">a listino</div> : m.ricavo_da === 'SYNCLAB' ? <div className="small muted">produzione erogata</div> : null}{m.produzione?.note ? <div className="small muted" title={m.produzione.note}>vedi nota</div> : null}</td>
                   {c.totale.fatturato_documenti != null && <td className="num" title={m.documenti?.note || DOC_TITLE}>{m.fatturato_documenti == null ? '–' : eur(m.fatturato_documenti)}</td>}
                   <td className="num">{m.ritiri ?? '–'}{m.ritiri_a_chiamata ? <div className="small muted">+{m.ritiri_a_chiamata} a chiamata</div> : null}</td>
                   <td className="num">{m.costo_ritiri == null ? <Badge tone="red">da indicare</Badge> : eur(m.costo_ritiri)}</td>
@@ -167,7 +167,7 @@ export default function MargineService() {
             <button className="btn sm ghost" onClick={stime} title="Salva come STIMA la stima in pro quota dei clienti attivi senza produzione (le righe già presenti non cambiano)">Salva le stime</button>
           </div>}>
             <div className="table-wrap"><table className="t" data-testid="margine-service">
-              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th>{conDoc && <th className="num" title={DOC_TITLE}>Fatturato da documenti (Synclab)</th>}<Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th className="num" title="Fatturato FY atteso pieno della scheda account (solo clienti attivi): non sommato">Proiezione FY {x.proiezione?.anno}</th><th>Note</th></tr></thead>
+              <thead><tr><Th k="cliente">Cliente</Th><th>Fonte</th><Th k="esami" num>Esami</Th><Th k="ricavo" num>Ricavo</Th>{conDoc && <th className="num" title={DOC_TITLE}>Documenti emessi (secondario)</th>}<Th k="costi" num>Costi diretti</Th><Th k="margine" num>Margine</Th><Th k="pct" num>Margine %</Th><th className="num" title="Fatturato FY atteso pieno della scheda account (solo clienti attivi): non sommato">Proiezione FY {x.proiezione?.anno}</th><th>Note</th></tr></thead>
               <tbody>
                 {righe.map((c) => {
                   const t = c.totale; const [tone, lab] = LIVELLO[c.livello] || ['grey', c.livello];

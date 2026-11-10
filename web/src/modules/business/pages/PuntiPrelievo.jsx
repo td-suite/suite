@@ -43,8 +43,8 @@ export default function PuntiPrelievo() {
     } catch (e) { toast(e.message, 'err'); }
   };
   const tutte = d?.sedi || [];
-  const righe = tutte.filter((s) => (!filtro || (filtro === 'PROCESSO' ? s.account_id : filtro === 'APERTURA' ? s.in_apertura : filtro === 'SENZA_AREA' ? !s.area_tuotempo : s.kind === filtro))
-    && (!cerca || norm(`${s.code} ${s.name} ${s.city || ''} ${s.host_name || ''} ${s.partner || ''}`).includes(norm(cerca))));
+  const righe = tutte.filter((s) => (!filtro || (filtro === 'PROCESSO' ? s.account_id : filtro === 'APERTURA' ? s.in_apertura : filtro === 'SENZA_AREA' ? !s.area_tuotempo : filtro === 'SENZA_CODICE' ? !s.studiolab_code : s.kind === filtro))
+    && (!cerca || norm(`${s.code} ${s.name} ${s.city || ''} ${s.host_name || ''} ${s.partner || ''} ${s.studiolab_code || ''}`).includes(norm(cerca))));
   return (
     <div className="page">
       <div className="page-head">
@@ -55,19 +55,22 @@ export default function PuntiPrelievo() {
           <a className="btn" href="/admin/sites" data-testid="nuova-sede-admin"><Icon name="plus" />Nuova sede in Amministrazione</a>
         </div>
       </div>
-      {d && <div className="small muted" style={{ marginBottom: 8 }}>{d.riepilogo.sedi} sedi ({d.riepilogo.attive} attive{d.riepilogo.in_apertura ? `, ${d.riepilogo.in_apertura} in apertura` : ''}) · {d.riepilogo.con_processo} con il processo del Business Hub · {d.riepilogo.con_area_tuotempo} con l'area TuoTempo · {d.riepilogo.fascicoli_aperti} fascicoli aperti</div>}
+      {d && <div className="small muted" style={{ marginBottom: 8 }}>{d.riepilogo.sedi} sedi ({d.riepilogo.attive} attive{d.riepilogo.in_apertura ? `, ${d.riepilogo.in_apertura} in apertura` : ''}) · {d.riepilogo.con_processo} con il processo del Business Hub · {d.riepilogo.con_area_tuotempo} con l'area TuoTempo · {d.riepilogo.senza_codice} senza codice StudioLAB · {d.riepilogo.fascicoli_aperti} fascicoli aperti</div>}
       <div className="filters">
         <label className="f" style={{ minWidth: 220, flex: 1 }}>Cerca<input value={cerca} onChange={(e) => setCerca(e.target.value)} placeholder="Codice, nome, città, partner" /></label>
-        <label className="f">Mostra<select value={filtro} onChange={(e) => setFiltro(e.target.value)}><option value="">Tutte le sedi</option>{Object.entries(SITE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="PROCESSO">Con il processo avviato</option><option value="APERTURA">In apertura</option><option value="SENZA_AREA">Senza area TuoTempo</option></select></label>
+        <label className="f">Mostra<select value={filtro} onChange={(e) => setFiltro(e.target.value)}><option value="">Tutte le sedi</option>{Object.entries(SITE_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="PROCESSO">Con il processo avviato</option><option value="APERTURA">In apertura</option><option value="SENZA_AREA">Senza area TuoTempo</option><option value="SENZA_CODICE">Senza codice StudioLAB ({d?.riepilogo?.senza_codice ?? '…'})</option></select></label>
         <div className="spacer" /><div className="small muted" style={{ alignSelf: 'center' }}>{righe.length} sedi</div>
       </div>
       <ErrorBox error={q.error} />
       <Card flush>{!d ? <Loading /> : righe.length ? (
         <div className="table-wrap"><table className="t" data-testid="punti-centri">
-          <thead><tr><th>Sede</th><th>Tipo e titolo</th><th>Apertura e responsabile</th><th>Area TuoTempo</th><th>Processo del Business Hub</th><th /></tr></thead>
+          <thead><tr><th>Sede</th><th>Codice StudioLAB</th><th>Tipo e titolo</th><th>Apertura e responsabile</th><th>Area TuoTempo</th><th>Processo del Business Hub</th><th /></tr></thead>
           <tbody>{righe.map((s) => (
             <tr key={s.site_id} className={s.in_apertura ? 'muted' : ''}>
               <td style={{ minWidth: 200 }}><div className="strong">{s.name}</div><div className="small muted mono">{s.code}</div><div className="small muted">{[s.address, [s.zip, s.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</div>{s.in_apertura && <Badge tone="amber">in apertura</Badge>}</td>
+              <td className="small" data-testid="codice-punto">{s.studiolab_code ? <span className="mono strong">{s.studiolab_code}</span> : <Badge tone="amber">senza codice</Badge>}
+                {(s.synclab_clients || []).map((c) => <div key={c.client_id} className="muted" title="Client del gestionale (Synclab)">{c.client_code !== s.studiolab_code ? <span className="mono">{c.client_code} </span> : null}{c.legal_name}{c.active === false ? ' (non attivo)' : ''}</div>)}
+                {s.studiolab_code && !(s.synclab_clients || []).length ? <div className="tiny muted">nessun client del gestionale</div> : null}</td>
               <td className="small">{SITE_KIND[s.kind] || s.kind}{s.tipo && <> · <Badge tone={TIPO_PUNTO[s.tipo].tone}>{TIPO_PUNTO[s.tipo].label}</Badge>{s.tipo_fonte === 'previsto' && <span className="muted"> previsto</span>}</>}
                 <div style={{ marginTop: 4 }}><Badge tone={s.tenure === 'PROPRIETA' ? 'green' : s.tenure === 'OSPITATA' ? 'mauve' : 'blue'}>{TENURE[s.tenure] || s.tenure || '–'}</Badge>{s.host_name ? <span className="muted"> ospitata da {s.host_name}</span> : s.partner ? <span className="muted"> partner {s.partner}</span> : null}</div>
                 {s.coerenza_sedi && s.coerenza_sedi.stato !== 'OK' && <div title={s.coerenza_sedi.testo}><Badge tone={s.coerenza_sedi.stato === 'CONFLITTO' ? 'red' : 'amber'}>{{ DA_IMPOSTARE: 'ospitante da impostare', CONFLITTO: 'ospitante diverso dal contratto', SENZA_SEDE: 'senza sede' }[s.coerenza_sedi.stato] || s.coerenza_sedi.stato}</Badge></div>}</td>

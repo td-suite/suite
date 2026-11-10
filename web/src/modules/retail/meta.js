@@ -29,7 +29,7 @@ export default {
     { to: 'b2b', icon: 'stats', label: 'Cruscotto B2B', end: true },
     { to: 'b2b/clienti', icon: 'building', label: 'Aziende e strutture' },
     { to: 'b2b/produzione', icon: 'list', label: 'Produzione per cliente e mese' },
-    { to: 'b2b/fatturato', icon: 'cash', label: 'Fatturato da documenti' },
+    { to: 'b2b/fatturato', icon: 'cash', label: 'Documenti emessi' },
     { to: 'b2b/listini', icon: 'cash', label: 'Listini applicati' },
     { to: 'b2b/profilo-pazienti', icon: 'users', label: 'Profilo dei pazienti' },
     { to: 'b2b/budget', icon: 'stats', label: 'Budget B2B' },

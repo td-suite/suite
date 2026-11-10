@@ -62,8 +62,15 @@
 .ckx-riga > h2 { writing-mode: vertical-rl; transform: rotate(180deg); font-size: clamp(9.5px, 1.1vh, 12px); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ckm-ink); white-space: nowrap; text-overflow: ellipsis; }
 .ckx-riga > .cont { min-height: 0; min-width: 0; display: grid; gap: var(--gap); }
 .r-ricavi .cont { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.r-lab .cont { grid-template-columns: 7fr 5fr; }
-.r-lab .celle { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--gap); min-height: 0; }
+.r-lab .cont { grid-template-columns: 8fr 4fr; }
+/* v0.68.5: 4 colonne × 2 righe: accettazioni ed esami sopra, produzione B2B di oggi e del mese più l'andamento giornaliero (2 colonne) sotto */
+.r-lab .celle { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--gap); min-height: 0; }
+.r-lab .celle .ckx-andamento { grid-column: span 2; }
+.ckx-andamento .barre { flex: 1; min-height: 0; display: flex; align-items: flex-end; gap: 2px; padding-top: 3px; }
+.ckx-andamento .barre span { flex: 1; min-width: 0; background: color-mix(in srgb, var(--area, var(--ckm-accent)) 55%, transparent); border-radius: 2px 2px 0 0; }
+.ckx-andamento .barre span.fest { background: color-mix(in srgb, var(--area, var(--ckm-accent)) 22%, transparent); }
+.ckx-andamento .barre span.oggi { background: var(--area, var(--ckm-accent)); }
+.ckx-andamento .assi { display: flex; justify-content: space-between; font-size: var(--fz-fonte); color: var(--ckm-faint); line-height: 1.2; }
 .r-retail .cont { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .r-scad .cont { grid-template-columns: 5fr 5fr 3fr; }
 .r-scad .persone { display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: var(--gap); min-height: 0; }
@@ -140,6 +147,7 @@
   .ckx-riga > h2 { writing-mode: horizontal-tb; transform: none; justify-content: flex-start; padding: 4px 10px; }
   .r-ricavi .cont, .r-lab .cont, .r-scad .cont { grid-template-columns: 1fr; }
   .r-lab .celle { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; }
+  .ckx-andamento { min-height: 120px; }
   .r-retail .cont { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .r-scad .persone { grid-template-rows: none; }
   .ckx-cella { min-height: 84px; }

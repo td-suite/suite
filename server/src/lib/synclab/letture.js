@@ -1,11 +1,59 @@
-// Synclab Data API: letture della copia locale per gli altri moduli (Finance, Ordini, Cockpit, Diagnostica). Nessuna regola inventata:
-//  - produzione = righe d'esame non cancellate (deleted = false) delle accettazioni ATTIVE con data nel mese, al prezzo netto storico
-//    della riga (netUnitPriceExcludingVat × quantity); lo sconto di testata (headerDiscountPercent) si riporta a parte, non si applica;
-//  - fatturato = netRevenueContribution una sola volta per documento con data nel mese (NC già negative, annullati e proforma a zero,
-//    tipo sconosciuto con contributo null: esclusi e contati). Mai il segno invertito, mai la somma delle righe;
+// Synclab Data API: letture della copia locale per gli altri moduli (Finance, Ordini, Cockpit, Diagnostica, Retail, Business Hub).
+// Nessuna regola inventata:
+//  - PRODUZIONE EROGATA (v0.68.5, richiesta del CEO del 10/11/2026: "A me non interessa il dato delle fatture ma il dato delle
+//    accettazioni in stato erogato"): la grandezza principale di ricavo B2B in tutta la Suite. Definizione UNICA, qui:
+//      accettazioni ATTIVE (disponibilita ATTIVO, non cancellate) con stato in stati_erogati (impostazione del connettore StudioLAB,
+//      predefinita 18, 20, 25, 40, 50 = dal prelievo eseguito in poi; esclusi 10 prenotata, 11 NC mai arrivato, 15 in attesa, 30 attende
+//      prelievo: IPOTESI DA CONFERMARE); valore = Σ righe d'esame non cancellate di netUnitPriceExcludingVat × quantity ×
+//      (1 − headerDiscountPercent/100): lo sconto di testata si applica UNA volta, qui (netUnitPriceExcludingVat è il netto di riga PRIMA
+//      dello sconto di testata); righe con prezzo (o quantità) null contate a parte ("n esami senza prezzo"); data = data dell'accettazione.
+//    Funzioni: produzioneErogata (per giorno, mese, cliente/Legal entity, sede, ripartizione B2B/Laboratorio in sede, con l'anno prima),
+//    produzioneGiornaliera, topClientiProduzione, e le letture storiche che ora la usano (produzioneMensile, produzionePerOrg, cteLab);
+//  - fatturato da documenti = netRevenueContribution una sola volta per documento con data nel mese (NC già negative, annullati e
+//    proforma a zero, tipo sconosciuto con contributo null: esclusi e contati). Dato SECONDARIO ("Documenti emessi"): mai il KPI
+//    principale, mai sommato alla produzione;
 //  - listino del cliente = listino corrente (priceListId / extraPriceListId): non ricostruisce i prezzi storici.
 // Un client Synclab appartiene a una Legal entity secondo synclab.clients_td (abbinamento confermato, altrimenti proposto).
 import { one, many } from '../../db.js';
+
+// ------------------------------------------------------------------ stati erogati (v0.68.5)
+/** Legenda dei codici di stato dell'accettazione (docs/synclab-data-api/02_DIZIONARIO_BI.md). */
+export const LEGENDA_STATI = { 10: 'prenotata', 11: 'NC mai arrivato', 15: 'in attesa', 18: 'prelievo eseguito', 20: 'in lavorazione', 25: 'in firma', 30: 'attende prelievo', 40: 'referto pronto', 50: 'chiuso' };
+/** Stati "erogati" predefiniti: dal prelievo eseguito in poi (ipotesi da confermare con il CEO e CB Sistemi). */
+export const STATI_EROGATI_PREDEFINITI = [18, 20, 25, 40, 50];
+/** Normalizza un elenco di stati (array o testo "18, 20"): interi 0-999 distinti e ordinati; vuoto o non valido = predefiniti. */
+export function normalizzaStati(v) {
+  const lista = Array.isArray(v) ? v : String(v ?? '').split(/[,;\s]+/);
+  const out = [...new Set(lista.map((x) => String(x).trim()).filter((x) => /^\d{1,3}$/.test(x)).map(Number))].sort((x, y) => x - y);
+  return out.length ? out : [...STATI_EROGATI_PREDEFINITI];
+}
+/** Stati erogati in vigore (impostazione `stati_erogati` del connettore StudioLAB, letta da synclab.stati_erogati(): fonte unica). */
+export async function statiErogati() {
+  const r = await one('SELECT synclab.stati_erogati() AS s').catch(() => null);
+  return normalizzaStati(r?.s);
+}
+/** "18 prelievo eseguito, 20 in lavorazione, …" */
+export const descriviStati = (stati) => normalizzaStati(stati).map((s) => `${s}${LEGENDA_STATI[s] ? ` ${LEGENDA_STATI[s]}` : ''}`).join(', ');
+const oraRoma = (t) => new Date(t).toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', hour12: false });
+const dataRoma = (t) => new Date(t).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' });
+/**
+ * Fonte dichiarata della produzione erogata sotto ogni numero: "Synclab, accettazioni erogate (stati 18, 20, 25, 40, 50), netto di riga e
+ * sconto di testata, copia al 10/11/2026 · aggiornato alle 14:05". checkpointAt = capturedAt dell'ultima copia delle accettazioni.
+ */
+export function fonteProduzione(stati, checkpointAt = null) {
+  const copia = checkpointAt ? `copia al ${dataRoma(checkpointAt)} · aggiornato alle ${oraRoma(checkpointAt)}` : 'nessuna copia delle accettazioni';
+  return `Synclab, accettazioni erogate (stati ${normalizzaStati(stati).join(', ')}), netto di riga e sconto di testata, ${copia}`;
+}
+/** "aggiornato alle HH:MM" (oggi) oppure "aggiornato al gg/mm/aaaa HH:MM" */
+export function aggiornatoAlle(t, oggi = null) {
+  if (!t) return null;
+  const g = new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' });
+  const o = oggi || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' });
+  return g === o ? `aggiornato alle ${oraRoma(t)}` : `aggiornato al ${dataRoma(t)} ${oraRoma(t)}`;
+}
+// valore di una riga d'esame: netto di riga × quantità × (1 − sconto di testata); null se prezzo o quantità mancano
+const SQL_VALORE_RIGA = (i = 'i', r = 'r') => `(${i}.net_unit_price_excluding_vat * ${i}.quantity * (1 - coalesce(${r}.header_discount_percent, 0) / 100.0))`;
+const SQL_SCONTO_RIGA = (i = 'i', r = 'r') => `(${i}.net_unit_price_excluding_vat * ${i}.quantity * coalesce(${r}.header_discount_percent, 0) / 100.0)`;
 
 const meseRe = /^\d{4}-(0[1-9]|1[0-2])$/;
 const limiti = (mese) => {
@@ -27,15 +75,26 @@ export async function disponibilita() {
     (SELECT count(*) FROM synclab.invoices WHERE disponibilita='ATTIVO')::int AS invoices`).catch(() => null);
 }
 
-/** Aggregazione per mese, codice d'esame e prezzo netto storico; base comune di produzioneMensile e produzionePerOrg. */
-function sqlProduzione(where) {
+/**
+ * Produzione erogata aggregata per mese, codice d'esame e prezzo netto di riga storico; base comune di produzioneMensile e
+ * produzionePerOrg. pStati = segnaposto dell'elenco degli stati erogati (es. '$3'). valore = netto di riga × quantità × (1 − sconto di
+ * testata), una volta: la Finance e il Business Hub sommano questi valori.
+ */
+function sqlProduzione(where, pStati) {
   return `SELECT to_char(r.date, 'YYYY-MM') AS mese, upper(coalesce(nullif(i.exam_code, ''), '?')) AS codice, max(i.description) AS descrizione,
         i.net_unit_price_excluding_vat AS prezzo_netto, count(*)::int AS righe, sum(i.quantity) AS quantita,
-        sum(i.net_unit_price_excluding_vat * i.quantity) AS valore, count(*) FILTER (WHERE i.net_unit_price_excluding_vat IS NULL)::int AS senza_prezzo
+        sum(${SQL_VALORE_RIGA()}) AS valore, sum(i.net_unit_price_excluding_vat * i.quantity) AS valore_righe,
+        count(*) FILTER (WHERE ${SQL_VALORE_RIGA()} IS NULL)::int AS senza_prezzo
       FROM synclab.requests r JOIN synclab.request_items i ON i.instance_id = r.instance_id AND i.request_id = r.id
-     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND coalesce(i.deleted, FALSE) = FALSE AND ${where}
+     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY(${pStati}::int[]) AND coalesce(i.deleted, FALSE) = FALSE AND ${where}
      GROUP BY 1, 2, 4 ORDER BY 2, 4`;
 }
+// testate delle accettazioni erogate con almeno una riga d'esame non cancellata (stessa regola di cteLab): conteggio e sconto di testata
+const sqlTestate = (where, pStati, gruppo = '') => `SELECT ${gruppo}count(*)::int AS accettazioni, count(*) FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0)::int AS con_sconto,
+      string_agg(DISTINCT r.header_discount_percent::text || '%', ', ') FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0) AS percentuali,
+      sum((SELECT sum(${SQL_SCONTO_RIGA('i2', 'r')}) FROM synclab.request_items i2 WHERE i2.instance_id = r.instance_id AND i2.request_id = r.id AND coalesce(i2.deleted, FALSE) = FALSE)) AS sconto_importo
+    FROM synclab.requests r WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.state = ANY(${pStati}::int[])
+      AND EXISTS (SELECT 1 FROM synclab.request_items i WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE) AND ${where}`;
 function sintesiProduzione(rows, testate) {
   const righe = rows.map((x) => ({ codice: x.codice, descrizione: x.descrizione, prezzo_netto: x.prezzo_netto, righe: x.righe, quantita: x.quantita, valore: x.valore }));
   const esami = rows.reduce((a, x) => a + Number(x.righe), 0);
@@ -43,39 +102,53 @@ function sintesiProduzione(rows, testate) {
   const conValore = rows.filter((x) => x.valore != null);
   const valore = conValore.length ? conValore.reduce((a, x) => a + Number(x.valore), 0) : null;
   const note = [];
-  if (senza) note.push(`${senza} righe d'esame su ${esami} senza prezzo nel gestionale: valore parziale`);
-  if (testate?.con_sconto) note.push(`${testate.con_sconto} accettazioni con sconto di testata (${testate.percentuali}): riportato a parte, non applicato ai netti di riga`);
-  return { esami, valore, righe_senza_prezzo: senza, righe, accettazioni: testate?.accettazioni ?? null, sconto_testata: testate?.con_sconto ? { accettazioni: testate.con_sconto, percentuali: testate.percentuali } : null, note: note.join('. ') || null };
+  if (senza) note.push(`${senza} esami senza prezzo su ${esami}: valore parziale`);
+  const sconto = testate?.sconto_importo != null && Number(testate.sconto_importo) !== 0 ? Math.round(Number(testate.sconto_importo) * 100) / 100 : null;
+  if (testate?.con_sconto) note.push(`${testate.con_sconto} accettazioni con sconto di testata (${testate.percentuali}): applicato una volta ai netti di riga${sconto != null ? ` (−${sconto.toLocaleString('it-IT', { minimumFractionDigits: 2 })} €)` : ''}`);
+  return { esami, valore, righe_senza_prezzo: senza, righe, accettazioni: testate?.accettazioni ?? null, sconto_testata: testate?.con_sconto ? { accettazioni: testate.con_sconto, percentuali: testate.percentuali, importo: sconto } : null, note: note.join('. ') || null };
 }
 
 /**
- * Produzione del mese di un cliente (Legal entity o client Synclab): { esami (righe), valore (somma dei netti di riga, null se nessun
+ * Produzione erogata del mese di un cliente (Legal entity o client Synclab): { esami (righe), valore (netto vero, null se nessun
  * prezzo), righe: [{ codice, descrizione, prezzo_netto, righe, quantita, valore }], righe_senza_prezzo, accettazioni, sconto_testata, note }.
  */
-export async function produzioneMensile({ organization_id = null, client_id = null, mese }) {
+export async function produzioneMensile({ organization_id = null, client_id = null, mese, stati = null }) {
   const { da, a } = limiti(mese);
-  const params = [da, a];
+  const params = [da, a, stati ? normalizzaStati(stati) : await statiErogati()];
   const fc = filtroCliente('r', { organization_id, client_id }, params);
-  const rows = await many(sqlProduzione(`r.date BETWEEN $1::date AND $2::date AND ${fc}`), params);
-  const t = await one(`SELECT count(*)::int AS accettazioni, count(*) FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0)::int AS con_sconto,
-      string_agg(DISTINCT r.header_discount_percent::text || '%', ', ') FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0) AS percentuali
-    FROM synclab.requests r WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date BETWEEN $1::date AND $2::date AND ${fc}`, params);
+  const rows = await many(sqlProduzione(`r.date BETWEEN $1::date AND $2::date AND ${fc}`, '$3'), params);
+  const t = await one(sqlTestate(`r.date BETWEEN $1::date AND $2::date AND ${fc}`, '$3'), params);
   return { mese, ...sintesiProduzione(rows, t) };
 }
 
-/** Produzione per Legal entity e mese nel periodo [da, a] (Finance, margine Service): Map 'org|AAAA-MM' → sintesi come produzioneMensile. */
-export async function produzionePerOrg(orgIds, da, a) {
+/** Produzione erogata per Legal entity e mese nel periodo [da, a] (Finance, Business Hub): Map 'org|AAAA-MM' → sintesi come produzioneMensile. */
+export async function produzionePerOrg(orgIds, da, a, { stati = null } = {}) {
   const out = new Map();
   if (!orgIds?.length) return out;
+  const st = stati ? normalizzaStati(stati) : await statiErogati();
   const rows = await many(`WITH m AS (SELECT instance_id, client_id, organization_id FROM synclab.clients_td WHERE organization_id = ANY($1::int[]))
-    SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlProduzione(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`)}) x`, [orgIds, da, a]);
-  const t = await many(`SELECT m.organization_id AS org_id, to_char(r.date, 'YYYY-MM') AS mese, count(*)::int AS accettazioni, count(*) FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0)::int AS con_sconto,
-      string_agg(DISTINCT r.header_discount_percent::text || '%', ', ') FILTER (WHERE coalesce(r.header_discount_percent, 0) <> 0) AS percentuali
-    FROM synclab.clients_td m JOIN synclab.requests r ON r.instance_id = m.instance_id AND r.client_id = m.client_id
-   WHERE m.organization_id = ANY($1::int[]) AND r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date BETWEEN $2::date AND $3::date GROUP BY 1, 2`, [orgIds, da, a]);
+    SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlProduzione(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`, '$4')}) x`, [orgIds, da, a, st]);
+  const t = await many(`WITH m AS (SELECT instance_id, client_id, organization_id FROM synclab.clients_td WHERE organization_id = ANY($1::int[]))
+    SELECT m.organization_id AS org_id, x.* FROM m CROSS JOIN LATERAL (${sqlTestate(`r.date BETWEEN $2::date AND $3::date AND r.instance_id = m.instance_id AND r.client_id = m.client_id`, '$4', "to_char(r.date, 'YYYY-MM') AS mese, ")} GROUP BY 1) x`, [orgIds, da, a, st]);
+  // più client Synclab della stessa Legal entity: testate sommate per mese
+  const testate = new Map();
+  for (const x of t) {
+    const k = `${x.org_id}|${x.mese}`; const p = testate.get(k);
+    testate.set(k, p ? { accettazioni: p.accettazioni + x.accettazioni, con_sconto: p.con_sconto + x.con_sconto, percentuali: [p.percentuali, x.percentuali].filter(Boolean).join(', ') || null,
+      sconto_importo: p.sconto_importo == null && x.sconto_importo == null ? null : Number(p.sconto_importo || 0) + Number(x.sconto_importo || 0) } : x);
+  }
   const gruppi = new Map();
   for (const r of rows) { const k = `${r.org_id}|${r.mese}`; if (!gruppi.has(k)) gruppi.set(k, []); gruppi.get(k).push(r); }
-  for (const [k, rr] of gruppi) out.set(k, sintesiProduzione(rr, t.find((x) => `${x.org_id}|${x.mese}` === k)));
+  // le righe di più client con lo stesso codice e prezzo si sommano
+  for (const [k, rr] of gruppi) {
+    const fuse = new Map();
+    for (const r of rr) {
+      const kk = `${r.codice}|${r.prezzo_netto}`; const p = fuse.get(kk);
+      fuse.set(kk, p ? { ...p, righe: p.righe + r.righe, quantita: Number(p.quantita || 0) + Number(r.quantita || 0), senza_prezzo: p.senza_prezzo + r.senza_prezzo,
+        valore: p.valore == null && r.valore == null ? null : Number(p.valore || 0) + Number(r.valore || 0) } : r);
+    }
+    out.set(k, sintesiProduzione([...fuse.values()], testate.get(k)));
+  }
   return out;
 }
 
@@ -112,13 +185,18 @@ export async function fatturatoPerOrg(orgIds, da, a) {
   return out;
 }
 
-/** Fatturato del laboratorio (tutti i documenti) e accettazioni di un giorno: per il Cockpit. null se non ci sono dati importati. */
+/**
+ * Indicatori del laboratorio per il Cockpit (gruppo Operations): accettazioni erogate di ieri, produzione erogata del mese (tutti i client)
+ * e, come dato secondario, i documenti emessi nel mese. null se non ci sono dati importati.
+ */
 export async function indicatoriLaboratorio({ ieri, inizioMese, oggi }) {
   const d = await disponibilita();
   if (!d) return null;
-  const acc = d.requests ? await one(`SELECT count(*)::int AS n FROM synclab.requests WHERE disponibilita='ATTIVO' AND deleted_at IS NULL AND date = $1::date`, [ieri]) : null;
+  const stati = await statiErogati();
+  const acc = d.requests ? await one(`SELECT count(*)::int AS n FROM synclab.requests WHERE disponibilita='ATTIVO' AND deleted_at IS NULL AND date = $1::date AND state = ANY($2::int[])`, [ieri, stati]) : null;
+  const prod = d.requests ? (await produzioneErogata({ da: inizioMese, a: oggi, stati })).totale : null;
   const fat = d.invoices ? sintesiFatturato(await one(sqlFatturato('v.date BETWEEN $1::date AND $2::date'), [inizioMese, oggi])) : null;
-  return { accettazioni_ieri: acc ? acc.n : null, fatturato_mese: fat, disponibilita: d };
+  return { accettazioni_ieri: acc ? acc.n : null, produzione_mese: prod, fatturato_mese: fat, stati, disponibilita: d };
 }
 
 /** Catalogo esami di Synclab (tutti, anche inattivi: il catalogo li comprende). */
@@ -430,18 +508,27 @@ function ctePc(params, privatiInB2c = true) {
       LEFT JOIN public.organizations so ON so.id = s.organization_id)`;
 }
 
-/** Accettazioni (acc) e righe d'esame (it) del periodo con cliente e ripartizione; filtri facoltativi su ripartizione, chiave, sede. */
-function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null }) {
+/**
+ * Accettazioni (acc) e righe d'esame (it) del periodo con cliente e ripartizione; filtri facoltativi su ripartizione, chiave, sede.
+ * v0.68.5: produzione erogata. stati = stati erogati (obbligatorio: conLab lo legge se manca); soloErogate (predefinito) tiene solo le
+ * accettazioni erogate, altrimenti tutte con la colonna `erogata` (per contare anche le registrate). it.valore_riga = netto di riga ×
+ * quantità × (1 − sconto di testata) (null senza prezzo o quantità); it.netto_riga = netto di riga × quantità (senza lo sconto di
+ * testata: è il prezzo confrontabile con i listini); it.sconto_riga = la parte di sconto di testata.
+ */
+function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, stati, soloErogate = true }) {
   const params = [da, a];
   const pc = ctePc(params, privatiInB2c);
   const w = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
+  const pSt = p(normalizzaStati(stati));
+  if (soloErogate) w.push('acc.erogata');
   if (ripartizione) w.push(`acc.ripartizione = ${p(ripartizione)}`);
   if (chiave != null) w.push(`acc.chiave = ${p(String(chiave))}`);
   if (siteId === 'ND') w.push('acc.site_id IS NULL'); else if (siteId != null) w.push(`acc.site_id = ${p(Number(siteId))}`);
   const sql = `${pc},
   acc0 AS (
-    SELECT r.instance_id, r.id, r.date, to_char(r.date, 'YYYY-MM') AS mese, r.client_id, r.header_discount_percent,
+    SELECT r.instance_id, r.id, r.date, to_char(r.date, 'YYYY-MM') AS mese, r.client_id, r.header_discount_percent, r.state,
+           coalesce(r.state = ANY(${pSt}::int[]), FALSE) AS erogata,
            coalesce(pc.chiave, 'c-' || r.client_id) AS chiave, coalesce(pc.cliente, r.client_code, r.client_id) AS cliente, pc.organization_id,
            coalesce(pc.ripartizione, 'B2B') AS ripartizione, coalesce(pc.perimetro_b2b, FALSE) AS perimetro_b2b, pc.site_id, pc.sede,
            coalesce(pc.stato_abbinamento, 'DA_ABBINARE') AS stato_abbinamento
@@ -450,13 +537,14 @@ function cteLab({ da, a, privatiInB2c = true, ripartizione = null, chiave = null
        AND EXISTS (SELECT 1 FROM synclab.request_items i WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE)),
   acc AS MATERIALIZED (SELECT * FROM acc0 acc${w.length ? ` WHERE ${w.join(' AND ')}` : ''}),
   it AS (
-    SELECT acc.instance_id, acc.id AS request_id, acc.date, acc.mese, acc.chiave, acc.cliente, acc.organization_id, acc.ripartizione, acc.site_id, acc.sede,
-           upper(coalesce(nullif(trim(i.exam_code), ''), '?')) AS codice, i.description AS descr_riga, coalesce(i.quantity, 1) AS quantita,
-           i.net_unit_price_excluding_vat AS netto, i.net_unit_price_excluding_vat * coalesce(i.quantity, 1) AS valore_riga
+    SELECT acc.instance_id, acc.id AS request_id, acc.date, acc.mese, acc.chiave, acc.cliente, acc.organization_id, acc.ripartizione, acc.site_id, acc.sede, acc.erogata,
+           upper(coalesce(nullif(trim(i.exam_code), ''), '?')) AS codice, i.description AS descr_riga, i.quantity AS quantita,
+           i.net_unit_price_excluding_vat AS netto, i.net_unit_price_excluding_vat * i.quantity AS netto_riga,
+           ${SQL_VALORE_RIGA('i', 'acc')} AS valore_riga, ${SQL_SCONTO_RIGA('i', 'acc')} AS sconto_riga
       FROM acc JOIN synclab.request_items i ON i.instance_id = acc.instance_id AND i.request_id = acc.id AND coalesce(i.deleted, FALSE) = FALSE)`;
   return { sql, params };
 }
-const conLab = async (opz, corpo) => { const c = cteLab(opz); return many(`WITH ${c.sql} ${corpo}`, c.params); };
+const conLab = async (opz, corpo) => { const c = cteLab({ ...opz, stati: opz.stati || await statiErogati() }); return many(`WITH ${c.sql} ${corpo}`, c.params); };
 
 /** Documenti economici del periodo con cliente, ripartizione e classe (FATTURA, NC, ANNULLATO, SCONOSCIUTO). */
 function cteDoc({ da, a, privatiInB2c = true, ripartizione = null, chiave = null }) {
@@ -479,8 +567,10 @@ function cteDoc({ da, a, privatiInB2c = true, ripartizione = null, chiave = null
 }
 const conDoc = async (opz, corpo) => { const c = cteDoc(opz); return many(`WITH ${c.sql} ${corpo}`, c.params); };
 
-const AGG_ACC = `count(*)::int AS accettazioni`;
-const AGG_IT = `count(*)::int AS esami, sum(valore_riga) AS valore, count(*) FILTER (WHERE netto IS NULL)::int AS righe_senza_prezzo`;
+// v0.68.5: accettazioni = erogate (con soloErogate falso anche `registrate` = tutte); esami, valore e righe senza prezzo solo delle erogate
+const AGG_ACC = `count(*) FILTER (WHERE erogata)::int AS accettazioni, count(*)::int AS registrate`;
+const AGG_IT = `count(*) FILTER (WHERE erogata)::int AS esami, sum(valore_riga) FILTER (WHERE erogata) AS valore, count(*) FILTER (WHERE erogata AND valore_riga IS NULL)::int AS righe_senza_prezzo,
+  sum(sconto_riga) FILTER (WHERE erogata) AS sconto_testata`;
 const AGG_DOC = `count(*)::int AS documenti, count(*) FILTER (WHERE classe = 'FATTURA')::int AS fatture, count(*) FILTER (WHERE classe = 'NC')::int AS note_credito,
   count(*) FILTER (WHERE classe = 'ANNULLATO')::int AS annullati, count(*) FILTER (WHERE classe = 'SCONOSCIUTO')::int AS tipo_sconosciuto,
   count(*) FILTER (WHERE classe IN ('FATTURA','NC') AND contributo IS NULL)::int AS senza_contributo,
@@ -492,7 +582,9 @@ const formaDoc = (x) => (x ? { documenti: x.documenti, fatture: x.fatture, note_
   fatturato_fatture: n2(x.fatturato_fatture), importo_nc: n2(x.importo_nc), fatturato: n2(x.fatturato) } : null);
 const docVuoto = { documenti: 0, fatture: 0, note_credito: 0, annullati: 0, tipo_sconosciuto: 0, senza_contributo: 0, fatturato_fatture: null, importo_nc: null, fatturato: null };
 const prodVuota = { accettazioni: 0, esami: 0, valore: null, righe_senza_prezzo: 0 };
+const prodVuotaR = { ...prodVuota, registrate: 0, sconto_testata: null };
 const formaProd = (a, i) => ({ accettazioni: a?.accettazioni || 0, esami: i?.esami || 0, valore: n2(i?.valore), righe_senza_prezzo: i?.righe_senza_prezzo || 0 });
+const formaProdR = (a, i) => ({ ...formaProd(a, i), registrate: a?.registrate || 0, sconto_testata: n2(i?.sconto_testata) });
 const mesiTra = (da, a) => { const out = []; for (let d = `${da.slice(0, 7)}-01`; d <= a; d = iso(new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 1)))) out.push(d.slice(0, 7)); return out; };
 const giorniPrima = (d, n) => iso(new Date(Date.parse(`${d}T00:00:00Z`) - n * 86400000));
 
@@ -516,21 +608,23 @@ export async function ripartizioneClienti({ privatiInB2c = true } = {}) {
  * Quadro del laboratorio per il cruscotto di rete: per ripartizione accettazioni, esami, valore, clienti con produzione e documenti
  * economici, nel periodo e nello stesso periodo dell'anno prima. { periodo, LAB_SEDE: {...}, B2B: {...}, totale }.
  */
-export async function quadroLaboratorio({ da, a, privatiInB2c = true }) {
+export async function quadroLaboratorio({ da, a, privatiInB2c = true, stati = null }) {
+  stati = stati ? normalizzaStati(stati) : await statiErogati();
   const prec = { da: annoPrima(da), a: annoPrima(a) };
   const leggiP = async (d1, d2) => {
-    const acc = await conLab({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_ACC}, count(DISTINCT chiave)::int AS clienti FROM acc GROUP BY 1`);
-    const it = await conLab({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_IT} FROM it GROUP BY 1`);
+    const o = { da: d1, a: d2, privatiInB2c, stati, soloErogate: false };
+    const acc = await conLab(o, `SELECT ripartizione, ${AGG_ACC}, count(DISTINCT chiave) FILTER (WHERE erogata)::int AS clienti FROM acc GROUP BY 1`);
+    const it = await conLab(o, `SELECT ripartizione, ${AGG_IT} FROM it GROUP BY 1`);
     const doc = await conDoc({ da: d1, a: d2, privatiInB2c }, `SELECT ripartizione, ${AGG_DOC} FROM doc GROUP BY 1`);
     const out = {};
     for (const k of Object.keys(RIPARTIZIONI)) {
       const x = acc.find((r) => r.ripartizione === k);
-      out[k] = { ...formaProd(x, it.find((r) => r.ripartizione === k)), clienti: x?.clienti || 0, documenti: formaDoc(doc.find((r) => r.ripartizione === k)) || { ...docVuoto } };
+      out[k] = { ...formaProdR(x, it.find((r) => r.ripartizione === k)), clienti: x?.clienti || 0, documenti: formaDoc(doc.find((r) => r.ripartizione === k)) || { ...docVuoto } };
     }
     return out;
   };
   const cur = await leggiP(da, a), prev = await leggiP(prec.da, prec.a);
-  const out = { periodo: { da, a, prec }, privati_in_b2c: privatiInB2c !== false };
+  const out = { periodo: { da, a, prec }, privati_in_b2c: privatiInB2c !== false, stati };
   for (const k of Object.keys(RIPARTIZIONI)) out[k] = { ...cur[k], anno_prima: prev[k], var_accettazioni: varPct(cur[k].accettazioni, prev[k].accettazioni), var_valore: varPct(cur[k].valore, prev[k].valore) };
   return out;
 }
@@ -626,11 +720,12 @@ export async function cruscottoB2B({ mese = null, privatiInB2c = true, oggi = is
  * Prezzi netti applicati per esame e cliente (Σ netto × quantità / Σ quantità sulle righe con prezzo) contro il listino CORRENTE di
  * Synclab del client (listino base, poi extra). Il listino del Business Hub lo affianca il modulo Retail (non è un dato Synclab).
  */
-export async function prezziApplicati({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null }) {
-  const c = cteLab({ da, a, privatiInB2c, ripartizione, chiave });
+export async function prezziApplicati({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null }) {
+  // prezzo applicato = netto di riga (prima dello sconto di testata): è quello confrontabile con il listino
+  const c = cteLab({ da, a, privatiInB2c, ripartizione, chiave, stati: stati || await statiErogati() });
   const rows = await many(`WITH ${c.sql},
     g AS (SELECT chiave, max(cliente) AS cliente, codice, max(descr_riga) AS descr_riga, count(*)::int AS righe, sum(quantita) AS quantita,
-             sum(valore_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio, min(netto) AS prezzo_min, max(netto) AS prezzo_max,
+             sum(netto_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio, min(netto) AS prezzo_min, max(netto) AS prezzo_max,
              count(*) FILTER (WHERE netto IS NULL)::int AS righe_senza_prezzo FROM it GROUP BY chiave, codice)
     SELECT g.*, coalesce((SELECT ex.description FROM synclab.exams ex WHERE ex.disponibilita = 'ATTIVO' AND upper(ex.exam_code) = g.codice ORDER BY ex.updated_at DESC LIMIT 1), g.descr_riga) AS descrizione,
            (SELECT pli.net_unit_price_excluding_vat FROM pc p2 JOIN synclab.price_lists pl ON pl.instance_id = p2.instance_id AND pl.id IN (p2.price_list_id, p2.extra_price_list_id) AND pl.disponibilita = 'ATTIVO'
@@ -658,7 +753,7 @@ export async function schedaClienteSynclab({ chiave, da, a, privatiInB2c = true 
   const prod = await produzioneClientiMesi({ da, a, privatiInB2c, ripartizione: null, chiave: k });
   const fat = await fatturatoClientiMesi({ da, a, privatiInB2c, ripartizione: null, chiave: k });
   const esami = await conLab({ da, a, privatiInB2c, chiave: k }, `SELECT codice, max(descr_riga) AS descr_riga, count(*)::int AS esami, count(DISTINCT request_id)::int AS accettazioni, sum(valore_riga) AS valore,
-      sum(valore_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio FROM it GROUP BY codice ORDER BY 3 DESC, 1 LIMIT 15`);
+      sum(netto_riga) / nullif(sum(quantita) FILTER (WHERE netto IS NOT NULL), 0) AS prezzo_medio FROM it GROUP BY codice ORDER BY 3 DESC, 1 LIMIT 15`);
   const desc = esami.length ? new Map((await many(`SELECT DISTINCT ON (upper(exam_code)) upper(exam_code) AS codice, description FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND upper(exam_code) = ANY($1::text[]) ORDER BY upper(exam_code), updated_at DESC`, [esami.map((e) => e.codice)])).map((x) => [x.codice, x.description])) : new Map();
   const documenti = await conDoc({ da, a, privatiInB2c, chiave: k }, `SELECT id, invoice_number, date, mese, document_type, classe, contributo, total FROM doc ORDER BY date DESC, invoice_number DESC LIMIT 500`);
   const c0 = prod.clienti[0] || fat.clienti[0] || null;
@@ -670,6 +765,8 @@ export async function schedaClienteSynclab({ chiave, da, a, privatiInB2c = true 
     esami: esami.map((e) => ({ codice: e.codice, descrizione: desc.get(e.codice) || e.descr_riga, esami: e.esami, accettazioni: e.accettazioni, valore: n2(e.valore), prezzo_medio: n2(e.prezzo_medio) })),
     prezzi: await prezziApplicati({ da, a, privatiInB2c, ripartizione: null, chiave: k }),
     documenti: documenti.map((d) => ({ ...d, contributo: n2(d.contributo), total: n2(d.total) })),
+    // v0.68.5: progressione giornaliera della produzione erogata nell'ultimo mese del periodo
+    giornaliero: await produzioneGiornaliera({ da: `${a.slice(0, 7)}-01` < da ? da : `${a.slice(0, 7)}-01`, a, privatiInB2c, chiave: k }),
   };
 }
 
@@ -709,4 +806,112 @@ export async function laboratorioInSede({ da, a, privatiInB2c = true, siteId = n
     esami: esamiRete.map((e) => { const p = esamiPrev.find((x) => x.codice === e.codice)?.esami || 0; return { codice: e.codice, descrizione: desc.get(e.codice) || e.descr_riga, esami: e.esami, accettazioni: e.accettazioni, anno_prima: p, variazione: varPct(e.esami, p) }; }),
     esami_per_sede: righe.map((s) => ({ site_id: s.site_id, sede: s.sede, esami: esamiSede.filter((e) => ks(e.site_id) === ks(s.site_id)).map((e) => ({ codice: e.codice, descrizione: desc.get(e.codice) || null, esami: e.esami })) })),
   };
+}
+
+// ================================================================== Produzione erogata (v0.68.5): la grandezza principale
+const PER = {
+  giorno: { k: `to_char(date, 'YYYY-MM-DD')`, nome: `NULL::text` },
+  mese: { k: 'mese', nome: `NULL::text` },
+  cliente: { k: 'chiave', nome: 'max(cliente)', extra: 'max(organization_id) AS organization_id, max(stato_abbinamento) AS stato_abbinamento, max(ripartizione) AS ripartizione' },
+  sede: { k: `coalesce(site_id::text, 'ND')`, nome: 'max(sede)' },
+  ripartizione: { k: 'ripartizione', nome: 'max(ripartizione)' },
+};
+const giorniTra = (da, a) => { const out = []; for (let t = Date.parse(`${da}T00:00:00Z`), e = Date.parse(`${a}T00:00:00Z`); t <= e && out.length < 1200; t += 86400000) out.push(iso(new Date(t))); return out; };
+const sommaProd = (lista) => {
+  const t = { ...prodVuotaR }; let conValore = false, conSconto = false;
+  for (const x of lista) {
+    t.accettazioni += x.accettazioni || 0; t.registrate += x.registrate || 0; t.esami += x.esami || 0; t.righe_senza_prezzo += x.righe_senza_prezzo || 0;
+    if (x.valore != null) { t.valore = (t.valore || 0) + Number(x.valore); conValore = true; }
+    if (x.sconto_testata != null) { t.sconto_testata = (t.sconto_testata || 0) + Number(x.sconto_testata); conSconto = true; }
+  }
+  if (conValore) t.valore = n2(t.valore); if (conSconto) t.sconto_testata = n2(t.sconto_testata);
+  return t;
+};
+
+/**
+ * PRODUZIONE EROGATA (definizione unica, v0.68.5). Periodo [da, a]; per = null (solo totale) | 'giorno' | 'mese' | 'cliente' | 'sede' |
+ * 'ripartizione'; filtri: ripartizione ('B2B' | 'LAB_SEDE' | null = tutte), chiave (id della Legal entity o 'c-' + client Synclab), siteId;
+ * annoPrima = stesso periodo dell'anno prima (totale e, per cliente/sede/ripartizione, per voce). stati: stati erogati (predefinito
+ * l'impostazione del connettore). Ritorna { periodo, stati, totale: { accettazioni, esami, valore, righe_senza_prezzo, sconto_testata },
+ * righe: [{ chiave, nome, ...totale }], anno_prima, regola }. Per giorno e mese le righe coprono tutto il periodo (anche a zero).
+ */
+export async function produzioneErogata({ da, a, per = null, privatiInB2c = true, ripartizione = null, chiave = null, siteId = null, annoPrima: conAnnoPrima = false, stati = null } = {}) {
+  if (!giornoRe.test(String(da)) || !giornoRe.test(String(a)) || da > a) throw Object.assign(new Error('Periodo non valido (da/a nel formato AAAA-MM-GG)'), { status: 400 });
+  if (per && !PER[per]) throw Object.assign(new Error(`Raggruppamento non valido: ${per}`), { status: 400 });
+  const st = stati ? normalizzaStati(stati) : await statiErogati();
+  const leggi = async (d1, d2) => {
+    const o = { da: d1, a: d2, privatiInB2c, ripartizione, chiave, siteId, stati: st };
+    const g = per ? PER[per] : null;
+    const sel = g ? `${g.k} AS k, ${g.nome} AS nome${g.extra ? `, ${g.extra}` : ''},` : '';
+    const grp = g ? 'GROUP BY 1' : '';
+    const acc = await conLab(o, `SELECT ${sel} ${AGG_ACC} FROM acc ${grp}`);
+    const it = await conLab(o, `SELECT ${g ? `${g.k} AS k,` : ''} ${AGG_IT} FROM it ${grp}`);
+    if (!g) return { totale: formaProdR(acc[0], it[0]), righe: [] };
+    const righe = acc.map((x) => ({ chiave: x.k, nome: x.nome ?? null, ...(per === 'cliente' ? { organization_id: x.organization_id, stato_abbinamento: x.stato_abbinamento, ripartizione: x.ripartizione } : {}),
+      ...formaProdR(x, it.find((y) => y.k === x.k)) }));
+    return { totale: sommaProd(righe), righe };
+  };
+  const cur = await leggi(da, a);
+  let righe = cur.righe;
+  if (per === 'giorno' || per === 'mese') {
+    const chiavi = per === 'giorno' ? giorniTra(da, a) : mesiTra(da, a);
+    const m = new Map(righe.map((x) => [x.chiave, x]));
+    righe = chiavi.map((k) => m.get(k) || { chiave: k, nome: null, ...prodVuotaR });
+  } else if (per) righe = [...righe].sort((x, y) => (Number(y.valore || 0) - Number(x.valore || 0)) || (y.esami - x.esami) || String(x.nome ?? x.chiave).localeCompare(String(y.nome ?? y.chiave), 'it'));
+  const out = { periodo: { da, a }, per, stati: st, totale: cur.totale, righe,
+    regola: `Accettazioni erogate (stati ${st.join(', ')}); valore = Σ netto di riga × quantità × (1 − sconto di testata), righe d'esame non cancellate; righe senza prezzo contate a parte; data = data dell'accettazione` };
+  if (conAnnoPrima) {
+    const prec = { da: annoPrima(da), a: annoPrima(a) };
+    const p = await leggi(prec.da, prec.a);
+    out.periodo.prec = prec;
+    out.anno_prima = { totale: p.totale, per_chiave: per && !['giorno', 'mese'].includes(per) ? Object.fromEntries(p.righe.map((x) => [x.chiave, x])) : null };
+    out.var_valore = varPct(cur.totale.valore, p.totale.valore);
+  }
+  return out;
+}
+
+/** Produzione erogata giorno per giorno nel periodo (tutti i giorni, anche a zero): { giorni: [{ giorno, ...totale }], totale, stati }. */
+export async function produzioneGiornaliera(opz) {
+  const p = await produzioneErogata({ ...opz, per: 'giorno' });
+  return { periodo: p.periodo, stati: p.stati, totale: p.totale, giorni: p.righe.map(({ chiave, nome, ...x }) => ({ giorno: chiave, ...x })), regola: p.regola };
+}
+
+/**
+ * TOP N clienti per produzione erogata del periodo con la quota sul totale della ripartizione e la variazione sullo stesso periodo del
+ * mese prima (prec = { da, a }, facoltativo). { righe: [{ pos, chiave, cliente, valore, esami, quota, prima, variazione }], totale, clienti }.
+ */
+export async function topClientiProduzione({ da, a, prec = null, n = 5, privatiInB2c = true, ripartizione = 'B2B', stati = null }) {
+  const st = stati ? normalizzaStati(stati) : await statiErogati();
+  const cur = await produzioneErogata({ da, a, per: 'cliente', privatiInB2c, ripartizione, stati: st });
+  const pr = prec ? await produzioneErogata({ da: prec.da, a: prec.a, per: 'cliente', privatiInB2c, ripartizione, stati: st }) : null;
+  const pm = new Map((pr?.righe || []).map((x) => [String(x.chiave), x.valore]));
+  const tot = cur.totale.valore;
+  const righe = cur.righe.filter((x) => x.valore != null).slice(0, n).map((x, i) => {
+    const p = pm.has(String(x.chiave)) ? pm.get(String(x.chiave)) : null;
+    return { pos: i + 1, chiave: String(x.chiave), cliente: x.nome, organization_id: x.organization_id ?? null, valore: n2(x.valore), esami: x.esami, accettazioni: x.accettazioni,
+      quota: tot && Number(tot) > 0 ? Math.round((Number(x.valore) / Number(tot)) * 1000) / 10 : null,
+      prima: p == null ? null : n2(p), variazione: p == null || !Number(p) ? null : Math.round(((Number(x.valore) - Number(p)) / Math.abs(Number(p))) * 1000) / 10 };
+  });
+  return { righe, totale: n2(tot), clienti: cur.righe.length, stati: st, periodo: cur.periodo, prec };
+}
+
+/**
+ * Produzione erogata per cliente e giorno (Retail > B2B > Produzione, dettaglio giornaliero): { giorni, clienti: [{ chiave, cliente,
+ * organization_id, stato_abbinamento, totale, giorni: { 'AAAA-MM-GG': {...} } }], per_giorno, totale, stati }.
+ */
+export async function produzioneClientiGiorni({ da, a, privatiInB2c = true, ripartizione = 'B2B', chiave = null, stati = null }) {
+  const st = stati ? normalizzaStati(stati) : await statiErogati();
+  const o = { da, a, privatiInB2c, ripartizione, chiave, stati: st };
+  const acc = await conLab(o, `SELECT chiave, max(cliente) AS cliente, max(organization_id) AS organization_id, max(stato_abbinamento) AS stato_abbinamento, to_char(date, 'YYYY-MM-DD') AS giorno, ${AGG_ACC} FROM acc GROUP BY chiave, giorno`);
+  const it = await conLab(o, `SELECT chiave, to_char(date, 'YYYY-MM-DD') AS giorno, ${AGG_IT} FROM it GROUP BY chiave, giorno`);
+  const giorni = giorniTra(da, a);
+  const m = new Map();
+  for (const r of acc) {
+    if (!m.has(r.chiave)) m.set(r.chiave, { chiave: r.chiave, cliente: r.cliente, organization_id: r.organization_id, stato_abbinamento: r.stato_abbinamento, giorni: {} });
+    m.get(r.chiave).giorni[r.giorno] = formaProdR(r, it.find((x) => x.chiave === r.chiave && x.giorno === r.giorno));
+  }
+  const clienti = [...m.values()].map((c) => ({ ...c, totale: sommaProd(Object.values(c.giorni)) }))
+    .sort((x, y) => (Number(y.totale.valore || 0) - Number(x.totale.valore || 0)) || String(x.cliente).localeCompare(String(y.cliente), 'it'));
+  const perGiorno = Object.fromEntries(giorni.map((g) => [g, sommaProd(clienti.map((c) => c.giorni[g]).filter(Boolean))]));
+  return { giorni, clienti, per_giorno: perGiorno, totale: sommaProd(clienti.map((c) => c.totale)), stati: st };
 }

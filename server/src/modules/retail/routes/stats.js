@@ -3,7 +3,7 @@ import { one, many } from '../db.js';
 import { ah } from '../lib/util.js';
 import { Params } from '../lib/access.js';
 import { getSettings } from './admin.js';
-import { periodoProfilo, annoPrima, quadroLaboratorio, profiloPazienti, statoCopia } from '../../../lib/synclab/letture.js';
+import { periodoProfilo, annoPrima, quadroLaboratorio, profiloPazienti, statoCopia, fonteProduzione, aggiornatoAlle } from '../../../lib/synclab/letture.js';
 import { privatiInB2c } from '../lib/b2b.js';
 import { getConnector } from '../../../lib/connectors.js';
 
@@ -217,7 +217,9 @@ r.get('/rete', ah(async (req, res) => {
         attesa_mediana: r1(ttRete?.mediana), attesa_settimana_prima: r1(ttPrima?.mediana), prestazioni: ttRete?.prestazioni || 0, aree: ttAree.aree, aree_abbinate: ttAree.abbinate, fonte: 'TuoTempo (Key Entities)' },
       laboratorio: privati ? (lab ? { ...lab.LAB_SEDE, fuori_area: fuoriLab.LAB_SEDE } : null) : { spento: true, nota: 'Impostazione spenta: le accettazioni Synclab dei punti TD sono nel B2B' },
     },
-    b2b: { synclab: lab ? { ...lab.B2B, fuori_area: fuoriLab.B2B } : null, nota: labNota, fonte: 'StudioLab (Synclab Data API)' },
+    // v0.68.5: grandezza principale = produzione erogata (accettazioni in stato erogato, netto di riga e sconto di testata); documenti secondari
+    b2b: { synclab: lab ? { ...lab.B2B, fuori_area: fuoriLab.B2B } : null, nota: labNota, fonte: 'StudioLab (Synclab Data API)', stati: lab?.stati || null,
+      fonte_produzione: lab ? fonteProduzione(lab.stati, stato?.insiemi?.requests?.checkpoint_at || null) : null, aggiornato: aggiornatoAlle(stato?.insiemi?.requests?.checkpoint_at || null, oggi) },
     connettori: [
       { chiave: 'GIPO', nome: 'GIPO', ruolo: 'B2C: accettazioni e vendite dei centri medici e punti prelievo', attivo: Boolean(gconn?.enabled) || Boolean(gimp),
         ultimo_aggiornamento: piu(gconn?.last_sync_at, gimp?.created_at), dettaglio: gimp ? `ultimo import ${gimp.filename} (${gimp.rows_ok} righe)` : gconn?.last_sync_at ? `ultima sincronizzazione: ${gconn.last_status || ''}` : 'nessun import',

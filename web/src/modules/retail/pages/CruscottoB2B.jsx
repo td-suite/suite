@@ -1,10 +1,11 @@
-// Retail · Cruscotto B2B (riordino del 09/11/2026): tutto da StudioLab (Synclab). Clienti attivi con produzione nel mese, esami, valore della
-// produzione, fatturato da documenti (con lo stesso mese dell'anno prima), top 10 clienti, clienti in calo oltre il 20%, clienti senza
-// produzione da 60 giorni, client Synclab non abbinati. Fonte: GET /api/retail/b2b/cruscotto.
+// Retail · Cruscotto B2B (riordino del 09/11/2026): tutto da StudioLab (Synclab). v0.68.5 (CEO 10/11/2026): la grandezza principale è la
+// PRODUZIONE EROGATA (accettazioni in stato erogato, netto di riga e sconto di testata) con l'andamento giorno per giorno del mese; i
+// documenti emessi restano un dato secondario. Top 10 clienti, clienti in calo oltre il 20%, clienti senza produzione da 60 giorni, client
+// Synclab non abbinati. Fonte: GET /api/retail/b2b/cruscotto.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, Card, Loading, ErrorBox, Empty, Badge } from '../components/ui.jsx';
-import { FonteSynclab, VarPct } from '../components/fonte.jsx';
+import { FonteSynclab, VarPct, BarreGiorni } from '../components/fonte.jsx';
 import { qs, base } from '../api.js';
 import { eur0, num, itDate, today } from '../format.js';
 
@@ -19,22 +20,25 @@ export default function CruscottoB2B() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Cruscotto B2B</h1><div className="sub">Service di laboratorio e medicina del lavoro, tutto da StudioLab: produzione dalle accettazioni, fatturato dai documenti economici.{d && d.privati_in_b2c ? ' Le accettazioni dei punti TD sono nel B2C (Laboratorio in sede).' : d ? ' Impostazione: tutto Synclab è B2B.' : ''}</div></div>
-        <div className="row"><Link className="btn ghost" to={`${base}/b2b/produzione`}>Produzione</Link><Link className="btn ghost" to={`${base}/b2b/fatturato`}>Fatturato</Link></div>
+        <div><h1>Cruscotto B2B</h1><div className="sub">Service di laboratorio e medicina del lavoro, tutto da StudioLab: la grandezza è la produzione erogata (accettazioni in stato erogato); i documenti emessi sono un dato secondario.{d && d.privati_in_b2c ? ' Le accettazioni dei punti TD sono nel B2C (Laboratorio in sede).' : d ? ' Impostazione: tutto Synclab è B2B.' : ''}</div></div>
+        <div className="row"><Link className="btn ghost" to={`${base}/b2b/produzione`}>Produzione</Link><Link className="btn ghost" to={`${base}/b2b/fatturato`}>Documenti emessi</Link></div>
       </div>
-      {d && <FonteSynclab stato={d.stato} />}
+      {d && <FonteSynclab stato={d.stato} d={d} />}
       <div className="filters"><label className="f">Mese<input type="month" value={mese} onChange={(e) => setMese(e.target.value)} /></label><div className="spacer" />{d && <div className="small muted" style={{ alignSelf: 'center' }}>{itDate(d.periodo.da)} – {itDate(d.periodo.a)} · confronto con {itDate(d.periodo.prec.da)} – {itDate(d.periodo.prec.a)}</div>}</div>
       <ErrorBox error={q.error} />
       {!d ? <Loading /> : <>
         <div className="grid g4" style={{ marginBottom: 16 }}>
-          <div className="card kpi accent"><div className="lbl">Clienti con produzione</div><div className="val">{num(k.clienti)}</div><div className="delta"><VarPct v={vp(k.clienti, ap.clienti)} /> <span className="muted">anno prima {num(ap.clienti)}</span></div></div>
-          <div className="card kpi"><div className="lbl">Esami</div><div className="val">{num(k.esami)}</div><div className="delta"><VarPct v={vp(k.esami, ap.esami)} /> <span className="muted">{num(k.accettazioni)} accettazioni</span></div></div>
-          <div className="card kpi"><div className="lbl">Valore della produzione</div><div className="val">{eur0(k.valore)}</div><div className="delta"><VarPct v={vp(k.valore, ap.valore)} /> <span className="muted">{k.righe_senza_prezzo ? `${num(k.righe_senza_prezzo)} righe senza prezzo` : 'netti di riga'}</span></div></div>
-          <div className="card kpi"><div className="lbl">Fatturato da documenti</div><div className="val">{eur0(k.fatturato.fatturato)}</div><div className="delta"><VarPct v={vp(k.fatturato.fatturato, ap.fatturato.fatturato)} /> <span className="muted">{num(k.fatturato.note_credito)} NC · {num(k.fatturato.annullati)} annullati esclusi</span></div></div>
+          <div className="card kpi accent" data-testid="kpi-produzione"><div className="lbl">Produzione erogata B2B</div><div className="val">{eur0(k.valore)}</div><div className="delta"><VarPct v={vp(k.valore, ap.valore)} /> <span className="muted">{k.righe_senza_prezzo ? `${num(k.righe_senza_prezzo)} esami senza prezzo` : 'netto di riga e sconto di testata'}</span></div></div>
+          <div className="card kpi"><div className="lbl">Clienti con produzione</div><div className="val">{num(k.clienti)}</div><div className="delta"><VarPct v={vp(k.clienti, ap.clienti)} /> <span className="muted">anno prima {num(ap.clienti)}</span></div></div>
+          <div className="card kpi"><div className="lbl">Esami erogati</div><div className="val">{num(k.esami)}</div><div className="delta"><VarPct v={vp(k.esami, ap.esami)} /> <span className="muted">{num(k.accettazioni)} accettazioni erogate</span></div></div>
+          <div className="card kpi"><div className="lbl">Documenti emessi (secondario)</div><div className="val" style={{ fontSize: 20 }}>{eur0(k.fatturato.fatturato)}</div><div className="delta"><span className="muted">non sommati alla produzione · {num(k.fatturato.note_credito)} NC · {num(k.fatturato.annullati)} annullati esclusi</span></div></div>
         </div>
+        {d.giornaliero && <Card title={`Produzione erogata giorno per giorno · ${eur0(d.giornaliero.totale.valore)}`} className="mb" actions={<span className="small muted">{d.aggiornato || ''}</span>}>
+          <BarreGiorni giorni={d.giornaliero.giorni} fmtValore={eur0} />
+        </Card>}
         <Card title="Top 10 clienti del mese" flush actions={<Link className="btn sm ghost" to={`${base}/b2b/clienti`}>Tutti</Link>}>
             {!d.top10.length ? <Empty>Nessuna produzione B2B nel mese</Empty> : <div className="table-wrap"><table className="t" data-testid="top10">
-              <thead><tr><th>Cliente</th><th className="num">Esami</th><th className="num">Valore</th><th className="num">Fatturato</th><th className="num">Anno prima</th></tr></thead>
+              <thead><tr><th>Cliente</th><th className="num">Esami</th><th className="num">Produzione erogata</th><th className="num">Documenti emessi</th><th className="num">Anno prima</th></tr></thead>
               <tbody>{d.top10.map((c) => <tr key={c.chiave}><td><Link className="strong" to={linkCliente(c.chiave)}>{c.cliente}</Link>{c.stato_abbinamento === 'DA_ABBINARE' && <div><Badge tone="red">client non abbinato</Badge></div>}</td>
                 <td className="num">{num(c.esami)}</td><td className="num strong">{eur0(c.valore)}</td><td className="num">{eur0(c.fatturato)}</td><td className="num small">{c.anno_prima ? `${num(c.anno_prima.esami)} esami · ${eur0(c.anno_prima.valore)}` : '–'}</td></tr>)}</tbody>
             </table></div>}
@@ -61,7 +65,7 @@ export default function CruscottoB2B() {
             {d.proposti.length > 0 && <div className="small muted" style={{ padding: 12 }}>Altri {num(d.proposti.length)} client hanno una proposta automatica (codice StudioLAB della sede o partita IVA) ancora da confermare: i numeri li usano già.</div>}
           </Card>
         </div>
-        <div className="small muted" style={{ marginTop: 12 }}>Esami = righe d'esame non cancellate; valore = somma dei netti di riga storici (sconto di testata non applicato). Fatturato = contributo netto di ogni documento una volta sola, note di credito comprese (negative), annullati e proforma esclusi. Calo: sul valore quando c'è in entrambi i periodi, altrimenti sugli esami.</div>
+        <div className="small muted" style={{ marginTop: 12 }}>Produzione erogata = accettazioni in stato erogato ({d.stati_descritti}); esami = righe d'esame non cancellate; valore = Σ netto di riga × quantità × (1 − sconto di testata). Documenti emessi (secondario, mai sommato) = contributo netto di ogni documento una volta sola, note di credito comprese, annullati e proforma esclusi. Calo: sul valore quando c'è in entrambi i periodi, altrimenti sugli esami.</div>
       </>}
     </div>
   );

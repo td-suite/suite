@@ -131,6 +131,12 @@ indicare), tabella costi esami. Le ipotesi compaiono nella nota "Come è calcola
 - Fonte `synclab` in `fonti` della risposta: lettura non riuscita = avviso, mai uno zero.
 - Da confermare con il CEO: la priorità della fonte SYNCLAB sopra Retail/Ordini e l'uso dei netti storici al posto del listino del
   Business Hub per il ricavo.
+- **v0.68.5 (CEO 10/11/2026): ricavi Service = PRODUZIONE EROGATA.** La fonte SYNCLAB legge la definizione unica di
+  `lib/synclab/letture.js` (docs/SYNCLAB_DATA_API.md "Produzione erogata"): solo le accettazioni in **stato erogato** (impostazione
+  `stati_erogati`, predefiniti 18, 20, 25, 40, 50) e valore = netto di riga × quantità × (1 − sconto di testata), **lo sconto di testata è
+  applicato una volta** (prima era solo riportato nella nota). Origine "Synclab Data API: produzione erogata (accettazioni in stato erogato,
+  netto di riga e sconto di testata)". La colonna "Fatturato da documenti (Synclab)" diventa **"Documenti emessi (secondario)"**: stessa
+  grandezza, mai sommata al ricavo né al margine.
 
 ## Conto economico senza stime nelle somme (09/11/2026 sera, v0.68.1)
 - I **ricavi Service** entrano nel totale **solo con produzione effettiva** (fonte SYNCLAB, STUDIOLAB da file, Retail o Ordini, MANUALE):

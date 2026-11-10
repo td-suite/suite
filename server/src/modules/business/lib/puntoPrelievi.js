@@ -506,7 +506,10 @@ export async function elencoPuntiPrelievo() {
 export async function puntiECentri() {
   const rows = await many(`SELECT s.id AS site_id, s.code, s.name, s.kind, s.active, s.opened_at, s.address, s.zip, s.city, s.province, s.tenure, s.host_organization_id, ho.name AS host_name,
       s.organization_id, so.name AS organization_name, s.legacy_refs->>'tuotempo' AS tuotempo_area, h.person_name AS manager_name,
-      (NOT s.active AND s.opened_at > CURRENT_DATE) AS in_apertura,
+      (NOT s.active AND s.opened_at > CURRENT_DATE) AS in_apertura, s.studiolab_code,
+      -- v0.68.5: client Synclab della sede (abbinato alla sede o con lo stesso codice StudioLAB)
+      (SELECT json_agg(json_build_object('client_id', sv.client_id, 'client_code', sv.client_code, 'legal_name', sv.legal_name, 'active', sv.active, 'stato', sv.stato_abbinamento) ORDER BY sv.client_code)
+         FROM synclab.clients_td sv WHERE sv.disponibilita = 'ATTIVO' AND (sv.site_id = s.id OR (coalesce(s.studiolab_code, '') <> '' AND lower(sv.client_code) = lower(s.studiolab_code)))) AS synclab_clients,
       a.id AS account_id, a.organization_id AS account_org_id, ao.name AS account_org_name, a.fase_corrente, a.cliente_attivo, a.pp_avvio_at, a.pp_avvio, a.pp_tipo_previsto,
       a.data_avvio_prevista, a.data_avvio_effettiva, a.contrattualizzato_at, uo.full_name AS owner_name,
       (SELECT json_build_object('id', c.id, 'protocol', c.protocol, 'status', c.status, 'org_id', c.org_id, 'start_date', c.start_date, 'end_date', c.end_date) FROM contracts c
@@ -548,7 +551,7 @@ export async function puntiECentri() {
   return {
     sedi, processi_senza_sede: senzaSede,
     riepilogo: { sedi: sedi.length, attive: sedi.filter((x) => x.active).length, in_apertura: sedi.filter((x) => x.in_apertura).length, con_processo: sedi.filter((x) => x.account_id).length,
-      con_area_tuotempo: sedi.filter((x) => x.area_tuotempo).length, fascicoli_aperti: fascicoliAperti },
+      con_area_tuotempo: sedi.filter((x) => x.area_tuotempo).length, fascicoli_aperti: fascicoliAperti, senza_codice: sedi.filter((x) => !x.studiolab_code).length },
   };
 }
 
