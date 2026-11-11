@@ -43,6 +43,7 @@ import { mountModules, mountModulesPublic, runModulesAfterStart } from './module
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
 import { config as serviceConfig } from './modules/service/config.js';
+import { config as etichetteConfig } from './modules/etichette/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -79,7 +80,9 @@ app.use(helmet({
       scriptSrc: ["'self'", ...googleMaps.script],
       styleSrc: ["'self'", "'unsafe-inline'", ...googleMaps.style],
       fontSrc: ["'self'", 'data:', ...googleMaps.font],
-      connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com', ...googleMaps.connect],
+      // Label (v0.69.0): Zebra Browser Print sul PC della sede (https://127.0.0.1:9101, http://127.0.0.1:9100; fuori produzione anche
+      // l'indirizzo di collaudo ETICHETTE_BROWSER_PRINT_URL)
+      connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com', ...googleMaps.connect, ...etichetteConfig.browserPrint],
       workerSrc: ["'self'", 'blob:'],
       frameSrc: ["'self'", 'blob:', ...frameExtra, ...googleMaps.frame],
       objectSrc: ["'self'", 'blob:'],

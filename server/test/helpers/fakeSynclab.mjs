@@ -92,6 +92,9 @@ const proietta = (dataset, x, includePatient) => {
 const filtra = (dataset, items, q) => items.filter((x) => {
   if (q.clientId && (dataset === 'clients' ? x.id : x.clientId) !== q.clientId) return false;
   if (q.operatingCompany && x.operatingCompany !== q.operatingCompany) return false;
+  // v0.69.0 (Label): filtri esatti delle sole accettazioni, come il contratto (requestNumber, sampleBarcode)
+  if (dataset === 'requests' && q.requestNumber && x.requestNumber !== q.requestNumber) return false;
+  if (dataset === 'requests' && q.sampleBarcode && !(x.samples || []).some((s) => s.barcode === q.sampleBarcode)) return false;
   return true;
 });
 
@@ -165,7 +168,7 @@ export function creaFakeSynclab({ password = 'Fittizia-1!', clientName = 'TDSuit
   });
 
   // ----- protocollo delle pagine (completo e delta): 202 alla prima richiesta, polling con il cursor, poi pagine immutabili
-  const chiaveAmbito = (q) => JSON.stringify({ d: q.dataset, s: q.since || null, p: q.includePatient || null, c: q.clientId || null, o: q.operatingCompany || null });
+  const chiaveAmbito = (q) => JSON.stringify({ d: q.dataset, s: q.since || null, p: q.includePatient || null, c: q.clientId || null, o: q.operatingCompany || null, rn: q.requestNumber || null, sb: q.sampleBarcode || null });
   function pagina(res, q, tipo) {
     const ds = q.dataset;
     if (!stato.dati[ds]) return problema(res, 400, 'invalid_dataset', 'Insieme di dati sconosciuto');

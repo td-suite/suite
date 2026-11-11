@@ -7,20 +7,23 @@ esami, listini, accettazioni, documenti economici) e la usa per il Controllo di 
 Diagnostica, e dalla v0.67.1 per il **Profilo dei pazienti** di Retail (docs/RETAIL_PROFILO_PAZIENTI.md). Non scrive nulla nel
 gestionale. Non conformità e Ordini continuano a usare ServiceNET per le loro scritture; dalla v0.67.1 il Desk NC cerca le accettazioni anche
 nella copia, la produzione e le correlazioni di Ordini la leggono, e NC usa la Data API per il **recupero puntuale del paziente**
-quando manca (sotto, "Chi usa i dati" e "Dati paziente: dove e perché").
+quando manca (sotto, "Chi usa i dati" e "Dati paziente: dove e perché"). Dalla v0.69.0 **Label** (etichette provette,
+docs/ETICHETTE.md) legge campioni ed esami dalla copia, cerca le accettazioni appena fatte direttamente nel gestionale e conserva le identità
+dei pazienti **solo per gli ultimi giorni** in una tabella propria.
 
 ## Architettura
 
 | Pezzo | File | Cosa fa |
 |---|---|---|
 | Login | `server/src/lib/connectors.js` `studiolabClientToken()` | Connettore STUDIOLAB in `CLIENT_JWT`: `POST /api/v1/auth/client/login`, token in memoria fino a 2 minuti prima del `validTo` **restituito** (circa 15 minuti in questa installazione; senza `validTo` leggibile il token vale per la sola richiesta). |
-| Client HTTP | `server/src/lib/synclab/client.js` | `get(path, query, {timeoutMs})`, `metadata()`, `pagina()`, `delta()`, `stato()` (blocchi di 200 id), `dettaglio()`. Gestione 202/401/429/5xx/409, decimali esatti, limitatore 60 chiamate al minuto, registro. |
+| Client HTTP | `server/src/lib/synclab/client.js` | `get(path, query, {timeoutMs})`, `metadata()`, `pagina()` (dalla v0.69.0 anche i filtri esatti `requestNumber` e `sampleBarcode` delle sole accettazioni e un `timeoutMs`: usati solo da Label, mai negli ambiti del ciclo), `delta()`, `stato()` (blocchi di 200 id), `dettaglio()`. Gestione 202/401/429/5xx/409, decimali esatti, limitatore 60 chiamate al minuto (comune a tutta la Suite), registro. |
 | Persistenza | `server/src/lib/synclab/persistenza.js` | Upsert = sostituzione completa dell'aggregato e dei figli; marcatura delle uscite; appartenenze per ambito; svuotamento dei dati paziente. |
 | Motore | `server/src/lib/synclab/sync.js` | `eseguiCiclo(dataset, {modo, filtri, includePatient})`, `eseguiTutti()`, lock per ambito, coda di processo, riconciliazione, job `synclab:notturno`, stato per l'interfaccia. |
 | Letture | `server/src/lib/synclab/letture.js` | dalla v0.68.5 la **produzione erogata** (`produzioneErogata`, `produzioneGiornaliera`, `produzioneClientiGiorni`, `topClientiProduzione`, `statiErogati`, `fonteProduzione`), poi `produzioneMensile`, `fatturatoMensile`, `produzionePerOrg`, `fatturatoPerOrg`, `catalogoEsami`, `listinoCliente`, `indicatoriLaboratorio`; dalla v0.67.1 `profiloPazienti`, `sintesiProfilo`, `comuniProfilo`, `statoProfilo` (solo demografia). |
 | Abbinamenti (v0.68.5) | `server/src/lib/synclab/abbinamenti.js` | `allineaAbbinamenti` (job `synclab:abbinamenti`, "Riallinea abbinamenti"), `decidiClient`, `scegliSede`, `candidatiPerOrg`, `abbinaManuale`: client Synclab ↔ Legal entity e SEDE, codice StudioLAB scritto nella sede. |
 | Listini (v0.68.5) | `server/src/lib/synclab/listini.js` | `listiniDiOrg`, `confrontoConHub`, `xlsxListiniOrg`, `xlsxListiniAggregato` (Business Hub). |
 | Recupero puntuale NC | `server/src/modules/nc/lib/pazienteSynclab.js` | `recuperaPaziente(acc)`: ricerca nella copia per numero o barcode, `dettaglio('requests', id, { includePatient: true })`, merge nella cache di NC. |
+| Label (v0.69.0) | `server/src/modules/etichette/lib/{ricerca,identita,accettazioni}.js` | Ricerca per numero/barcode (riusa `cercaAccettazioniSynclab` del Desk NC), lettura diretta `pagina('requests', { filtri: { requestNumber \| sampleBarcode }, includePatient: true, timeoutMs })`, identità recenti con `dettaglio` opt-in (docs/ETICHETTE.md). |
 | API | `server/src/routes/synclab.js` su `/api/synclab` (solo amministratori) | stato, impostazioni, sincronizza/riprendi/completo, storico, clienti Synclab e abbinamento, listino di un client. |
 | Pagina | `web/src/pages/admin/SynclabDati.jsx` → `/admin/connectors/synclab` | Amministrazione > Connettori > StudioLAB > "Dati Synclab (Data API)": schede Stato, Clienti Synclab, **Quadratura** (v0.68.6), Impostazioni, Storico dei cicli. |
 | Quadratura (v0.68.6) | `server/src/lib/synclab/quadratura.js` + `quadratura()` in `letture.js` | Lettura del report "Riepilogo Esami" di StudioLab, confronto nelle 4 varianti, cause per cliente, XLSX (sotto, "Quadratura con StudioLab"). |
@@ -118,6 +121,10 @@ disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) val
 | Copia `synclab.requests` (proiezione **standard**, `include_patient` = false: impostazione da lasciare spenta) | `dem_age_years`, `dem_sex`, `dem_city`, `dem_province`, `dem_postal_code`; `patient_*` e `historical_description` **vuoti** | La BI e la profilazione servono con provenienza, età e sesso; nessuna identità in massa nella Suite. Il CEO spegne la proiezione paziente anche lato connettore. |
 | Retail > Profilo dei pazienti (laboratorio) | Solo aggregati della demografia (accettazioni, non persone) | Profilazione per sede, provenienza, fasce d'età e sesso (docs/RETAIL_PROFILO_PAZIENTI.md). Le query non leggono mai `patient_*`. |
 | Cache delle accettazioni di Non conformità (`nc.accettazioni.paziente_*`) | Cognome, nome, data di nascita, sesso, codice fiscale **di una accettazione** | La NC deve poter avere il paziente quando HL7/ServiceNET non lo hanno dato: **recupero puntuale**, una accettazione alla volta. Lo vedono gli stessi profili che già vedono il paziente nella NC (laboratorio, qualità, direzione, consultazione interna e la sede inviante della propria accettazione); mai nelle email. |
+| **Label · identità recenti** (`etichette.pazienti_recenti`, v0.69.0, CEO 10/11/2026) | Cognome, nome, data di nascita, sesso, numero e data **delle accettazioni degli ultimi N giorni** (impostazione `giorni_identita`, predefinito 7, massimo 30). **Codice fiscale mai** (colonna vincolata a NULL). | Le etichette delle provette portano nome e nascita, e l'operatore cerca anche per cognome: "identità conservata solo per gli ultimi giorni". Lettura con il **dettaglio opt-in di una accettazione alla volta** (job `etichette:identita` ogni 15 minuti tra le 6 e le 22, al più 30 chiamate per giro, solo accettazioni ATTIVE dei client abbinati a una sede; all'apertura di un'accettazione; nella lettura diretta per numero/barcode). Purga quotidiana. Lo vedono ADMIN di Label e OPERATORE per le sedi del proprio perimetro; mai nei log, nel registro delle stampe o nell'audit. |
+| **Label · letture dirette** (`etichette.accettazioni_dirette`, v0.69.0) | Accettazioni lette con `GET /api/v1/data/requests?requestNumber=…` / `sampleBarcode=…` perché non ancora nella copia: testata, righe e campioni **senza paziente** | Trovare un'accettazione fatta pochi minuti fa. Cancellate dopo N giorni o appena l'accettazione è nella copia. |
+
+La **proiezione paziente globale resta spenta**: Label non legge e non cambia `include_patient`; la copia `synclab.*` non riceve identità.
 
 **Recupero puntuale (NC, `modules/nc/lib/pazienteSynclab.js`)**
 1. Quando? Il Desk richiama un'accettazione (`GET /api/nc/accettazioni/:id`) e dopo ServiceNET (non collegato, non risponde, non trova
@@ -147,6 +154,7 @@ disponibile, metadati ok". Su un'installazione senza Data API (metadata 404) val
 | **Ordini · Correlazione esami e materiali** | `synclab.samples` (material, container) legati alle righe con `request_item_samples` | `orders/lib/synclab.js`, tabella `orders.etichette_synclab` (migrazione orders 014) | coppia più frequente per esame con percentuale e osservazioni; coppia abbinata a un articolo → proposta di correlazione con fonte SYNCLAB (anteprima e conferma), mai sulle MANUALE/LISTINO |
 | **Non conformità · Desk** | `requests.request_number`, `samples.barcode`, righe e campioni | `nc/lib/synclabDesk.js` | se la cache NC non ha l'accettazione: ricerca esatta, normalizzata, anno + numero; una → importata nella cache (origine SYNCLAB, migrazione nc 009); più → elenco; nessuna → registrazione manuale con la data della copia |
 | Non conformità · paziente | dettaglio di UNA accettazione (opt-in) | `nc/lib/pazienteSynclab.js` | sotto, "Dati paziente: dove e perché" |
+| **Label · etichette provette** (v0.69.0) | `requests` (numero, data, client, stato, sesso della demografia), `samples` (barcode, materiale, contenitore), `request_items` e `request_item_samples` (esami per provetta), `clients_td` (sede = perimetro); dettaglio opt-in per le identità; lettura diretta per numero/barcode | `modules/etichette` | una etichetta per campione con gli esami non cancellati che lo usano; identità solo in `etichette.pazienti_recenti` per N giorni (docs/ETICHETTE.md) |
 | Retail · Profilo dei pazienti | demografia | `lib/synclab/letture.js` | docs/RETAIL_PROFILO_PAZIENTI.md (filtro perimetro dalla v0.68.0) |
 | **Retail · sezione B2B** (v0.68.0) | accettazioni, righe d'esame, documenti, listini correnti, `clients_td` | `lib/synclab/letture.js`: `cruscottoB2B`, `produzioneClientiMesi`, `fatturatoClientiMesi`, `prezziApplicati`, `schedaClienteSynclab`, `statoCopia` | tutto il B2B di Retail deriva da qui; fatturato una volta per documento, NC separate, annullati esclusi e contati (docs/RETAIL.md) |
 | **Retail · Cruscotto di rete e Laboratorio in sede** (v0.68.0) | come sopra, per ripartizione | `quadroLaboratorio`, `laboratorioInSede`, `ripartizioneClienti` | ripartizione: client abbinato a una sede TD = Laboratorio in sede (B2C), Legal entity esterna o non abbinato = B2B; impostazione Retail `synclab_privati_in_b2c` (false = tutto B2B) |
@@ -180,7 +188,8 @@ Dettagli di Ordini: docs/ORDINI_SYNCLAB.md.
   Hub" mostrato accanto al cliente. Dettagli: docs/RETAIL.md.
 - Migrazione core **053** (`053_profilo_pazienti.sql`): cache `public.geo_comuni` per la mappa dei comuni e indici su
   `requests.request_number`, `samples.barcode`, `request_items (instance_id, request_id)`.
-- **Diagnostica**: D48 "Clienti Synclab senza Legal entity abbinata" (INFO), D49 "Sincronizzazione Synclab ferma" (ATTENZIONE: con la
+- **Diagnostica**: (v0.69.0, Label) D54 "Etichette: nessun modello validato" (INFO) e D55 "Etichette: identità recenti ferme" (ATTENZIONE);
+  D48 "Clienti Synclab senza Legal entity abbinata" (INFO), D49 "Sincronizzazione Synclab ferma" (ATTENZIONE: con la
   Data API abilitata, insieme mai sincronizzato, checkpoint più vecchio di 2 giorni o ultimo ciclo in errore), D50 "Legal entity cliente
   attiva senza cliente Synclab" (INFO, solo quando i clienti sono stati importati).
 

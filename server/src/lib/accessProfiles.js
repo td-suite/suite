@@ -19,7 +19,7 @@ import { resolveExternalScopes, externalScopeContext } from './esterni.js';
 
 const isOwnerLevel = (u) => u?.level === 'OWNER';
 // Ordine di "forza" dei profili dei moduli (dal più basso): serve a non declassare un grant nato da un altro profilo di accesso
-const RANK = ['UTENTE', 'VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['UTENTE', 'VIEWER', 'LETTORE', 'PROF', 'CLIENTE', 'PARTNER', 'SEDE', 'SITE', 'OPERATOR', 'OPERATORE', 'MANUTENTORE', 'CASSIERE', 'REDATTORE', 'EDITOR', 'LAB', 'RETAIL', 'SERVICE', 'MDL', 'ENDEAVOR', 'SUPPORT', 'HR', 'HQS', 'PLANNER', 'RESPONSABILE', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBBLICATORE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const rank = (p) => RANK.indexOf(p);
 
 async function loadActor(actorId) {

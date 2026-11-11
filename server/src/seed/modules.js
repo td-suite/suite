@@ -7,6 +7,11 @@ export const MODULES = [
   // ---- (i commenti di area sotto sono storici: l'area effettiva è nel campo area)
   { key: 'business', area: 'RETAIL_FLOW', name: 'Business Hub', tagline: 'Pipeline, clienti, contratti', icon: 'business-hub', kind: 'LEGACY', legacy_url: 'https://business.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('ADMIN', 'Amministratore'), P('SERVICE', 'Service'), P('RETAIL', 'Retail'), P('MDL', 'Medicina del Lavoro'), P('HQS', 'HQS'), P('VIEWER', 'Sola lettura')] },
+  // Label (v0.69.0, CEO 10/11/2026: "widget davvero fondamentale"): etichette provette dalle accettazioni StudioLab, stampa sulla Zebra
+  // della sede con Zebra Browser Print (docs/ETICHETTE.md). Chiave tecnica `etichette`, nome visibile "Label" (deciso dal CEO). Nativo,
+  // per sede, solo con grant (non aperto a tutti); ADMIN al titolare (migrazione 001 del modulo). Subito dopo il Business Hub.
+  { key: 'etichette', area: 'RETAIL_FLOW', name: 'Label', tagline: 'Etichette provette, stampa Zebra', icon: 'etichette', kind: 'NATIVE', legacy_url: null, route: '/etichette', sort_order: 15, scope_type: 'SITE', open_to_all: false,
+    profiles: [P('ADMIN', 'Amministratore (impostazioni, modello, registro)'), P('OPERATORE', 'Operatore di sede (cerca, anteprima e stampa)', true)] },
   { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firme, scadenze, conto economico', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },
   { key: 'integration', area: 'DIREZIONE', name: 'Integration M&A', tagline: 'Post closing, GANTT', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,

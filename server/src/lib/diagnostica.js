@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D53 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D55 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -602,6 +602,17 @@ export const CONTROLLI = [
   { id: 'D53', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Unità senza destinazione Silva', richiede: ['orders.silva_unita_v'], spiegazione: 'Sedi TD attive che ricevono merce, Legal entity cliente senza punti service e ogni punto service attivo delle Legal entity cliente senza destinazione Silva valida (codice numerico della GET destinazioni). Gli ordini approvati per queste unità non si trasmettono a Silva. Le coincidenze univoche (stesso CAP e stessa via e civico, oppure stesso CAP e stesso nome) si abbinano da sole con "Aggiorna destinazioni" e ogni 6 ore; le altre si scelgono in Ordini > Strutture > Destinazioni Silva (Da scegliere) o vanno chieste a Silva (Non presenti in Silva).',
     sql: `SELECT u.id, u.tipo, u.code, u.label AS name, u.city, u.silva_code FROM orders.silva_unita_v u WHERE u.silva_code IS NULL OR u.silva_code !~ '^[1-9][0-9]*$' ORDER BY CASE u.tipo WHEN 'SEDE' THEN 0 WHEN 'PUNTO' THEN 1 ELSE 2 END, u.label`,
     chiave: 'id', link: () => '/orders/strutture?vista=silva' },
+  // v0.69.0 · Label (etichette provette, docs/ETICHETTE.md)
+  { id: 'D54', area: 'SISTEMA', gravita: 'INFO', titolo: 'Etichette: nessun modello validato', richiede: ['etichette.modelli'], spiegazione: 'Nessun modello di etichetta attivo è marcato "validato dal laboratorio": il modello predefinito "TD 50x25 (da validare)" è un default ragionevole, non il disegno di StudioLab. Prima dell\'uso sulle provette va confrontato con l\'etichetta di StudioLab (foto o PDF e misure del rotolo) e letto dagli strumenti del laboratorio; poi in Label > Modelli "Segna come validato". Finché manca, il modulo mostra l\'avviso fisso.',
+    sql: `SELECT m.id, m.nome, m.larghezza_mm, m.altezza_mm, m.dpi, m.predefinito FROM etichette.modelli m WHERE m.attivo AND NOT EXISTS (SELECT 1 FROM etichette.modelli v WHERE v.attivo AND v.validato_il IS NOT NULL) ORDER BY m.predefinito DESC, m.nome`,
+    chiave: 'id', link: () => '/etichette/modelli' },
+  { id: 'D55', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Etichette: identità recenti ferme', richiede: ['etichette.job_stato'], spiegazione: 'Con Label avviato (LIVE) e la Data API Synclab accesa, il job etichette:identita (ogni 15 minuti tra le 6 e le 22) non ha concluso un giro da oltre 2 ore in orario di lavoro: la ricerca per cognome non trova le accettazioni nuove e il nome sulle etichette arriva solo all\'apertura. Vedere Label > Impostazioni (stato del job, "Aggiorna adesso") e lo stato della Data API nella scheda Dati Synclab.',
+    sql: `SELECT 'identita' AS job, j.ultimo_giro, j.ultimo_ok, j.errore FROM (SELECT 1) x LEFT JOIN etichette.job_stato j ON j.nome = 'identita'
+          WHERE EXISTS (SELECT 1 FROM public.module_state ms WHERE ms.key = 'etichette' AND ms.mode = 'LIVE' AND coalesce(ms.live_since, ms.updated_at) < now() - interval '2 hours')
+            AND EXISTS (SELECT 1 FROM public.connectors c WHERE c.kind = 'STUDIOLAB' AND c.enabled AND c.auth_kind = 'CLIENT_JWT' AND (c.settings->>'data_api_enabled') = 'true')
+            AND extract(hour FROM (now() AT TIME ZONE 'Europe/Rome')) BETWEEN 8 AND 21
+            AND (j.ultimo_ok IS NULL OR j.ultimo_ok < now() - interval '2 hours')`,
+    chiave: 'job', link: () => '/etichette/impostazioni' },
   { id: 'D29', area: 'SISTEMA', gravita: 'INFO', titolo: 'Punti SERVICE configurati in Room', richiede: ['room.site_ext'], spiegazione: 'Room riguarda le sedi TD (B10).',
     sql: `SELECT s.id, s.code FROM room.site_ext e JOIN sites s ON s.id = e.site_id WHERE s.kind = 'SERVICE' ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D30', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Planimetria di Sedi non pubblicata in Room', spiegazione: 'La planimetria corrente della sede va in Room Planning.',

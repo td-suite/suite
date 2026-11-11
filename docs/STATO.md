@@ -110,6 +110,20 @@ nome, codice libero) su "Aggiorna destinazioni" e con il job `orders:silva-desti
 Non presenti in Silva e destinazioni presenti in Silva non in anagrafica; D53 sulle unità. Giacenza per punto non gestita (decisione
 aperta). Migrazione orders 016, test `server/test/orders-punto-consegna.test.mjs`. Dettagli: SILVA_API_ORDINI.md sezioni 2 e 2 bis.
 
+## 11/11/2026 · v0.69.0 · Label (etichette provette, stampa Zebra)
+Richiesta del CEO del 10/11/2026 ("widget davvero fondamentale"): nuovo modulo nativo **Label** (chiave `etichette`, Retail and Flow dopo
+il Business Hub, per sede, solo con grant: ADMIN e OPERATORE). Dal numero di accettazione o barcode (copia Synclab con la ricerca del Desk
+NC; se manca, lettura diretta del gestionale con `requestNumber`/`sampleBarcode` e il 202) o dal cognome (solo identità recenti) mostra le
+etichette per provetta (una per campione con gli esami di quella provetta) e le stampa sulla Zebra della sede con Zebra Browser Print
+(https://127.0.0.1:9101, http://127.0.0.1:9100; stampante ricordata per PC; CSP aggiornata) o in PDF di ripiego. Identità dei pazienti solo
+in `etichette.pazienti_recenti` per N giorni (predefinito 7, massimo 30; CF mai; job `etichette:identita` ogni 15 minuti tra le 6 e le 22,
+30 chiamate per giro; purga quotidiana); la proiezione paziente globale resta spenta. Modello dell'etichetta configurabile (ZPL con
+segnaposto, misure, dpi), predefinito "TD 50x25 (da validare)" con avviso fisso finché il laboratorio non lo valida; renderer ZPL proprio
+(Code 128 B/C) per anteprima e PDF, identico in server e web. Registro stampe e audit senza dati del paziente. Diagnostica D54 e D55.
+Migrazione del modulo `etichette/001_init.sql` (si avvia da Travaso moduli > Avvia). Test `server/test/etichette.test.mjs`; collaudo su db
+proprio con server finto Synclab e finto Browser Print; schermate `docs/screens/etichette-*.png`. Da fare: disegno di StudioLab e
+validazione in sede con una Zebra vera (cosa non verificato: docs/ETICHETTE.md). Dettagli in docs/ETICHETTE.md e SYNCLAB_DATA_API.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

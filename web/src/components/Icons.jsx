@@ -83,6 +83,11 @@ const MODULES = {
     f: 'M27 7h10l5 5v15H27zM29 32h14v10H29z',
     s: 'M21 13a6 6 0 1 1-12 0 6 6 0 0 1 12 0zM4 36c0-7 5-12 11-12s11 5 11 12v2H4zM27 7h10l5 5v15H27zM37 7v5h5M31 17h6M31 21h4M29 32h14v10H29zM32 32v-3a4 4 0 0 1 8 0v3M36 36.5v2',
   },
+  // Label (10/11/2026): etichetta adesiva con il codice a barre, come quelle delle provette
+  etichette: {
+    f: 'M7 12h34v24H7z',
+    s: 'M7 12h34v24H7zM12 17v11M15 17v11M17.5 17v11M21 17v11M24 17v11M27.5 17v11M30 17v11M33 17v11M36 17v11M12 32h10M28 32h8M24 6v6M20 8l4-2 4 2M24 36v6',
+  },
   // Piano Ferie (08/11/2026): calendario con il sole
   ferie: {
     f: 'M6 10h26v8H6zM31 34a5 5 0 1 0 10 0a5 5 0 1 0 -10 0',
@@ -186,6 +191,7 @@ const UI = {
   star: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z',
   bolt: 'M13 2.5 4.5 13.5H11l-1 8 8.5-11H12z',
   wrench: 'M20.5 7.5a5 5 0 0 1-6.6 4.9L6.6 19.7a2 2 0 0 1-2.8-2.8l7.3-7.3A5 5 0 0 1 16.5 3.5l-2.6 2.6.6 2.4 2.4.6z',
+  printer: 'M7 9V4h10v5M6 18H4v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-2M7 14h10v6H7zM17 12h.01',
   qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 18.5v1.5M18.5 14H20M6.5 6.5h1M16.5 6.5h1M6.5 16.5h1',
 };
 

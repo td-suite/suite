@@ -13,7 +13,7 @@ import { getConnector, logConnector, studiolabClientToken, studiolabExtraHeaders
 
 export const DATASETS = ['exams', 'clients', 'price-lists', 'requests', 'invoices'];   // ordine del ciclo notturno
 export const DATASET_PAZIENTE = new Set(['requests', 'invoices']);                      // includePatient ammesso (proiezione)
-export const FILTRI_AMMESSI = { clients: ['clientId', 'operatingCompany'], exams: [], 'price-lists': ['operatingCompany'], requests: ['clientId', 'operatingCompany'], invoices: ['clientId', 'operatingCompany'] };
+export const FILTRI_AMMESSI = { clients: ['clientId', 'operatingCompany'], exams: [], 'price-lists': ['operatingCompany'], requests: ['clientId', 'operatingCompany', 'requestNumber', 'sampleBarcode'], invoices: ['clientId', 'operatingCompany'] };
 export const NOMI_DATASET = { clients: 'clienti', exams: 'esami', 'price-lists': 'listini', requests: 'accettazioni', invoices: 'documenti economici' };
 
 // Opzioni del processo (i test accorciano le attese: scalaAttese 0.01 = Retry-After di 2 s → 20 ms)
@@ -145,7 +145,9 @@ export function queryPagina(dataset, { pageSize = null, includePatient = undefin
   for (const k of FILTRI_AMMESSI[dataset] || []) if (filtri?.[k]) q[k] = filtri[k];
   return q;
 }
-export const pagina = (dataset, { cursor = null, ...o } = {}) => get(`/api/v1/data/${dataset}`, { ...queryPagina(dataset, o), cursor: cursor || undefined }, { logInfo: { dataset } });
+// requestNumber e sampleBarcode (solo requests, confronto esatto) non entrano mai negli ambiti del ciclo (filtriCanonici di sync.js li
+// ignora): servono alla ricerca puntuale di Label (v0.69.0), che passa anche un timeoutMs breve. Il registro non scrive mai la query.
+export const pagina = (dataset, { cursor = null, timeoutMs = null, ...o } = {}) => get(`/api/v1/data/${dataset}`, { ...queryPagina(dataset, o), cursor: cursor || undefined }, { logInfo: { dataset }, timeoutMs });
 
 /** Delta: /api/v1/data/sync/changes con dataset, since, filtri e proiezione dell'ambito (since e cursor ripetuti a ogni pagina). */
 export function queryDelta(dataset, { since, pageSize = null, includePatient = undefined, filtri = {} } = {}) {
