@@ -211,6 +211,39 @@ r.post('/users/:id/reset-totp', requireAdmin, ah(async (req, res) => {
 }));
 
 // ---- grant: assegna, aggiorna, conferma proposte, rimuove
+// Attivazione di un widget per più utenti insieme, con lo stesso profilo e lo stesso ambito (CEO 11/11/2026: "dopo la selezione
+// degli utenti, oltre al profilo, l'attivazione di un widget per tutti con il medesimo profilo"). Chi ha già il widget con un altro
+// profilo si lascia com'è, salvo "sovrascrivi". Va dichiarata PRIMA della rotta con :id.
+r.post('/users/grants/massa', requireAdmin, ah(async (req, res) => {
+  const b = parse(z.object({ user_ids: z.array(z.number().int()).min(1).max(500), module_key: z.string().min(1), profile: z.string().min(1),
+    scopes: z.array(z.object({ type: z.enum(['SITE', 'ORG']), id: z.number().int() })).optional(), sovrascrivi: z.boolean().optional() }), req.body);
+  const m = await one('SELECT * FROM modules WHERE key=$1', [b.module_key]);
+  assertCanGrant(req, m);
+  const prof = (m.profiles || []).find((p) => p.key === b.profile);
+  if (!prof) throw bad('Profilo non previsto dal modulo');
+  if (prof.scoped && !(b.scopes || []).length) throw bad(`Il profilo ${prof.label || prof.key} richiede almeno una ${m.scope_type === 'ORG' ? 'organizzazione' : 'sede'}`);
+  const scopes = prof.scoped ? (b.scopes || []) : [];
+  const out = { attivati: [], aggiornati: [], invariati: [], saltati: [] };
+  for (const id of [...new Set(b.user_ids)]) {
+    const target = await one('SELECT id, email, full_name, level FROM users WHERE id=$1', [id]);
+    if (!target) { out.saltati.push({ id, motivo: 'utente inesistente' }); continue; }
+    if (target.level === 'OWNER' && !isOwner(req.user)) { out.saltati.push({ id, nome: target.full_name, motivo: 'account del titolare' }); continue; }
+    const cur = await one('SELECT id, profile, proposed FROM grants WHERE user_id=$1 AND module_key=$2', [id, m.key]);
+    if (cur && !cur.proposed && cur.profile !== b.profile && !b.sovrascrivi) { out.saltati.push({ id, nome: target.full_name, motivo: `ha già il widget con profilo ${cur.profile}` }); continue; }
+    await tx(async (c) => {
+      const { rows: [g] } = await c.query(
+        `INSERT INTO grants (user_id, module_key, profile, proposed, source, created_by) VALUES ($1,$2,$3,FALSE,'MANUAL',$4)
+         ON CONFLICT (user_id, module_key) DO UPDATE SET profile=EXCLUDED.profile, proposed=FALSE, source='MANUAL', profile_id=NULL, updated_at=now() RETURNING id`, [id, m.key, b.profile, req.user.id]);
+      await c.query('DELETE FROM grant_scopes WHERE grant_id=$1', [g.id]);
+      for (const sc of scopes) await c.query('INSERT INTO grant_scopes (grant_id, scope_type, scope_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [g.id, sc.type, sc.id]);
+    });
+    (cur ? (cur.profile === b.profile && !cur.proposed ? out.invariati : out.aggiornati) : out.attivati).push({ id, nome: target.full_name });
+    await audit(req, 'GRANT_SET', { module: m.key, entity: 'user', entityId: id, label: `${target.email} → ${m.key}:${b.profile} (attivazione multipla)`, data: { scopes } });
+    if (m.restricted) await audit(req, 'RESTRICTED_GRANT_SET', { module: m.key, entity: 'user', entityId: id, label: target.email });
+  }
+  res.json({ ok: true, modulo: m.name, profilo: prof.label || prof.key, ...out });
+}));
+
 r.put('/users/:id/grants/:module', requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const target = await one('SELECT * FROM users WHERE id=$1', [id]);

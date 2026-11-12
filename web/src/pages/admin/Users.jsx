@@ -29,6 +29,8 @@ export function UsersList() {
   const [selected, setSelected] = useState(() => new Set());
   const [applyProfile, setApplyProfile] = useState(null);   // profilo scelto, in attesa di conferma
   const [report, setReport] = useState(null);
+  const [esitoMassa, setEsitoMassa] = useState(null);
+  const [widgetMassa, setWidgetMassa] = useState(false);   // attivazione di un widget per tutti i selezionati (11/11/2026)
   useEffect(() => { setSelected(new Set()); }, [sp.toString()]);   // cambio filtri o pagina: la selezione riparte
   const selectable = rows.filter((u) => u.level !== 'OWNER' || isOwner(me));
   const allSelected = selectable.length > 0 && selectable.every((u) => selected.has(u.id));
@@ -49,6 +51,7 @@ export function UsersList() {
       {selected.size > 0 && <div className="bulkbar" role="region" aria-label="Azioni sugli utenti selezionati">
         <span className="n">{selected.size} utent{selected.size === 1 ? 'e selezionato' : 'i selezionati'}</span>
         <ProfilePicker label="Assegna profilo" className="btn sm" onPick={(p) => setApplyProfile(p)} />
+        <button className="btn sm" onClick={() => setWidgetMassa(true)}><Icon name="plus" />Attiva un widget</button>
         <div className="spacer" />
         <button className="btn sm ghost" onClick={() => setSelected(new Set())}><Icon name="x" />Annulla selezione</button>
       </div>}
@@ -76,6 +79,12 @@ export function UsersList() {
       </Card>
       {applyProfile && <ApplyProfileModal profile={applyProfile} users={selectedRows.map((u) => ({ id: u.id, full_name: u.full_name }))} onClose={() => setApplyProfile(null)}
         onDone={(r) => { setApplyProfile(null); setReport(r); setSelected(new Set()); toast(`Profilo applicato: ${r.added} aggiunti, ${r.replaced || 0} sostituiti, ${r.kept} già uguali${r.warnings.length ? `, ${r.warnings.length} avvisi` : ''}`); reload(); }} />}
+      {widgetMassa && <WidgetMassaModal users={selectedRows} modules={mods.data || []} sites={sites.data || []} canRestricted={isOwner(me)} onClose={() => setWidgetMassa(false)}
+        onDone={(r) => { setWidgetMassa(false); setSelected(new Set()); toast(`${r.modulo}: ${r.attivati.length} attivati, ${r.aggiornati.length} aggiornati, ${r.invariati.length} già uguali${r.saltati.length ? `, ${r.saltati.length} saltati` : ''}`); if (r.saltati.length) setEsitoMassa(r); reload(); }} />}
+      {esitoMassa && <Modal title={`Utenti saltati · ${esitoMassa.modulo}`} onClose={() => setEsitoMassa(null)} footer={<button className="btn" onClick={() => setEsitoMassa(null)}>Chiudi</button>}>
+        <ul className="plain">{esitoMassa.saltati.map((x) => <li key={x.id}><b>{x.nome || `utente ${x.id}`}</b>: {x.motivo}</li>)}</ul>
+        <p className="small muted">Per cambiare il profilo a chi ha già il widget, ripeti l'operazione con "Sostituisci il profilo di chi ha già il widget".</p>
+      </Modal>}
       {report && <Modal title="Rapporto dell'assegnazione" wide onClose={() => setReport(null)} footer={<button className="btn" onClick={() => setReport(null)}>Chiudi</button>}><ProfileReport report={report} /></Modal>}
       {confirmDel && <ConfirmModal title={`Eliminare l'accesso di ${confirmDel.full_name}?`} text="L'utente non potrà più entrare nella Suite e perde i moduli assegnati. La persona resta in anagrafica: l'accesso si può ricreare dalla sua scheda." danger confirmText="Elimina" onConfirm={async () => { await api.del(`/users/${confirmDel.id}`); toast('Accesso eliminato'); reload(); }} onClose={() => setConfirmDel(null)} />}
     </div>
@@ -99,6 +108,44 @@ function PersonPicker({ value, onChange }) {
         {!rows.length && <div className="small muted" style={{ padding: 12 }}>Nessuna persona con email trovata.</div>}
       </div>}
     </div>
+  );
+}
+
+// ---------- Attivazione di un widget per gli utenti selezionati, con lo stesso profilo e lo stesso ambito ----------
+function WidgetMassaModal({ users, modules, sites, canRestricted, onClose, onDone }) {
+  const orgs = useApi('/organizations');
+  const toast = useToast();
+  const elenco = modules.filter((m) => m.key !== 'admin' && (m.profiles || []).length && (!m.restricted || canRestricted)).sort((a, b) => a.name.localeCompare(b.name, 'it'));
+  const [key, setKey] = useState('');
+  const m = elenco.find((x) => x.key === key);
+  const [profile, setProfile] = useState('');
+  const [ids, setIds] = useState([]);
+  const [sovrascrivi, setSovrascrivi] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setProfile(m?.profiles?.[0]?.key || ''); setIds([]); }, [key]);
+  const prof = m?.profiles?.find((p) => p.key === profile);
+  const scopeType = m?.scope_type || 'SITE';
+  const options = scopeType === 'ORG' ? (orgs.data || []) : sites;
+  const pronto = m && prof && (!prof.scoped || ids.length > 0);
+  const salva = async () => {
+    setBusy(true);
+    try { onDone(await api.post('/users/grants/massa', { user_ids: users.map((u) => u.id), module_key: m.key, profile, scopes: prof.scoped ? ids.map((id) => ({ type: scopeType, id })) : [], sovrascrivi })); }
+    catch (e) { toast(e.message || String(e), 'err'); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title={`Attiva un widget per ${users.length} utent${users.length === 1 ? 'e' : 'i'}`} onClose={onClose}
+      footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn primary" disabled={!pronto || busy} onClick={salva}>Attiva per tutti</button></>}>
+      <p className="small muted" style={{ marginTop: 0 }}>{users.slice(0, 8).map((u) => u.full_name).join(', ')}{users.length > 8 ? ` e altri ${users.length - 8}` : ''}</p>
+      <div className="form-grid">
+        <Field label="Widget" required><select value={key} onChange={(e) => setKey(e.target.value)}><option value="">Scegli…</option>{elenco.map((x) => <option key={x.key} value={x.key}>{x.name}{x.restricted ? ' (riservato)' : ''}</option>)}</select></Field>
+        <Field label="Profilo" required><select value={profile} disabled={!m} onChange={(e) => { setProfile(e.target.value); setIds([]); }}>{(m?.profiles || []).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select></Field>
+        {m && prof?.scoped && <div className="span-all"><Field label={scopeType === 'ORG' ? 'Organizzazioni (uguali per tutti)' : 'Sedi (uguali per tutti)'} required>
+          <MultiSelect value={ids} onChange={setIds} options={options || []} placeholder={scopeType === 'ORG' ? 'Aggiungi organizzazione' : 'Aggiungi sede'} labelOf={(o) => (o.code ? `${o.code} · ${o.name}` : o.name)} /></Field></div>}
+        {m && prof && !prof.scoped && <div className="span-all small muted">Questo profilo vale per tutte le sedi.</div>}
+        <label className="f inline span-all"><input type="checkbox" checked={sovrascrivi} onChange={(e) => setSovrascrivi(e.target.checked)} />Sostituisci il profilo di chi ha già il widget con un profilo diverso</label>
+      </div>
+      <p className="small muted">Chi ha già il widget con lo stesso profilo resta com'è. Senza la spunta, chi lo ha con un profilo diverso viene saltato ed elencato alla fine.</p>
+    </Modal>
   );
 }
 
