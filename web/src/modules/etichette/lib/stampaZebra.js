@@ -4,7 +4,7 @@
 //   GET  <base>/available              → { printer: [{ name, uid, connection, deviceType, ... }] }
 //   GET  <base>/default?type=printer   → la stampante predefinita di Browser Print (vuoto se non c'è)
 //   POST <base>/write  { device, data } → invia lo ZPL alla stampante (corpo text/plain come l'SDK: niente preflight CORS)
-// Requisiti sul PC (docs/ETICHETTE.md): Browser Print installato e avviato; la prima volta aprire https://127.0.0.1:9101/ssl_support e
+// Requisiti sul PC (docs/LAB_CONTROL.md): Browser Print installato e avviato; la prima volta aprire https://127.0.0.1:9101/ssl_support e
 // accettare il certificato locale; alla prima richiesta della Suite Browser Print chiede di consentire il dominio (Accetta); il browser
 // può chiedere il permesso di accedere ai dispositivi della rete locale (Consenti). La stampante scelta si ricorda PER QUESTO PC
 // (localStorage: è una preferenza del dispositivo, non un dato).

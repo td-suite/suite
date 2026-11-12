@@ -101,6 +101,7 @@ export default function Desk({ readOnly = false }) {
           <Badge tone={acc.origine === 'MANUALE' ? 'mauve' : 'blue'}>{acc.origine === 'MANUALE' ? 'registrata manualmente' : acc.origine === 'SYNCLAB' ? 'dalla copia Synclab' : `da ${acc.origine}`}</Badge>
           {!sede && acc.origine !== 'MANUALE' && <button className="btn sm ghost" onClick={() => lookup(acc.id, true)}>Aggiorna dal LIS</button>}
           {!sede && acc.origine === 'MANUALE' && <button className="btn sm danger" disabled={(acc.nc || []).length > 0} title={(acc.nc || []).length ? 'Ha non conformità collegate: annullale prima' : 'Elimina la registrazione manuale'} onClick={removeAcc}>Elimina</button>}
+          {acc.labControl && <Link className="btn sm ghost" to={acc.labControl} title="Esami, campioni, avanzamento e fattura dell'accettazione (Lab Control)">Apri in Lab Control</Link>}
           {!sede && <button className="btn" onClick={() => setWizard(true)}><Icon name="plus" /> Nuova NC</button>}
         </>}>
           <div className="acc-head">

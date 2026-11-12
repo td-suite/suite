@@ -122,7 +122,7 @@ segnaposto, misure, dpi), predefinito "TD 50x25 (da validare)" con avviso fisso 
 (Code 128 B/C) per anteprima e PDF, identico in server e web. Registro stampe e audit senza dati del paziente. Diagnostica D54 e D55.
 Migrazione del modulo `etichette/001_init.sql` (si avvia da Travaso moduli > Avvia). Test `server/test/etichette.test.mjs`; collaudo su db
 proprio con server finto Synclab e finto Browser Print; schermate `docs/screens/etichette-*.png`. Da fare: disegno di StudioLab e
-validazione in sede con una Zebra vera (cosa non verificato: docs/ETICHETTE.md). Dettagli in docs/ETICHETTE.md e SYNCLAB_DATA_API.md.
+validazione in sede con una Zebra vera (cosa non verificato: docs/LAB_CONTROL.md). Dettagli in docs/LAB_CONTROL.md e SYNCLAB_DATA_API.md.
 
 ## 12/11/2026 · v0.70.0 · Guida GIPO (guida di GipoNext, FAQ, ricerca e domande con risposta)
 Richiesta del CEO del 12/11/2026 ("widget davvero fondamentale"): nuovo modulo nativo **Guida GIPO** (chiave `gipoguida`, Retail and Flow
@@ -138,6 +138,19 @@ di CF, email e numeri lunghi; 20 domande all'ora; ricerca full text italiano con
 spariscono anche lato server dalla Home e dal catalogo degli esterni). Test `server/test/gipoguida.test.mjs`; collaudo su db proprio con un
 modello finto; schermate `docs/screens/gipoguida-*.png`. Da fare: referente interno, validazione delle sezioni con chi usa GIPO, prova con
 Claude vero in produzione. Dettagli in docs/GIPO_GUIDA.md.
+
+## 12/11/2026 · v0.71.0 · Lab Control (il widget Label diventa il controllo del laboratorio)
+Richieste del CEO del 12/11/2026: il widget **Label** si chiama **Lab Control** ("Accettazioni, avanzamento, etichette"; chiave `etichette` e
+route `/etichette` invariate, vecchi indirizzi di Label reindirizzati) e Label diventa una sua sezione con il menu di prima. Nuove pagine
+sulla copia Synclab: Cruscotto (oggi per fase, in lavorazione, referti non chiusi, ritardi, campioni in viaggio, non eseguiti, TAT oggi/7
+giorni/per sede), Accettazioni (paginate lato server, filtri cliente, sede, data, fase, ritardo, NC, non fatturate, numero/barcode/cognome;
+colonne per utente; Excel senza nomi), Scheda (linea del tempo delle fasi, esami, campioni con il legame esame ↔ campione, totali, Etichetta,
+Fattura dalla copia senza PDF, NC, "Aggiorna dal gestionale"), Campioni, In ritardo, Tempi di refertazione, Esami non eseguiti, Clienti,
+Impostazioni. Fasi da una sola funzione (`lib/fasi.js`). Collegamenti verificati lato server verso Business Hub, Retail, Listino, Ordini,
+NC (API `lib/collegamenti.js`) e link inversi da Business Hub, Retail, Desk NC e ricerca globale. Nuovo profilo LABORATORIO. Cockpit: tre
+tessere di Lab Control nell'operatività; Diagnostica D57. Migrazione `etichette/002_lab_control.sql` (letture puntuali, indici sulla copia).
+Test `server/test/labcontrol.test.mjs`; collaudo su db proprio con 4.200 accettazioni sintetiche; schermate `docs/screens/labcontrol-*.png`.
+Dettagli e cosa la Data API non dà (PDF, data di ingresso negli stati, data di chiusura, significato dei codici di non esecuzione): docs/LAB_CONTROL.md.
 
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.

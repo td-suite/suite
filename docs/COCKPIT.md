@@ -294,3 +294,12 @@ Collaudo v0.68.6 (db proprio, dati sintetici con nomi inventati): schermate `doc
 `server/test/v0686-produzione-accettata.test.mjs` (KPI e statistiche, grafici, tessere, sintesi delle scadenze, funzioni pure).
 Verifica in produzione: `GET /api/cockpit/monitor` → `schermo.kpi` con 4 voci e `statistiche`, `schermo.operativita` con 10 tessere (le "non
 disponibili" con il motivo), `schermo.scadenze_sintesi`.
+
+### Tessere di Lab Control (v0.71.0, CEO 12/11/2026)
+Nel riquadro Operatività tre tessere con i dati di Lab Control (`modules/etichette/lib/lab.js` `indicatoriCockpit`, tutta la rete, soglie
+dalle impostazioni di Lab Control o predefinite se il modulo non è avviato; nessun link, regola del monitor):
+- **In lavorazione ora**: accettazioni negli stati 15, 18, 20, 25 degli ultimi `giorni_finestra` giorni (60); statistica: referti pronti non chiusi (stato 40).
+- **In ritardo (oltre N ore)**: in corso da oltre `ore_ritardo` (72) ore dall'accettazione senza referto; statistica: quota sulle accettazioni in corso.
+- **TAT mediano 7 giorni**: accettazione → referto pronto dei referti degli ultimi 7 giorni, in ore; statistiche: vs i 7 giorni prima, 90° percentile.
+Sostituiscono "Esami del mese", "Quota fuori area" e "Clienti Service con produzione" (restano in Retail e nel Business Hub): le tessere
+restano 10 (5 × 2), una schermata senza scorrimento. Dettagli in LAB_CONTROL.md.

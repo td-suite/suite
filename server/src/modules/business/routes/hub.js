@@ -168,7 +168,10 @@ r.get('/accounts/:id', ah(async (req, res) => {
 r.get('/accounts/:id/synclab', ah(async (req, res) => {
   const a = await loadAccount(req.params.id);
   const { bloccoAccount } = await import('../lib/synclabAccount.js');
-  try { res.json(await bloccoAccount(a, { oggi: todayRome() })); }
+  // v0.71.0: "Accettazioni in Lab Control" con il filtro della Legal entity (solo se Lab Control è LIVE e l'utente ne ha il grant)
+  const { linkLabControl } = await import('../../etichette/lib/collegamenti.js');
+  const labControl = await linkLabControl(req.suiteUser || req.user, { cliente: a.organization_id }).catch(() => null);
+  try { res.json({ ...(await bloccoAccount(a, { oggi: todayRome() })), lab_control: labControl }); }
   catch (e) { console.warn(`[business:hub] synclab account ${a.id}: ${e.message}`); res.json({ applicabile: true, disponibile: false, nota: `Synclab: lettura non riuscita (${e.message})` }); }
 }));
 

@@ -140,3 +140,11 @@ ora della copia. Esami = righe d'esame non cancellate **comprese quelle senza pr
 parte ("di cui … senza prezzo"). In B2B > Produzione e nella scheda cliente: "di cui sconti di testata: x €" (applicati o no).
 Le API B2B espongono `sconto_testata` e `regola_sconto` accanto a `fonte_produzione`.
 Punto aperto: possibile doppio conteggio fra GIPO e Laboratorio in sede nel Cockpit (docs/SYNCLAB_DATA_API.md, "Punti aperti").
+
+## v0.71.0 · Collegamenti con Lab Control (CEO 12/11/2026)
+- Scheda cliente B2B (`/retail/b2b/clienti/:chiave`): pulsante **"Accettazioni in Lab Control"** con il filtro del cliente (`cliente=<id
+  Legal entity>` oppure `c-<id client>`, stessa chiave di Retail), nel campo `link.lab_control` della risposta (solo con Lab Control LIVE e il grant).
+- B2C > Laboratorio in sede: per ogni sede il pulsante **"Lab Control"** (accettazioni di oggi della sede), campo `lab_control` della risposta.
+- In senso inverso, dal menu di un cliente in Lab Control: "Retail · scheda cliente B2B" o, per i client delle sedi TD (regola della
+  ripartizione qui sopra, con l'impostazione `synclab_privati_in_b2c`), "Retail · Laboratorio in sede" (`/retail/b2c/sedi/:id`); "Listino del
+  gestionale" apre B2B > Listini applicati sul cliente. Con Retail non LIVE o senza grant le voci restano spente con il motivo.

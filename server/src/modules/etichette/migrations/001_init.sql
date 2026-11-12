@@ -1,6 +1,6 @@
 -- Label · etichette provette (schema "etichette" della Suite, search_path = etichette, public). v0.69.0, richiesta del CEO del 10/11/2026:
 -- dal numero di accettazione o dal cognome del paziente, anteprima delle etichette per provetta (una per campione della copia Synclab) e
--- stampa sulla Zebra della sede con Zebra Browser Print (docs/ETICHETTE.md).
+-- stampa sulla Zebra della sede con Zebra Browser Print (docs/LAB_CONTROL.md).
 -- Dati del paziente: SOLO in pazienti_recenti (cognome, nome, nascita, sesso delle accettazioni degli ultimi N giorni, impostazione
 -- giorni_identita, purga quotidiana). Il codice fiscale NON si conserva (colonna vincolata a NULL). Il registro delle stampe non ha
 -- dati del paziente. Migrazione idempotente: IF NOT EXISTS ovunque, semi con ON CONFLICT / WHERE NOT EXISTS.

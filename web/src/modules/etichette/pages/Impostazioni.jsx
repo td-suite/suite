@@ -1,4 +1,4 @@
-// Label · Impostazioni (ADMIN): giorni di conservazione delle identità recenti, etichetta "richiesta", modello per sede, stato del job
+// Lab Control > Label · Impostazioni Label (ADMIN): giorni di conservazione delle identità recenti, etichetta "richiesta", modello per sede, stato del job
 // delle identità e della Data API, dati conservati.
 import React, { useEffect, useState } from 'react';
 import { Badge, Card, ErrorBox, Field, PageHead, Switch, useToast } from '../../../components/ui.jsx';
@@ -41,7 +41,7 @@ export default function Impostazioni() {
 
   return (
     <div className="page et-page">
-      <PageHead title="Impostazioni di Label" icon="gear" sub="Identità recenti, etichetta richiesta, modello per sede" actions={<button className="btn" onClick={salva}>Salva</button>} />
+      <PageHead title="Impostazioni Label" icon="gear" sub="Identità recenti, etichetta richiesta, modello per sede" actions={<button className="btn" onClick={salva}>Salva</button>} />
       <ErrorBox error={err} />
       <div className="et-due">
         <Card title="Identità recenti dei pazienti" icon="shield">

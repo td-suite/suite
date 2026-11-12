@@ -29,11 +29,12 @@ export default function Laboratorio() {
         </div>
         <Card title="Accettazioni per sede e mese" flush>
           {!d.sedi.length ? <Empty>Nessuna accettazione dei punti TD nel periodo (i client StudioLab vanno abbinati alle sedi in Amministrazione &gt; Connettori &gt; Dati Synclab)</Empty> : <div className="table-wrap"><table className="t" data-testid="lab-sedi">
-            <thead><tr><th>Sede</th>{d.mesi.map((m) => <th key={m} className="num">{monthLabel(m)}</th>)}<th className="num">Totale</th><th className="num">Anno prima</th><th className="num">Variazione</th></tr></thead>
+            <thead><tr><th>Sede</th>{d.mesi.map((m) => <th key={m} className="num">{monthLabel(m)}</th>)}<th className="num">Totale</th><th className="num">Anno prima</th><th className="num">Variazione</th>{d.lab_control && <th />}</tr></thead>
             <tbody>{d.sedi.map((s) => <tr key={s.site_id ?? 'nd'}><td>{s.site_id ? <Link to={`${base}/b2c/sedi/${s.site_id}`}>{s.sede}</Link> : <span className="muted">{s.sede}</span>}</td>
               {d.mesi.map((m) => <td key={m} className="num">{s.mesi[m] ? num(s.mesi[m].accettazioni) : <span className="muted">–</span>}</td>)}
-              <td className="num strong">{num(s.totale.accettazioni)}</td><td className="num">{num(s.anno_prima.accettazioni)}</td><td className="num"><VarPct v={s.var_accettazioni} /></td></tr>)}
-              <tr className="strong"><td>Totale</td>{d.per_mese.map((m) => <td key={m.mese} className="num">{num(m.accettazioni)}</td>)}<td className="num">{num(d.totale.accettazioni)}</td><td className="num">{num(d.anno_prima.accettazioni)}</td><td className="num"><VarPct v={d.var_accettazioni} /></td></tr></tbody>
+              <td className="num strong">{num(s.totale.accettazioni)}</td><td className="num">{num(s.anno_prima.accettazioni)}</td><td className="num"><VarPct v={s.var_accettazioni} /></td>
+              {d.lab_control && <td className="actions">{s.site_id ? <Link className="btn sm ghost" to={`${d.lab_control}?sede=${s.site_id}&periodo=oggi`} title="Accettazioni della sede in Lab Control (stato di avanzamento)">Lab Control</Link> : null}</td>}</tr>)}
+              <tr className="strong"><td>Totale</td>{d.per_mese.map((m) => <td key={m.mese} className="num">{num(m.accettazioni)}</td>)}<td className="num">{num(d.totale.accettazioni)}</td><td className="num">{num(d.anno_prima.accettazioni)}</td><td className="num"><VarPct v={d.var_accettazioni} /></td>{d.lab_control && <td />}</tr></tbody>
           </table></div>}
         </Card>
         <div className="grid g2" style={{ marginTop: 16 }}>

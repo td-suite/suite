@@ -414,12 +414,14 @@ describe('v0.68.6 con database e dati sintetici', { skip: SALTA }, () => {
     assert.match(G.ripartizione.nota || '', /Possibile doppio conteggio/, 'GIPO vende nelle sedi con Laboratorio in sede: dichiarato, niente tolto');
     // operatività: ogni tessera ha un numero e una statistica (o "non disponibile" con il motivo)
     const T = Object.fromEntries(S.operativita.map((x) => [x.chiave, x]));
-    for (const k of ['op_acc_oggi', 'op_esami_mese', 'op_scontrino', 'op_prima_disp', 'op_fuori_area', 'op_nc', 'op_ordini', 'op_ferie', 'op_clienti_prod', 'op_clienti_ritardo']) {
+    // v0.71.0: "Esami del mese", "Quota fuori area" e "Clienti Service con produzione" lasciano il posto alle tessere di Lab Control
+    for (const k of ['op_acc_oggi', 'op_lab_lavorazione', 'op_lab_ritardo', 'op_lab_tat', 'op_scontrino', 'op_prima_disp', 'op_nc', 'op_ordini', 'op_ferie', 'op_clienti_ritardo']) {
       assert.ok(T[k], `tessera ${k}`);
       assert.ok(T[k].non_disponibile ? T[k].motivo : T[k].statistiche.length >= 1, `${k}: statistica o motivo`);
     }
-    assert.equal(T.op_esami_mese.valore, 12, '9 fino al 9 novembre + 3 di oggi (righe senza prezzo comprese)'); assert.equal(T.op_esami_mese.statistiche[0].valore, 1.2);
-    assert.equal(T.op_clienti_prod.valore, 4, 'Alfa, Beta, Delta ed Effe hanno produzione nel mese');
+    assert.equal(S.operativita.length, 10, 'dieci tessere (5 × 2)');
+    assert.ok(!T.op_esami_mese && !T.op_fuori_area && !T.op_clienti_prod);
+    assert.equal(typeof T.op_lab_lavorazione.valore, 'number'); assert.match(T.op_lab_ritardo.titolo, /oltre 72 ore/);
     assert.equal(T.op_scontrino.statistiche[0].valore, Math.round(((50 - 30) / 30) * 1000) / 10, 'scontrino medio vs mese prima');
     // scadenze: una fascia per utente
     const u = await M.mon.monitorPerUtente({ level: 'OWNER', grants: {} }, { oggi: OGGI, fresco: true });

@@ -1,4 +1,4 @@
-// Label · Modelli dell'etichetta (ADMIN). Il disegno è ZPL con segnaposto ({COGNOME}, {BARCODE}, ...; {CAMPO:n} tronca a n caratteri),
+// Lab Control > Label · Modelli dell'etichetta (ADMIN). Il disegno è ZPL con segnaposto ({COGNOME}, {BARCODE}, ...; {CAMPO:n} tronca a n caratteri),
 // con misure del rotolo e risoluzione della stampante. Anteprima dal vivo con dati di esempio inventati (stesso renderer della stampa),
 // comandi ZPL non supportati dall'anteprima e segnaposto sconosciuti segnalati, "Stampa di prova" sulla Zebra di questo PC o in PDF.
 // Validazione: "Segna come validato" dopo il confronto con l'etichetta di StudioLab e la lettura con gli strumenti del laboratorio;

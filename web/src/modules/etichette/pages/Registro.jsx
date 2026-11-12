@@ -1,4 +1,4 @@
-// Label · Registro stampe (ADMIN): chi, quando, sede, accettazione, etichette, copie, stampante, esito, ristampa. Nessun dato del paziente.
+// Lab Control > Label · Registro stampe (ADMIN): chi, quando, sede, accettazione, etichette, copie, stampante, esito, ristampa. Nessun dato del paziente.
 import React, { useState } from 'react';
 import { Badge, Card, ErrorBox, PageHead, Pager } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';

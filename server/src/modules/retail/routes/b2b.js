@@ -92,7 +92,9 @@ r.get('/clienti/:chiave', ah(async (req, res) => {
   const codici = orgId ? await many(`SELECT id, external_code, abbinamento FROM customers WHERE kind = 'B2B' AND NOT demo AND organization_id = $1 ORDER BY external_code`, [orgId]) : [];
   res.json({ ...s, prezzi, periodo: p, org, nc, codici_vendite: codici, privati_in_b2c: privati,
     hub: { disponibile: hub.disponibile, nota: hub.nota || (orgId && !h && hub.disponibile ? 'Nessun listino del Business Hub per questa Legal entity' : null), versione: h?.versione ?? null, linea: h?.linea ?? null, account_id: h?.account_id ?? null },
-    link: { business_hub: h?.account_id ? `/business/account/${h.account_id}` : null, clienti_synclab: '/admin/connectors/synclab' }, ...(await fonte()) });
+    link: { business_hub: h?.account_id ? `/business/account/${h.account_id}` : null, clienti_synclab: '/admin/connectors/synclab',
+      // v0.71.0: accettazioni del cliente in Lab Control (solo con Lab Control LIVE e il grant)
+      lab_control: await (await import('../../etichette/lib/collegamenti.js')).linkLabControl(req.suiteUser || req.user, { cliente: chiave }).catch(() => null) }, ...(await fonte()) });
 }));
 
 // Produzione per cliente e mese (B2B) e il suo export Excel

@@ -24,7 +24,7 @@ export function tipoRicerca(testo) {
 }
 /** Normalizzazione per il confronto dei nomi: minuscolo, senza accenti, apostrofi e spazi multipli. */
 export const normNome = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/['’`]/g, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
-const SQL_NORM = (c) => `regexp_replace(regexp_replace(translate(lower(coalesce(${c}, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ''’\`', 'aaaaaeeeeiiiiooooouuuucn'), '[^a-z ]', ' ', 'g'), ' +', ' ', 'g')`;
+export const SQL_NORM = (c) => `regexp_replace(regexp_replace(translate(lower(coalesce(${c}, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ''’\`', 'aaaaaeeeeiiiiooooouuuucn'), '[^a-z ]', ' ', 'g'), ' +', ' ', 'g')`;
 
 /** Filtra le righe per perimetro: { visibili, fuori } (fuori = quante nascoste, senza dettagli). */
 export function perPerimetro(righe, ctx) {

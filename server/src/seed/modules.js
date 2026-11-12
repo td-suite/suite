@@ -7,14 +7,16 @@ export const MODULES = [
   // ---- (i commenti di area sotto sono storici: l'area effettiva è nel campo area)
   { key: 'business', area: 'RETAIL_FLOW', name: 'Business Hub', tagline: 'Pipeline, clienti, contratti', icon: 'business-hub', kind: 'LEGACY', legacy_url: 'https://business.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('ADMIN', 'Amministratore'), P('SERVICE', 'Service'), P('RETAIL', 'Retail'), P('MDL', 'Medicina del Lavoro'), P('HQS', 'HQS'), P('VIEWER', 'Sola lettura')] },
-  // Label (v0.69.0, CEO 10/11/2026: "widget davvero fondamentale"): etichette provette dalle accettazioni StudioLab, stampa sulla Zebra
-  // della sede con Zebra Browser Print (docs/ETICHETTE.md). Chiave tecnica `etichette`, nome visibile "Label" (deciso dal CEO). Nativo,
-  // per sede, solo con grant (non aperto a tutti); ADMIN al titolare (migrazione 001 del modulo). Subito dopo il Business Hub.
-  { key: 'etichette', area: 'RETAIL_FLOW', name: 'Label', tagline: 'Etichette provette, stampa Zebra', icon: 'etichette', kind: 'NATIVE', legacy_url: null, route: '/etichette', sort_order: 15, scope_type: 'SITE', open_to_all: false,
-    profiles: [P('ADMIN', 'Amministratore (impostazioni, modello, registro)'), P('OPERATORE', 'Operatore di sede (cerca, anteprima e stampa)', true)] },
+  // Lab Control (v0.71.0, CEO 12/11/2026; già Label v0.69.0): controllo del laboratorio sulle accettazioni StudioLab (cruscotto, elenco con
+  // le fasi fino al referto e alla chiusura, scheda con esami, campioni, Etichetta e Fattura, ritardi, tempi di refertazione) e, come
+  // sezione, Label (etichette provette, stampa Zebra). Chiave tecnica `etichette` e route /etichette invariate (docs/LAB_CONTROL.md).
+  // Nativo, per sede, solo con grant; ADMIN al titolare (migrazione 001 del modulo). Subito dopo il Business Hub. Profilo LABORATORIO
+  // (v0.71.0): personale del laboratorio, tutte le accettazioni, senza Impostazioni.
+  { key: 'etichette', area: 'RETAIL_FLOW', name: 'Lab Control', tagline: 'Accettazioni, avanzamento, etichette', icon: 'etichette', kind: 'NATIVE', legacy_url: null, route: '/etichette', sort_order: 15, scope_type: 'SITE', open_to_all: false,
+    profiles: [P('ADMIN', 'Amministratore (impostazioni, modello, registro)'), P('LABORATORIO', 'Laboratorio (tutte le accettazioni, senza impostazioni)'), P('OPERATORE', 'Operatore di sede (accettazioni, anteprima e stampa della sede)', true)] },
   // Guida GIPO (v0.70.0, CEO 12/11/2026: "widget davvero fondamentale"): guida completa di GipoNext (anche PDF), FAQ, ricerca e domande con
   // risposta sui brani della guida; le domande senza risposta vanno alla redazione e la risposta diventa una FAQ (docs/GIPO_GUIDA.md).
-  // Nativo, aperto a tutti gli INTERNI (open_to_all, ruolo implicito LETTORE); gli accessi esterni no (soloInterni). Subito dopo Label.
+  // Nativo, aperto a tutti gli INTERNI (open_to_all, ruolo implicito LETTORE); gli accessi esterni no (soloInterni). Subito dopo Lab Control.
   { key: 'gipoguida', area: 'RETAIL_FLOW', name: 'Guida GIPO', tagline: 'Guida, FAQ e risposte su GipoNext', icon: 'gipoguida', kind: 'NATIVE', legacy_url: null, route: '/gipoguida', sort_order: 16, scope_type: null, open_to_all: true,
     profiles: [P('ADMIN', 'Redazione (sezioni, FAQ, domande da risolvere, statistiche)'), P('LETTORE', 'Consultazione e domande')] },
   { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firme, scadenze, conto economico', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,

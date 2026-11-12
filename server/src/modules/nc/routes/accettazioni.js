@@ -83,7 +83,9 @@ r.get('/accettazioni/:id', ah(async (req, res) => {
     delete pazienteSynclab.accettazione;
   }
   const ncs = await many(`SELECT ${NC_COLS} ${NC_FROM} WHERE n.accettazione_id=$1 ${isSede(req.user) ? "AND n.sent_at IS NOT NULL AND n.stato <> 'ANNULLATA'" : ''} ORDER BY n.opened_at DESC`, [id]);
-  res.json({ ...acc, lisError, pazienteSynclab, synclabImport, campioniSynclab: acc.lis_json?.synclab?.campioni || null, lisStatoLabel: lis.STATO_LIS[acc.stato_lis] || acc.lis_json?.synclab?.stato_label || null, nc: ncs.map((n) => viewFor(n, req.user)) });
+  // v0.71.0: "Apri in Lab Control" (scheda dell'accettazione della copia Synclab), solo con Lab Control LIVE e il grant
+  const labControl = await (await import('../../etichette/lib/collegamenti.js')).linkLabControl(req.suiteUser || req.user, { numero: acc.id }).catch(() => null);
+  res.json({ ...acc, lisError, pazienteSynclab, synclabImport, campioniSynclab: acc.lis_json?.synclab?.campioni || null, lisStatoLabel: lis.STATO_LIS[acc.stato_lis] || acc.lis_json?.synclab?.stato_label || null, nc: ncs.map((n) => viewFor(n, req.user)), labControl });
 }));
 
 // Recupero a richiesta del paziente dal gestionale (pulsante nel Desk e nella NC): prima ServiceNET se collegato, poi la Data API

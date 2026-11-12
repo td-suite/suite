@@ -1013,3 +1013,10 @@ Il maturato dell'anno (scheda account, Pipeline, Cruscotto, D51) usa la **produz
 "v0.68.6"): stati dell'impostazione `stati_erogati` (predefiniti tutti tranne 11), importi di riga con lo sconto di testata solo se
 `sconto_testata` = APPLICA (il D51 lo legge con `synclab.sconto_testata_applicato()`). Pro quota, run rate e semaforo non cambiano regola. Il
 Cockpit conta i "clienti in ritardo sul pro quota" con lo stesso semaforo (giallo o rosso). Etichette: "Maturato … (produzione accettata)".
+
+## v0.71.0 · Collegamento con Lab Control (CEO 12/11/2026)
+- Scheda account, blocco "Dal gestionale (Synclab)": pulsante **"Accettazioni in Lab Control"** con il filtro della Legal entity (tutti i suoi
+  client Synclab), accanto a "Scheda B2B in Retail". Il link lo costruisce il server (`GET /api/business/hub/accounts/:id/synclab`, campo
+  `lab_control`) solo se Lab Control è LIVE e l'utente ne ha il grant (Owner e Admin della Suite sempre); altrimenti il pulsante non c'è.
+- In Lab Control il clic sul nome di un cliente apre la scheda account del Business Hub della Legal entity abbinata (`synclab.clients_td`;
+  con più account un elenco per linea; senza account la scheda della Legal entity; client non abbinato: "Abbina"). Dettagli in LAB_CONTROL.md.

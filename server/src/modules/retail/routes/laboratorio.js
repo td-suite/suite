@@ -18,7 +18,9 @@ r.get('/', ah(async (req, res) => {
   const stato = await statoCopia(); const stati = await statiErogati(); const sconto = await scontoTestata(); const cp = stato?.insiemi?.requests?.checkpoint_at || null;
   // v0.68.5: accettazioni, esami e valore della produzione (v0.68.6: ACCETTATA; definizione unica di letture.js)
   res.json({ ...d, periodo_richiesto: p, privati_in_b2c: privati, fonte: 'StudioLab (Synclab Data API, copia locale in sola lettura)', stato,
-    stati, stati_descritti: descriviStati(stati), sconto_testata: sconto, fonte_produzione: fonteProduzione(stati, cp, sconto), aggiornato: aggiornatoAlle(cp, oggiRoma()) });
+    stati, stati_descritti: descriviStati(stati), sconto_testata: sconto, fonte_produzione: fonteProduzione(stati, cp, sconto), aggiornato: aggiornatoAlle(cp, oggiRoma()),
+    // v0.71.0: link alle accettazioni della sede in Lab Control (base del link, la pagina aggiunge ?sede=<id>; null senza grant o modulo)
+    lab_control: await (await import('../../etichette/lib/collegamenti.js')).linkLabControl(req.suiteUser || req.user, {}).catch(() => null) });
 }));
 
 export default r;

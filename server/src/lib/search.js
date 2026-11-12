@@ -174,11 +174,42 @@ export async function search(user, qtext, kind = '') {
       LIMIT 30`, params);
   // Guida GIPO (v0.70.0): sezioni e FAQ della guida di GipoNext, solo per gli interni (il modulo non è aperto agli esterni) e solo con
   // il modulo attivo. cercaGuida è esportata dal modulo; un errore della guida non blocca la ricerca della Suite.
+  let out = rows;
   if (isInternal(user) && (!kind || kind === 'guida_gipo')) {
     const guida = await risultatiGuida(text).catch((e) => { console.warn('[search:guida]', e.message); return []; });
-    if (guida.length) return [...rows, ...guida].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 30);
+    if (guida.length) out = [...out, ...guida].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 30);
   }
-  return rows;
+  // Lab Control (v0.71.0): un'accettazione si trova per numero (o barcode) solo da chi ha il grant del modulo, nel suo perimetro di sedi;
+  // in testa ai risultati, sensibile (mai verso il modello), senza dati del paziente
+  if (!kind || kind === 'accettazione') {
+    const acc = await risultatiLabControl(user, text).catch((e) => { console.warn('[search:labcontrol]', e.message); return []; });
+    if (acc.length) out = [...acc, ...out].slice(0, 30);
+  }
+  return out;
+}
+
+async function risultatiLabControl(user, text) {
+  if (!/\d{3}/.test(text) || text.length > 40) return [];
+  const g = user?.grants?.etichette;
+  const admin = user?.level === 'OWNER' || user?.level === 'ADMIN';
+  if (!g && !admin) return [];
+  const st = await many(`SELECT mode FROM module_state WHERE key = 'etichette' AND mode = 'LIVE'`);
+  if (!st.length) return [];
+  const tutte = admin && !g ? true : ['ADMIN', 'LABORATORIO'].includes(g?.profile);
+  const siti = (g?.scopes || []).filter((x) => x.type === 'SITE').map((x) => Number(x.id));
+  if (!tutte && !siti.length) return [];
+  const { cercaAccettazioniSynclab, statoSynclab } = await import('../modules/nc/lib/synclabDesk.js');
+  const { candidati } = await cercaAccettazioniSynclab(text);
+  if (!candidati.length) return [];
+  const righe = await many(`SELECT r.instance_id, r.id, r.request_number, to_char(r.date, 'DD/MM/YYYY') AS data, r.state, coalesce(ct.legal_name, r.client_code) AS cliente, ct.site_id, s.code AS sede
+      FROM unnest($1::text[], $2::text[]) AS k(instance_id, id) JOIN synclab.requests r ON r.instance_id = k.instance_id AND r.id = k.id
+      LEFT JOIN synclab.clients_td ct ON ct.instance_id = r.instance_id AND ct.client_id = r.client_id LEFT JOIN sites s ON s.id = ct.site_id`,
+  [candidati.map((c) => c.instance_id), candidati.map((c) => String(c.id))]);
+  return righe.filter((x) => tutte || (x.site_id != null && siti.includes(Number(x.site_id)))).slice(0, 5).map((x) => ({
+    kind: 'accettazione', ref_id: `${x.instance_id}|${x.id}`, title: `Accettazione ${x.request_number}${x.cliente ? ` · ${x.cliente}` : ''}`, module_key: 'etichette',
+    link: `/etichette/accettazioni/${encodeURIComponent(x.instance_id)}/${encodeURIComponent(x.id)}`, sensitive: true,
+    snippet: [x.data, statoSynclab(x.state), x.sede].filter(Boolean).join(' · '), body: '', score: 2,
+  }));
 }
 
 async function risultatiGuida(text) {

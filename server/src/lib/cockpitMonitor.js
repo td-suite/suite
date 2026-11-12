@@ -947,12 +947,35 @@ async function schermoMonitor(ctx, indicatori) {
     T.push(tessera(indicatore({ chiave: 'op_acc_oggi', titolo: 'Accettazioni oggi', gruppo: G_SCHERMO, valore: v, meglio: null, dettaglio: syn.privatiInB2c ? `B2B ${n0(syn.p0.B2B?.accettazioni || 0)} · in sede ${n0(syn.p0.LAB_SEDE?.accettazioni || 0)}` : null, fonte: `Synclab, produzione accettata (${syn.aggiornato || 'copia'})`, aggiornato: P.oggi }),
       [stat(`vs media dei ${m.giorno}`, m.media == null ? null : pctVar(v, m.media), '%', m.media == null ? 'non disponibile: nessuno stesso giorno della settimana nei dati importati' : `media ${n0(m.media)} su ${m.n} ${m.n === 1 ? 'settimana' : 'settimane'} precedenti`)]));
   }
-  // 2) esami del mese: esami per accettazione
-  if (!syn) T.push(tessera(nd('op_esami_mese', 'Esami del mese'), []));
-  else {
-    const e = syn.pm.totale.esami, a = syn.pm.totale.accettazioni;
-    T.push(tessera(indicatore({ chiave: 'op_esami_mese', titolo: 'Esami del mese', gruppo: G_SCHERMO, valore: e, meglio: null, dettaglio: `di cui ${n0(syn.pm.totale.righe_senza_prezzo)} senza prezzo (contati come nel report del gestionale)`, fonte: `Synclab, righe d'esame non cancellate (${syn.aggiornato || 'copia'})`, aggiornato: P.oggi }),
-      [stat('esami per accettazione', a ? Math.round((e / a) * 100) / 100 : null, 'n', a ? `${n0(e)} esami su ${n0(a)} accettazioni del mese` : 'non disponibile: nessuna accettazione nel mese')]));
+  // 2-4) Lab Control (v0.71.0, CEO 12/11/2026): in lavorazione ora, in ritardo oltre la soglia, TAT mediano degli ultimi 7 giorni. Tutta la
+  // rete, dalla copia Synclab con le regole di Lab Control (soglie dalle sue impostazioni); nessun link (regola del monitor). Sostituiscono
+  // "Esami del mese", "Quota fuori area" e "Clienti Service con produzione" (dati che restano nelle loro pagine).
+  let lab = null, labNota = synNota || 'Synclab non disponibile';
+  if (syn) {
+    try {
+      const { indicatoriCockpit } = await import('../modules/etichette/lib/lab.js');
+      const adesso = P.oggi === oggiRoma() ? new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Rome' }).replace(' ', 'T') : `${P.oggi}T23:59:59`;
+      lab = await indicatoriCockpit({ adesso });
+      if (!lab) labNota = 'Nessuna accettazione nella copia Synclab';
+    } catch (e) { lab = null; labNota = `Lettura non riuscita (${String(e.message).slice(0, 100)})`; }
+  }
+  const fLab = `Lab Control, copia Synclab (${syn?.aggiornato || 'copia'})`;
+  if (!lab) {
+    T.push(tessera(indicatore({ chiave: 'op_lab_lavorazione', titolo: 'In lavorazione ora', gruppo: G_SCHERMO, fonte: 'Lab Control', motivo: labNota }), []));
+    T.push(tessera(indicatore({ chiave: 'op_lab_ritardo', titolo: 'Accettazioni in ritardo', gruppo: G_SCHERMO, fonte: 'Lab Control', motivo: labNota }), []));
+    T.push(tessera(indicatore({ chiave: 'op_lab_tat', titolo: 'TAT mediano 7 giorni', gruppo: G_SCHERMO, unita: 'ore', fonte: 'Lab Control', motivo: labNota }), []));
+  } else {
+    T.push(tessera(indicatore({ chiave: 'op_lab_lavorazione', titolo: 'In lavorazione ora', gruppo: G_SCHERMO, valore: lab.in_corso, meglio: null,
+      dettaglio: `accettazioni in attesa, prelievo eseguito, in lavorazione o in firma (ultimi ${lab.giorni_finestra} giorni)`, fonte: fLab, aggiornato: P.oggi }),
+    [stat('referti pronti non chiusi', lab.referti_aperti, 'n', `${n0(lab.referti_aperti)} accettazioni con il referto pronto (stato 40) non ancora chiuse`, { meglio: null })]));
+    T.push(tessera(indicatore({ chiave: 'op_lab_ritardo', titolo: `In ritardo (oltre ${lab.soglia} ore)`, gruppo: G_SCHERMO, valore: lab.in_ritardo, meglio: 'giu',
+      dettaglio: `accettazioni in corso oltre ${lab.soglia} ore dall'accettazione senza referto pronto`, fonte: fLab, aggiornato: P.oggi }),
+    [stat('delle accettazioni in corso', lab.in_corso ? pct1(lab.in_ritardo, lab.in_corso) : null, '%', lab.in_corso ? `${n0(lab.in_ritardo)} su ${n0(lab.in_corso)} in corso` : 'nessuna accettazione in corso', { meglio: 'giu' })]));
+    const t7 = lab.tat7, tp = lab.tat7_prima;
+    T.push(tessera(indicatore({ chiave: 'op_lab_tat', titolo: 'TAT mediano 7 giorni', gruppo: G_SCHERMO, unita: 'ore', valore: t7.n ? t7.mediana : null, meglio: 'giu',
+      dettaglio: t7.n ? `accettazione → referto pronto, ${n0(t7.n)} referti degli ultimi 7 giorni` : null, fonte: fLab, aggiornato: P.oggi, motivo: 'Nessun referto pronto negli ultimi 7 giorni' }),
+    [stat('vs 7 giorni prima', t7.n && tp.n ? pctVar(t7.mediana, tp.mediana) : null, '%', tp.n ? `7 giorni prima: ${n0(tp.mediana)} ore (${n0(tp.n)} referti)` : 'non disponibile: nessun referto nei 7 giorni prima', { meglio: 'giu' }),
+      t7.n ? stat('90° percentile', t7.p90, 'ore', `il 90% dei referti entro ${n0(t7.p90)} ore`, { meglio: 'giu' }) : null]));
   }
   // 3) scontrino medio GIPO vs mese prima
   if (!gipo) T.push(tessera(ndR('op_scontrino', 'Scontrino medio GIPO', 'EUR'), []));
@@ -966,13 +989,6 @@ async function schermoMonitor(ctx, indicatori) {
   if (!tt3) T.push(tessera(ndR('op_prima_disp', 'Prima disponibilità online', 'giorni'), []));
   else T.push(tessera({ ...tt3, chiave: 'op_prima_disp', titolo: 'Prima disponibilità online', confronto: null },
     [stat('vs una settimana prima', tt3.confronto ? tt3.confronto.delta : null, 'giorni', tt3.confronto ? `una settimana prima ${n0(tt3.confronto.valore_precedente)} giorni (mediana della rete)` : 'non disponibile: nessun dato di una settimana prima', { meglio: 'giu' })]));
-  // 5) quota fuori area (GIPO) vs mese prima
-  if (!gipo) T.push(tessera(ndR('op_fuori_area', 'Quota fuori area', '%'), []));
-  else {
-    const q0 = qFuori(gipo.fuori), qp = qFuori(gipo.fuori_prec);
-    T.push(tessera(indicatore({ chiave: 'op_fuori_area', titolo: 'Quota fuori area', gruppo: G_SCHERMO, unita: '%', valore: q0, meglio: null, dettaglio: gipo.fuori.valutabili ? `${gipo.fuori.fuori} su ${gipo.fuori.valutabili} accettazioni GIPO valutabili` : null, fonte: 'GIPO, clienti del mese (comune e provincia diversi da quelli della sede)', aggiornato: gipo.ultima, motivo: 'Nessuna accettazione GIPO del mese con comune e provincia del cliente e della sede' }),
-      [stat('vs mese prima', q0 == null || qp == null ? null : r2(q0 - qp), 'pt', qp == null ? 'non disponibile: nessuna accettazione valutabile nel mese prima' : `${etMP}: ${String(qp).replace('.', ',')}%`, { meglio: null })]));
-  }
   // 6) NC aperte: tasso su 1.000 accettazioni del mese e % oltre il termine
   if (ctx.live.nc !== true || !ncA) T.push(tessera(ncA ? { ...ncA, chiave: 'op_nc' } : indicatore({ chiave: 'op_nc', titolo: 'NC aperte', gruppo: G_SCHERMO, fonte: 'Non conformità', motivo: motivoNonLive('nc', ctx.live.nc) }), []));
   else {
@@ -998,20 +1014,11 @@ async function schermoMonitor(ctx, indicatori) {
   const dip = byKey.dipendenti_attivi?.valore ?? null;
   if (!ferie) T.push(tessera(indicatore({ chiave: 'op_ferie', titolo: 'Ferie e permessi oggi', gruppo: G_SCHERMO, fonte: 'Piano Ferie', motivo: motivoNonLive('ferie', ctx.live.ferie) }), []));
   else T.push(tessera({ ...ferie, chiave: 'op_ferie' }, [stat('dell\'organico', ferie.valore != null && dip ? pct1(ferie.valore, dip) : null, '%', dip ? `${n0(ferie.valore)} su ${n0(dip)} dipendenti attivi` : 'non disponibile: organico non letto', { meglio: null })]));
-  // 9) clienti Service attivi con produzione nel mese; 10) clienti in ritardo sul pro quota (semaforo del Business Hub)
+  // 10) clienti in ritardo sul pro quota (semaforo del Business Hub)
   if (ctx.live.business !== true) {
     const m = motivoNonLive('business', ctx.live.business);
-    T.push(tessera(indicatore({ chiave: 'op_clienti_prod', titolo: 'Clienti Service con produzione', gruppo: G_SCHERMO, fonte: 'Business Hub + Synclab', motivo: m }), []));
     T.push(tessera(indicatore({ chiave: 'op_clienti_ritardo', titolo: 'Clienti in ritardo sul pro quota', gruppo: G_SCHERMO, fonte: 'Business Hub + Synclab', motivo: m }), []));
   } else {
-    const attivi = (await many(`SELECT DISTINCT org_id FROM public.clienti_attivi_v WHERE linea = 'SRV' AND livello = 'ATTIVO'`).catch(() => [])).map((x) => Number(x.org_id));
-    if (!syn) T.push(tessera(indicatore({ chiave: 'op_clienti_prod', titolo: 'Clienti Service con produzione', gruppo: G_SCHERMO, fonte: 'Business Hub + Synclab', motivo: synNota || 'Synclab non disponibile' }), []));
-    else {
-      const conProd = new Set(syn.clientiMese.righe.filter((x) => Number(x.esami || 0) > 0 || Number(x.valore || 0) > 0).map((x) => String(x.chiave)));
-      const n = attivi.filter((id) => conProd.has(String(id))).length;
-      T.push(tessera(indicatore({ chiave: 'op_clienti_prod', titolo: 'Clienti Service con produzione', gruppo: G_SCHERMO, valore: attivi.length ? n : null, meglio: 'su', dettaglio: `clienti Service ATTIVI del Business Hub con almeno un esame nel mese`, fonte: 'Business Hub (clienti attivi) + Synclab (produzione accettata del mese)', aggiornato: P.oggi, motivo: 'Nessun cliente Service attivo nel Business Hub' }),
-        [stat('dei clienti attivi', attivi.length ? pct1(n, attivi.length) : null, '%', attivi.length ? `${n0(n)} su ${n0(attivi.length)} clienti Service attivi` : 'nessun cliente Service attivo')]));
-    }
     try {
       const S = await import('../modules/business/lib/synclabAccount.js');
       const accts = await ctx.db('business').many(`SELECT id, organization_id, linea, fatturato_fy_atteso, data_avvio_effettiva::text, data_avvio_prevista::text, attivo_dal::text, cliente_attivo FROM accounts WHERE cliente_attivo AND linea IN ('SRV','MDL')`);

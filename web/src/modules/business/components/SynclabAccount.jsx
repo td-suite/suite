@@ -4,6 +4,7 @@
 // accettata (accettazioni negli stati della produzione, importi di riga e sconto di testata come da impostazioni), progressione giornaliera del mese e mensile dell'anno, pro
 // quota e run rate calcolati sulla produzione accettata, documenti emessi come dato secondario (mai sommato). Regole e fonti in
 // server/src/modules/business/lib/synclabAccount.js; nessun numero inventato: senza dati la voce lo dice.
+import { Link } from 'react-router-dom';
 import React from 'react';
 import { useApi, Card, Badge } from './ui.jsx';
 import { eurK, num, itDate, itDateTime } from '../format.js';
@@ -45,7 +46,7 @@ export default function SynclabAccount({ a }) {
   const anno = x?.anno || new Date().getFullYear();
   const meseCorrente = x?.mesi?.[x.mesi.length - 1];
   return (
-    <div style={{ marginBottom: 16 }}><Card title="Dal gestionale (Synclab)" className="mt" actions={<><span className="small muted" style={{ marginRight: 8 }}>{d.fonte?.aggiornato || ''}</span><a className="btn sm ghost" href={`/retail/b2b/clienti/${encodeURIComponent(d.chiave_b2b)}`} title="Scheda del cliente nella sezione B2B di Retail (produzione, documenti, prezzi applicati)">Scheda B2B in Retail</a></>}>
+    <div style={{ marginBottom: 16 }}><Card title="Dal gestionale (Synclab)" className="mt" actions={<><span className="small muted" style={{ marginRight: 8 }}>{d.fonte?.aggiornato || ''}</span><a className="btn sm ghost" href={`/retail/b2b/clienti/${encodeURIComponent(d.chiave_b2b)}`} title="Scheda del cliente nella sezione B2B di Retail (produzione, documenti, prezzi applicati)">Scheda B2B in Retail</a>{d.lab_control && <Link className="btn sm ghost" to={d.lab_control} title="Accettazioni del cliente con lo stato di avanzamento, esami, campioni e fatture (Lab Control)" data-testid="hub-lab-control">Accettazioni in Lab Control</Link>}</>}>
       <div data-testid="hub-synclab">
         {!x ? <div className="small muted">{d.nota || 'Nessun dato Synclab per questa Legal entity.'}</div> : (
           <>

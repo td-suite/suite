@@ -67,7 +67,10 @@ export async function purga(giorni) {
   const a = await q(`DELETE FROM pazienti_recenti WHERE letto_il < now() - make_interval(days => $1::int) OR data_accettazione < (now() AT TIME ZONE 'Europe/Rome')::date - $1::int`, [n]);
   const b = await q(`DELETE FROM accettazioni_dirette d WHERE d.letto_il < now() - make_interval(days => $1::int) OR d.data < (now() AT TIME ZONE 'Europe/Rome')::date - $1::int
                        OR EXISTS (SELECT 1 FROM synclab.requests r WHERE r.instance_id = d.instance_id AND r.id = d.id AND r.deleted_at IS NULL)`, [n]);
-  return { identita: a.rowCount, letture_dirette: b.rowCount };
+  // Lab Control (v0.71.0): letture puntuali "Aggiorna dal gestionale" (senza paziente) più vecchie di N giorni o superate dalla copia
+  const c = await q(`DELETE FROM lc_letture l WHERE l.letto_il < now() - make_interval(days => $1::int)
+                       OR EXISTS (SELECT 1 FROM synclab.requests r WHERE r.instance_id = l.instance_id AND r.id = l.id AND r.updated_at > l.letto_il)`, [n]).catch(() => ({ rowCount: 0 }));
+  return { identita: a.rowCount, letture_dirette: b.rowCount, letture_puntuali: c.rowCount };
 }
 
 async function salvaStato(patch) {

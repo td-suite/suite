@@ -17,7 +17,7 @@ r.get('/cerca', ah(async (req, res) => {
   const testo = String(req.query.q || '').trim().slice(0, 80);
   const tipo = tipoRicerca(testo);
   if (!tipo) return res.json({ tipo: null, risultati: [], fuori: 0, messaggio: 'Scrivi o leggi con il lettore il numero di accettazione o il barcode, oppure almeno 2 lettere del cognome' });
-  if (!ctx.isAdmin && !ctx.siteIds.length) return res.json({ tipo, risultati: [], fuori: 0, messaggio: 'Il tuo profilo Label non ha sedi nel perimetro: chiedi all\'amministratore di assegnare la sede' });
+  if (!ctx.tutte && !ctx.siteIds.length) return res.json({ tipo, risultati: [], fuori: 0, messaggio: 'Il tuo profilo Lab Control non ha sedi nel perimetro: chiedi all\'amministratore di assegnare la sede' });
   const out = tipo === 'CODICE' ? await cercaCodice(testo, ctx) : await cercaCognome(testo, ctx, { data: req.query.data || null });
   if (!out.risultati.length && out.fuori && !out.messaggio) out.messaggio = `Accettazione trovata ma fuori dal tuo perimetro di sedi (${out.fuori})`;
   res.json(out);

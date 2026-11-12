@@ -28,6 +28,7 @@ export default function B2BCliente() {
         </div>
         {d && <div className="row">
           {d.link.business_hub && <Link className="btn ghost" to={d.link.business_hub} title="Scheda del cliente nel Business Hub">Business Hub</Link>}
+          {d.link.lab_control && <Link className="btn ghost" to={d.link.lab_control} title="Accettazioni del cliente con lo stato di avanzamento (Lab Control)" data-testid="retail-lab-control">Accettazioni in Lab Control</Link>}
           <Link className="btn ghost" to={d.link.clienti_synclab} title="Amministrazione > Connettori > StudioLAB > Dati Synclab > Clienti Synclab">Clienti Synclab</Link>
           <Link className="btn ghost" to={`${base}/b2b/listini?chiave=${encodeURIComponent(chiave)}`}>Listini applicati</Link>
         </div>}

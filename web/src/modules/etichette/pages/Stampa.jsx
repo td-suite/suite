@@ -1,11 +1,13 @@
-// Label · Stampa etichette (pagina dell'operatore). Ricerca grande con il fuoco all'apertura, pensata anche per il lettore di barcode
+// Lab Control > Label · Stampa etichette (pagina dell'operatore; v0.71.0: si apre anche dalla scheda di Lab Control con ?acc=<istanza>|<id>
+// o con ?q=<numero>). Ricerca grande con il fuoco all'apertura, pensata anche per il lettore di barcode
 // (il lettore "scrive" il codice e preme Invio = cerca); risultato unico → anteprima subito; "Stampa tutte" ben visibile; Ctrl+P stampa
 // tutte le etichette dell'accettazione aperta (invece della stampa della pagina). Stampa con Zebra Browser Print sul PC della sede o, in
 // mancanza, PDF di ripiego con la stessa resa dell'anteprima. Ogni stampa (o tentativo) va nel registro senza dati del paziente.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, ErrorBox, PageHead, useToast } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { api, qs } from '../api.js';
+import { api, qs, base } from '../api.js';
 import { useAuth, isAdmin } from '../auth.jsx';
 import { Anteprima, AvvisoValidazione, StatoZebra, GuidaBrowserPrint } from '../components.jsx';
 import { configuraBrowserPrint, rileva, invia, ricordaScelta, zplConCopie } from '../lib/stampaZebra.js';
@@ -43,9 +45,9 @@ export default function Stampa() {
     finally { setAprendo(false); }
   }, []);
 
-  const cerca = async (e) => {
-    e?.preventDefault();
-    const v = q.trim();
+  const cerca = async (e, valore = null) => {
+    e?.preventDefault?.();
+    const v = String(valore ?? q).trim();
     if (!v) return;
     setCercando(true); setErr(null); setAcc(null); setRis(null);
     try {
@@ -102,6 +104,17 @@ export default function Stampa() {
     return () => window.removeEventListener('keydown', k);
   }, [acc]);
 
+  // apertura diretta dalla scheda di Lab Control (?acc=istanza|id) o con un numero (?q=)
+  const [sp] = useSearchParams();
+  const daLink = useRef(false);
+  useEffect(() => {
+    if (daLink.current) return;
+    const acc0 = sp.get('acc'); const q0 = sp.get('q');
+    if (acc0 && acc0.includes('|')) { daLink.current = true; const i = acc0.indexOf('|'); apri({ instance_id: acc0.slice(0, i), id: acc0.slice(i + 1) }); }
+    else if (q0) { daLink.current = true; setQ(q0); cerca(null, q0); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp, apri]);
+
   const cognome = q.trim() && !/\d/.test(q);
   const tutte = acc?.etichette?.length || 0;
   const scelte = sel.size;
@@ -155,7 +168,8 @@ export default function Stampa() {
 
       {acc && (
         <Card className="et-acc" title={<>Accettazione {acc.accettazione.numero}{acc.fonte === 'GESTIONALE' && <Badge tone="blue">dal gestionale</Badge>}</>} icon="etichette"
-          actions={acc.stampe?.ok > 0 && <Badge tone="amber" title="Le etichette di questa accettazione sono già state stampate">Già stampata {acc.stampe.ok} {acc.stampe.ok === 1 ? 'volta' : 'volte'} · ultima {itDataOra(acc.stampe.ultima)}</Badge>}>
+          actions={<>{acc.stampe?.ok > 0 && <Badge tone="amber" title="Le etichette di questa accettazione sono già state stampate">Già stampata {acc.stampe.ok} {acc.stampe.ok === 1 ? 'volta' : 'volte'} · ultima {itDataOra(acc.stampe.ultima)}</Badge>}
+            {acc.fonte === 'COPIA' && <Link className="btn sm ghost" to={`${base}/accettazioni/${encodeURIComponent(acc.accettazione.instance_id)}/${encodeURIComponent(acc.accettazione.id)}`} title="Esami, campioni, avanzamento e fattura">Apri in Lab Control</Link>}</>}>
           <div className="et-testata">
             <div><span>Paziente</span><b>{acc.paziente ? `${acc.paziente.cognome || ''} ${acc.paziente.nome || ''}` : '—'}</b>{acc.paziente?.nascita && <em>nato/a il {itData(acc.paziente.nascita)}{acc.paziente.sesso ? ` · ${acc.paziente.sesso}` : ''}</em>}</div>
             <div><span>Data e ora</span><b>{itData(acc.accettazione.data)} {acc.accettazione.ora}</b><em>{acc.accettazione.stato_label || ''}</em></div>
