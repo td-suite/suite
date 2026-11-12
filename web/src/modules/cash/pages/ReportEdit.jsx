@@ -370,16 +370,16 @@ function EnvelopeModal({ rep, onClose, onDone }) {
     </>}>
       <ErrorBox error={err} />
       {!rep.has_system_pdf && !(zero && ck.zero) && <div className="alert warn" style={{ marginBottom: 12 }}><b>Manca il PDF della chiusura cassa del gestionale (GIPO).</b> Caricalo nella sezione "Chiusura cassa del gestionale" prima di registrare: è obbligatorio{zero ? ', salvo cassa a zero confermata qui sotto' : ''}.</div>}
-      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+      <div className="card riepilogo-conferma" style={{ padding: 12, marginBottom: 12 }}>
         <div className="small muted" style={{ marginBottom: 6 }}>Riepilogo da confermare</div>
         <div className="line"><span>Contante da versare</span><b>{eur(rep.cash_to_deposit)}</b></div>
         <div className="line"><span>Scontrini POS</span><b>{nPos} {nPos === 1 ? 'scontrino' : 'scontrini'}</b></div>
         <div className="line"><span>Bonifici</span><b>{nTr} {nTr === 1 ? 'bonifico' : 'bonifici'}</b></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-          <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.dati} onChange={(e) => setCk({ ...ck, dati: e.target.checked })} /><span>Confermo che i dati inseriti (contanti, scontrini, bonifici) sono corretti e corrispondono alla chiusura del gestionale.</span></label>
-          {nPos === 0 && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.pos} onChange={(e) => setCk({ ...ck, pos: e.target.checked })} /><span>Non ho inserito scontrini POS: confermo che nella giornata non ci sono stati incassi POS.</span></label>}
-          {nTr === 0 && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.bon} onChange={(e) => setCk({ ...ck, bon: e.target.checked })} /><span>Non ho inserito bonifici: confermo che nella giornata non ci sono stati bonifici.</span></label>}
-          {zero && <label className="row" style={{ gap: 8, alignItems: 'flex-start' }}><input type="checkbox" checked={ck.zero} onChange={(e) => setCk({ ...ck, zero: e.target.checked })} /><span>Confermo la chiusura della giornata a 0 euro: nessun incasso.</span></label>}
+          <label className="check-riga"><input type="checkbox" checked={ck.dati} onChange={(e) => setCk({ ...ck, dati: e.target.checked })} /><span>Confermo che i dati inseriti (contanti, scontrini, bonifici) sono corretti e corrispondono alla chiusura del gestionale.</span></label>
+          {nPos === 0 && <label className="check-riga"><input type="checkbox" checked={ck.pos} onChange={(e) => setCk({ ...ck, pos: e.target.checked })} /><span>Non ho inserito scontrini POS: confermo che nella giornata non ci sono stati incassi POS.</span></label>}
+          {nTr === 0 && <label className="check-riga"><input type="checkbox" checked={ck.bon} onChange={(e) => setCk({ ...ck, bon: e.target.checked })} /><span>Non ho inserito bonifici: confermo che nella giornata non ci sono stati bonifici.</span></label>}
+          {zero && <label className="check-riga"><input type="checkbox" checked={ck.zero} onChange={(e) => setCk({ ...ck, zero: e.target.checked })} /><span>Confermo la chiusura della giornata a 0 euro: nessun incasso.</span></label>}
         </div>
       </div>
       {needs ? <>

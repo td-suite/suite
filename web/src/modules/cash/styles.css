@@ -212,3 +212,7 @@ table.t td:last-child { white-space: nowrap; }
 .sites-table .table-wrap { overflow-x: auto; scrollbar-gutter: stable; }
 .sites-table table.t th { white-space: normal; }
 .sites-table table.t td:nth-child(4) { max-width: 200px; }
+
+/* Riepilogo da confermare nella registrazione del rendiconto: voce a sinistra, valore a destra */
+.riepilogo-conferma .line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed rgba(113, 177, 189, .25); font-variant-numeric: tabular-nums; }
+.riepilogo-conferma .line:last-of-type { border-bottom: 0; }
