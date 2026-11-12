@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ah, audit, bad, notFound, parse, slugify } from '../../../lib/util.js';
 import { notify } from '../../../lib/community.js';
-import { one, many, tx } from '../db.js';
+import { one, many, tx, q } from '../db.js';
 import { KEY, soloAdmin, IN_CODA, SQL_NUMERO, contaCoda, leggiImpostazione, riepilogoSettimanale } from '../lib/core.js';
 import { caricaSeme, sezioneDelSeme, improntaSezione, improntaMeta, seme, FONTI, LIVELLI } from '../lib/seme.js';
 import { rigenera } from '../lib/risposta.js';
@@ -278,6 +278,16 @@ r.get('/redazione/statistiche', ah(async (_req, res) => {
 }));
 
 // ---------------------------------------------------------------- seme e riepilogo
+// "Ripartiamo a pulito" (CEO, 13/11/2026): cancella TUTTE le domande e le ricerche registrate, di tutti gli utenti, e con esse coda e
+// statistiche. Le FAQ nate dalle domande restano. Serve la conferma scritta.
+r.post('/redazione/azzera', ah(async (req, res) => {
+  const b = parse(z.object({ conferma: z.literal('AZZERA') }), req.body);
+  void b;
+  const d = await q('DELETE FROM domande');
+  const c = await q('DELETE FROM ricerche');
+  await audit(req, 'GIPOGUIDA_AZZERA', { module: KEY, entity: 'domande', label: `Guida GIPO: azzerate ${d.rowCount} domande e ${c.rowCount} ricerche` });
+  res.json({ ok: true, domande: d.rowCount, ricerche: c.rowCount });
+}));
 r.get('/redazione/seme', ah(async (_req, res) => {
   const st = await leggiImpostazione('seme', null);
   const s = seme();

@@ -231,9 +231,15 @@ function Statistiche() {
   const t = st.data?.totali;
   const max = Math.max(1, ...(st.data?.settimane || []).map((w) => w.domande));
   const riepilogo = async () => { try { const r = await api.post('/redazione/riepilogo'); toast(r.coda ? `Riepilogo inviato a ${r.destinatari} amministratori (${r.coda} in coda)` : 'Nessuna domanda in coda: nessuna notifica'); st.reload(); } catch (e) { toast(e.message, 'err'); } };
+  const azzera = async () => {
+    const t0 = window.prompt('Cancella TUTTE le domande e le ricerche di tutti gli utenti, con coda e statistiche. Le FAQ restano. Non si può annullare.\nScrivi AZZERA per confermare.');
+    if (t0 !== 'AZZERA') return;
+    try { const r = await api.post('/redazione/azzera', { conferma: 'AZZERA' }); toast(`Azzerate ${r.domande} domande e ${r.ricerche} ricerche`); st.reload(); } catch (e) { toast(e.message, 'err'); }
+  };
   const ricarica = async () => { try { const r = await api.post('/redazione/seme/ricarica'); toast(`Seme: ${r.sezioni.nuove} nuove, ${r.sezioni.aggiornate} aggiornate, ${r.sezioni.protette.length} protette`); seme.reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <div className="gg-stat">
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 8 }}><button type="button" className="btn sm danger" onClick={azzera}><Icon name="trash" />Azzera domande e ricerche</button></div>
       <ErrorBox error={st.error} />
       <div className="gg-kpi">
         <Kpi label="Domande" value={t?.domande ?? '-'} foot={`${t?.ultima_settimana ?? 0} negli ultimi 7 giorni`} />

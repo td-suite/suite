@@ -138,8 +138,16 @@ export default function Chiedi() {
     if (d.length < 5) { setErr(new Error('Scrivi la domanda con qualche parola in più')); return; }
     setInviando(true); setErr(null); setRisposta(null);
     if (sp.get('domanda')) setSp({}, { replace: true });
-    try { const r = await api.post('/chiedi', { domanda: d }); setRisposta(r); setLive(null); mie.reload(); } catch (e2) { setErr(e2); }
+    setQ(''); setLive(null);   // Chiedi ripulisce la schermata: via il testo dalla barra e i suggerimenti, resta solo la risposta (13/11/2026)
+    try { const r = await api.post('/chiedi', { domanda: d }); setRisposta(r); setLive(null); mie.reload(); } catch (e2) { setErr(e2); setQ(d); }
     finally { setInviando(false); }
+  };
+
+  const pulisci = () => { setRisposta(null); setLive(null); setQ(''); setErr(null); if (sp.get('domanda')) setSp({}, { replace: true }); input.current?.focus(); };
+  const cancella = async (d) => { try { await api.del(`/domande/${d.id}`); if (risposta?.id === d.id) pulisci(); mie.reload(); } catch (e2) { setErr(e2); } };
+  const cancellaTutte = async () => {
+    if (!window.confirm('Cancellare tutte le tue domande e ricerche? Non si possono recuperare.')) return;
+    try { await api.del('/domande/mie'); pulisci(); mie.reload(); } catch (e2) { setErr(e2); }
   };
 
   return (
@@ -164,8 +172,9 @@ export default function Chiedi() {
       <ErrorBox error={err} />
       {inviando && <Card className="gg-risposta"><div className="gg-attesa"><span className="gg-pulse" />Leggo la guida e preparo la risposta...</div></Card>}
       {risposta && <Risposta r={risposta} onValutata={() => mie.reload()} />}
+      {risposta && !inviando && <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}><button type="button" className="btn sm ghost" onClick={pulisci}><Icon name="x" />Pulisci e fai una nuova domanda</button></div>}
 
-      <Card title="Le tue domande recenti" icon="clock" className="gg-mie">
+      <Card title="Le tue domande recenti" icon="clock" className="gg-mie" actions={mie.data?.length ? <button type="button" className="btn sm ghost" onClick={cancellaTutte}><Icon name="trash" />Cancella tutte</button> : null}>
         {!mie.data?.length && <div className="muted small">Non hai ancora fatto domande. Le ultime 20 compaiono qui, con la risposta della redazione quando arriva.</div>}
         <ul className="gg-mie-l">
           {(mie.data || []).map((d) => (
@@ -177,6 +186,7 @@ export default function Chiedi() {
               {d.utile === false && !d.risolta_il && <Badge tone="amber">alla redazione</Badge>}
               {d.risolta_con_faq_id && <Link className="small" to={`${base}/faq?voce=${d.risolta_con_faq_id}`}><Icon name="check" />Risposta della redazione</Link>}
               {d.risolta_dalla_guida && <Badge tone="teal">la guida ora risponde</Badge>}
+              <button type="button" className="iconbtn" style={{ marginLeft: 'auto' }} aria-label="Cancella questa domanda" title="Cancella questa domanda" onClick={() => cancella(d)}><Icon name="trash" /></button>
             </li>
           ))}
         </ul>

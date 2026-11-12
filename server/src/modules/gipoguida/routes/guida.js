@@ -1,8 +1,8 @@
 // Guida GIPO · route di consultazione (tutti gli interni: LETTORE e ADMIN): indice, sezioni, FAQ, ricerca, domande, valutazione, PDF.
 import { Router } from 'express';
 import { z } from 'zod';
-import { ah, parse, notFound, bad } from '../../../lib/util.js';
-import { many, one } from '../db.js';
+import { ah, audit, parse, notFound, bad } from '../../../lib/util.js';
+import { many, one, q } from '../db.js';
 import { contesto, linkGipo, SQL_NUMERO, contaCoda } from '../lib/core.js';
 import { cercaGuida, registraRicerca } from '../lib/ricerca.js';
 import { maschera, senzaSegnaposto } from '../lib/privacy.js';
@@ -73,6 +73,18 @@ r.post('/chiedi', ah(async (req, res) => {
 r.get('/domande/mie', ah(async (req, res) => {
   res.json(await many(`SELECT d.id, d.testo, d.esito, d.risolta_dalla_guida, d.rigenerata_il, d.risposta, d.fonti, d.utile, d.nota_utente, d.creata_il, d.risolta_il, d.chiusa_il, d.risolta_con_faq_id, f.domanda AS faq_domanda
     FROM domande d LEFT JOIN faq f ON f.id = d.risolta_con_faq_id WHERE d.utente = $1 ORDER BY d.creata_il DESC LIMIT 20`, [req.user.id]));
+}));
+// Cancellazione delle proprie domande (13/11/2026, richiesta del CEO): una sola o tutte, insieme alle proprie ricerche. La redazione può
+// cancellare qualunque domanda. Va dichiarata prima della rotta con :id.
+r.delete('/domande/mie', ah(async (req, res) => {
+  const d = await q('DELETE FROM domande WHERE utente = $1', [req.user.id]);
+  const c = await q('DELETE FROM ricerche WHERE utente = $1', [req.user.id]);
+  res.json({ ok: true, domande: d.rowCount, ricerche: c.rowCount });
+}));
+r.delete('/domande/:id', ah(async (req, res) => {
+  const d = await q('DELETE FROM domande WHERE id = $1 AND (utente = $2 OR $3)', [Number(req.params.id) || 0, req.user.id, contesto(req).isAdmin]);
+  if (!d.rowCount) throw notFound('Domanda inesistente');
+  res.json({ ok: true });
 }));
 r.get('/domande/:id', ah(async (req, res) => {
   const d = await one(`SELECT d.id, d.testo, d.esito, d.risposta, d.fonti, d.utile, d.nota_utente, d.creata_il, d.risolta_il, d.risolta_con_faq_id, d.risolta_dalla_guida, d.rigenerata_il,
