@@ -10,6 +10,9 @@ slug: compensi-calcolo
 titolo: Calcolo compensi
 percorso_gipo: /Compensi/Calcoli
 parole_chiave: compensi, calcolo compensi, provvigioni, medici, nuovo calcolo, base calcolo, periodo
+sintesi: Calcola i compensi dei medici per un periodo, sulla base delle prestazioni a loro associate.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Calcola i compensi dei medici per un periodo, sulla base delle prestazioni a loro associate.
@@ -27,7 +30,7 @@ Comando **Effettua un nuovo calcolo**. Colonne: **Medico**, **Tipologia medico**
 4. Controlla il risultato nel **Riepilogo** (vedi [Riepilogo compensi e stampe](sezione:compensi-riepilogo)).
 
 ### Attenzioni
-- Il calcolo usa il medico associato alle prestazioni (pulsante **Associa medico** in assegnazione e fattura) e le regole impostate nella scheda del medico (scheda **Compensi**, vedi [Aziende e medici](sezione:config-aziende-medici)). Un medico mancante sulle righe produce compensi mancanti.
+- Il calcolo usa il medico associato alle prestazioni (pulsante **Associa medico** in assegnazione e fattura) e le regole impostate nella scheda del medico (scheda **Compensi**, vedi [Regole di compenso del medico](sezione:medico-compensi-regole)). Un medico mancante sulle righe produce compensi mancanti.
 - È un'attività dell'amministrazione.
 
 === sezione
@@ -36,6 +39,9 @@ slug: compensi-riepilogo
 titolo: Riepilogo compensi e stampe
 percorso_gipo: /Compensi/Index
 parole_chiave: riepilogo compensi, provvigioni per medico, stampa riepilogo, stampa dettaglio, per articolo, per paziente, dovuto, pagamento compensi
+sintesi: Mostra le provvigioni per medico con il dettaglio delle prestazioni e produce le stampe.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Mostra le provvigioni per medico con il dettaglio delle prestazioni e produce le stampe.
@@ -65,6 +71,9 @@ slug: compensi-personale
 titolo: Riepilogo personale (per il medico)
 percorso_gipo: /Compensi/CompensiPersonali
 parole_chiave: riepilogo personale, i miei compensi, medico, compensi personali
+sintesi: Mostra al medico i propri compensi.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Mostra al medico i propri compensi.

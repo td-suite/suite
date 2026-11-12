@@ -64,9 +64,13 @@ export function renderMarkdown(src = '') {
       continue;
     }
     if (/^\s*\d+[.)]\s+/.test(line)) {
+      // elenco numerato; le righe rientrate con "- " sotto un passo diventano un sottoelenco di quel passo (la numerazione non riparte)
       const items = [];
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''));
-      blocks.push(<ol key={key()}>{items.map((t, j) => <li key={j}>{inline(t, `o${j}`)}</li>)}</ol>);
+      while (i < lines.length && (/^\s*\d+[.)]\s+/.test(lines[i]) || (items.length && /^\s{2,}[-*+]\s+/.test(lines[i])))) {
+        if (/^\s*\d+[.)]\s+/.test(lines[i])) items.push({ t: lines[i++].replace(/^\s*\d+[.)]\s+/, ''), sub: [] });
+        else items[items.length - 1].sub.push(lines[i++].replace(/^\s*[-*+]\s+/, ''));
+      }
+      blocks.push(<ol key={key()}>{items.map((it, j) => <li key={j}>{inline(it.t, `o${j}`)}{it.sub.length > 0 && <ul>{it.sub.map((x, k) => <li key={k}>{inline(x, `o${j}s${k}`)}</li>)}</ul>}</li>)}</ol>);
       continue;
     }
     if (/^\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\|?\s*:?-{2,}/.test(lines[i + 1])) {

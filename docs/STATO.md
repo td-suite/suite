@@ -152,6 +152,22 @@ tessere di Lab Control nell'operatività; Diagnostica D57. Migrazione `etichette
 Test `server/test/labcontrol.test.mjs`; collaudo su db proprio con 4.200 accettazioni sintetiche; schermate `docs/screens/labcontrol-*.png`.
 Dettagli e cosa la Data API non dà (PDF, data di ingresso negli stati, data di chiusura, significato dei codici di non esecuzione): docs/LAB_CONTROL.md.
 
+## 13/11/2026 · v0.71.1 · Guida GIPO, risposte all'altezza del back-end
+Il CEO ha chiesto alla guida "come faccio ad impostare un'agenda per un medico che viene in una struttura solo il primo e il terzo martedì
+di ogni mese" e ha ricevuto "la guida non copre". Corretti contenuti e recupero. Contenuti: osservazioni di secondo livello del 13/11/2026
+(schede interne di agende, prestazioni, medici, assegnazione, fattura) integrate; nuovo capitolo 14 **Back-end: configurare GIPO** (20
+procedure con esempi e verifiche, tra cui Sottoconfigurazioni con Periodicità in settimane, Priorità e Periodicità nel mese, esempio svolto
+del primo e terzo martedì); nuovo capitolo 15 **Percorso del paziente secondo il manuale TD** dal Manuale operativo TD-SGI-MAN007 (20 sezioni,
+VALIDATA con la fonte del manuale, note "Da riconciliare con il manuale" dove manuale e interfaccia divergono); FAQ per ruolo e glossario
+diventano capitoli 16 e 17. Da 95 a 140 sezioni, da 73 a 123 FAQ (50 nuove: 42 di back-end e 8 sulle regole del manuale). Campi nuovi `fonte`, `livello`, `sintesi`,
+validazione dal seme (migrazione `gipoguida/002_back_end.sql`, idempotente). Recupero: indice esteso con pesi A/B/C/D (titolo, parole
+chiave, sintesi, capitolo, domande delle FAQ, testo) mantenuto da trigger, sinonimi ampliati e frasi ("primo martedì", "ogni due
+settimane"), ricerca OR con idf e copertura, rinforzo dalle FAQ, ripiego trigrammi; con l'AI passaggio di pianificazione sull'indice
+completo (fino a 10 sezioni) unito alla ricerca, risposta sul testo integrale di 12 sezioni + 8 FAQ; esito nuovo PARZIALE; senza AI i passi
+già scritti. Pagina Guida con filtro "Per chi configura GIPO" e badge fonte/back-end; Redazione con "Rigenera risposta" e "Segna come
+risolta dalla guida". Test `server/test/gipoguida-domande.test.mjs` (32 domande reali di back-end, tutte trovano la sezione attesa),
+script `server/scripts/gipoguida-domande.mjs`; PDF di 123 pagine. Dettagli e tabella di confronto con il manuale in docs/GIPO_GUIDA.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

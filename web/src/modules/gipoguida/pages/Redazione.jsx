@@ -6,7 +6,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, ConfirmModal, ErrorBox, Field, Kpi, Modal, PageHead, PromptModal, Tabs, useToast } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { api, base, qs, useApi } from '../api.js';
-import { Bollino, ESITO, TestoGuida, itData, itDataOra } from '../components.jsx';
+import { BackEndBadge, Bollino, ESITO, FONTE, TestoGuida, itData, itDataOra } from '../components.jsx';
+import { Procedure } from './Chiedi.jsx';
 
 const RUOLI = [['', 'Nessuno'], ['accettazione', 'Accettazione'], ['medico', 'Medico'], ['amministrazione', 'Amministrazione']];
 const badgeAggiorna = () => window.dispatchEvent(new Event('suite:badges'));
@@ -57,6 +58,15 @@ function Coda({ indice, onCambio }) {
   const [chiudi, setChiudi] = useState(null);
   const ricarica = () => { c.reload(); onCambio?.(); badgeAggiorna(); };
   const prendi = async (d) => { try { await api.post(`/redazione/domande/${d.id}/prendi`); ricarica(); } catch (e) { toast(e.message, 'err'); } };
+  // v0.71.1: "Rigenera risposta" dopo un aggiornamento della guida; "Segna come risolta dalla guida" (senza FAQ nuova)
+  const [rigenerate, setRigenerate] = useState({});
+  const [inCorso, setInCorso] = useState(null);
+  const rigeneraRisposta = async (d) => {
+    setInCorso(d.id);
+    try { const r = await api.post(`/redazione/domande/${d.id}/rigenera`); setRigenerate((x) => ({ ...x, [d.id]: r })); toast(`Risposta rigenerata: ${ESITO[r.esito]?.label || r.esito}`); c.reload(); }
+    catch (e) { toast(e.message, 'err'); } finally { setInCorso(null); }
+  };
+  const [risolta, setRisolta] = useState(null);
   return (
     <div>
       <div className="row gg-coda-filtri">
@@ -75,16 +85,23 @@ function Coda({ indice, onCambio }) {
               {d.utile === true && <Badge tone="green">utile</Badge>}
               {d.risolta_il && <Badge tone="teal">risolta</Badge>}
               {d.chiusa_il && <Badge tone="grey">chiusa</Badge>}
+              {d.risolta_dalla_guida && <Badge tone="teal">risolta dalla guida</Badge>}
+              {d.rigenerazioni > 0 && <Badge tone="blue" dot={false} title={`Ultima il ${itDataOra(d.rigenerata_il)}`}>rigenerata {d.rigenerazioni === 1 ? 'una volta' : `${d.rigenerazioni} volte`}</Badge>}
             </div>
             <div className="small muted">{itDataOra(d.creata_il)} · {d.utente_nome || 'utente non più presente'}{d.mascherati?.length ? ` · tolti: ${d.mascherati.join(', ')}` : ''}{d.presa_da_nome ? ` · presa in carico da ${d.presa_da_nome}` : ''}</div>
             {d.nota_utente && <div className="gg-nota-utente"><Icon name="comment" />{d.nota_utente}</div>}
-            {d.risposta && <details className="gg-coda-risp"><summary className="small">Risposta data dall'assistente</summary><TestoGuida source={d.risposta} /></details>}
+            {d.risposta && <details className="gg-coda-risp" open={Boolean(rigenerate[d.id])}><summary className="small">{d.rigenerazioni > 0 ? 'Risposta rigenerata' : 'Risposta data dall\'assistente'}</summary><TestoGuida source={d.risposta} /></details>}
+            {rigenerate[d.id] && !rigenerate[d.id].risposta && (
+              <div className="gg-rigenerata"><div className="small muted">Risposta rigenerata senza assistente ({ESITO[rigenerate[d.id].esito]?.label}): i passi delle sezioni trovate.</div><Procedure procedure={rigenerate[d.id].procedure} /></div>
+            )}
             {d.fonti?.length > 0 && <div className="small muted">Sezioni trovate: {d.fonti.slice(0, 4).map((f) => f.titolo).join(' · ')}</div>}
             {d.faq_domanda && <div className="small"><Icon name="check" /> FAQ: <Link to={`${base}/faq?voce=${d.risolta_con_faq_id}`}>{d.faq_domanda}</Link></div>}
             {d.chiusa_nota && <div className="small muted">Chiusa: {d.chiusa_nota}</div>}
             {!d.risolta_il && !d.chiusa_il && (
               <div className="row gg-coda-az">
                 <button className="btn sm" onClick={() => setRisp(d)}><Icon name="edit" />Rispondi</button>
+                <button className="btn sm ghost" onClick={() => rigeneraRisposta(d)} disabled={inCorso === d.id} title="Ripete ricerca e risposta con la guida di oggi"><Icon name="refresh" />{inCorso === d.id ? 'Rigenero...' : 'Rigenera risposta'}</button>
+                <button className="btn sm ghost" onClick={() => setRisolta(d)} title="La guida ora risponde: nessuna FAQ nuova, chi ha chiesto riceve una notifica"><Icon name="check" />Segna come risolta dalla guida</button>
                 {!d.presa_da_nome && <button className="btn sm ghost" onClick={() => prendi(d)}><Icon name="user" />Prendi in carico</button>}
                 <button className="btn sm ghost" onClick={() => setChiudi(d)}><Icon name="x" />Chiudi senza FAQ</button>
               </div>
@@ -93,6 +110,8 @@ function Coda({ indice, onCambio }) {
         ))}
       </div>
       {risp && <Rispondi d={risp} indice={indice} onClose={() => setRisp(null)} onFatto={(r) => { toast(r.notificato ? 'FAQ pubblicata, notifica inviata' : 'FAQ pubblicata'); ricarica(); }} />}
+      {risolta && <PromptModal title="Segna come risolta dalla guida" label="Nota (facoltativa): quale sezione risponde ora" placeholder="Es. aggiornata la sezione 14.4 Sottoconfigurazioni" type="textarea" minLength={0}
+        onClose={() => setRisolta(null)} onConfirm={async (nota) => { const r = await api.post(`/redazione/domande/${risolta.id}/risolta-dalla-guida`, { nota: nota || null }); toast(r.notificato ? 'Domanda risolta, notifica inviata' : 'Domanda risolta'); ricarica(); }} />}
       {chiudi && <PromptModal title="Chiudi senza FAQ" label="Motivo (resta nello storico)" placeholder="Es. domanda non pertinente, doppione della FAQ ..." type="textarea" minLength={3}
         onClose={() => setChiudi(null)} onConfirm={async (nota) => { await api.post(`/redazione/domande/${chiudi.id}/chiudi`, { nota }); ricarica(); }} />}
     </div>
@@ -104,26 +123,29 @@ function Sezioni() {
   const s = useApi('/redazione/sezioni', [], { silent: true });
   const [q, setQ] = useState('');
   const [stato, setStato] = useState('');
-  const righe = useMemo(() => (s.data || []).filter((x) => (!stato || x.stato === stato) && (!q || `${x.numero} ${x.titolo} ${x.percorso_gipo || ''}`.toLowerCase().includes(q.toLowerCase()))), [s.data, q, stato]);
+  const [livello, setLivello] = useState('');
+  const righe = useMemo(() => (s.data || []).filter((x) => (!stato || x.stato === stato) && (!livello || x.livello === livello) && (!q || `${x.numero} ${x.titolo} ${x.percorso_gipo || ''}`.toLowerCase().includes(q.toLowerCase()))), [s.data, q, stato, livello]);
   const validate = (s.data || []).filter((x) => x.stato === 'VALIDATA').length;
   return (
     <div>
       <div className="row gg-coda-filtri">
         <div className="gg-indice-cerca"><Icon name="search" /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtra le sezioni" aria-label="Filtra le sezioni" /></div>
         <div className="seg" role="group" aria-label="Stato">{[['', 'Tutte'], ['DA_VALIDARE', 'Da validare'], ['VALIDATA', 'Validate']].map(([v, l]) => <button key={v} type="button" className={stato === v ? 'on' : ''} onClick={() => setStato(v)}>{l}</button>)}</div>
+        <div className="seg" role="group" aria-label="Livello">{[['', 'Tutti i livelli'], ['BACK_END', 'Back-end'], ['OPERATIVO', 'Operative']].map(([v, l]) => <button key={v} type="button" className={livello === v ? 'on' : ''} onClick={() => setLivello(v)}>{l}</button>)}</div>
         <span className="small muted">{validate} validate su {s.data?.length || 0}. Per validare: apri la sezione, verifica in GIPO con un referente, "Segna come validata".</span>
       </div>
       <ErrorBox error={s.error} />
       <Card flush>
         <div className="table-wrap">
           <table className="t gg-tab">
-            <thead><tr><th>N.</th><th>Sezione</th><th>Stato</th><th>Percorso</th><th className="num">FAQ</th><th className="num">Revisioni</th><th>Aggiornata</th></tr></thead>
+            <thead><tr><th>N.</th><th>Sezione</th><th>Stato</th><th>Fonte</th><th>Percorso</th><th className="num">FAQ</th><th className="num">Revisioni</th><th>Aggiornata</th></tr></thead>
             <tbody>
               {righe.map((x) => (
                 <tr key={x.id}>
                   <td className="mono">{x.numero}</td>
                   <td><Link to={`${base}/redazione/sezioni/${x.id}`}>{x.titolo}</Link>{x.origine === 'REDAZIONE' && <> <Badge tone="teal">nuova</Badge></>}</td>
-                  <td><Bollino stato={x.stato} compatto /></td>
+                  <td><Bollino stato={x.stato} compatto fonteValidazione={x.fonte_validazione} /> <BackEndBadge livello={x.livello} /></td>
+                  <td className="small">{FONTE[x.fonte]?.label || x.fonte}</td>
                   <td className="small mono">{x.percorso_gipo || ''}</td>
                   <td className="num">{x.faq}</td>
                   <td className="num">{x.revisioni}</td>
@@ -217,14 +239,14 @@ function Statistiche() {
         <Kpi label="Domande" value={t?.domande ?? '-'} foot={`${t?.ultima_settimana ?? 0} negli ultimi 7 giorni`} />
         <Kpi label="Risposte utili" value={t?.pct_utili != null ? `${t.pct_utili}%` : '-'} foot={`${t?.utili ?? 0} su ${t?.valutate ?? 0} valutate`} />
         <Kpi label="In coda" value={t?.in_coda ?? '-'} foot={`${t?.risolte ?? 0} risolte con una FAQ`} accent={t?.in_coda > 0} />
-        <Kpi label="Sezioni validate" value={st.data ? `${st.data.sezioni.validate}/${st.data.sezioni.totale}` : '-'} foot={`${st.data?.faq.pubblicate ?? 0} FAQ, ${st.data?.faq.da_domande ?? 0} dalle domande`} />
+        <Kpi label="Sezioni validate" value={st.data ? `${st.data.sezioni.validate}/${st.data.sezioni.totale}` : '-'} foot={`${st.data?.sezioni.back_end ?? 0} back-end, ${st.data?.sezioni.dal_manuale ?? 0} dal manuale TD · ${st.data?.faq.pubblicate ?? 0} FAQ`} />
       </div>
       <div className="gg-stat-griglia">
         <Card title="Domande per settimana" icon="stats">
           {!st.data?.settimane?.length && <div className="muted small">Ancora nessuna domanda.</div>}
           <div className="gg-barre">
             {(st.data?.settimane || []).map((w) => (
-              <div key={w.settimana} className="gg-barra" title={`${w.domande} domande · ${w.con_risposta} con risposta · ${w.senza_risposta} senza · ${w.solo_ricerca} solo ricerca · ${w.utili} utili`}>
+              <div key={w.settimana} className="gg-barra" title={`${w.domande} domande · ${w.con_risposta} con risposta · ${w.parziali} con passi da provare · ${w.senza_risposta} senza · ${w.solo_ricerca} solo ricerca · ${w.utili} utili`}>
                 <div className="gg-barra-v" style={{ height: `${Math.round((w.domande / max) * 100)}%` }}><span>{w.domande}</span></div>
                 <span className="small muted">{itData(w.settimana).slice(0, 5)}</span>
               </div>

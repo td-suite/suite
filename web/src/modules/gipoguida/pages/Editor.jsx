@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Badge, Card, ConfirmModal, ErrorBox, Field, Modal, PageHead, PromptModal, Skeleton, useToast } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { api, base, useApi } from '../api.js';
-import { Bollino, TestoGuida, itDataOra } from '../components.jsx';
+import { BackEndBadge, Bollino, FONTE as FONTI_SEZIONE, TestoGuida, itDataOra } from '../components.jsx';
 
 const FONTE = { MANUALE: 'modifica', SEME: 'nuovo rilascio', RIPRISTINO: 'ripristino', STATO: 'cambio di stato' };
 
@@ -20,7 +20,8 @@ export default function Editor() {
   const [semeOk, setSemeOk] = useState(false);
   const [rev, setRev] = useState(null);
   const [mascherati, setMascherati] = useState([]);
-  useEffect(() => { if (s.data) setF({ titolo: s.data.titolo, corpo: s.data.corpo, percorso_gipo: s.data.percorso_gipo || '', parole_chiave: s.data.parole_chiave || '', nota: '' }); }, [s.data]);
+  useEffect(() => { if (s.data) setF({ titolo: s.data.titolo, corpo: s.data.corpo, percorso_gipo: s.data.percorso_gipo || '', parole_chiave: s.data.parole_chiave || '', nota: '',
+    fonte: s.data.fonte || 'INTERFACCIA', livello: s.data.livello || 'OPERATIVO', sintesi: s.data.sintesi || '' }); }, [s.data]);
   // controllo dei dati personali nel testo (stesso filtro delle domande), mentre si scrive
   useEffect(() => {
     if (!f?.corpo) return undefined;
@@ -30,10 +31,12 @@ export default function Editor() {
   if (s.error) return <div className="page"><ErrorBox error={s.error} /></div>;
   if (!s.data || !f) return <div className="page"><Skeleton lines={12} /></div>;
   const x = s.data;
-  const cambiato = f.titolo !== x.titolo || f.corpo !== x.corpo || (f.percorso_gipo || '') !== (x.percorso_gipo || '') || (f.parole_chiave || '') !== (x.parole_chiave || '');
+  const cambiato = f.titolo !== x.titolo || f.corpo !== x.corpo || (f.percorso_gipo || '') !== (x.percorso_gipo || '') || (f.parole_chiave || '') !== (x.parole_chiave || '')
+    || f.fonte !== (x.fonte || 'INTERFACCIA') || f.livello !== (x.livello || 'OPERATIVO') || (f.sintesi || '') !== (x.sintesi || '');
   const salva = async () => {
     setBusy(true); setErr(null);
-    try { await api.put(`/redazione/sezioni/${x.id}`, { titolo: f.titolo, corpo: f.corpo, percorso_gipo: f.percorso_gipo || null, parole_chiave: f.parole_chiave || null, nota: f.nota || null }); toast('Sezione salvata: la versione precedente è nello storico'); s.reload(); } catch (e) { setErr(e); } finally { setBusy(false); }
+    try { await api.put(`/redazione/sezioni/${x.id}`, { titolo: f.titolo, corpo: f.corpo, percorso_gipo: f.percorso_gipo || null, parole_chiave: f.parole_chiave || null, nota: f.nota || null,
+      fonte: f.fonte, livello: f.livello, sintesi: f.sintesi || null }); toast('Sezione salvata: la versione precedente è nello storico'); s.reload(); } catch (e) { setErr(e); } finally { setBusy(false); }
   };
   const stato = async (nuovo, nota) => { await api.post(`/redazione/sezioni/${x.id}/stato`, { stato: nuovo, nota: nota || null }); toast(nuovo === 'VALIDATA' ? 'Sezione validata' : 'Sezione riportata a da validare'); s.reload(); };
   return (
@@ -41,7 +44,8 @@ export default function Editor() {
       <PageHead crumb={<><Link to={`${base}/redazione?scheda=sezioni`}>Redazione</Link> / Sezioni</>} title={`${x.numero || x.capitolo} ${x.titolo}`} icon="edit"
         sub={<>Aggiornata il {itDataOra(x.aggiornata_il)}{x.aggiornata_da_nome ? ` da ${x.aggiornata_da_nome}` : ' (seme)'} · <Link to={`${base}/guida/${x.slug}`}>vedi nella guida</Link></>}
         actions={<>
-          <Bollino stato={x.stato} />
+          <Bollino stato={x.stato} fonteValidazione={x.fonte_validazione} />
+          <BackEndBadge livello={x.livello} />
           {x.stato === 'VALIDATA'
             ? <button className="btn ghost" onClick={() => stato('DA_VALIDARE').catch((e) => setErr(e))}><Icon name="refresh" />Torna da validare</button>
             : <button className="btn ghost" onClick={() => setValida(true)} disabled={cambiato} title={cambiato ? 'Salva prima le modifiche' : ''}><Icon name="check" />Segna come validata</button>}
@@ -55,6 +59,11 @@ export default function Editor() {
         <Field label="Percorso in GIPO" help="Es. /Fatture/Index. Le pagine di consultazione hanno il link 'Apri in GIPO'; le pagine /Create no."><input value={f.percorso_gipo} onChange={(e) => setF({ ...f, percorso_gipo: e.target.value })} /></Field>
       </div>
       <Field label="Parole chiave" help="Separate da virgole: aiutano la ricerca (sinonimi, modi di dire del personale)."><input value={f.parole_chiave} onChange={(e) => setF({ ...f, parole_chiave: e.target.value })} /></Field>
+      <Field label="Sintesi" help="Una riga che riassume la sezione: è ciò che l'assistente legge nell'indice per scegliere le sezioni con cui rispondere."><input value={f.sintesi} maxLength={400} onChange={(e) => setF({ ...f, sintesi: e.target.value })} /></Field>
+      <div className="gg-due">
+        <Field label="Fonte"><select value={f.fonte} onChange={(e) => setF({ ...f, fonte: e.target.value })}>{Object.entries(FONTI_SEZIONE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
+        <Field label="Livello" help="Back-end: procedura per chi configura GIPO (filtro 'Per chi configura GIPO')."><select value={f.livello} onChange={(e) => setF({ ...f, livello: e.target.value })}><option value="OPERATIVO">Operativo</option><option value="BACK_END">Back-end (configurazione)</option></select></Field>
+      </div>
       <div className="gg-editor-griglia">
         <Card title="Testo (markdown)" icon="edit">
           <textarea className="gg-editor-testo" value={f.corpo} onChange={(e) => setF({ ...f, corpo: e.target.value })} spellCheck />
@@ -80,7 +89,7 @@ export default function Editor() {
       {valida && <PromptModal title="Segna la sezione come validata" label="Chi ha verificato la procedura in GIPO, e come" placeholder="Es. verificata in GIPO con la responsabile accettazione di ..." type="textarea" minLength={3}
         help="La sezione mostrerà il bollino verde 'validata'. Se poi qualcuno la modifica resta validata: riportala a 'da validare' se cambia la procedura."
         onClose={() => setValida(false)} onConfirm={(nota) => stato('VALIDATA', nota)} />}
-      {semeOk && <ConfirmModal title="Ripristina dal seme" text="Il testo attuale va nello storico e la sezione torna alla versione del seme del rilascio corrente, con lo stato 'da validare'." confirmText="Ripristina"
+      {semeOk && <ConfirmModal title="Ripristina dal seme" text="Il testo attuale va nello storico e la sezione torna alla versione del seme del rilascio corrente, con lo stato del seme ('validata' solo per le procedure del manuale TD, altrimenti 'da validare')." confirmText="Ripristina"
         onClose={() => setSemeOk(false)} onConfirm={async () => { await api.post(`/redazione/sezioni/${x.id}/ripristina-seme`); s.reload(); }} />}
       {rev && (
         <Modal title={`Revisione del ${itDataOra(rev.creata_il)}`} onClose={() => setRev(null)} wide

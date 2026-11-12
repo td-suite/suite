@@ -48,7 +48,9 @@ export async function setSetting(key, value) {
  */
 export function contesto(req) {
   const mu = req.moduleUser || {};
-  const isAdmin = mu.role === 'ADMIN';
+  // Il titolare della Suite è sempre ADMIN del modulo, anche se un grant gli assegna per errore un profilo inferiore (13/11/2026:
+  // il CEO si era attivato il widget con profilo Operatore senza sedi e non vedeva né dati né Impostazioni).
+  const isAdmin = mu.role === 'ADMIN' || req.user?.level === 'OWNER';
   const isLab = mu.role === 'LABORATORIO';
   const tutte = isAdmin || isLab;
   const siteIds = (mu.site_ids || []).map(Number).filter(Number.isFinite);

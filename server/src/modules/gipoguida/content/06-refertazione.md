@@ -10,6 +10,9 @@ slug: referto-avvio
 titolo: Da dove si avvia un referto
 percorso_gipo: /referti
 parole_chiave: nuovo referto, errore creazione referto, referta, inizia visita e referta, refertare, scrivere referto, avviare referto
+sintesi: Spiega da dove aprire un referto senza incorrere nell'errore della voce di menu.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Spiega da dove aprire un referto senza incorrere nell'errore della voce di menu.
@@ -37,6 +40,9 @@ slug: gestione-referti
 titolo: Gestione referti: filtri, colonne e azioni
 percorso_gipo: /referti
 parole_chiave: gestione referti, elenco referti, cercare referto, refertante, firma, condiviso md, accesso, prestazioni, filtri referti
+sintesi: Elenca i referti, con filtri per stato, data, refertante e condivisione su MioDottore.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca i referti, con filtri per stato, data, refertante e condivisione su MioDottore.
@@ -70,6 +76,9 @@ slug: referto-stati
 titolo: Stati del referto
 percorso_gipo: /referti
 parole_chiave: stati referto, bozza, completato, firmato, in errore, annullato, firma referto
+sintesi: Capire a che punto è un referto.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Capire a che punto è un referto.
@@ -95,6 +104,9 @@ slug: referto-miodottore
 titolo: Condivisione dei referti su MioDottore
 percorso_gipo: /referti
 parole_chiave: miodottore, condivisione, condiviso md, consenso condivisione, condivisione file, referto online, paziente scarica referto
+sintesi: GIPO può condividere i referti con il paziente attraverso MioDottore.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 GIPO può condividere i referti con il paziente attraverso MioDottore.
@@ -118,6 +130,9 @@ slug: referto-fse
 titolo: Fascicolo Sanitario Elettronico (FSE)
 percorso_gipo: /referti/fse
 parole_chiave: fse, fascicolo sanitario elettronico, invio referti, regione, gestione fse
+sintesi: Gestione FSE serve all'invio dei referti al Fascicolo Sanitario Elettronico.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 **Gestione FSE** serve all'invio dei referti al Fascicolo Sanitario Elettronico.

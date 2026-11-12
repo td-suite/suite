@@ -1,0 +1,38 @@
+// Guida GIPO · domande reali di back-end per la regressione del RECUPERO (v0.71.1). Per ogni domanda, le sezioni che devono essere fra
+// quelle passate al modello (basta una delle "attese"). Le usano server/test/gipoguida-domande.test.mjs (con un modello finto che riceve
+// i brani) e server/scripts/gipoguida-domande.mjs (stampa le sezioni recuperate, per la redazione). La prima è la domanda del CEO.
+// Nessun dato di pazienti.
+export const DOMANDE_PROVA = [
+  { domanda: 'come faccio ad impostare un\'agenda per un medico che viene in una struttura solo il primo e il terzo martedì di ogni mese', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Come imposto un medico presente solo alcuni giorni del mese?', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Come cambio l\'orario di un\'agenda da una certa data?', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Come blocco un\'agenda per ferie?', attese: ['giorni-festivi-chiusure', 'agenda-sottoconfigurazioni'] },
+  { domanda: 'Come aggiungo una prestazione a un listino?', attese: ['prestazione-listini-prezzi', 'listini-creare-copiare'] },
+  { domanda: 'Come aumento tutti i prezzi di un listino del 5%?', attese: ['listini-creare-copiare'] },
+  { domanda: 'Come creo un pacchetto?', attese: ['pacchetti-distinta-base'] },
+  { domanda: 'Come collego un consenso a una prestazione?', attese: ['prestazione-moduli-consensi'] },
+  { domanda: 'Come imposto il compenso di un medico?', attese: ['medico-compensi-regole'] },
+  { domanda: 'Come limito le prestazioni prenotabili su un\'agenda?', attese: ['agenda-prestazioni-prenotabili'] },
+  { domanda: 'Come aggiungo una sede o un sezionale?', attese: ['sede-sezionale-nuovi'] },
+  { domanda: 'Devo creare l\'agenda per un nuovo specialista che inizia il mese prossimo', attese: ['agenda-creare'] },
+  { domanda: 'Un dottore viene il giovedì a settimane alterne, come lo configuro?', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Come imposto l\'orario estivo dal 1 luglio al 31 agosto?', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Un medico sostituisce un collega per due settimane: come sistemo le agende?', attese: ['agenda-sottoconfigurazioni'] },
+  { domanda: 'Come cambio la durata degli slot di un\'agenda da 15 a 20 minuti?', attese: ['agenda-orario-base'] },
+  { domanda: 'Come faccio a far occupare a un esame solo metà dello slot?', attese: ['agenda-occupazioni-parziali'] },
+  { domanda: 'Come duplico un\'agenda esistente per un altro medico?', attese: ['agenda-duplicare'] },
+  { domanda: 'Dove inserisco i giorni di chiusura per Natale?', attese: ['giorni-festivi-chiusure'] },
+  { domanda: 'Come cambio il prezzo di una visita dal primo gennaio?', attese: ['prestazione-listini-prezzi'] },
+  { domanda: 'Come registro un nuovo medico e le prestazioni che esegue?', attese: ['medico-nuovo'] },
+  { domanda: 'Come aggiungo un nuovo metodo di pagamento?', attese: ['tabelle-in-riga', 'config-pagamenti'] },
+  { domanda: 'Come divido una fattura in tre rate?', attese: ['fattura-rate-pagamenti'] },
+  { domanda: 'Come preparo i tracciati mensili per la ASL?', attese: ['ssn-tracciati-asl'] },
+  { domanda: 'Dove si scrivono le note interne di una pratica?', attese: ['assegnazione-schede-interne'] },
+  { domanda: 'Come do accesso a GIPO a una nuova collega della segreteria?', attese: ['utenti-nuovo-collega'] },
+  { domanda: 'Quale natura bollo devo mettere in fattura?', attese: ['fase5-fatturazione', 'fattura-righe-bollo'] },
+  { domanda: 'Come stampo il foglio con le credenziali per il portale referti?', attese: ['fase8-credenziali'] },
+  { domanda: 'Quali controlli devo fare su un\'impegnativa prima di accettarla?', attese: ['fase3-impegnativa'] },
+  { domanda: 'Come configuro una convenzione con un fondo sanitario?', attese: ['assicurazione-convenzione', 'fase2-canale-assicurazione'] },
+  { domanda: 'Come imposto il digiuno da segnalare per un esame del sangue?', attese: ['prestazione-nuova'] },
+  { domanda: 'Perché non trovo la pagina per creare una nuova specialità?', attese: ['tabelle-in-riga'] },
+];

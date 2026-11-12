@@ -10,6 +10,9 @@ slug: schermata-principale
 titolo: La schermata: barra in alto e piè di pagina
 percorso_gipo: /Home
 parole_chiave: barra, intestazione, logo, home, selettore, miodottore, utente, azienda, piè di pagina, schermata
+sintesi: Riconoscere gli elementi fissi di GipoNext (prodotto di Docplanner Italy S.r.l., gruppo MioDottore), presenti in ogni pagina.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Riconoscere gli elementi fissi di GipoNext (prodotto di Docplanner Italy S.r.l., gruppo MioDottore), presenti in ogni pagina.
@@ -34,6 +37,9 @@ ordine: 2
 slug: menu-laterale
 titolo: Il menu laterale
 parole_chiave: menu, voci, navigazione, percorsi, dove si trova, lista di lavoro, agenda, assegnazioni, pazienti, refertazione, fatturazione, magazzino, compensi, ssn, configurazione, log, assistenza, marketing
+sintesi: Il menu laterale di GIPO con tutte le voci e i loro percorsi.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Il menu laterale porta a tutte le funzioni di GIPO. Ogni voce ha un percorso (l'indirizzo dopo www.giponext.it), utile per riconoscere la pagina in cui ti trovi e per descriverla all'assistenza.
@@ -68,6 +74,9 @@ ordine: 3
 slug: ricerca-spotlight-noa
 titolo: Ricerca spotlight e Chiedi a Noa Evidence
 parole_chiave: ricerca spotlight, cerca, ricerca globale, noa evidence, assistente, intelligenza artificiale, docplanner
+sintesi: La ricerca globale di GIPO nella barra in alto (Ricerca spotlight) e l'assistente AI di Docplanner (Chiedi a Noa Evidence).
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 - **Ricerca spotlight...** è la ricerca globale di GIPO, nella barra in alto.
@@ -87,6 +96,9 @@ ordine: 4
 slug: griglie-comandi-comuni
 titolo: Le griglie: Excel, Cerca, Impostazioni colonna, Altre azioni
 parole_chiave: griglia, elenco, tabella, excel, esporta, cerca, impostazioni colonna, colonne, aggiungi, modifica, altre azioni, filtri
+sintesi: Quasi tutte le pagine di GIPO mostrano i dati in griglie (elenchi a righe e colonne) con gli stessi comandi.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Quasi tutte le pagine di GIPO mostrano i dati in griglie (elenchi a righe e colonne) con gli stessi comandi. Impararli una volta serve ovunque.
@@ -113,6 +125,9 @@ ordine: 5
 slug: sedi-e-agende-td
 titolo: Sedi e agende di Toscana Diagnostica in GIPO
 parole_chiave: sedi, agende, centri, punti prelievi, livorno, firenze, montemurlo, quarrata, calenzano, rosignano
+sintesi: Riconoscere le sedi e le agende configurate sull'account di Toscana Diagnostica, che compaiono nei filtri (Sede, Agende) di Lista di lavoro, Agenda e Assegnazioni.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Riconoscere le sedi e le agende configurate sull'account di Toscana Diagnostica, che compaiono nei filtri (Sede, Agende) di Lista di lavoro, Agenda e Assegnazioni.

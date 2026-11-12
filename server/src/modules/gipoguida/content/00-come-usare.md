@@ -9,6 +9,9 @@ ordine: 1
 slug: come-usare-la-guida
 titolo: Come usare questa guida
 parole_chiave: guida, aiuto, come funziona, chiedi, faq, pdf, da validare, ricerca
+sintesi: Questa guida spiega GipoNext (il gestionale ambulatoriale che in Toscana Diagnostica chiamiamo GIPO) a chi lo usa ogni giorno.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Questa guida spiega GipoNext (il gestionale ambulatoriale che in Toscana Diagnostica chiamiamo GIPO) a chi lo usa ogni giorno: accettazione, medici, amministrazione. Raccoglie in un solo posto menu, schermate, campi, pulsanti e i passaggi delle operazioni più comuni.
@@ -41,6 +44,9 @@ slug: assistenza-gipo
 titolo: Assistenza ufficiale Gipo
 percorso_gipo: /Home
 parole_chiave: assistenza, ticket, tele assistenza, teamviewer, videotutorial, next@gipo.it, manuale, supporto, help desk
+sintesi: Quando un problema non è risolto da questa guida o riguarda un malfunzionamento di GIPO, il canale corretto è l'assistenza del fornitore (Docplanner Italy, gruppo MioDottore).
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Quando un problema non è risolto da questa guida o riguarda un malfunzionamento di GIPO, il canale corretto è l'assistenza del fornitore (Docplanner Italy, gruppo MioDottore).
@@ -71,6 +77,9 @@ ordine: 3
 slug: referente-interno
 titolo: Referente interno e domande senza risposta
 parole_chiave: referente, chi chiedere, aiuto interno, redazione, domanda senza risposta, coda, faq nuove
+sintesi: Spiega a chi rivolgersi dentro Toscana Diagnostica e cosa succede a una domanda che la guida non copre.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Spiega a chi rivolgersi dentro Toscana Diagnostica e cosa succede a una domanda che la guida non copre.

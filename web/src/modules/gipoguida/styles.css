@@ -149,3 +149,15 @@
 .gg-editor-anteprima .bd { max-height: 600px; overflow: auto; }
 .gg-editor .alert { margin-bottom: 12px; }
 .gg-page .modal .alert { margin-bottom: 12px; }
+
+/* v0.71.1: filtro "Per chi configura GIPO", pallino delle sezioni validate, azioni della panoramica, passi senza AI, coda */
+.gg-filtro-livello { display: flex; margin: 0 0 10px; }
+.gg-filtro-livello button { flex: 1; font-size: 12.5px; }
+.gg-dot.ok { background: var(--green, #2f7d5b); opacity: .55; }
+.gg-pan-az { gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.gg-procedure { display: grid; gap: 12px; margin: 10px 0; }
+.gg-procedura { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--card); }
+.gg-procedura-hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.gg-procedura-hd a { font-weight: 600; }
+.gg-coda-az .btn[disabled] { opacity: .6; }
+.gg-rigenerata { margin-top: 8px; border-left: 3px solid var(--blue, #71b1bd); padding-left: 10px; }

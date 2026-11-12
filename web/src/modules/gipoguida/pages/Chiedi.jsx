@@ -8,9 +8,9 @@ import { Badge, Card, ErrorBox, PageHead } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { api, base, qs, useApi } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { AvvisoDati, Bollino, ESITO, Risultati, TestoGuida, itDataOra, linkRisultato } from '../components.jsx';
+import { AvvisoDati, Bollino, ESITO, FonteBadge, Risultati, TestoGuida, itDataOra, linkRisultato } from '../components.jsx';
 
-const ESEMPI = ['Come accetto un paziente arrivato?', 'Come faccio una nota di credito?', 'Come stampo la chiusura di cassa?', 'Perché Nuovo referto dal menu dà errore?', 'Dove vedo l\'esito della fattura elettronica?'];
+const ESEMPI = ['Come accetto un paziente arrivato?', 'Un medico viene solo il primo e il terzo martedì del mese: come imposto la sua agenda?', 'Come aumento tutti i prezzi di un listino del 5%?', 'Come faccio una nota di credito?', 'Come stampo la chiusura di cassa?', 'Quale Natura bollo devo scegliere in fattura?'];
 
 /** Citazioni [n] della risposta → collegamenti "(n)" alla fonte */
 const conCitazioni = (testo, fonti) => String(testo || '').replace(/\[(\d+)\](?!\()/g, (m, n) => {
@@ -46,33 +46,59 @@ function Valutazione({ domanda, onFatto }) {
   );
 }
 
+/** Senza AI (o se non risponde): i passi già scritti nelle sezioni migliori, con il collegamento alla sezione completa */
+export function Procedure({ procedure, titolo }) {
+  if (!procedure?.length) return null;
+  return (
+    <div className="gg-procedure">
+      {titolo && <h3>{titolo}</h3>}
+      {procedure.map((p) => (
+        <div key={p.id} className="gg-procedura">
+          <div className="gg-procedura-hd"><Link to={`${base}/guida/${p.slug}`}>{p.titolo}</Link><Bollino stato={p.stato} compatto /><FonteBadge fonte={p.fonte} /></div>
+          <TestoGuida source={p.passi} />
+          <Link className="small" to={`${base}/guida/${p.slug}`}>Apri la sezione completa</Link>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const TITOLO = { RISPOSTA: 'Risposta dalla guida', PARZIALE: 'Risposta dalla guida, con passi da provare', SOLO_RICERCA: 'Cosa dice la guida', SENZA_RISPOSTA: 'La guida non copre ancora questa domanda' };
+
 function Risposta({ r, onValutata }) {
   const citate = (r.fonti || []).filter((f) => f.citata);
   const altre = (r.risultati || []).filter((x) => !citate.some((f) => f.tipo === x.tipo && f.id === x.id));
   return (
-    <Card className="gg-risposta" title={r.esito === 'RISPOSTA' ? 'Risposta dalla guida' : r.esito === 'SOLO_RICERCA' ? 'Cosa dice la guida' : 'La guida non copre ancora questa domanda'} icon={r.esito === 'RISPOSTA' ? 'sparkle' : r.esito === 'SOLO_RICERCA' ? 'doc' : 'info'}
+    <Card className="gg-risposta" title={TITOLO[r.esito] || TITOLO.SOLO_RICERCA} icon={['RISPOSTA', 'PARZIALE'].includes(r.esito) ? 'sparkle' : r.esito === 'SOLO_RICERCA' ? 'doc' : 'info'}
       actions={<Badge tone={ESITO[r.esito]?.tone}>{ESITO[r.esito]?.label}</Badge>}>
       <div className="gg-domanda"><Icon name="comment" /><span>{r.domanda || r.testo}</span></div>
       {r.mascherati?.length > 0 && <div className="alert warn gg-masc"><Icon name="shield" /><span>Dalla domanda sono stati tolti: {r.mascherati.join(', ')}. Non scrivere dati dei pazienti.</span></div>}
-      {r.esito === 'RISPOSTA' && r.risposta && <TestoGuida source={conCitazioni(r.risposta, r.fonti)} className="gg-testo-risposta" />}
+      {['RISPOSTA', 'PARZIALE'].includes(r.esito) && r.risposta && <TestoGuida source={conCitazioni(r.risposta, r.fonti)} className="gg-testo-risposta" />}
       {r.esito === 'SENZA_RISPOSTA' && (
         <div className="gg-senza">
           {r.risposta ? <TestoGuida source={conCitazioni(r.risposta, r.fonti)} /> : <p>Nella guida non ci sono ancora sezioni che rispondono a questa domanda.</p>}
           <p className="muted">La domanda è già nella coda della redazione: quando risponde la trovi tra le FAQ e ricevi una notifica nella Suite. Se è urgente chiedi al referente interno o apri un ticket all'assistenza Gipo (menu Assistenza di GIPO, next@gipo.it).</p>
+          <Procedure procedure={r.procedure} titolo="La sezione più vicina" />
         </div>
       )}
-      {r.esito === 'SOLO_RICERCA' && <p className="muted">{r.ai?.errore || (r.ai?.attiva ? '' : 'L\'assistente non è attivo:')} ecco le sezioni e le FAQ più pertinenti. Aprile per i passaggi completi.</p>}
+      {r.esito === 'SOLO_RICERCA' && (
+        <>
+          <p className="muted">{r.ai?.errore || (r.ai?.attiva ? '' : 'L\'assistente non è attivo:')} ecco i passi delle sezioni più pertinenti, già scritti nella guida.</p>
+          <Procedure procedure={r.procedure} />
+        </>
+      )}
+      {r.esito === 'PARZIALE' && <div className="alert warn gg-cautela"><Icon name="alert" /><span>Alcuni passi sono ricavati dai campi dell'interfaccia e non ancora provati: falli prima su un'agenda o una prestazione di prova, come indicato nella risposta.</span></div>}
       {r.esito === 'RISPOSTA' && <div className="alert info gg-cautela"><Icon name="info" /><span>La risposta è costruita solo sui testi della guida. Le sezioni "da validare" descrivono procedure ricavate dall'interfaccia: in caso di dubbio chiedi conferma al referente.</span></div>}
       {citate.length > 0 && (
         <div className="gg-fonti">
           <h3>Sezioni usate</h3>
-          <ul>{citate.map((f) => { const n = (r.fonti || []).indexOf(f) + 1; return <li key={`${f.tipo}-${f.id}`}><Link to={linkRisultato(f)}><b>({n})</b> {f.tipo === 'faq' ? 'FAQ: ' : ''}{f.titolo}</Link>{f.tipo === 'sezione' && <Bollino stato={f.stato} compatto />}</li>; })}</ul>
+          <ul>{citate.map((f) => { const n = (r.fonti || []).indexOf(f) + 1; return <li key={`${f.tipo}-${f.id}`}><Link to={linkRisultato(f)}><b>({n})</b> {f.tipo === 'faq' ? 'FAQ: ' : ''}{f.titolo}</Link>{f.tipo === 'sezione' && <Bollino stato={f.stato} compatto />}{f.tipo === 'sezione' && f.fonte && f.fonte !== 'INTERFACCIA' && <FonteBadge fonte={f.fonte} />}</li>; })}</ul>
         </div>
       )}
-      {(r.esito !== 'RISPOSTA' ? r.risultati : altre)?.length > 0 && (
+      {(!['RISPOSTA', 'PARZIALE'].includes(r.esito) ? r.risultati : altre)?.length > 0 && (
         <div className="gg-fonti">
-          <h3>{r.esito === 'RISPOSTA' ? 'Altre sezioni pertinenti' : r.esito === 'SENZA_RISPOSTA' ? 'Forse ti interessano' : 'Risultati nella guida'}</h3>
-          <Risultati risultati={r.esito === 'RISPOSTA' ? altre : r.risultati} />
+          <h3>{['RISPOSTA', 'PARZIALE'].includes(r.esito) ? 'Altre sezioni pertinenti' : r.esito === 'SENZA_RISPOSTA' ? 'Forse ti interessano' : 'Altri risultati nella guida'}</h3>
+          <Risultati risultati={['RISPOSTA', 'PARZIALE'].includes(r.esito) ? altre : r.risultati} />
         </div>
       )}
       {r.id && <Valutazione key={r.id} domanda={r} onFatto={onValutata} />}
@@ -150,6 +176,7 @@ export default function Chiedi() {
               {d.utile === true && <Badge tone="green">utile</Badge>}
               {d.utile === false && !d.risolta_il && <Badge tone="amber">alla redazione</Badge>}
               {d.risolta_con_faq_id && <Link className="small" to={`${base}/faq?voce=${d.risolta_con_faq_id}`}><Icon name="check" />Risposta della redazione</Link>}
+              {d.risolta_dalla_guida && <Badge tone="teal">la guida ora risponde</Badge>}
             </li>
           ))}
         </ul>

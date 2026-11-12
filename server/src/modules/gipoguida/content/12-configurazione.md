@@ -9,6 +9,9 @@ ordine: 1
 slug: config-panoramica
 titolo: La configurazione: cosa contiene e chi la tocca
 parole_chiave: configurazione, impostazioni, amministratore, permessi, voci configurazione
+sintesi: Cosa contiene il menu Configurazione e chi può modificarlo.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Il menu **Configurazione** contiene le impostazioni che valgono per tutti: modelli, tabelle SSN, medici, pagamenti, prestazioni e listini, agende, moduli, stampe, sedi, utenti.
@@ -36,6 +39,9 @@ slug: config-referti
 titolo: Referti: modelli, layout e frasi costanti
 percorso_gipo: /referti/modelli
 parole_chiave: modelli referto, layout predefinito, intestazione referto, piè di pagina, frasi costanti, nuova frase, configurazione referti
+sintesi: Prepara i modelli dei referti e la loro impaginazione.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Prepara i modelli dei referti e la loro impaginazione.
@@ -60,6 +66,9 @@ slug: config-ssn
 titolo: SSN: impostazioni generali
 percorso_gipo: /ConfigurazioniGeneraliSSN/Index
 parole_chiave: configurazione ssn, generali ssn, importo ticket, quota fissa, numero massimo prestazioni per impegnativa, conferma impegnative di default, tipo ticket obbligatorio, codice esenzione, ricetta dematerializzata, codice reparto, codice mittente, fse configurazione
+sintesi: Le regole con cui GIPO tratta le impegnative SSN.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Le regole con cui GIPO tratta le impegnative SSN.
@@ -90,6 +99,9 @@ ordine: 4
 slug: config-sport
 titolo: Medicina dello sport: modelli e tipi
 parole_chiave: modelli anamnesi, modelli esame, tipi certificato, tipi visita, idoneità, validità del rilascio, configurazione medicina dello sport
+sintesi: Prepara i modelli usati nelle visite sportive.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Prepara i modelli usati nelle visite sportive.
@@ -109,6 +121,9 @@ slug: config-aziende-medici
 titolo: Aziende: ruoli del personale e archivio medici
 percorso_gipo: /Medici/Index
 parole_chiave: medici, archivio medici, scheda medico, nuovo medico, ruoli personale, intramoenia, albo, utente collegato, sezionale fattura medico, codice prescrittore, compensi medico
+sintesi: Gestire l'anagrafica dei medici (usata da agende, referti, fatture e compensi) e i ruoli del personale.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Gestire l'anagrafica dei medici (usata da agende, referti, fatture e compensi) e i ruoli del personale.
@@ -129,16 +144,23 @@ Campi: Tipo di medico, Specialità medico, Cognome, Nome, Numero iscrizione Albo
 ### Come si fa
 1. Per un nuovo medico compila la scheda (Dati generali) e collega l'**Utente collegato** se il medico accede a GIPO (serve al Riepilogo personale dei compensi).
 2. Nella scheda **Referto** imposta l'intestazione dei suoi referti.
-3. Nella scheda **Compensi** imposta le regole di calcolo (i campi non sono stati annotati: da verificare con l'amministrazione).
+3. Nella scheda **Prestazioni** indica le prestazioni che il medico esegue (Prestazione, Listino, Gruppo, Specialità, Tempo previsto in minuti).
+4. Nella scheda **Compensi** imposta le regole di calcolo: Base di calcolo, Data di riferimento, Includi IVA e tasse nei calcoli, Includi calcolo ritenuta d'acconto, In percentuale, Solo prestazioni erogabili e le regole per Prestazione / Prodotto, Listino, Gruppo, Compenso, Ruolo medico, Valida dal, Valida al, Priorità (vedi [Regole di compenso del medico](sezione:medico-compensi-regole)).
+
+Procedura completa per un nuovo medico: [Nuovo medico e sue prestazioni](sezione:medico-nuovo).
 
 ### Attenzioni
 - **Scadenza Assicurazione** è un dato da tenere aggiornato: controllalo periodicamente nell'archivio.
+- Nel nuovo medico le schede Referto, Prestazioni e Compensi compaiono dopo il primo salvataggio; la scheda Compensi avvisa "Effettua la configurazione di almeno una prestazione per poter calcolare i compensi del medico.".
 
 === sezione
 ordine: 6
 slug: config-pagamenti
 titolo: Fatturazione: metodi e condizioni di pagamento
 parole_chiave: metodo di pagamento, condizioni di pagamento, contanti, bonifico, bonifico istantaneo, pos, bancomat, carte, tipologia sdi, pagamento tracciato, rate, prima rata bollo
+sintesi: Definisce come si può pagare (metodi) e con quali tempi (condizioni, anche a rate).
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Definisce come si può pagare (metodi) e con quali tempi (condizioni, anche a rate).
@@ -149,6 +171,7 @@ Definisce come si può pagare (metodi) e con quali tempi (condizioni, anche a ra
 
 ### Attenzioni
 - **Pagamento tracciato** distingue i pagamenti tracciabili (rilevante ai fini fiscali e delle detrazioni del paziente): non va cambiato senza l'amministrazione.
+- Le due tabelle si modificano in riga (vedi [Tabelle in riga](sezione:tabelle-in-riga)). Regola TD dal manuale operativo: si accettano contanti, POS, bonifico e pagamenti digitali, non gli assegni.
 - Metodo e condizione predefiniti si impostano in **Generali** (vedi [Configurazione generale della fattura](sezione:config-fattura-generale)).
 
 === sezione
@@ -156,6 +179,9 @@ ordine: 7
 slug: config-sezionali-anagrafiche
 titolo: Fatturazione: sezionali e anagrafiche di fatturazione
 parole_chiave: sezionali, sezionale documento, dispositivo, limita a sede, predefinito per sede, anagrafiche di fatturazione, soggetto erogante, regime fiscale, iban, cassa previdenziale
+sintesi: I sezionali sono le serie di numerazione dei documenti.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 - I **sezionali** sono le serie di numerazione dei documenti.
@@ -168,6 +194,7 @@ parole_chiave: sezionali, sezionale documento, dispositivo, limita a sede, prede
 ### Attenzioni
 - Con **Limita a sede** e **Predefinito per sede** ogni sede usa la propria serie: per questo il numero proposto in fattura può cambiare da sede a sede.
 - Il campo **Anagrafica erogante** della fattura sceglie tra queste anagrafiche.
+- Si aggiungono in riga; per un nuovo sezionale di sede vedi [Aggiungere una sede o un sezionale](sezione:sede-sezionale-nuovi).
 
 === sezione
 ordine: 8
@@ -175,6 +202,9 @@ slug: config-fattura-generale
 titolo: Fatturazione: configurazione generale della fattura
 percorso_gipo: /Configurazioni/Fattura
 parole_chiave: configurazione fattura, generali fattura, bollo, regime fiscale, logo, label fattura, note intestazione, fattura esente iva, sistema ts, medico obbligatorio, blocca modifiche documento, numero seriale, marca prodotto, sezionale predefinito
+sintesi: Configurazione generale della fattura: pagamento predefinito, bollo, regime fiscale, logo, testi, sezionale predefinito.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Le regole generali dei documenti fiscali.
@@ -204,6 +234,9 @@ slug: config-prestazioni
 titolo: Prestazioni: archivio e scheda prestazione
 percorso_gipo: /Prestazione/Index
 parole_chiave: prestazioni, archivio prestazioni, scheda prestazione, codice, codice lis, durata, iva, natura, nomenclatore, cup, note preparazione, prestazione ciclica, distinta base, moduli collegati, prezzi listino
+sintesi: L'archivio delle prestazioni vendibili, con codici, durate, IVA, collegamenti a SSN e CUP e note di preparazione.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 L'archivio delle prestazioni vendibili, con codici, durate, IVA, collegamenti a SSN e CUP e note di preparazione.
@@ -219,6 +252,12 @@ Schede: **Generale**, **Listini**, **Distinta base**, **Moduli collegati**.
 
 Campi: Codice shortcut, Codice LIS, Prestazione ciclica, Descrizione, Descrizione in fattura, Specialità, Gruppo, Codifica Nomenclatore, Tipo spesa, Attiva, Data scadenza, Iva, Natura (se esente IVA), Rif. Normativo, Punti, Q.ta ciclo terapeutico, Q.ta proposta, Tempo previsto (minuti), Tempo uomo, Minuti lavorati, Costo fisso materiali, Codice CoGe, Centro di costo, Codice SW terze parti, Codice interscambio, Gruppo accessi, Colore, Area, Tipo codice FEPA, Codice FEPA, Acconto/Sconto, Codice nomenclatore SSN, Codice catalogo prescrizione SSN, Codice interno prestazione CUP, Note generali, **Note preparazione**.
 
+### Le schede Listini, Distinta base, Moduli collegati
+- **Listini** ("Prezzi listini"): Listino, Validità Dal, Validità Al, Valido, Descrizione in fattura (listino), Prezzo netto, Iva, Costo di produzione, Costo fisso materiali, Quota assicurazione, Codice CoGe, Centro di costo, Prezzo ivato. Procedura: [Listini e prezzi con validità](sezione:prestazione-listini-prezzi).
+- **Distinta base** (prestazioni composte e pacchetti): Prestazioni collegate, Qta, Incidenza %, Ordine; opzioni "Calcolo compensi su singola prestazione." e "Inserisci prestazioni a quantità 1 in Assegnazione - Split pacchetto"; Aggiungi. Procedura: [Pacchetti con la distinta base](sezione:pacchetti-distinta-base).
+- **Moduli collegati**: Modulo, Tipo; Aggiungi: i moduli e i consensi da far firmare per quella prestazione. Procedura: [Moduli e consensi collegati](sezione:prestazione-moduli-consensi).
+Salvataggio con **Salva** o **Salva e chiudi**. Nuova prestazione: [Creare una prestazione](sezione:prestazione-nuova).
+
 ### Attenzioni
 - **Tempo previsto (minuti)** influisce verosimilmente sulla durata proposta in prenotazione (da verificare).
 - **Note preparazione** è il testo che si vede in assegnazione nella finestra Note preparazione.
@@ -230,6 +269,9 @@ slug: config-listini-prodotti
 titolo: Prodotti, listini, specialità, gruppi e aree
 percorso_gipo: /Listini/Index
 parole_chiave: listini, listino, prezzi listino, copia prezzi, incremento, modifica articoli listino, prodotti, specialità, gruppi, aree, codice branca, convenzione
+sintesi: Tabelle di prodotti, listini, specialità, gruppi e aree delle prestazioni.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Le tabelle che danno prezzi e classificazioni alle prestazioni.
@@ -242,8 +284,9 @@ Le tabelle che danno prezzi e classificazioni alle prestazioni.
 - **Aree**: Nome.
 
 ### Come si fa
-1. Per cambiare un prezzo: **Listini**, sul listino scegli **Modifica articoli listino** (oppure **Prezzi Listino** dalla prestazione) e aggiorna il prezzo.
-2. Per un aumento generale: **Copia prezzi di listino** con l'incremento in percentuale o in euro (verifica prima su quale listino di destinazione agisce).
+1. Per cambiare un prezzo: **Listini**, sul listino scegli **Modifica articoli listino** (oppure **Prezzi Listino** dalla prestazione) e aggiorna il prezzo; da una certa data, con le date di validità (vedi [Listini e prezzi con validità](sezione:prestazione-listini-prezzi)).
+2. Per un aumento generale: **Copia prezzi di listino** con l'incremento in percentuale o in euro (vedi [Listini: creare, copiare i prezzi con incremento](sezione:listini-creare-copiare)).
+3. Listini, specialità, gruppi e aree si aggiungono **in riga** con **Aggiungi** (vedi [Tabelle in riga](sezione:tabelle-in-riga)).
 
 ### Attenzioni
 - Un listino può essere collegato a un'assicurazione o a una sede: è così che in prenotazione e in assegnazione vengono proposti listini diversi.
@@ -254,30 +297,38 @@ ordine: 11
 slug: config-agende
 titolo: Agende: configurazione delle agende
 percorso_gipo: /Agende/Configurazioni
-parole_chiave: configurazione agende, nuova agenda, duplica agenda, orari agenda, slot, periodi, sottoconfigurazioni, occupazioni parziali, medico collegato, max appuntamenti per slot, servizi esterni, agenda cup
+parole_chiave: configurazione agende, nuova agenda, duplica agenda, orari agenda, slot, periodi, sottoconfigurazioni, occupazioni parziali, prestazioni listini, medico collegato, max appuntamenti per slot, servizi esterni, agenda cup, configurazione base, dati generali
+sintesi: Panoramica della configurazione delle agende (elenco, quattro schede della scheda agenda, campi) con i rimandi alle procedure del capitolo Back-end.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
-Crea e modifica le agende: orari, durata degli slot, prestazioni prenotabili, medico e risorsa.
+Crea e modifica le agende: orari, durata degli slot, periodi particolari, prestazioni prenotabili, medico e risorsa. Le procedure complete sono nel capitolo [Back-end: configurare GIPO](sezione:backend-mappa).
 
 ### Dove si trova
 **Configurazione > Agende > Configurazioni** (percorso /Agende/Configurazioni). Dall'agenda classica: **Configurazione > Agende e disponibilità**.
 
 ### Cosa c'è nella schermata
-Elenco: Colore, Nome, Sigla, Risorsa, Medico, Sede; azioni **Duplica agenda**, **Elimina**.
+Elenco: **Colore**, **Nome**, **Sigla**, **Risorsa**, **Medico**, **Sede**; **Aggiungi** (apre "Nuova configurazione agenda", /Agende/CreateConfigurazione); per riga **Modifica** e **Altre azioni**: **Duplica agenda**, **Elimina**.
 
-Scheda agenda, schede **Dati generali**, **Sottoconfigurazioni**, **Prestazioni / Listini**, **Occupazioni parziali**. Campi: Nome Agenda, Sigla, Colore, Nota, Medico collegato, Risorsa, Abilita condivisione calendar, Mostra in servizi esterni, Luogo, Agenda Cup, Max appuntamenti per slot, Sede.
+La scheda di un'agenda ha quattro schede:
+1. **Dati generali**: Nome Agenda, Sigla, Colore, Nota ("Nota facoltativa in agenda"), Medico collegato ("Digita Cognome o Nome medico da collegare..."), Risorsa, Abilita condivisione calendar, Mostra in servizi esterni, Luogo ("Nome e indirizzo completo del luogo"), Agenda Cup con il "Codice identificativo Agenda esterna nel CUP", Max appuntamenti per slot, Sede; più la **Configurazione base**: per ogni giorno da Lunedì a Domenica l'interruttore "Attiva\Disattiva configurazione", **Aggiungi** periodo (dalle ore, alle ore, **Slot (min.)** da 5 a 60), più periodi nello stesso giorno, **Rimuovi periodo**, **Altre azioni > Copia configurazione su tutti i giorni attivi**. Salvataggio con **Salva** o **Salva e chiudi**.
+2. **Sottoconfigurazioni**: avviso "Il periodo di validità di una sottoconfigurazione sovrascrive la configurazione base."; elenco Attiva, Data inizio validità, Data fine validità, Periodicità, Priorità; **Nuova sottoconfigurazione** con Periodicità in settimane (1-4), Priorità e, per ogni giorno, **Periodicità nel mese** (Primo, Secondo, Terzo, Quarto, Ultimo giorno).
+3. **Prestazioni / Listini**: Prestazione / Prodotto, Listino, Gruppo Articolo, Specialità; Aggiungi, Excel.
+4. **Occupazioni parziali**: Prestazione, Peso (%); Aggiungi, Excel.
 
-**Configurazione base**: per ogni giorno (Lunedì ... Domenica) **Aggiungi periodi** con l'orario e lo **Slot** in minuti (da 5 a 50).
-
-### Come si fa
-1. Per una nuova agenda simile a una esistente usa **Duplica agenda** e poi modifica nome, medico e orari.
-2. Negli orari di ogni giorno usa **Aggiungi periodi** (per esempio mattina e pomeriggio) e scegli lo **Slot**.
-3. Nella scheda **Prestazioni / Listini** indica cosa si può prenotare su quell'agenda.
+### Le procedure
+- [Creare un'agenda](sezione:agenda-creare)
+- [Orario settimanale (configurazione base)](sezione:agenda-orario-base)
+- [Sottoconfigurazioni: periodi di validità, settimane alterne, giorni del mese](sezione:agenda-sottoconfigurazioni), con gli esempi del medico presente il primo e il terzo martedì, delle settimane alterne, dell'orario estivo, della sostituzione e delle ferie
+- [Prestazioni prenotabili su un'agenda](sezione:agenda-prestazioni-prenotabili)
+- [Occupazioni parziali](sezione:agenda-occupazioni-parziali)
+- [Duplicare un'agenda](sezione:agenda-duplicare)
+- [Giorni festivi e chiusure](sezione:giorni-festivi-chiusure)
 
 ### Attenzioni
 - Cambiare orari o slot di un'agenda con appuntamenti già presi può lasciare appuntamenti fuori orario: concordalo con la sede.
 - **Mostra in servizi esterni** e **Agenda Cup** espongono l'agenda a canali esterni (dal nome, per esempio prenotazione online o CUP): da attivare solo su decisione della direzione.
-- Il significato di **Sottoconfigurazioni** e **Occupazioni parziali** non è stato descritto nell'analisi.
 
 === sezione
 ordine: 12
@@ -285,6 +336,9 @@ slug: config-calendario-risorse
 titolo: Calendario, risorse e centri di lavoro
 percorso_gipo: /ConfigurazioniCalendario/Index
 parole_chiave: calendario, giorni festivi, festivi, fascia oraria, vista predefinita, risorse, centri di lavoro, ciclicità conteggio, affianca agende, incrocia agende
+sintesi: Impostazioni comuni del calendario, festività, risorse e centri di lavoro.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Impostazioni comuni del calendario, festività, risorse e centri di lavoro.
@@ -294,9 +348,13 @@ Impostazioni comuni del calendario, festività, risorse e centri di lavoro.
 - **Risorse**: Descrizione, Ordine.
 - **Centri di lavoro**: Nome, Ciclicità conteggio, Conteggio iniziale, Attivo.
 
+### Giorni festivi
+La scheda **Giorni festivi** dice: "I periodi festivi vengono visualizzati con sfondo rosso all'interno del Calendario, viste Giorno, Settimana e Settimana Lavorativa."; **Aggiungi periodo festivo** (Dalla data, Alla data, Aggiungi) e l'elenco **Periodi attivi** (Dal giorno, Al giorno). Procedura: [Giorni festivi e chiusure](sezione:giorni-festivi-chiusure).
+
 ### Come si fa
-1. A inizio anno controlla i **Giorni festivi**.
+1. A inizio anno inserisci i **Giorni festivi**.
 2. L'ordine delle risorse nell'agenda si cambia in **Risorse** (campo Ordine) o dall'agenda con **Configurazione > Risorse e ordinamento**.
+3. Risorse e Centri di lavoro si aggiungono e modificano in riga nella griglia (vedi [Tabelle in riga](sezione:tabelle-in-riga)).
 
 ### Attenzioni
 - I **Centri di lavoro** compaiono nei filtri di Gestione assegnazioni, Gruppo assegnazioni e Riepilogo Asl; il significato di **Ciclicità conteggio** e **Conteggio iniziale** non è spiegato dall'interfaccia.
@@ -306,6 +364,9 @@ ordine: 13
 slug: config-assicurazioni
 titolo: Assicurazioni
 parole_chiave: assicurazioni, ente assicurativo, fondo, convenzione assicurativa, bollo a carico dell'ente, condizione di pagamento associata
+sintesi: Elenco degli enti assicurativi con cui si lavora.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Elenco degli enti assicurativi con cui si lavora.
@@ -314,7 +375,7 @@ Elenco degli enti assicurativi con cui si lavora.
 Colonne: **Ente assicurativo**, **Nome visualizzato**, **Condizione di pagamento associata**, **Bollo a carico dell'ente**.
 
 ### Attenzioni
-- L'assicurazione si indica nella scheda del paziente e nella scheda **Assicurazione** dell'assegnazione; i listini possono avere un'**Assicurazione collegata**.
+- L'assicurazione si indica nella scheda del paziente e nella scheda **Assicurazione** dell'assegnazione (Assicurazione, Numero pratica); i listini possono avere un'**Assicurazione collegata**. Procedura: [Assicurazioni e convenzioni](sezione:assicurazione-convenzione).
 - Le quote a carico dell'assicurazione compaiono nello **Scadenzario** con il filtro Assicurazione.
 
 === sezione
@@ -322,6 +383,9 @@ ordine: 14
 slug: config-modulistica
 titolo: Modulistica
 parole_chiave: modulistica, moduli, consenso, privacy, anamnesi, firme terapia, modello word, template avanzato, personalizzazione standard, azzera conteggi
+sintesi: I moduli che si stampano o si fanno firmare ai pazienti (consensi, privacy, anamnesi).
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 I moduli che si stampano o si fanno firmare ai pazienti (consensi, privacy, anamnesi).
@@ -334,7 +398,8 @@ Scheda modulo: **Personalizzazione standard** oppure **Template avanzato**, **Ca
 ### Come si fa
 1. Per un nuovo modulo scegli il tipo e la personalizzazione.
 2. Con **Template avanzato** carica il file Word con **Carica nuovo modello Word**.
-3. I moduli si usano poi dai pulsanti **Modulistica** di assegnazione e fattura.
+3. I moduli si usano poi dai pulsanti **Modulistica** di assegnazione e fattura; per farli proporre con una prestazione collegali nella scheda **Moduli collegati** della prestazione (vedi [Moduli e consensi collegati](sezione:prestazione-moduli-consensi)).
+4. In Modulistica c'è anche il modulo TD-SGI-MOD235 "Assegnazione Credenziali Portale Paziente" (vedi [Fase 8](sezione:fase8-credenziali)).
 
 ### Attenzioni
 - I testi dei consensi e dell'informativa privacy vanno approvati da chi si occupa di privacy in azienda: non modificarli autonomamente.
@@ -345,6 +410,9 @@ ordine: 15
 slug: config-grafometrica
 titolo: Grafometrica: dispositivi di firma
 parole_chiave: grafometrica, tavoletta firma, dispositivo firma, associa dispositivo, firma elettronica
+sintesi: Associa le tavolette per la firma grafometrica dei moduli.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Associa le tavolette per la firma grafometrica dei moduli.
@@ -362,6 +430,9 @@ slug: config-templates
 titolo: Templates di stampa
 percorso_gipo: /ConfigurazioneModelli/Index
 parole_chiave: templates, modelli di stampa, promemoria appuntamento, riepilogo appuntamenti, preventivo, stampa fattura, stampa referto, ricetta interna
+sintesi: I modelli di stampa dei documenti prodotti da GIPO.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 I modelli di stampa dei documenti prodotti da GIPO.
@@ -381,6 +452,9 @@ ordine: 17
 slug: config-sedi
 titolo: Sedi e utenze di sede
 parole_chiave: sedi, gestione sedi, utenze sedi, codice asl, codice struttura, sede collegata, utente sede
+sintesi: Le sedi dell'azienda e quali utenti lavorano in quale sede.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Le sedi dell'azienda e quali utenti lavorano in quale sede.
@@ -392,6 +466,7 @@ Le sedi dell'azienda e quali utenti lavorano in quale sede.
 ### Attenzioni
 - **Codice ASL** e **Codice Struttura** servono alla rendicontazione SSN: non modificarli senza l'amministrazione.
 - Se un utente non vede le agende della sua sede, controlla la sua sede collegata in **Gestione utenze sedi**.
+- Sedi e utenze si aggiungono in riga: vedi [Aggiungere una sede, un'utenza di sede o un sezionale](sezione:sede-sezionale-nuovi).
 
 === sezione
 ordine: 18
@@ -399,6 +474,9 @@ slug: config-utenti-team
 titolo: Utenti e team (permessi)
 percorso_gipo: /utenti
 parole_chiave: utenti, invita utente, profilo, medico, segreteria, amministratore, bloccato, invitato, attivo, team, nuovo team, permessi, accesso gipo
+sintesi: Gestire chi accede a GIPO e con quale profilo.
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Gestire chi accede a GIPO e con quale profilo.
@@ -426,6 +504,9 @@ slug: config-miodottore
 titolo: MioDottore: mappatura prestazioni e condivisione file
 percorso_gipo: /MioDottore/Index
 parole_chiave: miodottore, mappatura prestazioni, facility, condivisione file, prenotazioni online, crm
+sintesi: Il collegamento tra GIPO e MioDottore (prenotazioni e condivisione dei documenti con i pazienti).
+fonte: INTERFACCIA
+livello: BACK_END
 ===
 ### A cosa serve
 Il collegamento tra GIPO e MioDottore (prenotazioni e condivisione dei documenti con i pazienti).

@@ -219,8 +219,8 @@ async function risultatiGuida(text) {
   const r = await cercaGuida(text, { limite: 6, prefisso: false });
   return r.map((x) => ({ kind: 'guida_gipo', ref_id: `${x.tipo}:${x.id}`, title: x.tipo === 'faq' ? `FAQ: ${x.titolo}` : `Guida GIPO · ${x.titolo}`, link: x.link, module_key: 'gipoguida',
     sensitive: false, snippet: x.snippet, body: String(x.testo || '').slice(0, 600),
-    // punteggio ricondotto alla scala della ricerca della Suite (ts_rank_cd pesato della guida arriva a 5-7 sui titoli)
-    score: 0.25 + Math.min(1, Number(x.score) / 5) }));
+    // punteggio ricondotto alla scala della ricerca della Suite (v0.71.1: copertura pesata della guida, circa 0-1.5)
+    score: 0.25 + Math.min(1, Number(x.score) / 1.5) }));
 }
 
 export function registerSearchJobs(registerJob) {

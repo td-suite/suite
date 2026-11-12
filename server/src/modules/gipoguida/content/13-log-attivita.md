@@ -10,6 +10,9 @@ slug: log-attivita
 titolo: Log attività
 percorso_gipo: /LogAttivita/Index
 parole_chiave: log attività, chi ha modificato, storico operazioni, tipo operazione, utente, data ora operazione, controllo
+sintesi: Registra le operazioni fatte dagli utenti.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Registra le operazioni fatte dagli utenti: serve a ricostruire chi ha fatto una modifica e quando.
@@ -33,6 +36,9 @@ ordine: 2
 slug: marketing-miodottore
 titolo: Marketing: CRM, MioDottore e videotutorial
 parole_chiave: marketing, crm, miodottore, videotutorial, fonte marketing
+sintesi: Il menu Marketing raccoglie gli strumenti di Docplanner per la comunicazione con i pazienti.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Il menu **Marketing** raccoglie gli strumenti di Docplanner per la comunicazione con i pazienti.

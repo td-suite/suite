@@ -10,6 +10,9 @@ slug: stato-magazzino
 titolo: Stato magazzino
 percorso_gipo: /Magazzino/Index
 parole_chiave: stato magazzino, giacenze, disponibili, entrati, usciti, prodotti, numeri seriali
+sintesi: Mostra per ogni prodotto quanto è entrato, quanto è uscito e quanto è disponibile.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Mostra per ogni prodotto quanto è entrato, quanto è uscito e quanto è disponibile.
@@ -30,6 +33,9 @@ slug: movimenti-magazzino
 titolo: Movimenti di magazzino
 percorso_gipo: /MovimentiMagazzino/Index
 parole_chiave: movimenti magazzino, carico, scarico, causale, aggiungi movimento, rettifica
+sintesi: Elenca i movimenti di carico e scarico e permette di aggiungerne a mano.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca i movimenti di carico e scarico e permette di aggiungerne a mano.
@@ -54,6 +60,9 @@ slug: nuovo-ddt
 titolo: Nuovo DDT (documento di trasporto)
 percorso_gipo: /DDT/Create
 parole_chiave: ddt, documento di trasporto, nuovo ddt, consegna, vettore, colli, causale, numero provvisorio, carica fattura
+sintesi: Emettere un documento di trasporto per la consegna di prodotti.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Emettere un documento di trasporto per la consegna di prodotti.
@@ -86,6 +95,9 @@ slug: gestione-ddt
 titolo: Gestione DDT e collegamento con le fatture
 percorso_gipo: /DDT/Index
 parole_chiave: gestione ddt, elenco ddt, fattura collegata, carica ddt, ddt fattura
+sintesi: Elenca i DDT emessi e mostra a quale fattura sono collegati.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca i DDT emessi e mostra a quale fattura sono collegati.

@@ -10,6 +10,9 @@ slug: assegnazione-cos-e
 titolo: Che cos'è un'assegnazione
 percorso_gipo: /Assegnazioni/Index
 parole_chiave: assegnazione, pratica, episodio, cos'è, prestazioni, listino, impegnativa, fatture, appuntamenti
+sintesi: Che cos'è l'assegnazione, la pratica del paziente con prestazioni, listino, impegnativa, appuntamenti e fatture.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 In GIPO l'**assegnazione** è la "pratica" del paziente: raccoglie le prestazioni da erogare con il loro listino e i prezzi, l'eventuale impegnativa SSN, gli appuntamenti e le fatture. Quasi tutto il lavoro di accettazione e fatturazione passa da un'assegnazione.
@@ -33,6 +36,9 @@ slug: nuova-assegnazione
 titolo: Nuova assegnazione: testata e pulsanti
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: nuova assegnazione, creare assegnazione, testata, fatturare a, inizio terapia, fine terapia, episodio, salva e chiudi, pulsanti
+sintesi: Crea a mano una nuova pratica per un paziente.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Crea a mano una nuova pratica per un paziente.
@@ -65,6 +71,9 @@ slug: assegnazione-schede
 titolo: Le schede dell'assegnazione
 percorso_gipo: /Assegnazioni/Index
 parole_chiave: schede assegnazione, prestazioni, ssn, appuntamenti, fatture, stato prestazioni, assicurazione, note, note interne
+sintesi: Panoramica delle schede dell'assegnazione (Prestazioni, SSN, Appuntamenti, Fatture, Stato prestazioni, Assicurazione, Note, Note Interne).
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Le schede dell'assegnazione mostrano le diverse facce della stessa pratica.
@@ -83,7 +92,7 @@ Le schede dell'assegnazione mostrano le diverse facce della stessa pratica.
 2. Passa da una scheda all'altra secondo quello che devi controllare: pagamenti in **Fatture**, date in **Appuntamenti**, avanzamento in **Stato prestazioni**.
 
 ### Attenzioni
-- Il contenuto dettagliato delle schede SSN, Stato prestazioni e Assicurazione non è stato annotato campo per campo nell'analisi: da completare con il referente.
+- Il dettaglio di ogni scheda (colonne e pulsanti di SSN, Appuntamenti, Fatture, Stato prestazioni, Assicurazione, Note Interne) è in [Assegnazione: schede SSN, Appuntamenti, Fatture, Stato prestazioni, Assicurazione, Note interne](sezione:assegnazione-schede-interne).
 
 === sezione
 ordine: 4
@@ -91,6 +100,9 @@ slug: assegnazione-prestazioni
 titolo: Aggiungere prestazioni e leggere la griglia
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: aggiungere prestazione, prestazione listino, quantità, impegnativa, colonne, prezzo, sconto, quota assicurazione, importo paziente, iva, tot riga, fatturata
+sintesi: Inserire nella pratica le prestazioni da erogare e controllarne prezzi e stato.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Inserire nella pratica le prestazioni da erogare e controllarne prezzi e stato.
@@ -119,6 +131,9 @@ slug: assegnazione-pacchetti-cicli
 titolo: Pacchetti e cicli terapeutici
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: pacchetto, ciclo terapeutico, raggruppamento, split pacchetto, split quantità, terapia, sedute
+sintesi: Raggruppare più prestazioni in un pacchetto o in un ciclo terapeutico (per esempio una serie di sedute), e separarle di nuovo quando serve.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Raggruppare più prestazioni in un **pacchetto** o in un **ciclo terapeutico** (per esempio una serie di sedute), e separarle di nuovo quando serve.
@@ -142,6 +157,9 @@ slug: assegnazione-listino-medico-nota
 titolo: Cambio listino, Associa medico, Applica nota
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: cambio listino, cambiare listino, associa medico, applica nota, prestazioni selezionate, convenzione, prezzo sbagliato
+sintesi: Correggere in blocco le righe dell'assegnazione.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Correggere in blocco le righe dell'assegnazione.
@@ -168,6 +186,9 @@ slug: assegnazione-prenota-referta
 titolo: Prenotare e refertare dall'assegnazione
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: prenota, prenota wizard, referta, assegnazione, appuntamenti, informazioni, modulistica, note preparazione
+sintesi: Dall'assegnazione si possono prenotare gli appuntamenti delle prestazioni e aprire il referto, senza passare dal menu.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Dall'assegnazione si possono prenotare gli appuntamenti delle prestazioni e aprire il referto, senza passare dal menu.
@@ -193,6 +214,9 @@ slug: assegnazione-ssn
 titolo: Impegnativa e Budget SSN nell'assegnazione
 percorso_gipo: /Assegnazioni/Create
 parole_chiave: impegnativa, ricetta, ssn, budget ssn, totali impegnativa, ticket, esenzione, convenzionata, servizio sanitario
+sintesi: Per le prestazioni a carico del Servizio sanitario l'assegnazione collega le righe all'impegnativa (la ricetta) e tiene conto del budget SSN.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Per le prestazioni a carico del Servizio sanitario l'assegnazione collega le righe all'impegnativa (la ricetta) e tiene conto del budget SSN.
@@ -219,6 +243,9 @@ slug: gestione-assegnazioni
 titolo: Gestione assegnazioni: cercare e lavorare le pratiche
 percorso_gipo: /Assegnazioni/Index
 parole_chiave: gestione assegnazioni, elenco assegnazioni, lista prestazioni, filtri, fatturato, non fatturate, da fatturare, refertata, data assegnazione, centro di lavoro
+sintesi: Trovare le assegnazioni e le prestazioni con filtri (per esempio quelle non ancora fatturate) e agire sulle righe.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Trovare le assegnazioni e le prestazioni con filtri (per esempio quelle non ancora fatturate) e agire sulle righe.
@@ -248,3 +275,48 @@ Azioni di riga: **Fattura**, **Referta**, **Chiudi**, **Vai ad assegnazione**, *
 ### Attenzioni
 - **Cancella date** toglie il filtro sulle date: con molte pratiche l'elenco può diventare lungo.
 - Per fatturare più assegnazioni in un'unica fattura vedi [Gruppo assegnazioni](sezione:gruppo-assegnazioni).
+
+=== sezione
+ordine: 10
+slug: assegnazione-schede-interne
+titolo: Assegnazione: schede SSN, Appuntamenti, Fatture, Stato prestazioni, Assicurazione, Note interne
+percorso_gipo: /Assegnazioni/Index
+parole_chiave: scheda ssn assegnazione, fattura tutto, fattura selezionate, conferma tutto, impegnative assegnazione, medico prescrittore, diagnosi, priorità accesso, tipo ricetta, modalità accesso, tipo accesso, posizione contabile, appuntamenti assegnazione, nuovo appuntamento, cancella selezionati, stampa selezionati, fatture assegnazione, di acconto, stato prestazioni, assicurazione, numero pratica, note interne
+sintesi: Colonne e pulsanti delle schede interne dell'assegnazione: SSN (Fattura tutto, Conferma tutto, impegnative), Appuntamenti (Nuovo appuntamento, Stampa e Cancella selezionati), Fatture, Stato prestazioni, Assicurazione (Numero pratica), Note interne.
+fonte: INTERFACCIA
+livello: OPERATIVO
+===
+### A cosa serve
+Dice cosa c'è in ogni scheda interna dell'assegnazione e cosa si fa da lì. Le schede si aprono dall'assegnazione (**Vai ad assegnazione** dalla Lista di lavoro, oppure **Gestione assegnazioni**).
+
+### Scheda SSN
+- Riepilogo in alto: **Prestazioni private**, **Prestazioni convenzionate senza impegnativa**, **Totale impegnative**, **Totale assegnazione**.
+- Pulsanti: **Fattura tutto**, **Fattura selezionate**, **Conferma tutto**.
+- Colonne: Conferma, Scartata, Num. Impegnativa, Data Impegnativa, Medico prescrittore, Diagnosi, Codice esenzione, Num. Prestazioni, Totale prestazioni, Ticket, Quota fissa, Totale Impegnativa, Data Prenotazione, Posizione Contabile, Priorità Accesso, Tipo Ricetta, Modalità Accesso, Tipo Accesso.
+
+Come si usa:
+1. Controlla per ogni impegnativa **Medico prescrittore**, **Codice esenzione**, **Ticket** e **Priorità Accesso** (sono i controlli della [Fase 3](sezione:fase3-impegnativa)).
+2. **Conferma tutto** conferma le impegnative della pratica (lo stesso dato **Confermata** del Riepilogo Asl, da verificare).
+3. **Fattura tutto** o **Fattura selezionate** prepara la fattura del ticket per le impegnative scelte.
+
+### Scheda Appuntamenti
+- Pulsanti: **Stampa selezionati**, **Nuovo appuntamento**, **Cancella selezionati**.
+- Colonne: Data Inizio, Ora, Descrizione, Stato Appuntamento.
+
+Come si usa: **Nuovo appuntamento** per fissarne uno dalla pratica; spunta gli appuntamenti e **Stampa selezionati** per dare al paziente il promemoria; **Cancella selezionati** per toglierli (attenzione: un appuntamento già fatturato va prima stornato).
+
+### Scheda Fatture
+Colonne: Num., Data, Sez., Di Acconto, CF\PIVA, Totale fattura, Totale Iva, Ritenuta d'acconto, Netto dovuto, Data pagamento, Condizione di pagamento, Origine. **Di Acconto** distingue le fatture di acconto. Per stampare o stornare una fattura vai in [Gestione fatture](sezione:gestione-fatture).
+
+### Scheda Stato prestazioni
+Colonne: **Data e ora**, **Prestazione\Prodotto**: la cronologia dei cambi di stato delle prestazioni della pratica.
+
+### Scheda Assicurazione
+Campi: **Assicurazione**, **Numero pratica**. Qui si indica l'ente e il numero della pratica dell'assicurazione (regole TD: [Fase 2: canale assicurazione](sezione:fase2-canale-assicurazione)).
+
+### Note e Note Interne
+- **Note**: le note della pratica.
+- **Note Interne**: colonne **Testo**, **Utente**, **Data creazione**: note di servizio tra colleghi, con autore e data. Non scrivere dati clinici non necessari.
+
+### Attenzioni
+- Colonne e pulsanti sono quelli osservati il 13/11/2026; gli effetti di **Conferma tutto** e **Fattura tutto** sono dedotti dai nomi: da provare su una pratica di prova.

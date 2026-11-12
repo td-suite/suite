@@ -10,6 +10,9 @@ slug: nuovo-paziente
 titolo: Nuovo paziente: la scheda anagrafica
 percorso_gipo: /Pazienti/Create
 parole_chiave: nuovo paziente, anagrafica, creare paziente, codice fiscale, dati paziente, inserire paziente, registrare paziente, azienda, minorenne, non autonomo, medico di base, documento, fonte marketing
+sintesi: Crea l'anagrafica di un paziente nuovo, necessaria per prenotare, accettare, fatturare e refertare.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 Crea l'anagrafica di un paziente nuovo, necessaria per prenotare, accettare, fatturare e refertare.
@@ -42,6 +45,13 @@ Campi della scheda Anagrafica:
 6. Se il paziente è un'azienda spunta **Azienda** e compila **Ragione sociale** e **Partita IVA**; se è minorenne o non autonomo spunta **Soggetto minorenne o non autonomo**.
 7. Premi **Salva**.
 
+### Salvare
+I pulsanti di salvataggio sono **Salva**, **Salva e chiudi** e **Salva e nuova assegnazione** (salva il paziente e apre subito la pratica: è la via più rapida allo sportello). C'è anche il pulsante **Lettura tessera sanitaria**.
+
+### Regole TD dal manuale operativo
+- Leggi la tessera sanitaria quando possibile; per un paziente già censito verifica e aggiorna i dati.
+- Con inserimento manuale (per esempio paziente straniero) sono obbligatori nome, cognome, data e luogo di nascita, codice fiscale, residenza o domicilio, telefono ed e-mail (vedi [Fase 1: anagrafica e consensi](sezione:fase1-anagrafica-consensi)).
+
 ### Attenzioni
 - I campi obbligatori non sono stati osservati: se il salvataggio non riesce, GIPO dovrebbe indicare il campo mancante (da verificare).
 - "Non controllare Codice fiscale\Piva in fattura" disattiva un controllo: usalo solo con indicazione dell'amministrazione.
@@ -53,7 +63,10 @@ ordine: 2
 slug: paziente-consensi
 titolo: Consensi, privacy e modulistica del paziente
 percorso_gipo: /Pazienti/Index
-parole_chiave: consenso, privacy, trattamento dati, marketing, condivisione miodottore, modulistica, firma, informativa, gdpr
+sintesi: Registrare i consensi del paziente e raccogliere i moduli da firmare.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
+parole_chiave: consenso, privacy, trattamento dati, marketing, condivisione miodottore, modulistica, firma, informativa, gdpr, giposign, firma grafometrica, rifirmare, consenso informato
 ===
 ### A cosa serve
 Registrare i consensi del paziente e raccogliere i moduli da firmare.
@@ -70,6 +83,13 @@ Registrare i consensi del paziente e raccogliere i moduli da firmare.
 2. Dall'assegnazione apri **Modulistica** e scegli il modulo da far firmare (per esempio il consenso o l'informativa privacy).
 3. Se in sede c'è la tavoletta di firma grafometrica, il paziente firma sulla tavoletta; la firma comparirà nello Storico firme (da verificare il passaggio esatto).
 
+### Regole TD dal manuale operativo
+1. Al primo accesso, e quando cambiano i moduli per motivi normativi o si aggiungono trattamenti, il paziente firma: informativa privacy (art. 13 GDPR), consenso al trattamento dei dati sanitari, consenso marketing, consenso alle modalità di trasmissione del referto, consenso informato per le prestazioni che lo richiedono (mezzo di contrasto, prelievo ematico, ecc.).
+2. La firma si raccoglie su tablet con l'app GipoSign: il modulo si apre da GIPO e il paziente firma con lo stilo.
+3. La firma resta archiviata nel profilo del paziente: agli accessi successivi non si rifirma, salvo modifiche ai moduli o nuovi trattamenti.
+4. A ogni accesso verifica telefono ed e-mail.
+Dettaglio in [Fase 1: anagrafica e consensi](sezione:fase1-anagrafica-consensi); per far proporre un consenso con una prestazione vedi [Moduli e consensi collegati a una prestazione](sezione:prestazione-moduli-consensi).
+
 ### Attenzioni
 - **Consenti condivisione su MD** incide sulla condivisione dei referti su MioDottore (vedi [Condivisione su MioDottore](sezione:referto-miodottore)): non spuntarlo senza il consenso del paziente.
 - I moduli obbligatori per ogni prestazione sono decisi dall'azienda, non da GIPO: chiedi al referente quali raccogliere.
@@ -80,6 +100,9 @@ slug: paziente-tessera-sanitaria
 titolo: Lettura della tessera sanitaria
 percorso_gipo: /Pazienti/Create
 parole_chiave: tessera sanitaria, lettore, strisciare, banda magnetica, codice fiscale, compilazione automatica
+sintesi: Riempire i dati anagrafici leggendo la tessera sanitaria con il lettore, riducendo gli errori di battitura su nome e codice fiscale.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Riempire i dati anagrafici leggendo la tessera sanitaria con il lettore, riducendo gli errori di battitura su nome e codice fiscale.
@@ -103,6 +126,9 @@ slug: archivio-pazienti
 titolo: Archivio pazienti (Gestione paziente)
 percorso_gipo: /Pazienti/Index
 parole_chiave: archivio pazienti, gestione paziente, cercare paziente, trovare paziente, modifica paziente, elimina paziente, multidoc, colonne, doppioni
+sintesi: Cercare, aprire e correggere le anagrafiche dei pazienti.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Cercare, aprire e correggere le anagrafiche dei pazienti.
@@ -130,6 +156,9 @@ slug: storico-firme
 titolo: Storico firme (firma grafometrica)
 percorso_gipo: /firma-grafometrica/storico-firme
 parole_chiave: storico firme, firma grafometrica, tavoletta, moduli firmati, consensi firmati
+sintesi: Elenca i moduli firmati dai pazienti sulla tavoletta di firma grafometrica.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca i moduli firmati dai pazienti sulla tavoletta di firma grafometrica.
@@ -154,6 +183,9 @@ slug: paziente-multidoc
 titolo: MultiDoc del paziente
 percorso_gipo: /Pazienti/Index
 parole_chiave: multidoc, documenti paziente, archivio documentale, allegati paziente, altre azioni
+sintesi: Aprire l'archivio documentale MultiDoc filtrato sul singolo paziente.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Aprire l'archivio documentale MultiDoc filtrato sul singolo paziente.

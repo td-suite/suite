@@ -13,9 +13,28 @@ export function AvvisoDati({ testo }) {
   return <div className="alert warn gg-avviso" role="note"><Icon name="lock" /><span><b>Niente dati dei pazienti.</b> {testo || AVVISO_DATI} Codici fiscali, telefoni ed email vengono rimossi in automatico.</span></div>;
 }
 
-export function Bollino({ stato, compatto }) {
-  if (stato === 'VALIDATA') return <Badge tone="green" title="Procedura confermata da un referente GIPO">validata</Badge>;
+export function Bollino({ stato, compatto, fonteValidazione }) {
+  if (stato === 'VALIDATA') {
+    const t = fonteValidazione ? `Procedura approvata: ${fonteValidazione}` : 'Procedura confermata da un referente GIPO';
+    return <Badge tone="green" title={t}>{fonteValidazione && !compatto ? `validata · ${fonteValidazione}` : 'validata'}</Badge>;
+  }
   return <Badge tone="amber" title="Procedura ricavata dall'interfaccia, non ancora confermata da chi usa GIPO ogni giorno">{compatto ? 'da validare' : 'da validare con un referente GIPO'}</Badge>;
+}
+
+// v0.71.1: fonte della sezione e livello (procedure per chi configura GIPO)
+export const FONTE = {
+  INTERFACCIA: { label: 'interfaccia', title: 'Ricavata dall\'analisi dell\'interfaccia di GipoNext (12 e 13/11/2026)', tone: 'grey' },
+  MANUALE_TD: { label: 'manuale TD', title: 'Dal Manuale operativo TD-SGI-MAN007 di Toscana Diagnostica', tone: 'teal' },
+  'INTERFACCIA+MANUALE': { label: 'interfaccia + manuale TD', title: 'Interfaccia di GipoNext e Manuale operativo TD-SGI-MAN007', tone: 'teal' },
+  REDAZIONE: { label: 'redazione', title: 'Scritta dalla redazione della guida', tone: 'blue' },
+};
+export function FonteBadge({ fonte }) {
+  const f = FONTE[fonte] || FONTE.INTERFACCIA;
+  return <Badge tone={f.tone} dot={false} title={f.title}>fonte: {f.label}</Badge>;
+}
+export function BackEndBadge({ livello }) {
+  if (livello !== 'BACK_END') return null;
+  return <Badge tone="blue" dot={false} title="Procedura per chi configura GIPO (back-end)">back-end</Badge>;
 }
 
 /** Converte i collegamenti interni [testo](sezione:slug) in percorsi della guida */
@@ -46,6 +65,7 @@ export function Risultati({ risultati, vuoto = 'Nessun risultato nella guida.', 
             <span className="gg-tipo">{r.tipo === 'faq' ? 'FAQ' : `Sezione${r.capitolo != null ? ` · cap. ${r.capitolo}` : ''}`}</span>
             <span className="gg-tit">{r.titolo}</span>
             {r.stato && r.tipo === 'sezione' && <Bollino stato={r.stato} compatto />}
+            {r.tipo === 'sezione' && r.livello === 'BACK_END' && <BackEndBadge livello={r.livello} />}
             {r.snippet && <span className="gg-snip" dangerouslySetInnerHTML={{ __html: sanitizeSnippet(r.snippet) }} />}
           </Link>
         </li>
@@ -58,6 +78,7 @@ export const itDataOra = (s) => (s ? new Date(s).toLocaleString('it-IT', { timeZ
 export const itData = (s) => (s ? new Date(s).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }) : '');
 export const ESITO = {
   RISPOSTA: { label: 'risposta', tone: 'green' },
+  PARZIALE: { label: 'risposta con passi da provare', tone: 'teal' },
   SOLO_RICERCA: { label: 'solo ricerca', tone: 'blue' },
   SENZA_RISPOSTA: { label: 'senza risposta', tone: 'amber' },
 };

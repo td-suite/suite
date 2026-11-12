@@ -10,6 +10,9 @@ slug: agenda-classica
 titolo: Agenda classica: com'è fatta
 percorso_gipo: /Agende/Classic
 parole_chiave: agenda classica, calendario, agende, filtra agende, mini calendario, oggi, giorno, settimana, mese, lista, visualizzazione estesa, stampa, agende nel periodo, tipi di risorsa, prenotare
+sintesi: L'agenda classica, vista calendario delle agende per giorno, settimana o mese da cui si prenota a vista.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 È la vista calendario delle agende: mostra gli appuntamenti e gli spazi liberi per giorno, settimana o mese ed è il punto da cui si prenota "a vista".
@@ -46,6 +49,9 @@ slug: agenda-prenotare
 titolo: Prenotare un appuntamento dall'agenda classica
 percorso_gipo: /Agende/Classic
 parole_chiave: prenotare, prenotazione, nuovo appuntamento, fissare appuntamento, slot, spazio libero, agenda
+sintesi: Fissare un appuntamento scegliendo lo spazio direttamente sul calendario.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 Fissare un appuntamento scegliendo lo spazio direttamente sul calendario.
@@ -63,7 +69,8 @@ In alternativa:
 
 ### Attenzioni
 - Per pazienti nuovi conviene creare prima l'anagrafica (vedi [Nuovo paziente](sezione:nuovo-paziente)) per evitare doppioni.
-- Se lo spazio non accetta l'appuntamento, l'agenda potrebbe non essere configurata per quella prestazione (vedi [Configurazione delle agende](sezione:config-agende)).
+- Se lo spazio non accetta l'appuntamento, l'agenda potrebbe non essere configurata per quella prestazione (vedi [Prestazioni prenotabili su un'agenda](sezione:agenda-prestazioni-prenotabili)).
+- Regola TD (manuale operativo): l'operatore sceglie prestazione e professionista, sceglie lo slot, inserisce o cerca l'anagrafica e conferma; GIPO invia un SMS di conferma al paziente (vedi [Fase 0: prenotazione](sezione:fase0-prenotazione)).
 
 === sezione
 ordine: 3
@@ -71,6 +78,9 @@ slug: agenda-incrocia-affianca
 titolo: Raggruppare, incrociare e affiancare le agende
 percorso_gipo: /Agende/Classic
 parole_chiave: raggruppa agende, per risorsa, per specialità, incrocia disponibilità, incrocia tutto, affianca tutto, espandi tutto, riduci tutto, deseleziona tutto, azioni di gruppo, configurazione agenda
+sintesi: Quando servono più agende insieme (per esempio un medico e un ambulatorio, o tutti i medici di una specialità) l'agenda classica permette di raggrupparle, affiancarle o incrociarne le disponibilità.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Quando servono più agende insieme (per esempio un medico e un ambulatorio, o tutti i medici di una specialità) l'agenda classica permette di raggrupparle, affiancarle o incrociarne le disponibilità.
@@ -98,6 +108,9 @@ slug: agenda-trova-spazio
 titolo: Trova spazio libero
 percorso_gipo: /Agende/Classic
 parole_chiave: trova spazio libero, primo posto libero, disponibilità, durata appuntamento, due settimane, un mese, tre mesi
+sintesi: Cerca il primo spazio disponibile nelle agende selezionate, senza scorrere il calendario a mano.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Cerca il primo spazio disponibile nelle agende selezionate, senza scorrere il calendario a mano.
@@ -121,6 +134,9 @@ slug: agenda-wizard
 titolo: Wizard di prenotazione (prenotazione guidata)
 percorso_gipo: /Agende/Wizard
 parole_chiave: wizard, prenotazione guidata, carrello, aggiungi al carrello, prestazione e listino, solo prestazione, qta, prezzo, sconto, durata, nota prestazione, nota appuntamento, slot disponibili
+sintesi: Il wizard di prenotazione a carrello: si scelgono le prestazioni e GIPO mostra gli slot liberi sulle agende selezionate.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 È una prenotazione "a carrello": si scelgono prima le prestazioni e poi GIPO mostra gli spazi disponibili sulle agende selezionate. Utile quando un paziente deve fare più prestazioni.
@@ -144,6 +160,7 @@ Menu **Agenda > Wizard** (percorso /Agende/Wizard). Dall'assegnazione: pulsante 
 
 ### Attenzioni
 - Il prezzo proposto viene dal listino: cambiarlo a mano qui va fatto solo secondo le regole interne su sconti e listini.
+- Il manuale operativo TD descrive il Wizard come la ricerca del primo slot che soddisfa insieme specialista, sala e apparecchiatura (vedi [Fase 0: prenotazione](sezione:fase0-prenotazione) e la nota "Da riconciliare con il manuale").
 
 === sezione
 ordine: 6
@@ -151,6 +168,9 @@ slug: agenda-panoramica
 titolo: Panoramica agende
 percorso_gipo: /agende/planner
 parole_chiave: panoramica, planner, occupazione, vista d'insieme, agende
+sintesi: Dà una vista d'insieme dell'occupazione delle agende.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Dà una vista d'insieme dell'occupazione delle agende.
@@ -167,6 +187,9 @@ slug: agenda-preferenze
 titolo: Preferenze personali dell'agenda
 percorso_gipo: /Agende/Classic
 parole_chiave: configurazione agenda, preferenze, orari visualizzati, settimana lavorativa, incrocia sempre disponibilità, scroll con trascinamento, mostra note su agende affiancate, mostra appuntamenti annullati, colora slot per prestazione
+sintesi: Il pannello Configurazione agenda contiene le preferenze personali di visualizzazione dell'agenda classica.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Il pannello **Configurazione agenda** contiene le preferenze personali di visualizzazione dell'agenda classica.
@@ -196,6 +219,9 @@ slug: agenda-cerca-prenotati-tessera
 titolo: Cerca prenotati e lettura della tessera sanitaria
 percorso_gipo: /Agende/Classic
 parole_chiave: cerca prenotati, cercare appuntamento paziente, tessera sanitaria, lettore, strisciare la tessera, codice fiscale
+sintesi: Cerca prenotati per trovare gli appuntamenti di un paziente e lettura della tessera sanitaria dall'agenda.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 - **Cerca prenotati** trova gli appuntamenti di un paziente.

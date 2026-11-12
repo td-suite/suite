@@ -26,7 +26,7 @@ const itData = (d) => (d ? new Date(d).toLocaleDateString('it-IT', { timeZone: '
 // ---------------------------------------------------------------- dati
 async function dati() {
   const capitoli = await many('SELECT numero, titolo, intro FROM capitoli ORDER BY numero');
-  const sezioni = await many(`SELECT s.id, s.capitolo, s.ordine, s.titolo, s.slug, s.corpo, s.percorso_gipo, s.stato, s.validata_il, s.aggiornata_il,
+  const sezioni = await many(`SELECT s.id, s.capitolo, s.ordine, s.titolo, s.slug, s.corpo, s.percorso_gipo, s.stato, s.validata_il, s.aggiornata_il, s.fonte, s.livello, s.fonte_validazione,
       s.capitolo || '.' || row_number() OVER (PARTITION BY s.capitolo ORDER BY s.ordine, s.id) AS numero
     FROM sezioni s ORDER BY s.capitolo, s.ordine, s.id`);
   const faq = await many(`SELECT f.id, f.domanda, f.risposta, f.sezione_id, s.capitolo FROM faq f LEFT JOIN sezioni s ON s.id = f.sezione_id
@@ -62,12 +62,16 @@ export function blocchiMarkdown(src) {
       continue;
     }
     if (/^\s*\d+[.)]\s+/.test(r)) {
-      const voci = [];
+      // sotto un passo numerato le righe rientrate con "- " sono un sottoelenco (sotto[k]); le altre righe rientrate continuano il passo
+      const voci = []; const sotto = [];
       while (i < righe.length && (/^\s*\d+[.)]\s+/.test(righe[i]) || (/^\s{2,}\S/.test(righe[i]) && voci.length))) {
-        if (/^\s*\d+[.)]\s+/.test(righe[i])) voci.push(righe[i].replace(/^\s*\d+[.)]\s+/, '')); else voci[voci.length - 1] += ` ${righe[i].trim()}`;
+        if (/^\s*\d+[.)]\s+/.test(righe[i])) { voci.push(righe[i].replace(/^\s*\d+[.)]\s+/, '')); sotto.push([]); }
+        else if (/^\s{2,}[-*+]\s+/.test(righe[i])) sotto[sotto.length - 1].push(righe[i].replace(/^\s*[-*+]\s+/, ''));
+        else if (sotto[sotto.length - 1].length) sotto[sotto.length - 1][sotto[sotto.length - 1].length - 1] += ` ${righe[i].trim()}`;
+        else voci[voci.length - 1] += ` ${righe[i].trim()}`;
         i++;
       }
-      out.push({ t: 'ol', voci });
+      out.push({ t: 'ol', voci, sotto });
       continue;
     }
     if (/^\|.*\|\s*$/.test(r)) {
@@ -151,6 +155,15 @@ function corpoMarkdown(doc, src, numeroDi) {
         doc.y = y0;
         scriviSegmenti(doc, segmenti(v, numeroDi), { x: M.left + rientro + 2, width: TW - rientro - 2 });
         doc.y += 2.5;
+        for (const sv of b.sotto?.[k] || []) {
+          const x0 = M.left + rientro + 4;
+          assicura(doc, Math.min(altezzaTesto(doc, sv, TW - rientro - 18), 28));
+          const ys = doc.y;
+          doc.font('R').fontSize(9.4).fillColor(C.teal).text('-', x0, ys, { width: 10, lineBreak: false });
+          doc.y = ys;
+          scriviSegmenti(doc, segmenti(sv, numeroDi), { x: x0 + 10, width: TW - rientro - 16, size: 9.4 });
+          doc.y += 1.8;
+        }
       });
       doc.y += 3;
     } else if (b.t === 'quote') {
@@ -167,24 +180,62 @@ function corpoMarkdown(doc, src, numeroDi) {
       scriviSegmenti(doc, segs, { x: M.left + 14, width: TW - 26, size: 9.4, color: C.amber });
       doc.y = Math.max(doc.y + 8, y0 + hBox) + 6;
     } else if (b.t === 'table') {
-      for (const [k, r] of b.righe.entries()) {
-        const testo = r.join('  ·  ');
-        assicura(doc, altezzaTesto(doc, testo, TW, 9.2, k === 0 ? 'B' : 'R') + 4);
-        doc.font(k === 0 ? 'B' : 'R').fontSize(9.2).fillColor(C.ink).text(testo, M.left, doc.y, { width: TW, lineGap: 1.5 });
-        doc.y += 2;
-      }
-      doc.y += 4;
+      tabella(doc, b.righe, numeroDi);
     }
   }
 }
 
-function bollino(doc, s) {
-  const testo = s.stato === 'VALIDATA' ? `VALIDATA${s.validata_il ? ` il ${itData(s.validata_il)}` : ''}` : 'DA VALIDARE con un referente GIPO';
+// Tabella markdown: griglia con intestazione su fondo chiaro, larghezze proporzionali al contenuto, righe che vanno a capo; a fine pagina
+// l'intestazione si ripete. Il testo delle celle usa gli stessi segmenti (grassetto, collegamenti "sez. n").
+function tabella(doc, righe, numeroDi) {
+  if (!righe.length) return;
+  const nc = Math.max(...righe.map((r) => r.length));
+  const piano = (c) => segmenti(c || '', numeroDi).map((x) => x.testo).join('');
+  const lung = Array.from({ length: nc }, (_, j) => Math.max(8, ...righe.map((r) => Math.min(70, piano(r[j]).length))));
+  const tot = lung.reduce((a, b) => a + b, 0);
+  const larg = lung.map((l) => Math.max(60, (TW * l) / tot));
+  const scala = TW / larg.reduce((a, b) => a + b, 0);
+  for (let j = 0; j < nc; j++) larg[j] *= scala;
+  const PAD = 4; const SIZE = 8.6;
+  const altezza = (r, font) => Math.max(...Array.from({ length: nc }, (_, j) => doc.font(font).fontSize(SIZE).heightOfString(piano(r[j]), { width: larg[j] - 2 * PAD, lineGap: 1.2 }))) + 2 * PAD;
+  const disegna = (r, intest) => {
+    const font = intest ? 'B' : 'R';
+    const h = altezza(r, font);
+    if (doc.y + h > maxY()) { doc.addPage(); doc.y = M.top; if (!intest) disegna(righe[0], true); }
+    const y0 = doc.y;
+    if (intest) doc.rect(M.left, y0, TW, h).fill(C.bg);
+    let x = M.left;
+    for (let j = 0; j < nc; j++) {
+      doc.y = y0 + PAD;
+      const segs = segmenti(r[j] || '', numeroDi).map((sg) => (intest ? { ...sg, grassetto: true } : sg));
+      if (segs.length) scriviSegmenti(doc, segs, { x: x + PAD, width: larg[j] - 2 * PAD, size: SIZE, lineGap: 1.2, color: intest ? C.jet : C.ink });
+      x += larg[j];
+    }
+    doc.moveTo(M.left, y0 + h).lineTo(M.left + TW, y0 + h).strokeColor(C.line).lineWidth(0.5).stroke();
+    doc.y = y0 + h;
+  };
+  assicura(doc, Math.min(altezza(righe[0], 'B') + altezza(righe[1] || righe[0], 'R'), 120));
+  doc.moveTo(M.left, doc.y).lineTo(M.left + TW, doc.y).strokeColor(C.line).lineWidth(0.5).stroke();
+  righe.forEach((r, k) => disegna(r, k === 0));
+  doc.y += 8;
+}
+
+const ETICHETTA_FONTE = { INTERFACCIA: 'interfaccia di GIPO', MANUALE_TD: 'Manuale operativo TD-SGI-MAN007', 'INTERFACCIA+MANUALE': 'interfaccia e Manuale operativo TD-SGI-MAN007', REDAZIONE: 'redazione' };
+function pillola(doc, x, y, testo, bg, fg) {
   doc.font('B').fontSize(7.4);
   const w = doc.widthOfString(testo) + 14;
+  doc.roundedRect(x, y, w, 13, 6.5).fill(bg);
+  doc.font('B').fontSize(7.4).fillColor(fg).text(testo, x + 7, y + 3.2, { lineBreak: false });
+  return w;
+}
+/** Bollini della sezione: stato (validata, con la fonte della validazione, o da validare) e BACK-END; ritorna { y, w } (larghezza occupata) */
+function bollino(doc, s) {
+  const testo = s.stato === 'VALIDATA'
+    ? (s.fonte_validazione ? `VALIDATA · ${s.fonte_validazione}` : `VALIDATA${s.validata_il ? ` il ${itData(s.validata_il)}` : ''}`)
+    : 'DA VALIDARE con un referente GIPO';
   const y = doc.y;
-  doc.roundedRect(M.left, y, w, 13, 6.5).fill(s.stato === 'VALIDATA' ? C.greenBg : C.amberBg);
-  doc.font('B').fontSize(7.4).fillColor(s.stato === 'VALIDATA' ? C.green : C.amber).text(testo, M.left + 7, y + 3.2, { lineBreak: false });
+  let w = pillola(doc, M.left, y, testo, s.stato === 'VALIDATA' ? C.greenBg : C.amberBg, s.stato === 'VALIDATA' ? C.green : C.amber);
+  if (s.livello === 'BACK_END') w += 5 + pillola(doc, M.left + w + 5, y, 'BACK-END', '#E2EEF1', C.teal);
   return { y, w };
 }
 
@@ -194,6 +245,9 @@ export async function generaPdf() {
   const co = await getCompany();
   const numeroDi = (slug) => sezioni.find((s) => s.slug === slug)?.numero || null;
   const daValidare = sezioni.filter((s) => s.stato !== 'VALIDATA').length;
+  const backEnd = sezioni.filter((s) => s.livello === 'BACK_END').length;
+  const dalManuale = sezioni.filter((s) => ['MANUALE_TD', 'INTERFACCIA+MANUALE'].includes(s.fonte)).length;
+  const validateManuale = sezioni.filter((s) => s.stato === 'VALIDATA' && s.fonte_validazione).length;
   const faqNumero = new Map(faq.map((f, i) => [f.id, i + 1]));
   const doc = nuovoDoc({ Title: 'Guida operativa GipoNext · Toscana Diagnostica', Author: co.legal_name, Creator: `Suite TD ${APP_VERSION}`, Subject: 'Guida GIPO' });
   const chunks = [];
@@ -216,15 +270,16 @@ export async function generaPdf() {
     doc.font('R').fontSize(10.5).fillColor(C.ink).text(val, M.left + 170, y - 1, { width: TW - 186 });
     y = Math.max(doc.y, y + 14) + 7;
   };
-  doc.roundedRect(M.left, y - 14, TW, 176, 10).fill(C.bg);
+  doc.roundedRect(M.left, y - 14, TW, 226, 10).fill(C.bg);
   riga('Edizione', `Suite TD v${APP_VERSION}`);
   riga('Aggiornata al', itData(aggiornata));
-  riga('Contenuto', `${capitoli.length} capitoli, ${sezioni.length} sezioni, ${faq.length} domande frequenti`);
+  riga('Contenuto', `${capitoli.length} capitoli, ${sezioni.length} sezioni (${backEnd} per chi configura GIPO, bollino BACK-END), ${faq.length} domande frequenti`);
+  riga('Validate', `${sezioni.length - daValidare} sezioni, di cui ${validateManuale} dal Manuale operativo TD-SGI-MAN007 (procedure approvate dall'azienda)`);
   riga('Da validare', daValidare ? `${daValidare} sezioni su ${sezioni.length} (bollino arancione)` : 'nessuna: tutte le sezioni sono validate');
-  riga('Fonte', 'Analisi dell\'interfaccia di GipoNext del 12/11/2026 (menu, schermate, campi e pulsanti), arricchita con le risposte della redazione alle domande del personale.');
-  y = Math.max(y + 22, 330 - 14 + 176 + 22);
+  riga('Fonti', `Analisi dell'interfaccia di GipoNext del 12 e 13/11/2026 (menu, schermate, schede interne, campi e pulsanti); Manuale operativo TD-SGI-MAN007 (${dalManuale} sezioni); risposte della redazione alle domande del personale.`);
+  y = Math.max(y + 22, 330 - 14 + 226 + 22);
   doc.font('B').fontSize(11).fillColor(C.amber).text('Prima di usare questa guida', M.left, y, { width: TW });
-  doc.font('R').fontSize(9.8).fillColor(C.ink).text('Le procedure sono ricavate dai nomi di menu, campi e pulsanti visti nell\'interfaccia e non sono state eseguite dal vivo: le sezioni con il bollino "da validare con un referente GIPO" vanno confermate da chi usa GIPO ogni giorno. Dove la guida dice "non osservato" o "da verificare", chiedi all\'assistenza Gipo. La versione sempre aggiornata è nella Suite TD, widget Guida GIPO, dove puoi anche fare domande.', M.left, doc.y + 4, { width: TW, lineGap: 2.5 });
+  doc.font('R').fontSize(9.8).fillColor(C.ink).text('Le sezioni con il bollino verde "VALIDATA · Manuale operativo TD-SGI-MAN007" riportano procedure approvate dall\'azienda. Le altre sono ricavate dai nomi di menu, campi e pulsanti visti nell\'interfaccia e non sono state eseguite dal vivo: con il bollino "da validare con un referente GIPO" vanno confermate da chi usa GIPO ogni giorno; le procedure di configurazione si provano prima su un\'agenda o una prestazione di prova. Le note "Da riconciliare con il manuale" segnalano dove manuale e interfaccia non coincidono. La versione sempre aggiornata è nella Suite TD, widget Guida GIPO, dove puoi anche fare domande.', M.left, doc.y + 4, { width: TW, lineGap: 2.5 });
   doc.moveDown(0.6);
   doc.font('B').fontSize(9.8).fillColor(C.ink).text('Non scrivere mai nomi o dati di pazienti nelle domande alla Suite.', M.left, doc.y, { width: TW });
   doc.moveDown(0.8);
@@ -269,8 +324,9 @@ export async function generaPdf() {
       doc.font('B').fontSize(13.2).fillColor(C.teal).text(`${s.numero}  ${s.titolo}`, M.left, doc.y, { width: TW });
       doc.y += 4;
       const b = bollino(doc, s);
-      if (s.percorso_gipo) doc.font('R').fontSize(8.4).fillColor(C.grey).text(`Percorso in GIPO: ${s.percorso_gipo}`, M.left + b.w + 10, b.y + 3, { width: TW - b.w - 10, lineBreak: false });
-      doc.y = b.y + 21;
+      const meta = [`Fonte: ${ETICHETTA_FONTE[s.fonte] || ETICHETTA_FONTE.INTERFACCIA}`, s.percorso_gipo ? `Percorso in GIPO: ${s.percorso_gipo}` : null].filter(Boolean).join('  ·  ');
+      doc.font('R').fontSize(8.2).fillColor(C.grey).text(meta, M.left, b.y + 17, { width: TW });
+      doc.y = Math.max(doc.y, b.y + 28) + 3;
       corpoMarkdown(doc, s.corpo, numeroDi);
       const collegate = faq.filter((f) => f.sezione_id === s.id).map((f) => faqNumero.get(f.id));
       if (collegate.length) {
@@ -321,7 +377,7 @@ export async function generaPdf() {
   doc.font('B').fontSize(21).fillColor(C.jet).text('Indice', M.left, yi, { width: TW });
   yi += 42;
   let pi = 0;
-  const vociIndice = (testo, pagina, dest, { cap = false, rientro = 0, validare = false } = {}) => {
+  const vociIndice = (testo, pagina, dest, { cap = false, rientro = 0, validare = false, backEnd = false } = {}) => {
     const h = cap ? RIGA_CAP : RIGA_SEZ;
     const serve = cap && dest !== 'app' ? RIGA_CAP + RIGA_SEZ : h;
     if (yi + serve > M.top + disponibile) { pi++; doc.switchToPage(primaIndice + pi); yi = M.top; }
@@ -332,15 +388,15 @@ export async function generaPdf() {
     const yt = yi + (cap ? 6 : 1);
     doc.font(font).fontSize(size);
     const wNum = doc.widthOfString(num);
-    const extra = validare ? '  (da validare)' : '';
+    const extra = [backEnd ? 'back-end' : null, validare ? 'da validare' : null].filter(Boolean).length ? `  (${[backEnd ? 'back-end' : null, validare ? 'da validare' : null].filter(Boolean).join(', ')})` : '';
     const maxTesto = TW - rientro - wNum - 40;
     let t = testo;
     while (doc.widthOfString(t + extra) > maxTesto && t.length > 10) t = `${t.slice(0, -2).trimEnd()}…`;
     doc.fillColor(cap ? C.jet : C.ink).text(t, x, yt, { lineBreak: false, goTo: dest });
     const wT = doc.widthOfString(t);
-    if (validare) doc.font('R').fontSize(7.6).fillColor(C.amber).text(extra, x + wT, yt + 1.6, { lineBreak: false });
+    if (extra) doc.font('R').fontSize(7.6).fillColor(validare ? C.amber : C.teal).text(extra, x + wT, yt + 1.6, { lineBreak: false });
     doc.font(font).fontSize(size);
-    const xDot = x + wT + (validare ? doc.font('R').fontSize(7.6).widthOfString(extra) : 0) + 6;
+    const xDot = x + wT + (extra ? doc.font('R').fontSize(7.6).widthOfString(extra) : 0) + 6;
     const xNum = W - M.right - wNum;
     doc.font('R').fontSize(size).fillColor(C.line);
     const punto = doc.widthOfString('.  ');
@@ -351,7 +407,7 @@ export async function generaPdf() {
   };
   for (const v of voci) {
     if (v.tipo === 'cap') vociIndice(`${v.k.numero}. ${v.k.titolo}`, paginaDi.get(`cap-${v.k.numero}`), `cap-${v.k.numero}`, { cap: true });
-    else if (v.tipo === 'sez') vociIndice(`${v.s.numero}  ${v.s.titolo}`, paginaDi.get(`sez-${v.s.slug}`), `sez-${v.s.slug}`, { rientro: 16, validare: v.s.stato !== 'VALIDATA' });
+    else if (v.tipo === 'sez') vociIndice(`${v.s.numero}  ${v.s.titolo}`, paginaDi.get(`sez-${v.s.slug}`), `sez-${v.s.slug}`, { rientro: 16, validare: v.s.stato !== 'VALIDATA', backEnd: v.s.livello === 'BACK_END' });
     else vociIndice('Appendice · Domande frequenti', paginaDi.get('app'), 'app', { cap: true });
   }
 

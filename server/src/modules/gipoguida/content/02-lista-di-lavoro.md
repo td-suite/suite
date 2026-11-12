@@ -10,6 +10,9 @@ slug: lista-di-lavoro
 titolo: La Lista di lavoro: filtri, schede e colonne
 percorso_gipo: /Home
 parole_chiave: lista di lavoro, home, appuntamenti del giorno, filtri, periodo, mattina, pomeriggio, stato, confermati, disdetti, richiami, semplificata, standard
+sintesi: La Lista di lavoro, pagina iniziale di GIPO: appuntamenti del periodo con filtri per sede, agende, medici e stato.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 È la pagina iniziale di GIPO e il punto di lavoro dell'accettazione: mostra gli appuntamenti del periodo scelto e da ogni riga permette di accettare, fatturare, avviare la visita, refertare e chiudere.
@@ -46,6 +49,9 @@ slug: lista-menu-azioni
 titolo: Il menu Azioni: ogni voce spiegata
 percorso_gipo: /Home
 parole_chiave: azioni, accetta, accetta e assegnazione, accetta e fattura, fattura, inizia visita, inizia visita sportiva, inizia visita e referta, termina visita, referta, chiudi, vai ad assegnazione, vai ad appuntamento, conferma appuntamento, reset conferma, annulla appuntamento
+sintesi: Il pulsante Azioni su ogni riga della Lista di lavoro raccoglie tutte le operazioni sull'appuntamento.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Il pulsante **Azioni** su ogni riga della Lista di lavoro raccoglie tutte le operazioni sull'appuntamento. Qui sotto ogni voce con il suo significato, ricavato dal nome: gli effetti esatti vanno validati.
@@ -82,6 +88,9 @@ slug: giornata-tipo-accettazione
 titolo: La giornata tipo dell'accettazione
 percorso_gipo: /Home
 parole_chiave: giornata tipo, accettazione, arrivo paziente, sportello, flusso, procedura, apertura, chiusura giornata, cassa
+sintesi: Mette in fila le operazioni di una giornata allo sportello, collegando le sezioni della guida.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Mette in fila le operazioni di una giornata allo sportello, collegando le sezioni della guida. È una traccia: l'ordine esatto e le regole interne vanno confermati dal referente.
@@ -105,18 +114,26 @@ ordine: 4
 slug: lista-richiami
 titolo: Richiami e vista semplificata
 percorso_gipo: /Home
-parole_chiave: richiami, semplificata, standard, schede, lista di lavoro, richiamare
+parole_chiave: richiami, semplificata, standard, schede, lista di lavoro, richiamare, crea nuova fattura, crea nuovo referto, data nascita, fonte marketing
+sintesi: Le schede Semplificata e Richiami della Lista di lavoro: colonne e menu di riga.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 La Lista di lavoro ha tre schede: **Standard**, **Semplificata** e **Richiami**.
 
-### Cosa si sa
+### Cosa c'è
 - **Standard** è la vista completa con tutte le colonne descritte in [La Lista di lavoro](sezione:lista-di-lavoro).
-- **Semplificata** è, dal nome, una vista ridotta.
-- **Richiami** è, dal nome, l'elenco dei pazienti da richiamare.
+- **Semplificata**: colonne **Data inizio**, **Descrizione**, **Data nascita paz.**, **Fonte marketing**. Menu di riga: **Crea nuova fattura**, **Crea nuovo referto**, **Vai ad appuntamento**, **Conferma appuntamento**, **Reset conferma**, **Annulla appuntamento**.
+- **Richiami**: colonne **Descrizione** e **Referto**.
+
+### Come si fa
+1. Apri la **Lista di lavoro** e imposta periodo e sede.
+2. Passa alla scheda **Semplificata** per un elenco essenziale da cui fatturare, refertare o confermare con il menu di riga.
+3. Passa alla scheda **Richiami** per l'elenco dei richiami con il referto collegato.
 
 ### Attenzioni
-- Il contenuto di **Semplificata** e **Richiami** **non è stato osservato** durante l'analisi: come si genera un richiamo e cosa mostra la scheda va chiesto al referente o all'assistenza Gipo. La redazione completerà questa sezione.
+- Come nasce un richiamo (chi lo crea e quando) non è stato osservato: chiedi al referente prima di usare la scheda per richiamare pazienti.
 
 === sezione
 ordine: 5
@@ -124,6 +141,9 @@ slug: conferme-e-disdette
 titolo: Conferme, disdette e annullamenti
 percorso_gipo: /Home
 parole_chiave: conferma appuntamento, reset conferma, annulla appuntamento, disdetta, disdire, annullare, cancellare appuntamento, solo disdetti, non confermato
+sintesi: Gestire lo stato di conferma degli appuntamenti e le disdette dalla Lista di lavoro.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Gestire lo stato di conferma degli appuntamenti e le disdette dalla Lista di lavoro.

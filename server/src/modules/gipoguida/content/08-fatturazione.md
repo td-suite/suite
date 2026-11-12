@@ -10,6 +10,9 @@ slug: nuova-fattura
 titolo: Nuova fattura: campi e pulsanti
 percorso_gipo: /Fatture/Create
 parole_chiave: nuova fattura, fatturare, fattura, intestata a, anagrafica erogante, sezionale, data documento, metodo di pagamento, condizione di pagamento, totale documento, netto dovuto, crea, scontrino, ricevuta
+sintesi: Campi e pulsanti di Nuova fattura (intestazione, sezionale, righe, pagamento, bollo, Crea e Stampa, opzioni di stampa) e le regole TD su esenzione IVA, bollo e Natura bollo N4.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 Emettere una fattura al paziente o a un altro soggetto.
@@ -38,8 +41,16 @@ Colonne delle righe: Tipo, Prestazione, Descrizione, Q.ta, Listino, Spesa, Prezz
 3. Aggiungi le righe: in **Prestazione - Listino** scegli la prestazione, indica **Qta**, controlla **Prezzo** e **Sconto %**, premi **Aggiungi**. Le righe che arrivano da un'assegnazione sono già presenti.
 4. Imposta **Metodo di pagamento** (in uso: Contanti, Bonifico, Bonifico istantaneo, POS carte/bancomat) e **Condizione di pagamento**; compila **Data pagamento** se il paziente paga subito.
 5. Controlla bollo e opzioni (vedi [Righe, sconti, bollo e opzioni](sezione:fattura-righe-bollo)).
-6. Controlla i totali e premi **Crea**.
+6. Controlla i totali e premi **Crea**: il pulsante ha le varianti **Crea**, **Crea e Stampa**, **Crea e chiudi**.
 7. Per stampare o condividere la fattura vai in **Gestione Fatture/NC** (vedi [Gestione fatture e note di credito](sezione:gestione-fatture)).
+
+### Opzioni stampa e scadenze
+- **Opzioni stampa**: **Raggruppa per prestazione**, **Raggruppa per impegnativa**, **Nascondi prezzi**.
+- Scheda **Scadenze\Pagamenti**: le rate della fattura (vedi [Rate e pagamenti in fattura](sezione:fattura-rate-pagamenti)).
+
+### Regole TD dal manuale operativo
+- Privato e assicurazione: fattura esente IVA (art. 10 n. 18 DPR 633/72); sopra 77,47 euro bollo virtuale da 2 euro; nel campo **Natura bollo** scegli sempre la voce **N4** (GIPO non la preseleziona). Vedi [Fase 5: fatturazione e incasso](sezione:fase5-fatturazione).
+- Metodi di pagamento ammessi: contanti, POS, bonifico, digitale; non si accettano assegni.
 
 ### Attenzioni
 - Una fattura creata non si corregge cancellandola: si storna con una nota di credito (vedi [Nota di credito](sezione:nota-di-credito)).
@@ -51,7 +62,10 @@ ordine: 2
 slug: fattura-righe-bollo
 titolo: Righe, sconti, bollo e opzioni della fattura
 percorso_gipo: /Fatture/Create
-parole_chiave: sconto a corpo, sconto, franchigia, bollo, marca da bollo, natura bollo, gestione bollo, ritenuta d'acconto, rivalsa inps, contributo, arrotondamento, importo da sottrarre, opzioni stampa, allegati, carica dati da documento esistente
+parole_chiave: sconto a corpo, sconto, franchigia, bollo, marca da bollo, natura bollo, n4, gestione bollo, ritenuta d'acconto, rivalsa inps, contributo, arrotondamento, importo da sottrarre, opzioni stampa, allegati, carica dati da documento esistente, 77,47
+sintesi: Righe, sconti, sconto a corpo, bollo, contributo, rivalsa, ritenuta e opzioni della fattura.
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 Gestire i casi particolari della fattura: sconti sul totale, franchigie, bollo, ritenute, arrotondamenti, allegati.
@@ -74,7 +88,7 @@ Gestire i casi particolari della fattura: sconti sul totale, franchigie, bollo, 
 
 ### Attenzioni
 - Ritenuta d'acconto, rivalsa INPS e contributo cambiano il netto dovuto: usali solo se l'amministrazione lo ha indicato per quel cliente.
-- Le soglie e le regole del bollo dipendono dalla configurazione: non sono state verificate.
+- Le soglie e le regole del bollo dipendono dalla configurazione. Regola TD (manuale operativo): sopra 77,47 euro bollo virtuale da 2 euro e, nel campo **Natura bollo**, sempre la voce **N4** (prestazioni esenti IVA), perché GIPO non la preseleziona (vedi [Fase 5: fatturazione e incasso](sezione:fase5-fatturazione)).
 
 === sezione
 ordine: 3
@@ -82,6 +96,9 @@ slug: fatturare-da-lista
 titolo: Fatturare dalla Lista di lavoro e dall'assegnazione
 percorso_gipo: /Home
 parole_chiave: accetta e fattura, fattura, fatturare appuntamento, fatturare assegnazione, incassare, pagamento allo sportello, ricevuta paziente
+sintesi: La via più rapida per fatturare allo sportello, partendo dall'appuntamento o dalla pratica.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 La via più rapida per fatturare allo sportello, partendo dall'appuntamento o dalla pratica.
@@ -108,6 +125,9 @@ slug: nota-di-credito
 titolo: Nota di credito
 percorso_gipo: /NotaCredito/Create
 parole_chiave: nota di credito, storno, stornare fattura, rimborso, annullare fattura, fattura sbagliata, carica fattura, nota credito elettronica
+sintesi: Stornare in tutto o in parte una fattura già emessa (errore, rimborso, prestazione non eseguita).
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Stornare in tutto o in parte una fattura già emessa (errore, rimborso, prestazione non eseguita).
@@ -141,6 +161,9 @@ slug: gestione-fatture
 titolo: Gestione fatture e note di credito
 percorso_gipo: /Fatture/Index
 parole_chiave: gestione fatture, elenco fatture, ristampare fattura, stampa fattura, condividi fattura, crea ddt, elimina fattura, cercare fattura, errore invio, esito
+sintesi: Elenca fatture e note di credito.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca fatture e note di credito: da qui si stampano, si condividono, si stornano e si controlla l'esito della fattura elettronica.
@@ -172,6 +195,9 @@ slug: fattura-elettronica
 titolo: Fattura elettronica: esiti, errori e documento elettronico
 percorso_gipo: /Fatture/Index
 parole_chiave: fattura elettronica, sdi, esito, errore invio, scarto, xml, documento elettronico, codice destinatario, pec, e/c
+sintesi: Verificare che le fatture elettroniche siano state trasmesse e accettate, e recuperare il file elettronico.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Verificare che le fatture elettroniche siano state trasmesse e accettate, e recuperare il file elettronico.
@@ -195,6 +221,9 @@ slug: gruppo-assegnazioni
 titolo: Gruppo assegnazioni: una fattura per più pratiche
 percorso_gipo: /Fatture/AssegnazioniDaFatturare
 parole_chiave: gruppo assegnazioni, assegnazioni da fatturare, fattura unica, fattura cumulativa, azienda, convenzione, crea fattura, riportare i medici
+sintesi: Creare una sola fattura per più assegnazioni, per esempio per un'azienda o un ente che paga le prestazioni di più persone.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Creare **una sola fattura per più assegnazioni**, per esempio per un'azienda o un ente che paga le prestazioni di più persone.
@@ -224,6 +253,9 @@ slug: scadenzario
 titolo: Scadenzario: rate e pagamenti
 percorso_gipo: /Scadenzario/Index
 parole_chiave: scadenzario, rate, scadenze, pagamento rata, incasso rata, saldo, insoluti, rate scadute, assicurazione, imposta data pagamento
+sintesi: Seguire le rate dei documenti (pagamenti dilazionati, importi a carico delle assicurazioni) e registrarne il pagamento.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Seguire le rate dei documenti (pagamenti dilazionati, importi a carico delle assicurazioni) e registrarne il pagamento.
@@ -245,8 +277,12 @@ Comando: **Imposta data pagamento rata** (con metodo di pagamento).
 2. Quando una rata viene pagata, selezionala e usa **Imposta data pagamento rata**, indicando data e metodo di pagamento.
 3. Per le assicurazioni filtra per **Assicurazione**.
 
+### Scheda Dettaglio scadenze
+Una riga per rata: Num. doc., Sez. doc., Data doc., Cond. pag., Quota a carico, Scadenza rata, Dare rata, Ricevuto rata, Saldo rata, Data pagam. rata, Mod. pagamento rata, Nota rata. È la vista giusta per vedere rata per rata chi ha pagato cosa e quando.
+
 ### Attenzioni
 - In configurazione esiste "Scadenzario: imposta data pagamento come data documento": a seconda dell'impostazione una rata può risultare pagata già alla data della fattura.
+- Le rate nascono nella scheda **Scadenze\Pagamenti** della fattura (vedi [Rate e pagamenti in fattura](sezione:fattura-rate-pagamenti)).
 
 === sezione
 ordine: 9
@@ -254,6 +290,9 @@ slug: registro-iva
 titolo: Stampa del registro IVA
 percorso_gipo: /Fatture/RegistroIva
 parole_chiave: registro iva, stampa registro, xml gipo, xml fattura elettronica, protocollo, sezionale, fatture non pagate
+sintesi: Stampare il registro IVA delle vendite ed esportare i documenti in formato XML.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Stampare il registro IVA delle vendite ed esportare i documenti in formato XML.
@@ -280,6 +319,9 @@ slug: gestione-cassa
 titolo: Gestione cassa e chiusura di giornata
 percorso_gipo: /GestioneCassa/Index
 parole_chiave: gestione cassa, chiusura di cassa, chiusura giornata, incasso, incassi del giorno, stampa cassa, per operatore, per listino, contanti, pos, elabora, non incassato
+sintesi: Vedere gli incassi di un periodo e stampare la chiusura di cassa (per esempio a fine giornata).
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Vedere gli incassi di un periodo e stampare la chiusura di cassa (per esempio a fine giornata).
@@ -307,6 +349,15 @@ Chiusura di fine giornata (traccia da validare con il referente):
 5. Confronta i totali per metodo di pagamento con il contante in cassa e con lo scontrino del POS.
 6. Premi **Stampa** e scegli **Normale**, **Per listino** o **Per operatore** secondo quanto richiesto dalla tua sede.
 
+### La scheda Filtri
+- **Importo documento**.
+- **Tipo documento**: Fatture, Note credito.
+- **Stato pagamento**: Pagate, Non pagate.
+- **Privati/SSN**: Private, SSN.
+- **Iva**: Con Iva, Esenti Iva.
+- **Utenti**: "Mostra solo tipo segreteria/amministrazione".
+La scheda **Totali** riporta i totali del periodo elaborato.
+
 ### Attenzioni
 - **Non Incassato** indica importi fatturati ma non incassati: controllali prima di chiudere.
 - Quale data usare e quale stampa consegnare (e a chi) lo decide l'amministrazione: questa sezione descrive solo la schermata.
@@ -318,6 +369,9 @@ slug: conservazione-sostitutiva
 titolo: Conservazione sostitutiva
 percorso_gipo: /fatture/conservazione-sostitutiva
 parole_chiave: conservazione sostitutiva, archiviazione, conservazione digitale, documenti fiscali
+sintesi: Mostra lo stato di conservazione digitale dei documenti fiscali.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Mostra lo stato di conservazione digitale dei documenti fiscali.
@@ -337,6 +391,9 @@ slug: fatture-passive
 titolo: Fatture passive
 percorso_gipo: /fatture/passive
 parole_chiave: fatture passive, fatture fornitori, ricevute, acquisti
+sintesi: Ricevere e consultare le fatture dei fornitori.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Ricevere e consultare le fatture dei fornitori.
@@ -353,6 +410,9 @@ slug: gipo730
 titolo: Invio spese Gipo730 (Sistema Tessera Sanitaria)
 percorso_gipo: /InvioGipo730/Index
 parole_chiave: gipo730, 730, sistema tessera sanitaria, invio spese sanitarie, opposizione, detrazione
+sintesi: Invio delle spese sanitarie al Sistema Tessera Sanitaria per la dichiarazione dei redditi (730 precompilato).
+fonte: INTERFACCIA+MANUALE
+livello: OPERATIVO
 ===
 ### A cosa serve
 Invio delle spese sanitarie al Sistema Tessera Sanitaria per la dichiarazione dei redditi (730 precompilato).
@@ -366,12 +426,18 @@ Al momento dell'analisi la pagina riportava: **"Account non configurato per l'in
 ### Attenzioni
 - In fattura resta il campo **Opposizione invio sistema TS**: va spuntato se il paziente si oppone all'invio dei dati. Come vengono trasmesse le spese senza Gipo730 va chiesto all'amministrazione.
 
+### Da riconciliare con il manuale
+- Il manuale operativo TD dice che GIPO trasmette automaticamente al Sistema Tessera Sanitaria le spese (anche delle fatture private e delle note di credito) con invio mensile tramite GIPO SSN, e la checklist chiede di verificarne la regolarità; sull'account TD questa pagina dice "Account non configurato". Va chiarito con l'amministrazione quale canale è attivo (vedi [Fase 9](sezione:fase9-post-erogazione)).
+
 === sezione
 ordine: 14
 slug: multidoc
 titolo: MultiDoc (archivio documentale)
 percorso_gipo: /multidoc
 parole_chiave: multidoc, archivio documentale, documenti, archivio, allegati
+sintesi: MultiDoc, l'archivio documentale di GIPO.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 MultiDoc è l'archivio documentale di GIPO.
@@ -389,6 +455,9 @@ slug: numerazione-recupero-buchi
 titolo: Numerazione, sezionali e recupero buchi
 percorso_gipo: /Fatture/Create
 parole_chiave: numerazione, numero fattura, sezionale, recupero buchi, buco numerazione, numero mancante, dispositivo
+sintesi: Numerazione dei documenti per sezionale e recupero dei buchi di numerazione di fatture e note di credito.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Ogni fattura ha un numero dentro un **sezionale** (una serie di numerazione). Se resta un numero inutilizzato ("buco"), GIPO offre una funzione per recuperarlo.
@@ -405,3 +474,39 @@ Ogni fattura ha un numero dentro un **sezionale** (una serie di numerazione). Se
 
 ### Attenzioni
 - Un sezionale può essere limitato a una sede o predefinito per una sede: se il numero proposto sembra di un'altra serie, avvisa l'amministrazione prima di creare la fattura.
+
+=== sezione
+ordine: 16
+slug: fattura-rate-pagamenti
+titolo: Rate e pagamenti in fattura
+percorso_gipo: /Fatture/Create
+parole_chiave: rate, rateizzare, pagamento a rate, scadenze pagamenti, data scadenza, calcola percentuale, dare, ricevuto, saldo, modalità di pagamento rata, condizione di pagamento, acconto, pagamento parziale, prima rata bollo
+sintesi: Come dividere una fattura in rate nella scheda Scadenze\Pagamenti (data scadenza, Calcola %, Dare, Ricevuto, Saldo, data e modalità di pagamento) e registrare poi gli incassi dallo Scadenzario.
+fonte: INTERFACCIA
+livello: OPERATIVO
+===
+### A cosa serve
+Dividere l'importo di una fattura in rate con le loro scadenze e registrare quanto è stato pagato.
+
+### Dove si trova
+**Nuova fattura**, scheda **Scadenze\Pagamenti**. Dopo l'emissione le rate si seguono in **Fatturazione > Scadenzario**.
+
+### Cosa c'è
+Colonne delle rate: **Data scadenza**, **Calcola %**, **Dare**, **Ricevuto**, **Saldo**, **Data pagamento**, **Modalità di pagamento**, **Note**.
+
+### Come si fa
+1. Nella testata della fattura scegli la **Condizione di pagamento**: le condizioni (Configurazione > Fatturazione > Condizioni pagamento) definiscono le rate e se la prima rata comprende il bollo (colonna **Prima rata Bollo**).
+2. Apri la scheda **Scadenze\Pagamenti** e controlla le rate proposte: **Data scadenza**, importo in **Dare** (o la quota con **Calcola %**).
+3. Se il paziente paga subito la prima rata, compila **Ricevuto**, **Data pagamento** e **Modalità di pagamento** su quella riga; il **Saldo** mostra quanto resta.
+4. Crea la fattura.
+5. Alle scadenze successive registra gli incassi da **Fatturazione > Scadenzario** con **Imposta data pagamento rata** (vedi [Scadenzario](sezione:scadenzario)).
+
+### Esempio
+Fattura di 600 euro in tre rate mensili: tre righe con Dare 200 euro e scadenze a 30, 60 e 90 giorni; la prima pagata subito con POS (Ricevuto 200, Data pagamento oggi, Modalità POS).
+
+### Cosa verificare dopo
+- Nello **Scadenzario**, scheda **Dettaglio scadenze**, la fattura ha le tre rate con **Saldo rata** corretto.
+
+### Attenzioni
+- Se le rate non sono proposte in automatico, il modo di aggiungerle a mano (pulsante della griglia) non è stato annotato: da provare su una fattura di prova senza crearla.
+- Rateizzazioni e acconti vanno concordati con l'amministrazione.

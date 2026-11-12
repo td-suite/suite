@@ -1,15 +1,16 @@
-// Guida GIPO · Guida: indice a sinistra (capitoli e sezioni, con ricerca immediata), sezione a destra con bollino di stato, percorso in GIPO,
+// Guida GIPO · Guida: indice a sinistra (capitoli e sezioni, con ricerca immediata e filtro "Per chi configura GIPO", v0.71.1), sezione a
+// destra con bollino di stato, fonte (interfaccia, manuale TD), livello back-end, percorso in GIPO,
 // "Apri in GIPO" (solo pagine di consultazione, scheda nuova), FAQ collegate, precedente e successiva. In alto "Scarica la guida PDF" e
 // l'anteprima del PDF completo.
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Card, ErrorBox, Modal, PageHead, Skeleton } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
 import { api, base, qs, useApi } from '../api.js';
 import { useAuth, isAdmin } from '../auth.jsx';
-import { Bollino, Risultati, TestoGuida, itData } from '../components.jsx';
+import { BackEndBadge, Bollino, FonteBadge, Risultati, TestoGuida, itData } from '../components.jsx';
 
-function Indice({ indice, slug, onScelta }) {
+function Indice({ indice, slug, onScelta, backEnd, setBackEnd }) {
   const [q, setQ] = useState('');
   const [ris, setRis] = useState(null);
   const capCorrente = indice?.capitoli?.find((k) => k.sezioni.some((s) => s.slug === slug))?.numero;
@@ -18,25 +19,33 @@ function Indice({ indice, slug, onScelta }) {
   useEffect(() => {
     const t = q.trim();
     if (t.length < 2) { setRis(null); return undefined; }
-    const h = setTimeout(() => api.get(`/cerca${qs({ q: t })}`, { silent: true }).then((r) => setRis(r.risultati)).catch(() => setRis([])), 220);
+    const h = setTimeout(() => api.get(`/cerca${qs({ q: t, livello: backEnd ? 'BACK_END' : '' })}`, { silent: true }).then((r) => setRis(r.risultati)).catch(() => setRis([])), 220);
     return () => clearTimeout(h);
-  }, [q]);
+  }, [q, backEnd]);
+  // con il filtro "Per chi configura GIPO" solo le sezioni di livello BACK_END (e i capitoli che ne hanno), tutti aperti
+  const capitoli = useMemo(() => (indice?.capitoli || []).map((k) => ({ ...k, sezioni: backEnd ? k.sezioni.filter((x) => x.livello === 'BACK_END') : k.sezioni }))
+    .filter((k) => !backEnd || k.sezioni.length), [indice, backEnd]);
   const apri = (n) => setAperti((a) => { const x = new Set(a); if (x.has(n)) x.delete(n); else x.add(n); return x; });
   return (
     <nav className="gg-indice card" aria-label="Indice della guida">
-      <div className="gg-indice-cerca"><Icon name="search" /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca nella guida" aria-label="Cerca nella guida" /></div>
+      <div className="gg-indice-cerca"><Icon name="search" /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={backEnd ? 'Cerca fra le procedure di configurazione' : 'Cerca nella guida'} aria-label="Cerca nella guida" /></div>
+      <div className="seg gg-filtro-livello" role="group" aria-label="Sezioni da mostrare">
+        <button type="button" className={!backEnd ? 'on' : ''} onClick={() => setBackEnd(false)} aria-pressed={!backEnd}>Tutta la guida</button>
+        <button type="button" className={backEnd ? 'on' : ''} onClick={() => setBackEnd(true)} aria-pressed={backEnd} title="Solo le procedure per chi configura GIPO (back-end)">Per chi configura GIPO</button>
+      </div>
       {ris ? <Risultati risultati={ris} vuoto="Nessuna sezione o FAQ con queste parole." onApri={() => { setQ(''); onScelta?.(); }} /> : (
         <ol className="gg-capitoli">
-          {(indice?.capitoli || []).map((k) => (
-            <li key={k.numero} className={aperti.has(k.numero) ? 'aperto' : ''}>
-              <button type="button" className="gg-cap" onClick={() => apri(k.numero)} aria-expanded={aperti.has(k.numero)}>
+          {capitoli.map((k) => (
+            <li key={k.numero} className={backEnd || aperti.has(k.numero) ? 'aperto' : ''}>
+              <button type="button" className="gg-cap" onClick={() => apri(k.numero)} aria-expanded={backEnd || aperti.has(k.numero)}>
                 <span className="gg-cap-n">{k.numero}</span><span className="gg-cap-t">{k.titolo}</span><Icon name="chevron" />
               </button>
-              {aperti.has(k.numero) && (
+              {(backEnd || aperti.has(k.numero)) && (
                 <ol className="gg-sezioni">
                   {k.sezioni.map((s) => (
-                    <li key={s.slug}><Link to={`${base}/guida/${s.slug}`} className={s.slug === slug ? 'on' : ''} onClick={onScelta}>
-                      <span className="gg-sez-n">{s.numero}</span><span>{s.titolo}</span>{s.stato !== 'VALIDATA' && <i className="gg-dot" title="da validare" />}
+                    <li key={s.slug}><Link to={`${base}/guida/${s.slug}${backEnd ? '?vista=back-end' : ''}`} className={s.slug === slug ? 'on' : ''} onClick={onScelta}>
+                      <span className="gg-sez-n">{s.numero}</span><span>{s.titolo}</span>
+                      {s.stato === 'VALIDATA' ? <i className="gg-dot ok" title="validata" /> : <i className="gg-dot" title="da validare" />}
                     </Link></li>
                   ))}
                 </ol>
@@ -51,11 +60,17 @@ function Indice({ indice, slug, onScelta }) {
 
 function Panoramica({ indice }) {
   const t = indice?.totali;
+  const backEndCap = indice?.capitoli?.find((k) => /^Back-end/i.test(k.titolo));
+  const percorsoCap = indice?.capitoli?.find((k) => /manuale TD/i.test(k.titolo));
   return (
     <div className="gg-panoramica">
       <Card title="Come è fatta la guida" icon="info">
         <p>La guida descrive GipoNext come configurato per Toscana Diagnostica: {t?.sezioni} sezioni in {indice?.capitoli?.length} capitoli e {t?.faq} domande frequenti. Ogni sezione dice a cosa serve una funzione, dove si trova nel menu, cosa c'è nella schermata, come si fa e a cosa fare attenzione.</p>
-        <div className="alert warn"><Icon name="alert" /><span><b>{t?.da_validare} sezioni su {t?.sezioni} sono da validare.</b> Sono state scritte dall'analisi dell'interfaccia del 12/11/2026: nomi di menu, campi e pulsanti sono reali, le procedure vanno confermate da chi usa GIPO ogni giorno.</span></div>
+        <div className="alert warn"><Icon name="alert" /><span><b>{t?.da_validare} sezioni su {t?.sezioni} sono da validare.</b> Sono state scritte dall'analisi dell'interfaccia del 12 e 13/11/2026: nomi di menu, campi e pulsanti sono reali, le procedure vanno confermate da chi usa GIPO ogni giorno. Le sezioni che vengono dal Manuale operativo TD-SGI-MAN007 ({t?.dal_manuale}) sono marcate con la fonte e, se approvate dall'azienda, validate.</span></div>
+        <div className="row gg-pan-az">
+          {backEndCap && <Link className="btn" to={`${base}/guida/${backEndCap.sezioni[0]?.slug}?vista=back-end`}><Icon name="gear" />Per chi configura GIPO ({t?.back_end} sezioni)</Link>}
+          {percorsoCap && <Link className="btn ghost" to={`${base}/guida/${percorsoCap.sezioni[0]?.slug}`}><Icon name="doc" />{percorsoCap.titolo}</Link>}
+        </div>
       </Card>
       <div className="gg-cap-griglia">
         {(indice?.capitoli || []).map((k) => (
@@ -84,12 +99,14 @@ function Sezione({ slug }) {
         <div className="gg-sez-cap small muted">Capitolo {x.capitolo} · {x.capitolo_titolo}</div>
         <h2><span className="gg-sez-num">{x.numero}</span>{x.titolo}</h2>
         <div className="gg-sez-meta">
-          <Bollino stato={x.stato} />
+          <Bollino stato={x.stato} fonteValidazione={x.fonte_validazione} />
+          <BackEndBadge livello={x.livello} />
+          <FonteBadge fonte={x.fonte} />
           {x.percorso_gipo && <span className="small muted">Percorso in GIPO: <code>{x.percorso_gipo}</code></span>}
           {x.link_gipo && <a className="btn sm ghost" href={x.link_gipo} target="_blank" rel="noopener noreferrer"><Icon name="external" />Apri in GIPO</a>}
           {isAdmin(user) && <Link className="btn sm ghost" to={`${base}/redazione/sezioni/${x.id}`}><Icon name="edit" />Modifica</Link>}
         </div>
-        {x.stato === 'VALIDATA' && x.validata_il && <div className="small muted">Validata il {itData(x.validata_il)}{x.validata_da_nome ? ` da ${x.validata_da_nome}` : ''}</div>}
+        {x.stato === 'VALIDATA' && x.validata_il && <div className="small muted">Validata il {itData(x.validata_il)}{x.validata_da_nome ? ` da ${x.validata_da_nome}` : x.fonte_validazione ? ` (fonte: ${x.fonte_validazione})` : ''}</div>}
       </header>
       <TestoGuida source={x.corpo} />
       {x.faq?.length > 0 && (
@@ -112,6 +129,9 @@ function Sezione({ slug }) {
 export default function Guida() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [sp, setSp] = useSearchParams();
+  const backEnd = sp.get('vista') === 'back-end';
+  const setBackEnd = (v) => setSp(v ? { vista: 'back-end' } : {}, { replace: true });
   const indice = useApi('/indice', [], { silent: true });
   const [anteprima, setAnteprima] = useState(false);
   const [indiceMobile, setIndiceMobile] = useState(false);
@@ -127,7 +147,7 @@ export default function Guida() {
         </>} />
       <ErrorBox error={indice.error} />
       <div className={`gg-layout ${indiceMobile ? 'indice-aperto' : ''}`}>
-        <Indice indice={indice.data} slug={slug} onScelta={() => setIndiceMobile(false)} />
+        <Indice indice={indice.data} slug={slug} onScelta={() => setIndiceMobile(false)} backEnd={backEnd} setBackEnd={setBackEnd} />
         <div className="gg-contenuto">{slug ? <Sezione slug={slug} /> : <Panoramica indice={indice.data} />}</div>
       </div>
       {anteprima && (

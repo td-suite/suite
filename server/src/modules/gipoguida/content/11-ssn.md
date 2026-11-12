@@ -10,6 +10,9 @@ slug: ssn-riepilogo-asl
 titolo: Riepilogo Asl: filtri e colonne
 percorso_gipo: /Impegnative/RiepilogoAsl
 parole_chiave: riepilogo asl, impegnative, ricette, ssn, dematerializzate, rosse, interne, sar, sac, cup, regime erogazione, ticket, esenzione, export excel
+sintesi: Elenca le impegnative SSN erogate per controllarle, confermarle e preparare le stampe per l'Asl.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Elenca le impegnative SSN erogate per controllarle, confermarle e preparare le stampe per l'Asl.
@@ -46,6 +49,9 @@ slug: ssn-conferma-scarto
 titolo: Confermare e scartare le impegnative, regime di erogazione
 percorso_gipo: /Impegnative/RiepilogoAsl
 parole_chiave: confermare impegnativa, conferma, scartata, scarto impegnativa, regime di erogazione, aggiorna regime, azioni
+sintesi: Segnare quali impegnative sono confermate (da rendicontare) e quali scartate, e allineare il regime di erogazione.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Segnare quali impegnative sono confermate (da rendicontare) e quali scartate, e allineare il regime di erogazione.
@@ -71,6 +77,9 @@ slug: ssn-stampe
 titolo: Stampe per l'Asl
 percorso_gipo: /Impegnative/RiepilogoAsl
 parole_chiave: stampe asl, riepilogo prestazioni, compatto, per specialità, campionatura impegnative, elaborazione e stampe
+sintesi: Produrre le stampe di rendicontazione delle impegnative.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Produrre le stampe di rendicontazione delle impegnative.
@@ -90,6 +99,7 @@ Stampe disponibili:
 
 ### Attenzioni
 - In configurazione si sceglie il **Destinatario stampa riepilogo prestazioni** e se nascondere i prezzi in fattura.
+- Nella stessa scheda ci sono **Verifica tracciati** ed **Elabora e scarica tracciati**: vedi [Tracciati ASL](sezione:ssn-tracciati-asl).
 
 === sezione
 ordine: 4
@@ -97,6 +107,9 @@ slug: ssn-tabelle
 titolo: Tipi ticket, esenzioni, diagnosi e budget
 percorso_gipo: /BudgetSSN
 parole_chiave: tipi ticket, codici esenzione, codici diagnosi, budget ssn, imposta budget annuo, quota fissa, identificativo assoluto
+sintesi: Sono le tabelle SSN usate da impegnative e assegnazioni.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### A cosa serve
 Sono le tabelle SSN usate da impegnative e assegnazioni.
@@ -113,3 +126,39 @@ Sono le tabelle SSN usate da impegnative e assegnazioni.
 
 ### Attenzioni
 - Queste tabelle si modificano solo con l'amministrazione: un errore qui cambia gli importi di tutte le impegnative.
+
+=== sezione
+ordine: 5
+slug: ssn-tracciati-asl
+titolo: Tracciati ASL
+percorso_gipo: /Impegnative/RiepilogoAsl
+parole_chiave: tracciati asl, tracciato, flusso asl, flussi mensili, rendicontazione asl, elabora e scarica tracciati, verifica tracciati, stampa riepilogo, elaborazione e stampe, operazioni, stato operazione, tracciato regionale, file per la asl
+sintesi: Come preparare i flussi mensili per la ASL dalla scheda Elaborazione e stampe del Riepilogo Asl: filtri del periodo, Verifica tracciati, Elabora e scarica tracciati, elenco delle operazioni con il loro stato.
+fonte: INTERFACCIA+MANUALE
+livello: BACK_END
+===
+### A cosa serve
+Produrre i file (tracciati) con cui si rendicontano alla ASL le prestazioni SSN erogate. Secondo il manuale operativo TD sono flussi periodici sul tracciato regionale toscano.
+
+### Dove si trova
+**SSN > Riepilogo Asl** (percorso /Impegnative/RiepilogoAsl), scheda **Elaborazione e stampe**.
+
+### Cosa c'è
+- Pulsanti: **Stampa riepilogo**, **Verifica tracciati**, **Elabora e scarica tracciati**.
+- Elenco delle operazioni lanciate: **Tipo**, **Descrizione**, **Filtri**, **Data\ora avvio operazione**, **Stato**.
+
+### Come si fa
+1. Nella scheda **Impegnative** imposta i filtri del mese (per esempio **Data fine terapia** dal primo all'ultimo giorno, **Sede**, **Codice Asl**) e controlla che le impegnative siano confermate o scartate (vedi [Confermare e scartare](sezione:ssn-conferma-scarto)).
+2. Passa alla scheda **Elaborazione e stampe**.
+3. Premi **Verifica tracciati** e guarda nell'elenco delle operazioni lo **Stato** della verifica: correggi le impegnative segnalate (da verificare come vengono mostrati gli errori).
+4. Premi **Elabora e scarica tracciati**: l'operazione compare nell'elenco con **Data\ora avvio operazione** e **Stato**; a operazione conclusa scarica i file.
+5. Con **Stampa riepilogo** produci la stampa di accompagnamento (vedi [Stampe per l'Asl](sezione:ssn-stampe)).
+6. Invia i file alla ASL con il canale previsto dall'amministrazione.
+
+### Cosa verificare dopo
+- Il totale della stampa riepilogo coincide con il totale delle impegnative confermate del mese nel Riepilogo Asl.
+
+### Attenzioni
+- I filtri usati dall'elaborazione sono quelli impostati (colonna **Filtri** dell'operazione): controllali prima di inviare.
+- Il formato dei file e il canale di invio alla ASL non sono descritti nell'interfaccia: procedura dedotta dai pulsanti, da provare con l'amministrazione.
+- Codici struttura e ASL vengono dalla configurazione delle sedi e da **Configurazione > SSN > Generali** (Codice reparto, Codice mittente).

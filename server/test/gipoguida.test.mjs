@@ -47,10 +47,10 @@ describe('Guida GIPO: filtro dei dati personali', () => {
 
 describe('Guida GIPO: seme dei contenuti', () => {
   const s = SEME.leggiSeme();
-  test('struttura: 16 capitoli (0-15), almeno 60 sezioni e 60 FAQ, ogni FAQ collegata a una sezione esistente', () => {
-    assert.deepEqual(s.capitoli.map((k) => k.numero), Array.from({ length: 16 }, (_, i) => i));
-    assert.ok(s.sezioni.length >= 60, `sezioni ${s.sezioni.length}`);
-    assert.ok(s.faq.length >= 60, `faq ${s.faq.length}`);
+  test('struttura: 18 capitoli (0-17), almeno 130 sezioni e 110 FAQ, ogni FAQ collegata a una sezione esistente', () => {
+    assert.deepEqual(s.capitoli.map((k) => k.numero), Array.from({ length: 18 }, (_, i) => i));
+    assert.ok(s.sezioni.length >= 130, `sezioni ${s.sezioni.length}`);
+    assert.ok(s.faq.length >= 110, `faq ${s.faq.length}`);
     const slugs = new Set(s.sezioni.map((x) => x.slug));
     assert.ok(s.faq.every((f) => f.sezione_slug && slugs.has(f.sezione_slug)));
     for (const k of s.capitoli) assert.ok(s.sezioni.some((x) => x.capitolo === k.numero), `capitolo ${k.numero} senza sezioni`);
@@ -146,7 +146,9 @@ describe('Guida GIPO con database', { skip: SALTA }, () => {
     const s = SEME.seme();
     const r1 = await SEME.caricaSeme();
     assert.equal(r1.sezioni.nuove, s.sezioni.length); assert.equal(r1.faq.nuove, s.faq.length);
-    assert.equal((await uno(`SELECT count(*)::int AS n FROM gipoguida.sezioni WHERE stato = 'DA_VALIDARE'`)).n, s.sezioni.length, 'tutte da validare');
+    assert.equal((await uno(`SELECT count(*)::int AS n FROM gipoguida.sezioni WHERE stato = 'DA_VALIDARE'`)).n, s.sezioni.filter((x) => x.stato !== 'VALIDATA').length, 'da validare tutte tranne quelle del manuale TD');
+    assert.equal((await uno(`SELECT count(*)::int AS n FROM gipoguida.sezioni WHERE stato = 'VALIDATA' AND fonte_validazione = 'Manuale operativo TD-SGI-MAN007' AND validata_da IS NULL`)).n,
+      s.sezioni.filter((x) => x.stato === 'VALIDATA').length, 'VALIDATA dal seme con la fonte del manuale');
     assert.equal((await SEME.caricaSeme()).saltato, true, 'seconda volta: niente da fare');
     const r2 = await SEME.caricaSeme({ forza: true });
     assert.equal(r2.sezioni.invariate, s.sezioni.length); assert.equal(r2.sezioni.nuove, 0);
@@ -157,7 +159,7 @@ describe('Guida GIPO con database', { skip: SALTA }, () => {
     try {
       for (const f of fs.readdirSync(SEME.CONTENT_DIR)) {
         let t = fs.readFileSync(path.join(SEME.CONTENT_DIR, f), 'utf8');
-        if (f.startsWith('08-')) t = t.replace('Vedere gli incassi di un periodo', 'Vedere gli incassi del periodo').replace('Seguire le rate dei documenti', 'Seguire le rate').replace('Stampare il registro IVA delle vendite', 'Stampare il registro IVA');
+        if (f.startsWith('08-')) t = t.replaceAll('Vedere gli incassi di un periodo', 'Vedere gli incassi del periodo').replaceAll('Seguire le rate dei documenti', 'Seguire le rate').replaceAll('Stampare il registro IVA delle vendite', 'Stampare il registro IVA');
         fs.writeFileSync(path.join(dir, f), t);
       }
       const r3 = await SEME.caricaSeme({ dir });
@@ -192,8 +194,11 @@ describe('Guida GIPO con database', { skip: SALTA }, () => {
   });
 
   test('/chiedi con il modello finto: risposta in passi con le fonti; il modello non riceve mai i dati mascherati', async () => {
-    const ricevuti = [];
-    RISP._impostaModello(async ({ system, user }) => { ricevuti.push({ system, user }); return { testo: 'Secondo la guida [1]:\n1. Apri **Gestione Fatture/NC**.\n2. Usa **Crea nota di credito** [1].', fonti: [1], copre: true }; });
+    const ricevuti = []; const piani = [];
+    RISP._impostaModello(async ({ system, user, fase }) => {
+      if (fase === 'pianifica') { piani.push({ system, user }); return { sezioni: [] }; }
+      ricevuti.push({ system, user }); return { testo: 'Secondo la guida [1]:\n1. Apri **Gestione Fatture/NC**.\n2. Usa **Crea nota di credito** [1].', fonti: [1], copre: true };
+    });
     utente = LETTORE();
     const r = await http('POST', '/chiedi', { domanda: `Come faccio una nota di credito per ${CF_FINTO}, tel 3331234567, mail a.b@esempio.it?` });
     assert.equal(r.s, 200, JSON.stringify(r.j));
@@ -202,14 +207,16 @@ describe('Guida GIPO con database', { skip: SALTA }, () => {
     assert.equal(r.j.fonti.filter((f) => f.citata).length, 1);
     assert.equal(r.j.fonti[0].slug, 'nota-di-credito');
     assert.equal(r.j.mascherati.length, 3);
-    assert.ok(!ricevuti[0].user.includes(CF_FINTO) && !ricevuti[0].user.includes('3331234567') && !ricevuti[0].user.includes('esempio.it'));
-    assert.match(ricevuti[0].system, /ESCLUSIVAMENTE/);
-    assert.match(ricevuti[0].user, /\[\d\] Sezione "Nota di credito" \(capitolo 8 Fatturazione e cassa; da validare; percorso in GIPO \/NotaCredito\/Create\)/);
-    assert.ok((ricevuti[0].user.match(/^\[\d\] /gm) || []).length <= 6, 'al più 6 brani');
+    for (const x of [...ricevuti, ...piani]) assert.ok(!x.user.includes(CF_FINTO) && !x.user.includes('3331234567') && !x.user.includes('esempio.it'));
+    assert.equal(piani.length, 1, 'un passaggio di pianificazione sull\'indice');
+    assert.match(piani[0].user, /agenda-sottoconfigurazioni|Sottoconfigurazioni: periodi di validità/);
+    assert.match(ricevuti[0].system, /SOLO le informazioni dei brani/);
+    assert.match(ricevuti[0].user, /\[\d+\] Sezione "Nota di credito" \(nota-di-credito; capitolo 8 Fatturazione e cassa; da validare; fonte interfaccia; percorso in GIPO \/NotaCredito\/Create\)/);
+    assert.ok((ricevuti[0].user.match(/^\[\d+\] /gm) || []).length <= 20, 'al più 12 sezioni e 8 FAQ');
     const d = await uno('SELECT testo, esito, modello, mascherati FROM gipoguida.domande WHERE id = $1', [r.j.id]);
     assert.ok(!d.testo.includes(CF_FINTO)); assert.equal(d.esito, 'RISPOSTA'); assert.equal(d.modello, 'modello di prova');
     // il modello dichiara che la guida non copre la domanda → SENZA_RISPOSTA (in coda)
-    RISP._impostaModello(async () => ({ testo: 'La guida non copre questa domanda.', fonti: [], copre: false }));
+    RISP._impostaModello(async ({ fase }) => (fase === 'pianifica' ? { sezioni: [] } : { testo: 'La guida non copre questa domanda.', fonti: [], copre: false }));
     const r2 = await http('POST', '/chiedi', { domanda: 'Come imposto la stampa della fattura in inglese?' });
     assert.equal(r2.j.esito, 'SENZA_RISPOSTA');
     // il modello non risponde → risultati della ricerca

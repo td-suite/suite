@@ -1,5 +1,5 @@
 ---
-capitolo: 14
+capitolo: 16
 titolo: Domande frequenti per ruolo
 intro: Le domande più comuni di accettazione, medici e amministrazione, con il rimando alla sezione che risponde. L'elenco completo delle FAQ è nell'appendice e nella pagina FAQ.
 ---
@@ -9,6 +9,9 @@ ordine: 1
 slug: ruolo-accettazione
 titolo: Per l'accettazione
 parole_chiave: accettazione, segreteria, sportello, domande frequenti, front office
+sintesi: Le domande più comuni dell'accettazione con il rimando alla sezione che risponde.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### Le domande più comuni
 - **Un paziente è arrivato: come lo accetto?** Lista di lavoro, riga dell'appuntamento, **Azioni > Accetta** (o **Accetta e fattura**). Vedi [Il menu Azioni](sezione:lista-menu-azioni).
@@ -30,6 +33,9 @@ ordine: 2
 slug: ruolo-medico
 titolo: Per il medico
 parole_chiave: medico, refertante, referto, visita, compensi, domande frequenti
+sintesi: Le domande più comuni dei medici con il rimando alla sezione che risponde.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### Le domande più comuni
 - **Nuovo referto dal menu dà errore.** È normale: il referto si apre dalla prestazione (Lista di lavoro, **Azioni > Referta** o **Inizia visita e referta**). Vedi [Da dove si avvia un referto](sezione:referto-avvio).
@@ -48,6 +54,9 @@ ordine: 3
 slug: ruolo-amministrazione
 titolo: Per l'amministrazione
 parole_chiave: amministrazione, back office, fatture, registro iva, scadenzario, compensi, ssn, configurazione, domande frequenti
+sintesi: Le domande più comuni dell'amministrazione e del back office con il rimando alla sezione che risponde.
+fonte: INTERFACCIA
+livello: OPERATIVO
 ===
 ### Le domande più comuni
 - **Dove vedo l'esito della fattura elettronica?** **Gestione Fatture/NC**, colonne **Esito** ed **Errore invio**. Vedi [Fattura elettronica](sezione:fattura-elettronica).
@@ -59,6 +68,10 @@ parole_chiave: amministrazione, back office, fatture, registro iva, scadenzario,
 - **Cambiare un prezzo di listino.** **Configurazione > Prestazioni > Listini**. Vedi [Prodotti e listini](sezione:config-listini-prodotti).
 - **Dare l'accesso a un nuovo collega.** **Configurazione > Permessi > Utenti > Invita utente**. Vedi [Utenti e team](sezione:config-utenti-team).
 - **Chi ha modificato un documento?** **Log attività**. Vedi [Log attività](sezione:log-attivita).
+- **Configurare GIPO** (agende, orari, giorni del mese, ferie, prezzi, pacchetti, consensi, compensi, sedi): parti da [Back-end: cosa si configura e dove](sezione:backend-mappa).
+- **Un medico viene solo alcuni giorni del mese.** Sottoconfigurazione con Periodicità nel mese. Vedi [Sottoconfigurazioni](sezione:agenda-sottoconfigurazioni).
+- **Aumentare i prezzi di un listino.** **Copia prezzi di listino** con incremento. Vedi [Listini: creare e copiare](sezione:listini-creare-copiare).
+- **Tracciati per la ASL.** **SSN > Riepilogo Asl > Elaborazione e stampe**. Vedi [Tracciati ASL](sezione:ssn-tracciati-asl).
 
 ### Attenzioni
 - Le impostazioni di fatturazione e SSN hanno effetti fiscali: si cambiano solo con l'amministrazione.
