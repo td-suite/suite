@@ -124,6 +124,21 @@ Migrazione del modulo `etichette/001_init.sql` (si avvia da Travaso moduli > Avv
 proprio con server finto Synclab e finto Browser Print; schermate `docs/screens/etichette-*.png`. Da fare: disegno di StudioLab e
 validazione in sede con una Zebra vera (cosa non verificato: docs/ETICHETTE.md). Dettagli in docs/ETICHETTE.md e SYNCLAB_DATA_API.md.
 
+## 12/11/2026 · v0.70.0 · Guida GIPO (guida di GipoNext, FAQ, ricerca e domande con risposta)
+Richiesta del CEO del 12/11/2026 ("widget davvero fondamentale"): nuovo modulo nativo **Guida GIPO** (chiave `gipoguida`, Retail and Flow
+dopo Label, aperto a tutti gli interni come LETTORE, esterni esclusi; ADMIN = redazione). Guida completa di GipoNext scritta come seme
+versionato (`modules/gipoguida/content/`: 16 capitoli, 95 sezioni, 73 FAQ) dall'analisi dell'interfaccia del 12/11/2026, tutte le sezioni
+DA_VALIDARE con il bollino; caricamento all'avvio solo delle voci non toccate a mano (impronta del seme). Pagine Chiedi (domande con
+risposta di Claude solo sui brani della guida, tipo `gipoguida` in ai_log; senza AI risultati della ricerca), Guida (indice, sezione, Apri
+in GIPO solo per le pagine di consultazione, PDF e anteprima), FAQ, Redazione (coda delle domande senza risposta o "non utili" → FAQ
+pubblicata con notifica a chi aveva chiesto, editor con anteprima e storico, validazione con nota, statistiche). Mascheramento lato server
+di CF, email e numeri lunghi; 20 domande all'ora; ricerca full text italiano con sinonimi minimi; PDF pdfkit con indice e numeri di pagina
+(74 pagine), cache invalidata a ogni modifica; `cercaGuida` nella ricerca globale per gli interni; contatore in Home e job
+`gipoguida:riepilogo` (notifica agli ADMIN il lunedì); Diagnostica D56. Nuovo `SOLO_INTERNI` in routes/core.js (Piano Ferie e Guida GIPO
+spariscono anche lato server dalla Home e dal catalogo degli esterni). Test `server/test/gipoguida.test.mjs`; collaudo su db proprio con un
+modello finto; schermate `docs/screens/gipoguida-*.png`. Da fare: referente interno, validazione delle sezioni con chi usa GIPO, prova con
+Claude vero in produzione. Dettagli in docs/GIPO_GUIDA.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

@@ -38,6 +38,10 @@ export const AREAS = [
   { key: 'PEOPLE', name: 'People', color: '#8E5BA6' },
 ];
 
+// Moduli aperti a tutti gli INTERNI ma non agli accessi esterni (salvo grant esplicito): Piano Ferie, Guida GIPO (v0.70.0). Il server li
+// rifiuta comunque (soloInterni dei moduli); qui spariscono anche dalla Home e dal catalogo dell'esterno.
+export const SOLO_INTERNI = ['ferie', 'gipoguida'];
+
 r.get('/home/modules', ah(async (req, res) => {
   const mods = await many('SELECT key, area, name, tagline, icon, kind, legacy_url, route, restricted, sort_order, scope_type, open_to_all FROM modules WHERE active ORDER BY area, sort_order');
   const u = req.user;
@@ -47,6 +51,7 @@ r.get('/home/modules', ah(async (req, res) => {
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
     if (m.kind === 'PUBLIC') return external ? Boolean(u.grants[m.key]) : true;   // vetrine pubbliche: sempre raggiungibili dagli interni
+    if (m.open_to_all && external && SOLO_INTERNI.includes(m.key)) return Boolean(u.grants[m.key]);   // aperti a tutti gli interni, non agli esterni
     if (m.open_to_all) return !inAttesa;                  // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
   }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : null), href: moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
@@ -62,7 +67,7 @@ r.get('/modules', ah(async (req, res) => {
   const pub = (m) => ({ key: m.key, area: m.area, name: m.name, tagline: m.tagline, icon: m.icon, kind: m.kind, profiles: m.profiles, open_to_all: m.open_to_all, active: m.active, sort_order: m.sort_order });
   const esterno = isExternal(req.user);
   const inAttesa = esternoInAttesa(req.user);
-  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || (m.open_to_all && !inAttesa))).map(pub));
+  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || (m.open_to_all && !inAttesa && !SOLO_INTERNI.includes(m.key)))).map(pub));
 }));
 r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
   const b = parse(z.object({ name: z.string().min(2).optional(), tagline: z.string().nullable().optional(), legacy_url: z.string().url().nullable().optional(),

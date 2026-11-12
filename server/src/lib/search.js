@@ -172,7 +172,24 @@ export async function search(user, qtext, kind = '') {
         AND ${a.sql} ${kindSql}
       ORDER BY score DESC, s.updated_at DESC
       LIMIT 30`, params);
+  // Guida GIPO (v0.70.0): sezioni e FAQ della guida di GipoNext, solo per gli interni (il modulo non è aperto agli esterni) e solo con
+  // il modulo attivo. cercaGuida è esportata dal modulo; un errore della guida non blocca la ricerca della Suite.
+  if (isInternal(user) && (!kind || kind === 'guida_gipo')) {
+    const guida = await risultatiGuida(text).catch((e) => { console.warn('[search:guida]', e.message); return []; });
+    if (guida.length) return [...rows, ...guida].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 30);
+  }
   return rows;
+}
+
+async function risultatiGuida(text) {
+  const st = await many(`SELECT mode FROM module_state WHERE key = 'gipoguida' AND mode = 'LIVE'`);
+  if (!st.length) return [];
+  const { cercaGuida } = await import('../modules/gipoguida/lib/ricerca.js');
+  const r = await cercaGuida(text, { limite: 6, prefisso: false });
+  return r.map((x) => ({ kind: 'guida_gipo', ref_id: `${x.tipo}:${x.id}`, title: x.tipo === 'faq' ? `FAQ: ${x.titolo}` : `Guida GIPO · ${x.titolo}`, link: x.link, module_key: 'gipoguida',
+    sensitive: false, snippet: x.snippet, body: String(x.testo || '').slice(0, 600),
+    // punteggio ricondotto alla scala della ricerca della Suite (ts_rank_cd pesato della guida arriva a 5-7 sui titoli)
+    score: 0.25 + Math.min(1, Number(x.score) / 5) }));
 }
 
 export function registerSearchJobs(registerJob) {

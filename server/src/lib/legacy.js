@@ -670,6 +670,8 @@ const PER_USER_COUNTERS = {
   ferie: async () => (await import('../modules/ferie/lib/home.js')).contatoreHome,
   // Cockpit: scadenze di direzione da oggi a 7 giorni (lib/scadenzario.js), senza quelle segnate viste; solo a chi vede il Cockpit
   cockpit: async () => (await import('./scadenzario.js')).contatoreHome,
+  // Guida GIPO (v0.70.0): agli amministratori della guida le domande del personale ancora da risolvere
+  gipoguida: async () => (await import('../modules/gipoguida/lib/core.js')).contatoreHome,
 };
 
 // ---------------------------------------------------------------- Cockpit direzionale (cache 5 minuti)

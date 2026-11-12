@@ -3,12 +3,12 @@ const env = process.env;
 const list = (v, lower = false) => (v || '').split(',').map((s) => (lower ? s.trim().toLowerCase() : s.trim())).filter(Boolean);
 const bool = (v, d = false) => (v == null || v === '' ? d : String(v).toLowerCase() === 'true');
 
-export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail', 'business', 'finance', 'integration', 'contracts', 'circolari', 'ticket', 'cartella', 'referti', 'audit', 'facility', 'service', 'sgi', 'ferie', 'etichette'];
+export const LEGACY_KEYS = ['cash', 'orders', 'shipments', 'room', 'nc', 'retail', 'business', 'finance', 'integration', 'contracts', 'circolari', 'ticket', 'cartella', 'referti', 'audit', 'facility', 'service', 'sgi', 'ferie', 'etichette', 'gipoguida'];
 // Moduli ripartiti da zero sull'anagrafica unica: niente travaso né sincronizzazione delle anagrafiche; la sorgente legacy serve
 // solo a importare i contenuti dall'app originale (Travaso moduli > Importa i contenuti)
 // service (Portale Service) e sgi (Portale SGI, widget SGI Management), 01/11/2026: nessun contenuto da importare, sono gli specchi dei
 // siti pubblici e si attivano da soli all'avvio
-export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari', 'ticket', 'cartella', 'referti', 'audit', 'facility', 'service', 'sgi', 'ferie', 'etichette'];
+export const FRESH_MODULES = ['cash', 'room', 'nc', 'orders', 'retail', 'contracts', 'business', 'integration', 'circolari', 'ticket', 'cartella', 'referti', 'audit', 'facility', 'service', 'sgi', 'ferie', 'etichette', 'gipoguida'];
 // Moduli con l'importazione dei contenuti dall'app originale
 export const CONTENT_IMPORT_MODULES = ['room', 'integration', 'orders'];
 

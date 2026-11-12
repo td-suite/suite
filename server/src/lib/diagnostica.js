@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D55 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D56 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -613,6 +613,11 @@ export const CONTROLLI = [
             AND extract(hour FROM (now() AT TIME ZONE 'Europe/Rome')) BETWEEN 8 AND 21
             AND (j.ultimo_ok IS NULL OR j.ultimo_ok < now() - interval '2 hours')`,
     chiave: 'job', link: () => '/etichette/impostazioni' },
+  // v0.70.0 · Guida GIPO (docs/GIPO_GUIDA.md): domande del personale nella coda della redazione da più di 7 giorni (informativo)
+  { id: 'D56', area: 'SISTEMA', gravita: 'INFO', titolo: 'Guida GIPO: domande senza risposta da oltre 7 giorni', richiede: ['gipoguida.domande'], spiegazione: 'Domande poste dal personale nella Guida GIPO senza una risposta soddisfacente (esito "senza risposta" oppure giudicate "non utile" da chi le ha poste), né risolte con una FAQ né chiuse, da più di 7 giorni. La redazione (profilo ADMIN della guida) le trova in Guida GIPO > Redazione > Domande da risolvere: la risposta diventa una FAQ pubblicata e chi aveva chiesto riceve una notifica. Il testo è già ripulito da codici fiscali, telefoni ed email.',
+    sql: `SELECT d.id, to_char(d.creata_il AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY') AS creata, d.esito, left(d.testo, 90) AS domanda FROM gipoguida.domande d
+          WHERE d.risolta_il IS NULL AND d.chiusa_il IS NULL AND (d.esito = 'SENZA_RISPOSTA' OR d.utile = FALSE) AND d.creata_il < now() - interval '7 days' ORDER BY d.creata_il`,
+    chiave: 'id', link: () => '/gipoguida/redazione' },
   { id: 'D29', area: 'SISTEMA', gravita: 'INFO', titolo: 'Punti SERVICE configurati in Room', richiede: ['room.site_ext'], spiegazione: 'Room riguarda le sedi TD (B10).',
     sql: `SELECT s.id, s.code FROM room.site_ext e JOIN sites s ON s.id = e.site_id WHERE s.kind = 'SERVICE' ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D30', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Planimetria di Sedi non pubblicata in Room', spiegazione: 'La planimetria corrente della sede va in Room Planning.',

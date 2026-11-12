@@ -12,6 +12,11 @@ export const MODULES = [
   // per sede, solo con grant (non aperto a tutti); ADMIN al titolare (migrazione 001 del modulo). Subito dopo il Business Hub.
   { key: 'etichette', area: 'RETAIL_FLOW', name: 'Label', tagline: 'Etichette provette, stampa Zebra', icon: 'etichette', kind: 'NATIVE', legacy_url: null, route: '/etichette', sort_order: 15, scope_type: 'SITE', open_to_all: false,
     profiles: [P('ADMIN', 'Amministratore (impostazioni, modello, registro)'), P('OPERATORE', 'Operatore di sede (cerca, anteprima e stampa)', true)] },
+  // Guida GIPO (v0.70.0, CEO 12/11/2026: "widget davvero fondamentale"): guida completa di GipoNext (anche PDF), FAQ, ricerca e domande con
+  // risposta sui brani della guida; le domande senza risposta vanno alla redazione e la risposta diventa una FAQ (docs/GIPO_GUIDA.md).
+  // Nativo, aperto a tutti gli INTERNI (open_to_all, ruolo implicito LETTORE); gli accessi esterni no (soloInterni). Subito dopo Label.
+  { key: 'gipoguida', area: 'RETAIL_FLOW', name: 'Guida GIPO', tagline: 'Guida, FAQ e risposte su GipoNext', icon: 'gipoguida', kind: 'NATIVE', legacy_url: null, route: '/gipoguida', sort_order: 16, scope_type: null, open_to_all: true,
+    profiles: [P('ADMIN', 'Redazione (sezioni, FAQ, domande da risolvere, statistiche)'), P('LETTORE', 'Consultazione e domande')] },
   { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firme, scadenze, conto economico', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },
   { key: 'integration', area: 'DIREZIONE', name: 'Integration M&A', tagline: 'Post closing, GANTT', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,
