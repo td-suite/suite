@@ -10,7 +10,7 @@ import { configConsensi, accettatiDa, documentiDaAccettare } from './consensi.js
 export async function hydrateUser(id) {
   const u = await one(
     `SELECT u.*, o.kind AS organization_kind, o.name AS organization_name, s.name AS site_name, s.code AS site_code, s.kind AS site_kind,
-            p.kind AS person_kind, p.area AS person_area, p.job_title AS person_job_title, p.title AS person_title, p.phone AS person_phone, p.phone_ext AS person_phone_ext,
+            p.kind AS person_kind, p.status AS person_status, p.area AS person_area, p.job_title AS person_job_title, p.title AS person_title, p.phone AS person_phone, p.phone_ext AS person_phone_ext,
             jr.name AS person_role, ou.name AS person_unit, org_unit_path(p.unit_id) AS person_unit_path, p.phone_office AS person_phone_office,
             coalesce(p.organization_id, u.organization_id) AS eff_organization_id, s.id AS eff_site_id, s.organization_id AS site_organization_id, s.host_organization_id AS site_host_organization_id
        FROM users u
@@ -112,3 +112,10 @@ export const hasModule = (u, key, ...profiles) => {
   return !profiles.length || profiles.includes(g.profile) || isAdmin(u);
 };
 export const canSeeSite = (u, siteId) => isAdmin(u) || (u.site_ids || []).includes(Number(siteId));
+
+// Dipendente (v0.72.0, Rimborso Spese "accessibile SOLO ai dipendenti e a nessun altro"): utente interno collegato a una persona
+// dell'anagrafica di tipo DIPENDENTE (i dirigenti sono dipendenti dal 09/11/2026, migrazione 054) in stato ATTIVO o IMPEGNO. Livello e
+// grant non contano: un amministratore della Suite che non è dipendente non entra.
+export const DIPENDENTI_KINDS = ['DIPENDENTE'];
+export const DIPENDENTI_STATI = ['ATTIVO', 'IMPEGNO'];
+export const isDipendente = (u) => Boolean(u?.person_id) && DIPENDENTI_KINDS.includes(u.person_kind) && DIPENDENTI_STATI.includes(u.person_status) && isInternal(u);

@@ -1,0 +1,155 @@
+/* Modulo Rimborso Spese: stili propri, isolati dal plugin Vite sotto .mod-rimborsi (prefisso di classe rs-). Telefono prima di tutto
+   per il dipendente (niente scorrimento orizzontale, pulsanti grandi); colonne su schermo largo per approvazione e liquidazione. */
+.rs-page { max-width: 1180px; }
+.rs-gap { margin-bottom: 16px; }
+.rs-gap-t { margin-top: 12px; }
+.rs-blk { display: block; }
+.rs-warn { color: #a35a00; }
+.rs-warn .ico { width: 14px; height: 14px; vertical-align: -2px; }
+.rs-neg { color: var(--red); }
+.rs-carta { color: #6b4c8a; }
+.rs-ul { margin: 4px 0 0; padding-left: 18px; }
+.rs-pre { white-space: pre-wrap; }
+.rs-in { margin: 12px 18px; }
+
+/* azioni grandi per il telefono */
+.rs-azioni-mobile { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.rs-azioni-mobile .btn { min-height: 56px; font-size: 16px; }
+@media (min-width: 900px) { .rs-azioni-mobile { grid-template-columns: repeat(2, minmax(0, 240px)); } }
+
+.rs-corrente { border-left: 4px solid var(--teal); }
+.rs-benefit { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.rs-benefit:last-child { border-bottom: 0; }
+
+/* mesi */
+.rs-mesi { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.rs-mese { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none; background: var(--card); }
+.rs-mese:hover { background: var(--hover); text-decoration: none; }
+.rs-mese.on { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal) inset; }
+.rs-mese .t { font-weight: 800; font-size: 15px; }
+.rs-mese .v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rs-mese .badge { justify-self: start; }
+.rs-nuovo-mese { margin-top: 14px; }
+.rs-nuovo-mese select { width: auto; min-width: 0; flex: 1 1 220px; }
+
+/* modulistica cartacea */
+.rs-moduli { display: grid; gap: 8px; margin-top: 8px; }
+.rs-modulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.rs-modulo .btn { white-space: normal; text-align: left; }
+
+/* righe della nota: schede impilate sul telefono, colonne su schermo largo */
+.rs-righe { display: grid; }
+.rs-riga { display: grid; grid-template-columns: 26px 1fr auto; grid-template-areas: "n data imp" "n desc desc" "n az az"; gap: 4px 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); align-items: start; }
+.rs-riga:last-child { border-bottom: 0; }
+.rs-riga.esclusa { background: color-mix(in srgb, var(--red) 6%, transparent); }
+.rs-riga.esclusa .rs-c-desc .strong { text-decoration: line-through; }
+.rs-riga.avviso { background: color-mix(in srgb, #e9a23b 8%, transparent); }
+.rs-riga.registro .rs-c-imp { color: var(--muted); }
+.rs-c-n { grid-area: n; color: var(--muted); font-weight: 700; font-size: 12px; padding-top: 2px; }
+.rs-c-data { grid-area: data; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.rs-c-desc { grid-area: desc; min-width: 0; overflow-wrap: anywhere; }
+.rs-c-imp { grid-area: imp; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.rs-c-az { grid-area: az; display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.rs-c-az:empty { display: none; }
+@media (min-width: 900px) {
+  .rs-riga { grid-template-columns: 26px 92px minmax(0, 1fr) 110px auto; grid-template-areas: "n data desc imp az"; }
+  .rs-c-az { justify-content: flex-end; min-width: 120px; }
+}
+.rs-sub { padding: 10px 16px 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; border-top: 1px solid var(--line); }
+.rs-nota-fissa { padding: 10px 16px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); background: var(--card-2); border-radius: 0 0 var(--radius) var(--radius); }
+
+/* giustificativi */
+.rs-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rs-thumb { position: relative; width: 92px; display: grid; gap: 3px; }
+.rs-thumb img, .rs-thumb .rs-pdf { width: 92px; height: 92px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--card-2); display: grid; place-items: center; }
+.rs-thumb .rs-pdf .ico { width: 34px; height: 34px; color: var(--red); }
+.rs-thumb .iconbtn { position: absolute; top: 2px; right: 2px; background: var(--card); width: 28px; height: 28px; }
+.rs-thumb .ellipsis { max-width: 92px; }
+
+/* foto dal telefono */
+.rs-foto { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--input-line); border-radius: 12px; background: var(--card-2); }
+.rs-foto-btn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rs-foto-btn .btn { min-height: 52px; }
+
+/* moduli */
+.rs-form { display: grid; gap: 12px; }
+.rs-due { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rs-tre { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+@media (max-width: 640px) {
+  .rs-due, .rs-tre { grid-template-columns: 1fr; }
+  .rs-tre input, .rs-tre select, .rs-due input, .rs-due select { font-size: 16px; }   /* niente zoom automatico su iOS */
+}
+.rs-ar { padding-bottom: 10px; }
+.rs-calc { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--teal-050); }
+.rs-calc strong { color: var(--teal); }
+.rs-le { position: relative; display: flex; align-items: center; gap: 4px; }
+.rs-le input { flex: 1; }
+.rs-le-pop { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lg); max-height: 240px; overflow: auto; }
+.rs-le-pop button { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; background: none; border: 0; cursor: pointer; color: var(--ink); }
+.rs-le-pop button:hover { background: var(--hover); }
+
+/* dati e riepilogo */
+.rs-dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 14px; }
+.rs-dl dt { color: var(--muted); font-weight: 600; }
+.rs-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .rs-dl { grid-template-columns: 1fr; } .rs-dl dd { margin-bottom: 6px; } }
+.rs-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.rs-kpi { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.rs-kpi .l { font-size: 12px; font-weight: 700; color: var(--muted); }
+.rs-kpi .v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rs-kpi .f { font-size: 12px; color: var(--muted); }
+.rs-kpi.tot { background: var(--teal-050); border-color: transparent; }
+.rs-kpi.tot .v { color: var(--teal); }
+.rs-kpi.neg .v { color: var(--red); }
+.rs-saldo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--jet); color: #fff; }
+.rs-saldo strong { font-size: 24px; color: var(--silk); font-variant-numeric: tabular-nums; }
+.rs-saldo.neg strong { color: #ffb4a8; }
+.rs-riep .small { margin-top: 8px; }
+.rs-firme { display: grid; gap: 8px; margin-bottom: 12px; }
+.rs-timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--line); display: grid; gap: 10px; }
+.rs-timeline li { position: relative; }
+.rs-timeline li::before { content: ''; position: absolute; left: -18px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--teal); }
+@media (max-width: 900px) { .rs-due-col { grid-template-columns: 1fr; } }
+
+/* elenchi di note */
+.rs-elenco { display: grid; }
+.rs-el-h, .rs-el-r { display: grid; grid-template-columns: minmax(0, 1.3fr) 120px 170px 175px 165px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 16px; }
+.rs-elenco.senza-persona .rs-el-h, .rs-elenco.senza-persona .rs-el-r { grid-template-columns: 120px 170px 175px 165px minmax(0, 1fr); }
+.rs-el-h { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--card-2); border-bottom: 1px solid var(--line); }
+.rs-el-r { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line-soft); cursor: pointer; color: var(--ink); font: inherit; }
+.rs-el-r:hover { background: var(--hover); }
+.rs-el-r:last-child { border-bottom: 0; }
+.rs-el-h .num, .rs-el-r .num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  .rs-el-h { display: none; }
+  .rs-el-r, .rs-elenco.senza-persona .rs-el-r { grid-template-columns: 1fr 1fr; }
+  .rs-el-r .num { text-align: left; }
+}
+
+/* filtri, veicoli, impostazioni */
+.rs-filtri select { width: auto; }
+.rs-filtri .search-input { flex: 1 1 240px; }
+.rs-veicoli { display: grid; gap: 10px; }
+.rs-veicolo { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "t b" "s b"; gap: 2px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.rs-veicolo > div:first-child { grid-area: t; }
+.rs-veicolo > div:nth-child(2) { grid-area: s; }
+.rs-veicolo .btn { grid-area: b; align-self: center; }
+.rs-veicolo.off { opacity: .6; }
+.rs-ecc { display: grid; gap: 6px; }
+.rs-ecc-r { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.rs-ecc-r.warn { border-color: #e9a23b; background: color-mix(in srgb, #e9a23b 8%, transparent); }
+.rs-ecc-r select { width: auto; }
+.rs-decisione { border-left: 4px solid #e9a23b; }
+
+/* correzioni dopo le schermate del collaudo: nella finestra sul telefono nulla esce a destra; icone dei pulsanti nelle testate */
+.rs-form { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.rs-form > * { min-width: 0; }
+.rs-foto { min-width: 0; }
+.rs-foto-btn { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rs-foto-btn .btn, .rs-form .btn.link, .rs-modulo .btn { white-space: normal; }
+.rs-form input, .rs-form select, .rs-form textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.rs-thumb .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card > .hd .btn:not(.ghost) .ico { color: currentColor; }
+.rs-kpis { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+@media (max-width: 420px) { .rs-foto-btn .btn { font-size: 14px; padding: 8px 10px; } }
+.rs-form .btn.link { justify-content: flex-start; text-align: left; }

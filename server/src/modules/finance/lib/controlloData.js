@@ -13,7 +13,7 @@ import * as CE from './contoEconomico.js';
 import { produzionePerOrg, fatturatoPerOrg } from '../../../lib/synclab/letture.js';
 import { giorniLavorativi } from '../../business/lib/proQuota.js';
 
-export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Contratti del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management' };
+export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Contratti del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management', rimborsi: 'Rimborso Spese' };
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const eurTxt = (n) => Number(n || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', useGrouping: 'always' });
 
@@ -306,6 +306,14 @@ export async function movimentiConto(p, imp, sedi) {
     mov.push({ riga: 'personale', site_id: e.work_site_id, importo: CE.r2(tot), modulo: 'Contratti del personale', data: e.inizio || '', descrizione: `${e.last_name} ${e.first_name}${e.job_title ? ` · ${e.job_title}` : ''} · RAL ${eurTxt(ral)} × ${String(coef).replace('.', ',')} / 12 × ${String(CE.r2(cop)).replace('.', ',')} mesi`, link: `/people/${e.person_id}` });
   }
 
+  // COSTI · rimborsi spese liquidati (v0.72.0, Rimborso Spese): le note LIQUIDATE o ARCHIVIATE entrano nella riga del personale della sede
+  // di lavoro della persona (people.site_id, allineata da Contratti del personale) per il mese della nota (competenza), con il totale
+  // rimborsabile (spese anticipate, chilometri, pedaggi, parcheggi). Le spese pagate con carta aziendale o fuel card non sono qui.
+  const rimb = await leggi('rimborsi', `SELECT n.id, n.person_id, n.anno, n.mese, n.tot_rimborsabile, n.liquidazione_data::text AS liquidata, p.last_name, p.first_name, p.site_id
+      FROM note n JOIN public.people p ON p.id = n.person_id WHERE n.stato IN ('LIQUIDATA','ARCHIVIATA') AND n.tot_rimborsabile > 0 AND (n.anno::text || '-' || lpad(n.mese::text, 2, '0')) = ANY($1::text[])`, [p.mesi]);
+  fonti.rimborsi = { disponibile: rimb.ok, nota: rimb.nota || 'Note spese liquidate del Rimborso Spese (totale rimborsabile) sulla sede della persona, per il mese della nota' };
+  for (const x of rimb.rows) mov.push({ riga: 'personale', site_id: x.site_id, importo: CE.r2(x.tot_rimborsabile), modulo: 'Rimborso Spese', data: `${x.anno}-${String(x.mese).padStart(2, '0')}`, descrizione: `${x.last_name} ${x.first_name} · nota spese ${String(x.mese).padStart(2, '0')}/${x.anno} liquidata il ${String(x.liquidata || '').split('-').reverse().join('/')}`, link: `/rimborsi/nota/${x.id}` });
+
   // COSTI · liberi professionisti: compenso mensile del tariffario se quantificabile, altrimenti "da indicare"
   const lp = await leggi('contracts', `SELECT l.resource_id AS person_id, p.last_name, p.first_name, p.status, p.site_id, l.discipline, l.fees, l.est_monthly_cost, l.auto_renew,
         coalesce(l.start_date, p.hired_at)::text AS inizio, (CASE WHEN l.auto_renew THEN p.terminated_at ELSE least(l.end_date, p.terminated_at) END)::text AS fine
@@ -405,7 +413,7 @@ export function daDoveViene({ p, conto, fonti, comp, imp, lab, prevVuoto, oggi =
     comp.stime.importo ? `Stime commerciali escluse: ${eurTxt(comp.stime.importo)}, pro quota ${per} di ${comp.stime.clienti} ${comp.stime.clienti === 1 ? 'cliente attivo' : 'clienti attivi'} senza produzione effettiva (Business Hub, non sommate)` : 'Nessuna stima commerciale nel periodo (solo clienti attivi, in pro quota)',
     comp.proiezione?.clienti ? `Proiezione FY ${comp.proiezione.anno}: ${eurTxt(comp.proiezione.importo)}, fatturato atteso pieno di ${comp.proiezione.clienti} ${comp.proiezione.clienti === 1 ? 'cliente attivo' : 'clienti attivi'} (non sommata)` : 'Nessuna proiezione FY: nessun cliente attivo con fatturato FY atteso',
   ];
-  const costi = [`Canoni (Scadenziario o Sedi), bollette registrate, royalties di sede (Cash), personale (RAL × ${String(imp.coefficiente).replace('.', ',')} / 12), liberi professionisti, manutenzioni (Facility), pagamenti Finance: ${per}`];
+  const costi = [`Canoni (Scadenziario o Sedi), bollette registrate, royalties di sede (Cash), personale (RAL × ${String(imp.coefficiente).replace('.', ',')} / 12, più le note spese liquidate del Rimborso Spese), liberi professionisti, manutenzioni (Facility), pagamenti Finance: ${per}`];
   const centrali = [`Costi senza sede o delle sedi centrali ${per}, ripartiti sui ricavi delle sedi`];
   const confronto = prevVuoto ? 'anno prima: nessun dato nella Suite' : `anno prima: stesso periodo (${CE.periodoPrecedente(p).etichetta})`;
   return { periodo: per, ricavi, costi_diretti: costi, costi_centrali: centrali, margine: [...ricavi.slice(0, 2), 'meno costi diretti e quota dei costi centrali'], confronto };

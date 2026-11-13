@@ -672,6 +672,8 @@ const PER_USER_COUNTERS = {
   cockpit: async () => (await import('./scadenzario.js')).contatoreHome,
   // Guida GIPO (v0.70.0): agli amministratori della guida le domande del personale ancora da risolvere
   gipoguida: async () => (await import('../modules/gipoguida/lib/core.js')).contatoreHome,
+  // Rimborso Spese (v0.72.0): solo ai dipendenti; P&C note da liquidare, responsabili note da approvare, dipendente note in bozza
+  rimborsi: async () => (await import('../modules/rimborsi/lib/home.js')).contatoreHome,
 };
 
 // ---------------------------------------------------------------- Cockpit direzionale (cache 5 minuti)

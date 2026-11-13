@@ -16,7 +16,7 @@ export const GRAVITA = ['BASSA', 'MEDIA', 'ALTA', 'CRITICA'];
 export const AREE = { DIREZIONE: 'Direzione', FINANCE: 'Finance', RETAIL_FLOW: 'Retail e Flow', OPERATIONS: 'Operations', HQS: 'HQS', PEOPLE: 'People' };
 // Moduli con dati personali o del dossier HR: le loro righe arrivano solo a chi ha il grant del modulo o a titolare e amministratori
 // (come la card "Scadenze contrattuali" del Cockpit, riservata a chi ha Contratti del personale)
-export const MODULI_RISERVATI = ['contracts', 'ferie', 'room'];
+export const MODULI_RISERVATI = ['contracts', 'ferie', 'room', 'rimborsi'];
 // Impostazioni (app_settings 'cockpit.scadenzario', Amministrazione > Impostazioni). Le soglie in giorni sono ipotesi dichiarate.
 export const IMPOSTAZIONI_DEFAULT = {
   notifica_attiva: true,     // job core:scadenzario: notifica giornaliera a titolare e amministratori dopo le 8
@@ -397,6 +397,34 @@ export const FONTI = [
               FROM saldi s JOIN public.people p ON p.id = s.person_id AND p.status = 'ATTIVO' WHERE s.anno = $1 AND s.residuo_ap > 0) t WHERE resto > 0`, [anno, oggi, prima]);
         if (x?.persone) out.push({ chiave: `residuo_ap:${anno}`, data: scad, tipo: 'Residuo ferie anno precedente', titolo: prima ? 'Residuo ferie dell\'anno precedente da pianificare' : 'Residuo ferie dell\'anno precedente non goduto',
           descrizione: `${Number(x.giorni).toLocaleString('it-IT', { maximumFractionDigits: 1 })} giorni (stima per periodi interi; dettaglio nel Cruscotto ferie)`, oggetto: `${x.persone} ${x.persone === 1 ? 'dipendente' : 'dipendenti'}`, gravita: 'MEDIA', link: '/ferie/cruscotto', responsabile: 'HR' });
+      }
+      return out;
+    },
+  },
+  {
+    // v0.72.0 · Rimborso Spese (docs/RIMBORSI.md): note in attesa del responsabile oltre la soglia del promemoria e note approvate non
+    // ancora liquidate da oltre 10 giorni (soglia dichiarata, non di policy). Solo date registrate: inviata_at, approvata_at.
+    key: 'rimborsi', modulo: 'rimborsi', nome: 'Rimborso Spese', area: 'PEOPLE',
+    campi: 'rimborsi.note INVIATA (inviata_at + impostazione promemoria_responsabile_giorni, predefinito 5; responsabile_person_id o P&C per il vertice) e APPROVATA o IN_LIQUIDAZIONE (approvata_at + 10 giorni), con totale rimborsabile e saldo',
+    async leggi({ da, a, oggi, db }) {
+      const imp = Object.fromEntries((await db.many('SELECT key, value FROM impostazioni')).map((x) => [x.key, x.value]));
+      const G = Number(imp.promemoria_responsabile_giorni) || 5;
+      const LIQ = 10;
+      const rows = await db.many(`SELECT n.id, n.anno, n.mese, n.stato, n.al_pc, n.tot_rimborsabile, n.saldo, (n.inviata_at AT TIME ZONE 'Europe/Rome')::date AS inviata, (n.approvata_at AT TIME ZONE 'Europe/Rome')::date AS approvata,
+          p.last_name || ' ' || p.first_name AS persona, r.last_name || ' ' || r.first_name AS responsabile
+        FROM note n JOIN public.people p ON p.id = n.person_id LEFT JOIN public.people r ON r.id = n.responsabile_person_id WHERE n.stato IN ('INVIATA','APPROVATA','IN_LIQUIDAZIONE')`);
+      const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+      const euro = (v) => `${Number(v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
+      const out = [];
+      for (const n of rows) {
+        const mese = `${MESI[n.mese - 1]} ${n.anno}`;
+        if (n.stato === 'INVIATA' && n.inviata) {
+          const d = addGiorni(iso(n.inviata), G);
+          if (d >= da && d <= a) out.push({ chiave: `approva:${n.id}`, data: d, tipo: 'Nota spese da approvare', titolo: `Nota spese di ${mese} in attesa di approvazione da più di ${G} giorni`, descrizione: `Inviata il ${itData(iso(n.inviata))} · totale rimborsabile ${euro(n.tot_rimborsabile)}`, oggetto: n.persona, gravita: d < oggi ? 'ALTA' : 'MEDIA', link: `/rimborsi/nota/${n.id}`, responsabile: n.al_pc ? 'P&C (vertice dell\'organigramma)' : n.responsabile || 'Responsabile' });
+        } else if (n.approvata) {
+          const d = addGiorni(iso(n.approvata), LIQ);
+          if (d >= da && d <= a) out.push({ chiave: `liquida:${n.id}`, data: d, tipo: 'Nota spese da liquidare', titolo: `Nota spese di ${mese} approvata e non ancora liquidata`, descrizione: `Approvata il ${itData(iso(n.approvata))} · saldo ${euro(n.saldo)}`, oggetto: n.persona, gravita: 'MEDIA', link: `/rimborsi/nota/${n.id}`, responsabile: 'P&C' });
+        }
       }
       return out;
     },

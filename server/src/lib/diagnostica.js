@@ -1,5 +1,5 @@
 // Diagnostica anagrafica (correzione A13 del programma "anagrafica unica", 08/11/2026; review sezione 6). Elenco dichiarativo dei
-// controlli D01-D57 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
+// controlli D01-D59 sull'anagrafica di sedi, Legal entity, persone e sui flussi che la toccano. Ogni controllo:
 //   { id, area, gravita: BLOCCANTE|ATTENZIONE|INFO, titolo, spiegazione, richiede: [tabelle di modulo], sql, chiave, link(riga),
 //     correggi?: { etichetta, conferma, descrizione, fn(righe, ctx) }, correggiDopo?: '<blocco>', attivoDopo?: '<blocco>' }
 // L'esecuzione è in una transazione READ ONLY con statement_timeout di 5 s per istruzione; un controllo che richiede lo schema di un
@@ -631,6 +631,20 @@ export const CONTROLLI = [
              AND r.date >= imp.adesso::date - imp.giorni AND r.created_at_local < imp.adesso - make_interval(hours => imp.ore)
            ORDER BY r.created_at_local LIMIT 500`,
     chiave: 'id', link: () => '/etichette/ritardi' },
+  // v0.72.0 · Rimborso Spese (docs/RIMBORSI.md): eccezioni al giustificativo obbligatorio del seme del CEO non abbinate in modo univoco a un
+  // dipendente attivo (cognome non trovato, omonimi) o abbinate a una persona che non è (più) un dipendente attivo
+  { id: 'D58', area: 'ORGANIGRAMMA', gravita: 'ATTENZIONE', titolo: 'Rimborsi: eccezioni giustificativo non abbinate a una persona', richiede: ['rimborsi.eccezioni'], spiegazione: 'Il CEO ha stabilito che la foto dello scontrino è facoltativa per Epifani, Zezza, Malenchini e Corradi. Il seme abbina queste eccezioni SOLO se in anagrafica c\'è un\'unica persona attiva con quel cognome; qui compaiono le voci senza persona (cognome non trovato o omonimi) e quelle abbinate a una persona che non è un dipendente attivo (tipo diverso da Dipendente, oppure cessata: il Rimborso Spese è riservato ai dipendenti, l\'eccezione non ha effetto). Si sistemano in Rimborso Spese > Impostazioni > Eccezioni (scelta della persona) da P&C o dal titolare.',
+    sql: `SELECT e.id, coalesce(e.cognome_seme, p.last_name) AS cognome, CASE WHEN e.person_id IS NULL THEN coalesce(e.nota, 'non abbinata') WHEN p.status NOT IN ('ATTIVO','IMPEGNO') THEN 'persona non attiva (' || p.status || ')' ELSE 'persona di tipo ' || p.kind || ': non accede al Rimborso Spese' END AS motivo
+          FROM rimborsi.eccezioni e LEFT JOIN people p ON p.id = e.person_id
+          WHERE e.person_id IS NULL OR p.status NOT IN ('ATTIVO','IMPEGNO') OR p.kind <> 'DIPENDENTE' ORDER BY 2`,
+    chiave: 'id', link: () => '/rimborsi/impostazioni' },
+  // v0.72.0 · Rimborso Spese: note spese inviate e non ancora approvate da oltre 10 giorni (il promemoria parte a 5)
+  { id: 'D59', area: 'SISTEMA', gravita: 'INFO', titolo: 'Note spese in attesa di approvazione da oltre 10 giorni', richiede: ['rimborsi.note'], spiegazione: 'Note spese mensili in stato Inviata da più di 10 giorni: il responsabile (superiore diretto dell\'organigramma, o P&C per il vertice) non ha ancora approvato né respinto. Il job rimborsi:promemoria ricorda la nota al responsabile ogni giorno dal quinto giorno. Se il responsabile è assente o cambiato, P&C o il titolare usano "Ricalcola il responsabile" nella scheda della nota.',
+    sql: `SELECT n.id, p.last_name || ' ' || p.first_name AS dipendente, n.anno || '-' || lpad(n.mese::text, 2, '0') AS mese, to_char(n.inviata_at AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY') AS inviata,
+            CASE WHEN n.al_pc THEN 'P&C' ELSE r.last_name || ' ' || r.first_name END AS responsabile
+          FROM rimborsi.note n JOIN people p ON p.id = n.person_id LEFT JOIN people r ON r.id = n.responsabile_person_id
+          WHERE n.stato = 'INVIATA' AND n.inviata_at < now() - interval '10 days' ORDER BY n.inviata_at`,
+    chiave: 'id', link: (r) => `/rimborsi/nota/${r.id}` },
   { id: 'D29', area: 'SISTEMA', gravita: 'INFO', titolo: 'Punti SERVICE configurati in Room', richiede: ['room.site_ext'], spiegazione: 'Room riguarda le sedi TD (B10).',
     sql: `SELECT s.id, s.code FROM room.site_ext e JOIN sites s ON s.id = e.site_id WHERE s.kind = 'SERVICE' ORDER BY s.code`, chiave: 'id', link: sedeLink },
   { id: 'D30', area: 'SISTEMA', gravita: 'ATTENZIONE', titolo: 'Planimetria di Sedi non pubblicata in Room', spiegazione: 'La planimetria corrente della sede va in Room Planning.',

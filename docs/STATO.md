@@ -168,6 +168,27 @@ già scritti. Pagina Guida con filtro "Per chi configura GIPO" e badge fonte/bac
 risolta dalla guida". Test `server/test/gipoguida-domande.test.mjs` (32 domande reali di back-end, tutte trovano la sezione attesa),
 script `server/scripts/gipoguida-domande.mjs`; PDF di 123 pagine. Dettagli e tabella di confronto con il manuale in docs/GIPO_GUIDA.md.
 
+## 13/11/2026 · v0.72.0 · Rimborso Spese (nota spese mensile e rimborso chilometrico)
+Richiesta del CEO del 13/11/2026: nuovo modulo nativo **Rimborso Spese** (chiave `rimborsi`, area People dopo il Piano Ferie) accessibile
+**solo ai dipendenti** (nuova regola `SOLO_DIPENDENTI` in routes/core.js e `isDipendente` in lib/access.js: persona DIPENDENTE ATTIVO o
+IMPEGNO, interna; né LP, né medici, né esterni, né amministratori non dipendenti; nessun grant, ruoli calcolati: responsabile
+dall'organigramma, P&C dal grant ADMIN di Contratti o dalle impostazioni, titolare). Nota mensile con le due sezioni del MOD025 (spese) e
+del MOD029 (chilometri, pedaggi, parcheggi) nella stessa scheda, riepilogo con saldo a favore del dipendente o dell'azienda (anticipi,
+carta aziendale e fuel card non rimborsabili), giustificativi dal telefono con compressione nel browser e archivio a due vie, obbligatori
+salvo le eccezioni del CEO (seme per cognome solo se univoco, D58), flusso BOZZA → INVIATA → APPROVATA (righe escluse) / respinta →
+IN_LIQUIDAZIONE → LIQUIDATA → ARCHIVIATA con PDF definitivo, nessuno approva la propria, risalita se il responsabile è assente, vertice a
+P&C, finestra di invio (giorno 10), doppioni, date fuori mese e future bloccate, job `rimborsi:promemoria`, PDF che riproduce i due moduli
+con le firme come attestazioni elettroniche, ZIP, export Excel, archivio, D59, scadenzario di direzione, conto economico di Finance
+(note liquidate nella riga del personale), ricerca globale delle proprie note, contatore in Home. Modulistica cartacea TD-SGI-MOD025 e
+MOD029 rev. 00 copiata come risorsa e scaricabile da ogni pagina. **Contratti del personale**: sezione "Benefit: vettura e fuel card" nella
+scheda della persona (solo P&C e titolare; migrazione contracts 021, PIN mai salvato, numero mascherato, voce aggiunta al benefit del
+contratto). Nessuna tariffa né massimale inventati (vuoti), nessun dato reale nel seme. Test `server/test/rimborsi.test.mjs`; collaudo su db
+proprio con persone inventate; schermate `docs/screens/rimborsi-*.png`. Prima della consegna, due richieste del CEO: la nota del **vertice** è approvata automaticamente alla conferma, e a ogni approvazione il
+**PDF della nota** parte da people@ verso i destinatari esterni di Impostazioni (consulente: seme Poggiali e Caiani), con esito,
+reinvio e oggetto "(aggiornata)" sulle riapprovazioni; un errore d'invio non annulla l'approvazione (migrazione rimborsi 002). Da fare:
+inserimento di vetture, fuel card e tariffe ACI da parte del CEO e di P&C, verifica delle eccezioni (D58), autorizzazione di people@ per
+Mail.Send. Dettagli in docs/RIMBORSI.md.
+
 ## Checklist per un nuovo ambiente (L17)
 1. Variabili obbligatorie: `DATABASE_URL`, `SESSION_SECRET` (in produzione l'avvio si ferma senza), `BASE_URL`, `NODE_ENV=production`.
 2. `CREDENTIALS_KEY` (generata da Render) e, se Business arriva dall'app originale, `BUSINESS_CREDENTIALS_KEY` uguale a quella di

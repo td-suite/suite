@@ -47,6 +47,9 @@ mese corrente** e il confronto con l'anno precedente usa gli stessi mesi.
   coefficiente oneri / 12 per i giorni coperti dal rapporto (inizio = `start_date` o ingresso, fine = `end_date` o cessazione). Il
   coefficiente è l'impostazione `pl_coefficiente_oneri` (**1,28, ipotesi dichiarata**) salvo il coefficiente scritto da HR sul contratto
   (`employments.cost_coefficient`).
+- Rimborso Spese (v0.72.0): le note spese LIQUIDATE o ARCHIVIATE entrano nella stessa riga "Personale dipendente" con il totale
+  rimborsabile (spese anticipate, chilometri, pedaggi, parcheggi), sulla sede della persona (`people.site_id`) e per il mese della nota;
+  le spese pagate con carta aziendale o fuel card non ci sono (docs/RIMBORSI.md).
 - Liberi professionisti: sede della persona (`people.site_id`, `lp_contracts` non ha una sede), compenso mensile del tariffario
   (`est_monthly_cost`, cioè i compensi FISSI) per i giorni coperti; compensi orari, a prestazione o variabili = riga **"da indicare"**.
 - Manutenzioni (Facility): interventi chiusi con costo (`work_orders.cost`, data di chiusura) e manutenzioni del piano eseguite con costo

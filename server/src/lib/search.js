@@ -3,6 +3,7 @@
 import { q, many } from '../db.js';
 import { audienceSql, isInternal } from './audience.js';
 import { RUBRICA_PUBLIC_SQL } from './esterni.js';
+import { isDipendente } from './access.js';
 
 const ALL = { type: 'ALL' };
 const INTERNAL = { type: 'INTERNAL' };
@@ -185,7 +186,34 @@ export async function search(user, qtext, kind = '') {
     const acc = await risultatiLabControl(user, text).catch((e) => { console.warn('[search:labcontrol]', e.message); return []; });
     if (acc.length) out = [...acc, ...out].slice(0, 30);
   }
+  // Rimborso Spese (v0.72.0): il widget non esiste per chi non è dipendente (nemmeno la voce del modulo); il dipendente trova le proprie
+  // note spese per mese e anno, motivazione, descrizione delle spese o tratta dei viaggi. Mai le note altrui.
+  if (!isDipendente(user)) out = out.filter((x) => x.module_key !== 'rimborsi');
+  else if (!kind || kind === 'nota_spese') {
+    const ns = await risultatiRimborsi(user, text).catch((e) => { console.warn('[search:rimborsi]', e.message); return []; });
+    if (ns.length) out = [...ns, ...out].slice(0, 30);
+  }
   return out;
+}
+
+const MESI_IT = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+async function risultatiRimborsi(user, text) {
+  const st = await many(`SELECT mode FROM module_state WHERE key = 'rimborsi' AND mode = 'LIVE'`);
+  if (!st.length || !user.person_id) return [];
+  const t = text.toLowerCase();
+  const mese = MESI_IT.findIndex((m) => t.includes(m)) + 1 || null;
+  const anno = Number((t.match(/\b(20\d{2})\b/) || [])[1]) || null;
+  const generica = /\b(nota|note) spes|rimbors|chilometr|trasfert/.test(t);
+  const libero = t.replace(/\b(20\d{2})\b/g, ' ').replace(new RegExp(`\\b(${MESI_IT.join('|')})\\b`, 'g'), ' ').replace(/\b(nota|note|spese?|rimborso|rimborsi|chilometrico|di|del|della)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!mese && !anno && !generica && libero.length < 3) return [];
+  const righe = await many(`SELECT n.id, n.anno, n.mese, n.stato, n.tot_rimborsabile, n.motivazione FROM rimborsi.note n
+      WHERE n.person_id = $1 AND ($2::int IS NULL OR n.mese = $2) AND ($3::int IS NULL OR n.anno = $3)
+        AND ($4 = '' OR n.motivazione ILIKE '%' || $4 || '%' OR EXISTS (SELECT 1 FROM rimborsi.spese s WHERE s.nota_id = n.id AND s.descrizione ILIKE '%' || $4 || '%')
+             OR EXISTS (SELECT 1 FROM rimborsi.viaggi v WHERE v.nota_id = n.id AND (v.partenza ILIKE '%' || $4 || '%' OR v.arrivo ILIKE '%' || $4 || '%')))
+      ORDER BY n.anno DESC, n.mese DESC LIMIT 6`, [user.person_id, mese, anno, libero.length >= 3 ? libero : '']);
+  const STATO = { BOZZA: 'bozza', INVIATA: 'inviata al responsabile', APPROVATA: 'approvata', IN_LIQUIDAZIONE: 'in liquidazione', LIQUIDATA: 'liquidata', ARCHIVIATA: 'archiviata' };
+  return righe.map((n) => ({ kind: 'nota_spese', ref_id: String(n.id), title: `Nota spese di ${MESI_IT[n.mese - 1]} ${n.anno}`, module_key: 'rimborsi', link: `/rimborsi/nota/${n.id}`, sensitive: true,
+    snippet: [STATO[n.stato], `${Number(n.tot_rimborsabile).toLocaleString('it-IT', { minimumFractionDigits: 2 })} EUR`, n.motivazione].filter(Boolean).join(' · '), body: '', score: 1.5 }));
 }
 
 async function risultatiLabControl(user, text) {

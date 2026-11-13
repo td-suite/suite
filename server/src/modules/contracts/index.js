@@ -31,6 +31,7 @@ import orgRoutes from './routes/org.js';
 import statsRoutes from './routes/stats.js';
 import importRoutes from './routes/imports.js';
 import peopleRoutes from './routes/people.js';
+import benefitRoutes from './routes/benefit.js';
 
 const KEY = 'contracts';
 
@@ -83,6 +84,7 @@ export default function mount(app) {
   r.use('/stats', statsRoutes);
   r.use('/import', importRoutes);
   r.use('/people-inbox', peopleRoutes);   // casella People: impostazioni, richiami, messaggi da approvare
+  r.use('/benefit', benefitRoutes);       // v0.72.0: vettura aziendale e fuel card della persona (solo P&C e titolare)
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
   // Errori propri del modulo (multer, duplicati): il resto lo gestisce l'error handler della Suite

@@ -57,6 +57,12 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura')] },
   { key: 'rubrica', area: 'PEOPLE', name: 'Rubrica e Organigramma', tagline: 'Chi fa cosa, contatti, Teams', icon: 'rubrica', kind: 'NATIVE', route: '/people', sort_order: 20,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Aggiornamento schede')] },
+  // Rimborso Spese (v0.72.0, CEO 13/11/2026): nota spese mensile e rimborso chilometrico (moduli SGI MOD025 e MOD029), approvazione secondo
+  // l'organigramma, liquidazione di P&C (docs/RIMBORSI.md). Nativo, SOLO ai dipendenti (regola SOLO_DIPENDENTI di routes/core.js: né
+  // esterni, né liberi professionisti, né amministratori della Suite che non siano dipendenti). Nessun grant: ruoli calcolati; l'unico
+  // profilo serve al catalogo.
+  { key: 'rimborsi', area: 'PEOPLE', name: 'Rimborso Spese', tagline: 'Nota spese e rimborso chilometrico', icon: 'rimborsi', kind: 'NATIVE', legacy_url: null, route: '/rimborsi', sort_order: 35, scope_type: null, open_to_all: true,
+    profiles: [P('DIPENDENTE', 'Dipendente (responsabile, P&C e titolare si calcolano da organigramma e Contratti del personale: nessun grant da assegnare)')] },
   { key: 'ferie', area: 'PEOPLE', name: 'Piano Ferie', tagline: 'Piano annuale per area', icon: 'ferie', kind: 'LEGACY', legacy_url: null, sort_order: 30, scope_type: null, open_to_all: true, profiles: [P('ADMIN', 'Amministratore (tutte le aree)'), P('RESPONSABILE', 'Responsabile di area (vede in sola lettura le aree del suo ambito; approva solo il superiore diretto)'), P('DIPENDENTE', 'Utente (compila il proprio piano)')] },
 
   // ---- Retail e Comunicazione

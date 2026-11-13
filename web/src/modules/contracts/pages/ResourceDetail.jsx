@@ -4,6 +4,7 @@ import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canWrite, isAdmin, seesCosts } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, StatusBadge, Modal, PromptModal, ConfirmModal, useToast, Icon } from '../components/ui.jsx';
 import { PersonForm, EmploymentForm, LpForm } from '../components/forms.jsx';
+import BenefitAuto from '../components/BenefitAuto.jsx';
 import { eur, itDate, itDateTime, bytes, age, CONTRACT, LEVEL_LABEL, LETTER_STATUS, DEADLINE_STATE, FEE_TYPE, FEE_VAT, SEX, TERMINATION_LABEL, PERSON_KIND, today } from '../format.js';
 
 const DOC_LABEL = { CONTRATTO: 'Lettera di assunzione', MBO: 'Piano MBO', LETTERA_IMPEGNO: 'Lettera di impegno', CONTRATTO_LP: 'Contratto LP' };
@@ -164,6 +165,7 @@ export default function ResourceDetail() {
               </Card>
             )}
         </div>
+        {(['ADMIN', 'HR'].includes(user?.role) || user?.suite_level === 'OWNER') && <BenefitAuto personId={r.id} />}
         <Card title="Completezza del dossier" className="mt" actions={<span className="small muted">{checklist.filter((c) => c.required && !c.present).length} documenti obbligatori mancanti</span>}>
           <div className="checklist3">
             {checklist.filter((c) => c.required || c.present).map((c) => (

@@ -11,7 +11,7 @@ import { activeModuleKeys, moduleHref } from '../lib/modules.js';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, audit, parse, notFound, forbidden, readLog } from '../lib/util.js';
-import { requireAdmin, isAdmin, hasModule } from '../lib/access.js';
+import { requireAdmin, isAdmin, hasModule, isDipendente } from '../lib/access.js';
 import { indexPersonById, indexSite, indexOrg, removeFromIndex } from '../lib/search.js';
 import { isExternal, esternoInAttesa, filterRubricaRow, RUBRICA_PUBLIC_SQL, realignOrgPerimeters } from '../lib/esterni.js';
 import multer from 'multer';
@@ -41,6 +41,11 @@ export const AREAS = [
 // Moduli aperti a tutti gli INTERNI ma non agli accessi esterni (salvo grant esplicito): Piano Ferie, Guida GIPO (v0.70.0). Il server li
 // rifiuta comunque (soloInterni dei moduli); qui spariscono anche dalla Home e dal catalogo dell'esterno.
 export const SOLO_INTERNI = ['ferie', 'gipoguida'];
+// Moduli SOLO per i dipendenti (v0.72.0, Rimborso Spese: "accessibile SOLO ai dipendenti e a nessun altro"): regola più stretta di
+// SOLO_INTERNI, apertura automatica senza grant per chi è dipendente (lib/access.js isDipendente: persona DIPENDENTE, ATTIVO o IMPEGNO,
+// accesso interno) e chiusura per tutti gli altri, amministratori e titolare compresi se non sono dipendenti. Il server del
+// modulo risponde comunque 403 (soloDipendenti); qui il widget sparisce dalla Home e dal catalogo.
+export const SOLO_DIPENDENTI = ['rimborsi'];
 
 r.get('/home/modules', ah(async (req, res) => {
   const mods = await many('SELECT key, area, name, tagline, icon, kind, legacy_url, route, restricted, sort_order, scope_type, open_to_all FROM modules WHERE active ORDER BY area, sort_order');
@@ -51,6 +56,7 @@ r.get('/home/modules', ah(async (req, res) => {
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
     if (m.kind === 'PUBLIC') return external ? Boolean(u.grants[m.key]) : true;   // vetrine pubbliche: sempre raggiungibili dagli interni
+    if (SOLO_DIPENDENTI.includes(m.key)) return isDipendente(u);   // solo dipendenti: nessun grant, nessuna eccezione per livello
     if (m.open_to_all && external && SOLO_INTERNI.includes(m.key)) return Boolean(u.grants[m.key]);   // aperti a tutti gli interni, non agli esterni
     if (m.open_to_all) return !inAttesa;                  // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
@@ -63,11 +69,11 @@ r.get('/home/modules', ah(async (req, res) => {
 // solo i moduli che hanno (grant) o aperti a tutti, con nome, icona e profili (servono a mostrare "I miei moduli")
 r.get('/modules', ah(async (req, res) => {
   const rows = await many('SELECT * FROM modules ORDER BY area, sort_order');
-  if (isAdmin(req.user)) return res.json(rows.map((m) => ({ ...m, sso_secret: undefined, sso_configured: Boolean(m.sso_secret) })));
+  if (isAdmin(req.user)) return res.json(rows.map((m) => ({ ...m, sso_secret: undefined, sso_configured: Boolean(m.sso_secret) })));   // catalogo completo per l'amministrazione
   const pub = (m) => ({ key: m.key, area: m.area, name: m.name, tagline: m.tagline, icon: m.icon, kind: m.kind, profiles: m.profiles, open_to_all: m.open_to_all, active: m.active, sort_order: m.sort_order });
   const esterno = isExternal(req.user);
   const inAttesa = esternoInAttesa(req.user);
-  res.json(rows.filter((m) => m.active && (!esterno || req.user.grants?.[m.key] || (m.open_to_all && !inAttesa && !SOLO_INTERNI.includes(m.key)))).map(pub));
+  res.json(rows.filter((m) => m.active && (!SOLO_DIPENDENTI.includes(m.key) || isDipendente(req.user)) && (!esterno || req.user.grants?.[m.key] || (m.open_to_all && !inAttesa && !SOLO_INTERNI.includes(m.key)))).map(pub));
 }));
 r.put('/modules/:key', requireAdmin, ah(async (req, res) => {
   const b = parse(z.object({ name: z.string().min(2).optional(), tagline: z.string().nullable().optional(), legacy_url: z.string().url().nullable().optional(),

@@ -1444,3 +1444,17 @@ Tre richieste del CEO del 09/11/2026. La regola di governo non cambia: le sedi e
 **Verifiche in produzione dopo il rilascio**: `SELECT entity_id, data FROM audit_log WHERE action='MIGRAZIONE_RAPPORTO' AND entity_id='retail/014_tuotempo_fase1.sql';`
 `SELECT code, legacy_refs->>'tuotempo' FROM sites WHERE legacy_refs ? 'tuotempo';` (attese le 4 sedi già abbinate, portate nella fonte all'avvio);
 D45, D46 dopo "Allinea adesso"; D47 prima e dopo il job orario; `SELECT action, count(*) FROM audit_log WHERE data->>'origine' LIKE 'Retail > TuoTempo%' GROUP BY 1;`.
+
+## Contratti del personale: benefit vettura aziendale e fuel card (13/11/2026, v0.72.0)
+Richiesta del CEO: assegnare al personale la vettura aziendale definita in Contratti del Personale quando c'è il benefit e le fuel card DKV
+con i numeri, per il Rimborso Spese (docs/RIMBORSI.md).
+- Scheda della persona > Scheda > **"Benefit: vettura e fuel card"**, visibile e modificabile solo da P&C (profili ADMIN e HR del modulo)
+  e dal titolare; VIEWER e gli altri moduli no (403 su `/api/contracts/benefit/...`). Ogni lettura è nel read_log, ogni scrittura nell'audit
+  del modulo e della Suite (`CONTRACTS_BENEFIT_VETTURA_*`, `CONTRACTS_BENEFIT_FUEL_*`, numero della carta mascherato nell'audit).
+- Tabelle `contracts.benefit_vetture` (marca, modello, targa, alimentazione, dal, al, uso promiscuo, note) e `contracts.benefit_fuel_card`
+  (circuito, numero per intero, dal, al, vettura collegata, note; numero unico per circuito). **Il PIN non si salva mai**: nessuna colonna e
+  un campo "pin" nella richiesta è rifiutato. Numero mostrato mascherato (ultime 4 cifre) con "Mostra".
+- Coerenza con `employments.benefits` (jsonb di stringhe): un'assegnazione in corso aggiunge "Vettura aziendale" / "Fuel card" se manca una
+  voce equivalente scritta a mano; la voce aggiunta dalla Suite si toglie quando non resta nessuna assegnazione in corso.
+- Il Rimborso Spese le legge con `assegnazioniPersona` (lib/benefitAuto.js): nessuna copia. Nessun dato reale nel seme: targhe e numeri
+  (oggi Epifani, Zezza, Malenchini per la vettura; Epifani e Zezza per la DKV) li inserisce il CEO.
