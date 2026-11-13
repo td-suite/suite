@@ -1,6 +1,6 @@
 # Modulo Ticket · richieste e segnalazioni ai responsabili
 
-Modulo nativo della Suite (chiave `ticket`, area HQS, dopo Circolari). Si avvia vuoto da Amministrazione > Travaso moduli >
+Modulo nativo della Suite (chiave `ticket`, area HQS, dopo Circolari). Si avvia vuoto da Amministrazione > Attivazione moduli >
 "Avvia il modulo" (è in `FRESH_MODULES`). Chiunque sia autenticato nella Suite apre ticket e segue i propri, anche senza grant sul
 modulo; i responsabili delle unità dell'organigramma (caselle) li gestiscono; l'amministratore del modulo governa categorie, SLA e
 impostazioni. Protocollo `TK-AAAA/NNNN`, progressivo annuale assegnato dal database all'apertura.

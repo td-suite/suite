@@ -1,7 +1,7 @@
 # Modulo Circolari · registro, impaginazione, archivio, diffusione
 
 Modulo nativo della Suite (chiave `circolari`, area Retail and Flow Management, accanto a Comunicazione). Si avvia vuoto da
-Amministrazione > Travaso moduli > "Avvia il modulo" (è in `FRESH_MODULES`). Decisioni di Francesco Epifani del 24/10/2026:
+Amministrazione > Attivazione moduli > "Avvia il modulo" (è in `FRESH_MODULES`). Decisioni di Francesco Epifani del 24/10/2026:
 format approvato (rev. del 24/10), protocollo `TD-AAAA/NNN` progressivo annuale unico per la rete, assegnato dal database alla
 pubblicazione e mai in bozza, revisioni con suffisso `-r1`, `-r2` sullo stesso numero.
 
@@ -148,7 +148,7 @@ vecchio protocollo: restano come sono.
 indice unico `(news_id, revisione)`, `invii.news_id`, `invii.segmento`). Le circolari da Comunicazione non entrano nell'indice di ricerca
 come `circolare_td` (ci sono già come news, con il protocollo TD): una sola voce.
 
-**Verifiche in produzione dopo il rilascio.** 1) Modulo Circolari LIVE (Amministrazione > Travaso moduli). 2) Amministrazione >
+**Verifiche in produzione dopo il rilascio.** 1) Modulo Circolari LIVE (Amministrazione > Attivazione moduli). 2) Amministrazione >
 Diagnostica: D42 mostra la CIRC-2026-001; "Registra" → TD-2026/NNN (il numero dipende da quante circolari sono già nel registro), PDF in
 Archivio, "era CIRC-2026-001" nell'elenco. 3) Pagina della news: "Scarica il PDF protocollato" apre il PDF con il nuovo protocollo.
 4) Prossima circolare da Comunicazione: protocollo TD nell'esito, riga in Archivio con origine Comunicazione, email di avviso con il PDF.

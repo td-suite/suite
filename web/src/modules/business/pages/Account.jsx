@@ -314,7 +314,7 @@ function Criticita({ a, onChange }) {
 
 // ---------------- Feed dagli altri widget ----------------
 function useFeed(a, sez) { return useApi(`/hub/accounts/${a.id}/feed/${sez}`); }
-const NonAttivo = ({ nome }) => <Card><Empty>Widget {nome} non attivo: avvialo in Amministrazione &gt; Travaso moduli.</Empty></Card>;
+const NonAttivo = ({ nome }) => <Card><Empty>Widget {nome} non attivo: avvialo in Amministrazione &gt; Attivazione moduli.</Empty></Card>;
 const durata = (ore) => (ore == null ? '–' : ore < 24 ? `${num(ore)} ore` : `${num(ore / 24)} giorni`);
 function FeedOrdini({ a }) {
   const f = useFeed(a, 'ordini');

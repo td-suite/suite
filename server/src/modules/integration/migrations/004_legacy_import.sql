@@ -1,4 +1,4 @@
--- Importazione dei contenuti dall'app originale (Amministrazione > Travaso moduli > "Importa i contenuti dall'app originale").
+-- Importazione dei contenuti dall'app originale (Amministrazione > Attivazione moduli > "Importa i contenuti dall'app originale").
 -- Il modulo è partito vuoto sull'anagrafica unica: le target dell'app si abbinano alle Legal entity public.organizations (kind TARGET,
 -- o SOCIETA se l'acquisizione è già conclusa) e le persone del team a public.people; i contenuti (parametri del piano in org_ext,
 -- ruolo nel piano in person_ext, attività con owner e support, snapshot, registro) si copiano con gli id tradotti.

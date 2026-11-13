@@ -277,7 +277,7 @@ export async function infoCircolare(db, circolareId) {
  * il PDF e la diffusione (esiti delle email già inviate); nessuna nuova notifica né email. Ritorna { esito, motivo? }.
  */
 export async function registraEsistente(newsId, { userId = null } = {}) {
-  if (!(await registroAttivo())) return { esito: 'non registrata', motivo: 'il modulo Circolari non è LIVE: avvialo da Amministrazione > Travaso moduli' };
+  if (!(await registroAttivo())) return { esito: 'non registrata', motivo: 'il modulo Circolari non è LIVE: avvialo da Amministrazione > Attivazione moduli' };
   const { tx } = await import('../../../db.js');
   const out = await tx(async (c) => {
     const n = (await c.query('SELECT * FROM news WHERE id = $1 FOR UPDATE', [newsId])).rows[0];

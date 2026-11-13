@@ -27,13 +27,13 @@ export default function Impostazioni() {
   const persone = d.data.persone;
   return (
     <div className="page rs-page">
-      <PageHead title="Impostazioni" icon="gear" sub="P&C e titolare. Nessun massimale e nessuna tariffa sono precompilati: si inseriscono dalle regole aziendali e dalle tabelle ACI." />
+      <PageHead title="Impostazioni" icon="gear" sub="P&C e titolare. Tariffa chilometrica unica aziendale; nessun massimale è precompilato: si inseriscono dalle regole aziendali." />
       <ErrorBox error={err} />
       <Card className="rs-gap" title="Generali" icon="gear" actions={<button className="btn sm" onClick={salva}><Icon name="check" />Salva</button>}>
         <div className="form-grid">
           <Field label="Invio entro il giorno del mese successivo" help="Oltre: invio consentito con l'avviso 'in ritardo'"><input type="number" min={1} max={28} value={v.giorno_limite} onChange={(e) => s('giorno_limite', e.target.value)} /></Field>
-          <Field label="Tariffa predefinita (EUR/km)" help="Vuota: vale la tariffa del veicolo del dipendente"><input inputMode="decimal" value={v.tariffa_km_default} placeholder="vuota" onChange={(e) => s('tariffa_km_default', e.target.value.replace(/[^\d,.]/g, ''))} /></Field>
-          <Field label="Fonte della tariffa predefinita"><input value={v.tariffa_km_default_fonte} placeholder="es. tabelle ACI 2026" onChange={(e) => s('tariffa_km_default_fonte', e.target.value)} /></Field>
+          <Field label="Tariffa chilometrica unica (EUR/km)" help="Vale per tutti i veicoli propri dei dipendenti"><input inputMode="decimal" value={v.tariffa_km_default} placeholder="vuota" onChange={(e) => s('tariffa_km_default', e.target.value.replace(/[^\d,.]/g, ''))} /></Field>
+          <Field label="Origine della tariffa"><input value={v.tariffa_km_default_fonte} placeholder="es. decisione della Direzione" onChange={(e) => s('tariffa_km_default_fonte', e.target.value)} /></Field>
           <Field label="Promemoria al dipendente: giorni prima del limite"><input type="number" min={0} max={20} value={v.promemoria_bozza_giorni_prima} onChange={(e) => s('promemoria_bozza_giorni_prima', e.target.value)} /></Field>
           <Field label="Promemoria al responsabile dopo giorni"><input type="number" min={1} max={60} value={v.promemoria_responsabile_giorni} onChange={(e) => s('promemoria_responsabile_giorni', e.target.value)} /></Field>
         </div>

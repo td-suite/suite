@@ -3,7 +3,7 @@
 // ferie annuale. Il responsabile dell'Area (approvatore) può modificare il piano dei dipendenti dell'area e poi approvarlo e renderlo
 // definito." Piano per persona e anno (BOZZA → PROPOSTO → IN_REVISIONE → APPROVATO → DEFINITIVO), trasparente a tutta l'area e solo
 // all'area; variazioni dopo l'approvazione; copertura minima, chiusure collettive, saldi, cruscotto, esportazioni XLSX e PDF, job.
-// Nativo, si avvia vuoto (FRESH_MODULES) da Amministrazione > Travaso moduli. Documentazione: docs/FERIE.md.
+// Nativo, si avvia vuoto (FRESH_MODULES) da Amministrazione > Attivazione moduli. Documentazione: docs/FERIE.md.
 // Accesso: aperto a tutti gli interni (open_to_all, ruolo implicito DIPENDENTE: il proprio piano e quello della propria area).
 // Approva il superiore diretto dell'anagrafica (CEO, 09/11/2026: "Segui pedissequamente quanto indicato in organigramma"), che vede in
 // sola lettura i livelli sotto ("La mia catena"); il vertice non ha approvazione. ADMIN = Owner/Admin della Suite e HR con il grant ADMIN

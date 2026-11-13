@@ -390,7 +390,7 @@ affinity_notify_emails (seminata con i tre indirizzi).
 ## Travaso dei contenuti dall'app originale nei moduli ripartiti da zero (27/10/2026)
 Richiesta del CEO: "due cose vorrei travasare e poi la Suite è completa: Room Planning prima e Integration dopo". I due moduli
 erano partiti vuoti sull'anagrafica unica; i contenuti delle app originali (database Render collegati in Sorgenti legacy)
-si riportano ora con "Importa i contenuti dall'app originale" sulla card del modulo in Amministrazione > Travaso moduli
+si riportano ora con "Importa i contenuti dall'app originale" sulla card del modulo in Amministrazione > Attivazione moduli
 (solo Owner/Admin, modulo in LIVE, sorgente collegata). Interfaccia comune: il modulo esporta `legacyMatch` (entità
 dell'app originale con proposta di abbinamento all'anagrafica unica: riferimento salvato > codice > email > CF/P.IVA > nome
 normalizzato; proposta solo se univoca, candidati per i dubbi) e `legacyImport({ mapping, dryRun })` (una transazione,

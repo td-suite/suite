@@ -176,8 +176,10 @@ async function preparaViaggio(ctx, n, b) {
     if (!veic) throw bad('Scegli il veicolo utilizzato (I miei veicoli: marca, modello, targa e tariffa ACI)');
     const s = ctx.settings;
     const def = s.tariffa_km_default != null && s.tariffa_km_default !== '' ? Number(s.tariffa_km_default) : null;
+    const unica = s.tariffa_km_unica !== false && s.tariffa_km_unica !== 'false';   // tariffa unica aziendale (13/11/2026)
     Object.assign(out, { vettura_id: null, veicolo_testo: `${veic.marca} ${veic.modello} ${veic.targa}`,
-      tariffa: veic.tariffa != null ? Number(veic.tariffa) : def, tariffa_fonte: veic.tariffa != null ? veic.tariffa_fonte : def != null ? (s.tariffa_km_default_fonte || 'tariffa predefinita di P&C') : null });
+      ...(unica && def != null ? { tariffa: def, tariffa_fonte: s.tariffa_km_default_fonte || 'tariffa unica aziendale' }
+        : { tariffa: veic.tariffa != null ? Number(veic.tariffa) : def, tariffa_fonte: veic.tariffa != null ? veic.tariffa_fonte : def != null ? (s.tariffa_km_default_fonte || 'tariffa predefinita di P&C') : null }) });
   }
   Object.assign(out, importoViaggio(out));
   return out;
@@ -261,7 +263,7 @@ r.get('/veicoli', ah(async (req, res) => {
   const pid = personaVeicoli(ctx, req.query.person_id);
   const benefit = await benefitPersona(pid, { pieno: true });
   res.json({ veicoli: await many('SELECT * FROM veicoli WHERE person_id=$1 ORDER BY attivo DESC, id', [pid]), benefit,
-    tariffa_default: ctx.settings.tariffa_km_default != null && ctx.settings.tariffa_km_default !== '' ? { tariffa: Number(ctx.settings.tariffa_km_default), fonte: ctx.settings.tariffa_km_default_fonte || '' } : null });
+    tariffa_default: ctx.settings.tariffa_km_default != null && ctx.settings.tariffa_km_default !== '' ? { tariffa: Number(ctx.settings.tariffa_km_default), fonte: ctx.settings.tariffa_km_default_fonte || '', unica: ctx.settings.tariffa_km_unica !== false && ctx.settings.tariffa_km_unica !== 'false' } : null });
 }));
 async function scriviVeicolo(req, res, id) {
   const ctx = await userContext(req);

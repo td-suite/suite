@@ -45,7 +45,7 @@ export async function scheda(n, ctx, { perPdf = false } = {}) {
     vettura_aziendale: vettura,
     benefit,
     veicoli: pieno ? veicoli : veicoli.map((v) => ({ id: v.id, marca: v.marca, modello: v.modello, targa: v.targa, tariffa: v.tariffa, tariffa_fonte: v.tariffa_fonte, attivo: v.attivo })),
-    tariffa_default: s.tariffa_km_default != null && s.tariffa_km_default !== '' ? { tariffa: Number(s.tariffa_km_default), fonte: s.tariffa_km_default_fonte || '' } : null,
+    tariffa_default: s.tariffa_km_default != null && s.tariffa_km_default !== '' ? { tariffa: Number(s.tariffa_km_default), fonte: s.tariffa_km_default_fonte || '', unica: s.tariffa_km_unica !== false && s.tariffa_km_unica !== 'false' } : null,
     responsabile_previsto: null,
     moduli_cartacei: MODULI_CARTACEI, rif_procedura: RIF_PROCEDURA,
     // invio del PDF di approvazione a destinatari esterni: chi lo riceve e l'esito dell'ultimo invio

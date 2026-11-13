@@ -84,7 +84,7 @@ function sectionFor(pathname, user) {
         { group: 'Dati' },
         { to: '/admin/legacy', icon: 'refresh', label: 'Sorgenti legacy' },
         { to: '/admin/connectors', icon: 'cloud', label: 'Connettori' },
-        { to: '/admin/travaso', icon: 'import', label: 'Travaso moduli' },
+        { to: '/admin/travaso', icon: 'import', label: 'Attivazione moduli' },
         { to: '/admin/imports', icon: 'import', label: 'Importazioni' },
         { group: 'Controllo' },
         { to: '/admin/diagnostica', icon: 'stats', label: 'Diagnostica anagrafica' },

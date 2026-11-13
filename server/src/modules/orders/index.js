@@ -23,7 +23,7 @@ import statsRoutes from './routes/stats.js';
 import warehouseRoutes from './routes/warehouse.js';
 import integrationRoutes from './routes/integrations.js';
 import dotazioneRoutes, { badgeDotazione } from './routes/dotazione.js';
-// Importazione del catalogo articoli dall'app originale (Amministrazione > Travaso moduli > Importa i contenuti)
+// Importazione del catalogo articoli dall'app originale (Amministrazione > Attivazione moduli > Importa i contenuti)
 export { legacyMatch, legacyImport } from './lib/legacyImport.js';
 
 const KEY = 'orders';

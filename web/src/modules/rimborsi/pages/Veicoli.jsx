@@ -24,7 +24,7 @@ export default function Veicoli() {
           <div className="rs-veicoli">{veicoli.map((v) => (
             <div key={v.id} className={`rs-veicolo ${v.attivo ? '' : 'off'}`}>
               <div><strong>{v.marca} {v.modello}</strong> · {v.targa}{v.alimentazione ? ` · ${v.alimentazione}` : ''}{!v.attivo && ' · non più in uso'}</div>
-              <div className={v.tariffa == null ? 'rs-warn small' : 'small'}>{v.tariffa == null ? `Tariffa EUR/km mancante${td ? `: vale la predefinita di P&C (${tariffa(td.tariffa)})` : ': senza tariffa i viaggi non si inviano'}` : `${tariffa(v.tariffa)} · fonte: ${v.tariffa_fonte}`}</div>
+              <div className={!td?.unica && v.tariffa == null ? 'rs-warn small' : 'small'}>{td?.unica ? `Tariffa unica aziendale: ${tariffa(td.tariffa)}` : v.tariffa == null ? `Tariffa EUR/km mancante${td ? `: vale la predefinita di P&C (${tariffa(td.tariffa)})` : ': senza tariffa i viaggi non si inviano'}` : `${tariffa(v.tariffa)} · fonte: ${v.tariffa_fonte}`}</div>
               <button className="btn sm ghost" onClick={() => setModal(v)}><Icon name="edit" />Modifica</button>
             </div>))}</div>)}
       </Card>
@@ -34,12 +34,12 @@ export default function Veicoli() {
         {benefit.fuel_card.map((f) => <div key={f.id} className="rs-benefit"><strong>Fuel card {f.circuito}</strong> · {f.numero}{f.vettura_targa ? ` · per ${f.vettura_targa}` : ''}<div className="small muted">dal {itData(f.dal)}{f.al ? ` al ${itData(f.al)}` : ''}{f.in_corso ? '' : ' · non in corso'} · il PIN non si registra nella Suite</div></div>)}
       </Card>
       <Card title="Modulistica cartacea" icon="file"><ModuliCartacei /></Card>
-      {modal && <VeicoloModal v={modal} onClose={() => setModal(null)} onOk={() => { setModal(null); d.reload(); toast('Veicolo salvato'); }} />}
+      {modal && <VeicoloModal v={modal} unica={td?.unica ? td.tariffa : null} onClose={() => setModal(null)} onOk={() => { setModal(null); d.reload(); toast('Veicolo salvato'); }} />}
     </div>
   );
 }
 
-function VeicoloModal({ v, onClose, onOk }) {
+function VeicoloModal({ v, unica, onClose, onOk }) {
   const [x, setX] = useState({ marca: v.marca || '', modello: v.modello || '', targa: v.targa || '', alimentazione: v.alimentazione || '', tariffa: v.tariffa != null ? String(v.tariffa).replace('.', ',') : '', tariffa_fonte: v.tariffa_fonte || '', attivo: v.attivo !== false });
   const [err, setErr] = useState(null);
   const s = (k, y) => setX((o) => ({ ...o, [k]: y }));
@@ -56,8 +56,8 @@ function VeicoloModal({ v, onClose, onOk }) {
         </div>
         <div className="rs-tre">
           <Field label="Alimentazione"><input value={x.alimentazione} placeholder="es. Benzina" onChange={(e) => s('alimentazione', e.target.value)} /></Field>
-          <Field label="Tariffa ACI (EUR/km)" help="Dalle tabelle ACI dell'anno"><input inputMode="decimal" value={x.tariffa} placeholder="es. 0,4567" onChange={(e) => s('tariffa', e.target.value.replace(/[^\d,.]/g, ''))} /></Field>
-          <Field label="Fonte della tariffa" required={Boolean(x.tariffa)}><input value={x.tariffa_fonte} placeholder="tabelle ACI anno, modello" onChange={(e) => s('tariffa_fonte', e.target.value)} /></Field>
+{unica ? <div className="span-all small muted">Tariffa chilometrica unica aziendale: {tariffa(unica)} per ogni veicolo.</div> : <>          <Field label="Tariffa ACI (EUR/km)" help="Dalle tabelle ACI dell'anno"><input inputMode="decimal" value={x.tariffa} placeholder="es. 0,4567" onChange={(e) => s('tariffa', e.target.value.replace(/[^\d,.]/g, ''))} /></Field>
+          <Field label="Fonte della tariffa" required={Boolean(x.tariffa)}><input value={x.tariffa_fonte} placeholder="tabelle ACI anno, modello" onChange={(e) => s('tariffa_fonte', e.target.value)} /></Field></>}
         </div>
         <label className="f inline"><input type="checkbox" checked={x.attivo} onChange={(e) => s('attivo', e.target.checked)} />Veicolo in uso</label>
       </div>

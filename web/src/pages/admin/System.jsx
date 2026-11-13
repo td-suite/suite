@@ -134,7 +134,7 @@ export function Legacy() {
   const rows = Array.isArray(data) ? data : data?.rows || [];
   return (
     <div className="page">
-      <PageHead title="Sorgenti legacy" icon="refresh" sub="Connessione in sola lettura ai database delle app di origine: per il travaso dei moduli indipendenti (Finance Management, Spedizioni) e per importare i contenuti dell'app originale in Room Planning e Integration (da Travaso moduli). Le anagrafiche non si copiano: si caricano da Amministrazione." />
+      <PageHead title="Sorgenti legacy" icon="refresh" sub="Connessione in sola lettura ai database delle app di origine: per il travaso dei moduli indipendenti (Finance Management, Spedizioni) e per importare i contenuti dell'app originale in Room Planning e Integration (da Attivazione moduli). Le anagrafiche non si copiano: si caricano da Amministrazione." />
       {loading && <div className="grid g3">{[1, 2, 3].map((i) => <Card key={i}><Skeleton lines={3} /></Card>)}</div>}
       {unavailable && <Card><Coming what="Il collegamento alle sorgenti legacy" /></Card>}
       {error && !unavailable && <ErrorBox error={error} />}
@@ -159,7 +159,7 @@ export function Legacy() {
             {entries.length > 0
               ? <div className="stats">{entries.map(([k, v]) => <div key={k}><b>{((Number(v.creati) || 0) + (Number(v.aggiornati) || 0)).toLocaleString('it-IT')}</b>{k.replace(/_/g, ' ')}<span className="sub">{[v.creati ? `${v.creati} nuovi` : null, v.aggiornati ? `${v.aggiornati} aggiornati` : null, v.saltati ? `${v.saltati} saltati` : null].filter(Boolean).join(' · ') || 'nessuna variazione'}</span></div>)}</div>
               : <div className="sc-empty small muted">{s.content_import
-                  ? (s.enabled ? <>Database collegato: importa i contenuti dell'app originale da <Link to="/admin/travaso">Travaso moduli</Link>.</> : 'Collega il database dell\'app originale per importare i contenuti nel modulo (Travaso moduli).')
+                  ? (s.enabled ? <>Database collegato: importa i contenuti dell'app originale da <Link to="/admin/travaso">Attivazione moduli</Link>.</> : 'Collega il database dell\'app originale per importare i contenuti nel modulo (Attivazione moduli).')
                   : (s.enabled ? 'Database collegato: il travaso del modulo è possibile.' : 'Collega il database dell\'app di origine per il travaso del modulo.')}</div>}
             <div className="sc-actions">
               {owner && <button className={`btn sm ${s.enabled ? 'ghost' : ''}`} onClick={() => setCred({ key: s.key, label: s.label || s.key })}><Icon name="key" />{s.enabled ? 'Connessione' : 'Collega database'}</button>}

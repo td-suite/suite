@@ -29,7 +29,7 @@ export default function ModuleFrame({ moduleKey }) {
   if (err) return <div className="page"><Empty icon="alert" title="Modulo non caricato">{err.message}</Empty></div>;
   if (state?.error) {
     const off = state.error.code === 'MODULE_OFF' || state.error.status === 503;
-    return <div className="page"><Empty icon="import" title={off ? 'Modulo non ancora travasato' : 'Modulo non disponibile'}>{off ? 'Il travaso dei dati di questa app nella Suite non è ancora stato eseguito. Nel frattempo l\'app originale resta raggiungibile dal widget in home.' : state.error.message}</Empty></div>;
+    return <div className="page"><Empty icon="import" title={off ? 'Modulo non ancora attivato' : 'Modulo non disponibile'}>{off ? 'Il modulo si attiva da Amministrazione > Attivazione moduli.' : state.error.message}</Empty></div>;
   }
   if (!Mod || !state) return <div className="page"><Skeleton lines={8} /></div>;
   return (

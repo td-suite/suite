@@ -330,7 +330,7 @@ stampante), totale delle etichette stampate.
 | GET `/registro` | ADMIN | registro delle stampe (100 per pagina) |
 
 ### Avvio in produzione
-Label è in `FRESH_MODULES`: Amministrazione > Travaso moduli > **Avvia** (schema `etichette`, migrazione `001_init.sql` idempotente:
+Label è in `FRESH_MODULES`: Amministrazione > Attivazione moduli > **Avvia** (schema `etichette`, migrazione `001_init.sql` idempotente:
 tabelle, modello predefinito, grant ADMIN ai titolari). Poi i grant OPERATORE con la sede (Amministrazione > Utenti o un profilo di
 accesso con Label > Operatore di sede: l'ambito è la sede della persona).
 

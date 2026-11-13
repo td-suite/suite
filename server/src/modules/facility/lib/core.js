@@ -56,7 +56,7 @@ export async function schemaLive(key, table) {
   const ok = await one(`SELECT to_regclass($1) IS NOT NULL AS ok`, [`${key}.${table}`]);
   return Boolean(ok?.ok);
 }
-export const FINANCE_OFF = 'Finance Management non avviato: utenze, bollette e contratti di affitto vivono nello Scadenziario strutture di Finance Management, che va avviato prima (Amministrazione > Travaso moduli).';
+export const FINANCE_OFF = 'Finance Management non avviato: utenze, bollette e contratti di affitto vivono nello Scadenziario strutture di Finance Management, che va avviato prima (Amministrazione > Attivazione moduli).';
 export async function requireFinance() { if (!(await financeLive())) throw Object.assign(bad(FINANCE_OFF), { code: 'FINANCE_OFF' }); }
 
 // ---- Sedi e immobili

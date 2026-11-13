@@ -50,6 +50,7 @@ const impSchema = z.object({
   giorno_limite: z.coerce.number().int().min(1).max(28).optional(),
   tariffa_km_default: z.preprocess((v) => (v === '' || v == null ? null : typeof v === 'string' ? Number(v.replace(',', '.')) : v), z.number().positive().max(9.9999).nullable()).optional(),
   tariffa_km_default_fonte: z.string().trim().max(200).optional(),
+  tariffa_km_unica: z.boolean().optional(),
   pc_person_ids: z.array(z.coerce.number().int()).max(20).optional(),
   promemoria_bozza_giorni_prima: z.coerce.number().int().min(0).max(20).optional(),
   promemoria_responsabile_giorni: z.coerce.number().int().min(1).max(60).optional(),

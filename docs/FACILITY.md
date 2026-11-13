@@ -13,7 +13,7 @@ consumi per sede e tra le sedi a parità di attività, ... tutto!"
 ## Modulo
 Key `facility`, area OPERATIONS (sort_order 70), nome "Facility e Manutenzioni", tagline "Immobili, utenze ed energia, dispositivi e
 manutenzioni programmate, scadenze normative", kind LEGACY con legacy_url null (nativo: FRESH_MODULES, si avvia vuoto e LIVE con "Avvia"
-da Amministrazione > Travaso moduli), `open_to_all` FALSE, `scope_type` SITE, icona `facility` (edificio con chiave inglese).
+da Amministrazione > Attivazione moduli), `open_to_all` FALSE, `scope_type` SITE, icona `facility` (edificio con chiave inglese).
 Codice: `server/src/modules/facility` (index.js, config.js, db.js, migrations/001_init.sql, lib/{access,calc,core,energy,activity,room,ai,
 alerts,kpi,export}.js, routes/{properties,utilities,energy,assets,plans,workorders,reports,settings}.js) e `web/src/modules/facility`
 (meta.js, index.jsx, api.js, format.js, styles.css, components/{bits,Charts,PdfPreview}.jsx, pages/*). Core: migrazione

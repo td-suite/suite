@@ -19,7 +19,7 @@ import adminRoutes from './routes/admin.js';
 
 const KEY = 'room';
 
-// Importazione dei contenuti dall'app originale nel modulo avviato vuoto (Amministrazione > Travaso moduli): abbinamento delle
+// Importazione dei contenuti dall'app originale nel modulo avviato vuoto (Amministrazione > Attivazione moduli): abbinamento delle
 // sedi e dei professionisti dell'app all'anagrafica unica, poi copia di impostazioni, planimetrie, turni, presenze, rendiconti...
 // legacyPeopleRows: i professionisti dell'app non abbinati, nel formato del dataset "people" di Importazioni (XLSX da caricare, poi riaprire).
 export { legacyMatch, legacyImport, legacyPeopleRows } from './lib/legacyImport.js';

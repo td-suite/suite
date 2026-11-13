@@ -22,8 +22,10 @@ export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '
 // ---------------------------------------------------------------- impostazioni (predefiniti dichiarati in docs/RIMBORSI.md)
 export const DEFAULTS = {
   giorno_limite: 10,                  // invio entro il giorno N del mese successivo; oltre: consentito con avviso "in ritardo"
-  tariffa_km_default: null,           // EUR/km: VUOTA. Nessuna tariffa inventata: la inserisce P&C dalle tabelle ACI
-  tariffa_km_default_fonte: '',       // es. "tabelle ACI 2026"
+  // Tariffa UNICA aziendale decisa dal CEO il 13/11/2026: 0,42 EUR/km per tutti i veicoli propri (non la tariffa ACI del singolo modello).
+  tariffa_km_default: 0.42,
+  tariffa_km_default_fonte: 'Tariffa unica aziendale (decisione della Direzione, 13/11/2026)',
+  tariffa_km_unica: true,             // true: vale sempre la tariffa unica, la tariffa del veicolo non conta; false: tariffa del veicolo, poi la predefinita
   pc_person_ids: [],                  // P&C in più rispetto al grant ADMIN di Contratti del personale (devono essere dipendenti)
   // Invio del PDF di approvazione (CEO, 13/11/2026): a ogni approvazione parte verso destinatari ESTERNI all'azienda (consulente del
   // lavoro) un documento con i dati di spesa del dipendente. Seme = i due indirizzi indicati dal CEO; P&C e titolare li cambiano.

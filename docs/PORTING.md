@@ -1,6 +1,6 @@
 # Travaso di un'app esistente nella Suite · ricetta
 
-Ogni app TD esistente (Node/Express/PostgreSQL + React/Vite) diventa un modulo della Suite in due parti: `server/src/modules/<key>/` e `web/src/modules/<key>/`. Chiave = nome del modulo in `server/src/seed/modules.js` (room, cash, orders, shipments, nc, retail, business, finance, integration, contracts). I dati vivono nello schema PostgreSQL `<key>` del database della Suite, copiati dall'app originale dal job di travaso (`lib/travaso.js`, Amministrazione > Travaso moduli). L'autenticazione, gli utenti, i profili e le sedi sono quelli della Suite.
+Ogni app TD esistente (Node/Express/PostgreSQL + React/Vite) diventa un modulo della Suite in due parti: `server/src/modules/<key>/` e `web/src/modules/<key>/`. Chiave = nome del modulo in `server/src/seed/modules.js` (room, cash, orders, shipments, nc, retail, business, finance, integration, contracts). I dati vivono nello schema PostgreSQL `<key>` del database della Suite, copiati dall'app originale dal job di travaso (`lib/travaso.js`, Amministrazione > Attivazione moduli). L'autenticazione, gli utenti, i profili e le sedi sono quelli della Suite.
 
 ## Principi
 1. Il codice dell'app resta il più possibile identico: si cambiano solo accesso, utenti e montaggio. Niente restyling, niente rinomini di tabelle.

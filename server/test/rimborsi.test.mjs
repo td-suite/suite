@@ -352,6 +352,11 @@ describe('Rimborso Spese nella Suite (integrazione)', { skip: SALTA }, () => {
     const n = must(await C.dip.post('/api/rimborsi/note', { anno: 2026, mese: 10 }), 'nota');
     assert.equal(must(await C.dip.post('/api/rimborsi/note', { anno: 2026, mese: 10 }), 'seconda').id, n.id, 'una nota per mese');
     assert.equal((await C.dip.post('/api/rimborsi/note', { anno: 2099, mese: 1 })).s, 400, 'mese futuro');
+    // tariffa unica aziendale (0,42 EUR/km, predefinita dal 13/11/2026): un viaggio la riceve anche se il veicolo non ha tariffa
+    assert.equal(must(await C.dip.get('/api/rimborsi/veicoli'), 'veicoli').tariffa_default.tariffa, 0.42);
+    assert.equal((await C.dip.get('/api/rimborsi/veicoli')).j.tariffa_default.unica, true);
+    // il resto del flusso prova la modalità "tariffa del veicolo" (unica spenta, nessuna predefinita), che resta disponibile
+    must(await C.pc.put('/api/rimborsi/impostazioni', { tariffa_km_unica: false, tariffa_km_default: null }), 'modalità per veicolo');
     const v = must(await C.dip.post('/api/rimborsi/veicoli', { marca: 'Marca', modello: 'Modello', targa: 'PROVA09' }), 'veicolo');
     const s1 = must(await C.dip.post(`/api/rimborsi/note/${n.id}/spese`, { data: '2026-10-07', descrizione: 'Pranzo di prova', categoria_id: c('VITTO'), importo: '16,00', motivazione: 'visita' }), 's1');
     const s2 = must(await C.dip.post(`/api/rimborsi/note/${n.id}/spese`, { data: '2026-10-15', descrizione: 'Albergo di prova', categoria_id: c('ALLOGGIO'), importo: 92, motivazione: 'corso' }), 's2');

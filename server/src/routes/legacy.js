@@ -86,7 +86,7 @@ r.put('/integrations/:name', requireOwner, ah(async (req, res) => {
 r.post('/legacy/sources/:key/sync', requireAdmin, ah(async (req, res) => {
   const key = req.params.key;
   if (!LEGACY_KEYS.includes(key)) throw notFound('Sorgente inesistente');
-  if (FRESH_MODULES.includes(key)) throw bad('Questo modulo usa l\'anagrafica unica: niente sincronizzazione; i contenuti si importano da Travaso moduli');
+  if (FRESH_MODULES.includes(key)) throw bad('Questo modulo usa l\'anagrafica unica: niente sincronizzazione; i contenuti si importano da Attivazione moduli');
   if (!sourceEnabled(key)) throw bad('Sorgente non configurata: imposta la connessione al database dalla card (titolare) oppure la variabile LEGACY_' + key.toUpperCase() + '_DATABASE_URL su Render');
   const out = await syncSource(key);
   await audit(req, 'LEGACY_SYNC', { module: key, entity: 'legacy_source', entityId: key, label: `Sincronizzazione ${key}: ${out.status || 'saltata'}`, data: out });
