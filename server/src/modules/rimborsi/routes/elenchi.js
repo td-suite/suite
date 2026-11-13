@@ -42,7 +42,17 @@ r.get('/archivio', ah(async (req, res) => {
   const par = [];
   const w = [];
   const add = (v) => { par.push(v); return `$${par.length}`; };
-  if (!ctx.tutto) w.push(`(n.person_id = ${add(ctx.personId)} OR ((n.stato <> 'BOZZA' OR n.inviata_at IS NOT NULL) AND (n.person_id = ANY(${add([...ctx.catena])}::int[]) OR n.responsabile_person_id = $1)))`);
+  // Due archivi distinti (decisione della Direzione, 13/11/2026): `personale` = solo le MIE note, chiunque io sia; `approvatore` = le
+  // note degli ALTRI che vedo da responsabile (catena o responsabile registrato) o da P&C/titolare (tutte), mai le mie e mai le bozze
+  // non ancora inviate. Senza parametro vale `personale`: l'archivio di una persona non mostra mai le note altrui per sbaglio.
+  const ambito = String(req.query.ambito) === 'approvatore' ? 'approvatore' : 'personale';
+  if (ambito === 'personale') w.push(`n.person_id = ${add(ctx.personId)}`);
+  else {
+    if (!ctx.isResponsabile && !ctx.tutto) throw forbidden('Archivio riservato a responsabili, P&C e titolare');
+    w.push(`n.person_id <> ${add(ctx.personId)}`);
+    w.push(`(n.stato <> 'BOZZA' OR n.inviata_at IS NOT NULL)`);
+    if (!ctx.tutto) w.push(`(n.person_id = ANY(${add([...ctx.catena])}::int[]) OR n.responsabile_person_id = $1)`);
+  }
   const anno = Number(req.query.anno) || null;
   if (anno) w.push(`n.anno = ${add(anno)}`);
   const mese = Number(req.query.mese) || null;
@@ -52,7 +62,8 @@ r.get('/archivio', ah(async (req, res) => {
   if (t) w.push(`(p.last_name || ' ' || p.first_name ILIKE '%' || ${add(t)} || '%' OR n.motivazione ILIKE '%' || $${par.length} || '%' OR EXISTS (SELECT 1 FROM spese x WHERE x.nota_id = n.id AND x.descrizione ILIKE '%' || $${par.length} || '%'))`);
   const righe = await many(`SELECT ${COLS} FROM ${FROM} ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY n.anno DESC, n.mese DESC, lower(p.last_name) LIMIT 500`, par);
   const anni = (await many(`SELECT DISTINCT anno FROM note ORDER BY anno DESC`)).map((x) => x.anno);
-  res.json({ righe: righe.map((x) => ({ ...vista(x), mia: x.person_id === ctx.personId })), anni: anni.length ? anni : [Number(oggi().slice(0, 4))], tutto: ctx.tutto });
+  const ris = { ambito };
+  res.json({ righe: righe.map((x) => ({ ...vista(x), mia: x.person_id === ctx.personId })), anni: anni.length ? anni : [Number(oggi().slice(0, 4))], tutto: ctx.tutto, ...ris });
 }));
 
 r.get('/export.xlsx', ah(async (req, res) => {

@@ -31,6 +31,10 @@ stessi permessi del modulo). Se lo specchio del SGI Management (modulo `sgi`, LI
   - **P&C**: dipendenti con il grant ADMIN di Contratti del personale oppure scelti in Impostazioni (`pc_person_ids`): liquidazione,
     archivio completo, impostazioni, export;
   - **TITOLARE**: livello OWNER della Suite (se dipendente): vede tutto, in sola lettura sulle note altrui salvo sia il responsabile.
+- Menu in due sezioni separate (v0.72.2): **Personale** (Le mie note spese, Veicoli e fuel card, Il mio archivio: solo le proprie
+  note, per chiunque) e **Approvatore** (Da approvare, Archivio approvazioni: solo le note degli altri, mai le proprie né le bozze non
+  inviate; catena dei riporti per il responsabile, tutte per P&C e titolare). API: `GET /archivio?ambito=personale|approvatore`
+  (default `personale`; `approvatore` risponde 403 a chi non è responsabile, P&C o titolare).
 
 ## Chi approva
 Il superiore diretto dell'anagrafica (`public.people_manager`, "Dipende da"), come il Piano Ferie (`lib/organigramma.js`, funzioni pure):

@@ -26,7 +26,8 @@ export default function Module({ moduleUser }) {
         <Route path="" element={<MieNote />} />
         <Route path="nota/:id" element={<Nota />} />
         <Route path="veicoli" element={<Veicoli />} />
-        <Route path="archivio" element={<Archivio />} />
+        <Route path="archivio" element={<Archivio ambito="personale" />} />
+        <Route path="archivio-approvazioni" element={u.isResponsabile || u.isPC || u.isTitolare ? <Archivio ambito="approvatore" /> : <Forbidden />} />
         <Route path="da-approvare" element={u.isResponsabile || u.isPC || u.isTitolare ? <DaApprovare /> : <Forbidden />} />
         <Route path="liquidazione" element={u.isPC ? <Liquidazione /> : <Forbidden />} />
         <Route path="impostazioni" element={u.isPC || u.isTitolare ? <Impostazioni /> : <Forbidden />} />

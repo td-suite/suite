@@ -447,4 +447,27 @@ describe('Rimborso Spese nella Suite (integrazione)', { skip: SALTA }, () => {
     const k59 = must(await C.o.get('/api/admin/diagnostica/D59'), 'D59');
     assert.equal(k59.n, 1);
   });
+  test('due archivi distinti: personale (solo le mie) e approvatore (solo quelle degli altri, mai le bozze non inviate)', async () => {
+    const mie = async (c) => must(await c.get('/api/rimborsi/archivio?ambito=personale'), 'personale');
+    const altrui = async (c) => must(await c.get('/api/rimborsi/archivio?ambito=approvatore'), 'approvatore');
+    await db.query(`INSERT INTO rimborsi.note (person_id, anno, mese, stato) VALUES ($1, 2025, 3, 'BOZZA') ON CONFLICT DO NOTHING`, [ids.resp]);
+    await db.query(`INSERT INTO rimborsi.note (person_id, anno, mese, stato, inviata_at, responsabile_person_id) VALUES ($1, 2025, 3, 'INVIATA', now(), $2) ON CONFLICT DO NOTHING`, [ids.dip, ids.resp]);
+    await db.query(`INSERT INTO rimborsi.note (person_id, anno, mese, stato) VALUES ($1, 2025, 4, 'BOZZA') ON CONFLICT DO NOTHING`, [ids.dip]);
+    for (const k of ['resp', 'pc', 'dip', 'o']) {
+      const a = await mie(C[k]);
+      assert.equal(a.ambito, 'personale');
+      assert.ok(a.righe.every((x) => x.mia), `${k}: l'archivio personale contiene solo le proprie note`);
+    }
+    // senza parametro vale il personale
+    assert.ok(must(await C.resp.get('/api/rimborsi/archivio'), 'default').righe.every((x) => x.mia));
+    const r = await altrui(C.resp);
+    assert.ok(r.righe.length >= 1 && r.righe.every((x) => !x.mia), 'il responsabile non vede le proprie note tra le approvazioni');
+    assert.ok(r.righe.some((x) => x.anno === 2025 && x.mese === 3));
+    assert.ok(!r.righe.some((x) => x.anno === 2025 && x.mese === 4), 'la bozza mai inviata resta del dipendente');
+    for (const k of ['pc', 'o']) {
+      const t = await altrui(C[k]);
+      assert.ok(t.righe.every((x) => !x.mia)); assert.ok(!t.righe.some((x) => x.anno === 2025 && x.mese === 4));
+    }
+    assert.equal((await C.dip.get('/api/rimborsi/archivio?ambito=approvatore')).s, 403);
+  });
 });

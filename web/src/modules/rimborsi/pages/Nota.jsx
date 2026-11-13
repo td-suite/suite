@@ -60,7 +60,7 @@ export default function Nota() {
 
   return (
     <div className="page rs-page">
-      <PageHead title={titolo} icon="doc" crumb={<Link to={mia ? base : `${base}/archivio`}>{mia ? 'Le mie note spese' : 'Archivio'}</Link>}
+      <PageHead title={titolo} icon="doc" crumb={<Link to={mia ? base : `${base}/archivio-approvazioni`}>{mia ? 'Le mie note spese' : 'Archivio approvazioni'}</Link>}
         sub={<span className="row" style={{ gap: 8 }}><StatoBadge stato={n.stato} />{!mia && <strong>{sc.persona.nome}</strong>}<span>{[sc.persona.role_name || sc.persona.job_title, sc.persona.site_name].filter(Boolean).join(' · ')}</span></span>}
         actions={<>
           <a className="btn ghost" href={`${apiBase}/note/${n.id}/pdf?inline=1`} target="_blank" rel="noreferrer"><Icon name="pdf" />PDF{['ARCHIVIATA'].includes(n.stato) ? ' definitivo' : ''}</a>
