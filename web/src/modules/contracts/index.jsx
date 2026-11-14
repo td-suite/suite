@@ -3,7 +3,7 @@
 import React from 'react';
 import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, canWrite, isAdmin } from './auth.jsx';
+import { AuthProvider, canWrite, isAdmin, soloLp } from './auth.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import NewResource from './pages/NewResource.jsx';
@@ -29,6 +29,15 @@ export default function Module({ moduleKey, mode, moduleUser }) {
     <ToastProvider>
       <AuthProvider user={user}>
         <div className="ctr" data-mode={mode}>
+          {soloLp(user) ? (
+            // profilo LP: solo l'elenco dei liberi professionisti, la loro scheda e le loro scadenze (il server rifiuta tutto il resto)
+            <Routes>
+              <Route path="lp" element={<Resources key="lp" kind="LP" />} />
+              <Route path="risorse/:id" element={<ResourceDetail />} />
+              <Route path="scadenze" element={<Deadlines />} />
+              <Route path="*" element={<Navigate to={`/${moduleKey}/lp`} replace />} />
+            </Routes>
+          ) : (
           <Routes>
             <Route path="" element={<Dashboard />} />
             <Route path="organigramma" element={<Navigate to="/people/org-chart" replace />} />
@@ -51,6 +60,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
             <Route path="*" element={<Navigate to={`/${moduleKey}`} replace />} />
           </Routes>
+          )}
         </div>
       </AuthProvider>
     </ToastProvider>

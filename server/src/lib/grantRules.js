@@ -75,7 +75,7 @@ export async function rulesForPerson(personId) {
     ORDER BY r.sort_order, r.id`, [personId]);
 }
 
-const RANK = ['VIEWER', 'LETTORE', 'PROF', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
+const RANK = ['LP', 'VIEWER', 'LETTORE', 'PROF', 'SEDE', 'SITE', 'OPERATOR', 'MANUTENTORE', 'CASSIERE', 'EDITOR', 'LAB', 'RETAIL', 'SUPPORT', 'HR', 'PLANNER', 'PROCUREMENT', 'FACILITY', 'AUDITOR', 'QUALITA', 'RESP_SAN', 'FINANCE', 'PUBLISHER', 'CFO', 'DIREZIONE', 'ADMIN', 'CEO', 'SUPERADMIN'];
 const stronger = (a, b) => (RANK.indexOf(a) >= RANK.indexOf(b) ? a : b);
 
 /** Applica le regole a una persona con accesso: crea o aggiorna le PROPOSTE (mai i grant confermati). Ritorna quante proposte sono state scritte. */

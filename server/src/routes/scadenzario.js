@@ -35,7 +35,7 @@ async function carica(req) {
   const nascoste = filtrate.length - attive.length;
   // fonti: quelle dei moduli riservati solo a chi le può vedere (altrimenti "riservata")
   const admin = req.user.level === 'OWNER' || req.user.level === 'ADMIN';
-  const fonti = d.fonti.map((x) => (['contracts', 'ferie', 'room'].includes(x.modulo) && !admin && !req.user.grants?.[x.modulo] ? { ...x, stato: 'RISERVATA', nota: 'Riservata a chi ha il modulo', righe: 0 } : x));
+  const fonti = d.fonti.map((x) => (['contracts', 'ferie', 'room'].includes(x.modulo) && ((!admin && !req.user.grants?.[x.modulo]) || (x.modulo === 'contracts' && req.user.grants?.contracts?.profile === 'LP')) ? { ...x, stato: 'RISERVATA', nota: 'Riservata a chi ha il modulo', righe: 0 } : x));
   const moduli = [...new Map(mie.map((x) => [x.modulo, { key: x.modulo, nome: x.modulo_nome.split(' · ')[0], area: x.area }])).values()].sort((x, y) => x.nome.localeCompare(y.nome, 'it'));
   return { f: { ...f, da: d.da, a: d.a }, d, righe: f.viste === '1' ? filtrate : attive, attive, senzaStati, nascoste, fonti, moduli };
 }

@@ -4,7 +4,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
 import { ah, bad, notFound, audit, parse, HttpError } from '../lib/util.js';
-import { requireWrite, requireRole, Params, readLog } from '../lib/access.js';
+import { requireWrite, requireRole, Params, readLog, soloLp } from '../lib/access.js';
 import { config } from '../config.js';
 import { parseDocument, ocrAvailable } from '../lib/contractParse.js';
 import { buildTemplate, readBulk } from '../lib/bulkImport.js';
@@ -126,6 +126,19 @@ export const lpSchema = z.object({
 const EMP_COLS = Object.keys(employmentSchema.shape);
 const LP_COLS = Object.keys(lpSchema.shape);
 
+/** Sintesi dei compensi di un incarico LP per tipo: { fisso_mensile, orari:[{importo,unita,descrizione}], prestazione:n, variabili:n, voci:[...] } */
+export function compensiLp(fees) {
+  const f = Array.isArray(fees) ? fees : [];
+  const di = (t) => f.filter((x) => x.type === t);
+  return {
+    fisso_mensile: Math.round(di('FISSO').reduce((a, x) => a + Number(x.amount || 0), 0) * 100) / 100,
+    orari: di('ORARIO').map((x) => ({ importo: x.amount != null ? Number(x.amount) : null, unita: x.unit || 'ora', descrizione: x.description || '' })),
+    prestazione: di('PRESTAZIONE').length,
+    variabili: di('VARIABILE').length,
+    voci: f.length,
+  };
+}
+
 function lpMonthlyEstimate(lp) {
   if (lp.est_monthly_cost != null) return Number(lp.est_monthly_cost);
   return (lp.fees || []).filter((f) => f.type === 'FISSO').reduce((a, f) => a + Number(f.amount || 0), 0);
@@ -190,7 +203,8 @@ async function enrich(rows, S) {
     if (x.kind === 'LP') {
       const m = x.est_monthly_cost != null ? Number(x.est_monthly_cost) : 0;
       const annual = Math.round(m * 12 * 100) / 100;
-      return { ...x, cost_monthly: m, cost_annual: annual, cost_year: yearCost(x, annual) };
+      // tutti i compensi dell'incarico, non solo il fisso (CEO, 14/11/2026): orari, a prestazione e variabili non hanno un costo mensile certo
+      return { ...x, cost_monthly: m, cost_annual: annual, cost_year: yearCost(x, annual), compensi: compensiLp(x.lp_fees) };
     }
     return x;
   });
@@ -200,7 +214,7 @@ async function enrich(rows, S) {
 const LIST_SQL = `SELECT r.*, coalesce(a.name, r.area_label) AS area_name, at.path AS area_path, at.root_name AS area_root, m.last_name || ' ' || m.first_name AS manager_name, ap.last_name || ' ' || ap.first_name AS approver_name,
     s.name AS site_name, ws.name AS work_site_name,
     e.contract_type, e.level, e.job_title, e.ral, e.ral_steps, e.monthly_payments, e.weekly_hours, e.start_date AS emp_start, e.probation_end, e.mbo_enabled, e.mbo_pct, e.mbo_amount, e.cost_coefficient, e.end_date AS emp_end, e.work_site_id,
-    l.discipline, l.start_date AS lp_start, l.end_date AS lp_end, l.est_monthly_cost, l.insurance_expiry,
+    l.discipline, l.start_date AS lp_start, l.end_date AS lp_end, l.est_monthly_cost, l.insurance_expiry, l.fees AS lp_fees, l.vat_regime AS lp_vat_regime,
     (SELECT count(*)::int FROM attachments t WHERE t.resource_id=r.id) AS attachments_count,
     (SELECT count(*)::int FROM generated_documents g WHERE g.resource_id=r.id) AS documents_count,
     (SELECT coalesce(json_agg(json_build_object('id', x.id, 'name', x.name, 'path', x.path, 'root_name', x.root_name) ORDER BY x.sort_path), '[]'::json)
@@ -272,7 +286,8 @@ r.get('/', ah(async (req, res) => {
   if (req.moduleMode !== 'MIRROR') { await applyDueTerminations(); await applyDueHires(req.user); }
   const P = new Params();
   const w = ['TRUE'];
-  if (req.query.kind) w.push(`r.kind = ${P.add(req.query.kind)}`);
+  if (soloLp(req.user)) w.push(`r.kind = 'LP'`);   // profilo LP: mai i dipendenti, qualunque filtro arrivi
+  else if (req.query.kind) w.push(`r.kind = ${P.add(req.query.kind)}`);
   if (req.query.status) w.push(`r.status = ANY(string_to_array(${P.add(req.query.status)}, ','))`);
   else w.push(`r.status <> 'CANDIDATO'`);
   if (req.query.area_id) { const pid = P.add(Number(req.query.area_id)); w.push(`EXISTS (WITH RECURSIVE d AS (SELECT id FROM areas WHERE id = ${pid} UNION ALL SELECT a.id FROM areas a JOIN d ON a.parent_id = d.id) SELECT 1 FROM d WHERE d.id = r.area_id OR d.id IN (SELECT area_id FROM person_areas WHERE person_id = r.id))`); }

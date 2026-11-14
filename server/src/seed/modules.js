@@ -54,7 +54,7 @@ export const MODULES = [
 
   // ---- People
   { key: 'contracts', area: 'PEOPLE', name: 'Contratti del Personale', tagline: 'Dipendenti, LP, dossier, CCNL', icon: 'contracts-hr', kind: 'LEGACY', legacy_url: 'https://contracts.toscanadiagnostica.it', sort_order: 10, restricted: true,
-    profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura')] },
+    profiles: [P('ADMIN', 'Amministratore'), P('HR', 'Risorse umane'), P('VIEWER', 'Sola lettura'), P('LP', 'Solo liberi professionisti (sola lettura)')] },
   { key: 'rubrica', area: 'PEOPLE', name: 'Rubrica e Organigramma', tagline: 'Chi fa cosa, contatti, Teams', icon: 'rubrica', kind: 'NATIVE', route: '/people', sort_order: 20,
     profiles: [P('LETTORE', 'Consultazione'), P('EDITOR', 'Aggiornamento schede')] },
   // Rimborso Spese (v0.72.0, CEO 13/11/2026): nota spese mensile e rimborso chilometrico (moduli SGI MOD025 e MOD029), approvazione secondo

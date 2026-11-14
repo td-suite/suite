@@ -14,6 +14,7 @@ import { Connectors } from './Connectors.jsx';
 import { SynclabDati } from './SynclabDati.jsx';
 import { AssetTypes } from './AssetTypes.jsx';
 import { Diagnostica } from './Diagnostica.jsx';
+import { PuliziaAllegati } from './PuliziaAllegati.jsx';
 
 function Overview() {
   const summary = useApi('/users/summary');
@@ -78,6 +79,7 @@ export default function Admin() {
       <Route path="imports" element={<Imports />} />
       <Route path="audit" element={<Audit />} />
       <Route path="diagnostica" element={<Diagnostica />} />
+      <Route path="pulizia-allegati" element={<PuliziaAllegati />} />
       <Route path="settings" element={<Settings />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

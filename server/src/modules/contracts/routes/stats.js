@@ -3,6 +3,8 @@ import { many, one } from '../db.js';
 import { ah } from '../lib/util.js';
 import { getSettings, costCoefficient, companyCost, ralAt } from '../lib/payroll.js';
 import { computeDeadlines, missingDocuments } from '../lib/deadlines.js';
+import { soloLp } from '../lib/access.js';
+import { compensiLp } from './resources.js';
 
 const r = Router();
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -89,22 +91,67 @@ r.get('/summary', ah(async (req, res) => {
 }));
 
 r.get('/deadlines', ah(async (req, res) => {
-  res.json(await computeDeadlines({ horizonDays: Number(req.query.days || 365) }));
+  const tutte = await computeDeadlines({ horizonDays: Number(req.query.days || 365) });
+  res.json(soloLp(req.user) ? tutte.filter((d) => d.kind === 'LP') : tutte);   // profilo LP: solo le scadenze dei liberi professionisti
 }));
 
 r.get('/costs.xlsx', ah(async (req, res) => {
   if (req.user.role === 'VIEWER') return res.status(403).json({ error: 'Non autorizzato' });
   const ExcelJS = (await import('exceljs')).default;
-  const rows = await headcount();
+  // L'estratto segue l'elenco da cui parte (CEO, 14/11/2026): ?kind=LP solo liberi professionisti, ?kind=DIPENDENTE solo dipendenti.
+  // Il profilo LP ottiene SEMPRE e solo gli LP. Prima l'estratto dell'Elenco LP conteneva tutto l'organico.
+  const kind = soloLp(req.user) ? 'LP' : ['LP', 'DIPENDENTE'].includes(String(req.query.kind)) ? String(req.query.kind) : null;
+  if (kind === 'LP') return estrattoLp(res, ExcelJS);
+  const rows = (await headcount()).filter((x) => !kind || x.kind === kind);
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Organico e costi');
   ws.columns = [{ header: 'Cognome', key: 'last_name', width: 18 }, { header: 'Nome', key: 'first_name', width: 16 }, { header: 'Tipo', key: 'kind', width: 12 }, { header: 'Stato', key: 'status', width: 10 }, { header: 'Sesso', key: 'sex', width: 6 }, { header: 'Area', key: 'area_name', width: 26 }, { header: 'Contratto', key: 'contract_type', width: 14 }, { header: 'Livello', key: 'level', width: 8 }, { header: 'Mansione / Disciplina', key: 'job', width: 36 }, { header: 'Ingresso', key: 'hired_at', width: 12 }, { header: 'RAL vigente', key: 'ral_current', width: 14 }, { header: 'Costo mensile', key: 'cost_monthly', width: 14 }, { header: 'Costo annuo', key: 'cost_annual', width: 14 }, { header: 'MBO max', key: 'cost_mbo_max', width: 12 }];
   for (const x of rows) ws.addRow({ ...x, job: x.job_title || x.discipline, hired_at: x.hired_at ? String(x.hired_at).slice(0, 10) : '' });
   ws.getRow(1).font = { bold: true };
   ['K', 'L', 'M', 'N'].forEach((c) => { ws.getColumn(c).numFmt = '#,##0.00'; });
-  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition', 'attachment; filename="organico_costi.xlsx"');
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition', `attachment; filename="${kind === 'DIPENDENTE' ? 'dipendenti_costi' : 'organico_costi'}.xlsx"`);
   await wb.xlsx.write(res);
   res.end();
 }));
+
+// Estratto dei liberi professionisti: un foglio con una riga per professionista (fisso, tariffe orarie, numero di compensi a
+// prestazione e variabili, costo stimato) e un foglio "Compensi" con una riga per OGNI compenso dell'incarico, di qualunque tipo.
+const TIPO_COMPENSO = { FISSO: 'Fisso', ORARIO: 'Orario', PRESTAZIONE: 'A prestazione', VARIABILE: 'Variabile' };
+async function estrattoLp(res, ExcelJS) {
+  const rows = await many(`SELECT r.id, r.person_kind, r.status, r.sex, r.last_name, r.first_name, r.hired_at, r.terminated_at, a.name AS area_name, s.name AS site_name,
+      l.discipline, l.start_date, l.end_date, l.auto_renew, l.notice_days, l.est_monthly_cost, l.fees, l.vat_regime, l.insurance_expiry
+    FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN public.sites s ON s.id=r.site_id LEFT JOIN lp_contracts l ON l.resource_id=r.id
+    WHERE r.kind='LP' AND (r.status IN ('ATTIVO','IMPEGNO') OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months'))) ORDER BY r.last_name, r.first_name`);
+  const d = (x) => (x ? String(x instanceof Date ? x.toISOString() : x).slice(0, 10) : '');
+  const TIPO_PERSONA = { LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario' };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Liberi professionisti');
+  ws.columns = [{ header: 'Cognome', key: 'last_name', width: 18 }, { header: 'Nome', key: 'first_name', width: 16 }, { header: 'Tipo', key: 'tipo', width: 20 }, { header: 'Stato', key: 'status', width: 10 },
+    { header: 'Disciplina', key: 'discipline', width: 26 }, { header: 'Area', key: 'area_name', width: 24 }, { header: 'Sede', key: 'site_name', width: 24 }, { header: 'Inizio incarico', key: 'inizio', width: 14 },
+    { header: 'Fine incarico', key: 'fine', width: 14 }, { header: 'Compenso fisso mensile', key: 'fisso', width: 20 }, { header: 'Tariffe orarie', key: 'orari', width: 30 },
+    { header: 'Compensi a prestazione (n.)', key: 'prestazione', width: 14 }, { header: 'Compensi variabili (n.)', key: 'variabili', width: 14 },
+    { header: 'Costo mensile stimato', key: 'mensile', width: 18 }, { header: 'Costo annuo stimato', key: 'annuo', width: 18 }, { header: 'Regime IVA', key: 'vat_regime', width: 18 }, { header: 'Scadenza polizza', key: 'polizza', width: 14 }];
+  const wc = wb.addWorksheet('Compensi');
+  wc.columns = [{ header: 'Cognome', key: 'last_name', width: 18 }, { header: 'Nome', key: 'first_name', width: 16 }, { header: 'Disciplina', key: 'discipline', width: 26 }, { header: 'Tipo di compenso', key: 'tipo', width: 16 },
+    { header: 'Codice', key: 'code', width: 10 }, { header: 'Descrizione', key: 'description', width: 46 }, { header: 'Categoria', key: 'category', width: 22 }, { header: 'Importo', key: 'amount', width: 12 },
+    { header: 'Unità', key: 'unit', width: 12 }, { header: 'IVA', key: 'vat', width: 10 }, { header: 'Note', key: 'notes', width: 30 }];
+  for (const x of rows) {
+    const c = compensiLp(x.fees);
+    const mensile = x.est_monthly_cost != null ? Number(x.est_monthly_cost) : null;
+    ws.addRow({ ...x, tipo: TIPO_PERSONA[x.person_kind] || x.person_kind, inizio: d(x.start_date || x.hired_at), fine: d(x.end_date || x.terminated_at), fisso: c.fisso_mensile || null,
+      orari: c.orari.map((o) => `${o.importo != null ? o.importo.toFixed(2).replace('.', ',') : 'n.d.'} €/${o.unita}`).join('; '), prestazione: c.prestazione || null, variabili: c.variabili || null,
+      mensile, annuo: mensile != null ? r2(mensile * 12) : null, polizza: d(x.insurance_expiry) });
+    for (const f of Array.isArray(x.fees) ? x.fees : []) {
+      wc.addRow({ last_name: x.last_name, first_name: x.first_name, discipline: x.discipline, tipo: TIPO_COMPENSO[f.type] || f.type, code: f.code, description: f.description, category: f.category,
+        amount: f.amount != null ? Number(f.amount) : null, unit: f.unit || (f.type === 'FISSO' ? 'mese' : f.type === 'ORARIO' ? 'ora' : ''), vat: f.vat === 'CON' ? 'con IVA' : f.vat === 'SENZA' ? 'senza IVA' : '', notes: f.notes });
+    }
+  }
+  ws.getRow(1).font = { bold: true }; wc.getRow(1).font = { bold: true };
+  ['J', 'N', 'O'].forEach((k) => { ws.getColumn(k).numFmt = '#,##0.00'; });
+  wc.getColumn('H').numFmt = '#,##0.00';
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition', 'attachment; filename="liberi_professionisti_compensi.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
+}
 
 export default r;

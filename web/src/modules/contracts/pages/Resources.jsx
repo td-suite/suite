@@ -28,7 +28,7 @@ export default function Resources({ kind }) {
       <div className="page-head">
         <div><h1>{title}</h1><div className="sub">{rows.length} persone dell'anagrafica unica{costs ? ` · costo annuo stimato ${eur(totCost)}` : ''}. Clicca una riga per aprire la scheda e il dossier HR.</div></div>
         <div className="row">
-          {costs && <a className="btn ghost" href={`${API_BASE}/stats/costs.xlsx`}>Esporta Excel</a>}
+          {costs && <a className="btn ghost" href={`${API_BASE}/stats/costs.xlsx${kind ? `?kind=${kind}` : ''}`} title={kind === 'LP' ? 'Solo liberi professionisti, con tutti i compensi (fissi, orari, a prestazione, variabili)' : kind === 'DIPENDENTE' ? 'Solo dipendenti' : 'Tutto l\'organico'}>Esporta Excel</a>}
           {canWrite(user) && kind && <BulkImport kind={kind} onDone={() => list.reload()} />}
           {canWrite(user) && <Link className="btn" to={`${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>+ Nuova risorsa</Link>}
         </div>
@@ -43,7 +43,7 @@ export default function Resources({ kind }) {
       <Card flush>
         {list.loading && !list.data ? <Loading /> : !rows.length ? <Empty>Nessuna risorsa trovata</Empty> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr>{th('last_name', 'Risorsa')}<th>Tipo</th>{th('area_name', 'Area')}<th>Ruolo</th>{th('site_name', 'Sede')}{th('manager_name', 'Responsabile')}{th('hired_at', 'Ingresso')}{costs && th('ral_current', 'RAL', 'num')}{costs && th('cost_annual', 'Costo annuo', 'num')}<th className="num">Dossier</th></tr></thead>
+            <thead><tr>{th('last_name', 'Risorsa')}<th>Tipo</th>{th('area_name', 'Area')}<th>Ruolo</th>{th('site_name', 'Sede')}{th('manager_name', 'Responsabile')}{th('hired_at', 'Ingresso')}{costs && (kind === 'LP' ? <th>Compensi</th> : th('ral_current', 'RAL', 'num'))}{costs && th('cost_annual', 'Costo annuo', 'num')}<th className="num">Dossier</th></tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.id} className="click" onClick={() => nav(`${BASE}/risorse/${r.id}`)}>
                 <td><div className="strong">{r.last_name} {r.first_name}</div><div className="small muted">{r.tax_code || ''}{r.sex ? ` · ${SEX[r.sex]}` : ''}</div></td>
@@ -53,16 +53,28 @@ export default function Resources({ kind }) {
                 <td>{r.site_name || <span className="muted">–</span>}</td>
                 <td>{r.manager_name || <span className="muted">–</span>}</td>
                 <td>{itDate(r.hired_at) || <span className="muted">–</span>}</td>
-                {costs && <td className="num">{r.kind === 'DIPENDENTE' ? eur(r.ral_current) : <span className="muted">{r.est_monthly_cost ? `${eur(r.est_monthly_cost)}/mese` : '–'}</span>}</td>}
+                {costs && (r.kind === 'DIPENDENTE' ? <td className="num">{eur(r.ral_current)}</td> : <td className={kind === 'LP' ? 'small' : 'num small'}><Compensi r={r} /></td>)}
                 {costs && <td className="num">{eur(r.cost_annual)}</td>}
                 <td className="num"><Badge tone={r.attachments_count ? 'teal' : 'grey'}>{r.attachments_count} doc</Badge></td>
               </tr>))}</tbody>
-            {costs && <tfoot><tr><td colSpan={7}>Totale</td><td className="num">{eur(rows.filter((x) => x.kind === 'DIPENDENTE').reduce((a, x) => a + Number(x.ral_current || 0), 0))}</td><td className="num">{eur(totCost)}</td><td /></tr></tfoot>}
+            {costs && <tfoot><tr><td colSpan={7}>Totale</td><td className="num">{kind === 'LP' ? '' : eur(rows.filter((x) => x.kind === 'DIPENDENTE').reduce((a, x) => a + Number(x.ral_current || 0), 0))}</td><td className="num">{eur(totCost)}</td><td /></tr></tfoot>}
           </table></div>
         )}
       </Card>
     </div>
   );
+}
+
+/** Compensi dell'incarico LP di ogni tipo: fisso mensile, tariffe orarie, a prestazione, variabili (non solo il fisso). */
+function Compensi({ r }) {
+  const c = r.compensi || {};
+  const parti = [];
+  if (c.fisso_mensile) parti.push(`fisso ${eur(c.fisso_mensile)}/mese`);
+  for (const o of c.orari || []) parti.push(`${o.importo != null ? eur(o.importo) : 'n.d.'}/${o.unita}`);
+  if (c.prestazione) parti.push(`${c.prestazione} a prestazione`);
+  if (c.variabili) parti.push(`${c.variabili} variabil${c.variabili === 1 ? 'e' : 'i'}`);
+  if (!parti.length && r.est_monthly_cost) parti.push(`${eur(r.est_monthly_cost)}/mese stimati`);
+  return parti.length ? <span title="Il dettaglio di ogni compenso è nella scheda e nell'estratto Excel">{parti.join(' · ')}</span> : <span className="muted">nessun compenso indicato</span>;
 }
 
 /** Caricamento massivo da Excel: format scaricabile e upload con validazione dei campi obbligatori. */

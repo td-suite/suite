@@ -2,6 +2,7 @@
 // (schema contracts) con role = profilo del grant Suite (ADMIN, HR, VIEWER). Login, Entra, TOTP e gestione utenti non si portano.
 import { readLog as suiteReadLog } from '../../../lib/util.js';
 import { forbidden } from './util.js';
+import { one } from '../db.js';
 
 export class Params {
   constructor() { this.values = []; }
@@ -29,4 +30,32 @@ export const requireApprover = (req, _res, next) => (canApprove(req.user) ? next
 // con l'utente Suite (req.suiteUser), non con la riga users dello schema del modulo.
 export async function readLog(req, entity, entityId) {
   await suiteReadLog({ user: req.suiteUser || req.user, ip: req.ip }, { module: 'contracts', entity, entityId });
+}
+
+// ---------------------------------------------------------------- profilo LP: sola lettura dei SOLI liberi professionisti
+// Decisione del CEO (14/11/2026): chi ha il profilo LP non deve avere "possibilità alcuna" di vedere i dati dei dipendenti. Perciò il
+// controllo è un elenco CHIUSO: tutto ciò che non è qui sotto risponde 403, comprese le route che nasceranno in futuro. Le route con
+// una persona o un documento nell'indirizzo passano solo se la persona è un LP (kind della vista resources_v); gli elenchi e
+// l'estratto sono poi filtrati sugli LP dalle route stesse (soloLp).
+export const soloLp = (u) => u?.role === 'LP';
+const LP_LIBERE = [/^\/badges$/, /^\/state$/, /^\/auth\/(me|config)$/, /^\/areas$/, /^\/work-sites$/, /^\/job-roles$/, /^\/resources\/?$/, /^\/stats\/(deadlines|costs\.xlsx)$/];
+const LP_PERSONA = [/^\/resources\/(\d+)$/, /^\/resources\/(\d+)\/attachments\/\d+\/download$/];
+const LP_DOCUMENTO = [/^\/documents\/(\d+)(?:\/download)?$/];
+const NIENTE = 'Il tuo profilo consente la sola consultazione dei liberi professionisti';
+export async function lpGuard(req, _res, next) {
+  try {
+    if (!soloLp(req.user)) return next();
+    if (req.method !== 'GET') return next(forbidden(NIENTE));
+    const path = req.path.replace(/\/+$/, '') || '/';
+    if (LP_LIBERE.some((re) => re.test(path))) return next();
+    for (const re of LP_PERSONA) {
+      const m = path.match(re);
+      if (m) { const r = await one('SELECT kind FROM resources_v WHERE id=$1', [Number(m[1])]); return next(r?.kind === 'LP' ? undefined : forbidden(NIENTE)); }
+    }
+    for (const re of LP_DOCUMENTO) {
+      const m = path.match(re);
+      if (m) { const r = await one('SELECT r.kind FROM generated_documents g JOIN resources_v r ON r.id=g.resource_id WHERE g.id=$1', [Number(m[1])]); return next(r?.kind === 'LP' ? undefined : forbidden(NIENTE)); }
+    }
+    return next(forbidden(NIENTE));
+  } catch (e) { return next(e); }
 }

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { one, many, q } from '../db.js';
 import { ah, bad, notFound, audit, parse, HttpError } from '../lib/util.js';
-import { requireRole, requireWrite } from '../lib/access.js';
+import { requireRole, requireWrite, soloLp } from '../lib/access.js';
 import { getSettings, CORE_KEYS } from '../lib/payroll.js';
 import { config } from '../config.js';
 import { graphConfigured, inboxStatus } from '../lib/inbox.js';
@@ -35,6 +35,10 @@ r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
 r.get('/job-roles', ah(async (_req, res) => res.json(await many(`SELECT id, name, description FROM public.job_roles WHERE active ORDER BY sort_order, name`))));
 
 // ---------------- Aree e sedi ----------------
+// Profilo LP: solo i nomi delle aree (per il filtro dell'elenco), senza referenti né organico
+r.get('/areas', (req, res, next) => (soloLp(req.user)
+  ? many(`SELECT a.id, a.name, a.parent_id, t.level, t.path, t.root_id, t.root_name FROM areas a JOIN areas_tree t ON t.id=a.id ORDER BY t.sort_path, a.name`).then((x) => res.json(x)).catch(next)
+  : next()));
 r.get('/areas', ah(async (_req, res) => res.json(await many(`SELECT a.*, t.path, t.root_id, t.root_name, h.last_name || ' ' || h.first_name AS head_name,
   (SELECT count(*)::int FROM resources_v r WHERE r.status IN ('ATTIVO','IMPEGNO') AND (r.area_id=a.id OR r.id IN (SELECT person_id FROM person_areas WHERE area_id=a.id))) AS headcount,
   (SELECT count(*)::int FROM areas c WHERE c.parent_id=a.id) AS children

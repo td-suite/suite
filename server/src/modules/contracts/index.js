@@ -16,7 +16,7 @@ import { requireModuleReady, blockWritesInMirror, getModuleState } from '../../l
 import { registerJob } from '../../lib/jobs.js';
 import { HttpError, forbidden } from '../../lib/util.js';
 import { config } from './config.js';
-import { publicUser } from './lib/access.js';
+import { publicUser, lpGuard, soloLp } from './lib/access.js';
 import { applyDueTerminations, applyDueHires } from './lib/termination.js';
 import { ensureSeed } from './lib/seed.js';
 import { pollRecruitingInbox } from './lib/inbox.js';
@@ -48,10 +48,12 @@ export default function mount(app) {
     req.user = req.moduleUser;
     next();
   });
+  r.use(lpGuard);   // profilo LP: elenco chiuso di letture sui soli liberi professionisti (lib/access.js)
 
   // Contatori accanto alle voci di menu (richiesta del CEO: notifiche su tutti i widget)
-  r.get('/badges', async (_req, res, next) => {
+  r.get('/badges', async (req, res, next) => {
     try {
+      if (soloLp(req.user)) return res.json({});   // i contatori contano anche i dipendenti: al profilo LP non si mostrano
       const { one } = await import('./db.js');
       const { computeDeadlines } = await import('./lib/deadlines.js');
       const { getSettings } = await import('./lib/payroll.js');

@@ -11,4 +11,6 @@ export function AuthProvider({ user, children }) {
 export const useAuth = () => useContext(AuthCtx);
 export const canWrite = (u) => ['ADMIN', 'HR'].includes(u?.role);
 export const isAdmin = (u) => u?.role === 'ADMIN';
-export const seesCosts = (u) => ['ADMIN', 'HR'].includes(u?.role);
+// LP = profilo "Solo liberi professionisti": sola lettura dei soli LP, compensi compresi; mai i dipendenti (lo garantisce il server)
+export const soloLp = (u) => u?.role === 'LP';
+export const seesCosts = (u) => ['ADMIN', 'HR', 'LP'].includes(u?.role);

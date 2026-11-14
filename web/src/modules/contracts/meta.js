@@ -1,12 +1,17 @@
 // Modulo Contracts (Contratti del Personale): voci di navigazione disegnate dalla Suite (la sidebar dell'app non si porta).
 // Le voci di inserimento sono riservate ai profili che scrivono (ADMIN, HR); Registro al solo ADMIN. Impostazioni: ADMIN tutto,
-// HR solo la sezione Casella People. Casella People (documenti da approvare): ADMIN e HR (il titolare della Suite entra come ADMIN).
+// HR solo la sezione Casella People. Profilo LP (solo liberi professionisti, sola lettura): vede soltanto Elenco LP e scadenze degli LP. Casella People (documenti da approvare): ADMIN e HR (il titolare della Suite entra come ADMIN).
+// Profilo LP: restano solo "Elenco LP" e il calendario delle scadenze (degli LP); vale anche per un amministratore della Suite con quel profilo
+const nonLp = (u) => u?.grants?.contracts?.profile !== 'LP';
+const PER_LP = ['lp', 'scadenze'];
+const conLp = (nav) => nav.map((i) => ((i.group ? i.group === 'Liberi professionisti' : PER_LP.includes(i.to)) ? i : { ...i, when: nonLp }));
+
 export default {
   key: 'contracts',
   title: 'Contratti del Personale',
   kicker: 'People',
   area: 'PEOPLE',
-  nav: [
+  nav: conLp([
     { to: '', icon: 'home', label: 'Cruscotto', end: true },
     { to: 'risorse/nuova', icon: 'plus', label: 'Nuova persona', profiles: ['ADMIN', 'HR'] },
     { to: 'risorse', icon: 'users', label: 'Elenco persone', end: true },
@@ -27,5 +32,5 @@ export default {
     { group: 'Amministrazione', profiles: ['ADMIN', 'HR'] },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e import', profiles: ['ADMIN', 'HR'] },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },
-  ],
+  ]),
 };

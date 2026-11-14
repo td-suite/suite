@@ -88,6 +88,7 @@ function sectionFor(pathname, user) {
         { to: '/admin/imports', icon: 'import', label: 'Importazioni' },
         { group: 'Controllo' },
         { to: '/admin/diagnostica', icon: 'stats', label: 'Diagnostica anagrafica' },
+        { to: '/admin/pulizia-allegati', icon: 'trash', label: 'Pulizia allegati' },
         { to: '/admin/audit', icon: 'shield', label: 'Audit' },
         { to: '/admin/settings', icon: 'gear', label: 'Impostazioni' },
       ],

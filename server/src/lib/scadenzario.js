@@ -143,7 +143,10 @@ export function raggruppaPerSettimana(righe) {
 /** Righe che l'utente può vedere: moduli riservati solo con il grant del modulo (o titolare e amministratori). */
 export function visibiliA(righe, user) {
   const admin = user?.level === 'OWNER' || user?.level === 'ADMIN';
-  return righe.filter((r) => !MODULI_RISERVATI.includes(r.modulo) || admin || Boolean(user?.grants?.[r.modulo]));
+  // Contratti del personale con profilo LP (solo liberi professionisti): le scadenze del personale non passano dallo Scadenzario, dove
+  // dipendenti e LP sono mescolati; quelle degli LP le vede dentro il modulo.
+  const lp = user?.grants?.contracts?.profile === 'LP';
+  return righe.filter((r) => (r.modulo === 'contracts' && lp ? false : !MODULI_RISERVATI.includes(r.modulo) || admin || Boolean(user?.grants?.[r.modulo])));
 }
 /** Segna "vista" le righe nascoste dall'utente fino a una data (compresa): una vista con fino_a passato non nasconde più. */
 export function applicaViste(righe, viste, oggi) {
