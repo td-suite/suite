@@ -39,16 +39,22 @@ export const chiudiInterrotte = () => q(`UPDATE scout_ricerche SET stato='ERRORE
 export async function avviaRicerca({ linea, province, categorie, userId }, { scopri = scopriProvincia, pausaMs = process.env.NODE_ENV === 'test' ? 0 : 2000 } = {}) {
   const r = await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by) VALUES ($1,$2,$3,$4) RETURNING *`, [linea, province, categorie, userId || null]);
   const lavoro = (async () => {
-    let trovati = 0; let nuovi = 0; const avvisi = [];
+    let trovati = 0; let nuovi = 0; let diFila = 0; const avvisi = [];
     const segna = (testo) => q('UPDATE scout_ricerche SET avanzamento=$2, trovati=$3, nuovi=$4, avvisi=$5, aggiornata_at=now() WHERE id=$1', [r.id, testo, trovati, nuovi, JSON.stringify(avvisi)]);
     try {
       for (let i = 0; i < province.length; i += 1) {
         const p = province[i]; const dove = `${PROVINCE[p] || p} (${i + 1} di ${province.length})`;
         if ((await one('SELECT stato FROM scout_ricerche WHERE id=$1', [r.id]))?.stato !== 'IN_CORSO') return;   // annullata
         await segna(`${dove}: interrogo OpenStreetMap`);
-        let candidati;
-        // una provincia che non risponde non ferma le altre: resta negli avvisi e si può ripetere da sola
-        try { ({ candidati } = await scopri(p, categorie)); } catch (e) { avvisi.push(String(e.message).slice(0, 400)); await segna(`${dove}: non riuscita`); continue; }
+        let candidati; let falliti = [];
+        // una provincia che non risponde non ferma le altre: resta negli avvisi e si può ripetere da sola. Due province di fila senza
+        // risposta da nessun servizio = OpenStreetMap è giù: ci si ferma subito invece di provarle tutte a vuoto
+        try { ({ candidati, falliti = [] } = await scopri(p, categorie)); diFila = 0; } catch (e) {
+          avvisi.push(String(e.message).slice(0, 400)); diFila += 1; await segna(`${dove}: non riuscita`);
+          if (diFila >= 2 && trovati === 0) throw new Error(`I servizi pubblici di OpenStreetMap in questo momento non rispondono (${String(e.message).slice(0, 300)}). Non dipende dalla Suite: riprova tra un'ora, meglio una provincia alla volta.`);
+          continue;
+        }
+        if (falliti.length) avvisi.push(`${PROVINCE[p] || p}: non lette ${falliti.map((f) => CATEGORIE[f.categoria]?.etichetta || f.categoria).join(', ')} (${String(falliti[0].errore).slice(0, 160)})`);
         await segna(`${dove}: ${candidati.length} strutture, le registro`);
         for (let k = 0; k < candidati.length; k += 1) {
           const c = candidati[k];

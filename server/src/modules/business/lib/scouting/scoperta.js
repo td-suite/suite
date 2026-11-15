@@ -23,11 +23,18 @@ export const AVVISI_FONTE = {
   AZIENDA: 'OpenStreetMap censisce poco le aziende senza insegna o stabilimento: per la medicina del lavoro l\'elenco è parziale. Aggiungi a mano le aziende che conosci (nome e sito) e la Suite le profila allo stesso modo.',
   CASA_DI_CURA: 'L\'elenco comprende anche gli ospedali pubblici: quelli con gestore pubblico sono segnati e si possono scartare.',
 };
-const SERVIZI = () => (process.env.SCOUTING_OVERPASS_URL ? [process.env.SCOUTING_OVERPASS_URL] : ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']);
+// Servizi pubblici Overpass, tutti con gli stessi dati. Sono gratuiti e a volte saturi (15/11/2026: il principale "at capacity", due
+// specchi in timeout): si provano in ordine partendo dall'ultimo che ha risposto, con richieste piccole (una tipologia alla volta).
+const PREDEFINITI = ['https://overpass.openstreetmap.fr/api/interpreter', 'https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+let preferito = null;
+const SERVIZI = () => {
+  const base = process.env.SCOUTING_OVERPASS_URL ? process.env.SCOUTING_OVERPASS_URL.split(',').map((x) => x.trim()).filter(Boolean) : PREDEFINITI;
+  return preferito && base.includes(preferito) ? [preferito, ...base.filter((u) => u !== preferito)] : base;
+};
 
 export function costruisciQuery(provincia, categorie) {
   const sel = categorie.flatMap((c) => FILTRI[c] || []).map((f) => `  nwr${f}["name"](area.a);`).join('\n');
-  return `[out:json][timeout:50];\narea["ISO3166-2"="IT-${provincia}"]->.a;\n(\n${sel}\n);\nout tags center 4000;`;
+  return `[out:json][timeout:25];\narea["ISO3166-2"="IT-${provincia}"]->.a;\n(\n${sel}\n);\nout tags center 4000;`;
 }
 function categoriaDi(t, richieste) {
   const k = (c) => richieste.includes(c);
@@ -61,25 +68,45 @@ export function candidatoDaOsm(el, provincia, richieste) {
     tags: { ...Object.fromEntries(Object.entries(t).filter(([k]) => /^(amenity|healthcare|healthcare:speciality|social_facility|social_facility:for|office|industrial|craft|operator|operator:type|brand|beds|capacity|opening_hours|emergency|dispensing)$/.test(k))), pubblico },
   };
 }
-/** Interroga Overpass per una provincia: { candidati, servizio }. Prova i servizi pubblici in ordine; errori in chiaro. */
-export async function scopriProvincia(provincia, categorie, { fetchFn = fetch, timeoutMs = 65_000 } = {}) {
-  if (!PROVINCE[provincia]) throw new Error(`Provincia non prevista: ${provincia}`);
-  const cat = categorie.filter((c) => FILTRI[c] && CATEGORIE[c]);
-  if (!cat.length) throw new Error('Nessuna tipologia valida');
-  const query = costruisciQuery(provincia, cat);
+const nomeServizio = (u) => { try { return new URL(u).hostname; } catch { return u; } };
+/** Una richiesta a Overpass provando i servizi in ordine: { elementi, servizio } oppure errore con il motivo di ciascun servizio */
+async function interroga(query, { fetchFn, timeoutMs }) {
   const errori = [];
-  const nome = (u) => { try { return new URL(u).hostname; } catch { return u; } };
   for (const url of SERVIZI()) {
     try {
       const r = await fetchFn(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, Accept: 'application/json' }, body: `data=${encodeURIComponent(query)}`, signal: AbortSignal.timeout(timeoutMs) });
-      if (!r.ok) { errori.push(`${nome(url)}: risposta ${r.status}${r.status === 429 ? ' (troppe richieste)' : r.status === 504 ? ' (servizio occupato)' : ''}`); continue; }
-      let j; try { j = await r.json(); } catch { errori.push(`${nome(url)}: risposta non leggibile`); continue; }
+      if (!r.ok) { errori.push(`${nomeServizio(url)}: risposta ${r.status}${r.status === 429 ? ' (troppe richieste)' : [502, 503, 504].includes(r.status) ? ' (servizio occupato)' : ''}`); continue; }
+      let j; try { j = await r.json(); } catch { errori.push(`${nomeServizio(url)}: risposta non leggibile`); continue; }
       // il servizio risponde 200 anche quando la ricerca scade o finisce la memoria: lo dice nel campo remark
-      if (j.remark && /error|timed out|out of memory/i.test(String(j.remark)) && !(j.elements || []).length) { errori.push(`${nome(url)}: ${String(j.remark).slice(0, 120)}`); continue; }
-      const visti = new Set(); const candidati = [];
-      for (const el of j.elements || []) { const c = candidatoDaOsm(el, provincia, cat); if (c && !visti.has(c.fonte_ref)) { visti.add(c.fonte_ref); candidati.push(c); } }
-      return { candidati, servizio: url, elementi: (j.elements || []).length };
-    } catch (e) { errori.push(`${nome(url)}: ${e.name === 'TimeoutError' || e.name === 'AbortError' ? 'nessuna risposta in tempo' : (e.cause?.code || e.message)}`); }
+      if (j.remark && /error|timed out|out of memory/i.test(String(j.remark)) && !(j.elements || []).length) { errori.push(`${nomeServizio(url)}: ${/timed out/i.test(j.remark) ? 'ricerca scaduta (timed out)' : String(j.remark).slice(0, 100)}`); continue; }
+      preferito = url;
+      return { elementi: j.elements || [], servizio: url };
+    } catch (e) { errori.push(`${nomeServizio(url)}: ${e.name === 'TimeoutError' || e.name === 'AbortError' ? 'nessuna risposta in tempo' : (e.cause?.code || e.message)}`); }
   }
-  throw new Error(`OpenStreetMap non ha risposto per ${PROVINCE[provincia]} (${errori.join('; ')})`);
+  throw new Error(errori.join('; '));
 }
+/**
+ * Strutture di una provincia, una richiesta per tipologia: { candidati, falliti: [{ categoria, errore }], servizio }.
+ * Se la prima tipologia non risponde da nessun servizio la provincia fallisce subito (servizio giù); le successive che falliscono
+ * restano in `falliti` e il resto si tiene.
+ */
+export async function scopriProvincia(provincia, categorie, { fetchFn = fetch, timeoutMs = 32_000, pausaMs = process.env.NODE_ENV === 'test' ? 0 : 800 } = {}) {
+  if (!PROVINCE[provincia]) throw new Error(`Provincia non prevista: ${provincia}`);
+  const cat = categorie.filter((c) => FILTRI[c] && CATEGORIE[c]);
+  if (!cat.length) throw new Error('Nessuna tipologia valida');
+  const visti = new Set(); const candidati = []; const falliti = []; let servizio = null;
+  for (let i = 0; i < cat.length; i += 1) {
+    try {
+      const r = await interroga(costruisciQuery(provincia, [cat[i]]), { fetchFn, timeoutMs });
+      servizio = r.servizio;
+      for (const el of r.elementi) { const c = candidatoDaOsm(el, provincia, cat); if (c && !visti.has(c.fonte_ref)) { visti.add(c.fonte_ref); candidati.push(c); } }
+    } catch (e) {
+      if (!servizio && i === 0) throw new Error(`OpenStreetMap non ha risposto per ${PROVINCE[provincia]} (${e.message})`);
+      falliti.push({ categoria: cat[i], errore: e.message });
+    }
+    if (i < cat.length - 1 && pausaMs) await new Promise((ok) => setTimeout(ok, pausaMs));
+  }
+  if (falliti.length === cat.length) throw new Error(`OpenStreetMap non ha risposto per ${PROVINCE[provincia]} (${falliti[0].errore})`);
+  return { candidati, falliti, servizio };
+}
+export const _azzeraPreferito = () => { preferito = null; };

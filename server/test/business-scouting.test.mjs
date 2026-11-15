@@ -89,6 +89,15 @@ describe('Ricerca prospect: funzioni pure', () => {
     // il servizio che scade risponde 200 con "remark": è un errore, detto in chiaro con il nome della provincia
     await assert.rejects(S.scopriProvincia('FI', ['RSA'], { fetchFn: async () => ({ ok: true, json: async () => ({ elements: [], remark: 'runtime error: Query timed out in "query" at line 5 after 51 seconds.' }) }) }), /Firenze.*timed out/s);
     await assert.rejects(S.scopriProvincia('FI', ['RSA'], { fetchFn: async () => ({ ok: false, status: 429 }) }), /troppe richieste/);
+    // un servizio giù non ferma la ricerca: si passa al successivo e lo si ricorda; una tipologia che fallisce non butta via le altre
+    S._azzeraPreferito(); const chiamati = [];
+    const rete = async (url, o) => { chiamati.push(new URL(url).hostname); if (!url.includes('private.coffee')) return { ok: false, status: 504 };
+      if (decodeURIComponent(o.body).includes('pharmacy')) return { ok: true, json: async () => ({ elements: [], remark: 'runtime error: Query timed out' }) };
+      return { ok: true, json: async () => ({ elements: [{ type: 'node', id: 5, tags: { name: 'B', amenity: 'nursing_home' } }] }) }; };
+    const z = await S.scopriProvincia('PO', ['RSA', 'FARMACIA'], { fetchFn: rete });
+    assert.equal(z.candidati.length, 1); assert.deepEqual(z.falliti.map((f) => f.categoria), ['FARMACIA']); assert.match(z.servizio, /private\.coffee/);
+    assert.equal(chiamati[3], 'overpass.private.coffee', 'dopo la prima risposta buona si riparte da quel servizio');
+    S._azzeraPreferito();
   });
 });
 
