@@ -19,6 +19,7 @@ import Audit from './pages/Audit.jsx';
 import HubCruscotto from './pages/HubCruscotto.jsx';
 import Pipeline from './pages/Pipeline.jsx';
 import Clienti from './pages/Clienti.jsx';
+import Scouting from './pages/Scouting.jsx';
 import Opportunita from './pages/Opportunita.jsx';
 import Account from './pages/Account.jsx';
 import EmailDaAssegnare from './pages/EmailDaAssegnare.jsx';
@@ -44,6 +45,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="" element={<HubCruscotto />} />
             <Route path="pipeline" element={<Pipeline />} />
             <Route path="clienti" element={<Clienti />} />
+            <Route path="ricerca-prospect" element={<Scouting />} />
             <Route path="db-opportunita" element={<Opportunita />} />
             <Route path="account/:id" element={<Account />} />
             {/* il contratto aperto dalla scheda account ora è la scheda "Contratto" dell'account (07/11/2026): i vecchi collegamenti ci arrivano */}

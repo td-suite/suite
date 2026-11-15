@@ -13,6 +13,7 @@
 // 09/11/2026 (CEO: "Sedi TD in locazione non serve. I punti prelievo/centri medici li hai già: sono sedi"): via "Sedi TD in locazione" (la pagina
 // /business/sedi resta raggiungibile da Amministrazione > Sedi, link "Locazioni") e "Punti e centri attivi" e "Punti Prelievo" diventano una
 // pagina sola, "Punti Prelievo e Centri", che parte dalle sedi dell'anagrafica. Il contatore resta "fascicoli aperti".
+// 15/11/2026: 'Ricerca prospect' in ogni sezione, prima della Pipeline (fase 1: scoperta, profilo dal sito, key people, coorti).
 // Una voce con `to` che inizia per "?" resta sulla pagina principale del modulo con il filtro nell'indirizzo (components/Shell.jsx).
 export default {
   key: 'business',
@@ -26,18 +27,21 @@ export default {
     { to: 'organizzazioni', icon: 'building', label: 'Organizzazioni e sedi' },
     { group: 'Service di Laboratorio' },
     { to: '?linea=SRV', icon: 'home', label: 'Cruscotto', end: true },
+    { to: 'ricerca-prospect?linea=SRV', icon: 'search', label: 'Ricerca prospect' },
     { to: 'pipeline?linea=SRV', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=SRV', icon: 'users', label: 'Clienti e prospect', badge: 'da_confermare' },
     { to: 'email?linea=SRV', icon: 'mail', label: 'Email da assegnare', badge: 'email_da_assegnare' },
     { to: 'clienti-attivi?linea=SRV', icon: 'check', label: 'Clienti', badge: 'da_verificare' },
     { group: 'Punti Prelievo' },
     { to: '?linea=PP', icon: 'home', label: 'Cruscotto', end: true },
+    { to: 'ricerca-prospect?linea=PP', icon: 'search', label: 'Ricerca prospect' },
     { to: 'pipeline?linea=PP', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=PP', icon: 'users', label: 'Partner e prospect' },
     { to: 'punti-prelievo', icon: 'pin', label: 'Punti Prelievo e Centri', badge: 'fascicoli_aperti' },
     { to: 'email?linea=PP', icon: 'mail', label: 'Email da assegnare' },
     { group: 'Medicina del Lavoro' },
     { to: '?linea=MDL', icon: 'home', label: 'Cruscotto', end: true },
+    { to: 'ricerca-prospect?linea=MDL', icon: 'search', label: 'Ricerca prospect' },
     { to: 'pipeline?linea=MDL', icon: 'stats', label: 'Pipeline' },
     { to: 'clienti?linea=MDL', icon: 'users', label: 'Aziende e prospect' },
     { to: 'email?linea=MDL', icon: 'mail', label: 'Email da assegnare' },

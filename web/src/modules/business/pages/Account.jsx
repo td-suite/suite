@@ -4,6 +4,7 @@
 // conformità, Ticket, Circolari, Portale, Fascicoli (di cui), Documenti, Email (con "Scrivi al cliente" dalla casella della linea),
 // Pacchetto di benvenuto (components/Pacchetto.jsx), Dati economici e commerciali (con le strutture del gruppo). Le sezioni degli altri
 // widget sono in sola lettura.
+import { CompletaDalSito } from '../components/CompletaDalSito.jsx';
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
@@ -109,6 +110,7 @@ export default function Account() {
 
       {tab === 'diario' && <Diario a={a} onChange={q.reload} />}
       {tab === 'referenti' && <Referenti a={a} onChange={q.reload} />}
+      {tab === 'referenti' && <div style={{ marginTop: 16 }}><CompletaDalSito a={a} onChange={q.reload} /></div>}
       {tab === 'contratto' && <SchedaContratto a={a} onChange={q.reload} />}
       {tab === 'listino' && ['SRV', 'MDL'].includes(a.linea) && <ListinoGestionale a={a} />}
       {tab === 'listino' && <Listino a={a} onChange={q.reload} vaiA={setTab} />}

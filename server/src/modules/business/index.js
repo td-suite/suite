@@ -27,6 +27,7 @@ import listinoRoutes from './routes/listino.js';
 import processoRoutes from './routes/processo.js';
 import { mountB2b } from './routes/b2b.js';
 import { eseguiRichiamo } from './lib/richiamo.js';
+import scoutingRoutes from './routes/scouting.js';
 import { registerJob } from '../../lib/jobs.js';
 import { pollCaselle } from './lib/caselle.js';
 import { inviaAvvisi } from './lib/avvisi.js';
@@ -99,6 +100,7 @@ export default function mount(app) {
   r.use('/hub', pacchettoRoutes);   // Pacchetto di benvenuto: composizione, generazione del PDF unico, modelli dei testi
   r.use('/hub', listinoRoutes);     // Listino StudioLAB per cliente (versioni) e Offerta economica in PDF
   r.use('/hub', processoRoutes);    // processo Service: kit di proposta, form online, contrattualizzazione, clienti, richiamo dei prospect
+  r.use('/scouting', scoutingRoutes); // Ricerca prospect: scoperta, profilo dal sito, key people, coorti, promozione in pipeline
   r.use(caselleRoutes);          // /hub/caselle (stato e prove), /inbox/simula (collaudo)
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 

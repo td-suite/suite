@@ -496,3 +496,14 @@ label.btn { cursor: pointer; }
 .ksyn { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line); font-size: 11.5px; color: var(--muted); }
 .ksyn b { color: var(--ink); font-weight: 800; }
 .ksyn .badge { font-size: 10.5px; padding: 0 6px; }
+
+/* Ricerca prospect */
+.scout-grow { flex: 1 1 260px; }
+.scout-segni { display: flex; flex-wrap: wrap; gap: 4px; max-width: 420px; }
+.scout-punti { display: inline-grid; place-items: center; min-width: 38px; padding: 3px 6px; border-radius: 8px; font-weight: 800; font-variant-numeric: tabular-nums; background: var(--teal-050); color: var(--teal); }
+.scout-punti.alto { background: var(--green-100); color: var(--green); }
+.scout-punti.basso { background: transparent; color: inherit; opacity: .6; }
+.scout-scelte { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.scout-scelte label { display: inline-flex; gap: 6px; align-items: center; font-weight: 500; }
+.scout-evidenza { border-left: 3px solid var(--teal-050); padding: 2px 0 2px 10px; margin: 2px 0 8px; font-size: 12.5px; }
+.scout-barra { position: sticky; bottom: 0; background: var(--card, #fff); border-top: 1px solid rgba(0,0,0,.08); padding: 10px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
