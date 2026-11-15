@@ -48,10 +48,13 @@ export default function Scouting() {
           {puo && <button className="btn" onClick={() => setModal({ t: 'ricerca' })}>Nuova ricerca</button>}
         </div>
       </div>
-      {ultima && <div className={`alert ${ultima.stato === 'ERRORE' ? 'err' : 'info'}`} style={{ marginBottom: 12 }}>
-        {ultima.stato === 'IN_CORSO' ? `Ricerca in corso su OpenStreetMap (${ultima.province.join(', ')}): ${ultima.trovati} strutture trovate finora…`
+      {ultima && <div className={`alert ${ultima.stato === 'ERRORE' ? 'err' : 'info'}`} style={{ marginBottom: 12, display: 'block' }}>
+        {ultima.stato === 'IN_CORSO' ? <>Ricerca in corso su OpenStreetMap. {ultima.avanzamento || 'In avvio'}. Finora {ultima.trovati} strutture, {ultima.nuovi} nuove. Ogni provincia richiede fino a un minuto.{' '}
+          {puo && <button className="btn sm ghost" onClick={async () => { try { await api.post(`/scouting/ricerche/${ultima.id}/annulla`, {}); ricerche.reload(); } catch (e) { toast(e.message, 'err'); } }}>Annulla</button>}</>
           : ultima.stato === 'ERRORE' ? `L'ultima ricerca non è riuscita: ${ultima.errore}`
-            : `Ultima ricerca del ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture trovate, ${ultima.nuovi} nuove.`}
+            : ultima.stato === 'ANNULLATA' ? `Ricerca annullata: ${ultima.trovati} strutture registrate prima dell'annullamento.`
+              : `Ultima ricerca del ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture trovate, ${ultima.nuovi} nuove.`}
+        {(ultima.avvisi || []).length > 0 && ultima.stato !== 'ERRORE' && <div className="small" style={{ marginTop: 6 }}>Province non riuscite, da ripetere: {ultima.avvisi.join(' · ')}</div>}
       </div>}
       {el.data?.coda?.in_corso && <div className="alert info" style={{ marginBottom: 12 }}>Lettura dei siti in corso: {el.data.coda.fatti} di {el.data.coda.totale}. Si legge un sito alla volta, con una pausa tra le pagine.</div>}
       <div className="filters">
@@ -110,7 +113,7 @@ function NuovaRicerca({ linea, cat, onClose, onFatto }) {
   const sw = (l, set, k) => set(l.includes(k) ? l.filter((x) => x !== k) : [...l, k]);
   return (
     <Modal title="Nuova ricerca" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !prov.length || !tipi.length} onClick={vai}>Cerca</button></>}>
-      <p className="small muted">Fonte: OpenStreetMap, gratuita. Riporta nome, indirizzo, telefono, sito e gestore delle strutture. Una provincia richiede da pochi secondi a un minuto.</p>
+      <p className="small muted">Fonte: OpenStreetMap, gratuita. Riporta nome, indirizzo, telefono, sito e gestore delle strutture. Ogni provincia richiede fino a un minuto: con tutta la Toscana e molte tipologie servono alcuni minuti. Se una provincia non risponde le altre proseguono.</p>
       <div className="strong small">Province</div>
       <div className="scout-scelte">{Object.entries(cat.province).map(([k, v]) => <label key={k}><input type="checkbox" checked={prov.includes(k)} onChange={() => sw(prov, setProv, k)} />{v}</label>)}</div>
       <div className="strong small" style={{ marginTop: 12 }}>Tipologie</div>

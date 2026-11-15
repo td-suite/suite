@@ -3,7 +3,7 @@
 import { one, many, q, tx } from '../../db.js';
 import { createOrganization, cercaDoppione } from '../../../../lib/organizations.js';
 import { getSettings } from '../rules.js';
-import { scopriProvincia } from './scoperta.js';
+import { scopriProvincia, PROVINCE } from './scoperta.js';
 import { profilaSito } from './profila.js';
 import { punteggio, CATEGORIE } from './fit.js';
 import { FORNITORI_PREDEFINITI, CATALOGO } from './segnali.js';
@@ -33,14 +33,25 @@ export async function abbina(c) {
 }
 
 // ---------------------------------------------------------------- scoperta
-export async function avviaRicerca({ linea, province, categorie, userId }, { scopri = scopriProvincia } = {}) {
+/** Le ricerche girano nella memoria del server: se il server riparte restano "in corso" per sempre. Dopo 4 minuti senza segni di vita si chiudono. */
+export const chiudiInterrotte = () => q(`UPDATE scout_ricerche SET stato='ERRORE', errore='Ricerca interrotta (il server è ripartito o il servizio non ha più risposto): ripetila, anche una provincia alla volta', avanzamento=NULL, finita_at=now()
+  WHERE stato='IN_CORSO' AND aggiornata_at < now() - interval '4 minutes'`);
+export async function avviaRicerca({ linea, province, categorie, userId }, { scopri = scopriProvincia, pausaMs = process.env.NODE_ENV === 'test' ? 0 : 2000 } = {}) {
   const r = await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by) VALUES ($1,$2,$3,$4) RETURNING *`, [linea, province, categorie, userId || null]);
   const lavoro = (async () => {
-    let trovati = 0; let nuovi = 0;
+    let trovati = 0; let nuovi = 0; const avvisi = [];
+    const segna = (testo) => q('UPDATE scout_ricerche SET avanzamento=$2, trovati=$3, nuovi=$4, avvisi=$5, aggiornata_at=now() WHERE id=$1', [r.id, testo, trovati, nuovi, JSON.stringify(avvisi)]);
     try {
-      for (const p of province) {
-        const { candidati } = await scopri(p, categorie);
-        for (const c of candidati) {
+      for (let i = 0; i < province.length; i += 1) {
+        const p = province[i]; const dove = `${PROVINCE[p] || p} (${i + 1} di ${province.length})`;
+        if ((await one('SELECT stato FROM scout_ricerche WHERE id=$1', [r.id]))?.stato !== 'IN_CORSO') return;   // annullata
+        await segna(`${dove}: interrogo OpenStreetMap`);
+        let candidati;
+        // una provincia che non risponde non ferma le altre: resta negli avvisi e si può ripetere da sola
+        try { ({ candidati } = await scopri(p, categorie)); } catch (e) { avvisi.push(String(e.message).slice(0, 400)); await segna(`${dove}: non riuscita`); continue; }
+        await segna(`${dove}: ${candidati.length} strutture, le registro`);
+        for (let k = 0; k < candidati.length; k += 1) {
+          const c = candidati[k];
           trovati += 1;
           const m = await abbina({ ...c, linea });
           const segnali = c.sito ? {} : { SENZA_SITO: { valore: true, evidenza: 'OpenStreetMap non riporta un sito per questa struttura', url: `https://www.openstreetmap.org/${c.fonte_ref}` } };
@@ -50,12 +61,16 @@ export async function avviaRicerca({ linea, province, categorie, userId }, { sco
             ON CONFLICT (linea, fonte, fonte_ref) DO UPDATE SET ricerca_id=EXCLUDED.ricerca_id, updated_at=now() RETURNING (xmax = 0) AS nuovo`,
           [r.id, linea, c.fonte, c.fonte_ref, c.nome, c.categoria, c.indirizzo, c.cap, c.comune, c.provincia, c.lat, c.lon, c.telefono, c.email, c.sito, c.dominio, c.piva, c.operatore, JSON.stringify(c.tags), JSON.stringify(segnali), pt, m.organization_id, m.account_id, m.come]);
           if (ins.nuovo) nuovi += 1;
+          if (k % 25 === 24) await segna(`${dove}: registrate ${k + 1} di ${candidati.length}`);
         }
-        await q('UPDATE scout_ricerche SET trovati=$2, nuovi=$3 WHERE id=$1', [r.id, trovati, nuovi]);
+        await segna(`${dove}: fatta`);
+        if (i < province.length - 1) await new Promise((ok) => setTimeout(ok, pausaMs));   // cortesia verso il servizio pubblico
       }
-      await q(`UPDATE scout_ricerche SET stato='FATTA', trovati=$2, nuovi=$3, finita_at=now() WHERE id=$1`, [r.id, trovati, nuovi]);
+      const tutteFallite = avvisi.length === province.length;
+      await q(`UPDATE scout_ricerche SET stato=$2, errore=$3, trovati=$4, nuovi=$5, avvisi=$6, avanzamento=NULL, finita_at=now(), aggiornata_at=now() WHERE id=$1 AND stato='IN_CORSO'`,
+        [r.id, tutteFallite ? 'ERRORE' : 'FATTA', tutteFallite ? avvisi[0] : null, trovati, nuovi, JSON.stringify(avvisi)]);
     } catch (e) {
-      await q(`UPDATE scout_ricerche SET stato='ERRORE', errore=$2, trovati=$3, nuovi=$4, finita_at=now() WHERE id=$1`, [r.id, String(e.message).slice(0, 500), trovati, nuovi]);
+      await q(`UPDATE scout_ricerche SET stato='ERRORE', errore=$2, trovati=$3, nuovi=$4, avvisi=$5, avanzamento=NULL, finita_at=now(), aggiornata_at=now() WHERE id=$1`, [r.id, String(e.message).slice(0, 500), trovati, nuovi, JSON.stringify(avvisi)]);
     }
   })();
   return { ricerca: r, lavoro };

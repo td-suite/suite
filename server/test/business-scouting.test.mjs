@@ -86,6 +86,9 @@ describe('Ricerca prospect: funzioni pure', () => {
     assert.equal(S.candidatoDaOsm({ type: 'node', id: 9, tags: { amenity: 'pharmacy' } }, 'FI', ['FARMACIA']), null);
     const r = await S.scopriProvincia('FI', ['RSA'], { fetchFn: async () => ({ ok: true, json: async () => ({ elements: [{ type: 'node', id: 1, lat: 1, lon: 2, tags: { name: 'A', amenity: 'nursing_home' } }, { type: 'node', id: 1, tags: { name: 'A', amenity: 'nursing_home' } }] }) }) });
     assert.equal(r.candidati.length, 1);
+    // il servizio che scade risponde 200 con "remark": è un errore, detto in chiaro con il nome della provincia
+    await assert.rejects(S.scopriProvincia('FI', ['RSA'], { fetchFn: async () => ({ ok: true, json: async () => ({ elements: [], remark: 'runtime error: Query timed out in "query" at line 5 after 51 seconds.' }) }) }), /Firenze.*timed out/s);
+    await assert.rejects(S.scopriProvincia('FI', ['RSA'], { fetchFn: async () => ({ ok: false, status: 429 }) }), /troppe richieste/);
   });
 });
 
@@ -95,7 +98,8 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     sito = http.createServer((req, res) => { const p = req.url.split('?')[0]; if (SITO[p] == null) { res.writeHead(404); return res.end('no'); } res.writeHead(200, { 'Content-Type': p.endsWith('.txt') ? 'text/plain' : 'text/html; charset=utf-8' }); res.end(SITO[p]); });
     await new Promise((ok) => sito.listen(0, '127.0.0.1', ok));
     base = `http://127.0.0.1:${sito.address().port}`;
-    overpass = http.createServer((_req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ elements: [
+    overpass = http.createServer(async (req, res) => { let corpo = ''; for await (const c of req) corpo += c; if (decodeURIComponent(corpo).includes('IT-AR')) { res.writeHead(504); return res.end('occupato'); }
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ elements: [
       { type: 'node', id: 101, lat: 43.77, lon: 11.25, tags: { name: 'Residenza Villa Prova', amenity: 'nursing_home', website: base, 'addr:city': 'Firenze' } },
       { type: 'node', id: 102, lat: 43.7, lon: 11.2, tags: { name: 'RSA Senza Sito', amenity: 'nursing_home', 'addr:city': 'Scandicci' } },
       { type: 'node', id: 103, lat: 43.7, lon: 11.2, tags: { name: 'RSA Comunale', amenity: 'nursing_home', operator: 'ASL Toscana Centro' } }] })); });
@@ -149,6 +153,19 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     must(await D.o.put(`/api/business/scouting/candidati/${senza.id}`, { stato: 'SCARTATO', motivo: 'fuori zona' }), 'scarta');
     assert.equal(must(await D.o.get('/api/business/scouting/candidati?linea=SRV'), 'dopo').righe.length, 0);
     assert.equal((await D.cliente.get('/api/business/scouting/candidati')).s, 403);
+  });
+
+  test('una provincia che non risponde non ferma le altre; una ricerca rimasta appesa si chiude da sola; si può annullare', async () => {
+    must(await D.o.post('/api/business/scouting/ricerche', { linea: 'PP', province: ['AR', 'FI'], categorie: ['POLIAMBULATORIO'] }), 'ricerca PP');
+    const ric = await attendi(async () => { const r = must(await D.o.get('/api/business/scouting/ricerche?linea=PP'), 'ricerche')[0]; return r.stato !== 'IN_CORSO' ? r : null; }, 'ricerca PP');
+    assert.equal(ric.stato, 'FATTA'); assert.equal(ric.trovati, 3, 'Firenze è stata letta'); assert.equal(ric.avvisi.length, 1); assert.match(ric.avvisi[0], /Arezzo.*504/s);
+    await db.query(`INSERT INTO business.scout_ricerche (linea, province, categorie, stato, aggiornata_at) VALUES ('SRV','{PI}','{RSA}','IN_CORSO', now() - interval '10 minutes')`);
+    const el = must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche');
+    assert.equal(el[0].stato, 'ERRORE'); assert.match(el[0].errore, /interrotta/);
+    const viva = (await db.query(`INSERT INTO business.scout_ricerche (linea, province, categorie, stato) VALUES ('SRV','{PI}','{RSA}','IN_CORSO') RETURNING id`)).rows[0].id;
+    assert.equal((await D.o.post('/api/business/scouting/ricerche', { linea: 'SRV', province: ['FI'], categorie: ['RSA'] })).s, 400, 'una alla volta');
+    must(await D.o.post(`/api/business/scouting/ricerche/${viva}/annulla`, {}), 'annulla');
+    assert.equal(must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche')[0].stato, 'ANNULLATA');
   });
 
   test('account esistente: "Completa dal sito" propone i campi mancanti e i referenti, applica solo ciò che si sceglie e mai sopra un dato presente', async () => {

@@ -40,16 +40,25 @@ r.put('/segnali', ah(async (req, res) => {
 }));
 
 // ---------------- Scoperta ----------------
-r.get('/ricerche', ah(async (req, res) => res.json(await many(`SELECT r.*, u.full_name AS creata_da FROM scout_ricerche r LEFT JOIN users u ON u.id=r.created_by WHERE ($1::text IS NULL OR r.linea=$1) ORDER BY r.id DESC LIMIT 30`, [req.query.linea || null]))));
+r.get('/ricerche', ah(async (req, res) => { await S.chiudiInterrotte(); res.json(await many(`SELECT r.*, u.full_name AS creata_da FROM scout_ricerche r LEFT JOIN users u ON u.id=r.created_by WHERE ($1::text IS NULL OR r.linea=$1) ORDER BY r.id DESC LIMIT 30`, [req.query.linea || null])); }));
 r.post('/ricerche', ah(async (req, res) => {
   const b = parse(z.object({ linea: LINEA, province: z.array(z.string()).min(1).max(10), categorie: z.array(z.string()).min(1).max(12) }), req.body);
   richiediLinea(req, b.linea);
   if (b.province.some((p) => !PROVINCE[p])) throw bad('Provincia non prevista');
   if (b.categorie.some((c) => !CATEGORIE[c]?.linee.includes(b.linea))) throw bad('Tipologia non prevista per questa linea');
-  if (await one(`SELECT 1 FROM scout_ricerche WHERE stato='IN_CORSO' AND created_at > now() - interval '15 minutes'`)) throw bad('C\'è già una ricerca in corso: attendi che finisca');
+  await S.chiudiInterrotte();
+  if (await one(`SELECT 1 FROM scout_ricerche WHERE stato='IN_CORSO'`)) throw bad('C\'è già una ricerca in corso: attendi che finisca o annullala');
   const { ricerca } = await S.avviaRicerca({ ...b, userId: req.user.id });
   await audit(req, 'HUB_SCOUT_RICERCA', 'scouting', ricerca.id, { linea: b.linea, province: b.province, categorie: b.categorie });
   res.status(202).json(ricerca);
+}));
+
+r.post('/ricerche/:id/annulla', ah(async (req, res) => {
+  const x = await one('SELECT * FROM scout_ricerche WHERE id=$1', [Number(req.params.id)]);
+  if (!x) throw notFound('Ricerca non trovata');
+  richiediLinea(req, x.linea);
+  await q(`UPDATE scout_ricerche SET stato='ANNULLATA', avanzamento=NULL, finita_at=now() WHERE id=$1 AND stato='IN_CORSO'`, [x.id]);
+  res.json({ ok: true });
 }));
 
 // ---------------- Candidati e coorti ----------------
