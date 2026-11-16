@@ -164,12 +164,32 @@ r.put('/counts/:id', ah(async (req, res) => {
   if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
   const dataOpt = z.preprocess((v) => (v === '' || v == null ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable());
   const d = parse(z.object({ lines: z.array(z.object({ article_id: z.coerce.number().int(), counted_qty: z.coerce.number().int().min(0).max(99999),
-    lot: z.preprocess((v) => (v == null ? null : String(v).trim().slice(0, 120) || null), z.string().nullable()).optional(), expiry: dataOpt.optional() })) }), req.body);
-  for (const l of d.lines) {
-    await q(`UPDATE stock_count_lines SET counted_qty=$3, lot=CASE WHEN $4 THEN $5 ELSE lot END, expiry=CASE WHEN $6 THEN $7::date ELSE expiry END WHERE count_id=$1 AND article_id=$2`,
-      [c.id, l.article_id, l.counted_qty, l.lot !== undefined, l.lot ?? null, l.expiry !== undefined, l.expiry ?? null]);
-  }
-  await q('UPDATE stock_counts SET updated_at=now() WHERE id=$1', [c.id]);
+    lot: z.preprocess((v) => (v == null ? null : String(v).trim().slice(0, 120) || null), z.string().nullable()).optional(), expiry: dataOpt.optional(),
+    // altri lotti dello stesso articolo (migrazione 018): counted_qty è la quantità del primo lotto, il totale lo calcola il server
+    lots: z.array(z.object({ qty: z.coerce.number().int().min(0).max(99999), lot: z.preprocess((v) => (v == null ? null : String(v).trim().slice(0, 120) || null), z.string().nullable()).optional(), expiry: dataOpt.optional() })).max(30).optional() })) }), req.body);
+  await tx(async (cl) => {
+    for (const l of d.lines) {
+      // senza `lots` il comportamento è quello di sempre e gli eventuali lotti già salvati non si toccano
+      if (l.lots === undefined) {
+        const altri = Number((await cl.query('SELECT coalesce(sum(qty),0)::int AS n, count(*)::int AS k FROM stock_count_lots WHERE count_id=$1 AND article_id=$2', [c.id, l.article_id])).rows[0].n);
+        await cl.query(`UPDATE stock_count_lines SET counted_qty=$3::int + $8::int, lot_qty=CASE WHEN EXISTS (SELECT 1 FROM stock_count_lots x WHERE x.count_id=$1 AND x.article_id=$2) THEN $3::int ELSE NULL END,
+            lot=CASE WHEN $4 THEN $5 ELSE lot END, expiry=CASE WHEN $6 THEN $7::date ELSE expiry END WHERE count_id=$1 AND article_id=$2`,
+        [c.id, l.article_id, l.counted_qty, l.lot !== undefined, l.lot ?? null, l.expiry !== undefined, l.expiry ?? null, altri]);
+        continue;
+      }
+      // una replica del tutto vuota (quantità 0, senza lotto né scadenza) non si salva
+      const lots = l.lots.filter((x) => x.qty > 0 || x.lot || x.expiry);
+      const totale = l.counted_qty + lots.reduce((a, x) => a + x.qty, 0);
+      if (totale > 99999) throw bad('Quantità totale dell\'articolo troppo alta');
+      const r0 = await cl.query(`UPDATE stock_count_lines SET counted_qty=$3, lot_qty=$4, lot=CASE WHEN $5 THEN $6 ELSE lot END, expiry=CASE WHEN $7 THEN $8::date ELSE expiry END WHERE count_id=$1 AND article_id=$2`,
+        [c.id, l.article_id, totale, lots.length ? l.counted_qty : null, l.lot !== undefined, l.lot ?? null, l.expiry !== undefined, l.expiry ?? null]);
+      if (!r0.rowCount) continue;                                          // articolo non in elenco: niente lotti orfani
+      await cl.query('DELETE FROM stock_count_lots WHERE count_id=$1 AND article_id=$2', [c.id, l.article_id]);
+      let pos = 1;
+      for (const x of lots) await cl.query('INSERT INTO stock_count_lots (count_id, article_id, position, qty, lot, expiry) VALUES ($1,$2,$3,$4,$5,$6)', [c.id, l.article_id, pos++, x.qty, x.lot ?? null, x.expiry ?? null]);
+    }
+    await cl.query('UPDATE stock_counts SET updated_at=now() WHERE id=$1', [c.id]);
+  });
   res.json({ ok: true });
 }));
 

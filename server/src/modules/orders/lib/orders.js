@@ -101,6 +101,10 @@ export async function stockCountDetail(countId) {
       (SELECT p.expiry FROM packages p WHERE p.struttura_id=c.struttura_id AND p.article_id=l.article_id AND p.status='RICEVUTO' ORDER BY p.expiry NULLS LAST, p.received_at LIMIT 1) AS next_expiry,
       (SELECT p.lot FROM packages p WHERE p.struttura_id=c.struttura_id AND p.article_id=l.article_id AND p.status='RICEVUTO' ORDER BY p.expiry NULLS LAST, p.received_at LIMIT 1) AS next_lot
     FROM stock_count_lines l JOIN stock_counts c ON c.id=l.count_id JOIN articles a ON a.id=l.article_id WHERE l.count_id=$1 ORDER BY a.sort, a.code`, [countId]);
+  // più lotti dello stesso articolo (migrazione 018): la riga è il primo lotto, gli altri stanno in stock_count_lots.
+  // first_qty = quantità del primo lotto; counted_qty resta il totale dell'articolo.
+  const lotti = await many('SELECT id, article_id, qty, lot, expiry FROM stock_count_lots WHERE count_id=$1 ORDER BY article_id, position, id', [countId]);
+  for (const l of c.lines) { l.lots = lotti.filter((x) => x.article_id === l.article_id); l.first_qty = l.lots.length && l.lot_qty != null ? l.lot_qty : l.counted_qty; }
   c.extras = await many(`SELECT e.*, a.name AS article_name, a.pack_label FROM stock_count_extras e LEFT JOIN articles a ON a.id=e.article_id WHERE e.count_id=$1 ORDER BY e.id`, [countId]);
   return c;
 }

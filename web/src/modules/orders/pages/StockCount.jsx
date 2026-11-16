@@ -21,17 +21,24 @@ export default function StockCount() {
   const articles = useApi('/articles');
   const addExtra = async () => { setErr(null); try { await api.post(`/stock/counts/${c.id}/extras`, { article_id: extra.article_id ? Number(extra.article_id) : null, name: extra.name || null, qty: Number(extra.qty) || 0, note: extra.note || null, lot: extra.lot || null, expiry: extra.expiry || null }); toast('Riga aggiunta'); setExtra(null); reload(); } catch (e) { setErr(e); } };
   const delExtra = async (e) => { try { await api.del(`/stock/counts/${c.id}/extras/${e.id}`); reload(); } catch (e2) { setErr(e2); } };
-  useEffect(() => { if (c) { setVals(Object.fromEntries(c.lines.map((l) => [l.article_id, l.counted_qty]))); setLotti(Object.fromEntries(c.lines.map((l) => [l.article_id, { lot: l.lot || '', expiry: l.expiry ? String(l.expiry).slice(0, 10) : '' }]))); } }, [c]);
+  useEffect(() => { if (c) { setVals(Object.fromEntries(c.lines.map((l) => [l.article_id, l.first_qty ?? l.counted_qty]))); setAltri(Object.fromEntries(c.lines.filter((l) => (l.lots || []).length).map((l) => [l.article_id, l.lots.map((x) => ({ qty: String(x.qty), lot: x.lot || '', expiry: x.expiry ? String(x.expiry).slice(0, 10) : '' }))]))); setLotti(Object.fromEntries(c.lines.map((l) => [l.article_id, { lot: l.lot || '', expiry: l.expiry ? String(l.expiry).slice(0, 10) : '' }]))); } }, [c]);
   // lotto e scadenza per articolo (richiesta del CEO, 04/11/2026): testo libero e data; suggerimento dalla confezione che scade prima
   const [lotti, setLotti] = useState({});
+  // più lotti dello stesso articolo (CEO, 16/11/2026): la riga si replica con le stesse caratteristiche; ogni replica ha quantità, lotto e
+  // scadenza propri. La prima riga è il primo lotto, il totale dell'articolo è la somma di tutte.
+  const [altri, setAltri] = useState({});
+  const addLotto = (id) => setAltri((x) => ({ ...x, [id]: [...(x[id] || []), { qty: '', lot: '', expiry: '' }] }));
+  const setAltro = (id, i, patch) => setAltri((x) => ({ ...x, [id]: (x[id] || []).map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  const delAltro = (id, i) => setAltri((x) => ({ ...x, [id]: (x[id] || []).filter((_, j) => j !== i) }));
+  const totale = (l) => Number(vals[l.article_id] ?? l.first_qty ?? l.counted_qty) + (altri[l.article_id] || []).reduce((a, r) => a + (Number(r.qty) || 0), 0);
   const setLotto = (id, patch) => setLotti((x) => ({ ...x, [id]: { ...(x[id] || { lot: '', expiry: '' }), ...patch } }));
   if (!c) return <div className="page"><Loading /></div>;
   const locked = c.status === 'CONFERMATO';
-  const lines = c.lines.filter((l) => !onlyMoved || l.last_order_qty || l.system_qty || Number(vals[l.article_id] || 0));
-  const diffs = c.lines.filter((l) => Number(vals[l.article_id] ?? l.counted_qty) !== l.system_qty).length;
+  const lines = c.lines.filter((l) => !onlyMoved || l.last_order_qty || l.system_qty || totale(l));
+  const diffs = c.lines.filter((l) => totale(l) !== l.system_qty).length;
   const save = async () => {
     setErr(null);
-    try { await api.put(`/stock/counts/${c.id}`, { lines: Object.entries(vals).map(([a, q]) => ({ article_id: Number(a), counted_qty: Number(q) || 0, lot: lotti[a]?.lot ?? '', expiry: lotti[a]?.expiry || '' })) }); toast('Giacenza salvata'); reload(); return true; } catch (e) { setErr(e); return false; }
+    try { await api.put(`/stock/counts/${c.id}`, { lines: Object.entries(vals).map(([a, q]) => ({ article_id: Number(a), counted_qty: Number(q) || 0, lot: lotti[a]?.lot ?? '', expiry: lotti[a]?.expiry || '', lots: (altri[a] || []).map((r) => ({ qty: Number(r.qty) || 0, lot: r.lot || '', expiry: r.expiry || '' })) })) }); toast('Giacenza salvata'); reload(); return true; } catch (e) { setErr(e); return false; }
   };
   const confirm = async () => {
     if (!(await save())) return;
@@ -51,21 +58,34 @@ export default function StockCount() {
         </div>
       </div>
       <ErrorBox error={err} />
-      {!locked && <div className="alert info" style={{ marginBottom: 14 }}>La terza colonna è precompilata con la giacenza calcolata dagli scarichi: correggi solo le quantità diverse da ciò che vedi in magazzino. Alla conferma le differenze vengono rettificate a sistema e {c.kind === 'SEDE' ? 'il sistema genera l\'ordine potenziale del mese con la formula (produzione mensile − giacenza) × 1,5, arrotondata per eccesso' : 'si apre la bozza d\'ordine che l\'Area Operations compila'}.</div>}
+      {!locked && <div className="alert info" style={{ marginBottom: 14 }}>La terza colonna è precompilata con la giacenza calcolata dagli scarichi: correggi solo le quantità diverse da ciò che vedi in magazzino. Se di un articolo hai più lotti con scadenze diverse, usa "+ lotto": la riga si replica e in ciascuna indichi quantità, lotto e scadenza; il totale dell'articolo è la somma. Alla conferma le differenze vengono rettificate a sistema e {c.kind === 'SEDE' ? 'il sistema genera l\'ordine potenziale del mese con la formula (produzione mensile − giacenza) × 1,5, arrotondata per eccesso' : 'si apre la bozza d\'ordine che l\'Area Operations compila'}.</div>}
       <Card flush>
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Articolo</th><th className="num">Ultimo ordine</th><th className="num">Giacenza teorica</th><th className="num">Giacenza reale</th><th>Lotto</th><th>Scadenza</th><th className="num">Differenza</th></tr></thead>
-          <tbody>{lines.map((l) => { const v = Number(vals[l.article_id] ?? l.counted_qty); const d = v - l.system_qty; return (
-            <tr key={l.article_id} className={d !== 0 ? 'warnrow' : ''}>
+          <thead><tr><th>Articolo</th><th className="num">Ultimo ordine</th><th className="num">Giacenza teorica</th><th className="num">Giacenza reale</th><th>Lotto</th><th>Scadenza</th><th className="num">Differenza</th><th /></tr></thead>
+          <tbody>{lines.map((l) => { const v = totale(l); const d = v - l.system_qty; const rep = altri[l.article_id] || []; return (
+            <React.Fragment key={l.article_id}>
+            <tr className={d !== 0 ? 'warnrow' : ''}>
               <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt icon={iconFor(l.category_code)} color={l.color} size={30} /><div><div className="strong">{l.article_name}</div><div className="small muted">{l.pack_label}</div></div></div></td>
               <td className="num muted">{l.last_order_qty}</td>
               <td className="num muted">{l.system_qty}</td>
-              <td className="num">{locked ? <span className="strong">{l.counted_qty}</span> : <input className="qin" inputMode="numeric" value={vals[l.article_id] ?? ''} onChange={(e) => setVals({ ...vals, [l.article_id]: e.target.value.replace(/\D/g, '') })} />}</td>
+              <td className="num">{locked ? <span className="strong">{l.first_qty ?? l.counted_qty}</span> : <input className="qin" inputMode="numeric" value={vals[l.article_id] ?? ''} onChange={(e) => setVals({ ...vals, [l.article_id]: e.target.value.replace(/\D/g, '') })} />}</td>
               <td>{locked ? <span>{l.lot || <span className="muted">–</span>}</span> : <input className="lin" value={lotti[l.article_id]?.lot ?? ''} placeholder={l.next_lot || 'lotto'} title={l.next_lot ? `In magazzino: lotto ${l.next_lot}` : undefined} onChange={(e) => setLotto(l.article_id, { lot: e.target.value })} />}</td>
               <td>{locked ? <span>{l.expiry ? itDate(l.expiry) : <span className="muted">–</span>}</span> : <input className="lin" type="date" value={lotti[l.article_id]?.expiry ?? ''} title={l.next_expiry ? `Prima scadenza in magazzino: ${itDate(l.next_expiry)}` : undefined} onChange={(e) => setLotto(l.article_id, { expiry: e.target.value })} />}
                 {!locked && !lotti[l.article_id]?.expiry && l.next_expiry && <div className="tiny muted">in magazzino: {itDate(l.next_expiry)}</div>}</td>
-              <td className="num">{d === 0 ? <span className="muted">–</span> : <Badge tone={d < 0 ? 'red' : 'mauve'}>{d > 0 ? '+' : ''}{d}</Badge>}</td>
-            </tr>); })}</tbody>
+              <td className="num">{rep.length > 0 && <div className="tiny muted">totale {v}</div>}{d === 0 ? <span className="muted">–</span> : <Badge tone={d < 0 ? 'red' : 'mauve'}>{d > 0 ? '+' : ''}{d}</Badge>}</td>
+              <td className="num">{!locked && <button className="btn sm ghost" style={{ whiteSpace: 'nowrap' }} title="Stesso articolo, un altro lotto con la sua scadenza" onClick={() => addLotto(l.article_id)}><Icon name="plus" size={13} />lotto</button>}</td>
+            </tr>
+            {rep.map((r, i) => (
+              <tr key={`${l.article_id}-${i}`} className={d !== 0 ? 'warnrow' : ''}>
+                <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap', paddingLeft: 38 }}><div><div className="muted">{l.article_name}</div><div className="small muted">{l.pack_label} · lotto {i + 2}</div></div></div></td>
+                <td /><td />
+                <td className="num">{locked ? <span className="strong">{r.qty}</span> : <input className="qin" inputMode="numeric" aria-label={`Quantità del lotto ${i + 2}`} value={r.qty} onChange={(e) => setAltro(l.article_id, i, { qty: e.target.value.replace(/\D/g, '') })} />}</td>
+                <td>{locked ? <span>{r.lot || <span className="muted">–</span>}</span> : <input className="lin" value={r.lot} placeholder="lotto" onChange={(e) => setAltro(l.article_id, i, { lot: e.target.value })} />}</td>
+                <td>{locked ? <span>{r.expiry ? itDate(r.expiry) : <span className="muted">–</span>}</span> : <input className="lin" type="date" value={r.expiry} onChange={(e) => setAltro(l.article_id, i, { expiry: e.target.value })} />}</td>
+                <td />
+                <td className="num">{!locked && <button className="iconbtn" aria-label={`Togli il lotto ${i + 2}`} onClick={() => delAltro(l.article_id, i)}><Icon name="trash" size={15} /></button>}</td>
+              </tr>))}
+            </React.Fragment>); })}</tbody>
         </table></div>
       </Card>
       <Card title="Articoli non in elenco" className="mt" actions={!locked && <button className="btn sm ghost" onClick={() => setExtra({ article_id: '', name: '', qty: 1, note: '' })}><Icon name="plus" size={14} />Aggiungi</button>}>
