@@ -9,6 +9,7 @@ import { computePlan, m2t as m2tE } from '../lib/engine.js';
 import { impegniSettimana, impegniDelGiorno, personeDiSede } from '../lib/impegni.js';
 import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
 import { personKey, stessaPersona, indicePersone, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE, agganciatore, assicuraSchedeRoom, LINK_D52 } from '../lib/personale.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const gest = (req, _res, next) => (isGestione(req.user) ? next() : next(forbidden('Riservato alla gestione del personale sanitario')));

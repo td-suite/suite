@@ -6,6 +6,7 @@ import { ah, bad, notFound, audit, parse, forbidden, todayRome } from '../lib/ut
 import { requireWrite, canEditSite } from '../lib/access.js';
 import { config } from '../config.js';
 import { bookToPptx } from '../lib/exports.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });

@@ -6,6 +6,7 @@ import { q, one, many } from '../db.js';
 import { ah, parse, notFound, bad } from '../../../lib/util.js';
 import { config } from '../config.js';
 import { D_COLS, D_FROM, C_COLS, idOf, cartellaIdOf, loadDocumento, loadCartella, catena, isPreviewable } from '../lib/core.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const uid = (req) => req.user.id;

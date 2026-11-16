@@ -11,6 +11,7 @@ import { requestSchema, prepare, upsertBeneficiary, editable, createRequest, dat
 import { onRequestStatus } from '../lib/scheduleData.js';
 import { loadRequest, addEvent, submit, resend, voidSignatures, aggregationCheck, generateDocument, signers, REQUEST_COLS, REQUEST_FROM } from '../lib/workflow.js';
 import { formData, renderDocx, docxToPdf, pdfAvailable } from '../lib/docgen.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 10 } });

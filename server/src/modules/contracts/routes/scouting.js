@@ -10,6 +10,7 @@ import { extractText, quickFacts, summarizeCv } from '../lib/cv.js';
 import { personSchema } from './resources.js';
 import { createPerson, updatePerson, reindexPerson } from '../lib/people.js';
 import { generateDocument } from './documents.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });

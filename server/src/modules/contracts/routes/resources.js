@@ -17,6 +17,7 @@ import { effettiCessazione } from '../../../lib/cessazione.js';
 import { removeFromIndex } from '../../../lib/search.js';
 import { tirocinioSchema, upsertTirocinio } from './sviluppo.js';
 import { PERSON_KINDS, hrKind, createPerson, updatePerson, deletePerson, reindexPerson, syncDerived, siteLabel } from '../lib/people.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024 } });

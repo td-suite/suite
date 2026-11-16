@@ -7,6 +7,7 @@ import { requireWrite, requireRole, canWrite } from '../lib/access.js';
 import { buildPayrollDocx, buildPayrollPdf } from '../lib/payrollDoc.js';
 import { config } from '../config.js';
 import { getSettings, decompose, decomposeDirigente, minimumFor, costCoefficient, companyCost, netEstimate } from '../lib/payroll.js';
+import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
