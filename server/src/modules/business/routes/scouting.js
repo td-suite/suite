@@ -14,9 +14,12 @@ import { RUOLI } from '../lib/scouting/persone.js';
 import { normUrl, dominioDi } from '../lib/scouting/web.js';
 import { verificaPiva } from '../lib/scouting/vies.js';
 import * as S from '../lib/scouting/store.js';
+import multer from 'multer';
+import { FONTI, convertitore, scaricaFonte, decodifica, leggiCsv, candidatiDaElenco } from '../lib/scouting/fonti.js';
 import { loadAccount } from './hub.js';
 
 const r = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 40 * 1024 * 1024, files: 1 } });
 const LINEA = z.enum(['SRV', 'PP', 'MDL']);
 const richiediLinea = (req, linea) => { if (!canEditKind(req.user, linea)) throw forbidden(`Non gestisci la linea ${LINEE[linea]?.label || linea}`); };
 const candidato = async (id) => { const c = await one('SELECT * FROM scout_candidati WHERE id=$1', [Number(id)]); if (!c) throw notFound('Candidato non trovato'); return c; };
@@ -59,6 +62,53 @@ r.post('/ricerche/:id/annulla', ah(async (req, res) => {
   richiediLinea(req, x.linea);
   await q(`UPDATE scout_ricerche SET stato='ANNULLATA', avanzamento=NULL, finita_at=now() WHERE id=$1 AND stato='IN_CORSO'`, [x.id]);
   res.json({ ok: true });
+}));
+
+// ---------------- Fonti ufficiali (Ministero della Salute) ed elenchi da file ----------------
+r.get('/fonti', ah(async (req, res) => {
+  const linea = LINEA.safeParse(req.query.linea).success ? req.query.linea : 'SRV';
+  const ultime = await many(`SELECT DISTINCT ON (avvisi_chiave) * FROM (SELECT r.*, split_part(r.fonte, ':', 2) AS avvisi_chiave FROM scout_ricerche r WHERE r.linea=$1 AND r.fonte LIKE 'MINISTERO:%' AND r.stato='FATTA') x ORDER BY avvisi_chiave, id DESC`, [linea]);
+  res.json(Object.entries(FONTI).filter(([, f]) => f.linee.includes(linea)).map(([k, f]) => ({ chiave: k, ...f, ultimo: ultime.find((u) => u.avvisi_chiave === k) || null })));
+}));
+// scarica dal sito del Ministero (se il server lo raggiunge) oppure riceve il file scaricato a mano
+r.post('/fonti/:chiave', upload.single('file'), ah(async (req, res) => {
+  const k = String(req.params.chiave).toUpperCase(); const f = FONTI[k];
+  if (!f) throw notFound('Fonte non prevista');
+  const linea = LINEA.parse(req.body.linea);
+  richiediLinea(req, linea);
+  if (!f.linee.includes(linea)) throw bad('Questa fonte non riguarda la linea scelta');
+  const province = String(req.body.province || '').split(',').filter((p) => PROVINCE[p]);
+  let testo; let file;
+  if (req.file) { testo = decodifica(req.file.buffer); file = req.file.originalname; } else {
+    try { ({ testo, file } = await scaricaFonte(k)); } catch (e) { throw Object.assign(bad(e.message), { code: 'FONTE_NON_RAGGIUNGIBILE' }); }
+  }
+  let candidati;
+  try { candidati = convertitore[k](testo, { province: province.length ? province : null }); } catch (e) { throw bad(e.message); }
+  if (!candidati.length) throw bad('Nel file non ci sono strutture della Toscana per le province scelte');
+  const ric = await S.registraElenco({ linea, fonte: `MINISTERO:${k}`, etichetta: `${f.ente}, ${f.etichetta}`, candidati, userId: req.user.id });
+  await audit(req, 'HUB_SCOUT_FONTE', 'scouting', ric.id, { fonte: k, file, trovati: ric.trovati, nuovi: ric.nuovi, da_file: Boolean(req.file) });
+  res.status(201).json({ ...ric, file });
+}));
+r.post('/elenco', upload.single('file'), ah(async (req, res) => {
+  const linea = LINEA.parse(req.body.linea);
+  richiediLinea(req, linea);
+  if (!req.file) throw bad('Scegli il file');
+  const cat = CATEGORIE[req.body.categoria]?.linee.includes(linea) ? req.body.categoria : (linea === 'MDL' ? 'AZIENDA' : 'ALTRO');
+  let righe;
+  if (/\.xlsx$/i.test(req.file.originalname)) {
+    const ExcelJS = (await import('exceljs')).default; const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(req.file.buffer); } catch { throw bad('Il file Excel non si apre'); }
+    const ws = wb.worksheets[0]; righe = [];
+    ws.eachRow((row) => righe.push(row.values.slice(1).map((v) => (v == null ? '' : typeof v === 'object' ? String(v.text ?? v.result ?? v.hyperlink ?? '') : String(v)))));
+  } else if (/\.(csv|txt)$/i.test(req.file.originalname)) righe = leggiCsv(decodifica(req.file.buffer));
+  else throw bad('Formati accettati: CSV ed Excel (.xlsx)');
+  let candidati;
+  try { candidati = candidatiDaElenco(righe, { categoria: cat }); } catch (e) { throw bad(e.message); }
+  if (!candidati.length) throw bad('Nessuna riga con un nome');
+  if (candidati.length > 5000) throw bad('Al massimo 5.000 righe per file');
+  const ric = await S.registraElenco({ linea, fonte: 'ELENCO', etichetta: `File ${req.file.originalname}`.slice(0, 80), candidati, userId: req.user.id });
+  await audit(req, 'HUB_SCOUT_ELENCO', 'scouting', ric.id, { file: req.file.originalname, trovati: ric.trovati, nuovi: ric.nuovi });
+  res.status(201).json(ric);
 }));
 
 // ---------------- Candidati e coorti ----------------

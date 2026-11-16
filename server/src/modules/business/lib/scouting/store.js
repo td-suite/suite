@@ -82,6 +82,37 @@ export async function avviaRicerca({ linea, province, categorie, userId }, { sco
   return { ricerca: r, lavoro };
 }
 
+/**
+ * Registra candidati arrivati da una fonte ufficiale o da un file: niente doppioni con ciò che c'è già (stessa fonte e riferimento, oppure
+ * stesso nome e comune da un'altra fonte, che viene completato con i dati mancanti). Ritorna la riga della ricerca.
+ */
+export async function registraElenco({ linea, fonte, etichetta, candidati, userId }) {
+  const r = await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by, fonte, avanzamento) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [linea, [...new Set(candidati.map((c) => c.provincia).filter(Boolean))], [...new Set(candidati.map((c) => c.categoria))], userId || null, fonte, `${etichetta}: registro ${candidati.length} strutture`]);
+  let nuovi = 0; let completati = 0;
+  for (let k = 0; k < candidati.length; k += 1) {
+    const c = candidati[k];
+    const gemello = await one(`SELECT id FROM scout_candidati WHERE linea=$1 AND NOT (fonte=$2 AND fonte_ref=$3) AND fonte <> 'ACCOUNT' AND lower(nome)=lower($4) AND lower(coalesce(comune,''))=lower(coalesce($5::text,'')) LIMIT 1`, [linea, c.fonte, c.fonte_ref, c.nome, c.comune]);
+    if (gemello) {
+      await q(`UPDATE scout_candidati SET piva=coalesce(piva,$2), indirizzo=coalesce(indirizzo,$3), cap=coalesce(cap,$4), telefono=coalesce(telefono,$5), email=coalesce(email,$6), sito=coalesce(sito,$7), dominio=coalesce(dominio,$8),
+        segnali = CASE WHEN $7::text IS NOT NULL THEN (segnali - 'SENZA_SITO') ELSE segnali END || $9::jsonb, updated_at=now() WHERE id=$1`, [gemello.id, c.piva, c.indirizzo, c.cap, c.telefono, c.email, c.sito, c.dominio, JSON.stringify(c.segnali || {})]);
+      completati += 1; continue;
+    }
+    const m = await abbina({ ...c, linea });
+    const segnali = { ...(c.segnali || {}), ...(c.sito ? {} : { SENZA_SITO: { valore: true, evidenza: `${etichetta}: l'elenco non riporta il sito`, url: null } }) };
+    const pt = punteggio({ ...c, segnali }, linea).punteggio;
+    const ins = await one(`INSERT INTO scout_candidati (ricerca_id, linea, fonte, fonte_ref, nome, categoria, indirizzo, cap, comune, provincia, lat, lon, telefono, email, sito, dominio, piva, operatore, tags, segnali, punteggio, organization_id, account_id, abbinato_come)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+      ON CONFLICT (linea, fonte, fonte_ref) DO UPDATE SET ricerca_id=EXCLUDED.ricerca_id, nome=EXCLUDED.nome, indirizzo=EXCLUDED.indirizzo, cap=EXCLUDED.cap, comune=EXCLUDED.comune, piva=coalesce(scout_candidati.piva, EXCLUDED.piva),
+        tags=EXCLUDED.tags, updated_at=now() RETURNING (xmax = 0) AS nuovo`,
+    [r.id, linea, c.fonte, c.fonte_ref, c.nome, c.categoria, c.indirizzo, c.cap, c.comune, c.provincia, c.lat, c.lon, c.telefono, c.email, c.sito, c.dominio, c.piva, c.operatore, JSON.stringify(c.tags || {}), JSON.stringify(segnali), pt, m.organization_id, m.account_id, m.come]);
+    if (ins.nuovo) nuovi += 1;
+    if (k % 100 === 99) await q('UPDATE scout_ricerche SET trovati=$2, nuovi=$3, avanzamento=$4, aggiornata_at=now() WHERE id=$1', [r.id, k + 1, nuovi, `${etichetta}: registrate ${k + 1} di ${candidati.length}`]);
+  }
+  return one(`UPDATE scout_ricerche SET stato='FATTA', trovati=$2, nuovi=$3, avanzamento=NULL, avvisi=$4, finita_at=now(), aggiornata_at=now() WHERE id=$1 RETURNING *`,
+    [r.id, candidati.length, nuovi, JSON.stringify(completati ? [`${completati} strutture erano già in elenco da un'altra fonte: sono state completate, non duplicate`] : [])]);
+}
+
 // ---------------------------------------------------------------- profilo (uno alla volta, in coda)
 export async function profilaCandidato(id, { profila = profilaSito } = {}) {
   const c = await one('SELECT * FROM scout_candidati WHERE id=$1', [id]);
@@ -153,7 +184,7 @@ export async function promuovi(id, { fase = 1, owner_user_id = null, persone = [
   const nome = an.ragione_sociale?.valore && an.ragione_sociale.valore.length >= 4 ? an.ragione_sociale.valore : c.nome;
   const out = await createOrganization({ kind: c.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: nome, vat_number: c.piva || undefined, email: c.email || undefined, pec: c.pec || undefined, phone: c.telefono || undefined,
     address: c.indirizzo || undefined, zip: c.cap || undefined, city: c.comune || undefined, province: c.provincia || undefined, website: c.sito || undefined,
-    notes: `Creata dalla Ricerca prospect del Business Hub (${c.fonte === 'OSM' ? `OpenStreetMap ${c.fonte_ref}` : 'inserimento manuale'}${c.sito ? `, sito ${c.sito}` : ''})${nome !== c.nome ? `. Insegna: ${c.nome}` : ''}` },
+    notes: `Creata dalla Ricerca prospect del Business Hub (${c.fonte === 'OSM' ? `OpenStreetMap ${c.fonte_ref}` : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'} ${c.fonte_ref}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : 'inserimento manuale'}${c.sito ? `, sito ${c.sito}` : ''})${nome !== c.nome ? `. Insegna: ${c.nome}` : ''}` },
   { origine: 'Business Hub, Ricerca prospect', req, schedaBusiness: false });
   const orgId = out.org.id;
   const s = c.segnali || {};

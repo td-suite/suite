@@ -33,6 +33,26 @@ una traduzione del suo codice avrebbe esteso quella licenza alla Suite. Nessun f
 8. **Account esistenti**: nella scheda, tab Referenti, "Completa dal sito" propone i dati di anagrafica mancanti e le persone chiave.
    Si applica solo ciò che si spunta; un dato già presente in anagrafica non viene mai sostituito.
 
+## Fonti (v0.75.0)
+
+Dopo la prima prova in produzione (15/11/2026) i servizi pubblici di OpenStreetMap si sono rivelati inaffidabili nelle ore di carico:
+nove province su dieci senza risposta. Le fonti ora sono tre, da "Elenchi ufficiali e file" nella pagina:
+
+1. **Ministero della Salute, open data** (`lib/scouting/fonti.js`, www.dati.salute.gov.it, licenza IODL 2.0), tracciati verificati sui
+   file del 15/11/2026: **Farmacie** (ogni giorno, partita IVA, indirizzo, coordinate; circa 1.270 attive in Toscana), **Parafarmacie**
+   (circa 320), **Ospedali e case di cura** con i posti letto (dati 2023: 59 strutture in Toscana, 20 case di cura private
+   accreditate; i segnali Posti letto e Accreditata nascono già dal file). Si caricano con "Carica dal Ministero"; se il sito non
+   accetta la richiesta dal server (verso indirizzi esteri risponde 403) si scarica il CSV e lo si carica con "Carica il file".
+   Gli elenchi non riportano sito e telefono: il sito si indica nella scheda e parte la lettura.
+2. **Un proprio elenco** in CSV o Excel: colonne riconosciute dal nome (nome o denominazione o ragione sociale, sito, partita IVA,
+   indirizzo, CAP, comune, provincia, telefono, email, gruppo). Al massimo 5.000 righe.
+3. **OpenStreetMap**, come integrazione: cinque servizi provati in ordine, una richiesta per tipologia, stop se il servizio è giù.
+
+Nessun doppione tra fonti: una struttura già in elenco con lo stesso nome e comune viene completata, non ripetuta.
+**Non esiste** un elenco ufficiale aggiornato e scaricabile di RSA, poliambulatori e aziende: il portale del Ministero non lo
+pubblica e quello della Regione Toscana (dati.toscana.it, "Strutture sanitarie") è fermo al 2015. La Regione pubblica in PDF
+l'elenco delle strutture private accreditate (gennaio 2026) e ha un portale delle RSA: da analizzare.
+
 ## Cosa NON fa, per scelta
 
 - Non invia email. Il primo contatto parte dalla scheda dell'account, come sempre.

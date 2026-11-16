@@ -177,6 +177,29 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     assert.equal(must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche')[0].stato, 'ANNULLATA');
   });
 
+  test('elenchi nella Suite: file del Ministero e file proprio caricati, senza doppioni al secondo caricamento e con le strutture già note completate', async () => {
+    const carica = async (url, campi, nome, testo) => { const fd = new FormData(); for (const [k, v] of Object.entries(campi)) fd.append(k, v); if (testo != null) fd.append('file', new Blob([testo]), nome);
+      const r = await fetch(`${S.base}${url}`, { method: 'POST', headers: { cookie: D.o.cookie, 'X-Requested-With': 'td-suite' }, body: fd }); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { /* testo */ } return { s: r.status, j, t }; };
+    const FARM = 'cod_farmacia;cod_farmacia_asl;indirizzo;descrizione_farmacia;p_iva;cap;cod_comune;comune;frazione;cod_provincia;sigla_provincia;provincia;cod_regione;regione;data_inizio_validita;data_fine_validita;descrizione_tipologia;codice_tipologia;latitudine;longitudine;localizzazione\n'
+      + '7443;00000;Via Roma, 1;FARMACIA COLLAUDO SNC;01234567897;59100;100005;PRATO;-;100;PO;PRATO;090;TOSCANA;01/01/2026;-;Ordinaria;1;43,88;11,09;1\n9;0;Via Due, 2;FARMACIA SECONDA;;50100;048017;FIRENZE;-;048;FI;FIRENZE;090;TOSCANA;01/01/2020;-;Ordinaria;1;-;-;1\n';
+    assert.ok(must(await D.o.get('/api/business/scouting/fonti?linea=PP'), 'fonti').some((f) => f.chiave === 'FARMACIE' && f.ultimo === null));
+    const a = await carica('/api/business/scouting/fonti/FARMACIE', { linea: 'PP' }, 'FRM_FARMA.csv', FARM);
+    assert.equal(a.s, 201, a.t); assert.equal(a.j.trovati, 2); assert.equal(a.j.nuovi, 2);
+    const b = await carica('/api/business/scouting/fonti/FARMACIE', { linea: 'PP' }, 'FRM_FARMA.csv', FARM);
+    assert.equal(b.j.nuovi, 0, 'secondo caricamento: nessun doppione');
+    assert.equal((await carica('/api/business/scouting/fonti/OSPEDALI', { linea: 'PP' }, 'x.csv', FARM)).s, 400, 'gli ospedali non sono della linea Punti Prelievo');
+    assert.equal((await carica('/api/business/scouting/fonti/FARMACIE', { linea: 'PP' }, 'x.csv', 'a;b\n1;2\n')).s, 400);
+    // il server di prova non raggiunge il Ministero: errore chiaro, non un blocco
+    const giu = await carica('/api/business/scouting/fonti/PARAFARMACIE', { linea: 'PP' });
+    assert.equal(giu.s, 400); assert.match(giu.j.error, /Ministero.*Carica il file/s);
+    // file proprio: la farmacia già in elenco viene completata con il sito, non duplicata
+    const e = await carica('/api/business/scouting/elenco', { linea: 'PP', categoria: 'FARMACIA' }, 'mie.csv', 'Nome;Sito;Comune\nFarmacia Collaudo SNC;www.farmaciacollaudo.test;Prato\nCentro Nuovo;;Pisa\n');
+    assert.equal(e.s, 201, e.t); assert.equal(e.j.trovati, 2); assert.equal(e.j.nuovi, 1); assert.match(e.j.avvisi[0], /completate, non duplicate/);
+    const el = must(await D.o.get('/api/business/scouting/candidati?linea=PP&q=Collaudo'), 'elenco').righe;
+    assert.equal(el.length, 1); assert.equal(el[0].dominio, 'farmaciacollaudo.test'); assert.equal(el[0].piva, '01234567897'); assert.equal(el[0].fonte, 'MINISTERO'); assert.ok(!el[0].segnali.SENZA_SITO);
+    assert.ok(must(await D.o.get('/api/business/scouting/fonti?linea=PP'), 'fonti').find((f) => f.chiave === 'FARMACIE').ultimo);
+  });
+
   test('account esistente: "Completa dal sito" propone i campi mancanti e i referenti, applica solo ciò che si sceglie e mai sopra un dato presente', async () => {
     const org = (await db.query(`INSERT INTO organizations (kind, name, phone) VALUES ('CLIENTE','Casa di Cura Collaudo','055 999') RETURNING id`)).rows[0].id;
     const aid = must(await D.o.post('/api/business/hub/accounts', { linea: 'SRV', organization_id: org }), 'account').id;
@@ -192,5 +215,49 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     assert.equal(a.persone.find((x) => x.nome === 'Maria Collaudi').gia_referente != null, true);
     // il profilo di un account non compare tra i candidati
     assert.ok(!must(await D.o.get('/api/business/scouting/candidati?linea=SRV&stato=NUOVO,PROFILATO,PROMOSSO,SCARTATO'), 'elenco').righe.some((x) => x.fonte === 'ACCOUNT'));
+  });
+});
+
+describe('Ricerca prospect: elenchi ufficiali del Ministero e file', () => {
+  const FARM = 'cod_farmacia;cod_farmacia_asl;indirizzo;descrizione_farmacia;p_iva;cap;cod_comune;comune;frazione;cod_provincia;sigla_provincia;provincia;cod_regione;regione;data_inizio_validita;data_fine_validita;descrizione_tipologia;codice_tipologia;latitudine;longitudine;localizzazione\n'
+    + '7443;00000;Via DELLA REPUBBLICA, 67;"FARMACIA PROVA DEL DOTT. COLLAUDI & C. SNC";01234567897;54011;045001;AULLA;ALBIANO MAGRA;045;MS;MASSA CARRARA;090;TOSCANA;01/01/2026;-;Ordinaria;1;44,2028;9,9918;1\n'
+    + '0;00000;Via Vecchia, 1;FARMACIA CHIUSA;01234567897;51019;047016;PONTE BUGGIANESE;-;047;PT;PISTOIA;090;TOSCANA;01/07/2017;31/07/2017;Ordinaria;1;-;-;2\n'
+    + '1;00000;Via Altrove, 10;FARMACIA PIEMONTESE;03603780010;10123;001272;TORINO;-;001;TO;TORINO;010;PIEMONTE;01/01/2020;-;Ordinaria;1;-;-;1\n';
+  const OSP = 'Anno;Codice Regione;Descrizione Regione;Codice Azienda;Tipo Azienda;Codice struttura;Denominazione struttura;Indirizzo;Codice Comune;Comune;Sigla provincia;Codice tipo struttura;Descrizione tipo struttura;Tipo di Disciplina;Posti letto degenza ordinaria;Posti letto degenza a pagamento;Posti letto Day Hospital;Posti letto Day Surgery;Totale posti letto\n'
+    + '2023;090;TOSCANA;201;1;090207;CASA DI CURA PROVA                 ;V. COLLAUDO N. 29              ;047011;MONTECATINI-TERME   ;PT;5.1;Casa di cura privata accreditata;ACUTI;37;0;0;5;42\n'
+    + '2023;090;TOSCANA;201;1;090207;CASA DI CURA PROVA                 ;V. COLLAUDO N. 29              ;047011;MONTECATINI-TERME   ;PT;5.1;Casa di cura privata accreditata;RIABILITAZIONE;20;0;0;0;20\n'
+    + '2023;090;TOSCANA;201;1;090001;OSPEDALE DI PROVA;VIA X;047014;PISTOIA;PT;1;Ospedale a gestione diretta;ACUTI;300;0;10;0;310\n';
+  test('farmacie: solo Toscana e solo attive, partita IVA, nome leggibile; file sbagliato detto in chiaro', async () => {
+    const F = await import('../src/modules/business/lib/scouting/fonti.js');
+    const c = F.candidatiDaFarmacie(FARM);
+    assert.equal(c.length, 1);
+    assert.equal(c[0].nome, 'Farmacia Prova del Dott. Collaudi & C. SNC'); assert.equal(c[0].piva, '01234567897'); assert.equal(c[0].provincia, 'MS'); assert.equal(c[0].comune, 'Aulla');
+    assert.equal(c[0].fonte_ref, 'farmacia/7443'); assert.equal(c[0].lat, 44.2028); assert.equal(c[0].tags.frazione, 'ALBIANO MAGRA');
+    assert.equal(F.candidatiDaFarmacie(FARM, { province: ['FI'] }).length, 0);
+    assert.throws(() => F.candidatiDaFarmacie(OSP), /non è l'elenco delle farmacie/);
+  });
+  test('ospedali e case di cura: una struttura con il totale dei posti letto, pubbliche segnate, segnali già pronti', async () => {
+    const F = await import('../src/modules/business/lib/scouting/fonti.js');
+    const c = F.candidatiDaOspedali(OSP);
+    assert.equal(c.length, 2);
+    const cc = c.find((x) => x.fonte_ref === 'ospedale/090207');
+    assert.equal(cc.nome, 'Casa di Cura Prova'); assert.equal(cc.segnali.POSTI_LETTO.valore, 62); assert.ok(cc.segnali.ACCREDITATO); assert.equal(cc.tags.pubblico, false);
+    assert.equal(c.find((x) => x.fonte_ref === 'ospedale/090001').tags.pubblico, true);
+  });
+  test('scarico dal Ministero: il file del giorno si trova nella pagina; se il sito rifiuta, il messaggio dice di caricarlo a mano', async () => {
+    const F = await import('../src/modules/business/lib/scouting/fonti.js');
+    const rete = async (u) => (String(u).endsWith('.csv') ? { ok: true, arrayBuffer: async () => new TextEncoder().encode(FARM).buffer } : { ok: true, url: 'https://www.dati.salute.gov.it/it/dataset/farmacie/', text: async () => '<a href="/sites/default/files/opendata/FRM_FARMA_5_20261115.csv">Scarica</a>' });
+    const r = await F.scaricaFonte('FARMACIE', { fetchFn: rete });
+    assert.equal(r.file, 'FRM_FARMA_5_20261115.csv'); assert.equal(F.candidatiDaFarmacie(r.testo).length, 1);
+    await assert.rejects(F.scaricaFonte('FARMACIE', { fetchFn: async () => ({ ok: false, status: 403 }) }), /403.*Carica il file/s);
+  });
+  test('elenco proprio: colonne riconosciute dal nome, sito normalizzato, doppioni tolti, errore chiaro senza la colonna del nome', async () => {
+    const F = await import('../src/modules/business/lib/scouting/fonti.js');
+    const righe = F.leggiCsv('Ragione sociale,Sito web,Partita IVA,Comune,Prov,Telefono\n"Alfa, Centro Medico",www.alfa.test,01234567897,Prato,PO,0574 1\nBeta RSA,,123,Firenze,Firenze,\nAlfa bis,https://alfa.test/chi,,,,\n');
+    const c = F.candidatiDaElenco(righe, { categoria: 'POLIAMBULATORIO' });
+    assert.equal(c.length, 2);
+    assert.equal(c[0].nome, 'Alfa, Centro Medico'); assert.equal(c[0].dominio, 'alfa.test'); assert.equal(c[0].piva, '01234567897'); assert.equal(c[0].provincia, 'PO');
+    assert.equal(c[1].piva, null); assert.equal(c[1].provincia, 'FI'); assert.equal(c[1].sito, null);
+    assert.throws(() => F.candidatiDaElenco([['codice', 'valore'], ['1', '2']]), /Non trovo la colonna con il nome/);
   });
 });

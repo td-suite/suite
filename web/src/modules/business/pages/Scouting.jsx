@@ -45,16 +45,17 @@ export default function Scouting() {
         <div className="row">
           {cat.data.admin && <button className="btn ghost" onClick={() => setModal({ t: 'segnali' })}>Segnali</button>}
           {puo && <button className="btn ghost" onClick={() => setModal({ t: 'manuale' })}>+ Aggiungi a mano</button>}
+          {puo && <button className="btn ghost" onClick={() => setModal({ t: 'fonti' })}>Elenchi ufficiali e file</button>}
           {puo && <button className="btn" onClick={() => setModal({ t: 'ricerca' })}>Nuova ricerca</button>}
         </div>
       </div>
       {ultima && <div className={`alert ${ultima.stato === 'ERRORE' ? 'err' : 'info'}`} style={{ marginBottom: 12, display: 'block' }}>
-        {ultima.stato === 'IN_CORSO' ? <>Ricerca in corso su OpenStreetMap. {ultima.avanzamento || 'In avvio'}. Finora {ultima.trovati} strutture, {ultima.nuovi} nuove. Ogni provincia richiede fino a un minuto.{' '}
+        {ultima.stato === 'IN_CORSO' ? <>{ultima.fonte === 'OSM' ? 'Ricerca in corso su OpenStreetMap. ' : 'Caricamento in corso. '}{ultima.avanzamento || 'In avvio'}. Finora {ultima.trovati} strutture, {ultima.nuovi} nuove. Ogni provincia richiede fino a un minuto.{' '}
           {puo && <button className="btn sm ghost" onClick={async () => { try { await api.post(`/scouting/ricerche/${ultima.id}/annulla`, {}); ricerche.reload(); } catch (e) { toast(e.message, 'err'); } }}>Annulla</button>}</>
           : ultima.stato === 'ERRORE' ? `L'ultima ricerca non è riuscita: ${ultima.errore}`
             : ultima.stato === 'ANNULLATA' ? `Ricerca annullata: ${ultima.trovati} strutture registrate prima dell'annullamento.`
-              : `Ultima ricerca del ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture trovate, ${ultima.nuovi} nuove.`}
-        {(ultima.avvisi || []).length > 0 && ultima.stato !== 'ERRORE' && <div className="small" style={{ marginTop: 6 }}>Province non riuscite, da ripetere: {ultima.avvisi.join(' · ')}</div>}
+              : `${ultima.fonte === 'OSM' ? 'Ultima ricerca su OpenStreetMap' : ultima.fonte === 'ELENCO' ? 'Ultimo elenco caricato' : 'Ultimo elenco ufficiale caricato'} il ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture, ${ultima.nuovi} nuove.`}
+        {(ultima.avvisi || []).length > 0 && ultima.stato !== 'ERRORE' && <div className="small" style={{ marginTop: 6 }}>{ultima.fonte === 'OSM' ? 'Non riuscite, da ripetere: ' : ''}{ultima.avvisi.join(' · ')}</div>}
       </div>}
       {el.data?.coda?.in_corso && <div className="alert info" style={{ marginBottom: 12 }}>Lettura dei siti in corso: {el.data.coda.fatti} di {el.data.coda.totale}. Si legge un sito alla volta, con una pausa tra le pagine.</div>}
       <div className="filters">
@@ -98,6 +99,7 @@ export default function Scouting() {
           <span className="small muted">La lettura usa solo le pagine pubbliche del sito della struttura e rispetta le sue regole per i programmi automatici.</span></div>}
       </Card>
       {modal?.t === 'ricerca' && <NuovaRicerca linea={linea} cat={cat.data} onClose={() => setModal(null)} onFatto={() => { setModal(null); ricerche.reload(); el.reload(); }} />}
+      {modal?.t === 'fonti' && <Fonti linea={linea} cat={cat.data} onClose={() => setModal(null)} onFatto={() => { ricerche.reload(); el.reload(); }} />}
       {modal?.t === 'manuale' && <AggiungiAMano linea={linea} cat={cat.data} onClose={() => setModal(null)} onFatto={() => { setModal(null); el.reload(); }} />}
       {modal?.t === 'segnali' && <Segnali cat={cat.data} onClose={() => setModal(null)} onFatto={() => { setModal(null); cat.reload(); }} />}
       {modal?.t === 'scheda' && <Scheda id={modal.id} cat={cat.data} puo={puo} onClose={() => setModal(null)} onCambio={() => el.reload()} />}
@@ -119,6 +121,42 @@ function NuovaRicerca({ linea, cat, onClose, onFatto }) {
       <div className="strong small" style={{ marginTop: 12 }}>Tipologie</div>
       <div className="scout-scelte">{cat.categorie.map((c) => <label key={c.key}><input type="checkbox" checked={tipi.includes(c.key)} onChange={() => sw(tipi, setTipi, c.key)} />{c.etichetta}</label>)}</div>
       {avvisi.map((c) => <div key={c.key} className="alert info" style={{ marginTop: 10 }}>{c.avviso}</div>)}
+    </Modal>
+  );
+}
+function Fonti({ linea, cat, onClose, onFatto }) {
+  const toast = useToast();
+  const d = useApi(`/scouting/fonti?linea=${linea}`, [linea]);
+  const [busy, setBusy] = useState(null); const [esito, setEsito] = useState({}); const [categoria, setCategoria] = useState(cat.categorie[0]?.key || 'ALTRO');
+  const invia = async (chiave, file) => {
+    setBusy(chiave); setEsito((o) => ({ ...o, [chiave]: null }));
+    try {
+      const fd = new FormData(); fd.append('linea', linea); if (file) fd.append('file', file); if (chiave === 'ELENCO') fd.append('categoria', categoria);
+      const r = await api.upload(chiave === 'ELENCO' ? '/scouting/elenco' : `/scouting/fonti/${chiave}`, fd);
+      setEsito((o) => ({ ...o, [chiave]: { ok: true, testo: `${r.trovati} strutture, ${r.nuovi} nuove${(r.avvisi || []).length ? `. ${r.avvisi.join(' ')}` : ''}` } }));
+      toast('Elenco caricato'); d.reload(); onFatto();
+    } catch (e) { setEsito((o) => ({ ...o, [chiave]: { ok: false, testo: e.message } })); } finally { setBusy(null); }
+  };
+  const scegli = (chiave, accept) => { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => i.files[0] && invia(chiave, i.files[0]); i.click(); };
+  return (
+    <Modal wide title="Elenchi ufficiali e file" onClose={onClose} footer={<button className="btn ghost" onClick={onClose}>Chiudi</button>}>
+      <p className="small muted">Gli elenchi del Ministero della Salute sono la fonte stabile: completi, con partita IVA, sempre disponibili. Non riportano sito e telefono: dopo il caricamento indica il sito delle strutture che ti interessano e la Suite ne legge anagrafica, segnali e persone chiave.</p>
+      {d.error ? <ErrorBox error={d.error} /> : !d.data ? <Loading /> : d.data.map((f) => (
+        <div key={f.chiave} style={{ borderTop: '1px solid rgba(0,0,0,.08)', padding: '12px 0' }}>
+          <div className="row between"><div><strong>{f.etichetta}</strong> <span className="small muted">· {f.ente} · aggiornamento {f.aggiornamento}</span><div className="small muted">{f.nota}</div>
+            {f.ultimo && <div className="small">Caricato il {itDateTime(f.ultimo.finita_at)}: {f.ultimo.trovati} strutture.</div>}</div>
+            <div className="row tight"><button className="btn sm" disabled={Boolean(busy)} onClick={() => invia(f.chiave)}>{busy === f.chiave ? 'Carico…' : f.ultimo ? 'Aggiorna dal Ministero' : 'Carica dal Ministero'}</button>
+              <button className="btn sm ghost" disabled={Boolean(busy)} onClick={() => scegli(f.chiave, '.csv')}>Carica il file</button></div></div>
+          {esito[f.chiave] && <div className={`alert ${esito[f.chiave].ok ? 'ok' : 'err'}`} style={{ marginTop: 8, display: 'block' }}>{esito[f.chiave].testo}{!esito[f.chiave].ok && <> <a href={f.pagina} target="_blank" rel="noreferrer noopener">Apri la pagina del Ministero</a></>}</div>}
+        </div>))}
+      <div style={{ borderTop: '1px solid rgba(0,0,0,.08)', padding: '12px 0' }}>
+        <div className="row between"><div><strong>Un tuo elenco</strong> <span className="small muted">· CSV o Excel</span>
+          <div className="small muted">La prima riga contiene i nomi delle colonne. Serve almeno il nome; riconosciute anche sito, partita IVA, indirizzo, CAP, comune, provincia, telefono, email, gruppo. Con il sito, la lettura parte dalla tabella.</div></div>
+          <div className="row tight"><select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Tipologia delle strutture del file">{cat.categorie.map((c) => <option key={c.key} value={c.key}>{c.etichetta}</option>)}</select>
+            <button className="btn sm" disabled={Boolean(busy)} onClick={() => scegli('ELENCO', '.csv,.xlsx,.txt')}>{busy === 'ELENCO' ? 'Carico…' : 'Carica il file'}</button></div></div>
+        {esito.ELENCO && <div className={`alert ${esito.ELENCO.ok ? 'ok' : 'err'}`} style={{ marginTop: 8, display: 'block' }}>{esito.ELENCO.testo}</div>}
+      </div>
+      <p className="small muted">Per RSA, poliambulatori e aziende non esiste un elenco ufficiale aggiornato e scaricabile: usa "Nuova ricerca" (OpenStreetMap), "Aggiungi a mano" o un tuo elenco.</p>
     </Modal>
   );
 }
@@ -209,7 +247,7 @@ function Scheda({ id, cat, puo, onClose, onCambio }) {
             <div className="scout-evidenza">{v.evidenza} {v.url && <a href={v.url} target="_blank" rel="noreferrer noopener">{origine(v.url)}</a>}</div></div>) : <div className="small muted">Nessun segnale.</div>}
         </div>
       </div>
-      <div className="small muted" style={{ marginTop: 10 }}>Fonte: {c.fonte === 'OSM' ? <a href={`https://www.openstreetmap.org/${c.fonte_ref}`} target="_blank" rel="noreferrer noopener">OpenStreetMap</a> : 'inserimento manuale'}{(c.profilo?.pagine || []).length ? ` · ${c.profilo.pagine.length} pagine del sito lette` : ''}. Gli indirizzi segnati "ipotesi" non entrano tra i referenti come email: restano nella nota, da verificare.</div>
+      <div className="small muted" style={{ marginTop: 10 }}>Fonte: {c.fonte === 'OSM' ? <a href={`https://www.openstreetmap.org/${c.fonte_ref}`} target="_blank" rel="noreferrer noopener">OpenStreetMap</a> : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'}${c.tags?.tipologia ? ` (${c.tags.tipologia})` : ''}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : 'inserimento manuale'}{(c.profilo?.pagine || []).length ? ` · ${c.profilo.pagine.length} pagine del sito lette` : ''}. Gli indirizzi segnati "ipotesi" non entrano tra i referenti come email: restano nella nota, da verificare.</div>
     </Modal>
   );
 }
