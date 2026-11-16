@@ -67,7 +67,7 @@ function Generali() {
       </Card>
       <Card title="Perimetro e maturazione" icon="users">
         <div className="fe-form">
-          {sw('includi_dirigenti', 'Includi i dirigenti con contratto subordinato', 'Persone di tipo DIRIGENTE con contratto in Contratti del personale. I liberi professionisti restano sempre fuori.')}
+          {sw('includi_dirigenti', 'Includi i dirigenti con contratto subordinato', 'Persone di tipo DIRIGENTE con contratto in Gestione del personale. I liberi professionisti restano sempre fuori.')}
           <Field label="Giorni del mese per contarlo come lavorato" help="Maturazione pro rata: un mese conta se il rapporto ne copre almeno questi giorni (ipotesi 15, da verificare con il consulente)."><input type="number" min="1" max="31" value={f.soglia_mese_giorni} onChange={(e) => set('soglia_mese_giorni', e.target.value)} /></Field>
           {sw('rol_attivi', 'Voce ROL e permessi in ore', 'Facoltativa: ore annue per CCNL e livello in "Giorni annui", residuo dell\'anno precedente nel saldo.')}
           <Field label="Avviso ai dipendenti (sopra il loro piano)"><textarea rows={3} maxLength={2000} value={f.avviso_dipendenti || ''} onChange={(e) => set('avviso_dipendenti', e.target.value)} /></Field>

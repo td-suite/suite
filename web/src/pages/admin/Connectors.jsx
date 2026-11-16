@@ -8,6 +8,8 @@ import { fmtDateTime, timeAgo } from '../../format.js';
 // Amministrazione > Connettori: un connettore per sistema esterno, configurato una volta e valido per tutta la Suite.
 // Le credenziali non si rileggono mai: il server espone solo "impostata" e gli ultimi 4 caratteri.
 const DESC = {
+  OPENAPI: 'Registro imprese per la Ricerca prospect del Business Hub: API Company di Openapi, la società di Ufficio Camerale. Servizio a pagamento a consumo. Chiave API = il token dell\'API Company (permesso IT-search). Per le prove usa la Base URL https://test.company.openapi.com con il token di prova; per i dati veri https://company.openapi.com. Ogni ricerca mostra prima la stima gratuita e parte solo dopo conferma.',
+  GOOGLE: 'Google Places per la Ricerca prospect del Business Hub: ricerca dal vivo delle strutture. Servizio a pagamento a consumo sul conto Google Cloud. Chiave API con "Places API (New)" abilitata; senza una chiave qui vale quella di Google Maps già usata dalla Suite. Per le regole di Google si conserva solo l\'identificativo del luogo: i dati della struttura si leggono dal suo sito.',
   STUDIOLAB: 'LIS di laboratorio di CB Sistemi: API REST ServiceNET (chiave X-API-KEY) per Non conformità e Ordini, canali HL7 e push in ingresso con il segreto qui sotto. Alimenta anche le sedi dei clienti service (codice cliente). Con il client registrato (Synclab) anche la Data API v1: copia in sola lettura di clienti, esami, listini, accettazioni e documenti economici (scheda "Dati Synclab").',
   GIPO: 'Gestionale di accettazione e prenotazione B2C (Docplanner). Nessuna API documentata: i dati entrano dall\'import da file di Retail e dalle API di ingestione della Suite.',
   TUOTEMPO: 'Prenotazione online (Docplanner): API v3 con api_key fissa per istanza, chiamate dagli IP statici in uscita di Render autorizzati da Docplanner. Usata da Retail per il catalogo prenotabile.',
@@ -21,6 +23,7 @@ const BOOL_SETTINGS = {
 const boolVal = (v, def) => (v === undefined || v === null || v === '' ? def : v === true || String(v).toLowerCase() === 'true');
 const CRED_FIELDS = { API_KEY: [['api_key', 'Chiave API']], BASIC: [['user', 'Utente'], ['password', 'Password']], OAUTH2: [['client_id', 'Client ID'], ['client_secret', 'Client secret']], CLIENT_JWT: [['client_name', 'Nome del client (name)'], ['client_id', 'Id del client (GUID)'], ['client_host', 'Host del client'], ['password', 'Password del client (8-16 caratteri, maiuscola, minuscola, numero, speciale)'], ['cf_access_client_secret', 'Cloudflare Access: Client Secret (facoltativo)']], NONE: [] };
 const SETTINGS = {
+  OPENAPI: [['max_imprese', 'Tetto di imprese per ricerca', 'Limite di spesa: la ricerca si ferma a questo numero di imprese (predefinito 300)']],
   STUDIOLAB: [['client_code', 'Codice cliente (CodiceCliente)', 'Codice di Toscana Diagnostica su ServiceNET, di norma TD'], ['timeout_ms', 'Timeout chiamate (ms)', ''], ['cf_access_client_id', 'Cloudflare Access: Client ID (facoltativo)', 'Se la WebApi è esposta con un Cloudflare Tunnel protetto da Access, il Client ID del service token; il secret va tra le credenziali']],
   TUOTEMPO: [['instance', 'Istanza (dbName)', 'es. tt_giponext_2313, una api_key per istanza'], ['lang', 'Lingua', 'it']],
   GIPO: [['client_code', 'Codice cliente', '']],

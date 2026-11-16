@@ -18,6 +18,9 @@ import Deadlines from './pages/Deadlines.jsx';
 import Settings from './pages/Settings.jsx';
 import Audit from './pages/Audit.jsx';
 import PeopleInbox, { canApprove } from './pages/PeopleInbox.jsx';
+import Mdl from './pages/Mdl.jsx';
+import Ecm from './pages/Ecm.jsx';
+import NewTirocinante from './pages/NewTirocinante.jsx';
 import './contracts.css';
 
 export default function Module({ moduleKey, mode, moduleUser }) {
@@ -48,6 +51,10 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="risorse/:id" element={<ResourceDetail />} />
             <Route path="dipendenti" element={<Resources key="emp" kind="DIPENDENTE" />} />
             <Route path="lp" element={<Resources key="lp" kind="LP" />} />
+            <Route path="tirocinanti/nuovo" element={writer ? <NewTirocinante /> : <Forbidden />} />
+            <Route path="tirocinanti" element={<Resources key="tir" kind="TIROCINANTE" />} />
+            <Route path="formazione-ecm" element={<Ecm />} />
+            <Route path="medicina-lavoro" element={writer ? <Mdl /> : <Forbidden />} />
             <Route path="scadenze" element={<Deadlines />} />
             <Route path="casella-people" element={approver ? <PeopleInbox /> : <Forbidden />} />
             <Route path="scouting/cv" element={<CvBox />} />

@@ -9,12 +9,12 @@ import { q, one, many } from '../db.js';
 import { encrypt, decrypt } from './secrets.js';
 import { config } from '../config.js';
 
-export const CONNECTOR_KINDS = ['STUDIOLAB', 'GIPO', 'TUOTEMPO', 'SILVA'];
+export const CONNECTOR_KINDS = ['STUDIOLAB', 'GIPO', 'TUOTEMPO', 'SILVA', 'OPENAPI', 'GOOGLE'];
 export const AUTH_KINDS = ['API_KEY', 'BASIC', 'OAUTH2', 'NONE', 'CLIENT_JWT'];
 
 const env = process.env;
-const DEFAULT_BASE_URL = { STUDIOLAB: 'https://servicenet.toscanadiagnostica.it/API', TUOTEMPO: 'https://app.tuotempo.com/api/v3', GIPO: null, SILVA: 'https://silva.cloud/portaleordini' };
-const DEFAULT_NAME = { STUDIOLAB: 'StudioLAB ServiceNET (CB Sistemi)', GIPO: 'GIPO (Docplanner)', TUOTEMPO: 'TuoTempo (Docplanner)', SILVA: 'Silva Group (magazzino)' };
+const DEFAULT_BASE_URL = { STUDIOLAB: 'https://servicenet.toscanadiagnostica.it/API', TUOTEMPO: 'https://app.tuotempo.com/api/v3', GIPO: null, SILVA: 'https://silva.cloud/portaleordini', OPENAPI: 'https://company.openapi.com', GOOGLE: 'https://places.googleapis.com' };
+const DEFAULT_NAME = { STUDIOLAB: 'StudioLAB ServiceNET (CB Sistemi)', GIPO: 'GIPO (Docplanner)', TUOTEMPO: 'TuoTempo (Docplanner)', SILVA: 'Silva Group (magazzino)', OPENAPI: 'Openapi Company (registro imprese)', GOOGLE: 'Google Places' };
 
 // Ripiego sulle variabili d'ambiente dei moduli di origine (nc: LIS_*, orders: STUDIOLAB_* e SILVA_*)
 function envFallback(kind) {
@@ -35,6 +35,8 @@ function envFallback(kind) {
       vars: ['SILVA_INBOUND_KEY', 'SILVA_CUSTOMER_CODE', 'SILVA_ORDER_EMAIL'],
     };
   }
+  // Google Places: senza chiave propria vale quella di Google Maps già usata dalla Suite per le mappe (deve avere "Places API (New)" abilitata)
+  if (kind === 'GOOGLE') return { base_url: DEFAULT_BASE_URL.GOOGLE, credentials: { api_key: env.GOOGLE_PLACES_KEY || env.GOOGLE_MAPS_SERVER_KEY || '' }, inbound_secrets: [], settings: {}, vars: ['GOOGLE_PLACES_KEY', 'GOOGLE_MAPS_SERVER_KEY'] };
   return { base_url: DEFAULT_BASE_URL[kind], credentials: {}, inbound_secrets: [], settings: {}, vars: [] };
 }
 
@@ -285,6 +287,19 @@ export async function testConnector(kind) {
         if (!c.inbound_secrets.length) throw new Error('Né chiave API Silva né segreto in ingresso impostati');
         out = { ok: true, message: `Segreto in ingresso impostato, codice cliente ${c.settings.customer_code || 'non indicato'}. Chiave API Silva assente: destinazioni, catalogo, ordini e stato non si usano finché non la inserisci.` };
       }
+    } else if (kind === 'OPENAPI') {
+      // ricerca di prova gratuita (dryRun: conta le imprese senza scaricarle): RSA nella provincia di Prato
+      if (!c.credentials.api_key) throw new Error('Token di Openapi non impostato');
+      const { stimaRegistro } = await import('../modules/business/lib/scouting/registro.js');
+      const r = await stimaRegistro({ province: ['PO'], codici: ['8710'] });
+      endpoint = `${String(c.base_url || DEFAULT_BASE_URL.OPENAPI).replace(/\/+$/, '')}/IT-search?dryRun=1`;
+      out = { ok: true, message: `Connessione riuscita${/test\./.test(String(c.base_url)) ? ' (ambiente di prova di Openapi)' : ''}: ${r.righe[0]?.testo || 'risposta ricevuta'}` };
+    } else if (kind === 'GOOGLE') {
+      if (!c.credentials.api_key) throw new Error('Chiave Google non impostata');
+      const { cercaGoogle } = await import('../modules/business/lib/scouting/google.js');
+      const r = await cercaGoogle('farmacia Prato', { pagine: 1 });
+      endpoint = 'https://places.googleapis.com/v1/places:searchText';
+      out = { ok: true, message: `Connessione riuscita: Places API risponde, ${r.luoghi.length} risultati per la ricerca di prova` };
     } else {
       if (c.base_url) { try { new URL(c.base_url); } catch { throw new Error('Base URL non valida'); } }
       out = { ok: true, message: c.base_url ? `Configurazione valida (endpoint ${c.base_url}). GIPO non espone API documentate: i dati entrano con l'import da file e con le API di ingestione.` : 'Configurazione valida. GIPO non espone API documentate: i dati entrano con l\'import da file e con le API di ingestione.' };

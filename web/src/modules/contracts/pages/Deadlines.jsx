@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge } from '../components/ui.jsx';
 import { itDate, DEADLINE_STATE } from '../format.js';
 
-const TYPES = { DOCUMENTO: 'Documenti', CONTRATTO: 'Contratti', PROVA: 'Periodo di prova', RAL: 'Scatti RAL', MBO: 'MBO', IMPEGNO: 'Lettere di impegno', MANUALE: 'Manuali' };
+const TYPES = { DOCUMENTO: 'Documenti', CONTRATTO: 'Contratti', PROVA: 'Periodo di prova', RAL: 'Scatti RAL', MBO: 'MBO', IMPEGNO: 'Lettere di impegno', MANUALE: 'Manuali', FORMAZIONE: 'Formazione', ECM: 'Crediti ECM', TIROCINIO: 'Tirocini', MDL: 'Medicina del lavoro' };
 
 export default function Deadlines() {
   const nav = useNavigate();
@@ -20,7 +20,7 @@ export default function Deadlines() {
   }, [rows]);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Calendario delle scadenze</h1><div className="sub">Documenti del personale (albo, polizze, identità, formazione), fine prova e contratti, scatti di RAL, valutazioni MBO, lettere di impegno e scadenze manuali.</div></div></div>
+      <div className="page-head"><div><h1>Calendario delle scadenze</h1><div className="sub">Documenti del personale (albo, polizze, identità, formazione), fine prova e contratti, scatti di RAL, valutazioni MBO, lettere di impegno, rinnovi della formazione, crediti ECM, tirocini, visite di medicina del lavoro e scadenze manuali.</div></div></div>
       <div className="filters">
         <Field label="Orizzonte"><select value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={90}>3 mesi</option><option value={180}>6 mesi</option><option value={365}>12 mesi</option><option value={730}>24 mesi</option></select></Field>
         <Field label="Tipo"><select value={type} onChange={(e) => setType(e.target.value)}><option value="">Tutti</option>{Object.entries(TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>

@@ -1,5 +1,5 @@
 // Scadenzario unico di direzione nel Cockpit (decisione del CEO, 08/11/2026). Accesso: titolare, amministratori e chi ha il modulo
-// Cockpit (grant cockpit). Le righe dei moduli con dati personali (Contratti del personale, Piano Ferie, professionisti di Room) solo a chi
+// Cockpit (grant cockpit). Le righe dei moduli con dati personali (Gestione del personale, Piano Ferie, professionisti di Room) solo a chi
 // ha anche il grant di quel modulo. Logica e fonti in lib/scadenzario.js; elenco dei campi letti in docs/COCKPIT.md.
 import { Router } from 'express';
 import { z } from 'zod';

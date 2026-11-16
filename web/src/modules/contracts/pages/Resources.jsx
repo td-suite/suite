@@ -21,16 +21,16 @@ export default function Resources({ kind }) {
     return r;
   }, [list.data, sort]);
   const th = (key, label, cls = '') => <th className={`sortable ${cls}`} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}>{label}{sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>;
-  const title = kind === 'DIPENDENTE' ? 'Elenco dipendenti' : kind === 'LP' ? 'Elenco liberi professionisti' : 'Elenco delle risorse';
+  const title = kind === 'DIPENDENTE' ? 'Elenco dipendenti' : kind === 'LP' ? 'Elenco liberi professionisti' : kind === 'TIROCINANTE' ? 'Elenco tirocinanti' : 'Elenco delle risorse';
   const totCost = rows.reduce((a, x) => a + Number(x.cost_annual || 0), 0);
   return (
     <div className="page">
       <div className="page-head">
         <div><h1>{title}</h1><div className="sub">{rows.length} persone dell'anagrafica unica{costs ? ` · costo annuo stimato ${eur(totCost)}` : ''}. Clicca una riga per aprire la scheda e il dossier HR.</div></div>
         <div className="row">
-          {costs && <a className="btn ghost" href={`${API_BASE}/stats/costs.xlsx${kind ? `?kind=${kind}` : ''}`} title={kind === 'LP' ? 'Solo liberi professionisti, con tutti i compensi (fissi, orari, a prestazione, variabili)' : kind === 'DIPENDENTE' ? 'Solo dipendenti' : 'Tutto l\'organico'}>Esporta Excel</a>}
-          {canWrite(user) && kind && <BulkImport kind={kind} onDone={() => list.reload()} />}
-          {canWrite(user) && <Link className="btn" to={`${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>+ Nuova risorsa</Link>}
+          {costs && kind !== 'TIROCINANTE' && <a className="btn ghost" href={`${API_BASE}/stats/costs.xlsx${kind ? `?kind=${kind}` : ''}`} title={kind === 'LP' ? 'Solo liberi professionisti, con tutti i compensi (fissi, orari, a prestazione, variabili)' : kind === 'DIPENDENTE' ? 'Solo dipendenti' : 'Tutto l\'organico'}>Esporta Excel</a>}
+          {canWrite(user) && kind && kind !== 'TIROCINANTE' && <BulkImport kind={kind} onDone={() => list.reload()} />}
+          {canWrite(user) && <Link className="btn" to={kind === 'TIROCINANTE' ? `${BASE}/tirocinanti/nuovo` : `${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>{kind === 'TIROCINANTE' ? '+ Nuovo tirocinante' : '+ Nuova risorsa'}</Link>}
         </div>
       </div>
       <div className="filters">
@@ -49,11 +49,11 @@ export default function Resources({ kind }) {
                 <td><div className="strong">{r.last_name} {r.first_name}</div><div className="small muted">{r.tax_code || ''}{r.sex ? ` · ${SEX[r.sex]}` : ''}</div></td>
                 <td><KindBadge kind={r.kind} /> {r.person_kind && r.person_kind !== r.kind && <Badge tone="blue">{PERSON_KIND[r.person_kind] || r.person_kind}</Badge>} {r.status !== 'ATTIVO' && <StatusBadge status={r.status} />}</td>
                 <td title={[r.area_path, ...(r.extra_areas || []).map((x) => x.path)].filter(Boolean).join(' | ')}>{r.area_path ? <span>{r.area_root !== r.area_name && <span className="muted small">{r.area_path.slice(0, r.area_path.lastIndexOf(' › ') + 3)}</span>}{r.area_name}{(r.extra_areas || []).length > 0 && <span className="muted small"> + {r.extra_areas.map((x) => x.name).join(', ')}</span>}</span> : <span className="muted">–</span>}</td>
-                <td>{r.kind === 'DIPENDENTE' ? <>{r.job_title || '–'}<div className="small muted">{r.level ? LEVEL_LABEL[r.level] || r.level : ''}{r.contract_type && r.contract_type !== 'TIND' ? ` · ${CONTRACT[r.contract_type]}` : ''}</div></> : <>{r.discipline || '–'}<div className="small muted">{r.lp_end ? `incarico fino al ${itDate(r.lp_end)}` : ''}</div></>}</td>
+                <td>{r.kind === 'DIPENDENTE' ? <>{r.job_title || '–'}<div className="small muted">{r.level ? LEVEL_LABEL[r.level] || r.level : ''}{r.contract_type && r.contract_type !== 'TIND' ? ` · ${CONTRACT[r.contract_type]}` : ''}</div></> : r.kind === 'TIROCINANTE' ? <>Tirocinio{r.tir_ente ? ` · ${r.tir_ente}` : ''}<div className="small muted">{[r.tir_end ? `fino al ${itDate(r.tir_end)}` : null, r.tir_tutor_name ? `tutor ${r.tir_tutor_name}` : 'tutor da individuare', r.tir_pf_stato && r.tir_pf_stato !== 'FIRMATO' ? 'progetto formativo da completare' : null].filter(Boolean).join(' · ')}</div></> : <>{r.discipline || '–'}<div className="small muted">{r.lp_end ? `incarico fino al ${itDate(r.lp_end)}` : ''}</div></>}</td>
                 <td>{r.site_name || <span className="muted">–</span>}</td>
                 <td>{r.manager_name || <span className="muted">–</span>}</td>
                 <td>{itDate(r.hired_at) || <span className="muted">–</span>}</td>
-                {costs && (r.kind === 'DIPENDENTE' ? <td className="num">{eur(r.ral_current)}</td> : <td className={kind === 'LP' ? 'small' : 'num small'}><Compensi r={r} /></td>)}
+                {costs && (r.kind === 'DIPENDENTE' ? <td className="num">{eur(r.ral_current)}</td> : r.kind === 'TIROCINANTE' ? <td className="num small muted">{Number(r.tir_indennita) > 0 ? 'indennità' : '–'}</td> : <td className={kind === 'LP' ? 'small' : 'num small'}><Compensi r={r} /></td>)}
                 {costs && <td className="num">{eur(r.cost_annual)}</td>}
                 <td className="num"><Badge tone={r.attachments_count ? 'teal' : 'grey'}>{r.attachments_count} doc</Badge></td>
               </tr>))}</tbody>

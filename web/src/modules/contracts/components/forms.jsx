@@ -91,7 +91,7 @@ export function PersonForm({ value: v, onChange, kind }) {
   const areas = useApi('/areas');
   const people = useApi('/resources?status=ATTIVO,IMPEGNO');
   const sites = useApi('/work-sites');
-  const kinds = kind === 'LP' ? ['LP', 'MEDICO', 'SANITARIO'] : ['DIPENDENTE', 'DIRIGENTE'];
+  const kinds = kind === 'LP' ? ['LP', 'MEDICO', 'SANITARIO'] : kind === 'TIROCINANTE' ? ['TIROCINANTE'] : ['DIPENDENTE', 'DIRIGENTE'];
   const onCf = (cf) => {
     const up = cf.toUpperCase();
     const patch = { tax_code: up };
@@ -104,7 +104,7 @@ export function PersonForm({ value: v, onChange, kind }) {
     <div className="form-grid">
       <Field label="Cognome *"><input value={v.last_name || ''} onChange={(e) => s('last_name', e.target.value)} required /></Field>
       <Field label="Nome *"><input value={v.first_name || ''} onChange={(e) => s('first_name', e.target.value)} required /></Field>
-      <Field label="Tipo di persona" help={kind === 'LP' ? 'Incarico autonomo: professionista, medico o personale sanitario' : 'Rapporto subordinato: dipendente o dirigente'}><select value={kinds.includes(v.kind) ? v.kind : kinds[0]} onChange={(e) => s('kind', e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{PERSON_KIND[k]}</option>)}</select></Field>
+      <Field label="Tipo di persona" help={kind === 'LP' ? 'Incarico autonomo: professionista, medico o personale sanitario' : kind === 'TIROCINANTE' ? 'Tirocinio: convenzione, progetto formativo e tutor aziendale' : 'Rapporto subordinato: dipendente o dirigente'}><select value={kinds.includes(v.kind) ? v.kind : kinds[0]} onChange={(e) => s('kind', e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{PERSON_KIND[k]}</option>)}</select></Field>
       <Field label="Sesso"><select value={v.sex || ''} onChange={(e) => s('sex', e.target.value)}><option value="">–</option><option value="F">Donna</option><option value="M">Uomo</option></select></Field>
       <Field label="Titolo" help="dott., dott.ssa, prof., avv."><input value={v.title || ''} onChange={(e) => s('title', e.target.value)} /></Field>
       <Field label="Data di nascita"><input type="date" value={v.birth_date || ''} onChange={(e) => s('birth_date', e.target.value)} /></Field>
@@ -130,7 +130,7 @@ export function PersonForm({ value: v, onChange, kind }) {
       <Field label="Città"><input value={v.city || ''} onChange={(e) => s('city', e.target.value)} /></Field>
       <Field label="Provincia"><input value={v.province || ''} maxLength={2} onChange={(e) => s('province', e.target.value.toUpperCase())} /></Field>
     </div>
-    <div className="subhead">Dossier HR (riservato al modulo Contratti del personale)</div>
+    <div className="subhead">Dossier HR (riservato al modulo Gestione del personale)</div>
     <div className="form-grid">
       <Field label="Nazionalità"><input value={v.nationality || ''} placeholder="italiana" onChange={(e) => s('nationality', e.target.value)} /></Field>
       <Field label="Cellulare aziendale"><input value={v.mobile_company || ''} onChange={(e) => s('mobile_company', e.target.value)} /></Field>

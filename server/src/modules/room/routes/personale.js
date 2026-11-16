@@ -20,7 +20,7 @@ const mese = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mese aaaa-mm');
 const ordered = (d) => d.ora_a > d.ora_da;
 
 // ---------- Professionisti ----------
-// Le persone vivono in public.people (Amministrazione > Persone, Contratti del personale): qui si legge l'elenco (vista professionisti_v,
+// Le persone vivono in public.people (Amministrazione > Persone, Gestione del personale): qui si legge l'elenco (vista professionisti_v,
 // TUTTE le persone dell'anagrafica unica, qualunque tipo) e si modifica solo la scheda Room (person_ext: tipo, profilo, compenso, contratto,
 // assicurazione, competenze, sedi abilitate, recapiti integrativi) e il flag di esclusione dalla pianificazione (planning_excluded).
 const siteRef = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable());
@@ -92,8 +92,8 @@ r.get('/professionisti/:id', gest, ah(async (req, res) => {
   const sedi = (await loadSedi()).filter((x) => (x.lite.personale || []).some((y) => stessaPersona(y, p))).map((x) => ({ id: x.row.id, label: x.lite.denominazione }));
   res.json({ ...p, anagrafica: p.dati?.anagrafica || {}, discipline: discipline(p), docs, sediPresente: sedi, suiteUser: p.suite_user, suite_user: undefined });
 }));
-// Le persone si creano in Amministrazione > Persone o in Contratti del personale
-r.post('/professionisti', gest, ah(async () => { throw new HttpError(405, 'Le persone si creano in Amministrazione > Persone (o in Contratti del personale): qui si compila solo la scheda Room'); }));
+// Le persone si creano in Amministrazione > Persone o in Gestione del personale
+r.post('/professionisti', gest, ah(async () => { throw new HttpError(405, 'Le persone si creano in Amministrazione > Persone (o in Gestione del personale): qui si compila solo la scheda Room'); }));
 r.put('/professionisti/:id', gest, ah(async (req, res) => {
   const d = parse(extSchema, req.body);
   const p = await one(`SELECT ${PROF_COLS} FROM professionisti_v p WHERE p.id=$1`, [req.params.id]); if (!p) throw notFound();

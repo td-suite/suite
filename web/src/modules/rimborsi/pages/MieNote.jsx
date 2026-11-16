@@ -1,5 +1,5 @@
 // Le mie note spese: mese corrente in evidenza, pulsanti "Nuova spesa" (foto e tre campi) e "Nuovo viaggio" pensati per il telefono,
-// elenco dei mesi con lo stato, vettura aziendale e fuel card assegnate (Contratti del personale), modulistica cartacea.
+// elenco dei mesi con lo stato, vettura aziendale e fuel card assegnate (Gestione del personale), modulistica cartacea.
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, Empty, Loading, PageHead, Seg, useToast } from '../../../components/ui.jsx';

@@ -1,4 +1,4 @@
-// Modulo Contracts (Contratti del Personale, People): dipendenti e liberi professionisti, dossier con allegati, CCNL e
+// Modulo Contracts (Gestione del Personale, già Contratti del Personale; People): dipendenti e liberi professionisti, dossier con allegati, CCNL e
 // minimi tabellari, simulatore busta paga, generazione DOCX/PDF di contratti, MBO, lettere di impegno e contratti LP,
 // organigramma generato dai ruoli, scadenze, CV Box, caricamento massivo e pacchetto iniziale.
 // Casella People (people@toscanadiagnostica.it, routes/people.js): richiami automatici sulle scadenze ai diretti destinatari e
@@ -32,6 +32,7 @@ import statsRoutes from './routes/stats.js';
 import importRoutes from './routes/imports.js';
 import peopleRoutes from './routes/people.js';
 import benefitRoutes from './routes/benefit.js';
+import sviluppoRoutes from './routes/sviluppo.js';
 
 const KEY = 'contracts';
 
@@ -61,7 +62,9 @@ export default function mount(app) {
       const cv = await one(`SELECT count(*)::int AS n FROM cv_box WHERE status='NUOVO'`);
       const lettere = await one(`SELECT count(*)::int AS n FROM commitment_letters WHERE status IN ('BOZZA','INVIATA')`);
       const people = await one(`SELECT count(*)::int AS n FROM people_inbox WHERE status='DA_APPROVARE'`);
-      res.json({ scadenze: deadlines.filter((d) => d.days <= 30).length, cv_nuovi: cv.n, lettere_aperte: lettere.n, people_da_approvare: people.n });
+      // medicina del lavoro: visite dovute entro 30 giorni e non ancora fissate (solo a chi vede la sezione)
+      const mdl = ['ADMIN', 'HR'].includes(req.user.role) ? deadlines.filter((d) => d.type === 'MDL' && d.days <= 30 && /da programmare/.test(d.title)).length : 0;
+      res.json({ scadenze: deadlines.filter((d) => d.days <= 30).length, cv_nuovi: cv.n, lettere_aperte: lettere.n, people_da_approvare: people.n, mdl_in_scadenza: mdl });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {
@@ -80,6 +83,7 @@ export default function mount(app) {
   r.use(adminRoutes);                // settings, areas, work-sites (elenco di public.sites), audit (gli utenti li gestisce la Suite)
   r.use('/resources', resourceRoutes);
   r.use(documentRoutes);              // /resources/:id/documents/generate, /documents/...
+  r.use(sviluppoRoutes);              // v0.77.0: formazione ed ECM, tirocinio, medicina del lavoro (/resources/:id/..., /formazione/ecm, /mdl)
   r.use('/scouting', scoutingRoutes);
   r.use('/ccnl', ccnlRoutes);
   r.use('/org', orgRoutes);

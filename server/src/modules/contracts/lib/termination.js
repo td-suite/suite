@@ -17,7 +17,7 @@ export async function applyDueTerminations() {
     await q('UPDATE areas SET head_person_id=NULL WHERE head_person_id=$1', [x.id]);
     reindexPerson(x.id);
     // A11: accessi disattivati (gli amministratori restano da confermare, con avviso), incarichi chiusi, avviso responsabile di sede
-    await effettiCessazione(x.id, { origine: 'Contratti del personale, cessazione con decorrenza raggiunta' }).catch((e) => console.warn('[cessazione]', x.id, e.message));
+    await effettiCessazione(x.id, { origine: 'Gestione del personale, cessazione con decorrenza raggiunta' }).catch((e) => console.warn('[cessazione]', x.id, e.message));
   }
   return due.length;
 }

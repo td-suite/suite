@@ -185,3 +185,12 @@
 /* tabelle larghe (team, registro modifiche, carico di lavoro) scorrono in orizzontale su schermi stretti */
 .ipm .tbl-wrap { overflow-x: auto; max-width: 100%; }
 .ipm table.revlog td { padding: 3px 6px; vertical-align: top; }
+
+/* Settimana in corso (16/11/2026): colonna evidenziata nel GANTT e nella vista sovrapposta */
+.ipm .gantt thead th.now {background: var(--canary); color: var(--jet); box-shadow: inset 2px 0 0 var(--crit), inset -2px 0 0 var(--crit), inset 0 2px 0 var(--crit); }
+.ipm .gantt thead th.now .wd {color: var(--jet); font-weight: 700; }
+.ipm .gantt thead th .nowtag {display: block; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--crit); }
+.ipm .gantt td.wk.now {box-shadow: inset 2px 0 0 var(--crit), inset -2px 0 0 var(--crit); }
+.ipm .gantt td.wk.now:not(.fill) {background: rgba(247, 240, 82, .22); }
+.ipm .pgantt th.now {background: #F7F052; color: #052A39; outline: 2px solid #B3261E; outline-offset: -2px; }
+.ipm .pgantt td.now {box-shadow: inset 2px 0 0 #B3261E, inset -2px 0 0 #B3261E; }

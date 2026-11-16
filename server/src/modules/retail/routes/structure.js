@@ -42,7 +42,7 @@ r.get('/sites/:id/structure', ah(async (req, res) => {
 }));
 
 // Piano di lavoro Retail di una persona della sede (upsert su person_ext). Nome, ruolo contrattuale, contatti e sede si
-// modificano in Amministrazione > Persone o in Contratti del personale.
+// modificano in Amministrazione > Persone o in Gestione del personale.
 const extSchema = z.object({ retail_role: z.string().max(80).nullable().optional(), weekly_hours: z.number().min(0).max(80).nullable().optional(), days: z.string().max(80).nullable().optional(), notes: z.string().max(2000).nullable().optional(), sort_order: z.number().int().optional() });
 const clean = (d) => { for (const k of Object.keys(d)) if (d[k] === '') d[k] = null; return d; };
 r.put('/people/:id', ah(async (req, res) => {

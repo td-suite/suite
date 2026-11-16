@@ -37,13 +37,13 @@ export default function Dashboard() {
       <div className="page-head">
         <div>
           <h1>Buongiorno, {(user.first_name || user.full_name.split(' ').slice(-1)[0])}</h1>
-          <div className="sub">Organico di Toscana Diagnostica: {t.employees} dipendenti e {t.lp} liberi professionisti attivi{t.pending ? `, ${t.pending} in impegno` : ''}. Clicca su un numero o su un grafico per scendere nel dettaglio.</div>
+          <div className="sub">Organico di Toscana Diagnostica: {t.employees} dipendenti{t.tirocinanti ? `, ${t.tirocinanti} tirocinanti` : ''} e {t.lp} liberi professionisti attivi{t.pending ? `, ${t.pending} in impegno` : ''}. Clicca su un numero o su un grafico per scendere nel dettaglio.</div>
         </div>
         {canWrite(user) && <Link className="btn" to={`${BASE}/risorse/nuova`}>+ Inserimento nuova risorsa</Link>}
       </div>
 
       <div className="grid g4">
-        <div onClick={() => openDrill('Risorse attive', () => true)} style={{ cursor: 'pointer' }}><Kpi accent label="Risorse attive" value={t.total} foot={`${t.employees} dipendenti · ${t.lp} LP`} /></div>
+        <div onClick={() => openDrill('Risorse attive', () => true)} style={{ cursor: 'pointer' }}><Kpi accent label="Risorse attive" value={t.total} foot={`${t.employees} dipendenti · ${t.lp} LP${t.tirocinanti ? ` · ${t.tirocinanti} tirocinanti` : ''}`} /></div>
         <div onClick={() => openDrill('Donne', (p) => p.sex === 'F')} style={{ cursor: 'pointer' }}><Kpi label="Donne" value={t.female} foot={`${pct(t.female)}% dell'organico`} bar={pct(t.female)} /></div>
         <div onClick={() => openDrill('Uomini', (p) => p.sex === 'M')} style={{ cursor: 'pointer' }}><Kpi label="Uomini" value={t.male} foot={`${pct(t.male)}% dell'organico${t.total - t.female - t.male ? ` · ${t.total - t.female - t.male} n.d.` : ''}`} bar={pct(t.male)} /></div>
         <Kpi label="Età media" value={d.avg_age ? `${Math.round(d.avg_age)} anni` : '–'} foot="sulle risorse con data di nascita" />
@@ -76,7 +76,7 @@ export default function Dashboard() {
           <Donut size={170} data={[{ name: 'Donne', value: t.female, color: C.teal }, { name: 'Uomini', value: t.male, color: C.blue }, { name: 'n.d.', value: t.total - t.female - t.male, color: C.grey }]} onClick={(x) => openDrill(x.name, (p) => (x.name === 'Donne' ? p.sex === 'F' : x.name === 'Uomini' ? p.sex === 'M' : !p.sex))} />
           <Legend items={[{ label: 'Donne', color: C.teal }, { label: 'Uomini', color: C.blue }]} />
           <div className="subhead">Dipendenti e LP</div>
-          <Donut size={150} data={[{ name: 'Dipendenti', value: t.employees, color: C.teal }, { name: 'Liberi professionisti', value: t.lp, color: C.mauve }]} onClick={(x) => openDrill(x.name, (p) => (x.name === 'Dipendenti' ? p.kind === 'DIPENDENTE' : p.kind === 'LP'))} />
+          <Donut size={150} data={[{ name: 'Dipendenti', value: t.employees, color: C.teal }, { name: 'Liberi professionisti', value: t.lp, color: C.mauve }, ...(t.tirocinanti ? [{ name: 'Tirocinanti', value: t.tirocinanti, color: C.blue || '#5b8def' }] : [])]} onClick={(x) => openDrill(x.name, (p) => (x.name === 'Dipendenti' ? p.kind === 'DIPENDENTE' : x.name === 'Tirocinanti' ? p.kind === 'TIROCINANTE' : p.kind === 'LP'))} />
         </Card>
       </div>
 

@@ -67,8 +67,8 @@ export async function buildPayrollDocx({ params, result, settings, user, include
       ...(cost.mbo_max ? [['MBO massimo (costo azienda)', eur(cost.mbo_max)], ['Costo annuo con MBO al 100%', eur(cost.annual_with_mbo)]] : []),
     ]));
   }
-  children.push(h('Note'), p('Le aliquote contributive e fiscali sono quelle impostate nel widget Contratti del personale (Impostazioni) e vanno verificate con il consulente del lavoro per il profilo contributivo effettivo (apprendisti, dirigenti, sgravi). La scomposizione segue la regola dell\'Elaboratore Buste Paga: paga base pari al minimo tabellare del livello, indennità di funzione pari al 70% dell\'eccedenza, il resto a superminimo.', { color: '5B6F75' }));
-  const doc = new Document({ creator: 'Suite TD · Contratti del personale', title: 'Simulazione di busta paga', sections: [{ properties: { page: { margin: { top: 1000, bottom: 1000, left: 1100, right: 1100 } } }, children }] });
+  children.push(h('Note'), p('Le aliquote contributive e fiscali sono quelle impostate nel widget Gestione del personale (Impostazioni) e vanno verificate con il consulente del lavoro per il profilo contributivo effettivo (apprendisti, dirigenti, sgravi). La scomposizione segue la regola dell\'Elaboratore Buste Paga: paga base pari al minimo tabellare del livello, indennità di funzione pari al 70% dell\'eccedenza, il resto a superminimo.', { color: '5B6F75' }));
+  const doc = new Document({ creator: 'Suite TD · Gestione del personale', title: 'Simulazione di busta paga', sections: [{ properties: { page: { margin: { top: 1000, bottom: 1000, left: 1100, right: 1100 } } }, children }] });
   return Packer.toBuffer(doc);
 }
 

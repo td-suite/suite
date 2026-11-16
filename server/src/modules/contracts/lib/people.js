@@ -1,5 +1,5 @@
 // Scrittura delle persone sull'anagrafica unica (public.people + contracts.person_ext) in un'unica transazione.
-// Contratti del personale è l'ingresso HR: l'unico modulo autorizzato a creare e modificare public.people (oltre ad
+// Gestione del personale è l'ingresso HR: l'unico modulo autorizzato a creare e modificare public.people (oltre ad
 // Amministrazione > Persone). Ogni creazione o modifica viene registrata nell'audit della Suite con l'utente Suite (req.suiteUser),
 // non con la riga users dello schema del modulo. Le letture passano dalla vista resources_v (migrazione 016).
 import { autoAccountForPerson } from '../../../lib/accounts.js';
@@ -13,9 +13,10 @@ export const PEOPLE_COLS = ['kind', 'status', 'last_name', 'first_name', 'sex', 
 export const EXT_COLS = ['mobile_company', 'iban', 'badge_number', 'nationality', 'emergency_contact', 'area_id', 'approver_id', 'cv_attachment_id', 'termination_reason', 'termination_notes', 'interview_notes', 'notes'];
 // Nomi usati dall'app di origine (e dal front-end) che corrispondono a colonne di public.people con altro nome
 const ALIASES = { manager_id: 'manager_person_id' };
-// Tipo di persona dell'anagrafica unica: DIPENDENTE e DIRIGENTE hanno un rapporto subordinato (employments), gli altri un incarico (lp_contracts)
-export const PERSON_KINDS = ['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO'];
-export const hrKind = (personKind) => (['DIPENDENTE', 'DIRIGENTE'].includes(personKind) ? 'DIPENDENTE' : 'LP');
+// Tipo di persona dell'anagrafica unica: DIPENDENTE e DIRIGENTE hanno un rapporto subordinato (employments), il TIROCINANTE un
+// tirocinio (tirocini: convenzione, progetto formativo, tutor, giudizio), gli altri un incarico (lp_contracts)
+export const PERSON_KINDS = ['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO', 'TIROCINANTE'];
+export const hrKind = (personKind) => (['DIPENDENTE', 'DIRIGENTE'].includes(personKind) ? 'DIPENDENTE' : personKind === 'TIROCINANTE' ? 'TIROCINANTE' : 'LP');
 
 const suiteReq = (req) => ({ user: req.suiteUser || req.user, ip: req.ip });
 const runner = (c) => (c ? c.query.bind(c) : q);

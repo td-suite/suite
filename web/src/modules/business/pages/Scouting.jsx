@@ -45,16 +45,16 @@ export default function Scouting() {
         <div className="row">
           {cat.data.admin && <button className="btn ghost" onClick={() => setModal({ t: 'segnali' })}>Segnali</button>}
           {puo && <button className="btn ghost" onClick={() => setModal({ t: 'manuale' })}>+ Aggiungi a mano</button>}
-          {puo && <button className="btn ghost" onClick={() => setModal({ t: 'fonti' })}>Elenchi ufficiali e file</button>}
-          {puo && <button className="btn" onClick={() => setModal({ t: 'ricerca' })}>Nuova ricerca</button>}
+          {puo && <button className="btn" onClick={() => setModal({ t: 'fonti' })}>Fonti: registro, Google, elenchi</button>}
+          {puo && <button className="btn ghost" onClick={() => setModal({ t: 'ricerca' })}>Ricerca su OpenStreetMap</button>}
         </div>
       </div>
       {ultima && <div className={`alert ${ultima.stato === 'ERRORE' ? 'err' : 'info'}`} style={{ marginBottom: 12, display: 'block' }}>
-        {ultima.stato === 'IN_CORSO' ? <>{ultima.fonte === 'OSM' ? 'Ricerca in corso su OpenStreetMap. ' : 'Caricamento in corso. '}{ultima.avanzamento || 'In avvio'}. Finora {ultima.trovati} strutture, {ultima.nuovi} nuove. Ogni provincia richiede fino a un minuto.{' '}
+        {ultima.stato === 'IN_CORSO' ? <>{ultima.fonte === 'OSM' ? 'Ricerca in corso su OpenStreetMap. ' : ultima.fonte === 'REGISTRO' ? 'Ricerca in corso nel registro imprese. ' : 'Caricamento in corso. '}{ultima.avanzamento || 'In avvio'}. Finora {ultima.trovati} strutture, {ultima.nuovi} nuove.{ultima.fonte === 'OSM' ? ' Ogni provincia richiede fino a un minuto.' : ''}{' '}
           {puo && <button className="btn sm ghost" onClick={async () => { try { await api.post(`/scouting/ricerche/${ultima.id}/annulla`, {}); ricerche.reload(); } catch (e) { toast(e.message, 'err'); } }}>Annulla</button>}</>
           : ultima.stato === 'ERRORE' ? `L'ultima ricerca non è riuscita: ${ultima.errore}`
             : ultima.stato === 'ANNULLATA' ? `Ricerca annullata: ${ultima.trovati} strutture registrate prima dell'annullamento.`
-              : `${ultima.fonte === 'OSM' ? 'Ultima ricerca su OpenStreetMap' : ultima.fonte === 'ELENCO' ? 'Ultimo elenco caricato' : 'Ultimo elenco ufficiale caricato'} il ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture, ${ultima.nuovi} nuove.`}
+              : `${ultima.fonte === 'OSM' ? 'Ultima ricerca su OpenStreetMap' : ultima.fonte === 'REGISTRO' ? 'Ultima ricerca nel registro imprese' : ultima.fonte === 'ELENCO' ? 'Ultimo elenco caricato' : 'Ultimo elenco ufficiale caricato'} il ${itDateTime(ultima.finita_at || ultima.created_at)} (${ultima.province.join(', ')}): ${ultima.trovati} strutture, ${ultima.nuovi} nuove.`}
         {(ultima.avvisi || []).length > 0 && ultima.stato !== 'ERRORE' && <div className="small" style={{ marginTop: 6 }}>{ultima.fonte === 'OSM' ? 'Non riuscite, da ripetere: ' : ''}{ultima.avvisi.join(' · ')}</div>}
       </div>}
       {el.data?.coda?.in_corso && <div className="alert info" style={{ marginBottom: 12 }}>Lettura dei siti in corso: {el.data.coda.fatti} di {el.data.coda.totale}. Si legge un sito alla volta, con una pausa tra le pagine.</div>}
@@ -127,6 +127,7 @@ function NuovaRicerca({ linea, cat, onClose, onFatto }) {
 function Fonti({ linea, cat, onClose, onFatto }) {
   const toast = useToast();
   const d = useApi(`/scouting/fonti?linea=${linea}`, [linea]);
+  const sorg = useApi('/scouting/sorgenti');
   const [busy, setBusy] = useState(null); const [esito, setEsito] = useState({}); const [categoria, setCategoria] = useState(cat.categorie[0]?.key || 'ALTRO');
   const invia = async (chiave, file) => {
     setBusy(chiave); setEsito((o) => ({ ...o, [chiave]: null }));
@@ -139,7 +140,7 @@ function Fonti({ linea, cat, onClose, onFatto }) {
   };
   const scegli = (chiave, accept) => { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => i.files[0] && invia(chiave, i.files[0]); i.click(); };
   return (
-    <Modal wide title="Elenchi ufficiali e file" onClose={onClose} footer={<button className="btn ghost" onClick={onClose}>Chiudi</button>}>
+    <Modal wide title="Fonti dei prospect" onClose={onClose} footer={<button className="btn ghost" onClick={onClose}>Chiudi</button>}>
       <p className="small muted">Gli elenchi del Ministero della Salute sono la fonte stabile: completi, con partita IVA, sempre disponibili. Non riportano sito e telefono: dopo il caricamento indica il sito delle strutture che ti interessano e la Suite ne legge anagrafica, segnali e persone chiave.</p>
       {d.error ? <ErrorBox error={d.error} /> : !d.data ? <Loading /> : d.data.map((f) => (
         <div key={f.chiave} style={{ borderTop: '1px solid rgba(0,0,0,.08)', padding: '12px 0' }}>
@@ -156,8 +157,80 @@ function Fonti({ linea, cat, onClose, onFatto }) {
             <button className="btn sm" disabled={Boolean(busy)} onClick={() => scegli('ELENCO', '.csv,.xlsx,.txt')}>{busy === 'ELENCO' ? 'Carico…' : 'Carica il file'}</button></div></div>
         {esito.ELENCO && <div className={`alert ${esito.ELENCO.ok ? 'ok' : 'err'}`} style={{ marginTop: 8, display: 'block' }}>{esito.ELENCO.testo}</div>}
       </div>
-      <p className="small muted">Per RSA, poliambulatori e aziende non esiste un elenco ufficiale aggiornato e scaricabile: usa "Nuova ricerca" (OpenStreetMap), "Aggiungi a mano" o un tuo elenco.</p>
+      <Registro linea={linea} cat={cat} sorg={sorg.data} onFatto={() => { onFatto(); onClose(); }} />
+      <Google linea={linea} cat={cat} sorg={sorg.data} onFatto={onFatto} />
+      {sorg.data && <div style={{ borderTop: '1px solid rgba(0,0,0,.08)', padding: '12px 0' }}>
+        <div className="row between"><div><strong>OpenStreetMap</strong> <span className="small muted">· gratuito · raccolta notturna</span>
+          <div className="small muted">I servizi pubblici di giorno sono spesso saturi: la Suite li interroga da sola di notte, una provincia e una tipologia alla volta, e tiene ciò che arriva.</div>
+          <div className="small">Lette {sorg.data.osm.lette} combinazioni su {sorg.data.osm.totale}, {sorg.data.osm.strutture} strutture{sorg.data.osm.ultima ? `, ultima lettura riuscita ${itDateTime(sorg.data.osm.ultima)}` : ''}.
+            {sorg.data.osm.ultimo_errore && <span className="muted"> Ultimo tentativo fallito: {cat.province[sorg.data.osm.ultimo_errore.provincia]}, {itDateTime(sorg.data.osm.ultimo_errore.tentativo_at)}.</span>}</div></div>
+          {cat.admin && <button className="btn sm ghost" onClick={async () => { try { await api.post('/scouting/osm/raccogli', {}); toast('Raccolta avviata: ricontrolla tra qualche minuto'); } catch (e) { toast(e.message, 'err'); } }}>Prova ora</button>}</div>
+      </div>}
     </Modal>
+  );
+}
+const riga = { borderTop: '1px solid rgba(0,0,0,.08)', padding: '12px 0' };
+function Registro({ linea, cat, sorg, onFatto }) {
+  const toast = useToast();
+  const [prov, setProv] = useState([]); const [categoria, setCategoria] = useState(cat.categorie[0]?.key || 'ALTRO'); const [codici, setCodici] = useState(''); const [minDip, setMinDip] = useState(linea === 'MDL' ? '50' : '');
+  const [stima, setStima] = useState(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  useEffect(() => { if (sorg) setCodici((sorg.registro.ateco[categoria] || []).join(', ')); setStima(null); }, [categoria, sorg]);
+  useEffect(() => { setStima(null); }, [prov, codici, minDip]);
+  if (!sorg) return null;
+  const corpo = () => ({ linea, province: prov, codici: codici.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean), min_dipendenti: minDip ? Number(minDip) : null, categoria });
+  const fai = async (url, extra = {}) => { setBusy(true); setErr(null); try { return await api.post(url, { ...corpo(), ...extra }); } catch (e) { setErr(e.message); return null; } finally { setBusy(false); } };
+  const pronto = prov.length > 0 && corpo().codici.length > 0;
+  return (
+    <div style={riga}>
+      <strong>Registro imprese</strong> <span className="small muted">· Openapi (Ufficio Camerale) · a pagamento a consumo{sorg.registro.prova ? ' · AMBIENTE DI PROVA' : ''}</span>
+      <div className="small muted">Imprese attive per provincia e codice attività, con ragione sociale, partita IVA, PEC, sede, dipendenti e fatturato dell'ultimo bilancio. Prima la stima gratuita, poi la conferma.</div>
+      {!sorg.registro.attivo ? <div className="alert info" style={{ marginTop: 8 }}>Non attivo: inserisci il token in Amministrazione &gt; Connettori &gt; Openapi Company e abilita il connettore.</div> : <>
+        <div className="scout-scelte" style={{ marginTop: 8 }}>{Object.entries(cat.province).map(([k, v]) => <label key={k}><input type="checkbox" checked={prov.includes(k)} onChange={() => setProv(prov.includes(k) ? prov.filter((x) => x !== k) : [...prov, k])} />{v}</label>)}</div>
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
+          <Field label="Tipologia"><select value={categoria} onChange={(e) => setCategoria(e.target.value)}>{cat.categorie.map((c) => <option key={c.key} value={c.key}>{c.etichetta}</option>)}</select></Field>
+          <Field label="Codici ATECO" help="Separati da virgola. Proposti per la tipologia, modificabili."><input value={codici} onChange={(e) => setCodici(e.target.value)} placeholder="es. 8710, 8730" /></Field>
+          <Field label="Dipendenti minimi"><input type="number" min="1" value={minDip} onChange={(e) => setMinDip(e.target.value)} placeholder="tutti" /></Field>
+          <button className="btn sm ghost" style={{ marginBottom: 10 }} disabled={busy || !pronto} onClick={async () => setStima(await fai('/scouting/registro/stima'))}>{busy && !stima ? 'Calcolo…' : 'Stima gratuita'}</button>
+        </div>
+        {err && <div className="alert err" style={{ display: 'block' }}>{err}</div>}
+        {stima && <div className="alert info" style={{ display: 'block' }}>
+          {stima.righe.map((x, i) => <div key={i} className="small">{x.testo}</div>)}
+          <div style={{ marginTop: 6 }}><strong>{stima.imprese != null ? `${stima.imprese} imprese` : 'Numero di imprese non leggibile dalla risposta'}{stima.prezzo != null ? `, costo indicato da Openapi ${stima.prezzo.toFixed(2)} €` : ', costo non indicato nella risposta: controlla il listino del tuo conto Openapi'}</strong>. Si scaricano al massimo {sorg.registro.max} imprese per ricerca.</div>
+          <button className="btn sm" style={{ marginTop: 8 }} disabled={busy || stima.imprese === 0} onClick={async () => { const r = await fai('/scouting/registro/cerca', { confermo: true }); if (r) { toast('Ricerca nel registro avviata'); onFatto(); } }}>Confermo la spesa: scarica le imprese</button>
+        </div>}
+      </>}
+    </div>
+  );
+}
+function Google({ linea, cat, sorg, onFatto }) {
+  const toast = useToast();
+  const [testo, setTesto] = useState(''); const [prov, setProv] = useState(''); const [categoria, setCategoria] = useState(cat.categorie[0]?.key || 'ALTRO'); const [ris, setRis] = useState(null); const [sel, setSel] = useState({}); const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  if (!sorg) return null;
+  const cerca = async () => { setBusy(true); setErr(null); setRis(null); try { const r = await api.post('/scouting/google/cerca', { linea, testo, provincia: prov || null }); setRis(r); setSel(Object.fromEntries(r.luoghi.filter((l) => l.sito && !l.gia).map((l) => [l.id, true]))); } catch (e) { setErr(e.message); } finally { setBusy(false); } };
+  const scelti = (ris?.luoghi || []).filter((l) => sel[l.id] && l.sito);
+  const aggiungi = async () => { setBusy(true); try { const r = await api.post('/scouting/google/aggiungi', { linea, categoria, luoghi: scelti.map((l) => ({ id: l.id, sito: l.sito })) }); toast(`${r.nuovi} aggiunte, i siti sono in lettura${r.gia ? `; ${r.gia} erano già in elenco` : ''}`); setRis(null); onFatto(); } catch (e) { setErr(e.message); } finally { setBusy(false); } };
+  return (
+    <div style={riga}>
+      <strong>Google</strong> <span className="small muted">· ricerca dal vivo · a pagamento a consumo sul conto Google</span>
+      <div className="small muted">Cerchi come su Google Maps e scegli le strutture. Per le regole di Google i risultati non si salvano: delle strutture scelte la Suite conserva l'identificativo e legge il sito, da cui prende nome, partita IVA, recapiti e persone chiave. Chi non ha un sito si aggiunge a mano.</div>
+      {!sorg.google.attivo ? <div className="alert info" style={{ marginTop: 8 }}>Non attivo: serve una chiave Google con "Places API (New)" abilitata, in Amministrazione &gt; Connettori &gt; Google Places.</div> : <>
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
+          <Field label="Cosa cerchi" className="scout-grow"><input value={testo} onChange={(e) => setTesto(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && testo.trim().length >= 3 && cerca()} placeholder="es. RSA, poliambulatorio, centro medico, casa di riposo" /></Field>
+          <Field label="Provincia"><select value={prov} onChange={(e) => setProv(e.target.value)}><option value="">non indicata</option>{Object.entries(cat.province).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <button className="btn sm ghost" style={{ marginBottom: 10 }} disabled={busy || testo.trim().length < 3} onClick={cerca}>{busy && !ris ? 'Cerco…' : 'Cerca'}</button>
+        </div>
+        {err && <div className="alert err" style={{ display: 'block' }}>{err}</div>}
+        {ris && (ris.luoghi.length ? <>
+          <div className="table-wrap" style={{ maxHeight: 280, overflow: 'auto' }}><table className="t small"><tbody>{ris.luoghi.map((l) => <tr key={l.id}>
+            <td style={{ width: 26 }}>{l.sito && !l.gia && <input type="checkbox" aria-label={`Scegli ${l.nome}`} checked={Boolean(sel[l.id])} onChange={(e) => setSel((o) => ({ ...o, [l.id]: e.target.checked }))} />}</td>
+            <td><strong>{l.nome}</strong><div className="muted">{[l.tipo, l.indirizzo].filter(Boolean).join(' · ')}</div></td>
+            <td>{l.gia ? <Badge>già in elenco</Badge> : l.sito ? <a href={l.sito} target="_blank" rel="noreferrer noopener">{origine(l.sito)}</a> : <span className="muted">senza sito</span>}<div className="muted">{l.telefono || ''}</div></td></tr>)}</tbody></table></div>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}><span className="small muted">Risultati di Google Maps, mostrati e non salvati.{ris.altre ? ' Ce ne sono altri: restringi la ricerca.' : ''}</span>
+            <select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Tipologia">{cat.categorie.map((c) => <option key={c.key} value={c.key}>{c.etichetta}</option>)}</select>
+            <button className="btn sm" disabled={busy || !scelti.length} onClick={aggiungi}>Aggiungi le {scelti.length} scelte e leggi i siti</button></div>
+        </> : <div className="small muted">Nessun risultato.</div>)}
+      </>}
+    </div>
   );
 }
 function AggiungiAMano({ linea, cat, onClose, onFatto }) {
@@ -247,7 +320,7 @@ function Scheda({ id, cat, puo, onClose, onCambio }) {
             <div className="scout-evidenza">{v.evidenza} {v.url && <a href={v.url} target="_blank" rel="noreferrer noopener">{origine(v.url)}</a>}</div></div>) : <div className="small muted">Nessun segnale.</div>}
         </div>
       </div>
-      <div className="small muted" style={{ marginTop: 10 }}>Fonte: {c.fonte === 'OSM' ? <a href={`https://www.openstreetmap.org/${c.fonte_ref}`} target="_blank" rel="noreferrer noopener">OpenStreetMap</a> : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'}${c.tags?.tipologia ? ` (${c.tags.tipologia})` : ''}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : 'inserimento manuale'}{(c.profilo?.pagine || []).length ? ` · ${c.profilo.pagine.length} pagine del sito lette` : ''}. Gli indirizzi segnati "ipotesi" non entrano tra i referenti come email: restano nella nota, da verificare.</div>
+      <div className="small muted" style={{ marginTop: 10 }}>Fonte: {c.fonte === 'OSM' ? <a href={`https://www.openstreetmap.org/${c.fonte_ref}`} target="_blank" rel="noreferrer noopener">OpenStreetMap</a> : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'}${c.tags?.tipologia ? ` (${c.tags.tipologia})` : ''}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : c.fonte === 'REGISTRO' ? `registro imprese (Openapi)${c.tags?.ateco ? `, ATECO ${c.tags.ateco}${c.tags.ateco_descrizione ? ` ${c.tags.ateco_descrizione}` : ''}` : ''}${c.tags?.fatturato ? `, fatturato ${Number(c.tags.fatturato).toLocaleString('it-IT')} € (${c.tags.bilancio})` : ''}` : c.fonte === 'GOOGLE' ? 'trovata con Google, dati letti dal suo sito' : 'inserimento manuale'}{(c.profilo?.pagine || []).length ? ` · ${c.profilo.pagine.length} pagine del sito lette` : ''}. Gli indirizzi segnati "ipotesi" non entrano tra i referenti come email: restano nella nota, da verificare.</div>
     </Modal>
   );
 }

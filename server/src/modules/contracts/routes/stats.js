@@ -12,8 +12,9 @@ const r2 = (n) => Math.round(n * 100) / 100;
 async function headcount() {
   const rows = await many(`SELECT r.id, r.kind, r.status, r.sex, r.area_id, a.name AS area_name, at.root_name AS area_root, at.path AS area_path, r.last_name, r.first_name, r.hired_at, r.terminated_at, r.birth_date,
       e.contract_type, e.level, e.job_title, e.ral, e.ral_steps, e.mbo_enabled, e.mbo_pct, e.mbo_amount, e.cost_coefficient, e.weekly_hours,
-      l.discipline, l.est_monthly_cost, l.fees
+      l.discipline, l.est_monthly_cost, l.fees, ti.indennita_mensile
     FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN areas_tree at ON at.id=r.area_id LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
+      LEFT JOIN tirocini ti ON ti.resource_id=r.id
     WHERE r.status IN ('ATTIVO','IMPEGNO') OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months')) ORDER BY r.last_name, r.first_name`);
   const S = await getSettings();
   const year = new Date().getFullYear();
@@ -24,7 +25,8 @@ async function headcount() {
       const c = companyCost(ral, costCoefficient(S, x), x.mbo_enabled ? (Number(x.mbo_amount) > 0 && ral ? Number(x.mbo_amount) / ral * 100 : x.mbo_pct) : 0);
       annual = c.annual; monthly = c.monthly; mbo = c.mbo_max;
     } else {
-      monthly = Number(x.est_monthly_cost || 0); annual = r2(monthly * 12);
+      // tirocinante: il costo è l'indennità di partecipazione, se prevista
+      monthly = Number((x.kind === 'TIROCINANTE' ? x.indennita_mensile : x.est_monthly_cost) || 0); annual = r2(monthly * 12);
     }
     // Costo dell'esercizio corrente pro rata: dall'ingresso (o 1° gennaio) alla cessazione (o 31 dicembre)
     const from = x.hired_at && String(x.hired_at).slice(0, 10) > `${year}-01-01` ? String(x.hired_at).slice(0, 10) : `${year}-01-01`;
@@ -42,13 +44,14 @@ r.get('/summary', ah(async (req, res) => {
   const sum = (arr, k) => r2(arr.reduce((a, x) => a + Number(x[k] || 0), 0));
   const group = (arr, keyFn, labelFn = (k) => k) => {
     const m = new Map();
-    for (const x of arr) { const k = keyFn(x) ?? 'Non assegnata'; if (!m.has(k)) m.set(k, { key: k, label: labelFn(k), count: 0, employees: 0, lp: 0, female: 0, male: 0, cost_annual: 0, cost_monthly: 0, ids: [] }); const g = m.get(k); g.count++; g[x.kind === 'DIPENDENTE' ? 'employees' : 'lp']++; if (x.sex === 'F') g.female++; if (x.sex === 'M') g.male++; g.cost_annual = r2(g.cost_annual + x.cost_annual); g.cost_monthly = r2(g.cost_monthly + x.cost_monthly); g.ids.push(x.id); }
+    for (const x of arr) { const k = keyFn(x) ?? 'Non assegnata'; if (!m.has(k)) m.set(k, { key: k, label: labelFn(k), count: 0, employees: 0, lp: 0, tirocinanti: 0, female: 0, male: 0, cost_annual: 0, cost_monthly: 0, ids: [] }); const g = m.get(k); g.count++; g[x.kind === 'DIPENDENTE' ? 'employees' : x.kind === 'TIROCINANTE' ? 'tirocinanti' : 'lp']++; if (x.sex === 'F') g.female++; if (x.sex === 'M') g.male++; g.cost_annual = r2(g.cost_annual + x.cost_annual); g.cost_monthly = r2(g.cost_monthly + x.cost_monthly); g.ids.push(x.id); }
     return [...m.values()].sort((a, b) => b.count - a.count);
   };
   const totals = {
     total: active.length,
     employees: active.filter((x) => x.kind === 'DIPENDENTE').length,
     lp: active.filter((x) => x.kind === 'LP').length,
+    tirocinanti: active.filter((x) => x.kind === 'TIROCINANTE').length,
     pending: rows.filter((x) => x.status === 'IMPEGNO').length,
     female: active.filter((x) => x.sex === 'F').length,
     male: active.filter((x) => x.sex === 'M').length,
@@ -65,7 +68,7 @@ r.get('/summary', ah(async (req, res) => {
   // raggruppa per unità di 2° livello (direzione/linea); le aree di 3° livello confluiscono nella loro linea
   for (const x of active) x.area_group = x.area_path ? (x.area_path.split(' › ')[1] || x.area_path) : x.area_name;
   const byArea = group(active, (x) => x.area_group);
-  const byContract = group(active, (x) => (x.kind === 'LP' ? 'LP' : x.contract_type || 'TIND'), (k) => ({ TIND: 'Tempo indeterminato', TDET: 'Tempo determinato', APPRENDISTATO: 'Apprendistato', DIRIGENTE: 'Dirigente', LP: 'Libero professionista' }[k] || k));
+  const byContract = group(active, (x) => (x.kind === 'LP' ? 'LP' : x.kind === 'TIROCINANTE' ? 'TIROCINIO' : x.contract_type || 'TIND'), (k) => ({ TIROCINIO: 'Tirocinio', TIND: 'Tempo indeterminato', TDET: 'Tempo determinato', APPRENDISTATO: 'Apprendistato', DIRIGENTE: 'Dirigente', LP: 'Libero professionista' }[k] || k));
   const byLevel = group(active.filter((x) => x.kind === 'DIPENDENTE'), (x) => x.level || 'n.d.', (k) => (k === 'Q' ? 'Quadro' : `Livello ${k}`));
   const byDiscipline = group(active.filter((x) => x.kind === 'LP'), (x) => x.discipline || 'n.d.');
   // Andamento organico per mese (ultimi 12 mesi e prossimi 3) in base alla data di ingresso

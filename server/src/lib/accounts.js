@@ -16,7 +16,7 @@ const genPassword = () => `${crypto.randomBytes(9).toString('base64url')}A1!`;
 // Account automatico solo per i domini aziendali (decisione del CEO del 05/11/2026, debug pre-produzione M9): elenco configurabile in
 // app_settings 'accounts.domini_automatici' (predefinito: i domini interni, AUTO_INTERNAL_DOMAINS). Per le altre email (medici, fornitori,
 // candidati, partner e clienti) nessun account nasce da solo: lo si crea dal pulsante "Crea accesso" della Legal entity, da Utenti o
-// dalla scheda persona. Vale per Persone, Contratti del personale e importazioni XLSX.
+// dalla scheda persona. Vale per Persone, Gestione del personale e importazioni XLSX.
 export async function dominiAutomatici() {
   const v = await getSetting('accounts.domini_automatici', null).catch(() => null);
   const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : config.autoInternalDomains;

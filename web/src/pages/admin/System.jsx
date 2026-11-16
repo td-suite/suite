@@ -423,7 +423,7 @@ function CompanyEditor({ value, onSave }) {
   const dirty = JSON.stringify(f) !== JSON.stringify(value || {});
   return (
     <div>
-      <p className="small muted" style={{ marginTop: 0 }}>Ragione sociale, sede legale, partita IVA, REA, capitale sociale, contatti e Direttore Sanitario usati da Business, Finance, Spedizioni, Circolari, Contratti del personale e dall'organigramma per carte intestate, piè di pagina e firme. Si modificano solo qui.</p>
+      <p className="small muted" style={{ marginTop: 0 }}>Ragione sociale, sede legale, partita IVA, REA, capitale sociale, contatti e Direttore Sanitario usati da Business, Finance, Spedizioni, Circolari, Gestione del personale e dall'organigramma per carte intestate, piè di pagina e firme. Si modificano solo qui.</p>
       <div className="form-grid">
         {fields.map(([k, label, help]) => <Field key={k} label={label} help={help} className={k === 'footer' ? 'span-all' : ''}>
           {k === 'footer' ? <textarea value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} style={{ minHeight: 70 }} placeholder={info.data?.company?.footer_text || ''} />

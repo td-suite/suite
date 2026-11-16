@@ -7,7 +7,9 @@ import crypto from 'node:crypto';
 export const DEFAULT_MAILBOX = 'people@toscanadiagnostica.it';
 export const DEFAULT_THRESHOLDS = [60, 30, 7, 0];
 // Destinatario del richiamo per tipo di scadenza: PERSONA (diretto destinatario, con copia a HR se impostata), HR, NESSUNO
-export const DEFAULT_MAP = { DOCUMENTO: 'PERSONA', PROVA: 'HR', CONTRATTO: 'HR', MANUALE: 'HR', IMPEGNO: 'HR', RAL: 'HR', MBO: 'HR' };
+// Formazione ed ECM vanno alla persona (è lei che deve fare il corso o acquisire i crediti), tirocini e medicina del lavoro a HR:
+// la visita la convoca l'azienda (Medicina del lavoro > Convoca), non la persona.
+export const DEFAULT_MAP = { DOCUMENTO: 'PERSONA', PROVA: 'HR', CONTRATTO: 'HR', MANUALE: 'HR', IMPEGNO: 'HR', RAL: 'HR', MBO: 'HR', FORMAZIONE: 'PERSONA', ECM: 'PERSONA', TIROCINIO: 'HR', MDL: 'HR' };
 export const RECIPIENTS = ['PERSONA', 'HR', 'NESSUNO'];
 // Oltre questi giorni di ritardo una scadenza non genera più il richiamo "scaduta" (evita la raffica al primo avvio)
 export const OVERDUE_MAX_DAYS = 30;
@@ -16,7 +18,7 @@ export const INBOX_MIMES = new Set(['application/pdf', 'application/msword', 'ap
 export const inboxExt = (n) => /\.(pdf|docx?|jpe?g|png|heic|tiff?|webp)$/i.test(n || '');
 export const acceptedFile = (name, mime) => INBOX_MIMES.has(String(mime || '').toLowerCase()) || inboxExt(name);
 
-const CODES = { DOCUMENTO: 'D', CONTRATTO: 'C', PROVA: 'P', RAL: 'R', MBO: 'B', IMPEGNO: 'L', MANUALE: 'M' };
+const CODES = { DOCUMENTO: 'D', CONTRATTO: 'C', PROVA: 'P', RAL: 'R', MBO: 'B', IMPEGNO: 'L', MANUALE: 'M', FORMAZIONE: 'F', ECM: 'E', TIROCINIO: 'T', MDL: 'V' };
 const hash4 = (s) => crypto.createHash('sha1').update(String(s || '')).digest('hex').slice(0, 4).toUpperCase();
 
 /**
@@ -29,7 +31,7 @@ export function deadlineKey(item) {
   if (item?.ref?.deadline_id) return `M${item.ref.deadline_id}`;
   const code = CODES[item?.type] || 'X';
   const ymd = String(item?.due_date || '').slice(0, 10).replace(/-/g, '');
-  const extra = item?.ref?.letter_id ? `L${item.ref.letter_id}` : '';
+  const extra = item?.ref?.letter_id ? `L${item.ref.letter_id}` : item?.ref?.formazione_id ? `F${item.ref.formazione_id}` : item?.ref?.visita_id ? `V${item.ref.visita_id}` : '';
   return `${code}${item?.resource_id || 0}-${ymd}-${hash4(`${extra}${item?.title || ''}`)}`;
 }
 

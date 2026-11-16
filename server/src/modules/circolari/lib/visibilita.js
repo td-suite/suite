@@ -18,7 +18,7 @@ export async function ospitantePP(orgId) {
 }
 import { clientiAttivi } from '../../../lib/clienti.js';
 
-const INTERNI = new Set(['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO']);
+const INTERNI = new Set(['DIPENDENTE', 'DIRIGENTE', 'LP', 'MEDICO', 'SANITARIO', 'TIROCINANTE']);
 const GRUPPO = new Set(['GRUPPO', 'SOCIETA']);
 const REDAZIONE = new Set(['ADMIN', 'PUBBLICATORE', 'REDATTORE']);
 

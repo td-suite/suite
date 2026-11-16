@@ -1,5 +1,5 @@
 // Veicoli e fuel card: i veicoli PROPRI del dipendente (marca, modello, targa, tariffa EUR/km dalle tabelle ACI con la fonte) e, in sola
-// lettura, la vettura aziendale e le fuel card assegnate in Contratti del personale (le inserisce P&C).
+// lettura, la vettura aziendale e le fuel card assegnate in Gestione del personale (le inserisce P&C).
 import React, { useState } from 'react';
 import { Card, Loading, Empty, PageHead, Modal, Field, ErrorBox, useToast } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
@@ -29,7 +29,7 @@ export default function Veicoli() {
             </div>))}</div>)}
       </Card>
       <Card className="rs-gap" title="La tua vettura aziendale e le tue fuel card" icon="building">
-        {!benefit.vetture.length && !benefit.fuel_card.length && <div className="small muted">Nessuna vettura aziendale e nessuna fuel card assegnate in Contratti del personale.</div>}
+        {!benefit.vetture.length && !benefit.fuel_card.length && <div className="small muted">Nessuna vettura aziendale e nessuna fuel card assegnate in Gestione del personale.</div>}
         {benefit.vetture.map((v) => <div key={v.id} className="rs-benefit"><strong>{v.marca} {v.modello}</strong> · targa {v.targa}{v.alimentazione ? ` · ${v.alimentazione}` : ''}{v.uso_promiscuo ? ' · uso promiscuo' : ''}<div className="small muted">dal {itData(v.dal)}{v.al ? ` al ${itData(v.al)}` : ''}{v.in_corso ? '' : ' · non in corso'}</div></div>)}
         {benefit.fuel_card.map((f) => <div key={f.id} className="rs-benefit"><strong>Fuel card {f.circuito}</strong> · {f.numero}{f.vettura_targa ? ` · per ${f.vettura_targa}` : ''}<div className="small muted">dal {itData(f.dal)}{f.al ? ` al ${itData(f.al)}` : ''}{f.in_corso ? '' : ' · non in corso'} · il PIN non si registra nella Suite</div></div>)}
       </Card>

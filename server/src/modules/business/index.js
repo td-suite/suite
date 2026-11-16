@@ -118,6 +118,14 @@ export default function mount(app) {
   registerJob(`${KEY}:inbox`, config.inboxMinutes, async () => (await live() ? pollCaselle() : { skipped: true, reason: 'modulo non LIVE' }));
   registerJob(`${KEY}:avvisi`, config.avvisiMinutes, async () => (await live() ? inviaAvvisi() : { skipped: true, reason: 'modulo non LIVE' }));
   // Richiamo dei prospect: controllo ogni ora, invio una volta al giorno dopo le 9 e solo con l'interruttore acceso (lib/richiamo.js)
+  // Ricerca prospect: raccolta da OpenStreetMap nelle ore di minor carico (tra l'una e le sei), poche richieste per giro
+  registerJob(`${KEY}:scout-osm`, 30, async () => {
+    if (!(await live())) return { skipped: true, reason: 'modulo non LIVE' };
+    const ora = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/Rome', hour: '2-digit', hour12: false }));
+    if (ora < 1 || ora >= 6) return { skipped: true, reason: 'fuori dalla finestra notturna' };
+    const { raccoltaOsm } = await import('./lib/scouting/store.js');
+    return raccoltaOsm({ massimo: 12 });
+  });
   registerJob(`${KEY}:richiamo-prospect`, 60, async () => (await live() ? eseguiRichiamo() : { skipped: true, reason: 'modulo non LIVE' }));
   // Punti Prelievo: ripresa dei passi dell'avvio in attesa della sede o della data (mai i non riusciti, che aspettano "Riprova")
   registerJob(`${KEY}:avvio-pp`, 30, async () => (await live() ? riprendiAvvii() : { skipped: true, reason: 'modulo non LIVE' }));

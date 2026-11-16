@@ -327,7 +327,7 @@ r.post('/organizations/fusione', requireAdmin, ah(async (req, res) => {
 
 // ---- Persone e rubrica (modulo "rubrica"; i dati contrattuali restano in Contracts: qui solo chi è, dove, cosa fa)
 const personSchema = z.object({
-  kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'ESTERNO']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
+  kind: z.enum(['DIPENDENTE', 'LP', 'MEDICO', 'SANITARIO', 'TIROCINANTE', 'ESTERNO']).optional(), status: z.enum(['CANDIDATO', 'IMPEGNO', 'ATTIVO', 'CESSATO']).optional(),
   last_name: z.string().trim().min(1).max(120), first_name: z.string().trim().min(1).max(120), title: z.string().max(20).nullable().optional(),   // max: L12 sex: z.enum(['F', 'M']).nullable().optional(),
   email: z.string().email().max(200).nullable().optional(), phone: z.string().max(40).nullable().optional(), phone_office: z.string().max(40).nullable().optional(), phone_ext: z.string().max(10).nullable().optional(), area: z.string().max(160).nullable().optional(),
   job_title: z.string().nullable().optional(), role_id: z.number().int().nullable().optional(), unit_id: z.number().int().nullable().optional(), unit: z.string().max(160).nullable().optional(), discipline: z.string().nullable().optional(), manager_person_id: z.number().int().nullable().optional(), no_manager: z.boolean().optional(), site_id: z.number().int().nullable().optional(),
@@ -579,11 +579,11 @@ r.put('/people/:id', ah(async (req, res) => {
   const prima = await one('SELECT id, organization_id, status, site_id FROM people WHERE id=$1', [Number(req.params.id)]);
   if (!prima) throw notFound();
   const b = await resolveCatalog(parse(personSchema.partial(), req.body));
-  // C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (Contratti del personale)
+  // C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (Gestione del personale)
   if (b.site_id !== undefined && Number(b.site_id || 0) !== Number(prima.site_id || 0)) {
     const ws = (await one(`SELECT to_regclass('contracts.employments') IS NOT NULL AS ok`))?.ok ? await one(`SELECT e.work_site_id, s.name FROM contracts.employments e JOIN sites s ON s.id=e.work_site_id
         WHERE e.resource_id=$1 AND e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)`, [prima.id]) : null;
-    if (ws && Number(b.site_id) !== Number(ws.work_site_id)) throw bad(`La sede di questa persona è quella del contratto di lavoro (${ws.name}): si cambia nel contratto, in Contratti del personale`);
+    if (ws && Number(b.site_id) !== Number(ws.work_site_id)) throw bad(`La sede di questa persona è quella del contratto di lavoro (${ws.name}): si cambia nel contratto, in Gestione del personale`);
   }
   // A11: cessazione manuale di una persona con accesso da amministratore: serve la conferma esplicita (conferma_disattivazione_admin)
   const cessa = b.status === 'CESSATO' && prima.status !== 'CESSATO';

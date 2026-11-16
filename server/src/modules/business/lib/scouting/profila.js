@@ -102,7 +102,7 @@ export async function profilaSito(sito, { linea = 'SRV', fornitori = null, attiv
   const riceve = await mx(ab.dominio || dominio).catch(() => null);
   deriva('DOMINIO_RICEVE_POSTA', riceve === true && { valore: true, evidenza: `Il dominio ${ab.dominio || dominio} ha un servizio di posta`, url: home });
   return {
-    ok: true, dominio, home, pagine: pagine.map((p) => ({ url: p.url, tipo: p.tipo })), anagrafica: an, persone: ab.persone, segnali,
+    ok: true, dominio, home, titolo: (String(h.testo).match(/<title[^>]*>([^<]{2,160})<\/title>/i) || [])[1]?.replace(/\s+/g, ' ').trim().split(/\s[|·–—-]\s/)[0] || null, pagine: pagine.map((p) => ({ url: p.url, tipo: p.tipo })), anagrafica: an, persone: ab.persone, segnali,
     email: { generali: ab.generali.filter((e) => eGenerica(e) || true).slice(0, 5), pec: ab.pec.slice(0, 2), schema: ab.schema, dominio: ab.dominio, riceve_posta: riceve },
     modulo_contatti: contatti?.url || null,
   };

@@ -46,7 +46,7 @@ r.post('/note/:id/invia', ah(async (req, res) => {
   if (p?.vertice && ctx2.user.level === 'OWNER') return inviaVertice(req, res, ctx2, n, sc);
   const alPc = !p || p.al_pc || !p.approvatore_id;
   const pcAltri = [...ctx2.pc].filter((id) => id !== n.person_id);
-  if (alPc && !pcAltri.length) throw bad('Non hai un responsabile in organigramma e non c\'è un P&C diverso da te che possa approvare la nota: va indicato P&C in Impostazioni (pc_person_ids) o nel grant Amministratore di Contratti del personale');
+  if (alPc && !pcAltri.length) throw bad('Non hai un responsabile in organigramma e non c\'è un P&C diverso da te che possa approvare la nota: va indicato P&C in Impostazioni (pc_person_ids) o nel grant Amministratore di Gestione del personale');
   const ritardo = sc.controlli.finestra.in_ritardo;
   await tx(async (c) => {
     await c.query(`UPDATE note SET stato='INVIATA', responsabile_person_id=$2, responsabile_origine=$3, al_pc=$4, inviata_at=now(), inviata_da=$5, in_ritardo=$6,

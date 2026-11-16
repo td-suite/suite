@@ -59,6 +59,14 @@ export const DEFAULT_SETTINGS = {
   addizionale_comunale_pct: '0.30',
   function_allowance_share: '0.70',
   deadline_alert_days: '60',
+  // Formazione ed ECM (v0.77.0): obbligo del triennio e anno di inizio del primo triennio gestito. 150 crediti nel triennio 2026-2028
+  // (Commissione nazionale per la formazione continua, delibera n. 1 del 5 marzo 2026). Modificabili in Impostazioni.
+  ecm_obbligo_triennio: '150',
+  ecm_triennio_inizio: '2026',
+  // Medicina del lavoro: valori proposti nelle convocazioni
+  mdl_medico_competente: '',
+  mdl_luogo: '',
+  mdl_anticipo_giorni: '60',
 };
 
 // Minimi tabellari CCNL Studi Professionali (fonte: Elaboratore Buste Paga, Foglio2)
@@ -135,9 +143,28 @@ export const DOSSIER_REQUIREMENTS = [
   { kind: 'LP', category: 'ECM', label: 'Crediti ECM (triennio)', required: false, renew_months: 36, sort_order: 120 },
   { kind: 'LP', category: 'FORMAZIONE', label: 'Attestati di formazione (BLS, sicurezza)', required: false, sort_order: 130 },
   { kind: 'LP', category: 'ALTRO', label: 'Altro', required: false, sort_order: 900 },
+  // Tirocinanti (16/11/2026): convenzione con l'ente promotore, progetto formativo individuale, coperture, registro e attestazione finale
+  { kind: 'TIROCINANTE', category: 'CONVENZIONE_TIROCINIO', label: 'Convenzione di tirocinio (contratto di inserimento)', required: true, sort_order: 10 },
+  { kind: 'TIROCINANTE', category: 'PROGETTO_FORMATIVO', label: 'Progetto formativo individuale firmato', required: true, sort_order: 20 },
+  { kind: 'TIROCINANTE', category: 'UNILAV', label: 'Comunicazione obbligatoria (tirocini extracurriculari)', required: false, sort_order: 30 },
+  { kind: 'TIROCINANTE', category: 'ASSICURAZIONE_TIROCINIO', label: 'Coperture INAIL e responsabilità civile', required: true, sort_order: 40 },
+  { kind: 'TIROCINANTE', category: 'CI', label: 'Documento di identità', required: true, sort_order: 50 },
+  { kind: 'TIROCINANTE', category: 'CF', label: 'Codice fiscale / tessera sanitaria', required: true, sort_order: 60 },
+  { kind: 'TIROCINANTE', category: 'CV', label: 'Curriculum vitae', required: false, sort_order: 70 },
+  { kind: 'TIROCINANTE', category: 'PRIVACY', label: 'Informativa privacy firmata', required: true, sort_order: 80 },
+  { kind: 'TIROCINANTE', category: 'MOD231', label: 'Modello 231, Codice Etico e Codice di Condotta', required: true, sort_order: 90 },
+  { kind: 'TIROCINANTE', category: 'FORMAZIONE_SICUREZZA', label: 'Formazione sicurezza (D.Lgs. 81/2008)', required: true, renew_months: 60, sort_order: 100 },
+  { kind: 'TIROCINANTE', category: 'VISITA_MEDICA', label: 'Idoneità sanitaria (medico competente)', required: false, renew_months: 12, sort_order: 110 },
+  { kind: 'TIROCINANTE', category: 'REGISTRO_PRESENZE', label: 'Registro delle presenze', required: false, sort_order: 120 },
+  { kind: 'TIROCINANTE', category: 'VALUTAZIONE_TIROCINIO', label: 'Scheda di valutazione e giudizio finale', required: false, sort_order: 130 },
+  { kind: 'TIROCINANTE', category: 'ATTESTAZIONE_TIROCINIO', label: 'Attestazione finale del tirocinio', required: false, sort_order: 140 },
+  { kind: 'TIROCINANTE', category: 'FORMAZIONE', label: 'Attestati di formazione', required: false, sort_order: 150 },
+  { kind: 'TIROCINANTE', category: 'ALTRO', label: 'Altro', required: false, sort_order: 900 },
 ];
 
-export const CATEGORY_LABELS = Object.fromEntries(DOSSIER_REQUIREMENTS.map((r) => [r.category, r.label]));
+// Le etichette valgono per categoria: a parità di categoria vince la prima definizione (dipendenti), così l'aggiunta dei tirocinanti non
+// cambia le etichette già in uso.
+export const CATEGORY_LABELS = Object.fromEntries([...DOSSIER_REQUIREMENTS].reverse().map((r) => [r.category, r.label]));
 
 // Organigramma (TD-SGI-IDL007_01 - Allegato 1, agg. 22/09/2026). Le unità STAFF sono le posizioni "di staff"
 // del diagramma originale (C-level a riporto del CEO, Direttore Sanitario e Lab Operations Manager).

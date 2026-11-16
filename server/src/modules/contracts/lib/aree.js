@@ -1,4 +1,4 @@
-// Aree del modulo Contratti del personale = unità di primo livello dell'organigramma del core (correzione B8 del programma "anagrafica
+// Aree del modulo Gestione del personale = unità di primo livello dell'organigramma del core (correzione B8 del programma "anagrafica
 // unica", 08/11/2026). L'organigramma si governa in Amministrazione > Organizzazione; qui si allineano le aree del modulo (usate dalle
 // schede delle risorse, dalle statistiche e dal CV Box): per ogni unità di primo livello un'area collegata (core_unit_id) con lo stesso
 // nome e la stessa collocazione (tecnostruttura o linea). Le aree senza unità restano (con le loro persone) e si elencano: nessuna

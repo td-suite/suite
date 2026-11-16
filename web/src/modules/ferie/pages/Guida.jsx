@@ -11,7 +11,7 @@ export default function Guida() {
       <div className="fe-two">
         <Card title="Per i dipendenti" icon="user">
           <ul className="fe-guida">
-            <li>Il Piano Ferie riguarda i dipendenti con contratto di lavoro subordinato registrato in Contratti del personale. I liberi professionisti non sono compresi.</li>
+            <li>Il Piano Ferie riguarda i dipendenti con contratto di lavoro subordinato registrato in Gestione del personale. I liberi professionisti non sono compresi.</li>
             <li><b>Il mio piano</b>: nel calendario dei 12 mesi trascina sui giorni (o cliccane uno) per aggiungere un periodo; puoi indicare mezza giornata il primo o l'ultimo giorno. I giorni lavorativi si contano da soli: festivi nazionali, santo patrono della sede e la tua settimana lavorativa.</li>
             <li>In alto vedi sempre quanti giorni hai <b>da pianificare</b>: spettanti dell'anno + residuo dell'anno precedente − giorni già nel piano.</li>
             <li>In cima al piano vedi <b>chi approva</b> il tuo piano: il tuo superiore diretto in anagrafica ("Dipende da" in Amministrazione &gt; Persone). Se è cessato o non ha accesso alla Suite, approva il superiore del superiore, e la pagina lo dice.</li>

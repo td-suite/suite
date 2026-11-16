@@ -31,7 +31,7 @@ export default function PianoArea() {
   const fatto = (msg) => { toast(msg); setModal(null); ricarica(); };
   const azione = async (fn, msg) => { try { await fn(); fatto(msg); } catch (e) { toast(e, 'err'); } };
 
-  if (aree.data && !lista.length) return <div className="page"><PageHead title="Piano dell'area" icon="calendar" /><Card><Empty icon="calendar" title="Nessun piano da mostrare">{aree.data.contratti === false ? 'Il modulo Contratti del personale non è ancora avviato: il perimetro dei dipendenti non è disponibile.' : 'Non sei nel perimetro del Piano Ferie e non gestisci nessuna area.'}</Empty></Card></div>;
+  if (aree.data && !lista.length) return <div className="page"><PageHead title="Piano dell'area" icon="calendar" /><Card><Empty icon="calendar" title="Nessun piano da mostrare">{aree.data.contratti === false ? 'Il modulo Gestione del personale non è ancora avviato: il perimetro dei dipendenti non è disponibile.' : 'Non sei nel perimetro del Piano Ferie e non gestisci nessuna area.'}</Empty></Card></div>;
   const selettore = lista.length > 1;
   const persone = data?.persone || [];
   const gestisce = data?.gestisce;

@@ -578,7 +578,7 @@ export function PeopleAdmin() {
   };
   return (
     <div className="page">
-      <PageHead title="Persone" icon="user" sub="Anagrafica unica: chi è, dove lavora, cosa fa. Il dossier HR è in Contratti del personale." actions={<><button className="btn ghost" onClick={async () => { try { const r = await api.post('/people/dedupe'); toast(r.removed ? `${r.removed} copie eliminate${r.blocked?.length ? `, ${r.blocked.length} con dati collegati lasciate` : ''}` : 'Nessun duplicato'); reload(); } catch (e) { toast(e, 'err'); } }}><Icon name="refresh" />Elimina duplicati</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova persona</button></>} />
+      <PageHead title="Persone" icon="user" sub="Anagrafica unica: chi è, dove lavora, cosa fa. Il dossier HR è in Gestione del personale." actions={<><button className="btn ghost" onClick={async () => { try { const r = await api.post('/people/dedupe'); toast(r.removed ? `${r.removed} copie eliminate${r.blocked?.length ? `, ${r.blocked.length} con dati collegati lasciate` : ''}` : 'Nessun duplicato'); reload(); } catch (e) { toast(e, 'err'); } }}><Icon name="refresh" />Elimina duplicati</button><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuova persona</button></>} />
       <div className="filters">
         <SearchInput value={q} onChange={setQ} placeholder="Cognome, nome, email, ruolo" />
         <Field label="Stato"><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Tutti</option><option value="ATTIVO">Attivi e in arrivo</option><option value="IMPEGNO">Solo in arrivo (impegno)</option><option value="CANDIDATO">Candidati</option><option value="CESSATO">Cessati</option></select></Field>
@@ -744,7 +744,7 @@ function Units() {
   const fields = (cur) => [
     { key: 'name', label: 'Nome dell\'unità', required: true, max: 160 },
     { key: 'kind', label: 'Tipo', type: 'select', required: true, options: opts(KINDS) },
-    { key: 'branch', label: 'Collocazione', type: 'select', required: true, options: [{ value: 'LINEA', label: 'Pettine (area operativa)' }, { value: 'STAFF', label: 'Tecnostruttura (funzione di staff)' }], help: 'Come in Contratti del personale: la tecnostruttura sta in alto accanto al vertice, il pettine sotto' },
+    { key: 'branch', label: 'Collocazione', type: 'select', required: true, options: [{ value: 'LINEA', label: 'Pettine (area operativa)' }, { value: 'STAFF', label: 'Tecnostruttura (funzione di staff)' }], help: 'Come in Gestione del personale: la tecnostruttura sta in alto accanto al vertice, il pettine sotto' },
     { key: 'parent_id', label: 'Dipende da', type: 'select', options: unitOpts.filter((o) => o.value !== cur?.id), help: 'Vuoto solo per la Direzione' },
     { key: 'site_id', label: 'Sede dell\'anagrafica', type: 'select', options: (sites.data || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` })), help: 'Per i nodi Sede e per i reparti' },
     { key: 'phone_ext', label: 'Interno centralino', max: 10 }, { key: 'sort_order', label: 'Ordine', type: 'number' }, { key: 'active', label: 'Attiva', type: 'bool' },
@@ -869,7 +869,7 @@ export function Roles({ embedded }) {
   const save = async (body) => { if (modal?.id) await api.put(`/job-roles/${modal.id}`, body); else await api.post('/job-roles', body); toast('Ruolo salvato'); reload(); };
   return (
     <div className={embedded ? '' : 'page'}>
-      {!embedded && <PageHead title="Ruoli" icon="tag" sub="Catalogo dei ruoli: cosa fa una persona (es. Site Manager, Biologo, Direttore Tecnico). Lo usano la scheda Persona, gli incarichi dell'organigramma e la mansione nei Contratti del personale." />}
+      {!embedded && <PageHead title="Ruoli" icon="tag" sub="Catalogo dei ruoli: cosa fa una persona (es. Site Manager, Biologo, Direttore Tecnico). Lo usano la scheda Persona, gli incarichi dell'organigramma e la mansione nei Gestione del personale." />}
       <div className="filters"><SearchInput value={q} onChange={setQ} placeholder="Cerca un ruolo" /><div className="spacer" /><button className="btn" onClick={() => setModal({})}><Icon name="plus" />Nuovo ruolo</button></div>
       <Card flush>
         {loading && <div style={{ padding: 18 }}><Skeleton lines={4} /></div>}

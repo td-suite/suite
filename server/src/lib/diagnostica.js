@@ -527,7 +527,7 @@ export const CONTROLLI = [
     correggi: { etichetta: 'Riallinea i perimetri', conferma: true, descrizione: 'realignOrgPerimeters per le Legal entity dei partner', fn: corr.d34 } },
   { id: 'D35', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Personale attivo senza sede di afferenza', spiegazione: 'Dipendenti, LP e dirigenti senza sede di lavoro.',
     sql: `SELECT p.id, p.last_name, p.kind FROM people p WHERE p.status = 'ATTIVO' AND p.kind IN ('DIPENDENTE','LP') AND p.site_id IS NULL ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}` },
-  { id: 'D36', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Sede del contratto di lavoro diversa dalla sede di afferenza', richiede: ['contracts.employments'], spiegazione: 'C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (allineata da Contratti del personale; in Persone non si cambia).',
+  { id: 'D36', area: 'ORGANIGRAMMA', gravita: 'INFO', titolo: 'Sede del contratto di lavoro diversa dalla sede di afferenza', richiede: ['contracts.employments'], spiegazione: 'C13: con un contratto di lavoro in corso la sede della persona è la sede di lavoro del contratto (allineata da Gestione del personale; in Persone non si cambia).',
     // adattata a C13: solo i contratti in corso con la sede di lavoro indicata
     sql: `SELECT p.id, p.last_name, p.site_id, e.work_site_id FROM people p JOIN contracts.employments e ON e.resource_id = p.id
           WHERE e.work_site_id IS NOT NULL AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE) AND e.work_site_id IS DISTINCT FROM p.site_id ORDER BY p.last_name`, chiave: 'id', link: (r) => `/admin/people?q=${enc(r.last_name)}`,

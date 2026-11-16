@@ -1,4 +1,4 @@
-// Configurazione del modulo Contracts (Contratti del Personale), letta da process.env con le stesse chiavi dell'app di origine.
+// Configurazione del modulo Contracts (Gestione del Personale), letta da process.env con le stesse chiavi dell'app di origine.
 // L'autenticazione (sessione, Entra, TOTP), gli utenti e i profili sono della Suite: qui restano solo i parametri funzionali.
 import { config as suite } from '../../config.js';
 

@@ -15,7 +15,7 @@ export const STATO_LABEL = { SCADUTA: 'Scaduta', OGGI: 'Oggi', ENTRO_7: 'Entro 7
 export const GRAVITA = ['BASSA', 'MEDIA', 'ALTA', 'CRITICA'];
 export const AREE = { DIREZIONE: 'Direzione', FINANCE: 'Finance', RETAIL_FLOW: 'Retail e Flow', OPERATIONS: 'Operations', HQS: 'HQS', PEOPLE: 'People' };
 // Moduli con dati personali o del dossier HR: le loro righe arrivano solo a chi ha il grant del modulo o a titolare e amministratori
-// (come la card "Scadenze contrattuali" del Cockpit, riservata a chi ha Contratti del personale)
+// (come la card "Scadenze contrattuali" del Cockpit, riservata a chi ha Gestione del personale)
 export const MODULI_RISERVATI = ['contracts', 'ferie', 'room', 'rimborsi'];
 // Impostazioni (app_settings 'cockpit.scadenzario', Amministrazione > Impostazioni). Le soglie in giorni sono ipotesi dichiarate.
 export const IMPOSTAZIONI_DEFAULT = {
@@ -143,7 +143,7 @@ export function raggruppaPerSettimana(righe) {
 /** Righe che l'utente può vedere: moduli riservati solo con il grant del modulo (o titolare e amministratori). */
 export function visibiliA(righe, user) {
   const admin = user?.level === 'OWNER' || user?.level === 'ADMIN';
-  // Contratti del personale con profilo LP (solo liberi professionisti): le scadenze del personale non passano dallo Scadenzario, dove
+  // Gestione del personale con profilo LP (solo liberi professionisti): le scadenze del personale non passano dallo Scadenzario, dove
   // dipendenti e LP sono mescolati; quelle degli LP le vede dentro il modulo.
   const lp = user?.grants?.contracts?.profile === 'LP';
   return righe.filter((r) => (r.modulo === 'contracts' && lp ? false : !MODULI_RISERVATI.includes(r.modulo) || admin || Boolean(user?.grants?.[r.modulo])));
@@ -340,19 +340,19 @@ export const FONTI = [
     },
   },
   {
-    key: 'contracts', modulo: 'contracts', nome: 'Contratti del personale', area: 'PEOPLE',
-    campi: 'computeDeadlines (lib/deadlines.js): attachments.expires_at, employments.end_date/probation_end/ral_steps/MBO, lp_contracts.end_date/insurance_expiry, commitment_letters.valid_until/start_by, deadlines manuali, cessazioni; richiami people@ da deadline_reminders (60/30/7/0); presa di servizio = employments/lp_contracts.start_date delle persone in IMPEGNO',
+    key: 'contracts', modulo: 'contracts', nome: 'Gestione del personale', area: 'PEOPLE',
+    campi: 'computeDeadlines (lib/deadlines.js): attachments.expires_at, employments.end_date/probation_end/ral_steps/MBO, lp_contracts.end_date/insurance_expiry, commitment_letters.valid_until/start_by, deadlines manuali, cessazioni, formazione.scadenza/data_prevista, crediti ECM (formazione.crediti_ecm contro obbligo del triennio, solo posizioni attivate), tirocini (progetto formativo, fine, giudizio), mdl_visite e mdl_schede (visite fissate e dovute); richiami people@ da deadline_reminders (60/30/7/0); presa di servizio = employments/lp_contracts.start_date delle persone in IMPEGNO',
     async leggi({ da, a, oggi, db }) {
       const { computeDeadlines } = await import('../modules/contracts/lib/deadlines.js');
       const items = await computeDeadlines({ horizonDays: Math.max(0, giorniTra(oggi, a)), today: oggi });
       const rich = new Map((await db.many(`SELECT DISTINCT ON (deadline_key) deadline_key, days_before, sent_at, status FROM deadline_reminders ORDER BY deadline_key, sent_at DESC`).catch(() => [])).map((x) => [x.deadline_key, x]));
-      const TIPO = { DOCUMENTO: 'Documento del dossier', CONTRATTO: 'Contratto di lavoro', PROVA: 'Periodo di prova', RAL: 'Scatto RAL', MBO: 'MBO', IMPEGNO: 'Lettera di impegno', MANUALE: 'Scadenza HR' };
-      const GRAV = { CONTRATTO: 'ALTA', PROVA: 'ALTA', DOCUMENTO: 'MEDIA', IMPEGNO: 'MEDIA', MANUALE: 'MEDIA', RAL: 'BASSA', MBO: 'BASSA' };
+      const TIPO = { DOCUMENTO: 'Documento del dossier', CONTRATTO: 'Contratto di lavoro', PROVA: 'Periodo di prova', RAL: 'Scatto RAL', MBO: 'MBO', IMPEGNO: 'Lettera di impegno', MANUALE: 'Scadenza HR', FORMAZIONE: 'Formazione', ECM: 'Crediti ECM', TIROCINIO: 'Tirocinio', MDL: 'Medicina del lavoro' };
+      const GRAV = { CONTRATTO: 'ALTA', PROVA: 'ALTA', DOCUMENTO: 'MEDIA', IMPEGNO: 'MEDIA', MANUALE: 'MEDIA', RAL: 'BASSA', MBO: 'BASSA', MDL: 'ALTA', FORMAZIONE: 'MEDIA', TIROCINIO: 'MEDIA', ECM: 'BASSA' };
       const out = items.filter((i) => iso(i.due_date) >= da && iso(i.due_date) <= a).map((i) => {
         const r = rich.get(i.key);
         const nota = r ? `richiamo people@ ${r.days_before ? `dei ${r.days_before} giorni` : 'del giorno di scadenza'} ${r.status === 'INVIATO' ? 'inviato' : String(r.status || '').toLowerCase()} il ${itData(iso(r.sent_at))}` : null;
         return { chiave: i.key, data: i.due_date, tipo: TIPO[i.type] || i.type, titolo: i.title, descrizione: [i.detail, nota].filter(Boolean).join(' · '), oggetto: i.resource_name,
-          gravita: GRAV[i.type] || 'MEDIA', link: i.resource_id ? `/contracts/risorse/${i.resource_id}` : '/contracts/scadenze', responsabile: i.type === 'DOCUMENTO' ? 'La persona, con HR' : 'HR' };
+          gravita: GRAV[i.type] || 'MEDIA', link: i.resource_id ? `/contracts/risorse/${i.resource_id}` : '/contracts/scadenze', responsabile: ['DOCUMENTO', 'FORMAZIONE', 'ECM'].includes(i.type) ? 'La persona, con HR' : 'HR' };
       });
       const ps = await db.many(`SELECT r.id, r.last_name, r.first_name, e.start_date, 'Dipendente' AS rapporto, s.name AS sede FROM employments e JOIN resources_v r ON r.id = e.resource_id LEFT JOIN public.sites s ON s.id = e.work_site_id
           WHERE r.status = 'IMPEGNO' AND e.start_date BETWEEN $1 AND $2

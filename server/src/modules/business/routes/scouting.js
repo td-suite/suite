@@ -15,6 +15,9 @@ import { normUrl, dominioDi } from '../lib/scouting/web.js';
 import { verificaPiva } from '../lib/scouting/vies.js';
 import * as S from '../lib/scouting/store.js';
 import multer from 'multer';
+import { ATECO, stimaRegistro } from '../lib/scouting/registro.js';
+import { cercaGoogle } from '../lib/scouting/google.js';
+import { connectorSync } from '../../../lib/connectors.js';
 import { FONTI, convertitore, scaricaFonte, decodifica, leggiCsv, candidatiDaElenco } from '../lib/scouting/fonti.js';
 import { loadAccount } from './hub.js';
 
@@ -109,6 +112,56 @@ r.post('/elenco', upload.single('file'), ah(async (req, res) => {
   const ric = await S.registraElenco({ linea, fonte: 'ELENCO', etichetta: `File ${req.file.originalname}`.slice(0, 80), candidati, userId: req.user.id });
   await audit(req, 'HUB_SCOUT_ELENCO', 'scouting', ric.id, { file: req.file.originalname, trovati: ric.trovati, nuovi: ric.nuovi });
   res.status(201).json(ric);
+}));
+
+// ---------------- Registro imprese (Openapi, a pagamento), Google Places (dal vivo), OpenStreetMap (raccolta notturna) ----------------
+r.get('/sorgenti', ah(async (req, res) => {
+  const o = connectorSync('OPENAPI'); const g = connectorSync('GOOGLE');
+  res.json({ registro: { attivo: Boolean(o.active && o.credentials.api_key), prova: /test\./.test(String(o.base_url || '')), max: Number(o.settings.max_imprese) || 300, ateco: ATECO },
+    google: { attivo: Boolean(g.credentials.api_key) }, osm: await S.statoOsm() });
+}));
+const registroSchema = z.object({ linea: LINEA, province: z.array(z.string()).min(1).max(10), codici: z.array(z.string().trim().regex(/^[0-9A-Za-z.]{2,8}$/, 'codice ATECO non valido')).min(1).max(8),
+  min_dipendenti: z.number().int().min(1).max(100000).nullable().optional(), categoria: z.string().optional() });
+r.post('/registro/stima', ah(async (req, res) => {
+  const b = parse(registroSchema, req.body);
+  richiediLinea(req, b.linea);
+  if (b.province.some((p) => !PROVINCE[p])) throw bad('Provincia non prevista');
+  res.json(await stimaRegistro({ province: b.province, codici: b.codici, minEmployees: b.min_dipendenti || null }));
+}));
+// la ricerca vera costa: parte solo con conferma esplicita ("confermo": true) dopo aver visto la stima
+r.post('/registro/cerca', ah(async (req, res) => {
+  const b = parse(registroSchema.extend({ confermo: z.literal(true, { errorMap: () => ({ message: 'Conferma la spesa prima di scaricare' }) }) }), req.body);
+  richiediLinea(req, b.linea);
+  if (b.province.some((p) => !PROVINCE[p])) throw bad('Provincia non prevista');
+  await S.chiudiInterrotte();
+  if (await one(`SELECT 1 FROM scout_ricerche WHERE stato='IN_CORSO'`)) throw bad('C\'è già una ricerca in corso: attendi che finisca o annullala');
+  const max = Number(connectorSync('OPENAPI').settings.max_imprese) || 300;
+  const cat = CATEGORIE[b.categoria]?.linee.includes(b.linea) ? b.categoria : null;
+  const { ricerca } = await S.avviaRegistro({ linea: b.linea, province: b.province, codici: b.codici, minEmployees: b.min_dipendenti || null, max, categoria: cat, userId: req.user.id });
+  await audit(req, 'HUB_SCOUT_REGISTRO', 'scouting', ricerca.id, { linea: b.linea, province: b.province, codici: b.codici, min_dipendenti: b.min_dipendenti || null, max });
+  res.status(202).json(ricerca);
+}));
+r.post('/google/cerca', ah(async (req, res) => {
+  const b = parse(z.object({ linea: LINEA, testo: z.string().trim().min(3).max(120), provincia: z.string().optional().nullable() }), req.body);
+  richiediLinea(req, b.linea);
+  const out = await cercaGoogle(b.testo, { provincia: b.provincia && PROVINCE[b.provincia] ? b.provincia : null });
+  // quali sono già in elenco (per dominio o per identificativo): si dice, senza salvare nient'altro
+  const noti = new Set((await many(`SELECT fonte_ref FROM scout_candidati WHERE linea=$1 AND fonte='GOOGLE' AND fonte_ref = ANY($2::text[])`, [b.linea, out.luoghi.map((l) => l.id)])).map((x) => x.fonte_ref));
+  await audit(req, 'HUB_SCOUT_GOOGLE', 'scouting', null, { testo: b.testo, provincia: b.provincia || null, risultati: out.luoghi.length });
+  res.json({ ...out, luoghi: out.luoghi.map((l) => ({ ...l, gia: noti.has(l.id) })) });
+}));
+r.post('/google/aggiungi', ah(async (req, res) => {
+  const b = parse(z.object({ linea: LINEA, categoria: z.string().optional(), luoghi: z.array(z.object({ id: z.string().min(5).max(300), sito: z.string().min(4).max(500) })).min(1).max(60) }), req.body);
+  richiediLinea(req, b.linea);
+  const cat = CATEGORIE[b.categoria]?.linee.includes(b.linea) ? b.categoria : (b.linea === 'MDL' ? 'AZIENDA' : 'ALTRO');
+  let nuovi = 0; let gia = 0;
+  for (const l of b.luoghi) { const x = await S.aggiungiDaGoogle({ linea: b.linea, placeId: l.id, sito: l.sito, categoria: cat, userId: req.user.id }).catch(() => null); if (x?.gia) gia += 1; else if (x) nuovi += 1; }
+  res.status(201).json({ nuovi, gia, coda: S.statoCoda() });
+}));
+r.post('/osm/raccogli', ah(async (req, res) => {
+  if (!isAdmin(req.user)) throw forbidden('Riservato all\'amministratore del modulo');
+  S.raccoltaOsm({ massimo: 8 }).catch(() => {});
+  res.status(202).json({ ok: true });
 }));
 
 // ---------------- Candidati e coorti ----------------

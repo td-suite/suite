@@ -161,9 +161,10 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
       <ErrorBox error={err} />
 
       {step === 0 && (
-        <div className="grid g2">
+        <div className="grid g3">
           <Card title="Dipendente"><p>Rapporto di lavoro subordinato con CCNL Studi Professionali: lettera di impegno all'assunzione o contratto di assunzione (con eventuale piano MBO).</p><button className="btn" onClick={() => pickKind('DIPENDENTE')}>Dipendente <Icon name="arrow" /></button></Card>
           <Card title="Libero professionista"><p>Incarico di prestazione professionale con tariffario, iscrizione all'ordine e polizza RC: contratto generato dal format LP.</p><button className="btn" onClick={() => pickKind('LP')}>Libero professionista <Icon name="arrow" /></button></Card>
+          <Card title="Tirocinante"><p>Tirocinio curriculare o extracurriculare: convenzione con l'ente promotore, progetto formativo individuale, tutor aziendale e giudizio finale.</p><button className="btn" onClick={() => nav(`${BASE}/tirocinanti/nuovo`)}>Tirocinante <Icon name="arrow" /></button></Card>
         </div>
       )}
 

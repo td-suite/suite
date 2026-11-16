@@ -1,7 +1,7 @@
 // Rimborso Spese · funzioni comuni: impostazioni, perimetro dei dipendenti e organigramma, contesto dell'utente (ruoli calcolati),
 // caricamento della nota con righe e allegati, ricalcolo dei totali, eventi, notifiche (Suite ed email).
 // Ruoli (nessun grant da assegnare): DIPENDENTE = le proprie note; RESPONSABILE = chi ha riporti diretti nell'organigramma (approva le
-// loro note, vede in sola lettura quelle dei livelli sotto); P&C = persone con il grant ADMIN di Contratti del personale oppure elencate
+// loro note, vede in sola lettura quelle dei livelli sotto); P&C = persone con il grant ADMIN di Gestione del personale oppure elencate
 // nell'impostazione pc_person_ids, purché dipendenti (liquidazione, archivio completo, impostazioni); TITOLARE = livello OWNER della Suite
 // (vede tutto, in sola lettura sulle note altrui salvo sia il responsabile).
 import { q, one, many } from '../db.js';
@@ -26,7 +26,7 @@ export const DEFAULTS = {
   tariffa_km_default: 0.42,
   tariffa_km_default_fonte: 'Tariffa unica aziendale (decisione della Direzione, 13/11/2026)',
   tariffa_km_unica: true,             // true: vale sempre la tariffa unica, la tariffa del veicolo non conta; false: tariffa del veicolo, poi la predefinita
-  pc_person_ids: [],                  // P&C in più rispetto al grant ADMIN di Contratti del personale (devono essere dipendenti)
+  pc_person_ids: [],                  // P&C in più rispetto al grant ADMIN di Gestione del personale (devono essere dipendenti)
   // Invio del PDF di approvazione (CEO, 13/11/2026): a ogni approvazione parte verso destinatari ESTERNI all'azienda (consulente del
   // lavoro) un documento con i dati di spesa del dipendente. Seme = i due indirizzi indicati dal CEO; P&C e titolare li cambiano.
   invio_approvazione_attivo: true,
@@ -86,7 +86,7 @@ export async function perimetro() {
   return data;
 }
 
-/** Persone P&C: grant ADMIN di Contratti del personale (collegato a una persona) più l'impostazione pc_person_ids; solo dipendenti */
+/** Persone P&C: grant ADMIN di Gestione del personale (collegato a una persona) più l'impostazione pc_person_ids; solo dipendenti */
 export async function personePc(perim, s) {
   const daGrant = (await many(`SELECT DISTINCT u.person_id FROM public.grants g JOIN public.users u ON u.id = g.user_id
       WHERE g.module_key = 'contracts' AND g.profile = 'ADMIN' AND NOT g.proposed AND u.status = 'ACTIVE' AND u.person_id IS NOT NULL`)).map((r) => r.person_id);
@@ -187,9 +187,9 @@ export async function evento(notaId, tipo, { userId = null, personId = null, tes
   await run('INSERT INTO eventi (nota_id, tipo, user_id, person_id, testo, dati) VALUES ($1,$2,$3,$4,$5,$6)', [notaId, tipo, userId, personId, testo, JSON.stringify(dati || {})]);
 }
 
-// ---------------------------------------------------------------- vetture aziendali e fuel card (da Contratti del personale)
+// ---------------------------------------------------------------- vetture aziendali e fuel card (da Gestione del personale)
 /**
- * Assegnazioni della persona lette da Contratti del personale (API interna lib/benefitAuto.js). Il numero della carta è per intero solo
+ * Assegnazioni della persona lette da Gestione del personale (API interna lib/benefitAuto.js). Il numero della carta è per intero solo
  * per P&C, titolare e l'assegnatario; per gli altri (il responsabile) mascherato.
  */
 export async function benefitPersona(personId, { pieno = false, giorno = oggi() } = {}) {

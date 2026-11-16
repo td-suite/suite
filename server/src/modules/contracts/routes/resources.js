@@ -15,6 +15,7 @@ import { CATEGORY_LABELS } from '../lib/seedData.js';
 import { applyDueTerminations, applyDueHires } from '../lib/termination.js';
 import { effettiCessazione } from '../../../lib/cessazione.js';
 import { removeFromIndex } from '../../../lib/search.js';
+import { tirocinioSchema, upsertTirocinio } from './sviluppo.js';
 import { PERSON_KINDS, hrKind, createPerson, updatePerson, deletePerson, reindexPerson, syncDerived, siteLabel } from '../lib/people.js';
 
 const r = Router();
@@ -206,6 +207,10 @@ async function enrich(rows, S) {
       // tutti i compensi dell'incarico, non solo il fisso (CEO, 14/11/2026): orari, a prestazione e variabili non hanno un costo mensile certo
       return { ...x, cost_monthly: m, cost_annual: annual, cost_year: yearCost(x, annual), compensi: compensiLp(x.lp_fees) };
     }
+    if (x.kind === 'TIROCINANTE') {
+      const m = Number(x.tir_indennita || 0); const annual = Math.round(m * 12 * 100) / 100;
+      return { ...x, cost_monthly: m, cost_annual: annual, cost_year: yearCost(x, annual) };
+    }
     return x;
   });
 }
@@ -215,6 +220,7 @@ const LIST_SQL = `SELECT r.*, coalesce(a.name, r.area_label) AS area_name, at.pa
     s.name AS site_name, ws.name AS work_site_name,
     e.contract_type, e.level, e.job_title, e.ral, e.ral_steps, e.monthly_payments, e.weekly_hours, e.start_date AS emp_start, e.probation_end, e.mbo_enabled, e.mbo_pct, e.mbo_amount, e.cost_coefficient, e.end_date AS emp_end, e.work_site_id,
     l.discipline, l.start_date AS lp_start, l.end_date AS lp_end, l.est_monthly_cost, l.insurance_expiry, l.fees AS lp_fees, l.vat_regime AS lp_vat_regime,
+    ti.tipo AS tir_tipo, ti.indennita_mensile AS tir_indennita, ti.ente_promotore AS tir_ente, ti.start_date AS tir_start, ti.end_date AS tir_end, ti.pf_stato AS tir_pf_stato, ti.giudizio_esito AS tir_giudizio, tu.last_name || ' ' || tu.first_name AS tir_tutor_name,
     (SELECT count(*)::int FROM attachments t WHERE t.resource_id=r.id) AS attachments_count,
     (SELECT count(*)::int FROM generated_documents g WHERE g.resource_id=r.id) AS documents_count,
     (SELECT coalesce(json_agg(json_build_object('id', x.id, 'name', x.name, 'path', x.path, 'root_name', x.root_name) ORDER BY x.sort_path), '[]'::json)
@@ -227,7 +233,9 @@ const LIST_SQL = `SELECT r.*, coalesce(a.name, r.area_label) AS area_name, at.pa
   LEFT JOIN public.sites s ON s.id=r.site_id
   LEFT JOIN employments e ON e.resource_id=r.id
   LEFT JOIN public.sites ws ON ws.id=e.work_site_id
-  LEFT JOIN lp_contracts l ON l.resource_id=r.id`;
+  LEFT JOIN lp_contracts l ON l.resource_id=r.id
+  LEFT JOIN tirocini ti ON ti.resource_id=r.id
+  LEFT JOIN resources_v tu ON tu.id=ti.tutor_person_id`;
 
 // ---------------- Caricamento massivo da Excel ----------------
 r.get('/bulk-template.xlsx', requireWrite, ah(async (req, res) => {
@@ -311,6 +319,7 @@ r.get('/:id', ah(async (req, res) => {
   const employment = await one('SELECT e.*, ws.name AS work_site_name FROM employments e LEFT JOIN public.sites ws ON ws.id=e.work_site_id WHERE e.resource_id=$1', [id]);
   if (employment) employment.work_site = await siteLabel(employment.work_site_id);
   const lp = await one('SELECT * FROM lp_contracts WHERE resource_id=$1', [id]);
+  const tirocinio = row.kind === 'TIROCINANTE' ? await one(`SELECT t.*, ws.name AS work_site_name, tp.last_name || ' ' || tp.first_name AS tutor_name FROM tirocini t LEFT JOIN public.sites ws ON ws.id=t.work_site_id LEFT JOIN resources_v tp ON tp.id=t.tutor_person_id WHERE t.resource_id=$1`, [id]) : null;
   const letters = await many('SELECT c.*, ws.name AS work_site_name FROM commitment_letters c LEFT JOIN public.sites ws ON ws.id=c.work_site_id WHERE c.resource_id=$1 ORDER BY c.created_at DESC', [id]);
   const documents = await many('SELECT g.id, g.kind, g.ref_id, g.version, g.title, g.generated_at, (g.pdf IS NOT NULL) AS has_pdf, coalesce(g.data->\'_missing\', \'[]\'::jsonb) AS missing, u.full_name AS generated_by_name FROM generated_documents g LEFT JOIN users u ON u.id=g.generated_by WHERE g.resource_id=$1 ORDER BY g.generated_at DESC', [id]);
   // Provenienza degli allegati arrivati dalla casella People (mittente e data) e allegato sostituito da un rinnovo
@@ -331,7 +340,7 @@ r.get('/:id', ah(async (req, res) => {
   // Aree di cui la persona è referente (Impostazioni > Modifica area): è il dato che alimenta l'organigramma
   const org_units = await many(`SELECT t.id, t.name, t.path, a.kind, t.level FROM areas a JOIN areas_tree t ON t.id=a.id WHERE a.head_person_id=$1 ORDER BY t.sort_path`, [id]);
   await readLog(req, 'resource', id);   // audit di lettura della Suite: dati contrattuali riservati
-  res.json({ resource: res_, employment, lp, letters, documents, attachments, deadlines, checklist, payroll, org_units, reminders, category_labels: CATEGORY_LABELS });
+  res.json({ resource: res_, employment, lp, tirocinio, letters, documents, attachments, deadlines, checklist, payroll, org_units, reminders, category_labels: CATEGORY_LABELS });
 }));
 
 // Lettura di un contratto/MBO/UNILAV già esistente: restituisce i dati per precompilare il percorso di inserimento
@@ -349,13 +358,16 @@ r.post('/', requireWrite, ah(async (req, res) => {
   const extraIds = Array.isArray(extraNew) ? [...new Set(extraNew.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n !== person.area_id))] : [];
   const isEmp = hrKind(person.kind) === 'DIPENDENTE';
   const employment = isEmp && req.body.employment ? parse(employmentSchema, req.body.employment) : null;
-  const lp = !isEmp && req.body.lp ? parse(lpSchema, req.body.lp) : null;
+  const isTir = hrKind(person.kind) === 'TIROCINANTE';
+  const lp = !isEmp && !isTir && req.body.lp ? parse(lpSchema, req.body.lp) : null;
+  const tirocinio = isTir && req.body.tirocinio ? parse(tirocinioSchema, req.body.tirocinio) : null;
   // public.people + person_ext + contratto in un'unica transazione, con audit PERSON_CREATED della Suite
   const id = await tx(async (c) => {
-    const start = employment?.start_date || lp?.start_date || null;
+    const start = employment?.start_date || lp?.start_date || tirocinio?.start_date || null;
     const pid = await createPerson(c, req, { ...person, hired_at: person.hired_at || start });
     if (employment) await upsertEmployment(c, pid, employment);
     if (lp) await upsertLp(c, pid, lp);
+    if (tirocinio) await upsertTirocinio(c, pid, tirocinio);
     for (const aid of extraIds) await c.query('INSERT INTO person_areas(person_id, area_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [pid, aid]);
     return pid;
   });
@@ -458,7 +470,7 @@ r.put('/:id/terminate', requireWrite, ah(async (req, res) => {
   };
   const h = status === 'CESSATO' ? await handover() : null;
   // A11: accessi disattivati (amministratori solo con conferma: restano segnalati), incarichi chiusi, avviso responsabile di sede
-  const cessazione = status === 'CESSATO' ? await effettiCessazione(id, { req, confermaAdmin: req.body?.conferma_disattivazione_admin === true, origine: 'Contratti del personale, cessazione' }) : null;
+  const cessazione = status === 'CESSATO' ? await effettiCessazione(id, { req, confermaAdmin: req.body?.conferma_disattivazione_admin === true, origine: 'Gestione del personale, cessazione' }) : null;
   await audit(req, 'RESOURCE_TERMINATE', 'resource', id, { terminated_at: d.terminated_at, reason: d.reason, handover: h });
   res.json({ ok: true, status, terminated_at: d.terminated_at, handover: h, cessazione });
 }));

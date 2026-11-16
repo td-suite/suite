@@ -734,11 +734,13 @@ function ganttTable(t) {
   var sd = startDate(t), W = t.hor;
   var cw = closingWeek(t);
   var d100 = t.closing ? Math.ceil((Math.round((mondayOf(t.closing) - sd) / (7 * 864e5)) * 7 + 100) / 7) : null;
+  /* settimana in corso (CEO, 16/11/2026): la colonna di oggi si riconosce a colpo d'occhio in intestazione e in ogni riga */
+  var nw = sd ? Math.floor((mondayOf(new Date()) - sd) / (7 * 864e5)) + 1 : null;
   var h = '<div class="gwrap"><table class="gantt"><thead><tr><th class="actcol">' + T('attivita') + '</th>';
   for (var w = 1; w <= W; w++) {
-    var cls = (w === d100 ? 'm100' : '');
+    var cls = (w === d100 ? 'm100' : '') + (w === nw ? ' now' : '');
     var tag = w === cw ? ' ★' : '';
-    h += '<th class="' + cls + '" title="' + (w === d100 ? T('day100') : '') + '">W' + w + tag + '<span class="wd">' + fmtD(addW(sd, w - 1)) + '</span></th>';
+    h += '<th class="' + cls + '" title="' + (w === nw ? (LANG === 'it' ? 'Settimana in corso' : 'Current week') + (w === d100 ? ' · ' : '') : '') + (w === d100 ? T('day100') : '') + '">W' + w + tag + '<span class="wd">' + fmtD(addW(sd, w - 1)) + '</span>' + (w === nw ? '<span class="nowtag">' + (LANG === 'it' ? 'oggi' : 'now') + '</span>' : '') + '</th>';
   }
   h += '</tr></thead><tbody>';
   /* milestone dell'operazione: Preliminare (se valorizzato) e Closing (sempre, con data) */
@@ -749,7 +751,7 @@ function ganttTable(t) {
       '<div class="an" style="color:var(--jet)">◆ ' + label + ' · ' + fmtDY(new Date(dstr + 'T12:00:00')) + '</div>' +
       '<span class="stato" style="background:var(--canary);color:var(--jet)">Milestone</span></td>';
     for (var w = 1; w <= W; w++) {
-      r += '<td class="wk" style="cursor:default">' + (w === wk ? '<span class="ms" style="color:' + color + ';font-size:17px">◆</span>' : '') + '</td>';
+      r += '<td class="wk' + (w === nw ? ' now' : '') + '" style="cursor:default">' + (w === wk ? '<span class="ms" style="color:' + color + ';font-size:17px">◆</span>' : '') + '</td>';
     }
     return r + '</tr>';
   }
@@ -777,7 +779,7 @@ function ganttTable(t) {
                 : inLate ? 'background:' + col + '40;border-bottom:2.5px solid var(--crit);' : '';
       var mark = (a.ms && inPlan && w === a.sw ? '<span class="ms">◆</span>' : '') +
         (wDone && w === wDone ? '<span class="ms" style="color:' + (late ? 'var(--crit)' : 'var(--good)') + '">✓</span>' : '');
-      h += '<td class="wk ' + cls + '" style="' + style + '"' + hc(function () { cellClick(t.id, a.id, w); }) + '>' + mark + '</td>';
+      h += '<td class="wk ' + cls + (w === nw ? ' now' : '') + '" style="' + style + '"' + hc(function () { cellClick(t.id, a.id, w); }) + '>' + mark + '</td>';
     }
     h += '</tr>';
     if (OPEN_EDIT === a.id) h += editRow(t, a, W);
@@ -1086,7 +1088,8 @@ function printOverlay(list, owner) {
   var h = '<div class="psec"><div class="phead"><div><div class="t1">' + esc(pLabel(owner)) + ' · ' + (LANG === 'it' ? 'tutte le società (vista sovrapposta)' : 'all companies (overlaid view)') + '</div>' +
     '<div class="t2">' + T('overlayHint') + '</div></div><div class="t2">' + T('docFooter') + ' · ' + fmtDY(new Date()) + '</div></div>';
   h += '<table class="pgantt"><thead><tr><th style="text-align:left">' + (LANG === 'it' ? 'Società' : 'Company') + '</th><th style="text-align:left">' + T('attivita') + '</th>';
-  for (var w = 1; w <= W; w++) h += '<th>W' + w + '<br>' + fmtD(addW(g0, w - 1)) + '</th>';
+  var nwG = g0 ? Math.floor((mondayOf(new Date()) - g0) / (7 * 864e5)) + 1 : null;
+  for (var w = 1; w <= W; w++) h += '<th' + (w === nwG ? ' class="now"' : '') + '>W' + w + '<br>' + fmtD(addW(g0, w - 1)) + '</th>';
   h += '</tr></thead><tbody>';
   h += '<tr><td colspan="2" class="acol" style="font-weight:800">' + T('dens') + '</td>';
   for (var w = 1; w <= W; w++) {
@@ -1112,7 +1115,7 @@ function printOverlay(list, owner) {
       (it.sup ? ' <b>[SUPPORT]</b>' : '') + '</td>';
     for (var w = 1; w <= W; w++) {
       var on = w >= it.gs && w <= it.ge;
-      h += '<td class="' + (on ? 'on' : '') + '" style="' + (on ? 'background:' + col : '') + '"></td>';
+      h += '<td class="' + (on ? 'on' : '') + (w === nwG ? ' now' : '') + '" style="' + (on ? 'background:' + col : '') + '"></td>';
     }
     h += '</tr>';
   });
@@ -1149,7 +1152,7 @@ function printSec(t, owner) {
       '<td class="acol" style="max-width:80px">' + esc((a.support || []).map(pName).join(', ')) + '</td>';
     for (var w = 1; w <= W; w++) {
       var on = a.sw && w >= a.sw && w <= a.ew;
-      h += '<td class="' + (on ? 'on' : '') + '" style="' + (on ? 'background:' + col : '') + '"></td>';
+      h += '<td class="' + (on ? 'on' : '') + (w === nwG ? ' now' : '') + '" style="' + (on ? 'background:' + col : '') + '"></td>';
     }
     h += '</tr>';
   });

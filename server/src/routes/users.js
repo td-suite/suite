@@ -109,9 +109,9 @@ export async function createUserAccount(req, b) {
   if (b.level === 'ADMIN' && !isOwner(req.user)) throw forbidden('Solo il titolare crea amministratori');
   const email = b.email.toLowerCase();
   if (await one('SELECT 1 FROM users WHERE lower(email)=$1', [email])) throw bad('Esiste già un utente con questa email');
-  // Ogni utente è una persona dell'anagrafica: l'email deve corrispondere a una persona (Amministrazione > Persone o Contratti del personale)
+  // Ogni utente è una persona dell'anagrafica: l'email deve corrispondere a una persona (Amministrazione > Persone o Gestione del personale)
   const personRow = await one('SELECT id, first_name, last_name, site_id, organization_id FROM people WHERE lower(email)=$1 ORDER BY id LIMIT 1', [email]);
-  if (!personRow) throw bad('Nessuna persona con questa email: crea prima la persona in Persone (o in Contratti del personale), poi l\'accesso');
+  if (!personRow) throw bad('Nessuna persona con questa email: crea prima la persona in Persone (o in Gestione del personale), poi l\'accesso');
   b.person_id = personRow.id; b.first_name = personRow.first_name; b.last_name = personRow.last_name; if (b.site_id == null) b.site_id = personRow.site_id;
   if (b.organization_id == null) b.organization_id = personRow.organization_id;   // la Legal entity della persona (esterni)
   const internal = config.autoInternalDomains.includes(email.split('@')[1]);

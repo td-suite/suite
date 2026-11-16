@@ -10,6 +10,8 @@ const GROUPS = [
   { title: 'Costo azienda (ipotesi: verificare con il consulente del lavoro)', keys: [['cost_inps_pct', 'Contributi INPS a carico azienda %'], ['cost_inail_pct', 'INAIL %'], ['cost_tfr_pct', 'TFR %'], ['cost_apprentice_inps_pct', 'INPS apprendisti %'], ['cost_dirigente_extra_pct', 'Extra dirigenti (FASI, Previndai) %'], ['function_allowance_share', 'Quota indennità di funzione sull\'eccedenza (0,7)']] },
   { title: 'Simulatore netto (stime)', keys: [['employee_inps_pct', 'INPS a carico dipendente %'], ['addizionale_regionale_pct', 'Addizionale regionale %'], ['addizionale_comunale_pct', 'Addizionale comunale %'], ['irpef_brackets', 'Scaglioni IRPEF (JSON)']] },
   { title: 'Scadenze', keys: [['deadline_alert_days', 'Giorni di allerta in dashboard']] },
+  { title: 'Formazione ed ECM', nota: 'Obbligo del triennio 2026-2028: 150 crediti (Commissione nazionale per la formazione continua, delibera n. 1 del 5 marzo 2026). Il contatore di ogni professione sanitaria parte da qui; riduzioni ed esoneri si impostano sulla scheda della persona.', keys: [['ecm_obbligo_triennio', 'Crediti ECM dovuti nel triennio'], ['ecm_triennio_inizio', 'Anno di inizio del triennio']] },
+  { title: 'Medicina del lavoro', nota: 'Valori proposti nelle convocazioni e soglia dell\'elenco "in scadenza".', keys: [['mdl_medico_competente', 'Medico competente'], ['mdl_luogo', 'Luogo abituale delle visite'], ['mdl_anticipo_giorni', 'Giorni di anticipo per "in scadenza"']] },
   { title: 'CV Box: casella di recruiting letta con Microsoft Graph', keys: [['cv_inbox', 'Indirizzo a cui scrivono i candidati'], ['cv_inbox_mailbox', 'Casella da leggere (solo se l\'indirizzo è un alias o un gruppo: la casella che lo riceve)'], ['cv_inbox_enabled', 'Lettura automatica attiva (true / false)']] },
 ];
 
@@ -58,6 +60,7 @@ export default function Settings() {
         {GROUPS.map((g) => (
           <Card key={g.title} title={g.title}>
             {g.title.startsWith('Dati societari') && <p className="small muted" style={{ marginTop: 0 }}>Ragione sociale, sede legale, P.IVA, REA, capitale, contatti e Direttore Sanitario vengono dai Dati aziendali della Suite: si modificano in <Link to="/admin/settings">Amministrazione, Impostazioni</Link>.</p>}
+            {g.nota && <p className="small muted" style={{ marginTop: 0 }}>{g.nota}</p>}
             <div className="form-grid">{g.keys.map(([k, l]) => <Field key={k} label={l} className={k === 'irpef_brackets' || k.startsWith('company_') ? 'span2' : ''}><input value={v[k] ?? ''} disabled={(d.data?.coreKeys || []).includes(k)} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></Field>)}</div>
           </Card>
         ))}

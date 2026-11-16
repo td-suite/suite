@@ -9,7 +9,7 @@ import { useAuth, canWrite, isAdmin } from '../auth.jsx';
 
 const ROLES = ['Site manager', 'Accettazione', 'Infermiere', 'Tecnico di radiologia', 'Tecnico di laboratorio', 'Medico', 'Anestesista', 'Biologo', 'Amministrativo', 'Pulizie', 'Altro'];
 const ASSET_KINDS = { RM: 'Risonanza magnetica', TC: 'TC', MAMMOGRAFO: 'Mammografo', ECOGRAFO: 'Ecografo', RX: 'Radiologia', MOC: 'MOC / densitometro', EMG: 'Elettromiografo', AMBULATORIO: 'Ambulatorio', BOX_PRELIEVO: 'Box prelievo', MONITOR: 'Monitor', TOTEM: 'Totem', ALTRO: 'Altro' };
-const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario', ESTERNO: 'Esterno' };
+const KIND_LABEL = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario', TIROCINANTE: 'Tirocinante', ESTERNO: 'Esterno' };
 
 export default function SiteDetail() {
   const { id } = useParams();
@@ -125,7 +125,7 @@ export default function SiteDetail() {
       {tab === 'intorno' && <IntornoSede siteId={id} />}
 
       {staff && <Modal title={`Piano di lavoro Retail · ${staff.last_name} ${staff.first_name}`} onClose={() => setStaff(null)} footer={<><button className="btn ghost" onClick={() => setStaff(null)}>Annulla</button><button className="btn" onClick={saveStaff}>Salva</button></>}>
-        <div className="alert" style={{ marginBottom: 12 }}><span>{KIND_LABEL[staff.kind] || staff.kind}{staff.job_title ? ` · ${staff.job_title}` : ''}{staff.discipline ? ` · ${staff.discipline}` : ''}. Nome, rapporto, contatti e sede si modificano nella <Link to={ADMIN_PERSON(staff.id)}>scheda persona</Link> in Amministrazione o in Contratti del personale.</span></div>
+        <div className="alert" style={{ marginBottom: 12 }}><span>{KIND_LABEL[staff.kind] || staff.kind}{staff.job_title ? ` · ${staff.job_title}` : ''}{staff.discipline ? ` · ${staff.discipline}` : ''}. Nome, rapporto, contatti e sede si modificano nella <Link to={ADMIN_PERSON(staff.id)}>scheda persona</Link> in Amministrazione o in Gestione del personale.</span></div>
         <div className="form-grid">
           <Field label="Ruolo in sede" help="Come compare nella scheda struttura e nel book"><input list="roles" value={staff.retail_role} placeholder={staff.job_title || 'es. Accettazione'} onChange={(e) => setStaff({ ...staff, retail_role: e.target.value })} /><datalist id="roles">{ROLES.map((r) => <option key={r} value={r} />)}</datalist></Field>
           <Field label="Ordine"><input type="number" value={staff.sort_order} onChange={(e) => setStaff({ ...staff, sort_order: e.target.value })} /></Field>

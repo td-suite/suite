@@ -175,6 +175,12 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     assert.equal((await D.o.post('/api/business/scouting/ricerche', { linea: 'SRV', province: ['FI'], categorie: ['RSA'] })).s, 400, 'una alla volta');
     must(await D.o.post(`/api/business/scouting/ricerche/${viva}/annulla`, {}), 'annulla');
     assert.equal(must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche')[0].stato, 'ANNULLATA');
+    // raccolta notturna da OpenStreetMap: tiene ciò che arriva, segna ciò che fallisce, non crea righe tra le ricerche
+    const prima = must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche').length;
+    must(await D.o.post('/api/business/scouting/osm/raccogli', {}), 'raccogli');
+    const osm = await attendi(async () => { const x = must(await D.o.get('/api/business/scouting/sorgenti'), 'sorgenti').osm; return x.lette >= 3 ? x : null; }, 'raccolta');
+    assert.ok(osm.strutture > 0 && osm.totale > 50);
+    assert.equal(must(await D.o.get('/api/business/scouting/ricerche?linea=SRV'), 'ricerche').length, prima);
   });
 
   test('elenchi nella Suite: file del Ministero e file proprio caricati, senza doppioni al secondo caricamento e con le strutture già note completate', async () => {
@@ -200,6 +206,70 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     assert.ok(must(await D.o.get('/api/business/scouting/fonti?linea=PP'), 'fonti').find((f) => f.chiave === 'FARMACIE').ultimo);
   });
 
+  test('registro imprese, Google e raccolta notturna: connettori, stima gratuita, conferma obbligatoria, solo il place ID da Google', async () => {
+    const chiamate = [];
+    const finto = http.createServer(async (req, res) => {
+      let corpo = ''; for await (const c of req) corpo += c;
+      const u = new URL(req.url, 'http://x'); chiamate.push({ p: u.pathname, q: Object.fromEntries(u.searchParams), auth: req.headers.authorization || req.headers['x-goog-api-key'], mask: req.headers['x-goog-fieldmask'], corpo });
+      res.setHeader('Content-Type', 'application/json');
+      if (u.pathname === '/IT-search') {
+        if (req.headers.authorization !== 'Bearer token-di-prova') { res.writeHead(401); return res.end(JSON.stringify({ success: false, message: 'Wrong Token', error: 110 })); }
+        if (u.searchParams.get('dryRun') === '1') return res.end(JSON.stringify({ success: true, data: { count: 2, price: 0.4 } }));
+        return res.end(JSON.stringify({ success: true, data: Number(u.searchParams.get('skip')) ? [] : [
+          { id: 'r1', companyName: 'RESIDENZA REGISTRO UNO SRL', vatCode: '01234567897', pec: 'uno@pec.test', address: { registeredOffice: { streetName: 'VIA UNO 1', town: 'PRATO', province: 'PO', zipCode: '59100' } }, atecoClassification: { ateco2007: { code: '8710' } }, balanceSheets: { last: { year: 2024, employees: 60 } } },
+          { id: 'r2', companyName: 'RESIDENZA REGISTRO DUE SRL', vatCode: '', address: { registeredOffice: { town: 'PRATO', province: 'PO' } }, atecoClassification: { ateco2007: { code: '8730' } } }] }));
+      }
+      if (u.pathname === '/v1/places:searchText') return res.end(JSON.stringify({ places: [
+        { id: 'ChIJ-prova-1', displayName: { text: 'Centro Medico Google' }, formattedAddress: 'Via G 1, Prato', websiteUri: base, nationalPhoneNumber: '0574 000', businessStatus: 'OPERATIONAL' },
+        { id: 'ChIJ-prova-2', displayName: { text: 'Studio Senza Sito' }, formattedAddress: 'Via G 2, Prato' }, { id: 'ChIJ-chiuso', displayName: { text: 'Chiuso' }, businessStatus: 'CLOSED_PERMANENTLY' }] }));
+      res.writeHead(404); res.end('{}');
+    });
+    await new Promise((ok) => finto.listen(0, '127.0.0.1', ok));
+    const fb = `http://127.0.0.1:${finto.address().port}`;
+    try {
+      let sorg = must(await D.o.get('/api/business/scouting/sorgenti'), 'sorgenti');
+      assert.equal(sorg.registro.attivo, false); assert.equal(sorg.google.attivo, false);
+      assert.equal((await D.o.post('/api/business/scouting/registro/stima', { linea: 'SRV', province: ['PO'], codici: ['8710'] })).s, 400, 'connettore non attivo');
+      must(await D.o.put('/api/connectors/OPENAPI', { enabled: true, base_url: fb, credentials: { api_key: 'token-di-prova' }, settings: { max_imprese: '50' } }), 'connettore openapi');
+      must(await D.o.put('/api/connectors/GOOGLE', { enabled: true, base_url: fb, credentials: { api_key: 'chiave-google-di-prova' } }), 'connettore google');
+      assert.equal(must(await D.o.post('/api/connectors/OPENAPI/test'), 'prova openapi').ok, true);
+      assert.equal(must(await D.o.post('/api/connectors/GOOGLE/test'), 'prova google').ok, true);
+      sorg = must(await D.o.get('/api/business/scouting/sorgenti'), 'sorgenti');
+      assert.equal(sorg.registro.attivo, true); assert.equal(sorg.registro.max, 50); assert.deepEqual(sorg.registro.ateco.RSA, ['8710', '8730']);
+      // stima gratuita: dryRun, nessun dato
+      const st = must(await D.o.post('/api/business/scouting/registro/stima', { linea: 'MDL', province: ['PO'], codici: ['87.10', '8730'], min_dipendenti: 50 }), 'stima');
+      assert.equal(st.imprese, 4); assert.equal(st.prezzo, 0.8);
+      const dry = chiamate.filter((c) => c.p === '/IT-search' && c.q.dryRun === '1').pop();
+      assert.equal(dry.q.atecoCode, '8730'); assert.equal(dry.q.province, 'PO'); assert.equal(dry.q.minEmployees, '50'); assert.equal(dry.q.activityStatus, 'ATTIVA');
+      // senza conferma non si spende
+      assert.equal((await D.o.post('/api/business/scouting/registro/cerca', { linea: 'MDL', province: ['PO'], codici: ['8710'] })).s, 400);
+      must(await D.o.post('/api/business/scouting/registro/cerca', { linea: 'MDL', province: ['PO'], codici: ['8710'], confermo: true }), 'cerca');
+      const ric = await attendi(async () => { const r = must(await D.o.get('/api/business/scouting/ricerche?linea=MDL'), 'ricerche')[0]; return r.stato !== 'IN_CORSO' ? r : null; }, 'registro');
+      assert.equal(ric.stato, 'FATTA', ric.errore); assert.equal(ric.fonte, 'REGISTRO'); assert.equal(ric.trovati, 2);
+      const el = must(await D.o.get('/api/business/scouting/candidati?linea=MDL'), 'candidati').righe;
+      const uno = el.find((x) => x.nome === 'Residenza Registro Uno SRL');
+      assert.equal(uno.fonte, 'REGISTRO'); assert.equal(uno.piva, '01234567897'); assert.equal(uno.segnali.DIPENDENTI.valore, 60); assert.equal(uno.categoria, 'AZIENDA');
+      assert.ok(uno.punteggio > el.find((x) => x.nome === 'Residenza Registro Due SRL').punteggio, 'i dipendenti pesano nel punteggio della medicina del lavoro');
+      assert.equal((await db.query('SELECT pec FROM business.scout_candidati WHERE id=$1', [uno.id])).rows[0].pec, 'uno@pec.test');
+      // Google: risultati dal vivo, nulla salvato finché non si sceglie; poi solo place ID + sito, nome dal sito
+      const g = must(await D.o.post('/api/business/scouting/google/cerca', { linea: 'MDL', testo: 'centro medico', provincia: 'PO' }), 'google');
+      assert.equal(g.luoghi.length, 2, 'le attività chiuse non compaiono'); assert.match(g.query, /provincia di Prato/);
+      const gc = chiamate.filter((c) => c.p === '/v1/places:searchText').pop();
+      assert.equal(gc.auth, 'chiave-google-di-prova'); assert.match(gc.mask, /places\.id/); assert.equal(JSON.parse(gc.corpo).regionCode, 'IT');
+      assert.equal((await db.query(`SELECT count(*)::int AS n FROM business.scout_candidati WHERE fonte='GOOGLE'`)).rows[0].n, 0);
+      const ag = must(await D.o.post('/api/business/scouting/google/aggiungi', { linea: 'MDL', categoria: 'AZIENDA', luoghi: [{ id: 'ChIJ-prova-1', sito: base }] }), 'aggiungi');
+      assert.equal(ag.nuovi, 1);
+      const cg = await attendi(async () => (await db.query(`SELECT * FROM business.scout_candidati WHERE fonte='GOOGLE' AND profilato_at IS NOT NULL`)).rows[0], 'profilo google');
+      assert.equal(cg.fonte_ref, 'ChIJ-prova-1'); assert.equal(cg.nome, 'Villa Prova S.r.l.', 'il nome arriva dal sito, non da Google'); assert.equal(cg.piva, '01234567897');
+      assert.ok(!JSON.stringify(cg).includes('Centro Medico Google') && !JSON.stringify(cg).includes('0574 000'), 'nome e telefono di Google non si conservano');
+      assert.equal(must(await D.o.post('/api/business/scouting/google/aggiungi', { linea: 'MDL', luoghi: [{ id: 'ChIJ-prova-1', sito: base }] }), 'bis').gia, 1);
+      // token sbagliato: errore leggibile
+      must(await D.o.put('/api/connectors/OPENAPI', { credentials: { api_key: 'sbagliato' } }), 'token');
+      const ko = await D.o.post('/api/business/scouting/registro/stima', { linea: 'SRV', province: ['PO'], codici: ['8710'] });
+      assert.equal(ko.s, 400); assert.match(ko.j.error, /token non valido/);
+    } finally { finto.close(); }
+  });
+
   test('account esistente: "Completa dal sito" propone i campi mancanti e i referenti, applica solo ciò che si sceglie e mai sopra un dato presente', async () => {
     const org = (await db.query(`INSERT INTO organizations (kind, name, phone) VALUES ('CLIENTE','Casa di Cura Collaudo','055 999') RETURNING id`)).rows[0].id;
     const aid = must(await D.o.post('/api/business/hub/accounts', { linea: 'SRV', organization_id: org }), 'account').id;
@@ -215,6 +285,22 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
     assert.equal(a.persone.find((x) => x.nome === 'Maria Collaudi').gia_referente != null, true);
     // il profilo di un account non compare tra i candidati
     assert.ok(!must(await D.o.get('/api/business/scouting/candidati?linea=SRV&stato=NUOVO,PROFILATO,PROMOSSO,SCARTATO'), 'elenco').righe.some((x) => x.fonte === 'ACCOUNT'));
+  });
+});
+
+describe('Ricerca prospect: registro imprese (Openapi)', () => {
+  const IMPRESA = { taxCode: '01234567897', companyName: 'RESIDENZA COLLAUDO S.R.L.', vatCode: '01234567897', id: 'abc123', pec: 'Collaudo@Legalmail.it', activityStatus: 'ATTIVA', reaCode: '123', cciaa: 'PO',
+    address: { registeredOffice: { streetName: 'VIA DEI COLLAUDI 12', town: 'PRATO', province: 'PO', zipCode: '59100', gps: { coordinates: [11.09, 43.88] } } },
+    atecoClassification: { ateco2007: { code: '8710', description: 'Strutture di assistenza infermieristica residenziale' } }, detailedLegalForm: { code: 'SR', description: 'SOCIETÀ A RESPONSABILITÀ LIMITATA' },
+    balanceSheets: { last: { year: 2024, employees: 84, turnover: 3200000 } } };
+  test('impresa → candidato: anagrafica, tipologia dal codice attività, dipendenti come segnale con la fonte', async () => {
+    const R = await import('../src/modules/business/lib/scouting/registro.js');
+    const c = R.candidatoDaImpresa(IMPRESA, { linea: 'SRV' });
+    assert.equal(c.nome, 'Residenza Collaudo S.R.L.'); assert.equal(c.piva, '01234567897'); assert.equal(c.pec, 'collaudo@legalmail.it'); assert.equal(c.categoria, 'RSA');
+    assert.equal(c.indirizzo, 'Via dei Collaudi 12'); assert.equal(c.comune, 'Prato'); assert.equal(c.provincia, 'PO'); assert.equal(c.lat, 43.88); assert.equal(c.fonte_ref, 'abc123');
+    assert.equal(c.segnali.DIPENDENTI.valore, 84); assert.match(c.segnali.DIPENDENTI.evidenza, /Registro imprese.*2024/); assert.equal(c.tags.fatturato, 3200000);
+    assert.equal(R.candidatoDaImpresa(IMPRESA, { linea: 'MDL' }).categoria, 'AZIENDA');
+    assert.equal(R.candidatoDaImpresa({ id: 'x' }), null);
   });
 });
 

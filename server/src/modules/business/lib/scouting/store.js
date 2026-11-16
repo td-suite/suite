@@ -3,7 +3,8 @@
 import { one, many, q, tx } from '../../db.js';
 import { createOrganization, cercaDoppione } from '../../../../lib/organizations.js';
 import { getSettings } from '../rules.js';
-import { scopriProvincia, PROVINCE } from './scoperta.js';
+import { scopriProvincia, PROVINCE, FILTRI } from './scoperta.js';
+import { cercaRegistro } from './registro.js';
 import { profilaSito } from './profila.js';
 import { punteggio, CATEGORIE } from './fit.js';
 import { FORNITORI_PREDEFINITI, CATALOGO } from './segnali.js';
@@ -86,31 +87,96 @@ export async function avviaRicerca({ linea, province, categorie, userId }, { sco
  * Registra candidati arrivati da una fonte ufficiale o da un file: niente doppioni con ciò che c'è già (stessa fonte e riferimento, oppure
  * stesso nome e comune da un'altra fonte, che viene completato con i dati mancanti). Ritorna la riga della ricerca.
  */
-export async function registraElenco({ linea, fonte, etichetta, candidati, userId }) {
-  const r = await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by, fonte, avanzamento) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+export async function registraElenco({ linea, fonte, etichetta, candidati, userId, ricercaId = null, senzaRicerca = false, avvisi: avvisiIniziali = [] }) {
+  // senzaRicerca: raccolta notturna (nessuna riga tra le ricerche); ricercaId: ricerca già aperta da chi chiama (registro imprese)
+  const r = senzaRicerca ? { id: null } : ricercaId ? { id: ricercaId } : await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by, fonte, avanzamento) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [linea, [...new Set(candidati.map((c) => c.provincia).filter(Boolean))], [...new Set(candidati.map((c) => c.categoria))], userId || null, fonte, `${etichetta}: registro ${candidati.length} strutture`]);
   let nuovi = 0; let completati = 0;
   for (let k = 0; k < candidati.length; k += 1) {
     const c = candidati[k];
     const gemello = await one(`SELECT id FROM scout_candidati WHERE linea=$1 AND NOT (fonte=$2 AND fonte_ref=$3) AND fonte <> 'ACCOUNT' AND lower(nome)=lower($4) AND lower(coalesce(comune,''))=lower(coalesce($5::text,'')) LIMIT 1`, [linea, c.fonte, c.fonte_ref, c.nome, c.comune]);
     if (gemello) {
-      await q(`UPDATE scout_candidati SET piva=coalesce(piva,$2), indirizzo=coalesce(indirizzo,$3), cap=coalesce(cap,$4), telefono=coalesce(telefono,$5), email=coalesce(email,$6), sito=coalesce(sito,$7), dominio=coalesce(dominio,$8),
-        segnali = CASE WHEN $7::text IS NOT NULL THEN (segnali - 'SENZA_SITO') ELSE segnali END || $9::jsonb, updated_at=now() WHERE id=$1`, [gemello.id, c.piva, c.indirizzo, c.cap, c.telefono, c.email, c.sito, c.dominio, JSON.stringify(c.segnali || {})]);
+      await q(`UPDATE scout_candidati SET piva=coalesce(piva,$2), indirizzo=coalesce(indirizzo,$3), cap=coalesce(cap,$4), telefono=coalesce(telefono,$5), email=coalesce(email,$6), sito=coalesce(sito,$7), dominio=coalesce(dominio,$8), pec=coalesce(pec,$10),
+        segnali = $9::jsonb || CASE WHEN $7::text IS NOT NULL THEN (segnali - 'SENZA_SITO') ELSE segnali END, updated_at=now() WHERE id=$1`, [gemello.id, c.piva, c.indirizzo, c.cap, c.telefono, c.email, c.sito, c.dominio, JSON.stringify(c.segnali || {}), c.pec || null]);
       completati += 1; continue;
     }
     const m = await abbina({ ...c, linea });
     const segnali = { ...(c.segnali || {}), ...(c.sito ? {} : { SENZA_SITO: { valore: true, evidenza: `${etichetta}: l'elenco non riporta il sito`, url: null } }) };
     const pt = punteggio({ ...c, segnali }, linea).punteggio;
-    const ins = await one(`INSERT INTO scout_candidati (ricerca_id, linea, fonte, fonte_ref, nome, categoria, indirizzo, cap, comune, provincia, lat, lon, telefono, email, sito, dominio, piva, operatore, tags, segnali, punteggio, organization_id, account_id, abbinato_come)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-      ON CONFLICT (linea, fonte, fonte_ref) DO UPDATE SET ricerca_id=EXCLUDED.ricerca_id, nome=EXCLUDED.nome, indirizzo=EXCLUDED.indirizzo, cap=EXCLUDED.cap, comune=EXCLUDED.comune, piva=coalesce(scout_candidati.piva, EXCLUDED.piva),
+    const ins = await one(`INSERT INTO scout_candidati (ricerca_id, linea, fonte, fonte_ref, nome, categoria, indirizzo, cap, comune, provincia, lat, lon, telefono, email, sito, dominio, piva, operatore, tags, segnali, punteggio, organization_id, account_id, abbinato_come, pec)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+      ON CONFLICT (linea, fonte, fonte_ref) DO UPDATE SET ricerca_id=coalesce(EXCLUDED.ricerca_id, scout_candidati.ricerca_id), nome=CASE WHEN scout_candidati.stato IN ('NUOVO','SCARTATO') THEN EXCLUDED.nome ELSE scout_candidati.nome END,
+        indirizzo=coalesce(EXCLUDED.indirizzo, scout_candidati.indirizzo), cap=coalesce(EXCLUDED.cap, scout_candidati.cap), comune=coalesce(EXCLUDED.comune, scout_candidati.comune), piva=coalesce(scout_candidati.piva, EXCLUDED.piva),
+        pec=coalesce(scout_candidati.pec, EXCLUDED.pec), sito=coalesce(scout_candidati.sito, EXCLUDED.sito), dominio=coalesce(scout_candidati.dominio, EXCLUDED.dominio), telefono=coalesce(scout_candidati.telefono, EXCLUDED.telefono),
         tags=EXCLUDED.tags, updated_at=now() RETURNING (xmax = 0) AS nuovo`,
-    [r.id, linea, c.fonte, c.fonte_ref, c.nome, c.categoria, c.indirizzo, c.cap, c.comune, c.provincia, c.lat, c.lon, c.telefono, c.email, c.sito, c.dominio, c.piva, c.operatore, JSON.stringify(c.tags || {}), JSON.stringify(segnali), pt, m.organization_id, m.account_id, m.come]);
+    [r.id, linea, c.fonte, c.fonte_ref, c.nome, c.categoria, c.indirizzo, c.cap, c.comune, c.provincia, c.lat, c.lon, c.telefono, c.email, c.sito, c.dominio, c.piva, c.operatore, JSON.stringify(c.tags || {}), JSON.stringify(segnali), pt, m.organization_id, m.account_id, m.come, c.pec || null]);
     if (ins.nuovo) nuovi += 1;
-    if (k % 100 === 99) await q('UPDATE scout_ricerche SET trovati=$2, nuovi=$3, avanzamento=$4, aggiornata_at=now() WHERE id=$1', [r.id, k + 1, nuovi, `${etichetta}: registrate ${k + 1} di ${candidati.length}`]);
+    if (r.id && k % 100 === 99) await q('UPDATE scout_ricerche SET trovati=$2, nuovi=$3, avanzamento=$4, aggiornata_at=now() WHERE id=$1', [r.id, k + 1, nuovi, `${etichetta}: registrate ${k + 1} di ${candidati.length}`]);
   }
-  return one(`UPDATE scout_ricerche SET stato='FATTA', trovati=$2, nuovi=$3, avanzamento=NULL, avvisi=$4, finita_at=now(), aggiornata_at=now() WHERE id=$1 RETURNING *`,
-    [r.id, candidati.length, nuovi, JSON.stringify(completati ? [`${completati} strutture erano già in elenco da un'altra fonte: sono state completate, non duplicate`] : [])]);
+  const avvisi = [...avvisiIniziali, ...(completati ? [`${completati} strutture erano già in elenco da un'altra fonte: sono state completate, non duplicate`] : [])];
+  if (!r.id) return { trovati: candidati.length, nuovi, completati, avvisi };
+  return one(`UPDATE scout_ricerche SET stato='FATTA', trovati=$2, nuovi=$3, avanzamento=NULL, avvisi=$4, finita_at=now(), aggiornata_at=now() WHERE id=$1 RETURNING *`, [r.id, candidati.length, nuovi, JSON.stringify(avvisi)]);
+}
+
+// ---------------------------------------------------------------- OpenStreetMap senza dipendere dall'ora: raccolta notturna
+// I servizi pubblici di OpenStreetMap di giorno sono spesso saturi. Di notte la Suite prova da sola, una provincia e una tipologia alla
+// volta, e tiene ciò che arriva: la pagina lavora sempre sull'ultima raccolta riuscita. Ogni coppia si rilegge al massimo ogni 14 giorni.
+export async function raccoltaOsm({ massimo = 12, giorni = 14, scopri = scopriProvincia, pausaMs = process.env.NODE_ENV === 'test' ? 0 : 4000 } = {}) {
+  const coppie = [];
+  for (const p of Object.keys(PROVINCE)) for (const [k, v] of Object.entries(CATEGORIE)) if (FILTRI[k]) coppie.push({ p, k, linee: v.linee });
+  const stato = new Map((await many('SELECT * FROM scout_osm_stato')).map((x) => [`${x.provincia}|${x.categoria}`, x]));
+  const scad = Date.now() - giorni * 86400000;
+  const daFare = coppie.filter((c) => { const s = stato.get(`${c.p}|${c.k}`); return !s?.ultimo_ok_at || new Date(s.ultimo_ok_at).getTime() < scad; })
+    .sort((a, b) => new Date(stato.get(`${a.p}|${a.k}`)?.tentativo_at || 0) - new Date(stato.get(`${b.p}|${b.k}`)?.tentativo_at || 0));
+  let riuscite = 0; let fallite = 0; let strutture = 0; const errori = {};
+  for (const c of daFare) {
+    if (riuscite + fallite >= massimo) break;
+    if ((errori[c.p] || 0) >= 2) continue;   // provincia che oggi non risponde: si passa alle altre
+    try {
+      const { candidati } = await scopri(c.p, [c.k]);
+      for (const linea of c.linee) await registraElenco({ linea, fonte: 'OSM', etichetta: 'OpenStreetMap', candidati, senzaRicerca: true });
+      await q(`INSERT INTO scout_osm_stato (provincia, categoria, ultimo_ok_at, tentativo_at, errore, strutture) VALUES ($1,$2,now(),now(),NULL,$3)
+        ON CONFLICT (provincia, categoria) DO UPDATE SET ultimo_ok_at=now(), tentativo_at=now(), errore=NULL, strutture=EXCLUDED.strutture`, [c.p, c.k, candidati.length]);
+      riuscite += 1; strutture += candidati.length;
+    } catch (e) {
+      await q(`INSERT INTO scout_osm_stato (provincia, categoria, tentativo_at, errore) VALUES ($1,$2,now(),$3) ON CONFLICT (provincia, categoria) DO UPDATE SET tentativo_at=now(), errore=EXCLUDED.errore`, [c.p, c.k, String(e.message).slice(0, 300)]);
+      fallite += 1; errori[c.p] = (errori[c.p] || 0) + 1;
+      if (!riuscite && Object.values(errori).filter((n) => n >= 2).length >= 2) break;   // due province senza risposta e nessuna riuscita: servizio giù, si riprova al prossimo giro
+    }
+    if (pausaMs) await new Promise((ok) => setTimeout(ok, pausaMs));
+  }
+  return { provate: riuscite + fallite, riuscite, fallite, strutture, restano: coppie.length - (await one('SELECT count(*)::int AS n FROM scout_osm_stato WHERE ultimo_ok_at IS NOT NULL')).n };
+}
+export async function statoOsm() {
+  const righe = await many('SELECT * FROM scout_osm_stato ORDER BY provincia, categoria');
+  const totale = Object.keys(PROVINCE).length * Object.keys(CATEGORIE).filter((k) => FILTRI[k]).length;
+  return { totale, lette: righe.filter((r) => r.ultimo_ok_at).length, strutture: righe.reduce((a, r) => a + (r.ultimo_ok_at ? r.strutture || 0 : 0), 0), ultima: righe.map((r) => r.ultimo_ok_at).filter(Boolean).sort().pop() || null,
+    ultimo_errore: righe.filter((r) => r.errore).sort((a, b) => new Date(b.tentativo_at) - new Date(a.tentativo_at))[0] || null, righe };
+}
+
+// ---------------------------------------------------------------- registro imprese (Openapi): ricerca a pagamento, in sottofondo
+export async function avviaRegistro({ linea, province, codici, minEmployees, max, categoria, userId }, { cerca = cercaRegistro } = {}) {
+  const r = await one(`INSERT INTO scout_ricerche (linea, province, categorie, created_by, fonte, avanzamento) VALUES ($1,$2,$3,$4,'REGISTRO',$5) RETURNING *`, [linea, province, [categoria || 'ALTRO'], userId || null, 'Registro imprese: in avvio']);
+  const lavoro = (async () => {
+    try {
+      const out = await cerca({ province, codici, minEmployees, max, categoria, linea, progresso: (t) => q('UPDATE scout_ricerche SET avanzamento=$2, aggiornata_at=now() WHERE id=$1', [r.id, t]) });
+      await registraElenco({ linea, fonte: 'REGISTRO', etichetta: 'Registro imprese', candidati: out.candidati, userId, ricercaId: r.id, avvisi: out.tagliata ? [`Raggiunto il tetto di ${max} imprese: restringi la ricerca o alza il tetto nel connettore`] : [] });
+    } catch (e) { await q(`UPDATE scout_ricerche SET stato='ERRORE', errore=$2, avanzamento=NULL, finita_at=now(), aggiornata_at=now() WHERE id=$1`, [r.id, String(e.message).slice(0, 500)]); }
+  })();
+  return { ricerca: r, lavoro };
+}
+/** Struttura scelta da una ricerca Google dal vivo: si conserva il place ID e si legge il sito. Il nome definitivo arriva dal sito. */
+export async function aggiungiDaGoogle({ linea, placeId, sito, categoria, userId }) {
+  const url = normUrl(sito);
+  if (!url) throw Object.assign(new Error('Senza sito non c\'è nulla da leggere: aggiungi la struttura a mano'), { status: 400 });
+  const dom = dominioDi(url);
+  const gia = await one(`SELECT id FROM scout_candidati WHERE linea=$1 AND fonte <> 'ACCOUNT' AND (dominio=$2 OR (fonte='GOOGLE' AND fonte_ref=$3)) ORDER BY id LIMIT 1`, [linea, dom, placeId]);
+  if (gia) return { id: gia.id, gia: true };
+  const m = await abbina({ nome: '', dominio: dom, linea });
+  const row = await one(`INSERT INTO scout_candidati (linea, fonte, fonte_ref, nome, categoria, sito, dominio, organization_id, account_id, abbinato_come, tags, punteggio) VALUES ($1,'GOOGLE',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [linea, placeId, dom, categoria, url, dom, m.organization_id, m.account_id, m.come, JSON.stringify({ elenco: 'Google Places', nome_dal_sito: true, pubblico: false }), punteggio({ categoria, segnali: {} }, linea).punteggio]);
+  accoda([row.id]);
+  return { id: row.id, gia: false };
 }
 
 // ---------------------------------------------------------------- profilo (uno alla volta, in coda)
@@ -126,6 +192,8 @@ export async function profilaCandidato(id, { profila = profilaSito } = {}) {
     comune: c.comune || an.comune || null, dominio: p.dominio, segnali: p.segnali };
   const m = c.fonte === 'ACCOUNT' ? { organization_id: c.organization_id, account_id: c.account_id, come: c.abbinato_come } : await abbina(nuovo);
   const pt = punteggio(nuovo, c.linea).punteggio;
+  // struttura arrivata da Google: il nome si prende dal suo sito (ragione sociale, altrimenti il titolo della pagina), non da Google
+  if (c.tags?.nome_dal_sito && (an.ragione_sociale || p.titolo)) await q('UPDATE scout_candidati SET nome=$2 WHERE id=$1', [id, String(an.ragione_sociale || p.titolo).slice(0, 200)]);
   await tx(async (cl) => {
     await cl.query(`UPDATE scout_candidati SET stato = CASE WHEN stato='NUOVO' THEN 'PROFILATO' ELSE stato END, profilo=$2, segnali=$3, punteggio=$4, piva=$5, email=$6, pec=$7, telefono=$8, indirizzo=$9, cap=$10, comune=$11, dominio=$12,
         organization_id=$13, account_id=$14, abbinato_come=$15, errore_profilo=NULL, profilato_at=now(), updated_at=now() WHERE id=$1`,
@@ -184,7 +252,7 @@ export async function promuovi(id, { fase = 1, owner_user_id = null, persone = [
   const nome = an.ragione_sociale?.valore && an.ragione_sociale.valore.length >= 4 ? an.ragione_sociale.valore : c.nome;
   const out = await createOrganization({ kind: c.linea === 'PP' ? 'PARTNER' : 'CLIENTE', name: nome, vat_number: c.piva || undefined, email: c.email || undefined, pec: c.pec || undefined, phone: c.telefono || undefined,
     address: c.indirizzo || undefined, zip: c.cap || undefined, city: c.comune || undefined, province: c.provincia || undefined, website: c.sito || undefined,
-    notes: `Creata dalla Ricerca prospect del Business Hub (${c.fonte === 'OSM' ? `OpenStreetMap ${c.fonte_ref}` : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'} ${c.fonte_ref}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : 'inserimento manuale'}${c.sito ? `, sito ${c.sito}` : ''})${nome !== c.nome ? `. Insegna: ${c.nome}` : ''}` },
+    notes: `Creata dalla Ricerca prospect del Business Hub (${c.fonte === 'OSM' ? `OpenStreetMap ${c.fonte_ref}` : c.fonte === 'REGISTRO' ? 'registro imprese, Openapi' : c.fonte === 'GOOGLE' ? 'trovata con Google, dati letti dal suo sito' : c.fonte === 'MINISTERO' ? `Ministero della Salute, ${c.tags?.elenco || 'open data'} ${c.fonte_ref}` : c.fonte === 'ELENCO' ? 'elenco caricato da file' : 'inserimento manuale'}${c.sito ? `, sito ${c.sito}` : ''})${nome !== c.nome ? `. Insegna: ${c.nome}` : ''}` },
   { origine: 'Business Hub, Ricerca prospect', req, schedaBusiness: false });
   const orgId = out.org.id;
   const s = c.segnali || {};

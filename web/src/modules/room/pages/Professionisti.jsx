@@ -13,7 +13,7 @@ const ATTREZZ = (Array.isArray(EQUIP) ? EQUIP : Object.keys(EQUIP || {})).map((d
 const TABS = [['anagrafica', 'Anagrafica'], ['professionale', 'Professionale'], ['contratto', 'Contratto e assicurazione'], ['compenso', 'Compenso'], ['documenti', 'Documenti'], ['accesso', 'Accesso'], ['disponibilita', 'Disponibilità']];
 // Scheda Room vuota: le persone vivono nell'anagrafica unica della Suite (public.people), qui si compilano solo i dati operativi
 const empty = (tipo = 'sanitario') => ({ tipo, profilo: tipo === 'medico' ? 'Medico' : 'Infermiere', dati: { anagrafica: {}, professionale: { discipline: [], attrezzature: [], specializzazioni: [] }, contratto: { rapporto: 'LP' }, assicurazione: {}, compenso: { tipo: 'ORARIO', eccezioniSede: [], regime: 'FORFETTARIO' }, sediAbilitate: [], note: '' } });
-const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente', ESTERNO: 'Esterno' };
+const KIND = { MEDICO: 'Medico', SANITARIO: 'Professionista sanitario', LP: 'Libero professionista', DIPENDENTE: 'Dipendente', TIROCINANTE: 'Tirocinante', ESTERNO: 'Esterno' };
 const STATUS = { ATTIVO: ['Attivo', 'green'], IMPEGNO: ['In impegno', 'teal'], CANDIDATO: ['Candidato', 'amber'], CESSATO: ['Cessato', 'red'] };
 export const personaHref = (id) => `/people/${id}`;
 
@@ -33,7 +33,7 @@ export default function Professionisti() {
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Persone dell'anagrafica unica della Suite con la scheda Room Planning: contratto, compenso, competenze, documenti, accesso al portale e disponibilità. Nome, contatti e stato si modificano in Rubrica o in Contratti del personale; chi è pianificabile si decide in "Tutti i professionisti".</div></div>
+      <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Persone dell'anagrafica unica della Suite con la scheda Room Planning: contratto, compenso, competenze, documenti, accesso al portale e disponibilità. Nome, contatti e stato si modificano in Rubrica o in Gestione del personale; chi è pianificabile si decide in "Tutti i professionisti".</div></div>
         <div className="row"><button className="btn ghost" onClick={importa} title="Crea la scheda Room per il personale sanitario censito nelle sedi e già presente in anagrafica; segnala chi manca">Collega i sanitari delle sedi</button><Link className="btn" to="/people">Apri in Amministrazione</Link></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
@@ -53,7 +53,7 @@ export default function Professionisti() {
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!sel ? <div className="card"><div className="bd empty">Seleziona una persona. Per aggiungere un professionista nuovo: crealo in Amministrazione &gt; Persone (o in Contratti del personale), poi spegni "solo con scheda Room", aprilo e salva la scheda. "Collega i sanitari delle sedi" crea la scheda Room per il personale sanitario già censito nelle sedi.</div></div>
+            {!sel ? <div className="card"><div className="bd empty">Seleziona una persona. Per aggiungere un professionista nuovo: crealo in Amministrazione &gt; Persone (o in Gestione del personale), poi spegni "solo con scheda Room", aprilo e salva la scheda. "Collega i sanitari delle sedi" crea la scheda Room per il personale sanitario già censito nelle sedi.</div></div>
               : <Scheda key={sel} id={sel} sedi={sedi.data} opz={opz.data} toast={toast} reloadList={reload} onDeleted={() => { setSel(null); reload(); }} />}
           </div>
         </div>
@@ -96,7 +96,7 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
       </div></div>
 
       {tab === 'anagrafica' && <><Card title="Anagrafica unica della Suite" actions={<Link className="btn sm ghost" to={personaHref(p.id)}>Apri in Rubrica</Link>}>
-        <p className="small muted" style={{ marginTop: 0 }}>Questi dati vengono da Amministrazione &gt; Persone (o da Contratti del personale) e valgono per tutta la Suite: qui si consultano soltanto.</p>
+        <p className="small muted" style={{ marginTop: 0 }}>Questi dati vengono da Amministrazione &gt; Persone (o da Gestione del personale) e valgono per tutta la Suite: qui si consultano soltanto.</p>
         <div className="form-grid">
           <Ro label="Cognome" v={p.last_name} /><Ro label="Nome" v={p.first_name} /><Ro label="Titolo" v={p.title} /><Ro label="Tipo di persona" v={KIND[p.kind] || p.kind} />
           <Ro label="Stato" v={STATUS[p.status]?.[0] || p.status} /><Ro label="Sesso" v={p.sex} /><Ro label="Data di nascita" v={p.birth_date ? itD(p.birth_date) : ''} /><Ro label="Codice fiscale" v={p.tax_code} />

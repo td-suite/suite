@@ -1,7 +1,7 @@
 // Perimetro del Piano Ferie e Area di ogni persona (decisione del CEO, 08/11/2026: "solo dipendenti; piano ferie per Area:
 // Direzione, Laboratorio, Sedi").
 // Perimetro: persone dell'anagrafica unica (public.people) di tipo DIPENDENTE (e DIRIGENTE, impostazione includi_dirigenti) in stato
-// ATTIVO con un contratto di lavoro subordinato in Contratti del personale (contracts.employments). I liberi professionisti sono fuori.
+// ATTIVO con un contratto di lavoro subordinato in Gestione del personale (contracts.employments). I liberi professionisti sono fuori.
 // Area (gruppo) derivata dall'organigramma (public.org_units, public.org_positions), a meno di una forzatura (ferie.aree_forzate):
 //   LAB  = l'unità della persona sta in una sede di tipo LABORATORIO, o sotto un'area che si chiama "Laboratorio..."
 //   DIR  = l'unità di primo livello sotto la radice è di tecnostruttura (STAFF), la persona afferisce alla radice, o la sede è HEADQUARTER
@@ -45,7 +45,7 @@ export function areaPersona({ chain = [], site = null, personSite = null, forzat
   return { gruppo: 'DA_ASSEGNARE', origine: 'nessuna unità con sede né sede di lavoro', site_id: null, primo_livello_id: null };
 }
 
-/** Il modulo Contratti del personale è avviato (schema con i contratti di lavoro)? */
+/** Il modulo Gestione del personale è avviato (schema con i contratti di lavoro)? */
 export async function contrattiDisponibili() {
   const r = await one(`SELECT to_regclass('contracts.employments') IS NOT NULL AS emp, to_regclass('contracts.person_ext') IS NOT NULL AS ext`);
   return { employments: Boolean(r?.emp), person_ext: Boolean(r?.ext) };

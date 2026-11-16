@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
 import { useAuth, canWrite, isAdmin, seesCosts } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, StatusBadge, Modal, PromptModal, ConfirmModal, useToast, Icon } from '../components/ui.jsx';
 import { PersonForm, EmploymentForm, LpForm } from '../components/forms.jsx';
 import BenefitAuto from '../components/BenefitAuto.jsx';
+import { FormazioneTab, TirocinioCard, MdlTab } from '../components/Sviluppo.jsx';
 import { eur, itDate, itDateTime, bytes, age, CONTRACT, LEVEL_LABEL, LETTER_STATUS, DEADLINE_STATE, FEE_TYPE, FEE_VAT, SEX, TERMINATION_LABEL, PERSON_KIND, today } from '../format.js';
 
 const DOC_LABEL = { CONTRATTO: 'Lettera di assunzione', MBO: 'Piano MBO', LETTERA_IMPEGNO: 'Lettera di impegno', CONTRATTO_LP: 'Contratto LP' };
@@ -18,7 +19,8 @@ export default function ResourceDetail() {
   const toast = useToast();
   const d = useApi(`/resources/${id}`);
   const siblings = useApi(d.data ? `/resources?kind=${d.data.resource.kind}` : null, [d.data?.resource?.kind]);
-  const [tab, setTab] = useState('scheda');
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState(['formazione', 'mdl', 'dossier', 'scadenze'].includes(sp.get('tab')) ? sp.get('tab') : 'scheda');
   const [modal, setModal] = useState(null);
   const [preview, setPreview] = useState(null);
   const [analyzingAll, setAnalyzingAll] = useState(false);
@@ -29,6 +31,9 @@ export default function ResourceDetail() {
   if (!d.data) return <div className="page"><Loading /></div>;
   const { resource: r, employment: e, lp, letters, documents, attachments, deadlines, checklist, payroll, reminders = [], category_labels: CL } = d.data;
   const isEmp = r.kind === 'DIPENDENTE';
+  const isTir = r.kind === 'TIROCINANTE';
+  // medicina del lavoro: dipendenti e tirocinanti, visibile a chi scrive (profili Amministratore e Risorse umane) e al titolare
+  const vedeMdl = (isEmp || isTir) && writer;
   const cats = checklist.map((c) => ({ value: c.category, label: c.label }));
 
   const generate = async (kind) => { try { const res = await api.post(`/resources/${id}/documents/generate`, { kind }); toast(`${DOC_LABEL[kind]} generato (v${res.version})${res.has_pdf ? ', PDF pronto' : ', solo DOCX'}${(res.missing || []).length ? ` · ${res.missing.length} segnaposto da completare` : ''}`); d.reload(); } catch (e2) { toast(e2.message, 'err'); } };
@@ -58,12 +63,12 @@ export default function ResourceDetail() {
         <div>
           <div className="row" style={{ gap: 8 }}><KindBadge kind={r.kind} />{r.person_kind && r.person_kind !== r.kind && <Badge tone="blue">{PERSON_KIND[r.person_kind] || r.person_kind}</Badge>}<StatusBadge status={r.status} />{r.area_name && <Badge tone="grey" title={r.area_path}>{r.area_name}</Badge>}{(r.extra_areas || []).map((x) => <Badge key={x.id} tone="grey" title={x.path}>{x.name}</Badge>)}</div>
           <h1 style={{ marginTop: 6 }}>{r.title ? `${r.title} ` : ''}{r.first_name} {r.last_name}</h1>
-          <div className="sub">{isEmp ? `${r.job_title || 'Mansione n.d.'}${r.level ? ` · ${LEVEL_LABEL[r.level] || r.level}` : ''}${r.contract_type ? ` · ${CONTRACT[r.contract_type]}` : ''}` : `${r.discipline || 'Disciplina n.d.'} · libero professionista`}{r.manager_name ? ` · riporta a ${r.manager_name}` : ''}</div>
+          <div className="sub">{isEmp ? `${r.job_title || 'Mansione n.d.'}${r.level ? ` · ${LEVEL_LABEL[r.level] || r.level}` : ''}${r.contract_type ? ` · ${CONTRACT[r.contract_type]}` : ''}` : isTir ? `Tirocinante${d.data.tirocinio?.ente_promotore ? ` · ${d.data.tirocinio.ente_promotore}` : ''}` : `${r.discipline || 'Disciplina n.d.'} · libero professionista`}{r.manager_name ? ` · riporta a ${r.manager_name}` : ''}</div>
         </div>
         <div className="row">
           {writer && isEmp && e && <button className="btn" onClick={() => generate('CONTRATTO')}><Icon name="file" />Genera contratto</button>}
           {writer && isEmp && e?.mbo_enabled && <button className="btn ghost" onClick={() => generate('MBO')}><Icon name="file" />Genera MBO</button>}
-          {writer && !isEmp && lp && <button className="btn" onClick={() => generate('CONTRATTO_LP')}><Icon name="file" />Genera contratto LP</button>}
+          {writer && !isEmp && !isTir && lp && <button className="btn" onClick={() => generate('CONTRATTO_LP')}><Icon name="file" />Genera contratto LP</button>}
           {writer && <button className="btn ghost" onClick={() => setModal('person')}><Icon name="edit" />Modifica anagrafica</button>}
           <Link className="btn ghost" to={`/people/${r.id}`} title="Scheda della persona nell'anagrafica unica della Suite (Rubrica)">Apri in Rubrica</Link>
           <PrevNext list={siblings.data} id={r.id} />
@@ -71,8 +76,11 @@ export default function ResourceDetail() {
       </div>
 
       <div className="tabs">
-        {[['scheda', 'Scheda'], ['dossier', `Dossier (${attachments.length})`], ['documenti', `Documenti generati (${documents.length})`], ['scadenze', `Scadenze (${deadlines.length})`], ['lettere', `Lettere di impegno (${letters.length})`]].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
+        {[['scheda', 'Scheda'], ['dossier', `Dossier (${attachments.length})`], ...(user?.role === 'LP' ? [] : [['formazione', 'Formazione ed ECM']]), ...(vedeMdl ? [['mdl', 'Medicina del lavoro']] : []), ...(isTir ? [] : [['documenti', `Documenti generati (${documents.length})`]]), ['scadenze', `Scadenze (${deadlines.length})`], ...(isTir ? [] : [['lettere', `Lettere di impegno (${letters.length})`]])].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </div>
+
+      {tab === 'formazione' && <FormazioneTab id={id} writer={writer} onChange={d.reload} />}
+      {tab === 'mdl' && vedeMdl && <MdlTab id={id} writer={writer} onChange={d.reload} />}
 
       {tab === 'scheda' && (<>
         <div className="grid g3 scheda" style={{ gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'stretch' }}>
@@ -88,7 +96,7 @@ export default function ResourceDetail() {
             <Row k="Residenza" v={[r.address, r.zip, r.city, r.province ? `(${r.province})` : ''].filter(Boolean).join(' ')} />
             <Row k="Sede" v={r.site_name} />
             {costs && <Row k="IBAN" v={r.iban} />}
-            <Row k={isEmp ? 'Matricola' : 'Codice interno'} v={r.badge_number} />
+            <Row k={isEmp || isTir ? 'Matricola' : 'Codice interno'} v={r.badge_number} />
             <Row k="Emergenze" v={r.emergency_contact} />
             <Row k="Area" v={r.area_path || r.area_name} />{(r.extra_areas || []).length > 0 && <Row k="Altre funzioni" v={r.extra_areas.map((x) => x.path).join(" | ")} />}
             <Row k="Riporta a" v={r.manager_id ? <Link to={`${BASE}/risorse/${r.manager_id}`}>{r.manager_name}</Link> : null} />
@@ -106,7 +114,7 @@ export default function ResourceDetail() {
               {isAdmin(user) && <button className="btn sm danger" onClick={() => setModal('delete')}>Elimina</button>}
             </div>}
           </Card>
-          {isEmp ? (
+          {isTir ? <TirocinioCard id={id} tirocinio={d.data.tirocinio} writer={writer} onChange={d.reload} /> : isEmp ? (
             <Card title="Rapporto di lavoro" actions={writer && <button className="btn sm ghost" onClick={() => setModal('employment')}>{e ? 'Modifica' : 'Inserisci'}</button>}>
               {!e ? <Empty>Dati contrattuali non ancora inseriti</Empty> : <>
                 <Row k="Contratto" v={`${CONTRACT[e.contract_type]} · CCNL ${e.ccnl === 'STUDI_PROFESSIONALI' ? 'Studi Professionali' : e.ccnl.replace('_', ' ')}`} />
@@ -156,6 +164,10 @@ export default function ResourceDetail() {
                     <div className="line"><span>Costo mensile</span><span>{eur(r.cost_monthly)}</span></div>
                     {(r.terminated_at || (r.hired_at && String(r.hired_at).slice(0, 4) === String(new Date().getFullYear()))) && <div className="line"><span>Costo esercizio {new Date().getFullYear()} pro rata{r.terminated_at ? ` (fino al ${itDate(r.terminated_at)})` : ''}</span><span>{eur(r.cost_year)}</span></div>}
                   </div>
+                </> : isTir ? <>
+                  <Row k="Indennità mensile" v={Number(r.cost_monthly) > 0 ? eur(r.cost_monthly) : 'non prevista'} />
+                  {Number(r.cost_annual) > 0 && <Row k="Su dodici mesi" v={eur(r.cost_annual)} />}
+                  <p className="small muted">Il tirocinio non è un rapporto di lavoro: l'unico costo registrato è l'indennità di partecipazione, se prevista dalla convenzione.</p>
                 </> : !isEmp && lp ? <>
                   <Row k="Costo mensile stimato" v={eur(r.cost_monthly)} />
                   <Row k="Costo annuo stimato" v={eur(r.cost_annual)} />

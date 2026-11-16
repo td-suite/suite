@@ -42,7 +42,7 @@ const perConto = (req, extra = {}) => (req.perConto ? { per_conto: true, person_
 const soloProprio = (req) => { if (req.perConto) throw forbidden('Questa operazione la fa il professionista dal proprio portale'); };
 
 // Recapiti integrativi che il professionista può aggiornare da solo (quelli non presenti nell'anagrafica unica); nome, email, telefono e
-// codice fiscale si modificano in Amministrazione > Persone o in Contratti del personale
+// codice fiscale si modificano in Amministrazione > Persone o in Gestione del personale
 // Residenza, luogo di nascita e partita IVA sono dell'anagrafica unica (docs/IMPOSTAZIONI.md): qui si leggono soltanto
 const SELF = ['pec', 'iban', 'intestatarioConto'];
 r.get('/me', ah(async (req, res) => {

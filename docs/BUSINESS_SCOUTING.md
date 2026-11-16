@@ -53,6 +53,27 @@ Nessun doppione tra fonti: una struttura già in elenco con lo stesso nome e com
 pubblica e quello della Regione Toscana (dati.toscana.it, "Strutture sanitarie") è fermo al 2015. La Regione pubblica in PDF
 l'elenco delle strutture private accreditate (gennaio 2026) e ha un portale delle RSA: da analizzare.
 
+## Registro imprese, Google e raccolta notturna (v0.76.0)
+
+Decisione del CEO del 16/11/2026: "tutte e tre". Si aprono dal pulsante "Fonti: registro, Google, elenchi".
+
+1. **Registro imprese** (`lib/scouting/registro.js`, connettore `OPENAPI`): API Company di Openapi, la società di Ufficio Camerale.
+   Specifica ufficiale letta il 16/11/2026 (`console.openapi.com/oas/it/company.openapi.json`): `GET /IT-search` con
+   `Authorization: Bearer`, parametri `province`, `atecoCode`, `minEmployees`, `activityStatus=ATTIVA`, `dataEnrichment=advanced`,
+   `skip`, `limit`, `dryRun`. Dati: ragione sociale, partita IVA, PEC, sede, codice attività, dipendenti e fatturato dell'ultimo
+   bilancio (i dipendenti diventano il segnale omonimo). **A pagamento**: prima la stima gratuita (`dryRun=1`), poi la conferma
+   esplicita; tetto di imprese per ricerca nel connettore (predefinito 300). Ambiente di prova: Base URL
+   `https://test.company.openapi.com`. Codici ATECO proposti per tipologia, modificabili in pagina. **Non collaudato sul servizio
+   vero**: la forma della risposta di stima non è descritta nella specifica, la Suite legge i campi più probabili e altrimenti mostra
+   la risposta così com'è.
+2. **Google Places** (`lib/scouting/google.js`, connettore `GOOGLE` o chiave server di Google Maps): `POST places:searchText`.
+   Regola di Google (Places API Policies): si conserva **solo il place ID**. I risultati si mostrano e non si salvano; delle strutture
+   scelte la Suite tiene l'identificativo e legge il sito, da cui prende nome, partita IVA, recapiti e persone. Chi non ha un sito si
+   aggiunge a mano. Resta da far vedere a un legale la conservazione dell'indirizzo del sito. A pagamento a consumo.
+3. **OpenStreetMap, raccolta notturna** (`store.js` `raccoltaOsm`, job `business:scout-osm` ogni 30 minuti tra l'una e le sei): una
+   provincia e una tipologia alla volta, al massimo 12 per giro, ogni combinazione riletta ogni 14 giorni; una provincia che non
+   risponde si salta, due province senza risposta fermano il giro. Stato in `scout_osm_stato`, visibile nella finestra delle fonti. La ricerca a richiesta resta.
+
 ## Cosa NON fa, per scelta
 
 - Non invia email. Il primo contatto parte dalla scheda dell'account, come sempre.

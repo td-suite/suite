@@ -84,9 +84,9 @@ r.get('/mio-piano', ah(async (req, res) => {
   const p = ctx.me;
   const base = { anno, anni: anniGestiti(), settings: { rol_attivi: Boolean(ctx.settings.rol_attivi), avviso_dipendenti: ctx.settings.avviso_dipendenti || '' }, contratti: ctx.perim.contratti };
   if (!p) {
-    const motivo = !ctx.perim.contratti ? 'Il modulo Contratti del personale non è ancora avviato: il perimetro dei dipendenti non è disponibile.'
+    const motivo = !ctx.perim.contratti ? 'Il modulo Gestione del personale non è ancora avviato: il perimetro dei dipendenti non è disponibile.'
       : !ctx.personId ? 'Il tuo account non è collegato a una persona dell\'anagrafica.'
-      : 'Il Piano Ferie riguarda i dipendenti attivi con contratto di lavoro subordinato in Contratti del personale.';
+      : 'Il Piano Ferie riguarda i dipendenti attivi con contratto di lavoro subordinato in Gestione del personale.';
     return res.json({ ...base, fuori_perimetro: true, motivo });
   }
   await assicuraPiani([p.id], anno, null);

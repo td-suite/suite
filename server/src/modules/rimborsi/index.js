@@ -1,7 +1,7 @@
 // Modulo Rimborso Spese (chiave `rimborsi`, area PEOPLE), v0.72.0. Richiesta del CEO del 13/11/2026: widget "Rimborso Spese" nell'area
 // HR accessibile SOLO ai dipendenti e a nessun altro; approvazione secondo l'organigramma; compilazione mensile, archiviazione, invio al
 // responsabile e sua approvazione; nella stessa scheda Rimborso Spese (TD-SGI-MOD025) e Rimborso Chilometrico (TD-SGI-MOD029); vetture
-// aziendali e fuel card da Contratti del personale; foto dello scontrino obbligatoria salvo le eccezioni. Documentazione: docs/RIMBORSI.md.
+// aziendali e fuel card da Gestione del personale; foto dello scontrino obbligatoria salvo le eccezioni. Documentazione: docs/RIMBORSI.md.
 // Accesso (regola SOLO_DIPENDENTI di routes/core.js): solo utenti interni collegati a una persona di tipo DIPENDENTE in stato ATTIVO o
 // IMPEGNO; nessun grant, ruoli calcolati (lib/core.js). Nativo, senza travaso: all'avvio si attiva da solo e carica il seme delle
 // eccezioni al giustificativo.
@@ -24,7 +24,7 @@ import flussoRoutes from './routes/flusso.js';
 import elenchiRoutes from './routes/elenchi.js';
 import adminRoutes, { moduliCartacei } from './routes/admin.js';
 
-// ruolo tecnico unico: i ruoli veri (responsabile, P&C, titolare) si calcolano dall'organigramma e dai grant di Contratti del personale
+// ruolo tecnico unico: i ruoli veri (responsabile, P&C, titolare) si calcolano dall'organigramma e dai grant di Gestione del personale
 export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'DIPENDENTE', openToAll: true, defaultRole: 'DIPENDENTE' } };
 
 export default function mount(app) {

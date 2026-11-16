@@ -61,7 +61,7 @@ export default function Impostazioni() {
       </Card>
 
       <Card className="rs-gap" title="P&C (liquidazione)" icon="users">
-        <p className="small">P&C sono i dipendenti con il profilo Amministratore di Contratti del personale e quelli scelti qui. Oggi: {d.data.pc.length ? d.data.pc.map((p) => `${p.nome}${p.da_grant ? ' (grant)' : ''}`).join(', ') : 'nessuno'}.</p>
+        <p className="small">P&C sono i dipendenti con il profilo Amministratore di Gestione del personale e quelli scelti qui. Oggi: {d.data.pc.length ? d.data.pc.map((p) => `${p.nome}${p.da_grant ? ' (grant)' : ''}`).join(', ') : 'nessuno'}.</p>
         <div className="row">
           <select value="" onChange={(e) => e.target.value && s('pc_person_ids', [...new Set([...v.pc_person_ids, Number(e.target.value)])])} aria-label="Aggiungi P&C"><option value="">Aggiungi un dipendente come P&C</option>{persone.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
           {v.pc_person_ids.map((id) => <span key={id} className="chip">{persone.find((p) => p.id === id)?.nome || id}<button className="iconbtn" aria-label="Togli" onClick={() => s('pc_person_ids', v.pc_person_ids.filter((x) => x !== id))}><Icon name="x" /></button></span>)}

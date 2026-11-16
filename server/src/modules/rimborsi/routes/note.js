@@ -102,7 +102,7 @@ async function validaSpesa(ctx, n, b) {
   if (b.metodo === 'FUEL_CARD') {
     const ben = await benefitPersona(n.person_id, { pieno: true, giorno: b.data });
     const card = ben.fuel_card.find((f) => f.id === b.fuel_card_id && f.in_corso);
-    if (!card) throw bad('Scegli la fuel card assegnata e valida alla data della spesa (Contratti del personale)');
+    if (!card) throw bad('Scegli la fuel card assegnata e valida alla data della spesa (Gestione del personale)');
   } else b.fuel_card_id = null;
   if (b.viaggio_id && !(await one('SELECT 1 FROM viaggi WHERE id=$1 AND nota_id=$2', [b.viaggio_id, n.id]))) throw bad('Viaggio collegato inesistente');
   if (b.cliente_org_id && !(await one('SELECT 1 FROM public.organizations WHERE id=$1', [b.cliente_org_id]))) throw bad('Legal entity inesistente');

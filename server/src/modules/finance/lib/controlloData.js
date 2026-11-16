@@ -13,7 +13,7 @@ import * as CE from './contoEconomico.js';
 import { produzionePerOrg, fatturatoPerOrg } from '../../../lib/synclab/letture.js';
 import { giorniLavorativi } from '../../business/lib/proQuota.js';
 
-export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Contratti del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management', rimborsi: 'Rimborso Spese' };
+export const NOMI_MODULI = { retail: 'Retail', cash: 'Cash Management', contracts: 'Gestione del personale', facility: 'Facility e Manutenzioni', business: 'Business Hub', orders: 'Ordini', finance: 'Finance Management', rimborsi: 'Rimborso Spese' };
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const eurTxt = (n) => Number(n || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', useGrouping: 'always' });
 
@@ -293,21 +293,21 @@ export async function movimentiConto(p, imp, sedi) {
   fonti.royalty = { disponibile: roy.ok, nota: roy.nota || `Royalty di sede confermate in Cash (${imp.iva_costi === 'COSTO' ? 'totale con IVA' : 'imponibile'})` };
   for (const r of roy.rows) mov.push({ riga: 'royalty', site_id: r.site_id, importo: CE.r2(imp.iva_costi === 'COSTO' ? r.total : r.taxable), modulo: 'Cash Management', data: r.period, descrizione: `Royalty ${r.period} (imponibile ${eurTxt(r.taxable)}, IVA ${eurTxt(r.vat)})`, link: '/cash' });
 
-  // COSTI · personale dipendente (Contratti del personale): RAL × coefficiente / 12 per la parte di mese coperta dal rapporto
+  // COSTI · personale dipendente (Gestione del personale): RAL × coefficiente / 12 per la parte di mese coperta dal rapporto
   const dip = await leggi('contracts', `SELECT e.resource_id AS person_id, p.last_name, p.first_name, p.status, coalesce(e.start_date, p.hired_at)::text AS inizio,
         least(e.end_date, p.terminated_at)::text AS fine, e.ral, e.ral_steps, e.cost_coefficient, e.work_site_id, e.contract_type, e.job_title
       FROM employments e JOIN public.people p ON p.id = e.resource_id WHERE p.status <> 'CANDIDATO'`);
-  fonti.personale = { disponibile: dip.ok, nota: dip.nota || `Dipendenti con contratto in Contratti del personale: RAL vigente × coefficiente oneri ${String(imp.coefficiente).replace('.', ',')} (impostazione; quello del contratto se HR l'ha indicato) / 12, per i giorni coperti; senza sede di lavoro o con sede centrale tra i costi centrali` };
+  fonti.personale = { disponibile: dip.ok, nota: dip.nota || `Dipendenti con contratto in Gestione del personale: RAL vigente × coefficiente oneri ${String(imp.coefficiente).replace('.', ',')} (impostazione; quello del contratto se HR l'ha indicato) / 12, per i giorni coperti; senza sede di lavoro o con sede centrale tra i costi centrali` };
   for (const e of dip.rows) {
     if (!e.inizio && e.status !== 'ATTIVO') continue;
     let tot = 0, cop = 0, ral = null, coef = null;
     for (const mk of p.mesi) { const c = CE.costoDipendenteMese(e, mk, imp.coefficiente); tot += c.importo; cop += c.copertura; if (c.ral != null) { ral = c.ral; coef = c.coefficiente; } }
     if (!cop) continue;
-    mov.push({ riga: 'personale', site_id: e.work_site_id, importo: CE.r2(tot), modulo: 'Contratti del personale', data: e.inizio || '', descrizione: `${e.last_name} ${e.first_name}${e.job_title ? ` · ${e.job_title}` : ''} · RAL ${eurTxt(ral)} × ${String(coef).replace('.', ',')} / 12 × ${String(CE.r2(cop)).replace('.', ',')} mesi`, link: `/people/${e.person_id}` });
+    mov.push({ riga: 'personale', site_id: e.work_site_id, importo: CE.r2(tot), modulo: 'Gestione del personale', data: e.inizio || '', descrizione: `${e.last_name} ${e.first_name}${e.job_title ? ` · ${e.job_title}` : ''} · RAL ${eurTxt(ral)} × ${String(coef).replace('.', ',')} / 12 × ${String(CE.r2(cop)).replace('.', ',')} mesi`, link: `/people/${e.person_id}` });
   }
 
   // COSTI · rimborsi spese liquidati (v0.72.0, Rimborso Spese): le note LIQUIDATE o ARCHIVIATE entrano nella riga del personale della sede
-  // di lavoro della persona (people.site_id, allineata da Contratti del personale) per il mese della nota (competenza), con il totale
+  // di lavoro della persona (people.site_id, allineata da Gestione del personale) per il mese della nota (competenza), con il totale
   // rimborsabile (spese anticipate, chilometri, pedaggi, parcheggi). Le spese pagate con carta aziendale o fuel card non sono qui.
   const rimb = await leggi('rimborsi', `SELECT n.id, n.person_id, n.anno, n.mese, n.tot_rimborsabile, n.liquidazione_data::text AS liquidata, p.last_name, p.first_name, p.site_id
       FROM note n JOIN public.people p ON p.id = n.person_id WHERE n.stato IN ('LIQUIDATA','ARCHIVIATA') AND n.tot_rimborsabile > 0 AND (n.anno::text || '-' || lpad(n.mese::text, 2, '0')) = ANY($1::text[])`, [p.mesi]);
@@ -318,15 +318,15 @@ export async function movimentiConto(p, imp, sedi) {
   const lp = await leggi('contracts', `SELECT l.resource_id AS person_id, p.last_name, p.first_name, p.status, p.site_id, l.discipline, l.fees, l.est_monthly_cost, l.auto_renew,
         coalesce(l.start_date, p.hired_at)::text AS inizio, (CASE WHEN l.auto_renew THEN p.terminated_at ELSE least(l.end_date, p.terminated_at) END)::text AS fine
       FROM lp_contracts l JOIN public.people p ON p.id = l.resource_id WHERE p.status <> 'CANDIDATO'`);
-  fonti.lp = { disponibile: lp.ok, nota: lp.nota || 'Incarichi dei liberi professionisti (Contratti del personale) sulla sede della persona: compensi fissi mensili del tariffario; compensi orari, a prestazione o variabili "da indicare"' };
+  fonti.lp = { disponibile: lp.ok, nota: lp.nota || 'Incarichi dei liberi professionisti (Gestione del personale) sulla sede della persona: compensi fissi mensili del tariffario; compensi orari, a prestazione o variabili "da indicare"' };
   for (const x of lp.rows) {
     if (!x.inizio && x.status !== 'ATTIVO') continue;
     const cop = p.mesi.reduce((s, mk) => s + CE.copertura(x.inizio, x.fine, mk), 0);
     if (!cop) continue;
     const c = CE.compensoLp(x);
     const nome = `${x.last_name} ${x.first_name}${x.discipline ? ` · ${x.discipline}` : ''}`;
-    if (c.mensile != null) mov.push({ riga: 'lp', site_id: x.site_id, importo: CE.r2(c.mensile * cop), modulo: 'Contratti del personale', data: x.inizio || '', descrizione: `${nome} · ${eurTxt(c.mensile)} al mese × ${String(CE.r2(cop)).replace('.', ',')} mesi`, link: `/people/${x.person_id}` });
-    if (c.mensile == null || c.variabile) mov.push({ riga: 'lp', site_id: x.site_id, importo: null, modulo: 'Contratti del personale', data: x.inizio || '', descrizione: `${nome} · ${c.mensile == null ? 'compenso da indicare' : 'parte variabile da indicare'} (tariffario orario, a prestazione o variabile)`, link: `/people/${x.person_id}` });
+    if (c.mensile != null) mov.push({ riga: 'lp', site_id: x.site_id, importo: CE.r2(c.mensile * cop), modulo: 'Gestione del personale', data: x.inizio || '', descrizione: `${nome} · ${eurTxt(c.mensile)} al mese × ${String(CE.r2(cop)).replace('.', ',')} mesi`, link: `/people/${x.person_id}` });
+    if (c.mensile == null || c.variabile) mov.push({ riga: 'lp', site_id: x.site_id, importo: null, modulo: 'Gestione del personale', data: x.inizio || '', descrizione: `${nome} · ${c.mensile == null ? 'compenso da indicare' : 'parte variabile da indicare'} (tariffario orario, a prestazione o variabile)`, link: `/people/${x.person_id}` });
   }
 
   // COSTI · manutenzioni con costo (Facility): interventi chiusi e scadenze del piano eseguite

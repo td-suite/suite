@@ -1,4 +1,4 @@
-// Modulo Contracts (Contratti del Personale): voci di navigazione disegnate dalla Suite (la sidebar dell'app non si porta).
+// Modulo Contracts (Gestione del Personale, già Contratti del Personale): voci di navigazione disegnate dalla Suite (la sidebar dell'app non si porta).
 // Le voci di inserimento sono riservate ai profili che scrivono (ADMIN, HR); Registro al solo ADMIN. Impostazioni: ADMIN tutto,
 // HR solo la sezione Casella People. Profilo LP (solo liberi professionisti, sola lettura): vede soltanto Elenco LP e scadenze degli LP. Casella People (documenti da approvare): ADMIN e HR (il titolare della Suite entra come ADMIN).
 // Profilo LP: restano solo "Elenco LP" e il calendario delle scadenze (degli LP); vale anche per un amministratore della Suite con quel profilo
@@ -8,7 +8,7 @@ const conLp = (nav) => nav.map((i) => ((i.group ? i.group === 'Liberi profession
 
 export default {
   key: 'contracts',
-  title: 'Contratti del Personale',
+  title: 'Gestione del Personale',
   kicker: 'People',
   area: 'PEOPLE',
   nav: conLp([
@@ -29,6 +29,12 @@ export default {
     { group: 'Liberi professionisti' },
     { to: 'lp/nuovo', icon: 'plus', label: 'Nuovo professionista', profiles: ['ADMIN', 'HR'] },
     { to: 'lp', icon: 'user', label: 'Elenco LP', end: true },
+    { group: 'Tirocinanti' },
+    { to: 'tirocinanti/nuovo', icon: 'plus', label: 'Nuovo tirocinante', profiles: ['ADMIN', 'HR'] },
+    { to: 'tirocinanti', icon: 'user', label: 'Elenco tirocinanti', end: true },
+    { group: 'Formazione e tutela' },
+    { to: 'formazione-ecm', icon: 'stats', label: 'Formazione ed ECM' },
+    { to: 'medicina-lavoro', icon: 'shield', label: 'Medicina del lavoro', profiles: ['ADMIN', 'HR'], badge: 'mdl_in_scadenza' },
     { group: 'Amministrazione', profiles: ['ADMIN', 'HR'] },
     { to: 'impostazioni', icon: 'gear', label: 'Impostazioni e import', profiles: ['ADMIN', 'HR'] },
     { to: 'audit', icon: 'shield', label: 'Registro attività', profiles: ['ADMIN'] },

@@ -285,7 +285,7 @@ export function UserDetail() {
           <Card title="Anagrafica" icon="user">
             <form onSubmit={saveUser} className="col" id="uform">
               {isNew ? (
-                <Field label="Persona" required help="Ogni utente è una persona dell'anagrafica: scegli chi deve avere l'accesso. Se manca, creala prima in Persone o in Contratti del personale.">
+                <Field label="Persona" required help="Ogni utente è una persona dell'anagrafica: scegli chi deve avere l'accesso. Se manca, creala prima in Persone o in Gestione del personale.">
                   <PersonPicker value={f.person_id} onChange={(p) => setF({ ...f, person_id: p?.id || '', email: p?.email || '', first_name: p?.first_name || '', last_name: p?.last_name || '', site_id: p?.site_id || f.site_id })} />
                 </Field>
               ) : (
@@ -305,7 +305,7 @@ export function UserDetail() {
                         <dt>Ruolo</dt><dd>{u.person_role || u.person_job_title || <span className="muted">Non indicato</span>}</dd>
                         <dt>Telefono</dt><dd>{[u.person_phone_office, u.person_phone_ext ? `int. ${u.person_phone_ext}` : null, u.person_phone ? `cell. ${u.person_phone}` : null].filter(Boolean).join(' · ') || <span className="muted">Nessuno</span>}</dd>
                       </dl>
-                      <div className="small muted">Questi dati si modificano solo in Amministrazione, Persone (o in Contratti del personale): qui l'account li legge dall'anagrafica unica.</div>
+                      <div className="small muted">Questi dati si modificano solo in Amministrazione, Persone (o in Gestione del personale): qui l'account li legge dall'anagrafica unica.</div>
                     </div>
                   ) : (
                     <>

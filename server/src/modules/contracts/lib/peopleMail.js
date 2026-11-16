@@ -174,7 +174,7 @@ export async function testSend(to) {
   const addr = parseEmailList(to)[0];
   if (!addr) return { ok: false, message: 'Indirizzo di prova non valido' };
   const { address } = await peopleMailbox();
-  const html = layout('Prova di invio dalla casella People', `<p>Questa è un'email di prova inviata dalla casella <b>${esc(address)}</b> della Suite TD (modulo Contratti del Personale).</p><p>Se la ricevi, i richiami sulle scadenze partiranno da questo mittente.</p>`, { footer: 'Ufficio People · Toscana Diagnostica' });
+  const html = layout('Prova di invio dalla casella People', `<p>Questa è un'email di prova inviata dalla casella <b>${esc(address)}</b> della Suite TD (modulo Gestione del Personale).</p><p>Se la ricevi, i richiami sulle scadenze partiranno da questo mittente.</p>`, { footer: 'Ufficio People · Toscana Diagnostica' });
   const r = await sendFromPeople({ to: [addr], subject: 'Toscana Diagnostica · prova di invio dalla casella People', html, text: 'Prova di invio dalla casella People', ref: 'contracts:people:prova' });
   if (r.status === 'INVIATO') return { ok: true, message: `Email di prova inviata da ${r.from} a ${addr}: verifica la ricezione (e la cartella Posta indesiderata).` };
   if (r.status === 'REGISTRATO') return { ok: true, logged: true, message: `Posta in modalità registro (MAIL_PROVIDER=log o credenziali Graph assenti): l'email da ${r.from} a ${addr} è solo nel registro email, nessun invio reale.` };

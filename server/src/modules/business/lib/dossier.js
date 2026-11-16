@@ -57,7 +57,7 @@ export function orariFascicolo(j) {
     return { ...h, draw: f.map((x) => `dalle ore ${hm(x.from)} alle ore ${hm(x.to)}`).join(' e '), pickup: f.length ? h.pickup : '' };
   });
 }
-const CONTRATTO = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario' };
+const CONTRATTO = { DIPENDENTE: 'Dipendente', LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario', TIROCINANTE: 'Tirocinante' };
 export function personaleFascicolo(persone) {
   return (persone || []).map((p) => ({ surname: p.last_name || '', name: p.first_name || '', affiliation: 'Toscana Diagnostica', contract: CONTRATTO[p.kind] || p.kind || '', hours: '', role: p.job_title || (p.is_head ? 'Responsabile di sede' : ''), degree: '' }));
 }
