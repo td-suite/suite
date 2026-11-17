@@ -33,6 +33,11 @@ export default {
     { to: 'b2b/listini', icon: 'cash', label: 'Listini applicati' },
     { to: 'b2b/profilo-pazienti', icon: 'users', label: 'Profilo dei pazienti' },
     { to: 'b2b/budget', icon: 'stats', label: 'Budget B2B' },
+    // Sviluppo rete (richiesta del CEO del 17/11/2026): dove siamo rispetto ai concorrenti e dove conviene aprire
+    { group: 'Sviluppo rete · concorrenti e nuove aperture' },
+    { to: 'rete/posizionamento', icon: 'stats', label: 'Posizionamento' },
+    { to: 'rete/valuta', icon: 'pin', label: 'Valuta un indirizzo' },
+    { to: 'rete/dove-aprire', icon: 'building', label: 'Dove aprire' },
     { group: 'Dati e amministrazione' },
     { to: 'import', icon: 'upload', label: 'Import dai gestionali', profiles: WRITERS },
     { to: 'connettori', icon: 'cloud', label: 'Connettori', profiles: ['ADMIN'] },

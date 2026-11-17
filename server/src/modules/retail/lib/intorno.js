@@ -9,7 +9,7 @@
 // La prima parte del file è fatta di funzioni pure (testabili senza rete né database), la seconda legge e scrive lo schema retail.
 import { one, many, q, tx } from '../db.js';
 import { HttpError, todayRome } from './util.js';
-import { chiaveServer, chiaveBrowser, mascheraChiave, senzaChiave, normalizzaGeocodifica, GEOCODING_URL } from '../../../lib/googleMaps.js';
+import { chiaveServer, usaChiaveDelConnettore, chiaveBrowser, mascheraChiave, senzaChiave, normalizzaGeocodifica, GEOCODING_URL } from '../../../lib/googleMaps.js';
 
 export const NEARBY_URL = 'https://places.googleapis.com/v1/places:searchNearby';
 export const TEXT_URL = 'https://places.googleapis.com/v1/places:searchText';
@@ -50,6 +50,8 @@ export const SOTTOCATEGORIE = [
   { chiave: 'ospedale', categoria: 'ATTRATTORE', etichetta: 'Ospedale', tipi: ['hospital'], fonti: [{ tipo: 'nearby', includedTypes: ['hospital'], riserva: 'ospedale' }] },
   { chiave: 'asl', categoria: 'ATTRATTORE', etichetta: 'ASL / distretto sanitario', tipi: [], fonti: [{ tipo: 'testo', query: 'ASL distretto sanitario' }] },
   { chiave: 'supermercato', categoria: 'CONTESTO', etichetta: 'Supermercato', tipi: ['supermarket', 'grocery_store'], fonti: [{ tipo: 'nearby', includedTypes: ['supermarket', 'grocery_store'], riserva: 'supermercato' }] },
+  // centri commerciali (richiesta del CEO del 17/11/2026): attirano passaggio, sono il contesto tipico di un punto prelievi
+  { chiave: 'centro_commerciale', categoria: 'CONTESTO', etichetta: 'Centro commerciale', tipi: ['shopping_mall'], fonti: [{ tipo: 'nearby', includedTypes: ['shopping_mall'], riserva: 'centro commerciale' }] },
   { chiave: 'posta', categoria: 'CONTESTO', etichetta: 'Ufficio postale', tipi: ['post_office'], fonti: [{ tipo: 'nearby', includedTypes: ['post_office'], riserva: 'ufficio postale' }] },
   { chiave: 'banca', categoria: 'CONTESTO', etichetta: 'Banca', tipi: ['bank'], fonti: [{ tipo: 'nearby', includedTypes: ['bank'], riserva: 'banca' }] },
   { chiave: 'scuola', categoria: 'CONTESTO', etichetta: 'Scuola', tipi: ['school', 'primary_school', 'secondary_school'], fonti: [{ tipo: 'nearby', includedTypes: ['school', 'primary_school', 'secondary_school'], riserva: 'scuola' }] },
@@ -380,6 +382,7 @@ export function creaMockFetch({ variante = 0 } = {}) {
 const K = { tetto: 'retail.intorno.tetto_giornaliero', urbano: 'retail.intorno.raggio_urbano', extra: 'retail.intorno.raggio_extraurbano', sotto: 'retail.intorno.sottocategorie' };
 
 export async function leggiImpostazioni() {
+  await usaChiaveDelConnettore();   // senza GOOGLE_MAPS_SERVER_KEY vale la chiave del connettore Google Places
   const rows = await many('SELECT key, value FROM app_settings WHERE key = ANY($1)', [Object.values(K)]);
   const v = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const intero = (x, def) => (x != null && x !== '' && Number.isFinite(Number(x)) ? Math.round(Number(x)) : def);
@@ -470,10 +473,11 @@ export async function ultimaCompletata(chiave, { prima = null } = {}) {
  * Rilevazione di un punto (sede o indirizzo). Controlla il tetto prima di iniziare (servono almeno le chiamate minime), esegue,
  * confronta con la precedente, salva luoghi e sintesi. Al tetto raggiunto a metà: rilevazione INTERROTTA (senza luoghi) e 429.
  */
-export async function rileva({ siteId = null, chiave, etichetta, indirizzo = null, lat, lng, raggio, origine = 'MANUALE', userId = null, geocodifica: geo = null }) {
+export async function rileva({ siteId = null, chiave, etichetta, indirizzo = null, lat, lng, raggio, origine = 'MANUALE', userId = null, geocodifica: geo = null, sottocategorie = null }) {
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) throw new HttpError(400, 'Coordinate mancanti: geocodifica prima l\'indirizzo');
   const imp = await leggiImpostazioni();
-  const sotto = imp.sottocategorie;
+  // sottocategorie: elenco ristretto scelto dal chiamante (scansione dei comuni di Sviluppo rete), altrimenti quelle attive nelle impostazioni
+  const sotto = sottocategorie?.length ? sottocategorie.filter((k) => SOTTO[k]) : imp.sottocategorie;
   if (!sotto.length) throw new HttpError(400, 'Nessuna categoria attiva: scegline almeno una in Retail > Impostazioni > Intorno');
   const precedente = await ultimaCompletata(chiave);
   const variante = mockAttivo() ? Number((await one(`SELECT count(*)::int AS n FROM intorno_rilevazioni WHERE chiave=$1 AND stato IN ('COMPLETATA','PARZIALE')`, [chiave])).n) : 0;
@@ -569,7 +573,7 @@ export async function confrontoSedi() {
 export async function valutazioni() {
   return many(`SELECT DISTINCT ON (chiave) id, chiave, etichetta, indirizzo, lat, lng, data, eseguita_at, raggio_m, prova, punteggio, sintesi, confronto,
       (SELECT count(*)::int FROM intorno_rilevazioni y WHERE y.chiave = x.chiave AND y.stato IN ('COMPLETATA','PARZIALE')) AS n_rilevazioni
-    FROM intorno_rilevazioni x WHERE site_id IS NULL AND stato IN ('COMPLETATA','PARZIALE') ORDER BY chiave, eseguita_at DESC, id DESC`);
+    FROM intorno_rilevazioni x WHERE site_id IS NULL AND chiave NOT LIKE 'comune:%' AND stato IN ('COMPLETATA','PARZIALE') ORDER BY chiave, eseguita_at DESC, id DESC`);
 }
 
 /**

@@ -8,7 +8,15 @@
 export const TIMEOUT_MS = 10_000;
 export const GEOCODING_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 
-export const chiaveServer = () => String(process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
+// Chiave server: variabile d'ambiente GOOGLE_MAPS_SERVER_KEY; in mancanza, la chiave del connettore Google (Amministrazione >
+// Connettori > Google Places), letta da usaChiaveDelConnettore() e tenuta solo in memoria (v0.81.0).
+let chiaveConnettore = '';
+export const chiaveServer = () => String(process.env.GOOGLE_MAPS_SERVER_KEY || '').trim() || chiaveConnettore;
+export async function usaChiaveDelConnettore() {
+  if (String(process.env.GOOGLE_MAPS_SERVER_KEY || '').trim()) return;
+  try { const { getConnector } = await import('./connectors.js'); const c = await getConnector('GOOGLE'); chiaveConnettore = c?.active && c.credentials?.api_key ? String(c.credentials.api_key).trim() : ''; }
+  catch { chiaveConnettore = ''; }
+}
 export const chiaveBrowser = () => String(process.env.GOOGLE_MAPS_BROWSER_KEY || '').trim() || null;
 
 /** Chiave mascherata per le schermate di prova: solo le ultime 4 cifre (es. "••••3fQk"); null se assente */

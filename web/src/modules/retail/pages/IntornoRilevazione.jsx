@@ -1,10 +1,11 @@
 // Intorno di un indirizzo valutato (o di una rilevazione qualsiasi aperta per id) e riquadro "Il territorio" del Cruscotto Retail:
 // confronto tra le sedi, "Valuta un indirizzo" (indirizzo → geocodifica → conferma → rilevazione) ed elenco degli indirizzi valutati.
 // docs/RETAIL_INTORNO.md
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, useToast, Icon, Modal, ConfirmModal } from '../components/ui.jsx';
 import Intorno, { Punteggio, metri } from '../components/Intorno.jsx';
+import { ResaValutazione, puntiMappa } from './SviluppoRete.jsx';
 import { useAuth, canWrite, isAdmin } from '../auth.jsx';
 import { api, base } from '../api.js';
 import { num, itDate } from '../format.js';
@@ -15,11 +16,15 @@ export default function IntornoRilevazione() {
   const toast = useToast();
   const { user } = useAuth();
   const d = useApi(`/intorno/rilevazioni/${id}`, [id]);
+  // Sviluppo rete: resa dalle sedi simili, B2B e rete (solo per un indirizzo valutato, non per una sede né per un comune)
+  const v = useApi(`/rete/valutazioni/${id}`, [id]);
+  const extra = useMemo(() => puntiMappa(v.data), [v.data]);
   const [busy, setBusy] = useState(false);
   const [elimina, setElimina] = useState(false);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data) return <div className="page"><Loading /></div>;
   const r = d.data;
+  const comune = String(r.chiave || '').startsWith('comune:');
   const rileva = async () => {
     setBusy(true);
     try { const n = await api.post(`/intorno/rilevazioni/${r.id}/rileva`); toast(`Nuova rilevazione: ${n.luoghi.filter((l) => l.presente).length} luoghi`); nav(`${base}/intorno/${n.id}`); }
@@ -28,15 +33,17 @@ export default function IntornoRilevazione() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>{r.site_id ? r.site_name : 'Indirizzo valutato'}</h1>
+        <div><h1>{r.site_id ? r.site_name : comune ? r.etichetta : 'Indirizzo valutato'}</h1>
           <div className="sub">{r.site_id ? 'Rilevazione dello storico della sede' : r.etichetta}{r.geocodifica?.precision ? ` · geocodificato ${r.geocodifica.precision === 'civico' ? 'al civico' : r.geocodifica.precision === 'via' ? 'alla via' : 'al comune'}` : ''} · {Number(r.lat).toFixed(5)}, {Number(r.lng).toFixed(5)}</div></div>
         <div className="row">
-          <button className="btn ghost" onClick={() => nav(base)}>Cruscotto</button>
+          <button className="btn ghost" onClick={() => nav(`${base}/rete/${comune ? 'dove-aprire' : 'valuta'}`)}>{comune ? 'Dove aprire' : 'Indirizzi valutati'}</button>
           {r.site_id && <Link className="btn ghost" to={`${base}/b2c/sedi/${r.site_id}`}>Scheda della sede</Link>}
           {!r.site_id && isAdmin(user) && <button className="btn ghost" onClick={() => setElimina(true)}><Icon name="trash" />Elimina</button>}
         </div>
       </div>
-      <Intorno rilevazione={r} storico={r.storico} config={r.config} onApri={(rid) => nav(`${base}/intorno/${rid}`)}
+      {!r.site_id && !comune && (v.error ? <ErrorBox error={v.error} /> : <ResaValutazione dati={v.data} />)}
+      {comune && <div className="alert" style={{ marginBottom: 12 }}><span>Rilevazione del comune per "Dove aprire": solo laboratori, centri diagnostici, poliambulatori, medici, farmacie, centri commerciali e supermercati entro 3 km dal centro. Il punteggio di attrattività qui sotto vale per un indirizzo, non per un comune.</span></div>}
+      <Intorno extra={extra} rilevazione={r} storico={r.storico} config={r.config} onApri={(rid) => nav(`${base}/intorno/${rid}`)}
         azioni={canWrite(user) && <button className="btn sm" disabled={busy} onClick={rileva}><Icon name="refresh" />{busy ? 'Rilevo…' : 'Rileva adesso'}</button>} />
       {elimina && <ConfirmModal danger title="Elimina l'indirizzo valutato" text={`Vengono eliminate tutte le rilevazioni di "${r.etichetta}". Le rilevazioni delle sedi non si toccano.`} confirmText="Elimina"
         onClose={() => setElimina(false)} onConfirm={async () => { await api.del(`/intorno/valutazioni/${r.id}`); toast('Indirizzo valutato eliminato'); nav(base); }} />}

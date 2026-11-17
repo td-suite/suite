@@ -22,12 +22,15 @@ import statsRoutes from './routes/stats.js';
 import budgetRoutes from './routes/budget.js';
 import structureRoutes from './routes/structure.js';
 import intornoRoutes from './routes/intorno.js';
+import reteRoutes from './routes/rete.js';
 import tuotempoRoutes from './routes/tuotempo.js';
 import profiloPazientiRoutes from './routes/profiloPazienti.js';
 import b2bRoutes from './routes/b2b.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
 import laboratorioRoutes from './routes/laboratorio.js';
 import { rilevazioneMensile, mockAttivo as intornoMock } from './lib/intorno.js';
+import { scansioneComuni } from './lib/rete.js';
+import { usaChiaveDelConnettore } from '../../lib/googleMaps.js';
 import { chiaveServer } from '../../lib/googleMaps.js';
 
 const KEY = 'retail';
@@ -96,6 +99,7 @@ export default function mount(app) {
   r.use(budgetRoutes);                // working-days, budgets, variance, market
   r.use('/structure', structureRoutes);
   r.use(intornoRoutes);               // Intorno: luoghi intorno alle sedi e indirizzi valutati (Google Places, docs/RETAIL_INTORNO.md)
+  r.use(reteRoutes);                  // Sviluppo rete: posizionamento, valutazione di un indirizzo, dove aprire (docs/RETAIL_SVILUPPO_RETE.md)
   // Errori specifici dell'app (duplicati, file troppo grandi) con i messaggi dell'app; il resto al gestore della Suite
   r.use((err, _req, res, next) => {
     if (err?.code === '23505') return res.status(409).json({ error: 'Elemento duplicato (codice, codice fiscale, partita IVA o email già presenti)' });
@@ -143,7 +147,22 @@ export default function mount(app) {
   registerJob(`${KEY}:intorno`, 24 * 60, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
-    if (!chiaveServer() && !intornoMock()) return { skipped: true, reason: 'GOOGLE_MAPS_SERVER_KEY non impostata' };
+    await usaChiaveDelConnettore();
+    if (!chiaveServer() && !intornoMock()) return { skipped: true, reason: 'chiave Google non impostata (variabile GOOGLE_MAPS_SERVER_KEY o connettore Google Places)' };
     return rilevazioneMensile();
+  });
+  // Sviluppo rete: scansione dei comuni della Toscana sopra soglia, un lotto per notte (docs/RETAIL_SVILUPPO_RETE.md). Dopo la
+  // rilevazione mensile delle sedi, che ha la precedenza sul tetto giornaliero di Google.
+  let ultimaScansione = null;
+  registerJob(`${KEY}:rete-comuni`, 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, reason: 'modulo non LIVE' };
+    const ora = new Date(); const giorno = ora.toISOString().slice(0, 10);
+    const h = Number(new Intl.DateTimeFormat('it-IT', { hour: 'numeric', hour12: false, timeZone: 'Europe/Rome' }).format(ora));
+    if (h < 1 || h > 5 || ultimaScansione === giorno) return { skipped: true, reason: 'fuori orario o già eseguita oggi' };
+    await usaChiaveDelConnettore();
+    if (!chiaveServer() && !intornoMock()) return { skipped: true, reason: 'chiave Google non impostata' };
+    ultimaScansione = giorno;
+    return scansioneComuni();
   });
 }

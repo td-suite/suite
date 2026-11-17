@@ -37,6 +37,7 @@ import ExposureSite from './pages/ExposureSite.jsx';
 import Sites from './pages/Sites.jsx';
 import SiteDetail from './pages/SiteDetail.jsx';
 import IntornoRilevazione from './pages/IntornoRilevazione.jsx';
+import { Posizionamento, ValutaIndirizzoPagina, DoveAprire } from './pages/SviluppoRete.jsx';
 import Budget from './pages/Budget.jsx';
 import Connectors from './pages/Connectors.jsx';
 import Settings from './pages/Settings.jsx';
@@ -85,6 +86,10 @@ export default function Module({ moduleUser }) {
           <Route path="b2c/sedi/:id" element={<SiteDetail />} />
           <Route path="b2c/budget" element={<Budget />} />
           <Route path="intorno/:id" element={<IntornoRilevazione />} />
+          {/* Sviluppo rete (v0.81.0): posizionamento, valutazione di un indirizzo, dove aprire */}
+          <Route path="rete/posizionamento" element={<Posizionamento />} />
+          <Route path="rete/valuta" element={<ValutaIndirizzoPagina />} />
+          <Route path="rete/dove-aprire" element={<DoveAprire />} />
           {/* B2B · service e medicina del lavoro (StudioLab) */}
           <Route path="b2b" element={<CruscottoB2B />} />
           <Route path="b2b/clienti" element={<B2B />} />

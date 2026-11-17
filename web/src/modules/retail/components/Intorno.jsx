@@ -62,7 +62,8 @@ function caricaGoogleMaps(chiave) {
 }
 const escapeHtml = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function MappaIntorno({ chiave, centro, luoghi, cerchi, raggio, categorie, sotto, etichetta }) {
+const VUOTO = [];
+function MappaIntorno({ chiave, centro, luoghi, cerchi, raggio, categorie, sotto, etichetta, extra = [] }) {
   const ref = useRef(null);
   const [errore, setErrore] = useState(null);
   useEffect(() => {
@@ -89,9 +90,16 @@ function MappaIntorno({ chiave, centro, luoghi, cerchi, raggio, categorie, sotto
           info.open({ map, anchor: m });
         });
       }
+      // Sviluppo rete: clienti B2B, prospect e sedi TD con coordinate (triangoli, per distinguerli dai luoghi di Google)
+      for (const x of extra) {
+        if (x.lat == null || x.lng == null) continue;
+        const m = new gm.Marker({ map, position: { lat: Number(x.lat), lng: Number(x.lng) }, title: x.nome, zIndex: 900,
+          icon: { path: gm.SymbolPath.BACKWARD_CLOSED_ARROW, scale: 5, fillColor: x.colore || '#0a7d4f', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 1.5 } });
+        m.addListener('click', () => { info.setContent(`<div style="font:13px/1.4 system-ui,sans-serif;max-width:260px"><b>${escapeHtml(x.nome)}</b><br><span style="color:#5B6F75">${escapeHtml(x.tipo || '')}</span></div>`); info.open({ map, anchor: m }); });
+      }
     }).catch((e) => !annullato && setErrore(e.message));
     return () => { annullato = true; };
-  }, [chiave, centro.lat, centro.lng, luoghi, raggio]);
+  }, [chiave, centro.lat, centro.lng, luoghi, raggio, extra]);
   if (errore) return <div className="alert">{errore}: resta la tabella.</div>;
   return <div ref={ref} style={{ height: 460, borderRadius: 10, border: '1px solid var(--line, #dbe5e7)' }} aria-label="Mappa dei luoghi intorno" />;
 }
@@ -103,7 +111,7 @@ function MappaIntorno({ chiave, centro, luoghi, cerchi, raggio, categorie, sotto
  * @param azioni pulsanti (Rileva adesso, …)
  * @param onApri apre una rilevazione dello storico
  */
-export default function Intorno({ rilevazione, storico = [], config, azioni, onApri, vuoto }) {
+export default function Intorno({ rilevazione, storico = [], config, azioni, onApri, vuoto, extra }) {
   const [cat, setCat] = useState('');
   const [sc, setSc] = useState('');
   const [entro, setEntro] = useState('');
@@ -136,7 +144,7 @@ export default function Intorno({ rilevazione, storico = [], config, azioni, onA
         {conf?.confrontabile ? <p className="small" style={{ marginTop: 0 }}>Rispetto alla rilevazione del {itDate(conf.precedente_data)}: <Badge tone="green">{num(conf.nuovi)} {conf.nuovi === 1 ? 'nuovo' : 'nuovi'}</Badge> <Badge tone="red">{num(conf.scomparsi)} {conf.scomparsi === 1 ? 'scomparso' : 'scomparsi'}</Badge> <Badge tone="blue">{num(conf.cambiati)} {conf.cambiati === 1 ? 'cambiato' : 'cambiati'}</Badge></p>
           : <p className="small muted" style={{ marginTop: 0 }}>Prima rilevazione di questo punto: il confronto (nuovi, scomparsi, cambiati) parte dalla prossima.</p>}
         {config?.chiave_browser && centro
-          ? <MappaIntorno chiave={config.chiave_browser} centro={centro} luoghi={filtrati} cerchi={config.cerchi || [500, 1000, 3000]} raggio={rilevazione.raggio_m} categorie={categorie} sotto={sotto} etichetta={rilevazione.etichetta || rilevazione.site_name || ''} />
+          ? <MappaIntorno chiave={config.chiave_browser} centro={centro} luoghi={filtrati} cerchi={config.cerchi || [500, 1000, 3000]} raggio={rilevazione.raggio_m} categorie={categorie} sotto={sotto} etichetta={rilevazione.etichetta || rilevazione.site_name || ''} extra={extra || VUOTO} />
           : <p className="small muted">Mappa non disponibile: manca la chiave delle mappe nel browser (GOOGLE_MAPS_BROWSER_KEY). Tutti i dati sono nella tabella.</p>}
         <div className="row" style={{ gap: 8, margin: '12px 0', flexWrap: 'wrap', alignItems: 'center' }}>
           {Object.entries(categorie).map(([k, c]) => <span key={k} className="small" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><i style={{ width: 10, height: 10, borderRadius: 10, background: c.colore, display: 'inline-block' }} />{c.etichetta}</span>)}

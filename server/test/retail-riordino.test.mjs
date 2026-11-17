@@ -29,10 +29,10 @@ describe('Riordino di Retail: menu, rotte e link (lettura dei file)', () => {
   test('menu in tre parti: Cruscotto, B2C, B2B, Dati e amministrazione', async () => {
     const meta = (await import(path.join(WEB, 'modules/retail/meta.js'))).default;
     const gruppi = meta.nav.filter((x) => x.group).map((x) => x.group);
-    assert.deepEqual(gruppi, ['B2C · centri medici e punti prelievo (TuoTempo + GIPO)', 'B2B · service e medicina del lavoro (StudioLab)', 'Dati e amministrazione']);
+    assert.deepEqual(gruppi, ['B2C · centri medici e punti prelievo (TuoTempo + GIPO)', 'B2B · service e medicina del lavoro (StudioLab)', 'Sviluppo rete · concorrenti e nuove aperture', 'Dati e amministrazione']);
     const voci = meta.nav.filter((x) => !x.group).map((x) => x.to);
     for (const v of ['', 'b2c', 'b2c/clienti', 'b2c/richiami', 'b2c/prodotti', 'b2c/listino-online', 'b2c/vendite', 'b2c/prenotazioni', 'b2c/laboratorio', 'b2c/campagne', 'b2c/promozioni',
-      'b2c/esposizione', 'b2c/sedi', 'b2c/budget', 'b2b', 'b2b/clienti', 'b2b/produzione', 'b2b/fatturato', 'b2b/listini', 'b2b/profilo-pazienti', 'b2b/budget', 'import', 'connettori', 'impostazioni', 'audit']) assert.ok(voci.includes(v), `voce ${v}`);
+      'b2c/esposizione', 'b2c/sedi', 'b2c/budget', 'b2b', 'b2b/clienti', 'b2b/produzione', 'b2b/fatturato', 'b2b/listini', 'b2b/profilo-pazienti', 'b2b/budget', 'rete/posizionamento', 'rete/valuta', 'rete/dove-aprire', 'import', 'connettori', 'impostazioni', 'audit']) assert.ok(voci.includes(v), `voce ${v}`);
     assert.equal(meta.nav.find((x) => x.to === 'b2c/laboratorio').flag, 'laboratorio_in_sede', 'Laboratorio in sede visibile solo con l\'impostazione');
   });
   test('redirect dalle vecchie rotte verso le nuove (link salvati, Cockpit, Home)', () => {
