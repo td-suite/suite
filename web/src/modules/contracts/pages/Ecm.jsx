@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, BASE } from '../api.js';
-import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, Kpi, useToast } from '../components/ui.jsx';
+import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, Kpi, PromptModal, useToast } from '../components/ui.jsx';
 import { useAuth, canWrite } from '../auth.jsx';
 
 const n1 = (v) => Number(v || 0).toLocaleString('it-IT', { maximumFractionDigits: 1 });
@@ -14,11 +14,13 @@ export default function Ecm() {
   const d = useApi('/formazione/ecm');
   const [q, setQ] = useState('');
   const [solo, setSolo] = useState('');
-  const righe = useMemo(() => (d.data?.righe || []).filter((x) => (!q || `${x.nome} ${x.professione || ''}`.toLowerCase().includes(q.toLowerCase())) && (solo === 'indietro' ? x.mancano_anno > 0 : solo === 'attivare' ? !x.attivata : true)), [d.data, q, solo]);
+  const [escl, setEscl] = useState(null);   // risorsa da non considerare per l'anno in corso (chiede il motivo)
+  const righe = useMemo(() => (d.data?.righe || []).filter((x) => (!q || `${x.nome} ${x.professione || ''}`.toLowerCase().includes(q.toLowerCase())) && (solo === 'indietro' ? x.mancano_anno > 0 : solo === 'attivare' ? !x.attivata : solo === 'escluse' ? x.escluso_anno : true)), [d.data, q, solo]);
   if (d.error) return <div className="page"><ErrorBox error={d.error} /></div>;
   if (!d.data) return <div className="page"><Loading /></div>;
   const { regole, totali } = d.data;
-  const daAttivare = d.data.righe.filter((x) => !x.attivata);
+  const daAttivare = d.data.righe.filter((x) => !x.attivata && !x.escluso_anno);
+  const escludi = async (x, on, motivo) => { try { await api.post('/formazione/ecm/escludi', { id: x.id, anno: regole.anno, escludi: on, motivo: motivo || null }); toast(on ? `${x.nome}: risorsa non considerata per il ${regole.anno}, nessun obiettivo, scadenza o richiamo ECM quest'anno` : `${x.nome}: risorsa di nuovo considerata per il ${regole.anno}`); setEscl(null); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   const attiva = async (ids) => { try { const r = await api.post('/formazione/ecm/attiva', { ids }); toast(`${r.attivate} posizioni attivate: da ora generano scadenze e richiami`); d.reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <div className="page">
@@ -27,13 +29,13 @@ export default function Ecm() {
         {writer && daAttivare.length > 0 && <button className="btn" onClick={() => attiva(daAttivare.map((x) => x.id))}>Attiva le {daAttivare.length} posizioni riconosciute</button>}
       </div>
       <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Kpi label="Professioni sanitarie" value={totali.persone} foot="attive o in ingresso" />
+        <Kpi label="Professioni sanitarie" value={totali.persone} foot={totali.escluse ? `considerate per il ${regole.anno} · ${totali.escluse} non considerate` : 'attive o in ingresso'} />
         <Kpi label="In linea con l'obiettivo dell'anno" value={totali.in_regola} accent bar={totali.persone ? totali.in_regola / totali.persone * 100 : 0} />
-        <Kpi label="Crediti ancora da acquisire" value={n1(d.data.righe.reduce((a, x) => a + x.residuo, 0))} foot={`entro il 31/12/${regole.fine}`} />
+        <Kpi label="Crediti ancora da acquisire" value={n1(d.data.righe.filter((x) => !x.escluso_anno).reduce((a, x) => a + x.residuo, 0))} foot={`entro il 31/12/${regole.fine}`} />
         <Kpi label="Posizioni da attivare" value={totali.da_attivare} foot="riconosciute in automatico: nessuna scadenza finché non le attivi" />
       </div>
       <div className="filters">
-        <Field label="Mostra"><select value={solo} onChange={(e) => setSolo(e.target.value)}><option value="">Tutti</option><option value="indietro">Sotto l'obiettivo dell'anno</option><option value="attivare">Posizioni da attivare</option></select></Field>
+        <Field label="Mostra"><select value={solo} onChange={(e) => setSolo(e.target.value)}><option value="">Tutti</option><option value="indietro">Sotto l'obiettivo dell'anno</option><option value="attivare">Posizioni da attivare</option><option value="escluse">Non considerate per il {regole.anno}</option></select></Field>
         <Field label="Cerca"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Persona o professione" /></Field>
       </div>
       <Card title={`Contatori · ${righe.length}`} flush>
@@ -47,11 +49,13 @@ export default function Ecm() {
                 {x.anni.map((a) => <td key={a.anno} className="num">{a.crediti ? n1(a.crediti) : '–'}</td>)}
                 <td className="num strong">{n1(x.acquisiti)}</td><td className="num">{n1(x.dovuti)}{x.riduzione > 0 && <div className="small muted">riduzione {n1(x.riduzione)}</div>}</td>
                 <td className="num strong">{n1(x.residuo)}</td>
-                <td>{x.completato ? <Badge tone="green">triennio completato</Badge> : x.mancano_anno > 0 ? <Badge tone="red">mancano {n1(x.mancano_anno)}</Badge> : <Badge tone="green">in linea</Badge>}</td>
-                <td className="num">{!x.attivata && (writer ? <button className="btn sm ghost" onClick={() => attiva([x.id])}>Attiva</button> : <Badge>da attivare</Badge>)}</td>
+                <td>{x.escluso_anno ? <><Badge tone="grey">non considerata nel {regole.anno}</Badge>{x.esclusione_motivo && <div className="small muted">{x.esclusione_motivo}</div>}</> : x.completato ? <Badge tone="green">triennio completato</Badge> : x.mancano_anno > 0 ? <Badge tone="red">mancano {n1(x.mancano_anno)}</Badge> : <Badge tone="green">in linea</Badge>}</td>
+                <td className="num"><span className="row" style={{ gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>{!x.attivata && !x.escluso_anno && (writer ? <button className="btn sm ghost" onClick={() => attiva([x.id])}>Attiva</button> : <Badge>da attivare</Badge>)}
+                  {writer && (x.escluso_anno ? <button className="btn sm ghost" style={{ whiteSpace: 'nowrap' }} onClick={() => escludi(x, false)}>Riconsidera</button> : <button className="btn sm ghost" style={{ whiteSpace: 'nowrap' }} title={`Nessun obiettivo, scadenza o richiamo ECM per il ${regole.anno}`} onClick={() => setEscl(x)}>Non considerare nel {regole.anno}</button>)}</span></td>
               </tr>))}</tbody>
           </table></div>)}
       </Card>
+      {escl && <PromptModal title={`Non considerare ${escl.nome} per il ${regole.anno}`} label={`Motivo (resta nel registro). Per il ${regole.anno} la risorsa non avrà obiettivo, scadenze né richiami ECM e non entrerà negli indicatori; l'obbligo del triennio non cambia.`} placeholder="es. maternità, lunga assenza, ingresso a fine anno" confirmText="Non considerare" onClose={() => setEscl(null)} onConfirm={(motivo) => escludi(escl, true, motivo)} />}
     </div>
   );
 }

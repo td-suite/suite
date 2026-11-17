@@ -19,9 +19,10 @@ export const REGIME = { FORFETTARIO: 'Forfettario (no IVA, no ritenuta)', ORDINA
 export const DOC_LABEL = { CV: 'Curriculum', DOCUMENTO_IDENTITA: 'Documento d\'identità', CODICE_FISCALE: 'Codice fiscale / tessera', ALBO: 'Iscrizione all\'albo', ASSICURAZIONE: 'Assicurazione RC', TITOLO_STUDIO: 'Titolo di studio', CONTRATTO: 'Contratto', PRIVACY: 'Privacy / consensi', ALTRO: 'Altro' };
 export { DAYS, DAYS_S };
 
-export function pdfRendiconto(r) {
+// mkDoc è asincrona (jsPDF si carica al primo uso): va attesa, altrimenti `doc` è una Promise e il PDF non nasce
+export async function pdfRendiconto(r) {
   const det = r.dettaglio || {}; const o = det.oneri || {};
-  const doc = mkDoc(`Rendiconto compensi · ${meseTxt(r.mese)}`, `${r.nome}${r.profilo ? ' · ' + r.profilo : ''}${det.professionista?.piva ? ' · P.IVA ' + det.professionista.piva : ''}${det.professionista?.cf ? ' · CF ' + det.professionista.cf : ''}`);
+  const doc = await mkDoc(`Rendiconto compensi · ${meseTxt(r.mese)}`, `${r.nome}${r.profilo ? ' · ' + r.profilo : ''}${det.professionista?.piva ? ' · P.IVA ' + det.professionista.piva : ''}${det.professionista?.cf ? ' · CF ' + det.professionista.cf : ''}`);
   let y = 30;
   y = section(doc, det.tipo === 'FISSO' ? `Compenso fisso mensile: ${eur(det.fisso)}` : `Prestazioni confermate: ${oreTxt(Number(r.ore))} · imponibile ${eur(r.importo)}`, y);
   if (det.righe?.length) y = table(doc, ['Data', 'Sede', 'Dalle', 'Alle', 'Ore', 'Tariffa', 'Importo', 'Attività', 'Note'], det.righe.map((x) => [itD(x.data), x.sede, x.oraDa, x.oraA, oreTxt(x.ore), det.tipo === 'FISSO' ? '—' : eur(x.tariffa), det.tipo === 'FISSO' ? '—' : eur(x.importo), x.attivita, x.nota]), y) + 6;
@@ -39,14 +40,16 @@ export function pdfRendiconto(r) {
   return { doc, filename: `Rendiconto_${r.mese}_${String(r.nome).replace(/[^\w]+/g, '_')}.pdf` };
 }
 
-export function pdfTurni(mese, turni, label, sediMap = {}) {
-  const doc = mkDoc(`Turni · ${meseTxt(mese)}`, label || '');
+// sede_id è numerico dall'anagrafica unica (public.sites.id): l'ordinamento con localeCompare su un numero lanciava un errore e il PDF
+// non partiva (segnalazione del CEO, 17/11/2026). Tutti i confronti e le celle passano da String().
+export async function pdfTurni(mese, turni, label, sediMap = {}) {
+  const doc = await mkDoc(`Turni · ${meseTxt(mese)}`, label || '');
   const byDay = {};
   for (const t of turni) (byDay[t.data] ||= []).push(t);
   let y = 28;
   for (const d of Object.keys(byDay).sort()) {
     y = section(doc, `${DAYS[dow(d)]} ${itD(d)}`, y + 4);
-    y = table(doc, ['Sede', 'Dalle', 'Alle', 'Professionista', 'Profilo', 'Attività', 'Note'], byDay[d].sort((a, b) => (a.sede_id || '').localeCompare(b.sede_id || '') || a.ora_da.localeCompare(b.ora_da)).map((t) => [sediMap[t.sede_id] || t.sede || t.sede_id, t.ora_da, t.ora_a, t.prof_nome || t.nome || 'SCOPERTO', t.prof_profilo || t.profilo || '', t.attivita || '', t.nota || '']), y);
+    y = table(doc, ['Sede', 'Dalle', 'Alle', 'Professionista', 'Profilo', 'Attività', 'Note'], byDay[d].sort((a, b) => String(sediMap[a.sede_id] || a.sede || a.sede_id || '').localeCompare(String(sediMap[b.sede_id] || b.sede || b.sede_id || ''), 'it') || String(a.ora_da || '').localeCompare(String(b.ora_da || ''))).map((t) => [String(sediMap[t.sede_id] || t.sede || t.sede_id || ''), String(t.ora_da || '').slice(0, 5), String(t.ora_a || '').slice(0, 5), t.prof_nome || t.nome || 'SCOPERTO', t.prof_profilo || t.profilo || '', t.attivita || '', t.nota || '']), y);
   }
   return { doc, filename: `Turni_${mese}${label ? '_' + label.replace(/[^\w]+/g, '_') : ''}.pdf` };
 }

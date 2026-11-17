@@ -55,12 +55,18 @@ export function contatoreEcm({ regole, profilo, corsi }) {
     if (c.stato !== 'SVOLTA' || !d || d < regole.dal || d > regole.al) continue;
     const a = anni.find((x) => x.anno === Number(d.slice(0, 4))); if (a) a.crediti = Math.round((a.crediti + Number(c.crediti_ecm || 0)) * 100) / 100;
   }
+  // anni in cui la risorsa non va considerata (ecm_profili.anni_esclusi): niente obiettivo, scadenze né richiami per quell'anno
+  const esclusi = new Set((profilo?.anni_esclusi || []).map(Number));
+  for (const a of anni) a.escluso = esclusi.has(a.anno);
   const acquisiti = Math.round(anni.reduce((s, a) => s + a.crediti, 0) * 100) / 100;
   const residuo = Math.max(0, Math.round((dovuti - acquisiti) * 100) / 100);
   // Obiettivo progressivo: a fine dell'anno N del triennio un terzo, due terzi, tutto (indicativo: il vincolo di legge è sul triennio)
-  const n = Math.min(3, Math.max(1, regole.anno - regole.inizio + 1));
-  const attesi = Math.round(dovuti * n / 3 * 100) / 100;
-  return { obbligo, riduzione, dovuti, acquisiti, residuo, anni, obiettivo_anno: attesi, mancano_anno: Math.max(0, Math.round((attesi - acquisiti) * 100) / 100),
+  // L'obiettivo si distribuisce sui soli anni considerati: chi è escluso un anno recupera sugli altri due, non a fine dell'anno escluso.
+  const considerati = anni.filter((a) => !a.escluso);
+  const trascorsi = considerati.filter((a) => a.anno <= regole.anno).length;
+  const esclusoAnno = esclusi.has(regole.anno);
+  const attesi = considerati.length ? Math.round(dovuti * trascorsi / considerati.length * 100) / 100 : 0;
+  return { obbligo, riduzione, dovuti, acquisiti, residuo, anni, obiettivo_anno: attesi, mancano_anno: esclusoAnno ? 0 : Math.max(0, Math.round((attesi - acquisiti) * 100) / 100), escluso_anno: esclusoAnno, anno: regole.anno, esclusione_motivo: esclusoAnno ? profilo?.esclusione_motivo || null : null,
     triennio: `${regole.inizio}-${regole.fine}`, dal: regole.dal, al: regole.al, completato: residuo === 0 };
 }
 

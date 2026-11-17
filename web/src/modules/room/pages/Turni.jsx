@@ -17,7 +17,7 @@ export default function Turni() {
   const byDay = useMemo(() => { const m = {}; (data?.turni || []).forEach((t) => (m[t.data] ||= []).push(t)); return m; }, [data]);
   const days = daysOf(mese); const pad = dow(days[0]);
   const tot = (data?.turni || []).reduce((a, t) => a + ore(t.ora_da, t.ora_a), 0), scoperti = (data?.turni || []).filter((t) => !t.prof_id).length;
-  const conferma = async () => { if (!window.confirm(`Confermare i turni di ${meseTxt(mese)}? Diventano visibili a tutti e ai professionisti (che ricevono una email se configurata).`)) return; try { const r = await api.post(`/personale/turni/mesi/${mese}/conferma`, {}); toast(`Mese confermato · ${r.professionisti} professionisti coinvolti${r.notificati ? `, ${r.notificati} avvisati via email` : ''}`); reload(); } catch (e) { toast(e.message, 'err'); } };
+  const conferma = async () => { if (!window.confirm(`Confermare i turni di ${meseTxt(mese)}? Diventano visibili a tutti. Ogni persona in turno riceve un'email con la pianificazione e il prospetto del suo mese in PDF.`)) return; try { const r = await api.post(`/personale/turni/mesi/${mese}/conferma`, {}); toast(`Mese confermato · ${r.professionisti} professionisti coinvolti${r.notificati ? `, ${r.notificati} avvisati via email con il prospetto in PDF` : r.professionisti ? ', nessuna email inviata (posta non configurata o persone senza indirizzo)' : ''}`); reload(); } catch (e) { toast(e.message, 'err'); } };
   const riapri = async () => { if (!window.confirm('Riaprire il mese in bozza? I professionisti non lo vedranno più finché non viene riconfermato.')) return; try { await api.post(`/personale/turni/mesi/${mese}/riapri`); reload(); } catch (e) { toast(e.message, 'err'); } };
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -33,7 +33,7 @@ export default function Turni() {
           {data.mese.stato === 'CONFERMATO' ? <Badge tone="green">confermato {data.mese.confermato_at ? itDateTime(data.mese.confermato_at) : ''}{data.mese.confermato_da_nome ? ' da ' + data.mese.confermato_da_nome : ''}</Badge> : <Badge tone="amber">bozza{gest ? '' : ': non ancora pubblicato'}</Badge>}
           <span className="small muted">{data.turni.length} turni · {oreTxt(tot)}{scoperti ? ` · ${scoperti} scoperti` : ''}</span>
           <span className="spacer" />
-          {data.turni.length > 0 && <button className="btn ghost sm" onClick={() => { const { doc, filename } = pdfTurni(mese, data.turni, sede ? sm[sede] : 'tutte le sedi', sm); doc.save(filename); }}>PDF</button>}
+          {data.turni.length > 0 && <button className="btn ghost sm" onClick={async () => { try { const { doc, filename } = await pdfTurni(mese, data.turni, sede ? sm[sede] : 'tutte le sedi', sm); doc.save(filename); } catch (e) { toast(`PDF non generato: ${e.message}`, 'err'); } }}>PDF</button>}
           {gest && <><button className="btn ghost sm" onClick={() => setGen(true)}>Genera dalla pianificazione…</button><button className="btn sm" onClick={() => setEdit({ sede_id: sede || sedi.data[0].id, data: today.startsWith(mese) ? today : days[0], ora_da: '08:00', ora_a: '14:00', prof_id: '', profilo: '', attivita: '', nota: '' })}>+ Turno</button>
             {data.mese.stato === 'CONFERMATO' ? <button className="btn ghost sm" onClick={riapri}>Riapri in bozza</button> : <button className="btn sm dark" onClick={conferma}>Conferma il mese</button>}</>}
         </div>

@@ -22,6 +22,10 @@ describe('Gestione del Personale: regole pure', () => {
     const rid = contatoreEcm({ regole: r, profilo: { obbligo_triennio: null, riduzione: 30 }, corsi });
     assert.equal(rid.dovuti, 120); assert.equal(rid.residuo, 99.5);
     assert.equal(contatoreEcm({ regole: ecmRegole({}, '2028-06-01'), profilo: null, corsi }).obiettivo_anno, 150);
+    // anno escluso: nessun obiettivo quell'anno, l'obiettivo si distribuisce sugli anni considerati
+    const esc = contatoreEcm({ regole: r, profilo: { anni_esclusi: [2026] }, corsi });
+    assert.equal(esc.escluso_anno, true); assert.equal(esc.mancano_anno, 0); assert.equal(esc.obiettivo_anno, 0); assert.equal(esc.dovuti, 150);
+    assert.equal(contatoreEcm({ regole: ecmRegole({}, '2027-03-01'), profilo: { anni_esclusi: [2026] }, corsi }).obiettivo_anno, 75);
   });
   test('ECM: soggetti solo le professioni sanitarie; la scelta esplicita vince', () => {
     assert.equal(soggettoEcm({ kind: 'LP', person_kind: 'MEDICO' }, null).soggetto, true);
@@ -64,7 +68,7 @@ describe('Gestione del Personale: regole pure', () => {
 });
 
 describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', { skip: SALTA }, () => {
-  let H, S, db, O, V, R, L, ids = {};
+  let H, S, db, O, V, R, L, M, ids = {};
   const PW = 'Prova-Gestione-2026x';
   const oggi = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
   const piu = (g) => { const d = new Date(`${oggi}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + g); return d.toISOString().slice(0, 10); };
@@ -101,6 +105,7 @@ describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', {
     V = await utente('sola.lettura@toscanadiagnostica.it', 'VIEWER');
     R = await utente('risorse.umane@toscanadiagnostica.it', 'HR');
     L = await utente('solo.lp2@toscanadiagnostica.it', 'LP');
+    M = await utente('responsabile.hqs@toscanadiagnostica.it', 'MDL');
   }, { timeout: 240000 });
   after(async () => { await db?.end().catch(() => {}); await S?.stop(); });
 
@@ -255,6 +260,50 @@ describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', {
     assert.equal((await db.query(`SELECT count(*)::int AS n FROM contracts.mdl_visite WHERE resource_id=$1 AND stato='CONVOCATA'`, [ids.tsrm])).rows[0].n, 1);
     const dopo = (await O.get('/api/contracts/mdl')).j;
     assert.equal(dopo.convocazioni.length, 2); assert.ok(dopo.fissate.some((v) => v.resource_id === ids.senza));
+  });
+
+  test('profilo MDL: solo le scadenze di medicina del lavoro, senza giudizi, tutto il resto chiuso', async () => {
+    assert.ok((await db.query(`SELECT profiles FROM modules WHERE key='contracts'`)).rows[0].profiles.some((p) => p.key === 'MDL'));
+    const r = await M.get('/api/contracts/mdl/scadenze');
+    assert.equal(r.s, 200, r.text);
+    const t = r.j.righe.find((x) => x.id === ids.tsrm);
+    assert.ok(t && t.prossima && t.fissata && t.stato, JSON.stringify(t));
+    assert.ok(!r.text.includes('IDONEO') && !r.text.includes('Dosimetro') && !('giudizio' in t) && !('prescrizioni' in t) && !('email' in t), 'nessun giudizio, prescrizione o contatto');
+    assert.ok(!r.j.righe.some((x) => x.id === ids.medico), 'solo dipendenti e tirocinanti');
+    for (const u of ['/mdl', `/resources/${ids.tsrm}`, `/resources/${ids.tsrm}/mdl`, '/resources', '/stats/deadlines', '/stats/summary', '/settings', '/formazione/ecm', '/areas', `/resources/${ids.tsrm}/attachments/1/download`, '/una-route-futura'])
+      assert.equal((await M.get(`/api/contracts${u}`)).s, 403, u);
+    assert.equal((await M.post('/api/contracts/mdl/convocazioni', { ids: [ids.tsrm], data: piu(5) })).s, 403, 'non convoca');
+    assert.equal((await M.put(`/api/contracts/resources/${ids.tsrm}/mdl`, { sorveglianza: false })).s, 403, 'sola lettura');
+    assert.deepEqual(Object.keys((await M.get('/api/contracts/badges')).j), ['mdl_in_scadenza']);
+    // chi ha già la sezione vede la stessa pagina; il profilo di sola lettura generale no
+    assert.equal((await R.get('/api/contracts/mdl/scadenze')).s, 200);
+    assert.equal((await V.get('/api/contracts/mdl/scadenze')).s, 403);
+    // Scadenzario della Suite: del personale solo le righe di medicina del lavoro
+    const { visibiliA } = await import('../src/lib/scadenzario.js');
+    const righe = [{ modulo: 'contracts', tipo: 'Medicina del lavoro' }, { modulo: 'contracts', tipo: 'Contratto di lavoro' }, { modulo: 'contracts', tipo: 'Crediti ECM' }, { modulo: 'facility', tipo: 'Manutenzione' }];
+    assert.deepEqual(visibiliA(righe, { level: 'USER', grants: { contracts: { profile: 'MDL' } } }).map((x) => x.tipo), ['Medicina del lavoro', 'Manutenzione']);
+  });
+
+  test('ECM: risorsa non considerata per l\'anno in corso (niente obiettivo, scadenze, indicatori) e riconsiderata', async () => {
+    const anno = Number(oggi.slice(0, 4));
+    assert.equal((await O.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico })).s, 400, 'motivo obbligatorio');
+    assert.equal((await V.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico, motivo: 'x' })).s, 403);
+    const prima = (await O.get('/api/contracts/formazione/ecm')).j;
+    const e = await O.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico, motivo: 'Ingresso a fine anno' });
+    assert.equal(e.s, 200, e.text); assert.equal(e.j.anno, anno);
+    assert.equal(e.j.ecm.contatore.escluso_anno, true); assert.equal(e.j.ecm.contatore.mancano_anno, 0);
+    assert.equal(e.j.ecm.contatore.dovuti, 150, 'l\'obbligo del triennio non cambia');
+    const dopo = (await O.get('/api/contracts/formazione/ecm')).j;
+    const riga = dopo.righe.find((x) => x.id === ids.medico);
+    assert.equal(riga.escluso_anno, true); assert.equal(riga.esclusione_motivo, 'Ingresso a fine anno');
+    assert.equal(dopo.totali.persone, prima.totali.persone - 1); assert.equal(dopo.totali.escluse, 1);
+    assert.ok(!(await O.get(`/api/contracts/resources/${ids.medico}`)).j.deadlines.some((d) => d.type === 'ECM'), 'nessuna scadenza ECM nell\'anno escluso');
+    // escludere due volte non duplica l'anno; riconsiderare ripristina obiettivo e scadenze
+    await O.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico, motivo: 'Ingresso a fine anno' });
+    assert.deepEqual((await db.query('SELECT anni_esclusi FROM contracts.ecm_profili WHERE resource_id=$1', [ids.medico])).rows[0].anni_esclusi, [anno]);
+    const r = await O.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico, escludi: false });
+    assert.equal(r.j.ecm.contatore.escluso_anno, false); assert.ok(r.j.ecm.contatore.mancano_anno > 0);
+    assert.ok((await O.get(`/api/contracts/resources/${ids.medico}`)).j.deadlines.some((d) => d.type === 'ECM'));
   });
 
   test('richiami: le nuove scadenze partono dalla casella People verso il destinatario giusto', async () => {

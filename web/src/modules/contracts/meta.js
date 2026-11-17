@@ -4,7 +4,11 @@
 // Profilo LP: restano solo "Elenco LP" e il calendario delle scadenze (degli LP); vale anche per un amministratore della Suite con quel profilo
 const nonLp = (u) => u?.grants?.contracts?.profile !== 'LP';
 const PER_LP = ['lp', 'scadenze'];
-const conLp = (nav) => nav.map((i) => ((i.group ? i.group === 'Liberi professionisti' : PER_LP.includes(i.to)) ? i : { ...i, when: nonLp }));
+// Profilo MDL (scadenze di medicina del lavoro, sola lettura, per il responsabile HQS): vede soltanto la sua pagina
+const soloMdl = (u) => u?.grants?.contracts?.profile === 'MDL';
+const nonMdl = (u) => !soloMdl(u);
+const conLp = (nav) => [{ to: 'scadenze-mdl', icon: 'shield', label: 'Scadenze medicina del lavoro', badge: 'mdl_in_scadenza', when: soloMdl },
+  ...nav.map((i) => ((i.group ? i.group === 'Liberi professionisti' : PER_LP.includes(i.to)) ? { ...i, when: nonMdl } : { ...i, when: (u) => nonLp(u) && nonMdl(u) }))];
 
 export default {
   key: 'contracts',

@@ -657,7 +657,8 @@ export async function getCounters(user) {
   const admin = user?.level === 'OWNER' || user?.level === 'ADMIN';
   const out = {};
   for (const [k, v] of Object.entries(all)) {
-    if (k === 'contracts') { if (user?.grants?.contracts) out[k] = v; continue; }
+    // i profili ristretti di Gestione del personale (LP, MDL) non vedono i contatori dell'intero organico
+    if (k === 'contracts') { if (user?.grants?.contracts && !['LP', 'MDL'].includes(user.grants.contracts.profile)) out[k] = v; continue; }
     if (user?.grants?.[k] || admin || OPEN_COUNTERS.includes(k)) out[k] = v;
   }
   // Contatori calcolati per utente (non in cache): Piano Ferie mostra "richieste da approvare" a chi approva, "giorni residui" al dipendente
@@ -790,7 +791,7 @@ async function cachedCockpit() {
 }
 export async function getCockpit(user) {
   const data = await cachedCockpit();
-  const cards = data.cards.filter((c) => !c.restricted || Boolean(user?.grants?.contracts)).map(({ restricted, ...c }) => c);
+  const cards = data.cards.filter((c) => !c.restricted || (Boolean(user?.grants?.contracts) && !['LP', 'MDL'].includes(user.grants.contracts.profile))).map(({ restricted, ...c }) => c);
   // Card dello Scadenzario di direzione (per utente: righe dei moduli riservati e scadenze segnate viste)
   try {
     const { righeUtente, riepilogo } = await import('./scadenzario.js');

@@ -139,6 +139,19 @@ r.put('/resources/:id/ecm', requireWrite, ah(async (req, res) => {
   res.json({ ok: true, ecm: await statoEcm(p) });
 }));
 
+/** Non considerare (o tornare a considerare) una risorsa per un anno: l'anno in corso se non indicato. Motivo obbligatorio. */
+r.post('/formazione/ecm/escludi', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ id: z.coerce.number().int().positive(), anno: z.coerce.number().int().min(2020).max(2100).optional(), escludi: z.boolean().default(true), motivo: opt(z.string().trim().max(300)) }), req.body || {});
+  const p = await persona(d.id);
+  const anno = d.anno || Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date()).slice(0, 4));
+  if (d.escludi && !d.motivo) throw bad('Indica il motivo per cui la risorsa non va considerata (per esempio maternità, lunga assenza, ingresso a fine anno)');
+  await q('INSERT INTO ecm_profili (resource_id) VALUES ($1) ON CONFLICT (resource_id) DO NOTHING', [p.id]);
+  if (d.escludi) await q(`UPDATE ecm_profili SET anni_esclusi = (SELECT array_agg(DISTINCT a ORDER BY a) FROM unnest(anni_esclusi || $2::int) a), esclusione_motivo=$3, updated_at=now() WHERE resource_id=$1`, [p.id, anno, d.motivo]);
+  else await q(`UPDATE ecm_profili SET anni_esclusi = array_remove(anni_esclusi, $2::int), esclusione_motivo = CASE WHEN cardinality(array_remove(anni_esclusi, $2::int)) = 0 THEN NULL ELSE esclusione_motivo END, updated_at=now() WHERE resource_id=$1`, [p.id, anno]);
+  await audit(req, d.escludi ? 'ECM_ESCLUDI_ANNO' : 'ECM_RICONSIDERA_ANNO', 'resource', p.id, { anno, motivo: d.motivo || null });
+  res.json({ ok: true, anno, ecm: await statoEcm(p) });
+}));
+
 /** Quadro ECM: professioni sanitarie attive con il contatore del triennio. Le posizioni non attivate non generano scadenze. */
 r.get('/formazione/ecm', ah(async (_req, res) => {
   const S = await getSettings(); const regole = ecmRegole(S);
@@ -154,7 +167,9 @@ r.get('/formazione/ecm', ah(async (_req, res) => {
       automatico: sog.automatico, attivata: Boolean(profilo), ...contatoreEcm({ regole, profilo, corsi: corsi.filter((c) => c.resource_id === p.id) }) });
   }
   righe.sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
-  res.json({ regole, righe, totali: { persone: righe.length, in_regola: righe.filter((x) => x.mancano_anno === 0).length, da_attivare: righe.filter((x) => !x.attivata).length } });
+  // gli indicatori contano solo le risorse considerate per l'anno in corso
+  const cons = righe.filter((x) => !x.escluso_anno);
+  res.json({ regole, righe, totali: { persone: cons.length, in_regola: cons.filter((x) => x.mancano_anno === 0).length, da_attivare: cons.filter((x) => !x.attivata).length, escluse: righe.length - cons.length } });
 }));
 r.post('/formazione/ecm/attiva', requireWrite, ah(async (req, res) => {
   const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
@@ -338,6 +353,18 @@ r.delete('/resources/:id/mdl/visite/:vid', soloMdl, requireWrite, ah(async (req,
   if (!cur) throw notFound('Visita non trovata');
   await audit(req, 'MDL_VISITA_DELETE', 'mdl_visita', cur.id, { resource_id: p.id, stato: cur.stato });
   res.json(await quadroMdl(p));
+}));
+
+/**
+ * Scadenze di medicina del lavoro in sola lettura (profilo MDL del responsabile HQS, e chi vede già la sezione): chi è soggetto, quando è
+ * stata fatta l'ultima visita, quando è dovuta la prossima, se è già fissata. Senza giudizio di idoneità e senza prescrizioni.
+ */
+r.get('/mdl/scadenze', (req, _res, next) => (vedeMdl(req.user) || req.user?.role === 'MDL' ? next() : next(forbidden('Sezione riservata'))), ah(async (req, res) => {
+  const S = await getSettings();
+  await readLog(req, 'mdl_scadenze', null);
+  const righe = (await elencoMdl()).map((x) => ({ id: x.id, nome: x.nome, kind: x.kind, mansione: x.mansione, area: x.area, sede: x.sede, protocollo: x.protocollo, sorveglianza: x.sorveglianza, impostata: x.impostata,
+    periodicita_mesi: x.periodicita_mesi, ultima_visita: x.ultima_visita, prossima: x.prossima, giorni: x.giorni, motivo: x.motivo, stato: x.stato, fissata: x.fissata ? { data: x.fissata.data, ora: x.fissata.ora, luogo: x.fissata.luogo, stato: x.fissata.stato } : null }));
+  res.json({ righe, anticipo_giorni: Number(S.mdl_anticipo_giorni || 60) });
 }));
 
 /** Calendario della sorveglianza: tutti i soggetti con la prossima visita dovuta, le visite fissate e le ultime convocazioni. */

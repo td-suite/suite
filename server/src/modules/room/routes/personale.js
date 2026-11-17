@@ -9,6 +9,8 @@ import { computePlan, m2t as m2tE } from '../lib/engine.js';
 import { impegniSettimana, impegniDelGiorno, personeDiSede } from '../lib/impegni.js';
 import { joinStruttura, mutateStruttura, loadSedi } from '../lib/strutture.js';
 import { personKey, stessaPersona, indicePersone, isAttivita, calcolaRendiconto, oreTra, validMese, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede, discipline, PROF_COLS, KIND_LABEL, RUOLO_SANITARIO_RE, agganciatore, assicuraSchedeRoom, LINK_D52 } from '../lib/personale.js';
+import { pdfTurniPersona, testoComunicazioneTurni } from '../lib/turniPdf.js';
+import { config as suiteConfig } from '../../../config.js';
 import { servFile } from '../../../lib/servFile.js';
 
 const r = Router();
@@ -237,7 +239,7 @@ r.get('/turni', ah(async (req, res) => {
   const st = await meseStato(m);
   if (!isGestione(req.user) && st.stato !== 'CONFERMATO') return res.json({ mese: st, turni: [] });
   const sede = req.query.sede_id ? Number(req.query.sede_id) : null;
-  let turni = await many(`SELECT t.*, p.nome AS prof_nome, p.profilo AS prof_profilo, p.tipo AS prof_tipo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id WHERE t.mese=$1 AND ($2::int IS NULL OR t.sede_id=$2) ORDER BY t.data, t.sede_id, t.ora_da`, [m, sede]);
+  let turni = await many(`SELECT t.*, s.name AS sede, p.nome AS prof_nome, p.profilo AS prof_profilo, p.tipo AS prof_tipo FROM turni t LEFT JOIN professionisti_v p ON p.id=t.prof_id LEFT JOIN public.sites s ON s.id=t.sede_id WHERE t.mese=$1 AND ($2::int IS NULL OR t.sede_id=$2) ORDER BY t.data, t.sede_id, t.ora_da`, [m, sede]);
   if (!isGestione(req.user)) turni = turni.filter((t) => canSeeStruttura(req.user, t.sede_id));
   res.json({ mese: st, turni });
 }));
@@ -269,17 +271,25 @@ r.post('/turni/mesi/:mese/conferma', gest, ah(async (req, res) => {
   const m = req.params.mese; if (!validMese(m)) throw bad('mese non valido');
   await q(`INSERT INTO turni_mesi (mese, stato, confermato_da, confermato_at, nota) VALUES ($1,'CONFERMATO',$2,now(),$3) ON CONFLICT (mese) DO UPDATE SET stato='CONFERMATO', confermato_da=$2, confermato_at=now(), nota=$3`, [m, req.user.id, req.body?.nota || null]);
   await audit(req, 'TURNI_CONFERMA', 'turni_mesi', m);
-  // Avviso ai professionisti con turni nel mese (se email configurata)
-  const profs = await many(`SELECT DISTINCT p.id, p.nome, p.email FROM turni t JOIN professionisti_v p ON p.id=t.prof_id WHERE t.mese=$1 AND p.email IS NOT NULL AND p.attivo`, [m]);
-  let notified = 0;
-  if (req.body?.notifica !== false) for (const p of profs) {
-    const mine = await many('SELECT t.data, t.ora_da, t.ora_a, t.sede_id, t.attivita FROM turni t WHERE t.mese=$1 AND t.prof_id=$2 ORDER BY t.data, t.ora_da', [m, p.id]);
+  // Comunicazione alle persone in turno (v0.79.0, CEO 17/11/2026): testo con la pianificazione e, in allegato, il prospetto del mese in PDF
+  const profs = await many(`SELECT DISTINCT p.id, p.nome, p.email, p.profilo FROM turni t JOIN professionisti_v p ON p.id=t.prof_id WHERE t.mese=$1 AND p.email IS NOT NULL AND p.attivo`, [m]);
+  let notified = 0; const esiti = [];
+  if (req.body?.notifica !== false && profs.length) {
     const sm = await sediMap();
-    const rr = await sendMail({ kind: 'TURNI_MESE', refKey: `TURNI:${m}:${p.id}:${Date.now()}`, to: p.email, subject: `Turni di ${meseTxt(m)} confermati · Toscana Diagnostica`, title: `Turni di ${meseTxt(m)}`,
-      body: `Gentile ${p.nome},\n\ni turni di ${meseTxt(m)} sono stati confermati. I tuoi:\n\n${mine.map((t) => `${itDate(isoDate(t.data))} ${t.ora_da}–${t.ora_a} · ${sm[t.sede_id] || t.sede_id}${t.attivita ? ' · ' + t.attivita : ''}`).join('\n')}\n\nLi trovi sempre aggiornati nel portale Room Planning.`, sentBy: req.user.id });
-    if (rr.status === 'INVIATA') notified++;
+    const confermatoIl = new Date().toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' });
+    for (const p of profs) {
+      const mine = (await many('SELECT t.data, t.ora_da, t.ora_a, t.sede_id, t.attivita, t.nota FROM turni t WHERE t.mese=$1 AND t.prof_id=$2 ORDER BY t.data, t.ora_da', [m, p.id]))
+        .map((t) => ({ ...t, data: isoDate(t.data), sede: sm[t.sede_id] || String(t.sede_id) }));
+      let attachment = null;
+      try { attachment = { filename: `Turni_${m}_${String(p.nome).replace(/[^\w]+/g, '_')}.pdf`, contentType: 'application/pdf', base64: (await pdfTurniPersona({ mese: m, nome: p.nome, profilo: p.profilo, turni: mine, confermatoIl })).toString('base64') }; }
+      catch (e) { console.error('[room turni] PDF non generato per', p.id, e.message); }
+      const rr = await sendMail({ kind: 'TURNI_MESE', refKey: `TURNI:${m}:${p.id}:${Date.now()}`, to: p.email, subject: `Pianificazione dei turni di ${meseTxt(m)} · Toscana Diagnostica`, title: `Turni di ${meseTxt(m)}`,
+        body: testoComunicazioneTurni({ nome: p.nome, mese: m, turni: mine, base: suiteConfig.baseUrl || '' }), attachment, sentBy: req.user.id });
+      if (rr.status === 'INVIATA') notified++;
+      esiti.push({ id: p.id, nome: p.nome, stato: rr.status, allegato: Boolean(attachment) });
+    }
   }
-  res.json({ ok: true, professionisti: profs.length, notificati: notified });
+  res.json({ ok: true, professionisti: profs.length, notificati: notified, esiti });
 }));
 r.post('/turni/mesi/:mese/riapri', gest, ah(async (req, res) => {
   await q(`INSERT INTO turni_mesi (mese, stato) VALUES ($1,'BOZZA') ON CONFLICT (mese) DO UPDATE SET stato='BOZZA', confermato_da=NULL, confermato_at=NULL`, [req.params.mese]);

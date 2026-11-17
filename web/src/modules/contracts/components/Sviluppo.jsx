@@ -15,13 +15,14 @@ const Riga = ({ k, v }) => (v == null || v === '' ? null : <div className="row" 
 export function ContatoreEcm({ c }) {
   if (!c) return null;
   const pct = c.dovuti ? c.acquisiti / c.dovuti * 100 : 100;
-  return (
+  return (<>
+    {c.escluso_anno && <div className="alert info" style={{ display: 'block', marginBottom: 12 }}>Risorsa non considerata per il {c.anno}{c.esclusione_motivo ? ` (${c.esclusione_motivo})` : ''}: nessun obiettivo, scadenza o richiamo ECM quest'anno. Si cambia dal menu Formazione ed ECM.</div>}
     <div className="grid g3" style={{ marginBottom: 14 }}>
       <Kpi label={`Crediti ECM mancanti · triennio ${c.triennio}`} value={n1(c.residuo)} accent foot={`acquisiti ${n1(c.acquisiti)} su ${n1(c.dovuti)}${c.riduzione ? ` (obbligo ${n1(c.obbligo)}, riduzione ${n1(c.riduzione)})` : ''}`} bar={pct} />
-      <Kpi label="Obiettivo progressivo a fine anno" value={c.mancano_anno > 0 ? `mancano ${n1(c.mancano_anno)}` : 'raggiunto'} foot={`obiettivo ${n1(c.obiettivo_anno)} crediti: indicativo, l'obbligo è sul triennio`} />
-      <Kpi label="Crediti per anno" value={c.anni.map((a) => n1(a.crediti)).join(' · ')} foot={c.anni.map((a) => a.anno).join(' · ')} />
+      <Kpi label="Obiettivo progressivo a fine anno" value={c.escluso_anno ? 'non considerata' : c.mancano_anno > 0 ? `mancano ${n1(c.mancano_anno)}` : 'raggiunto'} foot={`obiettivo ${n1(c.obiettivo_anno)} crediti: indicativo, l'obbligo è sul triennio`} />
+      <Kpi label="Crediti per anno" value={c.anni.map((a) => n1(a.crediti)).join(' · ')} foot={c.anni.map((a) => `${a.anno}${a.escluso ? ' (escluso)' : ''}`).join(' · ')} />
     </div>
-  );
+  </>);
 }
 
 function CorsoModal({ id, corso, tipi, rinnovo, letturaAi, soggetto, onClose, onSaved }) {

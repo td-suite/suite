@@ -3,7 +3,8 @@
 import React from 'react';
 import { Forbidden } from '../../pages/Misc.jsx';   // pagina riservata aperta da URL: "Sezione non abilitata" (debug M2)
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, canWrite, isAdmin, soloLp } from './auth.jsx';
+import { AuthProvider, canWrite, isAdmin, soloLp, soloMdl } from './auth.jsx';
+import MdlScadenze from './pages/MdlScadenze.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import NewResource from './pages/NewResource.jsx';
@@ -32,7 +33,13 @@ export default function Module({ moduleKey, mode, moduleUser }) {
     <ToastProvider>
       <AuthProvider user={user}>
         <div className="ctr" data-mode={mode}>
-          {soloLp(user) ? (
+          {soloMdl(user) ? (
+            // profilo MDL: solo le scadenze di medicina del lavoro, in sola lettura (il server rifiuta tutto il resto)
+            <Routes>
+              <Route path="scadenze-mdl" element={<MdlScadenze />} />
+              <Route path="*" element={<Navigate to={`/${moduleKey}/scadenze-mdl`} replace />} />
+            </Routes>
+          ) : soloLp(user) ? (
             // profilo LP: solo l'elenco dei liberi professionisti, la loro scheda e le loro scadenze (il server rifiuta tutto il resto)
             <Routes>
               <Route path="lp" element={<Resources key="lp" kind="LP" />} />
@@ -55,6 +62,7 @@ export default function Module({ moduleKey, mode, moduleUser }) {
             <Route path="tirocinanti" element={<Resources key="tir" kind="TIROCINANTE" />} />
             <Route path="formazione-ecm" element={<Ecm />} />
             <Route path="medicina-lavoro" element={writer ? <Mdl /> : <Forbidden />} />
+            <Route path="scadenze-mdl" element={writer ? <MdlScadenze /> : <Forbidden />} />
             <Route path="scadenze" element={<Deadlines />} />
             <Route path="casella-people" element={approver ? <PeopleInbox /> : <Forbidden />} />
             <Route path="scouting/cv" element={<CvBox />} />

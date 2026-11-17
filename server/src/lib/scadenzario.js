@@ -146,7 +146,9 @@ export function visibiliA(righe, user) {
   // Gestione del personale con profilo LP (solo liberi professionisti): le scadenze del personale non passano dallo Scadenzario, dove
   // dipendenti e LP sono mescolati; quelle degli LP le vede dentro il modulo.
   const lp = user?.grants?.contracts?.profile === 'LP';
-  return righe.filter((r) => (r.modulo === 'contracts' && lp ? false : !MODULI_RISERVATI.includes(r.modulo) || admin || Boolean(user?.grants?.[r.modulo])));
+  // profilo MDL (scadenze di medicina del lavoro, per il responsabile HQS): del personale vede solo le righe di medicina del lavoro
+  const mdl = user?.grants?.contracts?.profile === 'MDL';
+  return righe.filter((r) => (r.modulo === 'contracts' && lp ? false : r.modulo === 'contracts' && mdl ? r.tipo === 'Medicina del lavoro' : !MODULI_RISERVATI.includes(r.modulo) || admin || Boolean(user?.grants?.[r.modulo])));
 }
 /** Segna "vista" le righe nascoste dall'utente fino a una data (compresa): una vista con fino_a passato non nasconde più. */
 export function applicaViste(righe, viste, oggi) {

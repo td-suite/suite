@@ -42,8 +42,19 @@ const LP_LIBERE = [/^\/badges$/, /^\/state$/, /^\/auth\/(me|config)$/, /^\/areas
 const LP_PERSONA = [/^\/resources\/(\d+)$/, /^\/resources\/(\d+)\/attachments\/\d+\/download$/];
 const LP_DOCUMENTO = [/^\/documents\/(\d+)(?:\/download)?$/];
 const NIENTE = 'Il tuo profilo consente la sola consultazione dei liberi professionisti';
+// ---------------------------------------------------------------- profilo MDL: sola lettura delle scadenze di medicina del lavoro
+// Richiesta del CEO (17/11/2026), per il responsabile HQS. Elenco chiuso come per il profilo LP: vede soltanto il calendario della
+// sorveglianza (persona, mansione, sede, ultima visita, prossima visita, visita fissata). Mai il giudizio di idoneità né le prescrizioni,
+// mai schede, dossier, contratti o dati economici. Non convoca.
+export const soloMdlProfilo = (u) => u?.role === 'MDL';
+const MDL_LIBERE = [/^\/badges$/, /^\/state$/, /^\/auth\/(me|config)$/, /^\/mdl\/scadenze$/];
+const NIENTE_MDL = 'Il tuo profilo consente la sola consultazione delle scadenze di medicina del lavoro';
 export async function lpGuard(req, _res, next) {
   try {
+    if (soloMdlProfilo(req.user)) {
+      const path = req.path.replace(/\/+$/, '') || '/';
+      return next(req.method === 'GET' && MDL_LIBERE.some((re) => re.test(path)) ? undefined : forbidden(NIENTE_MDL));
+    }
     if (!soloLp(req.user)) return next();
     if (req.method !== 'GET') return next(forbidden(NIENTE));
     const path = req.path.replace(/\/+$/, '') || '/';

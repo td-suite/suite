@@ -28,6 +28,13 @@ disciplina sanitaria (infermiere, TSRM, tecnico di laboratorio, biologo, fisiote
   quadro ("Attiva"), salvando la Posizione ECM o registrando il primo attestato con crediti. Serve a non far partire richiami a tutto il
   personale sanitario prima che gli attestati già posseduti siano stati caricati.
 
+### Risorsa non considerata per l'anno (v0.79.0)
+
+Dal quadro **Formazione ed ECM**, pulsante "Non considerare nel <anno>" con motivo obbligatorio (maternità, lunga assenza, ingresso a fine
+anno). Per quell'anno la risorsa non ha obiettivo, scadenze né richiami ECM e non entra negli indicatori; resta in elenco con l'etichetta
+e il motivo. L'obbligo del triennio non cambia (per ridurlo c'è la riduzione in "Posizione ECM") e l'obiettivo progressivo si ripartisce
+sui soli anni considerati. "Riconsidera" annulla. Dati: `ecm_profili.anni_esclusi`, `esclusione_motivo` (migrazione 024).
+
 ## Tirocinanti
 
 Terzo tipo di persona oltre a dipendente e libero professionista (`people.kind = TIROCINANTE`, migrazione core 058). Menu **Tirocinanti**:
@@ -55,6 +62,14 @@ con quei nomi sono rifiutati e l'audit registra che un giudizio è stato inserit
   indicano data, ora, luogo e medico; ogni persona riceve un'email personale dalla casella People con l'ufficio People in copia. La visita
   convocata entra in calendario. Chi non ha email resta convocato e l'esito lo segnala.
 - Una persona senza scheda né visite è "da impostare" e **non genera scadenze**: al primo avvio nessuno ha visite registrate.
+
+### Profilo MDL: sola lettura delle scadenze (v0.79.0)
+
+Profilo "Scadenze di medicina del lavoro (sola lettura)", pensato per il responsabile HQS. Vede una sola pagina (`/contracts/scadenze-mdl`,
+API `GET /mdl/scadenze`): persona, mansione, sede e area, ultima visita, prossima visita dovuta, stato, visita fissata. **Non vede** giudizi di
+idoneità, prescrizioni, schede, dossier, contratti, dati economici; non convoca e non modifica nulla. Elenco chiuso in `lib/access.js`
+come per il profilo LP: ogni altra route del modulo, comprese quelle future, risponde 403. Nello Scadenzario della Suite vede, del
+personale, le sole righe di medicina del lavoro. Si assegna in Amministrazione, Utenti.
 
 ## Scadenze e richiami
 

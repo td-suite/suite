@@ -13,4 +13,5 @@ export const canWrite = (u) => ['ADMIN', 'HR'].includes(u?.role);
 export const isAdmin = (u) => u?.role === 'ADMIN';
 // LP = profilo "Solo liberi professionisti": sola lettura dei soli LP, compensi compresi; mai i dipendenti (lo garantisce il server)
 export const soloLp = (u) => u?.role === 'LP';
+export const soloMdl = (u) => u?.role === 'MDL';
 export const seesCosts = (u) => ['ADMIN', 'HR', 'LP'].includes(u?.role);

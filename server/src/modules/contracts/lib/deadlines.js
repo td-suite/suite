@@ -83,6 +83,7 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365, t
       if (!profilo || !soggettoEcm(r, profilo).soggetto) continue;
       const c = contatoreEcm({ regole, profilo, corsi: ecm.filter((x) => x.resource_id === r.id) });
       const n = (v) => Number(v).toLocaleString('it-IT', { maximumFractionDigits: 1 });
+      if (c.escluso_anno) continue;                                         // risorsa non considerata per l'anno in corso
       if (c.residuo > 0) items.push({ ...base(r), type: 'ECM', title: `Crediti ECM del triennio ${c.triennio}: mancano ${n(c.residuo)} crediti`, detail: `Acquisiti ${n(c.acquisiti)} su ${n(c.dovuti)}`, due_date: c.al });
       if (c.mancano_anno > 0 && regole.anno < regole.fine) items.push({ ...base(r), type: 'ECM', title: `Crediti ECM ${regole.anno}: mancano ${n(c.mancano_anno)} crediti all'obiettivo di fine anno`, detail: `Acquisiti ${n(c.acquisiti)}, obiettivo progressivo ${n(c.obiettivo_anno)} su ${n(c.dovuti)} del triennio`, due_date: `${regole.anno}-12-31` });
     }
