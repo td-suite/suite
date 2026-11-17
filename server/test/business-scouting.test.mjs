@@ -235,7 +235,7 @@ describe('Ricerca prospect nel Business Hub (integrazione)', { skip: SALTA }, ()
       assert.equal(must(await D.o.post('/api/connectors/OPENAPI/test'), 'prova openapi').ok, true);
       assert.equal(must(await D.o.post('/api/connectors/GOOGLE/test'), 'prova google').ok, true);
       sorg = must(await D.o.get('/api/business/scouting/sorgenti'), 'sorgenti');
-      assert.equal(sorg.registro.attivo, true); assert.equal(sorg.registro.max, 50); assert.deepEqual(sorg.registro.ateco.RSA, ['8710', '8730']);
+      assert.equal(sorg.registro.attivo, true); assert.equal(sorg.registro.max, 50); assert.deepEqual(sorg.registro.ateco.RSA, ['871', '873', '8710', '8730']); assert.deepEqual(sorg.registro.ateco.LABORATORIO, ['869', '8690', '8691']);
       // stima gratuita: dryRun, nessun dato
       const st = must(await D.o.post('/api/business/scouting/registro/stima', { linea: 'MDL', province: ['PO'], codici: ['87.10', '8730'], min_dipendenti: 50 }), 'stima');
       assert.equal(st.imprese, 4); assert.equal(st.prezzo, 0.8);

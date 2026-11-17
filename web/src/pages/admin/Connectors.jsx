@@ -17,13 +17,18 @@ const DESC = {
 };
 // Impostazioni sì/no (interruttori): chiave, etichetta, valore predefinito, spiegazione
 const BOOL_SETTINGS = {
+  OPENAPI: [['verifica_automatica', 'Verifica automatica sul registro imprese', true, 'Acceso: alla creazione di una Legal entity con partita IVA la Suite legge la scheda dal registro, compila i campi vuoti e segnala le differenze; ogni notte ricontrolla le Legal entity attive (cessazioni, cambi di sede, PEC). Spento: la scheda si legge solo a mano dal pulsante nella Legal entity.']],
   SILVA: [['push_orders', 'Trasmetti a Silva all\'approvazione', true, 'Regola del CEO: l\'ordine approvato da Ops parte verso Silva. Spento: si trasmette solo a mano dal dettaglio dell\'ordine.'],
     ['primo_invio_confermato', 'Primo invio concordato con Silva già fatto', false, 'Finché è spento la trasmissione automatica non parte: Ops usa "Trasmetti a Silva (invio concordato)" nel dettaglio dell\'ordine. Dopo il primo 201 la Suite propone di accenderlo; vale per gli ordini approvati da quel momento.']],
 };
 const boolVal = (v, def) => (v === undefined || v === null || v === '' ? def : v === true || String(v).toLowerCase() === 'true');
 const CRED_FIELDS = { API_KEY: [['api_key', 'Chiave API']], BASIC: [['user', 'Utente'], ['password', 'Password']], OAUTH2: [['client_id', 'Client ID'], ['client_secret', 'Client secret']], CLIENT_JWT: [['client_name', 'Nome del client (name)'], ['client_id', 'Id del client (GUID)'], ['client_host', 'Host del client'], ['password', 'Password del client (8-16 caratteri, maiuscola, minuscola, numero, speciale)'], ['cf_access_client_secret', 'Cloudflare Access: Client Secret (facoltativo)']], NONE: [] };
 const SETTINGS = {
-  OPENAPI: [['max_imprese', 'Tetto di imprese per ricerca', 'Limite di spesa: la ricerca si ferma a questo numero di imprese (predefinito 300)']],
+  OPENAPI: [['max_imprese', 'Tetto di imprese per ricerca', 'Limite di spesa: la ricerca si ferma a questo numero di imprese (predefinito 300)'],
+    ['tetto_schede_mese', 'Tetto di schede impresa al mese', 'Limite di spesa: raggiunto questo numero di schede lette nel mese la Suite non ne chiede altre fino al mese dopo (predefinito 200; 0 = nessuna lettura)'],
+    ['giorni_cache', 'Giorni di validità di una scheda letta', 'Una scheda già letta non si paga di nuovo per questi giorni (predefinito 30)'],
+    ['giorni_verifica', 'Ricontrollo delle Legal entity ogni (giorni)', 'Ogni quanto la verifica notturna rilegge una Legal entity già controllata (predefinito 90)'],
+    ['verifiche_per_notte', 'Legal entity verificate per notte', 'Quante Legal entity al massimo controlla ogni notte (predefinito 25; 0 = nessuna)']],
   STUDIOLAB: [['client_code', 'Codice cliente (CodiceCliente)', 'Codice di Toscana Diagnostica su ServiceNET, di norma TD'], ['timeout_ms', 'Timeout chiamate (ms)', ''], ['cf_access_client_id', 'Cloudflare Access: Client ID (facoltativo)', 'Se la WebApi è esposta con un Cloudflare Tunnel protetto da Access, il Client ID del service token; il secret va tra le credenziali']],
   TUOTEMPO: [['instance', 'Istanza (dbName)', 'es. tt_giponext_2313, una api_key per istanza'], ['lang', 'Lingua', 'it']],
   GIPO: [['client_code', 'Codice cliente', '']],

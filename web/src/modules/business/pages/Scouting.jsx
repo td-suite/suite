@@ -188,14 +188,14 @@ function Registro({ linea, cat, sorg, onFatto }) {
         <div className="scout-scelte" style={{ marginTop: 8 }}>{Object.entries(cat.province).map(([k, v]) => <label key={k}><input type="checkbox" checked={prov.includes(k)} onChange={() => setProv(prov.includes(k) ? prov.filter((x) => x !== k) : [...prov, k])} />{v}</label>)}</div>
         <div className="row" style={{ gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
           <Field label="Tipologia"><select value={categoria} onChange={(e) => setCategoria(e.target.value)}>{cat.categorie.map((c) => <option key={c.key} value={c.key}>{c.etichetta}</option>)}</select></Field>
-          <Field label="Codici ATECO" help="Separati da virgola. Proposti per la tipologia, modificabili."><input value={codici} onChange={(e) => setCodici(e.target.value)} placeholder="es. 8710, 8730" /></Field>
+          <Field label="Codici ATECO" help="Separati da virgola. Il registro confronta il codice per intero, a 3 o 4 cifre: per questo ne proponiamo più varianti."><input value={codici} onChange={(e) => setCodici(e.target.value)} placeholder="es. 871, 873" /></Field>
           <Field label="Dipendenti minimi"><input type="number" min="1" value={minDip} onChange={(e) => setMinDip(e.target.value)} placeholder="tutti" /></Field>
           <button className="btn sm ghost" style={{ marginBottom: 10 }} disabled={busy || !pronto} onClick={async () => setStima(await fai('/scouting/registro/stima'))}>{busy && !stima ? 'Calcolo…' : 'Stima gratuita'}</button>
         </div>
         {err && <div className="alert err" style={{ display: 'block' }}>{err}</div>}
         {stima && <div className="alert info" style={{ display: 'block' }}>
           {stima.righe.map((x, i) => <div key={i} className="small">{x.testo}</div>)}
-          <div style={{ marginTop: 6 }}><strong>{stima.imprese != null ? `${stima.imprese} imprese` : 'Numero di imprese non leggibile dalla risposta'}{stima.prezzo != null ? `, costo indicato da Openapi ${stima.prezzo.toFixed(2)} €` : ', costo non indicato nella risposta: controlla il listino del tuo conto Openapi'}</strong>. Si scaricano al massimo {sorg.registro.max} imprese per ricerca.</div>
+          <div style={{ marginTop: 6 }}><strong>{stima.imprese != null ? `${stima.imprese} imprese` : 'Numero di imprese non leggibile dalla risposta'}{stima.imprese === 0 ? ': nessuna con questi codici nelle province scelte' : stima.prezzo != null ? `, costo indicato da Openapi ${stima.prezzo.toFixed(2)} €` : ', costo non indicato nella risposta: controlla il listino del tuo conto Openapi'}</strong>. {stima.imprese === 0 ? 'Il registro confronta il codice per intero e lo conserva a 3 o 4 cifre: prova la variante più corta (per esempio 869 al posto di 8690).' : `Si scaricano al massimo ${sorg.registro.max} imprese per ricerca.`}</div>
           <button className="btn sm" style={{ marginTop: 8 }} disabled={busy || stima.imprese === 0} onClick={async () => { const r = await fai('/scouting/registro/cerca', { confermo: true }); if (r) { toast('Ricerca nel registro avviata'); onFatto(); } }}>Confermo la spesa: scarica le imprese</button>
         </div>}
       </>}

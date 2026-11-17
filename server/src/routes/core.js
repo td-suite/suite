@@ -246,6 +246,10 @@ const orgSchema = z.object({
   iban: z.string().max(40).nullable().optional().transform((v) => (v ? v.replace(/\s+/g, '').toUpperCase() : v)).refine((v) => !v || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(v), 'IBAN non valido'),
   bic: z.string().max(11).nullable().optional().transform((v) => (v ? v.replace(/\s+/g, '').toUpperCase() : v)), bank_name: z.string().max(160).nullable().optional(),
 });
+// Openapi (v0.80.0): dopo la risposta, senza mai bloccare né far fallire il salvataggio
+function registroInBackground(orgId, req) {
+  setTimeout(() => import('../lib/openapi.js').then(async (m) => { const S = await m.impostazioniOpenapi(); if (S.attivo && S.verifica_automatica) await m.verificaOrganizzazione(orgId, { req: { user: req.user, ip: req.ip }, origine: 'salvataggio della Legal entity' }); }).catch((e) => console.warn('[openapi] verifica', orgId, e.message)), 50);
+}
 r.get('/organizations', ah(async (req, res) => {
   // hosted_sites_count: punti prelievo TD ospitati dalla Legal entity (cash.site_ext.host_org_id), se Cash è avviato
   const hosted = `(SELECT count(*)::int FROM sites hs WHERE hs.host_organization_id=o.id AND hs.active)`;
@@ -262,6 +266,7 @@ r.post('/organizations', requireAdmin, ah(async (req, res) => {
   const forza = req.body?.forza_duplicato === true;
   const out = await createOrganization(b, { origine: 'Amministrazione > Legal entity', req, dedupe: !forza, needsReview: forza });
   if (!out.created) return res.status(409).json({ error: `Esiste già la Legal entity "${out.org.name}" (#${out.org.id}) con ${out.come === 'nome' ? 'lo stesso nome' : `la stessa ${out.come}`}: usa quella oppure conferma la creazione del doppione`, code: 'DUPLICATO', esistente: { id: out.org.id, name: out.org.name, kind: out.org.kind }, come: out.come });
+  registroInBackground(out.org.id, req);   // Openapi: compila dal registro imprese i campi rimasti vuoti (se il connettore è attivo)
   res.status(201).json({ ...out.org, simili: out.simili, scheda_business: out.scheda_business || null });
 }));
 r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
@@ -269,13 +274,14 @@ r.put('/organizations/:id', requireAdmin, ah(async (req, res) => {
   const sets = []; const params = [Number(req.params.id)];
   for (const [k, v] of Object.entries(b)) { params.push(v); sets.push(`${k}=$${params.length}`); }
   if (!sets.length) return res.json({ ok: true });
-  const prima = await one('SELECT kind, active FROM organizations WHERE id=$1', [Number(req.params.id)]);
+  const prima = await one('SELECT kind, active, vat_number, tax_code FROM organizations WHERE id=$1', [Number(req.params.id)]);
   const o = await one(`UPDATE organizations SET ${sets.join(', ')}, updated_at=now() WHERE id=$1 RETURNING *`, params);
   if (!o) throw notFound();
   // Legal entity diventata CLIENTE (o riattivata): scheda nel Business Hub se manca (hook senza dipendenza rigida, CEO 09/11/2026)
   let scheda_business = null;
   if (o.kind === 'CLIENTE' && o.active !== false && (prima?.kind !== 'CLIENTE' || prima?.active === false)) scheda_business = await hookBusinessLegalEntity(o.id, { evento: 'cambio di tipo' });
   await audit(req, 'ORG_UPDATED', { entity: 'organization', entityId: o.id, label: o.name, data: b });
+  if ((b.vat_number !== undefined && (b.vat_number || '') !== (prima?.vat_number || '')) || (b.tax_code !== undefined && (b.tax_code || '') !== (prima?.tax_code || ''))) registroInBackground(o.id, req);   // partita IVA o codice fiscale cambiati: nuova verifica sul registro
   indexOrg(o).catch(() => {});
   // A7 (d): le sedi SERVICE con l'indirizzo ereditato seguono il nuovo indirizzo della Legal entity (saveSite, audit SITE_UPDATED)
   let sedi_service_allineate = 0;

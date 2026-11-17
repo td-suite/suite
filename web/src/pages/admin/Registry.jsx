@@ -431,6 +431,7 @@ export function Organizations() {
   const fields = [
     { key: 'name', label: 'Nome', required: true }, { key: 'kind', label: 'Tipo', type: 'select', options: opts(ORG_KIND) }, { key: 'code', label: 'Codice', max: 40 },
     { key: 'vat_number', label: 'Partita IVA', max: 20 }, { key: 'tax_code', label: 'Codice fiscale', max: 20 }, { key: 'sdi', label: 'Codice SDI', max: 10 }, { key: 'pec', label: 'PEC' },
+    { key: '_registro', type: 'custom', render: (f, patch, it) => <RegistroImpreseBox f={f} patch={patch} item={it} /> },
     { key: 'email', label: 'Email' }, { key: 'phone', label: 'Telefono' }, { key: 'address', label: 'Indirizzo' }, { key: 'zip', label: 'CAP' }, { key: 'city', label: 'Città' }, { key: 'province', label: 'Provincia', max: 4 }, { key: 'website', label: 'Sito web' },
     { key: 'iban', label: 'IBAN', max: 40, help: 'Coordinate bancarie della Legal entity: le leggono Business (contratti) e Cash (addebiti SEPA).' }, { key: 'bic', label: 'BIC', max: 11 }, { key: 'bank_name', label: 'Banca', max: 160 },
     { key: 'active', label: 'Attiva', type: 'bool' }, { key: 'org_node', label: 'Nodo nell\'organigramma', type: 'bool', help: 'Spento se il nodo è stato eliminato in Organizzazione; riaccendilo per ricrearlo sotto la Direzione.' }, { key: 'notes', label: 'Note', type: 'textarea', wide: true },
@@ -454,7 +455,7 @@ export function Organizations() {
         {data && !rows.length && <Empty icon="folder" title="Nessuna organizzazione" />}
         {rows.length > 0 && <div className="table-wrap"><table className="t"><thead><tr><th>Nome</th><th>Tipo</th><th>P. IVA</th><th>Città</th><th>Sedi</th><th>Accessi</th><th></th></tr></thead><tbody>
           {rows.map((o) => <tr key={o.id}>
-            <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}</div></td>
+            <td><div className="strong">{o.name}</div><div className="row tight">{o.code && <span className="mono small muted">{o.code}</span>}{o.active === false && <Badge tone="grey">Non attiva</Badge>}{o.registry_alert && <Badge tone={/cessat/i.test(o.registry_alert) ? 'red' : 'amber'} title={o.registry_alert}>{/cessat/i.test(o.registry_alert) ? 'Cessata nel registro' : 'Diversa dal registro'}</Badge>}</div></td>
             <td><Badge tone={o.kind === 'CLIENTE' ? 'blue' : o.kind === 'TARGET' ? 'mauve' : 'grey'}>{ORG_KIND[o.kind] || o.kind}</Badge></td><td className="mono small">{o.vat_number}</td><td className="small">{o.city}</td><td className="num">{o.sites_count}</td>
             <td className="num"><button className="btn sm ghost" title="Accessi esterni della Legal entity" onClick={() => setAccess(o)}><Icon name="users" />{o.users_count}{o.hosted_sites_count > 0 && <Badge tone="amber" title="Ospita punti prelievo TD">{o.hosted_sites_count} ospitat{o.hosted_sites_count === 1 ? 'a' : 'e'}</Badge>}</button></td>
             <td className="actions"><button className="iconbtn" aria-label="Modifica" onClick={() => setModal(o)}><Icon name="edit" /></button><DeleteButton label={`la legal entity ${o.name}`} text="Possibile solo senza sedi collegate e senza dati nei moduli; altrimenti disattivala." onDelete={async () => { try { await api.del(`/organizations/${o.id}`); } catch (e) { if (e.code !== 'ESTENSIONI' || !window.confirm(`${e.message}. Confermi l'eliminazione?`)) throw e; await api.del(`/organizations/${o.id}?conferma=1`); } toast('Legal entity eliminata'); reload(); }} /></td>
@@ -471,6 +472,62 @@ export function Organizations() {
 // Scheda Legal entity ↔ Business Hub (CEO, 09/11/2026: "Legal entity che ho in anagrafica come cliente non le ritrovo in Business Hub B2B"):
 // "Apri nel Business Hub" (l'account della linea, o l'elenco se più linee) e "Aggiungi la linea …" per un secondo account (es. un cliente Service
 // che diventa anche MdL). Le Legal entity CLIENTE ricevono la scheda da sole (creazione, cambio di tipo, job orario).
+// Registro imprese (Openapi, v0.80.0): dalla partita IVA o dal codice fiscale compila i campi vuoti della scheda e mostra dove l'anagrafica
+// differisce dal registro (un dato già scritto non si sovrascrive da solo: si sceglie con "usa"). Dal CAP completa città e provincia.
+const CAMPI_REG = [['name', 'ragione_sociale', 'Ragione sociale'], ['vat_number', 'partita_iva', 'Partita IVA'], ['tax_code', 'codice_fiscale', 'Codice fiscale'], ['address', 'indirizzo', 'Indirizzo'], ['zip', 'cap', 'CAP'], ['city', 'citta', 'Città'], ['province', 'provincia', 'Provincia'], ['pec', 'pec', 'PEC'], ['sdi', 'sdi', 'Codice SDI']];
+const piattoReg = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+function RegistroImpreseBox({ f, patch, item }) {
+  const toast = useToast();
+  const [st, setSt] = useState({ busy: false, r: null, err: null });
+  const codice = String(f.vat_number || f.tax_code || '').replace(/^IT/i, '').replace(/[^0-9A-Za-z]/g, '');
+  const valido = /^(\d{11}|[A-Za-z0-9]{16})$/.test(codice);
+  const leggi = async (forza) => {
+    setSt({ busy: true, r: null, err: null });
+    try {
+      const r = await api.get(`/openapi/impresa/${encodeURIComponent(codice)}${forza ? '?forza=1' : ''}`);
+      if (r.trovata) {
+        const vuoti = Object.fromEntries(CAMPI_REG.filter(([k, s2]) => r.scheda[s2] != null && String(f[k] ?? '').trim() === '').map(([k, s2]) => [k, r.scheda[s2]]));
+        if (Object.keys(vuoti).length) { patch(vuoti); toast(`${Object.keys(vuoti).length} campi vuoti compilati dal registro imprese: controlla e salva`); }
+      }
+      setSt({ busy: false, r, err: null });
+    } catch (e) { setSt({ busy: false, r: null, err: e.message || String(e) }); }
+  };
+  // CAP → città e provincia, solo se mancano (una chiamata per CAP, poi resta in memoria della Suite)
+  const cap = String(f.zip || '').trim();
+  useEffect(() => {
+    if (!/^\d{5}$/.test(cap) || (String(f.city || '').trim() && String(f.province || '').trim())) return undefined;
+    let vivo = true;
+    api.get(`/openapi/cap/${cap}`).then((d) => {
+      if (!vivo || !d?.trovato) return;
+      const p = {};
+      if (!String(f.province || '').trim() && d.sigla_provincia) p.province = d.sigla_provincia;
+      if (!String(f.city || '').trim() && d.comuni?.length === 1) p.city = d.comuni[0].comune;
+      if (Object.keys(p).length) patch(p);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [cap]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const s = st.r?.scheda; const b = s?.bilancio;
+  const diversi = s ? CAMPI_REG.filter(([k, s2]) => s[s2] != null && String(f[k] ?? '').trim() !== '' && piattoReg(f[k]) !== piattoReg(s[s2])) : [];
+  const eur0 = (n) => (n == null ? null : Number(n).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }));
+  return (
+    <div className="alert info" style={{ display: 'block' }}>
+      <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+        <button type="button" className="btn ghost sm" disabled={!valido || st.busy} onClick={() => leggi(false)}><Icon name="search" />{st.busy ? 'Lettura dal registro…' : 'Compila dal registro imprese'}</button>
+        <span className="small muted">{valido ? 'Legge la scheda dell\'impresa (Openapi, a consumo), compila i campi vuoti e segnala quelli diversi. Una scheda già letta nell\'ultimo mese non si paga di nuovo.' : 'Inserisci la partita IVA (11 cifre) o il codice fiscale per leggere la scheda dal registro imprese.'}</span>
+      </div>
+      {item?.registry_alert && !st.r && <div className="small" style={{ marginTop: 6 }}><Badge tone={/cessat/i.test(item.registry_alert) ? 'red' : 'amber'}>Ultimo controllo{item.registry_checked_at ? ` del ${new Date(item.registry_checked_at).toLocaleDateString('it-IT')}` : ''}</Badge> {item.registry_alert}</div>}
+      {st.err && <div className="small" style={{ marginTop: 6, color: 'var(--red, #b3261e)' }}>{st.err}</div>}
+      {st.r && !st.r.trovata && <div className="small" style={{ marginTop: 6 }}>Nessuna impresa nel registro con questo codice.</div>}
+      {s && <div className="small" style={{ marginTop: 8 }}>
+        <div><Badge tone={s.cessata ? 'red' : 'green'}>{s.cessata ? `Cessata${s.data_cessazione ? ` dal ${String(s.data_cessazione).split('-').reverse().join('/')}` : ''}` : (s.stato_attivita || 'Attiva')}</Badge> <b>{s.ragione_sociale}</b>{s.forma_giuridica ? ` · ${s.forma_giuridica}` : ''}{s.rea ? ` · REA ${s.rea}` : ''}{s.gruppo_iva ? ' · in gruppo IVA' : ''}</div>
+        {(s.ateco || b) && <div className="muted" style={{ marginTop: 3 }}>{s.ateco ? `ATECO ${s.ateco}${s.ateco_descrizione ? ` ${s.ateco_descrizione}` : ''}` : ''}{b ? `${s.ateco ? ' · ' : ''}bilancio ${b.anno || ''}: ${[b.fatturato != null && `fatturato ${eur0(b.fatturato)}`, b.dipendenti != null && `${b.dipendenti} dipendenti`, b.patrimonio_netto != null && `patrimonio netto ${eur0(b.patrimonio_netto)}`].filter(Boolean).join(', ')}` : ''}</div>}
+        {diversi.length > 0 && <div style={{ marginTop: 6 }}><b>Diversi dal registro</b> (restano come sono finché non scegli):{diversi.map(([k, s2, l]) => <div key={k} className="row" style={{ gap: 8, marginTop: 3, alignItems: 'center' }}><span>{l}: <span className="muted">{String(f[k])}</span> → <b>{String(s[s2])}</b></span><button type="button" className="btn sm ghost" onClick={() => patch({ [k]: s[s2] })}>usa</button></div>)}</div>}
+        <div className="muted" style={{ marginTop: 4 }}>{st.r.daCache ? `Scheda letta il ${new Date(st.r.letto_at).toLocaleDateString('it-IT')} (nessun costo).` : 'Scheda letta adesso.'} {st.r.daCache && <button type="button" className="btn sm ghost" onClick={() => leggi(true)}>Rileggi dal registro</button>}</div>
+      </div>}
+    </div>
+  );
+}
+
 function BusinessLegalEntity({ org }) {
   const toast = useToast();
   const q = useApi(`/organizations/${org.id}/business`);

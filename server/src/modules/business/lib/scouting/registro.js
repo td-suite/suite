@@ -8,9 +8,13 @@ import { pivaValida } from './estrai.js';
 import { maiuscolette } from './fonti.js';
 import { PROVINCE } from './scoperta.js';
 
-// codici ATECO proposti per tipologia (modificabili in pagina: la stima gratuita dice subito quante imprese corrispondono)
+// codici ATECO proposti per tipologia (modificabili in pagina: la stima gratuita dice subito quante imprese corrispondono).
+// VERIFICATO SUL SERVIZIO VERO il 17/11/2026 (stime gratuite su Firenze e Prato): Openapi confronta il codice PER INTERO con quello che ha
+// in archivio per l'impresa, e lo ha a precisione variabile, 3 o 4 cifre (869 → 25 imprese, 8690 → 0, 8691 → 2; 871 → 19, 8710 → 0;
+// 8622 → 67, 862 → 2; 4773 → 58, 477 → 2). Non accetta prefissi. Per questo ogni tipologia propone più varianti: quelle senza imprese
+// non costano nulla. 869 è il gruppo generico "altri servizi di assistenza sanitaria": contiene i laboratori ma anche altro.
 export const ATECO = {
-  RSA: ['8710', '8730'], CASA_DI_CURA: ['8610'], POLIAMBULATORIO: ['8622'], STUDIO_MEDICO: ['8621'], LABORATORIO: ['8690'], FISIOTERAPIA: ['8690'], DENTISTA: ['8623'], VETERINARIO: ['7500'], FARMACIA: ['4773'], AZIENDA: [],
+  RSA: ['871', '873', '8710', '8730'], CASA_DI_CURA: ['861', '8610'], POLIAMBULATORIO: ['8622', '862'], STUDIO_MEDICO: ['8621', '862'], LABORATORIO: ['869', '8690', '8691'], FISIOTERAPIA: ['869', '8690'], DENTISTA: ['8623'], VETERINARIO: ['750', '7500'], FARMACIA: ['4773', '477'], AZIENDA: [],
 };
 const pulisciCodice = (c) => String(c || '').replace(/[^0-9A-Za-z]/g, '');
 
@@ -50,8 +54,11 @@ export async function stimaRegistro({ province, codici, minEmployees = null, arr
     if (s.prezzo != null) prezzo += s.prezzo;
     righe.push({ provincia: p, codice: cod, ...s, testo: s.imprese != null ? `${PROVINCE[p] || p}, codice ${cod}: ${s.imprese} imprese${s.prezzo != null ? `, ${s.prezzo.toFixed(2)} €` : ''}` : `${PROVINCE[p] || p}, codice ${cod}: ${s.grezzo}` });
   }
-  return { righe, imprese: incerta ? null : imprese, prezzo: prezzo || null, incerta };
+  return { righe, imprese: incerta ? null : imprese, prezzo: prezzo ? Math.round(prezzo * 100) / 100 : (incerta ? null : 0), incerta };
 }
+const NOME_CAT = { LABORATORIO: /laborator|analisi|diagnost|biomedic|patolog/i, RSA: /\brsa\b|residenz|casa di riposo|anziani|assistit/i, CASA_DI_CURA: /casa di cura|clinica|ospedal|villa/i,
+  POLIAMBULATORIO: /poliambulator|centro medico|medical|ambulator|salute|diagnost/i, STUDIO_MEDICO: /studio|medic|dott/i, FISIOTERAPIA: /fisio|riabilit|kines/i, VETERINARIO: /veterinar/i, FARMACIA: /farmac/i, DENTISTA: /dent|odonto/i };
+const nomeConferma = (nome, cat) => (NOME_CAT[cat] ? NOME_CAT[cat].test(nome) : true);
 const CAT_DA_ATECO = [[/^871|^873|^87/, 'RSA'], [/^861/, 'CASA_DI_CURA'], [/^8622/, 'POLIAMBULATORIO'], [/^8621/, 'STUDIO_MEDICO'], [/^8623/, 'DENTISTA'], [/^86901|^8690/, 'LABORATORIO'], [/^75/, 'VETERINARIO'], [/^4773/, 'FARMACIA']];
 /** Impresa del registro (arricchimento advanced) → candidato, con i dipendenti e il fatturato dell'ultimo bilancio come segnali */
 export function candidatoDaImpresa(x, { categoria = null, linea = 'SRV' } = {}) {
@@ -68,7 +75,10 @@ export function candidatoDaImpresa(x, { categoria = null, linea = 'SRV' } = {}) 
   if (x.pec) segnali.PEC_NOTA = { valore: String(x.pec).toLowerCase(), evidenza: fonte, url: null };
   return {
     fonte: 'REGISTRO', fonte_ref: String(x.id || piva || x.taxCode || nome).slice(0, 200), nome: maiuscolette(nome).slice(0, 200),
-    categoria: categoria || (linea === 'MDL' ? 'AZIENDA' : (CAT_DA_ATECO.find(([re]) => re.test(cod)) || [])[1] || 'ALTRO'),
+    // il codice di dettaglio dell'impresa decide la tipologia; se Openapi ha solo il gruppo generico (3 cifre) la tipologia scelta in ricerca
+    // vale solo se il nome la conferma, altrimenti resta "Altro" da verificare (869 comprende laboratori, ma anche studi di altro tipo)
+    categoria: linea === 'MDL' ? (categoria || 'AZIENDA') : (CAT_DA_ATECO.find(([re]) => re.test(cod) && cod.length >= 4) || [])[1]
+      || (categoria && (cod.length >= 4 || !cod || nomeConferma(nome, categoria)) ? categoria : null) || (CAT_DA_ATECO.find(([re]) => re.test(cod)) || [])[1] || 'ALTRO',
     indirizzo: a.streetName ? maiuscolette(a.streetName) : null, cap: a.zipCode || null, comune: a.town ? maiuscolette(a.town) : null, provincia: PROVINCE[prov] ? prov : (prov || null),
     lat: a.gps?.coordinates?.[1] ?? null, lon: a.gps?.coordinates?.[0] ?? null, telefono: null, email: null, pec: x.pec ? String(x.pec).toLowerCase() : null, sito: null, dominio: null,
     piva: pivaValida(piva) ? piva : null, operatore: null, segnali,
