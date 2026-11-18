@@ -5,6 +5,7 @@
 //   crediti nel triennio 2026-2028 (Commissione nazionale per la formazione continua, delibera n. 1 del 5 marzo 2026): non 180.
 // - Lettura dell'attestato con l'API Claude (stesso lettore degli allegati del dossier): propone titolo, ente, data, ore e crediti;
 //   la riga nasce solo dopo la conferma di chi carica. Senza chiave API: euristica sul testo, sempre da confermare.
+import { inServizioSql } from './servizio.js';
 import { one, many } from '../db.js';
 import { config } from '../config.js';
 import { getSettings } from './payroll.js';
@@ -83,7 +84,7 @@ export async function statoEcm(r, { oggi = null, S = null } = {}) {
 export async function personePerEcm(resourceId = null) {
   return many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.person_kind, r.status, r.person_job_title, r.person_discipline, e.job_title, l.discipline
     FROM resources_v r LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
-    WHERE ${resourceId ? 'r.id=$1' : "r.status IN ('ATTIVO','IMPEGNO')"}`, resourceId ? [resourceId] : []);
+    WHERE ${resourceId ? 'r.id=$1' : inServizioSql('r')}`, resourceId ? [resourceId] : []);
 }
 
 // ---------------------------------------------------------------- lettura dell'attestato

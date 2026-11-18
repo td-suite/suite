@@ -12,6 +12,8 @@ export default function Deadlines() {
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
   const list = useApi(`/stats/deadlines?days=${days}`, [days]);
+  // chi non è in servizio non genera scadenze: l'elenco resta in vista in fondo alla pagina, così nessuno sparisce in silenzio
+  const esclusi = useApi('/stats/deadlines/esclusi');
   const rows = useMemo(() => (list.data || []).filter((x) => (!type || x.type === type) && (!q || (x.resource_name || '').toLowerCase().includes(q.toLowerCase()) || x.title.toLowerCase().includes(q.toLowerCase()))), [list.data, type, q]);
   const groups = useMemo(() => {
     const m = new Map();
@@ -42,6 +44,10 @@ export default function Deadlines() {
           </table></div>
         </Card>
       ))}
+      {esclusi.data && (esclusi.data.non_in_servizio.length > 0 || esclusi.data.datore_lavoro) && <div className="small muted" style={{ marginTop: 14 }}>
+        {esclusi.data.non_in_servizio.length > 0 && <div><b>{esclusi.data.non_in_servizio.length} risorse non in servizio</b> non generano scadenze né richiami: {esclusi.data.non_in_servizio.map((x) => `${x.nome} (${x.motivo})`).join('; ')}.</div>}
+        {esclusi.data.datore_lavoro && <div style={{ marginTop: 4 }}>Datore di lavoro ({esclusi.data.datore_lavoro}): nessuna scadenza di medicina del lavoro, formazione ed ECM. Si cambia in Impostazioni › Scadenze.</div>}
+      </div>}
     </div>
   );
 }

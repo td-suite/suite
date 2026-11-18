@@ -2,6 +2,7 @@
 // tirocinanti. In Suite stanno SOLO il giudizio di idoneità alla mansione, le eventuali prescrizioni o limitazioni, il protocollo
 // sanitario assegnato e il calendario delle visite. Mai diagnosi, esiti di accertamenti, cartella sanitaria e di rischio: restano al
 // medico competente. La sezione è visibile ai profili ADMIN e HR e al titolare; le convocazioni le fanno gli amministratori del modulo.
+import { inServizioSql, datoriLavoro, eDatore } from './servizio.js';
 import { many, one, q, tx } from '../db.js';
 import { sendFromPeople, hrEmails, peopleSettings } from './peopleMail.js';
 import { layout } from '../../../lib/mailer.js';
@@ -46,10 +47,13 @@ export function posizioneMdl({ persona, scheda, protocollo, visite, oggi }) {
 /** Elenco dei soggetti a sorveglianza (dipendenti e tirocinanti attivi o in ingresso) con la posizione di ciascuno. */
 export async function elencoMdl({ resourceId = null, oggi = null } = {}) {
   const t = oggi || iso(new Date());
-  const persone = await many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.status, r.email, r.hired_at, r.terminated_at, coalesce(e.job_title, r.person_job_title) AS job_title,
+  let persone = await many(`SELECT r.id, r.last_name, r.first_name, r.kind, r.status, r.email, r.hired_at, r.terminated_at, coalesce(e.job_title, r.person_job_title) AS job_title,
       coalesce(a.name, r.area_label) AS area_name, s.name AS site_name
     FROM resources_v r LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN public.sites s ON s.id=r.site_id
-    WHERE r.kind = ANY($1) AND ${resourceId ? 'r.id=$2' : "r.status IN ('ATTIVO','IMPEGNO')"} ORDER BY r.last_name, r.first_name`, resourceId ? [soggettiMdl, resourceId] : [soggettiMdl]);
+    WHERE r.kind = ANY($1) AND ${resourceId ? 'r.id=$2' : inServizioSql('r')} ORDER BY r.last_name, r.first_name`, resourceId ? [soggettiMdl, resourceId] : [soggettiMdl]);
+  // il datore di lavoro non è soggetto a sorveglianza come lavoratore: fuori dall'elenco (la sua scheda resta consultabile)
+  const datori = resourceId ? new Set() : await datoriLavoro();
+  if (datori.size) persone = persone.filter((p) => !eDatore(p, datori));
   if (!persone.length) return [];
   const ids = persone.map((p) => p.id);
   const schede = new Map((await many('SELECT * FROM mdl_schede WHERE resource_id = ANY($1)', [ids])).map((x) => [x.resource_id, x]));

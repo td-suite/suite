@@ -3,6 +3,7 @@
 // Ogni scadenza ha una chiave stabile (`key`, lib/peopleRules.js deadlineKey) usata dai richiami di people@ come [TD-SCAD-<chiave>].
 // Escluse: gli allegati sostituiti da un rinnovo (attachments.superseded_by) e le scadenze chiuse all'approvazione della casella
 // People (deadline_closures), salvo includeClosed.
+import { inServizioSql, datoriLavoro } from './servizio.js';
 import { many } from '../db.js';
 import { CATEGORY_LABELS } from './seedData.js';
 import { deadlineKey } from './peopleRules.js';
@@ -16,7 +17,8 @@ export const TERMINATION_LABELS = { DIMISSIONI: 'Dimissioni', LICENZIAMENTO: 'Li
 
 export async function computeDeadlines({ resourceId = null, horizonDays = 365, today: todayIso = null, includeClosed = false } = {}) {
   const P = resourceId ? [resourceId] : [];
-  const where = resourceId ? 'r.id = $1' : "r.status IN ('ATTIVO','IMPEGNO')";
+  // solo le risorse in servizio (lib/servizio.js): chi è in impegno, deve ancora iniziare o non ha posizione non genera scadenze
+  const where = resourceId ? 'r.id = $1' : inServizioSql('r');
   const items = [];
   const base = (r) => ({ resource_id: r.id, resource_name: `${r.last_name} ${r.first_name}`, kind: r.kind });
 
@@ -105,7 +107,11 @@ export async function computeDeadlines({ resourceId = null, horizonDays = 365, t
 
   const limit = addDays(t, horizonDays);
   const closed = includeClosed ? new Set() : new Set((await many('SELECT deadline_key FROM deadline_closures')).map((x) => x.deadline_key));
+  // il datore di lavoro non è un lavoratore: niente scadenze di sorveglianza sanitaria, formazione ed ECM a suo nome
+  const datori = await datoriLavoro();
+  const nomePiatto = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   return items
+    .filter((i) => !(datori.size && ['MDL', 'FORMAZIONE', 'ECM'].includes(i.type) && datori.has(nomePiatto(i.resource_name))))
     .map((i) => ({ ...i, key: deadlineKey(i) }))
     .filter((i) => i.due_date && !closed.has(i.key) && (resourceId || i.due_date <= limit))
     .map((i) => ({ ...i, days: Math.round((new Date(`${i.due_date}T12:00:00Z`) - new Date(`${t}T12:00:00Z`)) / 86400000) }))

@@ -93,6 +93,12 @@ r.get('/summary', ah(async (req, res) => {
     people: viewer ? active.map(({ ral, ral_current, cost_annual, cost_monthly, cost_mbo_max, ral_steps, ...x }) => x) : active });
 }));
 
+// Chi resta fuori dalle scadenze perché non è in servizio (lib/servizio.js): l'elenco si mostra in fondo al Calendario delle scadenze
+r.get('/deadlines/esclusi', ah(async (_req, res) => {
+  const { nonInServizio, datoriLavoro } = await import('../lib/servizio.js');
+  res.json({ non_in_servizio: await nonInServizio(), datore_lavoro: (await one(`SELECT value FROM app_settings WHERE key='datore_lavoro'`))?.value || null, datori: (await datoriLavoro()).size });
+}));
+
 r.get('/deadlines', ah(async (req, res) => {
   const tutte = await computeDeadlines({ horizonDays: Number(req.query.days || 365) });
   res.json(soloLp(req.user) ? tutte.filter((d) => d.kind === 'LP') : tutte);   // profilo LP: solo le scadenze dei liberi professionisti

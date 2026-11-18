@@ -87,8 +87,10 @@ describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', {
     db = new pg.Client({ connectionString: S.url }); await db.connect();
     O = await H.entra(H.client(S.base), H.OWNER.email, H.OWNER.password, H.OWNER.finale);
     assert.equal((await O.post('/api/travaso/contracts/run')).s, 200);
-    const persona = async (last, first, kind, extra = {}) => (await db.query(`INSERT INTO people (kind, status, last_name, first_name, email, hired_at, job_title) VALUES ($1,'ATTIVO',$2,$3,$4,$5,$6) RETURNING id`,
+    const persona0 = async (last, first, kind, extra = {}) => (await db.query(`INSERT INTO people (kind, status, last_name, first_name, email, hired_at, job_title) VALUES ($1,'ATTIVO',$2,$3,$4,$5,$6) RETURNING id`,
       [kind, last, first, extra.email === null ? null : `${first}.${last}@toscanadiagnostica.it`.toLowerCase(), extra.hired_at || '2026-02-01', extra.job_title || null])).rows[0].id;
+    // in servizio (v0.86.0): attiva, con la posizione in Gestione del Personale (person_ext) e assunzione non futura
+    const persona = async (...x) => { const id = await persona0(...x); await db.query('INSERT INTO contracts.person_ext (person_id) VALUES ($1) ON CONFLICT DO NOTHING', [id]); return id; };
     ids.tsrm = await persona('Tecnicotest', 'Tina', 'DIPENDENTE');
     ids.amm = await persona('Amministrativotest', 'Aldo', 'DIPENDENTE');
     ids.senza = await persona('Senzaemailtest', 'Sara', 'DIPENDENTE', { email: null });
@@ -238,7 +240,7 @@ describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', {
     await O.put(`/api/contracts/resources/${ids.senza}/mdl`, { sorveglianza: true });
     const el = (await O.get('/api/contracts/mdl')).j;
     assert.equal(el.puo_convocare, true);
-    assert.deepEqual(el.elenco.map((x) => x.id).sort(), [ids.tsrm, ids.amm, ids.senza, ids.tir].sort(), 'dipendenti e tirocinanti, non i liberi professionisti');
+    assert.deepEqual(el.elenco.map((x) => x.id).sort(), [ids.tsrm, ids.amm, ids.senza].sort(), 'dipendenti in servizio: non i liberi professionisti, non il tirocinante che inizia tra 15 giorni');
     const inScad = el.elenco.filter((x) => x.sorveglianza && x.impostata && x.giorni != null && x.giorni <= el.predefiniti.anticipo_giorni).map((x) => x.id).sort();
     assert.deepEqual(inScad, [ids.tsrm, ids.senza].sort());
     assert.equal((await R.get('/api/contracts/mdl')).j.puo_convocare, false);
@@ -304,6 +306,29 @@ describe('Gestione del Personale: formazione, tirocinio, medicina del lavoro', {
     const r = await O.post('/api/contracts/formazione/ecm/escludi', { id: ids.medico, escludi: false });
     assert.equal(r.j.ecm.contatore.escluso_anno, false); assert.ok(r.j.ecm.contatore.mancano_anno > 0);
     assert.ok((await O.get(`/api/contracts/resources/${ids.medico}`)).j.deadlines.some((d) => d.type === 'ECM'));
+  });
+
+  test('in servizio: chi è in impegno, senza posizione o con inizio futuro non genera scadenze; il datore di lavoro è fuori da MDL e formazione', async () => {
+    const D = await import('../src/modules/contracts/lib/servizio.js');
+    assert.match(D.inServizioSql('x'), /x\.status = 'ATTIVO' AND x\.in_hr/);
+    const imp = (await db.query(`INSERT INTO people (kind, status, last_name, first_name, hired_at) VALUES ('DIPENDENTE','IMPEGNO','Impegnotest','Ivo',NULL) RETURNING id`)).rows[0].id;
+    const senzaPos = (await db.query(`INSERT INTO people (kind, status, last_name, first_name, hired_at) VALUES ('DIPENDENTE','ATTIVO','Senzaposizionetest','Sara','2026-02-01') RETURNING id`)).rows[0].id;
+    const futuro = (await db.query(`INSERT INTO people (kind, status, last_name, first_name, hired_at) VALUES ('DIPENDENTE','ATTIVO','Futurotest','Fabio', CURRENT_DATE + 20) RETURNING id`)).rows[0].id;
+    await db.query('INSERT INTO contracts.person_ext (person_id) VALUES ($1), ($2)', [imp, futuro]);
+    for (const id of [imp, senzaPos, futuro]) assert.equal((await O.put(`/api/contracts/resources/${id}/mdl`, { sorveglianza: true })).s, 200, 'la scheda si può comunque aprire');
+    const nomi = (await O.get('/api/contracts/mdl')).j.elenco.map((x) => x.nome);
+    for (const n of ['Impegnotest Ivo', 'Senzaposizionetest Sara', 'Futurotest Fabio']) assert.ok(!nomi.includes(n), `${n} fuori dall'elenco MDL`);
+    const scad = (await O.get('/api/contracts/stats/deadlines?days=730')).j;
+    assert.ok(!scad.some((x) => [imp, senzaPos, futuro].includes(x.resource_id)), 'nessuna scadenza per chi non è in servizio');
+    const es = (await O.get('/api/contracts/stats/deadlines/esclusi')).j;
+    assert.deepEqual(es.non_in_servizio.filter((x) => [imp, senzaPos, futuro].includes(x.id)).map((x) => x.motivo.split(' ').slice(0, 2).join(' ')).sort(), ['in anagrafica', 'in impegno,', 'inizio previsto']);
+    // datore di lavoro: la migrazione propone un nome; qui si imposta una persona di prova
+    assert.equal(es.datore_lavoro, 'Epifani Francesco');
+    assert.ok(nomi.includes('Amministrativotest Aldo'));
+    await db.query(`UPDATE contracts.app_settings SET value='Amministrativotest Aldo' WHERE key='datore_lavoro'`);
+    assert.ok(!(await O.get('/api/contracts/mdl')).j.elenco.some((x) => x.nome === 'Amministrativotest Aldo'));
+    assert.ok(!(await O.get('/api/contracts/stats/deadlines?days=730')).j.some((x) => x.resource_id === ids.amm && ['MDL', 'FORMAZIONE', 'ECM'].includes(x.type)));
+    await db.query(`UPDATE contracts.app_settings SET value='Epifani Francesco' WHERE key='datore_lavoro'`);
   });
 
   test('richiami: le nuove scadenze partono dalla casella People verso il destinatario giusto', async () => {
