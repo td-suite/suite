@@ -8,7 +8,8 @@ import { ah, audit, bad, parse } from '../../../lib/util.js';
 import { storageMode } from '../../../lib/moduleStorage.js';
 import { mailStatus } from '../../../lib/mailer.js';
 import { requireQualita } from '../lib/access.js';
-import { KEY, settings, setSetting, templateById } from '../lib/core.js';
+import { KEY, settings, setSetting, templateById, ripartenza, ensureTemplates } from '../lib/core.js';
+import { requireAdmin } from '../lib/access.js';
 import { validateTemplate, itemsOf, sectionsOf } from '../lib/scoring.js';
 import { runAlert17 } from '../lib/alerts.js';
 import { aiState } from '../lib/synth.js';
@@ -17,6 +18,7 @@ import { fontName } from '../lib/export.js';
 const r = Router();
 
 async function stato() {
+  await ensureTemplates();
   const imp = await settings();
   const templates = await many(`SELECT id, code, title, rev, rev_date, kind, active, created_at, (SELECT count(*)::int FROM audits a WHERE a.template_id=t.id AND a.deleted_at IS NULL) AS n_audits FROM templates t ORDER BY kind, id DESC`);
   const ultimoAlert = await one(`SELECT period, max(sent_at) AS sent_at, count(*)::int AS n FROM alerts_sent GROUP BY period ORDER BY period DESC LIMIT 1`);
@@ -44,7 +46,7 @@ r.post('/templates', requireQualita, (req, res, next) => upload(req, res, (e) =>
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { throw bad('JSON non valido'); } }
   const errs = validateTemplate(body);
   if (errs.length) throw bad(`Modello non valido: ${errs.join('; ')}`);
-  const kind = ['SEDE', 'LEGAL_ENTITY'].includes(req.body?.kind) ? req.body.kind : (body.header_fields || []).some((f) => f.source === 'organization') ? 'LEGAL_ENTITY' : 'SEDE';
+  const kind = ['SEDE', 'LABORATORIO', 'LEGAL_ENTITY'].includes(req.body?.kind) ? req.body.kind : (body.header_fields || []).some((f) => f.source === 'organization') ? 'LEGAL_ENTITY' : /LAB/i.test(String(body.code)) ? 'LABORATORIO' : 'SEDE';
   if (await one('SELECT 1 FROM templates WHERE code=$1 AND rev=$2', [body.code, String(body.rev)])) throw bad(`La revisione ${body.rev} del modello ${body.code} esiste già: aumenta il numero di revisione`);
   const activate = String(req.body?.activate ?? 'true') !== 'false';
   if (activate) await q('UPDATE templates SET active=FALSE WHERE kind=$1', [kind]);
@@ -58,6 +60,15 @@ r.put('/templates/:id', requireQualita, ah(async (req, res) => {
   if (b.active) await q('UPDATE templates SET active=FALSE WHERE kind=$1', [t.kind]);
   await q('UPDATE templates SET active=$2 WHERE id=$1', [t.id, b.active]);
   res.json(await stato());
+}));
+
+// Ripartenza: auto-audit e audit interni nel cestino, avvisi, sintesi e punteggi azzerati, primo mese utile fissato. Solo ADMIN,
+// con la parola di conferma scritta per esteso (l'operazione riguarda tutte le sedi).
+r.post('/settings/ripartenza', requireAdmin, ah(async (req, res) => {
+  const b = parse(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), conferma: z.literal('RIPARTI') }), req.body || {});
+  const out = await ripartenza({ period: `${b.period}-01`, userId: req.user.id });
+  await audit(req, 'AUDIT_RIPARTENZA', { module: KEY, entity: 'impostazioni', label: b.period, data: out });
+  res.json({ ...out, stato: await stato() });
 }));
 
 // Job dell'alert eseguito a mano (data di test ammessa solo fuori produzione)

@@ -1,227 +1,1045 @@
 {
-  "code": "TD-AUD-SEDE",
-  "title": "Check list verifica interna sede (punto prelievi, centro medico, laboratorio)",
-  "rev": "1",
-  "rev_date": "2026-10-29",
-  "derived_from": "MOD002-SY Check list verifica interna punto prelievi rev. 5 del 20/02/2020 (adattata a Toscana Diagnostica)",
-  "answer_values": ["SI", "NO", "NC", "NA"],
-  "header_fields": [
-    { "key": "sede", "label": "Sede", "source": "site" },
-    { "key": "data", "label": "Data", "type": "date" },
-    { "key": "effettuato_da", "label": "Effettuato da (coordinatori / ASPP / site manager)", "type": "text" }
-  ],
-  "parts": [
-    {
-      "key": "FRONT",
-      "title": "Front office",
-      "sections": [
-        {
-          "key": "F1", "title": "Documentazione a disposizione del paziente", "hint": "Verificare esistenza del documento aggiornato e firma per presa visione",
-          "items": [
-            { "n": "1", "text": "Faldone pazienti (documentazione all'interno aggiornata)", "sub": [
-              { "key": "1a", "text": "Carta dei servizi", "rev": true },
-              { "key": "1b", "text": "Elenco prestazioni eseguite presso la sede (allegato 1)", "rev": true },
-              { "key": "1c", "text": "Elenco sedi e orari di apertura (allegato 2)", "rev": true },
-              { "key": "1d", "text": "Modalità di raccolta per il paziente multilingue", "rev": true },
-              { "key": "1e", "text": "Informativa e consenso pazienti", "rev": true },
-              { "key": "1f", "text": "Segnalazioni e reclami pazienti" }
-            ] },
-            { "n": "2", "text": "Informativa sulla privacy esposta e aggiornata", "rev": true },
-            { "n": "3", "text": "Brochure esami Toscana Diagnostica in espositori e totem; sul desk spazio sufficiente per gestire il paziente; nessun plexiglass che ostruisce la visuale tra accettazione e paziente" },
-            { "n": "4", "text": "Bacheca o altro", "sub": [
-              { "key": "4a", "text": "Indicazioni prestazioni ostetriche e modalità di prenotazione (ove applicabile)" },
-              { "key": "4b", "text": "Orari" },
-              { "key": "4c", "text": "S.Me.L., ragione sociale, nominativo Direttore di laboratorio / Direttore sanitario" }
-            ] },
-            { "n": "5", "text": "Regole regionali per l'esenzione da ticket (ove previsto)" },
-            { "n": "6", "text": "Tempi di attesa mensili aggiornati (ove previsto)" }
-          ]
-        },
-        {
-          "key": "F2", "title": "Cartellonistica", "hint": "Verificare esistenza e aggiornamento dei cartelli",
-          "items": [
-            { "n": "7", "group": "Interno", "text": "Identificazione locali e depositi pulito/sporco (sulle porte e sugli armadi)" },
-            { "n": "8", "group": "Interno", "text": "Cartello diritto di precedenza" },
-            { "n": "9", "group": "Esterno", "text": "Presenza insegna della Società" },
-            { "n": "10", "group": "Esterno", "text": "Presenza di vetrofanie della Società" },
-            { "n": "11", "group": "Esterno", "text": "Adesivo orario di apertura a norma (non scritto a mano)" }
-          ]
-        },
-        {
-          "key": "F3", "title": "Immagine della sede", "hint": "Verificare congruenza con le indicazioni aziendali",
-          "items": [
-            { "n": "12", "group": "Interno", "text": "Personale di accettazione", "sub": [
-              { "key": "12a", "text": "Utilizzo divisa aziendale" },
-              { "key": "12b", "text": "Presenza di cartellino identificativo aziendale" }
-            ] },
-            { "n": "13", "group": "Interno", "text": "Sala d'attesa e pulizia", "sub": [
-              { "key": "13a", "text": "Stato delle sedute/panche (integrazione o sostituzione necessaria?)" },
-              { "key": "13b", "text": "Stato dei muri (imbiancatura necessaria?)" },
-              { "key": "13c", "text": "Stato della decorazione (quadri, orologio, piante)" },
-              { "key": "13d", "text": "Stato dell'arredamento (nuovo, obsoleto)" },
-              { "key": "13e", "text": "Presenza di zerbino, portaombrelli, attaccapanni, cestini" },
-              { "key": "13f", "text": "Presenza di distributore d'acqua" },
-              { "key": "13g", "text": "Ordine e pulizia generale: pavimento, spogliatoi, deposito, box prelievi, accettazione, bagni" },
-              { "key": "13h", "text": "Confort: numeratore o monitor elimina code (specificare tipologia)" },
-              { "key": "13i", "text": "Confort: segnaletica o distanziatore per la distanza di cortesia" }
-            ] },
-            { "n": "14", "group": "Esterno", "text": "Struttura esterna", "sub": [
-              { "key": "14a", "text": "Pulizia: stato dei muri (murales, deterioramento)" },
-              { "key": "14b", "text": "Pulizia generale vetrate, marciapiedi" }
-            ] }
-          ]
-        },
-        {
-          "key": "F4", "title": "Documentazione e materiale di accettazione",
-          "items": [
-            { "n": "15", "text": "PC con connessione all'applicativo di accettazione e alla Suite/intranet" },
-            { "n": "16", "text": "Etichettatrice" },
-            { "n": "17", "text": "Stampanti" },
-            { "n": "18", "text": "POS" },
-            { "n": "19", "text": "Faldone accettazione (riportare il numero di revisione)", "sub": [
-              { "key": "19a", "text": "Procedura di gestione accettazione e consegna referti", "rev": true },
-              { "key": "19b", "text": "Accettazioni laboratorio analisi con etichette prenumerate", "rev": true },
-              { "key": "19c", "text": "Elenco sedi dotate di apparecchiature particolari", "rev": true },
-              { "key": "19d", "text": "Esame citologico urinario", "rev": true },
-              { "key": "19e", "text": "Esame citologico cervico vaginale", "rev": true },
-              { "key": "19f", "text": "Esame citologico espettorato", "rev": true },
-              { "key": "19g", "text": "Scheda accettazione consenso informato cariotipo", "rev": true },
-              { "key": "19h", "text": "Scheda di accettazione pazienti ambulatoriali", "rev": true },
-              { "key": "19i", "text": "Richiesta sostanze d'abuso con valenza medico legale", "rev": true },
-              { "key": "19j", "text": "Scheda raccolta dati e consenso informato bitest", "rev": true },
-              { "key": "19k", "text": "Scheda anamnestica test di Coombs", "rev": true },
-              { "key": "19l", "text": "Scheda anamnestica esami microbiologici", "rev": true },
-              { "key": "19m", "text": "Scheda anamnestica autoimmunità", "rev": true },
-              { "key": "19n", "text": "Consenso informato HIV", "rev": true },
-              { "key": "19o", "text": "Consenso informato soluzione di glucosio", "rev": true },
-              { "key": "19p", "text": "Altri (specificare)", "free": true, "repeat": 3 }
-            ] }
-          ]
-        },
-        {
-          "key": "F5", "title": "Attività amministrative e operative",
-          "items": [
-            { "n": "20", "text": "Corretta compilazione del registro accettazioni (REG015)" },
-            { "n": "21", "text": "Corretta procedura di gestione cassa e fondo cassa" },
-            { "n": "22", "text": "Il personale conosce gli ultimi aggiornamenti di circolari e procedure" }
-          ]
-        }
-      ]
-    },
-    {
-      "key": "BOX",
-      "title": "Box prelievo",
-      "sections": [
-        {
-          "key": "B1", "title": "Materiale e documentazione del prelevatore",
-          "items": [
-            { "n": "23", "text": "Poltrona" },
-            { "n": "24", "text": "Lettino ginecologico" },
-            { "n": "25", "text": "Materiale prelievi: scadenze provette, aghi, disinfettante, tamponi, vetrini (raccogliere evidenze)" },
-            { "n": "26", "text": "Cassetta/borsa di pronto soccorso" },
-            { "n": "27", "text": "AMBU (ove previsto)" },
-            { "n": "28", "text": "Defibrillatore (ove previsto)" },
-            { "n": "29", "text": "Strumentazione dedicata, solo se prevista (glucometro, centrifughe)" },
-            { "n": "30", "text": "Frigorifero" },
-            { "n": "31", "text": "Congelatore" },
-            { "n": "32", "text": "Termometro tarato" },
-            { "n": "33", "text": "DPI" },
-            { "n": "34", "text": "Contenitore rifiuti speciali" },
-            { "n": "35", "text": "Faldone box prelievo (riportare il numero di revisione)", "sub": [
-              { "key": "35a", "text": "Gestione attività di prelievo", "rev": true },
-              { "key": "35b", "text": "Prelievo, conservazione e trasporto campioni", "rev": true },
-              { "key": "35c", "text": "Descrizione provette vacutainer per tipologia esame", "rev": true },
-              { "key": "35d", "text": "Esami particolari", "rev": true },
-              { "key": "35e", "text": "Esecuzione controlli strumento dosaggio glicemia", "rev": true },
-              { "key": "35f", "text": "Dichiarazione di malore", "rev": true },
-              { "key": "35g", "text": "Campioni porta", "rev": true },
-              { "key": "35h", "text": "Catena di custodia accertamenti medico legali", "rev": true },
-              { "key": "35i", "text": "Controllo scadenza materiale prelievi cervico vaginali", "rev": true },
-              { "key": "35j", "text": "Controllo mensile validità scadenza materiale", "rev": true },
-              { "key": "35k", "text": "Contenuto cassetta di pronto soccorso", "rev": true },
-              { "key": "35l", "text": "Gestione pronto soccorso", "rev": true },
-              { "key": "35m", "text": "Gestione rischio biologico e sanificazione", "rev": true },
-              { "key": "35n", "text": "Gestione farmaci", "rev": true },
-              { "key": "35o", "text": "Altri (specificare)", "free": true, "repeat": 2 }
-            ] }
-          ]
-        },
-        {
-          "key": "B2", "title": "Immagine box prelievi", "hint": "Verificare congruenza con le indicazioni aziendali",
-          "items": [
-            { "n": "36", "text": "Personale infermieristico", "sub": [
-              { "key": "36a", "text": "Utilizzo divisa aziendale" },
-              { "key": "36b", "text": "Presenza di cartellino identificativo" },
-              { "key": "36c", "text": "Utilizzo camice" },
-              { "key": "36d", "text": "Utilizzo calzari" },
-              { "key": "36e", "text": "Corretto utilizzo guanti" },
-              { "key": "36f", "text": "Presenza di distributore d'acqua" }
-            ] },
-            { "n": "37", "text": "Locale", "sub": [
-              { "key": "37a", "text": "Cartellonistica" },
-              { "key": "37b", "text": "Ordine e pulizia generale" },
-              { "key": "37c", "text": "Stato dei muri" },
-              { "key": "37d", "text": "Stato dei pavimenti" }
-            ] }
-          ]
-        },
-        {
-          "key": "B3", "title": "Verifica compilazione registri",
-          "items": [
-            { "n": "38", "text": "Compilazione dei moduli di manutenzione strumenti (se presenti)" },
-            { "n": "39", "text": "Registro scadenze materiale prelievo" },
-            { "n": "40", "text": "Registro contenuto cassetta pronto soccorso e controllo scadenze" },
-            { "n": "41", "text": "Registro temperature" }
-          ]
-        },
-        {
-          "key": "B4", "title": "Verifica competenze del prelevatore",
-          "items": [
-            { "n": "42", "text": "Identificazione del paziente" },
-            { "n": "43", "text": "Condivisione con il front office dei dati relativi a porta, valori diuresi, eventuali recuperi provette" },
-            { "n": "44", "text": "Verifica del box prelievi a fine giornata per escludere giacenza di campioni" },
-            { "n": "45", "text": "Conoscenza di istruzioni di lavoro e procedure operative (corretta applicazione delle etichette su provette e campioni davanti al paziente)" }
-          ]
-        }
-      ]
-    },
-    {
-      "key": "SIC",
-      "title": "Sicurezza",
-      "sections": [
-        {
-          "key": "S1", "title": "Sicurezza",
-          "items": [
-            { "n": "Sic 1", "text": "Presenza estintore (almeno uno a polvere) e verifica data di manutenzione; estintore appeso o su piantana" },
-            { "n": "Sic 2", "text": "Presenza cartello estintore" },
-            { "n": "Sic 3", "text": "Uscite d'emergenza non ostruite, apertura verso l'esodo, facile apertura (no porte scorrevoli)" },
-            { "n": "Sic 4", "text": "Presenza cartello uscite d'emergenza" },
-            { "n": "Sic 5", "text": "Abbattimento barriere architettoniche, verifica percorso disabili (gradini, citofono: specificare nelle note)" },
-            { "n": "Sic 6", "text": "Presenza pedana mobile o fissa per l'accesso dei disabili (ove previsto)" },
-            { "n": "Sic 7", "text": "Presenza bagno per disabili: dimensioni porte idonee e accessibilità (nessun materiale stoccato che impedisca l'ingresso)" },
-            { "n": "Sic 8", "text": "Presenza e uso DPI (guanti rischio biologico, occhiali, mascherina, camice, anche per chi chiude i rifiuti)" },
-            { "n": "Sic 9", "text": "Cartellonistica via di fuga nei corridoi, nei box prelievo e nel front office" },
-            { "n": "Sic 10", "text": "Presenza della procedura di emergenza (planimetria di emergenza)" },
-            { "n": "Sic 11", "text": "Presenza cartello divieto di fumo con nominativo del controllore" },
-            { "n": "Sic 12", "text": "Gestione rifiuti: registri e formulari stampati, aggiornati e compilati correttamente; spazi e locali dedicati" },
-            { "n": "Sic 13", "text": "Presenza cartello zona stoccaggio rifiuti" },
-            { "n": "Sic 14", "text": "Verifica stato impiantistica (elettrica, idraulica)" },
-            { "n": "Sic 15", "text": "Quadri elettrici chiusi e non coperti da armadi o scaffali; cartello di divieto d'uso dell'acqua per incendi su impianti elettrici" },
-            { "n": "Sic 16", "text": "Postazione a videoterminale dell'accettista: sedia regolabile in altezza e inclinazione, spazio per la tastiera sul banco" },
-            { "n": "Sic 17", "text": "Scaffali (se presenti) ancorati e con cartello della portata" },
-            { "n": "Sic 18", "text": "Materiale per pulizie stoccato in apposito locale (non in bagno)" },
-            { "n": "Sic 19", "text": "Presenza armadietti per il cambio di prelevatori e infermieri" },
-            { "n": "Sic 20", "text": "Presenza DVR e valutazione rischio incendio (VRI); il personale sa dove recuperarli" },
-            { "n": "Sic 21", "text": "Contenitore per lo smaltimento di siringhe con ago" }
-          ]
-        }
-      ]
-    }
-  ],
-  "report": {
-    "title": "Audit report",
-    "hint": "Riportare le non conformità rilevate durante l'audit, descrivendo ove possibile le cause, la soluzione della non conformità e le eventuali azioni correttive proposte (es. materiali scaduti, mancato utilizzo DPI).",
-    "nc_columns": ["n", "descrizione", "cause", "soluzione", "azione_correttiva", "persona_riferimento", "entro"],
-    "observations_label": "Ulteriori eventuali osservazioni"
+ "code": "TD-AUD-SEDE",
+ "title": "Check list verifica interna sede (punti prelievo e centri medici)",
+ "rev": "2",
+ "rev_date": "2026-11-18",
+ "derived_from": "MOD002-SY Check list verifica interna punto prelievi rev. 5 del 20/02/2020 (adattata a Toscana Diagnostica), integrata dalla rev. 2 con le domande su ISO 45001, ISO 14001, ISO 37001, UNI/PdR 125, ISO 30415 e PAS 24000",
+ "answer_values": [
+  "SI",
+  "NO",
+  "NC",
+  "NA"
+ ],
+ "header_fields": [
+  {
+   "key": "sede",
+   "label": "Sede",
+   "source": "site"
+  },
+  {
+   "key": "data",
+   "label": "Data",
+   "type": "date"
+  },
+  {
+   "key": "effettuato_da",
+   "label": "Effettuato da (coordinatori / ASPP / site manager)",
+   "type": "text"
   }
+ ],
+ "parts": [
+  {
+   "key": "FRONT",
+   "title": "Front office",
+   "sections": [
+    {
+     "key": "F1",
+     "title": "Documentazione a disposizione del paziente",
+     "hint": "Verificare esistenza del documento aggiornato e firma per presa visione",
+     "items": [
+      {
+       "n": "1",
+       "text": "Faldone pazienti (documentazione all'interno aggiornata)",
+       "sub": [
+        {
+         "key": "1a",
+         "text": "Carta dei servizi",
+         "rev": true
+        },
+        {
+         "key": "1b",
+         "text": "Elenco prestazioni eseguite presso la sede (allegato 1)",
+         "rev": true
+        },
+        {
+         "key": "1c",
+         "text": "Elenco sedi e orari di apertura (allegato 2)",
+         "rev": true
+        },
+        {
+         "key": "1d",
+         "text": "Modalità di raccolta per il paziente multilingue",
+         "rev": true
+        },
+        {
+         "key": "1e",
+         "text": "Informativa e consenso pazienti",
+         "rev": true
+        },
+        {
+         "key": "1f",
+         "text": "Segnalazioni e reclami pazienti"
+        }
+       ]
+      },
+      {
+       "n": "2",
+       "text": "Informativa sulla privacy esposta e aggiornata",
+       "rev": true
+      },
+      {
+       "n": "3",
+       "text": "Brochure esami Toscana Diagnostica in espositori e totem; sul desk spazio sufficiente per gestire il paziente; nessun plexiglass che ostruisce la visuale tra accettazione e paziente"
+      },
+      {
+       "n": "4",
+       "text": "Bacheca o altro",
+       "sub": [
+        {
+         "key": "4a",
+         "text": "Indicazioni prestazioni ostetriche e modalità di prenotazione (ove applicabile)"
+        },
+        {
+         "key": "4b",
+         "text": "Orari"
+        },
+        {
+         "key": "4c",
+         "text": "S.Me.L., ragione sociale, nominativo Direttore di laboratorio / Direttore sanitario"
+        }
+       ]
+      },
+      {
+       "n": "5",
+       "text": "Regole regionali per l'esenzione da ticket (ove previsto)"
+      },
+      {
+       "n": "6",
+       "text": "Tempi di attesa mensili aggiornati (ove previsto)"
+      }
+     ]
+    },
+    {
+     "key": "F2",
+     "title": "Cartellonistica",
+     "hint": "Verificare esistenza e aggiornamento dei cartelli",
+     "items": [
+      {
+       "n": "7",
+       "group": "Interno",
+       "text": "Identificazione locali e depositi pulito/sporco (sulle porte e sugli armadi)"
+      },
+      {
+       "n": "8",
+       "group": "Interno",
+       "text": "Cartello diritto di precedenza"
+      },
+      {
+       "n": "9",
+       "group": "Esterno",
+       "text": "Presenza insegna della Società"
+      },
+      {
+       "n": "10",
+       "group": "Esterno",
+       "text": "Presenza di vetrofanie della Società"
+      },
+      {
+       "n": "11",
+       "group": "Esterno",
+       "text": "Adesivo orario di apertura a norma (non scritto a mano)"
+      }
+     ]
+    },
+    {
+     "key": "F3",
+     "title": "Immagine della sede",
+     "hint": "Verificare congruenza con le indicazioni aziendali",
+     "items": [
+      {
+       "n": "12",
+       "group": "Interno",
+       "text": "Personale di accettazione",
+       "sub": [
+        {
+         "key": "12a",
+         "text": "Utilizzo divisa aziendale"
+        },
+        {
+         "key": "12b",
+         "text": "Presenza di cartellino identificativo aziendale"
+        }
+       ]
+      },
+      {
+       "n": "13",
+       "group": "Interno",
+       "text": "Sala d'attesa e pulizia",
+       "sub": [
+        {
+         "key": "13a",
+         "text": "Stato delle sedute/panche (integrazione o sostituzione necessaria?)"
+        },
+        {
+         "key": "13b",
+         "text": "Stato dei muri (imbiancatura necessaria?)"
+        },
+        {
+         "key": "13c",
+         "text": "Stato della decorazione (quadri, orologio, piante)"
+        },
+        {
+         "key": "13d",
+         "text": "Stato dell'arredamento (nuovo, obsoleto)"
+        },
+        {
+         "key": "13e",
+         "text": "Presenza di zerbino, portaombrelli, attaccapanni, cestini"
+        },
+        {
+         "key": "13f",
+         "text": "Presenza di distributore d'acqua"
+        },
+        {
+         "key": "13g",
+         "text": "Ordine e pulizia generale: pavimento, spogliatoi, deposito, box prelievi, accettazione, bagni"
+        },
+        {
+         "key": "13h",
+         "text": "Confort: numeratore o monitor elimina code (specificare tipologia)"
+        },
+        {
+         "key": "13i",
+         "text": "Confort: segnaletica o distanziatore per la distanza di cortesia"
+        }
+       ]
+      },
+      {
+       "n": "14",
+       "group": "Esterno",
+       "text": "Struttura esterna",
+       "sub": [
+        {
+         "key": "14a",
+         "text": "Pulizia: stato dei muri (murales, deterioramento)"
+        },
+        {
+         "key": "14b",
+         "text": "Pulizia generale vetrate, marciapiedi"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "F4",
+     "title": "Documentazione e materiale di accettazione",
+     "items": [
+      {
+       "n": "15",
+       "text": "PC con connessione all'applicativo di accettazione e alla Suite/intranet"
+      },
+      {
+       "n": "16",
+       "text": "Etichettatrice"
+      },
+      {
+       "n": "17",
+       "text": "Stampanti"
+      },
+      {
+       "n": "18",
+       "text": "POS"
+      },
+      {
+       "n": "19",
+       "text": "Faldone accettazione (riportare il numero di revisione)",
+       "sub": [
+        {
+         "key": "19a",
+         "text": "Procedura di gestione accettazione e consegna referti",
+         "rev": true
+        },
+        {
+         "key": "19b",
+         "text": "Accettazioni laboratorio analisi con etichette prenumerate",
+         "rev": true
+        },
+        {
+         "key": "19c",
+         "text": "Elenco sedi dotate di apparecchiature particolari",
+         "rev": true
+        },
+        {
+         "key": "19d",
+         "text": "Esame citologico urinario",
+         "rev": true
+        },
+        {
+         "key": "19e",
+         "text": "Esame citologico cervico vaginale",
+         "rev": true
+        },
+        {
+         "key": "19f",
+         "text": "Esame citologico espettorato",
+         "rev": true
+        },
+        {
+         "key": "19g",
+         "text": "Scheda accettazione consenso informato cariotipo",
+         "rev": true
+        },
+        {
+         "key": "19h",
+         "text": "Scheda di accettazione pazienti ambulatoriali",
+         "rev": true
+        },
+        {
+         "key": "19i",
+         "text": "Richiesta sostanze d'abuso con valenza medico legale",
+         "rev": true
+        },
+        {
+         "key": "19j",
+         "text": "Scheda raccolta dati e consenso informato bitest",
+         "rev": true
+        },
+        {
+         "key": "19k",
+         "text": "Scheda anamnestica test di Coombs",
+         "rev": true
+        },
+        {
+         "key": "19l",
+         "text": "Scheda anamnestica esami microbiologici",
+         "rev": true
+        },
+        {
+         "key": "19m",
+         "text": "Scheda anamnestica autoimmunità",
+         "rev": true
+        },
+        {
+         "key": "19n",
+         "text": "Consenso informato HIV",
+         "rev": true
+        },
+        {
+         "key": "19o",
+         "text": "Consenso informato soluzione di glucosio",
+         "rev": true
+        },
+        {
+         "key": "19p",
+         "text": "Altri (specificare)",
+         "free": true,
+         "repeat": 3
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "F5",
+     "title": "Attività amministrative e operative",
+     "items": [
+      {
+       "n": "20",
+       "text": "Corretta compilazione del registro accettazioni (REG015)"
+      },
+      {
+       "n": "21",
+       "text": "Corretta procedura di gestione cassa e fondo cassa"
+      },
+      {
+       "n": "22",
+       "text": "Il personale conosce gli ultimi aggiornamenti di circolari e procedure"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "BOX",
+   "title": "Box prelievo",
+   "sections": [
+    {
+     "key": "B1",
+     "title": "Materiale e documentazione del prelevatore",
+     "items": [
+      {
+       "n": "23",
+       "text": "Poltrona"
+      },
+      {
+       "n": "24",
+       "text": "Lettino ginecologico"
+      },
+      {
+       "n": "25",
+       "text": "Materiale prelievi: scadenze provette, aghi, disinfettante, tamponi, vetrini (raccogliere evidenze)"
+      },
+      {
+       "n": "26",
+       "text": "Cassetta/borsa di pronto soccorso"
+      },
+      {
+       "n": "27",
+       "text": "AMBU (ove previsto)"
+      },
+      {
+       "n": "28",
+       "text": "Defibrillatore (ove previsto)"
+      },
+      {
+       "n": "29",
+       "text": "Strumentazione dedicata, solo se prevista (glucometro, centrifughe)"
+      },
+      {
+       "n": "30",
+       "text": "Frigorifero"
+      },
+      {
+       "n": "31",
+       "text": "Congelatore"
+      },
+      {
+       "n": "32",
+       "text": "Termometro tarato"
+      },
+      {
+       "n": "33",
+       "text": "DPI"
+      },
+      {
+       "n": "34",
+       "text": "Contenitore rifiuti speciali"
+      },
+      {
+       "n": "35",
+       "text": "Faldone box prelievo (riportare il numero di revisione)",
+       "sub": [
+        {
+         "key": "35a",
+         "text": "Gestione attività di prelievo",
+         "rev": true
+        },
+        {
+         "key": "35b",
+         "text": "Prelievo, conservazione e trasporto campioni",
+         "rev": true
+        },
+        {
+         "key": "35c",
+         "text": "Descrizione provette vacutainer per tipologia esame",
+         "rev": true
+        },
+        {
+         "key": "35d",
+         "text": "Esami particolari",
+         "rev": true
+        },
+        {
+         "key": "35e",
+         "text": "Esecuzione controlli strumento dosaggio glicemia",
+         "rev": true
+        },
+        {
+         "key": "35f",
+         "text": "Dichiarazione di malore",
+         "rev": true
+        },
+        {
+         "key": "35g",
+         "text": "Campioni porta",
+         "rev": true
+        },
+        {
+         "key": "35h",
+         "text": "Catena di custodia accertamenti medico legali",
+         "rev": true
+        },
+        {
+         "key": "35i",
+         "text": "Controllo scadenza materiale prelievi cervico vaginali",
+         "rev": true
+        },
+        {
+         "key": "35j",
+         "text": "Controllo mensile validità scadenza materiale",
+         "rev": true
+        },
+        {
+         "key": "35k",
+         "text": "Contenuto cassetta di pronto soccorso",
+         "rev": true
+        },
+        {
+         "key": "35l",
+         "text": "Gestione pronto soccorso",
+         "rev": true
+        },
+        {
+         "key": "35m",
+         "text": "Gestione rischio biologico e sanificazione",
+         "rev": true
+        },
+        {
+         "key": "35n",
+         "text": "Gestione farmaci",
+         "rev": true
+        },
+        {
+         "key": "35o",
+         "text": "Altri (specificare)",
+         "free": true,
+         "repeat": 2
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "B2",
+     "title": "Immagine box prelievi",
+     "hint": "Verificare congruenza con le indicazioni aziendali",
+     "items": [
+      {
+       "n": "36",
+       "text": "Personale infermieristico",
+       "sub": [
+        {
+         "key": "36a",
+         "text": "Utilizzo divisa aziendale"
+        },
+        {
+         "key": "36b",
+         "text": "Presenza di cartellino identificativo"
+        },
+        {
+         "key": "36c",
+         "text": "Utilizzo camice"
+        },
+        {
+         "key": "36d",
+         "text": "Utilizzo calzari"
+        },
+        {
+         "key": "36e",
+         "text": "Corretto utilizzo guanti"
+        },
+        {
+         "key": "36f",
+         "text": "Presenza di distributore d'acqua"
+        }
+       ]
+      },
+      {
+       "n": "37",
+       "text": "Locale",
+       "sub": [
+        {
+         "key": "37a",
+         "text": "Cartellonistica"
+        },
+        {
+         "key": "37b",
+         "text": "Ordine e pulizia generale"
+        },
+        {
+         "key": "37c",
+         "text": "Stato dei muri"
+        },
+        {
+         "key": "37d",
+         "text": "Stato dei pavimenti"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "B3",
+     "title": "Verifica compilazione registri",
+     "items": [
+      {
+       "n": "38",
+       "text": "Compilazione dei moduli di manutenzione strumenti (se presenti)"
+      },
+      {
+       "n": "39",
+       "text": "Registro scadenze materiale prelievo"
+      },
+      {
+       "n": "40",
+       "text": "Registro contenuto cassetta pronto soccorso e controllo scadenze"
+      },
+      {
+       "n": "41",
+       "text": "Registro temperature"
+      }
+     ]
+    },
+    {
+     "key": "B4",
+     "title": "Verifica competenze del prelevatore",
+     "items": [
+      {
+       "n": "42",
+       "text": "Identificazione del paziente"
+      },
+      {
+       "n": "43",
+       "text": "Condivisione con il front office dei dati relativi a porta, valori diuresi, eventuali recuperi provette"
+      },
+      {
+       "n": "44",
+       "text": "Verifica del box prelievi a fine giornata per escludere giacenza di campioni"
+      },
+      {
+       "n": "45",
+       "text": "Conoscenza di istruzioni di lavoro e procedure operative (corretta applicazione delle etichette su provette e campioni davanti al paziente)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "SIC",
+   "title": "Sicurezza",
+   "sections": [
+    {
+     "key": "S1",
+     "title": "Sicurezza",
+     "items": [
+      {
+       "n": "Sic 1",
+       "text": "Presenza estintore (almeno uno a polvere) e verifica data di manutenzione; estintore appeso o su piantana"
+      },
+      {
+       "n": "Sic 2",
+       "text": "Presenza cartello estintore"
+      },
+      {
+       "n": "Sic 3",
+       "text": "Uscite d'emergenza non ostruite, apertura verso l'esodo, facile apertura (no porte scorrevoli)"
+      },
+      {
+       "n": "Sic 4",
+       "text": "Presenza cartello uscite d'emergenza"
+      },
+      {
+       "n": "Sic 5",
+       "text": "Abbattimento barriere architettoniche, verifica percorso disabili (gradini, citofono: specificare nelle note)"
+      },
+      {
+       "n": "Sic 6",
+       "text": "Presenza pedana mobile o fissa per l'accesso dei disabili (ove previsto)"
+      },
+      {
+       "n": "Sic 7",
+       "text": "Presenza bagno per disabili: dimensioni porte idonee e accessibilità (nessun materiale stoccato che impedisca l'ingresso)"
+      },
+      {
+       "n": "Sic 8",
+       "text": "Presenza e uso DPI (guanti rischio biologico, occhiali, mascherina, camice, anche per chi chiude i rifiuti)"
+      },
+      {
+       "n": "Sic 9",
+       "text": "Cartellonistica via di fuga nei corridoi, nei box prelievo e nel front office"
+      },
+      {
+       "n": "Sic 10",
+       "text": "Presenza della procedura di emergenza (planimetria di emergenza)"
+      },
+      {
+       "n": "Sic 11",
+       "text": "Presenza cartello divieto di fumo con nominativo del controllore"
+      },
+      {
+       "n": "Sic 12",
+       "text": "Gestione rifiuti: registri e formulari stampati, aggiornati e compilati correttamente; spazi e locali dedicati"
+      },
+      {
+       "n": "Sic 13",
+       "text": "Presenza cartello zona stoccaggio rifiuti"
+      },
+      {
+       "n": "Sic 14",
+       "text": "Verifica stato impiantistica (elettrica, idraulica)"
+      },
+      {
+       "n": "Sic 15",
+       "text": "Quadri elettrici chiusi e non coperti da armadi o scaffali; cartello di divieto d'uso dell'acqua per incendi su impianti elettrici"
+      },
+      {
+       "n": "Sic 16",
+       "text": "Postazione a videoterminale dell'accettista: sedia regolabile in altezza e inclinazione, spazio per la tastiera sul banco"
+      },
+      {
+       "n": "Sic 17",
+       "text": "Scaffali (se presenti) ancorati e con cartello della portata"
+      },
+      {
+       "n": "Sic 18",
+       "text": "Materiale per pulizie stoccato in apposito locale (non in bagno)"
+      },
+      {
+       "n": "Sic 19",
+       "text": "Presenza armadietti per il cambio di prelevatori e infermieri"
+      },
+      {
+       "n": "Sic 20",
+       "text": "Presenza DVR e valutazione rischio incendio (VRI); il personale sa dove recuperarli"
+      },
+      {
+       "n": "Sic 21",
+       "text": "Contenitore per lo smaltimento di siringhe con ago"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "SISTEMI",
+   "title": "Sistemi di gestione integrati",
+   "sections": [
+    {
+     "key": "SSL",
+     "title": "Salute e sicurezza sul lavoro · ISO 45001:2018",
+     "hint": "Domande specifiche per punti prelievo e centri medici. Le verifiche di dotazione restano nelle sezioni precedenti.",
+     "items": [
+      {
+       "n": "SSL01",
+       "text": "Il DVR copre i rischi propri di questa sede e delle attività che vi si svolgono: rischio biologico al prelievo, taglienti, aggressioni da parte dell'utenza, lavoro in solitudine, movimentazione di pazienti, videoterminali, apparecchiature elettromedicali e, ove presenti, radiazioni ionizzanti e risonanza magnetica?",
+       "ref": "ISO 45001:2018 · 6.1.2",
+       "hint": "DVR della sede con data certa e firme; il personale sa dove trovarlo (voce Sic 20); aggiornamento dopo nuove prestazioni o apparecchiature"
+      },
+      {
+       "n": "SSL02",
+       "text": "Per il prelievo sono in uso aghi e dispositivi con meccanismo di sicurezza, non si reincappuccia e il contenitore per taglienti è a portata di mano e sostituito prima del riempimento (D.Lgs. 19/2014)?",
+       "ref": "ISO 45001:2018 · 8.1.2",
+       "hint": "Osservazione di un prelievo; materiale in uso; livello di riempimento dei contenitori"
+      },
+      {
+       "n": "SSL03",
+       "text": "È nota e applicabile la procedura in caso di puntura accidentale o contatto con liquidi biologici (lavaggio, segnalazione immediata, invio al percorso sanitario, registrazione)? Gli eventi dell'ultimo anno sono stati registrati e analizzati?",
+       "ref": "ISO 45001:2018 · 8.2 / 10.2",
+       "hint": "Procedura post-esposizione affissa nel box; intervista a un prelevatore; registro degli infortuni e dei mancati infortuni"
+      },
+      {
+       "n": "SSL04",
+       "text": "Il personale della sede ha la formazione obbligatoria in corso di validità: generale e specifica, addetto antincendio e primo soccorso presente in ogni turno, BLSD dove c'è il defibrillatore, preposto individuato?",
+       "ref": "ISO 45001:2018 · 7.2",
+       "hint": "Scadenzario della formazione (Suite > Gestione del Personale > Formazione ed ECM); attestati; turni con gli addetti alle emergenze"
+      },
+      {
+       "n": "SSL05",
+       "text": "La sorveglianza sanitaria del personale della sede è nei termini e le prescrizioni dei giudizi di idoneità sono applicate nell'organizzazione del lavoro?",
+       "ref": "ISO 45001:2018 · 9.1.1",
+       "hint": "Scadenzario delle visite (Suite > Gestione del Personale > Medicina del lavoro). Si verificano scadenze, giudizi e prescrizioni: mai dati clinici"
+      },
+      {
+       "n": "SSL06",
+       "text": "Il rischio di aggressione e violenza da parte dell'utenza è valutato e gestito: istruzioni per il personale di accettazione, possibilità di chiamare aiuto, segnalazione degli episodi, tutela di chi lavora da solo in apertura e chiusura?",
+       "ref": "ISO 45001:2018 · 6.1.2 / 8.1",
+       "hint": "Valutazione nel DVR; istruzione operativa; episodi segnalati e azioni conseguenti (Raccomandazione ministeriale n. 8)"
+      },
+      {
+       "n": "SSL07",
+       "text": "La sede sa gestire il malore di un utente e le altre emergenze: prova di evacuazione nell'ultimo anno, numeri di emergenza esposti, ruoli assegnati, defibrillatore (ove presente) controllato secondo il piano?",
+       "ref": "ISO 45001:2018 · 8.2",
+       "hint": "Verbale della prova di evacuazione; registro dei controlli del defibrillatore e della cassetta di pronto soccorso; intervista"
+      },
+      {
+       "n": "SSL08",
+       "text": "Le apparecchiature elettromedicali della sede (ecografi, elettrocardiografi, poltrone e lettini elettrici, centrifughe) hanno le verifiche di sicurezza elettrica e la manutenzione nei termini e l'impianto elettrico e di terra ha la verifica periodica (DPR 462/2001)?",
+       "ref": "ISO 45001:2018 · 8.1 / 6.1.3",
+       "hint": "Rapporti di verifica di sicurezza elettrica; piano di manutenzione; verbale della verifica dell'impianto di terra"
+      },
+      {
+       "n": "SSL09",
+       "text": "Dove sono presenti radiologia, MOC, TC o risonanza magnetica: sono rispettate le norme di radioprotezione e di sicurezza RM (esperto di radioprotezione e relazione, classificazione e dosimetria del personale, segnaletica e accessi controllati, esperto responsabile della sicurezza RM, questionario pre-esame)? (altrimenti N.A.)",
+       "ref": "ISO 45001:2018 · 8.1 / 6.1.3",
+       "hint": "Relazione dell'esperto di radioprotezione; letture dosimetriche; regolamento di sicurezza RM; registri degli accessi alla zona controllata"
+      },
+      {
+       "n": "SSL10",
+       "text": "Chi opera nella sede per conto di terzi (pulizie, manutentori, trasporto campioni, ritiro rifiuti) è informato sui rischi e le interferenze sono gestite; nei punti ospitati presso terzi (farmacie, studi, strutture partner) gli obblighi di sicurezza tra ospitante e Toscana Diagnostica sono definiti?",
+       "ref": "ISO 45001:2018 · 8.1.4",
+       "hint": "DUVRI o informativa sui rischi; contratto con la struttura ospitante con la ripartizione degli obblighi; verbale di coordinamento"
+      },
+      {
+       "n": "SSL11",
+       "text": "Il personale della sede può segnalare pericoli e proposte di miglioramento, conosce il RLS e riceve un riscontro alle segnalazioni?",
+       "ref": "ISO 45001:2018 · 5.4",
+       "hint": "Segnalazioni dell'ultimo anno con esito; intervista a campione"
+      }
+     ]
+    },
+    {
+     "key": "AMB",
+     "title": "Ambiente · ISO 14001",
+     "hint": "Punti norma secondo la struttura della ISO 14001:2015, confermata nell'edizione successiva.",
+     "items": [
+      {
+       "n": "AMB01",
+       "text": "Sono noti gli aspetti ambientali della sede (rifiuti sanitari a rischio infettivo, taglienti, farmaci e materiali scaduti, toner e apparecchi elettrici, consumi di energia e acqua, climatizzazione) e le regole per gestirli?",
+       "ref": "ISO 14001 · 6.1.2",
+       "hint": "Istruzione operativa ambientale della sede; intervista al personale"
+      },
+      {
+       "n": "AMB02",
+       "text": "I rifiuti sanitari sono separati all'origine con il codice EER corretto, in contenitori idonei, chiusi ed etichettati con la data di chiusura; nei rifiuti urbani non finisce materiale a rischio infettivo?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Osservazione nel box prelievi e negli ambulatori; controllo di un contenitore dei rifiuti urbani"
+      },
+      {
+       "n": "AMB03",
+       "text": "Il deposito temporaneo dei rifiuti a rischio infettivo rispetta i tempi (5 giorni dalla chiusura del contenitore, 30 giorni sotto i 200 litri) e la frequenza dei ritiri è adeguata ai volumi della sede?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Date di chiusura dei contenitori; calendario dei ritiri; formulari dell'ultimo trimestre (per registri e locali vedi voce Sic 12)"
+      },
+      {
+       "n": "AMB04",
+       "text": "Farmaci, reagenti e materiali scaduti sono tolti dall'uso, tenuti separati e smaltiti con il codice corretto; toner, lampade e apparecchi elettrici dismessi sono avviati al recupero con documentazione?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Contenitore dedicato agli scaduti; documenti di ritiro"
+      },
+      {
+       "n": "AMB05",
+       "text": "I consumi della sede sono tenuti sotto controllo: temperature di climatizzazione impostate correttamente, apparecchi e luci spenti a fine giornata, frigoriferi con guarnizioni integre e sbrinati, letture dei contatori comunicate?",
+       "ref": "ISO 14001 · 8.1 / 9.1.1",
+       "hint": "Sopralluogo a fine turno; letture dei contatori (Suite > Facility > Utenze); regole di spegnimento affisse"
+      },
+      {
+       "n": "AMB06",
+       "text": "Climatizzatori e frigoriferi con gas fluorurati hanno la manutenzione e i controlli delle perdite previsti, con il rapporto del tecnico certificato?",
+       "ref": "ISO 14001 · 6.1.3 / 8.1",
+       "hint": "Rapporti di manutenzione e di controllo delle perdite"
+      },
+      {
+       "n": "AMB07",
+       "text": "La raccolta differenziata dei rifiuti urbani (carta, plastica, vetro, organico) è organizzata secondo le regole del Comune, con contenitori identificati anche in sala d'attesa?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Contenitori presenti e usati correttamente"
+      },
+      {
+       "n": "AMB08",
+       "text": "Il personale sa che cosa fare in caso di sversamento di materiale biologico o di rottura di un contenitore di rifiuti e ha a disposizione il materiale per intervenire?",
+       "ref": "ISO 14001 · 8.2",
+       "hint": "Kit antisversamento; istruzione; intervista"
+      },
+      {
+       "n": "AMB09",
+       "text": "Il personale conosce la politica ambientale e il proprio contributo (separazione dei rifiuti, risparmio di energia, acqua, carta e materiali monouso)?",
+       "ref": "ISO 14001 · 7.3",
+       "hint": "Intervista a campione; comunicazioni interne ricevute"
+      }
+     ]
+    },
+    {
+     "key": "ACO",
+     "title": "Prevenzione della corruzione · ISO 37001",
+     "hint": "Si verifica l'applicazione dei controlli nella struttura: i contenuti delle segnalazioni restano alla funzione preposta.",
+     "items": [
+      {
+       "n": "ACO01",
+       "text": "Il personale della sede ha ricevuto la formazione su politica anticorruzione, Codice etico e Modello 231 e sa a chi rivolgersi in caso di dubbio?",
+       "ref": "ISO 37001 · 7.3",
+       "hint": "Registro della formazione; intervista a campione"
+      },
+      {
+       "n": "ACO02",
+       "text": "Omaggi e utilità offerti da utenti, fornitori, informatori o partner sono rifiutati oppure dichiarati e registrati secondo la procedura; nessun omaggio in denaro è accettato?",
+       "ref": "ISO 37001 · 8.7",
+       "hint": "Registro di omaggi e ospitalità; intervista (che cosa fai se un utente ti lascia una mancia?)"
+      },
+      {
+       "n": "ACO03",
+       "text": "Sconti, gratuità, esenzioni e priorità sono applicati solo nei casi previsti, da chi è autorizzato, e restano tracciati nel gestionale?",
+       "ref": "ISO 37001 · 8.4",
+       "hint": "Elenco di sconti e gratuità del mese con l'autorizzazione; verifica a campione di cinque accettazioni"
+      },
+      {
+       "n": "ACO04",
+       "text": "Incassi e fondo cassa sono gestiti con separazione dei compiti e riconciliazione giornaliera; gli storni e gli annulli sono autorizzati e motivati?",
+       "ref": "ISO 37001 · 8.3",
+       "hint": "Chiusure di cassa (Suite > Cash); elenco degli storni del mese con il motivo (per la procedura di cassa vedi voce 21)"
+      },
+      {
+       "n": "ACO05",
+       "text": "Nei rapporti con medici prescrittori, medici di medicina generale, farmacie e strutture invianti non sono riconosciuti compensi, regali o vantaggi legati all'invio di pazienti (divieto di comparaggio)?",
+       "ref": "ISO 37001 · 8.4",
+       "hint": "Intervista al site manager; accordi in essere tutti scritti e approvati dalla Direzione"
+      },
+      {
+       "n": "ACO06",
+       "text": "I rapporti con la struttura ospitante, i partner locali e i liberi professionisti che operano nella sede sono regolati da contratti scritti con la clausola anticorruzione?",
+       "ref": "ISO 37001 · 8.2",
+       "hint": "Contratti a campione (Suite > Business Hub e Gestione del Personale)"
+      },
+      {
+       "n": "ACO07",
+       "text": "Chi lavora nella sede ha dichiarato eventuali conflitti di interesse (attività presso concorrenti, rapporti personali con fornitori o partner, pazienti indirizzati alla propria attività privata)?",
+       "ref": "ISO 37001 · Conflitti di interesse",
+       "hint": "Dichiarazioni raccolte; misure adottate"
+      },
+      {
+       "n": "ACO08",
+       "text": "Il canale di segnalazione degli illeciti (whistleblowing, D.Lgs. 24/2023) è noto al personale e l'informativa è disponibile?",
+       "ref": "ISO 37001 · 8.9",
+       "hint": "Informativa affissa o in intranet; intervista. Si verifica solo che il canale sia conosciuto"
+      }
+     ]
+    },
+    {
+     "key": "PDG",
+     "title": "Parità di genere · UNI/PdR 125:2022",
+     "hint": "Solo dati aggregati: nessun dato retributivo o personale individuale nelle note.",
+     "items": [
+      {
+       "n": "PDG01",
+       "text": "La politica per la parità di genere è nota al personale della sede e la comunicazione verso l'utenza (cartelli, moduli, linguaggio allo sportello) è priva di stereotipi?",
+       "ref": "UNI/PdR 125:2022 · Area Cultura e strategia",
+       "hint": "Politica disponibile; materiali esposti; intervista"
+      },
+      {
+       "n": "PDG02",
+       "text": "L'accesso a formazione, incarichi e crescita professionale è equo tra donne e uomini, anche per chi lavora a tempo parziale?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.2 Gestione della carriera",
+       "hint": "Ore di formazione per genere; incarichi assegnati nell'ultimo anno"
+      },
+      {
+       "n": "PDG03",
+       "text": "La tutela di gravidanza e allattamento è applicata nella sede (valutazione dei rischi di prelievo, rischio biologico e posture, cambio di mansione) e i congedi sono fruiti senza penalizzazioni?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.4 Genitorialità e cura",
+       "hint": "Valutazione dei rischi per gestanti nel DVR; casi gestiti (senza dati sanitari)"
+      },
+      {
+       "n": "PDG04",
+       "text": "I turni della sede (aperture all'alba, sabati, sostituzioni) sono pianificati con anticipo e criteri equi e le richieste di flessibilità hanno una risposta motivata?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.5 Conciliazione vita-lavoro",
+       "hint": "Turni pubblicati (Suite > Room Planning > Turni); richieste e relativo esito"
+      },
+      {
+       "n": "PDG05",
+       "text": "Il personale sa come segnalare molestie o comportamenti inappropriati, anche da parte dell'utenza o di fornitori, e conosce le tutele previste?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.6 Prevenzione di abusi e molestie",
+       "hint": "Procedura nota; canale riservato; intervista"
+      },
+      {
+       "n": "PDG06",
+       "text": "A parità di mansione e livello non risultano differenze retributive di genere non giustificate tra il personale della sede?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.3 Equità salariale",
+       "hint": "Riscontro delle Risorse umane su dati aggregati; nessun dato individuale nelle note"
+      }
+     ]
+    },
+    {
+     "key": "DEI",
+     "title": "Diversità e inclusione · ISO 30415:2021",
+     "hint": "Riferimenti ai capitoli della linea guida ISO 30415.",
+     "items": [
+      {
+       "n": "DEI01",
+       "text": "L'accoglienza è inclusiva: priorità e assistenza a persone fragili, con disabilità, anziane o in gravidanza; comunicazione comprensibile a chi non parla bene l'italiano; rispetto dell'identità della persona nella chiamata e nei documenti?",
+       "ref": "ISO 30415:2021 · cap. 9 Prodotti e servizi",
+       "hint": "Osservazione allo sportello; cartello delle precedenze (voce 8); materiali in altre lingue o pittogrammi"
+      },
+      {
+       "n": "DEI02",
+       "text": "Le informazioni per l'utenza (preparazione agli esami, consensi, modalità di ritiro dei referti) sono in linguaggio chiaro e in formato leggibile, con aiuto disponibile per chi ha difficoltà con gli strumenti digitali?",
+       "ref": "ISO 30415:2021 · cap. 9 Prodotti e servizi",
+       "hint": "Moduli e istruzioni in uso; segnalazioni dell'utenza sul tema"
+      },
+      {
+       "n": "DEI03",
+       "text": "Nella sede il clima è rispettoso e non risultano episodi di esclusione o trattamento non rispettoso tra colleghi o verso l'utenza; le segnalazioni hanno un seguito?",
+       "ref": "ISO 30415:2021 · cap. 7 Cultura inclusiva",
+       "hint": "Intervista; segnalazioni e reclami del periodo"
+      },
+      {
+       "n": "DEI04",
+       "text": "Per il personale con disabilità o limitazioni sono adottati accomodamenti ragionevoli (postazione, orari, strumenti, prescrizioni del medico competente)?",
+       "ref": "ISO 30415:2021 · cap. 8 Ciclo di vita delle risorse umane",
+       "hint": "Accomodamenti adottati; prescrizioni applicate"
+      },
+      {
+       "n": "DEI05",
+       "text": "I neoassunti e i sostituti ricevono affiancamento e istruzioni comprensibili prima di operare da soli?",
+       "ref": "ISO 30415:2021 · cap. 8 Ciclo di vita delle risorse umane",
+       "hint": "Piano di inserimento; schede di addestramento"
+      }
+     ]
+    },
+    {
+     "key": "SOC",
+     "title": "Responsabilità sociale · PAS 24000:2022",
+     "hint": "Riferimenti per tema della PAS 24000: i numeri di paragrafo vanno riportati da Qualità sull'edizione in uso.",
+     "items": [
+      {
+       "n": "SOC01",
+       "text": "Nella sede sono rispettati orario massimo, pause, riposo giornaliero di 11 ore e riposo settimanale; straordinari e sostituzioni sono registrati e retribuiti?",
+       "ref": "PAS 24000:2022 · Orario di lavoro",
+       "hint": "Turni e timbrature di un mese a campione"
+      },
+      {
+       "n": "SOC02",
+       "text": "Straordinari, cambi turno e spostamenti tra sedi sono concordati e non imposti con pressioni indebite?",
+       "ref": "PAS 24000:2022 · Lavoro forzato o obbligato",
+       "hint": "Intervista a campione; richieste registrate"
+      },
+      {
+       "n": "SOC03",
+       "text": "La sede offre condizioni di lavoro dignitose: servizi igienici per il personale, armadietti, acqua potabile, un luogo per la pausa, microclima adeguato?",
+       "ref": "PAS 24000:2022 · Salute e sicurezza",
+       "hint": "Sopralluogo (per gli armadietti vedi voce Sic 19)"
+      },
+      {
+       "n": "SOC04",
+       "text": "Chi opera nella sede ha un contratto regolare (dipendente, libero professionista, tirocinante) coerente con l'attività svolta e riceve compensi puntuali?",
+       "ref": "PAS 24000:2022 · Retribuzione",
+       "hint": "Posizioni contrattuali (Suite > Gestione del Personale); rendiconti dei professionisti approvati nei tempi"
+      },
+      {
+       "n": "SOC05",
+       "text": "Tirocinanti e studenti presenti nella sede hanno convenzione, tutor e orari definiti e non sostituiscono personale in organico?",
+       "ref": "PAS 24000:2022 · Lavoro infantile e giovani lavoratori",
+       "hint": "Fascicoli dei tirocini; presenze"
+      },
+      {
+       "n": "SOC06",
+       "text": "Richiami e contestazioni avvengono nel rispetto della dignità della persona e secondo CCNL; il codice disciplinare è consultabile?",
+       "ref": "PAS 24000:2022 · Pratiche disciplinari",
+       "hint": "Codice disciplinare esposto o in intranet; intervista"
+      },
+      {
+       "n": "SOC07",
+       "text": "Il personale è libero di aderire a organizzazioni sindacali e ha accesso alle comunicazioni sindacali?",
+       "ref": "PAS 24000:2022 · Libertà di associazione",
+       "hint": "Bacheca o intranet; intervista"
+      },
+      {
+       "n": "SOC08",
+       "text": "Il personale di imprese esterne che lavora nella sede (pulizie, vigilanza, trasporti) opera in condizioni regolari, con tesserino di riconoscimento e senza anomalie evidenti su orari e dotazioni?",
+       "ref": "PAS 24000:2022 · Catena di fornitura",
+       "hint": "Tesserini; orari del servizio; segnalazioni alla funzione Acquisti"
+      },
+      {
+       "n": "SOC09",
+       "text": "Il personale della sede sa come presentare un reclamo o una proposta sulle condizioni di lavoro e riceve un riscontro?",
+       "ref": "PAS 24000:2022 · Sistema di gestione",
+       "hint": "Canale di reclamo; esempi con i tempi di risposta"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "report": {
+  "title": "Audit report",
+  "hint": "Riportare le non conformità rilevate durante l'audit, descrivendo ove possibile le cause, la soluzione della non conformità e le eventuali azioni correttive proposte (es. materiali scaduti, mancato utilizzo DPI).",
+  "nc_columns": [
+   "n",
+   "descrizione",
+   "cause",
+   "soluzione",
+   "azione_correttiva",
+   "persona_riferimento",
+   "entro"
+  ],
+  "observations_label": "Osservazioni e opportunità di miglioramento"
+ }
 }

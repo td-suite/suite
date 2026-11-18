@@ -134,3 +134,25 @@ dell'organigramma; righe in `alerts_sent`, notifica ed email nel registro). Test
 
 ## Sedi non ancora aperte (30/10/2026)
 Una sede struttura entra nel piano degli auto-audit solo quando è in esercizio: attiva e con data di apertura (Amministrazione > Sedi > Data di apertura) nulla o entro la fine del mese. Prima dell'apertura (es. COR Centro Radiologico dal 2 gennaio 2027) non si crea l'auto-audit, non parte l'alert del 17, non conta nei badge né nella sintesi TD; nel Piano degli Audit la sede mostra "apre il …". Vista `audit.sites_v`, colonna `in_esercizio` (migrazione 002).
+
+## v0.84.0 (18/11/2026): Laboratorio di Analisi, sistemi integrati, ripartenza
+Richiesta del CEO: checklist dedicata al Laboratorio di Analisi, domande sugli altri sistemi di gestione in entrambe le checklist,
+azzeramento e ripartenza da novembre 2026.
+- **Tre modelli**, uno attivo per tipo: `TD-AUD-SEDE` rev. 2 (punti prelievo e centri medici), `TD-AUD-LAB` rev. 1 (sedi di tipo
+  LABORATORIO), `TD-AUD-LE` (partner). La scelta è automatica dal tipo della sede (`templatePerSede`), per auto-audit e audit interni.
+  Una revisione nuova distribuita con la Suite diventa attiva alla prima semina; gli audit esistenti restano sulla loro revisione.
+- **TD-AUD-LAB** (167 voci): parte "Checklist e checklist operativa" in un'unica schermata, prima le 59 domande di sistema ISO 9001:2015
+  (e ISO 7101) raggruppate per capitolo della norma, poi le 48 verifiche operative per area; testi dell'Excel del CEO invariati, con
+  punto norma (`ref`) ed evidenze attese (`hint`) su ogni domanda di sistema. Parte "Sistemi di gestione integrati" (60 domande).
+- **Sistemi di gestione integrati** (in entrambi i modelli, una sezione per norma, quindi un punteggio per norma): SSL ISO 45001:2018,
+  AMB ISO 14001, ACO ISO 37001, PDG UNI/PdR 125:2022, DEI ISO 30415:2021, SOC PAS 24000:2022. Nel modello delle sedi sono 48 domande
+  scritte per punti prelievo e centri medici, senza ripetere le verifiche di dotazione della sezione Sicurezza.
+- **Riferimenti normativi**: punti di ISO 45001, ISO 14001 e ISO 37001 secondo la struttura comune delle norme; UNI/PdR 125 per area e
+  per politica del § 6.3.2; ISO 30415 per capitolo; PAS 24000 per tema, senza numero di paragrafo. Qualità conferma i riferimenti
+  sull'edizione in uso prima dell'adozione formale e carica l'eventuale revisione dalle Impostazioni.
+- **Scala delle risposte**: resta Sì / No / NC / N.A. con nota (la scala a sei esiti dell'Excel non è stata introdotta: osservazioni e
+  opportunità di miglioramento vanno nel campo dell'Audit report).
+- **Ripartenza** (Impostazioni, solo amministratore, parola di conferma RIPARTI): auto-audit e audit interni nel cestino, avvisi
+  inviati, sintesi delle sedi e di rete e punteggi passati a Retail eliminati, `start_period` fissato; per i mesi precedenti non si
+  aprono auto-audit. Audit di terze parti e audit sui partner non si toccano. `POST /api/audit/settings/ripartenza`.
+- Export XLSX del singolo audit con le colonne "Norma e punto" ed "Evidenze attese"; nel PDF la norma segue il testo della voce.

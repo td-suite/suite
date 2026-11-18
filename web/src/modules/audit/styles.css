@@ -128,3 +128,9 @@
 .au-acts { white-space: nowrap; display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
 .au-acts .iconbtn { width: 30px; height: 30px; display: inline-grid; place-items: center; }
 .au-table th:last-child, .au-table td:last-child { text-align: right; }
+
+/* v0.84.0: norma e punto di ogni domanda, evidenze attese (guida per l'auditor) */
+.au-ref { display: inline-block; margin-top: 5px; padding: 1px 8px; border-radius: 999px; background: var(--teal-050, #e6f0f2); color: var(--teal, #1C505E); font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
+.au-evid { margin-top: 4px; font-size: 12.5px; color: var(--muted, #5B6B70); line-height: 1.4; }
+.au-evid b { font-weight: 600; }
+.au-item .q .n { margin-right: 6px; }

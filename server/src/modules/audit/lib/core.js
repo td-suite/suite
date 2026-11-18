@@ -30,20 +30,28 @@ export async function setSetting(key, value, userId) {
 let seeded = false;
 export async function ensureTemplates() {
   if (seeded) return;
-  for (const [file, kind] of [['checklist_sede.json', 'SEDE'], ['checklist_legal_entity.json', 'LEGAL_ENTITY']]) {
+  for (const [file, kind] of [['checklist_sede.json', 'SEDE'], ['checklist_laboratorio.json', 'LABORATORIO'], ['checklist_legal_entity.json', 'LEGAL_ENTITY']]) {
     const body = JSON.parse(fs.readFileSync(path.join(DATA_DIR, file), 'utf8'));
     const errs = validateTemplate(body);
     if (errs.length) { console.error(`[audit] modello ${file} non valido: ${errs.join('; ')}`); continue; }
     const ex = await one('SELECT id FROM templates WHERE code=$1 AND rev=$2', [body.code, String(body.rev)]);
     if (!ex) {
-      const altri = await one('SELECT 1 FROM templates WHERE kind=$1 AND active', [kind]);
-      await q('INSERT INTO templates (code, title, rev, rev_date, kind, body, active) VALUES ($1,$2,$3,$4,$5,$6,$7)', [body.code, body.title, String(body.rev), body.rev_date || null, kind, JSON.stringify(body), !altri]);
+      // una revisione nuova distribuita con la Suite diventa quella attiva (v0.84.0: TD-AUD-SEDE rev. 2); succede una volta sola,
+      // alla prima semina: una revisione caricata dopo dalle Impostazioni resta attiva. Gli audit esistenti restano sulla loro revisione.
+      await q('UPDATE templates SET active=FALSE WHERE kind=$1 AND active', [kind]);
+      await q('INSERT INTO templates (code, title, rev, rev_date, kind, body, active) VALUES ($1,$2,$3,$4,$5,$6,TRUE)', [body.code, body.title, String(body.rev), body.rev_date || null, kind, JSON.stringify(body)]);
     }
   }
   seeded = true;
 }
 export async function templateAttivo(kind) {
   return one('SELECT * FROM templates WHERE kind=$1 AND active ORDER BY id DESC LIMIT 1', [kind]);
+}
+// Modello di una sede: il Laboratorio di Analisi ha la sua checklist, le altre strutture quella di punti prelievo e centri medici
+export const kindModelloSede = (site) => (site?.kind === 'LABORATORIO' ? 'LABORATORIO' : 'SEDE');
+export async function templatePerSede(site) {
+  await ensureTemplates();
+  return (await templateAttivo(kindModelloSede(site))) || templateAttivo('SEDE');
 }
 export async function templateById(id) {
   const t = await one('SELECT * FROM templates WHERE id=$1', [id]);
@@ -135,10 +143,12 @@ export async function getOrCreateAuto(siteId, period, moduleUserId) {
   const site = await siteById(siteId);
   if (!isStructure(site)) throw bad('L\'auto-audit mensile riguarda le sedi struttura (punti prelievo, centri medici e diagnostici, laboratorio)');
   const p = period || monthStart(new Date());
+  const avvio = String((await settings()).start_period || '').slice(0, 10);
+  if (avvio && String(p).slice(0, 10) < avvio) throw bad(`Gli audit ripartono da ${new Date(`${avvio}T12:00:00`).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}: per i mesi precedenti non si aprono auto-audit`);
   if (!inEsercizio(site, p)) throw bad(`La sede non è ancora in esercizio (apertura ${new Date(site.opened_at).toLocaleDateString('it-IT')}): l'auto-audit parte dal mese di apertura`);
   const ex = await one(`SELECT id FROM audits WHERE kind='AUTO' AND site_id=$1 AND period=$2 AND deleted_at IS NULL`, [siteId, p]);
   if (ex) return { id: ex.id, created: false };
-  const t = await templateAttivo('SEDE');
+  const t = await templatePerSede(site);
   if (!t) throw bad('Nessun modello di checklist sede attivo');
   try {
     const row = await one(`INSERT INTO audits (kind, site_id, template_id, period, status, conducted_by, created_by, header) VALUES ('AUTO',$1,$2,$3,'BOZZA',$4,$4,$5) RETURNING id`,
@@ -153,7 +163,7 @@ export async function getOrCreateAuto(siteId, period, moduleUserId) {
 export async function createAudit({ kind, site_id, organization_id, header }, moduleUserId, userName) {
   if (kind === 'INTERNO') {
     const site = await siteById(site_id);
-    const t = await templateAttivo('SEDE');
+    const t = await templatePerSede(site);
     if (!t) throw bad('Nessun modello di checklist sede attivo');
     const row = await one(`INSERT INTO audits (kind, site_id, template_id, status, conducted_by, conducted_at, created_by, header) VALUES ('INTERNO',$1,$2,'BOZZA',$3,now(),$3,$4) RETURNING id`,
       [site_id, t.id, moduleUserId, JSON.stringify({ sede: site.name, effettuato_da: userName || '', data: new Date().toISOString().slice(0, 10), ...(header || {}) })]);
@@ -304,3 +314,18 @@ export async function listAudits(req, query, { limit = 500 } = {}) {
 }
 
 export const isAdminReq = isAdmin;
+
+// ---- Ripartenza (richiesta del CEO del 18/11/2026: "resetta tutti i controlli e gli audit attesi fino ad oggi. Cominciamo da novembre"):
+// auto-audit e audit interni finiscono nel cestino (recuperabili: deleted_at), si azzerano avvisi inviati, sintesi delle sedi e punteggi
+// passati a Retail, e si fissa il primo mese utile. Audit di terze parti e audit sui partner non si toccano.
+export async function ripartenza({ period, userId }) {
+  if (!/^\d{4}-\d{2}-01$/.test(String(period))) throw bad('Mese di ripartenza non valido');
+  return tx(async (c) => {
+    const a = await c.query(`UPDATE audits SET deleted_at=now(), deleted_by=$1 WHERE deleted_at IS NULL AND kind IN ('AUTO','INTERNO') RETURNING id, kind`, [userId || null]);
+    const al = await c.query('DELETE FROM alerts_sent');
+    const sy = await c.query(`DELETE FROM syntheses WHERE scope IN ('SEDE','TD')`);
+    const sc = await c.query('DELETE FROM public.site_sgi_scores');
+    await c.query(`INSERT INTO app_settings (key, value, updated_by) VALUES ('start_period', $1, $2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now(), updated_by=EXCLUDED.updated_by`, [JSON.stringify(period), userId || null]);
+    return { period, auto: a.rows.filter((x) => x.kind === 'AUTO').length, interni: a.rows.filter((x) => x.kind === 'INTERNO').length, avvisi: al.rowCount, sintesi: sy.rowCount, punteggi: sc.rowCount };
+  });
+}

@@ -72,7 +72,7 @@ export async function auditXlsx(a) {
   const ws = wb.addWorksheet('Checklist');
   const auto = a.kind === 'AUTO';
   const items = a.template ? itemsOf(a.template.body) : [];
-  ws.columns = [{ header: 'Parte', key: 'parte', width: 18 }, { header: 'Sezione', key: 'sez', width: 36 }, { header: 'N.', key: 'n', width: 7 }, { header: 'Voce', key: 'voce', width: 70 }, { header: 'Rev.', key: 'rev', width: 7 },
+  ws.columns = [{ header: 'Parte', key: 'parte', width: 18 }, { header: 'Sezione', key: 'sez', width: 36 }, { header: 'N.', key: 'n', width: 7 }, { header: 'Voce', key: 'voce', width: 70 }, { header: 'Norma e punto', key: 'ref', width: 26 }, { header: 'Evidenze attese', key: 'hint', width: 50 }, { header: 'Rev.', key: 'rev', width: 7 },
     { header: auto ? 'Sede' : 'Esito', key: 'v', width: 8 }, { header: auto ? 'Nota sede' : 'Nota', key: 'nota', width: 40 }, ...(auto ? [{ header: 'Verifica', key: 'vv', width: 9 }, { header: 'Nota verifica', key: 'vnota', width: 40 }] : []), ...(a.kind === 'LEGAL_ENTITY' ? [{ header: 'Rischio', key: 'risk', width: 9 }] : [])];
   const top = [[`${a.template?.title || 'Audit'}`], [`${KINDS[a.kind]} · ${soggetto(a)} · ${dataAudit(a)} · effettuato da ${condotto(a)} · stato ${STATUS_LABEL[a.status] || a.status}`], [`Punteggio ${auto ? 'sede' : ''} ${pctS(a.score)}${a.score_verifier != null ? ` · verifica ${pctS(a.score_verifier)}` : ''} · livello ${lvl(a.effective_score)}`], []];
   ws.spliceRows(1, 0, ...top);
@@ -81,7 +81,7 @@ export async function auditXlsx(a) {
   for (const it of items) {
     const x = a.answers?.[it.key] || {}; const v = a.verifier_answers?.[it.key] || {};
     if (it.free && !x.free && !v.free) continue;
-    ws.addRow({ parte: it.part_title, sez: `${it.section_key} · ${it.section_title}`, n: it.key, voce: it.free ? `${it.label}: ${x.free || v.free || ''}` : (it.parent ? `${it.parent} · ${it.label}` : it.label), rev: x.rev || '', v: ANS[x.v] || '', nota: x.note || '', vv: ANS[v.v] || '', vnota: v.note || '', risk: x.risk || '' });
+    ws.addRow({ parte: it.part_title, sez: `${it.section_key} · ${it.section_title}`, n: it.key, ref: it.ref || '', hint: it.hint || '', voce: it.free ? `${it.label}: ${x.free || v.free || ''}` : (it.parent ? `${it.parent} · ${it.label}` : it.label), rev: x.rev || '', v: ANS[x.v] || '', nota: x.note || '', vv: ANS[v.v] || '', vnota: v.note || '', risk: x.risk || '' });
   }
   ws.views = [{ state: 'frozen', ySplit: 5 }];
   const rep = wb.addWorksheet('Audit report');
@@ -267,7 +267,7 @@ export async function auditPdf(a) {
           if (y + 14 > st.H - 48) { st.addPage(); y = doc.y; y += tableRow(st, M, y, cols, head, { head: true, size: 7.5, minH: 12 }); }
           doc.rect(M, y, CW, 12).fill(C.soft); doc.font('B').fontSize(7.5).fillColor(C.teal).text(it.group, M + 4, y + 2.5, { lineBreak: false }); y += 12; lastGroup = it.group;
         }
-        const voce = it.free ? `${it.label}: ${x.free || v.free || ''}` : (it.parent ? `${it.parent} · ${it.label}` : it.label);
+        const voce = (it.free ? `${it.label}: ${x.free || v.free || ''}` : (it.parent ? `${it.parent} · ${it.label}` : it.label)) + (it.ref ? ` [${it.ref}]` : '');
         const cells = auto ? [it.key, voce, x.rev || '', mark(x.v, 'SI'), mark(x.v, 'NO'), mark(x.v, 'NC'), mark(x.v, 'NA'), x.note || '', mark(v.v, 'SI'), mark(v.v, 'NO'), mark(v.v, 'NC'), mark(v.v, 'NA'), v.note || '']
           : [it.key, voce, x.rev || '', mark(x.v, 'SI'), mark(x.v, 'NO'), mark(x.v, 'NC'), mark(x.v, 'NA'), [x.note, x.risk ? `rischio ${x.risk}` : null].filter(Boolean).join(' · ')];
         doc.font('R').fontSize(7.5);

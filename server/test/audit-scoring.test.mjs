@@ -118,8 +118,8 @@ test('modelli JSON: validi, chiavi uniche, campi obbligatori, sezioni attese', (
     assert.ok(Array.isArray(t.answer_values) && t.answer_values.join() === 'SI,NO,NC,NA');
     assert.ok(t.report && Array.isArray(t.report.nc_columns) && t.report.nc_columns.includes('descrizione'));
   }
-  assert.equal(sede.parts.length, 3);
-  assert.deepEqual(sede.parts.flatMap((p) => p.sections.map((s) => s.key)), ['F1', 'F2', 'F3', 'F4', 'F5', 'B1', 'B2', 'B3', 'B4', 'S1']);
+  assert.equal(sede.parts.length, 4);   // rev. 2: Front office, Box prelievo, Sicurezza, Sistemi di gestione integrati
+  assert.deepEqual(sede.parts.flatMap((p) => p.sections.map((s) => s.key)), ['F1', 'F2', 'F3', 'F4', 'F5', 'B1', 'B2', 'B3', 'B4', 'S1', 'SSL', 'AMB', 'ACO', 'PDG', 'DEI', 'SOC']);
   assert.ok(itemsOf(sede).length > 100);
   assert.equal(itemsOf(sede).filter((i) => i.free).length, 5);   // 19p x3 + 35o x2
   assert.equal(le.parts[0].sections.length, 6);

@@ -21,3 +21,4 @@ export const isManagerOf = (req, siteId) => mySiteIds(req).includes(Number(siteI
 
 export const requireAuditor = (req, _res, next) => (isAuditor(req) ? next() : next(forbidden('Operazione riservata a Qualità, agli auditor o all\'amministratore')));
 export const requireQualita = (req, _res, next) => (isQualita(req) ? next() : next(forbidden('Operazione riservata a Qualità o all\'amministratore')));
+export const requireAdmin = (req, _res, next) => (isAdmin(req) ? next() : next(forbidden('Operazione riservata all\'amministratore')));

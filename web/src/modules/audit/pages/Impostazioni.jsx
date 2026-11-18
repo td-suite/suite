@@ -13,6 +13,13 @@ export default function Impostazioni() {
   const [busy, setBusy] = useState(false);
   const [prev, setPrev] = useState(null);
   const [esito, setEsito] = useState(null);
+  // Ripartenza: auto-audit e audit interni nel cestino, avvisi, sintesi e punteggi azzerati, primo mese utile (solo amministratore)
+  const [rip, setRip] = useState(null);
+  const riparti = async () => {
+    setBusy(true);
+    try { const r = await api.post('/settings/ripartenza', { period: rip.period, conferma: rip.conferma }); toast(`Ripartenza da ${mese(`${rip.period}-01`)}: ${r.auto} auto-audit e ${r.interni} audit interni nel cestino, ${r.sintesi} sintesi e ${r.punteggi} punteggi azzerati`); setRip(null); imp.reload(); }
+    catch (e) { toast(e, 'err'); } finally { setBusy(false); }
+  };
   useEffect(() => { if (imp.data) setForm({ alert_day: imp.data.alert_day, reminder_every_days: imp.data.reminder_every_days }); }, [imp.data]);
   const run = async (fn, ok) => { setBusy(true); try { const r = await fn(); if (ok) toast(ok); imp.reload(); return r; } catch (e) { toast(e, 'err'); } finally { setBusy(false); } };
   const salva = () => run(() => api.put('/settings', { alert_day: Number(form.alert_day), reminder_every_days: Number(form.reminder_every_days) }), 'Impostazioni salvate');
@@ -46,10 +53,21 @@ export default function Impostazioni() {
       </div>
       <Card title="Modelli di checklist" icon="list" actions={<DropZone onFiles={carica} accept=".json" multiple={false} compact><span className="small"><Icon name="upload" /> Carica una nuova revisione (JSON)</span></DropZone>}>
         <table className="t au-table"><thead><tr><th>Codice</th><th>Titolo</th><th>Tipo</th><th>Rev.</th><th>Data rev.</th><th>Audit</th><th>Stato</th><th></th></tr></thead>
-          <tbody>{d.templates.map((t) => <tr key={t.id}><td className="mono">{t.code}</td><td>{t.title}</td><td><Badge tone={t.kind === 'SEDE' ? 'teal' : 'silk'} dot={false}>{t.kind === 'SEDE' ? 'Sede' : 'Legal entity (ISO 37001)'}</Badge></td><td>{t.rev}</td><td className="small">{itDate(t.rev_date)}</td><td>{t.n_audits}</td><td>{t.active ? <Badge tone="green">Attivo</Badge> : <Badge tone="grey">Non attivo</Badge>}</td>
+          <tbody>{d.templates.map((t) => <tr key={t.id}><td className="mono">{t.code}</td><td>{t.title}</td><td><Badge tone={t.kind === 'LEGAL_ENTITY' ? 'silk' : 'teal'} dot={false}>{t.kind === 'SEDE' ? 'Punti prelievo e centri medici' : t.kind === 'LABORATORIO' ? 'Laboratorio di Analisi' : 'Legal entity (ISO 37001)'}</Badge></td><td>{t.rev}</td><td className="small">{itDate(t.rev_date)}</td><td>{t.n_audits}</td><td>{t.active ? <Badge tone="green">Attivo</Badge> : <Badge tone="grey">Non attivo</Badge>}</td>
             <td className="actions"><button className="btn sm ghost" onClick={() => anteprima(t)}><Icon name="eye" />Anteprima</button>{!t.active && <button className="btn sm ghost" disabled={busy} onClick={() => run(() => api.put(`/templates/${t.id}`, { active: true }), 'Modello attivato')}>Attiva</button>}</td></tr>)}</tbody></table>
         <div className="small muted" style={{ marginTop: 8 }}>Il JSON ha la stessa struttura dei modelli iniziali (code, title, rev, rev_date, header_fields, parts &gt; sections &gt; items con n, text, rev, sub, free, repeat; report). La nuova revisione si applica agli audit creati da quel momento; quelli esistenti restano legati alla loro revisione.</div>
       </Card>
+      <Card title="Ripartenza degli audit" icon="refresh" style={{ marginTop: 14 }} actions={<button className="btn sm ghost" disabled={busy} onClick={() => setRip({ period: new Date().toISOString().slice(0, 7), conferma: '' })}>Azzera e riparti…</button>}>
+        <div className="small">{d.start_period ? <>Gli auto-audit partono da <b>{mese(d.start_period)}</b>: per i mesi precedenti non se ne aprono.</> : 'Nessun mese di ripartenza fissato: valgono tutti i mesi.'}</div>
+        <div className="small muted" style={{ marginTop: 6 }}>"Azzera e riparti" mette nel cestino tutti gli auto-audit e gli audit interni presenti, cancella gli avvisi già inviati, le sintesi delle sedi e i punteggi passati a Retail, e fissa il primo mese utile. Audit di terze parti e audit sui partner restano. I nuovi auto-audit nascono con i modelli attivi qui sopra.</div>
+      </Card>
+      {rip && <Modal title="Azzera e riparti" onClose={() => setRip(null)} footer={<><button className="btn ghost" onClick={() => setRip(null)}>Annulla</button><button className="btn danger" disabled={busy || rip.conferma !== 'RIPARTI'} onClick={riparti}>Azzera e riparti</button></>}>
+        <div className="au-alert"><Icon name="info" className="ico" /><div>L'operazione riguarda tutte le sedi. Gli audit finiscono nel cestino (non sono cancellati dal database); sintesi e punteggi delle sedi vengono eliminati e si ricostruiscono con i nuovi audit.</div></div>
+        <div className="au-head-grid" style={{ marginTop: 10 }}>
+          <Field label="Primo mese utile"><input className="au-in" type="month" value={rip.period} onChange={(e) => setRip({ ...rip, period: e.target.value })} /></Field>
+          <Field label="Scrivi RIPARTI per confermare"><input className="au-in" value={rip.conferma} onChange={(e) => setRip({ ...rip, conferma: e.target.value.toUpperCase() })} /></Field>
+        </div>
+      </Modal>}
       {prev && <Modal title={`${prev.code} rev. ${prev.rev} · ${prev.title}`} onClose={() => setPrev(null)} wide>
         <div className="small muted" style={{ marginBottom: 8 }}>{prev.items.length} voci in {prev.sections.length} sezioni{prev.body.derived_from ? ` · ${prev.body.derived_from}` : ''}</div>
         {prev.sections.map((s) => <div key={s.key} style={{ marginBottom: 10 }}><div className="strong">{s.part_title} · {s.key} {s.title}</div><ol style={{ margin: '4px 0', paddingLeft: 22, fontSize: 13 }}>{prev.items.filter((i) => i.section_key === s.key).map((i) => <li key={i.key} value={undefined}><span className="mono small">{i.key}</span> {i.parent ? <span className="muted">{i.parent} · </span> : null}{i.label}{i.rev ? <span className="small muted"> (rev.)</span> : null}{i.free ? <span className="small muted"> (libera)</span> : null}</li>)}</ol></div>)}

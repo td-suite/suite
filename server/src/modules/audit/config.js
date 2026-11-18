@@ -24,6 +24,7 @@ export const config = {
 export const SETTINGS_DEFAULT = {
   alert_day: 17,              // giorno del mese in cui parte l'avviso al site manager per l'auto-audit del mese
   reminder_every_days: 5,     // promemoria ogni N giorni finché l'auto-audit non è inviato (0 = nessun promemoria)
+  start_period: null,         // primo mese (AAAA-MM-01) da cui si aprono gli auto-audit: fissato dalla ripartenza nelle Impostazioni
 };
 
 export const KINDS = { AUTO: 'Auto-audit', INTERNO: 'Audit interno', TERZI: 'Audit di terze parti', LEGAL_ENTITY: 'Audit partner ISO 37001' };

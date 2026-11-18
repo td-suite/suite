@@ -74,7 +74,7 @@ export async function sintesiSede(siteId, { userId, moduleUserId } = {}) {
   const site = await siteById(siteId);
   const audits = await auditsForSite(siteId);
   if (!audits.length) throw bad('Nessun audit inviato, verificato o chiuso negli ultimi 12 mesi per questa sede: non c\'è nulla da sintetizzare');
-  const template = await one(`SELECT body FROM templates WHERE kind='SEDE' AND active ORDER BY id DESC LIMIT 1`);
+  const template = await one(`SELECT body FROM templates WHERE kind=$1 AND active ORDER BY id DESC LIMIT 1`, [site.kind === 'LABORATORIO' ? 'LABORATORIO' : 'SEDE']);
   const sections = template ? sectionsOf(template.body) : [];
   let budget = config.synthTerziTotal; let truncated = false;
   const terzi = [];

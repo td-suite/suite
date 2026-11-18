@@ -1,0 +1,1192 @@
+{
+ "code": "TD-AUD-LAB",
+ "title": "Check list audit interno Laboratorio di Analisi (sistema, operativa e sistemi di gestione integrati)",
+ "rev": "1",
+ "rev_date": "2026-11-18",
+ "derived_from": "Checklist Audit Interno ISO 9001:2015 – Laboratorio Clinico (59 domande di sistema e 48 verifiche operative, testi invariati) integrata con le domande su ISO 45001, ISO 14001, ISO 37001, UNI/PdR 125, ISO 30415 e PAS 24000",
+ "answer_values": [
+  "SI",
+  "NO",
+  "NC",
+  "NA"
+ ],
+ "header_fields": [
+  {
+   "key": "sede",
+   "label": "Laboratorio",
+   "source": "site"
+  },
+  {
+   "key": "data",
+   "label": "Data",
+   "type": "date"
+  },
+  {
+   "key": "effettuato_da",
+   "label": "Auditor / verificatore",
+   "type": "text"
+  },
+  {
+   "key": "settori",
+   "label": "Settori verificati",
+   "type": "text"
+  }
+ ],
+ "parts": [
+  {
+   "key": "LAB",
+   "title": "Checklist e checklist operativa",
+   "sections": [
+    {
+     "key": "L4",
+     "title": "Cap. 4 · Contesto dell'organizzazione",
+     "items": [
+      {
+       "n": "Q01",
+       "text": "Sono stati identificati e documentati i fattori interni ed esterni rilevanti per il laboratorio (normativa SSR/accreditamento regionale, convenzioni, tecnologie, risorse)? Vengono riesaminati periodicamente?",
+       "ref": "ISO 9001:2015 · 4.1",
+       "hint": "Analisi di contesto (es. SWOT/PESTEL) aggiornata; evidenza di riesame nel verbale di riesame della direzione",
+       "group": "Contesto"
+      },
+      {
+       "n": "Q02",
+       "text": "Sono identificate le parti interessate (pazienti, medici prescrittori, ASL/Regione, strutture convenzionate, fornitori) e i loro requisiti pertinenti?",
+       "ref": "ISO 9001:2015 · 4.2",
+       "hint": "Elenco parti interessate con requisiti/aspettative; modalità di monitoraggio",
+       "group": "Contesto"
+      },
+      {
+       "n": "Q03",
+       "text": "Il campo di applicazione del SGQ è documentato e comprende settori analitici, punti prelievo e servizi erogati? Le eventuali non applicabilità (es. 8.3) sono giustificate?",
+       "ref": "ISO 9001:2015 · 4.3",
+       "hint": "Manuale qualità / documento di campo di applicazione; elenco settori (chimica clinica, ematologia, coagulazione, immunometria, microbiologia…) e punti prelievo",
+       "group": "Contesto"
+      },
+      {
+       "n": "Q04",
+       "text": "I processi del laboratorio (pre-analitico, analitico, post-analitico e di supporto) sono definiti con input, output, sequenza, interazioni, responsabili e indicatori?",
+       "ref": "ISO 9001:2015 · 4.4",
+       "hint": "Mappa dei processi; schede di processo; indicatori associati",
+       "group": "Processi"
+      }
+     ],
+     "hint": "Checklist di sistema ISO 9001:2015 (e ISO 7101) del laboratorio: per ogni domanda il punto norma e le evidenze attese. Seguono, nella stessa schermata, le verifiche operative."
+    },
+    {
+     "key": "L5",
+     "title": "Cap. 5 · Leadership",
+     "items": [
+      {
+       "n": "Q05",
+       "text": "La Direzione dimostra impegno verso il SGQ (risorse, partecipazione al riesame, promozione dell'approccio per processi e del risk-based thinking)?",
+       "ref": "ISO 9001:2015 · 5.1",
+       "hint": "Verbali di riesame; delibere su risorse; intervista al Direttore di laboratorio",
+       "group": "Leadership"
+      },
+      {
+       "n": "Q06",
+       "text": "Sono monitorati i requisiti e la soddisfazione di pazienti e medici e sono gestiti rischi e opportunità che possono influire sulla conformità del servizio?",
+       "ref": "ISO 9001:2015 · 5.1.2",
+       "hint": "Indagini di soddisfazione; gestione reclami; analisi dei risultati",
+       "group": "Leadership"
+      },
+      {
+       "n": "Q07",
+       "text": "La politica per la qualità è definita, approvata, appropriata al laboratorio, comunicata al personale e disponibile alle parti interessate?",
+       "ref": "ISO 9001:2015 · 5.2",
+       "hint": "Documento di politica firmato e datato; evidenza di diffusione (bacheca, intranet, sito); intervista al personale",
+       "group": "Politica"
+      },
+      {
+       "n": "Q08",
+       "text": "Ruoli, responsabilità e autorità sono assegnati e comunicati (Direttore di laboratorio, Responsabile qualità, responsabili di settore, firma dei referti, sostituti)?",
+       "ref": "ISO 9001:2015 · 5.3",
+       "hint": "Organigramma aggiornato; mansionario/job description; deleghe alla firma dei referti; piano sostituzioni",
+       "group": "Organizzazione"
+      }
+     ]
+    },
+    {
+     "key": "L6",
+     "title": "Cap. 6 · Pianificazione",
+     "items": [
+      {
+       "n": "Q09",
+       "text": "Sono stati valutati i rischi e le opportunità dei processi (es. errata identificazione paziente/campione, guasto strumenti, fermo LIS, valori critici non comunicati) e pianificate azioni proporzionate?",
+       "ref": "ISO 9001:2015 · 6.1",
+       "hint": "Registro/analisi dei rischi (es. FMEA); azioni pianificate e verifica della loro efficacia",
+       "group": "Rischi"
+      },
+      {
+       "n": "Q10",
+       "text": "Gli obiettivi per la qualità sono misurabili, coerenti con la politica, monitorati e aggiornati (es. TAT, % campioni non idonei, esiti VEQ, reclami)?",
+       "ref": "ISO 9001:2015 · 6.2",
+       "hint": "Piano obiettivi con target, responsabili, scadenze; stato di avanzamento",
+       "group": "Obiettivi"
+      },
+      {
+       "n": "Q11",
+       "text": "Le modifiche al SGQ (nuovi strumenti, nuovi metodi, cambio fornitore reagenti, trasferimento di esami) sono pianificate valutandone conseguenze e risorse?",
+       "ref": "ISO 9001:2015 · 6.3",
+       "hint": "Piani di change management; verbali di verifica pre-introduzione",
+       "group": "Modifiche"
+      }
+     ]
+    },
+    {
+     "key": "L7",
+     "title": "Cap. 7 · Supporto",
+     "items": [
+      {
+       "n": "Q12",
+       "text": "Il personale è numericamente adeguato ai carichi di lavoro e alla copertura dei turni (inclusi urgenze/reperibilità)?",
+       "ref": "ISO 9001:2015 · 7.1.2",
+       "hint": "Dotazione organica; turnistica; analisi carichi di lavoro",
+       "group": "Risorse"
+      },
+      {
+       "n": "Q13",
+       "text": "Locali, strumentazione analitica, LIS/middleware e impianti sono adeguati e mantenuti? Esistono piani di manutenzione preventiva e di continuità operativa (backup dati, strumenti di riserva, procedure di emergenza)?",
+       "ref": "ISO 9001:2015 · 7.1.3",
+       "hint": "Inventario strumenti; piano e registri di manutenzione; procedura di continuità/disaster recovery; log di backup LIS",
+       "group": "Infrastrutture"
+      },
+      {
+       "n": "Q14",
+       "text": "Le condizioni ambientali sono controllate e registrate (temperatura e umidità dei locali, frigoriferi/congelatori/termostati) e gli allarmi sono gestiti? Le aree sono separate e conformi alla sicurezza biologica?",
+       "ref": "ISO 9001:2015 · 7.1.4",
+       "hint": "Registrazioni di temperatura (manuali o da sistema di monitoraggio); gestione delle escursioni; DVR / procedure biosicurezza",
+       "group": "Ambiente"
+      },
+      {
+       "n": "Q15",
+       "text": "Le apparecchiature di misura (pipette, termometri, bilance, centrifughe, cronometri) sono identificate, tarate/verificate a intervalli definiti con riferibilità metrologica e ne è evidente lo stato?",
+       "ref": "ISO 9001:2015 · 7.1.5",
+       "hint": "Elenco strumenti con scadenze di taratura; certificati di taratura (es. LAT/ACCREDIA); etichette di stato",
+       "group": "Taratura"
+      },
+      {
+       "n": "Q16",
+       "text": "In caso di strumento trovato fuori tolleranza, viene valutata la validità dei risultati emessi in precedenza e intrapresa un'azione appropriata?",
+       "ref": "ISO 9001:2015 · 7.1.5",
+       "hint": "Registrazione della valutazione d'impatto; eventuali richiami di referti",
+       "group": "Taratura"
+      },
+      {
+       "n": "Q17",
+       "text": "Le conoscenze necessarie (metodiche, istruzioni dei produttori, letteratura, lezioni apprese) sono mantenute e rese disponibili?",
+       "ref": "ISO 9001:2015 · 7.1.6",
+       "hint": "IFU/schede tecniche aggiornate; archivio documentale; incontri di aggiornamento",
+       "group": "Conoscenza"
+      },
+      {
+       "n": "Q18",
+       "text": "Sono definiti i requisiti di competenza per ogni ruolo e il personale ne possiede evidenza (titoli, abilitazioni, iscrizione all'albo, addestramento sugli strumenti)?",
+       "ref": "ISO 9001:2015 · 7.2",
+       "hint": "Fascicoli del personale; schede di addestramento/abilitazione per strumento e settore",
+       "group": "Competenza"
+      },
+      {
+       "n": "Q19",
+       "text": "La formazione è pianificata (incl. ECM) e ne è valutata l'efficacia? La competenza è rivalutata periodicamente e dopo assenze prolungate?",
+       "ref": "ISO 9001:2015 · 7.2",
+       "hint": "Piano formativo annuale; attestati; valutazioni di efficacia e di competenza",
+       "group": "Competenza"
+      },
+      {
+       "n": "Q20",
+       "text": "Il personale conosce politica, obiettivi pertinenti, il proprio contributo al SGQ e le conseguenze delle non conformità?",
+       "ref": "ISO 9001:2015 · 7.3",
+       "hint": "Interviste a campione al personale tecnico e amministrativo",
+       "group": "Consapevolezza"
+      },
+      {
+       "n": "Q21",
+       "text": "Sono definite le modalità di comunicazione interna (riunioni, passaggi di consegne) ed esterna (carta dei servizi, informazioni ai medici, comunicazioni con le strutture invianti)?",
+       "ref": "ISO 9001:2015 · 7.4",
+       "hint": "Verbali di riunione; carta dei servizi; procedura di comunicazione",
+       "group": "Comunicazione"
+      },
+      {
+       "n": "Q22",
+       "text": "I documenti (manuale, procedure, IO, moduli) sono identificati, approvati, revisionati, distribuiti in versione corrente e le versioni obsolete sono ritirate?",
+       "ref": "ISO 9001:2015 · 7.5",
+       "hint": "Lista documenti in vigore; verifica a campione di documenti in uso nelle postazioni; stato di revisione",
+       "group": "Documenti"
+      },
+      {
+       "n": "Q23",
+       "text": "I documenti di origine esterna (norme, linee guida, IFU di reagenti e strumenti) sono identificati e tenuti sotto controllo?",
+       "ref": "ISO 9001:2015 · 7.5.3",
+       "hint": "Elenco documenti esterni con versione; IFU in uso corrispondenti al lotto/versione",
+       "group": "Documenti"
+      },
+      {
+       "n": "Q24",
+       "text": "Le registrazioni sono leggibili, protette, rintracciabili e conservate per i tempi definiti (es. referti, CQI, VEQ, manutenzioni)? Gli accessi a LIS e dati sanitari sono protetti secondo il GDPR?",
+       "ref": "ISO 9001:2015 · 7.5.3",
+       "hint": "Procedura di gestione registrazioni con tempi di conservazione; profili di accesso al LIS; registro trattamenti",
+       "group": "Registrazioni"
+      }
+     ]
+    },
+    {
+     "key": "L8",
+     "title": "Cap. 8 · Attività operative",
+     "items": [
+      {
+       "n": "Q25",
+       "text": "Ogni esame è descritto da una procedura operativa (principio, campione, reagenti, calibrazione, CQ, calcoli, intervalli di riferimento, interferenze)?",
+       "ref": "ISO 9001:2015 · 8.1",
+       "hint": "SOP per esame/strumento; verifica a campione di 2-3 esami",
+       "group": "Pianificazione"
+      },
+      {
+       "n": "Q26",
+       "text": "Le informazioni per l'utenza sono disponibili e aggiornate (elenco esami, preparazione del paziente, tempi di risposta, modalità di ritiro referti)?",
+       "ref": "ISO 9001:2015 · 8.2",
+       "hint": "Carta dei servizi; istruzioni per la preparazione del paziente; sito web",
+       "group": "Requisiti cliente"
+      },
+      {
+       "n": "Q27",
+       "text": "Le richieste di esame sono riesaminate all'accettazione (completezza dell'impegnativa, dati anagrafici, quesito diagnostico, consenso informato ove richiesto, fattibilità)?",
+       "ref": "ISO 9001:2015 · 8.2.3",
+       "hint": "Procedura di accettazione; verifica a campione di richieste/impegnative; consensi (es. test genetici, HIV)",
+       "group": "Requisiti cliente"
+      },
+      {
+       "n": "Q28",
+       "text": "I reclami e le segnalazioni sono registrati, analizzati e gestiti con risposta al reclamante?",
+       "ref": "ISO 9001:2015 · 8.2.1",
+       "hint": "Registro reclami; evidenza di risposte e di eventuali azioni correttive",
+       "group": "Reclami"
+      },
+      {
+       "n": "Q29",
+       "text": "Se il laboratorio sviluppa metodi interni (LDT) o nuovi servizi, la progettazione è pianificata, verificata e validata? (altrimenti indicare N/A)",
+       "ref": "ISO 9001:2015 · 8.3",
+       "hint": "Piano di sviluppo; dossier di validazione; approvazione al rilascio",
+       "group": "Progettazione"
+      },
+      {
+       "n": "Q30",
+       "text": "I fornitori di reagenti, strumenti, manutenzione, trasporto campioni e i laboratori esterni (service) sono qualificati, valutati periodicamente e ne sono definiti i requisiti?",
+       "ref": "ISO 9001:2015 · 8.4",
+       "hint": "Albo fornitori; schede di valutazione; contratti/accordi con laboratori esterni",
+       "group": "Fornitori"
+      },
+      {
+       "n": "Q31",
+       "text": "Al ricevimento, reagenti e materiali sono controllati (integrità, lotto, scadenza, temperatura di trasporto) e i nuovi lotti sono verificati prima dell'uso?",
+       "ref": "ISO 9001:2015 · 8.4.2",
+       "hint": "Registro ricevimento merci; registrazioni di verifica lotto-su-lotto; gestione del magazzino (FEFO)",
+       "group": "Fornitori"
+      },
+      {
+       "n": "Q32",
+       "text": "Per gli esami inviati a laboratori esterni sono definiti requisiti (accreditamento, TAT, conservazione/trasporto) e i referti sono rintracciabili?",
+       "ref": "ISO 9001:2015 · 8.4.3",
+       "hint": "Elenco esami in service; accordi; registro invii e ricevimento referti",
+       "group": "Service esterni"
+      },
+      {
+       "n": "Q33",
+       "text": "L'identificazione del paziente al prelievo avviene con almeno due identificativi e la provetta è etichettata in presenza del paziente?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Procedura di prelievo; osservazione diretta di un prelievo; etichette con barcode",
+       "group": "Pre-analitica"
+      },
+      {
+       "n": "Q34",
+       "text": "Sono definite istruzioni per il prelievo (contenitori, anticoagulanti, ordine di prelievo, volumi) e per la raccolta di campioni non ematici (urine, feci, tamponi)?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Manuale di prelievo; istruzioni al paziente",
+       "group": "Pre-analitica"
+      },
+      {
+       "n": "Q35",
+       "text": "Il trasporto dei campioni dai punti prelievo è controllato (tempi, temperatura, contenitori UN3373, tracciabilità delle consegne)?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Procedura di trasporto; registrazioni di temperatura e orari; distinte di consegna",
+       "group": "Pre-analitica"
+      },
+      {
+       "n": "Q36",
+       "text": "Esistono criteri documentati di accettazione/rifiuto dei campioni (emolisi, coagulazione, volume insufficiente, identificazione errata, tempi superati) e i rifiuti sono registrati e comunicati?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Procedura criteri di idoneità; registro campioni non conformi; indicatore % non idonei",
+       "group": "Pre-analitica"
+      },
+      {
+       "n": "Q37",
+       "text": "I metodi sono verificati/validati prima dell'uso clinico (precisione, esattezza, linearità, limiti di rilevabilità, confronto con metodo precedente)?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Dossier di verifica delle prestazioni per esame/strumento; approvazione all'uso",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q38",
+       "text": "Il controllo di qualità interno è eseguito con frequenza e livelli definiti, con regole di accettazione (es. Westgard) e registrazione delle azioni in caso di fuori controllo?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Carte di controllo (Levey-Jennings); registrazioni di accettazione/rifiuto serie; azioni su fuori controllo",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q39",
+       "text": "Il laboratorio partecipa a programmi di VEQ per tutti gli esami eseguiti (o alternative documentate) e gli esiti sono analizzati, con azioni sugli esiti insoddisfacenti?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Elenco programmi VEQ; report ricevuti; analisi e azioni correttive",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q40",
+       "text": "Le calibrazioni sono eseguite secondo le indicazioni del produttore e registrate? Se più strumenti eseguono lo stesso esame, è verificata la confrontabilità dei risultati?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Registri di calibrazione; studi di comparabilità periodici",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q41",
+       "text": "Gli intervalli di riferimento e i limiti decisionali sono definiti, documentati, appropriati alla popolazione e riportati sul referto?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Fonte degli intervalli (IFU, letteratura, verifica interna); configurazione LIS",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q42",
+       "text": "La manutenzione ordinaria e straordinaria degli strumenti è eseguita e registrata e i guasti sono gestiti (fermo strumento, verifica prima del riavvio)?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Log di manutenzione; rapporti di intervento tecnico; verifica post-intervento",
+       "group": "Analitica"
+      },
+      {
+       "n": "Q43",
+       "text": "I risultati sono sottoposti a validazione tecnica e clinica da personale autorizzato, con regole definite (delta check, autovalidazione, controllo di plausibilità)?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Procedura di validazione; regole di autovalidazione nel LIS/middleware; elenco autorizzati",
+       "group": "Post-analitica"
+      },
+      {
+       "n": "Q44",
+       "text": "I valori critici sono definiti e comunicati tempestivamente al medico/reparto con registrazione di chi ha comunicato, a chi e quando?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Elenco valori critici; registro comunicazioni; verifica a campione",
+       "group": "Post-analitica"
+      },
+      {
+       "n": "Q45",
+       "text": "Il referto contiene tutte le informazioni richieste (identificativi, date/ore prelievo e refertazione, metodo/unità, intervalli, note sul campione, firma del dirigente) ed è consegnato in modo sicuro?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Verifica a campione di referti; modalità di consegna (online, cartaceo) e tutela privacy",
+       "group": "Post-analitica"
+      },
+      {
+       "n": "Q46",
+       "text": "I campioni sono conservati dopo l'analisi per un periodo definito (per ripetizioni/aggiunte) e poi smaltiti come rifiuti sanitari secondo normativa?",
+       "ref": "ISO 9001:2015 · 8.5.1",
+       "hint": "Procedura di conservazione; sieroteca; registri/formulari rifiuti",
+       "group": "Post-analitica"
+      },
+      {
+       "n": "Q47",
+       "text": "È garantita la rintracciabilità completa: paziente – campione – operatore – strumento – lotto reagente/calibratore – CQ – validatore?",
+       "ref": "ISO 9001:2015 · 8.5.2",
+       "hint": "Ricostruzione a campione di un referto dal LIS fino ai dati di CQ e lotto reagente",
+       "group": "Rintracciabilità"
+      },
+      {
+       "n": "Q48",
+       "text": "I campioni biologici e i dati personali/sanitari dei pazienti sono tutelati (riservatezza, integrità, gestione di smarrimenti o danneggiamenti)?",
+       "ref": "ISO 9001:2015 · 8.5.3",
+       "hint": "Procedura privacy; informative; gestione incidenti su campioni o dati",
+       "group": "Proprietà cliente"
+      },
+      {
+       "n": "Q49",
+       "text": "Reagenti, calibratori, controlli e campioni sono conservati alle condizioni previste, con scadenze rispettate e date di apertura registrate?",
+       "ref": "ISO 9001:2015 · 8.5.4",
+       "hint": "Verifica frigoriferi/magazzino; etichette con data apertura; assenza di materiali scaduti in uso",
+       "group": "Preservazione"
+      },
+      {
+       "n": "Q50",
+       "text": "Le correzioni a referti già emessi sono gestite con referto rettificato rintracciabile e comunicazione al destinatario? Le modifiche di processo sono riesaminate e autorizzate?",
+       "ref": "ISO 9001:2015 · 8.5.5 / 8.5.6",
+       "hint": "Procedura di rettifica referti; storico versioni nel LIS; registrazioni delle modifiche",
+       "group": "Post-consegna e modifiche"
+      },
+      {
+       "n": "Q51",
+       "text": "Il rilascio dei referti avviene solo dopo il completamento delle verifiche previste e da parte di personale autorizzato alla firma?",
+       "ref": "ISO 9001:2015 · 8.6",
+       "hint": "Elenco firmatari autorizzati; profili LIS; verifica a campione",
+       "group": "Rilascio"
+      },
+      {
+       "n": "Q52",
+       "text": "Gli output non conformi (campioni non idonei, risultati errati, serie fuori controllo) sono identificati, bloccati e gestiti, incluso l'eventuale richiamo di referti già emessi?",
+       "ref": "ISO 9001:2015 · 8.7",
+       "hint": "Procedura di gestione NC; registro NC; evidenze di blocco/richiamo",
+       "group": "Output non conformi"
+      }
+     ]
+    },
+    {
+     "key": "L9",
+     "title": "Cap. 9 · Valutazione delle prestazioni",
+     "items": [
+      {
+       "n": "Q53",
+       "text": "Sono definiti e monitorati indicatori per i processi pre-, intra- e post-analitici (es. TAT, % campioni rifiutati, errori di identificazione, valori critici comunicati entro tempo)?",
+       "ref": "ISO 9001:2015 · 9.1.1",
+       "hint": "Cruscotto indicatori con target e trend; analisi periodica",
+       "group": "Monitoraggio"
+      },
+      {
+       "n": "Q54",
+       "text": "La soddisfazione di pazienti e medici è rilevata periodicamente e i risultati sono analizzati?",
+       "ref": "ISO 9001:2015 · 9.1.2",
+       "hint": "Questionari; report di analisi; azioni conseguenti",
+       "group": "Soddisfazione"
+      },
+      {
+       "n": "Q55",
+       "text": "I dati (indicatori, VEQ, CQI, reclami, NC, fornitori) sono analizzati e utilizzati per valutare l'efficacia del SGQ?",
+       "ref": "ISO 9001:2015 · 9.1.3",
+       "hint": "Report di analisi; input al riesame della direzione",
+       "group": "Analisi dati"
+      },
+      {
+       "n": "Q56",
+       "text": "Esiste un programma di audit che copre tutti i processi e i settori, condotto da auditor qualificati e indipendenti dall'area verificata, con rapporti e follow-up?",
+       "ref": "ISO 9001:2015 · 9.2",
+       "hint": "Programma audit; qualifica auditor; rapporti di audit precedenti; chiusura dei rilievi",
+       "group": "Audit interni"
+      },
+      {
+       "n": "Q57",
+       "text": "Il riesame della direzione è svolto almeno annualmente con tutti gli input previsti (azioni precedenti, contesto, indicatori, audit, NC, fornitori, risorse, rischi) e produce output e decisioni documentati?",
+       "ref": "ISO 9001:2015 · 9.3",
+       "hint": "Verbale di riesame completo; piano di miglioramento risultante",
+       "group": "Riesame direzione"
+      }
+     ]
+    },
+    {
+     "key": "L10",
+     "title": "Cap. 10 · Miglioramento",
+     "items": [
+      {
+       "n": "Q58",
+       "text": "Le non conformità sono registrate, ne viene analizzata la causa radice, sono attuate azioni correttive e ne è verificata l'efficacia?",
+       "ref": "ISO 9001:2015 · 10.2",
+       "hint": "Registro NC/AC con analisi cause (es. 5 perché, Ishikawa); verifiche di efficacia",
+       "group": "NC e azioni correttive"
+      },
+      {
+       "n": "Q59",
+       "text": "Il laboratorio individua e attua opportunità di miglioramento continuo (processi, tecnologie, servizi all'utenza)?",
+       "ref": "ISO 9001:2015 · 10.3",
+       "hint": "Piano di miglioramento; progetti avviati e risultati",
+       "group": "Miglioramento"
+      }
+     ]
+    },
+    {
+     "key": "O01",
+     "title": "Operativa · Trasporto campioni",
+     "items": [
+      {
+       "n": "V01",
+       "text": "I campioni dai punti prelievo viaggiano in contenitori idonei (triplo imballaggio) e a temperatura controllata"
+      },
+      {
+       "n": "V02",
+       "text": "Sono registrati orari di partenza/arrivo e temperatura durante il trasporto"
+      },
+      {
+       "n": "V03",
+       "text": "Esiste una distinta di consegna che permette di verificare che tutti i campioni siano arrivati"
+      }
+     ],
+     "hint": "Checklist di verifica operativa: controlli sul campo, da svolgere nei settori."
+    },
+    {
+     "key": "O02",
+     "title": "Operativa · Ricevimento campioni",
+     "items": [
+      {
+       "n": "V04",
+       "text": "Ogni campione viene controllato all'arrivo (etichetta, integrità, emolisi, volume, tempo dal prelievo)"
+      },
+      {
+       "n": "V05",
+       "text": "I campioni non idonei sono registrati e il richiedente/paziente viene avvisato per il riprelievo"
+      },
+      {
+       "n": "V06",
+       "text": "Centrifughe con parametri corretti per tipo di provetta e manutenzione registrata"
+      },
+      {
+       "n": "V07",
+       "text": "Aliquotazione e smistamento ai settori senza rischio di scambio campioni"
+      }
+     ]
+    },
+    {
+     "key": "O03",
+     "title": "Operativa · Strumenti",
+     "items": [
+      {
+       "n": "V08",
+       "text": "Gli strumenti hanno una scheda/registro con manutenzioni giornaliere, settimanali e periodiche compilate"
+      },
+      {
+       "n": "V09",
+       "text": "Gli interventi dei tecnici esterni sono documentati e lo strumento è stato verificato prima della ripresa"
+      },
+      {
+       "n": "V10",
+       "text": "Pipette, termometri e bilance hanno taratura/verifica in corso di validità ed etichetta di stato"
+      },
+      {
+       "n": "V11",
+       "text": "È disponibile un piano B in caso di guasto (strumento di back-up, laboratorio di appoggio)"
+      }
+     ]
+    },
+    {
+     "key": "O04",
+     "title": "Operativa · Controllo qualità",
+     "items": [
+      {
+       "n": "V12",
+       "text": "Il controllo di qualità interno viene eseguito prima di rilasciare i risultati, alla frequenza stabilita"
+      },
+      {
+       "n": "V13",
+       "text": "Quando il controllo è fuori limite, la serie viene bloccata e l'azione intrapresa è registrata"
+      },
+      {
+       "n": "V14",
+       "text": "Le carte di controllo vengono riviste periodicamente per individuare trend o spostamenti"
+      },
+      {
+       "n": "V15",
+       "text": "I risultati della VEQ sono stati esaminati e gli esiti non soddisfacenti hanno avuto un seguito"
+      },
+      {
+       "n": "V16",
+       "text": "Le calibrazioni sono eseguite alle scadenze previste e al cambio lotto"
+      }
+     ]
+    },
+    {
+     "key": "O05",
+     "title": "Operativa · Reagenti e magazzino",
+     "items": [
+      {
+       "n": "V17",
+       "text": "Nessun reagente, calibratore o controllo scaduto in uso o in magazzino"
+      },
+      {
+       "n": "V18",
+       "text": "Sui flaconi aperti è indicata la data di apertura e la stabilità a bordo è rispettata"
+      },
+      {
+       "n": "V19",
+       "text": "Al ricevimento merci viene controllata la temperatura di trasporto e l'integrità delle confezioni"
+      },
+      {
+       "n": "V20",
+       "text": "I nuovi lotti di reagente sono verificati prima dell'uso e la verifica è registrata"
+      },
+      {
+       "n": "V21",
+       "text": "Le scorte sono adeguate e si utilizzano prima i lotti con scadenza più vicina"
+      }
+     ]
+    },
+    {
+     "key": "O06",
+     "title": "Operativa · Ambiente e frigoriferi",
+     "items": [
+      {
+       "n": "V22",
+       "text": "Temperature di frigoriferi, congelatori e locali registrate ogni giorno (o monitorate in automatico)"
+      },
+      {
+       "n": "V23",
+       "text": "Le escursioni di temperatura sono state gestite e documentate (valutazione dei materiali coinvolti)"
+      },
+      {
+       "n": "V24",
+       "text": "Aree pulite e ordinate; separazione tra zona campioni e zona ufficio/ristoro"
+      }
+     ]
+    },
+    {
+     "key": "O07",
+     "title": "Operativa · Refertazione",
+     "items": [
+      {
+       "n": "V25",
+       "text": "I risultati vengono validati da personale autorizzato prima della firma del referto"
+      },
+      {
+       "n": "V26",
+       "text": "I valori critici vengono comunicati subito al medico/paziente e la comunicazione è registrata"
+      },
+      {
+       "n": "V27",
+       "text": "Il referto riporta dati del paziente, data/ora prelievo, unità di misura, valori di riferimento e firma"
+      },
+      {
+       "n": "V28",
+       "text": "I tempi di consegna dei referti promessi all'utenza sono rispettati (verifica a campione)"
+      },
+      {
+       "n": "V29",
+       "text": "Le correzioni a referti già consegnati sono tracciate e comunicate al destinatario"
+      },
+      {
+       "n": "V30",
+       "text": "La consegna dei referti (sportello, online, delega) rispetta la privacy"
+      }
+     ]
+    },
+    {
+     "key": "O08",
+     "title": "Operativa · Conservazione e rifiuti",
+     "items": [
+      {
+       "n": "V31",
+       "text": "I campioni analizzati sono conservati per il periodo stabilito in modo ordinato e rintracciabile"
+      },
+      {
+       "n": "V32",
+       "text": "I rifiuti sanitari sono separati correttamente e i contenitori sono chiusi ed etichettati"
+      },
+      {
+       "n": "V33",
+       "text": "I registri/formulari di smaltimento dei rifiuti sono aggiornati"
+      }
+     ]
+    },
+    {
+     "key": "O09",
+     "title": "Operativa · Sicurezza",
+     "items": [
+      {
+       "n": "V34",
+       "text": "DPI (camici, guanti, occhiali) disponibili e utilizzati correttamente"
+      },
+      {
+       "n": "V35",
+       "text": "Lavaocchi, kit antisversamento e cassetta di primo soccorso presenti e controllati"
+      },
+      {
+       "n": "V36",
+       "text": "Schede di sicurezza dei prodotti chimici disponibili e consultabili"
+      },
+      {
+       "n": "V37",
+       "text": "Vie di fuga libere, estintori revisionati, segnaletica presente"
+      }
+     ]
+    },
+    {
+     "key": "O10",
+     "title": "Operativa · Personale",
+     "items": [
+      {
+       "n": "V38",
+       "text": "Ogni operatore è stato addestrato sugli strumenti che usa e l'addestramento è registrato"
+      },
+      {
+       "n": "V39",
+       "text": "I crediti ECM e la formazione obbligatoria (sicurezza, privacy) sono in regola"
+      },
+      {
+       "n": "V40",
+       "text": "Sono definiti i sostituti per le funzioni chiave (firma referti, responsabili di settore)"
+      }
+     ]
+    },
+    {
+     "key": "O11",
+     "title": "Operativa · Documentazione",
+     "items": [
+      {
+       "n": "V41",
+       "text": "Le procedure e istruzioni operative in uso nelle postazioni sono nella versione aggiornata"
+      },
+      {
+       "n": "V42",
+       "text": "Le istruzioni dei produttori (IFU) corrispondono ai reagenti/strumenti attualmente in uso"
+      },
+      {
+       "n": "V43",
+       "text": "I moduli di registrazione sono compilati in modo completo, leggibile e firmato"
+      }
+     ]
+    },
+    {
+     "key": "O12",
+     "title": "Operativa · Informatica e privacy",
+     "items": [
+      {
+       "n": "V44",
+       "text": "Ogni operatore accede al gestionale con credenziali personali (nessuna password condivisa)"
+      },
+      {
+       "n": "V45",
+       "text": "Il backup dei dati viene eseguito ed è stato provato il ripristino"
+      },
+      {
+       "n": "V46",
+       "text": "Esiste una procedura per lavorare in caso di blocco del sistema informatico"
+      },
+      {
+       "n": "V47",
+       "text": "I risultati trasmessi dagli strumenti al gestionale sono stati verificati (corrispondenza dati)"
+      }
+     ]
+    },
+    {
+     "key": "O13",
+     "title": "Operativa · Utenza",
+     "items": [
+      {
+       "n": "V48",
+       "text": "Reclami e segnalazioni degli utenti sono registrati e hanno ricevuto risposta"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "SISTEMI",
+   "title": "Sistemi di gestione integrati",
+   "sections": [
+    {
+     "key": "SSL",
+     "title": "Salute e sicurezza sul lavoro · ISO 45001:2018",
+     "hint": "Domande specifiche per il Laboratorio di Analisi. Le verifiche di dotazione restano nelle sezioni precedenti.",
+     "items": [
+      {
+       "n": "SSL01",
+       "text": "Il DVR del laboratorio è aggiornato e valuta in modo specifico il rischio biologico (agenti dei gruppi 2 e 3, D.Lgs. 81/2008 Titolo X), il rischio chimico (reagenti, coloranti, formalina, solventi), i taglienti, la movimentazione dei carichi, i videoterminali, lo stress lavoro-correlato e il lavoro notturno o in solitudine?",
+       "ref": "ISO 45001:2018 · 6.1.2",
+       "hint": "DVR con data certa e firme di datore di lavoro, RSPP, medico competente e RLS; valutazioni del rischio chimico e biologico; aggiornamento dopo nuovi strumenti, metodiche o locali"
+      },
+      {
+       "n": "SSL02",
+       "text": "Le misure di prevenzione seguono la gerarchia dei controlli (eliminazione, sostituzione del pericoloso, misure tecniche come cappe e dispositivi con meccanismo di sicurezza, misure organizzative, DPI)? Le cappe chimiche e di sicurezza biologica sono verificate periodicamente?",
+       "ref": "ISO 45001:2018 · 6.1.2 / 8.1.2",
+       "hint": "Verbali di verifica delle cappe (velocità frontale, filtri HEPA, data della prossima verifica); aghi e dispositivi di sicurezza in uso; piano di miglioramento del DVR con responsabili e scadenze"
+      },
+      {
+       "n": "SSL03",
+       "text": "Gli obblighi di legge in materia di sicurezza sono identificati e ne è verificato il rispetto (D.Lgs. 81/2008, D.Lgs. 19/2014 sui taglienti, prevenzione incendi, verifiche dell'impianto elettrico e di messa a terra ex DPR 462/2001, autoclavi e apparecchi a pressione)?",
+       "ref": "ISO 45001:2018 · 6.1.3",
+       "hint": "Registro delle prescrizioni legali; verbali delle verifiche periodiche degli impianti; pratica di prevenzione incendi ove dovuta"
+      },
+      {
+       "n": "SSL04",
+       "text": "I lavoratori del laboratorio sono consultati e partecipano: RLS eletto e formato, riunione periodica annuale (art. 35), segnalazioni di pericolo raccolte e chiuse con un riscontro a chi le ha fatte?",
+       "ref": "ISO 45001:2018 · 5.4",
+       "hint": "Verbale della riunione periodica; nomina e attestato del RLS; registro delle segnalazioni con esito"
+      },
+      {
+       "n": "SSL05",
+       "text": "Tutto il personale del laboratorio ha la formazione obbligatoria in corso di validità: generale e specifica, preposti, addetti antincendio e primo soccorso, uso di cappe, autoclavi e centrifughe, rischio biologico e chimico?",
+       "ref": "ISO 45001:2018 · 7.2",
+       "hint": "Scadenzario della formazione (Suite > Gestione del Personale > Formazione ed ECM); attestati; verifica a campione di tre operatori di settori diversi"
+      },
+      {
+       "n": "SSL06",
+       "text": "La sorveglianza sanitaria è attuata secondo il protocollo del medico competente: visite preventive e periodiche nei termini, giudizi di idoneità con prescrizioni applicate in reparto, vaccinazione antiepatite B offerta, sopralluogo annuale del medico competente?",
+       "ref": "ISO 45001:2018 · 9.1.1",
+       "hint": "Protocollo sanitario; scadenzario delle visite (Suite > Gestione del Personale > Medicina del lavoro); verbale di sopralluogo. Si verificano scadenze, giudizi e prescrizioni: mai dati clinici"
+      },
+      {
+       "n": "SSL07",
+       "text": "I DPI sono scelti in base al rischio, consegnati con registrazione, indossati correttamente e sostituiti quando serve (guanti, camici, occhiali o visiere, facciali filtranti dove previsti)? Il camice resta nell'area analitica?",
+       "ref": "ISO 45001:2018 · 8.1.1",
+       "hint": "Verbali di consegna dei DPI; osservazione diretta in almeno due settori; scorte disponibili"
+      },
+      {
+       "n": "SSL08",
+       "text": "Le sostanze chimiche sono gestite in sicurezza: schede di sicurezza aggiornate e consultabili, etichettatura CLP anche dei travasi, armadi di sicurezza per infiammabili e corrosivi, incompatibilità rispettate, quantità in uso ridotte al necessario?",
+       "ref": "ISO 45001:2018 · 8.1.1",
+       "hint": "Elenco delle sostanze pericolose; schede di sicurezza in 16 sezioni; verifica di armadi, bacini di contenimento e contenitori secondari"
+      },
+      {
+       "n": "SSL09",
+       "text": "Le emergenze proprie del laboratorio sono pianificate e provate: sversamento di materiale biologico o chimico, incendio, puntura o contatto accidentale, blackout, guasto di frigoriferi e congelatori? La prova di evacuazione è stata svolta nell'ultimo anno?",
+       "ref": "ISO 45001:2018 · 8.2",
+       "hint": "Piano di emergenza; verbale della prova di evacuazione; kit antisversamento e lavaocchi controllati; procedura post-esposizione nota al personale"
+      },
+      {
+       "n": "SSL10",
+       "text": "Infortuni, punture accidentali, esposizioni a liquidi biologici e mancati infortuni sono registrati, analizzati nelle cause e seguiti da azioni correttive di cui si verifica l'efficacia?",
+       "ref": "ISO 45001:2018 · 10.2",
+       "hint": "Registro degli infortuni e dei mancati infortuni; percorso post-esposizione; analisi delle cause; indici di frequenza e gravità"
+      },
+      {
+       "n": "SSL11",
+       "text": "Appaltatori e fornitori che operano nel laboratorio (manutentori degli strumenti, pulizie, trasportatori, ritiro rifiuti) sono qualificati per la sicurezza e i rischi da interferenza sono gestiti (DUVRI ove dovuto, informazione sui rischi dell'area)?",
+       "ref": "ISO 45001:2018 · 8.1.4",
+       "hint": "Verifica dell'idoneità tecnico-professionale; DUVRI firmato; registro degli accessi dei tecnici esterni; decontaminazione dello strumento prima dell'intervento"
+      },
+      {
+       "n": "SSL12",
+       "text": "Le modifiche (nuovo strumento, nuovo reagente pericoloso, nuova disposizione dei locali, nuovi turni) sono valutate per la sicurezza prima di essere introdotte, con addestramento del personale prima dell'uso?",
+       "ref": "ISO 45001:2018 · 8.1.3",
+       "hint": "Valutazioni preventive; aggiornamento di DVR e istruzioni operative; registrazione dell'addestramento"
+      },
+      {
+       "n": "SSL13",
+       "text": "Sono definiti obiettivi e indicatori di salute e sicurezza per il laboratorio e ne è monitorato l'andamento (infortuni, mancati infortuni, formazione scaduta, azioni del DVR chiuse nei tempi)?",
+       "ref": "ISO 45001:2018 · 6.2 / 9.1",
+       "hint": "Piano degli obiettivi di salute e sicurezza; indicatori con andamento; evidenza nel riesame della direzione"
+      }
+     ]
+    },
+    {
+     "key": "AMB",
+     "title": "Ambiente · ISO 14001",
+     "hint": "Punti norma secondo la struttura della ISO 14001:2015, confermata nell'edizione successiva.",
+     "items": [
+      {
+       "n": "AMB01",
+       "text": "Gli aspetti ambientali del laboratorio sono identificati e valutati in prospettiva di ciclo di vita: rifiuti sanitari a rischio infettivo, rifiuti chimici, scarichi idrici, consumi di energia e acqua, gas refrigeranti, emissioni delle cappe, plastica monouso, trasporto dei campioni?",
+       "ref": "ISO 14001 · 6.1.2",
+       "hint": "Registro degli aspetti e degli impatti con i criteri di significatività; aggiornamento dopo le modifiche di processo"
+      },
+      {
+       "n": "AMB02",
+       "text": "Gli obblighi di conformità ambientale sono identificati e ne è valutato periodicamente il rispetto (D.Lgs. 152/2006, DPR 254/2003 sui rifiuti sanitari, RENTRI, autorizzazione allo scarico o AUA ove dovuta, gas fluorurati, ADR per i rifiuti pericolosi)?",
+       "ref": "ISO 14001 · 6.1.3 / 9.1.2",
+       "hint": "Registro degli obblighi di conformità; iscrizione al RENTRI; autorizzazioni; verbale dell'ultima valutazione di conformità"
+      },
+      {
+       "n": "AMB03",
+       "text": "I rifiuti sono classificati con il codice EER corretto, separati all'origine in contenitori idonei, chiusi ed etichettati con la data di chiusura (rischio infettivo, taglienti, chimici pericolosi, non pericolosi)?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Osservazione nei settori; istruzione operativa sui rifiuti; contenitori rigidi per taglienti riempiti non oltre il livello indicato"
+      },
+      {
+       "n": "AMB04",
+       "text": "Il deposito temporaneo rispetta tempi e quantità (rifiuti a rischio infettivo: 5 giorni dalla chiusura del contenitore, 30 giorni sotto i 200 litri), è segnalato, chiuso a chiave, aerato e separato per tipologie?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Sopralluogo al locale di deposito; date di chiusura dei contenitori; cartellonistica"
+      },
+      {
+       "n": "AMB05",
+       "text": "Il registro cronologico di carico e scarico e i formulari (anche digitali, RENTRI) sono compilati nei termini e completi del riscontro di avvenuto conferimento? Trasportatore e impianto di destino sono autorizzati per i codici conferiti?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Registro; formulari degli ultimi tre mesi; autorizzazioni di trasportatore e destinatario in corso di validità; MUD ove dovuto"
+      },
+      {
+       "n": "AMB06",
+       "text": "I rifiuti liquidi e i reflui degli strumenti (soluzioni di lavaggio degli analizzatori, coloranti, formalina, solventi) sono raccolti e smaltiti secondo scheda di sicurezza e autorizzazione, senza immissioni in fognatura non autorizzate?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Istruzioni per i reflui di ogni strumento; taniche di raccolta identificate; analisi allo scarico ove prescritte"
+      },
+      {
+       "n": "AMB07",
+       "text": "I consumi di energia elettrica, acqua e gas del laboratorio sono misurati e analizzati (frigoriferi, congelatori, climatizzazione, strumenti in attesa) con azioni di riduzione?",
+       "ref": "ISO 14001 · 8.1 / 9.1.1",
+       "hint": "Letture e bollette (Suite > Facility > Utenze); indicatori per 1.000 esami refertati; interventi di efficientamento realizzati"
+      },
+      {
+       "n": "AMB08",
+       "text": "Gli apparecchi con gas fluorurati (frigoriferi, congelatori, climatizzatori) sono censiti e sottoposti ai controlli delle perdite previsti, da tecnici certificati, con registrazione nella banca dati F-gas?",
+       "ref": "ISO 14001 · 6.1.3 / 8.1",
+       "hint": "Elenco degli apparecchi con tipo e quantità di gas; rapporti di controllo delle perdite"
+      },
+      {
+       "n": "AMB09",
+       "text": "Le emergenze ambientali (sversamento di reagenti o rifiuti liquidi, rottura di contenitori di rifiuti infettivi, incendio del deposito, perdita di gas refrigerante) sono previste, con materiali assorbenti disponibili e prove periodiche?",
+       "ref": "ISO 14001 · 8.2",
+       "hint": "Procedura di emergenza ambientale; kit assorbenti integri e non scaduti; verbale dell'ultima simulazione"
+      },
+      {
+       "n": "AMB10",
+       "text": "Negli acquisti del laboratorio sono considerati criteri ambientali e di ciclo di vita: riduzione degli imballaggi, ritiro di vuoti e apparecchi dismessi (RAEE), reagenti meno pericolosi a parità di prestazione, consegne consolidate?",
+       "ref": "ISO 14001 · 8.1",
+       "hint": "Requisiti ambientali nei contratti; valutazione dei fornitori; documenti di ritiro degli strumenti dismessi"
+      },
+      {
+       "n": "AMB11",
+       "text": "Il personale conosce la politica ambientale, gli aspetti significativi della propria attività e le istruzioni per rifiuti e sversamenti?",
+       "ref": "ISO 14001 · 7.2 / 7.3",
+       "hint": "Formazione registrata; intervista a campione a due operatori"
+      },
+      {
+       "n": "AMB12",
+       "text": "Sono definiti obiettivi ambientali misurabili per il laboratorio e gli indicatori sono monitorati (kg di rifiuti pericolosi per 1.000 esami, kWh, acqua, quota di raccolta differenziata)?",
+       "ref": "ISO 14001 · 6.2 / 9.1.1",
+       "hint": "Programma ambientale con traguardi, responsabili e scadenze; indicatori con andamento; evidenza nel riesame"
+      }
+     ]
+    },
+    {
+     "key": "ACO",
+     "title": "Prevenzione della corruzione · ISO 37001",
+     "hint": "Si verifica l'applicazione dei controlli nella struttura: i contenuti delle segnalazioni restano alla funzione preposta.",
+     "items": [
+      {
+       "n": "ACO01",
+       "text": "La valutazione del rischio di corruzione copre i processi del laboratorio più esposti: scelta dei fornitori di reagenti e strumenti, comodati d'uso e contratti di service, rapporti con medici prescrittori e strutture invianti, convenzioni, omaggi dell'industria diagnostica, assunzioni e incarichi?",
+       "ref": "ISO 37001 · 4.5",
+       "hint": "Valutazione del rischio di corruzione aggiornata con le misure collegate a ciascun rischio"
+      },
+      {
+       "n": "ACO02",
+       "text": "Il personale del laboratorio, in particolare chi ha rapporti con fornitori e clienti, ha ricevuto la formazione su politica anticorruzione, Codice etico e Modello 231 e sa riconoscere una situazione a rischio?",
+       "ref": "ISO 37001 · 7.3",
+       "hint": "Registro della formazione; intervista a campione (che cosa fai se un fornitore ti offre un regalo?)"
+      },
+      {
+       "n": "ACO03",
+       "text": "Omaggi, ospitalità, campioni gratuiti, sponsorizzazioni di congressi e inviti dell'industria diagnostica sono dichiarati, autorizzati e registrati secondo la procedura, entro i limiti fissati?",
+       "ref": "ISO 37001 · 8.7",
+       "hint": "Registro di omaggi e ospitalità; autorizzazioni; verifica a campione degli inviti a congressi dell'ultimo anno"
+      },
+      {
+       "n": "ACO04",
+       "text": "I conflitti di interesse (partecipazioni o incarichi presso fornitori, parentele, attività libero-professionale presso concorrenti o clienti) sono dichiarati da chi ha ruoli decisionali e gestiti con misure di astensione?",
+       "ref": "ISO 37001 · Conflitti di interesse",
+       "hint": "Dichiarazioni periodiche; decisioni di astensione verbalizzate"
+      },
+      {
+       "n": "ACO05",
+       "text": "Prima di attivare un fornitore critico, un laboratorio in service, un consulente o un partner viene svolta una due diligence proporzionata al rischio e il contratto contiene gli impegni anticorruzione?",
+       "ref": "ISO 37001 · 8.2",
+       "hint": "Schede di due diligence (Suite > Audit SGI > Audit partner); tre contratti a campione con la clausola"
+      },
+      {
+       "n": "ACO06",
+       "text": "Sono applicati i controlli finanziari: separazione tra chi richiede, chi approva e chi paga, doppia firma oltre soglia, confronto tra più offerte, nessun pagamento in contanti a fornitori, verifica della congruità dei prezzi?",
+       "ref": "ISO 37001 · 8.3",
+       "hint": "Ricostruzione di tre acquisti a campione: richiesta, ordine, documento di trasporto, fattura, pagamento"
+      },
+      {
+       "n": "ACO07",
+       "text": "Sono esclusi i trattamenti di favore: nessuna alterazione di priorità, risultati, prezzi o esenzioni; gratuità e sconti sono autorizzati e tracciati nel gestionale; le modifiche a referti e tariffe lasciano traccia di chi le ha fatte?",
+       "ref": "ISO 37001 · 8.4",
+       "hint": "Elenco di sconti e gratuità del periodo con l'autorizzazione; registro delle modifiche nel gestionale"
+      },
+      {
+       "n": "ACO08",
+       "text": "Il canale di segnalazione degli illeciti (whistleblowing, D.Lgs. 24/2023) è noto al personale, garantisce riservatezza e tutela da ritorsioni?",
+       "ref": "ISO 37001 · 8.9",
+       "hint": "Informativa affissa o in intranet; intervista a campione. I contenuti delle segnalazioni restano alla funzione preposta: qui si verifica solo che il canale sia conosciuto"
+      },
+      {
+       "n": "ACO09",
+       "text": "La Funzione di conformità per la prevenzione della corruzione riceve i flussi informativi dal laboratorio e gli esiti dei controlli sono riportati alla Direzione?",
+       "ref": "ISO 37001 · 5.3.2 / 9.2",
+       "hint": "Flussi informativi periodici; verbali; azioni decise"
+      }
+     ]
+    },
+    {
+     "key": "PDG",
+     "title": "Parità di genere · UNI/PdR 125:2022",
+     "hint": "Solo dati aggregati: nessun dato retributivo o personale individuale nelle note.",
+     "items": [
+      {
+       "n": "PDG01",
+       "text": "La politica per la parità di genere è comunicata al personale del laboratorio e sono noti i riferimenti a cui rivolgersi (Comitato guida, referenti)?",
+       "ref": "UNI/PdR 125:2022 · Area Cultura e strategia",
+       "hint": "Politica affissa o in intranet; intervista a campione"
+      },
+      {
+       "n": "PDG02",
+       "text": "I ruoli di responsabilità del laboratorio (direzione, responsabili di settore, coordinamento tecnico) sono rilevati per genere e confrontati con la composizione dell'organico?",
+       "ref": "UNI/PdR 125:2022 · Area Governance",
+       "hint": "Organigramma con i dati per genere; indicatori dell'area Governance"
+      },
+      {
+       "n": "PDG03",
+       "text": "Selezioni e assunzioni seguono criteri neutri rispetto al genere: annunci, griglie di valutazione, nessuna domanda su stato civile, gravidanza o carichi di cura?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.1 Selezione e assunzione",
+       "hint": "Annunci pubblicati; verbali di selezione a campione"
+      },
+      {
+       "n": "PDG04",
+       "text": "L'accesso a formazione, ECM, incarichi di responsabilità e progressioni è equo tra donne e uomini, anche per chi lavora a tempo parziale o rientra da un congedo?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.2 Gestione della carriera",
+       "hint": "Ore di formazione per genere; avanzamenti e incarichi dell'ultimo anno"
+      },
+      {
+       "n": "PDG05",
+       "text": "A parità di mansione e livello le retribuzioni, comprese indennità, superminimi e premi, non presentano differenze di genere non giustificate?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.3 Equità salariale",
+       "hint": "Analisi del divario retributivo per livello, su dati aggregati a cura delle Risorse umane; azioni di riallineamento decise"
+      },
+      {
+       "n": "PDG06",
+       "text": "La tutela di maternità, paternità e cura è applicata: valutazione dei rischi per le lavoratrici in gravidanza e allattamento (D.Lgs. 151/2001: rischio biologico, chimico, lavoro notturno) con cambio di mansione, congedi fruiti senza penalizzazioni, rientro accompagnato?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.4 Genitorialità e cura",
+       "hint": "Valutazione dei rischi per gestanti e puerpere nel DVR; casi dell'ultimo anno (senza dati sanitari); colloqui di rientro"
+      },
+      {
+       "n": "PDG07",
+       "text": "I turni (notti, festivi, reperibilità) sono pianificati con anticipo e criteri equi e sono disponibili misure di conciliazione (flessibilità, tempo parziale, cambi turno) accessibili senza distinzione di genere?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.5 Conciliazione vita-lavoro",
+       "hint": "Turni pubblicati (Suite > Room Planning > Turni); richieste di flessibilità con il relativo esito"
+      },
+      {
+       "n": "PDG08",
+       "text": "È attiva la prevenzione di molestie e abusi sul lavoro: regole di comportamento note, canale di segnalazione riservato, formazione, gestione dei casi?",
+       "ref": "UNI/PdR 125:2022 · 6.3.2.6 Prevenzione di abusi e molestie",
+       "hint": "Procedura; formazione registrata; numero dei casi trattati comunicato dalla funzione preposta (solo il numero)"
+      },
+      {
+       "n": "PDG09",
+       "text": "Gli indicatori della UNI/PdR 125 riferiti al laboratorio sono raccolti e riportati al Comitato guida, con azioni dove il risultato è sotto soglia?",
+       "ref": "UNI/PdR 125:2022 · 5 Indicatori",
+       "hint": "Piano strategico; indicatori aggiornati; verbali del Comitato guida"
+      }
+     ]
+    },
+    {
+     "key": "DEI",
+     "title": "Diversità e inclusione · ISO 30415:2021",
+     "hint": "Riferimenti ai capitoli della linea guida ISO 30415.",
+     "items": [
+      {
+       "n": "DEI01",
+       "text": "Gli impegni di diversità e inclusione dell'organizzazione sono noti nel laboratorio e i responsabili ne rispondono (obiettivi assegnati, comportamenti attesi)?",
+       "ref": "ISO 30415:2021 · cap. 4 e 5",
+       "hint": "Politica; obiettivi dei responsabili; intervista"
+      },
+      {
+       "n": "DEI02",
+       "text": "Il clima del laboratorio è rilevato (indagine, colloqui, riunioni) e le segnalazioni di esclusione o di trattamento non rispettoso sono trattate con un riscontro?",
+       "ref": "ISO 30415:2021 · cap. 7 Cultura inclusiva",
+       "hint": "Esiti dell'indagine di clima; azioni conseguenti"
+      },
+      {
+       "n": "DEI03",
+       "text": "Reclutamento, inserimento, formazione, valutazione e turni sono liberi da discriminazioni per età, origine, disabilità, orientamento, religione o condizione familiare?",
+       "ref": "ISO 30415:2021 · cap. 8 Ciclo di vita delle risorse umane",
+       "hint": "Criteri documentati; verifica a campione di una selezione e di una valutazione"
+      },
+      {
+       "n": "DEI04",
+       "text": "Sono previsti accomodamenti ragionevoli per persone con disabilità o limitazioni (postazioni, orari, strumenti, prescrizioni del medico competente) e sono rispettati gli obblighi della Legge 68/1999?",
+       "ref": "ISO 30415:2021 · cap. 8 Ciclo di vita delle risorse umane",
+       "hint": "Accomodamenti adottati; prospetto informativo; prescrizioni applicate"
+      },
+      {
+       "n": "DEI05",
+       "text": "L'inserimento dei neoassunti, compreso il personale di lingua madre diversa, prevede affiancamento e istruzioni comprensibili, con verifica che le istruzioni di sicurezza siano state capite?",
+       "ref": "ISO 30415:2021 · cap. 8 Ciclo di vita delle risorse umane",
+       "hint": "Piano di inserimento; schede di addestramento; verifica dell'apprendimento"
+      },
+      {
+       "n": "DEI06",
+       "text": "Referti, istruzioni di preparazione e comunicazioni verso l'utenza sono comprensibili e accessibili (linguaggio chiaro, formati leggibili, lingue più richieste) e rispettano l'identità della persona?",
+       "ref": "ISO 30415:2021 · cap. 9 Prodotti e servizi",
+       "hint": "Esempi di istruzioni e referti; segnalazioni dell'utenza sul tema"
+      },
+      {
+       "n": "DEI07",
+       "text": "Ai fornitori del laboratorio sono richiesti impegni di non discriminazione e inclusione?",
+       "ref": "ISO 30415:2021 · cap. 10 Approvvigionamenti",
+       "hint": "Codice di condotta dei fornitori sottoscritto; clausole contrattuali"
+      }
+     ]
+    },
+    {
+     "key": "SOC",
+     "title": "Responsabilità sociale · PAS 24000:2022",
+     "hint": "Riferimenti per tema della PAS 24000: i numeri di paragrafo vanno riportati da Qualità sull'edizione in uso.",
+     "items": [
+      {
+       "n": "SOC01",
+       "text": "Non è impiegato personale sotto l'età minima e tirocinanti e studenti sono tutelati: convenzione, tutor, orari, esclusione dalle attività a rischio?",
+       "ref": "PAS 24000:2022 · Lavoro infantile e giovani lavoratori",
+       "hint": "Fascicoli dei tirocini (Suite > Gestione del Personale > Tirocinanti); registri delle presenze"
+      },
+      {
+       "n": "SOC02",
+       "text": "Il lavoro è prestato volontariamente: nessun trattenimento di documenti o somme, straordinario non imposto, dimissioni libere nei termini di contratto?",
+       "ref": "PAS 24000:2022 · Lavoro forzato o obbligato",
+       "hint": "Contratti; intervista a campione"
+      },
+      {
+       "n": "SOC03",
+       "text": "Sono garantite condizioni di lavoro dignitose: servizi igienici e spogliatoi adeguati, acqua potabile, area ristoro separata dall'area analitica, microclima e illuminazione idonei?",
+       "ref": "PAS 24000:2022 · Salute e sicurezza",
+       "hint": "Sopralluogo; segnalazioni del personale"
+      },
+      {
+       "n": "SOC04",
+       "text": "È rispettato il diritto di aderire a organizzazioni sindacali e di contrattazione collettiva, senza discriminazioni verso i rappresentanti, con uno spazio per le comunicazioni sindacali?",
+       "ref": "PAS 24000:2022 · Libertà di associazione",
+       "hint": "Bacheca; permessi fruiti; intervista"
+      },
+      {
+       "n": "SOC05",
+       "text": "Non risultano discriminazioni in assunzione, retribuzione, formazione, promozione, cessazione del rapporto?",
+       "ref": "PAS 24000:2022 · Discriminazione",
+       "hint": "Reclami e contenziosi del periodo; dati aggregati"
+      },
+      {
+       "n": "SOC06",
+       "text": "Contestazioni e sanzioni seguono il CCNL e l'art. 7 dello Statuto dei lavoratori: codice disciplinare affisso, diritto di difesa, nessuna sanzione informale o trattenuta punitiva?",
+       "ref": "PAS 24000:2022 · Pratiche disciplinari",
+       "hint": "Codice disciplinare esposto; procedimenti dell'ultimo anno (solo regolarità formale)"
+      },
+      {
+       "n": "SOC07",
+       "text": "Sono rispettati orario massimo, riposo giornaliero di 11 ore e riposo settimanale; straordinari, notti e reperibilità sono registrati, entro i limiti e retribuiti?",
+       "ref": "PAS 24000:2022 · Orario di lavoro",
+       "hint": "Turni e timbrature di un mese a campione; conteggio degli straordinari"
+      },
+      {
+       "n": "SOC08",
+       "text": "Le retribuzioni sono conformi al CCNL applicato, i cedolini sono chiari e puntuali, i contributi sono versati e le forme contrattuali sono usate correttamente (nessuna falsa partita IVA)?",
+       "ref": "PAS 24000:2022 · Retribuzione",
+       "hint": "CCNL applicato; cedolini a campione; DURC; contratti dei liberi professionisti"
+      },
+      {
+       "n": "SOC09",
+       "text": "Ai fornitori e agli appaltatori (pulizie, trasporti, cooperative) sono richiesti e verificati gli stessi requisiti sociali: DURC, CCNL applicato, impegno sottoscritto?",
+       "ref": "PAS 24000:2022 · Catena di fornitura",
+       "hint": "Impegni firmati; DURC in corso di validità; verifiche svolte"
+      },
+      {
+       "n": "SOC10",
+       "text": "I lavoratori possono presentare reclami e proposte sulle condizioni di lavoro attraverso un canale noto e ricevono un riscontro?",
+       "ref": "PAS 24000:2022 · Sistema di gestione",
+       "hint": "Canale di reclamo; registro con i tempi di risposta"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "report": {
+  "title": "Audit report",
+  "hint": "Riportare le non conformità rilevate durante l'audit indicando la voce, la norma e il punto, le cause ove possibile, la soluzione e le azioni correttive proposte con responsabile e scadenza.",
+  "nc_columns": [
+   "n",
+   "descrizione",
+   "cause",
+   "soluzione",
+   "azione_correttiva",
+   "persona_riferimento",
+   "entro"
+  ],
+  "observations_label": "Osservazioni e opportunità di miglioramento"
+ }
+}

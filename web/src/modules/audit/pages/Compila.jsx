@@ -17,7 +17,7 @@ const itemKey = (n) => String(n || '').replace(/\s+/g, '');
 function itemsOf(t) {
   const out = [];
   for (const part of t?.parts || []) for (const sec of part.sections || []) for (const it of sec.items || []) {
-    const b = { part_key: part.key, section_key: sec.key, group: it.group || null };
+    const b = { part_key: part.key, section_key: sec.key, group: it.group || null, ref: it.ref || null, hint: it.hint || null };
     if (it.sub?.length) for (const s of it.sub) { if (s.free) { for (let i = 1; i <= (Number(s.repeat) || 1); i++) out.push({ ...b, key: `${s.key}_${i}`, n: String(it.n), label: s.text, parent: it.text, rev: Boolean(s.rev), free: true }); } else out.push({ ...b, key: s.key, n: String(it.n), label: s.text, parent: it.text, rev: Boolean(s.rev), free: false }); }
     else if (it.free) { for (let i = 1; i <= (Number(it.repeat) || 1); i++) out.push({ ...b, key: `${itemKey(it.n)}_${i}`, n: String(it.n), label: it.text, parent: null, rev: Boolean(it.rev), free: true }); }
     else out.push({ ...b, key: itemKey(it.n), n: String(it.n), label: it.text, parent: null, rev: Boolean(it.rev), free: false });
@@ -185,6 +185,8 @@ export default function Compila() {
                   <div className={`au-item ${showVer ? 'two' : ''}`}>
                     <div className="q">
                       <span className="n">{it.key}</span>{it.parent && <span className="parent">{it.parent} · </span>}{it.label}
+                      {it.ref && <div className="au-ref">{it.ref}</div>}
+                      {it.hint && <div className="au-evid"><b>Evidenze attese:</b> {it.hint}</div>}
                       {it.free && <div className="free"><input placeholder="Specificare" disabled={!canEdit} value={x.free || ''} onChange={(e) => setAns('ans', it.key, { free: e.target.value })} /></div>}
                       {it.rev && <label className="rev">rev. n° <input disabled={!canEdit} value={x.rev || ''} onChange={(e) => setAns('ans', it.key, { rev: e.target.value })} /></label>}
                     </div>

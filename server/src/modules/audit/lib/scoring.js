@@ -13,7 +13,8 @@ export function itemsOf(template) {
   for (const part of template?.parts || []) {
     for (const sec of part.sections || []) {
       for (const it of sec.items || []) {
-        const base = { part_key: part.key, part_title: part.title, section_key: sec.key, section_title: sec.title, group: it.group || null };
+        // ref = norma e punto (es. "ISO 45001:2018 · 6.1.2"), hint = evidenze attese: guida per chi compila (modelli dalla v0.84.0)
+        const base = { part_key: part.key, part_title: part.title, section_key: sec.key, section_title: sec.title, group: it.group || null, ref: it.ref || null, hint: it.hint || null };
         if (Array.isArray(it.sub) && it.sub.length) {
           for (const s of it.sub) {
             const k = s.key || `${itemKey(it.n)}${s.n || ''}`;
