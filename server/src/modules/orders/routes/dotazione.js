@@ -230,6 +230,33 @@ r.post('/sedi/:id/genera', ah(async (req, res) => {
   res.json(await dettaglio(s.id));
 }));
 
+// "Genera ordine" dalla scheda Modelli (richiesta del CEO del 18/11/2026): scelta la struttura, in un passo solo il piano riparte dal
+// modello della tipologia, passa a PIANIFICATA e nasce l'ordine in BOZZA al Magazzino Centrale. Non tocca una dotazione già
+// consegnata né una struttura che ha già un ordine di dotazione non annullato.
+r.post('/modelli/:kind/ordine', ah(async (req, res) => {
+  const kind = assertKind(req.params.kind);
+  const d = parse(z.object({ struttura_id: z.coerce.number().int() }), req.body);
+  let s = await strutturaDotazione(d.struttura_id);
+  if (s.tipologia !== kind) throw bad(`${s.name} è di tipologia ${s.tipologia_name}: usa il suo modello`);
+  nonConsegnata(s);
+  if (s.order_id && s.order_status !== 'ANNULLATO') throw conflict(`Ordine di dotazione già creato per ${s.name}: ${s.order_number}`);
+  const n = await tx(async (c) => {
+    const id = await assicuraCarico(c, s, req.user.id);
+    await c.query('DELETE FROM startup_load_lines WHERE load_id=$1', [id]);
+    const ins = await c.query(`INSERT INTO startup_load_lines (load_id, article_id, packs_planned, note, sort)
+      SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id WHERE l.kind=$2 AND a.active AND a.source='SILVA'`, [id, kind]);
+    if (!ins.rowCount) throw bad(`Il modello ${s.tipologia_name} è vuoto: aggiungi gli articoli prima di generare l'ordine`);
+    await c.query(`UPDATE startup_loads SET status='PIANIFICATA', kind=$2, planned_at=now(), planned_by=$3, updated_at=now() WHERE id=$1`, [id, kind, req.user.id]);
+    return ins.rowCount;
+  });
+  s = await strutturaDotazione(d.struttura_id);
+  const lines = (await righeCarico(s.load_id)).filter((l) => l.packs_planned > 0).map((l) => ({ article_id: l.article_id, qty: l.packs_planned, note: l.note }));
+  const o = await creaOrdine(req, { strutturaId: s.id, lines, notes: `Dotazione di avvio${s.opened_at ? ` (apertura ${s.opened_at.split('-').reverse().join('/')})` : ''}`, eventLabel: 'Creato dalla Dotazione di avvio (modello)', puntoRichiesto: false });
+  await q('UPDATE startup_loads SET order_id=$2, updated_at=now() WHERE id=$1', [s.load_id, o.id]);
+  await audit(req, 'DOTAZIONE_ORDINE_DA_MODELLO', 'struttura', s.id, { tipologia: kind, righe: n, order_id: o.id, number: o.number });
+  res.status(201).json({ id: o.id, number: o.number, struttura: s.name, righe: n });
+}));
+
 // "Salva piano": righe della singola sede (aggiungi, togli, cambia quantità) e stato PIANIFICATA
 r.put('/sedi/:id/piano', ah(async (req, res) => {
   const s = await strutturaDotazione(req.params.id);

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { api, API_BASE, BASE, qs } from '../api.js';
 import { useApi, Field, Loading, ErrorBox, Card, Badge, Icon, Modal, useToast } from '../components/ui.jsx';
 import { ProductArt } from '../components/art.jsx';
@@ -72,6 +72,16 @@ function Modelli() {
   const { data, reload } = useApi(`/dotazione/modelli/${kind}`, [kind]);
   const [err, setErr] = useState(null);
   const [copy, setCopy] = useState(null);
+  // "Genera ordine": scelta la struttura della tipologia, piano dal modello e ordine in bozza in un passo solo
+  const nav = useNavigate();
+  const sedi = useApi('/dotazione/sedi');
+  const [ord, setOrd] = useState(null);
+  const candidate = (sedi.data?.rows || []).filter((x) => x.tipologia === kind);
+  const generaOrdine = async () => {
+    setErr(null); setOrd({ ...ord, busy: true });
+    try { const r = await api.post(`/dotazione/modelli/${kind}/ordine`, { struttura_id: Number(ord.id) }); toast(`Ordine ${r.number} in bozza per ${r.struttura}: ${r.righe} articoli`); setOrd(null); nav(`${BASE}/ordini/${r.id}`); }
+    catch (e) { setOrd({ ...ord, busy: false, err: e }); }
+  };
   const [edits, setEdits] = useState({});
   useEffect(() => setEdits({}), [kind, data]);
   const refresh = () => { reload(); elenco.reload(); };
@@ -113,6 +123,23 @@ function Modelli() {
           </table></div>
         )}
       </Card>
+      {data?.lines?.length > 0 && <div className="card" style={{ marginTop: 16, padding: 16 }}><div className="row" style={{ justifyContent: 'space-between', gap: 16 }}>
+        <div><div className="strong">Genera l'ordine di avvio da questo modello</div><div className="small muted">Scegli la struttura: il suo piano viene compilato con i {data.totali.articoli} articoli del modello ({data.totali.pianificate} confezioni) e nasce l'ordine in bozza al Magazzino Centrale, da controllare e inviare.</div></div>
+        <button className="btn" onClick={() => setOrd({ id: '' })}><Icon name="truck" size={16} />Genera ordine</button>
+      </div></div>}
+      {ord && (() => { const scelta = candidate.find((x) => String(x.id) === String(ord.id)); const blocco = scelta && (scelta.stato === 'CONSEGNATA' ? 'Dotazione già consegnata (Giacenza 0 registrata).' : scelta.order_id && scelta.order_status !== 'ANNULLATO' ? `Ha già l'ordine di dotazione ${scelta.order_number}.` : null); return (
+        <Modal title={`Genera ordine · ${tip.name}`} onClose={() => setOrd(null)} footer={<><button className="btn ghost" onClick={() => setOrd(null)}>Annulla</button><button className="btn" disabled={!ord.id || ord.busy || Boolean(blocco)} onClick={generaOrdine}>{ord.busy ? 'Creo l\'ordine…' : 'Genera ordine'}</button></>}>
+          <ErrorBox error={ord.err} />
+          <Field label={`Per quale ${tip.name.toLowerCase()}`} help="L'elenco viene dall'anagrafica delle sedi (Amministrazione › Sedi)">
+            <select value={ord.id} onChange={(e) => setOrd({ id: e.target.value })} autoFocus>
+              <option value="">Scegli la struttura</option>
+              {candidate.map((x) => <option key={x.id} value={x.id}>{x.name}{x.city ? ` · ${x.city}` : ''}{x.stato === 'CONSEGNATA' ? ' (già consegnata)' : x.order_id && x.order_status !== 'ANNULLATO' ? ` (ordine ${x.order_number})` : x.stato === 'PIANIFICATA' ? ' (piano già salvato)' : ''}</option>)}
+            </select></Field>
+          {!sedi.data ? <Loading /> : !candidate.length ? <div className="alert" style={{ marginTop: 10 }}>Nessuna struttura di questa tipologia in anagrafica.</div> : null}
+          {blocco && <div className="alert" style={{ marginTop: 10 }}>{blocco} Aprila dalla scheda "Sedi e Legal entity".</div>}
+          {scelta && !blocco && scelta.stato === 'PIANIFICATA' && <div className="alert" style={{ marginTop: 10 }}>Questa struttura ha già un piano salvato: verrà sostituito con il modello.</div>}
+          {scelta && !blocco && <div className="small muted" style={{ marginTop: 10 }}>{data.totali.articoli} articoli, {data.totali.pianificate} confezioni. L'ordine nasce in bozza: lo controlli e lo invii dalla sua pagina.</div>}
+        </Modal>); })()}
       {copy && (
         <Modal title={`Copia nel modello ${tip.name}`} onClose={() => setCopy(null)} footer={<><button className="btn ghost" onClick={() => setCopy(null)}>Annulla</button><button className="btn" onClick={async () => { setErr(null); try { const r = await api.post(`/dotazione/modelli/${kind}/copia`, copy); toast(`${r.copiate} articoli copiati`); setCopy(null); refresh(); } catch (e) { setErr(e); } }}>Copia</button></>}>
           <div className="form-grid">

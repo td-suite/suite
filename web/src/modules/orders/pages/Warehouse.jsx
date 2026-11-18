@@ -10,13 +10,14 @@ import { linkArticolo } from '../lib/magazzino.js';
 // Fase 0 · Magazzino Centrale (gestito dal fornitore Silva, letto dall'API Silva): giacenze (lotti, scadenze, quantità) e visibilità
 // degli articoli per tipologia di struttura: Tutti, Punti Prelievo, Centro Polidiagnostico, Laboratorio di Analisi, Service
 const VIS = [
-  { k: 'visible_all', label: 'Tutti', title: 'Visibile a tutte le strutture' },
-  { k: 'visible_sedi', label: 'Punti Prelievo', title: 'Punti prelievo' },
-  { k: 'visible_poli', label: 'Centro Polidiagnostico', title: 'Centri diagnostici, poliambulatori e centri medici' },
-  { k: 'visible_lab', label: 'Laboratorio di Analisi', title: 'Laboratorio di analisi' },
-  { k: 'visible_service', label: 'Service', title: 'Clienti service e Legal entity' },
+  { k: 'visible_all', label: 'Tutti', breve: 'Tutti', title: 'Visibile a tutte le strutture' },
+  { k: 'visible_sedi', label: 'Punti Prelievo', breve: 'Punti prelievo', title: 'Punti prelievo' },
+  { k: 'visible_poli', label: 'Centro Polidiagnostico', breve: 'Polidia- gnostico', title: 'Centri diagnostici, poliambulatori e centri medici' },
+  { k: 'visible_lab', label: 'Laboratorio di Analisi', breve: 'Labora- torio', title: 'Laboratorio di analisi' },
+  { k: 'visible_service', label: 'Service', breve: 'Service', title: 'Clienti service e Legal entity' },
 ];
 const visibile = (r) => VIS.some((v) => r[v.k]);
+const TH = { padding: '10px 6px', whiteSpace: 'normal', lineHeight: 1.25 }; const TD = { padding: '10px 6px' };
 // v0.68.4: scheda "Giacenze Silva" del Magazzino Centrale (tabs = barra delle schede); per ogni articolo "Ordinabile" sì/no con il link
 // alla riga nella scheda "Articoli ordinabili".
 export default function Warehouse({ tabs = null }) {
@@ -59,19 +60,19 @@ export default function Warehouse({ tabs = null }) {
       {sel.size > 0 && <div className="alert info" style={{ marginBottom: 12 }}><div className="row"><b>{sel.size} selezionati:</b>{VIS.map((v) => <button key={v.k} className="btn sm ghost" onClick={() => bulk(v.k, true)}>{v.k === 'visible_all' ? 'Visibili a tutti' : `+ ${v.label}`}</button>)}<button className="btn sm danger" onClick={async () => { await bulk('visible_all', false); }}>Togli "tutti"</button><button className="btn sm link" onClick={() => setSel(new Set())}>Annulla selezione</button></div></div>}
       <Card flush>
         {!data ? <Loading /> : (
-          <div className="table-wrap"><table className="t">
-            <thead><tr><th><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th>Codice Silva</th><th className="num">Giacenza magazzino</th><th className="num">Lotti</th><th>Prima scadenza</th><th title="Compare in Nuovo ordine per almeno una tipologia di struttura">Ordinabile</th>{VIS.map((v) => <th key={v.k} title={v.title} style={{ textAlign: 'center', whiteSpace: 'normal', lineHeight: 1.25, width: 92 }}>{v.label}</th>)}<th /></tr></thead>
+          <div className="table-wrap"><table className="t" style={{ tableLayout: 'fixed', minWidth: 0 }}>
+            {/* v0.83.0 (richiesta del CEO): tutte le colonne in vista senza scorrere di lato. Larghezze fisse, il nome dell'articolo va a capo,
+                codice Silva sotto il nome, lotti e prima scadenza in una colonna, intestazioni delle tipologie su due righe. */}
+            <colgroup><col style={{ width: 38 }} /><col /><col style={{ width: 96 }} /><col style={{ width: 104 }} /><col style={{ width: 92 }} />{VIS.map((v) => <col key={v.k} style={{ width: 74 }} />)}</colgroup>
+            <thead><tr><th style={{ padding: '10px 8px' }}><input type="checkbox" checked={rows.length > 0 && rows.every((r) => sel.has(r.article_id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.article_id)) : new Set())} /></th><th>Articolo</th><th className="num" style={TH}>Giacenza</th><th style={TH}>Lotti e prima scadenza</th><th style={TH} title="Compare in Nuovo ordine per almeno una tipologia di struttura">Ordinabile</th>{VIS.map((v) => <th key={v.k} title={v.title} style={{ ...TH, textAlign: 'center' }}>{v.breve}</th>)}</tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.article_id} className={!visibile(r) ? 'warnrow' : ''}>
-                <td><input type="checkbox" checked={sel.has(r.article_id)} onChange={(e) => { const s = new Set(sel); e.target.checked ? s.add(r.article_id) : s.delete(r.article_id); setSel(s); }} /></td>
-                <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt icon={r.icon} color={r.color} size={30} /><div><div className="strong">{r.name}{r.source === 'SILVA' && <> <Badge tone="mauve">dal feed</Badge></>}</div><div className="small muted">{r.pack_label} · <span className="mono">{r.code}</span></div></div></div></td>
-                <td className="mono small">{r.silva_code || <span className="muted">–</span>}</td>
-                <td className="num strong">{dec(r.qty, 0)} <span className="small muted">{r.unit}</span></td>
-                <td className="num">{r.lots}</td>
-                <td className="small">{r.next_expiry ? itDate(r.next_expiry) : '–'}</td>
-                <td className="small"><Link to={`${BASE}/${linkArticolo(r.article_id)}`} title={r.ordinabile ? 'Apri la riga in Articoli ordinabili' : `Non ordinabile: ${r.non_ordinabile_motivo}`}>{r.ordinabile ? <Badge tone="green">sì</Badge> : <Badge tone="red">no</Badge>}</Link>{!r.ordinabile && r.non_ordinabile_motivo && <div className="muted" style={{ fontSize: 11 }}>{r.non_ordinabile_motivo}</div>}</td>
-                {VIS.map((v) => <td key={v.k} style={{ textAlign: 'center' }}><Chk r={r} k={v.k} /></td>)}
-                <td className="num"><button className="btn sm ghost" onClick={() => setDetail(r)}>Lotti</button></td>
+                <td style={{ padding: '10px 8px' }}><input type="checkbox" checked={sel.has(r.article_id)} onChange={(e) => { const s = new Set(sel); e.target.checked ? s.add(r.article_id) : s.delete(r.article_id); setSel(s); }} /></td>
+                <td style={{ padding: '10px 8px' }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}><span style={{ flex: 'none', display: 'inline-flex' }}><ProductArt icon={r.icon} color={r.color} size={30} /></span><div style={{ minWidth: 0, overflowWrap: 'anywhere' }}><div className="strong">{r.name}{r.source === 'SILVA' && <> <Badge tone="mauve">dal feed</Badge></>}</div><div className="small muted">{r.pack_label} · <span className="mono">{r.silva_code || r.code}</span>{r.silva_code && r.silva_code !== r.code ? <> · Suite <span className="mono">{r.code}</span></> : null}</div></div></div></td>
+                <td className="num strong" style={TD}>{dec(r.qty, 0)} <span className="small muted">{r.unit}</span></td>
+                <td className="small" style={TD}><button className="btn sm ghost" style={{ padding: '2px 8px' }} title="Vedi i lotti in magazzino" onClick={() => setDetail(r)}>{r.lots} {Number(r.lots) === 1 ? 'lotto' : 'lotti'}</button><div className="muted" style={{ marginTop: 2 }}>{r.next_expiry ? itDate(r.next_expiry) : 'senza scadenza'}</div></td>
+                <td className="small" style={TD}><Link to={`${BASE}/${linkArticolo(r.article_id)}`} title={r.ordinabile ? 'Apri la riga in Articoli ordinabili' : `Non ordinabile: ${r.non_ordinabile_motivo}`}>{r.ordinabile ? <Badge tone="green">sì</Badge> : <Badge tone="red">no</Badge>}</Link>{!r.ordinabile && r.non_ordinabile_motivo && <div className="muted" style={{ fontSize: 11, overflowWrap: 'anywhere' }}>{r.non_ordinabile_motivo}</div>}</td>
+                {VIS.map((v) => <td key={v.k} style={{ ...TD, textAlign: 'center' }}><Chk r={r} k={v.k} /></td>)}
               </tr>))}</tbody>
           </table>{!rows.length && <div className="empty">Nessun articolo per questo filtro</div>}</div>
         )}

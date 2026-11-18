@@ -89,7 +89,8 @@ export default function mount(app) {
       const r = await one(`SELECT count(*) FILTER (WHERE status='INVIATO')::int AS verifica FROM orders`);
       const d = await one(`SELECT count(*)::int AS n FROM issues WHERE status='APERTA'`).catch(() => ({ n: 0 }));
       // Dotazione di avvio: sedi e Legal entity che aprono entro 60 giorni (o già aperte) senza Giacenza 0 registrata (solo Area Operations)
-      const dotazione = isOps(req.user) ? await badgeDotazione().catch(() => 0) : 0;
+      // v0.83.0 (richiesta del CEO): nessun contatore sul menu Dotazione di avvio; le strutture da attenzionare restano nella pagina
+      const dotazione = 0;
       res.json({ verifica: r.verifica, difformita: d.n, dotazione });
     } catch (e) { next(e); }
   });

@@ -16,7 +16,7 @@ export default {
     // v0.68.4: una sola voce con due schede, Giacenze Silva e Articoli ordinabili (l'ex Catalogo articoli, /orders/articoli rimanda qui)
     { to: 'magazzino', icon: 'folder', label: 'Magazzino Centrale', profiles: OPS },
     // Dotazione di avvio delle sedi: modelli per tipologia, sedi e Legal entity con data di apertura e Giacenza 0 (badge: aperture entro 60 giorni senza Giacenza 0)
-    { to: 'dotazione', icon: 'building', label: 'Dotazione di avvio', badge: 'dotazione', profiles: OPS },
+    { to: 'dotazione', icon: 'building', label: 'Dotazione di avvio', profiles: OPS },
     { group: 'Ordini', profiles: OPS },
     { to: 'catalogo', icon: 'plus', label: '1 · Nuovo ordine per struttura', profiles: OPS },
     { to: 'verifica', icon: 'check', label: '2 · Verifica richieste', badge: 'verifica', profiles: OPS },
