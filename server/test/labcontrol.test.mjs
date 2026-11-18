@@ -326,7 +326,7 @@ describe('Lab Control con il database e il server finto', { skip: SALTA }, () =>
     let x = (await http('GET', '/lab/ritardi')).j;
     assert.deepEqual(x.righe.map((r) => r.id), ['R4', 'R11'], 'dalla più vecchia');
     assert.deepEqual(x.per_cliente.map((c) => c.nome).sort(), ['Cliente Prova A', 'Cliente Prova D']);
-    assert.ok(x.righe[0].bloccanti.length >= 1 && x.righe[0].bloccanti.every((b) => b.codice !== 'EX2'), 'la riga non eseguita non blocca');
+    assert.equal(x.esami_bloccanti, undefined, 'v0.85.0: in ritardo solo le accettazioni e la fase'); assert.ok(x.righe[0].fase?.label);
     // soglia di fase per lo stato 20 (in lavorazione): R9 è ferma da 30 ore
     assert.equal((await http('PUT', '/lab/impostazioni', { soglie_fase: { 20: 24 } })).s, 200);
     x = (await http('GET', '/lab/ritardi')).j;

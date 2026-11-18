@@ -71,11 +71,26 @@ describe('Laboratorio, sedi e ripartenza', { skip: SALTA }, () => {
     assert.equal((await fetch(`${S.base}/api/audit/audits/${a.id}/export.pdf`, { headers: { cookie: o.cookie, 'X-Requested-With': 'td-suite' } })).status, 200);
   });
 
+  test('auto-audit in bozza mai compilato nato con un modello superato: passa al modello attivo della sede', async () => {
+    const pg = (await import('pg')).default; const db = new pg.Client({ connectionString: S.url }); await db.connect();
+    try {
+      const vecchio = (await db.query(`SELECT id FROM audit.templates WHERE kind='SEDE' ORDER BY id LIMIT 1`)).rows[0].id;
+      const a = must(await o.post('/api/audit/audits/auto', { site_id: lab }), 'auto lab');
+      await db.query('UPDATE audit.audits SET template_id=$2 WHERE id=$1', [a.id, vecchio]);
+      assert.equal(must(await o.post('/api/audit/audits/auto', { site_id: lab }), 'riapre').id, a.id);
+      assert.equal(must(await o.get(`/api/audit/audits/${a.id}`), 'audit').template.code, 'TD-AUD-LAB');
+      // uno già compilato resta sulla sua revisione
+      await db.query(`UPDATE audit.audits SET template_id=$2, answers='{"1a":{"v":"SI"}}' WHERE id=$1`, [a.id, vecchio]);
+      must(await o.post('/api/audit/audits/auto', { site_id: lab }), 'riapre');
+      assert.equal(must(await o.get(`/api/audit/audits/${a.id}`), 'audit').template.code, 'TD-AUD-SEDE');
+    } finally { await db.end(); }
+  });
+
   test('ripartenza: conferma obbligatoria, audit nel cestino, primo mese utile, i nuovi auto-audit nascono dal mese scelto', async () => {
     const oggi = new Date(); const mese = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`;
     assert.equal((await o.post('/api/audit/settings/ripartenza', { period: mese, conferma: 'si' })).s, 400);
     const r = must(await o.post('/api/audit/settings/ripartenza', { period: mese, conferma: 'RIPARTI' }), 'ripartenza');
-    assert.equal(r.auto, 1); assert.equal(r.interni, 1); assert.equal(r.stato.start_period, `${mese}-01`);
+    assert.equal(r.auto, 2); assert.equal(r.interni, 1); assert.equal(r.stato.start_period, `${mese}-01`);
     assert.equal(must(await o.get('/api/audit/archivio'), 'archivio').rows?.length ?? 0, 0);
     const prima = new Date(oggi.getFullYear(), oggi.getMonth() - 1, 1); const pp = `${prima.getFullYear()}-${String(prima.getMonth() + 1).padStart(2, '0')}-01`;
     const no = await o.post('/api/audit/audits/auto', { site_id: lab, period: pp });

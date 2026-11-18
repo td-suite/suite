@@ -113,7 +113,7 @@ r.get('/lab/ritardi', ah(async (req, res) => {
 }));
 r.get('/lab/ritardi.xlsx', ah(async (req, res) => {
   const out = await L.ritardi(req.query, contesto(req));
-  const buf = await xlsxAccettazioni(out.righe, { foglio: 'In ritardo', bloccanti: true, intestazione: `Lab Control · accettazioni in ritardo (oltre ${out.soglia.ore_ritardo} ore dall'accettazione senza referto, ultimi ${out.soglia.giorni_finestra} giorni) · senza nomi dei pazienti` });
+  const buf = await xlsxAccettazioni(out.righe, { foglio: 'In ritardo', intestazione: `Lab Control · accettazioni in ritardo (oltre ${out.soglia.ore_ritardo} ore dall'accettazione senza referto, ultimi ${out.soglia.giorni_finestra} giorni) · senza nomi dei pazienti` });
   await audit(req, 'LABCONTROL_EXPORT', { module: KEY, entity: 'ritardi', label: `Export Excel delle accettazioni in ritardo (${out.righe.length} righe, senza nomi dei pazienti)` });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="lab-control-ritardi_${oggiRoma()}.xlsx"`);

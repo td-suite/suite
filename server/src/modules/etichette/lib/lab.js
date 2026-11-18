@@ -334,7 +334,7 @@ export async function elencoCampioni(q, ctx) {
   const pagina = Math.max(1, Number(q.pagina) || 1), pp = Math.max(10, Math.min(200, Number(q.per_pagina) || 50));
   const rows = await many(`WITH ${SQL_PC} SELECT s.instance_id, s.request_id, s.ord, s.id, s.barcode, s.material, s.container, s.sample_at_local, s.collected_at_local, s.checked_in_at_local,
       s.prepared_at_local, s.checked_out_at_local, r.request_number, r.date::text AS data, r.state, r.client_id, r.client_code, pc.cliente, pc.organization_id, pc.site_id, pc.sede_code, pc.sede_name,
-      (SELECT string_agg(DISTINCT i.exam_code, ' ' ORDER BY i.exam_code) FROM synclab.request_items i
+      (SELECT string_agg(DISTINCT i.exam_code || coalesce(' ' || nullif(coalesce(i.description, (SELECT x.description FROM synclab.exams x WHERE x.exam_code = i.exam_code ORDER BY x.updated_at DESC LIMIT 1)), ''), ''), ' · ') FROM synclab.request_items i
         WHERE i.instance_id = s.instance_id AND i.request_id = s.request_id AND coalesce(i.deleted, FALSE) = FALSE
           AND (s.id = ANY(i.sample_ids) OR EXISTS (SELECT 1 FROM synclab.request_item_samples l WHERE l.instance_id = i.instance_id AND l.request_id = i.request_id AND l.item_id = i.id AND l.sample_id = s.id))) AS esami
     FROM ${from} WHERE ${where}
@@ -368,13 +368,8 @@ export async function ritardi(q, ctx) {
     WHERE ${where} ORDER BY r.created_at_local ASC NULLS LAST, r.id LIMIT 2001`, params);
   const regola = await regolaValore();
   const righe = await dettagliElenco(ids.slice(0, 2000).map((x) => [x.instance_id, x.id]), { imp, regola, adesso, oggi, nc: await ncDisponibile() });
-  const bl = righe.length ? await many(`SELECT i.instance_id, i.request_id, i.exam_code, coalesce(i.description, e.description) AS descrizione, i.executed_at_local
-      FROM synclab.request_items i LEFT JOIN LATERAL (SELECT x.description FROM synclab.exams x WHERE x.exam_code = i.exam_code AND x.disponibilita = 'ATTIVO' ORDER BY x.updated_at DESC LIMIT 1) e ON TRUE
-     WHERE i.request_id = ANY($2::text[]) AND i.instance_id = ANY($1::text[]) AND coalesce(i.deleted, FALSE) = FALSE AND i.not_performed_code IS NULL
-       AND i.validated_at_local IS NULL AND coalesce(i.report_ready, FALSE) = FALSE ORDER BY i.ord`, [righe.map((r) => r.instance_id), righe.map((r) => r.id)]) : [];
-  const B = new Map();
-  for (const b of bl) { const k = `${b.instance_id}|${b.request_id}`; if (!B.has(k)) B.set(k, []); B.get(k).push({ codice: b.exam_code, descrizione: b.descrizione, eseguito: Boolean(b.executed_at_local) }); }
-  const conBlocchi = righe.map((r) => ({ ...r, bloccanti: B.get(`${r.instance_id}|${r.id}`) || [] }));
+  // v0.85.0 (richiesta del CEO del 18/11/2026): in "In ritardo" solo le accettazioni e la fase in cui sono, non gli esami che bloccano
+  const conBlocchi = righe;
   const gruppo = (chiave, nome) => {
     const m = new Map();
     for (const r of conBlocchi) {
@@ -384,12 +379,9 @@ export async function ritardi(q, ctx) {
     }
     return [...m.values()].sort((a, b) => b.n - a.n || b.ore_max - a.ore_max);
   };
-  const esami = new Map();
-  for (const r of conBlocchi) for (const b of r.bloccanti) { const k = b.codice || '?'; if (!esami.has(k)) esami.set(k, { codice: k, descrizione: b.descrizione, accettazioni: 0 }); esami.get(k).accettazioni++; }
   return {
     adesso, soglia: { ore_ritardo: imp.ore_ritardo, soglie_fase: imp.soglie_fase, giorni_finestra: imp.giorni_finestra }, totale: ids.length > 2000 ? '2000+' : ids.length,
     righe: conBlocchi, per_cliente: gruppo((r) => `${r.instance_id}|${r.client_id}`, (r) => r.cliente), per_sede: gruppo((r) => String(r.site_id ?? 'ND'), (r) => r.sede || 'Client non abbinati a una sede'),
-    esami_bloccanti: [...esami.values()].sort((a, b) => b.accettazioni - a.accettazioni).slice(0, 20),
   };
 }
 
@@ -441,7 +433,8 @@ export async function tat(q, ctx) {
     const d = new Map((await many(`SELECT DISTINCT ON (upper(exam_code)) upper(exam_code) AS c, description FROM synclab.exams WHERE upper(exam_code) = ANY($1::text[]) ORDER BY upper(exam_code), updated_at DESC`, [senza])).map((x) => [x.c, x.description]));
     for (const e of cur.esami_lenti) if (!e.descrizione) e.descrizione = d.get(e.codice) || null;
   }
-  return { periodo: per, soglia, esame: esame || null, ...cur, mese_prima: pr ? { periodo: prec, totale: pr.totale } : null };
+  const esameDescrizione = esame ? (await one(`SELECT description FROM synclab.exams WHERE upper(exam_code) = $1 ORDER BY updated_at DESC LIMIT 1`, [esame]))?.description || null : null;
+  return { periodo: per, soglia, esame: esame || null, esame_descrizione: esameDescrizione, ...cur, mese_prima: pr ? { periodo: prec, totale: pr.totale } : null };
 }
 
 // ------------------------------------------------------------------ esami non eseguiti

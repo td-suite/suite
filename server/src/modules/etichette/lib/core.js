@@ -18,7 +18,9 @@ export const DEFAULTS = {
   giorni_finestra: 60,         // finestra (giorni) per "in lavorazione ora", ritardi e campioni in viaggio: le accettazioni più vecchie non contano
   colonne_predefinite: null,   // colonne dell'elenco accettazioni per chi non le ha scelte (null = tutte)
 };
-export const GIORNI_MAX = 30;
+// v0.85.0 (richiesta del CEO del 18/11/2026, "nessun limite alla visualizzazione dei nomi"): il tetto passa da 30 giorni a 10 anni;
+// il valore in uso resta quello scelto nelle Impostazioni di Label.
+export const GIORNI_MAX = 3650;
 export const STATI_SOGLIA = [15, 18, 20, 25];
 export const COLONNE = ['numero', 'data', 'cliente', 'sede', 'paziente', 'tipo', 'esami', 'campioni', 'fase', 'aggiornata', 'valore', 'fattura', 'nc', 'ritardo'];
 const intera = (v, min, max, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= min && n <= max ? n : d; };

@@ -32,7 +32,7 @@ export default function Tat() {
       </div>
       <ErrorBox error={q.error} />
       {!d ? <Skeleton lines={8} /> : <>
-        <div className="lc-testa"><span className="small muted">Accettazioni dal {gg(d.periodo.da)} al {gg(d.periodo.a)}{d.esame ? ` con l'esame ${d.esame}` : ''} · soglia {d.soglia} ore</span><CopiaInfo copia={d.copia} /></div>
+        <div className="lc-testa"><span className="small muted">Accettazioni dal {gg(d.periodo.da)} al {gg(d.periodo.a)}{d.esame ? ` con l'esame ${d.esame}${d.esame_descrizione ? ` ${d.esame_descrizione}` : ''}` : ''} · soglia {d.soglia} ore</span><CopiaInfo copia={d.copia} /></div>
         <div className="lc-nums" data-testid="lc-tat-kpi">
           <Kpi label="Mediana" v={ore(t.mediana)} sub={`${num(t.n)} accettazioni refertate`} prima={p?.n ? `mese prima ${ore(p.mediana)}` : null} />
           <Kpi label="90° percentile" v={ore(t.p90)} sub="il 90% entro" prima={p?.n ? `mese prima ${ore(p.p90)}` : null} />

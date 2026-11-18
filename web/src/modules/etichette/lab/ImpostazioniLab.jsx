@@ -55,8 +55,8 @@ export default function ImpostazioniLab() {
           <Field label="Campioni raccolti e non arrivati da più di (ore)" help="Predefinito 24: il cruscotto e la pagina Campioni li evidenziano.">
             <input type="number" min="1" max="720" value={f.ore_campioni} onChange={(e) => setF({ ...f, ore_campioni: e.target.value })} style={{ maxWidth: 120 }} />
           </Field>
-          <Field label="Giorni delle identità recenti (Label, 1-30)" help="Nome del paziente solo per le accettazioni di questi giorni; il codice fiscale non si conserva. Riducendo il valore le identità più vecchie si cancellano subito.">
-            <input type="number" min="1" max="30" value={giorni} onChange={(e) => setGiorni(e.target.value)} style={{ maxWidth: 120 }} disabled={!label.data} />
+          <Field label="Giorni per cui si vede il nome del paziente (da 1 a 3.650)" help="Il nome compare per le accettazioni di questi giorni: alzando il valore i nomi dei giorni precedenti vengono letti dal gestionale un po' alla volta (circa 2.000 al giorno). Il codice fiscale non si conserva. Riducendo il valore le identità più vecchie si cancellano subito.">
+            <input type="number" min="1" max={label.data?.giorni_max || 3650} value={giorni} onChange={(e) => setGiorni(e.target.value)} style={{ maxWidth: 120 }} disabled={!label.data} />
           </Field>
         </Card>
       </div>

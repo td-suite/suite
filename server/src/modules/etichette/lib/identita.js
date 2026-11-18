@@ -10,7 +10,7 @@ import { q, one, many } from '../db.js';
 import { dettaglio } from '../../../lib/synclab/client.js';
 import { getModuleState } from '../../../lib/modules.js';
 import { config } from '../config.js';
-import { KEY, settings, dataApiAttiva, oggiRoma, oraRoma, isoData } from './core.js';
+import { KEY, settings, dataApiAttiva, oggiRoma, oraRoma, isoData, GIORNI_MAX } from './core.js';
 
 const testo = (v, n) => { const s = String(v ?? '').trim(); return s ? s.slice(0, n) : null; };
 const dataValida = (v) => { const d = isoData(v); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= '1900-01-01' ? d : null; };
@@ -63,7 +63,7 @@ export async function identitaPerApertura(instanceId, requestId, { numero = null
 
 /** Purga: identità e letture dirette più vecchie di N giorni (data di lettura o dell'accettazione); letture dirette già nella copia. */
 export async function purga(giorni) {
-  const n = Math.max(1, Math.min(30, Number(giorni) || 7));
+  const n = Math.max(1, Math.min(GIORNI_MAX, Number(giorni) || 7));
   const a = await q(`DELETE FROM pazienti_recenti WHERE letto_il < now() - make_interval(days => $1::int) OR data_accettazione < (now() AT TIME ZONE 'Europe/Rome')::date - $1::int`, [n]);
   const b = await q(`DELETE FROM accettazioni_dirette d WHERE d.letto_il < now() - make_interval(days => $1::int) OR d.data < (now() AT TIME ZONE 'Europe/Rome')::date - $1::int
                        OR EXISTS (SELECT 1 FROM synclab.requests r WHERE r.instance_id = d.instance_id AND r.id = d.id AND r.deleted_at IS NULL)`, [n]);

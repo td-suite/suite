@@ -149,7 +149,7 @@ a.lc-chip:hover { border-color: var(--teal); text-decoration: none; }
 .lc-t th .ico { width: 12px; height: 12px; vertical-align: -1px; margin-left: 3px; }
 .lc-t td.c-cliente { max-width: 210px; }
 .lc-t td.c-sede { max-width: 90px; }
-.lc-t td.c-paziente { max-width: 140px; }
+.lc-t td.c-paziente { white-space: nowrap; }   /* v0.85.0: il nome dell'accettazione si legge per intero */
 .lc-t td.c-numero .mono { font-size: 12px; }
 .lc-t td.c-fase { min-width: 120px; }
 .lc-t tr.rit td:first-child { box-shadow: inset 3px 0 0 var(--red); }
@@ -238,3 +238,9 @@ a.lc-chip:hover { border-color: var(--teal); text-decoration: none; }
   .lc-t-esami tfoot td[colspan] { flex: 1; }
   .lc-t-esami tfoot tr:first-child td:nth-child(2), .lc-t-esami tfoot tr:first-child td:nth-child(3) { display: none; }
 }
+
+/* v0.85.0: "Ritardo massimo" cliccabile e righe evidenziate */
+.lc-num-click { text-align: left; font: inherit; cursor: pointer; border: 1px solid var(--line); }
+.lc-num-click:hover:not(:disabled) { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal-050, #e6f0f2); }
+.lc-num-click:disabled { cursor: default; }
+tr.lc-evid > td { background: #fff4d6; }

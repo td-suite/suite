@@ -146,10 +146,16 @@ export async function getOrCreateAuto(siteId, period, moduleUserId) {
   const avvio = String((await settings()).start_period || '').slice(0, 10);
   if (avvio && String(p).slice(0, 10) < avvio) throw bad(`Gli audit ripartono da ${new Date(`${avvio}T12:00:00`).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}: per i mesi precedenti non si aprono auto-audit`);
   if (!inEsercizio(site, p)) throw bad(`La sede non è ancora in esercizio (apertura ${new Date(site.opened_at).toLocaleDateString('it-IT')}): l'auto-audit parte dal mese di apertura`);
-  const ex = await one(`SELECT id FROM audits WHERE kind='AUTO' AND site_id=$1 AND period=$2 AND deleted_at IS NULL`, [siteId, p]);
-  if (ex) return { id: ex.id, created: false };
   const t = await templatePerSede(site);
   if (!t) throw bad('Nessun modello di checklist sede attivo');
+  const ex = await one(`SELECT id, status, template_id, answers FROM audits WHERE kind='AUTO' AND site_id=$1 AND period=$2 AND deleted_at IS NULL`, [siteId, p]);
+  if (ex) {
+    // v0.84.1 (segnalazione del CEO del 18/11/2026): un auto-audit ancora in bozza e mai compilato, nato con un modello che non è più
+    // quello della sede (nuova revisione, oppure Laboratorio passato a TD-AUD-LAB), passa da solo al modello attivo. Uno già
+    // compilato resta sulla sua revisione.
+    if (ex.status === 'BOZZA' && ex.template_id !== t.id && !Object.keys(ex.answers || {}).length) await q(`UPDATE audits SET template_id=$2, score=NULL, score_by_section='{}'::jsonb, updated_at=now() WHERE id=$1`, [ex.id, t.id]);
+    return { id: ex.id, created: false };
+  }
   try {
     const row = await one(`INSERT INTO audits (kind, site_id, template_id, period, status, conducted_by, created_by, header) VALUES ('AUTO',$1,$2,$3,'BOZZA',$4,$4,$5) RETURNING id`,
       [siteId, t.id, p, moduleUserId, JSON.stringify({ sede: site.name, effettuato_da: site.manager_name || '', data: null })]);

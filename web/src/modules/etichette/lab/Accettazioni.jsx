@@ -48,7 +48,7 @@ export default function Accettazioni() {
     data: (r) => <span className="nowrap" title={gg(r.data)}>{gg(r.data).slice(0, 5)} <span className="muted">{ora(r.creata_il)}</span></span>,
     cliente: (r) => <ClienteLink r={r} />,
     sede: (r) => (r.sede ? <span className="lc-ell" title={r.sede}>{r.sede.split(' ')[0]}</span> : <span className="muted">–</span>),
-    paziente: (r) => (r.paziente ? <span className="lc-ell" title="Identità recente (Label)">{r.paziente}</span> : <span className="muted">{[r.eta != null ? `${r.eta} anni` : null, r.sesso].filter(Boolean).join(' · ') || '–'}</span>),
+    paziente: (r) => (r.paziente ? <span title="Identità letta dal gestionale (Label)">{r.paziente}</span> : <span className="muted">{[r.eta != null ? `${r.eta} anni` : null, r.sesso].filter(Boolean).join(' · ') || '–'}</span>),
     tipo: (r) => <span className="small">{r.tipo_paziente || '–'}{r.medicina_lavoro && <Badge tone="mauve" title="Medicina del lavoro">MdL</Badge>}</span>,
     esami: (r) => <span title={`${r.esami_pronti} pronti, ${r.esami_validati} validati${r.esami_non_eseguiti ? `, ${r.esami_non_eseguiti} non eseguiti` : ''}`}><span className="nowrap">{r.esami_pronti}/{r.esami}</span>{r.esami_non_eseguiti ? <Badge tone="amber" title="Esami non eseguiti">{r.esami_non_eseguiti} NE</Badge> : null}</span>,
     campioni: (r) => r.campioni,

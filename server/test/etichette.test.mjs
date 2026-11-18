@@ -451,7 +451,7 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
     await db.query(`UPDATE etichette.pazienti_recenti SET data_accettazione = $1 WHERE request_id = 'R-4'`, [giorniFa(3)]);
     x = await http('PUT', '/impostazioni', { giorni_identita: 2 });
     assert.ok(x.j.purgate.identita >= 1);
-    assert.equal((await http('PUT', '/impostazioni', { giorni_identita: 31 })).s, 400);
+    assert.equal((await http('PUT', '/impostazioni', { giorni_identita: 3651 })).s, 400);   // tetto a 10 anni dalla v0.85.0
     x = await http('GET', '/impostazioni');
     assert.equal(x.j.giorni_identita, 2); assert.equal(x.j.etichetta_richiesta, true);
     assert.ok(x.j.sedi.some((s) => s.id === M.sA && s.modello_id === idN));
