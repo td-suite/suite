@@ -112,7 +112,9 @@ function inviaPdf(req, res, file, nome) {
   const f = path.join(ASSETS, file);
   if (!fs.existsSync(f)) throw notFound('PDF non disponibile in questa versione');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `${req.query.scarica === '1' ? 'attachment' : 'inline'}; filename="${nome}"`);
+  // nome con lettere accentate (Non conformità): filename ASCII di riserva + filename* in UTF-8, altrimenti il browser salva "download"
+  const ascii = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '_');
+  res.setHeader('Content-Disposition', `${req.query.scarica === '1' ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nome)}`);
   res.setHeader('Cache-Control', 'private, no-cache');
   res.send(fs.readFileSync(f));
 }

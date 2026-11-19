@@ -11,3 +11,7 @@ Dalla v0.89.0.
 - Aggiornamento: a ogni revisione del MAN009 si rigenerano contenuti e PDF dal sorgente della guida e si sostituiscono i file
   di `content/` e `assets/`. Il test `server/test/suiteguida.test.mjs` fallisce se un widget del catalogo non ha il suo capitolo.
 - Le risposte usano il servizio AI già configurato per la Guida GIPO (stessa chiave, nessuna nuova variabile d'ambiente).
+
+v0.89.1: la pagina Guida al widget ha il formato di Chiedi (campo unico per cercare o chiedere, riferito al widget, e PDF del widget da scaricare).
+Corretto ModuleFrame: modulo e stato restano legati alla chiave caricata, altrimenti passando da un widget all'altro il widget di
+partenza riportava alla propria pagina iniziale e il link non funzionava da nessun widget.

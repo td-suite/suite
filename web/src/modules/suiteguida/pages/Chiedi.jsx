@@ -77,7 +77,7 @@ function Risposta({ r, onValutata }) {
       {r.esito === 'SENZA_RISPOSTA' && (
         <div className="gg-senza">
           {r.risposta ? <TestoGuida source={conCitazioni(r.risposta, r.fonti)} /> : <p>Nella guida non ci sono ancora sezioni che rispondono a questa domanda.</p>}
-          <p className="muted">La domanda è già nella coda della redazione: quando risponde la trovi tra le FAQ e ricevi una notifica nella Suite. Se è urgente chiedi al referente interno o apri un ticket all'assistenza Gipo (menu Assistenza della Suite, next@gipo.it).</p>
+          <p className="muted">La domanda è già nella coda della redazione: quando risponde la trovi tra le FAQ e ricevi una notifica nella Suite. Se è urgente chiedi al referente interno o apri un ticket all'assistenza della Suite (widget Ticket).</p>
           <Procedure procedure={r.procedure} titolo="La sezione più vicina" />
         </div>
       )}
@@ -106,7 +106,8 @@ function Risposta({ r, onValutata }) {
   );
 }
 
-export default function Chiedi() {
+export default function Chiedi({ widget = null } = {}) {
+  // widget: voce di widget.json quando la pagina è la "Guida al widget" (stesso formato di Chiedi, domanda riferita al widget, PDF del widget)
   const { stato } = useAuth();
   const [sp, setSp] = useSearchParams();
   const [q, setQ] = useState('');
@@ -128,18 +129,19 @@ export default function Chiedi() {
   useEffect(() => {
     const t = q.trim();
     if (t.length < 3) { setLive(null); return undefined; }
-    const h = setTimeout(() => { api.get(`/cerca${qs({ q: t, registra: '0' })}`, { silent: true }).then((r) => setLive(r.risultati.slice(0, 6))).catch(() => setLive(null)); }, 220);
+    const h = setTimeout(() => { api.get(`/cerca${qs({ q: t, registra: '0' })}`, { silent: true }).then((r) => { const suoi = widget ? r.risultati.filter((x) => x.capitolo === widget.capitolo) : []; setLive((suoi.length ? suoi : r.risultati).slice(0, 6)); }).catch(() => setLive(null)); }, 220);
     return () => clearTimeout(h);
   }, [q]);
 
   const chiedi = async (e, testo) => {
     e?.preventDefault();
-    const d = (testo ?? q).trim();
-    if (d.length < 5) { setErr(new Error('Scrivi la domanda con qualche parola in più')); return; }
+    const scritta = (testo ?? q).trim();
+    if (scritta.length < 5) { setErr(new Error('Scrivi la domanda con qualche parola in più')); return; }
+    const d = widget && !scritta.startsWith('[Widget:') ? `[Widget: ${widget.nome}] ${scritta}` : scritta;
     setInviando(true); setErr(null); setRisposta(null);
     if (sp.get('domanda')) setSp({}, { replace: true });
     setQ(''); setLive(null);   // Chiedi ripulisce la schermata: via il testo dalla barra e i suggerimenti, resta solo la risposta (13/11/2026)
-    try { const r = await api.post('/chiedi', { domanda: d }); setRisposta(r); setLive(null); mie.reload(); } catch (e2) { setErr(e2); setQ(d); }
+    try { const r = await api.post('/chiedi', { domanda: d }); setRisposta(r); setLive(null); mie.reload(); } catch (e2) { setErr(e2); setQ(scritta); }
     finally { setInviando(false); }
   };
 
@@ -155,15 +157,18 @@ export default function Chiedi() {
 
   return (
     <div className="page gg-page">
-      <PageHead title="Chiedi alla Guida" icon="suiteguida" sub="Fai una domanda sulla Suite con parole tue: la risposta arriva dai testi della guida, con i rimandi alle sezioni"
-        actions={<><Link className="btn ghost" to={`${base}/guida`}><Icon name="doc" />Sfoglia la guida</Link><a className="btn ghost" href="/api/suiteguida/guida.pdf?scarica=1"><Icon name="download" />Scarica la guida PDF</a></>} />
+      {widget
+        ? <PageHead title={`Guida al widget · ${widget.nome}`} icon="suiteguida" sub={`Fai una domanda su ${widget.nome} con parole tue, oppure scarica la guida del widget in PDF`}
+          actions={<><a className="btn" href={`/api/suiteguida/widget/${widget.key}.pdf?scarica=1`}><Icon name="download" />Scarica la guida del widget (PDF)</a><Link className="btn ghost" to={widget.route}><Icon name="external" />Apri {widget.nome}</Link></>} />
+        : <PageHead title="Chiedi alla Guida" icon="suiteguida" sub="Fai una domanda sulla Suite con parole tue: la risposta arriva dai testi della guida, con i rimandi alle sezioni"
+          actions={<><Link className="btn ghost" to={`${base}/guida`}><Icon name="doc" />Sfoglia la guida</Link><a className="btn ghost" href="/api/suiteguida/guida.pdf?scarica=1"><Icon name="download" />Scarica la guida PDF</a></>} />}
       <AvvisoDati testo={stato?.avviso_dati} />
       <form className="gg-cerca" onSubmit={chiedi} role="search">
         <Icon name="search" />
-        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder="Per esempio: come chiedo le ferie?" aria-label="La tua domanda sulla Suite" />
+        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder={widget ? `Cerca o chiedi su ${widget.nome}` : 'Per esempio: come chiedo le ferie?'} aria-label={widget ? `La tua domanda su ${widget.nome}` : 'La tua domanda sulla Suite'} />
         <button className="btn lg" disabled={inviando}><Icon name="send" />{inviando ? 'Cerco la risposta' : 'Chiedi'}</button>
       </form>
-      {!q && !risposta && (
+      {!widget && !q && !risposta && (
         <div className="gg-esempi"><span className="muted small">Prova con:</span>{ESEMPI.map((x) => <button key={x} type="button" className="gg-chip" onClick={() => { setQ(x); chiedi(null, x); }}>{x}</button>)}</div>
       )}
       {live && !risposta && !inviando && (

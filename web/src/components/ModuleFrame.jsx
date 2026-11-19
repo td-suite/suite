@@ -12,17 +12,23 @@ export default function ModuleFrame({ moduleKey }) {
   const params = useParams();
   const key = moduleKey || params.moduleKey;
   const { user } = useAuth();
-  const [Mod, setMod] = useState(null);
-  const [state, setState] = useState(null);
-  const [err, setErr] = useState(null);
+  // Modulo, stato ed errore restano legati alla chiave per cui sono stati caricati. Passando da un widget a un altro (es. "Guida al
+  // widget": /room → /suiteguida/widget/room) la chiave cambia subito, ma lo stato si aggiorna solo dopo l'effetto: senza questo legame
+  // il widget di partenza veniva disegnato una volta sul nuovo indirizzo, non lo riconosceva e riportava alla propria pagina iniziale
+  // (difetto della v0.89.0: il link non funzionava da nessun widget).
+  const [car, setCar] = useState({ key: null, Mod: null, state: null, err: null });
   const def = MODULES[key];
   useEffect(() => {
     let alive = true;
     if (!def) return;
-    def.load().then((m) => alive && setMod(() => m.default)).catch((e) => alive && setErr(e));
-    api.get(`/${key}/state`, { silent: true }).then((s) => alive && setState(s)).catch((e) => alive && setState({ error: e }));
+    setCar({ key, Mod: null, state: null, err: null });
+    const agg = (x) => alive && setCar((c) => (c.key === key ? { ...c, ...x } : c));
+    def.load().then((m) => agg({ Mod: m.default })).catch((e) => agg({ err: e }));
+    api.get(`/${key}/state`, { silent: true }).then((s) => agg({ state: s })).catch((e) => agg({ state: { error: e } }));
     return () => { alive = false; };
   }, [key]);
+  const mio = car.key === key;
+  const Mod = mio ? car.Mod : null; const state = mio ? car.state : null; const err = mio ? car.err : null;
   if (!def) return <Navigate to="/" replace />;
   // openToAll (meta.js del modulo, es. Ticket): accessibile a chiunque sia autenticato, anche senza grant
   if (!(isAdmin(user) || hasModule(user, key) || def.openToAll)) return <Forbidden />;
