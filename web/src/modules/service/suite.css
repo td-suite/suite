@@ -57,8 +57,6 @@ input::placeholder { color: revert; }
 .ext { width: 14px; height: 14px; vertical-align: -2px; margin-left: 4px; color: var(--muted); }
 .linkbox .ext { width: 20px; height: 20px; margin: 0; color: var(--teal); }
 .voce-off { opacity: .8; border-style: dashed; }
-/* newsletter: form Brevo in iframe nascosto finché non risponde (al massimo 4 s), poi campo e-mail + "Iscriviti" */
-.newsletter iframe.attesa { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 /* Impostazioni */
 .kv { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid #edf2f3; font-size: 13px; }
 .kv:last-of-type { border-bottom: 0; }

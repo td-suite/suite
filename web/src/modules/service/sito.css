@@ -256,7 +256,6 @@ footer.foot { margin-top: 30px; color: var(--muted); font-size: 12px; line-heigh
 .nlf .msg.ok { display: block; color: var(--silk); }
 .nlf .msg.err { display: block; color: #ffd0cb; }
 .nlf .hp { position: absolute; left: -9999px; opacity: 0; height: 0; }
-.newsletter iframe { width: 100%; max-width: 560px; border: 0; height: 320px; background: #fff; border-radius: 10px; grid-column: 1 / -1; justify-self: center; }
 @media (max-width: 860px) { .newsletter { grid-template-columns: 1fr; } .article h1 { font-size: 24px; } .nlf .row1 { flex-direction: column; } }
 
 /* ---- in-allestimento.html (stile interno della pagina) ---- */

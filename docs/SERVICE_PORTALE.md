@@ -64,8 +64,8 @@ caricamento. Il successivo "Aggiorna adesso" riuscito torna alla fonte ORIGINE (
   stabile, documentazione per area e tipologia con ricerca anche nel testo integrale dei PDF (`fulltext.json`, caricato alla prima
   ricerca, con ETag), istruzioni di preparazione per il paziente, documenti più richiesti (le scorciatoie della barra laterale del sito),
   "Link stabili e invio". `?codice=` e `?q=` come sul sito; `?nontrovato=` per i link stabili inesistenti.
-- **Certificazioni**, **VEQ**, **Agorà** (elenco e articolo `/service/agora/<slug>`; newsletter: form Brevo in iframe se `brevo_url` c'è,
-  altrimenti mailto a `fallback_email`), **Contatti**: stessi testi e dati delle pagine del sito.
+- **Certificazioni**, **VEQ**, **Agorà** (elenco e articolo `/service/agora/<slug>`; newsletter: campo e-mail nostro + "Iscriviti" che apre la pagina Brevo `brevo_url` in una scheda nuova con l'e-mail
+  precompilata, altrimenti mailto a `fallback_email`; dal 19/11/2026, v0.88.1, niente più form Brevo in iframe), **Contatti**: stessi testi e dati delle pagine del sito.
 - **Servizi** (`/service/servizi`, voci da `menu.json`) e **Vademecum** (sotto).
 - **Impostazioni** (EDITOR, Owner e Admin della Suite).
 

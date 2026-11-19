@@ -1,18 +1,15 @@
 // Agorà · il blog: copia conforme di agora.html del sito (elenco .tiles.post-list, articolo .article con .byline, fascia scura
 // .newsletter), dati da blog.json. Articolo su /service/agora/<slug>.
-// Newsletter (richiesta del CEO, 01/11/2026): fascia scura come il sito; dentro, il form Brevo in iframe se si carica entro 4 secondi
-// (prima il server della Suite verifica che Brevo risponda e ne consenta l'incorporamento: GET /api/service/newsletter/embeddabile;
-// l'evento load da solo non basta, scatta anche sulle pagine d'errore), altrimenti campo e-mail + "Iscriviti" che apre la pagina Brevo (brevo_url) in una scheda nuova con l'e-mail precompilata, oppure il
-// programma di posta verso fallback_email se brevo_url manca. Finché l'iframe non risponde si vede già il campo e-mail: mai un riquadro
-// bianco vuoto.
-import React, { useEffect, useState } from 'react';
+// Newsletter: fascia scura come il sito con il NOSTRO campo e-mail + "Iscriviti", che apre la pagina Brevo (brevo_url) in una scheda nuova
+// con l'e-mail precompilata, oppure il programma di posta verso fallback_email se brevo_url manca. Il form Brevo in iframe è stato tolto
+// il 19/11/2026 (richiesta del CEO: riquadro grigio con barra di scorrimento e testi del modulo non nostri dentro la pagina).
+import React, { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { useApi, useToast } from '../../../components/ui.jsx';
+import { useToast } from '../../../components/ui.jsx';
 import { useDati, base, copiaLink } from '../dati.js';
 import { Piede, StatoDati, Ico } from './comuni.jsx';
 
 const ord = (d) => String(d || '').split('/').reverse().join('');
-const ATTESA_MS = 4000;
 
 /** Pagina Brevo con l'e-mail precompilata (parametro EMAIL, come il campo del form Brevo) */
 export const urlBrevo = (url, email) => {
@@ -22,19 +19,8 @@ export const urlBrevo = (url, email) => {
 
 function Newsletter({ N }) {
   const fallback = N.fallback_email || 'service@toscanadiagnostica.it';
-  const prova = useApi('/service/newsletter/embeddabile');
-  const [iframe, setIframe] = useState(N.brevo_url ? 'verifica' : 'no');   // verifica | attesa | ok | no
-  useEffect(() => {
-    if (iframe !== 'verifica' || (!prova.data && !prova.error)) return;
-    setIframe(prova.data?.consentito ? 'attesa' : 'no');
-  }, [prova.data, prova.error, iframe]);
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState(null);
-  useEffect(() => {
-    if (iframe !== 'attesa') return undefined;
-    const t = setTimeout(() => setIframe((s) => (s === 'attesa' ? 'no' : s)), ATTESA_MS);
-    return () => clearTimeout(t);
-  }, [iframe]);
   const iscriviti = (e) => {
     e.preventDefault();
     const v = email.trim();
@@ -49,14 +35,11 @@ function Newsletter({ N }) {
   return (
     <div className="newsletter">
       <div><h2>{N.titolo || 'Newsletter'}</h2><p>{N.testo || ''}</p></div>
-      {iframe !== 'ok' && (
-        <form className="nlf" noValidate onSubmit={iscriviti}>
-          <div className="row1"><input type="email" name="EMAIL" placeholder="La tua e-mail" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /><button className="btn" type="submit">Iscriviti</button></div>
-          <div className="ck" style={{ display: 'block', marginTop: 12, fontSize: 12.5, color: '#dbe9ec', lineHeight: 1.4 }}>{N.brevo_url ? 'Si apre il modulo di iscrizione in una nuova scheda: lì accetti l\'' : 'Si apre il tuo programma di posta. Iscrivendoti accetti l\''}<a href={N.privacy_url || '#'} target="_blank" rel="noopener" style={{ color: 'var(--silk)', textDecoration: 'underline' }}>Informativa Privacy</a>.</div>
-          {msg && <div className={`msg ${msg.ok ? 'ok' : 'err'}`}>{msg.t}</div>}
-        </form>
-      )}
-      {N.brevo_url && (iframe === 'attesa' || iframe === 'ok') && <iframe src={N.brevo_url} title="Iscrizione newsletter" scrolling="auto" className={iframe === 'attesa' ? 'attesa' : ''} onLoad={() => setIframe((s) => (s === 'attesa' ? 'ok' : s))} />}
+      <form className="nlf" noValidate onSubmit={iscriviti}>
+        <div className="row1"><input type="email" name="EMAIL" placeholder="La tua e-mail" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /><button className="btn" type="submit">Iscriviti</button></div>
+        <div className="ck" style={{ display: 'block', marginTop: 12, fontSize: 12.5, color: '#dbe9ec', lineHeight: 1.4 }}>{N.brevo_url ? 'Si apre il modulo di iscrizione in una nuova scheda: lì accetti l\'' : 'Si apre il tuo programma di posta. Iscrivendoti accetti l\''}<a href={N.privacy_url || '#'} target="_blank" rel="noopener" style={{ color: 'var(--silk)', textDecoration: 'underline' }}>Informativa Privacy</a>.</div>
+        {msg && <div className={`msg ${msg.ok ? 'ok' : 'err'}`}>{msg.t}</div>}
+      </form>
     </div>
   );
 }
