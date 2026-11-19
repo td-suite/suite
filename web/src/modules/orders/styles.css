@@ -255,3 +255,22 @@ tr.rx td { background: var(--green-100); }
 .lotchip { display: inline-block; font-size: 11px; background: var(--teal-050); color: var(--teal); border-radius: 6px; padding: 1px 6px; margin: 1px 4px 1px 0; }
 .lin { width: 120px; min-height: 32px; padding: 4px 8px; }
 select.invalid { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+
+/* Scheda ordine: in verifica la tabella delle quantità occupa tutta la larghezza, a colonne fisse e senza scorrimento laterale
+   (CEO, 19/11/2026); i riquadri di servizio (punto di consegna, stato, cronologia) si dispongono sotto, affiancati. */
+.ord-grid { grid-template-columns: minmax(0, 1fr) 320px; }
+.ord-grid.largo { grid-template-columns: minmax(0, 1fr); }
+.ord-grid.largo > div:last-child { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.ord-grid.largo > div:last-child > .card { margin: 0; }
+@media (max-width: 1100px) { .ord-grid { grid-template-columns: minmax(0, 1fr); } }
+table.t.verifica { table-layout: fixed; min-width: 0; }
+.verifica th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding: 10px 10px; }
+.verifica td { padding: 12px 10px; overflow-wrap: anywhere; }
+.verifica th:first-child, .verifica td:first-child { padding-left: 18px; }
+.verifica th:last-child, .verifica td:last-child { padding-right: 18px; }
+.verifica td > .row { min-width: 0; }
+.verifica .qin { width: 100%; max-width: 84px; }
+.verifica input.nota { width: 100%; min-width: 0; }
+.verifica tfoot td { padding-top: 12px; padding-bottom: 12px; }
+.verifica-piede { padding: 16px 18px 18px; border-top: 1px solid var(--line); }
+.verifica th.num { text-align: right; }

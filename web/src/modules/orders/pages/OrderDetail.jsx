@@ -94,10 +94,12 @@ export default function OrderDetail() {
       {o.status === 'ANNULLATO' && <div className="alert err" style={{ marginBottom: 16 }}>Annullato il {itDateTime(o.cancelled_at)}: {o.cancel_reason}</div>}
       {(o.notes || o.urgent_reason || o.client_ref) && <div className="alert info" style={{ marginBottom: 16 }}>{o.urgent_reason && <span><b>Urgenza:</b> {o.urgent_reason}. </span>}{o.notes && <span><b>Note:</b> {o.notes}. </span>}{o.client_ref && <span><b>Rif. cliente:</b> {o.client_ref}</span>}</div>}
 
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
+      {/* In verifica la tabella prende tutta la larghezza (CEO, 19/11/2026: tutte le colonne visibili, senza scorrere di lato); i riquadri di servizio vanno sotto */}
+      <div className={`grid ord-grid ${canVerify ? 'largo' : ''}`}>
         <div>
           <Card title={canVerify ? 'Verifica delle quantità' : 'Righe dell\'ordine'} flush actions={<label className="f inline small"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />Mostra tutti gli articoli</label>}>
-            <div className="table-wrap"><table className="t lines">
+            <div className="table-wrap"><table className={`t lines ${canVerify ? 'verifica' : ''}`}>
+              {canVerify && <colgroup><col style={{ width: o.kind !== 'LAB' ? '28%' : '40%' }} /><col style={{ width: '8%' }} />{o.kind !== 'LAB' && <><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /></>}<col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} /><col /></colgroup>}
               <thead><tr>
                 <th>Articolo</th>
                 <th className="num">{isSystem ? 'Proposto' : 'Richiesto'}</th>
@@ -118,16 +120,16 @@ export default function OrderDetail() {
                   <td className="num">{l.stock_packs ?? '–'}</td>
                   <td className="num">{l.last_order_qty ?? '–'}</td>
                   <td className="num">{canVerify ? <input className={`qin ${Number(val(l, 'qty_approved')) !== l.qty_requested ? 'changed' : ''}`} inputMode="numeric" value={val(l, 'qty_approved')} onChange={(e) => setVal(l, 'qty_approved', e.target.value.replace(/\D/g, ''))} /> : <span className="strong">{l.qty_approved ?? '–'}</span>}</td>
-                  {(canVerify || o.lines.some((x) => x.note_ops)) && <td>{canVerify ? <input value={val(l, 'note_ops')} placeholder="motivo della modifica" onChange={(e) => setVal(l, 'note_ops', e.target.value)} style={{ minWidth: 150 }} /> : <span className="small">{l.note_ops}</span>}</td>}
+                  {(canVerify || o.lines.some((x) => x.note_ops)) && <td>{canVerify ? <input className="nota" value={val(l, 'note_ops')} placeholder="motivo della modifica" onChange={(e) => setVal(l, 'note_ops', e.target.value)} /> : <span className="small">{l.note_ops}</span>}</td>}
                   {['CONSEGNATO', 'IMMAGAZZINATO', 'CHIUSO'].includes(o.status) && <td className="num">{l.qty_delivered ?? 0} / {l.packs_received}{l.packs_missing > 0 && <div className="small red">{l.packs_missing} mancanti</div>}</td>}
                 </tr>))}</tbody>
-              <tfoot><tr><td>Totale confezioni</td><td className="num">{lines.reduce((s, l) => s + Number(canEditDraft ? val(l, 'qty_requested') || 0 : (isSystem ? l.qty_proposed ?? l.qty_requested : l.qty_requested)), 0)}</td>{o.kind !== 'LAB' && <td colSpan={2} />}<td colSpan={2} /><td className="num">{canVerify ? totalApproved : lines.reduce((s, l) => s + (l.qty_approved || 0), 0)}</td><td colSpan={3} /></tr></tfoot>
+              <tfoot><tr><td>Totale confezioni</td><td className="num">{lines.reduce((s, l) => s + Number(canEditDraft ? val(l, 'qty_requested') || 0 : (isSystem ? l.qty_proposed ?? l.qty_requested : l.qty_requested)), 0)}</td>{o.kind !== 'LAB' && <td colSpan={2} />}<td colSpan={2} /><td className="num">{canVerify ? totalApproved : lines.reduce((s, l) => s + (l.qty_approved || 0), 0)}</td>{(canVerify || o.lines.some((l) => l.note_ops)) && <td />}{['CONSEGNATO', 'IMMAGAZZINATO', 'CHIUSO'].includes(o.status) && <td />}</tr></tfoot>
             </table></div>
             {canVerify && (
-              <div className="bd" style={{ borderTop: '1px solid var(--line)' }}>
-                <div className="small muted" style={{ marginBottom: 8 }}>La colonna Approvato è precompilata con la quantità {isSystem ? 'proposta dal sistema' : 'richiesta'}: modifica solo ciò che consideri difforme. Distanza = scostamento tra richiesta e produzione media mensile ({o.events.find((e) => e.data?.production_months)?.data?.production_months || ''} mesi di StudioLab).</div>
+              <div className="verifica-piede">
+                <div className="small muted" style={{ marginBottom: 12 }}>La colonna Approvato è precompilata con la quantità {isSystem ? 'proposta dal sistema' : 'richiesta'}: modifica solo ciò che consideri difforme. Distanza = scostamento tra richiesta e produzione media mensile{o.events.find((e) => e.data?.production_months)?.data?.production_months ? ` (${o.events.find((e) => e.data?.production_months).data.production_months} mesi di StudioLab)` : ''}.</div>
                 <Field label="Note dell'Area Operations"><textarea value={opsNotes} onChange={(e) => setOpsNotes(e.target.value)} style={{ minHeight: 56 }} /></Field>
-                <div className="row" style={{ marginTop: 10 }}>
+                <div className="row" style={{ marginTop: 14 }}>
                   <button className="btn ghost" onClick={() => act('refresh-production', {}, 'Produzione e giacenze ricalcolate')}>Ricalcola produzione</button>
                   <button className="btn ghost" onClick={() => saveVerify(false)}>Salva verifica</button>
                   <button className="btn" disabled={!totalApproved || o.punto_mancante} title={o.punto_mancante ? 'Indica prima il punto di consegna' : ''} onClick={() => setApproveAsk(true)}><Icon name="check" size={16} />Approva: passa al magazzino</button>

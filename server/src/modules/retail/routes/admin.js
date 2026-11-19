@@ -8,6 +8,8 @@ import { requireRole, requireWrite } from '../lib/access.js';
 import { config } from '../config.js';
 import { loadDemo, clearDemo } from '../lib/demo.js';
 import { DEFAULT_SETTINGS } from '../lib/seedData.js';
+import { sediXlsx, sediPdf, ambitoDi, filtra } from '../lib/sediExport.js';
+import { getCompany } from '../../../lib/company.js';
 
 const r = Router();
 
@@ -108,6 +110,25 @@ r.get('/sites', ah(async (req, res) => {
   const rows = await many(`SELECT ${SITE_COLS} FROM sites_v s ${w.length ? `WHERE ${w.join(' AND ')}` : ''} ORDER BY s.active DESC, s.in_network DESC, s.sort_order, s.name`);
   const mine = new Set(req.user.site_ids || []);
   res.json(rows.map((s) => ({ ...s, mine: mine.has(s.id) })));
+}));
+// Estrazione dell'elenco in Excel e in PDF (CEO, 19/11/2026): ?scope=network (predefinito) | active | all, come le linguette della pagina
+const sediPerEstratto = async (req) => {
+  const ambito = ambitoDi(String(req.query.scope || ''));
+  const rows = await many(`SELECT ${SITE_COLS} FROM sites_v s ORDER BY s.active DESC, s.in_network DESC, s.sort_order, s.name`);
+  return { ambito, rows: filtra(rows, ambito) };
+};
+const nomeFile = (ambito, est) => `sedi_${ambito === 'network' ? 'network' : ambito === 'active' ? 'attive' : 'tutte'}_${new Date().toISOString().slice(0, 10)}.${est}`;
+r.get('/sites/export.xlsx', ah(async (req, res) => {
+  const { ambito, rows } = await sediPerEstratto(req);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${nomeFile(ambito, 'xlsx')}"`);
+  res.send(await sediXlsx(rows, ambito));
+}));
+r.get('/sites/export.pdf', ah(async (req, res) => {
+  const { ambito, rows } = await sediPerEstratto(req);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${nomeFile(ambito, 'pdf')}"`);
+  res.send(await sediPdf(rows, ambito, await getCompany()));
 }));
 r.get('/sites/:id', ah(async (req, res) => {
   const s = await one(`SELECT ${SITE_COLS} FROM sites_v s WHERE s.id=$1`, [Number(req.params.id)]);

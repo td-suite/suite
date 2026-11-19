@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth, canWrite } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, Badge, Modal, useToast, Kpi, Icon } from '../components/ui.jsx';
-import { api, base } from '../api.js';
+import { api, base, apiBase } from '../api.js';
 import { eur0, num, SITE_KIND, ADMIN_SITES } from '../format.js';
 import { FonteB2CAuto } from '../components/fonte.jsx';
 
@@ -41,6 +41,8 @@ export default function Sites() {
       <div className="page-head">
         <div><h1>Sedi del network</h1><div className="sub">Le sedi sono quelle dell'anagrafica unica della Suite. Qui si impostano i parametri Retail (perimetro del network, area TuoTempo, codici nei gestionali, sabato aperto, bacino); clicca una sede per la scheda struttura.</div></div>
         <div className="row">
+          <a className="btn ghost" href={`${apiBase}/sites/export.xlsx?scope=${scope}`} title="Estrae in Excel l'elenco della linguetta selezionata"><Icon name="download" size={16} />Estrai in XLSX</a>
+          <a className="btn ghost" href={`${apiBase}/sites/export.pdf?scope=${scope}`} title="Estrae in PDF l'elenco della linguetta selezionata"><Icon name="download" size={16} />Estrai in PDF</a>
           <Link className="btn ghost" to={ADMIN_SITES} title="Codice, nome, tipologia, indirizzo, contatti, site manager e stato della sede si modificano nell'anagrafica unica"><Icon name="external" size={16} />Apri in Amministrazione</Link>
         </div>
       </div>
