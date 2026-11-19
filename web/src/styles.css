@@ -1194,3 +1194,13 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .check-riga { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 10px; margin: 8px 0; cursor: pointer; line-height: 1.4; }
 .check-riga > input[type=checkbox] { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; }
 .check-riga > span { flex: 1 1 auto; min-width: 0; white-space: normal; }
+
+/* "Vedi come profilo" (solo titolare): selettore nel menu del widget e fascia in testa alla pagina */
+.side .foot.vedi-come { padding: 8px 14px; }
+.side .foot.vedi-come .vc-apri { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; color: var(--side-muted, #9cc4cc); font: inherit; font-weight: 600; padding: 6px 0; cursor: pointer; text-align: left; }
+.side .foot.vedi-come .vc-apri:hover { color: #fff; }
+.side .foot.vedi-come .vc-form { display: grid; gap: 6px; margin-top: 6px; }
+.side .foot.vedi-come .vc-form select { width: 100%; min-height: 34px; font-size: 13px; }
+.side .foot.vedi-come .vc-vuoto { color: var(--side-muted, #9cc4cc); margin-top: 4px; }
+.vista-profilo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 24px 0; padding: 10px 14px; border-radius: 10px; background: #f6eecf; color: #4a3d0a; border: 1px solid #e3d48f; font-size: 14px; }
+.vista-profilo span { flex: 1; min-width: 240px; }

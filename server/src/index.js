@@ -42,6 +42,7 @@ import assetTypesRoutes from './routes/assetTypes.js';
 import consensiRoutes from './routes/consensi.js';
 import rubricheRoutes from './routes/rubriche.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
+import vediComeRoutes, { vediCome } from './lib/vediCome.js';
 import { activeModuleKeys } from './lib/modules.js';
 import { applyModuleMigrations } from './lib/travaso.js';
 import { config as serviceConfig } from './modules/service/config.js';
@@ -138,6 +139,8 @@ app.use('/api/public', communityRoutes.public || ((_req, _res, next) => next()))
 
 // Lancio moduli legacy: GET navigabile, deve passare per la sessione
 app.use('/api', requireAuth);
+app.use('/api', vediCome);                               // "Vedi come profilo" (solo titolare, sola lettura): lib/vediCome.js
+app.use('/api', vediComeRoutes);
 app.use('/api/consensi', consensiRoutes);              // presa d'atto di Privacy e Informativa IA (al primo accesso e a ogni nuova versione)
 app.use('/api', ssoRoutes);
 app.use('/api', usersRoutes);

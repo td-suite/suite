@@ -7,6 +7,7 @@ import { Avatar, Popover, useTheme, useToast, Empty } from './ui.jsx';
 import { timeAgo, AREA_COLORS } from '../format.js';
 import { moduleFor, vociModulo } from '../modules/registry.js';
 import InformativeIcone from './Informative.jsx';
+import { impostaVista } from '../lib/vediCome.js';
 
 // Le voci replicate per linea (Business Hub: Cruscotto, Pipeline, Clienti… con ?linea=SRV|PP|MDL) hanno lo stesso percorso: è attiva
 // solo quella con la stessa linea dell'indirizzo. Una voce senza "?" si comporta come sempre.
@@ -179,6 +180,52 @@ function AvvisoVersione() {
   return <div className="versione-nuova" role="status"><Icon name="refresh" /><span>È disponibile la versione {nuova} della Suite.</span><button className="btn sm" onClick={() => location.reload()}>Aggiorna</button></div>;
 }
 
+// "Vedi come profilo" (solo titolare): selettore nel menu del widget e fascia in testa alla pagina mentre la vista è attiva.
+// Al cambio la pagina si ricarica, così menu, stato del modulo e dati ripartono tutti con il profilo scelto.
+function VediCome({ moduleKey }) {
+  const { realUser, vista } = useAuth();
+  const [def, setDef] = useState(null);
+  const [sedi, setSedi] = useState([]);
+  const [aperto, setAperto] = useState(false);
+  const [f, setF] = useState({ profile: '', site_id: '' });
+  const titolare = realUser?.level === 'OWNER';
+  useEffect(() => {
+    if (!titolare || !aperto || def?.key === moduleKey) return;
+    api.get(`/vedi-come/${moduleKey}`, { silent: true }).then(setDef).catch(() => setDef({ key: moduleKey, profili: [] }));
+    api.get('/sites', { silent: true }).then((s) => setSedi((Array.isArray(s) ? s : s.items || []).filter((x) => x.active !== false))).catch(() => {});
+  }, [titolare, aperto, moduleKey]);   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!titolare || vista) return null;
+  const avvia = async (e) => {
+    e.preventDefault();
+    const p = def.profili.find((x) => x.key === f.profile);
+    if (!p) return;
+    const sede = sedi.find((s) => String(s.id) === String(f.site_id));
+    const v = { key: moduleKey, profile: p.key, label: p.label, site_id: sede ? sede.id : null, site_name: sede ? sede.name : null };
+    try { await api.post('/vedi-come', v); } catch { return; }
+    impostaVista(v); location.reload();
+  };
+  return (
+    <div className="foot vedi-come">
+      <button type="button" className="vc-apri" onClick={() => setAperto(!aperto)} aria-expanded={aperto} title="Guarda questo widget come lo vede un profilo, in sola lettura"><Icon name="eye" />Vedi come profilo</button>
+      {aperto && def && (def.profili.length ? (
+        <form onSubmit={avvia} className="vc-form">
+          <select data-tendina="nativa" value={f.profile} onChange={(e) => setF({ ...f, profile: e.target.value })} aria-label="Profilo"><option value="">Profilo…</option>{def.profili.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select>
+          {def.per_sede && <select data-tendina="nativa" value={f.site_id} onChange={(e) => setF({ ...f, site_id: e.target.value })} aria-label="Sede"><option value="">Nessuna sede (come senza ambito)</option>{sedi.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
+          <button className="btn sm" disabled={!f.profile}>Apri la vista</button>
+        </form>
+      ) : <div className="small vc-vuoto">Questo widget non ha profili distinti.</div>)}
+    </div>
+  );
+}
+function FasciaVista() {
+  const { vista } = useAuth();
+  const loc = useLocation();
+  // uscendo dal widget la vista si chiude da sola
+  useEffect(() => { if (vista && !(loc.pathname === `/${vista.key}` || loc.pathname.startsWith(`/${vista.key}/`))) impostaVista(null); }, [vista, loc.pathname]);
+  if (!vista) return null;
+  return <div className="vista-profilo" role="status"><Icon name="eye" /><span>Stai guardando questo widget come <b>{vista.label}</b>{vista.site_name ? <> · sede <b>{vista.site_name}</b></> : null}. Sola lettura: nessuna modifica viene salvata.</span><button className="btn sm" onClick={() => { impostaVista(null); location.reload(); }}>Torna al tuo profilo</button></div>;
+}
+
 export default function Shell() {
   const { user } = useAuth();
   const loc = useLocation();
@@ -216,12 +263,14 @@ export default function Shell() {
                 : it.href ? <a key={it.href} href={it.href} className={it.evidenza ? 'evid' : undefined} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => (isActive && vocePerLinea(it.to, loc) ? 'active' : undefined)}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
+            {moduleFor(loc.pathname) && <VediCome moduleKey={section.key} />}
             {GUIDA_WIDGET[section.key] !== null && section.key !== 'suiteguida' && <div className="foot guida-widget"><Link to={`/suiteguida/widget/${GUIDA_WIDGET[section.key] || section.key}`} title="Che cosa fa questo widget, domande e guida in PDF"><Icon name="info" />Guida al widget</Link></div>}
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link><InformativeIcone variant="barra" /></div>
           </aside>
         </>}
         <main className="main" id="main">
           <AvvisoVersione />
+          <FasciaVista />
           <Suspense fallback={<div className="page" aria-busy="true" />}><Outlet /></Suspense>
         </main>
       </div>

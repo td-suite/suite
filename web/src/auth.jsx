@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
+import { vistaAttiva, utenteVista } from './lib/vediCome.js';
 
 const AuthCtx = createContext(null);
 const EMPTY = { loading: false, user: null, pending: false, totpRequired: false, mustChangePassword: false, authMethod: null };
@@ -39,7 +40,11 @@ export function AuthProvider({ children }) {
     try { await api.post('/auth/logout'); } finally { setState({ ...EMPTY }); }
   }, []);
 
-  return <AuthCtx.Provider value={{ ...state, cfg, refresh, logout }}>{children}</AuthCtx.Provider>;
+  // "Vedi come profilo": mentre la vista è attiva l'interfaccia riceve l'utente con il profilo scelto; realUser resta il titolare
+  const [vista, setVista] = useState(vistaAttiva());
+  useEffect(() => { const h = () => setVista(vistaAttiva()); window.addEventListener('suite:vedicome', h); return () => window.removeEventListener('suite:vedicome', h); }, []);
+  const user = utenteVista(state.user, vista);
+  return <AuthCtx.Provider value={{ ...state, user, realUser: state.user, vista: user !== state.user ? vista : null, cfg, refresh, logout }}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

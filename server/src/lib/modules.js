@@ -57,7 +57,7 @@ export async function moduleUser(key, suiteUser, { roleColumn = 'role', extraCol
     const cols = ['email', 'full_name', roleColumn, ...Object.keys(extraColumns.insert || {})];
     const vals = [suiteUser.email, suiteUser.full_name, role, ...Object.values(extraColumns.insert || {})];
     row = await db.one(`INSERT INTO users (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
-  } else if (row[roleColumn] !== role) {
+  } else if (row[roleColumn] !== role && !suiteUser.vedi_come) {   // "Vedi come profilo": il ruolo vale per la sola richiesta, la riga non si tocca
     row = await db.one(`UPDATE users SET ${roleColumn}=$2 WHERE id=$1 RETURNING *`, [row.id, role]);
   }
   // Ambito: id delle sedi dell'app di origine corrispondenti agli scope SITE del grant

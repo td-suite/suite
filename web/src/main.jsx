@@ -5,6 +5,9 @@ import '@fontsource-variable/manrope';
 import './styles.css';
 import App from './App.jsx';
 import { installaTendine } from './lib/tendine.js';
+import { installaVediCome } from './lib/vediCome.js';
+
+installaVediCome();
 
 // Ricerca nel testo in tutte le tendine con almeno 8 voci (lib/tendine.js)
 installaTendine();
