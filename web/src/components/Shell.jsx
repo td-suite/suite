@@ -18,6 +18,10 @@ function vocePerLinea(to, loc) {
 }
 
 // Sezioni con sidebar: la chiave è il prefisso del percorso
+// Guida al widget (v0.89.0): la voce in fondo al menu di ogni widget apre il suo capitolo nella Guida alla Suite. Le sezioni native
+// hanno una chiave diversa da quella del widget (community → comunicazione, people → rubrica).
+const GUIDA_WIDGET = { community: 'comunicazione', people: 'rubrica' };
+
 function sectionFor(pathname, user) {
   const mod = moduleFor(pathname);
   if (mod) {
@@ -212,6 +216,7 @@ export default function Shell() {
                 : it.href ? <a key={it.href} href={it.href} className={it.evidenza ? 'evid' : undefined} target={it.blank || it.href.startsWith('/go/') || /^https?:/.test(it.href) ? '_blank' : undefined} rel="noopener" title={it.blank ? `${it.label} (si apre in una nuova scheda)` : undefined}><Icon name={it.icon} />{it.label}{it.blank && <Icon name="external" className="ext" />}</a>
                 : <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => (isActive && vocePerLinea(it.to, loc) ? 'active' : undefined)}><Icon name={it.icon} />{it.label}{it.badge && badges[it.badge] > 0 && <span className="count">{badges[it.badge]}</span>}</NavLink>)}
             </nav>
+            {GUIDA_WIDGET[section.key] !== null && section.key !== 'suiteguida' && <div className="foot guida-widget"><Link to={`/suiteguida/widget/${GUIDA_WIDGET[section.key] || section.key}`} title="Che cosa fa questo widget, domande e guida in PDF"><Icon name="info" />Guida al widget</Link></div>}
             <div className="foot"><Link to="/"><Icon name="back" />Torna alla Home</Link><InformativeIcone variant="barra" /></div>
           </aside>
         </>}

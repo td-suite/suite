@@ -99,6 +99,9 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Amministratore'), P('FACILITY', 'Facility (gestione completa)'), P('MANUTENTORE', 'Manutentore'), P('SITE', 'Site manager', true), P('VIEWER', 'Consultazione (Qualità, HSQ)')] },
 
   // ---- Amministrazione (nativo, visibile a Owner e Admin)
+  // Guida alla Suite (v0.89.0, CEO 19/11/2026): manuale TD-SGI-MAN009 dentro la Suite, domande con risposta, Guida al widget. Visibile a tutti.
+  { key: 'suiteguida', area: 'DIREZIONE', name: 'Guida alla Suite', tagline: 'Manuale, domande e guida di ogni widget', icon: 'gipoguida', kind: 'NATIVE', legacy_url: null, route: '/suiteguida', sort_order: 25, scope_type: null, open_to_all: true,
+    profiles: [P('ADMIN', 'Redazione (sezioni, FAQ, domande da risolvere, statistiche)'), P('LETTORE', 'Consultazione e domande')] },
   { key: 'admin', area: 'DIREZIONE', name: 'Amministrazione', tagline: 'Utenti, anagrafiche, audit', icon: 'admin', kind: 'NATIVE', route: '/admin', sort_order: 20,
     profiles: [P('ADMIN', 'Amministratore')] },
 ];

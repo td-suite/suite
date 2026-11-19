@@ -148,6 +148,8 @@ button { font: inherit; }
 .side a .ico.ext { width: 14px; height: 14px; margin-left: auto; opacity: .6; flex: none; }   /* voce che si apre in una nuova scheda (blank) */
 .side .foot { flex: none; padding: 14px 14px 18px; border-top: 1px solid rgba(113, 177, 189, .18); }
 .side .foot a { color: #fff; font-weight: 700; }
+.side .foot.guida-widget { padding: 10px 14px; }
+.side .foot.guida-widget a { font-weight: 600; color: var(--silk, #f6eecf); }
 .main { flex: 1; min-width: 0; }
 .page { padding: 28px 32px 70px; max-width: 1480px; margin: 0 auto; }
 .page.narrow { max-width: 960px; }

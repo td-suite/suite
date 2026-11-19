@@ -1,0 +1,191 @@
+{
+ "cockpit": {
+  "capitolo": 2,
+  "nome": "Cockpit direzionale",
+  "estratto": "01",
+  "slug": "cockpit-serve",
+  "route": "/cockpit"
+ },
+ "admin": {
+  "capitolo": 3,
+  "nome": "Amministrazione",
+  "estratto": "02",
+  "slug": "admin-serve",
+  "route": "/admin"
+ },
+ "suiteguida": {
+  "capitolo": 4,
+  "nome": "Guida alla Suite",
+  "estratto": "03",
+  "slug": "suiteguida-serve",
+  "route": "/suiteguida"
+ },
+ "integration": {
+  "capitolo": 5,
+  "nome": "Integration M&A",
+  "estratto": "04",
+  "slug": "integration-serve",
+  "route": "/integration"
+ },
+ "finance": {
+  "capitolo": 6,
+  "nome": "Finance Management",
+  "estratto": "05",
+  "slug": "finance-serve",
+  "route": "/finance"
+ },
+ "cash": {
+  "capitolo": 7,
+  "nome": "Cash Management",
+  "estratto": "06",
+  "slug": "cash-serve",
+  "route": "/cash"
+ },
+ "business": {
+  "capitolo": 8,
+  "nome": "Business Hub",
+  "estratto": "07",
+  "slug": "business-serve",
+  "route": "/business"
+ },
+ "etichette": {
+  "capitolo": 9,
+  "nome": "Lab Control",
+  "estratto": "08",
+  "slug": "labcontrol-serve",
+  "route": "/etichette"
+ },
+ "gipoguida": {
+  "capitolo": 10,
+  "nome": "Guida GIPO",
+  "estratto": "09",
+  "slug": "gipoguida-serve",
+  "route": "/gipoguida"
+ },
+ "room": {
+  "capitolo": 11,
+  "nome": "Room Planning",
+  "estratto": "10",
+  "slug": "room-serve",
+  "route": "/room"
+ },
+ "retail": {
+  "capitolo": 12,
+  "nome": "Retail Assistant",
+  "estratto": "11",
+  "slug": "retail-serve",
+  "route": "/retail"
+ },
+ "comunicazione": {
+  "capitolo": 13,
+  "nome": "Comunicazione",
+  "estratto": "12",
+  "slug": "comunicazione-serve",
+  "route": "/community/manage"
+ },
+ "cartella": {
+  "capitolo": 14,
+  "nome": "Cartella condivisa",
+  "estratto": "13",
+  "slug": "cartella-serve",
+  "route": "/cartella"
+ },
+ "orders": {
+  "capitolo": 15,
+  "nome": "Ordini e Magazzino",
+  "estratto": "14",
+  "slug": "orders-serve",
+  "route": "/orders"
+ },
+ "shipments": {
+  "capitolo": 16,
+  "nome": "Spedizioni e Kit",
+  "estratto": "15",
+  "slug": "shipments-serve",
+  "route": "/shipments"
+ },
+ "referti": {
+  "capitolo": 17,
+  "nome": "Referti esterni",
+  "estratto": "16",
+  "slug": "referti-serve",
+  "route": "/referti"
+ },
+ "facility": {
+  "capitolo": 18,
+  "nome": "Facility e Manutenzioni",
+  "estratto": "17",
+  "slug": "facility-serve",
+  "route": "/facility"
+ },
+ "sgi": {
+  "capitolo": 19,
+  "nome": "SGI Management",
+  "estratto": "18",
+  "slug": "sgi-serve",
+  "route": "/sgi"
+ },
+ "audit": {
+  "capitolo": 20,
+  "nome": "Audit SGI",
+  "estratto": "19",
+  "slug": "audit-serve",
+  "route": "/audit"
+ },
+ "service": {
+  "capitolo": 21,
+  "nome": "Portale Service",
+  "estratto": "20",
+  "slug": "service-serve",
+  "route": "/service"
+ },
+ "nc": {
+  "capitolo": 22,
+  "nome": "Non conformità",
+  "estratto": "21",
+  "slug": "nc-serve",
+  "route": "/nc"
+ },
+ "circolari": {
+  "capitolo": 23,
+  "nome": "Circolari",
+  "estratto": "22",
+  "slug": "circolari-serve",
+  "route": "/circolari"
+ },
+ "ticket": {
+  "capitolo": 24,
+  "nome": "Ticket",
+  "estratto": "23",
+  "slug": "ticket-serve",
+  "route": "/ticket"
+ },
+ "contracts": {
+  "capitolo": 25,
+  "nome": "Gestione del Personale",
+  "estratto": "24",
+  "slug": "contracts-serve",
+  "route": "/contracts"
+ },
+ "rubrica": {
+  "capitolo": 26,
+  "nome": "Rubrica e Organigramma",
+  "estratto": "25",
+  "slug": "rubrica-serve",
+  "route": "/people"
+ },
+ "ferie": {
+  "capitolo": 27,
+  "nome": "Piano Ferie",
+  "estratto": "26",
+  "slug": "ferie-serve",
+  "route": "/ferie"
+ },
+ "rimborsi": {
+  "capitolo": 28,
+  "nome": "Rimborso Spese",
+  "estratto": "27",
+  "slug": "rimborsi-serve",
+  "route": "/rimborsi"
+ }
+}

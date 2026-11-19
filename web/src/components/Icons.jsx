@@ -122,6 +122,9 @@ const MODULES = {
 };
 
 /* Icone di interfaccia (viewBox 24, tratto 1.9) */
+// Guida alla Suite (v0.89.0): stessa icona della Guida GIPO
+MODULES.suiteguida = MODULES.gipoguida;
+
 const UI = {
   home: 'M3 11.5 12 4l9 7.5M5.5 10v10h4.5v-6h4v6h4.5V10',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5',

@@ -1,0 +1,199 @@
+// Guida alla Suite · Chiedi (pagina iniziale). Barra grande: mentre si scrive compaiono le sezioni e le FAQ pertinenti; "Chiedi" invia la domanda
+// (POST /chiedi): risposta in passi con le fonti citate, oppure i migliori risultati della ricerca. Ogni risposta ha "Mi è stata utile: sì /
+// no" (+ nota): "no" e le domande senza risposta vanno alla redazione. Sotto, le domande recenti dell'utente con l'eventuale risposta della
+// redazione. Avviso fisso: niente dati dei pazienti.
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Badge, Card, ErrorBox, PageHead } from '../../../components/ui.jsx';
+import { Icon } from '../../../components/Icons.jsx';
+import { api, base, qs, useApi } from '../api.js';
+import { useAuth } from '../auth.jsx';
+import { AvvisoDati, Bollino, ESITO, FonteBadge, Risultati, TestoGuida, itDataOra, linkRisultato } from '../components.jsx';
+
+const ESEMPI = ['Come chiudo la cassa di oggi?', 'Come chiedo le ferie?', 'Come apro un ticket?', 'Come registro una spesa da rimborsare?', 'Dove trovo le preparazioni agli esami?', 'Come dichiaro la giacenza del mese?'];
+
+/** Citazioni [n] della risposta → collegamenti "(n)" alla fonte */
+const conCitazioni = (testo, fonti) => String(testo || '').replace(/\[(\d+)\](?!\()/g, (m, n) => {
+  const f = fonti?.[Number(n) - 1];
+  return f ? `[(${n})](${linkRisultato({ tipo: f.tipo, slug: f.slug, id: f.id })})` : m;
+});
+
+function Valutazione({ domanda, onFatto }) {
+  const [scelta, setScelta] = useState(domanda.utile ?? null);
+  const [nota, setNota] = useState(domanda.nota_utente || '');
+  const [inviata, setInviata] = useState(domanda.utile != null);
+  const [err, setErr] = useState(null);
+  const invia = async (utile, testoNota) => {
+    setErr(null);
+    try { const r = await api.post(`/domande/${domanda.id}/valuta`, { utile, nota: testoNota || null }); setInviata(true); setScelta(utile); onFatto?.(r); } catch (e) { setErr(e); }
+  };
+  if (inviata) {
+    return <div className={`alert ${scelta ? 'ok' : 'info'} gg-val-ok`}><Icon name="check" /><span>{scelta ? 'Grazie: la tua valutazione aiuta a migliorare la guida.' : 'Grazie. La domanda è arrivata alla redazione: quando risponde trovi la risposta tra le FAQ e ricevi una notifica nella Suite.'}</span></div>;
+  }
+  return (
+    <div className="gg-valuta">
+      <ErrorBox error={err} />
+      <span className="gg-valuta-q">Mi è stata utile?</span>
+      <button type="button" className="btn sm" onClick={() => invia(true)}><Icon name="check" />Sì</button>
+      <button type="button" className={`btn sm ${scelta === false ? '' : 'ghost'}`} onClick={() => setScelta(false)}><Icon name="x" />No</button>
+      {scelta === false && (
+        <div className="gg-nota">
+          <textarea value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Cosa mancava? (facoltativo, senza dati di pazienti)" rows={2} maxLength={1000} />
+          <button type="button" className="btn sm" onClick={() => invia(false, nota)}><Icon name="send" />Invia alla redazione</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Senza AI (o se non risponde): i passi già scritti nelle sezioni migliori, con il collegamento alla sezione completa */
+export function Procedure({ procedure, titolo }) {
+  if (!procedure?.length) return null;
+  return (
+    <div className="gg-procedure">
+      {titolo && <h3>{titolo}</h3>}
+      {procedure.map((p) => (
+        <div key={p.id} className="gg-procedura">
+          <div className="gg-procedura-hd"><Link to={`${base}/guida/${p.slug}`}>{p.titolo}</Link><Bollino stato={p.stato} compatto /><FonteBadge fonte={p.fonte} /></div>
+          <TestoGuida source={p.passi} />
+          <Link className="small" to={`${base}/guida/${p.slug}`}>Apri la sezione completa</Link>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const TITOLO = { RISPOSTA: 'Risposta dalla guida', PARZIALE: 'Risposta dalla guida, con passi da provare', SOLO_RICERCA: 'Cosa dice la guida', SENZA_RISPOSTA: 'La guida non copre ancora questa domanda' };
+
+function Risposta({ r, onValutata }) {
+  const citate = (r.fonti || []).filter((f) => f.citata);
+  const altre = (r.risultati || []).filter((x) => !citate.some((f) => f.tipo === x.tipo && f.id === x.id));
+  return (
+    <Card className="gg-risposta" title={TITOLO[r.esito] || TITOLO.SOLO_RICERCA} icon={['RISPOSTA', 'PARZIALE'].includes(r.esito) ? 'sparkle' : r.esito === 'SOLO_RICERCA' ? 'doc' : 'info'}
+      actions={<Badge tone={ESITO[r.esito]?.tone}>{ESITO[r.esito]?.label}</Badge>}>
+      <div className="gg-domanda"><Icon name="comment" /><span>{r.domanda || r.testo}</span></div>
+      {r.mascherati?.length > 0 && <div className="alert warn gg-masc"><Icon name="shield" /><span>Dalla domanda sono stati tolti: {r.mascherati.join(', ')}. Non scrivere dati dei pazienti.</span></div>}
+      {['RISPOSTA', 'PARZIALE'].includes(r.esito) && r.risposta && <TestoGuida source={conCitazioni(r.risposta, r.fonti)} className="gg-testo-risposta" />}
+      {r.esito === 'SENZA_RISPOSTA' && (
+        <div className="gg-senza">
+          {r.risposta ? <TestoGuida source={conCitazioni(r.risposta, r.fonti)} /> : <p>Nella guida non ci sono ancora sezioni che rispondono a questa domanda.</p>}
+          <p className="muted">La domanda è già nella coda della redazione: quando risponde la trovi tra le FAQ e ricevi una notifica nella Suite. Se è urgente chiedi al referente interno o apri un ticket all'assistenza Gipo (menu Assistenza della Suite, next@gipo.it).</p>
+          <Procedure procedure={r.procedure} titolo="La sezione più vicina" />
+        </div>
+      )}
+      {r.esito === 'SOLO_RICERCA' && (
+        <>
+          <p className="muted">{r.ai?.errore || (r.ai?.attiva ? '' : 'L\'assistente non è attivo:')} ecco i passi delle sezioni più pertinenti, già scritti nella guida.</p>
+          <Procedure procedure={r.procedure} />
+        </>
+      )}
+      {r.esito === 'PARZIALE' && <div className="alert warn gg-cautela"><Icon name="alert" /><span>Alcuni passi sono ricavati dai campi dell'interfaccia e non ancora provati: falli prima su un'agenda o una prestazione di prova, come indicato nella risposta.</span></div>}
+      {r.esito === 'RISPOSTA' && <div className="alert info gg-cautela"><Icon name="info" /><span>La risposta è costruita solo sui testi della guida. Le sezioni "da validare" descrivono procedure ricavate dall'interfaccia: in caso di dubbio chiedi conferma al referente.</span></div>}
+      {citate.length > 0 && (
+        <div className="gg-fonti">
+          <h3>Sezioni usate</h3>
+          <ul>{citate.map((f) => { const n = (r.fonti || []).indexOf(f) + 1; return <li key={`${f.tipo}-${f.id}`}><Link to={linkRisultato(f)}><b>({n})</b> {f.tipo === 'faq' ? 'FAQ: ' : ''}{f.titolo}</Link>{f.tipo === 'sezione' && <Bollino stato={f.stato} compatto />}{f.tipo === 'sezione' && f.fonte && f.fonte !== 'INTERFACCIA' && <FonteBadge fonte={f.fonte} />}</li>; })}</ul>
+        </div>
+      )}
+      {(!['RISPOSTA', 'PARZIALE'].includes(r.esito) ? r.risultati : altre)?.length > 0 && (
+        <div className="gg-fonti">
+          <h3>{['RISPOSTA', 'PARZIALE'].includes(r.esito) ? 'Altre sezioni pertinenti' : r.esito === 'SENZA_RISPOSTA' ? 'Forse ti interessano' : 'Altri risultati nella guida'}</h3>
+          <Risultati risultati={['RISPOSTA', 'PARZIALE'].includes(r.esito) ? altre : r.risultati} />
+        </div>
+      )}
+      {r.id && <Valutazione key={r.id} domanda={r} onFatto={onValutata} />}
+    </Card>
+  );
+}
+
+export default function Chiedi() {
+  const { stato } = useAuth();
+  const [sp, setSp] = useSearchParams();
+  const [q, setQ] = useState('');
+  const [live, setLive] = useState(null);
+  const [risposta, setRisposta] = useState(null);
+  const [inviando, setInviando] = useState(false);
+  const [err, setErr] = useState(null);
+  const input = useRef(null);
+  const mie = useApi('/domande/mie', [], { silent: true });
+
+  useEffect(() => { input.current?.focus(); }, []);
+  // domanda aperta dalle recenti o da una notifica (?domanda=ID)
+  useEffect(() => {
+    const id = sp.get('domanda');
+    if (!id) return;
+    api.get(`/domande/${id}`).then((d) => setRisposta({ ...d, domanda: d.testo, risultati: [] })).catch(setErr);
+  }, [sp]);
+  // risultati immediati mentre si scrive (non registrati come ricerche: la domanda si registra quando la invii)
+  useEffect(() => {
+    const t = q.trim();
+    if (t.length < 3) { setLive(null); return undefined; }
+    const h = setTimeout(() => { api.get(`/cerca${qs({ q: t, registra: '0' })}`, { silent: true }).then((r) => setLive(r.risultati.slice(0, 6))).catch(() => setLive(null)); }, 220);
+    return () => clearTimeout(h);
+  }, [q]);
+
+  const chiedi = async (e, testo) => {
+    e?.preventDefault();
+    const d = (testo ?? q).trim();
+    if (d.length < 5) { setErr(new Error('Scrivi la domanda con qualche parola in più')); return; }
+    setInviando(true); setErr(null); setRisposta(null);
+    if (sp.get('domanda')) setSp({}, { replace: true });
+    setQ(''); setLive(null);   // Chiedi ripulisce la schermata: via il testo dalla barra e i suggerimenti, resta solo la risposta (13/11/2026)
+    try { const r = await api.post('/chiedi', { domanda: d }); setRisposta(r); setLive(null); mie.reload(); } catch (e2) { setErr(e2); setQ(d); }
+    finally { setInviando(false); }
+  };
+
+  // domanda arrivata da "Guida al widget" (?chiedi=testo): si invia da sola, una volta
+  useEffect(() => { const t = sp.get('chiedi'); if (t) { setSp({}, { replace: true }); chiedi(null, t); } }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pulisci = () => { setRisposta(null); setLive(null); setQ(''); setErr(null); if (sp.get('domanda')) setSp({}, { replace: true }); input.current?.focus(); };
+  const cancella = async (d) => { try { await api.del(`/domande/${d.id}`); if (risposta?.id === d.id) pulisci(); mie.reload(); } catch (e2) { setErr(e2); } };
+  const cancellaTutte = async () => {
+    if (!window.confirm('Cancellare tutte le tue domande e ricerche? Non si possono recuperare.')) return;
+    try { await api.del('/domande/mie'); pulisci(); mie.reload(); } catch (e2) { setErr(e2); }
+  };
+
+  return (
+    <div className="page gg-page">
+      <PageHead title="Chiedi alla Guida" icon="suiteguida" sub="Fai una domanda sulla Suite con parole tue: la risposta arriva dai testi della guida, con i rimandi alle sezioni"
+        actions={<><Link className="btn ghost" to={`${base}/guida`}><Icon name="doc" />Sfoglia la guida</Link><a className="btn ghost" href="/api/suiteguida/guida.pdf?scarica=1"><Icon name="download" />Scarica la guida PDF</a></>} />
+      <AvvisoDati testo={stato?.avviso_dati} />
+      <form className="gg-cerca" onSubmit={chiedi} role="search">
+        <Icon name="search" />
+        <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder="Per esempio: come chiedo le ferie?" aria-label="La tua domanda sulla Suite" />
+        <button className="btn lg" disabled={inviando}><Icon name="send" />{inviando ? 'Cerco la risposta' : 'Chiedi'}</button>
+      </form>
+      {!q && !risposta && (
+        <div className="gg-esempi"><span className="muted small">Prova con:</span>{ESEMPI.map((x) => <button key={x} type="button" className="gg-chip" onClick={() => { setQ(x); chiedi(null, x); }}>{x}</button>)}</div>
+      )}
+      {live && !risposta && !inviando && (
+        <div className="gg-live card">
+          <div className="gg-live-hd small muted">Nella guida, mentre scrivi · premi Chiedi per la risposta</div>
+          <Risultati risultati={live} vuoto="Nessuna sezione contiene queste parole: invia comunque la domanda, arriverà alla redazione." />
+        </div>
+      )}
+      <ErrorBox error={err} />
+      {inviando && <Card className="gg-risposta"><div className="gg-attesa"><span className="gg-pulse" />Leggo la guida e preparo la risposta...</div></Card>}
+      {risposta && <Risposta r={risposta} onValutata={() => mie.reload()} />}
+      {risposta && !inviando && <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}><button type="button" className="btn sm ghost" onClick={pulisci}><Icon name="x" />Pulisci e fai una nuova domanda</button></div>}
+
+      <Card title="Le tue domande recenti" icon="clock" className="gg-mie" actions={mie.data?.length ? <button type="button" className="btn sm ghost" onClick={cancellaTutte}><Icon name="trash" />Cancella tutte</button> : null}>
+        {!mie.data?.length && <div className="muted small">Non hai ancora fatto domande. Le ultime 20 compaiono qui, con la risposta della redazione quando arriva.</div>}
+        <ul className="gg-mie-l">
+          {(mie.data || []).map((d) => (
+            <li key={d.id}>
+              <button type="button" className="gg-mie-q" onClick={() => setRisposta({ ...d, domanda: d.testo, risultati: [] })}>{d.testo}</button>
+              <span className="small muted">{itDataOra(d.creata_il)}</span>
+              <Badge tone={ESITO[d.esito]?.tone}>{ESITO[d.esito]?.label}</Badge>
+              {d.utile === true && <Badge tone="green">utile</Badge>}
+              {d.utile === false && !d.risolta_il && <Badge tone="amber">alla redazione</Badge>}
+              {d.risolta_con_faq_id && <Link className="small" to={`${base}/faq?voce=${d.risolta_con_faq_id}`}><Icon name="check" />Risposta della redazione</Link>}
+              {d.risolta_dalla_guida && <Badge tone="teal">la guida ora risponde</Badge>}
+              <button type="button" className="iconbtn" style={{ marginLeft: 'auto' }} aria-label="Cancella questa domanda" title="Cancella questa domanda" onClick={() => cancella(d)}><Icon name="trash" /></button>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
+  );
+}

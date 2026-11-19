@@ -241,14 +241,18 @@ async function risultatiLabControl(user, text) {
 }
 
 async function risultatiGuida(text) {
-  const st = await many(`SELECT mode FROM module_state WHERE key = 'gipoguida' AND mode = 'LIVE'`);
-  if (!st.length) return [];
-  const { cercaGuida } = await import('../modules/gipoguida/lib/ricerca.js');
-  const r = await cercaGuida(text, { limite: 6, prefisso: false });
-  return r.map((x) => ({ kind: 'guida_gipo', ref_id: `${x.tipo}:${x.id}`, title: x.tipo === 'faq' ? `FAQ: ${x.titolo}` : `Guida GIPO · ${x.titolo}`, link: x.link, module_key: 'gipoguida',
-    sensitive: false, snippet: x.snippet, body: String(x.testo || '').slice(0, 600),
-    // punteggio ricondotto alla scala della ricerca della Suite (v0.71.1: copertura pesata della guida, circa 0-1.5)
-    score: 0.25 + Math.min(1, Number(x.score) / 1.5) }));
+  // Guida GIPO e Guida alla Suite (v0.89.0): stesse regole, ciascuna dal proprio schema
+  const out = [];
+  for (const [chiave, nome, kind] of [['gipoguida', 'Guida GIPO', 'guida_gipo'], ['suiteguida', 'Guida alla Suite', 'guida_suite']]) {
+    const st = await many(`SELECT mode FROM module_state WHERE key = $1 AND mode = 'LIVE'`, [chiave]);
+    if (!st.length) continue;
+    const { cercaGuida } = await import(`../modules/${chiave}/lib/ricerca.js`);
+    const r = await cercaGuida(text, { limite: 6, prefisso: false }).catch(() => []);
+    out.push(...r.map((x) => ({ kind, ref_id: `${x.tipo}:${x.id}`, title: x.tipo === 'faq' ? `FAQ: ${x.titolo}` : `${nome} · ${x.titolo}`, link: x.link, module_key: chiave,
+      sensitive: false, snippet: x.snippet, body: String(x.testo || '').slice(0, 600),
+      score: 0.25 + Math.min(1, Number(x.score) / 1.5) })));
+  }
+  return out;
 }
 
 export function registerSearchJobs(registerJob) {
