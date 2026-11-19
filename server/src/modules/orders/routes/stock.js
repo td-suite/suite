@@ -131,7 +131,7 @@ r.post('/counts/:id/extras', ah(async (req, res) => {
   const c = await one('SELECT * FROM stock_counts WHERE id=$1', [req.params.id]);
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
-  if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
+  if (c.status !== 'BOZZA') throw bad(c.status === 'ANNULLATO' ? 'Giacenza annullata: va prima riaperta' : 'Giacenza già confermata');
   const d = parse(z.object({ article_id: opt(z.coerce.number().int()), name: opt(z.string().max(200)), qty: z.coerce.number().int().min(0).max(99999), note: opt(z.string().max(300)),
     lot: opt(z.string().max(120)), expiry: opt(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)) }), req.body);
   if (!d.article_id && !d.name) throw bad('Indica un articolo del catalogo o una descrizione');
@@ -142,7 +142,7 @@ r.delete('/counts/:id/extras/:eid', ah(async (req, res) => {
   const c = await one('SELECT * FROM stock_counts WHERE id=$1', [req.params.id]);
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
-  if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
+  if (c.status !== 'BOZZA') throw bad(c.status === 'ANNULLATO' ? 'Giacenza annullata: va prima riaperta' : 'Giacenza già confermata');
   await q('DELETE FROM stock_count_extras WHERE id=$1 AND count_id=$2', [req.params.eid, c.id]);
   res.json({ ok: true });
 }));
@@ -161,7 +161,7 @@ r.put('/counts/:id', ah(async (req, res) => {
   const c = await one('SELECT * FROM stock_counts WHERE id=$1', [req.params.id]);
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
-  if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
+  if (c.status !== 'BOZZA') throw bad(c.status === 'ANNULLATO' ? 'Giacenza annullata: va prima riaperta' : 'Giacenza già confermata');
   const dataOpt = z.preprocess((v) => (v === '' || v == null ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable());
   const d = parse(z.object({ lines: z.array(z.object({ article_id: z.coerce.number().int(), counted_qty: z.coerce.number().int().min(0).max(99999),
     lot: z.preprocess((v) => (v == null ? null : String(v).trim().slice(0, 120) || null), z.string().nullable()).optional(), expiry: dataOpt.optional(),
@@ -202,7 +202,7 @@ r.post('/counts/:id/confirm', ah(async (req, res) => {
   const c = await stockCountDetail(req.params.id);
   if (!c) throw notFound();
   if (!isOps(req.user) && c.struttura_id !== req.user.struttura_id) throw forbidden();
-  if (c.status === 'CONFERMATO') throw bad('Giacenza già confermata');
+  if (c.status !== 'BOZZA') throw bad(c.status === 'ANNULLATO' ? 'Giacenza annullata: va prima riaperta' : 'Giacenza già confermata');
   const formula = await getSetting('reorder_formula', 'DIFF_X_FACTOR');
   const months = Number(await getSetting('production_months', '3'));
   const cons = c.kind === 'LAB' ? { map: new Map(), months: 0 } : await consumptionByArticle(c.struttura_id, months);
@@ -243,6 +243,83 @@ r.post('/counts/:id/confirm', ah(async (req, res) => {
   if (to.length) await sendMail({ kind: 'GIACENZA', refKey: `GIACENZA:${c.id}`, to, strutturaId: c.struttura_id, subject: `Giacenza ${c.month.slice(0, 7)} confermata · ${s.name}`, title: 'Giacenza mensile confermata',
     body: c.kind === 'SEDE' ? `${s.name} ha confermato la giacenza di ${c.month.slice(0, 7)}. Il sistema ha generato l'ordine potenziale ${result.number} (${result.proposed} confezioni proposte): verificalo e approvalo in Orders Management.` : `${s.name} ha confermato la giacenza di ${c.month.slice(0, 7)}. È aperta la bozza d'ordine ${result.number} da compilare e approvare.` });
   res.json(result);
+}));
+
+/**
+ * Annullare, riaprire o eliminare una giacenza (solo Superadmin del modulo; richiesta del CEO del 19/11/2026).
+ * Una giacenza CONFERMATA ha prodotto due effetti, che qui si stornano:
+ *  - rettifiche delle confezioni: quelle tolte (RETTIFICATO) tornano in giacenza, quelle aggiunte (origin RETTIFICA) si tolgono se
+ *    sono ancora in giacenza; quelle già messe in uso restano (sono state usate davvero) e vengono contate nell'esito;
+ *  - ordine generato: se è ancora in BOZZA o INVIATO (non approvato) viene annullato; se è già approvato o oltre NON si tocca
+ *    (il materiale è in arrivo) e l'esito lo dice.
+ * Le confezioni della rettifica si riconoscono da struttura e nota "Rettifica giacenza AAAA-MM" (una sola giacenza per struttura e mese).
+ */
+async function stornaGiacenza(cl, c, userId, motivo) {
+  const out = { tornate_in_giacenza: 0, tolte_dalla_giacenza: 0, gia_usate: 0, ordine: null };
+  if (c.status !== 'CONFERMATO') return out;
+  const nota = `Rettifica giacenza ${String(c.month).slice(0, 7)}`;
+  out.tornate_in_giacenza = (await cl.query("UPDATE packages SET status='RICEVUTO', note=NULL WHERE struttura_id=$1 AND status='RETTIFICATO' AND note=$2", [c.struttura_id, nota])).rowCount;
+  out.tolte_dalla_giacenza = (await cl.query("DELETE FROM packages WHERE struttura_id=$1 AND origin='RETTIFICA' AND status='RICEVUTO' AND note=$2", [c.struttura_id, nota])).rowCount;
+  out.gia_usate = Number((await cl.query("SELECT count(*)::int AS n FROM packages WHERE struttura_id=$1 AND origin='RETTIFICA' AND status<>'RICEVUTO' AND note=$2", [c.struttura_id, nota])).rows[0].n);
+  if (c.order_id) {
+    const o = (await cl.query('SELECT id, number, status FROM orders WHERE id=$1 FOR UPDATE', [c.order_id])).rows[0];
+    if (o && ['BOZZA', 'INVIATO'].includes(o.status)) {
+      await cl.query("UPDATE orders SET status='ANNULLATO', cancelled_by=$2, cancelled_at=now(), cancel_reason=$3, updated_at=now() WHERE id=$1", [o.id, userId, motivo]);
+      await cl.query('INSERT INTO order_events (order_id, user_id, event, data) VALUES ($1,$2,$3,$4)', [o.id, userId, 'Ordine annullato', JSON.stringify({ reason: motivo })]);
+      out.ordine = { number: o.number, esito: 'ANNULLATO' };
+    } else if (o) out.ordine = { number: o.number, esito: o.status === 'ANNULLATO' ? 'GIA_ANNULLATO' : 'NON_TOCCATO', status: o.status };
+  }
+  return out;
+}
+const giacenzaPer = async (cl, id) => {
+  const c = (await cl.query('SELECT c.*, s.name AS struttura_name FROM stock_counts c JOIN strutture_v s ON s.id=c.struttura_id WHERE c.id=$1 FOR UPDATE OF c', [id])).rows[0];
+  if (!c) throw notFound();
+  c.month = typeof c.month === 'string' ? c.month : new Date(c.month.getTime() - c.month.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return c;
+};
+const motivoSchema = (obbligatorio) => z.object({ motivo: obbligatorio ? z.string().trim().min(3).max(300) : z.string().trim().max(300).optional().nullable() });
+
+// Annulla: la giacenza resta in elenco come ANNULLATA (non vale come giacenza del mese), effetti stornati
+r.post('/counts/:id/cancel', requireRole('SUPERADMIN'), ah(async (req, res) => {
+  const { motivo } = parse(motivoSchema(true), req.body || {});
+  const out = await tx(async (cl) => {
+    const c = await giacenzaPer(cl, req.params.id);
+    if (c.status === 'ANNULLATO') throw bad('Giacenza già annullata');
+    const esito = await stornaGiacenza(cl, c, req.user.id, `Giacenza di ${c.month.slice(0, 7)} annullata: ${motivo}`);
+    await cl.query("UPDATE stock_counts SET status='ANNULLATO', cancelled_by=$2, cancelled_at=now(), cancel_reason=$3, order_id=NULL, updated_at=now() WHERE id=$1", [c.id, req.user.id, motivo]);
+    return { id: c.id, struttura: c.struttura_name, month: c.month.slice(0, 7), da: c.status, motivo, ...esito };
+  });
+  await audit(req, 'STOCK_COUNT_CANCEL', 'stock_count', out.id, out);
+  res.json(out);
+}));
+
+// Riapri: la giacenza torna in BOZZA e modificabile; la giacenza teorica viene ricalcolata, le quantità dichiarate restano
+r.post('/counts/:id/reopen', requireRole('SUPERADMIN'), ah(async (req, res) => {
+  const { motivo } = parse(motivoSchema(false), req.body || {});
+  const out = await tx(async (cl) => {
+    const c = await giacenzaPer(cl, req.params.id);
+    if (c.status === 'BOZZA') throw bad('La giacenza è già modificabile');
+    const esito = await stornaGiacenza(cl, c, req.user.id, `Giacenza di ${c.month.slice(0, 7)} riaperta${motivo ? `: ${motivo}` : ''}`);
+    await cl.query("UPDATE stock_counts SET status='BOZZA', confirmed_by=NULL, confirmed_at=NULL, order_id=NULL, cancelled_by=NULL, cancelled_at=NULL, cancel_reason=NULL, reopened_by=$2, reopened_at=now(), updated_at=now() WHERE id=$1", [c.id, req.user.id]);
+    return { id: c.id, struttura_id: c.struttura_id, struttura: c.struttura_name, month: c.month.slice(0, 7), da: c.status, motivo: motivo || null, ...esito };
+  });
+  await openStockCount(out.struttura_id, out.month);     // giacenza teorica aggiornata dopo lo storno
+  await audit(req, 'STOCK_COUNT_REOPEN', 'stock_count', out.id, out);
+  res.json(out);
+}));
+
+// Elimina: la giacenza sparisce con righe, lotti e articoli fuori elenco; resta la traccia nel registro delle operazioni
+r.delete('/counts/:id', requireRole('SUPERADMIN'), ah(async (req, res) => {
+  const out = await tx(async (cl) => {
+    const c = await giacenzaPer(cl, req.params.id);
+    const righe = Number((await cl.query('SELECT count(*)::int AS n FROM stock_count_lines WHERE count_id=$1 AND counted_qty > 0', [c.id])).rows[0].n);
+    const esito = await stornaGiacenza(cl, c, req.user.id, `Giacenza di ${c.month.slice(0, 7)} eliminata`);
+    await cl.query('UPDATE orders SET stock_count_id=NULL WHERE stock_count_id=$1', [c.id]);
+    await cl.query('DELETE FROM stock_counts WHERE id=$1', [c.id]);
+    return { id: c.id, struttura: c.struttura_name, month: c.month.slice(0, 7), da: c.status, righe_con_quantita: righe, ...esito };
+  });
+  await audit(req, 'STOCK_COUNT_DELETE', 'stock_count', out.id, out);
+  res.json(out);
 }));
 
 // Consumo medio per articolo con dettaglio degli esami (per la verifica dell'Area Operations)

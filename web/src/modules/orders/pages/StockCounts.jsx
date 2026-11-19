@@ -45,9 +45,9 @@ export default function StockCounts() {
               <tr key={c.id} className="click" onClick={() => nav(`${BASE}/giacenze/${c.id}`)}>
                 <td className="strong">{monthLabel(c.month)}</td>
                 {ops && <td>{c.struttura_name}<div className="small muted">{KIND[c.kind]}</div></td>}
-                <td>{c.status === 'CONFERMATO' ? <Badge tone="green">Confermata</Badge> : <Badge tone="mauve">Bozza</Badge>}</td>
+                <td>{c.status === 'CONFERMATO' ? <Badge tone="green">Confermata</Badge> : c.status === 'ANNULLATO' ? <Badge tone="red">Annullata</Badge> : <Badge tone="mauve">Bozza</Badge>}</td>
                 <td className="num">{c.differences}</td>
-                <td className="small muted">{c.confirmed_at ? `${itDateTime(c.confirmed_at)} · ${c.confirmed_by_name}` : '–'}</td>
+                <td className="small muted">{c.status === 'ANNULLATO' ? (c.cancel_reason ? `Annullata: ${c.cancel_reason}` : 'Annullata') : c.confirmed_at ? `${itDateTime(c.confirmed_at)} · ${c.confirmed_by_name}` : '–'}</td>
                 <td className="mono small">{c.order_number || '–'}{c.order_status && <span className="muted"> · {c.order_status}</span>}</td>
               </tr>))}</tbody>
           </table></div>

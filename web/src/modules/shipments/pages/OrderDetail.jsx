@@ -30,6 +30,11 @@ export default function OrderDetail({ project }) {
   const open = (m, init = {}) => { setErr(null); setForm(init); setModal(m); };
   const sites = pub.data?.td_sites_list || [];   // C1: sedi dell'anagrafica con l'id
   const closed = ['CLOSED', 'CANCELLED'].includes(o.status);
+  // Cambio di modalità dopo la spedizione (CEO, 19/11/2026): prima della spedizione si usa Modifica
+  const it = lang !== 'en';
+  const cambiaModo = o.project === 'ENDEAVOR' && ['SHIPPED', 'DELIVERED', 'SAMPLE_RECEIVED'].includes(o.status);
+  const modiPossibili = (modes.data || []).filter((m) => m.project === 'ENDEAVOR' && m.active !== false && m.id !== o.shipping_mode_id && Boolean(m.outbound_service) === Boolean(out));
+  const nuovoModo = modiPossibili.find((m) => String(m.id) === String(form.shipping_mode_id));
   const svc = (s) => (s === 'EXPRESS' ? 'SDA Express' : s === 'STANDARD' ? 'SDA Standard' : t('ord.noLeg'));
 
   return (
@@ -43,6 +48,7 @@ export default function OrderDetail({ project }) {
         <div className="row">
           <a className="btn ghost" href={`${API_BASE}/orders/${o.id}/sheet.pdf?lang=${o.lang}`} target="_blank" rel="noreferrer"><Icon name="print" size={16} />{t('ord.sheet')}</a>
           {op && !closed && <button className="btn ghost" onClick={() => open('edit', { ...o, email: o.email || '', shipping_mode_id: o.shipping_mode_id || '', requester_contact: o.requester_contact || '', requester_email: o.requester_email || '', requester_phone: o.requester_phone || '' })}>{t('c.edit')}</button>}
+          {op && cambiaModo && <button className="btn ghost" onClick={() => open('mode', { shipping_mode_id: '', motivo: '', notifica: true })}>{it ? 'Cambia modalità' : 'Change mode'}</button>}
           {op && !['NEW', 'CLOSED'].includes(o.status) && !(o.status === 'SHIPPED_TO_LAB') && <button className="btn ghost" onClick={() => act(() => api.post(`/orders/${o.id}/undo`))}>{t('c.undo')}</button>}
           {op && !closed && o.status !== 'SHIPPED_TO_LAB' && <button className="btn danger" onClick={() => setModal('cancel')}>{t('ord.cancel')}</button>}
         </div>
@@ -158,6 +164,18 @@ export default function OrderDetail({ project }) {
             ...(o.project === 'LIFESTYLE' ? { requester_kind: x.requester_kind, requester_org_id: x.requester_org_id, requester_contact: x.requester_contact, requester_email: x.requester_email, requester_phone: x.requester_phone } : {}) }); })}>{t('c.save')}</button></>}>
           <ErrorBox error={err} />
           <OrderForm value={form} onChange={setForm} project={project} modes={modes.data} showKit={false} lockMode={!['NEW', 'ASSIGNED'].includes(o.status)} />
+        </Modal>
+      )}
+      {modal === 'mode' && (
+        <Modal title={it ? 'Cambia la modalità di spedizione' : 'Change the shipping mode'} onClose={() => setModal(null)}
+          footer={<><button className="btn ghost" onClick={() => setModal(null)}>{t('c.cancel')}</button><button className="btn" disabled={!nuovoModo} onClick={() => act(async () => { await api.post(`/orders/${o.id}/mode`, { shipping_mode_id: Number(form.shipping_mode_id), motivo: form.motivo || null, notifica: form.notifica !== false }); }, it ? 'Modalità cambiata' : 'Mode changed')}>{it ? 'Cambia modalità' : 'Change mode'}</button></>}>
+          <ErrorBox error={err} />
+          <p>{it ? 'Modalità attuale' : 'Current mode'}: <b>{(it ? o.mode_it : o.mode_en) || '–'}</b>{o.fee_shipping != null && <> · {eur(o.fee_shipping)}</>}</p>
+          <Field label={it ? 'Nuova modalità' : 'New mode'} className="mt"><select value={form.shipping_mode_id} onChange={(e) => setForm({ ...form, shipping_mode_id: e.target.value })} data-tendina="nativa"><option value="">{it ? 'Scegli' : 'Choose'}</option>{modiPossibili.map((m) => <option key={m.id} value={m.id}>{it ? m.name_it : m.name_en} · {eur(m.price)}</option>)}</select></Field>
+          <Field label={it ? 'Motivo (facoltativo)' : 'Reason (optional)'} className="mt"><input value={form.motivo || ''} maxLength={300} onChange={(e) => setForm({ ...form, motivo: e.target.value })} /></Field>
+          <label className="f inline mt"><input type="checkbox" checked={form.notifica !== false} onChange={(e) => setForm({ ...form, notifica: e.target.checked })} />{it ? 'Comunica la rettifica ad Affinity' : 'Send the correction to Affinity'}</label>
+          <p className="small muted mt">{it ? 'Il kit, la lettera di vettura e le date restano quelli registrati: cambiano la modalità, il servizio delle tratte e la tariffa di spedizione. Le modalità proposte sono quelle compatibili con la spedizione di andata già avvenuta.' : 'Kit, waybill and dates stay as registered: mode, leg service and shipping fee change. Only modes compatible with the outbound shipment already made are listed.'}</p>
+          {nuovoModo && Boolean(nuovoModo.return_service) !== Boolean(ret) && <div className="alert info mt">{nuovoModo.return_service ? (it ? 'Viene aggiunta la tratta di ritorno: il codice SDA dell\'etichetta si inserisce poi nella scheda.' : 'A return leg is added: enter the SDA label code on the request afterwards.') : (it ? 'La tratta di ritorno viene tolta.' : 'The return leg is removed.')}</div>}
         </Modal>
       )}
       {modal === 'cancel' && <PromptModal danger title={t('ord.cancel')} label={t('c.reason')} confirmText={t('ord.cancel')} onClose={() => setModal(null)} onConfirm={async (reason) => { await api.post(`/orders/${o.id}/cancel`, { reason }); reload(); }} />}

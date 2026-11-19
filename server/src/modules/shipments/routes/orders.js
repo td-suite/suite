@@ -190,6 +190,59 @@ r.put('/:id(\\d+)', requireRole(...OPERATORS), ah(async (req, res) => {
   res.json(await loadOrder(o.id));
 }));
 
+// ---------------- Cambio di modalità dopo la spedizione ----------------
+// Richiesta del CEO (19/11/2026): un kit partito come Standard e diventato Express non deve passare da annullamento e scarto del kit.
+// Vale per Endeavor, da ASSEGNATA fino a CAMPIONE RICEVUTO, finché il periodo di rendicontazione della spedizione è aperto.
+// Aggiorna la modalità, il servizio delle tratte già registrate e la tariffa di spedizione; registra l'evento e, salvo scelta contraria,
+// manda ad Affinity una comunicazione di rettifica con modalità precedente, nuova e codici SDA.
+r.post('/:id(\\d+)/mode', requireRole(...OPERATORS), ah(async (req, res) => {
+  const d = parse(z.object({ shipping_mode_id: z.number().int(), motivo: opt(z.string().trim().max(300)), notifica: z.boolean().optional() }), req.body);
+  const id = Number(req.params.id);
+  const esito = await tx(async (c) => {
+    const o = (await c.query(`${ORDER_SELECT} WHERE o.id=$1 FOR UPDATE OF o`, [id])).rows[0];
+    if (!o) throw notFound();
+    if (o.project !== 'ENDEAVOR') throw badL(req, 'La modalità di spedizione riguarda solo le richieste Endeavor', 'The shipping mode applies to Endeavor requests only');
+    if (['CLOSED', 'CANCELLED', 'SHIPPED_TO_LAB'].includes(o.status)) throw badL(req, 'Richiesta chiusa, annullata o già inviata al laboratorio: la modalità non si cambia più', 'Closed, cancelled or already sent to the laboratory: the mode can no longer be changed');
+    if (d.shipping_mode_id === o.shipping_mode_id) throw badL(req, 'La richiesta ha già questa modalità', 'The request already has this mode');
+    const m = await modeFor(req, { project: o.project, shipping_mode_id: d.shipping_mode_id });
+    if (o.ship_billing_period_id && (await c.query('SELECT status FROM billing_periods WHERE id=$1', [o.ship_billing_period_id])).rows[0]?.status !== 'OPEN') throw badL(req, 'Spedizione già rendicontata in un periodo chiuso', 'Shipment already reported in a closed period');
+    const prima = { id: o.shipping_mode_id, code: o.mode_code, it: o.mode_it, en: o.mode_en, price: o.mode_price };
+    const spedita = !['NEW', 'ASSIGNED'].includes(o.status);
+    if (spedita) {
+      const tratte = (await c.query('SELECT * FROM shipments WHERE order_id=$1', [id])).rows;
+      const out = tratte.find((x) => x.direction === 'OUTBOUND'); const ret = tratte.find((x) => x.direction === 'RETURN');
+      // l'andata è un fatto già avvenuto: si corregge il servizio, non si aggiunge né si toglie la tratta
+      if (m.outbound_service && !out) throw badL(req, 'Il kit è stato consegnato a mano: non si può passare a una modalità con spedizione di andata', 'The kit was handed over: a mode with an outbound shipment cannot be applied');
+      if (!m.outbound_service && out) throw badL(req, 'La spedizione di andata è già registrata: scegli una modalità che la comprende', 'The outbound shipment is already registered: choose a mode that includes it');
+      if (out && out.service !== m.outbound_service) await c.query('UPDATE shipments SET service=$2, updated_at=now() WHERE id=$1', [out.id, m.outbound_service]);
+      if (m.return_service && !ret) await c.query(`INSERT INTO shipments (order_id, direction, carrier, service, last_status, created_by) VALUES ($1,'RETURN','SDA',$2,'PENDING',$3)`, [id, m.return_service, req.user.id]);
+      else if (m.return_service && ret.service !== m.return_service) await c.query('UPDATE shipments SET service=$2, updated_at=now() WHERE id=$1', [ret.id, m.return_service]);
+      else if (!m.return_service && ret) {
+        if (ret.last_status !== 'PENDING' || ret.delivered_at) throw badL(req, 'Il ritorno è già in viaggio o consegnato: la tratta di ritorno non si può togliere', 'The return is already in transit or delivered: the return leg cannot be removed');
+        await c.query('DELETE FROM shipments WHERE id=$1', [ret.id]);
+      }
+      if (o.fee_shipping != null) await c.query('UPDATE orders SET fee_shipping=$2 WHERE id=$1', [id, Number(m.price || 0)]);
+    }
+    await c.query('UPDATE orders SET shipping_mode_id=$2, updated_at=now() WHERE id=$1', [id, m.id]);
+    await logEvent(c, { orderId: id, kitId: o.kit_id, event: 'MODE_CHANGED', data: { from: prima.code, to: m.code, from_price: prima.price, to_price: m.price, motivo: d.motivo || null }, userId: req.user.id });
+    return { prima, spedita };
+  });
+  await audit(req, 'ORDER_MODE_CHANGE', 'order', id, { from: esito.prima.code, shipping_mode_id: d.shipping_mode_id, motivo: d.motivo || null });
+  const o = await loadOrder(id);
+  let notifica = null;
+  if (esito.spedita && d.notifica !== false) {
+    const to = await getSetting('affinity_notify_emails', '');
+    if (to) {
+      const out = o.shipments.find((s) => s.direction === 'OUTBOUND'); const ret = o.shipments.find((s) => s.direction === 'RETURN');
+      const mail = await sendMail({ kind: 'AFFINITY_MODE', refKey: `AFFINITY_MODE:${o.id}:${esito.prima.code}>${o.mode_code}:${new Date().toISOString().slice(0, 16)}`, orderId: o.id, to, lang: 'en', sentBy: req.user.id,
+        subject: `Kit ${o.barcode || ''} · shipping mode changed to ${o.mode_en || '-'} · ${o.external_ref || ''} · ${o.patient_last_name}`, title: 'Shipping mode changed',
+        body: `Hello,\n\nthe shipping mode of kit ${o.barcode || '-'} (order ${o.external_ref || '#' + o.id}, ${o.patient_last_name}) has changed.\n\nPrevious mode: ${esito.prima.en || '-'}\nNew mode: ${o.mode_en || '-'}\n${out ? `Outbound SDA waybill: ${out.tracking_number}\n${out.url || ''}\n` : ''}${ret ? `Return SDA label: ${ret.tracking_number || 'to be communicated'}\n` : ''}\nThis message replaces the shipping mode communicated earlier.\n\nBest regards\nToscana Diagnostica · Shipments` });
+      notifica = mail?.status || (mail ? 'INVIATA' : null);
+    }
+  }
+  res.json({ ...(await loadOrder(id)), mode_change: { from: esito.prima.it, to: o.mode_it, fee: o.fee_shipping, notifica } });
+}));
+
 // ---------------- Fasi ----------------
 r.post('/:id(\\d+)/assign', requireRole(...OPERATORS), ah(async (req, res) => {
   const { barcode } = parse(z.object({ barcode: z.string().min(3) }), req.body);

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api, BASE } from '../api.js';
+import { useAuth, isSuper } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Card, Badge, Modal, Field, Icon, useToast } from '../components/ui.jsx';
 import { PhaseBanner } from '../components/phase.jsx';
 import { ProductArt } from '../components/art.jsx';
@@ -16,6 +17,10 @@ export default function StockCount() {
   const [vals, setVals] = useState({});
   const [err, setErr] = useState(null);
   const [ask, setAsk] = useState(false);
+  // Annulla, riapri, elimina (solo Superadmin; CEO, 19/11/2026)
+  const { user } = useAuth();
+  const sup = isSuper(user);
+  const [gest, setGest] = useState(null);   // { azione: 'riapri' | 'annulla' | 'elimina', motivo }
   const [onlyMoved, setOnlyMoved] = useState(false);
   const [extra, setExtra] = useState(null);
   const articles = useApi('/articles');
@@ -33,7 +38,21 @@ export default function StockCount() {
   const totale = (l) => Number(vals[l.article_id] ?? l.first_qty ?? l.counted_qty) + (altri[l.article_id] || []).reduce((a, r) => a + (Number(r.qty) || 0), 0);
   const setLotto = (id, patch) => setLotti((x) => ({ ...x, [id]: { ...(x[id] || { lot: '', expiry: '' }), ...patch } }));
   if (!c) return <div className="page"><Loading /></div>;
-  const locked = c.status === 'CONFERMATO';
+  const locked = c.status !== 'BOZZA';
+  const annullata = c.status === 'ANNULLATO';
+  const esitoTesto = (r) => [r.tolte_dalla_giacenza ? `${r.tolte_dalla_giacenza} confezioni della rettifica tolte dalla giacenza` : null, r.tornate_in_giacenza ? `${r.tornate_in_giacenza} confezioni tornate in giacenza` : null,
+    r.gia_usate ? `${r.gia_usate} confezioni della rettifica erano già state usate e restano` : null,
+    r.ordine?.esito === 'ANNULLATO' ? `ordine ${r.ordine.number} annullato` : r.ordine?.esito === 'NON_TOCCATO' ? `ordine ${r.ordine.number} già ${String(r.ordine.status).toLowerCase()}: non toccato` : null].filter(Boolean).join(', ');
+  const gestisci = async () => {
+    setErr(null);
+    try {
+      const r = gest.azione === 'elimina' ? await api.del(`/stock/counts/${c.id}`) : await api.post(`/stock/counts/${c.id}/${gest.azione === 'annulla' ? 'cancel' : 'reopen'}`, { motivo: gest.motivo || null });
+      const fatto = { riapri: 'Giacenza riaperta: è di nuovo modificabile', annulla: 'Giacenza annullata', elimina: 'Giacenza eliminata' }[gest.azione];
+      const e = esitoTesto(r); toast(e ? `${fatto} (${e})` : fatto);
+      setGest(null);
+      if (gest.azione === 'elimina') nav(`${BASE}/giacenze`); else reload();
+    } catch (e) { setErr(e); setGest(null); }
+  };
   const lines = c.lines.filter((l) => !onlyMoved || l.last_order_qty || l.system_qty || totale(l));
   const diffs = c.lines.filter((l) => totale(l) !== l.system_qty).length;
   const save = async () => {
@@ -48,13 +67,16 @@ export default function StockCount() {
     <div className="page">
       <PhaseBanner n="7" title="Giacenza reale del mese" desc="Entro il 15 (laboratorio: 30) la struttura inserisce le quantità effettivamente presenti, articolo per articolo, con accanto la giacenza teorica calcolata da carichi e scarichi. Si possono aggiungere articoli non in elenco. Alla conferma riparte il flusso con l'ordine del mese." next="Fase 1: ordine generato dal sistema" />
       <div className="page-head">
-        <div><div className="row"><h1>Giacenza di {monthLabel(c.month)}</h1>{locked ? <Badge tone="green">Confermata</Badge> : <Badge tone="mauve">Bozza</Badge>}</div>
-          <div className="sub">{c.struttura_name} · {KIND[c.kind]}{locked ? ` · confermata il ${itDateTime(c.confirmed_at)} da ${c.confirmed_by_name}` : ' · inserisci la quantità effettivamente presente, in confezioni'}</div></div>
+        <div><div className="row"><h1>Giacenza di {monthLabel(c.month)}</h1>{annullata ? <Badge tone="red">Annullata</Badge> : locked ? <Badge tone="green">Confermata</Badge> : <Badge tone="mauve">Bozza</Badge>}</div>
+          <div className="sub">{c.struttura_name} · {KIND[c.kind]}{annullata ? ` · annullata${c.cancelled_at ? ` il ${itDateTime(c.cancelled_at)}` : ''}${c.cancel_reason ? `: ${c.cancel_reason}` : ''}` : locked ? ` · confermata il ${itDateTime(c.confirmed_at)} da ${c.confirmed_by_name}` : ' · inserisci la quantità effettivamente presente, in confezioni'}</div></div>
         <div className="row">
           <label className="f inline small"><input type="checkbox" checked={onlyMoved} onChange={(e) => setOnlyMoved(e.target.checked)} />Solo articoli movimentati</label>
           {c.order_id && <Link className="btn ghost" to={`${BASE}/ordini/${c.order_id}`}>Ordine {c.order_number}</Link>}
           {!locked && <button className="btn ghost" onClick={save}>Salva</button>}
           {!locked && <button className="btn" onClick={() => setAsk(true)}>Conferma la giacenza</button>}
+          {sup && locked && <button className="btn ghost" onClick={() => setGest({ azione: 'riapri', motivo: '' })}>Rendi modificabile</button>}
+          {sup && !annullata && <button className="btn ghost" onClick={() => setGest({ azione: 'annulla', motivo: '' })}>Annulla</button>}
+          {sup && <button className="btn ghost danger" onClick={() => setGest({ azione: 'elimina', motivo: '' })}><Icon name="trash" size={14} />Elimina</button>}
         </div>
       </div>
       <ErrorBox error={err} />
@@ -99,6 +121,14 @@ export default function StockCount() {
           <Field label="Articolo del catalogo (se esiste)"><select value={extra.article_id} onChange={(e) => setExtra({ ...extra, article_id: e.target.value })}><option value="">Non a catalogo: descrizione libera</option>{(articles.data || []).filter((a) => !c.lines.some((l) => l.article_id === a.id)).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.pack_label}</option>)}</select></Field>
           {!extra.article_id && <Field label="Descrizione" className="mt"><input value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} /></Field>}
           <div className="form-grid mt"><Field label="Quantità (confezioni)"><input type="number" min="0" value={extra.qty} onChange={(e) => setExtra({ ...extra, qty: e.target.value })} /></Field><Field label="Lotto"><input value={extra.lot || ''} onChange={(e) => setExtra({ ...extra, lot: e.target.value })} /></Field><Field label="Scadenza"><input type="date" value={extra.expiry || ''} onChange={(e) => setExtra({ ...extra, expiry: e.target.value })} /></Field><Field label="Note"><input value={extra.note} onChange={(e) => setExtra({ ...extra, note: e.target.value })} /></Field></div>
+        </Modal>
+      )}
+      {gest && (
+        <Modal title={{ riapri: 'Rendere di nuovo modificabile la giacenza?', annulla: 'Annullare la giacenza?', elimina: 'Eliminare la giacenza?' }[gest.azione]} onClose={() => setGest(null)}
+          footer={<><button className="btn ghost" onClick={() => setGest(null)}>Indietro</button><button className={gest.azione === 'elimina' ? 'btn danger' : 'btn'} disabled={gest.azione === 'annulla' && (gest.motivo || '').trim().length < 3} onClick={gestisci}>{{ riapri: 'Rendi modificabile', annulla: 'Annulla la giacenza', elimina: 'Elimina definitivamente' }[gest.azione]}</button></>}>
+          <p>{c.struttura_name}, {monthLabel(c.month)}. {{ riapri: 'La giacenza torna in bozza: le quantità inserite restano e si possono correggere, poi va confermata di nuovo.', annulla: 'La giacenza resta in elenco come annullata e non vale come giacenza del mese. Si può riaprire o eliminare in seguito.', elimina: 'La giacenza viene cancellata con tutte le quantità inserite. Non si può recuperare: resta solo la traccia nel registro delle operazioni.' }[gest.azione]}</p>
+          {c.status === 'CONFERMATO' && <p className="mt">Gli effetti della conferma vengono stornati: le rettifiche delle confezioni a sistema tornano indietro{c.order_number ? (['BOZZA', 'INVIATO'].includes(c.order_status) ? ` e l'ordine ${c.order_number}, non ancora approvato, viene annullato.` : c.order_status === 'ANNULLATO' ? '.' : `. L'ordine ${c.order_number} è già ${String(c.order_status).toLowerCase()} e non viene toccato: va gestito a parte.`) : '.'}</p>}
+          {gest.azione !== 'elimina' && <Field label={gest.azione === 'annulla' ? 'Motivo (obbligatorio)' : 'Motivo (facoltativo)'} className="mt"><input value={gest.motivo} maxLength={300} onChange={(e) => setGest({ ...gest, motivo: e.target.value })} /></Field>}
         </Modal>
       )}
       {ask && (
