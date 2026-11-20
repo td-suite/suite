@@ -108,14 +108,17 @@ export const visibleClause = (user, alias = 'a') => {
 };
 // Il catalogo ordinabile è quello del Magazzino Centrale (articoli letti dall'API Silva): quando esiste almeno un articolo Silva, gli articoli caricati a mano
 // (MOD252/MANUALE) escono da "Nuovo ordine" anche se ancora attivi (restano per lo storico e in Catalogo articoli con all=1)
-export const soloSilvaClause = (alias = 'a') => `(${alias}.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active))`;
+// v0.91.2 (CEO, 20/11/2026): si vedono solo gli articoli sincronizzati con Silva e quelli creati a mano da ora in poi. Gli articoli non
+// Silva di prima sono stati eliminati o, se usati da ordini e giacenze, disattivati dalla migrazione 020: un articolo non Silva
+// disattivato è NASCOSTO in ogni elenco (anche in quello completo del catalogo).
+export const nascostoClause = (alias = 'a') => `(NOT ${alias}.active AND ${alias}.source <> 'SILVA')`;
 r.get('/articles', ah(async (req, res) => {
   const all = req.query.all === '1' && isOps(req.user);
   res.json(await many(`SELECT a.*, c.name AS category_name, c.icon,
       (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id AND m.active) AS mappings_count,
       -- v0.68.4 · etichette del gestionale abbinate all'articolo (Correlazione esami e materiali), solo per l'Area Operations
       ${isOps(req.user) ? `(SELECT string_agg(e.etichetta, ', ' ORDER BY e.campioni DESC, e.etichetta) FROM etichette_synclab e WHERE e.articolo_id = a.id)` : 'NULL::text'} AS etichette
-    FROM articles a JOIN categories c ON c.code=a.category_code WHERE ($1 OR (a.active AND ${soloSilvaClause()})) AND ${visibleClause(req.user)} ORDER BY c.sort, a.sort, a.code`, [all]));
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE ($1 OR a.active) AND NOT ${nascostoClause()} AND ${visibleClause(req.user)} ORDER BY c.sort, a.sort, a.code`, [all]));
 }));
 
 const articleFields = {
@@ -128,7 +131,7 @@ r.post('/articles', requireRole('SUPERADMIN'), ah(async (req, res) => {
   const d = parse(z.object({ code: z.string().regex(CODE), category_code: z.string(), ...articleFields }), req.body);
   if (!(await one('SELECT 1 FROM categories WHERE code=$1', [d.category_code]))) throw bad('Categoria inesistente');
   const cols = Object.keys(d);
-  const row = await one(`INSERT INTO articles (${cols.join(',')}, sort) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}, (SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`, cols.map((c) => d[c]));
+  const row = await one(`INSERT INTO articles (${cols.join(',')}, source, sort) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}, 'MANUALE', (SELECT coalesce(max(sort),0)+1 FROM articles)) RETURNING id`, cols.map((c) => d[c]));
   await audit(req, 'ARTICLE_CREATE', 'article', row.id, d);
   res.status(201).json(row);
 }));

@@ -179,24 +179,3 @@ export async function reinterpretaArticoli({ force = false } = {}) {
     return { esaminati: rows.length, cambiati: changed, per_categoria: perCategoria };
   });
 }
-
-/** Pulizia del catalogo caricato a mano (richiesta del CEO, 30/10/2026: "usiamo solo quello che importiamo da Silva"): gli articoli non Silva
- *  senza riferimenti (righe d'ordine, confezioni, conte, abbinamenti esami) si eliminano; quelli referenziati si disattivano e si nascondono. */
-export async function pulisciNonSilva({ dryRun = false } = {}) {
-  return tx(async (c) => {
-    const rows = (await c.query(`SELECT a.id, a.code, a.name, a.source, a.active,
-        (SELECT count(*)::int FROM order_lines l WHERE l.article_id=a.id) AS righe,
-        (SELECT count(*)::int FROM packages p WHERE p.article_id=a.id) AS confezioni,
-        (SELECT count(*)::int FROM stock_count_lines s WHERE s.article_id=a.id) AS conte,
-        (SELECT count(*)::int FROM exam_mappings m WHERE m.article_id=a.id) AS abbinamenti
-      FROM articles a WHERE a.source <> 'SILVA' ORDER BY a.code`)).rows;
-    const eliminati = []; const disattivati = [];
-    for (const a of rows) {
-      const ref = a.righe + a.confezioni + a.conte + a.abbinamenti;
-      if (ref === 0) { if (!dryRun) { await c.query('DELETE FROM warehouse_stock WHERE article_id=$1', [a.id]); await c.query('DELETE FROM articles WHERE id=$1', [a.id]); } eliminati.push({ id: a.id, code: a.code, name: a.name }); }
-      else { if (!dryRun && (a.active || true)) await c.query('UPDATE articles SET active=FALSE, visible_all=FALSE, visible_sedi=FALSE, visible_service=FALSE, updated_at=now() WHERE id=$1', [a.id]); disattivati.push({ id: a.id, code: a.code, name: a.name, riferimenti: ref }); }
-    }
-    if (!dryRun) await c.query(`DELETE FROM categories k WHERE k.code NOT IN ('MAGAZZINO', ${CATEGORIE_INTERPRETATE.map((x) => `'${x.code}'`).join(', ')}) AND NOT EXISTS (SELECT 1 FROM articles a WHERE a.category_code=k.code)`);
-    return { dryRun, eliminati, disattivati };
-  });
-}

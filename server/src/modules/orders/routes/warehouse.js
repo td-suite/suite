@@ -8,7 +8,7 @@ import { one, many, q } from '../db.js';
 import { ah, bad, audit, parse, getSetting, itDate } from '../lib/util.js';
 import { requireRole, OPS_ROLES } from '../lib/access.js';
 import { applyFeed } from './integrations.js';
-import { sincronizzaCatalogo, statoCatalogo, reinterpretaArticoli, pulisciNonSilva } from '../lib/silvaCatalog.js';
+import { sincronizzaCatalogo, statoCatalogo, reinterpretaArticoli } from '../lib/silvaCatalog.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -19,14 +19,14 @@ r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
       a.visible_all, a.visible_sedi, a.visible_poli, a.visible_lab, a.visible_service,
       -- v0.68.4 · ordinabile = compare in "Nuovo ordine" per almeno una tipologia: attivo, del catalogo Silva (o nessun articolo Silva
       -- ancora) e visibile ad almeno una colonna; motivo se non lo è
-      (a.active AND (a.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active)) AND (a.visible_all OR a.visible_sedi OR a.visible_poli OR a.visible_lab OR a.visible_service)) AS ordinabile,
-      CASE WHEN NOT a.active THEN 'disattivo' WHEN NOT (a.source = 'SILVA' OR NOT EXISTS (SELECT 1 FROM articles z WHERE z.source = 'SILVA' AND z.active)) THEN 'caricato a mano, fuori dal catalogo Silva'
+      (a.active AND (a.visible_all OR a.visible_sedi OR a.visible_poli OR a.visible_lab OR a.visible_service)) AS ordinabile,
+      CASE WHEN NOT a.active THEN 'disattivo'
            WHEN NOT (a.visible_all OR a.visible_sedi OR a.visible_poli OR a.visible_lab OR a.visible_service) THEN 'non visibile a nessuna tipologia' END AS non_ordinabile_motivo,
       coalesce((SELECT sum(w.qty) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current),0)::numeric AS qty,
       (SELECT min(w.expiry) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS next_expiry,
       (SELECT count(*)::int FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS lots,
       (SELECT json_agg(json_build_object('lot', w.lot, 'expiry', w.expiry, 'qty', w.qty, 'barcode', w.barcode) ORDER BY w.expiry NULLS LAST) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current) AS lot_detail
-    FROM articles a JOIN categories c ON c.code=a.category_code ORDER BY c.sort, a.sort, a.code`);
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE NOT (NOT a.active AND a.source <> 'SILVA') ORDER BY c.sort, a.sort, a.code`);
   const feeds = await many('SELECT f.*, (SELECT count(*)::int FROM warehouse_stock w WHERE w.feed_id=f.id) AS rows FROM warehouse_feeds f ORDER BY f.received_at DESC LIMIT 20');
   res.json({ rows, feeds, last_feed_at: await getSetting('silva_last_feed_at', null), last_poll_at: await getSetting('silva_last_poll_at', null), silva: await statoCatalogo() });
 }));
@@ -34,12 +34,6 @@ r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
 r.post('/silva/reinterpreta', requireRole(...OPS_ROLES), ah(async (req, res) => {
   const out = await reinterpretaArticoli({ force: Boolean(req.body?.force) });
   await audit(req, 'SILVA_REINTERPRETA', 'warehouse', null, out);
-  res.json(out);
-}));
-// Pulizia del catalogo caricato a mano: solo il super amministratore; dry_run per vedere il piano
-r.post('/pulizia-non-silva', requireRole('SUPERADMIN'), ah(async (req, res) => {
-  const out = await pulisciNonSilva({ dryRun: Boolean(req.body?.dry_run) });
-  if (!out.dryRun) await audit(req, 'CATALOGO_PULIZIA_NON_SILVA', 'warehouse', null, { eliminati: out.eliminati.length, disattivati: out.disattivati.length });
   res.json(out);
 }));
 // Lettura del catalogo Silva su richiesta (force = fotografia completa, altrimenti sole modifiche dal riferimento salvato)

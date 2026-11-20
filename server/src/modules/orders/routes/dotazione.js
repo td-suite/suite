@@ -39,7 +39,7 @@ async function assertArticolo(id, client) {
   const run = client ? (s, p) => client.query(s, p).then((x) => x.rows[0]) : one;
   const a = await run('SELECT id, code, name, active, source FROM articles WHERE id=$1', [id]);
   if (!a) throw bad(`Articolo ${id} inesistente`);
-  if (!a.active || a.source !== 'SILVA') throw bad(`${a.name}: solo articoli attivi del catalogo Silva`);
+  if (!a.active) throw bad(`${a.name}: solo articoli attivi del catalogo`);
   return a;
 }
 
@@ -47,7 +47,7 @@ async function assertArticolo(id, client) {
 r.get('/articoli', ah(async (req, res) => {
   const s = String(req.query.q || '').trim();
   res.json(await many(`SELECT a.id, ${ART} FROM articles a JOIN categories c ON c.code=a.category_code
-    WHERE a.active AND a.source='SILVA' AND ($1 = '' OR a.code ILIKE '%'||$1||'%' OR a.silva_code ILIKE '%'||$1||'%' OR a.name ILIKE '%'||$1||'%')
+    WHERE a.active AND ($1 = '' OR a.code ILIKE '%'||$1||'%' OR a.silva_code ILIKE '%'||$1||'%' OR a.name ILIKE '%'||$1||'%')
     ORDER BY c.sort, a.sort, a.name LIMIT 60`, [s]));
 }));
 
@@ -109,7 +109,7 @@ r.post('/modelli/:kind/copia', ah(async (req, res) => {
     if (d.mode === 'SOSTITUISCI') await c.query('DELETE FROM startup_template_lines WHERE kind=$1', [kind]);
     const ins = await c.query(`INSERT INTO startup_template_lines (kind, article_id, packs, note, sort)
       SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id
-       WHERE l.kind=$2 AND a.active AND a.source='SILVA' ON CONFLICT (kind, article_id) DO NOTHING`, [kind, d.from]);
+       WHERE l.kind=$2 AND a.active ON CONFLICT (kind, article_id) DO NOTHING`, [kind, d.from]);
     await toccaModello(kind, req.user.id, c);
     return ins.rowCount;
   });
@@ -221,7 +221,7 @@ r.post('/sedi/:id/genera', ah(async (req, res) => {
     const id = await assicuraCarico(c, s, req.user.id);
     await c.query('DELETE FROM startup_load_lines WHERE load_id=$1', [id]);
     const ins = await c.query(`INSERT INTO startup_load_lines (load_id, article_id, packs_planned, note, sort)
-      SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id WHERE l.kind=$2 AND a.active AND a.source='SILVA'`, [id, s.tipologia]);
+      SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id WHERE l.kind=$2 AND a.active`, [id, s.tipologia]);
     await c.query('UPDATE startup_loads SET kind=$2, updated_at=now() WHERE id=$1', [id, s.tipologia]);
     return ins.rowCount;
   });
@@ -244,7 +244,7 @@ r.post('/modelli/:kind/ordine', ah(async (req, res) => {
     const id = await assicuraCarico(c, s, req.user.id);
     await c.query('DELETE FROM startup_load_lines WHERE load_id=$1', [id]);
     const ins = await c.query(`INSERT INTO startup_load_lines (load_id, article_id, packs_planned, note, sort)
-      SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id WHERE l.kind=$2 AND a.active AND a.source='SILVA'`, [id, kind]);
+      SELECT $1, l.article_id, l.packs, l.note, l.sort FROM startup_template_lines l JOIN articles a ON a.id=l.article_id WHERE l.kind=$2 AND a.active`, [id, kind]);
     if (!ins.rowCount) throw bad(`Il modello ${s.tipologia_name} è vuoto: aggiungi gli articoli prima di generare l'ordine`);
     await c.query(`UPDATE startup_loads SET status='PIANIFICATA', kind=$2, planned_at=now(), planned_by=$3, updated_at=now() WHERE id=$1`, [id, kind, req.user.id]);
     return ins.rowCount;
