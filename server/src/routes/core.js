@@ -361,8 +361,10 @@ r.get('/people', ah(async (req, res) => {
   if (kind) where.push(`p.kind = ${p(kind)}`);
   if (site_id) where.push(`p.site_id = ${p(Number(site_id))}`);
   if (unit_id) where.push(`(p.unit_id = ${p(Number(unit_id))} OR EXISTS (SELECT 1 FROM org_positions op WHERE op.person_id=p.id AND op.unit_id = ${p(Number(unit_id))}))`);
-  // 'ATTIVO' comprende chi è in arrivo (IMPEGNO con contratto confermato): in Persone si deve vedere (CEO, 08/11/2026)
-  if (status && !all) where.push(status === 'ATTIVO' ? `p.status IN ('ATTIVO','IMPEGNO')` : `p.status = ${p(status)}`);
+    // Chi è in fase "Lettera di impegno" (stato IMPEGNO) non figura in nessun elenco della Suite: vive solo in Gestione del Personale >
+  // Lettere di impegno finché non viene assunto (CEO, 20/11/2026; sostituisce la regola dell'08/11/2026)
+  if (status && !all) where.push(`p.status = ${p(status)}`);
+  where.push(`p.status <> 'IMPEGNO'`);
   // Esterni (partner ospitanti, clienti service): solo le persone attive delle unità con "contatto pubblico", e di ciascuna solo
   // nome, ruolo, email e telefono ufficio (lib/esterni.js). Nessuna ricerca fuori da quel perimetro.
   const external = isExternal(req.user);

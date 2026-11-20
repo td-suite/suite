@@ -15,7 +15,7 @@ async function headcount() {
       l.discipline, l.est_monthly_cost, l.fees, ti.indennita_mensile
     FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN areas_tree at ON at.id=r.area_id LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
       LEFT JOIN tirocini ti ON ti.resource_id=r.id
-    WHERE r.status IN ('ATTIVO','IMPEGNO') OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months')) ORDER BY r.last_name, r.first_name`);
+    WHERE r.status = 'ATTIVO' OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months')) ORDER BY r.last_name, r.first_name`);
   const S = await getSettings();
   const year = new Date().getFullYear();
   return rows.map((x) => {
@@ -52,7 +52,7 @@ r.get('/summary', ah(async (req, res) => {
     employees: active.filter((x) => x.kind === 'DIPENDENTE').length,
     lp: active.filter((x) => x.kind === 'LP').length,
     tirocinanti: active.filter((x) => x.kind === 'TIROCINANTE').length,
-    pending: rows.filter((x) => x.status === 'IMPEGNO').length,
+    pending: (await one(`SELECT count(*)::int AS n FROM resources_v WHERE status = 'IMPEGNO'`)).n,   // solo il numero: le persone in impegno non entrano nelle righe
     female: active.filter((x) => x.sex === 'F').length,
     male: active.filter((x) => x.sex === 'M').length,
     cost_annual: sum(active, 'cost_annual'),
@@ -130,7 +130,7 @@ async function estrattoLp(res, ExcelJS) {
   const rows = await many(`SELECT r.id, r.person_kind, r.status, r.sex, r.last_name, r.first_name, r.hired_at, r.terminated_at, a.name AS area_name, s.name AS site_name,
       l.discipline, l.start_date, l.end_date, l.auto_renew, l.notice_days, l.est_monthly_cost, l.fees, l.vat_regime, l.insurance_expiry
     FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN public.sites s ON s.id=r.site_id LEFT JOIN lp_contracts l ON l.resource_id=r.id
-    WHERE r.kind='LP' AND (r.status IN ('ATTIVO','IMPEGNO') OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months'))) ORDER BY r.last_name, r.first_name`);
+    WHERE r.kind='LP' AND (r.status = 'ATTIVO' OR (r.status='CESSATO' AND r.terminated_at >= (CURRENT_DATE - INTERVAL '13 months'))) ORDER BY r.last_name, r.first_name`);
   const d = (x) => (x ? String(x instanceof Date ? x.toISOString() : x).slice(0, 10) : '');
   const TIPO_PERSONA = { LP: 'Libero professionista', MEDICO: 'Medico', SANITARIO: 'Personale sanitario' };
   const wb = new ExcelJS.Workbook();

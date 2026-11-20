@@ -361,7 +361,7 @@ export async function elencoAree() {
 
 // ------------------------------------------------------------------ risorse ↔ persone
 async function personeCandidate() {
-  return many(`SELECT id, first_name, last_name, email, status, kind, legacy_refs->>'tuotempo' AS risorsa FROM public.people WHERE status IN ('ATTIVO','IMPEGNO') ORDER BY last_name, first_name`);
+  return many(`SELECT id, first_name, last_name, email, status, kind, legacy_refs->>'tuotempo' AS risorsa FROM public.people WHERE status = 'ATTIVO' ORDER BY last_name, first_name`);
 }
 export async function elencoRisorse() {
   const rows = await many(`SELECT r.*, pp.last_name || ' ' || pp.first_name AS proposta_nome, pc.last_name || ' ' || pc.first_name AS persona_nome,

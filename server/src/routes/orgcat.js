@@ -58,7 +58,7 @@ const UNIT_COLS = `u.*, s.code AS site_code, s.name AS site_name, pu.name AS par
   (SELECT count(*)::int FROM people x WHERE x.unit_id=u.id AND x.status='ATTIVO') AS people_count,
   (SELECT json_agg(json_build_object('id', op.id, 'person_id', op.person_id, 'role_id', op.role_id, 'is_head', op.is_head, 'sort_order', op.sort_order,
       'person_name', pp.last_name || ' ' || pp.first_name, 'person_email', pp.email, 'role_name', jr.name, 'avatar_file_id', (SELECT uu.avatar_file_id FROM users uu WHERE uu.person_id=pp.id LIMIT 1)) ORDER BY op.is_head DESC, op.sort_order, pp.last_name)
-     FROM org_positions op JOIN people pp ON pp.id=op.person_id LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.unit_id=u.id) AS positions`;
+     FROM org_positions op JOIN people pp ON pp.id=op.person_id AND pp.status <> 'IMPEGNO' LEFT JOIN job_roles jr ON jr.id=op.role_id WHERE op.unit_id=u.id) AS positions`;
 async function unitRows(where = '', params = []) {
   return many(`SELECT ${UNIT_COLS} FROM org_units u LEFT JOIN sites s ON s.id=u.site_id LEFT JOIN org_units pu ON pu.id=u.parent_id ${where} ORDER BY u.sort_order, lower(u.name)`, params);
 }

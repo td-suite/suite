@@ -62,7 +62,7 @@ r.get('/organizations', ah(async (_req, res) => {
 // Persone dell'anagrafica per il team: chi ha un grant sul modulo viene prima (has_grant), poi tutte le persone attive
 r.get('/people', ah(async (req, res) => {
   const { q: qtext = '' } = req.query;
-  const params = []; let where = `p.status IN ('ATTIVO','IMPEGNO')`;
+  const params = []; let where = `p.status = 'ATTIVO'`;
   if (qtext) { params.push(`%${qtext}%`); where += ` AND lower(unaccent(p.last_name || ' ' || p.first_name || ' ' || coalesce(p.email,'') || ' ' || coalesce(p.job_title,''))) LIKE lower(unaccent($${params.length}))`; }
   res.json(await many(`SELECT p.id, p.last_name || ' ' || p.first_name AS name, p.email, p.job_title, p.kind, p.status,
       EXISTS (SELECT 1 FROM public.users u JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'integration' WHERE u.person_id = p.id) AS has_grant,

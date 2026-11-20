@@ -60,7 +60,7 @@ export default function NewResource({ letterMode = false, kind: kindProp = null 
   const useLetter = (l) => {
     setFromLetter(l);
     setPerson((p) => ({ ...p, id: l.resource_id, last_name: l.last_name, first_name: l.first_name, tax_code: l.tax_code || '', email: l.email || '', phone: l.phone || '', area_id: l.area_id || null, manager_id: l.manager_id || null, birth_place: l.birth_place || '', birth_date: l.birth_date ? String(l.birth_date).slice(0, 10) : '', sex: l.sex || '' }));
-    setEmp((e) => ({ ...e, contract_type: l.contract_type || 'TIND', level: l.level || '', qualification: l.qualification || '', job_title: l.job_title || '', weekly_hours: Number(l.weekly_hours || 40), autonomous_hours: Boolean(l.autonomous_hours), ral: Number(l.ral || 0), ral_steps: l.ral_steps || [], mbo_enabled: Boolean(l.mbo_enabled), mbo_pct: l.mbo_pct, work_site_id: l.work_site_id || e.work_site_id, start_date: l.start_by ? String(l.start_by).slice(0, 10) : '' }));
+    setEmp((e) => ({ ...e, contract_type: l.contract_type || 'TIND', level: l.level || '', qualification: l.qualification || '', job_title: l.job_title || '', weekly_hours: Number(l.weekly_hours || 40), autonomous_hours: Boolean(l.autonomous_hours), ral: Number(l.ral || 0), ral_steps: l.ral_steps || [], mbo_enabled: Boolean(l.mbo_enabled), mbo_pct: l.mbo_pct, benefits: (l.benefits || []).length ? l.benefits : (e.benefits || []), work_site_id: l.work_site_id || e.work_site_id, start_date: l.start_by ? String(l.start_by).slice(0, 10) : '' }));
     setStep(2);
   };
 

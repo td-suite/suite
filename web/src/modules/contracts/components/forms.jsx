@@ -179,6 +179,43 @@ export function MboEditor({ value = [], onChange }) {
 }
 
 // Dati del rapporto di lavoro subordinato (contratto) o della lettera di impegno (subset)
+
+// Lettera di impegno: copia RAL, crescite di RAL, MBO e benefit da un'altra lettera già elaborata (CEO, 20/11/2026). Non tocca persona,
+// livello, mansione, sede e date: quelli sono della proposta in corso.
+export function CopiaDaLettera({ attuale, onCopia }) {
+  const [aperto, setAperto] = useState(false);
+  const [lettere, setLettere] = useState(null);
+  const [scelta, setScelta] = useState('');
+  const [fatto, setFatto] = useState(null);
+  useEffect(() => { if (aperto && !lettere) api.get('/scouting/letters').then((x) => setLettere(x.filter((l) => l.id !== attuale?.id))).catch(() => setLettere([])); }, [aperto]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const copia = () => {
+    const l = (lettere || []).find((x) => String(x.id) === String(scelta));
+    if (!l) return;
+    onCopia({ ral: Number(l.ral || 0), ral_steps: (l.ral_steps || []).map((s) => ({ ...s })), mbo_enabled: Boolean(l.mbo_enabled), mbo_pct: l.mbo_enabled ? l.mbo_pct : null, benefits: [...(l.benefits || [])] });
+    setFatto(`${l.last_name} ${l.first_name}`); setAperto(false);
+  };
+  return (
+    <div className="copia-lettera" style={{ marginBottom: 14 }}>
+      <div className="row" style={{ alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" className="btn ghost sm" onClick={() => setAperto(!aperto)}><Icon name="copy" />Copia RAL, MBO e benefit da un'altra lettera</button>
+        {fatto && <span className="small muted">Copiati dalla lettera di {fatto}: controlla i valori prima di proseguire.</span>}
+      </div>
+      {aperto && (
+        <div className="row" style={{ alignItems: 'flex-end', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+          <Field label="Lettera da cui copiare">
+            <select value={scelta} onChange={(e) => setScelta(e.target.value)} style={{ minWidth: 360 }}>
+              <option value="">{lettere ? (lettere.length ? 'Scegli una lettera' : 'Nessuna altra lettera') : 'Carico le lettere'}</option>
+              {(lettere || []).map((l) => <option key={l.id} value={l.id}>{l.last_name} {l.first_name} · {l.job_title || 'mansione non indicata'} · RAL {eur(l.ral)}{l.mbo_enabled ? ` · MBO ${l.mbo_pct ?? ''}%` : ''}{(l.benefits || []).length ? ` · ${l.benefits.length} benefit` : ''}</option>)}
+            </select>
+          </Field>
+          <button type="button" className="btn sm" disabled={!scelta} onClick={copia}>Copia</button>
+          <span className="small muted">Sostituisce RAL, crescite di RAL, MBO e benefit di questa proposta.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EmploymentForm({ value: v, onChange, letter = false, sites = [] }) {
   const roles = useApi('/job-roles');
   const s = set(v, onChange);
@@ -192,6 +229,7 @@ export function EmploymentForm({ value: v, onChange, letter = false, sites = [] 
   const applyDecomp = () => sim && onChange({ ...v, base_pay: sim.decomposition.base_pay, superminimo: sim.decomposition.superminimo, function_allowance: sim.decomposition.function_allowance });
   return (
     <>
+      {letter && <CopiaDaLettera attuale={v} onCopia={(dati) => onChange({ ...v, ...dati })} />}
       <div className="form-grid">
         <Field label="Tipologia contratto" help={isDir ? 'CCNL Dirigenti Industria: nessun livello, 13 mensilità, FASI e Previndai, minimo contrattuale di garanzia + superminimo ad personam' : ''}><select value={v.contract_type || 'TIND'} onChange={(e) => e.target.value === 'DIRIGENTE' ? onChange({ ...v, contract_type: 'DIRIGENTE', level: 'DIRIGENTE', qualification: 'Dirigente', monthly_payments: 13, probation: 'Non richiesto', autonomous_hours: true, weekly_days: 5 }) : s('contract_type', e.target.value)}>{Object.entries(CONTRACT).filter(([k]) => !letter || k !== 'DIRIGENTE').map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         {isDir ? <Field label="Qualifica"><input value="Dirigente" disabled /></Field> : <Field label="Livello di ingresso"><select value={v.level || ''} onChange={(e) => s('level', e.target.value)}><option value="">–</option>{LEVELS.map((l) => <option key={l} value={l}>{LEVEL_LABEL[l]}</option>)}</select></Field>}
@@ -242,10 +280,8 @@ export function EmploymentForm({ value: v, onChange, letter = false, sites = [] 
         {v.mbo_enabled && !letter && <Field label="Esercizio"><input type="number" value={v.mbo_year ?? new Date().getFullYear()} onChange={(e) => s('mbo_year', Number(e.target.value))} style={{ width: 110 }} /></Field>}
       </div>
       {v.mbo_enabled && !letter && <div style={{ marginTop: 10 }}><MboEditor value={v.mbo_objectives || []} onChange={(x) => s('mbo_objectives', x)} /></div>}
-      {!letter && <>
-        <div className="subhead">Benefits e dotazioni di lavoro</div>
-        <ListEditor value={v.benefits || []} onChange={(x) => s('benefits', x)} placeholder="es. PC portatile aziendale" addLabel="benefit / dotazione" />
-      </>}
+      <div className="subhead">Benefits e dotazioni di lavoro</div>
+      <ListEditor value={v.benefits || []} onChange={(x) => s('benefits', x)} placeholder="es. PC portatile aziendale" addLabel="benefit / dotazione" />
       {!letter && <div style={{ marginTop: 12 }}><Field label="Note interne"><textarea value={v.notes || ''} onChange={(e) => s('notes', e.target.value)} /></Field></div>}
     </>
   );

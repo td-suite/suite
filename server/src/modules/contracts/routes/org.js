@@ -106,7 +106,7 @@ r.get('/', ah(async (_req, res) => {
       (SELECT string_agg(x.name, ', ' ORDER BY x.name) FROM person_areas ra JOIN areas x ON x.id=ra.area_id WHERE ra.person_id=r.id AND ra.area_id IS DISTINCT FROM r.area_id) AS extra_areas
     FROM resources_v r LEFT JOIN areas a ON a.id=r.area_id LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
     LEFT JOIN resources_v ap ON ap.id=r.approver_id
-    WHERE r.status IN ('ATTIVO','IMPEGNO') ORDER BY r.last_name, r.first_name`);
+    WHERE r.status = 'ATTIVO' ORDER BY r.last_name, r.first_name`);
   const counts = { units: nodes.length, tbd: nodes.filter((n) => n.tbd).length, linked: nodes.filter((n) => n.resource).length, unlinked: nodes.filter((n) => !n.resource && !n.tbd && n.head_name).length };
   res.json({ tree: roots, counts, documents, reporting: people });
 }));

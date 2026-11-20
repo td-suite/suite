@@ -9,7 +9,7 @@ export default function Resources({ kind }) {
   const { user } = useAuth();
   const nav = useNavigate();
   const [sp] = useSearchParams();
-  const [f, setF] = useState({ q: '', area_id: sp.get('area_id') || '', status: 'ATTIVO,IMPEGNO', sex: '' });
+  const [f, setF] = useState({ q: '', area_id: sp.get('area_id') || '', status: 'ATTIVO', sex: '' });
   const [sort, setSort] = useState({ key: 'last_name', dir: 1 });
   const areas = useApi('/areas');
   const list = useApi(`/resources${qs({ ...f, kind })}`, [kind]);
@@ -36,7 +36,7 @@ export default function Resources({ kind }) {
       <div className="filters">
         <Field label="Cerca"><input placeholder="Cognome, nome, CF, mansione…" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} /></Field>
         <Field label="Area"><select value={f.area_id} onChange={(e) => setF({ ...f, area_id: e.target.value })}><option value="">Tutte</option>{(areas.data || []).map((a) => <option key={a.id} value={a.id}>{'\u00a0\u00a0'.repeat(a.level - 1)}{a.name}</option>)}</select></Field>
-        <Field label="Stato"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="ATTIVO,IMPEGNO">Attivi e in impegno</option><option value="ATTIVO">Solo attivi</option><option value="IMPEGNO">In impegno</option><option value="CESSATO">Cessati</option><option value="CANDIDATO">Candidati</option><option value="CANDIDATO,IMPEGNO,ATTIVO,CESSATO">Tutti</option></select></Field>
+        <Field label="Stato"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="ATTIVO">Attivi</option><option value="CESSATO">Cessati</option><option value="CANDIDATO">Candidati</option><option value="CANDIDATO,ATTIVO,CESSATO">Tutti</option></select></Field>
         <Field label="Sesso"><select value={f.sex} onChange={(e) => setF({ ...f, sex: e.target.value })}><option value="">Tutti</option><option value="F">Donne</option><option value="M">Uomini</option></select></Field>
       </div>
       <ErrorBox error={list.error} />

@@ -101,6 +101,7 @@ const letterSchema = z.object({
   weekly_hours: num().default(40), autonomous_hours: z.boolean().default(false),
   ral: num().default(0), ral_steps: z.array(z.object({ from: z.string().regex(dateRe), ral: num() })).default([]),
   mbo_enabled: z.boolean().default(false), mbo_pct: num(), work_site_id: num(),
+  benefits: z.array(z.string().trim().min(1).max(200)).max(40).default([]),
   contract_type: z.enum(['TIND', 'TDET', 'APPRENDISTATO']).default('TIND'), notes: opt(z.string().max(4000)),
   status: z.enum(['BOZZA', 'INVIATA', 'ACCETTATA', 'RIFIUTATA', 'SCADUTA', 'CONVERTITA']).optional(), accepted_at: optDate(),
 });
@@ -166,7 +167,7 @@ r.post('/letters', requireWrite, ah(async (req, res) => {
       }
     }
     const cols = LETTER_COLS.filter((k) => letter[k] !== undefined);
-    const vals = cols.map((k) => (k === 'ral_steps' ? JSON.stringify(letter[k]) : letter[k]));
+    const vals = cols.map((k) => (['ral_steps', 'benefits'].includes(k) ? JSON.stringify(letter[k]) : letter[k]));
     const row = (await c.query(`INSERT INTO commitment_letters (resource_id, created_by, ${cols.join(',')}) VALUES ($1,$2,${cols.map((_, i) => `$${i + 3}`).join(',')}) RETURNING id`, [resourceId, req.user.id, ...vals])).rows[0];
     return row.id;
   });
@@ -181,7 +182,7 @@ r.put('/letters/:id', requireWrite, ah(async (req, res) => {
   const id = Number(req.params.id);
   const letter = parse(letterSchema.partial(), req.body);
   const cols = LETTER_COLS.filter((k) => letter[k] !== undefined);
-  if (cols.length) await q(`UPDATE commitment_letters SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...cols.map((k) => (k === 'ral_steps' ? JSON.stringify(letter[k]) : letter[k]))]);
+  if (cols.length) await q(`UPDATE commitment_letters SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1`, [id, ...cols.map((k) => (['ral_steps', 'benefits'].includes(k) ? JSON.stringify(letter[k]) : letter[k]))]);
   if (letter.status === 'ACCETTATA') await q(`UPDATE commitment_letters SET accepted_at=coalesce(accepted_at, CURRENT_DATE) WHERE id=$1`, [id]);
   if (letter.status === 'CONVERTITA') { const l = await one('SELECT resource_id FROM commitment_letters WHERE id=$1', [id]); if (l) await recoverCv(l.resource_id, req); }
   await audit(req, 'LETTER_UPDATE', 'letter', id, letter);

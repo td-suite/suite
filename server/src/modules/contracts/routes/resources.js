@@ -299,6 +299,8 @@ r.get('/', ah(async (req, res) => {
   else if (req.query.kind) w.push(`r.kind = ${P.add(req.query.kind)}`);
   if (req.query.status) w.push(`r.status = ANY(string_to_array(${P.add(req.query.status)}, ','))`);
   else w.push(`r.status <> 'CANDIDATO'`);
+  // chi è in fase "Lettera di impegno" non figura nell'elenco del personale (CEO, 20/11/2026): sta in Scouting > Lettere di impegno
+  if (req.query.status !== 'IMPEGNO') w.push(`r.status <> 'IMPEGNO'`);
   if (req.query.area_id) { const pid = P.add(Number(req.query.area_id)); w.push(`EXISTS (WITH RECURSIVE d AS (SELECT id FROM areas WHERE id = ${pid} UNION ALL SELECT a.id FROM areas a JOIN d ON a.parent_id = d.id) SELECT 1 FROM d WHERE d.id = r.area_id OR d.id IN (SELECT area_id FROM person_areas WHERE person_id = r.id))`); }
   if (req.query.site_id) w.push(`r.site_id = ${P.add(Number(req.query.site_id))}`);
   if (req.query.person_kind) w.push(`r.person_kind = ${P.add(req.query.person_kind)}`);

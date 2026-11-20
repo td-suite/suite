@@ -24,7 +24,7 @@ r.get('/sites/:id/structure', ah(async (req, res) => {
   const site = await one('SELECT * FROM sites_v WHERE id=$1', [id]);
   if (!site) throw notFound('Sede non trovata');
   const [staff, hours, assets, year, ops, market, sgi] = await Promise.all([
-    many(`${PEOPLE} WHERE p.site_id=$1 AND p.status IN ('ATTIVO','IMPEGNO') ORDER BY (p.status='ATTIVO') DESC, coalesce(e.sort_order, 100), p.last_name, p.first_name`, [id]),
+    many(`${PEOPLE} WHERE p.site_id=$1 AND p.status = 'ATTIVO' ORDER BY coalesce(e.sort_order, 100), p.last_name, p.first_name`, [id]),
     many('SELECT weekday, note FROM site_hours WHERE site_id=$1 ORDER BY weekday', [id]),
     many('SELECT * FROM site_assets WHERE site_id=$1 ORDER BY active DESC, kind, name', [id]),
     one(`SELECT coalesce(sum(net_amount),0) AS revenue, count(DISTINCT (source, external_ref))::int AS tickets, count(DISTINCT customer_id)::int AS customers, count(DISTINCT sale_date)::int AS days FROM sales WHERE site_id=$1 AND sale_date >= date_trunc('year', CURRENT_DATE)`, [id]),

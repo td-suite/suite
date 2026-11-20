@@ -117,5 +117,5 @@ export const canSeeSite = (u, siteId) => isAdmin(u) || (u.site_ids || []).includ
 // dell'anagrafica di tipo DIPENDENTE (i dirigenti sono dipendenti dal 09/11/2026, migrazione 054) in stato ATTIVO o IMPEGNO. Livello e
 // grant non contano: un amministratore della Suite che non è dipendente non entra.
 export const DIPENDENTI_KINDS = ['DIPENDENTE'];
-export const DIPENDENTI_STATI = ['ATTIVO', 'IMPEGNO'];
+export const DIPENDENTI_STATI = ['ATTIVO'];   // chi è in fase "Lettera di impegno" non è ancora un dipendente (CEO, 20/11/2026)
 export const isDipendente = (u) => Boolean(u?.person_id) && DIPENDENTI_KINDS.includes(u.person_kind) && DIPENDENTI_STATI.includes(u.person_status) && isInternal(u);

@@ -12,7 +12,7 @@ export async function loadOrgModel() {
       coalesce(e.job_title, l.discipline) AS job_title, e.contract_type, e.level,
       coalesce((SELECT array_agg(ra.area_id) FROM person_areas ra WHERE ra.person_id=r.id), '{}') AS extra_area_ids
     FROM resources_v r LEFT JOIN employments e ON e.resource_id=r.id LEFT JOIN lp_contracts l ON l.resource_id=r.id
-    WHERE r.status IN ('ATTIVO','IMPEGNO') ORDER BY r.last_name, r.first_name`);
+    WHERE r.status = 'ATTIVO' ORDER BY r.last_name, r.first_name`);
   const areaById = Object.fromEntries(areas.map((a) => [a.id, a]));
   const childrenOf = {};
   for (const a of areas) (childrenOf[a.parent_id || 0] = childrenOf[a.parent_id || 0] || []).push(a);

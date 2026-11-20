@@ -40,7 +40,7 @@ r.get('/areas', (req, res, next) => (soloLp(req.user)
   ? many(`SELECT a.id, a.name, a.parent_id, t.level, t.path, t.root_id, t.root_name FROM areas a JOIN areas_tree t ON t.id=a.id ORDER BY t.sort_path, a.name`).then((x) => res.json(x)).catch(next)
   : next()));
 r.get('/areas', ah(async (_req, res) => res.json(await many(`SELECT a.*, t.path, t.root_id, t.root_name, h.last_name || ' ' || h.first_name AS head_name,
-  (SELECT count(*)::int FROM resources_v r WHERE r.status IN ('ATTIVO','IMPEGNO') AND (r.area_id=a.id OR r.id IN (SELECT person_id FROM person_areas WHERE area_id=a.id))) AS headcount,
+  (SELECT count(*)::int FROM resources_v r WHERE r.status = 'ATTIVO' AND (r.area_id=a.id OR r.id IN (SELECT person_id FROM person_areas WHERE area_id=a.id))) AS headcount,
   (SELECT count(*)::int FROM areas c WHERE c.parent_id=a.id) AS children
   , a.core_unit_id, (SELECT u.name FROM public.org_units u WHERE u.id=a.core_unit_id) AS core_unit_name
   FROM areas a JOIN areas_tree t ON t.id=a.id LEFT JOIN resources_v h ON h.id=a.head_person_id ORDER BY t.sort_path, a.name`))));
