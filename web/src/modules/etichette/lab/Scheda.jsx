@@ -56,7 +56,7 @@ export default function Scheda() {
           <div><span>Sede</span><b>{a.site_id ? <Link to={`${base}/accettazioni?sede=${a.site_id}`}>{a.sede}</Link> : <span className="muted">non abbinata</span>}</b><em>{a.abbinamento === 'DA_ABBINARE' ? 'client da abbinare' : a.abbinamento === 'PROPOSTO' ? 'abbinamento proposto' : ''}</em></div>
           <div><span>Paziente</span><b>{d.paziente ? `${d.paziente.cognome || ''} ${d.paziente.nome || ''}` : <span className="muted">{[a.eta != null ? `${a.eta} anni` : null, a.sesso].filter(Boolean).join(' · ') || 'non disponibile'}</span>}</b><em>{d.paziente ? `nato/a il ${gg(d.paziente.nascita)}${d.paziente.sesso ? ` · ${d.paziente.sesso}` : ''} · identità recente` : 'nome solo per le accettazioni degli ultimi giorni'}</em></div>
           <div><span>Tipo paziente</span><b>{a.tipo_paziente || '–'}</b><em>{a.medicina_lavoro ? 'medicina del lavoro' : ''}</em></div>
-          <div><span>Accettazione → referto</span><b>{d.tat_min != null ? durata(d.tat_min) : d.ritardo.ore != null ? `${durata(d.ritardo.ore * 60)} finora` : '–'}</b><em>{d.ritardo.in_ritardo ? d.ritardo.motivo : `soglia ${d.soglia.ore_ritardo} ore`}</em></div>
+          <div><span>Accettazione → referto</span><b>{d.tat_min != null ? durata(d.tat_min) : d.ritardo.ore != null ? `${durata(d.ritardo.ore * 60)} finora` : '–'}</b><em>{d.ritardo.in_ritardo ? `${d.ritardo.motivo}${d.ritardo.giorni_oltre != null ? ` (da ${d.ritardo.giorni_oltre} ${d.ritardo.giorni_oltre === 1 ? 'giorno' : 'giorni'})` : ''}` : d.ritardo.scadenza ? `scadenza di refertazione ${d.ritardo.scadenza.split('-').reverse().join('/')}` : ''}</em></div>
           <div><span>Ultimo aggiornamento</span><b>{dataOra(a.aggiornata_il, oggi) || '–'}</b><em>{a.referto_il ? `referto ${dataOra(a.referto_il, oggi)}` : ''}</em></div>
         </div>
       </Card>
@@ -72,13 +72,14 @@ export default function Scheda() {
       <Card title={`Cosa è stato richiesto: ${num(righe.filter((r) => !r.cancellata).length)} esami`} icon="list" flush
         actions={canc > 0 && <label className="lc-check small"><input type="checkbox" checked={mostraCanc} onChange={(e) => setMostraCanc(e.target.checked)} />Mostra le {canc} righe cancellate</label>}>
         <div className="table-wrap"><table className="t lc-t-esami" data-testid="lc-esami">
-          <thead><tr><th>Esame</th><th>Stato</th><th>Eseguito</th><th>Validato</th><th>Campioni</th><th className="num">Lordo</th><th className="num">Sconto</th><th className="num">Netto</th></tr></thead>
+          <thead><tr><th>Esame</th><th>Stato</th><th>Eseguito</th><th>Validato</th><th>Scadenza</th><th>Campioni</th><th className="num">Lordo</th><th className="num">Sconto</th><th className="num">Netto</th></tr></thead>
           <tbody>{righe.map((r, i) => (
             <tr key={r.id || i} className={r.cancellata ? 'canc' : ''}>
               <td><b className="mono">{r.codice || '–'}</b> <span className="lc-desc">{r.descrizione || ''}</span></td>
               <td data-l="Stato"><Badge tone={TONO[r.stato]}>{r.stato_label}</Badge></td>
               <td className="nowrap small" data-l="Eseguito">{dataOra(r.eseguito_il, oggi) || '–'}</td>
               <td className="nowrap small" data-l="Validato">{dataOra(r.validato_il, oggi) || '–'}</td>
+              <td className="nowrap small" data-l="Scadenza" title={r.giorni_refertazione ? `${r.giorni_refertazione} giorni di refertazione` : ''}>{r.cancellata || !r.scadenza ? '–' : r.in_ritardo ? <Badge tone="red">{r.scadenza.split('-').reverse().join('/')}</Badge> : r.scadenza.split('-').reverse().join('/')}</td>
               <td className="small mono" data-l="Campioni">{r.campioni.map((c) => c.barcode || c.id).join(' ') || '–'}</td>
               <td className="num" data-l="Lordo">{eur(r.lordo)}</td>
               <td className="num small" data-l="Sconto">{r.sconto_riga ? `${eur(r.sconto_riga)}${r.sconto_pct ? ` (${num(r.sconto_pct)}%)` : ''}` : '–'}</td>
@@ -86,9 +87,9 @@ export default function Scheda() {
             </tr>
           ))}</tbody>
           <tfoot>
-            <tr><td colSpan={5}>Totale righe{t.righe_senza_prezzo ? ` (${t.righe_senza_prezzo} senza prezzo)` : ''}</td><td className="num">{eur(t.lordo)}</td><td className="num">{eur(t.sconti_riga)}</td><td className="num">{eur(t.netto_righe)}</td></tr>
-            {t.sconto_testata_pct ? <tr><td colSpan={7}>Sconto di testata {num(t.sconto_testata_pct)}% {t.sconto_testata_applicato ? '(applicato al valore)' : '(non applicato: importi di riga come il report del gestionale)'}</td><td className="num">{eur(t.sconto_testata)}</td></tr> : null}
-            <tr className="tot"><td colSpan={7}>Valore (produzione accettata){t.valore_erogata ? '' : ': stato fuori dalla produzione'}</td><td className="num">{eur(t.valore)}</td></tr>
+            <tr><td colSpan={6}>Totale righe{t.righe_senza_prezzo ? ` (${t.righe_senza_prezzo} senza prezzo)` : ''}</td><td className="num">{eur(t.lordo)}</td><td className="num">{eur(t.sconti_riga)}</td><td className="num">{eur(t.netto_righe)}</td></tr>
+            {t.sconto_testata_pct ? <tr><td colSpan={8}>Sconto di testata {num(t.sconto_testata_pct)}% {t.sconto_testata_applicato ? '(applicato al valore)' : '(non applicato: importi di riga come il report del gestionale)'}</td><td className="num">{eur(t.sconto_testata)}</td></tr> : null}
+            <tr className="tot"><td colSpan={8}>Valore (produzione accettata){t.valore_erogata ? '' : ': stato fuori dalla produzione'}</td><td className="num">{eur(t.valore)}</td></tr>
           </tfoot>
         </table></div>
       </Card>

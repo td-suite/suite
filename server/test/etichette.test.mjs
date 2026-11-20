@@ -304,18 +304,19 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
     assert.equal(g.skipped, true);
   });
 
-  test('identità recenti: limite di 30 chiamate per giro, solo client abbinati, recenti e attive; CF mai salvato', async () => {
+  test('identità: limite di chiamate per giro, solo client abbinati e accettazioni attive, senza limite di data (v0.91.1); CF mai salvato', async () => {
     await studiolab({ data_api_enabled: true });
     const prima = chiamateDettaglio();
-    const g1 = await M.id.giroIdentita({ forza: true });
+    const g1 = await M.id.giroIdentita({ forza: true, max: 30 });
     assert.equal(g1.chiamate, 30); assert.equal(g1.salvate, 30);
     assert.equal(chiamateDettaglio() - prima, 30, 'al più 30 chiamate per giro');
     const g2 = await M.id.giroIdentita({ forza: true });
-    // restano 34 + 2 (A e B) - 30 = 6: non il client non abbinato, non quella di 20 giorni fa, non quella archiviata
-    assert.equal(g2.chiamate, 6);
+    // restano 34 + 2 (A e B) + 1 (quella di 20 giorni fa: dalla v0.91.1 il nome si legge per tutte le date) - 30 = 7:
+    // non il client non abbinato, non quella archiviata
+    assert.equal(g2.chiamate, 7);
     const ids = (await tutti(`SELECT request_id FROM etichette.pazienti_recenti`)).map((x) => x.request_id);
-    assert.ok(!ids.includes('R-37') && !ids.includes('R-38') && !ids.includes('R-39'));
-    assert.equal(ids.length, 36);
+    assert.ok(!ids.includes('R-37') && ids.includes('R-38') && !ids.includes('R-39'));
+    assert.equal(ids.length, 37);
     assert.equal((await uno(`SELECT count(*)::int AS n FROM etichette.pazienti_recenti WHERE cf IS NOT NULL`)).n, 0);
     await assert.rejects(db.query(`UPDATE etichette.pazienti_recenti SET cf = 'X' WHERE request_id = 'R-1'`), /check/i, 'il vincolo impedisce il CF');
     const p = await uno(`SELECT cognome, nome, nascita::text AS nascita, sesso FROM etichette.pazienti_recenti WHERE request_id = 'R-4'`);
@@ -327,7 +328,7 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
     assert.ok(log.every((x) => !/Persona|Dimostrativa|Esempio|Campione|NON_VALIDO/i.test(`${x.endpoint} ${x.message}`)));
     assert.ok(log.every((x) => !/\?/.test(x.endpoint)));
     const st = await M.id.statoJob();
-    assert.ok(st.ultimo_ok); assert.equal(st.esito.chiamate, 6);
+    assert.ok(st.ultimo_ok); assert.equal(st.esito.chiamate, 7);
     // fuori orario il giro si salta (senza forza)
     const notte = new Date(`${oggi}T02:30:00Z`);
     assert.equal((await M.id.giroIdentita({ adesso: notte })).skipped, true);
@@ -337,7 +338,7 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
     await db.query(`INSERT INTO etichette.pazienti_recenti (instance_id, request_id, cognome, nome, data_accettazione, letto_il) VALUES
       ('ISTANZA-DIMOSTRATIVA', 'VECCHIA-1', 'Esempio', 'Vecchio', $1, now()), ('ISTANZA-DIMOSTRATIVA', 'VECCHIA-2', 'Esempio', 'Letto', $2, now() - interval '9 days')`, [giorniFa(8), oggi]);
     const n = await M.id.purga(7);
-    assert.equal(n.identita, 2);
+    assert.equal(n.identita, 3, 'le due vecchie e R-38 (20 giorni fa)');
     assert.equal((await uno(`SELECT count(*)::int AS n FROM etichette.pazienti_recenti WHERE request_id LIKE 'VECCHIA%'`)).n, 0);
     assert.equal((await uno(`SELECT count(*)::int AS n FROM etichette.pazienti_recenti`)).n, 36, 'le recenti restano');
   });

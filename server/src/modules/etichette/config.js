@@ -15,7 +15,7 @@ export const config = {
   identitaMinuti: Number(env.ETICHETTE_IDENTITA_MINUTI || 15),
   oraInizio: 6,
   oraFine: 22,
-  maxChiamateGiro: 30,
+  maxChiamateGiro: 50,   // v0.91.1: 50 per giro (ogni 15 minuti, dentro le 60 al minuto del contratto) per recuperare lo storico dei nomi
   // Ricerca diretta nel gestionale (202 della cattura): tempo massimo complessivo dell'attesa
   attesaDirettaMs: Number(env.ETICHETTE_ATTESA_DIRETTA_MS || 20000),
 };

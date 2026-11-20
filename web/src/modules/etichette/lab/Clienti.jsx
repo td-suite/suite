@@ -45,7 +45,7 @@ export default function Clienti() {
               ))}</tbody>
             </table></div>
           )}
-          <div className="small muted lc-nota lc-pad">Valore = produzione accettata (stati {d.regola.stati.join(', ')}); * = righe senza prezzo. In ritardo: oltre {d.soglia.ore_ritardo} ore senza referto.</div>
+          <div className="small muted lc-nota lc-pad">Valore = produzione accettata (stati {d.regola.stati.join(', ')}); * = righe senza prezzo. In ritardo: esami oltre la data di accettazione + giorni di refertazione - 1.</div>
         </Card>
       )}
     </div>

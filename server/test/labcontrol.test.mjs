@@ -76,16 +76,34 @@ describe('Lab Control: fasi e ritardi (puro)', () => {
     assert.equal(F.statoEsame({ executed_at_local: 'x' }).key, 'ESEGUITO');
     assert.equal(F.statoEsame({ deleted: true }).key, 'CANCELLATO');
   });
-  test('ritardo: soglia dall\'accettazione, soglie per fase, finestra, stati non in corso', () => {
-    const adesso = '2026-11-13T09:00:00';
-    const t = { state: 20, created_at_local: '2026-11-10T08:00:00', modified_at_local: '2026-11-13T08:00:00', data: '2026-11-10' };
-    assert.deepEqual(F.ritardo(t, { ore_ritardo: 72 }, adesso), { in_ritardo: true, ore: 73, motivo: 'oltre 72 ore dall\'accettazione senza referto' });
-    assert.equal(F.ritardo(t, { ore_ritardo: 80 }, adesso).in_ritardo, false);
-    const f = F.ritardo({ ...t, modified_at_local: '2026-11-12T08:00:00' }, { ore_ritardo: 80, soglie_fase: { 20: 24 } }, adesso);
+  test('ritardo (v0.91.1): oltre data di accettazione + giorni di refertazione - 1, per esame; soglie per fase, finestra, stati non in corso', () => {
+    // accettazione di lunedì 09/11/2026: con 3 giorni la scadenza è mercoledì 11 (il giorno dell'accettazione è il primo)
+    assert.equal(F.scadenzaRefertazione('2026-11-09', 3), '2026-11-11'); assert.equal(F.scadenzaRefertazione('2026-11-09', 1), '2026-11-09');
+    const t = { state: 20, created_at_local: '2026-11-09T08:00:00', modified_at_local: '2026-11-12T08:00:00', data: '2026-11-09' };
+    const tempi = new Map([['GLU', 3], ['COLT', 10]]);
+    const righe = [{ exam_code: 'GLU' }, { exam_code: 'colt' }, { exam_code: 'NUOVO' }];
+    const il = (g, extra = {}) => F.ritardo(t, { giorni_refertazione: 5, tempi, righe, oggi: g, ...extra }, `${g}T09:00:00`);
+    assert.equal(il('2026-11-11').in_ritardo, false, 'il giorno della scadenza non è in ritardo'); assert.equal(il('2026-11-11').scadenza, '2026-11-11');
+    let r = il('2026-11-12');
+    assert.equal(r.in_ritardo, true); assert.equal(r.giorni_oltre, 1); assert.equal(r.scadenza, '2026-11-11');
+    assert.deepEqual(r.esami, [{ codice: 'GLU', giorni: 3, scadenza: '2026-11-11' }], 'solo l\'esame scaduto: COLT ha 10 giorni, NUOVO i 5 predefiniti');
+    assert.match(r.motivo, /1 esame oltre la data di accettazione \+ giorni di refertazione - 1/);
+    r = il('2026-11-14'); assert.deepEqual(r.esami.map((e) => e.codice), ['GLU', 'NUOVO']); assert.equal(r.giorni_oltre, 3);
+    // esame validato, pronto, cancellato o non eseguito: non è in ritardo
+    for (const fatto of [{ validated_at_local: 'x' }, { report_ready: true }, { deleted: true }, { not_performed_code: 5 }]) {
+      assert.equal(F.ritardo(t, { giorni_refertazione: 30, tempi, righe: [{ exam_code: 'GLU', ...fatto }, { exam_code: 'COLT' }], oggi: '2026-11-13' }, '2026-11-13T09:00:00').in_ritardo, false);
+    }
+    // tutti validati e referto non emesso: conta la scadenza più lontana
+    const val = [{ exam_code: 'GLU', validated_at_local: 'x' }, { exam_code: 'COLT', validated_at_local: 'x' }];
+    assert.equal(F.ritardo(t, { tempi, righe: val, oggi: '2026-11-18' }, '2026-11-18T09:00:00').in_ritardo, false);
+    r = F.ritardo(t, { tempi, righe: val, oggi: '2026-11-19' }, '2026-11-19T09:00:00'); assert.equal(r.in_ritardo, true); assert.match(r.motivo, /referto non emesso/);
+    // senza righe nella copia: giorni predefiniti
+    assert.equal(F.ritardo(t, { giorni_refertazione: 3, oggi: '2026-11-12' }, '2026-11-12T09:00:00').in_ritardo, true);
+    const f = F.ritardo(t, { giorni_refertazione: 30, righe, soglie_fase: { 20: 24 }, oggi: '2026-11-13' }, '2026-11-13T09:00:00');
     assert.equal(f.in_ritardo, true); assert.match(f.motivo, /ferma in "In lavorazione" da oltre 24 ore/);
-    assert.equal(F.ritardo({ ...t, state: 40 }, { ore_ritardo: 1 }, adesso).in_ritardo, false, 'referto pronto: mai in ritardo');
-    assert.equal(F.ritardo({ ...t, state: 11 }, { ore_ritardo: 1 }, adesso).in_ritardo, false);
-    assert.equal(F.ritardo(t, { ore_ritardo: 72, dal: '2026-11-11' }, adesso).in_ritardo, false, 'fuori dalla finestra');
+    assert.equal(F.ritardo({ ...t, state: 40 }, { giorni_refertazione: 1, righe, oggi: '2026-11-20' }, '2026-11-20T09:00:00').in_ritardo, false, 'referto pronto: mai in ritardo');
+    assert.equal(F.ritardo({ ...t, state: 11 }, { giorni_refertazione: 1, righe, oggi: '2026-11-20' }, '2026-11-20T09:00:00').in_ritardo, false);
+    assert.equal(il('2026-11-20', { dal: '2026-11-10' }).in_ritardo, false, 'fuori dalla finestra');
   });
   test('percentili come percentile_cont', () => {
     assert.equal(F.percentile([20, 50, 80], 0.5), 50);
@@ -253,7 +271,8 @@ describe('Lab Control con il database e il server finto', { skip: SALTA }, () =>
     assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&fase=LAVORAZIONE').then((r) => r.j)), ['R12', 'R4', 'R9'].sort());
     assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&fase=NC').then((r) => r.j)), ['R8']);
     assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&stato=25').then((r) => r.j)), ['R5']);
-    // in ritardo (72 ore): R4 (100 ore) e R11 (80 ore); non R9 (30 ore), non R12 (fuori dalla finestra di 60 giorni), non i refertati
+    // in ritardo (3 giorni predefiniti: oltre data di accettazione + 2): R4 (100 ore fa) e R11 (80 ore fa); non R9 (30 ore fa), non R12
+    // (fuori dalla finestra di 60 giorni), non i refertati
     assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&ritardo=1').then((r) => r.j)), ['R11', 'R4']);
     if (M.ncOk) assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&nc=1').then((r) => r.j)), ['R4']);
     x = await http('GET', '/lab/accettazioni?periodo=tutto&non_fatturate=1');
@@ -335,10 +354,38 @@ describe('Lab Control con il database e il server finto', { skip: SALTA }, () =>
     assert.equal((await http('PUT', '/lab/impostazioni', { soglie_fase: { 20: 24 } })).s, 200);
     x = (await http('GET', '/lab/ritardi')).j;
     assert.ok(x.righe.some((r) => r.id === 'R9' && /ferma/.test(r.ritardo.motivo)));
-    assert.equal((await http('PUT', '/lab/impostazioni', { soglie_fase: { 20: null }, ore_ritardo: 90 })).s, 200);
+    // v0.91.1: per ogni accettazione gli esami in ritardo con codice, descrizione, giorni e scadenza
+    const r4 = x.righe.find((r) => r.id === 'R4');
+    assert.ok(r4.esami_in_ritardo.length > 0); assert.ok(r4.esami_in_ritardo.every((e) => e.codice && e.descrizione && e.giorni === 3 && /^\d{4}-\d\d-\d\d$/.test(e.scadenza) && e.giorni_oltre >= 1));
+    assert.ok(r4.esami_in_ritardo.some((e) => e.codice === 'GLU' && e.descrizione === 'Glucosio'));
+    assert.ok(!r4.esami_in_ritardo.some((e) => e.codice === 'EX2'), 'l\'esame non eseguito non è in ritardo');
+    assert.ok(r4.ritardo.giorni_oltre >= 1 && r4.ritardo.scadenza);
+    // giorni predefiniti a 30: nessun ritardo; poi i giorni del solo GLU a 3 (tabella per esame): tornano R4 e R11, per il solo GLU
+    assert.equal((await http('PUT', '/lab/impostazioni', { soglie_fase: { 20: null }, giorni_refertazione: 30 })).s, 200);
     x = (await http('GET', '/lab/ritardi')).j;
-    assert.deepEqual(x.righe.map((r) => r.id), ['R4'], 'soglia a 90 ore: solo R4');
-    assert.equal((await http('PUT', '/lab/impostazioni', { ore_ritardo: 72 })).s, 200);
+    assert.deepEqual(x.righe.map((r) => r.id), [], '30 giorni predefiniti: nessun ritardo');
+    assert.equal((await http('PUT', '/lab/tempi/glu', { giorni: 3 })).s, 200);
+    assert.equal((await http('PUT', '/lab/tempi/GLU', { giorni: 0 })).s, 400);
+    x = (await http('GET', '/lab/ritardi')).j;
+    assert.deepEqual(x.righe.map((r) => r.id), ['R4', 'R11']);
+    assert.ok(x.righe.every((r) => r.esami_in_ritardo.length === 1 && r.esami_in_ritardo[0].codice === 'GLU'));
+    assert.deepEqual(ids(await http('GET', '/lab/accettazioni?periodo=tutto&ritardo=1').then((r) => r.j)), ['R11', 'R4'], 'elenco e pagina dei ritardi con la stessa regola');
+    let tt = (await http('GET', '/lab/tempi')).j;
+    assert.deepEqual(tt.righe.map((r) => [r.codice, r.giorni]), [['GLU', 3]]); assert.equal(tt.predefinito, 30); assert.equal(tt.totale, 1);
+    // import da file (Tabella esami: CodEsame; DescEsame; GiorniRefertazione): prova senza salvare, poi il caricamento
+    const T = await import('../src/modules/etichette/lib/tempi.js');
+    const csv = Buffer.from('CodEsame;DescEsame;GiorniRefertazione\nGLU;Glucosio;2\nex1;Esame uno;7\nEX2;Senza giorni;\nEX3;Zero;0\n');
+    let imp = await T.importaTempi(csv, 'tabella-esami.csv', null, { prova: true });
+    assert.deepEqual([imp.lette, imp.nuove, imp.cambiate, imp.scartate_totale], [2, 1, 1, 2]);
+    assert.equal((await T.tempiEsami()).get('GLU'), 3, 'la prova non salva');
+    imp = await T.importaTempi(csv, 'tabella-esami.csv', null);
+    assert.deepEqual([...(await T.tempiEsami()).entries()].sort(), [['EX1', 7], ['GLU', 2]]);
+    await assert.rejects(T.importaTempi(Buffer.from('a;b\n1;2\n'), 'x.csv', null), /colonna del codice esame/);
+    assert.equal((await http('DELETE', '/lab/tempi/GLU')).s, 200); assert.equal((await http('DELETE', '/lab/tempi/EX1')).s, 200);
+    utente = OPER_A(); assert.equal((await http('GET', '/lab/tempi')).s, 403, 'giorni di refertazione: solo ADMIN'); utente = ADMIN();
+    assert.equal((await http('PUT', '/lab/impostazioni', { giorni_refertazione: 3 })).s, 200);
+    x = (await http('GET', '/lab/ritardi')).j;
+    assert.deepEqual(x.righe.map((r) => r.id), ['R4', 'R11']);
     assert.equal((await http('PUT', '/lab/impostazioni', { soglie_fase: { 40: 5 } })).s, 400);
     const xl = await http('GET', '/lab/ritardi.xlsx', null, { raw: true });
     assert.equal(xl.s, 200);

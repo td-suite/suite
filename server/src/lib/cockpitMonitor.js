@@ -968,8 +968,8 @@ async function schermoMonitor(ctx, indicatori) {
     T.push(tessera(indicatore({ chiave: 'op_lab_lavorazione', titolo: 'In lavorazione ora', gruppo: G_SCHERMO, valore: lab.in_corso, meglio: null,
       dettaglio: `accettazioni in attesa, prelievo eseguito, in lavorazione o in firma (ultimi ${lab.giorni_finestra} giorni)`, fonte: fLab, aggiornato: P.oggi }),
     [stat('referti pronti non chiusi', lab.referti_aperti, 'n', `${n0(lab.referti_aperti)} accettazioni con il referto pronto (stato 40) non ancora chiuse`, { meglio: null })]));
-    T.push(tessera(indicatore({ chiave: 'op_lab_ritardo', titolo: `In ritardo (oltre ${lab.soglia} ore)`, gruppo: G_SCHERMO, valore: lab.in_ritardo, meglio: 'giu',
-      dettaglio: `accettazioni in corso oltre ${lab.soglia} ore dall'accettazione senza referto pronto`, fonte: fLab, aggiornato: P.oggi }),
+    T.push(tessera(indicatore({ chiave: 'op_lab_ritardo', titolo: 'In ritardo (oltre la scadenza di refertazione)', gruppo: G_SCHERMO, valore: lab.in_ritardo, meglio: 'giu',
+      dettaglio: 'accettazioni in corso con esami oltre la data di accettazione + giorni di refertazione - 1', fonte: fLab, aggiornato: P.oggi }),
     [stat('delle accettazioni in corso', lab.in_corso ? pct1(lab.in_ritardo, lab.in_corso) : null, '%', lab.in_corso ? `${n0(lab.in_ritardo)} su ${n0(lab.in_corso)} in corso` : 'nessuna accettazione in corso', { meglio: 'giu' })]));
     const t7 = lab.tat7, tp = lab.tat7_prima;
     T.push(tessera(indicatore({ chiave: 'op_lab_tat', titolo: 'TAT mediano 7 giorni', gruppo: G_SCHERMO, unita: 'ore', valore: t7.n ? t7.mediana : null, meglio: 'giu',

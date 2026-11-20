@@ -64,7 +64,7 @@ export default function Cruscotto() {
         <div className="lc-nums">
           <Numero testid="lc-in-lavorazione" to={L({ ...fin, in_corso: '1' })} n={x.in_lavorazione} label="In lavorazione ora" sub={x.in_lavorazione_stati.filter((s) => s.n).map((s) => `${s.label.toLowerCase()} ${s.n}`).join(' · ') || `ultimi ${x.soglia.giorni_finestra} giorni`} />
           <Numero testid="lc-referti" to={L({ ...fin, referti_aperti: '1' })} n={x.referti_non_chiusi} label="Referti pronti non chiusi" sub="stato 40, in attesa di chiusura" />
-          <Numero testid="lc-ritardo" to={`${base}/ritardi`} n={x.in_ritardo} label="In ritardo" tono={x.in_ritardo ? 'warn' : ''} sub={`oltre ${x.soglia.ore_ritardo} ore dall'accettazione senza referto`} />
+          <Numero testid="lc-ritardo" to={`${base}/ritardi`} n={x.in_ritardo} label="In ritardo" tono={x.in_ritardo ? 'warn' : ''} sub="esami oltre data di accettazione + giorni di refertazione - 1" />
           <Numero testid="lc-viaggio" to={`${base}/campioni?viaggio=1`} n={x.campioni_viaggio} label="Campioni in viaggio" tono={x.campioni_viaggio_oltre ? 'warn' : ''} sub={`raccolti e non arrivati · ${num(x.campioni_viaggio_oltre)} da oltre ${x.soglia.ore_campioni} ore`} />
           <Numero testid="lc-ne" to={L({ periodo: 'oggi', non_eseguiti: '1' })} n={x.non_eseguiti_oggi.righe} label="Esami non eseguiti oggi" sub={`${num(x.non_eseguiti_oggi.accettazioni)} accettazioni di oggi`} />
         </div>

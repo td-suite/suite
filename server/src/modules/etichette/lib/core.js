@@ -9,10 +9,11 @@ export { dataApiAttiva };
 
 // ---------------------------------------------------------------- impostazioni
 export const DEFAULTS = {
-  giorni_identita: 7,          // identità recenti conservate per N giorni (max 30): ricerca per cognome e stampa
+  giorni_identita: 3650,       // dalla v0.91.1 (CEO, 20/11/2026): il nome del paziente per TUTTE le accettazioni, senza limite di data
   etichetta_richiesta: false,  // oltre alle etichette dei campioni, un'etichetta "richiesta" senza barcode
   // Lab Control (v0.71.0)
-  ore_ritardo: 72,             // accettazione in corso oltre N ore dall'accettazione senza referto pronto = in ritardo
+  ore_ritardo: 72,             // dalla v0.91.1 solo soglia della pagina Tempi (TAT): referti oltre N ore dall'accettazione
+  giorni_refertazione: 3,      // v0.91.1: giorni di refertazione degli esami senza riga in lc_tempi_esame. In ritardo = oggi oltre data accettazione + giorni - 1
   soglie_fase: {},             // { "18": 24, ... } ore massime dall'ultimo aggiornamento del gestionale in quello stato (vuoto = spente)
   ore_campioni: 24,            // campioni raccolti e non arrivati (check-in) da più di N ore
   giorni_finestra: 60,         // finestra (giorni) per "in lavorazione ora", ritardi e campioni in viaggio: le accettazioni più vecchie non contano
@@ -30,6 +31,7 @@ export async function settings() {
   s.giorni_identita = Math.min(GIORNI_MAX, Math.max(1, Number(s.giorni_identita) || DEFAULTS.giorni_identita));
   s.etichetta_richiesta = s.etichetta_richiesta === true || s.etichetta_richiesta === 'true';
   s.ore_ritardo = intera(s.ore_ritardo, 1, 2000, DEFAULTS.ore_ritardo);
+  s.giorni_refertazione = intera(s.giorni_refertazione, 1, 365, DEFAULTS.giorni_refertazione);
   s.ore_campioni = intera(s.ore_campioni, 1, 720, DEFAULTS.ore_campioni);
   s.giorni_finestra = intera(s.giorni_finestra, 7, 365, DEFAULTS.giorni_finestra);
   const sf = s.soglie_fase && typeof s.soglie_fase === 'object' ? s.soglie_fase : {};

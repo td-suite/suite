@@ -619,17 +619,24 @@ export const CONTROLLI = [
           WHERE d.risolta_il IS NULL AND d.chiusa_il IS NULL AND (d.esito = 'SENZA_RISPOSTA' OR d.utile = FALSE) AND d.creata_il < now() - interval '7 days' ORDER BY d.creata_il`,
     chiave: 'id', link: () => '/gipoguida/redazione' },
   // v0.71.0 · Lab Control (docs/LAB_CONTROL.md): accettazioni in corso oltre la soglia senza referto pronto (informativo, nessun nome)
-  { id: 'D57', area: 'SISTEMA', gravita: 'INFO', titolo: 'Lab Control: accettazioni in ritardo oltre soglia', richiede: ['etichette.impostazioni', 'synclab.requests'], spiegazione: 'Accettazioni StudioLab ancora in corso (stati 15 in attesa, 18 prelievo eseguito, 20 in lavorazione, 25 in firma) degli ultimi giorni della finestra (impostazione giorni_finestra, predefinita 60) oltre la soglia di ore dall\'accettazione senza referto pronto (impostazione ore_ritardo, predefinita 72), dalla copia Synclab aggiornata col delta orario di giorno. Informativo: il laboratorio le segue in Lab Control > In ritardo (raggruppate per cliente e sede, con gli esami che bloccano). Le soglie per fase facoltative si vedono solo in Lab Control. Nessun dato del paziente.',
-    sql: `WITH imp AS (SELECT coalesce((SELECT (i.value #>> '{}')::int FROM etichette.impostazioni i WHERE i.key = 'ore_ritardo' AND (i.value #>> '{}') ~ '^[0-9]{1,4}$'), 72) AS ore,
+  { id: 'D57', area: 'SISTEMA', gravita: 'INFO', titolo: 'Lab Control: accettazioni in ritardo oltre la scadenza di refertazione', richiede: ['etichette.impostazioni', 'etichette.lc_tempi_esame', 'synclab.requests', 'synclab.request_items'], spiegazione: 'Accettazioni StudioLab ancora in corso (stati 15 in attesa, 18 prelievo eseguito, 20 in lavorazione, 25 in firma) degli ultimi giorni della finestra (impostazione giorni_finestra, predefinita 60) con almeno un esame non validato oltre la scadenza di refertazione = data di accettazione + giorni di refertazione - 1 (giorni per esame dalla tabella di Lab Control, altrimenti l\'impostazione giorni_refertazione, predefinita 3); se tutti gli esami sono validati e il referto non è emesso conta la scadenza più lontana. Stessa regola di Lab Control > In ritardo (v0.91.1), dalla copia Synclab aggiornata col delta orario di giorno. Informativo: il laboratorio le segue in Lab Control > In ritardo (raggruppate per cliente e sede, con gli esami in ritardo). Le soglie per fase facoltative si vedono solo in Lab Control. Nessun dato del paziente.',
+    sql: `WITH imp AS (SELECT coalesce((SELECT (i.value #>> '{}')::int FROM etichette.impostazioni i WHERE i.key = 'giorni_refertazione' AND (i.value #>> '{}') ~ '^[0-9]{1,3}$'), 3) AS gg,
                          coalesce((SELECT (i.value #>> '{}')::int FROM etichette.impostazioni i WHERE i.key = 'giorni_finestra' AND (i.value #>> '{}') ~ '^[0-9]{1,3}$'), 60) AS giorni,
-                         (now() AT TIME ZONE 'Europe/Rome') AS adesso)
-          SELECT r.id, r.request_number AS numero, to_char(r.date, 'DD/MM/YYYY') AS data, r.state AS stato, coalesce(c.legal_name, r.client_code) AS cliente,
-                 floor(extract(epoch FROM (imp.adesso - r.created_at_local)) / 3600)::int AS ore
-            FROM synclab.requests r CROSS JOIN imp LEFT JOIN synclab.clients c ON c.instance_id = r.instance_id AND c.id = r.client_id
-           WHERE EXISTS (SELECT 1 FROM public.module_state ms WHERE ms.key = 'etichette' AND ms.mode = 'LIVE')
-             AND r.deleted_at IS NULL AND r.disponibilita = 'ATTIVO' AND r.state IN (15, 18, 20, 25)
-             AND r.date >= imp.adesso::date - imp.giorni AND r.created_at_local < imp.adesso - make_interval(hours => imp.ore)
-           ORDER BY r.created_at_local LIMIT 500`,
+                         (now() AT TIME ZONE 'Europe/Rome') AS adesso),
+               x AS (SELECT r.instance_id, r.id, r.request_number, r.date, r.state, r.client_id, r.client_code, r.created_at_local,
+                            (SELECT min(r.date + (coalesce(te.giorni, imp.gg) - 1)) FROM synclab.request_items i LEFT JOIN etichette.lc_tempi_esame te ON te.codice = upper(btrim(i.exam_code))
+                              WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE AND i.not_performed_code IS NULL
+                                AND i.validated_at_local IS NULL AND coalesce(i.report_ready, FALSE) = FALSE) AS scad_aperte,
+                            r.date + (coalesce((SELECT max(coalesce(te.giorni, imp.gg)) FROM synclab.request_items i LEFT JOIN etichette.lc_tempi_esame te ON te.codice = upper(btrim(i.exam_code))
+                              WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE AND i.not_performed_code IS NULL), imp.gg) - 1) AS scad_tutte, imp.adesso
+                       FROM synclab.requests r CROSS JOIN imp
+                      WHERE EXISTS (SELECT 1 FROM public.module_state ms WHERE ms.key = 'etichette' AND ms.mode = 'LIVE')
+                        AND r.deleted_at IS NULL AND r.disponibilita = 'ATTIVO' AND r.state IN (15, 18, 20, 25) AND r.date >= imp.adesso::date - imp.giorni)
+          SELECT x.id, x.request_number AS numero, to_char(x.date, 'DD/MM/YYYY') AS data, x.state AS stato, coalesce(c.legal_name, x.client_code) AS cliente,
+                 to_char(coalesce(x.scad_aperte, x.scad_tutte), 'DD/MM/YYYY') AS scadenza, (x.adesso::date - coalesce(x.scad_aperte, x.scad_tutte))::int AS giorni_oltre
+            FROM x LEFT JOIN synclab.clients c ON c.instance_id = x.instance_id AND c.id = x.client_id
+           WHERE coalesce(x.scad_aperte, x.scad_tutte) < x.adesso::date
+           ORDER BY x.created_at_local LIMIT 500`,
     chiave: 'id', link: () => '/etichette/ritardi' },
   // v0.72.0 · Rimborso Spese (docs/RIMBORSI.md): eccezioni al giustificativo obbligatorio del seme del CEO non abbinate in modo univoco a un
   // dipendente attivo (cognome non trovato, omonimi) o abbinate a una persona che non è (più) un dipendente attivo

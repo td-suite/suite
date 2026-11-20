@@ -144,27 +144,57 @@ export function faseAccettazione(t = {}, campioni = [], righe = []) {
   };
 }
 
+/** Data "AAAA-MM-GG" più n giorni di calendario. */
+export const piuGiorni = (d, n) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00Z`); if (Number.isNaN(x.getTime())) return null; x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+/** Giorni di calendario fra due date "AAAA-MM-GG" (b - a). */
+export const giorniTra = (a, b) => { const x = Date.parse(`${String(a).slice(0, 10)}T12:00:00Z`), y = Date.parse(`${String(b).slice(0, 10)}T12:00:00Z`); return Number.isNaN(x) || Number.isNaN(y) ? null : Math.round((y - x) / 86400000); };
+/** Scadenza di refertazione (regola del CEO del 20/11/2026): data di accettazione + giorni di refertazione - 1 (il giorno dell'accettazione è il primo). */
+export const scadenzaRefertazione = (dataAccettazione, giorni) => piuGiorni(dataAccettazione, Math.max(1, Number(giorni) || 1) - 1);
+/** Una riga d'esame è ancora da refertare: non cancellata, non "non eseguita", senza validazione né referto pronto. */
+export const esameDaRefertare = (r) => !(r.deleted ?? r.cancellata) && (r.not_performed_code ?? null) == null && !(r.validated_at_local ?? r.validato_il) && !(r.report_ready ?? r.referto_pronto);
+/** Giorni di refertazione di un codice esame: tabella lc_tempi_esame (Map codice maiuscolo -> giorni), altrimenti il predefinito. */
+export const giorniEsame = (codice, tempi, predefinito = 3) => { const g = tempi?.get?.(String(codice ?? '').trim().toUpperCase()); return Number(g) > 0 ? Number(g) : predefinito; };
+
 /**
- * Ritardo di un'accettazione in corso (stati 15, 18, 20, 25): { in_ritardo, ore, motivo }.
- * Regola: ore dall'accettazione (createdAtLocal) oltre `ore_ritardo` senza referto pronto; oppure, se per lo stato c'è una soglia di fase,
- * ore dall'ultimo aggiornamento del gestionale (modifiedAtLocal: la Data API non dà la data di ingresso nello stato) oltre la soglia.
- * adesso = istante locale di Roma "AAAA-MM-GGTHH:MM:SS"; dal = prima data della finestra (le accettazioni precedenti non contano).
+ * Ritardo di un'accettazione in corso (stati 15, 18, 20, 25): { in_ritardo, ore, giorni_oltre, scadenza, motivo, esami }.
+ * Regola (v0.91.1, CEO 20/11/2026): un esame è in ritardo quando oggi è OLTRE la sua scadenza = data di accettazione + giorni di
+ * refertazione - 1 e non è ancora validato né ha il referto pronto. L'accettazione è in ritardo quando lo è almeno un suo esame; se tutti
+ * gli esami sono validati e il referto non è ancora emesso, conta la scadenza più lontana fra i suoi esami. Giorni di calendario.
+ * In più, se per lo stato c'è una soglia di fase: ore dall'ultimo aggiornamento del gestionale oltre la soglia.
+ * righe = righe d'esame dell'accettazione; tempi = Map codice -> giorni; oggi "AAAA-MM-GG"; adesso = istante locale di Roma;
+ * dal = prima data della finestra (le accettazioni precedenti non contano).
  */
-export function ritardo(t, { ore_ritardo = 72, soglie_fase = {}, dal = null } = {}, adesso) {
+export function ritardo(t, { giorni_refertazione = 3, soglie_fase = {}, dal = null, oggi = null, righe = [], tempi = null } = {}, adesso) {
+  const vuoto = { in_ritardo: false, ore: null, giorni_oltre: null, scadenza: null, motivo: null, esami: [] };
   const stato = Number(t.stato ?? t.state);
-  if (!STATI_IN_CORSO.includes(stato)) return { in_ritardo: false, ore: null, motivo: null };
+  if (!STATI_IN_CORSO.includes(stato)) return vuoto;
   const creata = t.creata_il ?? t.created_at_local;
   const ore = (() => { const m = minutiTra(creata, adesso); return m == null ? null : Math.floor(m / 60); })();
+  const data = String(t.data ?? t.date ?? creata ?? '').slice(0, 10);
+  const og = oggi || String(adesso || '').slice(0, 10);
   // finestra (impostazione giorni_finestra): un'accettazione più vecchia non conta fra i ritardi (dati storici mai chiusi nel gestionale)
-  const data = String(t.data ?? t.date ?? '').slice(0, 10);
-  if (dal && data && data < dal) return { in_ritardo: false, ore, motivo: 'fuori dalla finestra dei ritardi' };
-  if (ore != null && ore >= ore_ritardo) return { in_ritardo: true, ore, motivo: `oltre ${ore_ritardo} ore dall'accettazione senza referto` };
+  if (dal && data && data < dal) return { ...vuoto, ore, motivo: 'fuori dalla finestra dei ritardi' };
+  const vive = righe.filter((r) => !(r.deleted ?? r.cancellata) && (r.not_performed_code ?? null) == null);
+  const conScadenza = (r) => { const g = giorniEsame(r.exam_code ?? r.codice, tempi, giorni_refertazione); return { codice: r.exam_code ?? r.codice ?? null, giorni: g, scadenza: scadenzaRefertazione(data, g) }; };
+  const aperte = vive.filter(esameDaRefertare).map(conScadenza);
+  const scadute = data && og ? aperte.filter((e) => e.scadenza && og > e.scadenza) : [];
+  if (scadute.length) {
+    const prima = scadute.map((e) => e.scadenza).sort()[0];
+    return { in_ritardo: true, ore, giorni_oltre: giorniTra(prima, og), scadenza: prima, esami: scadute,
+      motivo: `${scadute.length === 1 ? '1 esame' : `${scadute.length} esami`} oltre la data di accettazione + giorni di refertazione - 1` };
+  }
+  // tutti gli esami validati (o nessuna riga nella copia) e referto non emesso: scadenza più lontana fra gli esami, altrimenti il predefinito
+  const tutte = vive.map(conScadenza);
+  const scad = aperte.length ? aperte.map((e) => e.scadenza).sort()[0] : (tutte.map((e) => e.scadenza).sort().pop() || scadenzaRefertazione(data, giorni_refertazione));
+  if (!aperte.length && data && og && scad && og > scad) {
+    return { in_ritardo: true, ore, giorni_oltre: giorniTra(scad, og), scadenza: scad, esami: [], motivo: vive.length ? 'esami validati, referto non emesso oltre la scadenza di refertazione' : 'oltre la scadenza di refertazione (giorni predefiniti)' };
+  }
   const sf = soglie_fase?.[stato];
   if (sf) {
     const m = minutiTra(t.modificata_il ?? t.modified_at_local ?? creata, adesso);
-    if (m != null && m / 60 >= sf) return { in_ritardo: true, ore, motivo: `ferma in "${STATO_LABEL[stato]}" da oltre ${sf} ore (ultimo aggiornamento del gestionale)` };
+    if (m != null && m / 60 >= sf) return { in_ritardo: true, ore, giorni_oltre: null, scadenza: scad, esami: [], motivo: `ferma in "${STATO_LABEL[stato]}" da oltre ${sf} ore (ultimo aggiornamento del gestionale)` };
   }
-  return { in_ritardo: false, ore, motivo: null };
+  return { ...vuoto, ore, scadenza: scad };
 }
 
 /** Mediana e percentile (interpolazione lineare, come percentile_cont di PostgreSQL) di un elenco di numeri. */

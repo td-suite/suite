@@ -57,7 +57,7 @@ export default function Accettazioni() {
     valore: (r) => (r.valore == null ? <span className="muted">–</span> : <span className="nowrap" title={r.valore_parziale ? 'Valore parziale: righe senza prezzo' : 'Produzione accettata'}>{eur(r.valore)}{r.valore_parziale ? '*' : ''}</span>),
     fattura: (r) => (r.fatture.length ? <button type="button" className="lc-link" onClick={(e) => { e.stopPropagation(); setDoc({ instanceId: r.instance_id, id: r.fatture[0].id }); }} title="Apri il documento economico">{r.fatture[0].numero || 'documento'}{r.fatture.length > 1 ? ` +${r.fatture.length - 1}` : ''}</button> : <span className="muted">–</span>),
     nc: (r) => (r.nc ? <Badge tone={r.nc.aperte ? 'red' : 'grey'} title={`${r.nc.totale} NC, ${r.nc.aperte} aperte`}>{r.nc.totale}</Badge> : null),
-    ritardo: (r) => (r.ritardo.in_ritardo ? <Badge tone="red" title={r.ritardo.motivo}>{durata(r.ritardo.ore * 60)}</Badge> : r.ritardo.ore >= 1 ? <span className="small muted" title="Ore dall'accettazione">{durata(r.ritardo.ore * 60)}</span> : null),
+    ritardo: (r) => (r.ritardo.in_ritardo ? <Badge tone="red" title={r.ritardo.motivo}>{r.ritardo.giorni_oltre != null ? `+${r.ritardo.giorni_oltre} gg` : durata(r.ritardo.ore * 60)}</Badge> : r.ritardo.ore >= 1 ? <span className="small muted" title="Ore dall'accettazione">{durata(r.ritardo.ore * 60)}</span> : null),
   }), [d?.adesso]);
 
   return (
@@ -113,7 +113,7 @@ export default function Accettazioni() {
           <div className="lc-schede" data-testid="lc-schede">
             {d.righe.map((r) => (
               <div key={`${r.instance_id}|${r.id}`} className={`lc-riga ${r.ritardo.in_ritardo ? 'rit' : ''}`} onClick={() => apri(r)} role="link" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && apri(r)}>
-                <div className="r1"><b className="mono">{r.numero}</b><span className="muted small">{gg(r.data)} {ora(r.creata_il)}</span>{r.ritardo.in_ritardo && <Badge tone="red">{durata(r.ritardo.ore * 60)}</Badge>}</div>
+                <div className="r1"><b className="mono">{r.numero}</b><span className="muted small">{gg(r.data)} {ora(r.creata_il)}</span>{r.ritardo.in_ritardo && <Badge tone="red">{r.ritardo.giorni_oltre != null ? `+${r.ritardo.giorni_oltre} gg` : durata(r.ritardo.ore * 60)}</Badge>}</div>
                 <div className="r2"><ClienteLink r={r} />{r.sede && <span className="muted small"> · {r.sede}</span>}</div>
                 <FaseBar fase={r.fase} tappe={r.fase.tappe} compatta />
                 <div className="r3 small muted">{r.esami_pronti}/{r.esami} {r.esami === 1 ? 'esame pronto' : 'esami pronti'} · {r.campioni} {r.campioni === 1 ? 'campione' : 'campioni'}{r.valore != null ? ` · ${eur(r.valore)}` : ''}{r.fatture.length ? ` · fattura ${r.fatture[0].numero || ''}` : ''}{r.paziente ? ` · ${r.paziente}` : r.eta != null ? ` · ${r.eta} anni ${r.sesso || ''}` : ''}</div>
@@ -121,7 +121,7 @@ export default function Accettazioni() {
             ))}
           </div>
           <div className="lc-pager"><Pager page={d.pagina} pageSize={d.per_pagina} total={d.totale} onChange={(p) => set({ pagina: p }, { pagina: false })} /></div>
-          <div className="small muted lc-nota lc-pad">Valore = produzione accettata (stati {d.regola.stati.join(', ')}, {d.regola.sconto === 'APPLICA' ? 'con lo sconto di testata' : 'importi di riga'}); * = righe senza prezzo. Ritardo: oltre {d.soglia.ore_ritardo} ore dall'accettazione senza referto{Object.keys(d.soglia.soglie_fase || {}).length ? ', o ferma in una fase oltre la sua soglia' : ''}. Paziente: nome solo per le accettazioni degli ultimi giorni, altrimenti età e sesso.</div>
+          <div className="small muted lc-nota lc-pad">Valore = produzione accettata (stati {d.regola.stati.join(', ')}, {d.regola.sconto === 'APPLICA' ? 'con lo sconto di testata' : 'importi di riga'}); * = righe senza prezzo. Ritardo: esami oltre la data di accettazione + giorni di refertazione - 1{Object.keys(d.soglia.soglie_fase || {}).length ? ', o accettazione ferma in una fase oltre la sua soglia' : ''}. Paziente: il nome compare quando è stato letto dal gestionale, altrimenti età e sesso.</div>
         </>}
       </Card>
       {doc && <Documento instanceId={doc.instanceId} id={doc.id} onClose={() => setDoc(null)} />}

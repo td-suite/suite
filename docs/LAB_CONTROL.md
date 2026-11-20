@@ -81,10 +81,18 @@ Aprire una scheda con l'identità del paziente va in audit (`LABCONTROL_SCHEDA_P
 accettazione, senza nome).
 
 ## Ritardi, campioni, TAT, non eseguiti, clienti
-- **In ritardo**: accettazioni in corso (15, 18, 20, 25) degli ultimi `giorni_finestra` giorni (predefinito 60) con più di `ore_ritardo` ore
-  (predefinito 72) dall'accettazione senza referto pronto; in più, facoltative, **soglie per fase**: ore dall'ultimo aggiornamento del
-  gestionale (`modifiedAtLocal`) nello stato 15, 18, 20 o 25. Ore di orologio. Esami che bloccano = righe non cancellate, non "non eseguite",
-  senza validazione né referto pronto. Le accettazioni più vecchie della finestra (dati storici mai chiusi) restano nell'elenco ma non contano.
+- **In ritardo** (v0.91.1, regola del CEO del 20/11/2026): un esame è in ritardo quando oggi è oltre la sua **scadenza di refertazione =
+  data di accettazione + giorni di refertazione - 1** (il giorno dell'accettazione è il primo) e non è validato né ha il referto pronto.
+  L'accettazione in corso (15, 18, 20, 25) degli ultimi `giorni_finestra` giorni (predefinito 60) è in ritardo quando lo è almeno un suo
+  esame; se tutti gli esami sono validati e il referto non è emesso conta la scadenza più lontana. Giorni di calendario. I giorni per
+  esame stanno nella tabella `etichette.lc_tempi_esame` (Impostazioni > Giorni di refertazione per esame: file .xlsx/.csv con codice e
+  giorni, o a mano; API `/lab/tempi`): la Data API di Synclab non li espone. Gli esami senza riga usano `giorni_refertazione`
+  (predefinito 3). Una sola regola in `lib/fasi.js` (`ritardo`, `scadenzaRefertazione`) e in SQL in `lib/lab.js` (`sqlRitardo`).
+  In più, facoltative, **soglie per fase**: ore dall'ultimo aggiornamento del gestionale (`modifiedAtLocal`) nello stato 15, 18, 20 o 25.
+  `ore_ritardo` (72) resta solo come soglia della pagina Tempi. La pagina In ritardo mostra per ogni accettazione gli esami in ritardo
+  con codice, descrizione, giorni e scadenza. Le accettazioni più vecchie della finestra restano nell'elenco ma non contano.
+- **Nomi dei pazienti** (v0.91.1): `giorni_identita` predefinito 3.650, cioè il nome per tutte le accettazioni; il giro legge 50 identità
+  ogni 15 minuti, prima le accettazioni in corso. Il codice fiscale non si conserva.
 - **Campioni in viaggio** = raccolti (o prelevati) senza check-in, di accettazioni non refertate, non chiuse e non NC, nella finestra; "non
   arrivati da più di N ore" (impostazione `ore_campioni`, predefinita 24, modificabile anche dalla pagina).
 - **TAT** = `reportAtLocal − createdAtLocal` in ore, solo accettazioni con il referto, del periodo (data dell'accettazione): mediana e 90°

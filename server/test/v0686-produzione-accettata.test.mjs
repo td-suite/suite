@@ -421,7 +421,7 @@ describe('v0.68.6 con database e dati sintetici', { skip: SALTA }, () => {
     }
     assert.equal(S.operativita.length, 10, 'dieci tessere (5 × 2)');
     assert.ok(!T.op_esami_mese && !T.op_fuori_area && !T.op_clienti_prod);
-    assert.equal(typeof T.op_lab_lavorazione.valore, 'number'); assert.match(T.op_lab_ritardo.titolo, /oltre 72 ore/);
+    assert.equal(typeof T.op_lab_lavorazione.valore, 'number'); assert.match(T.op_lab_ritardo.titolo, /oltre la scadenza di refertazione/);
     assert.equal(T.op_scontrino.statistiche[0].valore, Math.round(((50 - 30) / 30) * 1000) / 10, 'scontrino medio vs mese prima');
     // scadenze: una fascia per utente
     const u = await M.mon.monitorPerUtente({ level: 'OWNER', grants: {} }, { oggi: OGGI, fresco: true });

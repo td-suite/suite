@@ -2,6 +2,7 @@
 // Tutti i profili (ADMIN, LABORATORIO, OPERATORE) nel proprio perimetro; Impostazioni solo ADMIN. Nessuna scrittura verso StudioLab: l'unica
 // chiamata al gestionale è la lettura puntuale "Aggiorna dal gestionale" (una accettazione, al più una ogni 2 minuti).
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import { ah, audit, bad, forbidden, notFound, parse } from '../../../lib/util.js';
 import { many } from '../db.js';
@@ -11,6 +12,9 @@ import { scheda, aggiornaDalGestionale, documento } from '../lib/scheda.js';
 import { collegamenti, linkPrincipali } from '../lib/collegamenti.js';
 import { xlsxAccettazioni } from '../lib/export.js';
 import { FASI, FASE_NC, STATO_LABEL } from '../lib/fasi.js';
+import { elencoTempi, esamiSenzaGiorni, salvaTempo, eliminaTempo, importaTempi } from '../lib/tempi.js';
+
+const caricaFile = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const r = Router();
 const chiaveOk = (s) => typeof s === 'string' && s.length > 0 && s.length <= 200;
@@ -27,7 +31,7 @@ r.get('/lab/stato', ah(async (req, res) => {
       WHERE ${ctx.tutte ? 'TRUE' : 's.id = ANY($1::int[])'} ORDER BY s.code NULLS LAST, s.name`, ctx.tutte ? [] : [ctx.siteIds]).catch(() => []);
   res.json({
     profilo: ctx.role, tutte: ctx.tutte, copia: await L.copiaAccettazioni(), data_api: await dataApiAttiva(), nc_disponibile: await L.ncDisponibile(), oggi: oggiRoma(),
-    soglia: { ore_ritardo: imp.ore_ritardo, ore_campioni: imp.ore_campioni, giorni_finestra: imp.giorni_finestra, soglie_fase: imp.soglie_fase },
+    soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, ore_campioni: imp.ore_campioni, giorni_finestra: imp.giorni_finestra, soglie_fase: imp.soglie_fase },
     colonne: COLONNE, colonne_predefinite: imp.colonne_predefinite, sedi: sedi.map((s) => ({ id: s.id, nome: [s.code, s.name].filter(Boolean).join(' ') })),
     fasi: [...FASI.map((f, i) => ({ key: f.key, label: f.label, breve: f.breve, indice: i, stati: f.stati })), { key: FASE_NC.key, label: FASE_NC.label, breve: FASE_NC.breve, indice: null, stati: FASE_NC.stati }],
     stati: Object.entries(STATO_LABEL).map(([k, v]) => ({ stato: Number(k), label: v })),
@@ -113,7 +117,7 @@ r.get('/lab/ritardi', ah(async (req, res) => {
 }));
 r.get('/lab/ritardi.xlsx', ah(async (req, res) => {
   const out = await L.ritardi(req.query, contesto(req));
-  const buf = await xlsxAccettazioni(out.righe, { foglio: 'In ritardo', intestazione: `Lab Control · accettazioni in ritardo (oltre ${out.soglia.ore_ritardo} ore dall'accettazione senza referto, ultimi ${out.soglia.giorni_finestra} giorni) · senza nomi dei pazienti` });
+  const buf = await xlsxAccettazioni(out.righe, { bloccanti: true, foglio: 'In ritardo', intestazione: `Lab Control · accettazioni in ritardo (esami oltre data di accettazione + giorni di refertazione - 1, predefinito ${out.soglia.giorni_refertazione} giorni, ultimi ${out.soglia.giorni_finestra} giorni) · senza nomi dei pazienti` });
   await audit(req, 'LABCONTROL_EXPORT', { module: KEY, entity: 'ritardi', label: `Export Excel delle accettazioni in ritardo (${out.righe.length} righe, senza nomi dei pazienti)` });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="lab-control-ritardi_${oggiRoma()}.xlsx"`);
@@ -151,15 +155,39 @@ r.use('/lab/impostazioni', soloAdmin);
 r.get('/lab/impostazioni', ah(async (_req, res) => { const s = await settings(); res.json({ ...s, stati_soglia: STATI_SOGLIA.map((k) => ({ stato: k, label: STATO_LABEL[k] })), colonne: COLONNE }); }));
 r.put('/lab/impostazioni', ah(async (req, res) => {
   const b = parse(z.object({
-    ore_ritardo: z.number().int().min(1).max(2000).optional(), ore_campioni: z.number().int().min(1).max(720).optional(), giorni_finestra: z.number().int().min(7).max(365).optional(),
+    ore_ritardo: z.number().int().min(1).max(2000).optional(), giorni_refertazione: z.number().int().min(1).max(365).optional(), ore_campioni: z.number().int().min(1).max(720).optional(), giorni_finestra: z.number().int().min(7).max(365).optional(),
     soglie_fase: z.record(z.string().regex(/^\d{2}$/), z.number().int().min(1).max(2000).nullable()).optional(),
     colonne_predefinite: z.array(z.enum(COLONNE)).max(COLONNE.length).nullable().optional(),
   }), req.body);
   if (b.soglie_fase && Object.keys(b.soglie_fase).some((k) => !STATI_SOGLIA.includes(Number(k)))) throw bad(`Soglie di fase solo per gli stati ${STATI_SOGLIA.join(', ')}`);
-  for (const k of ['ore_ritardo', 'ore_campioni', 'giorni_finestra', 'colonne_predefinite']) if (b[k] !== undefined) await setSetting(k, b[k]);
+  for (const k of ['ore_ritardo', 'giorni_refertazione', 'ore_campioni', 'giorni_finestra', 'colonne_predefinite']) if (b[k] !== undefined) await setSetting(k, b[k]);
   if (b.soglie_fase) await setSetting('soglie_fase', Object.fromEntries(Object.entries(b.soglie_fase).filter(([, v]) => v != null)));
   await audit(req, 'LABCONTROL_IMPOSTAZIONI', { module: KEY, entity: 'impostazioni', label: `Impostazioni di Lab Control: ${Object.keys(b).join(', ')}`, data: b });
   res.json(await settings());
+}));
+
+// ---------------------------------------------------------------- giorni di refertazione per esame (ADMIN) · v0.91.1
+// Il gestionale non espone i tempi di refertazione: si caricano qui (file con codice e giorni, o a mano). Regola in lib/fasi.js.
+r.use('/lab/tempi', soloAdmin);
+r.get('/lab/tempi', ah(async (req, res) => { res.json({ ...(await elencoTempi({ cerca: req.query.cerca, limite: req.query.limite })), predefinito: (await settings()).giorni_refertazione }); }));
+r.get('/lab/tempi/senza', ah(async (_req, res) => { res.json({ righe: await esamiSenzaGiorni(500) }); }));
+r.put('/lab/tempi/:codice', ah(async (req, res) => {
+  const b = parse(z.object({ giorni: z.number().int().min(1).max(365), descrizione: z.string().max(300).nullable().optional() }), req.body);
+  const out = await salvaTempo({ codice: req.params.codice, ...b }, req.user.id);
+  await audit(req, 'LABCONTROL_TEMPO_ESAME', { module: KEY, entity: 'lc_tempi_esame', label: `Giorni di refertazione ${out.codice}: ${out.giorni}`, data: out });
+  res.json(out);
+}));
+r.delete('/lab/tempi/:codice', ah(async (req, res) => {
+  const n = await eliminaTempo(req.params.codice);
+  await audit(req, 'LABCONTROL_TEMPO_ESAME_TOLTO', { module: KEY, entity: 'lc_tempi_esame', label: `Giorni di refertazione tolti: ${String(req.params.codice).toUpperCase()} (torna al predefinito)` });
+  res.json({ tolte: n });
+}));
+r.post('/lab/tempi/importa', caricaFile.single('file'), ah(async (req, res) => {
+  if (!req.file) throw bad('Allegare il file (.xlsx o .csv) con codice esame e giorni di refertazione');
+  const prova = String(req.query.prova || '') === '1';
+  const out = await importaTempi(req.file.buffer, req.file.originalname, req.user.id, { prova });
+  if (!prova) await audit(req, 'LABCONTROL_TEMPI_IMPORTATI', { module: KEY, entity: 'lc_tempi_esame', label: `Giorni di refertazione importati da file: ${out.lette} esami (${out.nuove} nuovi, ${out.cambiate} cambiati)`, data: { file: req.file.originalname, lette: out.lette, nuove: out.nuove, cambiate: out.cambiate, scartate: out.scartate_totale } });
+  res.json(out);
 }));
 
 export default r;

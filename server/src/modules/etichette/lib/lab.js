@@ -5,7 +5,8 @@
 //    e non cancellate; nessuna scrittura verso StudioLab. Stati e date si aggiornano col delta orario di giorno (7-21);
 //  - cliente = client Synclab; sede e Legal entity dall'abbinamento synclab.clients_td (stessa regola di Label);
 //  - perimetro: OPERATORE = sedi del grant; ADMIN e LABORATORIO = tutto (anche i client non abbinati a una sede);
-//  - fase e linea del tempo: lib/fasi.js (faseAccettazione, una sola regola); ritardi: ore dall'accettazione oltre `ore_ritardo` (e soglie
+//  - fase e linea del tempo: lib/fasi.js (faseAccettazione, una sola regola); ritardi (v0.91.1): esami oltre data di accettazione + giorni
+//    di refertazione - 1 (tabella lc_tempi_esame, predefinito `giorni_refertazione`); TAT: soglia `ore_ritardo` (e soglie
 //    per stato facoltative), solo per le accettazioni in corso (15, 18, 20, 25) degli ultimi `giorni_finestra` giorni;
 //  - valore = produzione ACCETTATA con la definizione unica di lib/synclab/letture.js (stati e sconto di testata dalle impostazioni del
 //    connettore): Σ netto di riga × quantità delle righe non cancellate, × (1 − sconto di testata) solo se la regola lo applica; righe senza
@@ -19,7 +20,8 @@ import { cercaAccettazioniSynclab } from '../../nc/lib/synclabDesk.js';
 import { getModuleState } from '../../../lib/modules.js';
 import { settings, oggiRoma, adessoRoma, nomeSede } from './core.js';
 import { SQL_NORM, normNome } from './ricerca.js';
-import { FASI, STATI_IN_CORSO, statiDellaFase, faseAccettazione, ritardo, statoEsame, tsLocale, minutiTra, SQL_FASE, STATO_LABEL } from './fasi.js';
+import { tempiEsami } from './tempi.js';
+import { FASI, STATI_IN_CORSO, statiDellaFase, faseAccettazione, ritardo, statoEsame, tsLocale, minutiTra, giorniTra, SQL_FASE, STATO_LABEL } from './fasi.js';
 
 const giornoRe = /^\d{4}-\d{2}-\d{2}$/;
 const addGiorni = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -58,14 +60,28 @@ export async function ncDisponibile() {
   return Boolean((await one(`SELECT to_regclass('nc.nc') IS NOT NULL AS ok`))?.ok);
 }
 
-/** Condizione SQL "in ritardo" (stesse regole di fasi.js ritardo). p = funzione che aggiunge un parametro. */
-export function sqlRitardo(p, imp, adesso) {
+/**
+ * Condizione SQL "in ritardo" (stessa regola di fasi.js ritardo). p = funzione che aggiunge un parametro.
+ * v0.91.1 (CEO, 20/11/2026): in ritardo = almeno un esame da refertare con oggi oltre (data di accettazione + giorni di refertazione - 1);
+ * se tutti gli esami sono validati e il referto non è emesso, conta la scadenza più lontana. Giorni dalla tabella lc_tempi_esame,
+ * altrimenti l'impostazione giorni_refertazione. conTempi = false quando la tabella non esiste (modulo non avviato: solo il predefinito).
+ */
+export function sqlRitardo(p, imp, adesso, { conTempi = true } = {}) {
   const a = p(adesso);
-  const parti = [`r.created_at_local < ${a}::timestamp - make_interval(hours => ${p(imp.ore_ritardo)}::int)`];
+  const def = `${p(imp.giorni_refertazione ?? 3)}::int`;
+  const oggi = `(${a}::timestamp)::date`;
+  const gg = conTempi ? `coalesce(te.giorni, ${def})` : def;
+  const join = conTempi ? 'LEFT JOIN etichette.lc_tempi_esame te ON te.codice = upper(btrim(i.exam_code))' : '';
+  const righe = `synclab.request_items i ${join} WHERE i.instance_id = r.instance_id AND i.request_id = r.id AND coalesce(i.deleted, FALSE) = FALSE AND i.not_performed_code IS NULL`;
+  const aperta = 'i.validated_at_local IS NULL AND coalesce(i.report_ready, FALSE) = FALSE';
+  const parti = [
+    `EXISTS (SELECT 1 FROM ${righe} AND ${aperta} AND r.date + (${gg} - 1) < ${oggi})`,
+    `(NOT EXISTS (SELECT 1 FROM ${righe} AND ${aperta}) AND r.date + (coalesce((SELECT max(${gg}) FROM ${righe}), ${def}) - 1) < ${oggi})`,
+  ];
   for (const [st, ore] of Object.entries(imp.soglie_fase || {})) {
     if (Number.isFinite(Number(st)) && Number.isFinite(Number(ore))) parti.push(`(r.state = ${Number(st)} AND coalesce(r.modified_at_local, r.created_at_local) < ${a}::timestamp - make_interval(hours => ${Number(ore)}))`);
   }
-  return `(r.state IN (${STATI_IN_CORSO.join(',')}) AND r.date >= (${a}::timestamp)::date - ${p(imp.giorni_finestra)}::int AND (${parti.join(' OR ')}))`;
+  return `(r.state IN (${STATI_IN_CORSO.join(',')}) AND r.date >= ${oggi} - ${p(imp.giorni_finestra)}::int AND (${parti.join(' OR ')}))`;
 }
 
 /**
@@ -172,6 +188,7 @@ export async function dettagliElenco(chiavi, { imp, regola, adesso = adessoRoma(
   const R = per(righe), C = per(campioni);
   const F = new Map(fatture.map((x) => [`${x.instance_id}|${x.id}`, x]));
   const dal = addGiorni(oggi, -imp.giorni_finestra);
+  const tempi = await tempiEsami();
   return testate.map((t) => {
     const k = `${t.instance_id}|${t.id}`;
     const rr = R.get(k) || [], cc = C.get(k) || [];
@@ -180,7 +197,7 @@ export async function dettagliElenco(chiavi, { imp, regola, adesso = adessoRoma(
     const erogata = regola.stati.includes(Number(t.state));
     const conPrezzo = vive.filter((x) => x.netto != null);
     const valore = erogata && conPrezzo.length ? n2(conPrezzo.reduce((s, x) => s + Number(x.netto), 0) * (regola.applica ? 1 - Number(t.header_discount_percent || 0) / 100 : 1)) : null;
-    const rit = ritardo({ state: t.state, created_at_local: t.created_at_local, modified_at_local: t.modified_at_local, data: t.data }, { ...imp, dal }, adesso);
+    const rit = ritardo({ state: t.state, created_at_local: t.created_at_local, modified_at_local: t.modified_at_local, data: t.data }, { ...imp, dal, oggi, righe: rr, tempi }, adesso);
     const fat = (t.invoice_ids || []).map((id) => F.get(`${t.instance_id}|${id}`) || { id, invoice_number: null });
     const n = ncMap.get(t.request_number);
     const identita = Boolean(t.cognome || t.nome);
@@ -215,7 +232,7 @@ export async function elencoAccettazioni(q, ctx, { perPagina = 50 } = {}) {
   const regola = await regolaValore();
   const nc = await ncDisponibile();
   const righe = await dettagliElenco(ids.map((x) => [x.instance_id, x.id]), { imp, regola, adesso, oggi, nc });
-  return { totale: tot.n, pagina, per_pagina: pp, ord, dir, righe, filtri, adesso, nc_disponibile: nc, soglia: { ore_ritardo: imp.ore_ritardo, soglie_fase: imp.soglie_fase, giorni_finestra: imp.giorni_finestra }, regola: { stati: regola.stati, sconto: regola.sconto } };
+  return { totale: tot.n, pagina, per_pagina: pp, ord, dir, righe, filtri, adesso, nc_disponibile: nc, soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, soglie_fase: imp.soglie_fase, giorni_finestra: imp.giorni_finestra }, regola: { stati: regola.stati, sconto: regola.sconto } };
 }
 
 /** Tutte le accettazioni filtrate (export), a blocchi; al più `max`. Senza nomi dei pazienti. */
@@ -281,7 +298,7 @@ export async function cruscotto(ctx) {
   const totOggi = Object.values(oggiPerStato).reduce((s, n) => s + n, 0);
   const t = (o) => (o ? { n: Number(o.n) || 0, media: o1(o.media), mediana: o1(o.mediana), p90: o1(o.p90) } : null);
   return {
-    oggi, adesso, soglia: { ore_ritardo: imp.ore_ritardo, ore_campioni: imp.ore_campioni, giorni_finestra: imp.giorni_finestra, soglie_fase: imp.soglie_fase },
+    oggi, adesso, soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, ore_campioni: imp.ore_campioni, giorni_finestra: imp.giorni_finestra, soglie_fase: imp.soglie_fase },
     oggi_totale: totOggi, oggi_fasi: fasiOggi, oggi_nc: oggiPerStato[11] || 0,
     oggi_altri: Object.entries(oggiPerStato).filter(([s]) => ![...FASI.flatMap((f) => f.stati), 11].includes(Number(s))).map(([s, n]) => ({ stato: Number(s), label: `Stato ${s} del gestionale`, n })),
     in_lavorazione: STATI_IN_CORSO.reduce((s, st) => s + (aperte[st] || 0), 0),
@@ -368,19 +385,29 @@ export async function ritardi(q, ctx) {
     WHERE ${where} ORDER BY r.created_at_local ASC NULLS LAST, r.id LIMIT 2001`, params);
   const regola = await regolaValore();
   const righe = await dettagliElenco(ids.slice(0, 2000).map((x) => [x.instance_id, x.id]), { imp, regola, adesso, oggi, nc: await ncDisponibile() });
-  // v0.85.0 (richiesta del CEO del 18/11/2026): in "In ritardo" solo le accettazioni e la fase in cui sono, non gli esami che bloccano
-  const conBlocchi = righe;
+  // v0.91.1 (CEO, 20/11/2026): per ogni accettazione gli esami in ritardo (oltre data di accettazione + giorni di refertazione - 1, non
+  // validati e senza referto pronto) con codice, DESCRIZIONE (della riga, altrimenti del catalogo esami), giorni e scadenza.
+  const bl = righe.length ? await many(`SELECT i.instance_id, i.request_id, i.exam_code, coalesce(nullif(i.description, ''), e.description) AS descrizione, i.executed_at_local
+      FROM synclab.request_items i LEFT JOIN LATERAL (SELECT x.description FROM synclab.exams x WHERE x.exam_code = i.exam_code ORDER BY (x.disponibilita = 'ATTIVO') DESC, x.updated_at DESC LIMIT 1) e ON TRUE
+     WHERE i.request_id = ANY($2::text[]) AND i.instance_id = ANY($1::text[]) AND coalesce(i.deleted, FALSE) = FALSE AND i.not_performed_code IS NULL
+       AND i.validated_at_local IS NULL AND coalesce(i.report_ready, FALSE) = FALSE ORDER BY i.ord`, [righe.map((r) => r.instance_id), righe.map((r) => r.id)]) : [];
+  const B = new Map();
+  for (const b of bl) { const k = `${b.instance_id}|${b.request_id}|${String(b.exam_code ?? '').trim().toUpperCase()}`; if (!B.has(k)) B.set(k, b); }
+  const conBlocchi = righe.map((r) => ({ ...r, esami_in_ritardo: (r.ritardo.esami || []).map((e) => {
+    const b = B.get(`${r.instance_id}|${r.id}|${String(e.codice ?? '').trim().toUpperCase()}`);
+    return { codice: e.codice, descrizione: b?.descrizione || null, eseguito: Boolean(b?.executed_at_local), giorni: e.giorni, scadenza: e.scadenza, giorni_oltre: giorniTra(e.scadenza, oggi) };
+  }) }));
   const gruppo = (chiave, nome) => {
     const m = new Map();
     for (const r of conBlocchi) {
       const k = chiave(r);
-      if (!m.has(k)) m.set(k, { chiave: k, nome: nome(r), client_id: r.client_id, organization_id: r.organization_id, site_id: r.site_id, n: 0, ore_max: 0, fasi: {} });
-      const g = m.get(k); g.n++; g.ore_max = Math.max(g.ore_max, r.ritardo.ore || 0); g.fasi[r.fase.key || 'ALTRO'] = (g.fasi[r.fase.key || 'ALTRO'] || 0) + 1;
+      if (!m.has(k)) m.set(k, { chiave: k, nome: nome(r), client_id: r.client_id, organization_id: r.organization_id, site_id: r.site_id, n: 0, ore_max: 0, giorni_max: 0, fasi: {} });
+      const g = m.get(k); g.n++; g.ore_max = Math.max(g.ore_max, r.ritardo.ore || 0); g.giorni_max = Math.max(g.giorni_max, r.ritardo.giorni_oltre || 0); g.fasi[r.fase.key || 'ALTRO'] = (g.fasi[r.fase.key || 'ALTRO'] || 0) + 1;
     }
-    return [...m.values()].sort((a, b) => b.n - a.n || b.ore_max - a.ore_max);
+    return [...m.values()].sort((a, b) => b.n - a.n || b.giorni_max - a.giorni_max || b.ore_max - a.ore_max);
   };
   return {
-    adesso, soglia: { ore_ritardo: imp.ore_ritardo, soglie_fase: imp.soglie_fase, giorni_finestra: imp.giorni_finestra }, totale: ids.length > 2000 ? '2000+' : ids.length,
+    adesso, soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, soglie_fase: imp.soglie_fase, giorni_finestra: imp.giorni_finestra }, totale: ids.length > 2000 ? '2000+' : ids.length,
     righe: conBlocchi, per_cliente: gruppo((r) => `${r.instance_id}|${r.client_id}`, (r) => r.cliente), per_sede: gruppo((r) => String(r.site_id ?? 'ND'), (r) => r.sede || 'Client non abbinati a una sede'),
   };
 }
@@ -505,7 +532,7 @@ export async function clienti(q, ctx) {
     accettazioni: r.accettazioni, in_corso: r.in_corso, in_ritardo: r.in_ritardo, refertate: r.refertate, nc_mai_arrivato: r.nc_mai_arrivato,
     tat_mediana: o1(r.tat_mediana), valore: n2(r.valore), senza_prezzo: r.senza_prezzo || 0,
   }));
-  return { periodo: { periodo: filtri.periodo, da: filtri.da, a: filtri.a }, righe, regola: { stati: regola.stati, sconto: regola.sconto }, soglia: { ore_ritardo: imp.ore_ritardo } };
+  return { periodo: { periodo: filtri.periodo, da: filtri.da, a: filtri.a }, righe, regola: { stati: regola.stati, sconto: regola.sconto }, soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione } };
 }
 
 /** Ricerca dei clienti per il filtro (nome, codice StudioLab, Legal entity), nel perimetro: al più 20. */
@@ -539,11 +566,12 @@ export { LEGENDA_STATI, statoEsame };
  */
 export async function indicatoriCockpit({ adesso = adessoRoma() } = {}) {
   let imp;
-  try { imp = await settings(); } catch { imp = { ore_ritardo: 72, soglie_fase: {}, giorni_finestra: 60 }; }
+  try { imp = await settings(); } catch { imp = { ore_ritardo: 72, giorni_refertazione: 3, soglie_fase: {}, giorni_finestra: 60 }; }
+  const conTempi = Boolean((await one(`SELECT to_regclass('etichette.lc_tempi_esame') IS NOT NULL AS ok`).catch(() => null))?.ok);
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
   const pA = p(adesso), pF = p(imp.giorni_finestra);
-  const rit = sqlRitardo(p, imp, adesso);
+  const rit = sqlRitardo(p, imp, adesso, { conTempi });
   const x = await one(`SELECT
       (SELECT count(*)::int FROM synclab.requests r WHERE r.deleted_at IS NULL AND r.disponibilita = 'ATTIVO') AS totale,
       (SELECT count(*)::int FROM synclab.requests r WHERE r.deleted_at IS NULL AND r.disponibilita = 'ATTIVO' AND r.state IN (${STATI_IN_CORSO.join(',')}) AND r.date >= (${pA}::timestamp)::date - ${pF}::int) AS in_corso,
@@ -557,7 +585,7 @@ export async function indicatoriCockpit({ adesso = adessoRoma() } = {}) {
                  AND r.report_at_local >= ${pA}::timestamp - interval '14 days' AND r.report_at_local < ${pA}::timestamp - interval '7 days' AND r.report_at_local >= r.created_at_local) t) AS tat7p`, params);
   if (!x?.totale) return null;
   return {
-    in_corso: x.in_corso, referti_aperti: x.referti_aperti, in_ritardo: x.in_ritardo, soglia: imp.ore_ritardo, giorni_finestra: imp.giorni_finestra,
+    in_corso: x.in_corso, referti_aperti: x.referti_aperti, in_ritardo: x.in_ritardo, soglia: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, giorni_finestra: imp.giorni_finestra,
     tat7: { n: Number(x.tat7?.n) || 0, mediana: o1(x.tat7?.mediana), p90: o1(x.tat7?.p90) }, tat7_prima: { n: Number(x.tat7p?.n) || 0, mediana: o1(x.tat7p?.mediana) },
   };
 }

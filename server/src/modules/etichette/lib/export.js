@@ -21,7 +21,7 @@ export async function xlsxAccettazioni(righe, { intestazione = '', foglio = 'Acc
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Suite TD · Lab Control';
   const ws = wb.addWorksheet(foglio);
-  const cols = bloccanti ? [...COLONNE, ['Esami che bloccano', 40, (r) => (r.bloccanti || []).map((b) => b.codice).join(' ')]] : COLONNE;
+  const cols = bloccanti ? [...COLONNE, ['Esami in ritardo', 60, (r) => (r.esami_in_ritardo || r.bloccanti || []).map((b) => `${b.codice}${b.descrizione ? ` ${b.descrizione}` : ''}${b.scadenza ? ` (${b.giorni} gg, scadenza ${b.scadenza.split('-').reverse().join('/')})` : ''}`).join('; ')], ['Scadenza refertazione', 14, (r) => (r.ritardo?.scadenza ? r.ritardo.scadenza.split('-').reverse().join('/') : '')], ['Giorni oltre', 10, (r) => r.ritardo?.giorni_oltre ?? '']] : COLONNE;
   ws.addRow([intestazione]);
   ws.getRow(1).font = { italic: true, color: { argb: 'FF555555' } };
   const h = ws.addRow(cols.map((c) => c[0]));

@@ -86,7 +86,7 @@ export async function candidati(giorni, limite) {
       JOIN synclab.clients_td ct ON ct.instance_id = r.instance_id AND ct.client_id = r.client_id AND ct.site_id IS NOT NULL
      WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date >= (now() AT TIME ZONE 'Europe/Rome')::date - $1::int
        AND NOT EXISTS (SELECT 1 FROM pazienti_recenti p WHERE p.instance_id = r.instance_id AND p.request_id = r.id)
-     ORDER BY r.date DESC, r.created_at_local DESC NULLS LAST, r.id LIMIT $2::int`, [giorni, limite]);
+     ORDER BY (r.state IN (15, 18, 20, 25)) DESC, r.date DESC, r.created_at_local DESC NULLS LAST, r.id LIMIT $2::int`, [giorni, limite]);   // prima le accettazioni in corso (sono quelle di In ritardo e del lavoro di oggi), poi le altre dalla più recente
 }
 
 /**

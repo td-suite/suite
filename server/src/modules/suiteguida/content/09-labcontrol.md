@@ -66,9 +66,9 @@ livello: OPERATIVO
 stato: VALIDATA
 validazione: Manuale d'uso della Suite TD, TD-SGI-MAN009_00
 ===
-**Cruscotto.** La barra in alto ripartisce le accettazioni del giorno per fase, da Prenotata a Chiuso. I riquadri evidenziano lavorazioni in corso, referti pronti non chiusi, ritardi oltre 72 ore e campioni in viaggio.
+**Cruscotto.** La barra in alto ripartisce le accettazioni del giorno per fase, da Prenotata a Chiuso. I riquadri evidenziano lavorazioni in corso, referti pronti non chiusi, ritardi (esami oltre la data di accettazione più i giorni di refertazione meno uno) e campioni in viaggio.
 
-**Accettazioni, Campioni, In ritardo.** Si cerca per numero di accettazione, barcode o cognome; la scheda mostra esami, campioni e fase. In ritardo indica per ogni accettazione gli esami che la bloccano.
+**Accettazioni, Campioni, In ritardo.** Si cerca per numero di accettazione, barcode o cognome; la scheda mostra esami, campioni e fase. In ritardo indica per ogni accettazione gli esami oltre la scadenza di refertazione, con codice, descrizione, giorni e scadenza. I giorni di refertazione di ogni esame si caricano in Impostazioni.
 
 **Tempi di refertazione ed Esami non eseguiti.** Misurano il tempo tra accettazione e referto pronto, per sede e per esame.
 

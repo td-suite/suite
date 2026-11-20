@@ -8,8 +8,9 @@ import { statiErogati, scontoTestata } from '../../../lib/synclab/letture.js';
 import { dataApiAttiva, settings, oggiRoma, adessoRoma, nomeSede } from './core.js';
 import { senzaPaziente } from './accettazioni.js';
 import { salvaIdentita, identitaDi } from './identita.js';
-import { faseAccettazione, ritardo, statoEsame, tsLocale, minutiTra } from './fasi.js';
+import { faseAccettazione, ritardo, statoEsame, tsLocale, minutiTra, giorniEsame, scadenzaRefertazione, esameDaRefertare } from './fasi.js';
 import { ncDisponibile, SQL_PC } from './lab.js';
+import { tempiEsami } from './tempi.js';
 
 const n2 = (v) => (v == null ? null : Math.round(Number(v) * 100) / 100);
 const num = (v) => (v == null || v === '' ? null : Number(v));
@@ -71,7 +72,8 @@ export async function scheda(instanceId, id, ctx) {
   const imp = await settings();
   const oggi = oggiRoma(), adesso = adessoRoma();
   const fase = faseAccettazione(t, acc.campioni, acc.righe);
-  const rit = ritardo({ ...t, data: t.data }, { ...imp, dal: null }, adesso);
+  const tempi = await tempiEsami();
+  const rit = ritardo({ ...t, data: t.data }, { ...imp, dal: null, oggi, righe: acc.righe, tempi }, adesso);
   // descrizioni del catalogo per le righe senza descrizione
   const senza = [...new Set(acc.righe.filter((r) => !r.description && r.exam_code).map((r) => r.exam_code))];
   const cat = senza.length ? new Map((await many(`SELECT DISTINCT ON (exam_code) exam_code, description FROM synclab.exams WHERE exam_code = ANY($1::text[]) ORDER BY exam_code, (disponibilita = 'ATTIVO') DESC, updated_at DESC`, [senza])).map((x) => [x.exam_code, x.description])) : new Map();
@@ -87,6 +89,8 @@ export async function scheda(instanceId, id, ctx) {
     return {
       id: r.id, codice: r.exam_code, descrizione: r.description || cat.get(r.exam_code) || null, stato: st.key, stato_label: st.label, cancellata: Boolean(r.deleted),
       eseguito_il: tsLocale(r.executed_at_local), validato_il: tsLocale(r.validated_at_local), referto_pronto: r.report_ready === true, non_eseguito_codice: r.not_performed_code ?? null,
+      giorni_refertazione: giorniEsame(r.exam_code, tempi, imp.giorni_refertazione), scadenza: scadenzaRefertazione(t.data, giorniEsame(r.exam_code, tempi, imp.giorni_refertazione)),
+      in_ritardo: rit.esami.some((e) => e.codice === r.exam_code) && esameDaRefertare(r),
       quantita: q, prezzo_lordo: n2(r.gross_unit_price_excluding_vat), sconto_pct: r.discount_percent == null ? null : Number(r.discount_percent), prezzo_netto: n2(r.net_unit_price_excluding_vat),
       lordo: n2(lordo), sconto_riga: lordo != null && netto != null ? n2(lordo - netto) : null, netto: n2(netto),
       campioni: arr(r.campioni_ids).map(String).map((sid) => ({ id: sid, barcode: campById.get(sid)?.barcode || null })),
@@ -128,7 +132,7 @@ export async function scheda(instanceId, id, ctx) {
       site_id: cli?.site_id || null, sede: cli?.site_id ? nomeSede({ code: cli.sede_code, name: cli.sede_name }) : null,
     },
     paziente: identita,
-    fase: { ...fase, tappe: fase.tappe }, ritardo: rit, tat_min: minutiTra(t.created_at_local, t.report_at_local), soglia: { ore_ritardo: imp.ore_ritardo, soglie_fase: imp.soglie_fase },
+    fase: { ...fase, tappe: fase.tappe }, ritardo: rit, tat_min: minutiTra(t.created_at_local, t.report_at_local), soglia: { ore_ritardo: imp.ore_ritardo, giorni_refertazione: imp.giorni_refertazione, soglie_fase: imp.soglie_fase },
     righe, campioni, totali, fatture, nc: ncOk ? nc : null, nc_disponibile: ncOk, stampe: { ok: stampe?.ok || 0, ultima: stampe?.ultima || null },
   };
 }
