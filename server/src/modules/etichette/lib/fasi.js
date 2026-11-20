@@ -6,7 +6,7 @@
 //   indice  fase          stati      data della fase (se il gestionale la dà)
 //   0       PRENOTATA     10, 30     bookingAtLocal, altrimenti createdAtLocal
 //   1       ACCETTATA     15         createdAtLocal
-//   2       PRELIEVO      18         primo collectedAtLocal (o sampleAtLocal) dei campioni
+//   (dalla v0.90.2 lo stato 18 "prelievo eseguito" sta in ACCETTATA: nessuna tappa Prelievo)
 //   3       LAVORAZIONE   20         primo checkedInAtLocal dei campioni, altrimenti primo executedAtLocal delle righe
 //   4       FIRMA         25         ultimo validatedAtLocal delle righe (tutte le righe valide validate: l'ultimo validato apre la firma)
 //   5       REFERTO       40         reportAtLocal
@@ -20,8 +20,9 @@
 
 export const FASI = [
   { key: 'PRENOTATA', label: 'Prenotata', breve: 'Prenot.', stati: [10, 30] },
-  { key: 'ACCETTATA', label: 'Accettata / in attesa', breve: 'Accett.', stati: [15] },
-  { key: 'PRELIEVO', label: 'Prelievo eseguito', breve: 'Prelievo', stati: [18] },
+  // v0.90.2 (CEO, 20/11/2026): la fase "Prelievo eseguito" non è una tappa a sé. Nessun gestionale fornisce in modo affidabile l'ora del
+  // prelievo (nella scheda compariva 00:00); lo stato 18 del gestionale resta dentro "Accettata / in attesa".
+  { key: 'ACCETTATA', label: 'Accettata / in attesa', breve: 'Accett.', stati: [15, 18] },
   { key: 'LAVORAZIONE', label: 'In lavorazione', breve: 'Lavoraz.', stati: [20] },
   { key: 'FIRMA', label: 'In firma', breve: 'Firma', stati: [25] },
   { key: 'REFERTO', label: 'Referto pronto', breve: 'Referto', stati: [40] },
@@ -108,18 +109,26 @@ export function faseAccettazione(t = {}, campioni = [], righe = []) {
   const vive = righe.filter((r) => !r.cancellata && !r.deleted);
   const valide = vive.filter((r) => (r.non_eseguito_codice ?? r.not_performed_code) == null);
   const tutteValidate = valide.length > 0 && valide.every((r) => r.validato_il || r.validated_at_local);
+  const validate = valide.filter((r) => r.validato_il || r.validated_at_local);
+  const ultimaValidazione = validate.length ? massimo(validate.map((r) => r.validato_il ?? r.validated_at_local)) : null;
+  const refertoIl = tsLocale(t.referto_il ?? t.report_at_local);
   const date = [
     tsLocale(t.prenotata_il ?? t.booking_at_local) || creata,
     creata,
-    minimo(campioni.flatMap((c) => [c.raccolto_il ?? c.collected_at_local, c.prelevato_il ?? c.sample_at_local])),
     minimo(campioni.map((c) => c.checkin_il ?? c.checked_in_at_local)) || minimo(valide.map((r) => r.eseguito_il ?? r.executed_at_local)),
-    tutteValidate ? massimo(valide.map((r) => r.validato_il ?? r.validated_at_local)) : null,
-    tsLocale(t.referto_il ?? t.report_at_local),
+    // Firma: il gestionale non dà un'ora di firma dell'accettazione; dà l'ora di validazione di ogni esame (validatedAtLocal). Si mostra
+    // l'ultima validazione registrata, anche quando non tutti gli esami sono validati (nota "ultima validazione, N di M esami").
+    ultimaValidazione,
+    // Referto: reportAtLocal; se il gestionale non lo dà e il referto risulta pronto, l'ultima validazione (con la nota)
+    refertoIl || (Number(stato) >= 40 ? ultimaValidazione : null),
     Number(stato) === 50 ? tsLocale(t.modificata_il ?? t.modified_at_local) : null,
   ];
   // una prenotazione con data uguale all'accettazione non è una fase a sé: la data resta solo su "Accettata"
   if (idx != null && idx >= 1 && date[0] === creata) date[0] = null;
   const tappe = FASI.map((f, i) => ({ key: f.key, label: f.label, breve: f.breve, data: date[i], raggiunta: idx != null && i <= idx, corrente: idx === i, durata_min: null }));
+  const iF = FASI.findIndex((f) => f.key === 'FIRMA'); const iR = FASI.findIndex((f) => f.key === 'REFERTO');
+  if (tappe[iF].data) tappe[iF].nota = tutteValidate ? 'ultima validazione degli esami' : `ultima validazione, ${validate.length} di ${valide.length} esami`;
+  if (tappe[iR].data && !refertoIl) tappe[iR].nota = 'ora dell\'ultima validazione: il gestionale non dà l\'ora del referto';
   // durata di ogni fase raggiunta: dalla sua data alla data della fase raggiunta successiva che ne ha una
   for (let i = 0; i < tappe.length; i++) {
     if (!tappe[i].raggiunta || !tappe[i].data) continue;
@@ -131,7 +140,7 @@ export function faseAccettazione(t = {}, campioni = [], righe = []) {
     key: fase?.key || null, label: fase?.label || (stato == null ? 'Stato non disponibile' : `Stato ${stato} del gestionale`), indice: nc ? null : idx, fuori_linea: nc || idx == null,
     stato: stato == null ? null : Number(stato), stato_label: stato == null ? null : STATO_LABEL[Number(stato)] || `Stato ${stato} del gestionale`,
     tappe, esami: avanzamentoEsami(righe),
-    accettazione_referto_min: minutiTra(creata, date[5]),
+    accettazione_referto_min: minutiTra(creata, refertoIl),
   };
 }
 

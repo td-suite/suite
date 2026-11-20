@@ -96,12 +96,12 @@ export default function PianoArea() {
                     <td className={`num strong ${p.saldo?.da_pianificare < 0 ? 'fe-neg' : ''}`}>{p.saldo ? num(p.saldo.da_pianificare) : ''}</td></>}
                   <td className="small">{p.piano?.inviato_at ? itDataOra(p.piano.inviato_at) : ''}</td>
                   <td className="small">{p.piano?.approvato_at ? itDataOra(p.piano.approvato_at) : ''}{p.piano?.approvato_da_nome ? <div className="muted">{p.piano.approvato_da_nome}</div> : null}</td>
-                  {gestisce && <td className="row tight" style={{ flexWrap: 'wrap' }}>
+                  {gestisce && <td><div className="row tight" style={{ flexWrap: 'wrap' }}>
                     {a.prendi_in_carico && <button className="btn ghost sm" onClick={() => azione(() => api.post(`/piani/${p.piano.id}/prendi-in-carico`), 'Piano preso in carico')}>Prendi in carico</button>}
                     {a.approva && <button className="btn sm primary" onClick={() => setModal({ tipo: 'approva', persona: p })}><Icon name="check" />Approva</button>}
                     {a.definitivo && <button className="btn sm" onClick={() => setModal({ tipo: 'definitivo', persona: p })}><Icon name="lock" />Rendi definitivo</button>}
                     {a.riapri && <button className="btn ghost sm" onClick={() => setModal({ tipo: 'riapri', persona: p })}><Icon name="unlock" />Riapri</button>}
-                  </td>}
+                  </div></td>}
                 </tr>);
             })}</tbody>
           </table></div>
@@ -115,8 +115,8 @@ export default function PianoArea() {
                     <td className="strong">{v.persona}</td>
                     <td className="small">{v.variazione_proposta ? (v.variazione_proposta.tipo === 'RIMOZIONE' ? `Togliere ${periodo(v)}` : `Spostare ${periodo(v)} al ${itData(v.variazione_proposta.data_inizio)} → ${itData(v.variazione_proposta.data_fine)}`) : `Aggiungere ${periodo(v)} (${quantita(v)})`}</td>
                     <td className="small">{v.variazione_proposta?.note || v.note}</td>
-                    <td className="row tight"><button className="btn sm primary" onClick={() => azione(() => api.post(`/variazioni/${v.id}/approva`, {}), 'Variazione approvata')}><Icon name="check" />Approva</button>
-                      <button className="btn sm ghost" onClick={() => setModal({ tipo: 'rifiuta', variazione: v })}><Icon name="x" />Rifiuta</button></td>
+                    <td><div className="row tight"><button className="btn sm primary" onClick={() => azione(() => api.post(`/variazioni/${v.id}/approva`, {}), 'Variazione approvata')}><Icon name="check" />Approva</button>
+                      <button className="btn sm ghost" onClick={() => setModal({ tipo: 'rifiuta', variazione: v })}><Icon name="x" />Rifiuta</button></div></td>
                   </tr>)}</tbody></table></div>)}
             </Card>
           ) : <div />}

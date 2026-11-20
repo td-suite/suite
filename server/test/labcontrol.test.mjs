@@ -39,7 +39,7 @@ describe('Lab Control: fasi e ritardi (puro)', () => {
     { deleted: true, executed_at_local: null },
   ];
   test('fase per ogni stato del gestionale; NC fuori linea; stato sconosciuto', () => {
-    const atteso = { 10: 'PRENOTATA', 30: 'PRENOTATA', 15: 'ACCETTATA', 18: 'PRELIEVO', 20: 'LAVORAZIONE', 25: 'FIRMA', 40: 'REFERTO', 50: 'CHIUSO' };
+    const atteso = { 10: 'PRENOTATA', 30: 'PRENOTATA', 15: 'ACCETTATA', 18: 'ACCETTATA', 20: 'LAVORAZIONE', 25: 'FIRMA', 40: 'REFERTO', 50: 'CHIUSO' };
     for (const [st, k] of Object.entries(atteso)) {
       const f = F.faseAccettazione({ ...t0, state: Number(st) }, camp, righe);
       assert.equal(f.key, k, `stato ${st}`); assert.equal(f.fuori_linea, false);
@@ -52,20 +52,24 @@ describe('Lab Control: fasi e ritardi (puro)', () => {
     assert.equal(x.key, null); assert.match(x.label, /Stato 99 del gestionale/);
     assert.deepEqual(F.statiDellaFase('PRENOTATA'), [10, 30]); assert.deepEqual(F.statiDellaFase('NC'), [11]); assert.deepEqual(F.statiDellaFase('X'), []);
   });
-  test('linea del tempo: date delle fasi e durate; firma solo con tutte le righe valide validate', () => {
+  test('linea del tempo: date delle fasi e durate; nessuna tappa Prelievo; firma = ultima validazione', () => {
     const f = F.faseAccettazione({ ...t0, state: 40, report_at_local: '2026-11-10T18:00:00' }, camp, righe);
     const d = Object.fromEntries(f.tappe.map((x) => [x.key, x.data]));
     assert.equal(d.PRENOTATA, null, 'nessuna prenotazione distinta');
-    assert.equal(d.ACCETTATA, '2026-11-10T08:00:00'); assert.equal(d.PRELIEVO, '2026-11-10T08:20:00'); assert.equal(d.LAVORAZIONE, '2026-11-10T10:00:00');
+    assert.equal(d.ACCETTATA, '2026-11-10T08:00:00'); assert.equal('PRELIEVO' in d, false, 'la tappa Prelievo eseguito non esiste più'); assert.equal(d.LAVORAZIONE, '2026-11-10T10:00:00');
     assert.equal(d.FIRMA, '2026-11-10T16:30:00', 'ultimo validato (la riga non eseguita non blocca)'); assert.equal(d.REFERTO, '2026-11-10T18:00:00');
-    assert.equal(f.tappe[1].durata_min, 20); assert.equal(f.tappe[2].durata_min, 100); assert.equal(f.tappe[4].durata_min, 90);
+    assert.equal(f.tappe[1].durata_min, 120); assert.equal(f.tappe[2].durata_min, 390); assert.equal(f.tappe[3].durata_min, 90);
+    assert.match(f.tappe[3].nota, /ultima validazione degli esami/); assert.equal(f.tappe[4].nota, undefined);
     assert.equal(f.accettazione_referto_min, 600);
     assert.deepEqual(f.esami, { totale: 3, eseguiti: 2, validati: 2, pronti: 1, non_eseguiti: 1, da_fare: 0 });
-    // una riga valida non validata: niente data della firma
+    // una riga valida non validata: resta l'ora dell'ultima validazione, con la nota "2 di 3 esami"
     const g = F.faseAccettazione({ ...t0, state: 20 }, camp, [...righe, { deleted: false, executed_at_local: null }]);
-    assert.equal(g.tappe[4].data, null); assert.equal(g.tappe[4].raggiunta, false);
+    assert.equal(g.tappe[3].data, '2026-11-10T16:30:00'); assert.match(g.tappe[3].nota, /2 di 3 esami/); assert.equal(g.tappe[3].raggiunta, false);
+    // referto pronto senza reportAtLocal: ora dell'ultima validazione, dichiarata nella nota
+    const h = F.faseAccettazione({ ...t0, state: 40, report_at_local: null }, camp, righe);
+    assert.equal(h.tappe[4].data, '2026-11-10T16:30:00'); assert.match(h.tappe[4].nota, /non dà l'ora del referto/);
     // chiusa: modifiedAtLocal come data della chiusura
-    assert.equal(F.faseAccettazione({ ...t0, state: 50 }, camp, righe).tappe[6].data, '2026-11-10T09:00:00');
+    assert.equal(F.faseAccettazione({ ...t0, state: 50 }, camp, righe).tappe[5].data, '2026-11-10T09:00:00');
     // prenotazione con data propria
     assert.equal(F.faseAccettazione({ ...t0, state: 10, booking_at_local: '2026-11-12T07:30:00' }, [], []).tappe[0].data, '2026-11-12T07:30:00');
     assert.deepEqual(F.statoEsame({ not_performed_code: 3 }), { key: 'NON_ESEGUITO', label: 'Non eseguito (codice 3)' });
@@ -307,7 +311,7 @@ describe('Lab Control con il database e il server finto', { skip: SALTA }, () =>
     const x = (await http('GET', '/lab/cruscotto')).j;
     assert.equal(x.oggi_totale, 4);
     const f = Object.fromEntries(x.oggi_fasi.map((p) => [p.key, p.n]));
-    assert.deepEqual([f.PRENOTATA, f.ACCETTATA, f.PRELIEVO], [1, 1, 1]); assert.equal(x.oggi_nc, 1);
+    assert.deepEqual([f.PRENOTATA, f.ACCETTATA], [1, 2]); assert.equal(x.oggi_nc, 1);
     assert.equal(x.in_lavorazione, 6, 'R2, R3, R4, R5, R9, R11 (R12 fuori finestra)');
     assert.equal(x.referti_non_chiusi, 2, 'R6 e R10');
     assert.equal(x.in_ritardo, 2);

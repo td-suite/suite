@@ -52,10 +52,11 @@ export default function mount(app) {
       const { one } = await import('./db.js');
       const c = await one(`SELECT count(*)::int AS n FROM contracts WHERE status IN ('FIRMATO','AUTORIZZATO','ATTIVO') AND end_date IS NOT NULL AND end_date <= CURRENT_DATE + 60`);
       const f = await one(`SELECT count(*)::int AS n FROM dossiers WHERE status IN ('IN_CORSO','PRESENTATO')`);
-      const e = await one(`SELECT count(*)::int AS n FROM email_in WHERE stato='DA_ASSEGNARE'`);
+      // una casella per linea: il contatore sta sulla voce della propria linea (prima contava tutte le linee sulla sola voce Service: segnalazione del CEO, 20/11/2026)
+      const e = await one(`SELECT count(*)::int AS n, count(*) FILTER (WHERE linea='SRV')::int AS srv, count(*) FILTER (WHERE linea='PP')::int AS pp, count(*) FILTER (WHERE linea='MDL')::int AS mdl FROM email_in WHERE stato='DA_ASSEGNARE'`);
       const k = await one(`SELECT count(DISTINCT x.account_id)::int AS n FROM activities x JOIN accounts a ON a.id=x.account_id WHERE x.esito='DA_CONFERMARE' AND NOT a.cliente_attivo`);
       const v = await one(`SELECT count(DISTINCT account_id)::int AS n FROM documenti WHERE da_verificare AND account_id IS NOT NULL`);
-      res.json({ contratti_in_scadenza: c.n, fascicoli_aperti: f.n, email_da_assegnare: e.n, da_confermare: k.n, da_verificare: v.n });
+      res.json({ contratti_in_scadenza: c.n, fascicoli_aperti: f.n, email_da_assegnare: e.n, email_srv: e.srv, email_pp: e.pp, email_mdl: e.mdl, da_confermare: k.n, da_verificare: v.n });
     } catch (e) { next(e); }
   });
   r.get('/state', async (req, res, next) => {

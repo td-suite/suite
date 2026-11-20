@@ -52,7 +52,7 @@ export function CopiaInfo({ copia, extra }) {
 // ---------------------------------------------------------------- fasi
 export const FASI_UI = [
   { key: 'PRENOTATA', label: 'Prenotata', breve: 'Prenot.' }, { key: 'ACCETTATA', label: 'Accettata / in attesa', breve: 'Accett.' },
-  { key: 'PRELIEVO', label: 'Prelievo eseguito', breve: 'Prelievo' }, { key: 'LAVORAZIONE', label: 'In lavorazione', breve: 'Lavoraz.' },
+  { key: 'LAVORAZIONE', label: 'In lavorazione', breve: 'Lavoraz.' },
   { key: 'FIRMA', label: 'In firma', breve: 'Firma' }, { key: 'REFERTO', label: 'Referto pronto', breve: 'Referto' }, { key: 'CHIUSO', label: 'Chiuso', breve: 'Chiuso' },
 ];
 
@@ -78,7 +78,7 @@ export function LineaTempo({ fase, oggi }) {
           <span className="pallino" aria-hidden="true">{t.raggiunta && (!t.corrente || t.key === 'CHIUSO') ? <Icon name="check" /> : i + 1}</span>
           <div className="txt">
             <b>{t.label}</b>
-            <span>{t.data ? dataOra(t.data, oggi) : t.key === 'PRENOTATA' && t.raggiunta && !t.corrente ? 'nessuna prenotazione distinta' : t.raggiunta ? 'data non fornita dal gestionale' : '–'}</span>
+            <span title={t.nota || undefined}>{t.data ? <>{dataOra(t.data, oggi)}{t.nota ? <span className="small muted"> · {t.nota}</span> : null}</> : t.key === 'PRENOTATA' && t.raggiunta && !t.corrente ? 'nessuna prenotazione distinta' : t.raggiunta ? 'data non fornita dal gestionale' : '–'}</span>
             {t.durata_min != null && <em>{durata(t.durata_min)} alla fase successiva</em>}
           </div>
         </li>
