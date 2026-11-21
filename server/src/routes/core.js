@@ -53,14 +53,17 @@ r.get('/home/modules', ah(async (req, res) => {
   const active = await activeModuleKeys();   // moduli travasati (MIRROR/LIVE): si aprono dentro la Suite
   const external = isExternal(u);   // esterno (partner ospitante, cliente service): solo i widget con grant o aperti a tutti
   const inAttesa = esternoInAttesa(u);   // accesso di un prospect prima della firma: nessun widget, nemmeno quelli aperti a tutti
+  // Non conformità (v0.93.0): chi è responsabile di un'azione correttiva o preventiva vede il widget anche senza profilo (solo "Le mie azioni")
+  const ncAzioni = !u.grants.nc && !isAdmin(u) && u.level !== 'OWNER' && active.has('nc') ? await (await import('../modules/nc/lib/azioni.js')).haAzioni(u.person_id).catch(() => false) : false;
   const visible = mods.filter((m) => {
     if (m.key === 'admin') return isAdmin(u);
+    if (m.key === 'nc' && ncAzioni) return true;
     if (m.kind === 'PUBLIC') return external ? Boolean(u.grants[m.key]) : true;   // vetrine pubbliche: sempre raggiungibili dagli interni
     if (SOLO_DIPENDENTI.includes(m.key)) return isDipendente(u);   // solo dipendenti: nessun grant, nessuna eccezione per livello
     if (m.open_to_all && external && SOLO_INTERNI.includes(m.key)) return Boolean(u.grants[m.key]);   // aperti a tutti gli interni, non agli esterni
     if (m.open_to_all) return !inAttesa;                  // moduli aperti a tutti gli utenti autenticati (Ticket, Circolari)
     return Boolean(u.grants[m.key]) || (isAdmin(u) && !m.restricted) || (u.level === 'OWNER');
-  }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : null), href: moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
+  }).map((m) => ({ ...m, profile: u.grants[m.key]?.profile || (isAdmin(u) ? 'ADMIN' : m.key === 'nc' && ncAzioni ? 'AZIONI' : null), href: m.key === 'nc' && ncAzioni ? '/nc/mie-azioni' : moduleHref(m, active), inside: m.kind === 'NATIVE' || active.has(m.key), module_mode: active.get(m.key) || null }));
   const areas = AREAS.map((a) => ({ ...a, modules: visible.filter((m) => m.area === a.key) })).filter((a) => a.modules.length);
   res.json({ areas, in_attesa_contratto: inAttesa || undefined });
 }));

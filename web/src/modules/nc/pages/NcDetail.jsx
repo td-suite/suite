@@ -119,16 +119,29 @@ function AzioniCard({ nc, azioni, reload }) {
   const toast = useToast();
   const [modal, setModal] = useState(null);
   const [f, setF] = useState({});
-  const openNew = () => { setF({ tipo: 'CORRETTIVA', descrizione: '', responsabile: '', scadenza: '', stato: 'PIANIFICATA', note: '' }); setModal('new'); };
-  const openEdit = (a) => { setF({ tipo: a.tipo, descrizione: a.descrizione, responsabile: a.responsabile || '', scadenza: a.scadenza || '', stato: a.stato, note: a.note || '' }); setModal(a); };
-  const save = async () => { try { if (modal === 'new') await api.post(`/nc/${nc.id}/azioni`, { ...f, scadenza: f.scadenza || null }); else await api.put(`/nc/${nc.id}/azioni/${modal.id}`, { ...f, scadenza: f.scadenza || null }); setModal(null); toast('Azione salvata'); reload(); } catch (e) { toast(e.message, 'err'); } };
+  // v0.93.0: il responsabile si sceglie dall'elenco del personale (dipendenti e liberi professionisti); riceve la notifica e trova l'azione in "Le mie azioni"
+  const [personale, setPersonale] = useState(null);
+  const carica = () => { if (!personale) api.get('/personale-assegnabile', { silent: true }).then(setPersonale).catch(() => setPersonale([])); };
+  const openNew = () => { carica(); setF({ tipo: 'CORRETTIVA', descrizione: '', responsabile: '', responsabile_person_id: '', scadenza: '', stato: 'PIANIFICATA', note: '' }); setModal('new'); };
+  const openEdit = (a) => { carica(); setF({ tipo: a.tipo, descrizione: a.descrizione, responsabile: a.responsabile || '', responsabile_person_id: a.responsabile_person_id || '', scadenza: a.scadenza || '', stato: a.stato, note: a.note || '' }); setModal(a); };
+  const save = async () => {
+    try {
+      const corpo = { ...f, scadenza: f.scadenza || null, responsabile_person_id: f.responsabile_person_id ? Number(f.responsabile_person_id) : null };
+      delete corpo.responsabile;   // il nome segue la persona scelta; un nome scritto a mano in passato resta finché non si sceglie una persona
+      if (modal !== 'new' && String(f.responsabile_person_id || '') === String(modal.responsabile_person_id || '')) delete corpo.responsabile_person_id;
+      const r = modal === 'new' ? await api.post(`/nc/${nc.id}/azioni`, corpo) : await api.put(`/nc/${nc.id}/azioni/${modal.id}`, corpo);
+      setModal(null);
+      toast(r.responsabile_avvisato ? 'Azione salvata: il responsabile è stato avvisato e la trova in "Le mie azioni"' : r.responsabile_senza_accesso ? 'Azione salvata. Il responsabile non ha un accesso alla Suite: non può vederla finché non gli viene creato' : 'Azione salvata', r.responsabile_senza_accesso ? 'err' : undefined);
+      reload();
+    } catch (e) { toast(e.message, 'err'); }
+  };
   const quick = async (a, stato) => { try { await api.put(`/nc/${nc.id}/azioni/${a.id}`, { stato }); reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <Card title="4 · Azioni correttive e preventive" flush actions={nc.stato !== 'ANNULLATA' && <button className="btn sm ghost" onClick={openNew}>Aggiungi</button>}>
       {!azioni.length ? <Empty>Nessuna azione. Per le NC minori può bastare il trattamento; per cause ripetute pianifica almeno un'azione preventiva (formazione, blocco software, istruzione operativa).</Empty> : (
         <table className="t"><tbody>{azioni.map((a) => (
           <tr key={a.id}>
-            <td><div className="small"><Badge tone={a.tipo === 'CORRETTIVA' ? 'teal' : 'blue'}>{a.tipo === 'CORRETTIVA' ? 'Correttiva' : 'Preventiva'}</Badge></div><div className="mt" style={{ whiteSpace: 'pre-wrap' }}>{a.descrizione}</div><div className="small muted">{a.responsabile || 'responsabile non indicato'}{a.scadenza ? ` · entro ${itDate(a.scadenza)}` : ''}{a.completata_at ? ` · completata ${itDate(a.completata_at)}` : ''}</div></td>
+            <td><div className="small"><Badge tone={a.tipo === 'CORRETTIVA' ? 'teal' : 'blue'}>{a.tipo === 'CORRETTIVA' ? 'Correttiva' : 'Preventiva'}</Badge></div><div className="mt" style={{ whiteSpace: 'pre-wrap' }}>{a.descrizione}</div><div className="small muted">{a.responsabile || 'responsabile non indicato'}{a.responsabile && !a.responsabile_person_id ? ' (non collegato all\'elenco del personale)' : a.responsabile_person_id && !a.responsabile_ha_accesso ? ' (senza accesso alla Suite)' : ''}{a.scadenza ? ` · entro ${itDate(a.scadenza)}` : ''}{a.completata_at ? ` · completata ${itDate(a.completata_at)}` : ''}</div>{a.resp_nota && <div className="small" style={{ marginTop: 4 }}><b>Aggiornamento del responsabile{a.resp_aggiornata_at ? ` del ${itDate(a.resp_aggiornata_at)}` : ''}:</b> {a.resp_nota}</div>}</td>
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><Badge tone={AZ_STATO[a.stato].tone}>{AZ_STATO[a.stato].label}</Badge>
               <div className="row end" style={{ marginTop: 6, gap: 4 }}>{a.stato !== 'COMPLETATA' && a.stato !== 'ANNULLATA' && <button className="btn sm" onClick={() => quick(a, 'COMPLETATA')}>Completata</button>}<button className="btn sm ghost" onClick={() => openEdit(a)}>Modifica</button></div></td>
           </tr>
@@ -139,7 +152,11 @@ function AzioniCard({ nc, azioni, reload }) {
           <div className="seg">{['CORRETTIVA', 'PREVENTIVA'].map((t) => <label key={t} className={f.tipo === t ? 'on' : ''}><input type="radio" checked={f.tipo === t} onChange={() => setF({ ...f, tipo: t })} />{t === 'CORRETTIVA' ? 'Correttiva (elimina la causa)' : 'Preventiva (evita che si ripeta altrove)'}</label>)}</div>
           <Field label="Descrizione"><textarea value={f.descrizione} onChange={(e) => setF({ ...f, descrizione: e.target.value })} placeholder="Es. affiancamento dell'operatore sulla tecnica di prelievo; blocco software sull'accettazione senza consenso HIV" /></Field>
           <div className="form-grid">
-            <Field label="Responsabile"><input value={f.responsabile} onChange={(e) => setF({ ...f, responsabile: e.target.value })} /></Field>
+            <Field label="Responsabile" help={f.responsabile && !f.responsabile_person_id ? `Scritto a mano in precedenza: ${f.responsabile}. Scegli la persona dall'elenco.` : (personale || []).find((x) => String(x.id) === String(f.responsabile_person_id) && !x.ha_accesso) ? 'Questa persona non ha un accesso alla Suite: non riceverà l\'avviso.' : 'Dipendenti e liberi professionisti. La persona viene avvisata e aggiorna lo stato da "Le mie azioni".'}>
+              <select data-testid="az-resp" value={f.responsabile_person_id || ''} onChange={(e) => setF({ ...f, responsabile_person_id: e.target.value })}>
+                <option value="">{personale ? 'Nessun responsabile' : 'Caricamento…'}</option>
+                {(personale || []).map((x) => <option key={x.id} value={x.id}>{x.nome} · {x.kind === 'LP' ? 'libero professionista' : 'dipendente'}{x.job_title ? ` · ${x.job_title}` : ''}{x.ha_accesso ? '' : ' (senza accesso alla Suite)'}</option>)}
+              </select></Field>
             <Field label="Scadenza"><input type="date" value={f.scadenza} onChange={(e) => setF({ ...f, scadenza: e.target.value })} /></Field>
             <Field label="Stato"><select value={f.stato} onChange={(e) => setF({ ...f, stato: e.target.value })}>{Object.entries(AZ_STATO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
           </div>

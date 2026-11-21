@@ -31,7 +31,12 @@ export default function ModuleFrame({ moduleKey }) {
   const Mod = mio ? car.Mod : null; const state = mio ? car.state : null; const err = mio ? car.err : null;
   if (!def) return <Navigate to="/" replace />;
   // openToAll (meta.js del modulo, es. Ticket): accessibile a chiunque sia autenticato, anche senza grant
-  if (!(isAdmin(user) || hasModule(user, key) || def.openToAll)) return <Forbidden />;
+  // Senza profilo sul modulo decide il server: alcuni moduli danno un accesso implicito e ristretto (es. Non conformità a chi è
+  // responsabile di un'azione: solo "Le mie azioni"). Se /state risponde, si entra; se rifiuta, sezione non abilitata.
+  if (!(isAdmin(user) || hasModule(user, key) || def.openToAll)) {
+    if (!state) return <div className="page"><Skeleton lines={8} /></div>;
+    if (state.error) return <Forbidden />;
+  }
   if (err) return <div className="page"><Empty icon="alert" title="Modulo non caricato">{err.message}</Empty></div>;
   if (state?.error) {
     const off = state.error.code === 'MODULE_OFF' || state.error.status === 503;

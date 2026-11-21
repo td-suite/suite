@@ -19,10 +19,17 @@ import Audit from './pages/Audit.jsx';
 import Settings from './pages/Settings.jsx';
 import Guide from './pages/Guide.jsx';
 import Notifiche from './pages/Notifiche.jsx';
+import MieAzioni from './pages/MieAzioni.jsx';
 
 export default function Module({ moduleUser }) {
   const user = moduleUser;
   if (!user) return null;
+  // profilo implicito AZIONI (responsabile di un'azione, nessun profilo sul widget): solo "Le mie azioni"
+  if (user.role === 'AZIONI') return (
+    <AuthProvider user={user}><ToastProvider>
+      <Routes><Route path="mie-azioni" element={<MieAzioni />} /><Route path="*" element={<Navigate to={`${base}/mie-azioni`} replace />} /></Routes>
+    </ToastProvider></AuthProvider>
+  );
   return (
     <AuthProvider user={user}>
       <ToastProvider>
@@ -43,6 +50,7 @@ export default function Module({ moduleUser }) {
             <Route path="impostazioni" element={isQualita(user) ? <Settings /> : <Forbidden />} />
             <Route path="guida" element={<Guide />} />
             <Route path="notifiche" element={<Notifiche />} />
+            <Route path="mie-azioni" element={<MieAzioni />} />
             <Route path="*" element={<Navigate to={base} replace />} />
           </Routes>
         </LiveProvider>

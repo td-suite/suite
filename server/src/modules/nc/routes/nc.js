@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { personaleAssegnabile, personaAssegnabile, avvisaResponsabile } from '../lib/azioni.js';
 import { servFile } from '../../../lib/servFile.js';
 import { z } from 'zod';
 import { one, many, q, tx } from '../db.js';
@@ -146,7 +147,7 @@ r.get('/nc/:id', ah(async (req, res) => {
       coalesce((SELECT json_agg(json_build_object('id', al.id, 'nome_file', al.nome_file, 'mime', al.mime, 'dimensione', al.dimensione)) FROM nc_allegati al WHERE al.messaggio_id=m.id), '[]'::json) AS allegati
     FROM nc_messaggi m LEFT JOIN users u ON u.id=m.user_id WHERE m.nc_id=$1 ${internal ? '' : "AND m.direzione <> 'INTERNO'"} ORDER BY m.created_at`, [nc.id]);
   const allegati = await many(`SELECT al.id, al.nome_file, al.mime, al.dimensione, al.created_at, al.messaggio_id, al.lis_allegato_id, u.full_name AS caricato_da_nome FROM nc_allegati al LEFT JOIN users u ON u.id=al.caricato_da WHERE al.nc_id=$1 ORDER BY al.created_at`, [nc.id]);
-  const azioni = internal ? await many('SELECT a.*, u.full_name AS created_by_name FROM nc_azioni a LEFT JOIN users u ON u.id=a.created_by WHERE a.nc_id=$1 ORDER BY a.created_at', [nc.id]) : [];
+  const azioni = internal ? await many(`SELECT a.*, u.full_name AS created_by_name, EXISTS (SELECT 1 FROM public.users su WHERE su.person_id = a.responsabile_person_id AND su.status = 'ACTIVE') AS responsabile_ha_accesso FROM nc_azioni a LEFT JOIN users u ON u.id=a.created_by WHERE a.nc_id=$1 ORDER BY a.created_at`, [nc.id]) : [];
   const email = internal ? await many('SELECT id, tipo, destinatari, cc, oggetto, stato, errore, tentativi, sent_at, created_at FROM email_log WHERE nc_id=$1 ORDER BY created_at DESC', [nc.id]) : [];
   const storico = internal ? await many('SELECT a.id, a.action, a.label, a.at, u.full_name FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.nc_id=$1 ORDER BY a.at DESC LIMIT 100', [nc.id]) : [];
   const sv = await loadSede(nc.sede_id);
@@ -274,28 +275,45 @@ r.post('/nc/:id/rca', requireLab, ah(async (req, res) => {
 }));
 
 // ---------- fase 4: azioni CAPA ----------
-const azioneSchema = z.object({ tipo: z.enum(['CORRETTIVA', 'PREVENTIVA']), descrizione: z.string().min(5).max(2000), responsabile: z.string().max(160).optional().default(''), scadenza: z.string().nullable().optional(), stato: z.enum(['PIANIFICATA', 'IN_CORSO', 'COMPLETATA', 'ANNULLATA']).optional(), note: z.string().max(2000).optional().default('') });
+// v0.93.0: il responsabile è una persona dell'anagrafica (dipendente o libero professionista), scelta dall'elenco; alla assegnazione
+// riceve la notifica e trova l'azione in "Le mie azioni" (lib/azioni.js). Il testo libero resta solo per i nomi scritti prima.
+const azioneSchema = z.object({ tipo: z.enum(['CORRETTIVA', 'PREVENTIVA']), descrizione: z.string().min(5).max(2000), responsabile: z.string().max(160).optional().default(''),
+  responsabile_person_id: z.coerce.number().int().positive().nullable().optional(),
+  scadenza: z.string().nullable().optional(), stato: z.enum(['PIANIFICATA', 'IN_CORSO', 'COMPLETATA', 'ANNULLATA']).optional(), note: z.string().max(2000).optional().default('') });
+r.get('/personale-assegnabile', requireLab, ah(async (_req, res) => { res.json(await personaleAssegnabile()); }));
 r.post('/nc/:id/azioni', requireLab, ah(async (req, res) => {
   const nc = await getVisible(req, req.params.id);
   const b = parse(azioneSchema, req.body);
   if (nc.stato === 'ANNULLATA') throw bad('NC annullata');
-  const a = await one(`INSERT INTO nc_azioni (nc_id, tipo, descrizione, responsabile, scadenza, stato, note, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [nc.id, b.tipo, b.descrizione.trim(), b.responsabile.trim() || null, b.scadenza || null, b.stato || 'PIANIFICATA', b.note.trim() || null, req.user.id]);
+  const persona = b.responsabile_person_id ? await personaAssegnabile(b.responsabile_person_id) : null;
+  if (b.responsabile_person_id && !persona) throw bad('Responsabile non valido: si sceglie fra dipendenti e liberi professionisti attivi');
+  const a = await one(`INSERT INTO nc_azioni (nc_id, tipo, descrizione, responsabile, responsabile_person_id, scadenza, stato, note, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [nc.id, b.tipo, b.descrizione.trim(), persona ? persona.nome : (b.responsabile.trim() || null), persona?.id || null, b.scadenza || null, b.stato || 'PIANIFICATA', b.note.trim() || null, req.user.id]);
   await q('UPDATE nc SET version=version+1, updated_at=now(), updated_by=$2 WHERE id=$1', [nc.id, req.user.id]);
-  await audit(req, 'NC_ACTION_CREATED', { entity: 'nc_azione', entityId: a.id, ncId: nc.id, label: `${nc.codice} · azione ${b.tipo.toLowerCase()}: ${b.descrizione.slice(0, 80)}` });
-  res.status(201).json(a);
+  const avvisati = persona ? await avvisaResponsabile(a, nc, persona) : 0;
+  await audit(req, 'NC_ACTION_CREATED', { entity: 'nc_azione', entityId: a.id, ncId: nc.id, label: `${nc.codice} · azione ${b.tipo.toLowerCase()}: ${b.descrizione.slice(0, 80)}${persona ? ` · assegnata a ${persona.nome}` : ''}` });
+  res.status(201).json({ ...a, responsabile_avvisato: avvisati > 0, responsabile_senza_accesso: Boolean(persona) && !avvisati });
 }));
 r.put('/nc/:id/azioni/:aid', requireLab, ah(async (req, res) => {
   const nc = await getVisible(req, req.params.id);
   const b = parse(azioneSchema.partial(), req.body);
   const cur = await one('SELECT * FROM nc_azioni WHERE id=$1 AND nc_id=$2', [Number(req.params.aid), nc.id]);
   if (!cur) throw notFound('Azione non trovata');
-  const a = await one(`UPDATE nc_azioni SET tipo=coalesce($2,tipo), descrizione=coalesce($3,descrizione), responsabile=coalesce($4,responsabile), scadenza=coalesce($5,scadenza), stato=coalesce($6,stato), note=coalesce($7,note),
+  // responsabile: undefined = non toccato; null = tolto; id = persona dell'elenco (il nome a testo segue la persona)
+  const cambiaResp = b.responsabile_person_id !== undefined;
+  const persona = cambiaResp && b.responsabile_person_id ? await personaAssegnabile(b.responsabile_person_id) : null;
+  if (cambiaResp && b.responsabile_person_id && !persona) throw bad('Responsabile non valido: si sceglie fra dipendenti e liberi professionisti attivi');
+  const nomeResp = cambiaResp ? (persona ? persona.nome : null) : (b.responsabile ?? null);
+  const a = await one(`UPDATE nc_azioni SET tipo=coalesce($2,tipo), descrizione=coalesce($3,descrizione), responsabile=CASE WHEN $8 THEN $4 ELSE coalesce($4,responsabile) END,
+      responsabile_person_id=CASE WHEN $8 THEN $9::int ELSE responsabile_person_id END, scadenza=coalesce($5,scadenza), stato=coalesce($6,stato), note=coalesce($7,note),
       completata_at = CASE WHEN coalesce($6,stato)='COMPLETATA' THEN coalesce(completata_at, now()) ELSE NULL END, updated_at=now() WHERE id=$1 RETURNING *`,
-    [cur.id, b.tipo ?? null, b.descrizione?.trim() ?? null, b.responsabile ?? null, b.scadenza ?? null, b.stato ?? null, b.note ?? null]);
+    [cur.id, b.tipo ?? null, b.descrizione?.trim() ?? null, nomeResp, b.scadenza ?? null, b.stato ?? null, b.note ?? null, cambiaResp, persona?.id || null]);
   await q('UPDATE nc SET version=version+1, updated_at=now(), updated_by=$2 WHERE id=$1', [nc.id, req.user.id]);
+  // nuovo responsabile (o azione mai notificata): avviso
+  const nuovo = persona && (persona.id !== cur.responsabile_person_id || !cur.assegnata_at);
+  const avvisati = nuovo ? await avvisaResponsabile(a, nc, persona) : 0;
   await audit(req, 'NC_ACTION_UPDATED', { entity: 'nc_azione', entityId: a.id, ncId: nc.id, label: `${nc.codice} · azione ${a.stato.toLowerCase()}`, data: diff(cur, a, ['stato', 'descrizione', 'responsabile', 'scadenza']) });
-  res.json(a);
+  res.json({ ...a, responsabile_avvisato: avvisati > 0, responsabile_senza_accesso: Boolean(nuovo) && !avvisati });
 }));
 r.delete('/nc/:id/azioni/:aid', requireLab, ah(async (req, res) => {
   const nc = await getVisible(req, req.params.id);

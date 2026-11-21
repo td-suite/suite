@@ -668,6 +668,8 @@ export async function getCounters(user) {
   return out;
 }
 const PER_USER_COUNTERS = {
+  // Non conformità (v0.93.0): a chi non ha un profilo sul widget, le azioni correttive e preventive aperte assegnate a lui
+  nc: async () => (await import('../modules/nc/lib/azioni.js')).contatoreHome,
   ferie: async () => (await import('../modules/ferie/lib/home.js')).contatoreHome,
   // Cockpit: scadenze di direzione da oggi a 7 giorni (lib/scadenzario.js), senza quelle segnate viste; solo a chi vede il Cockpit
   cockpit: async () => (await import('./scadenzario.js')).contatoreHome,

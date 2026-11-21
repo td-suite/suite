@@ -14,6 +14,8 @@ import { ah, parse } from './lib/util.js';
 import { sseHandler } from './lib/events.js';
 import { runSlaCheck } from './lib/nc.js';
 import { perimetroSedi } from './lib/sedi.js';
+import { haAzioni, mieAzioni, contaMieAperte, aggiornaMia, STATI_RESPONSABILE } from './lib/azioni.js';
+import { audit, forbidden } from './lib/util.js';
 import inboundRoutes from './routes/inbound.js';
 import sediRoutes from './routes/sedi.js';
 import accRoutes from './routes/accettazioni.js';
@@ -41,7 +43,20 @@ export default function mount(app) {
 
   const r = Router();
   // Gli utenti Suite che entrano per la prima volta nascono ACTIVE nella tabella users del modulo (l'app li filtra così per le notifiche)
-  r.use(requireAuth, requireModuleReady(KEY, OPZIONI_UTENTE));
+  // v0.93.0 · profilo implicito AZIONI: chi non ha un profilo sul widget ma è responsabile di almeno un'azione (dipendente o libero
+  // professionista scelto dall'elenco) entra per vedere e aggiornare SOLO le proprie azioni. Elenco chiuso delle richieste ammesse.
+  r.use(requireAuth, ah(async (req, _res, next) => {
+    const u = req.user;
+    const senzaProfilo = !u.grants?.[KEY] && u.level !== 'OWNER' && u.level !== 'ADMIN';
+    req.ncSoloAzioni = false;
+    if (senzaProfilo && u.person_id && (await getModuleState(KEY)).schema_ready && await haAzioni(u.person_id)) req.ncSoloAzioni = true;
+    next();
+  }), (req, res, next) => requireModuleReady(KEY, req.ncSoloAzioni ? { ...OPZIONI_UTENTE, extraColumns: { ...OPZIONI_UTENTE.extraColumns, openToAll: true, defaultRole: 'AZIONI' } } : OPZIONI_UTENTE)(req, res, next));
+  r.use((req, _res, next) => {
+    if (req.moduleUser?.role !== 'AZIONI') return next();
+    const ok = (req.method === 'GET' && ['/badges', '/state', '/auth/me', '/auth/config', '/mie-azioni'].includes(req.path)) || (req.method === 'PUT' && /^\/mie-azioni\/\d+$/.test(req.path));
+    return ok ? next() : next(forbidden('Il tuo accesso al widget riguarda solo le azioni assegnate a te'));
+  });
   // L'app ragiona con il suo utente: la riga users dello schema nc, con il ruolo = profilo del grant Suite e sedi = scope del grant (public.sites)
   r.use(ah(async (req, _res, next) => {
     req.suiteUser = req.user;
@@ -58,8 +73,10 @@ export default function mount(app) {
   r.get('/badges', async (req, res, next) => {
     try {
       const { one } = await import('./db.js');
+      const mie = await contaMieAperte(req.suiteUser?.person_id);
+      if (req.user.role === 'AZIONI') return res.json({ mie_azioni: mie });
       const r = await one(`SELECT count(*) FILTER (WHERE stato='INVIATA_SEDE' AND sla_due_at < now())::int AS oltre_sla, count(*) FILTER (WHERE stato='CHIUSA' AND (rca_richiesta OR EXISTS (SELECT 1 FROM nc_azioni z WHERE z.nc_id=nc.id)))::int AS da_verificare FROM nc`);
-      res.json(r);
+      res.json({ ...r, mie_azioni: mie });
     } catch (e) { next(e); }
   });
   r.get('/state', ah(async (req, res) => {
@@ -75,6 +92,15 @@ export default function mount(app) {
     const b = parse(z.object({ notify_email: z.boolean().optional(), telefono: z.string().max(40).optional() }), req.body);
     await q('UPDATE users SET notify_email=coalesce($2,notify_email), telefono=coalesce($3,telefono), updated_at=now() WHERE id=$1', [req.user.id, b.notify_email ?? null, b.telefono ?? null]);
     res.json({ ok: true });
+  }));
+  // Le mie azioni (v0.93.0): le azioni correttive e preventive di cui la persona è responsabile, con l'aggiornamento dello stato
+  r.get('/mie-azioni', ah(async (req, res) => { res.json({ righe: await mieAzioni(req.suiteUser.person_id), stati: STATI_RESPONSABILE }); }));
+  r.put('/mie-azioni/:id', ah(async (req, res) => {
+    const b = parse(z.object({ stato: z.enum(STATI_RESPONSABILE).optional(), nota: z.string().max(2000).optional() }).refine((x) => x.stato || x.nota != null, 'Indicare lo stato o una nota'), req.body);
+    const out = await aggiornaMia(req.suiteUser.person_id, req.params.id, b, req.user);
+    if (!out) return res.status(404).json({ error: 'Azione non trovata fra quelle assegnate a te' });
+    await audit(req, 'NC_ACTION_RESP_UPDATE', { entity: 'nc_azione', entityId: out.dopo.id, ncId: out.dopo.nc_id, label: `${out.prima.codice} · il responsabile aggiorna l'azione: ${out.dopo.stato.toLowerCase()}`, data: { da: out.prima.stato, a: out.dopo.stato, nota: Boolean(b.nota) } });
+    res.json(out.dopo);
   }));
   r.use(sediRoutes);
   r.use(accRoutes);

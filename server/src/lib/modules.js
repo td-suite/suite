@@ -56,7 +56,9 @@ export async function moduleUser(key, suiteUser, { roleColumn = 'role', extraCol
   if (!row) {
     const cols = ['email', 'full_name', roleColumn, ...Object.keys(extraColumns.insert || {})];
     const vals = [suiteUser.email, suiteUser.full_name, role, ...Object.values(extraColumns.insert || {})];
-    row = await db.one(`INSERT INTO users (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
+    // al primo ingresso la pagina fa più richieste insieme (stato, contatori): se un'altra ha appena creato la riga, si rilegge
+    try { row = await db.one(`INSERT INTO users (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals); }
+    catch (e) { if (e.code !== '23505') throw e; row = await db.one('SELECT * FROM users WHERE lower(email)=lower($1)', [suiteUser.email]); if (!row) throw e; }
   } else if (row[roleColumn] !== role && !suiteUser.vedi_come) {   // "Vedi come profilo": il ruolo vale per la sola richiesta, la riga non si tocca
     row = await db.one(`UPDATE users SET ${roleColumn}=$2 WHERE id=$1 RETURNING *`, [row.id, role]);
   }
