@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { many, one } from '../db.js';
-import { ah } from '../lib/util.js';
+import { z } from 'zod';
+import { ah, audit, parse } from '../lib/util.js';
 import { getSettings, costCoefficient, companyCost, ralAt } from '../lib/payroll.js';
 import { computeDeadlines, missingDocuments } from '../lib/deadlines.js';
-import { soloLp } from '../lib/access.js';
+import { soloLp, requireWrite } from '../lib/access.js';
+import { segnala, fermaSegnalazione, statoSegnalazioni, runSolleciti } from '../lib/segnalazioni.js';
 import { compensiLp } from './resources.js';
 
 const r = Router();
@@ -101,7 +103,31 @@ r.get('/deadlines/esclusi', ah(async (_req, res) => {
 
 r.get('/deadlines', ah(async (req, res) => {
   const tutte = await computeDeadlines({ horizonDays: Number(req.query.days || 365) });
-  res.json(soloLp(req.user) ? tutte.filter((d) => d.kind === 'LP') : tutte);   // profilo LP: solo le scadenze dei liberi professionisti
+  const viste = soloLp(req.user) ? tutte.filter((d) => d.kind === 'LP') : tutte;   // profilo LP: solo le scadenze dei liberi professionisti
+  // v0.92.0: stato della segnalazione (prima email, solleciti, prossimo) accanto a ogni scadenza
+  const st = viste.length ? await statoSegnalazioni(viste.map((d) => d.key)) : {};
+  res.json(viste.map((d) => ({ ...d, segnalazione: st[d.key] || null })));
+}));
+
+// "Segnala Scadenza" (v0.92.0): prima email dalla casella People e poi un sollecito ogni 7 giorni finché la scadenza resta aperta.
+// prova = true: solo l'elenco con i destinatari. Solo chi scrive nel modulo (ADMIN, HR).
+r.post('/deadlines/segnala', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ keys: z.array(z.string().min(1).max(80)).min(1).max(200), prova: z.boolean().optional() }), req.body);
+  const out = await segnala(d.keys, { userId: req.user.id, prova: Boolean(d.prova) });
+  if (!d.prova) await audit(req, 'SCADENZE_SEGNALATE', 'deadline', null, { chiavi: out.righe.map((x) => x.key), esiti: out.righe.reduce((m, x) => ({ ...m, [x.esito]: (m[x.esito] || 0) + 1 }), {}) });
+  res.json(out);
+}));
+// Esegue subito il giro dei solleciti (lo stesso del job orario): utile dopo aver sistemato la posta
+r.post('/deadlines/solleciti/esegui', requireWrite, ah(async (req, res) => {
+  const out = await runSolleciti();
+  await audit(req, 'SCADENZE_SOLLECITI_ESEGUITI', 'deadline', null, out);
+  res.json(out);
+}));
+r.post('/deadlines/segnala/ferma', requireWrite, ah(async (req, res) => {
+  const d = parse(z.object({ key: z.string().min(1).max(80) }), req.body);
+  const n = await fermaSegnalazione(d.key, 'fermata a mano');
+  if (n) await audit(req, 'SCADENZA_SOLLECITI_FERMATI', 'deadline', null, { chiave: d.key });
+  res.json({ fermate: n });
 }));
 
 r.get('/costs.xlsx', ah(async (req, res) => {

@@ -126,6 +126,15 @@ export default function mount(app) {
     return runReminders();
   });
   // Casella People: ogni 10 minuti i messaggi con allegati entrano in "Casella People" da approvare (nessun upload automatico)
+  // v0.92.0: sollecito ogni 7 giorni delle scadenze segnalate dal Calendario (lib/segnalazioni.js)
+  registerJob(`${KEY}:solleciti`, 60, async () => {
+    const st = await getModuleState(KEY);
+    if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
+    // i solleciti partono in orario d'ufficio (8-19, ora di Roma)
+    const ora = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', hour: '2-digit', hour12: false }).format(new Date()));
+    if (ora < 8 || ora >= 19) return { skipped: 'fuori_orario' };
+    return (await import('./lib/segnalazioni.js')).runSolleciti();
+  });
   registerJob(`${KEY}:people-inbox`, 10, async () => {
     const st = await getModuleState(KEY);
     if (st.mode !== 'LIVE') return { skipped: true, mode: st.mode };
