@@ -5,6 +5,7 @@ import { ah, audit, parse } from '../lib/util.js';
 import { getSettings, costCoefficient, companyCost, ralAt } from '../lib/payroll.js';
 import { computeDeadlines, missingDocuments } from '../lib/deadlines.js';
 import { soloLp, requireWrite } from '../lib/access.js';
+import { simulazioneCedolini, xlsxCedolini, pdfCedolini, meseCorrente } from '../lib/cedolini.js';
 import { segnala, fermaSegnalazione, statoSegnalazioni, runSolleciti } from '../lib/segnalazioni.js';
 import { compensiLp } from './resources.js';
 
@@ -128,6 +129,21 @@ r.post('/deadlines/segnala/ferma', requireWrite, ah(async (req, res) => {
   const n = await fermaSegnalazione(d.key, 'fermata a mano');
   if (n) await audit(req, 'SCADENZA_SOLLECITI_FERMATI', 'deadline', null, { chiave: d.key });
   res.json({ fermate: n });
+}));
+
+// Simulazione dei cedolini del mese (v0.94.0): netti in busta da pagare e F24, per dipendente e in totale. Dati retributivi: solo chi
+// scrive nel modulo (ADMIN, HR). ?mese=AAAA-MM, predefinito il mese in corso.
+const meseRichiesto = (req) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.mese || '')) ? String(req.query.mese) : meseCorrente());
+r.get('/cedolini', requireWrite, ah(async (req, res) => { res.json(await simulazioneCedolini(meseRichiesto(req))); }));
+r.get('/cedolini.xlsx', requireWrite, ah(async (req, res) => {
+  const d = await simulazioneCedolini(meseRichiesto(req));
+  await audit(req, 'CEDOLINI_SIMULAZIONE_EXPORT', 'simulation', null, { formato: 'xlsx', mese: d.mese, dipendenti: d.dipendenti });
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition', `attachment; filename="simulazione-cedolini_${d.mese}.xlsx"`).send(await xlsxCedolini(d));
+}));
+r.get('/cedolini.pdf', requireWrite, ah(async (req, res) => {
+  const d = await simulazioneCedolini(meseRichiesto(req));
+  await audit(req, 'CEDOLINI_SIMULAZIONE_EXPORT', 'simulation', null, { formato: 'pdf', mese: d.mese, dipendenti: d.dipendenti });
+  res.set('Content-Type', 'application/pdf').set('Content-Disposition', `attachment; filename="simulazione-cedolini_${d.mese}.pdf"`).send(await pdfCedolini(d));
 }));
 
 r.get('/costs.xlsx', ah(async (req, res) => {

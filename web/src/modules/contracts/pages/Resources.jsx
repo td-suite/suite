@@ -29,6 +29,10 @@ export default function Resources({ kind }) {
         <div><h1>{title}</h1><div className="sub">{rows.length} persone dell'anagrafica unica{costs ? ` · costo annuo stimato ${eur(totCost)}` : ''}. Clicca una riga per aprire la scheda e il dossier HR.</div></div>
         <div className="row">
           {costs && kind !== 'TIROCINANTE' && <a className="btn ghost" href={`${API_BASE}/stats/costs.xlsx${kind ? `?kind=${kind}` : ''}`} title={kind === 'LP' ? 'Solo liberi professionisti, con tutti i compensi (fissi, orari, a prestazione, variabili)' : kind === 'DIPENDENTE' ? 'Solo dipendenti' : 'Tutto l\'organico'}>Esporta Excel</a>}
+          {canWrite(user) && kind === 'DIPENDENTE' && <>
+            <a className="btn ghost" data-testid="cedolini-xlsx" href={`${API_BASE}/stats/cedolini.xlsx`} title="Simulazione dei cedolini del mese in corso: per ogni dipendente netto in busta da pagare e F24 (contributi, IRPEF, addizionali). Stima per la cassa, non sostituisce il consulente del lavoro.">Cedolini del mese · XLSX</a>
+            <a className="btn ghost" data-testid="cedolini-pdf" href={`${API_BASE}/stats/cedolini.pdf`} title="La stessa simulazione in PDF">Cedolini del mese · PDF</a>
+          </>}
           {canWrite(user) && kind && kind !== 'TIROCINANTE' && <BulkImport kind={kind} onDone={() => list.reload()} />}
           {canWrite(user) && <Link className="btn" to={kind === 'TIROCINANTE' ? `${BASE}/tirocinanti/nuovo` : `${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>{kind === 'TIROCINANTE' ? '+ Nuovo tirocinante' : '+ Nuova risorsa'}</Link>}
         </div>
