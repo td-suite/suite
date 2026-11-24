@@ -72,3 +72,9 @@ validazione: Documentazione del widget v0.96.0 (docs/PUBLIC_AFFAIRS.md), da rece
 **Fonte da controllare.** Se una fonte non risponde, o cambia struttura, compare come da controllare: va riprovata o corretta.
 
 **Email.** In Impostazioni si scelgono destinatari, ora di invio e quali voci di normativa entrano nell'email.
+
+### Archivio e normativa di riferimento (dalla v0.97.0)
+
+**Archivio** raccoglie tutto ciò che la Suite ha registrato dalle fonti, dal più recente: per gli avvisi e i bandi parte dal 1° gennaio 2026, ricostruito leggendo anche le pagine successive degli elenchi. Le voci dell'archivio non sono novità e non generano email. La data è quella di pubblicazione quando l'elenco la riporta, altrimenti la scadenza scritta nel titolo.
+
+**Normativa di riferimento** riunisce i collegamenti alle norme su autorizzazione e accreditamento delle strutture sanitarie in Toscana (legge regionale 51/2009, regolamento 79/R del 2016 con gli allegati, manuale operativo dei requisiti di esercizio) e permette di fare una domanda con parole proprie. La risposta è preparata da un modello AI sui soli passi delle norme che la Suite gli passa, con il rimando al punto della norma; i passi usati si leggono sotto la risposta. Non ha valore legale: prima di decidere si legge il testo ufficiale.

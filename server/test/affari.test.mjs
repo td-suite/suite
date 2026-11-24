@@ -3,7 +3,8 @@
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { estraiLink, leggiFeed, scadenzaNelTitolo, testoPagina, chiaveUrl } from '../src/modules/affari/lib/estrai.js';
+import { estraiLink, leggiFeed, scadenzaNelTitolo, testoPagina, chiaveUrl, estraiRighe, paginaSuccessiva, dataNelTesto } from '../src/modules/affari/lib/estrai.js';
+import { dividi, parole } from '../src/modules/affari/lib/norme.js';
 
 describe('Public Affairs: lettura delle fonti (funzioni pure)', () => {
   test('collegamenti di una pagina: assoluti, senza doppioni, senza voci di servizio', () => {
@@ -25,6 +26,31 @@ describe('Public Affairs: lettura delle fonti (funzioni pure)', () => {
   });
 });
 
+describe('Public Affairs v0.97.0: elenchi a righe, paginazione, brani delle norme (funzioni pure)', () => {
+  const riga = (href, t, data) => `<tr class="cat-list-row0"><th class="list-title"><a href="${href}"> ${t} </a></th>${data ? `<td class="list-date small"> ${data} </td>` : ''}<td><span>Visite: 12</span></td></tr>`;
+  const pagina = `<nav><a href="/chi">Chi siamo</a></nav><main><table><thead><tr><th><a href="/elenco#">Titolo</a></th></tr></thead><tbody>${riga('/elenco/a', 'Avviso prelievi - scadenza 21.10.2026', '18 Novembre 2026')}${riga('/elenco/b', 'Avviso immobili', '3 Marzo 2026')}${riga('/elenco/c', 'Bando senza data')}</tbody></table>
+    <ul class="pagination"><li><a class="page-link" href="/elenco?start=40">3</a></li><li><a class="page-link" aria-label="Vai alla pagina 2" href="/elenco?start=20">2</a></li></ul></main>`;
+  test('righe dell\'elenco con la data di pubblicazione della riga, non del titolo', () => {
+    const r = estraiRighe(pagina, 'https://ente.test/elenco');
+    assert.deepEqual(r.map((x) => [x.url, x.pubblicata]), [['https://ente.test/elenco/a', '2026-11-18'], ['https://ente.test/elenco/b', '2026-03-03'], ['https://ente.test/elenco/c', null]]);
+    assert.deepEqual(estraiRighe('<p><a href="/x">Una pagina senza tabella</a></p>', 'https://ente.test/'), [], 'non è un elenco a righe');
+    assert.equal(dataNelTesto('pubblicato il 5/1/2026'), '2026-01-05'); assert.equal(dataNelTesto('Visite: 1401'), null);
+  });
+  test('pagina successiva: il numero più piccolo fra i maggiori, stesso elenco', () => {
+    assert.equal(paginaSuccessiva(pagina, 'https://ente.test/elenco'), 'https://ente.test/elenco?start=20');
+    assert.equal(paginaSuccessiva(pagina, 'https://ente.test/elenco?start=20'), 'https://ente.test/elenco?start=40');
+    assert.equal(paginaSuccessiva(pagina, 'https://ente.test/elenco?start=40'), null);
+    assert.equal(paginaSuccessiva(pagina, 'https://ente.test/index.php/avvisi/445-elenco'), 'https://ente.test/elenco?start=20', 'indirizzo riscritto dal sito: vale il collegamento di paginazione');
+    assert.equal(paginaSuccessiva('<a href="/altro?page=2">altro</a>', 'https://ente.test/elenco'), null, 'un altro elenco non è la pagina successiva');
+  });
+  test('brani con il riferimento e parole della ricerca', () => {
+    const t = `ALLEGATO A\n\n### B1.1 MEDICINA DI LABORATORIO\n\n${'B1.1.1 Locale di esecuzione delle analisi commisurato alla complessità degli esami. '.repeat(12)}\n\nCapo II\n\nArt. 5 - Istanza di autorizzazione\n\n${'La struttura presenta domanda al Comune. '.repeat(20)}`;
+    const b = dividi(t);
+    assert.ok(b.length >= 2); assert.match(b[0].rif, /ALLEGATO A · B1\.1 MEDICINA DI LABORATORIO/); assert.match(b[b.length - 1].rif, /Art\. 5/);
+    assert.deepEqual(parole('Quali requisiti per l\'accreditamento del punto prelievo B1.1.11?'), ['requis', 'accred', 'punto', 'prelie', 'b1.1.11']);
+  });
+});
+
 const SALTA = !process.env.DATABASE_URL_TEST;
 describe('Public Affairs: nella Suite', { skip: SALTA }, () => {
   let H, S, db, O, D, sito, VIS, voci = [], feed = [];
@@ -37,6 +63,14 @@ describe('Public Affairs: nella Suite', { skip: SALTA }, () => {
       if (req.url === '/rss') { res.writeHead(200, { 'content-type': 'application/rss+xml' }); return res.end(`<?xml version="1.0"?><rss><channel>${feed.map((v) => `<item><title>${v.t}</title><link>${v.href}</link><description>${v.d}</description></item>`).join('')}</channel></rss>`); }
       if (req.url.startsWith('/avvisi/') || req.url.startsWith('/atti/')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(`<html><main><h1>Documento</h1><p>${'Prestazioni di laboratorio e prelievo venoso per l\'ambito territoriale. Requisiti: accreditamento istituzionale. '.repeat(6)}</p></main></html>`); }
       if (req.url === '/rotta') { res.writeHead(500); return res.end('errore'); }
+      if (req.url.startsWith('/elenco')) {   // elenco a righe su due pagine: la seconda è tutta del 2025
+        const tr = (h, t, d) => `<tr><th><a href="${h}">${t}</a></th><td class="list-date">${d}</td></tr>`;
+        const due = req.url.includes('start=20');
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(`<html><body><nav><a href="/menu-servizi">Servizi al cittadino</a></nav><main><table><tbody>${due ? tr('/elenco/v4', 'Avviso laboratori anno precedente', '10 Dicembre 2025') + tr('/elenco/v5', 'Avviso immobili anno precedente', '2 Novembre 2025') + tr('/elenco/v6', 'Altro avviso anno precedente', '1 Ottobre 2025')
+          : tr('/elenco/v1', 'Avviso di manifestazione di interesse per prestazioni di laboratorio', '18 Novembre 2026') + tr('/elenco/v2', 'Avviso locali per continuità assistenziale', '4 Febbraio 2026') + tr('/elenco/v3', 'Avviso veterinaria di fine anno', '20 Dicembre 2025')}</tbody></table>
+          <a class="page-link" href="/elenco?start=20">2</a></main></body></html>`);
+      }
       res.writeHead(404); res.end('no');
     });
     await new Promise((r) => srv.listen(0, r)); sito = { srv, base: `http://localhost:${srv.address().port}` };
@@ -103,5 +137,30 @@ describe('Public Affairs: nella Suite', { skip: SALTA }, () => {
     for (let i = 0; i < 8; i++) voci.push({ href: `/avvisi/nuova-struttura-${i}`, t: `Collegamento del nuovo sito numero ${i}` });
     const g = must(await O.post('/api/affari/giro', {}), 'giro'); assert.equal(g.nuove, 0, 'otto collegamenti nuovi insieme, oltre il tetto di 5: registrati senza avviso');
     assert.match(must(await O.get('/api/affari/fonti'), 'fonti').righe.find((f) => f.nome === 'Ente di prova · Avvisi').errore, /cambio di struttura/);
+  });
+  test('v0.97.0 archivio dal gennaio 2026: pagine successive, niente email, voci valutate; normativa di riferimento e domande', async () => {
+    // fonte registrata PRIMA che la Suite leggesse gli elenchi a righe: nell'archivio c'è anche un collegamento del menu
+    const f = must(await O.post('/api/affari/fonti', { nome: 'Ente di prova · Elenco a pagine', url: `${sito.base}/elenco`, categoria: 'BANDI' }), 'fonte elenco');
+    await db.query(`INSERT INTO affari.voci (fonte_id, url, titolo, preesistente, ai_stato) VALUES ($1,$2,'Servizi al cittadino',TRUE,'SENZA_AI')`, [f.id, `${sito.base}/menu-servizi`]);
+    assert.equal((await VIS.post('/api/affari/archivio', {})).s, 403);
+    const prima = (await posta()).length;
+    const a = must(await O.post(`/api/affari/fonti/${f.id}/archivio`, {}), 'archivio');
+    assert.equal(a.errore, null); assert.equal(a.pagine, 2, 'si ferma alla pagina tutta precedente al 2026'); assert.equal(a.trovate, 6); assert.equal(a.scartate_prima, 4); assert.equal(a.tolte_menu, 1);
+    const st = must(await O.get(`/api/affari/voci?vista=STORICO&fonte=${f.id}&dal=2026-01-01`), 'storico').righe;
+    assert.deepEqual(st.map((v) => v.pubblicata), ['2026-11-18', '2026-02-04']); assert.ok(st.every((v) => v.preesistente && v.utilita), 'archivio valutato dal modello, non è una novità');
+    assert.equal(must(await O.get(`/api/affari/voci?vista=RILEVANTI&fonte=${f.id}`), 'novità').righe.length, 0);
+    must(await O.post('/api/affari/email/invia', {}), 'invio'); assert.equal((await posta()).length, prima, 'l\'archivio non genera email');
+    assert.equal(must(await O.post(`/api/affari/fonti/${f.id}/archivio`, {}), 'archivio bis').aggiunte, 0, 'idempotente');
+    const tutte = must(await O.post('/api/affari/archivio', {}), 'archivio di tutte'); assert.ok(tutte.fonti.some((x) => x.fonte === f.id)); assert.ok(must(await O.get('/api/affari/archivio/stato'), 'stato').ultimo.at);
+    // normativa di riferimento: tre testi nel programma, due collegamenti
+    const n = must(await VIS.get('/api/affari/norme'), 'norme');
+    assert.equal(n.righe.length, 5); assert.deepEqual(n.righe.filter((x) => x.con_testo).map((x) => x.chiave), ['lr-51-2009', 'reg-79R-2016', 'manuale-requisiti-2021']); assert.ok(n.righe.find((x) => x.chiave === 'reg-79R-2016').brani > 200);
+    const r = must(await VIS.post('/api/affari/norme/chiedi', { domanda: 'Il punto prelievo collegato a un laboratorio accreditato deve accreditarsi?' }), 'domanda');
+    assert.equal(r.esito, 'COMPLETA'); assert.ok(r.riferimenti.length >= 1 && r.riferimenti[0].norma && r.riferimenti[0].estratto); assert.ok(r.brani_consultati >= 5);
+    assert.equal((await db.query(`SELECT riferimenti FROM affari.norme_domande WHERE id = $1`, [r.id])).rows[0].riferimenti.length, r.riferimenti.length);
+    assert.equal((await VIS.post('/api/affari/norme/chiedi', { domanda: 'boh' })).s, 400);
+    assert.equal((await VIS.post('/api/affari/norme', { titolo: 'Norma di prova', url: `${sito.base}/atti/1` })).s, 403);
+    const nuova = must(await O.post('/api/affari/norme', { titolo: 'Atto di prova sui laboratori', url: `${sito.base}/atti/1` }), 'norma nuova'); assert.equal(nuova.acquisita, true);
+    must(await O.del(`/api/affari/norme/${nuova.id}`), 'togli'); assert.equal(must(await O.get('/api/affari/norme'), 'norme').righe.length, 5);
   });
 });

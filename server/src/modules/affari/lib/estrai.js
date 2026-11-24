@@ -63,3 +63,62 @@ export function scadenzaNelTitolo(titolo) {
   if (!(g >= 1 && g <= 31 && me >= 1 && me <= 12 && a >= 2020 && a <= 2100)) return null;
   return `${a}-${String(me).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
 }
+
+// ---------------------------------------------------------------- elenchi a righe e a più pagine (v0.97.0: archivio dal gennaio 2026)
+const MESI = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };
+const iso = (a, m, g) => (a >= 2000 && a <= 2100 && m >= 1 && m <= 12 && g >= 1 && g <= 31 ? `${a}-${String(m).padStart(2, '0')}-${String(g).padStart(2, '0')}` : null);
+/** Prima data scritta in un testo: "18 Novembre 2026", "18/11/2026", "18.11.2026", "2026-11-18". null se non c'è. */
+export function dataNelTesto(s) {
+  const t = String(s || '');
+  let m = t.match(/\b(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})\b/i);
+  if (m) return iso(Number(m[3]), MESI[m[2].toLowerCase()], Number(m[1]));
+  m = t.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/);
+  if (m) return iso(Number(m[3]), Number(m[2]), Number(m[1]));
+  m = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  return m ? iso(Number(m[1]), Number(m[2]), Number(m[3])) : null;
+}
+/**
+ * Voci di un elenco a righe (tabella degli articoli di una categoria, come le pagine degli avvisi delle USL): una voce per riga <tr> con
+ * un collegamento nel titolo; la data di pubblicazione è quella scritta nelle ALTRE celle della riga (non nel titolo, dove di solito c'è
+ * la scadenza). Ritorna [] se la pagina non è fatta così (meno di 3 righe): chi chiama usa allora estraiLink.
+ */
+export function estraiRighe(html, base, { filtro = null } = {}) {
+  const corpo = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
+  const out = new Map(); const stessa = chiaveUrl(assoluto(base, base));
+  for (const tb of corpo.matchAll(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/gi)) {
+    for (const tr of tb[1].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const a = tr[1].match(/<a\b([^>]*)>([\s\S]*?)<\/a>/i); if (!a) continue;
+      const href = (a[1].match(/\bhref\s*=\s*"([^"]*)"/i) || a[1].match(/\bhref\s*=\s*'([^']*)'/i) || [])[1];
+      if (!href || /^(#|mailto:|tel:|javascript:)/i.test(href.trim())) continue;
+      const url = assoluto(ent(href), base); if (!url) continue;
+      const k = chiaveUrl(url); if (k === stessa || out.has(k)) continue;
+      if (filtro && !url.toLowerCase().includes(String(filtro).toLowerCase())) continue;
+      const titolo = pulito(a[2]); if (titolo.length < 4) continue;
+      out.set(k, { url, titolo: titolo.slice(0, 500), pubblicata: dataNelTesto(pulito(tr[1].replace(a[0], ' '))) });
+    }
+  }
+  return out.size >= 3 ? [...out.values()] : [];
+}
+/**
+ * Pagina successiva di un elenco a più pagine: tra i collegamenti allo STESSO percorso che cambiano solo il parametro di paginazione
+ * (start, limitstart, page, pagina, p), quello con il numero più piccolo fra i maggiori di quello della pagina attuale. null se non c'è.
+ */
+export function paginaSuccessiva(html, attuale) {
+  let qui; try { qui = new URL(attuale); } catch { return null; }
+  const numero = (u) => { for (const p of ['start', 'limitstart', 'page', 'pagina', 'p']) { const v = u.searchParams.get(p); if (v != null && /^\d+$/.test(v)) return { p, n: Number(v) }; } return null; };
+  const ora = numero(qui) || { p: null, n: 0 };
+  const percorso = (u) => u.pathname.replace(/\/+$/, '').replace(/^\/index\.php/, '');
+  let meglio = null;
+  for (const m of String(html || '').matchAll(/<a\b([^>]*)>/gi)) {
+    const href = (m[1].match(/\bhref\s*=\s*["']([^"']+)["']/i) || [])[1]; if (!href) continue;
+    const url = assoluto(ent(href), attuale); if (!url) continue;
+    let u; try { u = new URL(url); } catch { continue; }
+    if (u.hostname !== qui.hostname) continue;
+    const x = numero(u); if (!x || (ora.p && x.p !== ora.p) || x.n <= ora.n) continue;
+    // stessa sezione: stesso percorso; oppure (il sito riscrive l'indirizzo dell'elenco) un collegamento marcato come paginazione
+    const stesso = percorso(u) === percorso(qui);
+    if (!stesso && !/class\s*=\s*["'][^"']*(page-link|pagination|pager|pagenav)|rel\s*=\s*["']next|aria-label\s*=\s*["'][^"']*pagina/i.test(m[1])) continue;
+    if (!meglio || (stesso && !meglio.stesso) || (stesso === meglio.stesso && x.n < meglio.n)) meglio = { n: x.n, url, stesso };
+  }
+  return meglio ? meglio.url : null;
+}

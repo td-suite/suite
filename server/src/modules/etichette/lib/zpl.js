@@ -106,9 +106,13 @@ export function code128Barre(dati, opz = {}) {
 }
 
 // ------------------------------------------------------------------ modello e segnaposto
-export const SEGNAPOSTO = ['BARCODE', 'ACCETTAZIONE', 'COGNOME', 'NOME', 'NASCITA', 'SESSO', 'DATA', 'ORA', 'CONTENITORE', 'MATERIALE', 'ESAMI', 'CLIENTE', 'SEDE', 'N', 'TOT'];
+export const SEGNAPOSTO = ['BARCODE', 'ACCETTAZIONE', 'COGNOME', 'NOME', 'NASCITA', 'SESSO', 'DATA', 'ORA', 'CONTENITORE', 'MATERIALE', 'ESAMI', 'CLIENTE', 'SEDE', 'N', 'TOT',
+  // v0.97.0 (replica dell'etichetta di StudioLab): ETICHETTA = nome della provetta come in StudioLab ("T.Viola Alinity": tabella delle
+  // provette delle Impostazioni; in mancanza il materiale), ESAMIV = codici degli esami separati da virgola in ordine di codice,
+  // CODCLIENTE = codice del cliente nel gestionale ("TD00"), RITIRO = "Ritiro gg/mm/aaaa" (oggi sempre vuoto: la Data API non dà la data di ritiro prevista)
+  'ETICHETTA', 'ESAMIV', 'CODCLIENTE', 'RITIRO'];
 // Troncamento predefinito (caratteri) quando il segnaposto non ne indica uno: i nomi lunghi non escono dall'etichetta
-export const LIMITI = { BARCODE: 40, ACCETTAZIONE: 24, COGNOME: 22, NOME: 18, NASCITA: 10, SESSO: 3, DATA: 10, ORA: 5, CONTENITORE: 22, MATERIALE: 22, ESAMI: 60, CLIENTE: 32, SEDE: 32, N: 3, TOT: 3 };
+export const LIMITI = { BARCODE: 40, ACCETTAZIONE: 24, COGNOME: 22, NOME: 18, NASCITA: 10, SESSO: 3, DATA: 10, ORA: 5, CONTENITORE: 22, MATERIALE: 22, ESAMI: 60, CLIENTE: 32, SEDE: 32, N: 3, TOT: 3, ETICHETTA: 26, ESAMIV: 60, CODCLIENTE: 10, RITIRO: 20 };
 const RE_SEGNAPOSTO = /\{([A-Z]+)(?::(\d{1,3}))?\}/g;
 
 /** Valore pronto per un campo ZPL: niente caratteri di controllo, ^ e ~ (comandi ZPL), spazi multipli ridotti. */

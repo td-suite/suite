@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { ah, audit, bad, forbidden, notFound, parse } from '../../../lib/util.js';
 import { one } from '../db.js';
 import { KEY, contesto, settings, modelloPerSede } from '../lib/core.js';
-import { caricaAccettazione, clienteESede, costruisciEtichette } from '../lib/accettazioni.js';
+import { caricaAccettazione, clienteESede, costruisciEtichette, leggiProvette } from '../lib/accettazioni.js';
+import { aggiornaDalGestionale } from '../lib/scheda.js';
 import { identitaPerApertura } from '../lib/identita.js';
 import { tipoRicerca, cercaCodice, cercaCognome } from '../lib/ricerca.js';
 
@@ -29,27 +30,38 @@ const chiaveOk = (s) => typeof s === 'string' && s.length > 0 && s.length <= 200
 async function preparaAccettazione(req, instanceId, id) {
   const ctx = contesto(req);
   if (!chiaveOk(instanceId) || !chiaveOk(id)) throw bad('Accettazione non valida');
-  const acc = await caricaAccettazione(instanceId, id);
+  let acc = await caricaAccettazione(instanceId, id);
   if (!acc) throw notFound('Accettazione non trovata nella copia Synclab né tra le letture dal gestionale');
-  const cs = await clienteESede(instanceId, acc.testata.client_id);
+  let cs = await clienteESede(instanceId, acc.testata.client_id);
   if (!ctx.vede(cs.site_id)) throw forbidden('Accettazione fuori dal tuo perimetro di sedi');
+  // v0.97.0: le etichette si preparano sempre sui dati del gestionale letti ADESSO (una chiamata, al più una ogni 2 minuti per
+  // accettazione): la copia può non avere le provette aggiunte dopo l'ultima sincronizzazione. Se la lettura non riesce si usa la copia e lo si dice.
+  const lettura = await aggiornaDalGestionale(instanceId, id, { numero: acc.testata.numero });
+  if (lettura.esito === 'LETTA') {
+    acc = (await caricaAccettazione(instanceId, id)) || acc;
+    cs = await clienteESede(instanceId, acc.testata.client_id);
+    if (!ctx.vede(cs.site_id)) throw forbidden('Accettazione fuori dal tuo perimetro di sedi');
+  }
+  const recente = acc.letto_il && Date.now() - new Date(acc.letto_il).getTime() < 10 * 60 * 1000;
+  const aggiornamento = { diretta: Boolean(recente), letto_il: acc.letto_il || null, copia_il: acc.copia_il || null,
+    messaggio: recente ? null : `Etichette preparate sulla copia${acc.copia_il ? ' del gestionale' : ''}, non sulla lettura in diretta${lettura.messaggio ? ` (${lettura.messaggio})` : ''}: controlla in StudioLab che le provette siano tutte` };
   const imp = await settings();
   const id2 = await identitaPerApertura(instanceId, id, { numero: acc.testata.numero });
   const modello = await modelloPerSede(cs.site_id);
-  const etichette = costruisciEtichette(acc, id2.identita, { richiesta: imp.etichetta_richiesta, cliente: cs.cliente, sede: cs.sede, modello });
-  return { ctx, acc, cs, id2, modello, etichette };
+  const etichette = costruisciEtichette(acc, id2.identita, { richiesta: imp.etichetta_richiesta, cliente: cs.cliente, sede: cs.sede, modello, provette: leggiProvette(imp.provette) });
+  return { ctx, acc, cs, id2, modello, etichette, aggiornamento };
 }
 
 r.get('/accettazioni/:inst/:id', ah(async (req, res) => {
-  const { acc, cs, id2, modello, etichette } = await preparaAccettazione(req, req.params.inst, req.params.id);
+  const { acc, cs, id2, modello, etichette, aggiornamento } = await preparaAccettazione(req, req.params.inst, req.params.id);
   const stampe = await one(`SELECT count(*) FILTER (WHERE esito = 'OK')::int AS ok, max(at) FILTER (WHERE esito = 'OK') AS ultima FROM stampe WHERE instance_id = $1 AND request_id = $2`, [acc.testata.instance_id, acc.testata.id]);
   const p = id2.identita;
   res.json({
-    fonte: acc.fonte, accettazione: { ...acc.testata, cliente: cs.cliente, site_id: cs.site_id, sede: cs.sede },
+    fonte: acc.fonte, aggiornamento, accettazione: { ...acc.testata, cliente: cs.cliente, site_id: cs.site_id, sede: cs.sede },
     paziente: p && (p.cognome || p.nome) ? { cognome: p.cognome, nome: p.nome, nascita: p.nascita, sesso: p.sesso } : null,
     paziente_esito: id2.esito, paziente_messaggio: id2.messaggio || null,
     modello: modello ? { id: modello.id, nome: modello.nome, larghezza_mm: Number(modello.larghezza_mm), altezza_mm: Number(modello.altezza_mm), dpi: modello.dpi, validato: Boolean(modello.validato_il) } : null,
-    etichette: etichette.map((e) => ({ chiave: e.chiave, n: e.n, tipo: e.tipo, barcode: e.barcode, materiale: e.materiale, contenitore: e.contenitore, esami: e.esami, avvisi: e.avvisi, zpl: e.zpl })),
+    etichette: etichette.map((e) => ({ chiave: e.chiave, n: e.n, tipo: e.tipo, barcode: e.barcode, materiale: e.materiale, contenitore: e.contenitore, provetta: e.provetta || null, esami: e.esami, avvisi: e.avvisi, zpl: e.zpl })),
     stampe: { ok: stampe?.ok || 0, ultima: stampe?.ultima || null },
   });
 }));

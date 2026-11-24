@@ -11,7 +11,8 @@ import { ah, HttpError, bad, forbidden, notFound, audit as auditSuite } from '..
 import { aiEnabled } from '../../lib/claude.js';
 import { mailStatus } from '../../lib/mailer.js';
 import { one, many, q } from './db.js';
-import { KEY, CATEGORIE, LINEE, PREDEFINITE, impostazioni, salvaImpostazione, listaEmail, destinatari, caricaSeme, vociDellaFonte, leggiFonte, giro, valutaNovita, inviaGiornaliera, novitaDaInviare, oraRoma } from './lib/core.js';
+import { KEY, CATEGORIE, LINEE, PREDEFINITE, impostazioni, salvaImpostazione, listaEmail, destinatari, caricaSeme, vociDellaFonte, leggiFonte, giro, valutaNovita, inviaGiornaliera, novitaDaInviare, oraRoma, archivia, archiviaTutte, valutaArchivio, ARCHIVIO_DAL } from './lib/core.js';
+import { caricaNorme, elencoNorme, aggiungiNorma, chiedi, AVVERTENZA } from './lib/norme.js';
 import { assoluto } from './lib/estrai.js';
 
 export const OPZIONI_UTENTE = { roleColumn: 'role', extraColumns: { defaultAdminRole: 'VIEWER' } };
@@ -29,15 +30,20 @@ export default function mount(app) {
 
   // ---- novità
   r.get('/voci', ah(async (req, res) => {
-    const P = []; const W = ['NOT v.preesistente']; const p = (v) => { P.push(v); return `$${P.length}`; };
     const vista = String(req.query.vista || 'RILEVANTI');
+    // STORICO (v0.97.0): tutto ciò che la Suite ha registrato, comprese le voci che c'erano già alla prima lettura e quelle dell'archivio
+    const P = []; const W = vista === 'STORICO' ? ['TRUE'] : ['NOT v.preesistente']; const p = (v) => { P.push(v); return `$${P.length}`; };
+    if (vista === 'STORICO' && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.dal || ''))) W.push(`coalesce(v.pubblicata, v.scadenza, v.vista_at::date) >= ${p(req.query.dal)}::date`);
+    if (vista === 'STORICO' && ['ALTA', 'MEDIA', 'BASSA'].includes(req.query.utilita)) W.push(`v.utilita = ${p(req.query.utilita)}`);
     if (vista === 'RILEVANTI') W.push(`v.stato <> 'ARCHIVIATA' AND (f.categoria = 'BANDI' OR v.utilita IN ('ALTA','MEDIA') OR v.utilita IS NULL)`);
     else if (vista === 'EVIDENZA') W.push(`v.stato = 'IN_EVIDENZA'`); else if (vista === 'SCARSA') W.push(`v.utilita = 'BASSA' AND f.categoria <> 'BANDI' AND v.stato <> 'ARCHIVIATA'`); else if (vista === 'ARCHIVIO') W.push(`v.stato = 'ARCHIVIATA'`);
     if (CATEGORIE[req.query.categoria]) W.push(`f.categoria = ${p(req.query.categoria)}`);
     if (req.query.fonte) W.push(`f.id = ${p(id(req.query.fonte))}`);
     if (req.query.cerca) W.push(`(v.titolo ILIKE '%' || ${p(String(req.query.cerca).slice(0, 80))} || '%' OR v.sintesi ILIKE '%' || $${P.length} || '%')`);
-    const righe = await many(`SELECT v.id, v.titolo, v.url, v.descrizione, v.pubblicata::text AS pubblicata, v.scadenza::text AS scadenza, v.vista_at, v.ai_stato, v.utilita, v.linee, v.sintesi, v.motivo, v.azione, v.approfondita, v.ai_errore, v.stato, v.nota, v.inviata_at, f.id AS fonte_id, f.nome AS fonte, f.categoria
-        FROM voci v JOIN fonti f ON f.id = v.fonte_id WHERE ${W.join(' AND ')} ORDER BY (v.stato = 'IN_EVIDENZA') DESC, v.vista_at::date DESC, CASE v.utilita WHEN 'ALTA' THEN 0 WHEN 'MEDIA' THEN 1 WHEN 'BASSA' THEN 3 ELSE 2 END, v.id DESC LIMIT 300`, P);
+    const ordine = vista === 'STORICO' ? 'coalesce(v.pubblicata, v.scadenza, v.vista_at::date) DESC NULLS LAST, v.id DESC LIMIT 600'
+      : `(v.stato = 'IN_EVIDENZA') DESC, v.vista_at::date DESC, CASE v.utilita WHEN 'ALTA' THEN 0 WHEN 'MEDIA' THEN 1 WHEN 'BASSA' THEN 3 ELSE 2 END, v.id DESC LIMIT 300`;
+    const righe = await many(`SELECT v.id, v.titolo, v.url, v.descrizione, v.pubblicata::text AS pubblicata, v.scadenza::text AS scadenza, v.vista_at, v.ai_stato, v.utilita, v.linee, v.sintesi, v.motivo, v.azione, v.approfondita, v.ai_errore, v.stato, v.nota, v.inviata_at, v.preesistente, v.storica, f.id AS fonte_id, f.nome AS fonte, f.categoria
+        FROM voci v JOIN fonti f ON f.id = v.fonte_id WHERE ${W.join(' AND ')} ORDER BY ${ordine}`, P);
     res.json({ righe, fonti: await many('SELECT id, nome, categoria FROM fonti ORDER BY categoria, nome'), ultimo_invio: await one('SELECT giorno::text AS giorno, at, voci, esito, destinatari FROM invii ORDER BY giorno DESC LIMIT 1'),
       ultima_lettura: (await one('SELECT max(letta_ok_at) AS at FROM fonti WHERE attiva')).at, in_attesa_di_invio: (await novitaDaInviare(await impostazioni())).dentro.length });
   }));
@@ -98,6 +104,43 @@ export default function mount(app) {
     res.json({ ...out, valutazione: out.nuove ? await valutaNovita(imp) : null });
   }));
 
+  // ---- archivio (v0.97.0): avvisi e bandi pubblicati dal gennaio 2026, ricostruiti dalle pagine a elenco delle fonti
+  r.get('/archivio/stato', ah(async (_req, res) => res.json({ dal: ARCHIVIO_DAL, ultimo: (await one(`SELECT value FROM impostazioni WHERE key = 'archivio_esito'`))?.value || null,
+    in_attesa: (await one(`SELECT count(*)::int AS n FROM voci WHERE ai_stato = 'DA_VALUTARE' AND preesistente`)).n })));
+  r.post('/archivio', gestisce, ah(async (req, res) => {
+    const out = await archiviaTutte(); out.at = new Date().toISOString();
+    await salvaImpostazione('archivio_esito', out, req.user.id);
+    await traccia(req, 'ARCHIVIO', `Archivio ricostruito dal ${ARCHIVIO_DAL}: ${out.fonti.reduce((a, f) => a + (f.aggiunte || 0), 0)} voci aggiunte`);
+    res.json(out);
+  }));
+  r.post('/fonti/:id/archivio', gestisce, ah(async (req, res) => {
+    const f = await one('SELECT * FROM fonti WHERE id = $1', [id(req.params.id)]); if (!f) throw notFound('Fonte non trovata');
+    const out = await archivia(f); const valutazione = await valutaArchivio(await impostazioni());
+    await traccia(req, 'ARCHIVIO', `Archivio della fonte ${f.nome}: ${out.aggiunte} voci aggiunte${out.errore ? ` (${out.errore})` : ''}`);
+    res.json({ ...out, valutazione });
+  }));
+
+  // ---- normativa di riferimento (v0.97.0): collegamenti, testi acquisiti, domande in linguaggio naturale
+  r.get('/norme', ah(async (req, res) => res.json({ righe: await elencoNorme(), ai: aiEnabled(), avvertenza: AVVERTENZA,
+    domande: await many(`SELECT d.id, d.at, d.domanda, d.risposta, d.esito, d.riferimenti, u.full_name AS utente FROM norme_domande d LEFT JOIN public.users u ON u.id = d.user_id ORDER BY d.id DESC LIMIT 20`) })));
+  r.post('/norme/chiedi', ah(async (req, res) => {
+    try { res.json(await chiedi(req.body?.domanda, req.user.id)); }
+    catch (e) { if (e.status === 400) throw bad(e.message); throw new HttpError(502, `La risposta non è riuscita: ${String(e.message).slice(0, 200)}`); }
+  }));
+  r.post('/norme', gestisce, ah(async (req, res) => {
+    const titolo = String(req.body?.titolo || '').trim(); if (titolo.length < 5) throw bad('Dai un titolo alla norma');
+    const url = assoluto(String(req.body?.url || '').trim(), undefined); if (!url) throw bad('Indirizzo non valido: deve iniziare con http:// o https://');
+    const out = await aggiungiNorma({ titolo: titolo.slice(0, 300), url, descrizione: String(req.body?.descrizione || '').trim().slice(0, 1000) }, req.user.id);
+    await traccia(req, 'NORMA_AGGIUNTA', `Norma aggiunta: ${titolo.slice(0, 120)}${out.acquisita ? '' : ' (solo collegamento)'}`, { url });
+    res.json(out);
+  }));
+  r.delete('/norme/:id', gestisce, ah(async (req, res) => {
+    const n = await one('DELETE FROM norme WHERE id = $1 RETURNING titolo', [id(req.params.id)]); if (!n) throw notFound('Norma non trovata');
+    (await import('./lib/norme.js')).azzeraIndice();
+    await traccia(req, 'NORMA_ELIMINATA', `Norma tolta dall'elenco: ${n.titolo.slice(0, 120)}`);
+    res.json({ ok: true });
+  }));
+
   // ---- giro, email, impostazioni
   r.post('/giro', gestisce, ah(async (req, res) => { const out = await giro({ tutte: true, invia: false }); await traccia(req, 'GIRO', `Lettura a mano: ${out.nuove} novità`); res.json(out); }));
   r.post('/email/invia', gestisce, ah(async (req, res) => { const out = await inviaGiornaliera(await impostazioni(), { forza: true }); await traccia(req, 'EMAIL', out.inviata ? `Email inviata: ${out.voci} novità` : `Email non inviata: ${out.saltata || out.errore}`); res.json(out); }));
@@ -137,4 +180,13 @@ export async function afterStart() {
   if (st.mode !== 'LIVE') { await startFresh(KEY, null); console.log('[affari] modulo Public Affairs attivato (nativo)'); }
   const n = await caricaSeme();
   if (n) console.log(`[affari] fonti proposte caricate: ${n}`);
+  const norme = await caricaNorme().catch((e) => { console.error('[affari] norme di riferimento non caricate:', e.message); return 0; });
+  if (norme) console.log(`[affari] norme di riferimento caricate: ${norme}`);
+  // Archivio dal gennaio 2026 (CEO, 24/11/2026): una volta sola, dopo l'avvio, senza fermare il server; poi si aggiorna dal pulsante
+  if (process.env.NODE_ENV !== 'test' && !(await one(`SELECT 1 AS ok FROM impostazioni WHERE key = 'archivio_esito'`))) {
+    setTimeout(async () => {
+      try { const out = await archiviaTutte(); out.at = new Date().toISOString(); await salvaImpostazione('archivio_esito', out); console.log(`[affari] archivio dal ${ARCHIVIO_DAL}: ${out.fonti.map((f) => `${f.nome}: ${f.errore || `${f.aggiunte} aggiunte`}`).join('; ')}`); }
+      catch (e) { console.error('[affari] archivio non ricostruito:', e.message); }
+    }, 45000).unref();
+  }
 }

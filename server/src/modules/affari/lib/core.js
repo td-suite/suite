@@ -16,7 +16,7 @@ import { sendMail, layout } from '../../../lib/mailer.js';
 import { notify } from '../../../lib/community.js';
 import { getModuleState } from '../../../lib/modules.js';
 import { config as suite } from '../../../config.js';
-import { estraiLink, leggiFeed, sembraFeed, testoPagina, scadenzaNelTitolo, chiaveUrl } from './estrai.js';
+import { estraiLink, estraiRighe, paginaSuccessiva, leggiFeed, sembraFeed, testoPagina, scadenzaNelTitolo, chiaveUrl } from './estrai.js';
 
 const require = createRequire(import.meta.url);
 export const KEY = 'affari';
@@ -71,9 +71,11 @@ export async function vociDellaFonte(f) {
   const r = await scarica(f.url, { maxBytes: 4 * 1024 * 1024, timeout: 30000 });
   if (!r.ok) return { ok: false, errore: r.errore || 'Fonte non raggiungibile', voci: [] };
   const feed = f.tipo === 'RSS' || sembraFeed(r.testo, r.tipo);
-  const voci = feed ? leggiFeed(r.testo, r.url) : estraiLink(r.testo, r.url, { filtro: f.filtro });
+  // elenco a righe (tabella degli avvisi): una voce per riga, con la data di pubblicazione quando c'è; altrimenti tutti i collegamenti
+  const righe = feed ? [] : estraiRighe(r.testo, r.url, { filtro: f.filtro });
+  const voci = feed ? leggiFeed(r.testo, r.url) : righe.length ? righe : estraiLink(r.testo, r.url, { filtro: f.filtro });
   if (!voci.length) return { ok: false, errore: feed ? 'Il feed non contiene voci leggibili' : 'Nessun collegamento leggibile nella pagina (la pagina potrebbe essere costruita dal browser: prova con un feed o con un altro indirizzo)', voci: [] };
-  return { ok: true, tipo: feed ? 'RSS' : 'PAGINA', voci };
+  return { ok: true, tipo: feed ? 'RSS' : 'PAGINA', voci, a_righe: righe.length > 0, html: feed ? null : r.testo, url: r.url };
 }
 /** Legge una fonte e registra le voci nuove. Alla prima lettura tutto è "preesistente". */
 export async function leggiFonte(f, imp) {
@@ -99,6 +101,78 @@ export async function leggiFonte(f, imp) {
     [f.id, anomala ? `Trovati ${nuove.length} collegamenti nuovi in una volta: probabile cambio di struttura della pagina. Registrati senza avviso: controlla la fonte.` : null, r.voci.length]);
   if (prima) out.prima = true;
   return out;
+}
+
+// ---------------------------------------------------------------- archivio (v0.97.0)
+export const ARCHIVIO_DAL = '2026-01-01';
+/**
+ * Ricostruisce l'archivio di una fonte a pagina dal giorno `dal`: segue le pagine successive dell'elenco (al più `maxPagine`) e registra
+ * le voci come "storiche" (preesistenti: non sono novità e non generano email). Data della voce = data di pubblicazione scritta nella
+ * riga; in mancanza, la scadenza scritta nel titolo. Una voce senza alcuna data si tiene (non si può escludere che sia del periodo).
+ * Si ferma alla prima pagina in cui tutte le voci datate sono precedenti a `dal`. Le voci registrate si mettono in coda per il giudizio
+ * del modello sul titolo (valutaArchivio). Solo elenchi a righe: negli altri non si distinguono gli avvisi dal menu del sito.
+ */
+export async function archivia(f, { dal = ARCHIVIO_DAL, maxPagine = 15 } = {}) {
+  const out = { fonte: f.id, nome: f.nome, pagine: 0, trovate: 0, aggiunte: 0, aggiornate: 0, scartate_prima: 0, senza_data: 0, tolte_menu: 0, errore: null };
+  if (f.tipo === 'RSS') return { ...out, errore: 'Un feed porta solo le ultime voci: l\'archivio si ricostruisce dalle pagine a elenco' };
+  const prima = await vociDellaFonte(f);
+  if (!prima.ok) return { ...out, errore: prima.errore };
+  if (!prima.a_righe) return { ...out, errore: 'La pagina non è un elenco a righe: non distinguo gli avvisi dagli altri collegamenti, archivio non ricostruito' };
+  const dataDi = (v) => v.pubblicata || scadenzaNelTitolo(v.titolo);
+  const tutte = new Map(); let pagina = prima; let url = prima.url; const viste = new Set([chiaveUrl(url)]);
+  for (;;) {
+    out.pagine++;
+    for (const v of pagina.voci) if (!tutte.has(chiaveUrl(v.url))) tutte.set(chiaveUrl(v.url), v);
+    const datate = pagina.voci.map(dataDi).filter(Boolean);
+    if (datate.length && datate.every((d) => d < dal)) break;
+    const prossima = out.pagine < maxPagine ? paginaSuccessiva(pagina.html, url) : null;
+    if (!prossima || viste.has(chiaveUrl(prossima))) break;
+    viste.add(chiaveUrl(prossima)); await pausa(600);
+    const r = await vociDellaFonte({ ...f, url: prossima });
+    if (!r.ok || !r.a_righe) break;
+    pagina = r; url = prossima;
+  }
+  out.trovate = tutte.size;
+  const gia = new Map((await many('SELECT id, url, preesistente, ai_stato, pubblicata::text AS pubblicata FROM voci WHERE fonte_id = $1', [f.id])).map((v) => [chiaveUrl(v.url), v]));
+  for (const [k, v] of tutte) {
+    const d = dataDi(v);
+    if (d && d < dal) { out.scartate_prima++; continue; }
+    if (!d) out.senza_data++;
+    const c = gia.get(k);
+    if (!c) { out.aggiunte += (await q(`INSERT INTO voci (fonte_id, url, titolo, pubblicata, scadenza, preesistente, storica, ai_stato, stato) VALUES ($1,$2,$3,$4,$5,TRUE,TRUE,'DA_VALUTARE','LETTA') ON CONFLICT (fonte_id, url) DO NOTHING`, [f.id, v.url, v.titolo, v.pubblicata || null, scadenzaNelTitolo(v.titolo)])).rowCount; }
+    else if (c.preesistente && (c.ai_stato === 'SENZA_AI' || (!c.pubblicata && v.pubblicata))) { out.aggiornate += (await q(`UPDATE voci SET pubblicata = coalesce(pubblicata, $2), ai_stato = CASE WHEN ai_stato = 'SENZA_AI' THEN 'DA_VALUTARE' ELSE ai_stato END WHERE id = $1`, [c.id, v.pubblicata || null])).rowCount; }
+  }
+  // collegamenti del menu e della paginazione registrati dalla prima lettura (prima che la Suite leggesse l'elenco riga per riga):
+  // non sono avvisi; si tolgono solo se mai lavorati (nessuna nota, mai messi in evidenza)
+  const menu = estraiLink(prima.html, prima.url, { filtro: f.filtro }).map((v) => chiaveUrl(v.url)).filter((k) => !tutte.has(k) && gia.has(k) && gia.get(k).preesistente);
+  if (menu.length) out.tolte_menu = (await q(`DELETE FROM voci WHERE id = ANY($1::bigint[]) AND preesistente AND nota IS NULL AND stato <> 'IN_EVIDENZA'`, [menu.map((k) => gia.get(k).id)])).rowCount;
+  return out;
+}
+/** Giudizio del modello (sul titolo) per le voci dell'archivio in attesa: a gruppi, senza email. */
+export async function valutaArchivio(imp, { limite = 120 } = {}) {
+  const out = { valutate: 0, errori: 0, in_attesa: 0 };
+  const attesa = await many(`SELECT v.id, v.titolo, v.descrizione, v.url, f.nome AS fonte, f.categoria FROM voci v JOIN fonti f ON f.id = v.fonte_id WHERE v.ai_stato = 'DA_VALUTARE' AND v.preesistente ORDER BY v.pubblicata DESC NULLS LAST, v.id LIMIT $1`, [limite]);
+  if (!attesa.length) return out;
+  if (!aiEnabled() && !aiMock()) { out.in_attesa = attesa.length; return out; }
+  for (let i = 0; i < attesa.length; i += 20) {
+    const gruppo = attesa.slice(i, i + 20);
+    try {
+      const esiti = await valutaGruppo(gruppo, imp);
+      for (const v of gruppo) { const e = esiti.get(String(v.id)); if (!e) { out.errori++; continue; } await q(`UPDATE voci SET ai_stato = 'VALUTATA', utilita = $2, linee = $3, sintesi = $4, motivo = $5, ai_errore = NULL WHERE id = $1`, [v.id, e.utilita, e.linee, e.sintesi, e.motivo]); out.valutate++; }
+    } catch (e) { out.errori += gruppo.length; out.errore = String(e.message).slice(0, 200); break; }
+  }
+  out.in_attesa = (await one(`SELECT count(*)::int AS n FROM voci WHERE ai_stato = 'DA_VALUTARE' AND preesistente`)).n;
+  return out;
+}
+/** Archivio di tutte le fonti di avvisi e bandi (o di quelle indicate). */
+export async function archiviaTutte({ dal = ARCHIVIO_DAL, categoria = 'BANDI' } = {}) {
+  const esiti = [];
+  for (const f of await many(`SELECT * FROM fonti WHERE attiva AND tipo = 'PAGINA' AND categoria = $1 ORDER BY id`, [categoria])) {
+    try { esiti.push(await archivia(f, { dal })); } catch (e) { esiti.push({ fonte: f.id, nome: f.nome, errore: String(e.message).slice(0, 200) }); }
+    await pausa(500);
+  }
+  const valutazione = await valutaArchivio(await impostazioni());
+  return { dal, fonti: esiti, valutazione };
 }
 
 // ---------------------------------------------------------------- valutazione con il modello AI
@@ -231,6 +305,7 @@ export async function giro({ adesso = new Date(), tutte = false, invia = null } 
     await pausa(300);
   }
   out.valutazione = await valutaNovita(imp);
+  out.archivio = await valutaArchivio(imp, { limite: 60 }).catch(() => null);   // voci dell'archivio ancora senza giudizio
   // fonte che non risponde da tre letture di fila: avviso in Suite a chi gestisce il widget (una volta al giorno)
   const rotte = await many(`SELECT id, nome, errore FROM fonti WHERE attiva AND errori_di_fila = 3`);
   if (rotte.length) await notify((await many(`SELECT DISTINCT u.id FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'affari' AND g.profile = 'DIREZIONE' AND NOT g.proposed WHERE u.status = 'ACTIVE' AND (u.level = 'OWNER' OR g.id IS NOT NULL)`)).map((u) => u.id),

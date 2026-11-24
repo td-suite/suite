@@ -7,3 +7,11 @@
 .pa-giorno { font-size: 13px; font-weight: 700; color: #1C505E; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
 .pa-gap { margin-bottom: 16px; } .pa-rosso { color: #A63A22; }
 .pa-prof textarea { min-height: 200px; }
+.pa-elenco { margin: 0 0 8px; padding-left: 18px; font-size: 14px; line-height: 1.6; }
+.pa-norma { padding: 10px 0; border-bottom: 1px solid var(--line, #dbe5e7); } .pa-norma:last-of-type { border-bottom: 0; } .pa-norma a { color: #1C505E; text-decoration: none; } .pa-norma a:hover { text-decoration: underline; }
+.pa-norma svg { width: 13px; height: 13px; vertical-align: -1px; }
+.pa-nuova { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line, #dbe5e7); }
+.pa-chiedi { display: flex; gap: 10px; align-items: flex-end; } .pa-chiedi textarea { flex: 1; min-height: 70px; }
+.pa-esempi { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.pa-risposta p { margin: 0 0 8px; } .pa-passo { font-size: 13px; background: #f4f6f8; border-radius: 8px; padding: 8px 10px; margin-top: 8px; line-height: 1.5; }
+.link-btn { background: none; border: 0; padding: 0; color: #5b6f75; text-decoration: underline; cursor: pointer; font-size: inherit; }

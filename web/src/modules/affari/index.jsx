@@ -6,6 +6,8 @@ import { base, useApi } from './api.js';
 import './styles.css';
 import Novita from './pages/Novita.jsx';
 import Fonti from './pages/Fonti.jsx';
+import Archivio from './pages/Archivio.jsx';
+import Normativa from './pages/Normativa.jsx';
 import Impostazioni from './pages/Impostazioni.jsx';
 
 const Ctx = createContext(null);
@@ -19,6 +21,8 @@ export default function Module({ moduleUser }) {
     <Ctx.Provider value={st.data}>
       <Routes>
         <Route path="" element={<Novita />} />
+        <Route path="archivio" element={<Archivio />} />
+        <Route path="normativa" element={<Normativa />} />
         <Route path="fonti" element={<Fonti />} />
         <Route path="impostazioni" element={<Impostazioni />} />
         <Route path="*" element={<Navigate to={base} replace />} />

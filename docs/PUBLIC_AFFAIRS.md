@@ -40,3 +40,15 @@ secondo la soglia (predefinita: alta e media). Destinatari dalle Impostazioni; s
 - Sintesi e giudizi sono prodotti da un modello AI: va letto l'originale.
 
 Job `affari:giro` ogni ora. Test `server/test/affari.test.mjs` (sito di prova locale, modello finto).
+
+## v0.97.0 · Archivio dal gennaio 2026 e normativa di riferimento (CEO, 24/11/2026)
+
+**Archivio** (`/affari/archivio`). Le pagine degli avvisi delle USL sono elenchi a righe su più pagine. La Suite ora legge l'elenco riga per riga (`estraiRighe`: una voce per riga, con la data di pubblicazione quando l'elenco la riporta) e non più tutti i collegamenti della pagina. `archivia(fonte)` segue le pagine successive (`paginaSuccessiva`, al più 15), registra le voci dal 01/01/2026 come storiche (non sono novità, non generano email), si ferma alla prima pagina con sole voci datate precedenti. Data della voce: pubblicazione, altrimenti scadenza nel titolo; le voci senza data si tengono. Toglie i collegamenti del menu registrati dalla prima lettura, se mai lavorati. Le voci storiche ricevono il giudizio di utilità del modello sul titolo (`valutaArchivio`, anche a ogni giro). Parte da sola 45 secondi dopo il primo avvio della versione; poi pulsante "Aggiorna l'archivio" (profilo Direzione). API: `GET /voci?vista=STORICO`, `GET /archivio/stato`, `POST /archivio`, `POST /fonti/:id/archivio`.
+
+Limiti: USL Toscana Centro non riporta la data di pubblicazione nell'elenco (si usa la scadenza del titolo); le fonti che dal server non rispondono (al 24/11/2026: USL Nord Ovest e Gazzetta Ufficiale, "Il sito non risponde") non hanno archivio; i feed non hanno archivio.
+
+**Normativa di riferimento** (`/affari/normativa`). Tabelle `norme`, `norme_parti`, `norme_domande` (migrazione 002). Norme proposte con il testo nel programma (`modules/affari/norme/`, presi dai siti ufficiali il 24/11/2026): l.r. 51/2009 (Raccolta normativa, testo coordinato), regolamento 79/R del 2016 con allegati A, B, C, D (PDF ARS di 242 pagine, testo con le modifiche del d.p.g.r. 90/R del 2020), manuale operativo dei requisiti di esercizio (decreto 6230 del 19/04/2021, allegato 1); più due collegamenti alle pagine della Regione. La Direzione aggiunge altre norme dall'indirizzo (pagina o PDF: il testo si acquisisce subito).
+
+Domande: `POST /norme/chiedi`. Il testo è diviso in brani di circa 1.800 caratteri con il riferimento (allegato, sezione, articolo, requisito). Le parole della domanda, più i termini suggeriti dal modello, scelgono i brani (BM25, al più 14 più il seguito dei primi tre, 42.000 caratteri); il modello risponde solo su quei brani con il numero del brano tra parentesi quadre e dichiara che cosa manca. Sotto la risposta si leggono i passi usati. Ogni domanda resta in `norme_domande`. Senza modello AI la ricerca restituisce i passi più vicini.
+
+Limiti: i testi non hanno valore legale e non si aggiornano da soli (data di acquisizione mostrata per ogni norma); la ricerca è per parole, non per significato: una domanda formulata con termini lontani da quelli della norma può non trovare il passo; la risposta va verificata sul testo ufficiale.

@@ -1,0 +1,224 @@
+## MANUALE OPERATIVO PER I REQUISITI DI ESERCIZIO
+
+Il presente manuale si colloca nell'ambito della strategia di spinta al continuo miglioramento e rappresenta uno strumento di consultazione per coloro
+che sono coinvolti nel processo di autorizzazione con lo scopo di fornire delle note interpretative su alcuni requisiti e applicabilità.
+
+La valutazione di applicabilità o non applicabilità di un requisito avviene integrando e contestualizzando quanto già indicato nel regolamento 17
+novembre 2016 n. 79 e ss.mm.ii..
+
+La Struttura definisce l'applicabilità del requisito nell'ambito dell'autovalutazione; il gruppo tecnico di verifica ne valuta la correttezza interpretativa
+previo confronto con il referente della struttura.
+
+La Struttura dichiara i parametri di riferimento e le relative fonti utilizzati per il dimensionamento del servizio per gli aspetti strutturali, tecnologici e
+organizzativi.
+
+Eccetto i locali per i quali esistono parametri specifici di temperatura (es. locali dove vengono conservati farmaci che richiedono il mantenimento di
+temperature inferiori ecc) e salvo differenti indicazioni specifiche anche in base ai regolamenti edilizi e di igiene del Comune su cui insiste la struttura,
+si ritengono adeguati:
+
+la temperatura dei locali compresa tra 20°C e 26°C o 27°C dove specificamente indicato;
+
+nei locali privi di areazione naturale, i ricambi d'aria non devono risultare inferiori a 2v/h.
+
+Le temperature si intendono valutate con riferimento agli usuali limiti di errore di misura e regolazione con una tolleranza di ± 2°C.
+
+La temperatura ambientale di minor valore deve intendersi come temperatura di riferimento in periodo invernale, quella maggiore in periodo estivo.
+(DPR 412/93, DPR 37/97, D.Lgs 115/08, UNI 10339/95: Impianti aeraulici a fini di benessere, UNI 13779/2008: Ventilazione degli edifici non
+residenziali Microclima, aerazione e illuminazione nei luoghi di lavoro. Requisiti e standard. Indicazioni operative e progettuali. Linee Guida.
+Coordinamento tecnico per la sicurezza nei luoghi di lavoro delle Regioni e delle Provincie autonome in collaborazione con ISPESL (1 giugno 2006))
+
+Per sistemi di continuità dell'alimentazione elettrica si intende l’insieme di apparati che intervengono (automaticamente) in caso di mancanza
+dell’alimentazione sulla rete di approvvigionamento esterno e consentono di proseguire nell’utilizzo di apparecchiature alimentate elettricamente.
+
+Con riferimento all’importanza dell’utenza elettrica si hanno differenti classi di continuità di alimentazione:
+
+• utenze che possono tollerare interruzioni di alimentazione elettrica per tempi superiori a 15 sec: impianti tecnici che devono rimanere in
+servizio anche in caso di black-out della rete elettrica esterna – tipicamente asserviti a gruppi elettrogeni;
+
+• utenze che possono tollerare interruzioni di alimentazione elettrica per tempi non superiori a 15 sec: tipicamente illuminazione delle vie
+d’esodo e ascensori destinati a funzionare in caso d’incendio – tipicamente asserviti a UPS o batterie tampone a loro volta alimentati da gruppi
+elettrogeni;
+
+• utenze che possono tollerare interruzioni di alimentazione elettrica per tempi non superiori a 0,5 sec: tipicamente lampade scialitiche e
+apparecchiature che sostengono funzioni vitali di pazienti nei locali operatori e terapie intensive – tipicamente asserviti a UPS a loro volta
+alimentati da gruppi elettrogeni;
+
+• utenze che non possono tollerare interruzioni di alimentazione elettrica: tipicamente sistemi supervisionati da computer che sostengono funzioni
+vitali di pazienti la cui interruzione di alimentazione necessita di un nuovo avvio del sistema.
+
+In tutti i casi in cui si chiede la continuità dell'alimentazione elettrica si intende riferirsi all'alimentazione mediante gruppo elettrogeno salvo diverse
+specifiche indicazioni che si riferiscono alle situazioni sopra elencate.
+
+(CEI 64-8 parte 7; Norma EN 50091 Requisiti di sicurezza fondamentali per gli UPS; Norma ENV 50091-3 Definizione dei parametri e prestazioni
+degli UPS; CEI 62040 Sistemi statici di continuità (UPS)).
+
+La tabella delle equipollenze a cui occorre riferirsi per il “possesso della specializzazione nella disciplina cui afferiscono le prestazioni svolte o in
+disciplina equipollente” (L.R. 51/09 art. 11, comma 3) è quella di cui al Decreto 30 Gennaio 1998 del Ministero della Sanità e non il Decreto 31
+Gennaio 1998 sulle discipline affini.
+
+I locali o spazi per l’attesa, accettazione, deposito e attività amministrative ed i servizi igienici possono essere in comune tra più studi sanitari o con
+strutture sanitarie, purché opportunamente dimensionati. In tal caso, devono essere definite le responsabilità e modalità di utilizzo e tenuta per garantire
+la costante idoneità dei locali e delle attrezzature.
+
+L’attività sanitaria svolta presso il domicilio del paziente può essere effettuata solo da personale afferente a una struttura autorizzata, compresi gli studi.
+
+## Emocomponenti ad uso non trasfusionale EuNT
+
+Secondo quanto stabilito dalle Delibere regionali n. 1421 del 2/11/2016 e n. 1081 del 27/12/201, gli studi medici e le strutture sanitarie, dopo aver
+ottenuto l’autorizzazione all’esercizio, che intendono procedere alla produzione degli emocomponenti autologhi ad uso non trasfusionale, potranno
+farlo solo nell’ambito di una convenzione da stipulare con l’Azienda Sanitaria in cui opera il servizio trasfusionale di riferimento.
+
+## Requisito A3
+
+Personale sanitario con documentata frequenza ai corsi di Basic Life Suppert Defibrillation (BLSD) con cadenza programmata secondo gli standard
+definiti dalle indicazioni tecniche di settore
+
+In relazione alla frequenza dei corsi di Basic Life Suppert Defibrillation (BLSD), secondo l'interpretazione vigente della legge 120 del 2001 non risulta
+obbligatorio per il personale sanitario medico; le DGR n. 428/2017 e n.1048/2018 prevedono la formazione per il personale sanitario non medico e il
+personale non sanitario. Nella programmazione della formazione di tutto il personale dovrà essere tenuto conto della complessità della casistica della
+struttura.
+
+Durante l’erogazione delle attività dovrà essere presente adeguato personale in possesso della formazione aggiornata di BLSD
+
+## Requisito A8.1
+
+I documenti sanitari per i quali è previsto l'inserimento nel Fascicolo Sanitario Elettronico (FSE), devono rispettare gli standard definiti dalle norme
+nazionali e regionali attuative.
+
+I documenti sanitari per i quali è previsto l'inserimento nel Fascicolo Sanitario Elettronico (FSE), Legge 17 dicembre 2012, n. 221 devono rispettare gli
+standard che saranno progressivamente definiti dalla norma nazionale e regionale attuativa, a partire dal DPCM 178/2015 "Regolamento in materia di
+fascicolo sanitario elettronico". Tra i documenti interessati si citano, a solo titolo di esempio, i referti e la lettera di dimissione ospedaliera.
+
+## Requisito A24
+
+Programma di prevenzione della violenza contro gli operatori sanitari ai sensi delle indicazioni nazionali e regionali in materia e tracciabilità delle azioni
+adottate.
+
+Riferimento normativo: Raccomandazione n°8 del 2007 del Ministero della Salute - Raccomandazione per prevenire gli atti di violenza a danno degli
+operatori sanitari
+
+## MEDICINA DI LABORATORIO
+
+• Il direttore sanitario del laboratorio può svolgere la funzione di direttore sanitario anche per il punto prelievi decentrato.
+
+• In considerazione che il prelievo costituisce una fase del processo di medicina di laboratorio (fase pre-analitica) che prosegue con quella di
+processazione (fase analitica) e refertazione (fase post-analitica), il punto prelievo collegato funzionalmente con un laboratorio accreditato dovrà
+procedere all’accreditamento. Non potrà altresì procedervi nel caso in cui il laboratorio non lo sia.
+
+Analogamente il laboratorio accreditato dovrà avere collegamenti funzionali con punti prelievo accreditati.
+
+## Requisito B1.1.11
+
+Programmi di Controllo Interno di Qualità e partecipazione a programmi di Valutazione Esterna di Qualità promossi dalle regioni e validati a livello
+nazionale o internazionale, estesi anche ai sistemi “Point of care Testing (POCT)”
+
+Principali riferimenti normativi: DGRT 1130/2012, ISO 15189:2012 Medical Laboratories - Particular Requirements for quality and Competence, ISO
+22870:2016 Point of care Testing (POCT) - Requirement for Quality and Competence
+
+### PUNTO PRELIEVO DOTATO DI POCT
+
+Principali riferimenti normativi: DGRT 1130/2008, ISO 15189:2003 Medical Laboratories - Particular Requirements for quality and Competence, ISO
+22870:2016 Point of care Testing (POCT) - Requirement for Quality and Competence
+
+## RADIOLOGIA DIAGNOSTICA E INTERVENTISTICA
+
+## Requisito B1.2.29
+
+Carrello per la gestione delle emergenze comprendente:….. monitor multiparametrico RM compatibile per la rilevazione remota dei parametri dall’area
+radiologica
+
+Monitor multiparametrico MR conditional presente in sala RM in base alla casistica trattata.
+
+## MEDICINA NUCLEARE DIAGNOSTICA
+
+## Requisito B1.3.11
+
+Servizi igienici per pazienti caldi, di cui almeno uno dotato di sanitari per pazienti disabili, con sistema di scarico controllato per gli adempimenti
+radioprotezionistici
+
+In funzione delle valutazioni dell’esperto qualificato e dei dispositivi di legge vigenti, è possibile convogliare gli scarichi dei servizi igienici caldi in un
+impianto di raccolta, che consenta il monitoraggio della radioattività contenuta nei liquami e permetta il loro smaltimento nel sistema di fognature solo
+dopo un tempo di attesa sufficiente per garantire un adeguato livello di decadimento della radioattività, previa misura. Il dimensionamento del sistema
+dipenderà dal tipo di radionuclidi utilizzati nella struttura e dal carico di lavoro (numero di pazienti in diagnostica/terapia)
+
+## ATTIVITA' DI CHIRURGIA AMBULATORIALE
+
+## Requisito B1.7.14
+
+Refuso rispetto all’applicabilità in quanto nell’ambito della chirurgia a complessità e invasività minore non possono essere effettuati interventi in
+anestesia generale
+
+## MEDICINA FISICA E RIABILITAZIONE
+
+Attività erogabili a fronte di autorizzazione nella disciplina di medicina fisica e riabilitazione da parte di altri professionisti.
+
+Qualora una struttura sia autorizzata nella disciplina di medicina fisica e riabilitazione gli specialisti ivi operanti, anche se professionisti di altre
+discipline, possono svolgere esclusivamente attività di riabilitazione legata alla loro specializzazione; nel caso, invece, siano erogate prestazioni legate
+alla specificità del professionista e non rientranti nell’attività legata alla riabilitazione, la struttura dovrà essere autorizzata anche nella relativa
+disciplina.”
+
+## MEDICINA DELLO SPORT
+
+## Requisito B1.12.3
+
+### Medico specialista in medicina dello sport o disciplina equipollente
+
+Solo medico specialista della medicina dello sport secondo quanto previsto dal Decreto Legge 30 dicembre 1979, n. 663.
+
+## MEDICINA DEL LAVORO
+
+Nelle strutture autorizzate per la medicina del lavoro è possibile la presenza del laboratorio in quanto funzionale all’attività svolta. In caso di
+refertazione per terzi il laboratorio deve essere autorizzato nella disciplina relativa.
+
+## PMA
+
+Nel caso in cui le strutture siano dotate di laboratorio interno sia applicano anche i requisiti previsti per la medicina di laboratorio B1.1 per quanto di
+pertinenza.
+
+## CONSULTORIO
+
+## Requisito B2.3.6
+
+Ambulatorio per attività ostetrico-ginecologiche, pediatriche etc.
+
+Durante l’attività consultoriale, laddove vengano effettuati esami ecografici vanno assicurate le medesime condizioni indicate dalla lista B1.2 per
+quanto riguarda il servizio igienico
+
+## STRUTTURE RESIDENZIALI DESTINATE AD ACCOGLIERE I PAZIENTI NELLA FASE POST-ACUTA ALLA DIMISSIONE OSPEDALIERA
+
+## Requisito D6.14
+
+Assistenza medica 7 giorni su 7 sulle 24 ore in funzione della tipologia e della complessità delle attività svolte, con la presenza in turno nell'arco delle 12 h
+diurne di almeno un medico specialista in medicina interna, geriatria, fisiatria o equipollenti.
+
+In relazione alla casistica può essere prevista per le 12 ore notturne assistenza medica in pronta disponibilità
+
+## STUDI PROFESSIONALI
+
+• Relativamente alla relazione asseverata del tecnico prevista all'art. 19 della L.R. 51/09, tale figura può essere anche quella del tecnico installatore
+dell'apparecchiatura di sterilizzazione.
+
+• Per la tipologia dei corsi di Basic Life Suppert Defibrillation (BLSD), si fa riferimento alla DGR 428/2017 e ssmmii e alla DGR 1048/2018
+
+## ODONTOIATRIA E STUDI SOGGETTI AD AUTORIZZAZIONE
+
+## Requisito B.1.10.12
+
+Strumentario per visite in quantità adeguata al carico di lavoro giornaliero, stoccato in confezioni sterili e conservato in modo adeguato a garantire il
+mantenimento delle condizioni di sterilità
+
+## Requisito STU. A.41
+
+autoclave tipo B con pompa per il vuoto frazionato conforme alle norme UNI EN preferibilmente dotata di stampante (per studio odontoiatrico, se non
+affidato all’esterno)
+
+In merito alle evidenze documentali attestanti lo stato di sicurezza e corretta funzionalità delle piccole sterilizzatrici a vapore, sono da ritenersi 
+obbligatorie quelle previste da:
+
+- Decreto legislativo 9 aprile 2008, n. 81
+
+- Istruzioni per l’uso fornite dal fabbricante
+
+- Requisiti stabiliti dallo studio medico o struttura odontoiatrica nel proprio Sistema di Gestione della Qualità in relazione al processo di sterilizzazione.
+Evidenze documentali riferibili al processo di “convalida”, indicate nelle norme tecniche di settore, possono essere considerate raccomandabili ma non 
+obbligatorie.

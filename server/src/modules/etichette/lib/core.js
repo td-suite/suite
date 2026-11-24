@@ -11,6 +11,7 @@ export { dataApiAttiva };
 export const DEFAULTS = {
   giorni_identita: 3650,       // dalla v0.91.1 (CEO, 20/11/2026): il nome del paziente per TUTTE le accettazioni, senza limite di data
   etichetta_richiesta: false,  // oltre alle etichette dei campioni, un'etichetta "richiesta" senza barcode
+  provette: '',                // v0.97.0: tabella delle provette (nome sull'etichetta = materiale | esami), nell'ordine di stampa di StudioLab
   // Lab Control (v0.71.0)
   ore_ritardo: 72,             // dalla v0.91.1 solo soglia della pagina Tempi (TAT): referti oltre N ore dall'accettazione
   giorni_refertazione: 3,      // v0.91.1: giorni di refertazione degli esami senza riga in lc_tempi_esame. In ritardo = oggi oltre data accettazione + giorni - 1
@@ -30,6 +31,7 @@ export async function settings() {
   const s = { ...DEFAULTS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
   s.giorni_identita = Math.min(GIORNI_MAX, Math.max(1, Number(s.giorni_identita) || DEFAULTS.giorni_identita));
   s.etichetta_richiesta = s.etichetta_richiesta === true || s.etichetta_richiesta === 'true';
+  s.provette = typeof s.provette === 'string' ? s.provette.slice(0, 8000) : '';
   s.ore_ritardo = intera(s.ore_ritardo, 1, 2000, DEFAULTS.ore_ritardo);
   s.giorni_refertazione = intera(s.giorni_refertazione, 1, 365, DEFAULTS.giorni_refertazione);
   s.ore_campioni = intera(s.ore_campioni, 1, 720, DEFAULTS.ore_campioni);

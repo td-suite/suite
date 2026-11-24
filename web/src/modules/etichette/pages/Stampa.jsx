@@ -176,6 +176,9 @@ export default function Stampa() {
             <div><span>Sede</span><b>{acc.accettazione.sede || '—'}</b><em>{acc.accettazione.cliente || ''}</em></div>
             <div><span>Modello</span><b>{acc.modello?.nome || 'nessun modello attivo'}</b><em>{acc.modello ? `${acc.modello.larghezza_mm}×${acc.modello.altezza_mm} mm · ${acc.modello.dpi} dpi` : ''}</em></div>
           </div>
+          {acc.aggiornamento?.diretta
+            ? <div className="small muted" style={{ margin: '4px 0 8px' }}>Provette ed esami letti dal gestionale alle {itDataOra(acc.aggiornamento.letto_il).slice(-5)}.</div>
+            : acc.aggiornamento?.messaggio && <div className="alert warn"><Icon name="alert" /><span>{acc.aggiornamento.messaggio}.</span></div>}
           {!acc.paziente && <div className="alert warn"><Icon name="alert" /><span>{acc.paziente_messaggio || 'Nome del paziente non disponibile'}: le etichette escono senza nome. Controlla in StudioLab prima di stampare.</span></div>}
 
           <div className="et-azioni">
@@ -195,12 +198,12 @@ export default function Stampa() {
                 <div className="et-label-hd">
                   <input type="checkbox" checked={sel.has(e.chiave)} onChange={() => toggle(e.chiave)} aria-label={`Etichetta ${e.n}`} />
                   <b>{e.n}/{tutte}</b>
-                  <span>{e.tipo === 'RICHIESTA' ? 'Etichetta richiesta' : e.contenitore || 'Provetta'}</span>
+                  <span>{e.tipo === 'RICHIESTA' ? 'Etichetta richiesta' : e.tipo === 'PAZIENTE' ? 'Tagliando paziente' : e.provetta || e.contenitore || 'Provetta'}</span>
                   {e.materiale && <span className="muted">{e.materiale}</span>}
                 </div>
                 <Anteprima zpl={e.zpl} modello={acc.modello} larghezza="100%" titolo={`Etichetta ${e.n} di ${tutte}`} />
                 <div className="et-label-ft">
-                  {e.barcode ? <code>{e.barcode}</code> : <span className="faint">senza barcode</span>}
+                  {e.barcode ? <code>{e.barcode}</code> : <span className="faint">{e.tipo === 'PAZIENTE' ? 'da consegnare al paziente' : 'senza barcode'}</span>}
                   <span className="et-esami" title={e.esami.map((x) => [x.codice, x.descrizione].filter(Boolean).join(' ')).join(', ')}>{e.esami.map((x) => x.codice).filter(Boolean).join(' · ') || '—'}</span>
                 </div>
                 {e.avvisi?.map((a) => <div key={a} className="small et-warn">{a}</div>)}

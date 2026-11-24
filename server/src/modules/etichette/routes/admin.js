@@ -9,9 +9,10 @@ import { analizzaZpl, segnapostoSconosciuti, dotDaMm } from '../lib/zpl.js';
 import { giroIdentita, statoJob, purga } from '../lib/identita.js';
 
 const r = Router();
+const tp = (v) => (typeof v === 'string' && v.trim() ? v : null);
 r.use(['/modelli', '/impostazioni', '/registro', '/identita'], soloAdmin);
 
-const COLS = `m.id, m.nome, m.larghezza_mm::float AS larghezza_mm, m.altezza_mm::float AS altezza_mm, m.dpi, m.zpl, m.attivo, m.predefinito, m.note,
+const COLS = `m.id, m.nome, m.larghezza_mm::float AS larghezza_mm, m.altezza_mm::float AS altezza_mm, m.dpi, m.zpl, m.zpl_paziente, m.attivo, m.predefinito, m.note,
   m.validato_il, m.validazione_nota, m.updated_at, vu.full_name AS validato_da_nome, uu.full_name AS aggiornato_da_nome,
   (SELECT count(*)::int FROM modelli_sede s WHERE s.modello_id = m.id) AS sedi`;
 const FROM = 'FROM modelli m LEFT JOIN public.users vu ON vu.id = m.validato_da LEFT JOIN public.users uu ON uu.id = m.updated_by';
@@ -20,20 +21,21 @@ r.get('/modelli', ah(async (_req, res) => res.json(await many(`SELECT ${COLS} ${
 
 const Modello = z.object({
   nome: z.string().trim().min(2).max(80), larghezza_mm: z.number().min(10).max(120), altezza_mm: z.number().min(5).max(200),
-  dpi: z.union([z.literal(203), z.literal(300)]), zpl: z.string().min(6).max(20000), attivo: z.boolean().default(true), note: z.string().max(1000).nullable().optional(),
+  dpi: z.union([z.literal(203), z.literal(300)]), zpl: z.string().min(6).max(20000), zpl_paziente: z.string().max(20000).nullable().optional(), attivo: z.boolean().default(true), note: z.string().max(1000).nullable().optional(),
 });
 /** Controlli del modello: comandi non supportati e segnaposto sconosciuti sono avvisi (si salva lo stesso); senza ^XA/^XZ è un errore. */
 function controlla(b) {
   const a = analizzaZpl(b.zpl, { larghezza: dotDaMm(b.larghezza_mm, b.dpi), altezza: dotDaMm(b.altezza_mm, b.dpi) });
   if (!a.etichette.length) throw bad('Il modello deve contenere un\'etichetta tra ^XA e ^XZ');
+  if (b.zpl_paziente && b.zpl_paziente.trim() && !analizzaZpl(b.zpl_paziente, { larghezza: dotDaMm(b.larghezza_mm, b.dpi), altezza: dotDaMm(b.altezza_mm, b.dpi) }).etichette.length) throw bad('Il tagliando del paziente deve contenere un\'etichetta tra ^XA e ^XZ');
   return { non_supportati: a.nonSupportati, segnaposto_sconosciuti: segnapostoSconosciuti(b.zpl), avvisi: a.avvisi };
 }
 
 r.post('/modelli', ah(async (req, res) => {
   const b = parse(Modello, req.body);
   const controllo = controlla(b);
-  const m = await one(`INSERT INTO modelli (nome, larghezza_mm, altezza_mm, dpi, zpl, attivo, note, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-    [b.nome, b.larghezza_mm, b.altezza_mm, b.dpi, b.zpl, b.attivo, b.note || null, req.user.id]);
+  const m = await one(`INSERT INTO modelli (nome, larghezza_mm, altezza_mm, dpi, zpl, attivo, note, updated_by, zpl_paziente) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+    [b.nome, b.larghezza_mm, b.altezza_mm, b.dpi, b.zpl, b.attivo, b.note || null, req.user.id, tp(b.zpl_paziente)]);
   await audit(req, 'ETICHETTE_MODELLO', { module: KEY, entity: 'modello', entityId: m.id, label: `Nuovo modello di etichetta "${b.nome}" (${b.larghezza_mm}×${b.altezza_mm} mm, ${b.dpi} dpi)` });
   res.json({ ...(await one(`SELECT ${COLS} ${FROM} WHERE m.id = $1`, [m.id])), controllo });
 }));
@@ -44,11 +46,11 @@ r.put('/modelli/:id', ah(async (req, res) => {
   const cur = await one('SELECT * FROM modelli WHERE id = $1', [Number(req.params.id) || 0]);
   if (!cur) throw notFound('Modello inesistente');
   const controllo = controlla(b);
-  const disegnoCambiato = cur.zpl !== b.zpl || Number(cur.larghezza_mm) !== b.larghezza_mm || Number(cur.altezza_mm) !== b.altezza_mm || cur.dpi !== b.dpi;
+  const disegnoCambiato = cur.zpl !== b.zpl || (cur.zpl_paziente || null) !== tp(b.zpl_paziente) || Number(cur.larghezza_mm) !== b.larghezza_mm || Number(cur.altezza_mm) !== b.altezza_mm || cur.dpi !== b.dpi;
   if (cur.predefinito && !b.attivo) throw bad('Il modello predefinito non si disattiva: scegline prima un altro come predefinito');
-  await q(`UPDATE modelli SET nome=$2, larghezza_mm=$3, altezza_mm=$4, dpi=$5, zpl=$6, attivo=$7, note=$8, updated_by=$9, updated_at=now()
+  await q(`UPDATE modelli SET nome=$2, larghezza_mm=$3, altezza_mm=$4, dpi=$5, zpl=$6, attivo=$7, note=$8, updated_by=$9, zpl_paziente=$10, updated_at=now()
            ${disegnoCambiato ? ', validato_il = NULL, validato_da = NULL, validazione_nota = NULL' : ''} WHERE id=$1`,
-  [cur.id, b.nome, b.larghezza_mm, b.altezza_mm, b.dpi, b.zpl, b.attivo, b.note || null, req.user.id]);
+  [cur.id, b.nome, b.larghezza_mm, b.altezza_mm, b.dpi, b.zpl, b.attivo, b.note || null, req.user.id, tp(b.zpl_paziente)]);
   await audit(req, 'ETICHETTE_MODELLO', { module: KEY, entity: 'modello', entityId: cur.id, label: `Modello di etichetta "${b.nome}" modificato${disegnoCambiato && cur.validato_il ? ': validazione tolta (disegno cambiato)' : ''}` });
   res.json({ ...(await one(`SELECT ${COLS} ${FROM} WHERE m.id = $1`, [cur.id])), controllo, validazione_tolta: Boolean(disegnoCambiato && cur.validato_il) });
 }));
@@ -90,12 +92,13 @@ r.get('/impostazioni', ah(async (_req, res) => {
 }));
 r.put('/impostazioni', ah(async (req, res) => {
   const b = parse(z.object({
-    giorni_identita: z.number().int().min(1).max(GIORNI_MAX).optional(), etichetta_richiesta: z.boolean().optional(),
+    giorni_identita: z.number().int().min(1).max(GIORNI_MAX).optional(), etichetta_richiesta: z.boolean().optional(), provette: z.string().max(8000).optional(),
     modelli_sede: z.array(z.object({ site_id: z.number().int().positive(), modello_id: z.number().int().positive().nullable() })).max(500).optional(),
   }), req.body);
   const prima = await settings();
   if (b.giorni_identita != null) await setSetting('giorni_identita', b.giorni_identita);
   if (b.etichetta_richiesta != null) await setSetting('etichetta_richiesta', b.etichetta_richiesta);
+  if (b.provette != null) await setSetting('provette', b.provette);
   if (b.modelli_sede) {
     await tx(async (c) => {
       for (const x of b.modelli_sede) {

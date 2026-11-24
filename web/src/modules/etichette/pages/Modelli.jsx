@@ -16,7 +16,8 @@ import { itData, itDataOra, oggiIso } from '../format.js';
 
 // Dati di esempio INVENTATI per l'anteprima e la stampa di prova (nessun paziente reale)
 export const ESEMPIO = () => ({ BARCODE: 'TD2600012345', ACCETTAZIONE: '2026/012345', COGNOME: 'ESEMPIO', NOME: 'ETICHETTA', NASCITA: '01/01/1980', SESSO: 'F', DATA: itData(oggiIso()), ORA: '08:30',
-  CONTENITORE: 'PROVETTA EDTA', MATERIALE: 'SANGUE INTERO', ESAMI: 'EMO VES PCR', CLIENTE: 'Cliente di prova', SEDE: 'Punto prelievi di prova', N: '1', TOT: '3' });
+  CONTENITORE: 'PROVETTA EDTA', MATERIALE: 'SANGUE INTERO', ESAMI: 'EMO VES PCR', CLIENTE: 'Cliente di prova', SEDE: 'Punto prelievi di prova', N: '1', TOT: '3',
+  ETICHETTA: 'T.Viola Alinity', ESAMIV: '101,220,230,241,242,243', CODCLIENTE: 'TD00', RITIRO: 'Ritiro 01/01/2027' });
 const NUOVO = { id: null, nome: '', larghezza_mm: 50, altezza_mm: 25, dpi: 203, zpl: '^XA\n^CI28\n^PW400\n^LL200\n^FO16,16^A0N,28,28^FD{COGNOME} {NOME}^FS\n^FO16,60^BY2,3,70^BCN,70,Y,N,N,A^FD{BARCODE}^FS\n^XZ', attivo: true, note: '' };
 
 export default function Modelli() {
@@ -33,7 +34,7 @@ export default function Modelli() {
   useEffect(() => { if (!f && lista.data?.length) setF({ ...lista.data[0] }); }, [lista.data, f]);
   useEffect(() => { configuraBrowserPrint(stato?.browser_print); }, [stato]);
   const cur = lista.data?.find((m) => m.id === f?.id) || null;
-  const modificato = f && cur && ['nome', 'larghezza_mm', 'altezza_mm', 'dpi', 'zpl', 'attivo', 'note'].some((k) => String(f[k] ?? '') !== String(cur[k] ?? ''));
+  const modificato = f && cur && ['nome', 'larghezza_mm', 'altezza_mm', 'dpi', 'zpl', 'zpl_paziente', 'attivo', 'note'].some((k) => String(f[k] ?? '') !== String(cur[k] ?? ''));
 
   const analisi = useMemo(() => {
     if (!f) return null;
@@ -43,7 +44,8 @@ export default function Modelli() {
     const et = a.etichette[0];
     const avvisi = [...a.avvisi];
     if (et && (et.larghezza !== w || et.altezza !== h)) avvisi.push(`^PW/^LL (${et.larghezza}×${et.altezza} dot) diversi dalle misure del rotolo (${w}×${h} dot a ${f.dpi} dpi)`);
-    return { pieno, et, nonSupportati: a.nonSupportati, sconosciuti: segnapostoSconosciuti(f.zpl), avvisi,
+    const pz = f.zpl_paziente && f.zpl_paziente.trim() ? analizzaZpl(riempiModello(f.zpl_paziente, ESEMPIO()), { larghezza: w, altezza: h }).etichette[0] : null;
+    return { pieno, et, svgPaziente: pz ? svgEtichetta(pz, { dpi: f.dpi, larghezzaMm: Number(f.larghezza_mm), altezzaMm: Number(f.altezza_mm) }) : null, nonSupportati: a.nonSupportati, sconosciuti: segnapostoSconosciuti(f.zpl), avvisi,
       svg: et ? svgEtichetta(et, { dpi: f.dpi, larghezzaMm: Number(f.larghezza_mm), altezzaMm: Number(f.altezza_mm) }) : null };
   }, [f]);
 
@@ -60,7 +62,7 @@ export default function Modelli() {
   const salva = async () => {
     setSalvando(true); setErr(null);
     try {
-      const corpo = { nome: f.nome, larghezza_mm: Number(f.larghezza_mm), altezza_mm: Number(f.altezza_mm), dpi: Number(f.dpi), zpl: f.zpl, attivo: Boolean(f.attivo), note: f.note || null };
+      const corpo = { nome: f.nome, larghezza_mm: Number(f.larghezza_mm), altezza_mm: Number(f.altezza_mm), dpi: Number(f.dpi), zpl: f.zpl, zpl_paziente: f.zpl_paziente && f.zpl_paziente.trim() ? f.zpl_paziente : null, attivo: Boolean(f.attivo), note: f.note || null };
       const r = f.id ? await api.put(`/modelli/${f.id}`, corpo) : await api.post('/modelli', corpo);
       toast(r.validazione_tolta ? 'Modello salvato: la validazione è stata tolta perché il disegno è cambiato' : 'Modello salvato');
       await lista.reload(); setF({ ...r });
@@ -126,6 +128,9 @@ export default function Modelli() {
               <Field label="ZPL" help="Comandi disegnati dall'anteprima: ^XA ^XZ ^FO ^FD ^FS ^A0 ^BC (Code 128, modo A automatico B/C) ^BY ^GB ^CI28 ^PW ^LL ^FB ^LH ^CF ^FX. {CAMPO:n} tronca a n caratteri; i campi vuoti non si stampano.">
                 <textarea ref={area} className="et-zpl" value={f.zpl} onChange={(e) => setF({ ...f, zpl: e.target.value })} spellCheck={false} rows={14} />
               </Field>
+              <Field label="ZPL del tagliando del paziente (facoltativo)" help="Ultima etichetta della striscia, senza codice a barre, da consegnare al paziente. Vuoto = non si stampa.">
+                <textarea className="et-zpl" value={f.zpl_paziente || ''} onChange={(e) => setF({ ...f, zpl_paziente: e.target.value })} spellCheck={false} rows={7} />
+              </Field>
               <Field label="Note"><input value={f.note || ''} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="es. misure del rotolo, foto dell'etichetta di StudioLab ricevuta il…" /></Field>
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={salva} disabled={salvando || f.nome.trim().length < 2}>{salvando ? 'Salvo…' : 'Salva'}</button>
@@ -143,6 +148,8 @@ export default function Modelli() {
               {analisi.svg ? (
                 <div className="et-anteprima grande" style={reale ? { width: `${f.larghezza_mm}mm`, height: `${f.altezza_mm}mm` } : { width: '100%', maxWidth: 520, aspectRatio: `${Number(f.larghezza_mm)} / ${Number(f.altezza_mm)}` }} dangerouslySetInnerHTML={{ __html: analisi.svg }} />
               ) : <div className="alert err"><Icon name="alert" /><span>Nessuna etichetta da disegnare: servono ^XA e ^XZ</span></div>}
+              {analisi.svgPaziente && <><div className="small muted" style={{ margin: '10px 0 4px' }}>Tagliando del paziente</div>
+                <div className="et-anteprima grande" style={reale ? { width: `${f.larghezza_mm}mm`, height: `${f.altezza_mm}mm` } : { width: '100%', maxWidth: 520, aspectRatio: `${Number(f.larghezza_mm)} / ${Number(f.altezza_mm)}` }} dangerouslySetInnerHTML={{ __html: analisi.svgPaziente }} /></>}
               <div className="small muted" style={{ marginTop: 10 }}>{f.larghezza_mm}×{f.altezza_mm} mm · {dotDaMm(f.larghezza_mm, f.dpi)}×{dotDaMm(f.altezza_mm, f.dpi)} dot · dati inventati (ESEMPIO ETICHETTA, barcode TD2600012345). Il carattere 0 della Zebra è reso con un carattere condensato simile: le larghezze dei testi sono stimate.</div>
               {(analisi.nonSupportati.length > 0 || analisi.sconosciuti.length > 0 || analisi.avvisi.length > 0) && (
                 <ul className="et-avvisi">

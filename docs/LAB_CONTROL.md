@@ -396,3 +396,11 @@ accesso con Label > Operatore di sede: l'ambito è la sede della persona).
 - Stampanti a 300 dpi: il modello predefinito è a 203 dpi; per una sede a 300 dpi serve un modello dedicato assegnato alla sede.
 - Identità solo per i client abbinati a una sede: i client non abbinati si stampano cercando per numero o barcode (l'identità si legge
   all'apertura).
+
+## v0.97.0 · Etichette: lettura in diretta e replica di StudioLab (CEO, 24/11/2026, accettazione P26-008223)
+
+Causa delle 7 etichette invece di 8: la stampa leggeva la copia Synclab, ferma a prima dell'aggiunta di una provetta e di quattro esami. Ora `preparaAccettazione` (routes/stampa.js) chiama `aggiornaDalGestionale` a ogni apertura (una chiamata, al più una ogni 2 minuti per accettazione, porta anche l'identità) e `caricaAccettazione` usa la lettura puntuale (`lc_letture`) quando è più recente della copia. La risposta porta `aggiornamento { diretta, letto_il, messaggio }`: se la lettura non riesce la pagina avvisa che le etichette vengono dalla copia.
+
+Replica di StudioLab (migrazione 005): modello "StudioLab 50x25 (replica)" predefinito se quello iniziale non era validato; `modelli.zpl_paziente` = tagliando del paziente in coda alla striscia; impostazione `provette` = tabella "Nome sull'etichetta = Materiale | esami" nell'ordine di stampa (la Data API dà `container` vuoto: il nome della provetta si ricava da materiale ed esami). Nuovi segnaposto: `{ETICHETTA}`, `{ESAMIV}` (codici con la virgola, in ordine di codice), `{CODCLIENTE}`, `{RITIRO}` (oggi vuoto).
+
+Non disponibili dalla Data API, quindi non stampati: il numero nel riquadro (33 sulla striscia di esempio; non è l'età né un dato della richiesta) e la data di ritiro (StudioLab stampava 29/11/2026; il calcolo della Suite sui giorni di refertazione dà 26/11/2026: non coincide, non si stampa). Da chiedere a CB Sistemi. Il modello è ricostruito da una foto: misure del rotolo, caratteri e posizioni vanno confermati con una stampa di prova accanto a una striscia di StudioLab, poi "Segna come validato".

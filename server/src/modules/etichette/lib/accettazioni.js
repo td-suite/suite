@@ -11,8 +11,17 @@ import { statoSynclab } from '../../nc/lib/synclabDesk.js';
 
 /** Accettazione con righe e campioni: { fonte: 'COPIA'|'GESTIONALE', testata, righe: [{ id, codice, descrizione, cancellata, campioni }], campioni: [...] } */
 export async function caricaAccettazione(instanceId, id) {
-  const r = await one(`SELECT instance_id, id, request_number, date::text AS data, created_at_local, client_id, client_code, state, disponibilita, dem_sex
+  const r = await one(`SELECT instance_id, id, request_number, date::text AS data, created_at_local, client_id, client_code, state, disponibilita, dem_sex, updated_at
                          FROM synclab.requests WHERE instance_id = $1 AND id = $2 AND deleted_at IS NULL`, [instanceId, id]);
+  // v0.97.0 (P26-008223, 24/11/2026: 7 etichette invece di 8): la copia Synclab può essere indietro di decine di minuti rispetto al
+  // gestionale (provette ed esami aggiunti dopo l'ultima copia). Se c'è una lettura puntuale (lc_letture, fatta all'apertura della
+  // stampa) più recente della copia, le etichette si costruiscono da quella.
+  const l = await one(`SELECT raw, letto_il FROM lc_letture WHERE instance_id = $1 AND id = $2`, [instanceId, String(id)]).catch(() => null);
+  if (l && (!r || new Date(l.letto_il) > new Date(r.updated_at))) {
+    const g = daGestionale(instanceId, { ...l.raw, id });
+    if (r) g.testata.attiva = r.disponibilita === 'ATTIVO';
+    return { ...g, letto_il: l.letto_il, copia_il: r?.updated_at || null };
+  }
   if (r) {
     const righe = await many(`SELECT i.ord, i.id, i.exam_code AS codice, coalesce(i.description, e.description) AS descrizione, coalesce(i.deleted, FALSE) AS cancellata,
         coalesce((SELECT array_agg(l.sample_id ORDER BY l.sample_id) FROM synclab.request_item_samples l WHERE l.instance_id = i.instance_id AND l.request_id = i.request_id AND l.item_id = i.id), i.sample_ids, '{}') AS campioni
@@ -20,11 +29,41 @@ export async function caricaAccettazione(instanceId, id) {
         LEFT JOIN LATERAL (SELECT x.description FROM synclab.exams x WHERE x.exam_code = i.exam_code AND x.disponibilita = 'ATTIVO' ORDER BY x.updated_at DESC LIMIT 1) e ON TRUE
        WHERE i.instance_id = $1 AND i.request_id = $2 ORDER BY i.ord`, [instanceId, id]);
     const campioni = await many(`SELECT ord, id, barcode, material AS materiale, container AS contenitore FROM synclab.samples WHERE instance_id = $1 AND request_id = $2 ORDER BY ord`, [instanceId, id]);
-    return { fonte: 'COPIA', testata: { instance_id: r.instance_id, id: r.id, numero: r.request_number, data: r.data, ora: oraLocale(r.created_at_local), client_id: r.client_id, client_code: r.client_code, stato: r.state, stato_label: statoSynclab(r.state), attiva: r.disponibilita === 'ATTIVO', sesso_demografia: r.dem_sex || null }, righe, campioni };
+    return { fonte: 'COPIA', testata: { instance_id: r.instance_id, id: r.id, numero: r.request_number, data: r.data, ora: oraLocale(r.created_at_local), client_id: r.client_id, client_code: r.client_code, stato: r.state, stato_label: statoSynclab(r.state), attiva: r.disponibilita === 'ATTIVO', sesso_demografia: r.dem_sex || null }, righe, campioni, letto_il: null, copia_il: r.updated_at };
   }
   const d = await one(`SELECT instance_id, id, request_number, data::text AS data, client_id, raw FROM accettazioni_dirette WHERE instance_id = $1 AND id = $2`, [instanceId, id]);
   if (!d) return null;
-  return daGestionale(d.instance_id, d.raw);
+  return { ...daGestionale(d.instance_id, d.raw), letto_il: null, copia_il: null };
+}
+
+/**
+ * Tabella delle provette (impostazione `provette`, testo): una riga per tipo di provetta, NELL'ORDINE DI STAMPA di StudioLab:
+ *   Nome sull'etichetta = Materiale del gestionale | codici d'esame (facoltativi, separati da virgola)
+ * Una riga con i codici vale per i campioni di quel materiale che hanno almeno uno di quegli esami; una riga senza codici è la provetta
+ * generica di quel materiale. Righe vuote e righe che iniziano con # si ignorano. Ritorna [{ ord, nome, materiale, codici:Set }].
+ */
+export function leggiProvette(testo) {
+  const out = [];
+  for (const riga of String(testo || '').split(/\r?\n/)) {
+    const t = riga.trim();
+    if (!t || t.startsWith('#')) continue;
+    const i = t.indexOf('=');
+    if (i < 1) continue;
+    const nome = t.slice(0, i).trim();
+    const [mat, cod = ''] = t.slice(i + 1).split('|');
+    const materiale = norm(mat);
+    if (!nome || !materiale) continue;
+    out.push({ ord: out.length, nome: nome.slice(0, 40), materiale, codici: new Set(cod.split(/[,;\s]+/).map((x) => x.trim().toUpperCase()).filter(Boolean)) });
+  }
+  return out;
+}
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+/** Provetta di un campione: prima la riga del suo materiale con uno dei suoi esami, poi la riga generica del materiale; null se nessuna. */
+export function provettaDi(provette, materiale, codici) {
+  const m = norm(materiale);
+  const del = provette.filter((p) => p.materiale === m);
+  const c = new Set((codici || []).map((x) => String(x || '').toUpperCase()));
+  return del.find((p) => p.codici.size && [...p.codici].some((x) => c.has(x))) || del.find((p) => !p.codici.size) || null;
 }
 
 /** Forma comune da un elemento `requests` della Data API (lettura diretta): nessun dato del paziente. */
@@ -62,27 +101,39 @@ export async function clienteESede(instanceId, clientId) {
  * (legame non dichiarato dal gestionale) con l'elenco esami vuoto. Ritorna [{ chiave, tipo, barcode, materiale, contenitore, esami,
  * valori, zpl, avvisi }].
  */
-export function costruisciEtichette(acc, paziente, { richiesta = false, cliente = null, sede = null, modello = null } = {}) {
+export function costruisciEtichette(acc, paziente, { richiesta = false, cliente = null, sede = null, modello = null, provette = [] } = {}) {
   const t = acc.testata;
   const vive = acc.righe.filter((r) => !r.cancellata);
   const perCampione = new Map();
   for (const r of acc.righe) for (const s of r.campioni || []) { if (!perCampione.has(s)) perCampione.set(s, []); perCampione.get(s).push(r); }
-  const out = [];
+  let out = [];
   for (const c of acc.campioni) {
     const legate = c.id != null ? (perCampione.get(c.id) || []) : [];
     const esami = legate.filter((r) => !r.cancellata);
     if (legate.length && !esami.length) continue;
-    out.push({ chiave: `C:${c.id ?? c.ord}`, tipo: 'CAMPIONE', barcode: c.barcode || null, materiale: c.materiale || null, contenitore: c.contenitore || null, esami: unici(esami), avvisi: c.barcode ? [] : ['Campione senza barcode nel gestionale: l\'etichetta esce senza codice a barre'] });
+    const un = unici(esami);
+    const pr = provette.length ? provettaDi(provette, c.materiale, un.map((x) => x.codice)) : null;
+    const avvisi = c.barcode ? [] : ['Campione senza barcode nel gestionale: l\'etichetta esce senza codice a barre'];
+    if (provette.length && !pr) avvisi.push(`Provetta non in tabella per il materiale "${c.materiale || 'non indicato'}": sull'etichetta esce il materiale. Aggiungila in Impostazioni Label`);
+    out.push({ chiave: `C:${c.id ?? c.ord}`, tipo: 'CAMPIONE', barcode: c.barcode || null, materiale: c.materiale || null, contenitore: c.contenitore || null, provetta: pr?.nome || null, ordine: pr ? pr.ord : 1000 + out.length, esami: un, avvisi });
   }
-  if (richiesta) out.push({ chiave: 'R', tipo: 'RICHIESTA', barcode: null, materiale: null, contenitore: 'Richiesta', esami: unici(vive), avvisi: [] });
+  // ordine di stampa di StudioLab = ordine delle righe della tabella delle provette (stabile per i campioni senza riga)
+  if (provette.length) out = out.map((e, k) => [e, k]).sort((x, y) => x[0].ordine - y[0].ordine || x[1] - y[1]).map((x) => x[0]);
+  if (richiesta) out.push({ chiave: 'R', tipo: 'RICHIESTA', barcode: null, materiale: null, contenitore: 'Richiesta', provetta: null, esami: unici(vive), avvisi: [] });
   const tot = out.length;
+  // tagliando del paziente (ultima etichetta, come in StudioLab): solo se il modello ha il suo disegno
+  if (modello?.zpl_paziente) out.push({ chiave: 'P', tipo: 'PAZIENTE', barcode: null, materiale: null, contenitore: 'Tagliando paziente', provetta: null, esami: [], avvisi: ['Il gestionale non fornisce la data di ritiro né il numero nel riquadro di StudioLab: il tagliando esce senza'] });
   const base = {
     ACCETTAZIONE: t.numero || '', COGNOME: paziente?.cognome || '', NOME: paziente?.nome || '', NASCITA: paziente?.nascita ? itData(paziente.nascita) : '',
     SESSO: paziente?.sesso || t.sesso_demografia || '', DATA: t.data ? itData(t.data) : '', ORA: t.ora || '', CLIENTE: cliente || '', SEDE: sede || '', TOT: String(tot),
+    CODCLIENTE: t.client_code || '', RITIRO: '',   // la Data API non dà la data di ritiro prevista (reportAtLocal è il referto effettivo): vuoto finché CB Sistemi non la espone
   };
   return out.map((e, k) => {
-    const valori = { ...base, BARCODE: e.barcode || '', CONTENITORE: e.contenitore || '', MATERIALE: e.materiale || '', ESAMI: e.esami.map((x) => x.codice).filter(Boolean).join(' '), N: String(k + 1) };
-    return { ...e, n: k + 1, valori, zpl: modello ? riempiModello(modello.zpl, valori) : null };
+    const codici = e.esami.map((x) => x.codice).filter(Boolean);
+    const valori = { ...base, BARCODE: e.barcode || '', CONTENITORE: e.contenitore || '', MATERIALE: e.materiale || '', ESAMI: codici.join(' '),
+      ETICHETTA: e.provetta || e.contenitore || e.materiale || '', ESAMIV: [...codici].sort().join(','), N: String(k + 1) };
+    const disegno = e.tipo === 'PAZIENTE' ? modello.zpl_paziente : modello?.zpl;
+    return { ...e, n: k + 1, valori, zpl: disegno ? riempiModello(disegno, valori) : null };
   });
 }
 const unici = (righe) => { const v = new Set(); return righe.filter((r) => { const k = r.codice || r.id; if (v.has(k)) return false; v.add(k); return true; }).map((r) => ({ codice: r.codice || null, descrizione: r.descrizione || null })); };

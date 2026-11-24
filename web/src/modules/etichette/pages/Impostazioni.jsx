@@ -16,7 +16,7 @@ export default function Impostazioni() {
   const [lavoro, setLavoro] = useState(false);
   useEffect(() => {
     if (!imp.data) return;
-    setF({ giorni_identita: imp.data.giorni_identita, etichetta_richiesta: imp.data.etichetta_richiesta });
+    setF({ giorni_identita: imp.data.giorni_identita, etichetta_richiesta: imp.data.etichetta_richiesta, provette: imp.data.provette || '' });
     setSedi(Object.fromEntries(imp.data.sedi.map((s) => [s.id, s.modello_id || ''])));
   }, [imp.data]);
   if (!imp.data || !f) return <div className="page"><ErrorBox error={imp.error} /></div>;
@@ -28,7 +28,7 @@ export default function Impostazioni() {
     setErr(null);
     try {
       const modelli_sede = d.sedi.filter((s) => String(s.modello_id || '') !== String(sedi[s.id] || '')).map((s) => ({ site_id: s.id, modello_id: sedi[s.id] ? Number(sedi[s.id]) : null }));
-      const r = await api.put('/impostazioni', { giorni_identita: Number(f.giorni_identita), etichetta_richiesta: Boolean(f.etichetta_richiesta), modelli_sede });
+      const r = await api.put('/impostazioni', { giorni_identita: Number(f.giorni_identita), etichetta_richiesta: Boolean(f.etichetta_richiesta), provette: f.provette || '', modelli_sede });
       toast(r.purgate ? `Impostazioni salvate: tolte ${r.purgate.identita} identità oltre il nuovo limite` : 'Impostazioni salvate');
       imp.reload();
     } catch (e) { setErr(e); }
@@ -61,6 +61,9 @@ export default function Impostazioni() {
         <Card title="Etichette" icon="etichette">
           <label className="f inline"><Switch checked={f.etichetta_richiesta} onChange={(v) => setF({ ...f, etichetta_richiesta: v })} label="Etichetta richiesta" />Aggiungi un'etichetta "richiesta" senza barcode (con tutti gli esami)</label>
           <p className="small muted">Le etichette dei campioni sono sempre una per provetta, con gli esami di quella provetta.</p>
+          <Field label="Tabella delle provette (come in StudioLab)" help="Una riga per provetta, nell'ordine di stampa: Nome sull'etichetta = Materiale del gestionale | codici d'esame facoltativi. La riga con i codici vale solo per i campioni che hanno uno di quegli esami. Un materiale senza riga esce con il nome del materiale e un avviso in anteprima.">
+            <textarea className="et-zpl" rows={12} spellCheck={false} value={f.provette} onChange={(e) => setF({ ...f, provette: e.target.value })} />
+          </Field>
         </Card>
       </div>
       <Card title="Modello per sede" icon="building" flush>
