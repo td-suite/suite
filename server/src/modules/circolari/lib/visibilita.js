@@ -62,10 +62,10 @@ export async function perimetro(req) {
 export function filtro(per, p) {
   if (per.tutte) return per.bozze ? null : `stato <> 'BOZZA'`;
   if (!per.segmenti.length) return 'FALSE';
-  return `(stato = 'PUBBLICATA' AND segmento = ANY(${p(per.segmenti)}))`;
+  return `(stato = 'PUBBLICATA' AND segmenti && ${p(per.segmenti)}::text[])`;
 }
 
 export function visibile(per, c) {
   if (per.tutte) return per.bozze || c.stato !== 'BOZZA';
-  return c.stato === 'PUBBLICATA' && per.segmenti.includes(c.segmento);
+  return c.stato === 'PUBBLICATA' && (Array.isArray(c.segmenti) && c.segmenti.length ? c.segmenti : [c.segmento]).some((s) => per.segmenti.includes(s));
 }

@@ -107,6 +107,20 @@ test('ponte Comunicazione ↔ Circolari: una sola serie TD-AAAA/NNN', { skip: SA
     const bozza = must(await o.post('/api/circolari/circolari', { titolo: 'Circolare dal modulo', segmento: 'PERSONALE', corpo: [{ type: 'paragrafo', text: 'Testo della circolare redatta nel modulo.' }] }), 'bozza modulo');
     const pub = must(await o.post(`/api/circolari/circolari/${bozza.id}/pubblica`), 'pubblica modulo');
     assert.equal(pub.protocollo, `TD-${anno}/002`);
+    // v0.97.3: più destinatari per circolare (segmenti); `segmento` resta il primo dell'elenco e le richieste con il solo segmento valgono
+    assert.deepEqual(bozza.segmenti, ['PERSONALE']);
+    const multi = must(await o.post('/api/circolari/circolari', { titolo: 'Circolare a più destinatari', segmenti: ['PUNTI_PRELIEVO', 'CLIENTI_SERVICE'], corpo: [{ type: 'paragrafo', text: 'Testo.' }] }), 'bozza multi');
+    assert.deepEqual(multi.segmenti, ['CLIENTI_SERVICE', 'PUNTI_PRELIEVO']); assert.equal(multi.segmento, 'CLIENTI_SERVICE');
+    const multi2 = must(await o.put(`/api/circolari/circolari/${multi.id}`, { ...multi, segmenti: ['PUNTI_PRELIEVO', 'PARTNER'] }), 'modifica multi');
+    assert.deepEqual(multi2.segmenti, ['PUNTI_PRELIEVO', 'PARTNER']); assert.equal(multi2.segmento, 'PUNTI_PRELIEVO');
+    assert.equal((await o.post('/api/circolari/circolari', { titolo: 'Senza destinatari', segmenti: [], corpo: [] })).s, 400);
+    for (const sg of ['PUNTI_PRELIEVO', 'PARTNER']) assert.ok(must(await o.get(`/api/circolari/circolari?segmento=${sg}`), 'filtro').rows.some((x) => x.id === multi.id), `filtro ${sg}`);
+    assert.ok(!must(await o.get('/api/circolari/circolari?segmento=CLIENTI_SERVICE'), 'filtro').rows.some((x) => x.id === multi.id));
+    // visibilità degli esterni: basta uno dei segmenti della circolare (stesso filtro SQL di lib/visibilita.js)
+    const vis = (sg) => db.query(`SELECT count(*)::int AS n FROM circolari.circolari WHERE id = $1 AND segmenti && $2::text[]`, [multi.id, sg]).then((r) => r.rows[0].n);
+    assert.equal(await vis(['PARTNER']), 1); assert.equal(await vis(['CLIENTI_SERVICE', 'MEDICINA_LAVORO']), 0);
+    await db.query(`UPDATE circolari.circolari SET segmento = 'ALTRO' WHERE id = $1`, [multi.id]);   // codice che scrive il solo segmento: l'elenco lo segue
+    assert.deepEqual((await db.query('SELECT segmenti FROM circolari.circolari WHERE id = $1', [multi.id])).rows[0].segmenti, ['ALTRO']);
 
     // 5. Diagnostica D42: la CIRC- preesistente entra nel registro con il numero successivo, senza nuove notifiche
     const diag = must(await o.get('/api/admin/diagnostica'), 'diagnostica');

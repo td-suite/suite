@@ -7,3 +7,5 @@ export const itDate = (d) => (d ? new Date(d).toLocaleDateString('it-IT', { time
 export const itDateTime = (d) => (d ? new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome', dateStyle: 'short', timeStyle: 'short' }) : '');
 export const isoDate = (d) => (d ? String(d).slice(0, 10) : '');
 export const BLOCCHI = { titolo: 'Titolo di sezione', paragrafo: 'Paragrafo', elenco: 'Elenco', tabella: 'Tabella' };
+/** Destinatari di una circolare come testo: "Clienti service, Punti prelievo" (elenco dei segmenti; in mancanza il segmento unico). */
+export const segmentiTesto = (c) => (Array.isArray(c?.segmenti) && c.segmenti.length ? c.segmenti : [c?.segmento].filter(Boolean)).map((k) => SEGMENTO[k] || k).join(', ');

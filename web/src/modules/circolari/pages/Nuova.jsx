@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, base, useApi } from '../api.js';
 import { Card, Field, DropZone, useToast, PageHead, Seg } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { SEGMENTO } from '../format.js';
+import SceltaDestinatari from '../SceltaDestinatari.jsx';
 
 export default function Nuova() {
   const nav = useNavigate();
@@ -15,7 +15,7 @@ export default function Nuova() {
   const [file, setFile] = useState(null);
   const [testo, setTesto] = useState('');
   const [hint, setHint] = useState('');
-  const [segmento, setSegmento] = useState('CLIENTI_SERVICE');
+  const [segmenti, setSegmenti] = useState(['CLIENTI_SERVICE']);
   const [ai, setAi] = useState(true);
   const [titolo, setTitolo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export default function Nuova() {
     try {
       const fd = new FormData();
       if (mode === 'file') fd.append('file', file); else fd.append('testo', testo);
-      fd.append('hint', hint); fd.append('segmento', segmento); fd.append('ai', ai ? '1' : '0');
+      fd.append('hint', hint); fd.append('segmenti', segmenti.join(',')); fd.append('ai', ai ? '1' : '0');
       const c = await api.upload('/circolari/importa', fd);
       toast(c.ai ? 'Bozza strutturata con Claude: controlla e rifinisci' : c.ai_error ? `Strutturazione automatica non riuscita (${c.ai_error}): bozza creata con regole semplici` : 'Bozza creata: controlla e rifinisci');
       nav(`${base}/${c.id}`);
@@ -37,7 +37,7 @@ export default function Nuova() {
   const vuota = async () => {
     if (titolo.trim().length < 3) return toast('Indica il titolo', 'err');
     setBusy(true);
-    try { const c = await api.post('/circolari', { titolo: titolo.trim(), segmento, corpo: [{ type: 'paragrafo', text: 'Gentile Cliente,' }, { type: 'paragrafo', text: '' }] }); nav(`${base}/${c.id}`); }
+    try { const c = await api.post('/circolari', { titolo: titolo.trim(), segmenti, corpo: [{ type: 'paragrafo', text: 'Gentile Cliente,' }, { type: 'paragrafo', text: '' }] }); nav(`${base}/${c.id}`); }
     catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
@@ -57,7 +57,7 @@ export default function Nuova() {
               <Field label="Testo"><textarea rows={12} value={testo} onChange={(e) => setTesto(e.target.value)} placeholder="Incolla qui il testo della circolare. Le righe vuote separano i paragrafi; le righe con tabulazioni o con ' | ' diventano tabelle." /></Field>
             )}
             <div className="two">
-              <Field label="Destinatari"><select value={segmento} onChange={(e) => setSegmento(e.target.value)}>{Object.entries(SEGMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+              <Field label="Destinatari" help="Uno o più: la circolare pubblicata è visibile a tutti i gruppi scelti."><SceltaDestinatari value={segmenti} onChange={setSegmenti} /></Field>
               <Field label="Strutturazione" help={caps.data && !caps.data.ai ? 'Claude non è configurato nella Suite: la bozza viene strutturata con regole semplici.' : 'Claude ricava titolo, sintesi, sezioni e tabelle dalla bozza senza alterare numeri, date e condizioni.'}>
                 <select value={ai ? '1' : '0'} onChange={(e) => setAi(e.target.value === '1')} disabled={caps.data && !caps.data.ai}><option value="1">Con Claude</option><option value="0">Solo regole semplici</option></select>
               </Field>
@@ -70,7 +70,7 @@ export default function Nuova() {
         <Card title="Scheda vuota" icon="edit">
           <div className="circ-form">
             <Field label="Titolo" required><input value={titolo} onChange={(e) => setTitolo(e.target.value)} maxLength={200} placeholder="Es. Nuovi tempi di refertazione per i clienti in service" /></Field>
-            <Field label="Destinatari"><select value={segmento} onChange={(e) => setSegmento(e.target.value)}>{Object.entries(SEGMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            <Field label="Destinatari" help="Uno o più: la circolare pubblicata è visibile a tutti i gruppi scelti."><SceltaDestinatari value={segmenti} onChange={setSegmenti} /></Field>
             <div className="row end"><button className="btn" disabled={busy} onClick={vuota}><Icon name="plus" />Crea la bozza</button></div>
           </div>
         </Card>

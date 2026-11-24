@@ -95,7 +95,7 @@ export async function sezioneCircolari(su) {
   const fv = filtro(per, p);
   const uid = p(su.id);
   // il filtro del modulo usa le colonne senza alias (stato, segmento): esistono solo in circolari, nessuna ambiguità con prese_visione
-  const where = [`c.stato = 'PUBBLICATA'`, `c.segmento = 'CLIENTI_SERVICE'`, ...(fv ? [fv] : [])];
+  const where = [`c.stato = 'PUBBLICATA'`, `'CLIENTI_SERVICE' = ANY(c.segmenti)`, ...(fv ? [fv] : [])];
   const w = where.join(' AND ');
   const rows = await circDb.many(`SELECT c.id, c.protocollo, c.titolo, c.data, c.published_at, pv.at AS presa_visione_at
       FROM circolari c LEFT JOIN prese_visione pv ON pv.circolare_id = c.id AND pv.user_id = ${uid}
@@ -165,7 +165,7 @@ export async function vistaCircolari(su, orgId) {
   const params = []; const p = (v) => { params.push(v); return `$${params.length}`; };
   const fv = filtro(per, p);
   const ids = p(accessi);
-  const w = [`c.stato = 'PUBBLICATA'`, `c.segmento = 'CLIENTI_SERVICE'`, ...(fv ? [fv] : [])].join(' AND ');
+  const w = [`c.stato = 'PUBBLICATA'`, `'CLIENTI_SERVICE' = ANY(c.segmenti)`, ...(fv ? [fv] : [])].join(' AND ');
   // presa visione = lettori tra gli accessi esterni della Legal entity (mai quella dell'utente TD)
   const lettori = `(SELECT count(*)::int FROM prese_visione pv WHERE pv.circolare_id = c.id AND pv.user_id = ANY(${ids}::int[]))`;
   const rows = await circDb.many(`SELECT c.id, c.protocollo, c.titolo, c.data, c.published_at, ${lettori} AS lettori

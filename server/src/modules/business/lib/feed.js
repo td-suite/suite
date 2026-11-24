@@ -67,7 +67,7 @@ export const circolariDiOrg = (orgId, linea, emails = []) => sezione('circolari'
          (SELECT count(*)::int FROM circolari.prese_visione pv WHERE pv.circolare_id = c.id AND pv.user_id IN (${UTENTI_ORG})) AS prese_visione,
          (SELECT max(pv.at) FROM circolari.prese_visione pv WHERE pv.circolare_id = c.id AND pv.user_id IN (${UTENTI_ORG})) AS letta_at
     FROM circolari.circolari c
-   WHERE c.stato IN ('PUBBLICATA','SUPERATA') AND (c.segmento = $2 OR EXISTS (SELECT 1 FROM circolari.invii i, jsonb_array_elements(i.destinatari) d WHERE i.circolare_id = c.id AND lower(d->>'email') = ANY($3::text[])))
+   WHERE c.stato IN ('PUBBLICATA','SUPERATA') AND ($2 = ANY(c.segmenti) OR EXISTS (SELECT 1 FROM circolari.invii i, jsonb_array_elements(i.destinatari) d WHERE i.circolare_id = c.id AND lower(d->>'email') = ANY($3::text[])))
    ORDER BY c.published_at DESC NULLS LAST LIMIT 100`, [ids, LINEE[linea]?.segmento || 'CLIENTI_SERVICE', emails.map((e) => String(e).toLowerCase())]), `${linea}:${emails.join(',')}`);
 
 // Accessi esterni della Legal entity al Portale (nessun modulo da avviare: anagrafica della Suite)

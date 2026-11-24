@@ -31,7 +31,7 @@ const blocco = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tabella'), colonne: z.array(z.string().trim().max(120)).min(1).max(12), righe: z.array(z.array(z.string().trim().max(400))).max(300) }),
 ]);
 const schema = z.object({
-  tipo: z.string().trim().max(80).optional(), linea: z.string().trim().max(80).optional(), segmento: z.enum(SEGMENTI).optional(),
+  tipo: z.string().trim().max(80).optional(), linea: z.string().trim().max(80).optional(), segmento: z.enum(SEGMENTI).optional(), segmenti: z.array(z.enum(SEGMENTI)).min(1, 'scegli almeno un destinatario').max(SEGMENTI.length).optional(),
   titolo: z.string().trim().min(3, 'il titolo è obbligatorio').max(200), destinatari: z.string().trim().max(400).optional(), oggetto: z.string().trim().max(400).optional(),
   decorrenza: z.string().trim().max(160).optional(), riferimenti: z.string().trim().max(400).optional(), luogo: z.string().trim().max(80).optional(),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data non valida').optional(), sintesi: z.string().trim().max(1200).optional(), corpo: z.array(blocco).max(80).optional(),
@@ -43,7 +43,7 @@ const schema = z.object({
 const corpoTesto = (corpo) => (corpo || []).map((b) => (b.type === 'elenco' ? (b.items || []).join('. ') : b.type === 'tabella' ? [b.colonne, ...(b.righe || [])].map((r) => (r || []).join(' ')).join('. ') : b.text || '')).join('\n');
 // origine: CIRCOLARI (redatta qui) o COMUNICAZIONE (pubblicata nel widget Comunicazione, lib/ponte.js); news: slug e presa visione della news
 const NEWS_DI = `(SELECT json_build_object('id', n.id, 'slug', n.slug, 'status', n.status, 'requires_ack', n.requires_ack, 'protocol_legacy', n.protocol_legacy) FROM public.news n WHERE n.id = circolari.news_id) AS news`;
-const LIST_COLS = `id, anno, numero, revisione, protocollo, parent_id, stato, tipo, linea, segmento, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, orientamento, orientamento_eff, pub_token, pdf IS NOT NULL AS has_pdf, docx IS NOT NULL AS has_docx, pdf_pages, render_at, render_error, sorgente_nome, published_at, created_at, updated_at, created_by, published_by, origine, news_id, ${NEWS_DI}`;
+const LIST_COLS = `id, anno, numero, revisione, protocollo, parent_id, stato, tipo, linea, segmento, segmenti, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, orientamento, orientamento_eff, pub_token, pdf IS NOT NULL AS has_pdf, docx IS NOT NULL AS has_docx, pdf_pages, render_at, render_error, sorgente_nome, published_at, created_at, updated_at, created_by, published_by, origine, news_id, ${NEWS_DI}`;
 const FULL_COLS = `${LIST_COLS}, corpo, contatti, firma_nome, firma_ruolo, audience, note_interne, sorgente_testo, updated_by, allegati`;
 const daComunicazione = (c) => c.origine === 'COMUNICAZIONE';
 const publicUrl = (c) => (c.pub_token ? `${config.baseUrl}/api/circolari/pub/${c.pub_token}` : null);
@@ -91,7 +91,7 @@ r.get('/circolari', ah(async (req, res) => {
   const where = [];
   if (f.stato) where.push(`stato = ${p(f.stato)}`);
   if (f.anno) where.push(`anno = ${p(f.anno)}`);
-  if (f.segmento) where.push(`segmento = ${p(f.segmento)}`);
+  if (f.segmento) where.push(`${p(f.segmento)} = ANY(segmenti)`);
   if (f.origine) where.push(`origine = ${p(f.origine)}`);
   const per = await perimetro(req); const fv = filtro(per, p); if (fv) where.push(fv);
   let rank = 'NULL::real AS rank', snippet = 'NULL::text AS snippet', order = 'coalesce(published_at, updated_at) DESC';
@@ -130,8 +130,12 @@ r.post('/circolari', ah(async (req, res) => {
   res.status(201).json(c);
 }));
 
+// Destinatari scelti: elenco senza doppioni nell'ordine dei segmenti; `segmento` (il primo) resta per ciò che legge una colonna sola.
+// Chi manda il solo `segmento` (richieste precedenti) ottiene un elenco di una voce.
+const elencoSegmenti = (b) => { const l = Array.isArray(b.segmenti) && b.segmenti.length ? b.segmenti : (b.segmento ? [b.segmento] : []); return SEGMENTI.filter((s) => l.includes(s)); };
+const segDi = (b, predefinito) => { const l = elencoSegmenti(b); const e = l.length ? l : [predefinito]; return { segmento: e[0], segmenti: e }; };
 async function inserisci(b, req, extra = {}) {
-  const cols = { tipo: b.tipo ?? 'Comunicazione ai clienti', linea: b.linea ?? 'Laboratorio di Analisi', segmento: b.segmento ?? 'CLIENTI_SERVICE', titolo: b.titolo, destinatari: b.destinatari ?? '', oggetto: b.oggetto ?? '', decorrenza: b.decorrenza ?? '', riferimenti: b.riferimenti ?? '', luogo: b.luogo ?? 'Sesto Fiorentino (FI)', data: b.data ?? new Date().toISOString().slice(0, 10), sintesi: b.sintesi ?? '', corpo: JSON.stringify(b.corpo ?? []), corpo_testo: corpoTesto(b.corpo), contatti: JSON.stringify(b.contatti ?? ['Servizio Clienti', 'Tel. 055776511 – Mail: info@toscanadiagnostica.it']), firma_nome: b.firma_nome ?? 'Francesco Epifani', firma_ruolo: b.firma_ruolo ?? 'Chief Executive Officer', orientamento: b.orientamento ?? 'AUTO', audience: JSON.stringify(b.audience ?? { type: 'INTERNAL' }), note_interne: b.note_interne ?? '', created_by: req.user.suite_user_id, updated_by: req.user.suite_user_id, ...extra };
+  const cols = { tipo: b.tipo ?? 'Comunicazione ai clienti', linea: b.linea ?? 'Laboratorio di Analisi', ...segDi(b, 'CLIENTI_SERVICE'), titolo: b.titolo, destinatari: b.destinatari ?? '', oggetto: b.oggetto ?? '', decorrenza: b.decorrenza ?? '', riferimenti: b.riferimenti ?? '', luogo: b.luogo ?? 'Sesto Fiorentino (FI)', data: b.data ?? new Date().toISOString().slice(0, 10), sintesi: b.sintesi ?? '', corpo: JSON.stringify(b.corpo ?? []), corpo_testo: corpoTesto(b.corpo), contatti: JSON.stringify(b.contatti ?? ['Servizio Clienti', 'Tel. 055776511 – Mail: info@toscanadiagnostica.it']), firma_nome: b.firma_nome ?? 'Francesco Epifani', firma_ruolo: b.firma_ruolo ?? 'Chief Executive Officer', orientamento: b.orientamento ?? 'AUTO', audience: JSON.stringify(b.audience ?? { type: 'INTERNAL' }), note_interne: b.note_interne ?? '', created_by: req.user.suite_user_id, updated_by: req.user.suite_user_id, ...extra };
   const keys = Object.keys(cols);
   return one(`INSERT INTO circolari (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')}) RETURNING ${FULL_COLS}`, Object.values(cols));
 }
@@ -153,7 +157,7 @@ r.post('/circolari/importa', (req, res, next) => upload(req, res, (e) => (e ? ne
   const s = useAi ? await structureDraft({ text, blocchi, hint, userId: req.user.suite_user_id }) : { ...heuristicStructure(blocchi), ai: false };
   s.corpo = clampBlocks(s.corpo);
   const cut = (x, n) => String(x || '').slice(0, n);
-  const b = parse(schema, { titolo: cut(s.titolo, 200) || (nome ? nome.replace(/\.[^.]+$/, '') : 'Nuova circolare'), oggetto: cut(s.oggetto, 400), destinatari: cut(s.destinatari, 400), decorrenza: cut(s.decorrenza, 160), riferimenti: cut(s.riferimenti, 400), sintesi: cut(s.sintesi, 1200), tipo: s.tipo || undefined, linea: s.linea || undefined, corpo: s.corpo, segmento: SEGMENTI.includes(req.body?.segmento) ? req.body.segmento : undefined });
+  const b = parse(schema, { titolo: cut(s.titolo, 200) || (nome ? nome.replace(/\.[^.]+$/, '') : 'Nuova circolare'), oggetto: cut(s.oggetto, 400), destinatari: cut(s.destinatari, 400), decorrenza: cut(s.decorrenza, 160), riferimenti: cut(s.riferimenti, 400), sintesi: cut(s.sintesi, 1200), tipo: s.tipo || undefined, linea: s.linea || undefined, corpo: s.corpo, segmenti: (() => { const l = String(req.body?.segmenti || req.body?.segmento || '').split(',').map((x) => x.trim()).filter((x) => SEGMENTI.includes(x)); return l.length ? l : undefined; })() });
   const c = await inserisci(b, req, { sorgente_nome: nome, sorgente_testo: text.slice(0, 200000) });
   await audit(req, 'CIRCOLARE_IMPORTATA', { module: KEY, entity: 'circolare', entityId: c.id, label: c.titolo, data: { file: nome, ai: s.ai, ai_error: s.ai_error || null } });
   res.status(201).json({ ...c, ai: s.ai, ai_error: s.ai_error || null });
@@ -193,8 +197,9 @@ r.put('/circolari/:id', ah(async (req, res) => {
   const cur = await load(req.params.id);
   if (cur.stato !== 'BOZZA') throw bad('Una circolare pubblicata non si modifica: crea una revisione');
   const b = parse(schema, { ...cur, ...req.body, data: req.body.data ?? (cur.data instanceof Date ? cur.data.toISOString().slice(0, 10) : String(cur.data).slice(0, 10)) });
-  const c = await one(`UPDATE circolari SET tipo=$2, linea=$3, segmento=$4, titolo=$5, destinatari=$6, oggetto=$7, decorrenza=$8, riferimenti=$9, luogo=$10, data=$11, sintesi=$12, corpo=$13, contatti=$14, firma_nome=$15, firma_ruolo=$16, orientamento=$17, audience=$18, note_interne=$19, updated_by=$20, corpo_testo=$21, updated_at=now(), render_at=NULL, docx=NULL, pdf=NULL, pdf_pages=NULL, render_error=NULL WHERE id=$1 RETURNING ${FULL_COLS}`,
-    [cur.id, b.tipo ?? cur.tipo, b.linea ?? cur.linea, b.segmento ?? cur.segmento, b.titolo, b.destinatari ?? '', b.oggetto ?? '', b.decorrenza ?? '', b.riferimenti ?? '', b.luogo ?? cur.luogo, b.data, b.sintesi ?? '', JSON.stringify(b.corpo ?? cur.corpo), JSON.stringify(b.contatti ?? cur.contatti), b.firma_nome ?? cur.firma_nome, b.firma_ruolo ?? cur.firma_ruolo, b.orientamento ?? cur.orientamento, JSON.stringify(b.audience ?? cur.audience), b.note_interne ?? cur.note_interne, req.user.suite_user_id, corpoTesto(b.corpo ?? cur.corpo)]);
+  const seg = segDi(req.body.segmenti || req.body.segmento ? { segmenti: req.body.segmenti, segmento: req.body.segmenti ? undefined : req.body.segmento } : { segmenti: cur.segmenti, segmento: cur.segmento }, cur.segmento);
+  const c = await one(`UPDATE circolari SET tipo=$2, linea=$3, segmento=$4, segmenti=$22, titolo=$5, destinatari=$6, oggetto=$7, decorrenza=$8, riferimenti=$9, luogo=$10, data=$11, sintesi=$12, corpo=$13, contatti=$14, firma_nome=$15, firma_ruolo=$16, orientamento=$17, audience=$18, note_interne=$19, updated_by=$20, corpo_testo=$21, updated_at=now(), render_at=NULL, docx=NULL, pdf=NULL, pdf_pages=NULL, render_error=NULL WHERE id=$1 RETURNING ${FULL_COLS}`,
+    [cur.id, b.tipo ?? cur.tipo, b.linea ?? cur.linea, seg.segmento, b.titolo, b.destinatari ?? '', b.oggetto ?? '', b.decorrenza ?? '', b.riferimenti ?? '', b.luogo ?? cur.luogo, b.data, b.sintesi ?? '', JSON.stringify(b.corpo ?? cur.corpo), JSON.stringify(b.contatti ?? cur.contatti), b.firma_nome ?? cur.firma_nome, b.firma_ruolo ?? cur.firma_ruolo, b.orientamento ?? cur.orientamento, JSON.stringify(b.audience ?? cur.audience), b.note_interne ?? cur.note_interne, req.user.suite_user_id, corpoTesto(b.corpo ?? cur.corpo), seg.segmenti]);
   await audit(req, 'CIRCOLARE_MODIFICATA', { module: KEY, entity: 'circolare', entityId: c.id, label: c.titolo });
   res.json(c);
 }));
@@ -226,14 +231,14 @@ const sendFile = (res, c, kind) => {
   return res.send(c.docx);
 };
 r.get('/circolari/:id/docx', ah(async (req, res) => {
-  const c = await one('SELECT id, protocollo, docx, stato, segmento FROM circolari WHERE id=$1', [req.params.id]);
+  const c = await one('SELECT id, protocollo, docx, stato, segmento, segmenti FROM circolari WHERE id=$1', [req.params.id]);
   if (!c) throw notFound('Circolare non trovata');
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   if (!c.docx) throw new HttpError(409, 'Documento non ancora impaginato: genera l\'anteprima');
   sendFile(res, c, 'docx');
 }));
 r.get('/circolari/:id/pdf', ah(async (req, res) => {
-  const c = await one('SELECT id, protocollo, pdf, render_error, stato, segmento FROM circolari WHERE id=$1', [req.params.id]);
+  const c = await one('SELECT id, protocollo, pdf, render_error, stato, segmento, segmenti FROM circolari WHERE id=$1', [req.params.id]);
   if (!c) throw notFound('Circolare non trovata');
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   if (!c.pdf) throw new HttpError(409, c.render_error || 'PDF non ancora generato: genera l\'anteprima');
@@ -287,8 +292,8 @@ r.post('/circolari/:id/revisione', ah(async (req, res) => {
   const open = await one(`SELECT id FROM circolari WHERE anno=$1 AND numero=$2 AND stato='BOZZA'`, [cur.anno, cur.numero]);
   if (open) throw bad(`Esiste già una revisione in bozza (id ${open.id})`);
   const maxRev = (await one('SELECT max(revisione) AS r FROM circolari WHERE anno=$1 AND numero=$2', [cur.anno, cur.numero])).r;
-  const c = await one(`INSERT INTO circolari (anno, numero, revisione, parent_id, stato, tipo, linea, segmento, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, corpo, corpo_testo, contatti, firma_nome, firma_ruolo, orientamento, audience, note_interne, sorgente_nome, sorgente_testo, pub_token, created_by, updated_by)
-    SELECT anno, numero, $2, id, 'BOZZA', tipo, linea, segmento, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, CURRENT_DATE, sintesi, corpo, corpo_testo, contatti, firma_nome, firma_ruolo, orientamento, audience, note_interne, sorgente_nome, sorgente_testo, NULL, $3, $3 FROM circolari WHERE id=$1 RETURNING ${FULL_COLS}`, [cur.id, Number(maxRev) + 1, req.user.suite_user_id]);
+  const c = await one(`INSERT INTO circolari (anno, numero, revisione, parent_id, stato, tipo, linea, segmento, segmenti, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, data, sintesi, corpo, corpo_testo, contatti, firma_nome, firma_ruolo, orientamento, audience, note_interne, sorgente_nome, sorgente_testo, pub_token, created_by, updated_by)
+    SELECT anno, numero, $2, id, 'BOZZA', tipo, linea, segmento, segmenti, titolo, destinatari, oggetto, decorrenza, riferimenti, luogo, CURRENT_DATE, sintesi, corpo, corpo_testo, contatti, firma_nome, firma_ruolo, orientamento, audience, note_interne, sorgente_nome, sorgente_testo, NULL, $3, $3 FROM circolari WHERE id=$1 RETURNING ${FULL_COLS}`, [cur.id, Number(maxRev) + 1, req.user.suite_user_id]);
   await audit(req, 'CIRCOLARE_REVISIONE', { module: KEY, entity: 'circolare', entityId: c.id, label: `${cur.protocollo} rev. ${c.revisione}` });
   res.status(201).json(c);
 }));

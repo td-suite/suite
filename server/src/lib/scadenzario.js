@@ -563,7 +563,7 @@ export const FONTI = [
     async leggi({ da, a, imp, db }) {
       const N = Number(imp.circolari_giorni) || 7;
       const circ = (await db.many(`SELECT c.id, c.protocollo, c.titolo, (c.published_at AT TIME ZONE 'Europe/Rome')::date AS pubblicata FROM circolari c
-          WHERE c.stato = 'PUBBLICATA' AND c.segmento = 'PERSONALE' AND c.published_at IS NOT NULL`)).map((c) => ({ ...c, d: addGiorni(iso(c.pubblicata), N) })).filter((c) => c.d >= da && c.d <= a);
+          WHERE c.stato = 'PUBBLICATA' AND 'PERSONALE' = ANY(c.segmenti) AND c.published_at IS NOT NULL`)).map((c) => ({ ...c, d: addGiorni(iso(c.pubblicata), N) })).filter((c) => c.d >= da && c.d <= a);
       if (!circ.length) return [];
       const { isInterno } = await import('../modules/circolari/lib/visibilita.js');
       const utenti = (await many(`SELECT u.id, u.level, u.is_external, p.kind AS person_kind, o.kind AS organization_kind FROM public.users u LEFT JOIN public.people p ON p.id = u.person_id

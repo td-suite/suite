@@ -153,3 +153,7 @@ Diagnostica: D42 mostra la CIRC-2026-001; "Registra" → TD-2026/NNN (il numero 
 Archivio, "era CIRC-2026-001" nell'elenco. 3) Pagina della news: "Scarica il PDF protocollato" apre il PDF con il nuovo protocollo.
 4) Prossima circolare da Comunicazione: protocollo TD nell'esito, riga in Archivio con origine Comunicazione, email di avviso con il PDF.
 Nota: anche le circolari interne hanno il QR verso la versione digitale (URL con token casuale, come per tutte le circolari del registro).
+
+## v0.97.3 · Più destinatari per circolare (CEO, 25/11/2026)
+
+Il campo Destinatari è a scelta multipla (clienti service e punti prelievo insieme, per esempio) in Nuova circolare e nella scheda della bozza. Colonna `circolari.segmenti` (TEXT[], migrazione 004); `segmento` resta il primo dell'elenco e un trigger tiene allineate le due colonne. Visibilità degli esterni, contatori, filtro dell'archivio, Portale Service, feed del Business Hub, Scadenzario e Cockpit guardano l'elenco: la circolare pubblicata è visibile a chi appartiene ad almeno uno dei gruppi scelti. Le circolari esistenti conservano il loro unico destinatario. La riga "Destinatari" stampata sulla circolare resta il testo libero della scheda.

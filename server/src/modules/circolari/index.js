@@ -39,7 +39,7 @@ export default function mount(app) {
     const per = await perimetro(_req);
     const x = per.tutte
       ? await one(`SELECT count(*) FILTER (WHERE stato='BOZZA')::int AS bozze, count(*) FILTER (WHERE stato='PUBBLICATA')::int AS pubblicate FROM circolari`)
-      : await one(`SELECT 0 AS bozze, count(*)::int AS pubblicate FROM circolari WHERE stato='PUBBLICATA' AND segmento = ANY($1)`, [per.segmenti]);
+      : await one(`SELECT 0 AS bozze, count(*)::int AS pubblicate FROM circolari WHERE stato='PUBBLICATA' AND segmenti && $1::text[]`, [per.segmenti]);
     res.json(x || {});
   }));
   r.use(blockWritesInMirror);

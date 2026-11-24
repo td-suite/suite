@@ -589,7 +589,7 @@ async function persone(ctx) {
   if (ctx.live.circolari !== true) out.push(nd('circolari_da_confermare', 'Circolari da confermare', 'circolari'));
   else {
     const db = ctx.db('circolari');
-    const circ = await db.many(`SELECT id FROM circolari WHERE stato = 'PUBBLICATA' AND segmento = 'PERSONALE' AND published_at IS NOT NULL AND (published_at AT TIME ZONE 'Europe/Rome')::date >= $1::date`, [addGiorni(P.oggi, -90)]);
+    const circ = await db.many(`SELECT id FROM circolari WHERE stato = 'PUBBLICATA' AND 'PERSONALE' = ANY(segmenti) AND published_at IS NOT NULL AND (published_at AT TIME ZONE 'Europe/Rome')::date >= $1::date`, [addGiorni(P.oggi, -90)]);
     const { isInterno } = await import('../modules/circolari/lib/visibilita.js');
     const utenti = (await many(`SELECT u.id, u.level, u.is_external, p.kind AS person_kind, o.kind AS organization_kind FROM public.users u LEFT JOIN public.people p ON p.id = u.person_id
         LEFT JOIN public.organizations o ON o.id = coalesce(p.organization_id, u.organization_id) WHERE u.status = 'ACTIVE'`)).filter(isInterno).map((u) => u.id);

@@ -52,3 +52,16 @@
 .circ-lettura table.t { min-width: 0; }
 .circ-lettura .t th, .circ-lettura .t td { white-space: normal; }
 .circ-orig-links { margin-top: 3px; font-size: 12px; white-space: nowrap; }
+.circ-dest { display: flex; flex-wrap: wrap; gap: 6px; }
+.circ-dest-b { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--input-line, #cdd9dc); background: var(--input, #fff); color: var(--text, #1f2d33); border-radius: 8px; padding: 7px 11px; font: inherit; font-size: 13.5px; cursor: pointer; }
+.circ-dest-b.on { border-color: #1C505E; background: #e6f0f2; font-weight: 700; color: #1C505E; }
+.circ-dest-b:disabled { opacity: .6; cursor: default; }
+.circ-dest-b:focus-visible { outline: 2px solid var(--teal, #1C505E); outline-offset: 2px; }
+.circ-dest-q { width: 15px; height: 15px; border: 1.5px solid currentColor; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; }
+/* v0.97.3: una tabella larga nel corpo allargava la colonna della scheda fin sotto il riquadro Documento. Le colonne non si allargano
+   oltre la griglia; la tabella scorre dentro il proprio riquadro. */
+.circ-grid > * { min-width: 0; }
+.circ-grid .card, .circ-grid .card > .bd { min-width: 0; max-width: 100%; }
+.circ-blocchi, .circ-blocco { grid-template-columns: minmax(0, 1fr); }
+.circ-blocchi > *, .circ-blocco > * { min-width: 0; }
+.circ-tab { max-width: 100%; }

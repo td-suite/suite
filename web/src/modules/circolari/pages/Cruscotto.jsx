@@ -4,7 +4,7 @@ import { base, useApi } from '../api.js';
 import { useAuth, canEdit } from '../auth.jsx';
 import { Card, Loading, Empty, Badge, PageHead } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { STATO, SEGMENTO, itDate } from '../format.js';
+import { STATO, SEGMENTO, itDate, segmentiTesto } from '../format.js';
 
 export default function Cruscotto() {
   const { user } = useAuth();
@@ -39,7 +39,7 @@ export default function Cruscotto() {
                 <tr key={c.id} className="click" onClick={() => nav(`${base}/${c.id}`)}>
                   <td className="circ-prot">{c.protocollo}</td>
                   <td><div className="strong">{c.titolo}</div><div className="small muted">{c.tipo} · {c.linea}</div></td>
-                  <td className="small">{SEGMENTO[c.segmento] || c.segmento}</td>
+                  <td className="small">{segmentiTesto(c)}</td>
                   <td className="small">{itDate(c.data)}</td>
                   <td><Badge tone={STATO[c.stato].tone}>{STATO[c.stato].label}</Badge></td>
                 </tr>))}</tbody>

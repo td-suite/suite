@@ -4,7 +4,7 @@ import { base, qs, useApi } from '../api.js';
 import { useAuth, canEdit } from '../auth.jsx';
 import { Card, Loading, Empty, Badge, PageHead, Field, Pager, SearchInput } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { STATO, SEGMENTO, ORIGINE, itDate } from '../format.js';
+import { STATO, SEGMENTO, ORIGINE, itDate, segmentiTesto } from '../format.js';
 import { sanitizeSnippet } from '../../../format.js';   // solo <b> dal server, il resto come testo (L6)
 
 export default function Archivio({ preset = {}, title = 'Archivio e ricerca' }) {
@@ -53,7 +53,7 @@ export default function Archivio({ preset = {}, title = 'Archivio e ricerca' }) 
                     {' · '}<Link to={`${base}/${c.id}`}>Scheda</Link>
                   </div>}
                 </td>
-                <td className="small">{SEGMENTO[c.segmento] || c.segmento}</td>
+                <td className="small">{segmentiTesto(c)}</td>
                 <td className="small" style={{ whiteSpace: 'nowrap' }}>{itDate(c.data)}</td>
                 <td><Badge tone={STATO[c.stato].tone}>{STATO[c.stato].label}</Badge></td>
                 <td className="small" style={{ whiteSpace: 'nowrap' }}>{c.has_pdf && <Icon name="pdf" title="PDF" />} {c.has_docx && <Icon name="doc" title="Word" />} {c.orientamento_eff === 'ORIZZONTALE' && <span className="muted">orizz.</span>}</td>

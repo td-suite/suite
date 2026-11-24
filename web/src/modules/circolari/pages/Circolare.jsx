@@ -6,10 +6,11 @@ import { api, base, useApi } from '../api.js';
 import { useAuth, canEdit, canPublish } from '../auth.jsx';
 import { Card, Field, Loading, Empty, Badge, Modal, ConfirmModal, useToast, PageHead } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icons.jsx';
-import { STATO, SEGMENTO, ORIENTAMENTO, ORIGINE, itDate, itDateTime, isoDate } from '../format.js';
+import { STATO, SEGMENTO, segmentiTesto, ORIENTAMENTO, ORIGINE, itDate, itDateTime, isoDate } from '../format.js';
 import Blocchi, { Lettura } from './Blocchi.jsx';
+import SceltaDestinatari from '../SceltaDestinatari.jsx';
 
-const FIELDS = ['tipo', 'linea', 'segmento', 'titolo', 'destinatari', 'oggetto', 'decorrenza', 'riferimenti', 'luogo', 'data', 'sintesi', 'corpo', 'contatti', 'firma_nome', 'firma_ruolo', 'orientamento', 'note_interne'];
+const FIELDS = ['tipo', 'linea', 'segmento', 'segmenti', 'titolo', 'destinatari', 'oggetto', 'decorrenza', 'riferimenti', 'luogo', 'data', 'sintesi', 'corpo', 'contatti', 'firma_nome', 'firma_ruolo', 'orientamento', 'note_interne'];
 const pick = (c) => Object.fromEntries(FIELDS.map((k) => [k, k === 'data' ? isoDate(c.data) : k === 'contatti' ? (c.contatti || []).join('\n') : c[k] ?? '']));
 
 export default function Circolare() {
@@ -122,7 +123,7 @@ export default function Circolare() {
                     <Field label="Firma: ruolo"><input value={f.firma_ruolo} onChange={(e) => upd('firma_ruolo', e.target.value)} maxLength={80} /></Field>
                   </div>
                   <div className="two">
-                    <Field label="Destinatari (segmento)"><select value={f.segmento} onChange={(e) => upd('segmento', e.target.value)}>{Object.entries(SEGMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+                    <Field label="Destinatari (uno o più)" className="span2"><SceltaDestinatari value={f.segmenti?.length ? f.segmenti : [f.segmento]} onChange={(l) => upd('segmenti', l)} /></Field>
                     <Field label="Orientamento" help={`Automatico: ${c.orientamento_previsto === 'ORIZZONTALE' ? 'orizzontale (tabella larga)' : 'verticale'}`}><select value={f.orientamento} onChange={(e) => upd('orientamento', e.target.value)}>{Object.entries(ORIENTAMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                   </div>
                   <Field label="Note interne" help="Non compaiono nel documento"><textarea value={f.note_interne} onChange={(e) => upd('note_interne', e.target.value)} maxLength={2000} /></Field>
