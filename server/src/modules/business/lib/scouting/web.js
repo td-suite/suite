@@ -96,7 +96,7 @@ export async function scarica(url, opts = {}) {
       const testo = /text|html|xml|json/i.test(tipo) || !tipo ? decodifica(r.body, tipo) : '';
       // pagina di controllo anti-robot: si dichiara, non si ritenta e non si aggira
       const sfida = (r.status === 403 || r.status === 503 || r.status === 202) && /just a moment|cf-chl|sgcaptcha|captcha|attention required/i.test(testo.slice(0, 4000));
-      return { ok: r.status >= 200 && r.status < 300, status: r.status, url: u, tipo, testo, sfida, errore: r.status >= 400 ? (sfida ? 'Sito protetto da un controllo anti-robot' : `Risposta ${r.status}`) : null };
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, url: u, tipo, testo, sfida, corpo: opts.conCorpo ? r.body : undefined, troncato: Boolean(r.troncato), errore: r.status >= 400 ? (sfida ? 'Sito protetto da un controllo anti-robot' : `Risposta ${r.status}`) : null };
     }
     return { ok: false, url: u, errore: 'Troppi reindirizzamenti' };
   } catch (e) {

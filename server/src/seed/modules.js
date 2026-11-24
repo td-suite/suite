@@ -33,6 +33,11 @@ export const MODULES = [
   { key: 'cockpit', area: 'DIREZIONE', name: 'Cockpit direzionale', tagline: 'Indicatori e scadenzario', icon: 'cockpit', kind: 'NATIVE', route: '/cockpit', sort_order: 10,
     profiles: [P('DIREZIONE', 'Direzione'), P('VIEWER', 'Sola lettura')] },
 
+  // Public Affairs (v0.96.0, CEO 24/11/2026): monitoraggio di pagine istituzionali (avvisi e manifestazioni di interesse delle USL toscane) e
+  // della normativa sanitaria nazionale e regionale, sintesi e giudizio di utilità con l'API Anthropic, email quotidiana solo se ci sono novità.
+  { key: 'affari', area: 'DIREZIONE', name: 'Public Affairs', tagline: 'Bandi, avvisi e normativa sanitaria', icon: 'affari', kind: 'NATIVE', legacy_url: null, route: '/affari', sort_order: 15, scope_type: null, restricted: true,
+    profiles: [P('DIREZIONE', 'Direzione (fonti, impostazioni, destinatari)'), P('VIEWER', 'Sola lettura')] },
+
   // ---- Operations
   { key: 'cash', area: 'FINANCE', name: 'Cash Management', tagline: 'Rendiconti, contante, royalty', icon: 'cash', kind: 'LEGACY', legacy_url: 'https://cash.toscanadiagnostica.it', sort_order: 20, scope_type: 'SITE',
     profiles: [P('SUPERADMIN', 'Super amministratore'), P('ADMIN', 'Amministratore di sede'), P('CASSIERE', 'Cassiere', true), P('FINANCE', 'Finance Specialist'), P('OPERATOR', 'Operatore di sede', true), P('PARTNER', 'Partner', true)] },

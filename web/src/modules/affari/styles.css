@@ -1,0 +1,9 @@
+.pa-voce { border: 1px solid var(--line, #dbe5e7); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+.pa-voce.nuova { border-left: 4px solid #1C505E; }
+.pa-voce .m { font-size: 12px; color: #5b6f75; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pa-voce .t { font-weight: 700; margin: 6px 0 4px; font-size: 15px; } .pa-voce .t a { color: #1C505E; text-decoration: none; } .pa-voce .t a:hover { text-decoration: underline; }
+.pa-voce .s { font-size: 14px; line-height: 1.5; } .pa-voce .p { font-size: 13px; color: #3b4f55; margin-top: 4px; }
+.pa-voce .az { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pa-giorno { font-size: 13px; font-weight: 700; color: #1C505E; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+.pa-gap { margin-bottom: 16px; } .pa-rosso { color: #A63A22; }
+.pa-prof textarea { min-height: 200px; }

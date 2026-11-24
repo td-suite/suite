@@ -194,5 +194,12 @@
   "estratto": null,
   "slug": "crediti-serve",
   "route": "/crediti"
+ },
+ "affari": {
+  "capitolo": 30,
+  "nome": "Public Affairs",
+  "estratto": null,
+  "slug": "affari-serve",
+  "route": "/affari"
  }
 }

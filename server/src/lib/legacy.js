@@ -680,6 +680,8 @@ const PER_USER_COUNTERS = {
   rimborsi: async () => (await import('../modules/rimborsi/lib/home.js')).contatoreHome,
   // Recupero Crediti (v0.95.0): comunicazioni da approvare e risposte da leggere (Amministrazione, CFO, CEO); chiamate al referente commerciale
   crediti: async () => (await import('../modules/crediti/lib/home.js')).contatoreHome,
+  // Public Affairs (v0.96.0): novità non ancora lette
+  affari: async () => (await import('../modules/affari/lib/core.js')).contatoreHome,
 };
 
 // ---------------------------------------------------------------- Cockpit direzionale (cache 5 minuti)

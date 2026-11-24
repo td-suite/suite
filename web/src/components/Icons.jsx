@@ -93,6 +93,11 @@ const MODULES = {
     f: 'M5 11c6.5-2 12.5-1 19 3v26c-6.5-4-12.5-5-19-3zM43 11c-6.5-2-12.5-1-19 3v26c6.5-4 12.5-5 19-3z',
     s: 'M5 11c6.5-2 12.5-1 19 3v26c-6.5-4-12.5-5-19-3zM43 11c-6.5-2-12.5-1-19 3v26c6.5-4 12.5-5 19-3zM9.5 19c3-.7 6-.5 9.5 1M9.5 25c3-.7 6-.5 9.5 1M9.5 31c3-.7 6-.5 9.5 1M30 21a4 4 0 1 1 5.5 3.7c-1.2.5-1.8 1.3-1.8 2.6M33.7 31.5v.3',
   },
+  // Public Affairs (24/11/2026): palazzo istituzionale con il segnale della novità
+  affari: {
+    f: 'M6 20 24 8l18 12zM8 38h32v4H8zM35 9a5 5 0 1 0 10 0a5 5 0 1 0 -10 0',
+    s: 'M6 20 24 8l18 12zM8 38h32v4H8zM12 20v18M20 20v18M28 20v18M36 20v18M35 9a5 5 0 1 0 10 0a5 5 0 1 0 -10 0',
+  },
   // Recupero Crediti (24/11/2026): busta del sollecito con l'orologio della scadenza
   crediti: {
     f: 'M5 12h30v22H5zM28 34a8 8 0 1 0 16 0a8 8 0 1 0 -16 0',
