@@ -52,3 +52,7 @@ Limiti: USL Toscana Centro non riporta la data di pubblicazione nell'elenco (si 
 Domande: `POST /norme/chiedi`. Il testo è diviso in brani di circa 1.800 caratteri con il riferimento (allegato, sezione, articolo, requisito). Le parole della domanda, più i termini suggeriti dal modello, scelgono i brani (BM25, al più 14 più il seguito dei primi tre, 42.000 caratteri); il modello risponde solo su quei brani con il numero del brano tra parentesi quadre e dichiara che cosa manca. Sotto la risposta si leggono i passi usati. Ogni domanda resta in `norme_domande`. Senza modello AI la ricerca restituisce i passi più vicini.
 
 Limiti: i testi non hanno valore legale e non si aggiornano da soli (data di acquisizione mostrata per ogni norma); la ricerca è per parole, non per significato: una domanda formulata con termini lontani da quelli della norma può non trovare il passo; la risposta va verificata sul testo ufficiale.
+
+## v0.97.2 · Chi può aggiungere una fonte (CEO, 25/11/2026)
+
+Chiunque abbia il widget (profili Direzione e Visualizzatore) può provare la lettura e aggiungere una fonte (`POST /fonti/prova`, `POST /fonti`). Modifica, sospensione, lettura a mano ed eliminazione restano al profilo Direzione. Quando la aggiunge un Visualizzatore, chi gestisce il widget riceve una notifica; nell'elenco compare "aggiunta da".

@@ -9,6 +9,7 @@ import { registerJob } from '../../lib/jobs.js';
 import { startFresh } from '../../lib/travaso.js';
 import { ah, HttpError, bad, forbidden, notFound, audit as auditSuite } from '../../lib/util.js';
 import { aiEnabled } from '../../lib/claude.js';
+import { notify } from '../../lib/community.js';
 import { mailStatus } from '../../lib/mailer.js';
 import { one, many, q } from './db.js';
 import { KEY, CATEGORIE, LINEE, PREDEFINITE, impostazioni, salvaImpostazione, listaEmail, destinatari, caricaSeme, vociDellaFonte, leggiFonte, giro, valutaNovita, inviaGiornaliera, novitaDaInviare, oraRoma, archivia, archiviaTutte, valutaArchivio, ARCHIVIO_DAL } from './lib/core.js';
@@ -63,7 +64,7 @@ export default function mount(app) {
   }));
 
   // ---- fonti
-  r.get('/fonti', ah(async (_req, res) => res.json({ righe: await many(`SELECT f.*, (SELECT count(*)::int FROM voci v WHERE v.fonte_id = f.id AND NOT v.preesistente) AS novita, (SELECT count(*)::int FROM voci v WHERE v.fonte_id = f.id) AS voci FROM fonti f ORDER BY f.categoria, f.nome`) })));
+  r.get('/fonti', ah(async (_req, res) => res.json({ righe: await many(`SELECT f.*, (SELECT u.full_name FROM public.users u WHERE u.id = f.created_by) AS aggiunta_da, (SELECT count(*)::int FROM voci v WHERE v.fonte_id = f.id AND NOT v.preesistente) AS novita, (SELECT count(*)::int FROM voci v WHERE v.fonte_id = f.id) AS voci FROM fonti f ORDER BY f.categoria, f.nome`) })));
   const leggiCorpoFonte = (b) => {
     const url = assoluto(String(b.url || '').trim(), undefined); if (!url) throw bad('Indirizzo non valido: deve iniziare con http:// o https://');
     const nome = String(b.nome || '').trim(); if (nome.length < 3) throw bad('Dai un nome alla fonte');
@@ -71,17 +72,23 @@ export default function mount(app) {
     return { nome: nome.slice(0, 200), url, tipo: b.tipo === 'RSS' ? 'RSS' : 'PAGINA', categoria: b.categoria, filtro: String(b.filtro || '').trim().slice(0, 200) || null };
   };
   // Prova di lettura senza salvare: quante voci vede la Suite e quali sono le prime
-  r.post('/fonti/prova', gestisce, ah(async (req, res) => {
+  // v0.97.2 (CEO, 25/11/2026): chiunque abbia il widget può provare e AGGIUNGERE una fonte; modifica, sospensione, eliminazione e
+  // lettura a mano restano al profilo Direzione. Chi gestisce il widget riceve una notifica con il nome di chi l'ha aggiunta.
+  r.post('/fonti/prova', ah(async (req, res) => {
     const f = leggiCorpoFonte({ nome: 'prova', categoria: 'ALTRO', ...req.body });
     const x = await vociDellaFonte(f);
     res.json({ ok: x.ok, errore: x.errore || null, tipo: x.tipo || null, trovate: x.voci.length, esempi: x.voci.slice(0, 12) });
   }));
-  r.post('/fonti', gestisce, ah(async (req, res) => {
+  r.post('/fonti', ah(async (req, res) => {
     const f = leggiCorpoFonte(req.body || {});
     const riga = await one('INSERT INTO fonti (nome, url, tipo, categoria, filtro, created_by) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (url) DO NOTHING RETURNING *', [f.nome, f.url, f.tipo, f.categoria, f.filtro, req.user.id]);
     if (!riga) throw bad('Questa fonte è già in elenco');
     const prima = await leggiFonte(riga, await impostazioni());   // prima lettura subito: ciò che c'è ora non è una novità
     await traccia(req, 'FONTE_AGGIUNTA', `Fonte aggiunta: ${f.nome}`, { url: f.url });
+    if (ruoloDi(req.user) !== 'DIREZIONE') {
+      const chi = (await many(`SELECT DISTINCT u.id FROM public.users u LEFT JOIN public.grants g ON g.user_id = u.id AND g.module_key = 'affari' AND g.profile = 'DIREZIONE' AND NOT g.proposed WHERE u.status = 'ACTIVE' AND (u.level = 'OWNER' OR g.id IS NOT NULL)`)).map((u) => u.id).filter((x) => x !== req.user.id);
+      if (chi.length) await notify(chi, { kind: 'MODULO', module_key: KEY, title: `Public Affairs: ${req.user.full_name || 'un utente'} ha aggiunto la fonte "${f.nome}"`, body: f.url, link: '/affari/fonti' }).catch(() => 0);
+    }
     res.json({ id: riga.id, prima_lettura: prima });
   }));
   r.put('/fonti/:id', gestisce, ah(async (req, res) => {

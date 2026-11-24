@@ -91,13 +91,20 @@ describe('Public Affairs: nella Suite', { skip: SALTA }, () => {
     const f = must(await O.get('/api/affari/fonti'), 'fonti').righe;
     assert.equal(f.length, 5); assert.ok(f.some((x) => /uslcentro/.test(x.url)) && f.some((x) => /uslnordovest/.test(x.url)) && f.some((x) => /uslsudest/.test(x.url)) && f.some((x) => x.tipo === 'RSS'));
     assert.equal((await VIS.get('/api/affari/state')).j.user.ruolo, 'VIEWER');
-    assert.equal((await VIS.post('/api/affari/fonti', { nome: 'x', url: `${sito.base}/avvisi`, categoria: 'BANDI' })).s, 403); assert.equal((await VIS.put('/api/affari/impostazioni', { ora_invio: 9 })).s, 403);
+    assert.equal((await VIS.put('/api/affari/impostazioni', { ora_invio: 9 })).s, 403);
     assert.equal((await D.cliente.get('/api/affari/state')).s, 403);
     assert.equal((await O.post('/api/affari/fonti/prova', { url: 'ftp://x' })).s, 400);
     assert.equal((await O.post('/api/affari/fonti/prova', { url: 'http://169.254.169.254/latest' })).j.ok, false, 'indirizzi interni rifiutati');
     voci = [{ href: '/avvisi/uno', t: 'Avviso già pubblicato sui locali per la continuità assistenziale' }];
     const p = must(await O.post('/api/affari/fonti/prova', { url: `${sito.base}/avvisi` }), 'prova'); assert.equal(p.ok, true); assert.equal(p.trovate, 2);
     assert.equal(must(await O.post('/api/affari/fonti/prova', { url: `${sito.base}/rotta` }), 'prova rotta').ok, false);
+    // v0.97.2: chiunque abbia il widget prova e aggiunge una fonte; modificarla, sospenderla, leggerla a mano ed eliminarla resta alla Direzione
+    assert.equal(must(await VIS.post('/api/affari/fonti/prova', { url: `${sito.base}/avvisi` }), 'prova del visualizzatore').ok, true);
+    const fv = must(await VIS.post('/api/affari/fonti', { nome: 'Fonte del visualizzatore', url: `${sito.base}/atti/elenco-vis`, categoria: 'ALTRO' }), 'fonte del visualizzatore');
+    assert.equal(must(await O.get('/api/affari/fonti'), 'fonti').righe.find((x) => x.id === fv.id).aggiunta_da, 'Vistatest Vito');
+    assert.equal((await VIS.put(`/api/affari/fonti/${fv.id}`, { attiva: false })).s, 403); assert.equal((await VIS.del(`/api/affari/fonti/${fv.id}`)).s, 403); assert.equal((await VIS.post(`/api/affari/fonti/${fv.id}/leggi`, {})).s, 403);
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM public.notifications WHERE title LIKE 'Public Affairs: % ha aggiunto la fonte%'`).catch(() => ({ rows: [{ n: 1 }] }))).rows[0].n >= 1, true);
+    must(await O.del(`/api/affari/fonti/${fv.id}`), 'elimina');
   });
 
   test('prima lettura: nessun avviso; poi le voci nuove sono novità valutate; email una volta al giorno e solo se serve', async () => {

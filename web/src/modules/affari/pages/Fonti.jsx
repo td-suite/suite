@@ -39,12 +39,12 @@ export default function Fonti() {
   return (
     <div className="page">
       <PageHead title="Fonti monitorate" icon="list" sub="Solo pagine pubbliche di enti. La Suite le legge più volte al giorno con un lettore prudente: nessun accesso riservato, nessun aggiramento di controlli anti-robot."
-        actions={st.user.gestisce && <button className="btn" onClick={() => setM({ t: 'scheda', f: {} })}>Aggiungi una fonte</button>} />
+        actions={<button className="btn" onClick={() => setM({ t: 'scheda', f: {} })}>Aggiungi una fonte</button>} />
       {Object.entries(st.categorie).map(([k, l]) => { const righe = d.data.righe.filter((f) => f.categoria === k); if (!righe.length) return null; return (
         <Card key={k} title={l} flush className="pa-gap"><div className="table-wrap"><table className="t"><thead><tr><th>Fonte</th><th>Stato</th><th>Ultima lettura</th><th className="num">Novità</th><th></th></tr></thead>
           <tbody>{righe.map((f) => (
             <tr key={f.id}>
-              <td><span className="strong">{f.nome}</span><div className="small"><a href={f.url} target="_blank" rel="noreferrer">{f.url.replace(/^https?:\/\//, '').slice(0, 80)}</a></div><div className="small muted">{f.tipo === 'RSS' ? 'Feed' : 'Pagina'}{f.filtro ? ` · solo collegamenti con "${f.filtro}"` : ''}{f.seme ? ' · proposta dalla Suite' : ''}</div></td>
+              <td><span className="strong">{f.nome}</span><div className="small"><a href={f.url} target="_blank" rel="noreferrer">{f.url.replace(/^https?:\/\//, '').slice(0, 80)}</a></div><div className="small muted">{f.tipo === 'RSS' ? 'Feed' : 'Pagina'}{f.filtro ? ` · solo collegamenti con "${f.filtro}"` : ''}{f.seme ? ' · proposta dalla Suite' : f.aggiunta_da ? ` · aggiunta da ${f.aggiunta_da}` : ''}</div></td>
               <td>{!f.attiva ? <Badge tone="grey">Sospesa</Badge> : f.errore ? <Badge tone="red">Da controllare</Badge> : f.inizializzata ? <Badge tone="green">Attiva</Badge> : <Badge tone="amber">Prima lettura da fare</Badge>}{f.errore && <div className="small pa-rosso">{f.errore}</div>}</td>
               <td className="small">{itDataOra(f.letta_ok_at)}{f.trovate != null && <div className="muted">{f.trovate} voci nella fonte</div>}</td>
               <td className="num">{f.novita}</td>
