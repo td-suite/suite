@@ -187,5 +187,12 @@
   "estratto": "27",
   "slug": "rimborsi-serve",
   "route": "/rimborsi"
+ },
+ "crediti": {
+  "capitolo": 29,
+  "nome": "Recupero Crediti",
+  "estratto": null,
+  "slug": "crediti-serve",
+  "route": "/crediti"
  }
 }

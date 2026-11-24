@@ -17,6 +17,8 @@ import Audit from './pages/Audit.jsx';
 import Schedule from './pages/Schedule.jsx';
 import ContoEconomico from './pages/ContoEconomico.jsx';
 import MargineService from './pages/MargineService.jsx';
+import Banca from './pages/Banca.jsx';
+import Quadratura from './pages/Quadratura.jsx';
 import './finance.css';
 
 export default function Module({ moduleUser }) {
@@ -41,6 +43,8 @@ export default function Module({ moduleUser }) {
           <Route path="scadenziario" element={<Schedule />} />
           <Route path="conto-economico" element={<ContoEconomico />} />
           <Route path="margine-service" element={<MargineService />} />
+          <Route path="banca" element={<Banca />} />
+          <Route path="quadratura" element={<Quadratura />} />
           <Route path="impostazioni" element={(admin || user?.role === 'SUPPORT') ? <Settings /> : <Forbidden />} />
           <Route path="audit" element={admin ? <Audit /> : <Forbidden />} />
           <Route path="*" element={<Navigate to={base} replace />} />

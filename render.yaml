@@ -48,6 +48,10 @@ services:
         value: suite@toscanadiagnostica.it   # casella mittente (permesso applicativo Mail.Send + Application Access Policy)
       - key: MAIL_PROVIDER
         value: graph
+      - key: ENABLEBANKING_APP_ID
+        sync: false   # v0.95.0: identificativo dell'applicazione Enable Banking (collegamento bancario in sola lettura, docs/BANCA.md)
+      - key: ENABLEBANKING_PRIVATE_KEY
+        sync: false   # chiave privata dell'applicazione Enable Banking (PEM): si inserisce a mano nel pannello, mai nel repository
       - key: AZURE_STORAGE_CONTAINER
         value: suite
       - key: ANTHROPIC_MODEL

@@ -41,6 +41,7 @@ import orgcatRoutes from './routes/orgcat.js';
 import assetTypesRoutes from './routes/assetTypes.js';
 import consensiRoutes from './routes/consensi.js';
 import rubricheRoutes from './routes/rubriche.js';
+import bancaRoutes from './routes/banca.js';
 import { mountModules, mountModulesPublic, runModulesAfterStart } from './modules/index.js';
 import vediComeRoutes, { vediCome } from './lib/vediCome.js';
 import { activeModuleKeys } from './lib/modules.js';
@@ -164,6 +165,7 @@ app.use('/api/openapi', openapiRoutes);         // Openapi: scheda impresa dal r
 app.use('/api/connectors', connectorsRoutes);   // connettori unici verso i sistemi esterni (Amministrazione)
 app.use('/api/synclab', synclabRoutes);         // Dati Synclab (Data API v1 di CB Sistemi): stato, impostazioni, sincronizzazione, client ↔ Legal entity
 app.use('/api/rubriche', rubricheRoutes);       // rubriche esterne (Outlook di francesco.epifani@, Gmail fraepi@): referenti delle Legal entity
+app.use('/api/banca', bancaRoutes);             // collegamento bancario Enable Banking: conti, movimenti, consenso (lib/banca.js)
 await mountModules(app);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 

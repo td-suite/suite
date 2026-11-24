@@ -124,7 +124,9 @@ r.get('/widget', ah(async (_req, res) => res.json(WIDGET)));
 r.get('/widget/:key.pdf', ah(async (req, res) => {
   const w = WIDGET[req.params.key];
   if (!w) throw notFound('Widget inesistente');
-  inviaPdf(req, res, `widget-${req.params.key}.pdf`, `TD-SGI-MAN009_${w.estratto} - Guida al widget ${w.nome.replace(/[^\p{L}\p{N} &-]/gu, '')}.pdf`);
+  // estratto assente: guida di lavoro di un widget non ancora recepito nel Manuale TD-SGI-MAN009 (nessun codice SGI finché non viene emesso)
+  const nome = w.nome.replace(/[^\p{L}\p{N} &-]/gu, '');
+  inviaPdf(req, res, `widget-${req.params.key}.pdf`, w.estratto ? `TD-SGI-MAN009_${w.estratto} - Guida al widget ${nome}.pdf` : `Guida al widget ${nome} (bozza di lavoro).pdf`);
 }));
 
 export default r;

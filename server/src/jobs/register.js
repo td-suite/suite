@@ -8,3 +8,4 @@ await tryImport('../lib/diagnostica.js', 'registerDiagnosticaJobs');   // A13: e
 await tryImport('../lib/scadenzario.js', 'registerScadenzarioJobs');   // Cockpit: notifica giornaliera dello scadenzario di direzione
 await tryImport('../lib/synclab/sync.js', 'registerSynclabJobs');   // Synclab Data API: ciclo notturno (ogni 15 minuti verifica ora e Data API accesa)
 await tryImport('../lib/openapi.js', 'registerOpenapiJobs');   // Openapi: verifica notturna delle Legal entity sul registro imprese
+await tryImport('../lib/banca.js', 'registerBancaJobs');     // Enable Banking: lettura oraria dei movimenti dei conti collegati

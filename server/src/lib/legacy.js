@@ -678,6 +678,8 @@ const PER_USER_COUNTERS = {
   suiteguida: async () => (await import('../modules/suiteguida/lib/core.js')).contatoreHome,
   // Rimborso Spese (v0.72.0): solo ai dipendenti; P&C note da liquidare, responsabili note da approvare, dipendente note in bozza
   rimborsi: async () => (await import('../modules/rimborsi/lib/home.js')).contatoreHome,
+  // Recupero Crediti (v0.95.0): comunicazioni da approvare e risposte da leggere (Amministrazione, CFO, CEO); chiamate al referente commerciale
+  crediti: async () => (await import('../modules/crediti/lib/home.js')).contatoreHome,
 };
 
 // ---------------------------------------------------------------- Cockpit direzionale (cache 5 minuti)

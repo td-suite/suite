@@ -15,6 +15,8 @@ import { ah, bad, notFound, audit, parse, suiteAudit, todayRome } from '../lib/u
 import { requireManage, requireAdmin } from '../lib/access.js';
 import * as CE from '../lib/contoEconomico.js';
 import { contoEconomico, caricaService, impostazioniControllo, leggi, sommaMesi } from '../lib/controlloData.js';
+import { quadratura } from '../lib/quadratura.js';
+import { puoVedereBanca } from '../../../lib/banca.js';
 import { contoXlsx, contoPdf, margineXlsx, marginePdf, CALCOLO_PL, CALCOLO_SRV } from '../lib/controlloExport.js';
 
 const r = Router();
@@ -28,6 +30,13 @@ const invia = (res, buf, filename, type) => { res.setHeader('Content-Type', type
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 // ---------------------------------------------------------------- conto economico di sede
+// ---------------------------------------------------------------- quadratura con la banca (Enable Banking, v0.95.0)
+// Conti e movimenti bancari: CEO, CFO, Finance Support (stessa regola di /api/banca). Prospetto di sola lettura.
+r.get('/quadratura', ah(async (req, res) => {
+  if (!puoVedereBanca(req.suiteUser)) throw Object.assign(new Error('Conti e movimenti bancari: riservati a CEO, CFO e Finance Support'), { status: 403 });
+  res.json(await quadratura(periodoDa(req), { contoEconomico: (p) => contoEconomico(p) }));
+}));
+
 r.get('/conto-economico', ah(async (req, res) => {
   const p = periodoDa(req);
   const d = await contoEconomico(p, { siteId: req.query.site_id ? Number(req.query.site_id) : null });

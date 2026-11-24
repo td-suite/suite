@@ -16,6 +16,7 @@ import PuntoPrelievi from '../components/PuntoPrelievi.jsx';
 import ScriviCliente from '../components/ScriviCliente.jsx';
 import ContrattoDettaglio from '../components/ContrattoDettaglio.jsx';
 import SynclabAccount from '../components/SynclabAccount.jsx';
+import PosizioneCrediti from '../components/PosizioneCrediti.jsx';
 import { ClientiGestionale, ListinoGestionale } from '../components/GestionaleSynclab.jsx';
 import CercaRubrica, { SuggerimentoEmail } from '../../../components/CercaRubrica.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Badge, StatusBadge, KindBadge, Modal, PromptModal, ConfirmModal, UploadButton, Icon, Empty, MoneyInput, useToast } from '../components/ui.jsx';
@@ -526,6 +527,7 @@ function Economici({ a, onChange }) {
   const [f, setF] = useState(null);
   const salva = async () => { try { await api.put(`/hub/accounts/${a.id}`, Object.fromEntries(ECON.map(([k]) => [k, f[k] === '' ? null : f[k]]))); toast('Dati economici salvati'); setF(null); onChange(); } catch (e) { toast(e.message, 'err'); } };
   return (
+    <>
     <Card title="Dati economici" actions={a.puo_modificare && !f && <button className="btn sm ghost" onClick={() => setF(Object.fromEntries(ECON.map(([k]) => [k, a[k] ?? ''])))}><Icon name="edit" />Modifica</button>}>
       {!f ? <div className="grid g3">
         <div className="kpi card"><div className="lbl">Sconto medio vs listino</div><div className="val">{pctSconto(a.sconto_medio)}</div></div>
@@ -537,6 +539,8 @@ function Economici({ a, onChange }) {
       </div> : <><div className="form-grid">{ECON.map(([k, l]) => <Field key={k} label={l}><MoneyInput value={f[k]} onChange={(v) => setF({ ...f, [k]: v })} /></Field>)}</div><div className="row end" style={{ marginTop: 12 }}><button className="btn ghost" onClick={() => setF(null)}>Annulla</button><button className="btn" onClick={salva}>Salva</button></div></>}
       {a.n_sedi > 0 && <div className="small muted" style={{ marginTop: 10 }}>Account di gruppo: volumi e fatturati sono la somma delle righe del DB Opportunità delle {a.n_sedi} strutture (dettaglio in Dati commerciali).</div>}
     </Card>
+    <PosizioneCrediti orgId={a.organization_id} />
+    </>
   );
 }
 const COMM = [['tipologia', 'Tipologia'], ['segmento_lab', 'Segmento Lab'], ['gruppo', 'Gruppo / Ente gestore'], ['discipline', 'Discipline'], ['accreditata_ssr', 'Accreditata SSR'], ['fornitore_attuale', 'Fornitore Lab attuale'],

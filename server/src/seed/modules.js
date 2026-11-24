@@ -21,6 +21,13 @@ export const MODULES = [
     profiles: [P('ADMIN', 'Redazione (sezioni, FAQ, domande da risolvere, statistiche)'), P('LETTORE', 'Consultazione e domande')] },
   { key: 'finance', area: 'FINANCE', name: 'Finance Management', tagline: 'Firme, scadenze, conto economico', icon: 'finance-sign', kind: 'LEGACY', legacy_url: 'https://finance.toscanadiagnostica.it', sort_order: 10,
     profiles: [P('CEO', 'Amministratore Delegato'), P('CFO', 'CFO'), P('SUPPORT', 'Finance Support'), P('VIEWER', 'Sola lettura')] },
+  // Recupero Crediti (v0.95.0, CEO 24/11/2026): scala di sollecito del memo "Modello di sollecito clienti B2B", fatture da Synclab e dal
+  // partitario, incassi dalla banca (Enable Banking), comunicazioni e risposte dalla casella amministrazione@ (docs/RECUPERO_CREDITI.md).
+  // Nativo, solo su grant. L'esclusione di un cliente dai solleciti, la modalità Attiva, la firma del 2° sollecito e l'autorizzazione
+  // dell'area legale sono solo di CEO e CFO.
+  { key: 'crediti', area: 'FINANCE', name: 'Recupero Crediti', tagline: 'Scaduto, solleciti, incassi', icon: 'crediti', kind: 'NATIVE', legacy_url: null, route: '/crediti', sort_order: 15, scope_type: null, restricted: true,
+    profiles: [P('CEO', 'Amministratore Delegato (tutte le decisioni)'), P('CFO', 'CFO · Responsabile Amministrazione e Finanza (tutte le decisioni, firma del 2° sollecito)'), P('ATT', 'Amministrazione (riconciliazione, risposte, approvazione di avvisi e 1° sollecito)'),
+      P('COMMERCIALE', 'Referente commerciale (solo i suoi clienti: chiamata ed esito)'), P('LEGALE', 'Area legale (solo le pratiche autorizzate)'), P('VIEWER', 'Sola lettura')] },
   { key: 'integration', area: 'DIREZIONE', name: 'Integration M&A', tagline: 'Post closing, GANTT', icon: 'integration-plan', kind: 'LEGACY', legacy_url: 'https://integration.toscanadiagnostica.it', sort_order: 30,
     profiles: [P('ADMIN', 'Amministratore'), P('EDITOR', 'Editor'), P('VIEWER', 'Sola lettura')] },
   { key: 'cockpit', area: 'DIREZIONE', name: 'Cockpit direzionale', tagline: 'Indicatori e scadenzario', icon: 'cockpit', kind: 'NATIVE', route: '/cockpit', sort_order: 10,

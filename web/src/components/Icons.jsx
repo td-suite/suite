@@ -93,6 +93,11 @@ const MODULES = {
     f: 'M5 11c6.5-2 12.5-1 19 3v26c-6.5-4-12.5-5-19-3zM43 11c-6.5-2-12.5-1-19 3v26c6.5-4 12.5-5 19-3z',
     s: 'M5 11c6.5-2 12.5-1 19 3v26c-6.5-4-12.5-5-19-3zM43 11c-6.5-2-12.5-1-19 3v26c6.5-4 12.5-5 19-3zM9.5 19c3-.7 6-.5 9.5 1M9.5 25c3-.7 6-.5 9.5 1M9.5 31c3-.7 6-.5 9.5 1M30 21a4 4 0 1 1 5.5 3.7c-1.2.5-1.8 1.3-1.8 2.6M33.7 31.5v.3',
   },
+  // Recupero Crediti (24/11/2026): busta del sollecito con l'orologio della scadenza
+  crediti: {
+    f: 'M5 12h30v22H5zM28 34a8 8 0 1 0 16 0a8 8 0 1 0 -16 0',
+    s: 'M5 12h30v14M5 34V12l15 11 15-11M5 34h18M28 34a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M36 30v4.5l3 1.8',
+  },
   // Rimborso Spese (13/11/2026): scontrino con il bordo a dente di sega e il segno dell'euro
   rimborsi: {
     f: 'M12 6h24v36l-4-3-4 3-4-3-4 3-4-3-4 3z',
