@@ -169,6 +169,15 @@ describe('Label: etichette di un\'accettazione (puro)', () => {
     assert.equal(e[6].tipo, 'PAZIENTE'); assert.match(e[6].zpl, /Acc\. P26-000001/); assert.ok(!/\^BC/.test(e[6].zpl) && !/Ritiro/.test(e[6].zpl), 'tagliando senza barcode e senza data di ritiro (non fornita dal gestionale)');
     assert.equal(e[0].valori.TOT, '6', 'il tagliando non conta fra le provette');
   });
+  test('v0.97.1 caratteri a passo fisso della Zebra: larghezza = caratteri × passo, nessun avviso', async () => {
+    const Z = await import('../src/modules/etichette/lib/zpl.js');
+    const a = Z.analizzaZpl('^XA^PW400^LL240^FO10,76^AFN,26,13^FDT.Viola Alinity^FS^FO10,30^ADN,36,10^FDPROVA^FS^FO0,48^AFN,26,13^FB400,1,0,C^FDCENTRO^FS^XZ');
+    assert.deepEqual(a.avvisi, []);
+    const [f, d] = a.etichette[0].elementi;
+    assert.deepEqual([f.h, f.passo], [26, 16]); assert.deepEqual([d.h, d.passo], [36, 12]);
+    const svg = Z.svgEtichetta(a.etichette[0]);
+    assert.match(svg, /textLength="240"[^>]*>T\.Viola Alinity</); assert.match(svg, /text-anchor="middle" textLength="96"/);
+  });
   test('etichetta richiesta (impostazione) e senza paziente', () => {
     const e = A.costruisciEtichette(acc, null, { richiesta: true, modello: { zpl: MODELLO } });
     assert.equal(e.length, 4);
@@ -280,7 +289,7 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
   test('modello predefinito "da validare", ADMIN al titolare, avviso e D54', async () => {
     const m = await tutti(`SELECT nome, predefinito, validato_il FROM etichette.modelli`);
     // v0.97.0: la migrazione 005 aggiunge la replica dell'etichetta di StudioLab e la rende predefinita (quella iniziale non era validata)
-    assert.deepEqual(m.map((x) => [x.nome, x.predefinito, x.validato_il]).sort(), [['StudioLab 50x25 (replica)', true, null], ['TD 50x25 (da validare)', false, null]]);
+    assert.deepEqual(m.map((x) => [x.nome, x.predefinito, x.validato_il]).sort(), [['StudioLab 50x30 (replica)', true, null], ['TD 50x25 (da validare)', false, null]]);
     const [d54] = await M.diag.esegui({ ids: ['D54'] });
     assert.equal(d54.stato, 'INFO'); assert.equal(d54.n, 2);
     const core = await import('../src/modules/etichette/lib/core.js');
@@ -408,7 +417,8 @@ describe('Label con il server finto e il database', { skip: SALTA }, () => {
     assert.ok(x.j.aggiornamento && 'diretta' in x.j.aggiornamento, 'la risposta dice se le etichette vengono dalla lettura in diretta');
     assert.deepEqual(x.j.etichette[1].esami.map((e) => e.codice), ['EMO']);
     assert.match(x.j.etichette[0].zpl, /\^FDBC10021\^FS/);
-    assert.equal(x.j.paziente.cognome, 'Campione'); assert.equal(x.j.modello.nome, 'StudioLab 50x25 (replica)');
+    assert.equal(x.j.paziente.cognome, 'Campione'); assert.equal(x.j.modello.nome, 'StudioLab 50x30 (replica)'); assert.equal(x.j.modello.altezza_mm, 30);
+    assert.match(x.j.etichette[0].zpl, /\^AFN,26,13\^FD/, 'nome della provetta nel carattere F, come StudioLab'); assert.ok(!/MATERIALE|\{/.test(x.j.etichette[0].zpl));
     // fuori perimetro
     x = await http('GET', `/accettazioni/${encodeURIComponent(inst)}/R-35`);
     assert.equal(x.s, 403);

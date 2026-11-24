@@ -166,6 +166,8 @@ export function togliCampiVuoti(zpl) {
 
 // ------------------------------------------------------------------ analisi dei comandi ZPL
 export const COMANDI_SUPPORTATI = ['XA', 'XZ', 'FO', 'FD', 'FS', 'A', 'BC', 'BY', 'GB', 'CI', 'PW', 'LL', 'FB', 'LH', 'CF', 'FX', 'PQ'];
+// Caratteri a matrice della Zebra (ZPL II, 203 dpi): matrice h × w e passo (larghezza + spazio tra i caratteri) in dot
+export const BITMAP = { A: { h: 9, w: 5, passo: 6 }, B: { h: 11, w: 7, passo: 9 }, C: { h: 18, w: 10, passo: 12 }, D: { h: 18, w: 10, passo: 12 }, E: { h: 28, w: 15, passo: 20 }, F: { h: 26, w: 13, passo: 16 }, G: { h: 60, w: 40, passo: 48 }, H: { h: 21, w: 13, passo: 19 } };
 const num = (v, d) => { const n = Number(String(v ?? '').trim()); return v == null || String(v).trim() === '' || !Number.isFinite(n) ? d : n; };
 
 /** Larghezza stimata (dot) di un testo nel carattere 0 con altezza h e larghezza w (proporzioni del carattere condensato). */
@@ -255,12 +257,15 @@ export function analizzaZpl(zpl, { larghezza = 400, altezza = 200 } = {}) {
       case 'XA': case 'XZ': case 'FX': case 'CI': case 'PW': case 'LL': case 'LH': case 'PQ': case 'BY': case 'CF': break;
       case 'FO': campo.x = num(a[0], 0) + stato.lh.x; campo.y = num(a[1], 0) + stato.lh.y; break;
       case 'A': {
-        if (t.font !== '0') avvisi.push(`^A${t.font}: l'anteprima usa il carattere 0 per tutti i testi`);
+        if (t.font !== '0' && !BITMAP[t.font]) avvisi.push(`^A${t.font}: l'anteprima usa il carattere 0 per tutti i testi`);
         const parti = t.arg.split(',');
         const o = /^[NRIB]$/i.test(parti[0]) ? parti.shift().toUpperCase() : (parti[0] === '' ? (parti.shift(), 'N') : 'N');
         if (o !== 'N') avvisi.push(`^A${t.font}${o}: testo ruotato, l'anteprima lo disegna orizzontale`);
         const h = num(parti[0], stato.cf.h);
         campo.font = { h, w: num(parti[1], h) };
+        // caratteri a passo fisso della Zebra (A-H): altezza e larghezza sono multipli interi della matrice del carattere
+        const bm = BITMAP[t.font];
+        if (bm) { const mh = Math.max(1, Math.min(10, Math.round(num(parti[0], bm.h) / bm.h))); const mw = Math.max(1, Math.min(10, Math.round(num(parti[1], bm.w * mh) / bm.w))); campo.font = { h: bm.h * mh, w: bm.w * mw, passo: bm.passo * mw }; }
         break;
       }
       case 'FB': campo.fb = { w: num(a[0], 0), righe: Math.max(1, num(a[1], 1)), spaz: num(a[2], 0), giust: String(a[3] || 'L').trim().toUpperCase() || 'L' }; break;
@@ -292,12 +297,12 @@ export function analizzaZpl(zpl, { larghezza = 400, altezza = 200 } = {}) {
           } catch (e) { avvisi.push(e.message); }
         } else if (campo.fd != null) {
           const f = campo.font || { h: stato.cf.h, w: stato.cf.w };
-          const el = { tipo: 'testo', x, y, h: f.h, w: f.w, testo: campo.fd.replace(/\\&/g, ' ') };
+          const el = { tipo: 'testo', x, y, h: f.h, w: f.w, testo: campo.fd.replace(/\\&/g, ' '), ...(f.passo ? { passo: f.passo } : {}) };
           if (campo.fb) {
             const r = righeBlocco(campo.fd, campo.fb, f.h, f.w);
             Object.assign(el, { righe: r.righe, bw: campo.fb.w, giust: campo.fb.giust, spaz: campo.fb.spaz });
             if (r.tagliate) avvisi.push(`"${campo.fd.slice(0, 30)}": il testo supera le ${campo.fb.righe} righe del blocco ^FB`);
-          } else if (x + larghezzaTesto(el.testo, f.h, f.w) > et.larghezza) avvisi.push(`"${el.testo.slice(0, 30)}" potrebbe uscire dall'etichetta (larghezza stimata)`);
+          } else if (x + (f.passo ? el.testo.length * f.passo : larghezzaTesto(el.testo, f.h, f.w)) > et.larghezza) avvisi.push(`"${el.testo.slice(0, 30)}" potrebbe uscire dall'etichetta (larghezza stimata)`);
           et.elementi.push(el);
         }
         campo = nuovoCampo();
@@ -330,7 +335,11 @@ export function svgEtichetta(et, { dpi = 203, larghezzaMm = null, altezzaMm = nu
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${wmm}mm" height="${hmm}mm" viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges" role="img">`,
     `<defs><clipPath id="${clip}"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath></defs>`,
     `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"${bordo ? ' stroke="#9aa5ab" stroke-width="1"' : ''}/>`, `<g clip-path="url(#${clip})">`];
-  const testo = (x, y, h, w, s, anchor = 'start') => {
+  const testo = (x, y, h, w, s, anchor = 'start', passo = 0) => {
+    if (passo) {   // carattere a passo fisso: larghezza esatta = caratteri × passo
+      const L = String(s).length * passo;
+      return `<text x="${x}" y="${(y + h * 0.82).toFixed(1)}" font-family="'DejaVu Sans Mono','Consolas','Menlo','Courier New',monospace" font-weight="700" font-size="${h}" text-anchor="${anchor}"${String(s).trim() ? ` textLength="${L}" lengthAdjust="spacingAndGlyphs"` : ''} fill="#000">${esc(s)}</text>`;
+    }
     // linea di base del carattere 0 a circa l'80% della cella (h); larghezza imposta alla stima del carattere condensato della Zebra
     // (textLength): l'anteprima ha le stesse proporzioni su ogni PC, qualunque carattere di sistema sostituisca quello della stampante
     const L = larghezzaTesto(s, h, w);
@@ -356,9 +365,9 @@ export function svgEtichetta(et, { dpi = 203, larghezzaMm = null, altezzaMm = nu
           const y = el.y + k * (el.h + (el.spaz || 0));
           const anchor = el.giust === 'C' ? 'middle' : el.giust === 'R' ? 'end' : 'start';
           const x = el.giust === 'C' ? el.x + el.bw / 2 : el.giust === 'R' ? el.x + el.bw : el.x;
-          out.push(testo(x, y, el.h, el.w, r, anchor));
+          out.push(testo(x, y, el.h, el.w, r, anchor, el.passo));
         });
-      } else out.push(testo(el.x, el.y, el.h, el.w, el.testo));
+      } else out.push(testo(el.x, el.y, el.h, el.w, el.testo, 'start', el.passo));
     }
   }
   out.push('</g></svg>');
