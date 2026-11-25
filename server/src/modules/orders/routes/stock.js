@@ -333,7 +333,9 @@ r.get('/consumption', ah(async (req, res) => {
   const art = new Map((await many(`SELECT id, code, name, pack_label, active AS magazzino FROM articles WHERE id = ANY($1::int[])`, [ids])).map((a) => [a.id, a]));
   const items = [...cons.map.entries()].map(([article_id, v]) => { const a = art.get(article_id); return { article_id, article_code: a?.code || null, article_name: a?.name || null, pack_label: a?.pack_label || null, magazzino: a ? a.magazzino : false, ...v }; })
     .sort((p, q) => Number(q.magazzino) - Number(p.magazzino) || q.units - p.units);
-  res.json({ months: cons.months, items });
+  const nc = cons.nonContati || [];
+  const artNc = new Map((await many(`SELECT id, name FROM articles WHERE id = ANY($1::int[])`, [nc.map((x) => x.article_id)])).map((a) => [a.id, a.name]));
+  res.json({ months: cons.months, provvisorio: Boolean(cons.provvisorio), items, non_contati: nc.map((x) => ({ ...x, article_name: artNc.get(x.article_id) || null })).sort((p, q2) => q2.units - p.units) });
 }));
 
 // ---------------- Difformità ----------------

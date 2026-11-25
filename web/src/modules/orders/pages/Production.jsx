@@ -40,7 +40,7 @@ export default function Production() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Produzione{ops ? ' StudioLab' : ''}</h1><div className="sub">Per articolo di magazzino: campioni (provette e contenitori) del gestionale per mese, dall'etichetta abbinata all'articolo. Per esame: esami per mese, correlati ai materiali attraverso la tabella esame → articolo</div></div>
+        <div><h1>Produzione{ops ? ' StudioLab' : ''}</h1><div className="sub">Per articolo di magazzino: campioni (provette e contenitori) del gestionale per mese, contati sul testo dell'etichetta e portati sull'articolo abbinato. Per esame: esami per mese, correlati ai materiali attraverso la tabella esame → articolo</div></div>
         <div className="row">
           {ops && <Field label="Struttura"><select value={sid} onChange={(e) => setSid(e.target.value)} style={{ minWidth: 260 }}><option value="">Scegli…</option><StrutturaOptions strutture={strutture.data} filter={(s) => s.kind !== 'LAB'} /></select></Field>}
           {ops && <a className="btn ghost" href={`${API_BASE}/production/import/template.xlsx`}><Icon name="download" size={16} />Modello</a>}
@@ -99,10 +99,12 @@ function Consumo({ cons }) {
       {!cons?.items?.length ? <Empty>Nessun consumo calcolabile: servono campioni Synclab con etichette abbinate, oppure produzione e correlazioni</Empty> : (
         <div className="table-wrap"><table className="t">
           <thead><tr><th>Articolo</th><th>Fonte</th><th className="num">Unità/mese</th><th className="num">Confezioni/mese</th></tr></thead>
-          <tbody>{cons.items.map((it) => <tr key={it.article_id}><td>{it.article_name ? <>{it.article_name}{it.pack_label && <div className="small muted">{it.pack_label}</div>}{it.magazzino === false && <div className="small"><Badge tone="red">contenitore generico, non a magazzino</Badge> <span className="muted">conferma la transcodifica in Correlazione esami e materiali</span></div>}</> : <ArticleName id={it.article_id} />}</td><td>{it.fonte === 'CAMPIONI' ? <Badge tone="teal">campioni</Badge> : <Badge tone="grey">esami × correlazione</Badge>}</td><td className="num">{dec(it.units, 0)}</td><td className="num strong">{dec(it.packs, 1)}</td></tr>)}</tbody>
+          <tbody>{cons.items.map((it) => <tr key={it.article_id}><td>{it.article_name ? <>{it.article_name}{it.pack_label && <div className="small muted">{it.pack_label}</div>}{it.magazzino === false && <div className="small"><Badge tone="red">contenitore generico, non a magazzino</Badge> <span className="muted">conferma la transcodifica in Correlazione esami e materiali</span></div>}</> : <ArticleName id={it.article_id} />}</td><td>{it.fonte === 'CAMPIONI' ? <Badge tone="teal">campioni</Badge> : it.fonte === 'CAMPIONI+ESAMI' ? <Badge tone="teal">campioni + esami</Badge> : <Badge tone="grey">esami × correlazione</Badge>}</td><td className="num">{dec(it.units, 0)}</td><td className="num strong">{dec(it.packs, 1)}</td></tr>)}</tbody>
         </table></div>
       )}
-      <div className="small muted" style={{ padding: '8px 12px' }}>Con i campioni Synclab della struttura, gli articoli abbinati a un'etichetta si misurano dai campioni (un campione = un contenitore, anche se serve più esami); esami × correlazione resta per le strutture senza campioni e per gli articoli che nessuna etichetta rappresenta.</div>
+      {cons?.provvisorio && <div className="alert warn" style={{ margin: 12 }}><div>Consumo provvisorio da esami × correlazione: nessuna etichetta dei campioni di questa struttura è ancora abbinata a un articolo. Abbina le etichette in Correlazione esami e materiali: da quel momento provette e contenitori si contano dalle etichette.</div></div>}
+      {cons?.non_contati?.length > 0 && <div className="small" style={{ padding: '8px 12px', borderTop: '1px solid var(--line)' }}><b>Non contati</b> <span className="muted">(correlazioni segnate come contenitore: per provette e contenitori vale l'etichetta; se sono materiali in più, segnali così in Correlazione esami e materiali):</span> {cons.non_contati.map((x) => `${x.article_name || `#${x.article_id}`} (${dec(x.units, 0)}/mese da esami)`).join(' · ')}</div>}
+      <div className="small muted" style={{ padding: '8px 12px' }}>Con i campioni Synclab della struttura, provette e contenitori si contano solo dalle etichette (stessi numeri della tabella qui sopra); esami × correlazione conta i soli materiali in più a ogni esame (tappi, sigilli, kit) e, per le strutture senza campioni, tutto.</div>
     </Card>
   );
 }
@@ -123,22 +125,22 @@ function PivotArticoli({ piv, exportHref, ops }) {
           <thead><tr><th>Articolo di magazzino</th>{mesi.map((m) => <th key={m} className="num">{monthLabel(m)}</th>)}<th className="num">Totale</th><th className="num">Media mensile</th></tr></thead>
           <tbody>
             {piv.articoli.map((a) => <tr key={a.article_id}>
-              <td><div className="strong">{a.name}</div><div className="small muted">{a.etichette.map((e) => `${e.etichetta || (e.derivato ? 'materiale non indicato' : 'etichetta non indicata')}${e.derivato ? ' · dagli esami' : ''} (${e.totale.toLocaleString('it-IT')})`).join(' · ')}{a.pack_label ? ` · ${a.pack_label}` : ''}</div></td>
+              <td><div className="strong">{a.name}</div><div className="small muted">{a.etichette.map((e) => `${e.etichetta || 'etichetta non indicata'} (${e.totale.toLocaleString('it-IT')})`).join(' · ')}{a.pack_label ? ` · ${a.pack_label}` : ''}</div></td>
               {mesi.map((m) => <td key={m} className="num">{N(a.mesi[m])}</td>)}
               <td className="num strong">{N(a.totale)}</td><td className="num">{dec(a.media, 1)}{a.confezioni_mese != null && <div className="small muted">{dec(a.confezioni_mese, 2)} conf.</div>}</td></tr>)}
             {piv.non_abbinate.totale > 0 && <tr className="warnrow">
-              <td><button className="btn sm link" style={{ padding: 0 }} onClick={() => setAperte(!aperte)}>{aperte ? '▾' : '▸'} Campioni senza articolo ({piv.non_abbinate.etichette.length} voci)</button>{ops && <div className="small muted">Etichette da abbinare, oppure campioni senza etichetta i cui esami non hanno una correlazione: completa Correlazione esami e materiali</div>}</td>
+              <td><button className="btn sm link" style={{ padding: 0 }} onClick={() => setAperte(!aperte)}>{aperte ? '▾' : '▸'} Campioni senza articolo ({piv.non_abbinate.etichette.length} voci)</button>{ops && <div className="small muted">Etichette da abbinare a un articolo (Correlazione esami e materiali › Etichette) oppure materiali senza etichetta: manca la riga nella tabella delle provette (Lab Control › Impostazioni)</div>}</td>
               {mesi.map((m) => <td key={m} className="num">{N(piv.non_abbinate.mesi[m])}</td>)}
               <td className="num strong">{N(piv.non_abbinate.totale)}</td><td className="num">{dec(piv.non_abbinate.media, 1)}</td></tr>}
             {aperte && piv.non_abbinate.etichette.map((e) => <tr key={`n-${e.chiave}`} className="small">
-              <td style={{ paddingLeft: 28 }}>{e.etichetta || <span className="muted">{e.derivato ? 'materiale non indicato' : 'etichetta non indicata'}</span>}{e.derivato && <span className="muted"> · senza etichetta, esami senza correlazione</span>}</td>
+              <td style={{ paddingLeft: 28 }}>{e.etichetta || <span className="muted">{e.derivato ? 'materiale non indicato' : 'etichetta non indicata'}</span>}{e.derivato && <span className="muted"> · materiale senza etichetta: aggiungi la riga nella tabella delle provette</span>}</td>
               {mesi.map((m) => <td key={m} className="num">{N(e.mesi[m])}</td>)}
               <td className="num">{N(e.totale)}</td><td className="num">{dec(e.media, 1)}</td></tr>)}
             <tr><td className="strong">Totale campioni</td>{mesi.map((m) => <td key={m} className="num strong">{N(totMese(m))}</td>)}<td className="num strong">{N(piv.campioni)}</td><td /></tr>
           </tbody>
         </table></div>
       )}
-      <div className="small muted" style={{ padding: '8px 12px' }}>Quantità = numero di campioni (provette e contenitori) con quell'etichetta nel mese, dalle accettazioni attive della copia Synclab dei client abbinati alla struttura: un campione conta una volta anche quando serve più esami. Media mensile = totale / mesi con campioni. L'etichetta porta all'articolo con l'abbinamento in Correlazione esami e materiali; quando il gestionale non indica l'etichetta, l'articolo è quello correlato agli esami che il campione serve (riga "dagli esami", con il materiale biologico).</div>
+      <div className="small muted" style={{ padding: '8px 12px' }}>Quantità = numero di campioni (provette e contenitori) con quell'etichetta nel mese, dalle accettazioni attive della copia Synclab dei client abbinati alla struttura: un campione conta una volta anche quando serve più esami. Media mensile = totale / mesi con campioni. Sotto ogni articolo le etichette che lo compongono (più etichette portano allo stesso articolo: T.Giallo, T.Giallo Alinity, T.Giallo Elettroforesi). Il gestionale oggi non passa il testo dell'etichetta: il nome viene dalla tabella delle provette di Lab Control (materiale ed esami), la stessa che stampa le etichette.</div>
     </Card>
   </>);
 }

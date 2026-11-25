@@ -5,12 +5,15 @@ import '@fontsource-variable/manrope';
 import './styles.css';
 import App from './App.jsx';
 import { installaTendine } from './lib/tendine.js';
+import { installaIntestazioni } from './lib/intestazioni.js';
 import { installaVediCome } from './lib/vediCome.js';
 
 installaVediCome();
 
 // Ricerca nel testo in tutte le tendine con almeno 8 voci (lib/tendine.js)
 installaTendine();
+// Intestazioni delle tabelle ferme in alto durante lo scorrimento, in tutti i widget (lib/intestazioni.js)
+installaIntestazioni();
 
 // Dopo ogni rilascio i file in /assets cambiano nome: una scheda rimasta aperta con la versione precedente, al primo cambio di pagina,
 // chiede un chunk che non esiste più ("Failed to fetch dynamically imported module"). Qui si ricarica la pagina una volta sola: il

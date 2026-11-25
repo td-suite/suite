@@ -230,23 +230,35 @@ export async function productionStrutture(strutturaId) {
 export async function consumptionByArticle(strutturaId, months = 3) {
   const ids = await productionStrutture(strutturaId);
   const camp = await consumoDaCampioni(ids, months).catch((e) => { console.warn(`[orders] consumo dai campioni non calcolato: ${e.message}`); return null; });
+  // v0.99.0: le correlazioni "materiale in più" (contenitore = FALSE) si contano sempre esami × unità; i contenitori si contano dai
+  // campioni quando la struttura ne ha (camp.articoliEtichetta) e da esami × unità altrimenti. Lo stesso articolo può avere le due parti.
   const rows = await many(`
     WITH mesi AS (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2)
-    SELECT m.article_id, a.pack_size, sum(p.qty * m.qty_per_exam)::numeric AS units, count(DISTINCT p.month)::int AS n_months,
+    SELECT m.article_id, m.contenitore, a.pack_size, sum(p.qty * m.qty_per_exam)::numeric AS units, count(DISTINCT p.month)::int AS n_months,
            json_agg(json_build_object('exam_code', p.exam_code, 'exam_name', coalesce(p.exam_name, m.exam_name), 'month', p.month, 'qty', p.qty, 'qty_per_exam', m.qty_per_exam) ORDER BY p.month DESC, p.exam_code) AS detail
       FROM production p JOIN mesi ON mesi.month = p.month
       JOIN exam_mappings m ON m.exam_code = p.exam_code AND m.active
       JOIN articles a ON a.id = m.article_id
-     WHERE p.struttura_id = ANY($1::int[]) GROUP BY m.article_id, a.pack_size`, [ids, months]);
+     WHERE p.struttura_id = ANY($1::int[]) GROUP BY m.article_id, m.contenitore, a.pack_size`, [ids, months]);
   const nMonths = (await one(`SELECT count(*)::int AS n FROM (SELECT DISTINCT month FROM production WHERE struttura_id = ANY($1::int[]) ORDER BY month DESC LIMIT $2) x`, [ids, months]))?.n || 0;
+  const r2 = (v) => Math.round(v * 100) / 100;
   const map = new Map();
-  for (const r of rows) {
-    if (camp && camp.articoliEtichetta.has(r.article_id)) continue;   // articolo di un'etichetta: lo misurano i campioni
-    const units = Number(r.units) / Math.max(1, nMonths);
-    map.set(r.article_id, { units: Math.round(units * 100) / 100, packs: Math.round((units / r.pack_size) * 100) / 100, months: nMonths, fonte: 'ESAMI', detail: r.detail });
-  }
   if (camp) for (const [id, v] of camp.map) map.set(id, v);
-  return { map, months: camp ? Math.max(camp.months, nMonths) : nMonths, fonte: camp ? 'CAMPIONI' : 'ESAMI', mesi_campioni: camp?.months ?? 0, mesi_esami: nMonths };
+  // finché nessuna etichetta dei campioni della struttura è abbinata a un articolo, il consumo resta quello di prima (esami ×
+  // correlazione) ed è dichiarato provvisorio: la verifica degli ordini non resta senza numeri in attesa degli abbinamenti
+  const conEtichette = Boolean(camp && camp.map.size > 0);
+  const nonContati = [];   // correlazioni "contenitore" non contate perché la struttura ha i campioni: si mostrano, non entrano nel consumo
+  for (const r of rows) {
+    // v0.99.1: con i campioni i contenitori si contano SOLO dalle etichette (una regola sola, le due viste tornano); le correlazioni
+    // contano i soli materiali in più. Senza campioni (struttura fuori da Synclab) tutto resta esami × correlazione.
+    if (conEtichette && r.contenitore) { nonContati.push({ article_id: r.article_id, units: r2(Number(r.units) / Math.max(1, nMonths)) }); continue; }
+    const units = Number(r.units) / Math.max(1, nMonths);
+    const gia = map.get(r.article_id);
+    if (!gia) { map.set(r.article_id, { units: r2(units), packs: r2(units / r.pack_size), months: nMonths, fonte: 'ESAMI', detail: r.detail }); continue; }
+    const tot = gia.units + units;
+    map.set(r.article_id, { ...gia, units: r2(tot), packs: r2(tot / r.pack_size), fonte: gia.fonte === 'CAMPIONI' ? 'CAMPIONI+ESAMI' : gia.fonte, detail: [...(gia.detail || []), ...r.detail] });
+  }
+  return { provvisorio: Boolean(camp && !conEtichette), nonContati: nonContati.filter((x) => !map.has(x.article_id)), map, months: camp ? Math.max(camp.months, nMonths) : nMonths, fonte: camp ? 'CAMPIONI' : 'ESAMI', mesi_campioni: camp?.months ?? 0, mesi_esami: nMonths };
 }
 
 export { parseHl7 };

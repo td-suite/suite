@@ -97,3 +97,19 @@ visibile ad almeno una tipologia; altrimenti il motivo) con il link alla sua rig
 - **Transcodifica contenitori → articoli di magazzino** (Correlazione esami e materiali). Le correlazioni nate prima del catalogo Silva puntano a contenitori generici disattivati (Tappo Viola, Tappo Giallo…). La sezione li elenca con il numero di esami e propone l'articolo di magazzino (stesso colore di tappo e tipo; nessuna proposta se i candidati sono alla pari). Niente cambia senza conferma. Alla conferma le correlazioni passano all'articolo di magazzino (`exam_mappings.articolo_origine_id` ricorda l'origine, tabella `articoli_transcodifica`); "Annulla" ripristina. API: `GET/POST /mappings/transcodifica`, `DELETE /mappings/transcodifica/:da`.
 - **Consumo medio mensile.** Ogni voce porta la descrizione dell'articolo; i contenitori generici ancora da transcodificare sono segnalati.
 - **Stesso cliente con più codici.** Due strutture con lo stesso nome (al netto di forma societaria, accenti e punteggiatura), per esempio una sede TD e la Legal entity service, sono un cliente solo: `productionStrutture` somma la produzione di entrambe, da qualunque delle due si guardi. La pagina Produzione lo dichiara.
+
+## v0.99.0 · Più materiali per esame (25/11/2026)
+
+Un esame può consumare più materiali (droghe: contenitore urine, tappo a vite, sigilli). Ogni correlazione ha il campo `contenitore` (migrazione 022): **contenitore del campione** (uno solo per esame: si conta una volta per campione, anche se serve più esami) oppure **in più, a ogni esame** (si conta esami × unità per esame). In Correlazione esami e materiali la matita sulla riga, o "Più materiali per l'esame" accanto ad Aggiungi, apre la finestra con tutti i materiali dell'esame (`GET/PUT /mappings/esame/:code`: l'elenco salvato sostituisce le correlazioni dell'esame). Le correlazioni esistenti restano contenitori. Nel consumo lo stesso articolo può avere le due parti (fonte "campioni + esami"). Import ed export Excel non portano ancora il campo: le righe importate nascono contenitori.
+
+## v0.99.1 · La produzione si conta sul testo delle etichette (25/11/2026)
+
+Proposta del CEO: contare ciò che è scritto sulle etichette e transcodificarlo sugli articoli di magazzino (T.Giallo = T.Giallo Alinity = T.Giallo Elettroforesi → provetta tappo giallo). È la regola della v0.68.4, che in produzione non lavorava perché il gestionale non passa il testo dell'etichetta (`samples.container` vuoto, catalogo ServiceNET vuoto). Ora:
+
+- **Nome dell'etichetta.** `samples.container` quando c'è; altrimenti dalla **tabella delle provette di Lab Control** (impostazione `provette` del modulo Label: `nome sull'etichetta = materiale | esami`), la stessa che stampa le etichette. Fonte `PROVETTE` in `etichette_synclab` (migrazione 023).
+- **Transcodifica.** Correlazione esami e materiali › "Etichette → articoli di magazzino": più etichette sullo stesso articolo; proposta dal colore del tappo, da confermare.
+- **Una regola sola.** Tolta la regola della v0.98.1 (articolo ricavato dalle correlazioni degli esami). Nel consumo, per le strutture con campioni, provette e contenitori si contano solo dalle etichette; le correlazioni contano i soli materiali "in più"; le correlazioni "contenitore" non contate sono elencate sotto il consumo.
+- **Campioni senza riga nella tabella** restano "senza etichetta" con il materiale: si completa la tabella delle provette.
+- Le etichette si aggiornano insieme alla produzione (ogni ora e con "Aggiorna da Synclab").
+
+Limite: la tabella delle provette è una ricostruzione (8 righe dalle foto delle etichette); il dato vero è nel gestionale. Da chiedere a CB Sistemi: il testo dell'etichetta nel campo `container` della Data API.

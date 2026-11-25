@@ -61,6 +61,7 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     M.conn = await import('../src/lib/connectors.js'); await M.conn.loadConnectors();
     M.pers = await import('../src/lib/synclab/persistenza.js');
     await (await import('../src/lib/travaso.js')).startFresh('orders', null);
+    await (await import('../src/lib/travaso.js')).startFresh('etichette', null);
     M.ord = await import('../src/modules/orders/lib/synclab.js');
     M.sl = await import('../src/modules/orders/lib/studiolab.js');
     M.tr = await import('../src/modules/orders/lib/transcodifica.js');
@@ -77,6 +78,7 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
       RIC('CLI-SER', 'SERX1', `${M0}-04`, [['Sangue Inter EDTA', ['E1']]]),
     ]);
     await M.conn.saveConnector('STUDIOLAB', { enabled: true, base_url: 'http://127.0.0.1:1', auth_kind: 'CLIENT_JWT', credentials: { client_name: 'TDSuite', password: 'non-usata-nei-test' }, settings: { data_api_enabled: true } }, null);
+    await db.query(`INSERT INTO etichette.impostazioni (key, value) VALUES ('provette', to_jsonb($1::text)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, ['T.Viola Alinity = Sangue Inter EDTA | E2\nT.Viola = Sangue Inter EDTA\nT.Giallo Alinity = Siero']);
     await db.query(`INSERT INTO orders.categories (code, name) VALUES ('TST', 'Prova') ON CONFLICT DO NOTHING`);
     const art = async (code, name, active = true) => (await uno(`INSERT INTO orders.articles (code, category_code, name, unit, pack_label, pack_size, active) VALUES ($1, 'TST', $2, 'pezzi', 'conf. 100', 100, $3) RETURNING id`, [code, name, active])).id;
     ID.gViola = await art('G-VIO', 'Tappo Viola', false); ID.gGiallo = await art('G-GIA', 'Tappo Giallo', false);
@@ -98,19 +100,34 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     assert.deepEqual([a.campioni, b.campioni], [4, 4]);
   });
 
-  test('campioni senza etichetta: articolo dagli esami del campione, materiale come descrizione; l\'etichetta vuota abbinata non conta più', async () => {
-    await M.ord.aggiornaEtichette();
-    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave = ''`, [ID.mGiallo]);   // com'era in produzione: tutto su un articolo
+  test('v0.99.1 · si conta il testo delle etichette: nome dalla tabella delle provette, più etichette sullo stesso articolo, niente correlazioni', async () => {
+    const agg = await M.ord.aggiornaEtichette();
+    assert.deepEqual([agg.da_tabella, agg.senza_etichetta], [3, 1]);
+    const el = await M.ord.elencoEtichette();
+    assert.deepEqual(el.filter((e) => e.campioni > 0).map((e) => [e.etichetta, e.campioni, e.fonte]).sort((a, b) => a[0].localeCompare(b[0])), [['', 1, 'CAMPIONI'], ['T.Giallo Alinity', 1, 'PROVETTE'], ['T.Viola', 1, 'PROVETTE'], ['T.Viola Alinity', 1, 'PROVETTE']]);
+    assert.equal(el.find((e) => e.etichetta === 'T.Viola Alinity').proposta?.article_id, ID.mViola, 'proposta dal colore del tappo');
+    // prima dell'abbinamento: nessun articolo, anche se gli esami hanno correlazioni (la regola dagli esami non c'è più)
+    const prima = await M.ord.pivotArticoli(await M.sl.productionStrutture(ID.sede), 6);
+    assert.deepEqual([prima.articoli.length, prima.non_abbinate.totale, prima.campioni], [0, 4, 4]);
+    // T.Viola e T.Viola Alinity → stessa provetta di magazzino; T.Giallo Alinity → gialla
+    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave IN ('T.VIOLA', 'T.VIOLA ALINITY')`, [ID.mViola]);
+    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave = 'T.GIALLO ALINITY'`, [ID.mGiallo]);
+    await db.query(`UPDATE orders.etichette_synclab SET articolo_id = $1 WHERE chiave = ''`, [ID.mGiallo]);   // l'etichetta vuota abbinata non conta
     const p = await M.ord.pivotArticoli(await M.sl.productionStrutture(ID.sede), 6);
-    const v = p.articoli.find((x) => x.article_id === ID.gViola);
-    assert.deepEqual([v.name, v.totale, v.etichette.map((e) => [e.etichetta, e.derivato, e.totale])], ['Tappo Viola', 2, [['Sangue Inter EDTA', true, 2]]], '2 provette (una serve due esami)');
-    assert.equal(p.articoli.find((x) => x.article_id === ID.gGiallo).totale, 1, 'solo il siero, non tutti i campioni');
-    assert.deepEqual(p.non_abbinate.etichette.map((e) => [e.etichetta, e.derivato, e.totale]), [['Materiale Vario', true, 1]]);
-    const pv = await M.ord.proponiCorrelazioni();
-    assert.equal(pv.voci.length, 0, 'l\'etichetta vuota non propone correlazioni');
+    const v = p.articoli.find((x) => x.article_id === ID.mViola);
+    assert.deepEqual([v.totale, v.etichette.map((e) => [e.etichetta, e.totale]).sort((a, b) => a[0].localeCompare(b[0]))], [2, [['T.Viola', 1], ['T.Viola Alinity', 1]]]);
+    assert.equal(p.articoli.find((x) => x.article_id === ID.mGiallo).totale, 1);
+    assert.deepEqual(p.non_abbinate.etichette.map((e) => [e.etichetta, e.derivato, e.totale]), [['Materiale Vario', true, 1]], 'materiale senza riga nella tabella');
+    // consumo: stessi numeri della tabella per articolo; le correlazioni contenitore non si sommano
+    await M.ord.aggiornaProduzioneSynclab();
+    const c = await M.sl.consumptionByArticle(ID.sede, 3);
+    assert.deepEqual([c.map.get(ID.mViola).units, c.map.get(ID.mViola).fonte, c.map.get(ID.mGiallo).units], [2, 'CAMPIONI', 1]);
+    assert.equal(c.map.get(ID.gViola), undefined, 'il contenitore generico delle correlazioni non compare più');
+    assert.ok(c.nonContati.some((x) => x.article_id === ID.gViola), 'ed è dichiarato tra i non contati');
+    assert.equal((await M.ord.proponiCorrelazioni()).voci.length, 0, 'l\'etichetta vuota non propone correlazioni');
   });
 
-  test('transcodifica: proposta, conferma (correlazioni all\'articolo di magazzino, doppioni spenti), consumo e pivot valorizzati, annullo', async () => {
+  test('transcodifica dei contenitori delle correlazioni: proposta, conferma (doppioni spenti), annullo', async () => {
     const el = await M.tr.elencoTranscodifica();
     assert.deepEqual(el.da_confermare.map((g) => [g.name, g.esami, g.proposta?.article_id]), [['Tappo Viola', 2, ID.mViola], ['Tappo Giallo', 1, ID.mGiallo]]);
     assert.ok(el.magazzino.every((a) => a.id !== ID.gViola), 'i generici non sono a magazzino');
@@ -120,17 +137,26 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     const dopo = await M.tr.elencoTranscodifica();
     assert.deepEqual(dopo.da_confermare.map((g) => g.name), ['Tappo Giallo']);
     assert.deepEqual(dopo.confermate.map((g) => [g.name, g.a_article_id]), [['Tappo Viola', ID.mViola]]);
-    const p = await M.ord.pivotArticoli(await M.sl.productionStrutture(ID.sede), 6);
-    assert.equal(p.articoli.find((x) => x.article_id === ID.mViola).totale, 2);
-    assert.equal(p.articoli.find((x) => x.article_id === ID.gViola), undefined);
-    await M.ord.aggiornaProduzioneSynclab();
-    const c = await M.sl.consumptionByArticle(ID.sede, 3);
-    assert.deepEqual([c.map.get(ID.mViola).units, c.map.get(ID.mViola).fonte], [2, 'CAMPIONI']);
-    assert.equal(c.map.get(ID.gViola), undefined);
     const an = await M.tr.annullaTranscodifica(ID.gViola);
     assert.equal(an.ripristinate, 2);
     const m = (await db.query(`SELECT exam_code, article_id, active, articolo_origine_id FROM orders.exam_mappings ORDER BY exam_code, article_id`)).rows;
     assert.deepEqual(m.filter((x) => x.article_id === ID.gViola).map((x) => [x.exam_code, x.active, x.articolo_origine_id]), [['E1', true, null], ['E2', true, null]]);
     assert.equal((await M.tr.elencoTranscodifica()).da_confermare.length, 2);
+  });
+
+  test('v0.99.0 · più materiali per esame: un contenitore per campione, i materiali in più si contano a ogni esame', async () => {
+    const art = async (code, name) => (await uno(`INSERT INTO orders.articles (code, category_code, name, unit, pack_label, pack_size) VALUES ($1, 'TST', $2, 'pezzi', 'conf. 10', 10) RETURNING id`, [code, name])).id;
+    const sigillo = await art('M-SIG', 'Sigillo prova'); const tappo = await art('M-TAP', 'Tappo a vite prova');
+    // E4 (1 campione, 1 esame nel mese): contenitore = provetta gialla di magazzino, in più 2 sigilli e 1 tappo a ogni esame
+    await db.query(`DELETE FROM orders.exam_mappings WHERE exam_code = 'E4'`);
+    await db.query(`INSERT INTO orders.exam_mappings (exam_code, article_id, qty_per_exam, contenitore, source) VALUES ('E4', $1, 1, TRUE, 'MANUALE'), ('E4', $2, 2, FALSE, 'MANUALE'), ('E4', $3, 1, FALSE, 'MANUALE')`, [ID.mGiallo, sigillo, tappo]);
+    const c = await M.sl.consumptionByArticle(ID.sede, 3);
+    assert.deepEqual([c.map.get(ID.mGiallo).units, c.map.get(ID.mGiallo).fonte], [1, 'CAMPIONI']);
+    assert.deepEqual([c.map.get(sigillo).units, c.map.get(sigillo).packs, c.map.get(sigillo).fonte], [2, 0.2, 'ESAMI'], '1 esame × 2 sigilli');
+    assert.deepEqual([c.map.get(tappo).units, c.map.get(tappo).fonte], [1, 'ESAMI']);
+    // lo stesso articolo contenitore per un esame e materiale in più per un altro: le due parti si sommano
+    await db.query(`INSERT INTO orders.exam_mappings (exam_code, article_id, qty_per_exam, contenitore, source) VALUES ('E1', $1, 1, FALSE, 'MANUALE')`, [ID.mGiallo]);
+    const c2 = await M.sl.consumptionByArticle(ID.sede, 3);
+    assert.deepEqual([c2.map.get(ID.mGiallo).units, c2.map.get(ID.mGiallo).fonte], [3, 'CAMPIONI+ESAMI'], '1 campione + 2 esami E1');
   });
 });

@@ -179,7 +179,11 @@ describe('Etichette, migrazione 017, pivot e consumo dai campioni (database, fix
     const ex = await uno(`SELECT sum(p.qty * m.qty_per_exam)::numeric / 2 AS u FROM orders.production p JOIN orders.exam_mappings m ON m.exam_code = p.exam_code AND m.active AND m.article_id = $1 WHERE p.struttura_id = $2`, [ID.viola, ID.sv]);
     assert.equal(Number(ex.u), 3);
     assert.deepEqual([c.map.get(ID.giallo).units, c.map.get(ID.giallo).fonte], [0.5, 'CAMPIONI']);
-    assert.deepEqual([c.map.get(ID.ago).units, c.map.get(ID.ago).fonte], [1.5, 'ESAMI'], 'articolo senza etichetta: resta esami × correlazione');
+    // v0.99.1: con i campioni, una correlazione "contenitore" non si conta (vale l'etichetta) ed è dichiarata; segnata "in più" conta esami × unità
+    assert.equal(c.map.get(ID.ago), undefined); assert.deepEqual(c.nonContati.find((x) => x.article_id === ID.ago)?.units, 1.5);
+    await db.query(`UPDATE orders.exam_mappings SET contenitore = FALSE WHERE article_id = $1`, [ID.ago]);
+    const c1 = await M.sl.consumptionByArticle(-ID.org, 3);
+    assert.deepEqual([c1.map.get(ID.ago).units, c1.map.get(ID.ago).fonte], [1.5, 'ESAMI'], 'materiale in più: esami × correlazione');
     // struttura senza campioni Synclab: tutto da esami × correlazione, come prima
     await db.query(`INSERT INTO orders.production (struttura_id, month, exam_code, qty, source) VALUES ($1, $2, 'E1', 10, 'MANUALE')`, [ID.pp, `${M1}-01`]);
     const n = await M.sl.consumptionByArticle(ID.pp, 3);

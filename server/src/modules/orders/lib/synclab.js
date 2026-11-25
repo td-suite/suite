@@ -14,6 +14,8 @@
 //     pagina Produzione e dal consumo medio mensile (lib/studiolab.js consumptionByArticle) al posto di esami × correlazione.
 import { one, many, q, tx } from '../db.js';
 import { connectorSync } from '../../../lib/connectors.js';
+import { leggiProvette, provettaDi } from '../../etichette/lib/accettazioni.js';
+import { proponiArticolo } from './transcodifica.js';
 
 const KEY_PROD = 'synclab_produzione_ultimo';
 
@@ -70,6 +72,8 @@ export async function aggiornaProduzioneSynclab({ userId = null } = {}) {
     await c.query(`INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [KEY_PROD, JSON.stringify(res)]);
     return res;
   });
+  // v0.99.1: con la produzione si aggiornano anche le etichette viste (testo → articolo), senza premere il pulsante a parte
+  await aggiornaEtichette().catch((e) => console.warn(`[orders] etichette non aggiornate: ${e.message}`));
   return out;
 }
 
@@ -132,6 +136,25 @@ export async function aggiornaEtichette() {
       RETURNING chiave`);
     const viste = r.rows.map((x) => x.chiave);
     await c.query(`UPDATE etichette_synclab SET campioni = 0, aggiornato_il = now() WHERE campioni <> 0 AND NOT (chiave = ANY($1::text[]))`, [viste]);
+    // v0.99.1: campioni senza etichetta nel gestionale → nome dalla tabella delle provette di Lab Control (fonte PROVETTE); la riga
+    // dell'etichetta vuota tiene solo i campioni che nessuna riga della tabella copre
+    const provette = await tabellaProvette();
+    const senza = (await c.query(`SELECT ${TESTO('s.material')} AS materiale, ${CODICI_CAMPIONE} AS codici, count(*)::int AS n FROM ${CAMPIONI_ATTIVI} WHERE ${CHIAVE('s.container')} = '' GROUP BY 1, 2`)).rows;
+    const daTabella = new Map(); let scoperti = 0;
+    for (const x of senza) {
+      const e = etichettaDi({ chiave: '', materiale: x.materiale, codici: x.codici }, provette);
+      if (e.senza) { scoperti += x.n; continue; }
+      const v = daTabella.get(e.chiave) || { etichetta: e.etichetta, n: 0, mat: new Map() };
+      v.n += x.n; if (x.materiale) v.mat.set(x.materiale, (v.mat.get(x.materiale) || 0) + x.n); daTabella.set(e.chiave, v);
+    }
+    for (const [chiave, v] of daTabella) {
+      const materiali = [...v.mat.entries()].sort((p, q2) => q2[1] - p[1]).map(([m, n]) => `${m} ${n}`).join(', ') || null;
+      await c.query(`INSERT INTO etichette_synclab (chiave, etichetta, campioni, materiali, fonte, aggiornato_il) VALUES ($1, $2, $3, $4, 'PROVETTE', now())
+        ON CONFLICT (chiave) DO UPDATE SET campioni = CASE WHEN etichette_synclab.fonte = 'CAMPIONI' AND etichette_synclab.campioni > 0 THEN etichette_synclab.campioni + EXCLUDED.campioni ELSE EXCLUDED.campioni END,
+          materiali = coalesce(etichette_synclab.materiali, EXCLUDED.materiali), fonte = CASE WHEN etichette_synclab.fonte = 'CAMPIONI' AND etichette_synclab.campioni > 0 THEN 'CAMPIONI' ELSE 'PROVETTE' END, aggiornato_il = now()`, [chiave, v.etichetta, v.n, materiali]);
+      viste.push(chiave);
+    }
+    if (senza.length) await c.query(`UPDATE etichette_synclab SET campioni = $1 WHERE chiave = ''`, [scoperti]);
     // seconda fonte: etichette dal catalogo ServiceNET (solo testi non visti nei campioni)
     const sn = (await etichetteServiceNet()).filter((e) => !viste.includes(e.chiave));
     const uniche = [...new Map(sn.map((e) => [e.chiave, e])).values()];
@@ -139,7 +162,7 @@ export async function aggiornaEtichette() {
       await c.query(`INSERT INTO etichette_synclab (chiave, etichetta, campioni, fonte, aggiornato_il) VALUES ($1, $2, 0, 'SERVICENET', now())
         ON CONFLICT (chiave) DO UPDATE SET fonte = 'SERVICENET', aggiornato_il = now() WHERE etichette_synclab.campioni = 0`, [e.chiave, e.testo]);
     }
-    return { etichette: viste.length + uniche.length, da_campioni: viste.length, da_servicenet: uniche.length };
+    return { etichette: viste.length + uniche.length, da_campioni: viste.length, da_servicenet: uniche.length, da_tabella: daTabella.size, senza_etichetta: scoperti };
   });
 }
 
@@ -160,7 +183,8 @@ export async function elencoEtichette() {
   const codici = [...new Set([...esami.values()].flat().map((x) => x.code))];
   const descr = new Map((await many(`SELECT DISTINCT ON (trim(exam_code)) trim(exam_code) AS code, description FROM synclab.exams WHERE disponibilita = 'ATTIVO' AND trim(exam_code) = ANY($1::text[]) ORDER BY trim(exam_code), updated_at DESC`, [codici])).map((x) => [x.code, x.description]));
   const cat = new Map((await many(`SELECT code, description FROM exam_catalog WHERE code = ANY($1::text[])`, [codici])).map((x) => [x.code, x.description]));
-  return rows.map((r) => { const l = esami.get(r.chiave) || []; return { ...r, esami: l.length, esami_elenco: l.slice(0, 12).map((x) => ({ ...x, descrizione: descr.get(x.code) || cat.get(x.code) || null })) }; });
+  const magazzino = await many(`SELECT id, name FROM articles WHERE active ORDER BY name`);
+  return rows.map((r) => { const l = esami.get(r.chiave) || []; return { ...r, proposta: !r.articolo_id && r.chiave ? proponiArticolo(r.etichetta.replace(/^t\./i, 'Tappo '), magazzino) : null, esami: l.length, esami_elenco: l.slice(0, 12).map((x) => ({ ...x, descrizione: descr.get(x.code) || cat.get(x.code) || null })) }; });
 }
 
 /**
@@ -234,34 +258,53 @@ export async function proponiCorrelazioni({ conferma = false } = {}) {
 // abbinati alla struttura (stessa regola di SQL_PRODUZIONE: sede → id della sede, Legal entity → −id, punti SERVICE sommati dalla Legal
 // entity con productionStrutture), per mese (requests.date) ed etichetta, e li porta sull'articolo abbinato all'etichetta. Calcolo a
 // richiesta sulla copia (nessuna tabella): un abbinamento cambiato vale subito, senza aspettare il job orario.
-// v0.98.1: la Data API non valorizza il contenitore (samples.container vuoto in produzione): i campioni SENZA etichetta non vanno più
-// tutti sull'articolo abbinato all'etichetta vuota; il loro articolo si ricava dagli ESAMI che il campione serve (request_item_samples →
-// riga d'esame → correlazione esame → articolo: l'articolo più frequente tra gli esami del campione), e la riga porta il materiale
-// biologico come descrizione (chiave "MAT:<materiale>"). Un campione resta un contenitore, anche se serve più esami.
+// v0.99.1 (CEO, 25/11/2026: "contiamo cosa c'è scritto sul testo delle etichette e transcodifichiamolo sui prodotti di magazzino"):
+// la produzione per articolo conta SOLO etichette. Il testo dell'etichetta di un campione è samples.container quando il gestionale lo
+// passa; oggi non lo passa, e allora il nome si ricava dalla TABELLA DELLE PROVETTE di Lab Control (impostazione `provette` del modulo
+// Label: nome sull'etichetta = materiale | esami), la stessa regola con cui si stampano le etichette. Più etichette portano allo stesso
+// articolo (T.Giallo, T.Giallo Alinity, T.Giallo Elettroforesi → provetta tappo giallo) con l'abbinamento etichetta → articolo.
+// Un campione senza riga nella tabella resta "senza etichetta" (chiave MAT:<materiale>), senza articolo: si vede e si completa la
+// tabella. Tolta la regola della v0.98.1 (articolo ricavato dalle correlazioni degli esami): dava numeri diversi tra le due viste.
+const M_STRUTTURE = `SELECT instance_id, client_id, CASE WHEN site_id IS NOT NULL THEN site_id ELSE -organization_id END AS sid FROM synclab.clients_td WHERE site_id IS NOT NULL OR organization_id IS NOT NULL`;
+const CODICI_CAMPIONE = `(SELECT coalesce(array_agg(DISTINCT upper(trim(i.exam_code))), '{}') FROM synclab.request_item_samples l
+    JOIN synclab.request_items i ON i.instance_id = l.instance_id AND i.request_id = l.request_id AND i.id = l.item_id AND coalesce(i.deleted, FALSE) = FALSE
+   WHERE l.instance_id = s.instance_id AND l.request_id = s.request_id AND l.sample_id = s.id AND coalesce(trim(i.exam_code), '') <> '')`;
 const SQL_CAMPIONI_STRUTTURA = `
-  WITH m AS (SELECT instance_id, client_id, CASE WHEN site_id IS NOT NULL THEN site_id ELSE -organization_id END AS sid FROM synclab.clients_td WHERE site_id IS NOT NULL OR organization_id IS NOT NULL),
-  c AS (
-    SELECT date_trunc('month', r.date)::date AS month, ${CHIAVE('s.container')} AS chiave, ${TESTO('s.container')} AS testo, ${TESTO('s.material')} AS materiale,
-           CASE WHEN ${CHIAVE('s.container')} = '' THEN (
-             SELECT em.article_id FROM synclab.request_item_samples l
-               JOIN synclab.request_items i ON i.instance_id = l.instance_id AND i.request_id = l.request_id AND i.id = l.item_id AND coalesce(i.deleted, FALSE) = FALSE
-               JOIN exam_mappings em ON em.exam_code = trim(i.exam_code) AND em.active
-              WHERE l.instance_id = s.instance_id AND l.request_id = s.request_id AND l.sample_id = s.id
-              GROUP BY em.article_id ORDER BY count(*) DESC, em.article_id LIMIT 1) END AS art_esami
-      FROM synclab.samples s JOIN synclab.requests r ON r.instance_id = s.instance_id AND r.id = s.request_id
-      JOIN m ON m.instance_id = r.instance_id AND m.client_id = r.client_id
-     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date IS NOT NULL AND m.sid = ANY($1::int[]) AND ($2::date IS NULL OR r.date >= $2::date)),
-  x AS (
-    SELECT month, CASE WHEN chiave = '' THEN 'MAT:' || upper(materiale) ELSE chiave END AS chiave, (chiave = '') AS derivato,
-           CASE WHEN chiave = '' THEN max(materiale) ELSE max(testo) END AS testo, art_esami, count(*)::int AS n
-      FROM c GROUP BY 1, 2, 3, art_esami)
-  SELECT to_char(x.month, 'YYYY-MM') AS mese, x.chiave, x.derivato, CASE WHEN x.derivato THEN x.testo ELSE coalesce(e.etichetta, x.testo) END AS etichetta, x.n,
-         CASE WHEN x.derivato THEN x.art_esami ELSE e.articolo_id END AS articolo_id, a.code AS article_code, a.name AS article_name, a.pack_size, a.pack_label, a.unit
-    FROM x LEFT JOIN etichette_synclab e ON NOT x.derivato AND e.chiave = x.chiave
-    LEFT JOIN articles a ON a.id = CASE WHEN x.derivato THEN x.art_esami ELSE e.articolo_id END`;
+  WITH m AS (${M_STRUTTURE})
+  SELECT to_char(date_trunc('month', r.date), 'YYYY-MM') AS mese, ${CHIAVE('s.container')} AS chiave, max(${TESTO('s.container')}) AS testo, ${TESTO('s.material')} AS materiale,
+         CASE WHEN ${CHIAVE('s.container')} = '' THEN ${CODICI_CAMPIONE} END AS codici, count(*)::int AS n
+    FROM synclab.samples s JOIN synclab.requests r ON r.instance_id = s.instance_id AND r.id = s.request_id
+    JOIN m ON m.instance_id = r.instance_id AND m.client_id = r.client_id
+   WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date IS NOT NULL AND m.sid = ANY($1::int[]) AND ($2::date IS NULL OR r.date >= $2::date)
+   GROUP BY 1, 2, 4, 5`;
 
-/** Campioni per mese ed etichetta (con l'articolo abbinato) delle strutture ids, dal mese `dal` (AAAA-MM-01) o da sempre. */
-export const campioniStruttura = (ids, dal = null) => many(SQL_CAMPIONI_STRUTTURA, [ids.map(Number), dal]);
+/** Tabella delle provette di Lab Control (vuota se il modulo Label non è attivo). */
+export async function tabellaProvette() {
+  try { const r = await one(`SELECT value FROM etichette.impostazioni WHERE key = 'provette'`); return leggiProvette(typeof r?.value === 'string' ? r.value : ''); } catch { return []; }
+}
+/** Etichetta di un gruppo di campioni: { chiave, etichetta, senza } (senza = nessuna riga della tabella per quel materiale). */
+export function etichettaDi(x, provette) {
+  if (x.chiave) return { chiave: x.chiave, etichetta: x.testo, senza: false };
+  const p = provettaDi(provette, x.materiale, x.codici || []);
+  return p ? { chiave: chiaveEtichetta(p.nome), etichetta: p.nome, senza: false } : { chiave: `MAT:${String(x.materiale || '').toUpperCase()}`, etichetta: x.materiale || '', senza: true };
+}
+
+/** Campioni per mese ed etichetta (con l'articolo abbinato all'etichetta) delle strutture ids, dal mese `dal` (AAAA-MM-01) o da sempre. */
+export async function campioniStruttura(ids, dal = null) {
+  const grezzi = await many(SQL_CAMPIONI_STRUTTURA, [ids.map(Number), dal]);
+  if (!grezzi.length) return [];
+  const provette = await tabellaProvette();
+  const somma = new Map();
+  for (const x of grezzi) {
+    const e = etichettaDi(x, provette); const k = `${x.mese}|${e.chiave}`;
+    const v = somma.get(k) || { mese: x.mese, chiave: e.chiave, etichetta: e.etichetta, derivato: e.senza, n: 0 };
+    v.n += x.n; somma.set(k, v);
+  }
+  const righe = [...somma.values()];
+  const abb = new Map((await many(`SELECT e.chiave, e.etichetta, e.articolo_id, a.code AS article_code, a.name AS article_name, a.pack_size, a.pack_label, a.unit
+      FROM etichette_synclab e LEFT JOIN articles a ON a.id = e.articolo_id WHERE e.chiave = ANY($1::text[]) AND e.chiave <> ''`, [righe.filter((x) => !x.derivato).map((x) => x.chiave)])).map((r) => [r.chiave, r]));
+  return righe.map((x) => { const e = x.derivato ? null : abb.get(x.chiave); return { ...x, etichetta: x.etichetta || e?.etichetta || '', articolo_id: e?.articolo_id || null, article_code: e?.article_code || null, article_name: e?.article_name || null, pack_size: e?.pack_size || null, pack_label: e?.pack_label || null, unit: e?.unit || null }; });
+}
 
 const r1 = (v) => Math.round(v * 10) / 10;
 /**
@@ -330,6 +373,6 @@ export async function consumoDaCampioni(ids, months = 3) {
   }
   // l'etichetta vuota non è un'etichetta (v0.98.1): contano gli articoli delle etichette vere e quelli ricavati dagli esami dei campioni
   const articoliEtichetta = new Set((await many(`SELECT DISTINCT articolo_id FROM etichette_synclab WHERE articolo_id IS NOT NULL AND chiave <> ''`)).map((x) => x.articolo_id));
-  for (const x of righe) if (x.articolo_id) articoliEtichetta.add(x.articolo_id);
+
   return { map: out, months: nM, articoliEtichetta };
 }

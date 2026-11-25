@@ -148,10 +148,37 @@ r.put('/articles/:id', requireRole(...OPS_ROLES), ah(async (req, res) => {
 r.get('/mappings', requireRole(...OPS_ROLES), ah(async (_req, res) => {
   res.json(await many(`SELECT m.*, a.code AS article_code, a.name AS article_name, a.unit FROM exam_mappings m JOIN articles a ON a.id=m.article_id ORDER BY m.exam_code, a.code`));
 }));
+// v0.99.0 · Materiali di un esame, tutti insieme: l'elenco inviato sostituisce le correlazioni dell'esame (più materiali per esame;
+// al più UN contenitore del campione, gli altri sono materiali consumati a ogni esame).
+const materialiSchema = z.object({ exam_name: opt(z.string().max(200)), materiali: z.array(z.object({ article_id: z.coerce.number().int().positive(), qty_per_exam: z.coerce.number().positive().max(999).default(1), contenitore: z.boolean().default(false) })).max(20) });
+r.get('/mappings/esame/:code', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const code = String(req.params.code).trim();
+  res.json({ exam_code: code, materiali: await many(`SELECT m.id, m.article_id, m.qty_per_exam, m.contenitore, m.source, m.exam_name, a.name AS article_name, a.unit, a.active AS article_active FROM exam_mappings m JOIN articles a ON a.id = m.article_id WHERE m.exam_code = $1 AND m.active ORDER BY m.contenitore DESC, a.name`, [code]) });
+}));
+r.put('/mappings/esame/:code', requireRole(...OPS_ROLES), ah(async (req, res) => {
+  const code = String(req.params.code).trim();
+  if (!code || code.length > 40) throw bad('Codice esame non valido');
+  const d = parse(materialiSchema, req.body);
+  const ids = d.materiali.map((m) => m.article_id);
+  if (new Set(ids).size !== ids.length) throw bad('Lo stesso materiale compare due volte: usa le unità per esame');
+  if (d.materiali.filter((m) => m.contenitore).length > 1) throw bad('Un campione ha un solo contenitore: segna come contenitore un solo materiale, gli altri sono materiali in più');
+  const esistono = await many('SELECT id FROM articles WHERE id = ANY($1::int[]) AND active', [ids]);
+  if (esistono.length !== ids.length) throw bad('Uno dei materiali non è un articolo attivo del magazzino');
+  await tx(async (c) => {
+    await c.query('DELETE FROM exam_mappings WHERE exam_code = $1 AND NOT (article_id = ANY($2::int[]))', [code, ids]);
+    for (const m of d.materiali) {
+      await c.query(`INSERT INTO exam_mappings (exam_code, exam_name, article_id, qty_per_exam, contenitore, active, source, updated_at) VALUES ($1,$2,$3,$4,$5,TRUE,'MANUALE',now())
+        ON CONFLICT (exam_code, article_id) DO UPDATE SET exam_name = coalesce(EXCLUDED.exam_name, exam_mappings.exam_name), qty_per_exam = EXCLUDED.qty_per_exam, contenitore = EXCLUDED.contenitore, active = TRUE, source = 'MANUALE', updated_at = now()`,
+        [code, d.exam_name || null, m.article_id, m.qty_per_exam, m.contenitore]);
+    }
+  });
+  await audit(req, 'MAPPING_ESAME', 'mapping', null, { exam_code: code, materiali: d.materiali });
+  res.json({ exam_code: code, materiali: d.materiali.length });
+}));
 r.post('/mappings', requireRole(...OPS_ROLES), ah(async (req, res) => {
-  const d = parse(z.object({ exam_code: z.string().min(1).max(40), exam_name: opt(z.string().max(200)), article_id: z.coerce.number().int(), qty_per_exam: z.coerce.number().positive().default(1) }), req.body);
-  const row = await one(`INSERT INTO exam_mappings (exam_code, exam_name, article_id, qty_per_exam) VALUES ($1,$2,$3,$4)
-    ON CONFLICT (exam_code, article_id) DO UPDATE SET exam_name=EXCLUDED.exam_name, qty_per_exam=EXCLUDED.qty_per_exam, active=TRUE RETURNING id`, [d.exam_code.trim(), d.exam_name, d.article_id, d.qty_per_exam]);
+  const d = parse(z.object({ exam_code: z.string().min(1).max(40), exam_name: opt(z.string().max(200)), article_id: z.coerce.number().int(), qty_per_exam: z.coerce.number().positive().default(1), contenitore: z.boolean().optional() }), req.body);
+  const row = await one(`INSERT INTO exam_mappings (exam_code, exam_name, article_id, qty_per_exam, contenitore) VALUES ($1,$2,$3,$4, coalesce($5, NOT EXISTS (SELECT 1 FROM exam_mappings x WHERE x.exam_code = $1 AND x.active AND x.contenitore AND x.article_id <> $3)))
+    ON CONFLICT (exam_code, article_id) DO UPDATE SET exam_name=EXCLUDED.exam_name, qty_per_exam=EXCLUDED.qty_per_exam, contenitore = coalesce($5, exam_mappings.contenitore), active=TRUE RETURNING id`, [d.exam_code.trim(), d.exam_name, d.article_id, d.qty_per_exam, d.contenitore ?? null]);
   await audit(req, 'MAPPING_SAVE', 'mapping', row.id, d);
   res.status(201).json(row);
 }));
