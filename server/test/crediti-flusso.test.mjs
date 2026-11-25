@@ -43,13 +43,18 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
         const testa = okFirma ? JSON.parse(Buffer.from(h, 'base64url')) : {}; const claim = okFirma ? JSON.parse(Buffer.from(b, 'base64url')) : {};
         if (!okFirma || testa.kid !== 'app-di-prova' || testa.alg !== 'RS256' || claim.iss !== 'enablebanking.com' || claim.aud !== 'api.enablebanking.com' || claim.exp - claim.iat > 86400) return out(401, { message: 'jwt non valido' });
         banca.chiamate.push(`${req.method} ${u.pathname}`);
-        if (u.pathname === '/aspsps') return out(200, { aspsps: [{ name: 'Banca di Prova', country: 'IT', psu_types: ['business'], maximum_consent_validity: 7776000 }] });
+        if (u.pathname === '/aspsps') return out(200, { aspsps: [{ name: 'Banca di Prova', country: 'IT', psu_types: ['business'], maximum_consent_validity: 7776000, required_psu_headers: ['Psu-Ip-Address', 'Psu-User-Agent'] }] });
         if (u.pathname === '/auth') { const j = JSON.parse(corpo); banca.auth = j; return out(200, { url: `https://banca.test/sca?state=${j.state}`, authorization_id: 'auth-1' }); }
         if (u.pathname === '/sessions') return out(200, { session_id: 'sess-1', accounts: [{ uid: 'conto-1', account_id: { iban: 'IT60X0542811101000000123456' }, name: 'Conto ordinario', currency: 'EUR', identification_hash: 'h1' }], access: { valid_until: new Date(Date.now() + 80 * 86400000).toISOString() } });
         if (u.pathname.startsWith('/accounts/conto-1/')) { banca.psu = req.headers['psu-ip-address'] || null; if (banca.limite) return out(429, { message: 'The access on the account has been exceeding the consented multiplicity per day.' }); }
         if (u.pathname === '/accounts/conto-1/balances') return out(200, { balances: [{ balance_type: 'CLBD', balance_amount: { amount: '15000.00', currency: 'EUR' } }] });
-        // come Intesa Sanpaolo: storico oltre 90 giorni rifiutato con 422 (la Suite deve riprovare con un periodo più corto)
-        if (u.pathname === '/accounts/conto-1/transactions' && !banca.scaduta) { banca.periodi = [...(banca.periodi || []), u.searchParams.get('date_from')]; if ((Date.now() - new Date(u.searchParams.get('date_from')).getTime()) / 86400000 > 90.5) return out(422, { message: 'Wrong transactions period requested' }); }
+        // come Intesa Sanpaolo: storico oltre 90 giorni rifiutato con 422; date_from senza date_to = 400 "Error interacting with ASPSP"
+        if (u.pathname === '/accounts/conto-1/transactions' && !banca.scaduta) {
+          const sp = u.searchParams; banca.richieste = [...(banca.richieste || []), u.search.replace(/^\?/, '')];
+          if (banca.rifiutaLongest && sp.get('strategy') === 'longest') return out(400, { code: 400, message: 'Error interacting with ASPSP', detail: 'Unknown error', error: 'ASPSP_ERROR' });
+          if (sp.get('date_from') && !sp.get('date_to')) return out(400, { code: 400, message: 'Error interacting with ASPSP', detail: 'Unknown error', error: 'ASPSP_ERROR' });
+          if (sp.get('date_from') && (Date.now() - new Date(sp.get('date_from')).getTime()) / 86400000 > 90.5) return out(422, { message: 'Wrong transactions period requested' });
+        }
         if (u.pathname === '/accounts/conto-1/transactions') return banca.scaduta ? out(401, { error: 'EXPIRED_SESSION', message: 'session expired' }) : out(200, { transactions: movimenti });
         return out(404, { message: 'non previsto' });
       });
@@ -145,7 +150,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     assert.equal(rit.s, 302); assert.match(rit.headers.get('location'), /\/crediti\/banca\?collegamento=ok$/);
     must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza');
     const st = must(await ATT.c.get('/api/banca/stato'), 'stato banca');
-    assert.ok(banca.periodi.length >= 2 && new Date(banca.periodi[0]) < new Date(banca.periodi[banca.periodi.length - 1]), 'v0.97.4: periodo di 120 giorni rifiutato dalla banca, riletto con un periodo più corto');
+    assert.ok(banca.richieste.length && banca.richieste.every((x) => x === 'strategy=longest'), `v0.98.2: prima lettura con strategy=longest, senza periodi tentati a vuoto: ${banca.richieste.join(' | ')}`);
     assert.equal(st.conti.length, 1); assert.equal(Number(st.conti[0].saldo), 15000); assert.equal(st.aggiornata.ok, true); assert.equal(st.conti[0].movimenti, 3);
     assert.equal((await VIS.c.get('/api/banca/stato')).s, 403);
     const r = await giro();
@@ -201,6 +206,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     // v0.98.0: limite giornaliero della banca (429). Sincronizza premuto da una persona porta i dati dell'utente presente; la lettura
     // automatica non rilegge un conto letto da meno di 6 ore; il 429 si spiega e non fa scadere il collegamento
     assert.ok(banca.psu, 'la lettura chiesta da una persona porta Psu-Ip-Address');
+    assert.ok(banca.richieste.some((x) => /^date_from/.test(x)) && banca.richieste.every((x) => x === 'strategy=longest' || /^date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/.test(x)), `v0.98.2: dopo la prima lettura sempre date_from e date_to insieme: ${banca.richieste.join(' | ')}`);
     banca.limite = true;
     const lim = must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza con limite'); assert.equal(lim.limite, 1);
     assert.match((await sql('SELECT last_error FROM bank_accounts'))[0].last_error, /limite giornaliero/); assert.equal((await sql('SELECT status FROM bank_connections'))[0].status, 'ATTIVA');

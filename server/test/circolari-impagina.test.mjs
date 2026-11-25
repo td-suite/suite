@@ -62,4 +62,27 @@ describe('Circolari v0.98.0: nella Suite', { skip: !process.env.DATABASE_URL_TES
     const rev = must(await O.post(`/api/circolari/circolari/${b.id}/revisione`), 'revisione');
     assert.equal(rev.firmatari.length, 2); assert.equal(rev.allegati_sgi.length, 1, 'la revisione porta firmatari e allegati');
   });
+
+  test('v0.98.2 · firmatari dal personale: dipendenti e LP attivi, ruolo e contatti dall\'anagrafica, mai il cellulare personale', async () => {
+    const pers = async (d) => must(await O.post('/api/people', d), `persona ${d.last_name}`);
+    for (const name of ['Chief Operating Officer', 'Direttore Sanitario']) { const r = await O.post('/api/job-roles', { name }); assert.ok(r.s < 300 || r.s === 409, `ruolo ${name}: ${r.s} ${r.text}`); }
+    const dip = await pers({ last_name: 'Firmataria', first_name: 'Dipendente', kind: 'DIPENDENTE', status: 'ATTIVO', email: 'dip.firma@esempio.test', phone: '333 0000000', phone_office: '055 111222', job_title: 'Chief Operating Officer' });
+    const lp = await pers({ last_name: 'Firmatario', first_name: 'Libero', kind: 'LP', status: 'ATTIVO', email: 'lp.firma@esempio.test', job_title: 'Direttore Sanitario' });
+    await pers({ last_name: 'Esterno', first_name: 'Referente', kind: 'ESTERNO', status: 'ATTIVO', email: 'esterno@esempio.test' });
+    const el = must(await O.get('/api/circolari/personale-firmatari'), 'elenco');
+    const d = el.find((x) => x.person_id === dip.id);
+    assert.deepEqual([d.nome, d.ruolo, d.email, d.telefono, d.tipo], ['Dipendente Firmataria', 'Chief Operating Officer', 'dip.firma@esempio.test', '055 111222', 'DIPENDENTE']);
+    assert.ok(el.some((x) => x.person_id === lp.id && x.tipo === 'LP'), 'anche i liberi professionisti');
+    assert.ok(!el.some((x) => x.nome === 'Referente Esterno'), 'gli esterni no');
+    assert.ok(!JSON.stringify(el).includes('333 0000000'), 'mai il cellulare personale');
+    const corpo = [{ type: 'paragrafo', text: 'Testo.' }];
+    // basta la persona: nome, ruolo e contatti scritti dal client vengono sostituiti da quelli dell'anagrafica
+    const b = must(await O.post('/api/circolari/circolari', { titolo: 'Firmatari dal personale', corpo, firmatari: [{ person_id: dip.id, nome: 'xx', email: 'falsa@esempio.test' }, { nome: 'Firmatario Libero' }] }), 'bozza');
+    assert.deepEqual(b.firmatari.map((f) => [f.person_id, f.nome, f.ruolo, f.email, f.telefono]), [[dip.id, 'Dipendente Firmataria', 'Chief Operating Officer', 'dip.firma@esempio.test', '055 111222'], [lp.id, 'Libero Firmatario', 'Direttore Sanitario', 'lp.firma@esempio.test', '']],
+      'il secondo, scritto per nome (cognome e nome in qualunque ordine), si collega da solo');
+    // l'anagrafica cambia: la bozza riletta porta il contatto nuovo
+    must(await O.put(`/api/people/${lp.id}`, { ...lp, phone_office: '055 333444' }), 'telefono in anagrafica');
+    const r = must(await O.get(`/api/circolari/circolari/${b.id}`), 'rilettura');
+    assert.equal(r.firmatari[1].telefono, '055 333444');
+  });
 });

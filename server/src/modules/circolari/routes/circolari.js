@@ -8,7 +8,8 @@ import { ah, parse, audit, notFound, forbidden, bad, HttpError } from '../../../
 import { upsertIndex, removeFromIndex } from '../../../lib/search.js';
 import { sendMail, layout } from '../../../lib/mailer.js';
 import { config } from '../config.js';
-import { effectiveOrientation, dataItaliana } from '../lib/render.js';
+import { effectiveOrientation, dataItaliana, firmatariDi } from '../lib/render.js';
+import { personaleFirmatari, risolviFirmatari } from '../lib/firmatari.js';
 import { produciFile } from '../lib/impagina.js';
 import { cercaDocumentiSgi } from '../lib/allegatiSgi.js';
 import { aggiornaEsiti } from '../lib/ponte.js';
@@ -37,7 +38,7 @@ const schema = z.object({
   decorrenza: z.string().trim().max(160).optional(), riferimenti: z.string().trim().max(400).optional(), luogo: z.string().trim().max(80).optional(),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data non valida').optional(), sintesi: z.string().trim().max(1200).optional(), corpo: z.array(blocco).max(80).optional(),
   contatti: z.array(z.string().trim().max(200)).max(8).optional(), firma_nome: z.string().trim().max(80).optional(), firma_ruolo: z.string().trim().max(80).optional(),
-  firmatari: z.array(z.object({ nome: z.string().trim().min(2, 'il nome del firmatario è obbligatorio').max(80), ruolo: z.string().trim().max(80).optional().default(''), email: z.string().trim().max(120).optional().default(''), telefono: z.string().trim().max(40).optional().default('') })).max(6, 'al più 6 firmatari').optional(),
+  firmatari: z.array(z.object({ person_id: z.coerce.number().int().positive().nullable().optional(), nome: z.string().trim().min(2, 'il nome del firmatario è obbligatorio').max(80), ruolo: z.string().trim().max(80).optional().default(''), email: z.string().trim().max(120).optional().default(''), telefono: z.string().trim().max(40).optional().default('') })).max(6, 'al più 6 firmatari').optional(),
   allegati_sgi: z.array(z.object({ code: z.string().trim().min(3).max(60), titolo: z.string().trim().max(300).optional().default(''), file: z.string().trim().min(5).max(400).regex(/^(docs|stampabili)\/[^\\]+\.pdf$/i, 'allegato del SGI non valido') })).max(12, 'al più 12 allegati').optional(),
   orientamento: z.enum(['AUTO', 'VERTICALE', 'ORIZZONTALE']).optional(), audience: z.object({ type: z.string(), ids: z.array(z.union([z.number(), z.string()])).optional(), key: z.string().optional() }).optional(),
   note_interne: z.string().trim().max(2000).optional(),
@@ -67,6 +68,7 @@ async function load(id) {
 // Impaginazione: DOCX sempre, PDF se LibreOffice è disponibile. Salva i file e lo stato dell'impaginazione
 async function impagina(c, { client } = {}) {
   const runner = client ? client.query.bind(client) : q;
+  if (c.stato === 'BOZZA') c = { ...c, firmatari: await risolviFirmatari(firmatariDi(c)) };   // bozza: contatti dei firmatari dall'anagrafica di oggi
   const { docx: buffer, pdf, pages, orientamento, error, allegati } = await produciFile(c, { publicUrl: c.stato === 'BOZZA' ? null : publicUrl(c) });
   await runner('UPDATE circolari SET docx=$2, pdf=$3, pdf_pages=$4, orientamento_eff=$5, render_at=now(), render_error=$6, allegati_esito=$7 WHERE id=$1', [c.id, buffer, pdf, pages, orientamento, error, allegati ? JSON.stringify(allegati) : null]);
   return { orientamento, pdf: Boolean(pdf), pages, error, allegati };
@@ -92,6 +94,12 @@ export async function reindexCircolari() {
 r.get('/sgi-documenti', ah(async (req, res) => {
   if (!canEdit(req.user)) throw forbidden('Gli allegati si scelgono con il profilo Redazione');
   res.json(await cercaDocumentiSgi(String(req.query.q || '').slice(0, 80)));
+}));
+
+// Personale che può firmare una circolare: dipendenti e liberi professionisti attivi, con ruolo e contatti dell'anagrafica
+r.get('/personale-firmatari', ah(async (req, res) => {
+  if (!canEdit(req.user)) throw forbidden('I firmatari si scelgono con il profilo Redazione');
+  res.json(await personaleFirmatari());
 }));
 
 r.get('/circolari', ah(async (req, res) => {
@@ -143,16 +151,17 @@ r.post('/circolari', ah(async (req, res) => {
 // Chi manda il solo `segmento` (richieste precedenti) ottiene un elenco di una voce.
 // Firmatari: l'elenco vale; chi manda solo firma_nome/firma_ruolo (richieste precedenti) ottiene un firmatario. firma_nome e
 // firma_ruolo restano il primo dell'elenco per ciò che legge le due colonne (Comunicazione, elenchi).
-const firmeDi = (b, cur) => {
+const firmeDi = async (b, cur) => {
   let l = Array.isArray(b.firmatari) ? b.firmatari : null;
   if (!l && b.firma_nome) l = [{ nome: b.firma_nome, ruolo: b.firma_ruolo || '', email: '', telefono: '' }];
   if (!l) l = cur ? (Array.isArray(cur.firmatari) && cur.firmatari.length ? cur.firmatari : (cur.firma_nome ? [{ nome: cur.firma_nome, ruolo: cur.firma_ruolo || '', email: '', telefono: '' }] : [])) : [{ nome: 'Francesco Epifani', ruolo: 'Chief Executive Officer', email: '', telefono: '' }];
+  l = await risolviFirmatari(l);
   return { firma_nome: l[0]?.nome || '', firma_ruolo: l[0]?.ruolo || '', firmatari: JSON.stringify(l) };
 };
 const elencoSegmenti = (b) => { const l = Array.isArray(b.segmenti) && b.segmenti.length ? b.segmenti : (b.segmento ? [b.segmento] : []); return SEGMENTI.filter((s) => l.includes(s)); };
 const segDi = (b, predefinito) => { const l = elencoSegmenti(b); const e = l.length ? l : [predefinito]; return { segmento: e[0], segmenti: e }; };
 async function inserisci(b, req, extra = {}) {
-  const cols = { tipo: b.tipo ?? 'Comunicazione ai clienti', linea: b.linea ?? 'Laboratorio di Analisi', ...segDi(b, 'CLIENTI_SERVICE'), titolo: b.titolo, destinatari: b.destinatari ?? '', oggetto: b.oggetto ?? '', decorrenza: b.decorrenza ?? '', riferimenti: b.riferimenti ?? '', luogo: b.luogo ?? 'Sesto Fiorentino (FI)', data: b.data ?? new Date().toISOString().slice(0, 10), sintesi: b.sintesi ?? '', corpo: JSON.stringify(b.corpo ?? []), corpo_testo: corpoTesto(b.corpo), contatti: JSON.stringify(b.contatti ?? ['Servizio Clienti', 'Tel. 055776511 – Mail: info@toscanadiagnostica.it']), ...firmeDi(b, null), allegati_sgi: JSON.stringify(b.allegati_sgi ?? []), orientamento: b.orientamento ?? 'AUTO', audience: JSON.stringify(b.audience ?? { type: 'INTERNAL' }), note_interne: b.note_interne ?? '', created_by: req.user.suite_user_id, updated_by: req.user.suite_user_id, ...extra };
+  const cols = { tipo: b.tipo ?? 'Comunicazione ai clienti', linea: b.linea ?? 'Laboratorio di Analisi', ...segDi(b, 'CLIENTI_SERVICE'), titolo: b.titolo, destinatari: b.destinatari ?? '', oggetto: b.oggetto ?? '', decorrenza: b.decorrenza ?? '', riferimenti: b.riferimenti ?? '', luogo: b.luogo ?? 'Sesto Fiorentino (FI)', data: b.data ?? new Date().toISOString().slice(0, 10), sintesi: b.sintesi ?? '', corpo: JSON.stringify(b.corpo ?? []), corpo_testo: corpoTesto(b.corpo), contatti: JSON.stringify(b.contatti ?? ['Servizio Clienti', 'Tel. 055776511 – Mail: info@toscanadiagnostica.it']), ...(await firmeDi(b, null)), allegati_sgi: JSON.stringify(b.allegati_sgi ?? []), orientamento: b.orientamento ?? 'AUTO', audience: JSON.stringify(b.audience ?? { type: 'INTERNAL' }), note_interne: b.note_interne ?? '', created_by: req.user.suite_user_id, updated_by: req.user.suite_user_id, ...extra };
   const keys = Object.keys(cols);
   return one(`INSERT INTO circolari (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')}) RETURNING ${FULL_COLS}`, Object.values(cols));
 }
@@ -185,6 +194,7 @@ r.get('/circolari/:id', ah(async (req, res) => {
   const c = await load(req.params.id);
   if (!visibile(await perimetro(req), c)) throw forbidden('Circolare fuori dal tuo perimetro');
   // Circolare da Comunicazione: la diffusione è l'avviso della news (segmento PERSONALE), con gli esiti riletti dal registro email
+  if (c.stato === 'BOZZA') c.firmatari = await risolviFirmatari(firmatariDi(c));   // bozza: ruolo e contatti dei firmatari dall'anagrafica
   if (c.news_id) await aggiornaEsiti({ query: (t, p) => q(t, p) }, c.news_id).catch(() => {});
   const invii = await many(`SELECT i.id, i.lista_id, coalesce(l.nome, CASE WHEN i.news_id IS NOT NULL THEN 'Comunicazione: ' || CASE WHEN i.oggetto_email IS NULL THEN 'notifica in app' ELSE 'notifica ed email di avviso' END || ' (segmento Personale)' END) AS lista_nome,
                                     i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at, i.news_id, i.segmento
@@ -220,7 +230,7 @@ r.put('/circolari/:id', ah(async (req, res) => {
   {
     // il corpo della richiesta decide: firmatari se presenti, altrimenti le due colonne della firma solo se sono cambiate
     const cambiata = req.body.firma_nome !== undefined && (req.body.firma_nome !== cur.firma_nome || (req.body.firma_ruolo ?? cur.firma_ruolo) !== cur.firma_ruolo);
-    const f = firmeDi({ firmatari: req.body.firmatari !== undefined ? b.firmatari : undefined, firma_nome: req.body.firmatari === undefined && cambiata ? b.firma_nome : undefined, firma_ruolo: b.firma_ruolo }, cur);
+    const f = await firmeDi({ firmatari: req.body.firmatari !== undefined ? b.firmatari : undefined, firma_nome: req.body.firmatari === undefined && cambiata ? b.firma_nome : undefined, firma_ruolo: b.firma_ruolo }, cur);
     Object.assign(c, await one(`UPDATE circolari SET firmatari=$2, firma_nome=$3, firma_ruolo=$4, allegati_sgi=$5 WHERE id=$1 RETURNING firmatari, firma_nome, firma_ruolo, allegati_sgi`,
       [cur.id, f.firmatari, f.firma_nome, f.firma_ruolo, JSON.stringify(req.body.allegati_sgi !== undefined ? (b.allegati_sgi ?? []) : (cur.allegati_sgi ?? []))]));
   }

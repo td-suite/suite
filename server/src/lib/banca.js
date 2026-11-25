@@ -39,9 +39,40 @@ export function intestazioniUtente(req) {
   const ip = String(req?.ip || req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim().replace(/^::ffff:/, '');
   if (!ip) return null;
   const h = { 'Psu-Ip-Address': ip };
-  const ua = String(req.headers?.['user-agent'] || '').slice(0, 300); if (ua) h['Psu-User-Agent'] = ua;
-  const lingua = String(req.headers?.['accept-language'] || '').slice(0, 100); if (lingua) h['Psu-Accept-Language'] = lingua;
+  const da = (nome, origine, max = 300) => { const v = String(req.headers?.[origine] || '').slice(0, max); if (v) h[nome] = v; };
+  da('Psu-User-Agent', 'user-agent'); da('Psu-Referer', 'referer'); da('Psu-Accept', 'accept'); da('Psu-Accept-Charset', 'accept-charset');
+  da('Psu-Accept-Encoding', 'accept-encoding', 100); da('Psu-Accept-language', 'accept-language', 100);
   return h;
+}
+// v0.98.2: ogni banca dichiara quali intestazioni "utente presente" pretende (required_psu_headers di GET /aspsps) e Enable Banking
+// vuole "tutte quelle richieste o nessuna". Si mandano quindi SOLO quelle richieste dalla banca del conto, e solo se ci sono tutte;
+// se la banca non ne richiede, o l'elenco non si riesce a leggere, non se ne manda nessuna (lettura come automatica).
+const psuRichieste = new Map();   // "paese|banca" → { at, elenco }
+async function intestazioniPerBanca(banca, paese, psu) {
+  if (!psu || !banca) return null;
+  const k = `${paese || 'IT'}|${banca}`; let c = psuRichieste.get(k);
+  if (!c || Date.now() - c.at > 24 * 3600 * 1000) {
+    try { const j = await chiama('GET', `/aspsps?country=${encodeURIComponent(paese || 'IT')}`); for (const a of j?.aspsps || []) psuRichieste.set(`${a.country}|${a.name}`, { at: Date.now(), elenco: a.required_psu_headers || [] }); } catch { /* elenco non letto */ }
+    c = psuRichieste.get(k);
+  }
+  if (!c || !c.elenco.length) return null;
+  const mie = Object.fromEntries(Object.entries(psu).map(([n, v]) => [n.toLowerCase(), v]));
+  const out = {};
+  for (const n of c.elenco) { const v = mie[String(n).toLowerCase()]; if (!v) return null; out[n] = v; }
+  return out;
+}
+/**
+ * Richieste dei movimenti da provare nell'ordine (v0.98.2, Intesa Sanpaolo Inbiz: 422 sul periodo e poi "400 Error interacting with
+ * ASPSP" con il solo date_from). Regole dell'API: con la strategia predefinita date_from e date_to passano alla banca così come sono,
+ * quindi si mandano SEMPRE entrambe; la prima lettura usa strategy=longest (è Enable Banking a trovare il periodo più lungo che la
+ * banca concede, senza tentativi a vuoto nostri); ultima riserva la richiesta senza date (periodo predefinito della banca).
+ */
+export function richiesteMovimenti(conto, oggi = new Date()) {
+  const g = (n) => new Date(oggi.getTime() - n * 86400000).toISOString().slice(0, 10);
+  const a = g(0);
+  return conto.last_sync_ok_at
+    ? [`date_from=${g(GIORNI_RILETTURA)}&date_to=${a}`, '']
+    : ['strategy=longest', `date_from=${g(PERIODI_RIDOTTI[0])}&date_to=${a}`, ''];
 }
 const messaggioBanca = (e) => (e.status === 429 ? 'La banca ha raggiunto il limite giornaliero di letture per questo conto: i movimenti si aggiornano da domani. Le letture automatiche sono 3 al giorno; "Sincronizza" premuto da una persona non dovrebbe contare nel limite.' : e.message);   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
 export const GIORNI_RILETTURA = 7;        // a ogni giro si rileggono gli ultimi giorni (movimenti in attesa che diventano contabili)
@@ -68,7 +99,8 @@ async function chiama(metodo, percorso, corpo, intestazioni = null) {
   const testo = await res.text(); let j = null; try { j = JSON.parse(testo); } catch { /* non JSON */ }
   if (!res.ok) {
     const cod = j?.error || j?.code || null;
-    const msg = j?.message || j?.detail || testo.slice(0, 200) || `errore ${res.status}`;
+    const det = j?.detail && j?.message ? (typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail)).slice(0, 200) : '';
+    const msg = `${j?.message || j?.detail || testo.slice(0, 200) || `errore ${res.status}`}${det && det !== j?.message ? ` (${det})` : ''}`;
     throw new ErroreBanca(`Enable Banking ${res.status}: ${msg}`, res.status, typeof cod === 'string' ? cod : null);
   }
   return j;
@@ -136,7 +168,7 @@ export function normalizzaMovimento(t) {
 
 /** Legge saldo e movimenti di un conto e li salva (i movimenti non si duplicano: chiave per IBAN). */
 export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } = {}) {
-  const dal = new Date((conto.last_sync_ok_at ? oggi.getTime() - GIORNI_RILETTURA * 86400000 : oggi.getTime() - GIORNI_PRIMA_LETTURA * 86400000)).toISOString().slice(0, 10);
+  psu = await intestazioniPerBanca(conto.aspsp_name, conto.aspsp_country, psu);
   const out = { conto: conto.id, letti: 0, nuovi: 0, aggiornati: 0 };
   await q('UPDATE bank_accounts SET last_sync_at=now() WHERE id=$1', [conto.id]);
   try {
@@ -145,19 +177,19 @@ export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } 
     if (scelto) await q('UPDATE bank_accounts SET saldo=$2, saldo_tipo=$3, saldo_at=now() WHERE id=$1', [conto.id, Number(scelto.balance_amount?.amount), scelto.balance_type || null]);
     let chiave = null; let pagine = 0;
     const iban = conto.iban || `UID:${conto.identification_hash || conto.uid}`;
-    // v0.97.4 (Intesa Sanpaolo, 25/11/2026: "422 Wrong transactions period requested" alla prima lettura di 120 giorni): ogni banca ha
-    // un proprio limite di storico. Se il periodo è rifiutato si riprova con periodi più corti, fino a quello che la banca accetta.
-    const giorno = (n) => new Date(oggi.getTime() - n * 86400000).toISOString().slice(0, 10);
-    const periodi = conto.last_sync_ok_at ? [dal, giorno(3), giorno(1)] : [dal, ...PERIODI_RIDOTTI.map(giorno)];
+    const richieste = richiesteMovimenti(conto, oggi);
     let k = 0;
     do {
       let j;
-      try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions?date_from=${periodi[k]}${chiave ? `&continuation_key=${encodeURIComponent(chiave)}` : ''}`, null, psu); }
+      const qs = [richieste[k], chiave ? `continuation_key=${encodeURIComponent(chiave)}` : ''].filter(Boolean).join('&');
+      try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions${qs ? `?${qs}` : ''}`, null, psu); }
       catch (e) {
-        if (e.status === 422 && /period|date/i.test(e.message) && !chiave && k < periodi.length - 1) { k++; continue; }
+        // la banca rifiuta il periodo (422) o la forma della richiesta (400 ASPSP_ERROR): si passa alla richiesta successiva
+        if ((e.status === 422 || e.status === 400) && !chiave && k < richieste.length - 1) { out.rifiuti = [...(out.rifiuti || []), `${richieste[k] || 'senza date'}: ${e.message}`]; k++; continue; }
+        if (out.rifiuti) e.message = `${e.message} · provate: ${[...out.rifiuti.map((x) => x.split(':')[0]), richieste[k] || 'senza date'].join(' | ')}`;
         throw e;
       }
-      out.dal = periodi[k];
+      out.dal = richieste[k] || 'periodo della banca';
       for (const t of j?.transactions || []) {
         const m = normalizzaMovimento(t);
         if (!m.booking_date || !Number.isFinite(m.importo) || m.importo === 0) continue;
@@ -193,7 +225,7 @@ async function destinatariBanca() {
 export async function sincronizzaBanca({ adesso = new Date(), psu = null, automatica = false } = {}) {
   if (!bancaConfigurata()) return { skipped: 'non_configurato' };
   const scaduti = await many(`UPDATE bank_connections SET status='SCADUTA', updated_at=now() WHERE status='ATTIVA' AND valid_until IS NOT NULL AND valid_until < $1 RETURNING id, aspsp_name`, [adesso.toISOString()]);
-  const tutti = await many(`SELECT a.* FROM bank_accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.status = 'ATTIVA' AND a.attivo ORDER BY a.id`);
+  const tutti = await many(`SELECT a.*, c.aspsp_name, c.aspsp_country FROM bank_accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.status = 'ATTIVA' AND a.attivo ORDER BY a.id`);
   // lettura automatica: un conto si rilegge solo se l'ultima lettura (anche fallita) è più vecchia di ORE_TRA_LETTURE ore
   const conti = automatica ? tutti.filter((a) => !a.last_sync_at || adesso.getTime() - new Date(a.last_sync_at).getTime() >= ORE_TRA_LETTURE * 3600000) : tutti;
   const out = { conti: conti.length, nuovi: 0, errori: 0, scaduti: scaduti.length, rimandati: tutti.length - conti.length, limite: 0 };

@@ -119,7 +119,7 @@ export default function Circolare() {
               </Card>
               <Card title="Chiusura e impaginazione" icon="gear">
                 <div className="circ-form">
-                  <Field label="Firmatari" help="Uno o più. Email e telefono di ogni firmatario compaiono in fondo alla circolare, nel riquadro Per informazioni."><Firmatari value={f.firmatari} onChange={(l) => upd('firmatari', l)} /></Field>
+                  <Field label="Firmatari" help="Uno o più, dall'elenco del personale (dipendenti e liberi professionisti). Ruolo, email e telefono arrivano dall'anagrafica e compaiono in fondo alla circolare, nel riquadro Per informazioni; si correggono in Anagrafica, Persone."><Firmatari value={f.firmatari} onChange={(l) => upd('firmatari', l)} /></Field>
                   <Field label="Per informazioni: altre righe" help="Facoltative, una riga per voce: compaiono prima dei contatti dei firmatari (per esempio il Servizio Clienti)."><textarea value={f.contatti} onChange={(e) => upd('contatti', e.target.value)} /></Field>
                   <Field label="Allegati dal SGI" help="I documenti agganciati sono elencati in testa alla circolare e uniti in coda al PDF, nell'ordine dell'elenco. Il Word contiene la sola circolare."><AllegatiSgi value={f.allegati_sgi} onChange={(l) => upd('allegati_sgi', l)} esito={dirty ? null : c.allegati_esito} /></Field>
                   <div className="two">
