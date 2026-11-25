@@ -43,7 +43,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
         const testa = okFirma ? JSON.parse(Buffer.from(h, 'base64url')) : {}; const claim = okFirma ? JSON.parse(Buffer.from(b, 'base64url')) : {};
         if (!okFirma || testa.kid !== 'app-di-prova' || testa.alg !== 'RS256' || claim.iss !== 'enablebanking.com' || claim.aud !== 'api.enablebanking.com' || claim.exp - claim.iat > 86400) return out(401, { message: 'jwt non valido' });
         banca.chiamate.push(`${req.method} ${u.pathname}`);
-        if (u.pathname === '/aspsps') return out(200, { aspsps: [{ name: 'Banca di Prova', country: 'IT', psu_types: ['business'], maximum_consent_validity: 7776000, required_psu_headers: ['Psu-Ip-Address', 'Psu-User-Agent'] }] });
+        if (u.pathname === '/aspsps') return out(200, { aspsps: [{ name: 'Banca di Prova', country: 'IT', psu_types: ['business'], maximum_consent_validity: 7776000 }] });   // nessuna intestazione dichiarata dalla banca: IP e browser partono comunque (v0.98.3)
         if (u.pathname === '/auth') { const j = JSON.parse(corpo); banca.auth = j; return out(200, { url: `https://banca.test/sca?state=${j.state}`, authorization_id: 'auth-1' }); }
         if (u.pathname === '/sessions') return out(200, { session_id: 'sess-1', accounts: [{ uid: 'conto-1', account_id: { iban: 'IT60X0542811101000000123456' }, name: 'Conto ordinario', currency: 'EUR', identification_hash: 'h1' }], access: { valid_until: new Date(Date.now() + 80 * 86400000).toISOString() } });
         if (u.pathname.startsWith('/accounts/conto-1/')) { banca.psu = req.headers['psu-ip-address'] || null; if (banca.limite) return out(429, { message: 'The access on the account has been exceeding the consented multiplicity per day.' }); }
@@ -209,7 +209,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     assert.ok(banca.richieste.some((x) => /^date_from/.test(x)) && banca.richieste.every((x) => x === 'strategy=longest' || /^date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/.test(x)), `v0.98.2: dopo la prima lettura sempre date_from e date_to insieme: ${banca.richieste.join(' | ')}`);
     banca.limite = true;
     const lim = must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza con limite'); assert.equal(lim.limite, 1);
-    assert.match((await sql('SELECT last_error FROM bank_accounts'))[0].last_error, /limite giornaliero/); assert.equal((await sql('SELECT status FROM bank_connections'))[0].status, 'ATTIVA');
+    assert.match((await sql('SELECT last_error FROM bank_accounts'))[0].last_error, /limite giornaliero anche questa lettura, chiesta da una persona \(intestazioni inviate: Psu-Ip-Address, Psu-User-Agent; richieste dalla banca: nessuna dichiarata\)/); assert.equal((await sql('SELECT status FROM bank_connections'))[0].status, 'ATTIVA');
     banca.limite = false; must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza dopo il limite');
     // la banca rifiuta la sessione (consenso scaduto): il collegamento passa a SCADUTA e i movimenti non sono più "freschi"
     banca.scaduta = true;

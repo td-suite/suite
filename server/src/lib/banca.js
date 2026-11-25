@@ -36,30 +36,33 @@ export const LETTURE_AL_GIORNO = 3;
 export const ORE_TRA_LETTURE = 6;   // 6, 12 e 18 circa: tre letture nelle ore 6-21
 /** Intestazioni "utente presente" dalla richiesta di chi preme Sincronizza (nomi dell'API Enable Banking). */
 export function intestazioniUtente(req) {
-  const ip = String(req?.ip || req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim().replace(/^::ffff:/, '');
+  // l'indirizzo di chi ha premuto Sincronizza: il primo di X-Forwarded-For (davanti alla Suite ci sono più proxy), poi req.ip
+  const ip = String(req?.headers?.['x-forwarded-for'] || req?.ip || '').split(',')[0].trim().replace(/^::ffff:/, '');
   if (!ip) return null;
   const h = { 'Psu-Ip-Address': ip };
-  const da = (nome, origine, max = 300) => { const v = String(req.headers?.[origine] || '').slice(0, max); if (v) h[nome] = v; };
-  da('Psu-User-Agent', 'user-agent'); da('Psu-Referer', 'referer'); da('Psu-Accept', 'accept'); da('Psu-Accept-Charset', 'accept-charset');
-  da('Psu-Accept-Encoding', 'accept-encoding', 100); da('Psu-Accept-language', 'accept-language', 100);
+  const da = (nome, origine, riserva, max = 300) => { const v = String(req.headers?.[origine] || riserva || '').slice(0, max); if (v) h[nome] = v; };
+  // i browser di oggi non mandano più Accept-Charset: dove manca un dato si usa il valore ovvio, così l'elenco richiesto è completo
+  da('Psu-User-Agent', 'user-agent', 'Mozilla/5.0'); da('Psu-Referer', 'referer', config.baseUrl || ''); da('Psu-Accept', 'accept', '*/*'); da('Psu-Accept-Charset', 'accept-charset', 'utf-8');
+  da('Psu-Accept-Encoding', 'accept-encoding', 'gzip, deflate, br', 100); da('Psu-Accept-language', 'accept-language', 'it-IT', 100);
   return h;
 }
-// v0.98.2: ogni banca dichiara quali intestazioni "utente presente" pretende (required_psu_headers di GET /aspsps) e Enable Banking
-// vuole "tutte quelle richieste o nessuna". Si mandano quindi SOLO quelle richieste dalla banca del conto, e solo se ci sono tutte;
-// se la banca non ne richiede, o l'elenco non si riesce a leggere, non se ne manda nessuna (lettura come automatica).
+// Ogni banca dichiara quali intestazioni "utente presente" pretende (required_psu_headers di GET /aspsps) e Enable Banking vuole
+// "tutte quelle richieste o nessuna". v0.98.3: se la banca ne dichiara, si mandano quelle (tutte); se NON ne dichiara o l'elenco non
+// si legge, si mandano comunque indirizzo IP e browser (la 0.98.2 in quel caso non mandava nulla, e la lettura chiesta da una persona
+// veniva contata come automatica: 429 su tutti i conti il 25/11/2026). Ritorna { h, inviate, richieste }.
 const psuRichieste = new Map();   // "paese|banca" → { at, elenco }
 async function intestazioniPerBanca(banca, paese, psu) {
-  if (!psu || !banca) return null;
+  if (!psu) return { h: null, inviate: [], richieste: null };
   const k = `${paese || 'IT'}|${banca}`; let c = psuRichieste.get(k);
-  if (!c || Date.now() - c.at > 24 * 3600 * 1000) {
+  if (banca && (!c || Date.now() - c.at > 24 * 3600 * 1000)) {
     try { const j = await chiama('GET', `/aspsps?country=${encodeURIComponent(paese || 'IT')}`); for (const a of j?.aspsps || []) psuRichieste.set(`${a.country}|${a.name}`, { at: Date.now(), elenco: a.required_psu_headers || [] }); } catch { /* elenco non letto */ }
     c = psuRichieste.get(k);
   }
-  if (!c || !c.elenco.length) return null;
   const mie = Object.fromEntries(Object.entries(psu).map(([n, v]) => [n.toLowerCase(), v]));
-  const out = {};
-  for (const n of c.elenco) { const v = mie[String(n).toLowerCase()]; if (!v) return null; out[n] = v; }
-  return out;
+  let h = {};
+  if (c?.elenco?.length) { for (const n of c.elenco) { const v = mie[String(n).toLowerCase()]; if (!v) { h = null; break; } h[n] = v; } }
+  else for (const n of ['Psu-Ip-Address', 'Psu-User-Agent']) if (mie[n.toLowerCase()]) h[n] = mie[n.toLowerCase()];
+  return { h: h && Object.keys(h).length ? h : null, inviate: h ? Object.keys(h) : [], richieste: c ? c.elenco : null };
 }
 /**
  * Richieste dei movimenti da provare nell'ordine (v0.98.2, Intesa Sanpaolo Inbiz: 422 sul periodo e poi "400 Error interacting with
@@ -74,7 +77,11 @@ export function richiesteMovimenti(conto, oggi = new Date()) {
     ? [`date_from=${g(GIORNI_RILETTURA)}&date_to=${a}`, '']
     : ['strategy=longest', `date_from=${g(PERIODI_RIDOTTI[0])}&date_to=${a}`, ''];
 }
-const messaggioBanca = (e) => (e.status === 429 ? 'La banca ha raggiunto il limite giornaliero di letture per questo conto: i movimenti si aggiornano da domani. Le letture automatiche sono 3 al giorno; "Sincronizza" premuto da una persona non dovrebbe contare nel limite.' : e.message);   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
+const messaggioBanca = (e, p = null) => {
+  if (e.status !== 429) return e.message;
+  if (p?.inviate?.length) return `La banca ha rifiutato per limite giornaliero anche questa lettura, chiesta da una persona (intestazioni inviate: ${p.inviate.join(', ')}; richieste dalla banca: ${p.richieste === null ? 'elenco non letto' : p.richieste.length ? p.richieste.join(', ') : 'nessuna dichiarata'}). Il limite si azzera a mezzanotte.`;
+  return `La banca ha raggiunto il limite giornaliero di letture automatiche per questo conto (4 al giorno senza utente presente). Il limite si azzera a mezzanotte.${p && p.richieste?.length ? ` Lettura non segnalata come "utente presente": manca una delle intestazioni richieste dalla banca (${p.richieste.join(', ')}).` : ''}`;
+};   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
 export const GIORNI_RILETTURA = 7;        // a ogni giro si rileggono gli ultimi giorni (movimenti in attesa che diventano contabili)
 
 const b64u = (x) => Buffer.from(x).toString('base64url');
@@ -168,7 +175,8 @@ export function normalizzaMovimento(t) {
 
 /** Legge saldo e movimenti di un conto e li salva (i movimenti non si duplicano: chiave per IBAN). */
 export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } = {}) {
-  psu = await intestazioniPerBanca(conto.aspsp_name, conto.aspsp_country, psu);
+  const presenza = await intestazioniPerBanca(conto.aspsp_name, conto.aspsp_country, psu);
+  psu = presenza.h;
   const out = { conto: conto.id, letti: 0, nuovi: 0, aggiornati: 0 };
   await q('UPDATE bank_accounts SET last_sync_at=now() WHERE id=$1', [conto.id]);
   try {
@@ -203,7 +211,7 @@ export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } 
     } while ((chiave && pagine < 60) || out.dal === undefined);
     await q('UPDATE bank_accounts SET last_sync_ok_at=now(), last_error=NULL WHERE id=$1', [conto.id]);
   } catch (e) {
-    await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, messaggioBanca(e).slice(0, 500)]);
+    await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, messaggioBanca(e, presenza).slice(0, 500)]);
     if (e.status === 429) out.limite = true;
     // consenso scaduto o revocato in banca: la sessione non vale più
     if (e.status === 401 || e.status === 403 || /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(`${e.codice || ''} ${e.message}`)) await q(`UPDATE bank_connections SET status='SCADUTA', last_error=$2, updated_at=now() WHERE id=$1 AND status='ATTIVA'`, [conto.connection_id, e.message.slice(0, 500)]);

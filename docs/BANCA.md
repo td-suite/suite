@@ -47,3 +47,7 @@ Con il solo `date_from` Intesa rispondeva prima `422 Wrong transactions period r
 - **Intestazioni "utente presente":** si mandano solo quelle che la banca dichiara in `required_psu_headers` (`GET /aspsps`) e solo se ci sono tutte; altrimenti nessuna. Enable Banking vuole "tutte quelle richieste o nessuna".
 
 Non verificato su Intesa reale: la causa esatta del 400 non è nota (Enable Banking restituisce solo "Unknown error").
+
+## v0.98.3 · Lettura chiesta da una persona (25/11/2026)
+
+Errore della 0.98.2: se la banca non dichiara intestazioni "utente presente" (`required_psu_headers` vuoto) non ne partiva nessuna, e "Sincronizza" veniva contato dalla banca come lettura automatica (429 su tutti i conti). Ora: se la banca dichiara un elenco si mandano tutte quelle; se non lo dichiara partono comunque `Psu-Ip-Address` e `Psu-User-Agent`. L'indirizzo è il primo di `X-Forwarded-For`. Il messaggio del 429 dice quali intestazioni sono partite e quali la banca richiede. Non verificato su banca reale.
