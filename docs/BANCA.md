@@ -26,3 +26,7 @@ conto economico del periodo. Cassa e competenza non coincidono: il prospetto mos
 ## Non verificato
 Il collegamento è provato contro un server che riproduce le rotte documentate di Enable Banking, non contro la banca reale: formato
 delle causali, nome dell'ordinante e profondità dello storico dipendono dalla banca e vanno controllati al primo collegamento.
+
+## v0.97.4 · Periodo dei movimenti rifiutato dalla banca (25/11/2026)
+
+Primo collegamento reale (Intesa Sanpaolo): saldo letto, movimenti rifiutati con "422 Wrong transactions period requested" perché la prima lettura chiedeva 120 giorni. Ora, se la banca rifiuta il periodo, `sincronizzaConto` riprova con periodi più corti (`PERIODI_RIDOTTI`: 90, 89, 60, 30, 14, 7 giorni) fino a quello accettato. Lo storico più vecchio di quanto la banca concede non è leggibile: per la quadratura dei mesi precedenti resta l'estratto conto.

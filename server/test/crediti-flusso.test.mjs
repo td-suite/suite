@@ -47,6 +47,8 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
         if (u.pathname === '/auth') { const j = JSON.parse(corpo); banca.auth = j; return out(200, { url: `https://banca.test/sca?state=${j.state}`, authorization_id: 'auth-1' }); }
         if (u.pathname === '/sessions') return out(200, { session_id: 'sess-1', accounts: [{ uid: 'conto-1', account_id: { iban: 'IT60X0542811101000000123456' }, name: 'Conto ordinario', currency: 'EUR', identification_hash: 'h1' }], access: { valid_until: new Date(Date.now() + 80 * 86400000).toISOString() } });
         if (u.pathname === '/accounts/conto-1/balances') return out(200, { balances: [{ balance_type: 'CLBD', balance_amount: { amount: '15000.00', currency: 'EUR' } }] });
+        // come Intesa Sanpaolo: storico oltre 90 giorni rifiutato con 422 (la Suite deve riprovare con un periodo più corto)
+        if (u.pathname === '/accounts/conto-1/transactions' && !banca.scaduta) { banca.periodi = [...(banca.periodi || []), u.searchParams.get('date_from')]; if ((Date.now() - new Date(u.searchParams.get('date_from')).getTime()) / 86400000 > 90.5) return out(422, { message: 'Wrong transactions period requested' }); }
         if (u.pathname === '/accounts/conto-1/transactions') return banca.scaduta ? out(401, { error: 'EXPIRED_SESSION', message: 'session expired' }) : out(200, { transactions: movimenti });
         return out(404, { message: 'non previsto' });
       });
@@ -142,6 +144,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     assert.equal(rit.s, 302); assert.match(rit.headers.get('location'), /\/crediti\/banca\?collegamento=ok$/);
     must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza');
     const st = must(await ATT.c.get('/api/banca/stato'), 'stato banca');
+    assert.ok(banca.periodi.length >= 2 && new Date(banca.periodi[0]) < new Date(banca.periodi[banca.periodi.length - 1]), 'v0.97.4: periodo di 120 giorni rifiutato dalla banca, riletto con un periodo più corto');
     assert.equal(st.conti.length, 1); assert.equal(Number(st.conti[0].saldo), 15000); assert.equal(st.aggiornata.ok, true); assert.equal(st.conti[0].movimenti, 3);
     assert.equal((await VIS.c.get('/api/banca/stato')).s, 403);
     const r = await giro();

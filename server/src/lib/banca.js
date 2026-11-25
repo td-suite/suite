@@ -27,6 +27,7 @@ function chiavePrivata() {
 export const bancaConfigurata = () => Boolean(appId() && chiavePrivata());
 export const GIORNI_CONSENSO = 90;        // consenso richiesto; la banca può concederne meno (maximum_consent_validity)
 export const GIORNI_PRIMA_LETTURA = 120;  // storico letto alla prima sincronizzazione di un conto
+export const PERIODI_RIDOTTI = [90, 89, 60, 30, 14, 7];   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
 export const GIORNI_RILETTURA = 7;        // a ogni giro si rileggono gli ultimi giorni (movimenti in attesa che diventano contabili)
 
 const b64u = (x) => Buffer.from(x).toString('base64url');
@@ -128,8 +129,19 @@ export async function sincronizzaConto(conto, { oggi = new Date() } = {}) {
     if (scelto) await q('UPDATE bank_accounts SET saldo=$2, saldo_tipo=$3, saldo_at=now() WHERE id=$1', [conto.id, Number(scelto.balance_amount?.amount), scelto.balance_type || null]);
     let chiave = null; let pagine = 0;
     const iban = conto.iban || `UID:${conto.identification_hash || conto.uid}`;
+    // v0.97.4 (Intesa Sanpaolo, 25/11/2026: "422 Wrong transactions period requested" alla prima lettura di 120 giorni): ogni banca ha
+    // un proprio limite di storico. Se il periodo è rifiutato si riprova con periodi più corti, fino a quello che la banca accetta.
+    const giorno = (n) => new Date(oggi.getTime() - n * 86400000).toISOString().slice(0, 10);
+    const periodi = conto.last_sync_ok_at ? [dal, giorno(3), giorno(1)] : [dal, ...PERIODI_RIDOTTI.map(giorno)];
+    let k = 0;
     do {
-      const j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions?date_from=${dal}${chiave ? `&continuation_key=${encodeURIComponent(chiave)}` : ''}`);
+      let j;
+      try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions?date_from=${periodi[k]}${chiave ? `&continuation_key=${encodeURIComponent(chiave)}` : ''}`); }
+      catch (e) {
+        if (e.status === 422 && /period|date/i.test(e.message) && !chiave && k < periodi.length - 1) { k++; continue; }
+        throw e;
+      }
+      out.dal = periodi[k];
       for (const t of j?.transactions || []) {
         const m = normalizzaMovimento(t);
         if (!m.booking_date || !Number.isFinite(m.importo) || m.importo === 0) continue;
@@ -140,7 +152,7 @@ export async function sincronizzaConto(conto, { oggi = new Date() } = {}) {
         out.letti++; if (r.nuovo) out.nuovi++; else out.aggiornati++;
       }
       chiave = j?.continuation_key || null; pagine++;
-    } while (chiave && pagine < 60);
+    } while ((chiave && pagine < 60) || out.dal === undefined);
     await q('UPDATE bank_accounts SET last_sync_ok_at=now(), last_error=NULL WHERE id=$1', [conto.id]);
   } catch (e) {
     await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, e.message.slice(0, 500)]);
