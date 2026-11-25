@@ -7,6 +7,7 @@ import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireRole, isOps, assertStruttura, OPS_ROLES } from '../lib/access.js';
 import { saveProduction, studiolabStatus, whoAmI, syncExamCatalog, productionStrutture } from '../lib/studiolab.js';
 import { pivotArticoli } from '../lib/synclab.js';
+import { struttureGemelle } from '../lib/transcodifica.js';
 
 const r = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -50,7 +51,8 @@ async function pivotRichiesta(req) {
   if (!sid) throw bad('Sede obbligatoria');
   const s = await assertStruttura(req.user, sid);
   const months = Math.min(24, Math.max(1, Number(req.query.months || 6)));
-  return { s, months, pivot: await pivotArticoli(await productionStrutture(sid), months) };
+  const unita_con = (await struttureGemelle(sid)).map((g) => ({ id: g.id, code: g.code, name: g.name }));   // stesso cliente, altro codice
+  return { s, months, pivot: { ...(await pivotArticoli(await productionStrutture(sid), months)), unita_con } };
 }
 r.get('/articoli', ah(async (req, res) => { const { pivot, months } = await pivotRichiesta(req); res.json({ ...pivot, months }); }));
 r.get('/articoli.xlsx', ah(async (req, res) => {

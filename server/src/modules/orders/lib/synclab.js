@@ -173,7 +173,7 @@ export async function etichettePerEsame() {
       top AS (SELECT DISTINCT ON (x.code) x.code, x.chiave, x.testo, x.n, x.materiale FROM x ORDER BY x.code, x.n DESC, x.chiave)
     SELECT top.*, t.tot, coalesce(e.etichetta, top.testo) AS etichetta, e.articolo_id, a.name AS article_name,
            (SELECT d.description FROM synclab.exams d WHERE d.disponibilita = 'ATTIVO' AND d.exam_code = top.code ORDER BY d.updated_at DESC LIMIT 1) AS descrizione
-      FROM top JOIN t ON t.code = top.code LEFT JOIN etichette_synclab e ON e.chiave = top.chiave LEFT JOIN articles a ON a.id = e.articolo_id`);
+      FROM top JOIN t ON t.code = top.code LEFT JOIN etichette_synclab e ON e.chiave = top.chiave AND e.chiave <> '' LEFT JOIN articles a ON a.id = e.articolo_id`);
   const out = new Map(rows.map((r) => [r.code, { ...r, fonte: 'CAMPIONI', pct: r.tot ? Math.round((r.n / r.tot) * 1000) / 10 : null }]));
   const sn = (await etichetteServiceNet()).filter((e) => !out.has(e.code));
   if (sn.length) {
@@ -234,16 +234,31 @@ export async function proponiCorrelazioni({ conferma = false } = {}) {
 // abbinati alla struttura (stessa regola di SQL_PRODUZIONE: sede → id della sede, Legal entity → −id, punti SERVICE sommati dalla Legal
 // entity con productionStrutture), per mese (requests.date) ed etichetta, e li porta sull'articolo abbinato all'etichetta. Calcolo a
 // richiesta sulla copia (nessuna tabella): un abbinamento cambiato vale subito, senza aspettare il job orario.
+// v0.98.1: la Data API non valorizza il contenitore (samples.container vuoto in produzione): i campioni SENZA etichetta non vanno più
+// tutti sull'articolo abbinato all'etichetta vuota; il loro articolo si ricava dagli ESAMI che il campione serve (request_item_samples →
+// riga d'esame → correlazione esame → articolo: l'articolo più frequente tra gli esami del campione), e la riga porta il materiale
+// biologico come descrizione (chiave "MAT:<materiale>"). Un campione resta un contenitore, anche se serve più esami.
 const SQL_CAMPIONI_STRUTTURA = `
   WITH m AS (SELECT instance_id, client_id, CASE WHEN site_id IS NOT NULL THEN site_id ELSE -organization_id END AS sid FROM synclab.clients_td WHERE site_id IS NOT NULL OR organization_id IS NOT NULL),
-  x AS (
-    SELECT date_trunc('month', r.date)::date AS month, ${CHIAVE('s.container')} AS chiave, max(${TESTO('s.container')}) AS testo, count(*)::int AS n
+  c AS (
+    SELECT date_trunc('month', r.date)::date AS month, ${CHIAVE('s.container')} AS chiave, ${TESTO('s.container')} AS testo, ${TESTO('s.material')} AS materiale,
+           CASE WHEN ${CHIAVE('s.container')} = '' THEN (
+             SELECT em.article_id FROM synclab.request_item_samples l
+               JOIN synclab.request_items i ON i.instance_id = l.instance_id AND i.request_id = l.request_id AND i.id = l.item_id AND coalesce(i.deleted, FALSE) = FALSE
+               JOIN exam_mappings em ON em.exam_code = trim(i.exam_code) AND em.active
+              WHERE l.instance_id = s.instance_id AND l.request_id = s.request_id AND l.sample_id = s.id
+              GROUP BY em.article_id ORDER BY count(*) DESC, em.article_id LIMIT 1) END AS art_esami
       FROM synclab.samples s JOIN synclab.requests r ON r.instance_id = s.instance_id AND r.id = s.request_id
       JOIN m ON m.instance_id = r.instance_id AND m.client_id = r.client_id
-     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date IS NOT NULL AND m.sid = ANY($1::int[]) AND ($2::date IS NULL OR r.date >= $2::date)
-     GROUP BY 1, 2)
-  SELECT to_char(x.month, 'YYYY-MM') AS mese, x.chiave, coalesce(e.etichetta, x.testo) AS etichetta, x.n, e.articolo_id, a.code AS article_code, a.name AS article_name, a.pack_size, a.pack_label, a.unit
-    FROM x LEFT JOIN etichette_synclab e ON e.chiave = x.chiave LEFT JOIN articles a ON a.id = e.articolo_id`;
+     WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND r.date IS NOT NULL AND m.sid = ANY($1::int[]) AND ($2::date IS NULL OR r.date >= $2::date)),
+  x AS (
+    SELECT month, CASE WHEN chiave = '' THEN 'MAT:' || upper(materiale) ELSE chiave END AS chiave, (chiave = '') AS derivato,
+           CASE WHEN chiave = '' THEN max(materiale) ELSE max(testo) END AS testo, art_esami, count(*)::int AS n
+      FROM c GROUP BY 1, 2, 3, art_esami)
+  SELECT to_char(x.month, 'YYYY-MM') AS mese, x.chiave, x.derivato, CASE WHEN x.derivato THEN x.testo ELSE coalesce(e.etichetta, x.testo) END AS etichetta, x.n,
+         CASE WHEN x.derivato THEN x.art_esami ELSE e.articolo_id END AS articolo_id, a.code AS article_code, a.name AS article_name, a.pack_size, a.pack_label, a.unit
+    FROM x LEFT JOIN etichette_synclab e ON NOT x.derivato AND e.chiave = x.chiave
+    LEFT JOIN articles a ON a.id = CASE WHEN x.derivato THEN x.art_esami ELSE e.articolo_id END`;
 
 /** Campioni per mese ed etichetta (con l'articolo abbinato) delle strutture ids, dal mese `dal` (AAAA-MM-01) o da sempre. */
 export const campioniStruttura = (ids, dal = null) => many(SQL_CAMPIONI_STRUTTURA, [ids.map(Number), dal]);
@@ -262,10 +277,10 @@ export function componiPivot(righe) {
     if (x.articolo_id) {
       const a = art.get(x.articolo_id) || { article_id: x.articolo_id, code: x.article_code, name: x.article_name, pack_size: x.pack_size, pack_label: x.pack_label, unit: x.unit, mesi: {}, totale: 0, etichette: new Map() };
       a.mesi[x.mese] = (a.mesi[x.mese] || 0) + x.n; a.totale += x.n;
-      a.etichette.set(x.chiave, { etichetta: x.etichetta, totale: (a.etichette.get(x.chiave)?.totale || 0) + x.n });
+      a.etichette.set(x.chiave, { etichetta: x.etichetta, derivato: !!x.derivato, totale: (a.etichette.get(x.chiave)?.totale || 0) + x.n });
       art.set(x.articolo_id, a);
     } else {
-      const e = non.get(x.chiave) || { chiave: x.chiave, etichetta: x.etichetta, mesi: {}, totale: 0 };
+      const e = non.get(x.chiave) || { chiave: x.chiave, etichetta: x.etichetta, derivato: !!x.derivato, mesi: {}, totale: 0 };
       e.mesi[x.mese] = (e.mesi[x.mese] || 0) + x.n; e.totale += x.n;
       non.set(x.chiave, e);
     }
@@ -313,6 +328,8 @@ export async function consumoDaCampioni(ids, months = 3) {
     out.set(id, { units: Math.round(units * 100) / 100, packs: Math.round((units / (a.pack_size || 1)) * 100) / 100, months: nM, fonte: 'CAMPIONI',
       detail: a.detail.sort((p, q) => q.month.localeCompare(p.month) || p.etichetta.localeCompare(q.etichetta)) });
   }
-  const articoliEtichetta = new Set((await many(`SELECT DISTINCT articolo_id FROM etichette_synclab WHERE articolo_id IS NOT NULL`)).map((x) => x.articolo_id));
+  // l'etichetta vuota non è un'etichetta (v0.98.1): contano gli articoli delle etichette vere e quelli ricavati dagli esami dei campioni
+  const articoliEtichetta = new Set((await many(`SELECT DISTINCT articolo_id FROM etichette_synclab WHERE articolo_id IS NOT NULL AND chiave <> ''`)).map((x) => x.articolo_id));
+  for (const x of righe) if (x.articolo_id) articoliEtichetta.add(x.articolo_id);
   return { map: out, months: nM, articoliEtichetta };
 }

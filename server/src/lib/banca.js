@@ -27,7 +27,23 @@ function chiavePrivata() {
 export const bancaConfigurata = () => Boolean(appId() && chiavePrivata());
 export const GIORNI_CONSENSO = 90;        // consenso richiesto; la banca può concederne meno (maximum_consent_validity)
 export const GIORNI_PRIMA_LETTURA = 120;  // storico letto alla prima sincronizzazione di un conto
-export const PERIODI_RIDOTTI = [90, 89, 60, 30, 14, 7];   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
+export const PERIODI_RIDOTTI = [89, 30, 7];   // pochi tentativi: ogni richiesta rifiutata consuma il limite giornaliero della banca
+// v0.98.0 (25/11/2026: "429 The access on the account has been exceeding the consented multiplicity per day"): senza l'utente
+// presente le banche concedono al più 4 letture al giorno per conto (regola PSD2). La lettura automatica passa da ogni ora a
+// LETTURE_AL_GIORNO volte; la lettura chiesta da una persona con "Sincronizza" porta i dati della sua richiesta (indirizzo IP e
+// browser), che la banca considera accesso con l'utente presente e non conta nel limite.
+export const LETTURE_AL_GIORNO = 3;
+export const ORE_TRA_LETTURE = 6;   // 6, 12 e 18 circa: tre letture nelle ore 6-21
+/** Intestazioni "utente presente" dalla richiesta di chi preme Sincronizza (nomi dell'API Enable Banking). */
+export function intestazioniUtente(req) {
+  const ip = String(req?.ip || req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim().replace(/^::ffff:/, '');
+  if (!ip) return null;
+  const h = { 'Psu-Ip-Address': ip };
+  const ua = String(req.headers?.['user-agent'] || '').slice(0, 300); if (ua) h['Psu-User-Agent'] = ua;
+  const lingua = String(req.headers?.['accept-language'] || '').slice(0, 100); if (lingua) h['Psu-Accept-Language'] = lingua;
+  return h;
+}
+const messaggioBanca = (e) => (e.status === 429 ? 'La banca ha raggiunto il limite giornaliero di letture per questo conto: i movimenti si aggiornano da domani. Le letture automatiche sono 3 al giorno; "Sincronizza" premuto da una persona non dovrebbe contare nel limite.' : e.message);   // giorni di storico da provare se la banca rifiuta il periodo della prima lettura
 export const GIORNI_RILETTURA = 7;        // a ogni giro si rileggono gli ultimi giorni (movimenti in attesa che diventano contabili)
 
 const b64u = (x) => Buffer.from(x).toString('base64url');
@@ -43,11 +59,11 @@ export function jwtApplicazione(adesso = Math.floor(Date.now() / 1000)) {
 export function azzeraJwt() { jwtCache = { token: null, exp: 0 }; }
 
 export class ErroreBanca extends Error { constructor(msg, status, codice) { super(msg); this.status = status; this.codice = codice; } }
-async function chiama(metodo, percorso, corpo) {
+async function chiama(metodo, percorso, corpo, intestazioni = null) {
   if (!bancaConfigurata()) throw new ErroreBanca('Enable Banking non configurato: servono ENABLEBANKING_APP_ID e ENABLEBANKING_PRIVATE_KEY nelle variabili d\'ambiente', 503, 'NON_CONFIGURATO');
   let res;
   try {
-    res = await fetch(`${API()}${percorso}`, { method: metodo, headers: { Authorization: `Bearer ${jwtApplicazione()}`, ...(corpo ? { 'Content-Type': 'application/json' } : {}) }, body: corpo ? JSON.stringify(corpo) : undefined, signal: AbortSignal.timeout(45_000) });
+    res = await fetch(`${API()}${percorso}`, { method: metodo, headers: { Authorization: `Bearer ${jwtApplicazione()}`, ...(corpo ? { 'Content-Type': 'application/json' } : {}), ...(intestazioni || {}) }, body: corpo ? JSON.stringify(corpo) : undefined, signal: AbortSignal.timeout(45_000) });
   } catch (e) { throw new ErroreBanca(`Enable Banking non raggiungibile: ${e.message}`, 502, 'RETE'); }
   const testo = await res.text(); let j = null; try { j = JSON.parse(testo); } catch { /* non JSON */ }
   if (!res.ok) {
@@ -119,12 +135,12 @@ export function normalizzaMovimento(t) {
 }
 
 /** Legge saldo e movimenti di un conto e li salva (i movimenti non si duplicano: chiave per IBAN). */
-export async function sincronizzaConto(conto, { oggi = new Date() } = {}) {
+export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } = {}) {
   const dal = new Date((conto.last_sync_ok_at ? oggi.getTime() - GIORNI_RILETTURA * 86400000 : oggi.getTime() - GIORNI_PRIMA_LETTURA * 86400000)).toISOString().slice(0, 10);
   const out = { conto: conto.id, letti: 0, nuovi: 0, aggiornati: 0 };
   await q('UPDATE bank_accounts SET last_sync_at=now() WHERE id=$1', [conto.id]);
   try {
-    const b = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/balances`).catch((e) => { if (e.status === 401 || e.status === 403) throw e; return null; });
+    const b = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/balances`, null, psu).catch((e) => { if (e.status === 401 || e.status === 403 || e.status === 429) throw e; return null; });
     const scelto = (b?.balances || []).find((x) => ['CLBD', 'ITBD', 'XPCD', 'CLAV'].includes(x.balance_type)) || (b?.balances || [])[0];
     if (scelto) await q('UPDATE bank_accounts SET saldo=$2, saldo_tipo=$3, saldo_at=now() WHERE id=$1', [conto.id, Number(scelto.balance_amount?.amount), scelto.balance_type || null]);
     let chiave = null; let pagine = 0;
@@ -136,7 +152,7 @@ export async function sincronizzaConto(conto, { oggi = new Date() } = {}) {
     let k = 0;
     do {
       let j;
-      try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions?date_from=${periodi[k]}${chiave ? `&continuation_key=${encodeURIComponent(chiave)}` : ''}`); }
+      try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions?date_from=${periodi[k]}${chiave ? `&continuation_key=${encodeURIComponent(chiave)}` : ''}`, null, psu); }
       catch (e) {
         if (e.status === 422 && /period|date/i.test(e.message) && !chiave && k < periodi.length - 1) { k++; continue; }
         throw e;
@@ -155,7 +171,8 @@ export async function sincronizzaConto(conto, { oggi = new Date() } = {}) {
     } while ((chiave && pagine < 60) || out.dal === undefined);
     await q('UPDATE bank_accounts SET last_sync_ok_at=now(), last_error=NULL WHERE id=$1', [conto.id]);
   } catch (e) {
-    await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, e.message.slice(0, 500)]);
+    await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, messaggioBanca(e).slice(0, 500)]);
+    if (e.status === 429) out.limite = true;
     // consenso scaduto o revocato in banca: la sessione non vale più
     if (e.status === 401 || e.status === 403 || /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(`${e.codice || ''} ${e.message}`)) await q(`UPDATE bank_connections SET status='SCADUTA', last_error=$2, updated_at=now() WHERE id=$1 AND status='ATTIVA'`, [conto.connection_id, e.message.slice(0, 500)]);
     out.errore = e.message;
@@ -173,12 +190,14 @@ async function destinatariBanca() {
 }
 
 /** Giro di sincronizzazione: tutti i conti attivi dei collegamenti attivi; consensi scaduti e in scadenza segnalati a CEO e CFO. */
-export async function sincronizzaBanca({ adesso = new Date() } = {}) {
+export async function sincronizzaBanca({ adesso = new Date(), psu = null, automatica = false } = {}) {
   if (!bancaConfigurata()) return { skipped: 'non_configurato' };
   const scaduti = await many(`UPDATE bank_connections SET status='SCADUTA', updated_at=now() WHERE status='ATTIVA' AND valid_until IS NOT NULL AND valid_until < $1 RETURNING id, aspsp_name`, [adesso.toISOString()]);
-  const conti = await many(`SELECT a.* FROM bank_accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.status = 'ATTIVA' AND a.attivo ORDER BY a.id`);
-  const out = { conti: conti.length, nuovi: 0, errori: 0, scaduti: scaduti.length };
-  for (const c of conti) { const r = await sincronizzaConto(c, { oggi: adesso }); out.nuovi += r.nuovi; if (r.errore) out.errori++; }
+  const tutti = await many(`SELECT a.* FROM bank_accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.status = 'ATTIVA' AND a.attivo ORDER BY a.id`);
+  // lettura automatica: un conto si rilegge solo se l'ultima lettura (anche fallita) è più vecchia di ORE_TRA_LETTURE ore
+  const conti = automatica ? tutti.filter((a) => !a.last_sync_at || adesso.getTime() - new Date(a.last_sync_at).getTime() >= ORE_TRA_LETTURE * 3600000) : tutti;
+  const out = { conti: conti.length, nuovi: 0, errori: 0, scaduti: scaduti.length, rimandati: tutti.length - conti.length, limite: 0 };
+  for (const c of conti) { const r = await sincronizzaConto(c, { oggi: adesso, psu }); out.nuovi += r.nuovi; if (r.errore) out.errori++; if (r.limite) out.limite++; }
   // avviso: consenso scaduto oppure in scadenza entro 10 giorni (una volta ogni 3 giorni)
   const avvisi = await many(`SELECT id, aspsp_name, status, valid_until FROM bank_connections WHERE (status = 'SCADUTA' OR (status = 'ATTIVA' AND valid_until < $1::timestamptz + interval '10 days'))
      AND (avviso_scadenza_at IS NULL OR avviso_scadenza_at < $1::timestamptz - interval '3 days') AND EXISTS (SELECT 1 FROM bank_accounts a WHERE a.connection_id = bank_connections.id AND a.attivo)`, [adesso.toISOString()]);
@@ -225,11 +244,12 @@ export async function scollega(id) {
   return true;
 }
 
-/** Lettura dei movimenti ogni ora, dalle 6 alle 21 (ora di Roma): dopo la lettura parte la riconciliazione di Recupero Crediti. */
+/** Lettura automatica dei movimenti: il job gira ogni ora dalle 6 alle 21 (ora di Roma) ma ogni conto si rilegge al più ogni
+ *  ORE_TRA_LETTURE ore, cioè 3 volte al giorno (limite PSD2 di 4 letture al giorno senza l'utente presente). */
 export function registerBancaJobs(registerJob) {
   registerJob('banca:movimenti', 60, async () => {
     const h = Number(new Intl.DateTimeFormat('it-IT', { hour: 'numeric', hour12: false, timeZone: 'Europe/Rome' }).format(new Date()));
     if (h < 6 || h > 21) return { saltato: 'fuori orario' };
-    return sincronizzaBanca();
+    return sincronizzaBanca({ automatica: true });
   });
 }

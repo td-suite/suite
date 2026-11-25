@@ -9,9 +9,11 @@ import { Icon } from '../../../components/Icons.jsx';
 import { STATO, SEGMENTO, segmentiTesto, ORIENTAMENTO, ORIGINE, itDate, itDateTime, isoDate } from '../format.js';
 import Blocchi, { Lettura } from './Blocchi.jsx';
 import SceltaDestinatari from '../SceltaDestinatari.jsx';
+import Firmatari from '../Firmatari.jsx';
+import AllegatiSgi from '../AllegatiSgi.jsx';
 
-const FIELDS = ['tipo', 'linea', 'segmento', 'segmenti', 'titolo', 'destinatari', 'oggetto', 'decorrenza', 'riferimenti', 'luogo', 'data', 'sintesi', 'corpo', 'contatti', 'firma_nome', 'firma_ruolo', 'orientamento', 'note_interne'];
-const pick = (c) => Object.fromEntries(FIELDS.map((k) => [k, k === 'data' ? isoDate(c.data) : k === 'contatti' ? (c.contatti || []).join('\n') : c[k] ?? '']));
+const FIELDS = ['tipo', 'linea', 'segmento', 'segmenti', 'titolo', 'destinatari', 'oggetto', 'decorrenza', 'riferimenti', 'luogo', 'data', 'sintesi', 'corpo', 'contatti', 'firmatari', 'allegati_sgi', 'orientamento', 'note_interne'];
+const pick = (c) => Object.fromEntries(FIELDS.map((k) => [k, k === 'data' ? isoDate(c.data) : k === 'contatti' ? (c.contatti || []).join('\n') : k === 'firmatari' ? (c.firmatari?.length ? c.firmatari : (c.firma_nome ? [{ nome: c.firma_nome, ruolo: c.firma_ruolo || '', email: '', telefono: '' }] : [])) : k === 'allegati_sgi' ? (c.allegati_sgi || []) : c[k] ?? '']));
 
 export default function Circolare() {
   const { id } = useParams();
@@ -28,7 +30,7 @@ export default function Circolare() {
   const bozza = c?.stato === 'BOZZA';
   const edit = bozza && canEdit(user);
   const upd = (k, v) => { setF((x) => ({ ...x, [k]: v })); setDirty(true); };
-  const body = () => ({ ...f, contatti: String(f.contatti || '').split('\n').map((x) => x.trim()).filter(Boolean) });
+  const body = () => ({ ...f, contatti: String(f.contatti || '').split('\n').map((x) => x.trim()).filter(Boolean), firmatari: (f.firmatari || []).filter((x) => String(x.nome || '').trim().length >= 2) });
 
   const salva = async (silent) => {
     setBusy(true);
@@ -117,11 +119,9 @@ export default function Circolare() {
               </Card>
               <Card title="Chiusura e impaginazione" icon="gear">
                 <div className="circ-form">
-                  <Field label="Per informazioni" help="Una riga per ogni voce del box"><textarea value={f.contatti} onChange={(e) => upd('contatti', e.target.value)} /></Field>
-                  <div className="two">
-                    <Field label="Firma: nome"><input value={f.firma_nome} onChange={(e) => upd('firma_nome', e.target.value)} maxLength={80} /></Field>
-                    <Field label="Firma: ruolo"><input value={f.firma_ruolo} onChange={(e) => upd('firma_ruolo', e.target.value)} maxLength={80} /></Field>
-                  </div>
+                  <Field label="Firmatari" help="Uno o più. Email e telefono di ogni firmatario compaiono in fondo alla circolare, nel riquadro Per informazioni."><Firmatari value={f.firmatari} onChange={(l) => upd('firmatari', l)} /></Field>
+                  <Field label="Per informazioni: altre righe" help="Facoltative, una riga per voce: compaiono prima dei contatti dei firmatari (per esempio il Servizio Clienti)."><textarea value={f.contatti} onChange={(e) => upd('contatti', e.target.value)} /></Field>
+                  <Field label="Allegati dal SGI" help="I documenti agganciati sono elencati in testa alla circolare e uniti in coda al PDF, nell'ordine dell'elenco. Il Word contiene la sola circolare."><AllegatiSgi value={f.allegati_sgi} onChange={(l) => upd('allegati_sgi', l)} esito={dirty ? null : c.allegati_esito} /></Field>
                   <div className="two">
                     <Field label="Destinatari (uno o più)" className="span2"><SceltaDestinatari value={f.segmenti?.length ? f.segmenti : [f.segmento]} onChange={(l) => upd('segmenti', l)} /></Field>
                     <Field label="Orientamento" help={`Automatico: ${c.orientamento_previsto === 'ORIZZONTALE' ? 'orizzontale (tabella larga)' : 'verticale'}`}><select value={f.orientamento} onChange={(e) => upd('orientamento', e.target.value)}>{Object.entries(ORIENTAMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -145,7 +145,8 @@ export default function Circolare() {
               <Lettura blocchi={c.corpo} />
               {c.allegati?.length > 0 && <div className="row tight" style={{ flexWrap: 'wrap', marginTop: 8 }}>{c.allegati.map((a) => <a key={a.id} className="chip" href={`/api/files/${a.id}`} target="_blank" rel="noreferrer"><Icon name="file" />{a.filename}</a>)}</div>}
               <div className="small muted" style={{ marginTop: 10 }}>{(c.contatti || []).join(' · ')}</div>
-              <div style={{ marginTop: 10 }}><b>{c.firma_nome}</b><div className="small muted">{c.firma_ruolo}</div></div>
+              <div className="row" style={{ marginTop: 10, gap: 24, flexWrap: 'wrap' }}>{(c.firmatari?.length ? c.firmatari : [{ nome: c.firma_nome, ruolo: c.firma_ruolo }]).map((x, i) => <div key={i}><b>{x.nome}</b><div className="small muted">{x.ruolo}</div>{(x.email || x.telefono) && <div className="small muted">{[x.telefono, x.email].filter(Boolean).join(' · ')}</div>}</div>)}</div>
+              {c.allegati_sgi?.length > 0 && <div className="small" style={{ marginTop: 10 }}><b>Allegati dal SGI (uniti al PDF):</b> {c.allegati_sgi.map((a) => a.code).join(', ')}</div>}
             </Card>
           )}
         </div>

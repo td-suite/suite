@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { one } from '../db.js';
 import { ah, bad, audit, parse } from '../lib/util.js';
 import { requireRole, OPS_ROLES } from '../lib/access.js';
+import { elencoTranscodifica, confermaTranscodifica, annullaTranscodifica } from '../lib/transcodifica.js';
 import { aggiornaProduzioneSynclab, statoProduzioneSynclab, aggiornaEtichette, elencoEtichette, etichettePerEsame, proponiCorrelazioni, synclabDisponibile } from '../lib/synclab.js';
 
 const r = Router();
@@ -41,6 +42,20 @@ r.put('/mappings/synclab/etichette/:id', ops, ah(async (req, res) => {
   res.json(row);
 }));
 // Per la tabella delle correlazioni: etichetta più frequente di ogni esame (colonna "Dal gestionale") e descrizione dal catalogo Synclab
+// v0.98.1 · Transcodifica: contenitori generici delle correlazioni (fuori dal catalogo di magazzino) → articolo di magazzino.
+// La Suite propone, l'Area Operations conferma (o annulla): solo alla conferma le correlazioni passano all'articolo di magazzino.
+r.get('/mappings/transcodifica', ops, ah(async (_req, res) => res.json(await elencoTranscodifica())));
+r.post('/mappings/transcodifica', ops, ah(async (req, res) => {
+  const b = parse(z.object({ da: z.coerce.number().int(), a: z.coerce.number().int() }), req.body);
+  const out = await confermaTranscodifica(b.da, b.a, req.user.id).catch((e) => { if (e.status === 400 || e.status === 404) throw bad(e.message); throw e; });
+  await audit(req, 'MAPPINGS_TRANSCODIFICA', 'articoli_transcodifica', b.da, out);
+  res.json(out);
+}));
+r.delete('/mappings/transcodifica/:da', ops, ah(async (req, res) => {
+  const out = await annullaTranscodifica(Number(req.params.da)).catch((e) => { if (e.status === 404) throw bad(e.message); throw e; });
+  await audit(req, 'MAPPINGS_TRANSCODIFICA_ANNULLA', 'articoli_transcodifica', Number(req.params.da), out);
+  res.json(out);
+}));
 r.get('/mappings/synclab/esami', ops, ah(async (_req, res) => {
   const disp = await synclabDisponibile();
   res.json(disp.ok ? Object.fromEntries(await etichettePerEsame()) : {});

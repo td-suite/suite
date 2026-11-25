@@ -154,6 +154,7 @@ export default function Schedule() {
 
 // ---------------- Agenda ----------------
 function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, canWrite, canDone, onDone, onRequest, hasData, onNew }) {
+  const toast = useToast();
   const events = ev.data?.events || [];
   const visible = events.filter((e) => (!cat || e.cat === cat) && (e.days < 0 ? isOverdue(e) || (showDone && e.days >= -60) : e.days <= horizon && (showDone || !e.done)));
   const groups = useMemo(() => {
@@ -172,6 +173,7 @@ function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, c
         </div>
         <label className="f inline"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />mostra le completate e le passate (60 giorni)</label>
       </div>
+      {ev.data?.banca?.movimenti > 0 && <div className="small muted" style={{ margin: '0 0 8px' }}>Pagamenti verificati sul conto corrente: canoni e bollette registrate si chiudono da soli quando sul conto c'è un'uscita dello stesso importo che nomina il beneficiario{ev.data.banca.verificate ? `. Verificate adesso: ${ev.data.banca.verificate}` : ''}.</div>}
       {!ev.data ? <Loading /> : !hasData ? (
         <div className="card"><Empty><b>Nessun contratto né utenza</b><div className="small muted" style={{ marginTop: 6 }}>Registra i contratti di affitto e le utenze delle sedi: canoni, ISTAT, imposta di registro, disdette e bollette compaiono qui da soli.</div>{canWrite && <div style={{ marginTop: 12 }}><button className="btn" onClick={onNew}>+ Contratto di affitto</button></div>}</Empty></div>
       ) : !groups.length ? <div className="card"><Empty>Nessuna scadenza in questo intervallo: allarga l'orizzonte o cambia i filtri.</Empty></div> : groups.map(([key, list]) => {
@@ -184,6 +186,9 @@ function Agenda({ ev, cat, setCat, horizon, setHorizon, showDone, setShowDone, c
                 <div className="what">
                   <div className="t">{e.title} <Badge tone={e.cat === 'AFFITTO' ? 'blue' : 'mauve'}>{e.cat === 'AFFITTO' ? 'Affitto' : 'Utenza'}</Badge></div>
                   <div className="d small muted">{e.site_name}{e.desc ? ` · ${e.desc}` : ''}{e.auto ? ' · pagamento automatico' : ''}{e.done_note ? ` · nota: ${e.done_note}` : ''}</div>
+                  {e.done && e.done_source && <div className="small"><Badge tone="green">{e.done_source === 'BANCA' ? 'Verificata sul conto' : 'Confermata sul conto'}</Badge></div>}
+                  {!e.done && e.bank && <div className="small sched-banca">Sul conto c'è un'uscita dello stesso importo il {itDate(e.bank.data)}{e.bank.controparte ? `: ${e.bank.controparte}` : ''}{e.bank.causale ? ` · ${e.bank.causale}` : ''}. Non nomina il beneficiario: confermala se è questo pagamento.
+                    {canDone && <> <button className="btn sm" onClick={async () => { try { await api.post('/scadenziario/events/done', { key: e.key, bank_tx_id: e.bank.id }); ev.reload(); } catch (er) { toast(er.message, 'err'); } }}>È questo pagamento</button></>}</div>}
                 </div>
                 <div className="amt num">{e.amount != null ? <>{e.estimate && <span className="muted" title="importo stimato">~</span>}{eur(e.amount)}{e.done_amount != null && e.done_amount !== e.amount && <div className="small muted">pagati {eur(e.done_amount)}</div>}</> : ''}</div>
                 <div className="act row" style={{ gap: 8, justifyContent: 'flex-end' }}>

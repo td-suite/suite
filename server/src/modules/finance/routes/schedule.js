@@ -10,6 +10,7 @@ import { ah, bad, forbidden, notFound, audit, parse, todayRome, itDate, eur } fr
 import { canManage, isSigner, requireManage } from '../lib/access.js';
 import { buildEvents, kpis, forecast, contractEnd, stepAt, toIso, parseDate, addMonths, isOverdue, UTILITY_LABEL, LEASE_KIND_LABEL, REGISTRATION_LABEL, TRANSFER_LABEL } from '../lib/schedule.js';
 import { loadScheduleData, scheduleSettings, siteName, EVENT_KEY_RE } from '../lib/scheduleData.js';
+import { verificaPagamenti, descriviMovimento } from '../lib/verificaBanca.js';
 import { requestSchema, createRequest } from '../lib/requestCreate.js';
 import { storeBuffer, sendFile, dropBlobs, readBuffer } from '../../../lib/moduleStorage.js';
 import { extractText, analyzeText, buildProposal, mockEnabled, AI_NOT_CONFIGURED } from '../lib/leaseAnalysis.js';
@@ -92,26 +93,38 @@ r.get('/events', ah(async (req, res) => {
   const today = todayRome();
   const from = req.query.from && DATE.safeParse(req.query.from).success ? req.query.from : toIso(parseDate(today) - 60 * 86400000);
   const to = req.query.to && DATE.safeParse(req.query.to).success ? req.query.to : toIso(parseDate(today) + 400 * 86400000);
+  // v0.98.0: prima di mostrare l'agenda si verificano sul conto corrente i pagamenti delle scadenze aperte (certi = segnati da soli)
+  const banca = await verificaPagamenti({ today });
   const data = await loadScheduleData(siteIds);
   let events = buildEvents({ ...data, from, to, today });
+  for (const e of events) if (!e.done && banca.proposte.has(e.key)) e.bank = banca.proposte.get(e.key);
   const cat = String(req.query.cat || '').toUpperCase();
   if (['AFFITTO', 'UTENZA'].includes(cat)) events = events.filter((e) => e.cat === cat);
   const names = new Map(data.sites.map((s) => [s.id, s]));
   for (const e of events) { const s = names.get(e.site_id); e.site_name = s?.name || `Sede ${e.site_id}`; e.site_code = s?.code || null; }
   const settings = await scheduleSettings();
-  res.json({ today, from, to, events, kpi: kpis({ events: buildEvents({ ...data, from, to, today }), leases: data.leases, steps: data.steps, utilities: data.utilities, today }), sites: data.sites, alert_days: settings.alert_days, can_write: canManage(req.user), can_done: canManage(req.user) || isSigner(req.user) });
+  res.json({ today, from, to, events, kpi: kpis({ events: buildEvents({ ...data, from, to, today }), leases: data.leases, steps: data.steps, utilities: data.utilities, today }), sites: data.sites, banca: { movimenti: banca.movimenti, verificate: banca.segnate.length }, alert_days: settings.alert_days, can_write: canManage(req.user), can_done: canManage(req.user) || isSigner(req.user) });
 }));
 
 const KEY_RE = EVENT_KEY_RE;
 r.post('/events/done', requireDone, ah(async (req, res) => {
-  const d = parse(z.object({ key: z.string().regex(KEY_RE, 'chiave evento non valida'), note: optText(500), amount: opt(money) }), req.body);
+  const d = parse(z.object({ key: z.string().regex(KEY_RE, 'chiave evento non valida'), note: optText(500), amount: opt(money), bank_tx_id: z.number().int().positive().optional() }), req.body);
   const [, kind, type, id, date] = d.key.match(KEY_RE);
   const owner = type === 'lease' ? await getLease(req, Number(id)) : await getUtility(req, Number(id));
+  // conferma di un movimento proposto dalla verifica sul conto: il movimento resta agganciato alla scadenza (uno per scadenza)
+  let mov = null;
+  if (d.bank_tx_id) {
+    const m = await one(`SELECT id, iban, booking_date::text AS booking_date, importo, controparte, causale FROM public.bank_transactions WHERE id = $1 AND importo < 0`, [d.bank_tx_id]);
+    if (!m) throw bad('Movimento bancario non trovato');
+    if (await one('SELECT 1 FROM schedule_done WHERE bank_tx_id = $1 AND event_key <> $2', [d.bank_tx_id, d.key])) throw bad('Questo movimento è già agganciato a un\'altra scadenza');
+    mov = descriviMovimento(m);
+  }
+  const nota = d.note || (mov ? `Pagamento confermato sul conto il ${mov.data.slice(8, 10)}/${mov.data.slice(5, 7)}/${mov.data.slice(0, 4)}${mov.controparte ? `: ${mov.controparte}` : ''}${mov.causale ? ` · ${mov.causale.slice(0, 120)}` : ''}` : null);
   await tx(async (c) => {
-    await c.query(`INSERT INTO schedule_done (event_key, site_id, user_id, note, amount) VALUES ($1,$2,$3,$4,$5)
-      ON CONFLICT (event_key) DO UPDATE SET done_at=now(), user_id=EXCLUDED.user_id, note=EXCLUDED.note, amount=EXCLUDED.amount`, [d.key, owner.site_id, req.user.id, d.note || null, d.amount ?? null]);
-    // una bolletta registrata segnata come pagata prende la data di oggi come pagamento
-    if (kind === 'bolletta' && type === 'utility') await c.query('UPDATE utility_bills SET paid_at=coalesce(paid_at, $3::date) WHERE utility_id=$1 AND due_date=$2::date', [owner.id, date, todayRome()]);
+    await c.query(`INSERT INTO schedule_done (event_key, site_id, user_id, note, amount, bank_tx_id, source) VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT (event_key) DO UPDATE SET done_at=now(), user_id=EXCLUDED.user_id, note=EXCLUDED.note, amount=EXCLUDED.amount, bank_tx_id=EXCLUDED.bank_tx_id, source=EXCLUDED.source`, [d.key, owner.site_id, req.user.id, nota ? nota.slice(0, 500) : null, d.amount ?? (mov ? mov.importo : null), mov ? mov.id : null, mov ? 'BANCA_CONFERMATA' : null]);
+    // una bolletta registrata segnata come pagata prende la data del movimento, altrimenti quella di oggi
+    if (kind === 'bolletta' && type === 'utility') await c.query('UPDATE utility_bills SET paid_at=coalesce(paid_at, $3::date) WHERE utility_id=$1 AND due_date=$2::date', [owner.id, date, mov ? mov.data : todayRome()]);
   });
   await audit(req, 'SCHEDULE_DONE', type, id, { key: d.key, note: d.note, amount: d.amount });
   res.status(201).json({ ok: true });

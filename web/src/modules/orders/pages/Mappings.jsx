@@ -13,6 +13,12 @@ export default function Mappings() {
   const gest = useApi('/mappings/synclab/esami');
   const cont = useApi('/mappings/synclab/etichette');
   const [prop, setProp] = useState(null);
+  // v0.98.1 · transcodifica: contenitori generici delle correlazioni → articolo di magazzino (proposta della Suite, conferma di Operations)
+  const trans = useApi('/mappings/transcodifica');
+  const [scelte, setScelte] = useState({});
+  const sceltaDi = (g) => (scelte[g.id] !== undefined ? scelte[g.id] : (g.proposta?.article_id || ''));
+  const confermaT = async (g) => { setErr(null); const a = sceltaDi(g); if (!a) return; try { const r = await api.post('/mappings/transcodifica', { da: g.id, a: Number(a) }); toast(`${r.da} → ${r.a}: ${r.spostate} correlazioni aggiornate${r.gia_presenti ? `, ${r.gia_presenti} già presenti` : ''}`); trans.reload(); reload(); gest.reload(); } catch (e2) { setErr(e2); } };
+  const annullaT = async (g) => { if (!window.confirm(`Annullare la transcodifica di ${g.name}? Le correlazioni tornano al contenitore generico.`)) return; setErr(null); try { await api.del(`/mappings/transcodifica/${g.id}`); trans.reload(); reload(); gest.reload(); } catch (e2) { setErr(e2); } };
   const G = gest.data || {};
   const descr = (m) => G[m.exam_code]?.descrizione || m.exam_name;
   // l'etichetta più frequente nel gestionale è abbinata a un articolo diverso da quello della correlazione
@@ -54,18 +60,38 @@ export default function Mappings() {
         </form>
         <div className="small muted" style={{ marginTop: 8 }}>Esempio: 0014 Emocromo → Tappo Viola, 1 provetta. Un esame può consumare più materiali (una riga per ciascuno).</div>
       </Card>
+      {trans.data && (trans.data.da_confermare.length > 0 || trans.data.confermate.length > 0) && <Card flush className="mb" title={`Transcodifica contenitori → articoli di magazzino${trans.data.da_confermare.length ? ` (${trans.data.da_confermare.length} da confermare)` : ''}`}>
+        <div className="table-wrap"><table className="t">
+          <thead><tr><th>Contenitore delle correlazioni</th><th className="num">Esami</th><th>Articolo di magazzino</th><th>Stato</th><th /></tr></thead>
+          <tbody>
+            {trans.data.da_confermare.map((g) => <tr key={g.id} className="warnrow">
+              <td><div className="strong">{g.name}</div><div className="small muted">{g.esempi}{g.esami > 8 ? '…' : ''}</div></td>
+              <td className="num">{g.esami.toLocaleString('it-IT')}</td>
+              <td><select value={sceltaDi(g)} onChange={(e) => setScelte({ ...scelte, [g.id]: e.target.value })} style={{ minWidth: 300 }}><option value="">Scegli l'articolo…</option>{trans.data.magazzino.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></td>
+              <td className="small">{g.proposta && String(sceltaDi(g)) === String(g.proposta.article_id) ? <><Badge tone="blue">proposta</Badge> <span className="muted">{g.proposta.motivo}</span></> : sceltaDi(g) ? <Badge tone="grey">scelta a mano</Badge> : <Badge tone="red">nessuna proposta</Badge>}</td>
+              <td className="num"><button className="btn sm" disabled={!sceltaDi(g)} onClick={() => confermaT(g)}>Conferma</button></td></tr>)}
+            {trans.data.confermate.map((g) => <tr key={`c-${g.id}`}>
+              <td><div className="strong">{g.name}</div></td>
+              <td className="num">{Number(g.esami).toLocaleString('it-IT')}</td>
+              <td>{g.a_name}</td>
+              <td className="small"><Badge tone="green">confermata</Badge> <span className="muted">{g.confermato_da || ''} {g.confermato_il ? new Date(g.confermato_il).toLocaleDateString('it-IT') : ''}</span></td>
+              <td className="num"><button className="btn sm ghost" onClick={() => annullaT(g)}>Annulla</button></td></tr>)}
+          </tbody>
+        </table></div>
+        <div className="small muted" style={{ padding: '8px 12px' }}>Le correlazioni nate prima del catalogo di magazzino puntano a contenitori generici (Tappo Viola, Tappo Giallo…) che non sono articoli ordinabili: per questo la Produzione non li valorizzava. Per ogni contenitore la Suite propone l'articolo di magazzino con lo stesso colore di tappo e tipo; niente cambia finché non premi Conferma. Alla conferma le correlazioni del contenitore passano all'articolo di magazzino e consumo, verifica degli ordini e Produzione lo usano subito. Annulla riporta tutto com'era.</div>
+      </Card>}
       <Card flush className="mb" title="Etichette viste nel gestionale" actions={<div className="row">
         <button className="btn sm ghost" disabled={!cont.data?.disponibile} onClick={aggiornaCont}><Icon name="flask" size={16} />Aggiorna le etichette</button>
         <button className="btn sm" disabled={!cont.data?.disponibile || !(cont.data?.etichette || []).some((c) => c.articolo_id)} onClick={anteprima}><Icon name="link" size={16} />Proponi correlazioni da Synclab</button></div>}>
         {!cont.data ? <Loading /> : !cont.data.disponibile ? <Empty>{cont.data.motivo}</Empty> : !cont.data.etichette.length ? <Empty>Nessuna etichetta ancora: premi "Aggiorna le etichette"</Empty> : (
           <div className="table-wrap"><table className="t">
             <thead><tr><th>Testo dell'etichetta</th><th className="num">Campioni</th><th>Esami che la usano</th><th>Materiale (informativo)</th><th>Articolo di magazzino abbinato</th></tr></thead>
-            <tbody>{cont.data.etichette.map((c) => <tr key={c.id} className={!c.articolo_id && c.campioni > 0 ? 'warnrow' : ''}>
+            <tbody>{cont.data.etichette.map((c) => <tr key={c.id} className={!c.articolo_id && c.campioni > 0 && c.chiave !== '' ? 'warnrow' : ''}>
               <td className="strong">{c.etichetta || <span className="muted">non indicata nel gestionale</span>}{c.fonte === 'SERVICENET' && <> <Badge tone="blue">solo catalogo ServiceNET</Badge></>}{c.nota_rifusione && <div className="small red" style={{ fontWeight: 400 }}>{c.nota_rifusione}</div>}</td>
               <td className="num">{Number(c.campioni).toLocaleString('it-IT')}</td>
               <td className="small"><b>{c.esami}</b>{c.esami_elenco?.length > 0 && <span className="muted"> · {c.esami_elenco.map((e) => e.code).join(', ')}{c.esami > c.esami_elenco.length ? '…' : ''}</span>}</td>
               <td className="small muted">{c.materiali || '–'}</td>
-              <td><select value={c.articolo_id || ''} onChange={(e) => abbina(c, e.target.value)} style={{ minWidth: 240 }}><option value="">Non abbinata</option>{(articles.data || []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></td></tr>)}</tbody>
+              <td>{c.chiave === '' ? <span className="small muted">Senza etichetta nel gestionale: l'articolo si ricava dagli esami del campione (correlazioni qui sotto)</span> : <select value={c.articolo_id || ''} onChange={(e) => abbina(c, e.target.value)} style={{ minWidth: 240 }}><option value="">Non abbinata</option>{(articles.data || []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</td></tr>)}</tbody>
           </table></div>)}
         <div className="small muted" style={{ padding: '8px 12px' }}>Una riga per testo di etichetta dei campioni delle accettazioni attive (in seconda battuta le etichette del catalogo esami di ServiceNET). Abbina ogni etichetta all'articolo di magazzino che la rappresenta (es. T.Viola → Provetta tappo viola): la Produzione StudioLab conta i campioni per articolo, e "Proponi correlazioni da Synclab" crea o aggiorna, per gli esami la cui etichetta più frequente è abbinata, le correlazioni con fonte Synclab; quelle manuali o del listino non si toccano. Il materiale biologico è solo informativo.</div>
       </Card>

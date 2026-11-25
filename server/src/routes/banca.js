@@ -7,7 +7,7 @@ import { ah, bad, audit, parse, forbidden } from '../lib/util.js';
 import { requireAuth } from '../lib/access.js';
 import { one, many, q } from '../db.js';
 import { config } from '../config.js';
-import { statoBanca, elencoBanche, avviaCollegamento, completaCollegamento, sincronizzaBanca, scollega, puoGestireBanca, puoVedereBanca, bancaConfigurata } from '../lib/banca.js';
+import { intestazioniUtente, statoBanca, elencoBanche, avviaCollegamento, completaCollegamento, sincronizzaBanca, scollega, puoGestireBanca, puoVedereBanca, bancaConfigurata } from '../lib/banca.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -29,13 +29,13 @@ r.get('/ritorno', gestisce, ah(async (req, res) => {
   let esito = 'ok';
   try {
     const out = await completaCollegamento({ state: req.query.state, code: req.query.code, error: req.query.error || req.query.error_description });
-    if (!out.gia) { await audit(req, 'BANCA_COLLEGATA', { entity: 'bank_connection', entityId: out.id, label: `Conto bancario collegato: ${out.conti} conti` }); sincronizzaBanca().catch((e) => console.warn('[banca] prima lettura:', e.message)); }
+    if (!out.gia) { await audit(req, 'BANCA_COLLEGATA', { entity: 'bank_connection', entityId: out.id, label: `Conto bancario collegato: ${out.conti} conti` }); sincronizzaBanca({ psu: intestazioniUtente(req) }).catch((e) => console.warn('[banca] prima lettura:', e.message)); }
   } catch (e) { esito = encodeURIComponent(e.message.slice(0, 160)); }
   // si torna alla pagina dei conti del widget che la persona può aprire (Finance Management, altrimenti Recupero Crediti)
   const pagina = req.user.level === 'OWNER' || req.user.grants?.finance ? '/finance/banca' : '/crediti/banca';
   res.redirect(`${config.baseUrl}${pagina}?collegamento=${esito}`);
 }));
-r.post('/sincronizza', vede, ah(async (req, res) => { const out = await sincronizzaBanca(); await audit(req, 'BANCA_SINCRONIZZATA', { entity: 'bank', label: `Movimenti bancari letti: ${out.nuovi ?? 0} nuovi` }); res.json(out); }));
+r.post('/sincronizza', vede, ah(async (req, res) => { const out = await sincronizzaBanca({ psu: intestazioniUtente(req) }); await audit(req, 'BANCA_SINCRONIZZATA', { entity: 'bank', label: `Movimenti bancari letti: ${out.nuovi ?? 0} nuovi` }); res.json(out); }));
 r.delete('/collegamenti/:id', gestisce, ah(async (req, res) => {
   if (!(await scollega(req.params.id))) throw bad('Collegamento inesistente');
   await audit(req, 'BANCA_SCOLLEGATA', { entity: 'bank_connection', entityId: Number(req.params.id), label: 'Conto bancario scollegato' });

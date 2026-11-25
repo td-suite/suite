@@ -7,6 +7,7 @@
 //    cambio stato), MDM_T02/T10 (referti) e OUL_R22 come testo; noi rispondiamo con l'ACK. Da ogni esame notificato si ricava
 //    la produzione mensile per codice cliente (ORC-13, in subordine MSH-4/MSH-6), che alimenta la verifica degli ordini.
 // 3) Import da file e inserimento manuale restano disponibili (pagina Produzione).
+import { struttureGemelle } from './transcodifica.js';
 import { config } from '../config.js';
 import { many, one, q } from '../db.js';
 import { connectorSync, logConnector, studiolabClientToken, studiolabExtraHeaders } from '../../../lib/connectors.js';
@@ -206,10 +207,16 @@ export async function saveProduction(strutturaId, monthIso, items, source) {
  * cliente del punto. Così la verifica dell'ordine della Legal entity confronta con la produzione di tutti i suoi punti.
  */
 export async function productionStrutture(strutturaId) {
+  const una = async (id) => {
+    if (!(id < 0)) return [id];
+    const pts = await many("SELECT id FROM public.sites WHERE organization_id=$1 AND kind='SERVICE'", [-id]);
+    return [id, ...pts.map((p) => p.id)];
+  };
   const id = Number(strutturaId);
-  if (!(id < 0)) return [id];
-  const pts = await many("SELECT id FROM public.sites WHERE organization_id=$1 AND kind='SERVICE'", [-id]);
-  return [id, ...pts.map((p) => p.id)];
+  const ids = await una(id);
+  // v0.98.1: lo stesso cliente con più codici (es. sede TD04 e Legal entity SER0011) è un cliente solo: la produzione si somma
+  for (const g of await struttureGemelle(id).catch(() => [])) for (const x of await una(g.id)) if (!ids.includes(x)) ids.push(x);
+  return ids;
 }
 
 /**

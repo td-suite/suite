@@ -104,7 +104,7 @@ export function buildEvents({ leases = [], steps = [], utilities = [], bills = [
     const dn = doneMap.get(key);
     out.push({ key, kind: e.kind, cat: e.cat, site_id: e.site_id, ref: e.ref, date: toIso(e.t), title: e.title, desc: e.desc || '',
       amount: e.amount == null ? null : r2(e.amount), estimate: !!e.estimate, auto: !!e.auto, done: !!dn || !!e.done,
-      done_at: dn?.done_at || e.done_at || null, done_amount: dn?.amount != null ? Number(dn.amount) : null, done_note: dn?.note || null, done_request_id: dn?.request_id || null,
+      done_at: dn?.done_at || e.done_at || null, done_amount: dn?.amount != null ? Number(dn.amount) : null, done_note: dn?.note || null, done_request_id: dn?.request_id || null, done_source: dn?.source || null,
       bill_id: e.bill_id || null, days: Math.round((e.t - T) / DAY),
       request: reqMap.has(key) ? { id: reqMap.get(key).request_id, protocol: reqMap.get(key).protocol || null, status: reqMap.get(key).status || null, amount: reqMap.get(key).amount != null ? Number(reqMap.get(key).amount) : null } : null });
   };

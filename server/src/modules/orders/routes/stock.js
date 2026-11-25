@@ -328,7 +328,12 @@ r.get('/consumption', ah(async (req, res) => {
   await assertStruttura(req.user, sid);
   const months = Number(req.query.months || await getSetting('production_months', '3'));
   const cons = await consumptionByArticle(sid, months);
-  res.json({ months: cons.months, items: [...cons.map.entries()].map(([article_id, v]) => ({ article_id, ...v })) });
+  // v0.98.1: ogni voce porta la descrizione dell'articolo (anche di quelli fuori dal catalogo di magazzino, che la pagina mostrava "#id")
+  const ids = [...cons.map.keys()];
+  const art = new Map((await many(`SELECT id, code, name, pack_label, active AS magazzino FROM articles WHERE id = ANY($1::int[])`, [ids])).map((a) => [a.id, a]));
+  const items = [...cons.map.entries()].map(([article_id, v]) => { const a = art.get(article_id); return { article_id, article_code: a?.code || null, article_name: a?.name || null, pack_label: a?.pack_label || null, magazzino: a ? a.magazzino : false, ...v }; })
+    .sort((p, q) => Number(q.magazzino) - Number(p.magazzino) || q.units - p.units);
+  res.json({ months: cons.months, items });
 }));
 
 // ---------------- Difformità ----------------

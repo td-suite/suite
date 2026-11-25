@@ -46,6 +46,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
         if (u.pathname === '/aspsps') return out(200, { aspsps: [{ name: 'Banca di Prova', country: 'IT', psu_types: ['business'], maximum_consent_validity: 7776000 }] });
         if (u.pathname === '/auth') { const j = JSON.parse(corpo); banca.auth = j; return out(200, { url: `https://banca.test/sca?state=${j.state}`, authorization_id: 'auth-1' }); }
         if (u.pathname === '/sessions') return out(200, { session_id: 'sess-1', accounts: [{ uid: 'conto-1', account_id: { iban: 'IT60X0542811101000000123456' }, name: 'Conto ordinario', currency: 'EUR', identification_hash: 'h1' }], access: { valid_until: new Date(Date.now() + 80 * 86400000).toISOString() } });
+        if (u.pathname.startsWith('/accounts/conto-1/')) { banca.psu = req.headers['psu-ip-address'] || null; if (banca.limite) return out(429, { message: 'The access on the account has been exceeding the consented multiplicity per day.' }); }
         if (u.pathname === '/accounts/conto-1/balances') return out(200, { balances: [{ balance_type: 'CLBD', balance_amount: { amount: '15000.00', currency: 'EUR' } }] });
         // come Intesa Sanpaolo: storico oltre 90 giorni rifiutato con 422 (la Suite deve riprovare con un periodo più corto)
         if (u.pathname === '/accounts/conto-1/transactions' && !banca.scaduta) { banca.periodi = [...(banca.periodi || []), u.searchParams.get('date_from')]; if ((Date.now() - new Date(u.searchParams.get('date_from')).getTime()) / 86400000 > 90.5) return out(422, { message: 'Wrong transactions period requested' }); }
@@ -197,6 +198,13 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     const scheda = must(await ATT.c.get(`/api/crediti/clienti/${D.org.c1}`), 'scheda');
     assert.ok(scheda.eventi.some((e) => /1° sollecito scritto nel registro email \(posta non attiva\) a amministrazione@cliente-uno\.test per € 900,00 in automatico/.test(e.testo)));
     assert.equal(scheda.posizione.stato, 'IN_SOLLECITO');
+    // v0.98.0: limite giornaliero della banca (429). Sincronizza premuto da una persona porta i dati dell'utente presente; la lettura
+    // automatica non rilegge un conto letto da meno di 6 ore; il 429 si spiega e non fa scadere il collegamento
+    assert.ok(banca.psu, 'la lettura chiesta da una persona porta Psu-Ip-Address');
+    banca.limite = true;
+    const lim = must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza con limite'); assert.equal(lim.limite, 1);
+    assert.match((await sql('SELECT last_error FROM bank_accounts'))[0].last_error, /limite giornaliero/); assert.equal((await sql('SELECT status FROM bank_connections'))[0].status, 'ATTIVA');
+    banca.limite = false; must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza dopo il limite');
     // la banca rifiuta la sessione (consenso scaduto): il collegamento passa a SCADUTA e i movimenti non sono più "freschi"
     banca.scaduta = true;
     must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza');
