@@ -51,6 +51,8 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
         // come Intesa Sanpaolo: storico oltre 90 giorni rifiutato con 422; date_from senza date_to = 400 "Error interacting with ASPSP"
         if (u.pathname === '/accounts/conto-1/transactions' && !banca.scaduta) {
           const sp = u.searchParams; banca.richieste = [...(banca.richieste || []), u.search.replace(/^\?/, '')];
+          // v0.98.4, come visto su Intesa: la prima pagina di strategy=longest arriva vuota con una chiave, la pagina successiva dà 400
+          if (banca.paginaRotta && sp.get('strategy') === 'longest') return sp.get('continuation_key') ? out(400, { code: 400, message: 'Error interacting with ASPSP', detail: 'Unknown error', error: 'ASPSP_ERROR' }) : out(200, { transactions: [], continuation_key: 'k2' });
           if (banca.rifiutaLongest && sp.get('strategy') === 'longest') return out(400, { code: 400, message: 'Error interacting with ASPSP', detail: 'Unknown error', error: 'ASPSP_ERROR' });
           if (sp.get('date_from') && !sp.get('date_to')) return out(400, { code: 400, message: 'Error interacting with ASPSP', detail: 'Unknown error', error: 'ASPSP_ERROR' });
           if (sp.get('date_from') && (Date.now() - new Date(sp.get('date_from')).getTime()) / 86400000 > 90.5) return out(422, { message: 'Wrong transactions period requested' });
@@ -146,11 +148,16 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
       { entry_reference: 'E2', booking_date: g(-1), transaction_amount: { amount: '430.00', currency: 'EUR' }, credit_debit_indicator: 'DBIT', status: 'BOOK', creditor: { name: 'Fornitore Reagenti' }, remittance_information: ['Fattura fornitore 55'] },
       { entry_reference: 'E3', booking_date: g(-2), transaction_amount: { amount: '75.00', currency: 'EUR' }, credit_debit_indicator: 'CRDT', status: 'BOOK', debtor: { name: 'Incassi POS' }, remittance_information: ['Accredito POS'] },
     ];
+    banca.paginaRotta = true;
     const rit = await CFO.c.get(`/api/banca/ritorno?code=codice-banca&state=${banca.auth.state}`);
     assert.equal(rit.s, 302); assert.match(rit.headers.get('location'), /\/crediti\/banca\?collegamento=ok$/);
     must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza');
     const st = must(await ATT.c.get('/api/banca/stato'), 'stato banca');
-    assert.ok(banca.richieste.length && banca.richieste.every((x) => x === 'strategy=longest'), `v0.98.2: prima lettura con strategy=longest, senza periodi tentati a vuoto: ${banca.richieste.join(' | ')}`);
+    banca.paginaRotta = false;
+    assert.equal(banca.richieste[0], 'strategy=longest', 'v0.98.2: prima lettura con strategy=longest');
+    assert.ok(banca.richieste.includes('strategy=longest&continuation_key=k2') && banca.richieste.some((x) => /^date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/.test(x)), `v0.98.4: pagina successiva rifiutata senza movimenti, si riparte con date_from e date_to: ${banca.richieste.join(' | ')}`);
+    const tr = (await sql('SELECT last_error, last_trace FROM bank_accounts'))[0];
+    assert.equal(tr.last_error, null); assert.ok(tr.last_trace.passi.some((x) => x.esito === 400 && /pagina 2/.test(x.richiesta)) && tr.last_trace.passi.some((x) => x.esito === 200 && x.salvati === 3), 'traccia della lettura: il rifiuto e la lettura riuscita');
     assert.equal(st.conti.length, 1); assert.equal(Number(st.conti[0].saldo), 15000); assert.equal(st.aggiornata.ok, true); assert.equal(st.conti[0].movimenti, 3);
     assert.equal((await VIS.c.get('/api/banca/stato')).s, 403);
     const r = await giro();
@@ -206,7 +213,7 @@ describe('Recupero Crediti: flusso con banca finta', { skip: SALTA }, () => {
     // v0.98.0: limite giornaliero della banca (429). Sincronizza premuto da una persona porta i dati dell'utente presente; la lettura
     // automatica non rilegge un conto letto da meno di 6 ore; il 429 si spiega e non fa scadere il collegamento
     assert.ok(banca.psu, 'la lettura chiesta da una persona porta Psu-Ip-Address');
-    assert.ok(banca.richieste.some((x) => /^date_from/.test(x)) && banca.richieste.every((x) => x === 'strategy=longest' || /^date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/.test(x)), `v0.98.2: dopo la prima lettura sempre date_from e date_to insieme: ${banca.richieste.join(' | ')}`);
+    assert.ok(banca.richieste.some((x) => /^date_from/.test(x)) && banca.richieste.every((x) => x.startsWith('strategy=longest') || /^date_from=\d{4}-\d{2}-\d{2}&date_to=\d{4}-\d{2}-\d{2}$/.test(x)), `v0.98.2: dopo la prima lettura sempre date_from e date_to insieme: ${banca.richieste.join(' | ')}`);
     banca.limite = true;
     const lim = must(await CFO.c.post('/api/banca/sincronizza', {}), 'sincronizza con limite'); assert.equal(lim.limite, 1);
     assert.match((await sql('SELECT last_error FROM bank_accounts'))[0].last_error, /limite giornaliero anche questa lettura, chiesta da una persona \(intestazioni inviate: Psu-Ip-Address, Psu-User-Agent; richieste dalla banca: nessuna dichiarata\)/); assert.equal((await sql('SELECT status FROM bank_connections'))[0].status, 'ATTIVA');

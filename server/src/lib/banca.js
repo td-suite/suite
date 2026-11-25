@@ -74,8 +74,8 @@ export function richiesteMovimenti(conto, oggi = new Date()) {
   const g = (n) => new Date(oggi.getTime() - n * 86400000).toISOString().slice(0, 10);
   const a = g(0);
   return conto.last_sync_ok_at
-    ? [`date_from=${g(GIORNI_RILETTURA)}&date_to=${a}`, '']
-    : ['strategy=longest', `date_from=${g(PERIODI_RIDOTTI[0])}&date_to=${a}`, ''];
+    ? [`date_from=${g(GIORNI_RILETTURA)}&date_to=${a}`, `date_from=${g(GIORNI_RILETTURA)}&date_to=${a}&transaction_status=BOOK`, '']
+    : ['strategy=longest', `date_from=${g(PERIODI_RIDOTTI[0])}&date_to=${a}`, `date_from=${g(30)}&date_to=${a}&transaction_status=BOOK`, ''];
 }
 const messaggioBanca = (e, p = null) => {
   if (e.status !== 429) return e.message;
@@ -177,7 +177,7 @@ export function normalizzaMovimento(t) {
 export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } = {}) {
   const presenza = await intestazioniPerBanca(conto.aspsp_name, conto.aspsp_country, psu);
   psu = presenza.h;
-  const out = { conto: conto.id, letti: 0, nuovi: 0, aggiornati: 0 };
+  const out = { conto: conto.id, letti: 0, nuovi: 0, aggiornati: 0, traccia: [] };
   await q('UPDATE bank_accounts SET last_sync_at=now() WHERE id=$1', [conto.id]);
   try {
     const b = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/balances`, null, psu).catch((e) => { if (e.status === 401 || e.status === 403 || e.status === 429) throw e; return null; });
@@ -185,19 +185,28 @@ export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } 
     if (scelto) await q('UPDATE bank_accounts SET saldo=$2, saldo_tipo=$3, saldo_at=now() WHERE id=$1', [conto.id, Number(scelto.balance_amount?.amount), scelto.balance_type || null]);
     let chiave = null; let pagine = 0;
     const iban = conto.iban || `UID:${conto.identification_hash || conto.uid}`;
-    const richieste = richiesteMovimenti(conto, oggi);
-    let k = 0;
+    // senza utente presente ogni richiesta consuma il limite giornaliero: al più due forme; con l'utente presente tutte
+    const richieste = richiesteMovimenti(conto, oggi).slice(0, psu ? 9 : 2);
+    let k = 0; let parziale = null;
+    const traccia = (v) => { out.traccia.push(v); };
     do {
       let j;
       const qs = [richieste[k], chiave ? `continuation_key=${encodeURIComponent(chiave)}` : ''].filter(Boolean).join('&');
+      const nome = `${richieste[k] || 'senza date'}${chiave ? ` · pagina ${pagine + 1}` : ''}`;
       try { j = await chiama('GET', `/accounts/${encodeURIComponent(conto.uid)}/transactions${qs ? `?${qs}` : ''}`, null, psu); }
       catch (e) {
-        // la banca rifiuta il periodo (422) o la forma della richiesta (400 ASPSP_ERROR): si passa alla richiesta successiva
-        if ((e.status === 422 || e.status === 400) && !chiave && k < richieste.length - 1) { out.rifiuti = [...(out.rifiuti || []), `${richieste[k] || 'senza date'}: ${e.message}`]; k++; continue; }
-        if (out.rifiuti) e.message = `${e.message} · provate: ${[...out.rifiuti.map((x) => x.split(':')[0]), richieste[k] || 'senza date'].join(' | ')}`;
+        traccia({ richiesta: nome, esito: e.status || 0, errore: `${e.codice || ''} ${e.message}`.trim().slice(0, 200) });
+        if (e.status === 422 || e.status === 400) {
+          // pagina successiva rifiutata dopo movimenti già salvati: si tiene ciò che è arrivato e lo si dichiara
+          if (chiave && out.letti > 0) { parziale = `Lettura parziale: la banca ha interrotto alla pagina ${pagine + 1} (${e.message}). Salvati ${out.letti} movimenti.`; break; }
+          // la banca rifiuta il periodo, la forma della richiesta o la pagina successiva senza aver dato movimenti: forma successiva, da capo
+          if (k < richieste.length - 1) { k++; chiave = null; pagine = 0; out.dal = undefined; continue; }
+        }
+        if (out.traccia.length > 1) e.message = `${e.message} · provate: ${[...new Set(out.traccia.map((x) => x.richiesta.split(' · ')[0]))].join(' | ')}`;
         throw e;
       }
       out.dal = richieste[k] || 'periodo della banca';
+      let salvati = 0;
       for (const t of j?.transactions || []) {
         const m = normalizzaMovimento(t);
         if (!m.booking_date || !Number.isFinite(m.importo) || m.importo === 0) continue;
@@ -205,13 +214,14 @@ export async function sincronizzaConto(conto, { oggi = new Date(), psu = null } 
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
           ON CONFLICT (iban, chiave) DO UPDATE SET account_id=EXCLUDED.account_id, stato=EXCLUDED.stato, booking_date=EXCLUDED.booking_date, value_date=EXCLUDED.value_date, updated_at=now()
           RETURNING (xmax = 0) AS nuovo`, [iban, conto.id, m.chiave, m.entry_reference, m.booking_date, m.value_date, m.importo, m.currency, m.stato, m.controparte, m.controparte_iban, m.causale, JSON.stringify(t)]);
-        out.letti++; if (r.nuovo) out.nuovi++; else out.aggiornati++;
+        out.letti++; salvati++; if (r.nuovo) out.nuovi++; else out.aggiornati++;
       }
       chiave = j?.continuation_key || null; pagine++;
+      traccia({ richiesta: nome, esito: 200, ricevuti: (j?.transactions || []).length, salvati, continua: Boolean(chiave) });
     } while ((chiave && pagine < 60) || out.dal === undefined);
-    await q('UPDATE bank_accounts SET last_sync_ok_at=now(), last_error=NULL WHERE id=$1', [conto.id]);
+    await q('UPDATE bank_accounts SET last_sync_ok_at=now(), last_error=$2, last_trace=$3 WHERE id=$1', [conto.id, parziale, JSON.stringify({ at: oggi.toISOString(), presente: presenza.inviate, passi: out.traccia.slice(-12) })]);
   } catch (e) {
-    await q('UPDATE bank_accounts SET last_error=$2 WHERE id=$1', [conto.id, messaggioBanca(e, presenza).slice(0, 500)]);
+    await q('UPDATE bank_accounts SET last_error=$2, last_trace=$3 WHERE id=$1', [conto.id, messaggioBanca(e, presenza).slice(0, 500), JSON.stringify({ at: oggi.toISOString(), presente: presenza.inviate, passi: out.traccia.slice(-12) })]);
     if (e.status === 429) out.limite = true;
     // consenso scaduto o revocato in banca: la sessione non vale più
     if (e.status === 401 || e.status === 403 || /EXPIRED|REVOKED|CLOSED|INVALID_SESSION/i.test(`${e.codice || ''} ${e.message}`)) await q(`UPDATE bank_connections SET status='SCADUTA', last_error=$2, updated_at=now() WHERE id=$1 AND status='ATTIVA'`, [conto.connection_id, e.message.slice(0, 500)]);
@@ -257,7 +267,7 @@ export async function sincronizzaBanca({ adesso = new Date(), psu = null, automa
 export async function statoBanca() {
   const collegamenti = await many(`SELECT c.id, c.aspsp_name, c.aspsp_country, c.status, c.valid_until, c.authorized_at, c.last_error, c.created_at, u.full_name AS creato_da
       FROM bank_connections c LEFT JOIN users u ON u.id = c.created_by WHERE c.status <> 'IN_ATTESA' OR c.created_at > now() - interval '1 day' ORDER BY (c.status = 'ATTIVA') DESC, c.created_at DESC LIMIT 20`);
-  const conti = await many(`SELECT a.id, a.connection_id, a.iban, a.name, a.currency, a.attivo, a.saldo, a.saldo_at, a.last_sync_at, a.last_sync_ok_at, a.last_error, a.organization_id, c.aspsp_name, c.status AS collegamento_stato, c.valid_until,
+  const conti = await many(`SELECT a.id, a.connection_id, a.iban, a.name, a.currency, a.attivo, a.saldo, a.saldo_at, a.last_sync_at, a.last_sync_ok_at, a.last_error, a.last_trace, a.organization_id, c.aspsp_name, c.status AS collegamento_stato, c.valid_until,
       (SELECT count(*)::int FROM bank_transactions t WHERE t.iban = a.iban) AS movimenti, (SELECT max(t.booking_date)::text FROM bank_transactions t WHERE t.iban = a.iban) AS ultimo_movimento
       FROM bank_accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE a.attivo OR c.status = 'ATTIVA' ORDER BY a.attivo DESC, c.aspsp_name, a.iban`);
   return { configurata: bancaConfigurata(), ritorno: ritorno(), collegamenti, conti, aggiornata: await bancaAggiornata() };
