@@ -148,7 +148,7 @@ function dataTable(W, colonne, righe) {
 
 /** Firmatari della circolare: l'elenco, oppure (circolari precedenti) il solo firma_nome/firma_ruolo. */
 export function firmatariDi(c) {
-  const l = (Array.isArray(c.firmatari) ? c.firmatari : []).map((f) => ({ nome: clean(f?.nome), ruolo: clean(f?.ruolo), email: clean(f?.email), telefono: clean(f?.telefono) })).filter((f) => f.nome);
+  const l = (Array.isArray(c.firmatari) ? c.firmatari : []).map((f) => ({ nome: clean(f?.nome), ruolo: clean(f?.ruolo), email: clean(f?.email), telefono: clean(f?.telefono), ...(clean(f?.indirizzo) ? { indirizzo: clean(f.indirizzo) } : {}) })).filter((f) => f.nome);
   return l.length ? l : (clean(c.firma_nome) ? [{ nome: clean(c.firma_nome), ruolo: clean(c.firma_ruolo), email: '', telefono: '' }] : []);
 }
 // Chiusura (v0.98.0): a sinistra "Per informazioni" con le righe libere e i contatti di ogni firmatario; a destra saluto, società e
@@ -157,12 +157,12 @@ function closing(W, c, qr) {
   const lw = Math.round(W * 0.5), rw = W - lw;
   const contatti = (c.contatti || []).map(clean).filter(Boolean);
   const firme = firmatariDi(c);
-  const conRecapiti = firme.filter((f) => f.email || f.telefono);
+  const conRecapiti = firme.filter((f) => f.email || f.telefono || f.indirizzo);
   const riga = (x, o = {}) => p([t(x, { size: 19, ...o })], { after: 0, line: 240, keepNext: true });
   const left = [p([t('Per informazioni', { size: 15, bold: true, color: TEAL_TXT, caps: true, spacing: 20 })], { after: 60, line: 240, keepNext: true }), ...contatti.map((x) => riga(x))];
   conRecapiti.forEach((f, i) => {
     if (contatti.length || i) left.push(spacer(80));
-    left.push(riga(f.ruolo ? `${f.nome}, ${f.ruolo}` : f.nome, { bold: true }), riga([f.telefono ? `Tel. ${f.telefono}` : '', f.email ? `Mail: ${f.email}` : ''].filter(Boolean).join(' – ')));
+    left.push(riga(f.ruolo ? `${f.nome}, ${f.ruolo}` : f.nome, { bold: true }), ...[[f.telefono ? `Cell. ${f.telefono}` : '', f.email ? `Mail: ${f.email}` : ''].filter(Boolean).join(' – '), f.indirizzo || ''].filter(Boolean).map((x) => riga(x)));
   });
   if (qr) {
     left.push(spacer(100), table([new TableRow({ cantSplit: true, children: [

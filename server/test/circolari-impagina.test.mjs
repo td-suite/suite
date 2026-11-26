@@ -30,7 +30,7 @@ describe('Circolari v0.98.0: impaginazione (funzioni pure)', () => {
       firmatari: [{ nome: 'Prima Firmataria', ruolo: 'Chief Operating Officer', email: 'prima@esempio.test', telefono: '055 000001' }, { nome: 'Secondo Firmatario', ruolo: 'Direttore Sanitario', email: '', telefono: '' }],
       allegati_sgi: [{ code: 'TD-SGI-DEX005_01', titolo: 'Richiesta e consenso CDT', file: 'stampabili/a.pdf' }] };
     const xml = xmlDi((await renderDocx(c)).buffer);
-    for (const s of ['Prima Firmataria', 'Secondo Firmatario', 'Direttore Sanitario', 'Prima Firmataria, Chief Operating Officer', 'Tel. 055 000001 – Mail: prima@esempio.test', 'Servizio Clienti', 'TD-SGI-DEX005 (Richiesta e consenso CDT)']) assert.ok(xml.includes(s), `nel documento: ${s}`);
+    for (const s of ['Prima Firmataria', 'Secondo Firmatario', 'Direttore Sanitario', 'Prima Firmataria, Chief Operating Officer', 'Cell. 055 000001 – Mail: prima@esempio.test', 'Servizio Clienti', 'TD-SGI-DEX005 (Richiesta e consenso CDT)']) assert.ok(xml.includes(s), `nel documento: ${s}`);
     assert.ok(!xml.includes('Vecchia Firma'), 'con l\'elenco dei firmatari la firma singola non si usa');
     const par = xml.match(/<w:p>(?:(?!<\/w:p>).)*Primo paragrafo di prova\.(?:(?!<\/w:p>).)*<\/w:p>/s)?.[0] || '';
     assert.match(par, /w:after="0"/); assert.match(par, /w:line="240"/);
@@ -63,26 +63,42 @@ describe('Circolari v0.98.0: nella Suite', { skip: !process.env.DATABASE_URL_TES
     assert.equal(rev.firmatari.length, 2); assert.equal(rev.allegati_sgi.length, 1, 'la revisione porta firmatari e allegati');
   });
 
-  test('v0.98.2 · firmatari dal personale: dipendenti e LP attivi, ruolo e contatti dall\'anagrafica, mai il cellulare personale', async () => {
-    const pers = async (d) => must(await O.post('/api/people', d), `persona ${d.last_name}`);
-    for (const name of ['Chief Operating Officer', 'Direttore Sanitario']) { const r = await O.post('/api/job-roles', { name }); assert.ok(r.s < 300 || r.s === 409, `ruolo ${name}: ${r.s} ${r.text}`); }
-    const dip = await pers({ last_name: 'Firmataria', first_name: 'Dipendente', kind: 'DIPENDENTE', status: 'ATTIVO', email: 'dip.firma@esempio.test', phone: '333 0000000', phone_office: '055 111222', job_title: 'Chief Operating Officer' });
-    const lp = await pers({ last_name: 'Firmatario', first_name: 'Libero', kind: 'LP', status: 'ATTIVO', email: 'lp.firma@esempio.test', job_title: 'Direttore Sanitario' });
-    await pers({ last_name: 'Esterno', first_name: 'Referente', kind: 'ESTERNO', status: 'ATTIVO', email: 'esterno@esempio.test' });
-    const el = must(await O.get('/api/circolari/personale-firmatari'), 'elenco');
-    const d = el.find((x) => x.person_id === dip.id);
-    assert.deepEqual([d.nome, d.ruolo, d.email, d.telefono, d.tipo], ['Dipendente Firmataria', 'Chief Operating Officer', 'dip.firma@esempio.test', '055 111222', 'DIPENDENTE']);
-    assert.ok(el.some((x) => x.person_id === lp.id && x.tipo === 'LP'), 'anche i liberi professionisti');
-    assert.ok(!el.some((x) => x.nome === 'Referente Esterno'), 'gli esterni no');
-    assert.ok(!JSON.stringify(el).includes('333 0000000'), 'mai il cellulare personale');
-    const corpo = [{ type: 'paragrafo', text: 'Testo.' }];
-    // basta la persona: nome, ruolo e contatti scritti dal client vengono sostituiti da quelli dell'anagrafica
-    const b = must(await O.post('/api/circolari/circolari', { titolo: 'Firmatari dal personale', corpo, firmatari: [{ person_id: dip.id, nome: 'xx', email: 'falsa@esempio.test' }, { nome: 'Firmatario Libero' }] }), 'bozza');
-    assert.deepEqual(b.firmatari.map((f) => [f.person_id, f.nome, f.ruolo, f.email, f.telefono]), [[dip.id, 'Dipendente Firmataria', 'Chief Operating Officer', 'dip.firma@esempio.test', '055 111222'], [lp.id, 'Libero Firmatario', 'Direttore Sanitario', 'lp.firma@esempio.test', '']],
-      'il secondo, scritto per nome (cognome e nome in qualunque ordine), si collega da solo');
-    // l'anagrafica cambia: la bozza riletta porta il contatto nuovo
-    must(await O.put(`/api/people/${lp.id}`, { ...lp, phone_office: '055 333444' }), 'telefono in anagrafica');
-    const r = must(await O.get(`/api/circolari/circolari/${b.id}`), 'rilettura');
-    assert.equal(r.firmatari[1].telefono, '055 333444');
+  test('v0.99.2 · firmatari dal personale con i contatti di lavoro dell\'UTENTE (email, cellulare, sede), mai quelli della scheda del dipendente', async () => {
+    const pg = (await import('pg')).default; const db = new pg.Client({ connectionString: S.url }); await db.connect();
+    try {
+      const uno = async (t, p) => (await db.query(t, p)).rows[0];
+      const sede = await uno(`INSERT INTO public.sites (code, name, kind, address, zip, city, province) VALUES ('SED-FIR', 'Sede di prova', 'POLIAMBULATORIO', 'Via del Lavoro 1', '50019', 'Sesto Fiorentino', 'FI') RETURNING id`);
+      const pers = async (cognome, nome, kind, extra = '') => (await uno(`INSERT INTO public.people (kind, status, last_name, first_name, email, phone, phone_office, job_title, address, city) VALUES ($1, 'ATTIVO', $2, $3, $4, '333 0000000', '055 999888', $5, 'Via di Casa 9', 'Firenze') RETURNING id`, [kind, cognome, nome, `${nome.toLowerCase()}.privata@posta-personale.test`, extra])).id;
+      const dip = await pers('Firmataria', 'Dipendente', 'DIPENDENTE', 'Ruolo della scheda');
+      const lp = await pers('Firmatario', 'Libero', 'LP', 'Direttore Sanitario');
+      const senza = await pers('Senzautente', 'Persona', 'DIPENDENTE', 'Addetta');
+      await pers('Esterno', 'Referente', 'ESTERNO');
+      const utente = (pid, email, phone, title, site) => db.query(`INSERT INTO public.users (email, full_name, title, phone, status, auth_provider, person_id, site_id) VALUES ($1, 'x', $2, $3, 'ACTIVE', 'LOCAL', $4, $5)`, [email, title, phone, pid, site]);
+      await utente(dip, 'dip.firma@azienda.test', '345 1112223', 'Chief Operating Officer', sede.id);
+      await utente(lp, 'lp.firma@azienda.test', null, null, null);
+      const el = must(await O.get('/api/circolari/personale-firmatari'), 'elenco');
+      const d = el.find((x) => x.person_id === dip);
+      assert.deepEqual([d.nome, d.ruolo, d.email, d.telefono, d.indirizzo, d.tipo, d.utente], ['Dipendente Firmataria', 'Chief Operating Officer', 'dip.firma@azienda.test', '345 1112223', 'Sede di prova, Via del Lavoro 1, 50019 Sesto Fiorentino (FI)', 'DIPENDENTE', true]);
+      const l = el.find((x) => x.person_id === lp);
+      assert.deepEqual([l.tipo, l.email, l.telefono, l.ruolo], ['LP', 'lp.firma@azienda.test', '', 'Direttore Sanitario'], 'anche i liberi professionisti; cellulare assente nel profilo = vuoto, non quello della scheda');
+      const sz = el.find((x) => x.person_id === senza);
+      assert.deepEqual([sz.utente, sz.email, sz.telefono, sz.indirizzo], [false, '', '', ''], 'senza utente: nessun contatto');
+      assert.ok(!el.some((x) => x.nome === 'Referente Esterno'), 'gli esterni no');
+      const tutto = JSON.stringify(el);
+      for (const personale of ['333 0000000', '055 999888', 'posta-personale', 'Via di Casa']) assert.ok(!tutto.includes(personale), `mai i dati della scheda del dipendente: ${personale}`);
+      const corpo = [{ type: 'paragrafo', text: 'Testo.' }];
+      // basta la persona: ciò che scrive il client viene sostituito dai dati dell'utente; il nome scritto a mano si collega da solo
+      const b = must(await O.post('/api/circolari/circolari', { titolo: 'Firmatari dal personale', corpo, firmatari: [{ person_id: dip, nome: 'xx', email: 'falsa@esempio.test', telefono: '333 0000000' }, { nome: 'Firmatario Libero' }] }), 'bozza');
+      assert.deepEqual(b.firmatari.map((f) => [f.person_id, f.nome, f.email, f.telefono, f.indirizzo]), [[dip, 'Dipendente Firmataria', 'dip.firma@azienda.test', '345 1112223', 'Sede di prova, Via del Lavoro 1, 50019 Sesto Fiorentino (FI)'], [lp, 'Libero Firmatario', 'lp.firma@azienda.test', '', '']]);
+      // il profilo utente cambia: la bozza riletta porta il contatto nuovo
+      await db.query(`UPDATE public.users SET phone = '345 9998887' WHERE person_id = $1`, [lp]);
+      const r = must(await O.get(`/api/circolari/circolari/${b.id}`), 'rilettura');
+      assert.equal(r.firmatari[1].telefono, '345 9998887');
+      // nel documento: cellulare, mail e indirizzo di lavoro
+      const { renderDocx } = await import('../src/modules/circolari/lib/render.js');
+      const PizZip = (await import('pizzip')).default;
+      const xml = new PizZip((await renderDocx({ ...r, data: new Date() })).buffer).file('word/document.xml').asText();
+      assert.ok(xml.includes('Cell. 345 1112223') && xml.includes('dip.firma@azienda.test') && xml.includes('Via del Lavoro 1'), 'contatti di lavoro in fondo alla circolare');
+    } finally { await db.end(); }
   });
 });
