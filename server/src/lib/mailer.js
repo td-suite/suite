@@ -31,7 +31,8 @@ export function layout(title, bodyHtml, { footer } = {}) {
   </div></body></html>`;
 }
 
-export async function sendMail({ to, cc = [], subject, html, text, ref, attachments = [], from = null, logSubject = null }) {
+export async function sendMail({ to, cc = [], bcc = [], subject, html, text, ref, attachments = [], from = null, logSubject = null }) {
+  // bcc: destinatari in copia nascosta (Ccn), es. le liste di distribuzione delle circolari: nel registro email resta solo il loro numero
   // attachments: [{ filename, content (Buffer), contentType }]; from: casella mittente (predefinita config.mail.sender);
   // logSubject: oggetto da scrivere nel registro email e nel log del server al posto di quello vero (es. i referti dei Referti esterni,
   // il cui oggetto porta il nome del paziente: mai nei log)
@@ -39,8 +40,9 @@ export async function sendMail({ to, cc = [], subject, html, text, ref, attachme
   if (!toList.length) return { ok: false, skipped: true };
   const sender = String(from || config.mail.sender).trim();
   const subjectLog = logSubject || subject;
-  const log = async (status, error) => (await q('INSERT INTO email_log (to_addr, subject, status, error, ref, from_addr) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [toList.join(', '), subjectLog, status, error || null, ref || null, sender])).rows[0]?.id;
-  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.length} destinatari${cc.length ? ` (+${cc.length} in copia)` : ''} · ${subjectLog}`); return { ok: true, logged: true, logId: id, from: sender }; }
+  const bccList = (Array.isArray(bcc) ? bcc : [bcc]).filter(Boolean);
+  const log = async (status, error) => (await q('INSERT INTO email_log (to_addr, subject, status, error, ref, from_addr) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [toList.join(', ') + (bccList.length ? ` (+${bccList.length} in Ccn)` : ''), subjectLog, status, error || null, ref || null, sender])).rows[0]?.id;
+  if (config.mail.provider !== 'graph') { const id = await log('LOGGED'); console.log(`[mail:log] ${sender} → ${toList.length} destinatari${cc.length ? ` (+${cc.length} in copia)` : ''}${bccList.length ? ` (+${bccList.length} in Ccn)` : ''} · ${subjectLog}`); return { ok: true, logged: true, logId: id, from: sender }; }
   try {
     const tok = await graphToken();
     const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {
@@ -49,6 +51,7 @@ export async function sendMail({ to, cc = [], subject, html, text, ref, attachme
         subject, body: { contentType: 'HTML', content: html || `<pre>${text || ''}</pre>` },
         toRecipients: toList.map((a) => ({ emailAddress: { address: a } })),
         ccRecipients: cc.map((a) => ({ emailAddress: { address: a } })),
+        ...(bccList.length ? { bccRecipients: bccList.map((a) => ({ emailAddress: { address: a } })) } : {}),
         attachments: (attachments || []).filter((a) => a && a.content).map((a) => ({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.filename || 'allegato', contentType: a.contentType || 'application/octet-stream', contentBytes: Buffer.from(a.content).toString('base64') })),
       } }),
     });

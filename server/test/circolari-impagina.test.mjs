@@ -147,19 +147,32 @@ describe('Circolari v0.98.0: nella Suite', { skip: !process.env.DATABASE_URL_TES
       assert.deepEqual([ante.totale, ante.liste.map((l) => l.n), ante.extra], [7, [4, 2], 1], 'chi è già in una lista non si ripete');
       const inv = must(await O.post(`/api/circolari/circolari/${b.id}/invia`, { lista_ids: [L.INTERNI.id, L.PUNTI_PRELIEVO.id], emails: ['altro@esterno.test'] }), 'invio');
       assert.deepEqual([inv.invii, inv.n_destinatari, inv.n_inviati], [3, 7, 7]);
-      const posta = (await db.query(`SELECT to_addr, subject, body FROM public.email_log WHERE ref = $1 ORDER BY id`, [`circolare:${b.id}`]).catch(() => ({ rows: [] }))).rows;
-      if (posta.length) { assert.equal(posta.length, 7); assert.match(posta[0].subject, new RegExp(`^TD · ${pub.protocollo.replace(/[/]/g, '.')} · Circolare con invio$`)); }
-      const d = await uno(`SELECT codice, email FROM circolari.invii_destinatari WHERE email = 'tecnico@azienda.test'`);
+      // v0.99.9: UNA sola email. Mittente la casella della Qualità, in A i firmatari (qui nessuno: il mittente stesso), in Cc la Direzione, tutti in Ccn
+      assert.deepEqual([ante.intestazione.mittente, ante.intestazione.cc, ante.intestazione.ccn], ['qualita@toscanadiagnostica.it', ['francesco.epifani@toscanadiagnostica.it'], 7]);
+      assert.deepEqual([inv.intestazione.mittente, inv.intestazione.ccn], ['qualita@toscanadiagnostica.it', 7]);
+      const posta = (await db.query(`SELECT to_addr, subject, from_addr FROM public.email_log WHERE ref = $1 ORDER BY id`, [`circolare:${b.id}`])).rows;
+      assert.equal(posta.length, 1, 'una sola email per invio'); assert.equal(posta[0].from_addr, 'qualita@toscanadiagnostica.it'); assert.match(posta[0].to_addr, /\(\+7 in Ccn\)$/);
+      assert.ok(!/tecnico@azienda\.test|pp\.prova@azienda\.test/.test(posta[0].to_addr), 'gli indirizzi dei destinatari non compaiono tra i destinatari in chiaro');
+      assert.match(posta[0].subject, new RegExp(`^TD · ${pub.protocollo.replace(/[/]/g, '.')} · Circolare con invio$`));
       const tok = (await uno('SELECT pub_token FROM circolari.circolari WHERE id = $1', [b.id])).pub_token;
-      // pagina di conferma senza sessione: aprirla NON conferma (controlli automatici della posta), il pulsante sì
-      const pagina = await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${d.codice}`); assert.equal(pagina.status, 200); assert.match(await pagina.text(), /Confermo di aver letto la circolare/);
-      let r = await uno('SELECT aperta_at, confermata_at FROM circolari.invii_destinatari WHERE codice = $1', [d.codice]); assert.ok(r.aperta_at && !r.confermata_at);
-      const ok = await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${d.codice}`, { method: 'POST' }); assert.equal(ok.status, 200); assert.match(await ok.text(), /Lettura confermata/);
-      r = await uno('SELECT confermata_at FROM circolari.invii_destinatari WHERE codice = $1', [d.codice]); assert.ok(r.confermata_at);
+      // conferma di lettura: pagina unica, il destinatario indica il proprio indirizzo; aprirla non conferma nulla
+      const pagina = await fetch(`${S.base}/api/circolari/pub/${tok}/conferma`); assert.equal(pagina.status, 200); assert.match(await pagina.text(), /Confermo di aver letto la circolare/);
+      const invia = (email) => fetch(`${S.base}/api/circolari/pub/${tok}/conferma`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email }) });
+      let r = await uno(`SELECT confermata_at FROM circolari.invii_destinatari WHERE email = 'tecnico@azienda.test'`); assert.ok(!r.confermata_at);
+      const no = await invia('estraneo@altrove.test'); assert.equal(no.status, 404); const testoNo = await no.text(); assert.match(testoNo, /non risulta tra i destinatari/); assert.ok(!/tecnico@azienda\.test/.test(testoNo), 'la pagina non rivela i destinatari');
+      const ok = await invia(' Tecnico@Azienda.test '); assert.equal(ok.status, 200); assert.match(await ok.text(), /Lettura confermata/);
+      r = await uno(`SELECT confermata_at FROM circolari.invii_destinatari WHERE email = 'tecnico@azienda.test'`); assert.ok(r.confermata_at);
+      // i collegamenti personali delle email già partite con la 0.99.4 continuano a funzionare
+      const vecchio = await uno(`SELECT codice FROM circolari.invii_destinatari WHERE email = 'flow@azienda.test'`);
+      assert.equal((await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${vecchio.codice}`)).status, 200);
       assert.equal((await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${'0'.repeat(24)}`)).status, 404);
+      // mittente e copia si cambiano nelle impostazioni; la copia si può svuotare
+      const imp = must(await O.put('/api/circolari/email-testo', { email_oggetto: 'TD · {protocollo} · {titolo}', email_testo: 'Buongiorno,\ncircolare del {data}.', email_mittente: 'Qualita@toscanadiagnostica.it', email_cc: '' }), 'mittente e copia');
+      assert.deepEqual([imp.email_mittente, imp.email_cc], ['qualita@toscanadiagnostica.it', '']);
+      assert.equal((await O.put('/api/circolari/email-testo', { email_oggetto: 'Oggetto', email_testo: 'Testo', email_cc: 'non-un-indirizzo' })).s, 400);
       const det = must(await O.get(`/api/circolari/circolari/${b.id}`), 'dettaglio');
       const riga = det.invii.find((i) => i.lista_nome === 'Interni');
-      assert.deepEqual([riga.con_conferma, riga.n_confermate, riga.n_aperte, riga.n_destinatari], [true, 1, 1, 4]);
+      assert.deepEqual([riga.con_conferma, riga.n_confermate, riga.n_destinatari], [true, 1, 4]);
       const uni = must(await O.get(`/api/circolari/circolari/${b.id}/invii/${riga.id}`), 'invio');
       assert.deepEqual(uni.conferme.map((x) => [x.email, Boolean(x.confermata_at)])[0], ['tecnico@azienda.test', true]);
     } finally { await db.end(); }

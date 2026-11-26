@@ -41,7 +41,9 @@ r.get('/liste', ah(async (_req, res) => {
 r.get('/email-testo', ah(async (_req, res) => res.json({ ...(await testoEmail()), segnaposto: SEGNAPOSTO, predefinito: EMAIL_PREDEFINITA })));
 r.put('/email-testo', ah(async (req, res) => {
   if (!canManage(req.user)) throw forbidden('Il testo dell\'email si cambia con il profilo Pubblicazione');
-  const b = parse(z.object({ email_oggetto: z.string().trim().min(3).max(200), email_testo: z.string().trim().min(3).max(3000) }), req.body);
+  const b = parse(z.object({ email_oggetto: z.string().trim().min(3).max(200), email_testo: z.string().trim().min(3).max(3000),
+    email_mittente: z.string().trim().toLowerCase().regex(EMAIL, 'Mittente: indirizzo non valido').max(200).optional(),
+    email_cc: z.string().trim().max(600).refine((t) => t.split(/[\s,;]+/).filter(Boolean).every((x) => EMAIL.test(x)), 'In copia: indirizzo non valido').optional() }), req.body);
   const out = await salvaTestoEmail(b);
   await audit(req, 'CIRCOLARI_EMAIL_TESTO', { module: KEY, entity: 'impostazioni', label: 'Testo dell\'email di invio' });
   res.json(out);

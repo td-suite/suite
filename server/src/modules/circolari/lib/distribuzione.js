@@ -61,23 +61,41 @@ export async function destinatariLista(lista) {
 }
 
 // ---------------------------------------------------------------- testo dell'email di invio
+// v0.99.9 (regola del CEO del 26/11/2026): UNA sola email per invio. Mittente la casella della Qualità, in A i firmatari della
+// circolare, in Cc la Direzione, TUTTI i destinatari delle liste in Ccn (nessuno vede gli indirizzi degli altri).
 export const EMAIL_PREDEFINITA = {
   email_oggetto: 'Circolare {protocollo}: {titolo}',
   email_testo: 'Gentile Cliente,\nin allegato la circolare in oggetto.\n\nLa versione digitale, sempre aggiornata, è raggiungibile dal collegamento in calce.\n\nCordiali saluti',
+  email_mittente: 'qualita@toscanadiagnostica.it',
+  email_cc: 'francesco.epifani@toscanadiagnostica.it',
 };
+const CHIAVI = ['email_oggetto', 'email_testo', 'email_mittente', 'email_cc'];
 export const SEGNAPOSTO = ['protocollo', 'titolo', 'sintesi', 'data', 'decorrenza'];
+export const indirizzi = (testo) => [...new Set(String(testo || '').split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter((x) => EMAIL.test(x)))];
 export async function testoEmail() {
-  const rows = await many(`SELECT key, value FROM impostazioni WHERE key IN ('email_oggetto', 'email_testo')`);
+  const rows = await many(`SELECT key, value FROM impostazioni WHERE key = ANY($1::text[])`, [CHIAVI]);
   const s = { ...EMAIL_PREDEFINITA };
-  for (const r of rows) if (typeof r.value === 'string' && r.value.trim()) s[r.key] = r.value;
+  for (const r of rows) if (typeof r.value === 'string' && (r.value.trim() || r.key === 'email_cc')) s[r.key] = r.value;   // la copia si può svuotare
   return s;
 }
-export async function salvaTestoEmail({ email_oggetto, email_testo }) {
-  for (const [k, v] of [['email_oggetto', email_oggetto], ['email_testo', email_testo]]) {
-    if (v == null) continue;
-    await one(`INSERT INTO impostazioni (key, value) VALUES ($1, to_jsonb($2::text)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now() RETURNING key`, [k, String(v)]);
+export async function salvaTestoEmail(b) {
+  for (const k of CHIAVI) {
+    if (b[k] == null) continue;
+    await one(`INSERT INTO impostazioni (key, value) VALUES ($1, to_jsonb($2::text)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now() RETURNING key`, [k, String(b[k])]);
   }
   return testoEmail();
+}
+/**
+ * Intestazione dell'email di una circolare: mittente, A (firmatari con indirizzo; se nessuno ne ha uno, il mittente stesso), Cc, e i
+ * destinatari in Ccn ripuliti da chi è già in A o in Cc. Funzione pura.
+ */
+export function intestazioneEmail(testo, firmatari, destinatari) {
+  const from = indirizzi(testo.email_mittente)[0] || EMAIL_PREDEFINITA.email_mittente;
+  const a = [...new Set((firmatari || []).map((f) => String(f.email || '').trim().toLowerCase()).filter((e) => EMAIL.test(e)))];
+  const to = a.length ? a : [from];
+  const cc = indirizzi(testo.email_cc).filter((e) => !to.includes(e));
+  const bcc = [...new Set((destinatari || []).map((d) => String(d.email || '').toLowerCase()))].filter((e) => EMAIL.test(e) && !to.includes(e) && !cc.includes(e));
+  return { from, to, cc, bcc, firmatari_senza_email: (firmatari || []).filter((f) => !EMAIL.test(String(f.email || '').trim())).map((f) => f.nome) };
 }
 /** Sostituisce {protocollo}, {titolo}, {sintesi}, {data}, {decorrenza} con i dati della circolare. */
 export const compila = (testo, c, dataIt) => String(testo || '').replace(/\{(protocollo|titolo|sintesi|data|decorrenza)\}/g, (_m, k) => (k === 'data' ? dataIt : String(c[k] ?? '')));

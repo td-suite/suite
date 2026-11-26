@@ -190,3 +190,20 @@ Due correzioni del CEO alle liste della 0.99.4.
 ## v0.99.8 · Indirizzi incollati come elenco (26/11/2026)
 
 Errore presente dalla prima versione delle liste, segnalato dal CEO: incollando più indirizzi in "Aggiungi indirizzi" e premendo Aggiungi **entrava solo l'ultimo** (ogni aggiunta ripartiva dallo stesso elenco di partenza). Ora entrano tutti in un solo passaggio, senza doppioni, con un messaggio che dice quanti; maiuscole, virgole, punti e virgola, spazi, a capo, `<…>` e `mailto:` sono accettati; gli indirizzi non validi restano nel riquadro per essere corretti. Premendo **Salva** con indirizzi ancora nel riquadro, questi entrano nella lista senza bisogno di premere Aggiungi. Solo interfaccia (`pages/Liste.jsx`).
+
+## v0.99.9 · Una sola email: firmatari in A, Direzione in Cc, destinatari in Ccn (26/11/2026)
+
+Regola del CEO. Ogni invio di una circolare è **una sola email**:
+
+- **Mittente** `qualita@toscanadiagnostica.it` (impostazione `email_mittente`);
+- **A** i firmatari della circolare (indirizzo di lavoro dell'utente; se nessun firmatario ha un indirizzo, il mittente stesso);
+- **Cc** `francesco.epifani@toscanadiagnostica.it` (impostazione `email_cc`, uno o più indirizzi, si può svuotare);
+- **Ccn** tutti i destinatari delle liste scelte e degli "Altri indirizzi", senza doppioni e senza chi è già in A o in Cc. Nessun destinatario vede gli indirizzi degli altri.
+
+Mittente e copia si cambiano in Liste di distribuzione > "Email di invio: mittente, copia e testo". La finestra di invio mostra Mittente, A, Cc e il numero di destinatari in Ccn prima di inviare, e segnala i firmatari senza indirizzo. `lib/mailer.js` accetta `bcc`; nel registro email resta solo il numero dei destinatari in Ccn.
+
+**Conferma di lettura.** Con un solo messaggio uguale per tutti non può più esserci un collegamento personale. Il pulsante dell'email apre `/api/circolari/pub/:token/conferma`: il destinatario indica l'indirizzo a cui ha ricevuto la circolare e conferma; l'indirizzo è accettato solo se è tra i destinatari di un invio di quella circolare, e la pagina non rivela mai gli altri. Non si registra più "collegamento aperto" per destinatario. I collegamenti personali delle email partite con la 0.99.4 restano validi.
+
+**Corretto insieme.** Un invio fallito veniva registrato come riuscito (la funzione di invio restituisce l'errore senza sollevarlo): ora l'esito è quello vero, l'invio fallito resta a registro come non riuscito e la finestra mostra il motivo.
+
+**Da verificare in produzione.** La Suite deve poter inviare da `qualita@` (permesso Mail.Send dell'applicazione su quella casella, come per people@ e service@): senza, l'invio si ferma con l'errore di Graph e nessuno riceve nulla. Limite: 200 destinatari per invio (`CIRCOLARI_MAX_EMAIL_BATCH`).

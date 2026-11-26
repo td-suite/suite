@@ -114,10 +114,14 @@ function TestoEmail() {
   const [f, setF] = useState(null);
   const v = f || data;
   if (!v) return null;
-  const salva = async () => { try { await api.put('/email-testo', { email_oggetto: v.email_oggetto, email_testo: v.email_testo }); toast('Testo dell\'email salvato'); setF(null); reload(); } catch (e) { toast(e, 'err'); } };
+  const salva = async () => { try { await api.put('/email-testo', { email_oggetto: v.email_oggetto, email_testo: v.email_testo, email_mittente: v.email_mittente, email_cc: v.email_cc || '' }); toast('Testo dell\'email salvato'); setF(null); reload(); } catch (e) { toast(e, 'err'); } };
   return (
-    <Card title="Testo dell'email di invio" icon="mail" style={{ marginTop: 16 }} actions={<div className="row" style={{ gap: 6 }}>{f && <button className="btn sm ghost" onClick={() => setF({ ...v, ...data.predefinito })}>Testo predefinito</button>}<button className="btn sm" disabled={!f} onClick={salva}>Salva</button></div>}>
+    <Card title="Email di invio: mittente, copia e testo" icon="mail" style={{ marginTop: 16 }} actions={<div className="row" style={{ gap: 6 }}>{f && <button className="btn sm ghost" onClick={() => setF({ ...v, ...data.predefinito })}>Testo predefinito</button>}<button className="btn sm" disabled={!f} onClick={salva}>Salva</button></div>}>
       <div className="circ-form">
+        <div className="two">
+          <Field label="Mittente" help="La casella da cui parte la circolare. La Suite deve essere autorizzata a inviare da questa casella."><input type="email" value={v.email_mittente || ''} maxLength={200} onChange={(e) => setF({ ...v, email_mittente: e.target.value })} /></Field>
+          <Field label="In copia (Cc)" help="Uno o più indirizzi separati da virgola. In A vanno i firmatari della circolare; i destinatari delle liste vanno sempre in Ccn."><input value={v.email_cc || ''} maxLength={600} onChange={(e) => setF({ ...v, email_cc: e.target.value })} /></Field>
+        </div>
         <Field label="Oggetto"><input value={v.email_oggetto} maxLength={200} onChange={(e) => setF({ ...v, email_oggetto: e.target.value })} /></Field>
         <Field label="Messaggio" help={`Segnaposto: ${(data.segnaposto || []).map((x) => `{${x}}`).join(', ')}. Sotto il messaggio l'email porta sempre titolo e sintesi della circolare, il collegamento alla versione digitale, il pulsante di conferma di lettura e le firme.`}><textarea rows={7} value={v.email_testo} maxLength={3000} onChange={(e) => setF({ ...v, email_testo: e.target.value })} /></Field>
       </div>

@@ -1,7 +1,7 @@
 // Versione digitale della circolare raggiunta dal QR code: GET /api/circolari/pub/:token (PDF) e /:token/info (JSON).
 // Nessuna sessione, nessun dato personale: il token è casuale e assegnato alla pubblicazione. Una circolare superata
 // rimanda all'ultima revisione in vigore dello stesso protocollo.
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { one, q } from '../db.js';
 import { ah, notFound } from '../../../lib/util.js';
 
@@ -34,6 +34,28 @@ async function destinatario(token, codice) {
   if (!d) throw notFound('Collegamento non valido');
   return { c, d };
 }
+// v0.99.9: l'email parte una sola volta con tutti i destinatari in Ccn, quindi il collegamento è uguale per tutti. La pagina chiede
+// l'indirizzo e conferma solo se è tra i destinatari di un invio di questa circolare; non dice mai chi sono gli altri destinatari.
+const modulo = (c, token, messaggio = '', valore = '') => pagina(`Circolare ${esc(c.protocollo)}`, `<h2 style="margin:0 0 6px;color:#1C505E;font-size:19px">Circolare ${esc(c.protocollo)}</h2><p style="margin:0 0 18px"><b>${esc(c.titolo)}</b></p>${messaggio}
+  <form method="post" action="/api/circolari/pub/${token}/conferma"><label style="display:block;font-size:14px;margin-bottom:6px">Indirizzo email a cui ha ricevuto la circolare</label>
+  <input type="email" name="email" required value="${esc(valore)}" autocomplete="email" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #b9c9cd;border-radius:8px;font-size:15px;margin-bottom:14px">
+  <button style="background:#1C505E;color:#fff;border:0;padding:12px 20px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer">Confermo di aver letto la circolare</button></form>
+  <p style="margin-top:18px"><a href="/api/circolari/pub/${token}" style="color:#1C505E">Apri la circolare</a></p>`);
+r.get('/:token/conferma', ah(async (req, res) => {
+  const c = await resolve(req.params.token);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
+  res.send(modulo(c, req.params.token));
+}));
+r.post('/:token/conferma', express.urlencoded({ extended: false, limit: '2kb' }), ah(async (req, res) => {
+  const c = await resolve(req.params.token);
+  const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
+  const righe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? (await q(`UPDATE invii_destinatari d SET aperta_at = coalesce(d.aperta_at, now()), confermata_at = coalesce(d.confermata_at, now())
+      FROM circolari x WHERE x.id = d.circolare_id AND x.anno = $1 AND x.numero = $2 AND lower(d.email) = $3 AND d.inviata RETURNING d.id`, [c.anno, c.numero, email])).rowCount : 0;
+  if (!righe) return res.status(404).send(modulo(c, req.params.token, '<p style="color:#b3261e;font-weight:600">Questo indirizzo non risulta tra i destinatari della circolare. Indichi l\'indirizzo a cui l\'ha ricevuta.</p>', email));
+  res.send(pagina('Lettura confermata', `<h2 style="margin:0 0 6px;color:#1C505E;font-size:19px">Lettura confermata</h2><p>Grazie. La lettura della circolare ${esc(c.protocollo)} è stata registrata per ${esc(email)}.</p><p><a href="/api/circolari/pub/${req.params.token}" style="color:#1C505E">Apri la circolare</a></p>`));
+}));
+
 r.get('/:token/conferma/:codice', ah(async (req, res) => {
   const { c, d } = await destinatario(req.params.token, req.params.codice);
   await q('UPDATE invii_destinatari SET aperta_at = coalesce(aperta_at, now()) WHERE id = $1', [d.id]);

@@ -218,7 +218,7 @@ function InviaModal({ c, onDone, onClose }) {
   const invia = async () => {
     if (!n) return toast('Scegli almeno una lista o indica un indirizzo', 'err');
     setBusy(true);
-    try { const r = await api.post(`/circolari/${c.id}/invia`, { lista_ids: scelte, emails: extra, oggetto: ogg, messaggio: msg, conferma }); toast(`Invio registrato: ${r.n_inviati} su ${r.n_destinatari}${r.n_errori ? `, ${r.n_errori} errori` : ''}`); onDone(); }
+    try { const r = await api.post(`/circolari/${c.id}/invia`, { lista_ids: scelte, emails: extra, oggetto: ogg, messaggio: msg, conferma }); toast(`Email partita da ${r.intestazione?.mittente || 'la casella della Suite'}: ${r.n_inviati} destinatari in Ccn`); onDone(); }
     catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
@@ -230,10 +230,11 @@ function InviaModal({ c, onDone, onClose }) {
       </Field>
       <Field label="Altri indirizzi" help="Separati da virgola, spazio o a capo"><textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} /></Field>
       {ante && <div className={`small ${troppi ? 'red' : 'muted'}`}>{troppi ? `${n} destinatari: il massimo per invio è ${ante.massimo}. Invia una lista per volta.` : `Destinatari effettivi: ${n}${ante.liste.map((l) => ` · ${l.nome} ${l.n}`).join('')}${ante.extra ? ` · altri ${ante.extra}` : ''}`}</div>}
+      {ante?.intestazione && <div className="circ-intestazione small"><div><b>Mittente</b> {ante.intestazione.mittente}</div><div><b>A</b> {ante.intestazione.a.join(', ')}{ante.intestazione.firmatari_senza_email?.length ? <span className="red"> · senza indirizzo: {ante.intestazione.firmatari_senza_email.join(', ')}</span> : ''}</div><div><b>Cc</b> {ante.intestazione.cc.join(', ') || 'nessuno'}</div><div><b>Ccn</b> {ante.intestazione.ccn} destinatari: nessuno vede gli indirizzi degli altri</div></div>}
       <Field label="Oggetto dell'email"><input value={ogg} onChange={(e) => setOggetto(e.target.value)} maxLength={200} /></Field>
       <Field label="Messaggio" help="Parte dal testo salvato in Liste di distribuzione; qui lo ritocchi per questo invio. I segnaposto {protocollo}, {titolo}, {data} si compilano da soli."><textarea rows={6} value={msg} onChange={(e) => setMessaggio(e.target.value)} maxLength={3000} /></Field>
-      <label className="f inline"><input type="checkbox" checked={conferma} onChange={(e) => setConferma(e.target.checked)} /> chiedi la conferma di lettura (pulsante nell'email, registrata per ogni destinatario)</label>
-      <div className="small muted">In allegato il {c.has_pdf ? 'PDF' : 'Word'} della circolare; nel testo il collegamento alla versione digitale. Mittente: la casella della Suite. Una riga di registro per ogni lista.</div>
+      <label className="f inline"><input type="checkbox" checked={conferma} onChange={(e) => setConferma(e.target.checked)} /> chiedi la conferma di lettura (pulsante nell'email: il destinatario conferma indicando il proprio indirizzo)</label>
+      <div className="small muted">In allegato il {c.has_pdf ? 'PDF' : 'Word'} della circolare; nel testo il collegamento alla versione digitale. Parte una sola email: in A i firmatari, in Cc la Direzione, tutti i destinatari in Ccn. Mittente e copia si cambiano in Liste di distribuzione. Una riga di registro per ogni lista.</div>
     </div>
   </Modal>;
 }
