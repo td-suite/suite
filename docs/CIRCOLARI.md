@@ -207,3 +207,12 @@ Mittente e copia si cambiano in Liste di distribuzione > "Email di invio: mitten
 **Corretto insieme.** Un invio fallito veniva registrato come riuscito (la funzione di invio restituisce l'errore senza sollevarlo): ora l'esito è quello vero, l'invio fallito resta a registro come non riuscito e la finestra mostra il motivo.
 
 **Da verificare in produzione.** La Suite deve poter inviare da `qualita@` (permesso Mail.Send dell'applicazione su quella casella, come per people@ e service@): senza, l'invio si ferma con l'errore di Graph e nessuno riceve nulla. Limite: 200 destinatari per invio (`CIRCOLARI_MAX_EMAIL_BATCH`).
+
+## v0.99.10 · Una email per destinatario, conferma con un clic, Organizzazione = Legal entity (26/11/2026)
+
+Decisioni del CEO, che sostituiscono l'invio della 0.99.9 (una sola email con tutti in Ccn).
+
+- **Invio.** Una email **per destinatario**: mittente `qualita@toscanadiagnostica.it`, **in A il solo destinatario**, **in Cc** gli indirizzi dell'impostazione `email_cc` (il CEO) **e i firmatari** della circolare. Nessun destinatario vede gli altri. Chi è in Cc riceve una copia per ogni destinatario. Tre tentativi se il servizio di posta è occupato; l'esito è registrato destinatario per destinatario.
+- **Conferma di lettura con un clic.** Il pulsante dell'email è personale (`/pub/:token/conferma/:codice`): la pagina che si apre registra da sola la conferma e mostra "Lettura confermata", senza chiedere nulla. La conferma parte da una riga di script della pagina: i controlli automatici della posta che aprono i collegamenti senza eseguire la pagina non confermano al posto della persona (un controllo che esegue la pagina può farlo: limite noto). Senza script resta il pulsante.
+- **Email già partite con la 0.99.9** (circolare TD-2026/002 del 26/11/2026, 30 destinatari): il loro pulsante porta ancora alla pagina che chiede l'indirizzo; la pagina resta in funzione solo per quelle.
+- **Liste, Organizzazione.** Nei destinatari scritti a mano l'Organizzazione non è più un testo: si sceglie tra le **Legal entity** dell'anagrafica (`GET /api/circolari/legal-entity`, tendina con ricerca). Si salva `organization_id`; il nome mostrato è quello di oggi dell'anagrafica. Il testo scritto prima resta visibile come "(non collegata)" finché non si sceglie una Legal entity. "Proponi dall'anagrafica" collega già la Legal entity.

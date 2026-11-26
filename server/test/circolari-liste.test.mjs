@@ -73,4 +73,20 @@ describe('Circolari: liste Punti Prelievo e Interni', { skip: SALTA }, () => {
     const pp = must(await O.put(`/api/circolari/liste/${lista('PUNTI_PRELIEVO').id}`, { persone: [ivo.person_id] }), 'PP');
     assert.deepEqual(pp.persone, []);
   });
+
+  // v0.99.10: l'Organizzazione di un destinatario è una Legal entity dell'anagrafica (id), non un testo libero
+  test('destinatari collegati a una Legal entity: si salva l\'id, il nome è quello dell\'anagrafica di oggi', async () => {
+    const le = must(await O.get('/api/circolari/legal-entity'), 'legal entity');
+    assert.ok(le.some((o) => o.id === D.org.c1 && o.name === 'Cliente Test Uno'));
+    const nuova = must(await O.post('/api/circolari/liste', { nome: 'Service attivi', segmento: 'CLIENTI_SERVICE', destinatari: [
+      { email: 'Info@cliente-uno.test', organization_id: D.org.c1, organizzazione: 'testo ignorato' }, { email: 'altro@cliente.test', organizzazione: 'Scritta a mano' }, { email: 'rotto@cliente.test', organization_id: 999999 }] }), 'lista');
+    let l = must(await O.get(`/api/circolari/liste/${nuova.id}`), 'lista');
+    assert.deepEqual(l.destinatari.map((d) => [d.email, d.organization_id, d.organizzazione]), [['info@cliente-uno.test', D.org.c1, 'Cliente Test Uno'], ['altro@cliente.test', null, 'Scritta a mano'], ['rotto@cliente.test', null, '']]);
+    await db.query(`UPDATE public.organizations SET name = 'Cliente Uno Rinominato' WHERE id = $1`, [D.org.c1]);
+    l = must(await O.get(`/api/circolari/liste/${nuova.id}`), 'lista');
+    assert.equal(l.destinatari[0].organizzazione, 'Cliente Uno Rinominato', 'il nome segue l\'anagrafica');
+    await db.query(`UPDATE public.organizations SET name = 'Cliente Test Uno' WHERE id = $1`, [D.org.c1]);
+    const prop = must(await O.get('/api/circolari/liste/proposte?segmento=PUNTI_PRELIEVO'), 'proposte');
+    assert.ok(prop.every((x) => 'organization_id' in x), 'le proposte portano già la Legal entity');
+  });
 });

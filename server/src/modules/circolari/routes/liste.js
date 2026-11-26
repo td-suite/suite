@@ -14,14 +14,22 @@ const SEGMENTI = ['CLIENTI_SERVICE', 'PUNTI_PRELIEVO', 'MEDICINA_LAVORO', 'PERSO
 const canManage = (u) => ['ADMIN', 'PUBBLICATORE'].includes(u.role);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const destSchema = z.array(z.object({ email: z.string().trim().toLowerCase().regex(EMAIL, 'email non valida').max(200), nome: z.string().trim().max(200).optional().default(''), organizzazione: z.string().trim().max(200).optional().default('') })).max(2000);
+const destSchema = z.array(z.object({ email: z.string().trim().toLowerCase().regex(EMAIL, 'email non valida').max(200), nome: z.string().trim().max(200).optional().default(''), organizzazione: z.string().trim().max(200).optional().default(''),
+  organization_id: z.coerce.number().int().positive().nullable().optional() })).max(2000);   // v0.99.10: Legal entity dell'anagrafica
 const listaSchema = z.object({ nome: z.string().trim().min(2).max(120), descrizione: z.string().trim().max(500).optional().default(''), segmento: z.enum(SEGMENTI).optional().default('CLIENTI_SERVICE'), destinatari: destSchema.optional().default([]), attiva: z.boolean().optional().default(true), persone: z.array(z.coerce.number().int().positive()).max(2000).optional().default([]) });
 
 // Email delle Legal entity clienti della linea (attivi e contrattualizzati, funzione unica clientiAttivi della Suite)
 async function emailClienti(linea) {
   const ids = [...new Set((await clientiAttivi({ linea }).catch(() => [])).map((c) => c.org_id))];
   if (!ids.length) return [];
-  return suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione FROM public.organizations o WHERE o.id = ANY($1::int[]) AND o.email IS NOT NULL AND o.email <> '' ORDER BY lower(o.name)`, [ids]).catch(() => []);
+  return suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione, o.id AS organization_id FROM public.organizations o WHERE o.id = ANY($1::int[]) AND o.email IS NOT NULL AND o.email <> '' ORDER BY lower(o.name)`, [ids]).catch(() => []);
+}
+// v0.99.10 (CEO): l'Organizzazione di un destinatario è una Legal entity dell'anagrafica, non un testo libero. Si salva l'id; il nome
+// mostrato è sempre quello di oggi dell'anagrafica. Un id che non esiste più si scarta; il testo scritto prima resta come "non collegata".
+async function conLegalEntity(dest) {
+  const ids = [...new Set((dest || []).map((d) => Number(d.organization_id)).filter((x) => x > 0))];
+  const nomi = new Map(ids.length ? (await suiteMany('SELECT id, name FROM public.organizations WHERE id = ANY($1::int[])', [ids])).map((o) => [Number(o.id), o.name]) : []);
+  return (dest || []).map((d) => { const id = Number(d.organization_id) || null; return id && nomi.has(id) ? { ...d, organization_id: id, organizzazione: nomi.get(id) } : { ...d, organization_id: null }; });
 }
 const dedupe = (arr) => { const seen = new Set(); return arr.filter((d) => (seen.has(d.email) ? false : (seen.add(d.email), true))); };
 
@@ -49,13 +57,16 @@ r.put('/email-testo', ah(async (req, res) => {
   res.json(out);
 }));
 
+// Legal entity dell'anagrafica tra cui scegliere l'Organizzazione di un destinatario (attive; nome, tipo, città)
+r.get('/legal-entity', ah(async (_req, res) => res.json(await suiteMany(`SELECT o.id, o.name, o.kind, o.city FROM public.organizations o WHERE coalesce(o.active, TRUE) ORDER BY lower(o.name)`))));
+
 // Proposte di destinatari dall'anagrafica unica, per segmento
 r.get('/liste/proposte', ah(async (req, res) => {
   const { segmento } = parse(z.object({ segmento: z.enum(SEGMENTI) }), req.query);
   let rows = [];
   if (segmento === 'CLIENTI_SERVICE' || segmento === 'PUNTI_PRELIEVO' || segmento === 'PARTNER') {
     const kinds = segmento === 'CLIENTI_SERVICE' ? ['SERVICE'] : segmento === 'PUNTI_PRELIEVO' ? ['PUNTO_PRELIEVI'] : ['SERVICE', 'PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO', 'ALTRO'];
-    rows = await suiteMany(`SELECT lower(s.email) AS email, s.name AS nome, coalesce(o.name, '') AS organizzazione FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id WHERE s.active AND s.email IS NOT NULL AND s.email <> '' AND s.kind = ANY($1::text[]) ORDER BY lower(s.name)`, [kinds]);
+    rows = await suiteMany(`SELECT lower(s.email) AS email, s.name AS nome, coalesce(o.name, '') AS organizzazione, o.id AS organization_id FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id WHERE s.active AND s.email IS NOT NULL AND s.email <> '' AND s.kind = ANY($1::text[]) ORDER BY lower(s.name)`, [kinds]);
     // A5 (blocco 2): Legal entity dei clienti Service attivi e contrattualizzati (lib/clienti.js) per Clienti service. B12: per Partner
     // le Legal entity di tipo PARTNER e quelle che ospitano una sede attiva
     const ospitanti = `o.id IN (SELECT s.host_organization_id FROM public.sites s WHERE s.active AND s.tenure = 'OSPITATA' AND s.host_organization_id IS NOT NULL)`;
@@ -63,7 +74,7 @@ r.get('/liste/proposte', ah(async (req, res) => {
     const orgs = segmento === 'CLIENTI_SERVICE'
       ? await emailClienti('SRV')
       : segmento === 'PUNTI_PRELIEVO' ? []
-      : await suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione FROM public.organizations o WHERE o.email IS NOT NULL AND o.email <> '' AND o.active
+      : await suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione, o.id AS organization_id FROM public.organizations o WHERE o.email IS NOT NULL AND o.email <> '' AND o.active
           AND (o.kind = 'PARTNER' OR ${ospitanti}) ORDER BY lower(o.name)`).catch(() => []);
     rows = rows.concat(orgs);
   } else if (segmento === 'PERSONALE') {
@@ -78,13 +89,14 @@ r.get('/liste/:id', ah(async (req, res) => {
   const l = await one('SELECT * FROM liste WHERE id=$1', [req.params.id]);
   if (!l) throw notFound('Lista non trovata');
   // v0.99.5: la lista Interni è a scelta: si restituisce l'elenco del personale da cui spuntare (persone = id già scelti)
+  l.destinatari = await conLegalEntity(l.destinatari);
   res.json({ ...l, automatici: l.automatica ? await destinatariAutomatici(l.automatica, l) : [], personale: l.automatica === 'INTERNI' ? await personaleInterno() : undefined });
 }));
 
 r.post('/liste', ah(async (req, res) => {
   if (!canManage(req.user)) throw forbidden('Le liste di distribuzione si gestiscono con il profilo Pubblicazione');
   const b = parse(listaSchema, req.body);
-  const l = await one('INSERT INTO liste (nome, descrizione, segmento, destinatari, attiva, created_by, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$6) RETURNING *', [b.nome, b.descrizione, b.segmento, JSON.stringify(dedupe(b.destinatari)), b.attiva, req.user.suite_user_id]);
+  const l = await one('INSERT INTO liste (nome, descrizione, segmento, destinatari, attiva, created_by, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$6) RETURNING *', [b.nome, b.descrizione, b.segmento, JSON.stringify(await conLegalEntity(dedupe(b.destinatari))), b.attiva, req.user.suite_user_id]);
   await audit(req, 'CIRCOLARI_LISTA_CREATA', { module: KEY, entity: 'lista', entityId: l.id, label: l.nome, data: { n: l.destinatari.length } });
   res.status(201).json(l);
 }));
@@ -95,7 +107,7 @@ r.put('/liste/:id', ah(async (req, res) => {
   if (!cur) throw notFound('Lista non trovata');
   const b = parse(listaSchema, { ...cur, ...req.body, destinatari: req.body.destinatari ?? cur.destinatari, persone: req.body.persone ?? cur.persone ?? [] });
   const persone = cur.automatica === 'INTERNI' ? [...new Set(b.persone)] : [];
-  const l = await one('UPDATE liste SET nome=$2, descrizione=$3, segmento=$4, destinatari=$5, attiva=$6, updated_by=$7, persone=$8::int[], updated_at=now() WHERE id=$1 RETURNING *', [cur.id, b.nome, b.descrizione, b.segmento, JSON.stringify(dedupe(b.destinatari)), b.attiva, req.user.suite_user_id, persone]);
+  const l = await one('UPDATE liste SET nome=$2, descrizione=$3, segmento=$4, destinatari=$5, attiva=$6, updated_by=$7, persone=$8::int[], updated_at=now() WHERE id=$1 RETURNING *', [cur.id, b.nome, b.descrizione, b.segmento, JSON.stringify(await conLegalEntity(dedupe(b.destinatari))), b.attiva, req.user.suite_user_id, persone]);
   await audit(req, 'CIRCOLARI_LISTA_MODIFICATA', { module: KEY, entity: 'lista', entityId: l.id, label: l.nome, data: { n: l.destinatari.length, persone: persone.length } });
   res.json(l);
 }));

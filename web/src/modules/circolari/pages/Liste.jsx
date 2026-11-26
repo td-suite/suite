@@ -39,6 +39,7 @@ function ListaModal({ lista, onClose, onSaved }) {
   const toast = useToast();
   const [f, setF] = useState({ ...lista, destinatari: lista.destinatari || [], persone: (lista.persone || []).map(Number) });
   const [cerca, setCerca] = useState('');
+  const le = useApi('/legal-entity').data || [];   // v0.99.10: l'Organizzazione si sceglie tra le Legal entity dell'anagrafica
   const interni = f.automatica === 'INTERNI';
   const personale = lista.personale || [];
   const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -98,7 +99,10 @@ function ListaModal({ lista, onClose, onSaved }) {
         {!f.destinatari.length ? <div className="small muted" style={{ padding: 10 }}>{f.automatica ? 'Nessun indirizzo aggiunto. Incolla sotto quelli che l\'anagrafica non ha.' : 'Nessun destinatario. Proponi dall\'anagrafica o incolla gli indirizzi sotto.'}</div> : <table><tbody>{f.destinatari.map((d, i) => <tr key={d.email}>
           <td style={{ width: '38%' }} className="mono small">{d.email}</td>
           <td><input type="text" value={d.nome || ''} placeholder="Nome" onChange={(e) => upd('destinatari', f.destinatari.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)))} /></td>
-          <td><input type="text" value={d.organizzazione || ''} placeholder="Organizzazione" onChange={(e) => upd('destinatari', f.destinatari.map((x, j) => (j === i ? { ...x, organizzazione: e.target.value } : x)))} /></td>
+          <td><select aria-label="Legal entity" value={d.organization_id || ''} onChange={(e) => { const o = le.find((x) => String(x.id) === e.target.value); upd('destinatari', f.destinatari.map((x, j) => (j === i ? { ...x, organization_id: o ? o.id : null, organizzazione: o ? o.name : '' } : x))); }}>
+            <option value="">{d.organizzazione && !d.organization_id ? `${d.organizzazione} (non collegata)` : 'Legal entity…'}</option>
+            {le.map((o) => <option key={o.id} value={o.id}>{o.name}{o.city ? ` · ${o.city}` : ''}</option>)}
+          </select></td>
           <td style={{ width: 34 }}><button className="iconbtn" aria-label="Togli" onClick={() => upd('destinatari', f.destinatari.filter((_, j) => j !== i))}><Icon name="x" /></button></td>
         </tr>)}</tbody></table>}
       </div>
@@ -120,7 +124,7 @@ function TestoEmail() {
       <div className="circ-form">
         <div className="two">
           <Field label="Mittente" help="La casella da cui parte la circolare. La Suite deve essere autorizzata a inviare da questa casella."><input type="email" value={v.email_mittente || ''} maxLength={200} onChange={(e) => setF({ ...v, email_mittente: e.target.value })} /></Field>
-          <Field label="In copia (Cc)" help="Uno o più indirizzi separati da virgola. In A vanno i firmatari della circolare; i destinatari delle liste vanno sempre in Ccn."><input value={v.email_cc || ''} maxLength={600} onChange={(e) => setF({ ...v, email_cc: e.target.value })} /></Field>
+          <Field label="In copia (Cc)" help="Uno o più indirizzi separati da virgola. In copia vanno anche i firmatari della circolare. Ogni destinatario riceve la propria email, con lui solo in A."><input value={v.email_cc || ''} maxLength={600} onChange={(e) => setF({ ...v, email_cc: e.target.value })} /></Field>
         </div>
         <Field label="Oggetto"><input value={v.email_oggetto} maxLength={200} onChange={(e) => setF({ ...v, email_oggetto: e.target.value })} /></Field>
         <Field label="Messaggio" help={`Segnaposto: ${(data.segnaposto || []).map((x) => `{${x}}`).join(', ')}. Sotto il messaggio l'email porta sempre titolo e sintesi della circolare, il collegamento alla versione digitale, il pulsante di conferma di lettura e le firme.`}><textarea rows={7} value={v.email_testo} maxLength={3000} onChange={(e) => setF({ ...v, email_testo: e.target.value })} /></Field>

@@ -34,7 +34,8 @@ async function destinatario(token, codice) {
   if (!d) throw notFound('Collegamento non valido');
   return { c, d };
 }
-// v0.99.9: l'email parte una sola volta con tutti i destinatari in Ccn, quindi il collegamento è uguale per tutti. La pagina chiede
+// SOLO per le email già partite con la 0.99.9 (circolare TD-2026/002 del 26/11/2026: una email con tutti in Ccn e collegamento uguale
+// per tutti). Dalla 0.99.10 i collegamenti sono personali e questa pagina non è più usata dai nuovi invii. La pagina chiede
 // l'indirizzo e conferma solo se è tra i destinatari di un invio di questa circolare; non dice mai chi sono gli altri destinatari.
 const modulo = (c, token, messaggio = '', valore = '') => pagina(`Circolare ${esc(c.protocollo)}`, `<h2 style="margin:0 0 6px;color:#1C505E;font-size:19px">Circolare ${esc(c.protocollo)}</h2><p style="margin:0 0 18px"><b>${esc(c.titolo)}</b></p>${messaggio}
   <form method="post" action="/api/circolari/pub/${token}/conferma"><label style="display:block;font-size:14px;margin-bottom:6px">Indirizzo email a cui ha ricevuto la circolare</label>
@@ -56,14 +57,18 @@ r.post('/:token/conferma', express.urlencoded({ extended: false, limit: '2kb' })
   res.send(pagina('Lettura confermata', `<h2 style="margin:0 0 6px;color:#1C505E;font-size:19px">Lettura confermata</h2><p>Grazie. La lettura della circolare ${esc(c.protocollo)} è stata registrata per ${esc(email)}.</p><p><a href="/api/circolari/pub/${req.params.token}" style="color:#1C505E">Apri la circolare</a></p>`));
 }));
 
+// v0.99.10 (CEO: "cliccando su conferma, basta"): il collegamento personale conferma con UN clic. La pagina che si apre invia da sola
+// la conferma (una riga di script); i controlli automatici della posta, che aprono i collegamenti senza eseguire la pagina, non
+// confermano al posto della persona. Senza script resta il pulsante.
 r.get('/:token/conferma/:codice', ah(async (req, res) => {
   const { c, d } = await destinatario(req.params.token, req.params.codice);
   await q('UPDATE invii_destinatari SET aperta_at = coalesce(aperta_at, now()) WHERE id = $1', [d.id]);
   const base = `/api/circolari/pub/${req.params.token}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'self'");
   res.send(pagina(`Circolare ${esc(c.protocollo)}`, `<h2 style="margin:0 0 6px;color:#1C505E;font-size:19px">Circolare ${esc(c.protocollo)}</h2><p style="margin:0 0 18px"><b>${esc(c.titolo)}</b></p>${d.confermata_at
     ? `<p style="color:#1c7a4a;font-weight:600">Lettura già confermata da ${esc(d.email)}.</p>`
-    : `<form method="post" action="${base}/conferma/${req.params.codice}"><button style="background:#1C505E;color:#fff;border:0;padding:12px 20px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer">Confermo di aver letto la circolare</button></form><p style="font-size:12px;color:#5b6f75;margin-top:10px">La conferma viene registrata per l'indirizzo ${esc(d.email)}.</p>`}
+    : `<form id="conferma" method="post" action="${base}/conferma/${req.params.codice}"><p id="attesa" style="display:none;color:#5b6f75">Registro la conferma di lettura…</p><noscript><p>Prema il pulsante per confermare la lettura.</p></noscript><button id="pulsante" style="background:#1C505E;color:#fff;border:0;padding:12px 20px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer">Confermo di aver letto la circolare</button></form><script>document.getElementById('pulsante').style.display='none';document.getElementById('attesa').style.display='block';document.getElementById('conferma').submit();</script>`}
     <p style="margin-top:18px"><a href="${base}?d=${req.params.codice}" style="color:#1C505E">Apri la circolare</a></p>`));
 }));
 r.post('/:token/conferma/:codice', ah(async (req, res) => {
