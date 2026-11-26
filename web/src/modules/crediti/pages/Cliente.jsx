@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Card, Kpi, Loading, Empty, PageHead, Badge, Field, Modal } from '../../../components/ui.jsx';
 import { useApi, base } from '../api.js';
 import { Modalita, StatoCliente, useAzione, api, Modulo } from '../components.jsx';
-import { eur, itData, itDataOra, oggiIso, FASE, STATO_COM, STATO_FATTURA, CLASSE, ESITO, ORIGINE_SCADENZA, STATO_PRATICA } from '../format.js';
+import { eur, itData, itDataOra, oggiIso, FASE, STATO_COM, STATO_FATTURA, statoFattura, CLASSE, ESITO, ORIGINE_SCADENZA, STATO_PRATICA } from '../format.js';
 import { Testo } from './Comunicazioni.jsx';
 import { EsitoChiamata } from './Chiamate.jsx';
 
@@ -102,7 +102,7 @@ export default function Cliente() {
         </Card>
         <div>
           <Card title="Fatture chiuse e note di credito" icon="folder" flush className="cr-gap">
-            {x.fatture.filter((f) => !['APERTA', 'PARZIALE'].includes(f.stato)).length ? <table className="t"><tbody>{x.fatture.filter((f) => !['APERTA', 'PARZIALE'].includes(f.stato)).slice(0, 40).map((f) => <tr key={f.id}><td className="strong">{f.numero}<div className="small muted">{itData(f.data)}</div></td><td className="num">{eur(f.importo)}</td><td><Badge tone={STATO_FATTURA[f.stato]?.tone}>{STATO_FATTURA[f.stato]?.label}</Badge>{f.chiusa_origine && <div className="small muted">{{ BANCA: 'dalla banca', MANUALE: 'a mano', PARTITARIO: 'dal partitario', NOTA_CREDITO: 'con nota di credito' }[f.chiusa_origine]}</div>}</td></tr>)}</tbody></table> : <Empty compact icon="folder">Nessuna</Empty>}
+            {x.fatture.filter((f) => !['APERTA', 'PARZIALE'].includes(f.stato)).length ? <table className="t"><tbody>{x.fatture.filter((f) => !['APERTA', 'PARZIALE'].includes(f.stato)).slice(0, 40).map((f) => <tr key={f.id}><td className="strong">{f.numero}<div className="small muted">{itData(f.data)}</div></td><td className="num">{eur(f.importo)}</td><td><Badge tone={statoFattura(f).tone}>{statoFattura(f).label}</Badge>{f.chiusa_origine && <div className="small muted">{{ BANCA: 'dalla banca', MANUALE: 'a mano', PARTITARIO: 'dal partitario', NOTA_CREDITO: 'con nota di credito' }[f.chiusa_origine]}</div>}</td></tr>)}</tbody></table> : <Empty compact icon="folder">Nessuna</Empty>}
           </Card>
           {x.esclusioni.length > 0 && <Card title="Esclusioni dai solleciti" icon="lock"><ul className="cr-eventi">{x.esclusioni.map((e) => <li key={e.id}><div className="q">{itDataOra(e.at)} · {e.utente || 'automatico'}</div>{e.azione === 'ESCLUSO' ? `Escluso${e.fino ? ` fino al ${itData(e.fino)}` : ' fino a revoca'}` : 'Riammesso'}{e.motivo ? `: ${e.motivo}` : ''}</li>)}</ul></Card>}
           {puoi.operare && p?.scaduto > 0 && <div style={{ marginTop: 12 }}><button className="btn ghost" onClick={() => setM('legale')}>Proponi il passaggio all'area legale</button></div>}

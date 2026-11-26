@@ -4,7 +4,7 @@
 import ExcelJS from 'exceljs';
 import { one, many, q, tx } from '../db.js';
 import { normName } from '../../../lib/util.js';
-import { scadenzaDaTermini, normNumero, giorniTra, piuGiorni, aging, FASE_LABEL } from './regole.js';
+import { scadenzaDaTermini, normNumero, giorniTra, piuGiorni, aging, FASE_LABEL, fatturaStornata } from './regole.js';
 import { evento, oggiRoma } from './impostazioni.js';
 
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
@@ -58,7 +58,7 @@ export async function registraIncasso(fatturaId, { importo, data, origine = 'MAN
   return client ? esegui(client) : tx(esegui);
 }
 /** Applica una nota di credito a una fattura dello stesso cliente (per il minore fra residuo della fattura e parte libera della nota). */
-export async function applicaNotaCredito(notaId, fatturaId, userId) {
+export async function applicaNotaCredito(notaId, fatturaId, userId, { storno = null } = {}) {
   return tx(async (c) => {
     const n = (await c.query(`SELECT * FROM fatture WHERE id = $1 AND stato = 'NOTA_CREDITO' FOR UPDATE`, [notaId])).rows[0];
     const f = (await c.query('SELECT * FROM fatture WHERE id = $1 FOR UPDATE', [fatturaId])).rows[0];
@@ -69,18 +69,51 @@ export async function applicaNotaCredito(notaId, fatturaId, userId) {
     if (!(imp > 0)) throw bad('Nulla da applicare: la nota di credito è già usata o la fattura è già chiusa');
     await registraIncasso(fatturaId, { importo: imp, data: oggiRoma(), origine: 'NOTA_CREDITO', motivo: `Nota di credito n. ${n.numero}`, userId, notaCreditoId: n.id }, c);
     await ricalcolaNota(n.id, c);
-    await evento(f.organization_id, 'NOTA_CREDITO', `Nota di credito n. ${n.numero} applicata alla fattura n. ${f.numero} per € ${imp.toFixed(2)}`, { userId }, c);
-    return { importo: imp };
+    await evento(f.organization_id, 'NOTA_CREDITO', storno ? `Storno registrato in automatico: la nota di credito n. ${n.numero} chiude la fattura n. ${f.numero} per € ${imp.toFixed(2)} (${storno})` : `Nota di credito n. ${n.numero} applicata alla fattura n. ${f.numero} per € ${imp.toFixed(2)}`, { userId }, c);
+    return { importo: imp, fattura: f.numero, nota: n.numero };
   });
 }
 
 // ---------------------------------------------------------------- Synclab
+/**
+ * STORNI (v0.99.6). Il gestionale emette la nota di credito ma non dice quale fattura storna: prima di questa versione la nota restava
+ * "da applicare a mano" e la fattura stornata restava aperta (caso del CEO: 26-00022/D stornata dalla 26-00038/D e riemessa come
+ * 26-00041/D). Ora ogni nota di credito ancora libera si applica da sola alla fattura che storna quando la regola fatturaStornata
+ * la individua con certezza; le altre restano da applicare a mano e si contano. Gira a ogni lettura da Synclab, prima della banca.
+ */
+export async function registraStorni() {
+  const out = { storni: 0, note_da_applicare: 0 };
+  const note = await many(`SELECT n.id, n.organization_id, n.numero, n.data::text AS data, (-n.importo - n.incassato) AS libera, si.request_ids
+      FROM fatture n LEFT JOIN synclab.invoices si ON n.fonte = 'SYNCLAB' AND n.fonte_id = si.instance_id || ':' || si.id
+     WHERE n.stato = 'NOTA_CREDITO' AND n.organization_id IS NOT NULL AND (-n.importo - n.incassato) > 0.005 ORDER BY n.data, n.id`)
+    .catch(async (e) => { if (!/synclab/.test(e.message)) throw e; return many(`SELECT n.id, n.organization_id, n.numero, n.data::text AS data, (-n.importo - n.incassato) AS libera, NULL::text[] AS request_ids FROM fatture n WHERE n.stato = 'NOTA_CREDITO' AND n.organization_id IS NOT NULL AND (-n.importo - n.incassato) > 0.005 ORDER BY n.data, n.id`); });
+  for (const n of note) {
+    const cand = await many(`SELECT f.id, f.organization_id, f.numero, f.data::text AS data, (f.importo - f.incassato) AS residuo, f.incassato, si.request_ids
+        FROM fatture f LEFT JOIN synclab.invoices si ON f.fonte = 'SYNCLAB' AND f.fonte_id = si.instance_id || ':' || si.id WHERE f.organization_id = $1 AND f.stato = 'APERTA'`, [n.organization_id])
+      .catch(async (e) => { if (!/synclab/.test(e.message)) throw e; return many(`SELECT f.id, f.organization_id, f.numero, f.data::text AS data, (f.importo - f.incassato) AS residuo, f.incassato, NULL::text[] AS request_ids FROM fatture f WHERE f.organization_id = $1 AND f.stato = 'APERTA'`, [n.organization_id]); });
+    const r = fatturaStornata(n, cand);
+    if (!r.fattura) { out.note_da_applicare++; continue; }
+    try { await applicaNotaCredito(n.id, r.fattura.id, null, { storno: r.motivo }); out.storni++; } catch { out.note_da_applicare++; }
+  }
+  return out;
+}
+/** Fatture chiuse da una nota di credito (stornate), con il numero della nota: servono alla riconciliazione dei bonifici che le citano. */
+export async function fattureStornate() {
+  return many(`SELECT f.id, f.organization_id, f.numero, f.data::text AS data, (SELECT n.numero FROM incassi i JOIN fatture n ON n.id = i.nota_credito_id WHERE i.fattura_id = f.id AND i.stato = 'CONFERMATO' ORDER BY i.id DESC LIMIT 1) AS nota_numero
+     FROM fatture f WHERE f.stato = 'PAGATA' AND f.chiusa_origine = 'NOTA_CREDITO' AND f.organization_id IS NOT NULL AND f.data > current_date - 400`);
+}
+
 /**
  * Porta nel widget i documenti emessi da Synclab ai clienti abbinati a una Legal entity (non del gruppo), dalla data fatture_dal.
  * Fatture e note di credito; i documenti con tipo non indicato si contano e si lasciano fuori. Un documento annullato in Synclab
  * dopo l'arrivo si annulla anche qui solo se non ha incassi né solleciti (altrimenti resta e si segnala).
  */
 export async function sincronizzaSynclab(imp) {
+  const out = await leggiSynclab(imp);
+  try { Object.assign(out, await registraStorni()); } catch (e) { out.storni_errore = e.message; }
+  return out;
+}
+async function leggiSynclab(imp) {
   const out = { letti: 0, nuovi: 0, aggiornati: 0, annullati: 0, tipo_non_indicato: 0, da_verificare: 0 };
   const righe = await many(`SELECT i.instance_id, i.id, i.invoice_number, i.document_type, i.date::text AS data, i.total, coalesce(i.cancelled, FALSE) AS cancelled, coalesce(i.proforma, FALSE) AS proforma,
         (i.deleted_at IS NOT NULL OR i.disponibilita <> 'ATTIVO') AS assente, c.organization_id, c.legal_name, c.vat_number

@@ -2,7 +2,7 @@
 // lettura delle risposte, testi. Dati sintetici.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scadenzaDaTermini, faseDovuta, PREDEFINITE, proponiAbbinamento, causaleCita, classificaRisposta, dataNelTesto, piuLavorativi, fasciaAging, compila, somiglianzaNome } from '../src/modules/crediti/lib/regole.js';
+import { scadenzaDaTermini, faseDovuta, PREDEFINITE, proponiAbbinamento, causaleCita, fatturaStornata, serieNumero, tipoMovimento, TIPI_MOVIMENTO, classificaRisposta, dataNelTesto, piuLavorativi, fasciaAging, compila, somiglianzaNome } from '../src/modules/crediti/lib/regole.js';
 import { componi, MODELLI } from '../src/modules/crediti/lib/testi.js';
 import { numeroIt, dataIt } from '../src/modules/crediti/lib/fatture.js';
 
@@ -137,3 +137,71 @@ describe('Finance: quadratura delle uscite con le autorizzazioni al pagamento', 
     assert.ok(!r.some((c) => c.uscita === 2));
   });
 });
+
+// v0.99.6 · caso del CEO del 26/11/2026: fattura 26-00022/D stornata dalla nota 26-00038/D e riemessa come 26-00041/D (stesso importo,
+// stessa data); il cliente paga citando il vecchio numero.
+describe('Recupero Crediti: storni', () => {
+  const E = 7;
+  const f22 = { id: 58, organization_id: E, org_nome: 'ENDEAVOR DNA, Inc', numero: '26-00022/D', data: '2026-10-13', scadenza: '2026-11-30', residuo: 7512.56, incassato: 0 };
+  const f41 = { id: 60, organization_id: E, org_nome: 'ENDEAVOR DNA, Inc', numero: '26-00041/D', data: '2026-10-13', scadenza: '2026-11-30', residuo: 7512.56, incassato: 0 };
+  const f52 = { id: 61, organization_id: E, org_nome: 'ENDEAVOR DNA, Inc', numero: '26-00052/D', data: '2026-10-31', scadenza: '2026-11-30', residuo: 10831.68, incassato: 0 };
+  const nota = { organization_id: E, numero: '26-00038/D', data: '2026-10-13', libera: 7512.56 };
+
+  test('serie e progressivo del numero di documento', () => {
+    assert.deepEqual(serieNumero('26-00038/D'), { serie: '26-|/D', prog: 38 });
+    assert.deepEqual(serieNumero('FT 140/2026'), { serie: 'FT 140/|', prog: 2026 });
+    assert.equal(serieNumero('senza numero'), null);
+  });
+
+  test('la nota storna la fattura emessa prima, non quella riemessa dopo con lo stesso importo', () => {
+    const r = fatturaStornata(nota, [f22, f41, f52]);
+    assert.equal(r.fattura?.id, 58);
+  });
+
+  test('nel dubbio non si storna: due fatture precedenti di pari importo, serie diversa nello stesso giorno, fattura già incassata in parte', () => {
+    assert.equal(fatturaStornata(nota, [f22, { ...f22, id: 99, numero: '26-00030/D' }]).fattura, null);
+    assert.equal(fatturaStornata(nota, [{ ...f22, numero: '26-00022/X' }]).fattura, null, 'stessa data e serie diversa: non si sa quale è nata prima');
+    assert.equal(fatturaStornata(nota, [{ ...f22, incassato: 100, residuo: 7512.56 }]).fattura, null);
+    assert.equal(fatturaStornata(nota, [{ ...f22, residuo: 7512.5 }]).fattura, null, 'importo diverso anche di pochi centesimi');
+    assert.equal(fatturaStornata(nota, [{ ...f22, organization_id: 8 }]).fattura, null, 'altro cliente');
+    assert.equal(fatturaStornata({ ...nota, libera: 0 }, [f22]).fattura, null, 'nota già usata');
+  });
+
+  test('accettazioni: scelgono tra più candidate e scartano la fattura che non c\'entra', () => {
+    const a = { ...f22, request_ids: ['A1'] }, b = { ...f22, id: 99, numero: '26-00030/D', request_ids: ['B7'] };
+    assert.equal(fatturaStornata({ ...nota, request_ids: ['B7'] }, [a, b]).fattura?.id, 99);
+    assert.equal(fatturaStornata({ ...nota, request_ids: ['Z9'] }, [a]).fattura, null, 'unica candidata ma di altre accettazioni');
+    assert.equal(fatturaStornata({ ...nota, request_ids: ['Z9'] }, [f22]).fattura?.id, 58, 'fattura senza accettazioni note: vale la regola di importo e precedenza');
+  });
+
+  test('numero con anno a due cifre: il progressivo è 00022, non 26', () => {
+    assert.equal(causaleCita('Bonifico a vs favore *INST 16:19 EDL International LLC 99-00022/D', '26-00022/D', '2026'), true);
+    assert.equal(causaleCita('Bonifico a vs favore *INST 16:19 EDL International LLC 99-00022/D', '26-00041/D', '2026'), false);
+    assert.equal(causaleCita('pagamento del 22/10 ordine 26', '26-00022/D', '2026'), false, 'un 22 qualunque non cita la fattura');
+    assert.equal(causaleCita('saldo fattura 22', '26-00022/D', '2026'), true);
+  });
+
+  test('bonifico che cita la fattura stornata: si propone quella che la sostituisce, mai da solo', () => {
+    const mov = { importo: 7512.56, controparte: null, causale: 'Bonifico a vs favore *INST 16:19 EDL International LLC 99-00022/D' };
+    const stornate = [{ id: 58, organization_id: E, numero: '26-00022/D', data: '2026-10-13', nota_numero: '26-00038/D' }];
+    const p = proponiAbbinamento(mov, [f41, f52], { stornate });
+    assert.equal(p.esito, 'PROPOSTO'); assert.deepEqual(p.righe, [{ fattura_id: 60, importo: 7512.56 }]);
+    assert.match(p.motivo, /26-00022\/D, stornata dalla nota di credito n\. 26-00038\/D: proposta la fattura n\. 26-00041\/D/);
+    // senza l'elenco delle stornate il bonifico resta senza proposta (ordinante non indicato)
+    assert.equal(proponiAbbinamento(mov, [f41, f52]).esito, 'NESSUNO');
+    // prima dello storno la 22 è ancora aperta e citata: per questo lo storno si registra PRIMA di guardare la banca
+    assert.equal(proponiAbbinamento(mov, [f22, f41, f52]).righe[0].fattura_id, 58);
+  });
+});
+
+// v0.99.7 · filtro per tipologia in Incassi da abbinare: diciture lette in produzione il 26/11/2026
+describe('Recupero Crediti: tipologia del movimento dalla causale', () => {
+  test('diciture della banca', () => {
+    const casi = [['Bonifico a vs favore *INST 16:19 EDL International LLC 99-00022/D', 'BONIFICO'], ['Incassi PagoBancomat 24.11.26 - 0012', 'POS'], ['Incassi Internazionali Numia SpA 4411', 'POS'],
+      ['Versamento contante allo sportello', 'CONTANTI'], ['Erogazione mutuo *Erogaz. Mutuo 77', 'FINANZIAMENTO'], ['Giro conto *TOSCANA DIAGNOSTICA SRL', 'GIROCONTO'], ['Versamento assegni', 'ASSEGNO'],
+      ['Accredito SDD lotto 4', 'SDD'], ['Bonifico a vs favore saldo fattura pagata in contanti al POS', 'BONIFICO'], ['Competenze di chiusura', 'ALTRO'], ['', 'ALTRO'], [null, 'ALTRO']];
+    for (const [c, atteso] of casi) assert.equal(tipoMovimento(c), atteso, String(c));
+    assert.ok(TIPI_MOVIMENTO.every(([k, l]) => k && l) && new Set(TIPI_MOVIMENTO.map(([k]) => k)).size === TIPI_MOVIMENTO.length);
+  });
+});
+

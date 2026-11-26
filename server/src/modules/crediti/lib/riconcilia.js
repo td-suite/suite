@@ -3,8 +3,8 @@
 // in causale e importo uguale al residuo; tutto il resto è una proposta che una persona conferma, corregge o rifiuta. Un bonifico
 // riconosciuto ma non ancora confermato ferma i solleciti automatici a quel cliente (lib/motore.js).
 import { one, many, q, tx } from '../db.js';
-import { proponiAbbinamento } from './regole.js';
-import { registraIncasso, ricalcola, fattureAperte, r2 } from './fatture.js';
+import { proponiAbbinamento, tipoMovimento, TIPI_MOVIMENTO } from './regole.js';
+import { registraIncasso, ricalcola, fattureAperte, fattureStornate, r2 } from './fatture.js';
 import { evento, oggiRoma } from './impostazioni.js';
 import { eur } from './testi.js';
 
@@ -13,7 +13,7 @@ const bad = (m) => Object.assign(new Error(m), { status: 400 });
 async function contesto(oggi) {
   const fatture = (await fattureAperte({ oggi })).filter((f) => f.organization_id && f.residuo > 0);
   const ibanNoti = new Map((await many('SELECT iban, organization_id FROM clienti_iban')).map((r) => [r.iban, r.organization_id]));
-  return { fatture, ibanNoti };
+  return { fatture, ibanNoti, stornate: await fattureStornate().catch(() => []) };
 }
 
 /** Esamina i bonifici in entrata non ancora esaminati (e riprova quelli rimasti senza abbinamento negli ultimi 45 giorni). */
@@ -28,7 +28,7 @@ export async function esaminaMovimenti(imp, { oggi = oggiRoma() } = {}) {
   let ctx = await contesto(oggi);
   for (const m of mov) {
     out.esaminati++;
-    const p = proponiAbbinamento({ importo: Number(m.importo), controparte: m.controparte, controparte_iban: m.controparte_iban, causale: m.causale }, ctx.fatture, { ibanNoti: ctx.ibanNoti });
+    const p = proponiAbbinamento({ importo: Number(m.importo), controparte: m.controparte, controparte_iban: m.controparte_iban, causale: m.causale }, ctx.fatture, { ibanNoti: ctx.ibanNoti, stornate: ctx.stornate });
     if (p.esito === 'AUTO' && imp.riconciliazione_automatica) {
       try {
         await applica(m.id, p.righe, { userId: null, automatico: true, punteggio: p.punteggio, motivo: p.motivo, per: p.per });
@@ -109,13 +109,17 @@ export async function annulla(movId, userId) {
 }
 
 /** Elenco per la pagina Riconciliazione. stato: PROPOSTO | DA_ABBINARE | ABBINATO | IGNORATO. */
-export async function elencoMovimenti({ stato = 'PROPOSTO', limite = 200 } = {}) {
-  const righe = await many(`SELECT t.id, t.booking_date::text AS data, t.importo, t.controparte, t.controparte_iban, t.causale, t.iban AS conto, m.stato, m.organization_id, o.name AS cliente, m.riconosciuto_per, m.residuo, m.nota, m.updated_at, u.full_name AS utente
+export async function elencoMovimenti({ stato = 'PROPOSTO', limite = 200, tipo = null, conTipi = false } = {}) {
+  // v0.99.7: tipologia dalla causale; con il filtro si leggono tutti i movimenti dello stato (fino a 2.000) e poi si tengono quelli della tipologia
+  const letti = (await many(`SELECT t.id, t.booking_date::text AS data, t.importo, t.controparte, t.controparte_iban, t.causale, t.iban AS conto, m.stato, m.organization_id, o.name AS cliente, m.riconosciuto_per, m.residuo, m.nota, m.updated_at, u.full_name AS utente
       FROM movimenti m JOIN public.bank_transactions t ON t.id = m.bank_transaction_id LEFT JOIN public.organizations o ON o.id = m.organization_id LEFT JOIN public.users u ON u.id = m.user_id
-     WHERE m.stato = $1 ORDER BY t.booking_date DESC, t.id DESC LIMIT $2`, [stato, Math.min(500, Number(limite) || 200)]);
+     WHERE m.stato = $1 ORDER BY t.booking_date DESC, t.id DESC LIMIT $2`, [stato, conTipi ? 2000 : Math.min(500, Number(limite) || 200)])).map((r) => ({ ...r, tipo: tipoMovimento(r.causale) }));
+  const tipi = TIPI_MOVIMENTO.map(([k, label]) => ({ tipo: k, label, n: letti.filter((r) => r.tipo === k).length })).filter((x) => x.n > 0);
+  const righe = (tipo ? letti.filter((r) => r.tipo === tipo) : letti).slice(0, Math.min(500, Number(limite) || 200));
   const inc = righe.length ? await many(`SELECT i.bank_transaction_id, i.fattura_id, i.importo, i.stato, i.punteggio, i.automatico, f.numero, f.data::text AS data, f.scadenza::text AS scadenza, (f.importo - f.incassato) AS residuo, f.importo AS totale
       FROM incassi i JOIN fatture f ON f.id = i.fattura_id WHERE i.bank_transaction_id = ANY($1::bigint[]) ORDER BY f.scadenza`, [righe.map((r) => r.id)]) : [];
-  return righe.map((r) => ({ ...r, importo: r2(r.importo), residuo: r.residuo == null ? null : r2(r.residuo), righe: inc.filter((i) => String(i.bank_transaction_id) === String(r.id)).map((i) => ({ fattura_id: i.fattura_id, numero: i.numero, data: i.data, scadenza: i.scadenza, importo: r2(i.importo), residuo_fattura: r2(i.residuo), stato: i.stato, punteggio: i.punteggio, automatico: i.automatico })) }));
+  const out = righe.map((r) => ({ ...r, importo: r2(r.importo), residuo: r.residuo == null ? null : r2(r.residuo), righe: inc.filter((i) => String(i.bank_transaction_id) === String(r.id)).map((i) => ({ fattura_id: i.fattura_id, numero: i.numero, data: i.data, scadenza: i.scadenza, importo: r2(i.importo), residuo_fattura: r2(i.residuo), stato: i.stato, punteggio: i.punteggio, automatico: i.automatico })) }));
+  return conTipi ? { righe: out, tipi, totale: letti.length } : out;
 }
 export async function contaMovimenti() {
   const r = await many(`SELECT stato, count(*)::int AS n FROM movimenti WHERE stato IN ('PROPOSTO','DA_ABBINARE') GROUP BY stato`);

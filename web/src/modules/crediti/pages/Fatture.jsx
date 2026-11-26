@@ -6,7 +6,7 @@ import { Card, Loading, Empty, PageHead, Badge, Tabs, SearchInput, DropZone, Mod
 import { useApi } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { Modalita, LinkCliente, useAzione, api } from '../components.jsx';
-import { eur, itData, itDataOra, FASE, STATO_FATTURA, ORIGINE_SCADENZA } from '../format.js';
+import { eur, itData, itDataOra, FASE, STATO_FATTURA, statoFattura, ORIGINE_SCADENZA } from '../format.js';
 
 function Importa({ onClose, onFatto }) {
   const [file, setFile] = useState(null); const [completo, setCompleto] = useState(false); const [ant, setAnt] = useState(null); const [err, setErr] = useState(null); const [busy, setBusy] = useState(false); const [fatto, setFatto] = useState(null);
@@ -51,7 +51,7 @@ export default function Fatture() {
   return (
     <div className="page">
       <PageHead title="Fatture e partitario" icon="sheet" sub="Le fatture arrivano da Synclab (clienti abbinati a una Legal entity) e dal partitario della contabilità, che porta scadenze e incassi registrati fuori dal conto collegato."
-        actions={user.opera && <><button className="btn ghost" disabled={az.busy} onClick={() => az.fai(() => api.post('/fatture-sincronizza', {}), (r) => `Synclab: ${r.letti} documenti letti, ${r.nuovi} nuovi, ${r.aggiornati} aggiornati${r.tipo_non_indicato ? `, ${r.tipo_non_indicato} con tipo non indicato lasciati fuori` : ''}`)}>Aggiorna da Synclab</button><button className="btn" onClick={() => setM({ t: 'importa' })}>Importa il partitario</button></>} />
+        actions={user.opera && <><button className="btn ghost" disabled={az.busy} onClick={() => az.fai(() => api.post('/fatture-sincronizza', {}), (r) => `Synclab: ${r.letti} documenti letti, ${r.nuovi} nuovi, ${r.aggiornati} aggiornati${r.tipo_non_indicato ? `, ${r.tipo_non_indicato} con tipo non indicato lasciati fuori` : ''}${r.storni ? `, ${r.storni} ${r.storni === 1 ? 'storno registrato' : 'storni registrati'}` : ''}${r.note_da_applicare ? `, ${r.note_da_applicare} note di credito da applicare a mano` : ''}`)}>Aggiorna da Synclab</button><button className="btn" onClick={() => setM({ t: 'importa' })}>Importa il partitario</button></>} />
       <Modalita />
       <Tabs value={stato} onChange={(v) => setSp({ stato: v })} items={[{ value: 'APERTE', label: 'Aperte' }, { value: 'SCADUTE', label: 'Scadute' }, { value: 'CONTESTATE', label: 'Contestate' }, { value: 'SENZA_CLIENTE', label: 'Senza cliente' }, { value: 'NOTE', label: 'Note di credito' }, { value: 'PAGATE', label: 'Incassate' }]} />
       <div className="filters cr-gap"><SearchInput value={q} onChange={setQ} placeholder="Cerca per numero o cliente" /></div>
@@ -63,7 +63,7 @@ export default function Fatture() {
               <td>{f.organization_id ? <LinkCliente id={f.organization_id}>{f.cliente}</LinkCliente> : <>{f.cliente || 'senza nome'} {user.opera && <button className="btn sm ghost" onClick={() => setM({ t: 'cliente', f })}>Abbina</button>}</>}</td>
               <td>{itData(f.data)}</td><td>{itData(f.scadenza)}<div className={`small ${f.scadenza_origine === 'PREDEFINITA' ? 'cr-rosso' : 'muted'}`}>{ORIGINE_SCADENZA[f.scadenza_origine]}</div></td>
               <td className="num">{eur(f.importo)}</td><td className="num strong">{['APERTA', 'PARZIALE'].includes(f.stato) ? eur(f.residuo) : ''}</td><td className="num">{['APERTA', 'PARZIALE'].includes(f.stato) && f.giorni > 0 ? f.giorni : ''}</td>
-              <td><Badge tone={STATO_FATTURA[f.stato]?.tone}>{STATO_FATTURA[f.stato]?.label}</Badge>{f.contestata && <div><Badge tone="mauve">Contestata</Badge></div>}{f.fase > 0 && ['APERTA', 'PARZIALE'].includes(f.stato) && <div className="small muted">{FASE[f.fase]}</div>}{f.nota && <div className="small muted">{f.nota}</div>}</td>
+              <td><Badge tone={statoFattura(f).tone}>{statoFattura(f).label}</Badge>{f.stornata && f.nota_numero && <div className="small muted">nota di credito n. {f.nota_numero}</div>}{f.contestata && <div><Badge tone="mauve">Contestata</Badge></div>}{f.fase > 0 && ['APERTA', 'PARZIALE'].includes(f.stato) && <div className="small muted">{FASE[f.fase]}</div>}{f.nota && <div className="small muted">{f.nota}</div>}</td>
             </tr>))}</tbody></table></div> : <Empty compact icon="check">Nessuna fattura in questo elenco</Empty>}</Card>)}
       {(d.data?.importazioni || []).length > 0 && <Card title="Ultime importazioni del partitario" icon="clock" flush><table className="t"><tbody>{d.data.importazioni.map((i) => <tr key={i.id}><td>{i.filename}<div className="small muted">{itDataOra(i.at)} · {i.utente}</div></td><td className="small">{i.righe} righe · {i.nuove} nuove · {i.aggiornate} aggiornate · {i.chiuse} chiuse · {i.non_abbinate} senza cliente{i.completo ? ' · file completo' : ''}</td></tr>)}</tbody></table></Card>}
       {m?.t === 'importa' && <Importa onClose={() => setM(null)} onFatto={d.reload} />}

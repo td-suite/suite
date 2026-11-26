@@ -63,3 +63,28 @@ della Suite senza grant entra come CEO; un amministratore senza grant in sola le
 ## Variabili
 `CREDITI_MAILBOX` (facoltativa) fissa la casella. Job: `crediti:giro` ogni ora (7-20), `crediti:casella` ogni 15 minuti.
 Test: `server/test/crediti-regole.test.mjs`, `server/test/crediti-flusso.test.mjs`.
+
+## v0.99.6 · Storni (26/11/2026)
+
+Caso segnalato dal CEO: fattura 26-00022/D stornata dalla nota di credito 26-00038/D e riemessa come 26-00041/D (stesso importo, stessa data). Nel widget la 22 restava "Aperta" e compariva tra le fatture abbinabili a un bonifico.
+
+**Causa.** La Data API del gestionale consegna la nota di credito come documento a sé e **non indica quale fattura storna**. Fino alla 0.99.5 la nota entrava come "nota di credito da applicare" e la fattura si chiudeva solo premendo *Applica* nella scheda del cliente: il passaggio non veniva registrato da solo.
+
+**Ora** (`registraStorni()` in `lib/fatture.js`, regola `fatturaStornata()` in `lib/regole.js`), a ogni lettura dal gestionale e prima di esaminare la banca, ogni nota di credito ancora libera chiude da sola la fattura che storna quando l'individuazione è certa:
+
+- stesso cliente, fattura aperta e mai incassata, residuo uguale al centesimo alla parte libera della nota;
+- fattura emessa **prima** della nota: data precedente, oppure stessa data e progressivo più basso nella stessa serie (così la fattura riemessa dopo lo storno non si confonde con quella stornata);
+- se nota e fattura riportano le accettazioni e non ne hanno in comune, la fattura è scartata; con più candidate decide l'accettazione in comune.
+
+In ogni altro caso non si storna nulla: la nota resta da applicare a mano e la lettura dice quante sono. Lo storno è scritto nella cronologia del cliente ("Storno registrato in automatico…"). Una fattura chiusa per intero da nota di credito è mostrata come **Stornata** (non "Incassata"), con il numero della nota.
+
+**Banca.** Un bonifico che cita la fattura stornata (il cliente paga con il vecchio numero) identifica il cliente e propone la fattura aperta di pari importo che la sostituisce, sempre da confermare. Corretto anche il riconoscimento dei numeri con anno a due cifre ("26-00022/D": il progressivo è 00022, prima veniva preso 26, quindi queste fatture non erano mai riconosciute in causale).
+
+**Limiti.** Non verificato sui dati di produzione se le note di credito riportano le accettazioni. Uno storno automatico non ha un pulsante di annullo: se fosse sbagliato si corregge dal database. Le note parziali (importo diverso dalla fattura) restano manuali.
+
+
+## v0.99.7 · Filtro per tipologia in Incassi da abbinare (26/11/2026)
+
+Sopra l'elenco dei movimenti, per ogni linguetta (Proposte, Senza abbinamento, Abbinati, Non sono fatture), il filtro **Tipologia** con il numero di movimenti: Bonifici, POS e carte, Versamenti di contante, Assegni, Incassi SDD e RiBa, Giroconti, Mutui e finanziamenti, Altro (compaiono solo le tipologie presenti). Ogni movimento porta l'etichetta della sua tipologia.
+
+La banca non consegna un campo "tipo": la tipologia si legge dalla causale (`tipoMovimento()` in `lib/regole.js`), sulle diciture viste in produzione il 26/11/2026 ("Bonifico a vs favore", "Incassi PagoBancomat", "Incassi Internazionali Numia SpA", "Versamento contante allo sportello", "Erogazione mutuo", "Giro conto") e sulle forme comuni delle altre banche. Decide la dicitura in testa alla causale. Una dicitura non prevista finisce in Altro: va aggiunta alla regola. `GET /api/crediti/riconciliazione?stato=…&tipo=…` restituisce anche `tipi` e `totale`.

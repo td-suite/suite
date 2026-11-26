@@ -115,16 +115,87 @@ export function somiglianzaNome(a, b) {
 export const normNumero = (n) => String(n ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').map((p) => p.replace(/^0+(?=\d)/, '')).join('');
 /** La causale cita questa fattura? Il numero deve comparire come parola intera (non dentro un altro numero), con o senza anno. */
 export function causaleCita(causale, numero, anno = null) {
-  const c = ` ${String(causale ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ')} `.replace(/ 0+(?=\d)/g, ' ');
-  const parti = String(numero ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').map((p) => p.replace(/^0+(?=\d)/, '')).filter(Boolean);
+  const grezzi = String(causale ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').filter(Boolean);   // parole della causale, con i loro zeri
+  const senzaZeri = (p) => p.replace(/^0+(?=\d)/, '');
+  const c = ` ${grezzi.map(senzaZeri).join(' ')} `;
+  const parti0 = String(numero ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+  const parti = parti0.map(senzaZeri);
   if (!parti.length) return false;
-  // parte progressiva: la più lunga fatta di cifre che non sia l'anno
-  const prog = parti.filter((p) => /^\d+$/.test(p) && p !== String(anno || '') && !/^20\d\d$/.test(p)).sort((a, b) => b.length - a.length)[0] || parti.find((p) => /\d/.test(p));
+  // parte progressiva: la più lunga (come è scritta, zeri compresi) fatta di cifre che non sia l'anno, nemmeno a due cifre
+  // ("26-00022/D": il progressivo è 00022, non 26; v0.99.6)
+  const anni = new Set([String(anno || ''), String(anno || '').slice(-2)].filter(Boolean));
+  const cifre = parti0.filter((p) => /^\d+$/.test(p));
+  const prog0 = cifre.filter((p) => !anni.has(p) && !/^20\d\d$/.test(p) && !(cifre.length > 1 && p.length === 2 && anni.has(`20${p}`))).sort((x, y) => y.length - x.length)[0] || null;
+  const prog = prog0 ? senzaZeri(prog0) : parti.find((p) => /\d/.test(p));
   if (!prog || prog.length < 2) return c.includes(` ${parti.join(' ')} `);
   if (!c.includes(` ${prog} `)) return false;
+  // nella causale il progressivo è scritto con almeno 4 cifre (zeri compresi, "00022"): non è un numero qualunque
+  if (grezzi.some((p) => /^\d{4,}$/.test(p) && senzaZeri(p) === prog)) return true;
   // un progressivo corto (meno di 4 cifre) è ambiguo: serve anche una parola chiave o l'anno accanto
-  if (prog.length < 4) return /\b(FATT|FATTURA|FT|FATT\.|FA|INVOICE|DOC|SALDO)\b/.test(c) || (anno && c.includes(` ${anno} `));
+  if (prog.length < 4) return /\b(FATT|FATTURA|FT|FATT\.|FA|INVOICE|DOC|SALDO)\b/.test(c) || Boolean(anno && c.includes(` ${anno} `));
   return true;
+}
+
+/** Serie e progressivo di un numero di documento: "26-00038/D" -> { serie: "26-|/D", prog: 38 }. Senza cifre: null. */
+export function serieNumero(numero) {
+  const m = String(numero ?? '').trim().toUpperCase().match(/^(.*?)(\d+)(\D*)$/);
+  return m ? { serie: `${m[1]}|${m[3]}`, prog: Number(m[2]) } : null;
+}
+/**
+ * STORNO (v0.99.6): quale fattura storna questa nota di credito? Il gestionale non lo dice (nessun collegamento tra nota e fattura),
+ * quindi si deduce solo quando è certo: stesso cliente, fattura aperta e mai incassata, residuo uguale al centesimo alla parte libera
+ * della nota, fattura emessa PRIMA della nota (data precedente, o stessa data e progressivo più basso nella stessa serie: così la
+ * fattura riemessa dopo lo storno, con lo stesso importo, non si confonde con quella stornata).
+ * Se nota e fattura riportano le accettazioni e non ne hanno nessuna in comune, la fattura è scartata.
+ * Più candidate: decide l'accettazione in comune (request_ids), se ne indica una sola. Altrimenti null: resta da applicare a mano.
+ * nota = { organization_id, numero, data, libera, request_ids }; fatture = [{ id, organization_id, numero, data, residuo, incassato, request_ids }].
+ * Ritorna { fattura, motivo } oppure { fattura: null, candidate: n }.
+ */
+export function fatturaStornata(nota, fatture) {
+  const libera = Math.round(Number(nota.libera) * 100) / 100;
+  if (!(libera > 0) || !nota.organization_id) return { fattura: null, candidate: 0 };
+  const sn = serieNumero(nota.numero);
+  const prima = (f) => {
+    if (String(f.data) < String(nota.data)) return true;
+    if (String(f.data) > String(nota.data)) return false;
+    const sf = serieNumero(f.numero);
+    return Boolean(sn && sf && sf.serie === sn.serie && sf.prog < sn.prog);   // stessa data: decide il progressivo; serie diverse = non si sa
+  };
+  const acc0 = new Set((nota.request_ids || []).map(String));
+  // accettazioni note su entrambi i documenti e nessuna in comune: non è la fattura stornata (prudenza: meglio a mano che uno storno sbagliato)
+  const estranea = (f) => acc0.size > 0 && (f.request_ids || []).length > 0 && !f.request_ids.some((x) => acc0.has(String(x)));
+  const cand = fatture.filter((f) => f.organization_id === nota.organization_id && Math.abs(Number(f.residuo) - libera) < 0.005 && !(Number(f.incassato) > 0.005) && prima(f) && !estranea(f));
+  if (cand.length === 1) return { fattura: cand[0], motivo: 'stesso importo, unica fattura emessa prima della nota' };
+  if (cand.length > 1 && nota.request_ids?.length) {
+    const acc = new Set(nota.request_ids.map(String));
+    const stesse = cand.filter((f) => (f.request_ids || []).some((x) => acc.has(String(x))));
+    if (stesse.length === 1) return { fattura: stesse[0], motivo: 'stesso importo e stessa accettazione' };
+  }
+  return { fattura: null, candidate: cand.length };
+}
+
+/**
+ * TIPOLOGIA di un movimento in entrata (v0.99.7), letta dalla causale della banca: serve al filtro di Incassi da abbinare.
+ * Le diciture sono quelle viste in produzione il 26/11/2026 ("Bonifico a vs favore", "Incassi PagoBancomat", "Incassi Internazionali
+ * Numia SpA", "Versamento contante allo sportello", "Erogazione mutuo", "Giro conto"), più le forme comuni delle altre banche.
+ * Decide la dicitura in testa alla causale; poi l'ordine conta: giroconto e incassi delle carte prima del bonifico. Ciò che non si riconosce è ALTRO.
+ */
+export const TIPI_MOVIMENTO = [
+  ['BONIFICO', 'Bonifici'], ['POS', 'POS e carte'], ['CONTANTI', 'Versamenti di contante'], ['ASSEGNO', 'Assegni'], ['SDD', 'Incassi SDD e RiBa'],
+  ['GIROCONTO', 'Giroconti'], ['FINANZIAMENTO', 'Mutui e finanziamenti'], ['ALTRO', 'Altro'],
+];
+export function tipoMovimento(causale) {
+  const t = ` ${String(causale ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ')} `;
+  if (/ giro ?conto | giro ?fondi | girofondo /.test(t)) return 'GIROCONTO';
+  // la dicitura dell'operazione è in testa alla causale: un bonifico resta un bonifico anche se nel testo libero compare "pos" o "contanti"
+  if (/^ (bonifico|bonifici|accredito bonifico|bon ) /.test(t.replace(/^ (\w+) /, ' $1 ')) || /^ bonific/.test(t)) return 'BONIFICO';
+  if (/ pagobancomat | pos | numia | nexi | incassi internazionali | incasso carte | carte di credito | bancomat | american express | amex | sumup | satispay | mybank /.test(t)) return 'POS';
+  if (/ contant[ei] | versamento allo sportello | cassa continua /.test(t)) return 'CONTANTI';
+  if (/ assegn[oi] /.test(t)) return 'ASSEGNO';
+  if (/ sdd | sepa direct debit | addebito diretto | ri ba | riba | ricevut[ae] bancari[ae] | incasso effetti /.test(t)) return 'SDD';
+  if (/ mutuo | finanziamento | erogaz | anticipo fatture /.test(t)) return 'FINANZIAMENTO';
+  if (/ bonific[oi] | bon | giroconto | sepa credit transfer | sct | accredito | instant /.test(t)) return 'BONIFICO';
+  return 'ALTRO';
 }
 
 /**
@@ -135,7 +206,7 @@ export function causaleCita(causale, numero, anno = null) {
  * AUTO solo quando la causale cita le fatture, l'importo coincide al centesimo con il loro residuo e nulla contraddice il cliente:
  * è l'unico caso che si conferma senza una persona.
  */
-export function proponiAbbinamento(mov, fatture, { ibanNoti = new Map(), tolleranza = 0.01 } = {}) {
+export function proponiAbbinamento(mov, fatture, { ibanNoti = new Map(), tolleranza = 0.01, stornate = [] } = {}) {
   const imp = Math.round(Number(mov.importo) * 100) / 100;
   const vuoto = { esito: 'NESSUNO', organization_id: null, per: null, righe: [], punteggio: 0, motivo: 'nessuna fattura riconosciuta', residuo: imp };
   if (!(imp > 0) || !fatture.length) return vuoto;
@@ -167,12 +238,19 @@ export function proponiAbbinamento(mov, fatture, { ibanNoti = new Map(), tollera
     for (const f of [...citateOk].sort((a, b) => String(a.scadenza).localeCompare(String(b.scadenza)))) { if (resto <= 0) break; const q = Math.min(resto, Number(f.residuo)); righe.push({ fattura_id: f.id, importo: Math.round(q * 100) / 100 }); resto = Math.round((resto - q) * 100) / 100; }
     return { esito: 'PROPOSTO', organization_id: o, per: per || 'numero di fattura in causale', righe, punteggio: 65, motivo: 'fatture citate in causale, importo diverso dal residuo: pagamento parziale o cumulativo da confermare', residuo: Math.max(0, resto) };
   }
+  // 2b) v0.99.6: la causale cita una fattura STORNATA da nota di credito (il cliente paga con il vecchio numero): il cliente è il suo,
+  //     e sotto si propone la fattura aperta di pari importo che la sostituisce. Mai conferma automatica.
+  let storno = null;
+  if (!citateOk.length) {
+    const st = stornate.filter((f) => (!org || f.organization_id === org) && causaleCita(mov.causale, f.numero, String(f.data).slice(0, 4)));
+    if (st.length && new Set(st.map((f) => f.organization_id)).size === 1) { storno = st[0]; if (!org) { org = st[0].organization_id; per = `fattura n. ${st[0].numero} citata in causale, stornata`; } }
+  }
   if (!org) return citate.length ? { ...vuoto, motivo: 'la causale cita fatture di clienti diversi: da abbinare a mano' } : vuoto;
   // 3) cliente riconosciuto, nessuna fattura citata: importo uguale a UNA fattura, o al totale aperto
   const sue = fatture.filter((f) => f.organization_id === org).sort((a, b) => String(a.scadenza).localeCompare(String(b.scadenza)));
   if (!sue.length) return { ...vuoto, organization_id: org, per, motivo: 'cliente riconosciuto ma senza fatture aperte' };
   const esatte = sue.filter((f) => uguale(Number(f.residuo), imp));
-  if (esatte.length === 1) return { esito: 'PROPOSTO', organization_id: org, per, righe: [{ fattura_id: esatte[0].id, importo: imp }], punteggio: 75, motivo: 'cliente riconosciuto e importo uguale a una sola fattura aperta', residuo: 0 };
+  if (esatte.length === 1) return { esito: 'PROPOSTO', organization_id: org, per, righe: [{ fattura_id: esatte[0].id, importo: imp }], punteggio: storno ? 85 : 75, motivo: storno ? `la causale cita la fattura n. ${storno.numero}, stornata${storno.nota_numero ? ` dalla nota di credito n. ${storno.nota_numero}` : ''}: proposta la fattura n. ${esatte[0].numero} di pari importo, da confermare` : 'cliente riconosciuto e importo uguale a una sola fattura aperta', residuo: 0 };
   const totale = Math.round(sue.reduce((s, f) => s + Number(f.residuo), 0) * 100) / 100;
   if (uguale(totale, imp)) return { esito: 'PROPOSTO', organization_id: org, per, righe: sue.map((f) => ({ fattura_id: f.id, importo: Number(f.residuo) })), punteggio: 75, motivo: 'cliente riconosciuto e importo uguale al totale delle fatture aperte', residuo: 0 };
   const righe = []; let resto = imp;

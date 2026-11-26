@@ -13,6 +13,8 @@ export const STATO_COM = { DA_APPROVARE: { label: 'In attesa', tone: 'amber' }, 
 export const CLASSE = { PAGATO: { label: 'Dice di avere pagato', tone: 'green' }, PROMESSA: { label: 'Promessa di pagamento', tone: 'blue' }, CONTESTAZIONE: { label: 'Contestazione', tone: 'red' }, RICHIESTA: { label: 'Richiesta', tone: 'amber' },
   FUORI_UFFICIO: { label: 'Assenza automatica', tone: 'grey' }, ALTRO: { label: 'Da leggere', tone: 'amber' } };
 export const ESITO = { PAGAMENTO_PROMESSO: 'Pagamento promesso', PIANO_RIENTRO: 'Piano di rientro', CONTESTAZIONE: 'Contestazione', NESSUN_RISCONTRO: 'Nessun riscontro' };
+// v0.99.6: una fattura chiusa per intero da nota di credito è STORNATA, non incassata
+export const statoFattura = (f) => (f.stornata || (f.stato === 'PAGATA' && f.chiusa_origine === 'NOTA_CREDITO') ? { label: 'Stornata', tone: 'grey' } : STATO_FATTURA[f.stato] || {});
 export const STATO_FATTURA = { APERTA: { label: 'Aperta', tone: 'amber' }, PARZIALE: { label: 'Incassata in parte', tone: 'blue' }, PAGATA: { label: 'Incassata', tone: 'green' }, NOTA_CREDITO: { label: 'Nota di credito', tone: 'mauve' }, ANNULLATA: { label: 'Annullata', tone: 'grey' } };
 export const STATO_PRATICA = { PROPOSTA: { label: 'Da autorizzare', tone: 'amber' }, AUTORIZZATA: { label: 'Autorizzata, da trasmettere', tone: 'blue' }, TRASMESSA: { label: 'Trasmessa', tone: 'red' }, CHIUSA: { label: 'Chiusa', tone: 'green' }, RESPINTA: { label: 'Non autorizzata', tone: 'grey' } };
 export const ORIGINE_SCADENZA = { FILE: 'dal partitario', TERMINI: 'dai termini di pagamento', PREDEFINITA: 'termini predefiniti: da verificare', MANUALE: 'indicata a mano' };

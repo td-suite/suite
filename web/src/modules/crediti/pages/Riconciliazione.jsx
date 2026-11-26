@@ -2,7 +2,7 @@
 // importo uguale al residuo); qui si confermano o si correggono le proposte e si abbinano a mano gli altri.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loading, Empty, PageHead, Badge, Tabs, Modal, ErrorBox, SearchInput } from '../../../components/ui.jsx';
+import { Loading, Empty, PageHead, Badge, Tabs, Seg, Modal, ErrorBox, SearchInput } from '../../../components/ui.jsx';
 import { useApi, base } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { Modalita, LinkCliente, useAzione, api, Modulo } from '../components.jsx';
@@ -29,7 +29,8 @@ function Abbina({ mov, onClose, onFatto }) {
 }
 
 export default function Riconciliazione() {
-  const [stato, setStato] = useState('PROPOSTO'); const d = useApi(`/riconciliazione?stato=${stato}`, [stato]); const { user } = useAuth(); const az = useAzione(d.reload); const [m, setM] = useState(null);
+  const [stato, setStato] = useState('PROPOSTO'); const [tipo, setTipo] = useState('');   // v0.99.7: filtro per tipologia del movimento
+  const d = useApi(`/riconciliazione?stato=${stato}${tipo ? `&tipo=${tipo}` : ''}`, [stato, tipo]); const { user } = useAuth(); const az = useAzione(d.reload); const [m, setM] = useState(null);
   const x = d.data; const b = x?.banca;
   return (
     <div className="page">
@@ -39,9 +40,10 @@ export default function Riconciliazione() {
       {b && !b.aggiornata.ok && <div className="alert warn cr-gap"><span>{b.configurata ? `Movimenti non aggiornati: ${b.aggiornata.motivo}.` : 'Collegamento bancario non configurato sul server.'} <Link to={`${base}/banca`}>Conti bancari</Link></span></div>}
       {b?.aggiornata.ok && <p className="small muted">Movimenti letti il {itDataOra(b.aggiornata.ultimo)}.</p>}
       <Tabs value={stato} onChange={setStato} items={[{ value: 'PROPOSTO', label: 'Proposte', count: x?.conteggi.proposti }, { value: 'DA_ABBINARE', label: 'Senza abbinamento', count: x?.conteggi.da_abbinare }, { value: 'ABBINATO', label: 'Abbinati' }, { value: 'IGNORATO', label: 'Non sono fatture' }]} />
+      {x && (x.tipi?.length > 1 || tipo) && <div className="cr-filtro-tipo"><span className="small muted">Tipologia</span><Seg label="Tipologia del movimento" value={tipo} onChange={setTipo} items={[{ value: '', label: `Tutti (${x.totale})` }, ...x.tipi.map((t) => ({ value: t.tipo, label: `${t.label} (${t.n})` })), ...(tipo && !x.tipi.some((t) => t.tipo === tipo) ? [{ value: tipo, label: 'Tipologia scelta (0)' }] : [])]} /></div>}
       {d.error ? <Empty icon="alert" title="Errore">{d.error.message}</Empty> : !x ? <Loading /> : x.righe.length ? x.righe.map((r) => (
         <div key={r.id} className="cr-mov">
-          <div className="h"><span className="imp">{eur(r.importo)}</span><span>{itData(r.data)}</span><span className="strong">{r.controparte || 'Ordinante non indicato'}</span>{r.cliente && <span className="small">cliente: <LinkCliente id={r.organization_id}>{r.cliente}</LinkCliente>{r.riconosciuto_per ? ` (${r.riconosciuto_per})` : ''}</span>}</div>
+          <div className="h"><span className="imp">{eur(r.importo)}</span><span>{itData(r.data)}</span><span className="strong">{r.controparte || 'Ordinante non indicato'}</span>{r.tipo && <Badge tone="grey" dot={false}>{(x.tipi.find((t) => t.tipo === r.tipo) || {}).label || r.tipo}</Badge>}{r.cliente && <span className="small">cliente: <LinkCliente id={r.organization_id}>{r.cliente}</LinkCliente>{r.riconosciuto_per ? ` (${r.riconosciuto_per})` : ''}</span>}</div>
           <div className="caus">{r.causale || 'Senza causale'}</div>
           {r.righe.map((f) => <div key={f.fattura_id} className="cr-riga-f"><Badge tone={f.stato === 'CONFERMATO' ? 'green' : 'amber'}>{f.stato === 'CONFERMATO' ? (f.automatico ? 'Confermato da solo' : 'Confermato') : 'Proposta'}</Badge><span>fattura n. {f.numero} del {itData(f.data)}</span><span className="strong">{eur(f.importo)}</span>{f.stato !== 'CONFERMATO' && <span className="small muted">residuo {eur(f.residuo_fattura)}</span>}</div>)}
           {r.nota && <div className="small muted" style={{ marginTop: 4 }}>{r.nota}{r.residuo > 0 ? ` · non attribuiti ${eur(r.residuo)}` : ''}{r.utente ? ` · ${r.utente}` : ''}</div>}
@@ -50,7 +52,7 @@ export default function Riconciliazione() {
             {stato === 'DA_ABBINARE' && <><button className="btn sm" onClick={() => setM({ t: 'abbina', r })}>Abbina a fatture</button><button className="btn sm ghost" onClick={() => setM({ t: 'ignora', r })}>Non è una fattura cliente</button></>}
             {['ABBINATO', 'IGNORATO'].includes(stato) && <button className="btn sm ghost" disabled={az.busy} onClick={() => az.fai(() => api.post(`/movimenti/${r.id}/annulla`, {}), 'Abbinamento annullato: il movimento torna da abbinare')}>Annulla</button>}
           </div>}
-        </div>)) : <Empty icon="check">{stato === 'PROPOSTO' ? 'Nessuna proposta da confermare' : stato === 'DA_ABBINARE' ? 'Nessun bonifico senza abbinamento' : 'Nessun movimento'}</Empty>}
+        </div>)) : <Empty icon="check">{stato === 'PROPOSTO' ? 'Nessuna proposta da confermare' : stato === 'DA_ABBINARE' ? 'Nessun bonifico senza abbinamento' : 'Nessun movimento'}{tipo ? ' di questa tipologia' : ''}</Empty>}
       {m?.t === 'abbina' && <Abbina mov={m.r} onClose={() => setM(null)} onFatto={d.reload} />}
       {m?.t === 'ignora' && <Modulo title="Il movimento non riguarda una fattura cliente" onClose={() => setM(null)} campi={[{ k: 'nota', label: 'Cos\'è (giroconto, incasso POS, rimborso...)', required: true }]} onConfirm={(v) => api.post(`/movimenti/${m.r.id}/ignora`, v).then(() => { window.dispatchEvent(new Event('suite:badges')); return d.reload(); })} />}
     </div>

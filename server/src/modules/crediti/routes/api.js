@@ -11,7 +11,7 @@ import { one, many, q, tx } from '../db.js';
 import { KEY } from '../config.js';
 import { soloDirezione, soloOperativi, soloVistaCompleta, clientiVisibili, puoVedereCliente } from '../lib/access.js';
 import { impostazioni, salvaImpostazione, evento, audit, oggiRoma, CHIAVI_MODELLO } from '../lib/impostazioni.js';
-import { PREDEFINITE, FASI, FASE_LABEL, FASCE, piuLavorativi } from '../lib/regole.js';
+import { PREDEFINITE, FASI, FASE_LABEL, FASCE, piuLavorativi, TIPI_MOVIMENTO } from '../lib/regole.js';
 import { MODELLI, componi, itData, eur } from '../lib/testi.js';
 import { posizioni, fattureAperte, indicatori, destinatari, sincronizzaSynclab, importaPartitario, registraIncasso, applicaNotaCredito, ricalcolaScadenze, listaEmail, hub, r2 } from '../lib/fatture.js';
 import { elencoMovimenti, contaMovimenti, applica, rifiuta, ignora, annulla, esaminaMovimenti } from '../lib/riconcilia.js';
@@ -151,7 +151,8 @@ r.get('/utenti', soloOperativi, ah(async (_req, res) => res.json({ righe: await 
 r.get('/fatture', soloVistaCompleta, ah(async (req, res) => {
   const oggi = oggiRoma(); const stato = String(req.query.stato || 'APERTE'); const cerca = String(req.query.cerca || '').trim();
   const cond = stato === 'APERTE' ? `f.stato IN ('APERTA','PARZIALE')` : stato === 'SCADUTE' ? `f.stato IN ('APERTA','PARZIALE') AND f.scadenza < $1::date` : stato === 'SENZA_CLIENTE' ? `f.organization_id IS NULL AND f.stato <> 'ANNULLATA'` : stato === 'CONTESTATE' ? `f.contestata AND f.stato IN ('APERTA','PARZIALE')` : stato === 'NOTE' ? `f.stato = 'NOTA_CREDITO'` : stato === 'PAGATE' ? `f.stato = 'PAGATA'` : `f.stato <> 'ANNULLATA'`;
-  const righe = await many(`SELECT f.id, f.fonte, f.organization_id, coalesce(o.name, f.cliente_nome) AS cliente, f.cliente_piva, f.numero, f.data::text AS data, f.scadenza::text AS scadenza, f.scadenza_origine, f.importo, f.incassato, (f.importo - f.incassato) AS residuo, f.stato, f.fase, f.contestata, ($1::date - f.scadenza)::int AS giorni, f.nota
+  const righe = await many(`SELECT f.id, f.fonte, f.organization_id, coalesce(o.name, f.cliente_nome) AS cliente, f.cliente_piva, f.numero, f.data::text AS data, f.scadenza::text AS scadenza, f.scadenza_origine, f.importo, f.incassato, (f.importo - f.incassato) AS residuo, f.stato, f.fase, f.contestata, ($1::date - f.scadenza)::int AS giorni, f.nota, (f.stato = 'PAGATA' AND f.chiusa_origine = 'NOTA_CREDITO') AS stornata,
+        (SELECT n.numero FROM incassi i JOIN fatture n ON n.id = i.nota_credito_id WHERE i.fattura_id = f.id AND i.stato = 'CONFERMATO' ORDER BY i.id DESC LIMIT 1) AS nota_numero
       FROM fatture f LEFT JOIN public.organizations o ON o.id = f.organization_id WHERE ${cond} AND ($2 = '' OR f.numero ILIKE '%' || $2 || '%' OR coalesce(o.name, f.cliente_nome) ILIKE '%' || $2 || '%') ORDER BY f.scadenza DESC, f.id DESC LIMIT 800`, [oggi, cerca]);
   res.json({ righe: righe.map((f) => ({ ...f, importo: r2(f.importo), incassato: r2(f.incassato), residuo: r2(f.residuo), fase_label: FASE_LABEL[f.fase] || null })), importazioni: await many(`SELECT i.id, i.filename, i.righe, i.nuove, i.aggiornate, i.chiuse, i.non_abbinate, i.completo, i.at, u.full_name AS utente FROM importazioni i LEFT JOIN public.users u ON u.id = i.user_id ORDER BY i.id DESC LIMIT 10`) });
 }));
@@ -287,7 +288,10 @@ r.post('/risposte/:id/gestita', soloOperativi, ah(async (req, res) => {
 // ---------------------------------------------------------------- riconciliazione
 r.get('/riconciliazione', soloVistaCompleta, ah(async (req, res) => {
   const stato = ['PROPOSTO', 'DA_ABBINARE', 'ABBINATO', 'IGNORATO'].includes(req.query.stato) ? req.query.stato : 'PROPOSTO';
-  res.json({ righe: await elencoMovimenti({ stato }), conteggi: await contaMovimenti(), banca: await statoBanca() });
+  // v0.99.7: filtro per tipologia del movimento (bonifici, POS e carte, contante...), con il numero di movimenti per tipologia
+  const tipo = TIPI_MOVIMENTO.some(([k]) => k === req.query.tipo) ? req.query.tipo : null;
+  const el = await elencoMovimenti({ stato, tipo, conTipi: true, limite: 300 });
+  res.json({ righe: el.righe, tipi: el.tipi, totale: el.totale, tipo, conteggi: await contaMovimenti(), banca: await statoBanca() });
 }));
 r.get('/riconciliazione/fatture', soloVistaCompleta, ah(async (req, res) => {
   const cerca = String(req.query.cerca || '').trim().toLowerCase();

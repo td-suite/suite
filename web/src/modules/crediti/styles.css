@@ -26,3 +26,6 @@
 .cr-rosso { color: #A63A22; font-weight: 600; }
 .cr-modello textarea { min-height: 220px; font-family: inherit; }
 @media (max-width: 760px) { .cr-aging { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-kv { grid-template-columns: 1fr; } }
+
+/* v0.99.7: filtro per tipologia del movimento in Incassi da abbinare */
+.cr-filtro-tipo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 14px; } .cr-filtro-tipo .seg { flex-wrap: wrap; }
