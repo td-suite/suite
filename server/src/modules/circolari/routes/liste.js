@@ -6,7 +6,7 @@ import { q, one, many } from '../db.js';
 import { many as suiteMany } from '../../../db.js';
 import { clientiAttivi } from '../../../lib/clienti.js';
 import { ah, parse, audit, notFound, forbidden, bad } from '../../../lib/util.js';
-import { AUTOMATICHE, destinatariAutomatici, destinatariLista, testoEmail, salvaTestoEmail, SEGNAPOSTO, EMAIL_PREDEFINITA } from '../lib/distribuzione.js';
+import { AUTOMATICHE, destinatariAutomatici, destinatariLista, personaleInterno, testoEmail, salvaTestoEmail, SEGNAPOSTO, EMAIL_PREDEFINITA } from '../lib/distribuzione.js';
 
 const r = Router();
 const KEY = 'circolari';
@@ -15,7 +15,7 @@ const canManage = (u) => ['ADMIN', 'PUBBLICATORE'].includes(u.role);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const destSchema = z.array(z.object({ email: z.string().trim().toLowerCase().regex(EMAIL, 'email non valida').max(200), nome: z.string().trim().max(200).optional().default(''), organizzazione: z.string().trim().max(200).optional().default('') })).max(2000);
-const listaSchema = z.object({ nome: z.string().trim().min(2).max(120), descrizione: z.string().trim().max(500).optional().default(''), segmento: z.enum(SEGMENTI).optional().default('CLIENTI_SERVICE'), destinatari: destSchema.optional().default([]), attiva: z.boolean().optional().default(true) });
+const listaSchema = z.object({ nome: z.string().trim().min(2).max(120), descrizione: z.string().trim().max(500).optional().default(''), segmento: z.enum(SEGMENTI).optional().default('CLIENTI_SERVICE'), destinatari: destSchema.optional().default([]), attiva: z.boolean().optional().default(true), persone: z.array(z.coerce.number().int().positive()).max(2000).optional().default([]) });
 
 // Email delle Legal entity clienti della linea (attivi e contrattualizzati, funzione unica clientiAttivi della Suite)
 async function emailClienti(linea) {
@@ -26,11 +26,11 @@ async function emailClienti(linea) {
 const dedupe = (arr) => { const seen = new Set(); return arr.filter((d) => (seen.has(d.email) ? false : (seen.add(d.email), true))); };
 
 r.get('/liste', ah(async (_req, res) => {
-  const rows = await many(`SELECT id, nome, descrizione, segmento, attiva, automatica, destinatari, updated_at, (SELECT count(*)::int FROM invii i WHERE i.lista_id=l.id) AS n_invii FROM liste l ORDER BY (automatica IS NULL), lower(nome)`);
+  const rows = await many(`SELECT id, nome, descrizione, segmento, attiva, automatica, destinatari, persone, updated_at, (SELECT count(*)::int FROM invii i WHERE i.lista_id=l.id) AS n_invii FROM liste l ORDER BY (automatica IS NULL), lower(nome)`);
   // v0.99.4: per le liste automatiche il numero è quello calcolato adesso dall'anagrafica, più gli indirizzi aggiunti a mano
   const out = [];
   for (const l of rows) {
-    const { destinatari, ...resto } = l;
+    const { destinatari, persone, ...resto } = l;
     const tutti = await destinatariLista(l).catch(() => destinatari || []);
     out.push({ ...resto, n_destinatari: tutti.length, n_manuali: (destinatari || []).length, n_automatici: tutti.filter((d) => d.origine === 'AUTO').length });
   }
@@ -54,13 +54,15 @@ r.get('/liste/proposte', ah(async (req, res) => {
   if (segmento === 'CLIENTI_SERVICE' || segmento === 'PUNTI_PRELIEVO' || segmento === 'PARTNER') {
     const kinds = segmento === 'CLIENTI_SERVICE' ? ['SERVICE'] : segmento === 'PUNTI_PRELIEVO' ? ['PUNTO_PRELIEVI'] : ['SERVICE', 'PUNTO_PRELIEVI', 'CENTRO_DIAGNOSTICO', 'POLIAMBULATORIO', 'CENTRO_MEDICO', 'ALTRO'];
     rows = await suiteMany(`SELECT lower(s.email) AS email, s.name AS nome, coalesce(o.name, '') AS organizzazione FROM public.sites s LEFT JOIN public.organizations o ON o.id=s.organization_id WHERE s.active AND s.email IS NOT NULL AND s.email <> '' AND s.kind = ANY($1::text[]) ORDER BY lower(s.name)`, [kinds]);
-    // A5 (blocco 2): Legal entity dei clienti Service attivi e contrattualizzati (lib/clienti.js) per Clienti service. B12: per Punti
-    // prelievo le Legal entity che ospitano un punto prelievi attivo; per Partner anche quelle di tipo PARTNER
+    // A5 (blocco 2): Legal entity dei clienti Service attivi e contrattualizzati (lib/clienti.js) per Clienti service. B12: per Partner
+    // le Legal entity di tipo PARTNER e quelle che ospitano una sede attiva
     const ospitanti = `o.id IN (SELECT s.host_organization_id FROM public.sites s WHERE s.active AND s.tenure = 'OSPITATA' AND s.host_organization_id IS NOT NULL)`;
+    // v0.99.5 (CEO): per Punti prelievo SOLO i punti, nessuna Legal entity (soggetti amministrativi, fuori dal processo)
     const orgs = segmento === 'CLIENTI_SERVICE'
       ? await emailClienti('SRV')
+      : segmento === 'PUNTI_PRELIEVO' ? []
       : await suiteMany(`SELECT lower(o.email) AS email, o.name AS nome, o.name AS organizzazione FROM public.organizations o WHERE o.email IS NOT NULL AND o.email <> '' AND o.active
-          AND (${segmento === 'PARTNER' ? `o.kind = 'PARTNER' OR ` : ''}${ospitanti}) ORDER BY lower(o.name)`).catch(() => []);
+          AND (o.kind = 'PARTNER' OR ${ospitanti}) ORDER BY lower(o.name)`).catch(() => []);
     rows = rows.concat(orgs);
   } else if (segmento === 'PERSONALE') {
     rows = await suiteMany(`SELECT lower(u.email) AS email, coalesce(u.full_name, u.email) AS nome, 'Toscana Diagnostica' AS organizzazione FROM public.users u WHERE u.status='ACTIVE' ORDER BY lower(coalesce(u.full_name, u.email))`).catch(() => []);
@@ -73,7 +75,8 @@ r.get('/liste/proposte', ah(async (req, res) => {
 r.get('/liste/:id', ah(async (req, res) => {
   const l = await one('SELECT * FROM liste WHERE id=$1', [req.params.id]);
   if (!l) throw notFound('Lista non trovata');
-  res.json({ ...l, automatici: l.automatica ? await destinatariAutomatici(l.automatica) : [] });
+  // v0.99.5: la lista Interni è a scelta: si restituisce l'elenco del personale da cui spuntare (persone = id già scelti)
+  res.json({ ...l, automatici: l.automatica ? await destinatariAutomatici(l.automatica, l) : [], personale: l.automatica === 'INTERNI' ? await personaleInterno() : undefined });
 }));
 
 r.post('/liste', ah(async (req, res) => {
@@ -88,9 +91,10 @@ r.put('/liste/:id', ah(async (req, res) => {
   if (!canManage(req.user)) throw forbidden('Le liste di distribuzione si gestiscono con il profilo Pubblicazione');
   const cur = await one('SELECT * FROM liste WHERE id=$1', [req.params.id]);
   if (!cur) throw notFound('Lista non trovata');
-  const b = parse(listaSchema, { ...cur, ...req.body, destinatari: req.body.destinatari ?? cur.destinatari });
-  const l = await one('UPDATE liste SET nome=$2, descrizione=$3, segmento=$4, destinatari=$5, attiva=$6, updated_by=$7, updated_at=now() WHERE id=$1 RETURNING *', [cur.id, b.nome, b.descrizione, b.segmento, JSON.stringify(dedupe(b.destinatari)), b.attiva, req.user.suite_user_id]);
-  await audit(req, 'CIRCOLARI_LISTA_MODIFICATA', { module: KEY, entity: 'lista', entityId: l.id, label: l.nome, data: { n: l.destinatari.length } });
+  const b = parse(listaSchema, { ...cur, ...req.body, destinatari: req.body.destinatari ?? cur.destinatari, persone: req.body.persone ?? cur.persone ?? [] });
+  const persone = cur.automatica === 'INTERNI' ? [...new Set(b.persone)] : [];
+  const l = await one('UPDATE liste SET nome=$2, descrizione=$3, segmento=$4, destinatari=$5, attiva=$6, updated_by=$7, persone=$8::int[], updated_at=now() WHERE id=$1 RETURNING *', [cur.id, b.nome, b.descrizione, b.segmento, JSON.stringify(dedupe(b.destinatari)), b.attiva, req.user.suite_user_id, persone]);
+  await audit(req, 'CIRCOLARI_LISTA_MODIFICATA', { module: KEY, entity: 'lista', entityId: l.id, label: l.nome, data: { n: l.destinatari.length, persone: persone.length } });
   res.json(l);
 }));
 

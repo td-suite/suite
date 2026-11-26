@@ -177,3 +177,12 @@ I firmatari si scelgono dal personale (dipendenti e LP attivi), ma i contatti in
 - **Conferma di lettura**: ogni destinatario ha un codice personale (`invii_destinatari`). Il pulsante dell'email apre una pagina pubblica (`/api/circolari/pub/:token/conferma/:codice`) e la conferma si registra solo premendo "Confermo di aver letto" (POST): i controlli automatici della posta che aprono i collegamenti non confermano. "Collegamento aperto" è registrato a parte e può essere un falso positivo. Esito per destinatario nella scheda della circolare, riquadro Invii.
 - **Testo dell'email** (`GET/PUT /email-testo`, impostazioni `email_oggetto`, `email_testo`): in Liste di distribuzione, con i segnaposto {protocollo}, {titolo}, {sintesi}, {data}, {decorrenza}; nell'invio si ritocca.
 - La circolare pubblicata resta visibile nei widget dei destinatari scelti (segmenti: Portale Service, punti prelievo, personale), come prima.
+
+## v0.99.5 · Punti Prelievo senza Legal entity, Interni a scelta (26/11/2026)
+
+Due correzioni del CEO alle liste della 0.99.4.
+
+- **Punti Prelievo**: la lista contiene **solo i punti prelievo attivi** (sedi PUNTO_PRELIEVI attive con email). Le Legal entity che li ospitano sono soggetti amministrativi, non coinvolti nel processo: tolte dalla lista automatica e dal pulsante "Proponi dall'anagrafica" del segmento Punti prelievo. Averle incluse nella 0.99.4 è stato un errore di chi ha scritto la funzione, non una richiesta.
+- **Interni**: non più calcolata da una regola. I destinatari **si selezionano dall'elenco del personale** nella finestra della lista (`liste.persone`, migrazione 007; `personaleInterno()` in `lib/distribuzione.js`): dipendenti e liberi professionisti attivi con utente interno attivo, con ricerca per nome, sede, ruolo e indirizzo, "Seleziona tutti" e "Togli tutti" (sui trovati, se c'è una ricerca). Si salva l'id della persona: l'indirizzo è quello di lavoro dell'utente letto a ogni invio, e chi cessa esce da solo. La lista **nasce vuota**: va compilata una volta dopo la pubblicazione. Gli indirizzi aggiunti a mano restano.
+- La lista Service non cambia (Legal entity dei clienti service attivi e sedi SERVICE).
+

@@ -122,9 +122,16 @@ describe('Circolari v0.98.0: nella Suite', { skip: !process.env.DATABASE_URL_TES
       const liste = must(await O.get('/api/circolari/liste'), 'liste');
       const L = Object.fromEntries(liste.filter((l) => l.automatica).map((l) => [l.automatica, l]));
       assert.deepEqual(Object.keys(L).sort(), ['INTERNI', 'PUNTI_PRELIEVO', 'SERVICE'], 'le tre liste automatiche nascono da sole');
+      // v0.99.5: Interni è a scelta. Nasce vuota; in elenco tutto il personale con utente (anche chi era fuori dalla regola 0.99.4)
+      const prima = must(await O.get(`/api/circolari/liste/${L.INTERNI.id}`), 'interni');
+      assert.equal(prima.automatici.length, 0, 'nessuno entra per regola');
+      const elenco = prima.personale.map((x) => x.email);
+      assert.ok(['dip.firma@azienda.test', 'flow@azienda.test', 'prelevatore@azienda.test', 'tecnico@azienda.test', 'contabile@azienda.test'].every((e) => elenco.includes(e)), `elenco del personale: ${elenco.join(', ')}`);
+      assert.ok(!elenco.includes('privata@casa.test'), 'indirizzo dell\'utente, mai quello della scheda');
+      const scelti = ['dip.firma@azienda.test', 'flow@azienda.test', 'prelevatore@azienda.test', 'tecnico@azienda.test'];
+      must(await O.put(`/api/circolari/liste/${L.INTERNI.id}`, { persone: prima.personale.filter((x) => scelti.includes(x.email)).map((x) => x.person_id) }), 'scelta degli interni');
       const interni = must(await O.get(`/api/circolari/liste/${L.INTERNI.id}`), 'interni').automatici;
-      assert.deepEqual(interni.map((d) => d.email).sort(), ['dip.firma@azienda.test', 'flow@azienda.test', 'prelevatore@azienda.test', 'tecnico@azienda.test'], 'COO (dal test precedente), Laboratorio, Punti Prelievo e ruoli indicati; indirizzo dell\'utente, mai quello della scheda');
-      assert.match(interni.find((d) => d.email === 'flow@azienda.test').perche, /ruolo: Flow Manager/);
+      assert.deepEqual(interni.map((d) => d.email).sort(), scelti, 'destinatari = le persone scelte');
       assert.deepEqual(must(await O.get(`/api/circolari/liste/${L.PUNTI_PRELIEVO.id}`), 'pp').automatici.map((d) => d.email), ['pp.prova@azienda.test'], 'solo i punti attivi');
       assert.ok(must(await O.get(`/api/circolari/liste/${L.SERVICE.id}`), 'srv').automatici.some((d) => d.email === 'service.prova@cliente.test'));
       // indirizzi aggiunti a mano su una lista automatica: si sommano, senza doppioni

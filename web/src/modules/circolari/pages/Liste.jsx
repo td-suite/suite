@@ -16,13 +16,13 @@ export default function Liste() {
   const apri = async (l) => { try { setModal(l ? await api.get(`/liste/${l.id}`) : { ...EMPTY }); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title="Liste di distribuzione" icon="users" sub="A chi vanno le circolari. Service, Punti Prelievo e Interni sono automatiche: si compilano da sole dall'anagrafica a ogni invio, e in più accettano indirizzi aggiunti a mano. Le altre liste si compilano a mano o con le proposte dell'anagrafica." actions={<button className="btn" onClick={() => apri(null)}><Icon name="plus" />Nuova lista</button>} />
+      <PageHead title="Liste di distribuzione" icon="users" sub="A chi vanno le circolari. Service e Punti Prelievo sono automatiche: si compilano da sole dall'anagrafica a ogni invio. Interni è a scelta: i destinatari si selezionano dall'elenco del personale. Tutte accettano indirizzi aggiunti a mano. Le altre liste si compilano a mano o con le proposte dell'anagrafica." actions={<button className="btn" onClick={() => apri(null)}><Icon name="plus" />Nuova lista</button>} />
       <Card flush>
         {!data ? <Loading /> : !data.length ? <Empty icon="users" title="Nessuna lista">Crea la prima lista: i destinatari si propongono dall'anagrafica (sedi e organizzazioni con email).</Empty> : (
           <div className="table-wrap"><table className="t">
             <thead><tr><th>Lista</th><th>Segmento</th><th className="num">Destinatari</th><th className="num">Invii</th><th>Aggiornata</th><th></th></tr></thead>
             <tbody>{data.map((l) => <tr key={l.id} className="click" onClick={() => apri(l)}>
-              <td><div className="strong">{l.nome} {l.automatica && <Badge tone="teal">automatica</Badge>} {!l.attiva && <Badge tone="grey">disattivata</Badge>}</div><div className="small muted">{l.descrizione}</div></td>
+              <td><div className="strong">{l.nome} {l.automatica && <Badge tone="teal">{l.automatica === 'INTERNI' ? 'a scelta' : 'automatica'}</Badge>} {!l.attiva && <Badge tone="grey">disattivata</Badge>}</div><div className="small muted">{l.descrizione}</div></td>
               <td className="small">{SEGMENTO[l.segmento] || l.segmento}</td><td className="num">{l.n_destinatari}{l.automatica && l.n_manuali > 0 && <div className="small muted">{l.n_manuali} aggiunti a mano</div>}</td><td className="num">{l.n_invii}</td><td className="small">{itDateTime(l.updated_at)}</td>
               <td className="actions">{!l.automatica && <button className="iconbtn" aria-label="Elimina" onClick={(e) => { e.stopPropagation(); setDel(l); }}><Icon name="trash" /></button>}</td>
             </tr>)}</tbody>
@@ -37,7 +37,16 @@ export default function Liste() {
 
 function ListaModal({ lista, onClose, onSaved }) {
   const toast = useToast();
-  const [f, setF] = useState({ ...lista, destinatari: lista.destinatari || [] });
+  const [f, setF] = useState({ ...lista, destinatari: lista.destinatari || [], persone: (lista.persone || []).map(Number) });
+  const [cerca, setCerca] = useState('');
+  const interni = f.automatica === 'INTERNI';
+  const personale = lista.personale || [];
+  const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const parole = norm(cerca).split(/\s+/).filter(Boolean);
+  const visibili = personale.filter((x) => { const t = norm(`${x.nome} ${x.email} ${x.sede} ${x.ruolo} ${x.tipo}`); return parole.every((w) => t.includes(w)); });
+  const scelta = new Set(f.persone);
+  const nScelti = personale.filter((x) => scelta.has(x.person_id)).length;
+  const spunta = (ids, on) => { const s2 = new Set(f.persone); for (const id of ids) { if (on) s2.add(id); else s2.delete(id); } upd('persone', [...s2]); };
   const [nuovo, setNuovo] = useState('');
   const [busy, setBusy] = useState(false);
   const upd = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -58,7 +67,20 @@ function ListaModal({ lista, onClose, onSaved }) {
       </div>
       <Field label="Descrizione"><input value={f.descrizione} onChange={(e) => upd('descrizione', e.target.value)} maxLength={500} /></Field>
       <label className="f inline"><input type="checkbox" checked={f.attiva} onChange={(e) => upd('attiva', e.target.checked)} /> lista attiva</label>
-      {f.automatica && <>
+      {interni && <>
+        <div className="row between" style={{ flexWrap: 'wrap', gap: 6 }}><b>Destinatari scelti dal personale ({nScelti} su {personale.length})</b>
+          <span className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn sm ghost" onClick={() => spunta(visibili.map((x) => x.person_id), true)}>Seleziona {cerca ? 'i trovati' : 'tutti'}</button>
+            <button type="button" className="btn sm ghost" onClick={() => spunta(visibili.map((x) => x.person_id), false)}>Togli {cerca ? 'i trovati' : 'tutti'}</button>
+          </span></div>
+        <input type="search" value={cerca} placeholder="Cerca per nome, sede, ruolo o indirizzo" onChange={(e) => setCerca(e.target.value)} />
+        <div className="circ-dest" style={{ maxHeight: 320 }}>{!personale.length ? <div className="small muted" style={{ padding: 10 }}>Nessuna persona in elenco: servono dipendenti o liberi professionisti attivi con un utente attivo della Suite.</div> : !visibili.length ? <div className="small muted" style={{ padding: 10 }}>Nessuno corrisponde alla ricerca.</div> : <table><tbody>{visibili.map((x) => <tr key={x.person_id} className="click" onClick={() => spunta([x.person_id], !scelta.has(x.person_id))}>
+          <td style={{ width: 30 }}><input type="checkbox" checked={scelta.has(x.person_id)} readOnly aria-label={`Seleziona ${x.nome}`} /></td>
+          <td className="small strong">{x.nome}</td><td className="small">{[x.tipo, x.sede].filter(Boolean).join(' · ')}</td><td className="small muted">{x.ruolo}</td><td className="mono small">{x.email}</td>
+        </tr>)}</tbody></table>}</div>
+        <div className="small muted">In elenco: dipendenti e liberi professionisti attivi con utente della Suite; l'indirizzo è quello di lavoro dell'utente. Chi cessa esce da solo dalla lista. La scelta vale dopo Salva.</div>
+      </>}
+      {f.automatica && !interni && <>
         <div className="row between"><b>Destinatari automatici ({(lista.automatici || []).length})</b><span className="small muted">calcolati adesso dall'anagrafica, non si modificano qui</span></div>
         <div className="circ-dest" style={{ maxHeight: 220 }}>{!(lista.automatici || []).length ? <div className="small muted" style={{ padding: 10 }}>Nessun destinatario trovato in anagrafica: mancano le email, oppure gli utenti collegati alle persone.</div> : <table><tbody>{lista.automatici.map((d) => <tr key={d.email}><td style={{ width: '38%' }} className="mono small">{d.email}</td><td className="small">{d.nome}</td><td className="small muted">{d.perche}</td></tr>)}</tbody></table>}</div>
       </>}
