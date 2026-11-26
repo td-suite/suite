@@ -53,10 +53,19 @@ function ListaModal({ lista, onClose, onSaved }) {
   const has = (email) => f.destinatari.some((d) => d.email === email);
   const aggiungi = (d) => { if (!d.email || has(d.email)) return; upd('destinatari', [...f.destinatari, { nome: '', organizzazione: '', ...d }]); };
   const proponi = async () => { setBusy(true); try { const rows = await api.get(`/liste/proposte?segmento=${f.segmento}`); let n = 0; const add = []; for (const r of rows) if (!has(r.email) && !add.some((x) => x.email === r.email)) { add.push(r); n++; } upd('destinatari', [...f.destinatari, ...add]); toast(n ? `${n} destinatari proposti dall'anagrafica` : 'Nessun destinatario nuovo nell\'anagrafica per questo segmento'); } catch (e) { toast(e, 'err'); } setBusy(false); };
-  const incolla = () => { const list = nuovo.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)); for (const email of list) aggiungi({ email }); setNuovo(''); };
+  // v0.99.8: più indirizzi incollati insieme entrano TUTTI (prima ne restava solo l'ultimo: ogni aggiunta ripartiva dallo stesso elenco)
+  // e quelli non validi restano nel riquadro, così si vedono e si correggono
+  const leggi = (testo) => { const pezzi = testo.split(/[\s,;<>()"']+/).map((x) => x.trim().toLowerCase().replace(/^mailto:/, '').replace(/[.:]+$/, '')).filter(Boolean); const ok = [...new Set(pezzi.filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)))]; return { ok, scarti: pezzi.filter((x) => x.includes('@') && !ok.includes(x)) }; };
+  const unisci = (elenco, emails) => [...elenco, ...emails.filter((e) => !elenco.some((d) => d.email === e)).map((email) => ({ email, nome: '', organizzazione: '' }))];
+  const incolla = () => { const { ok, scarti } = leggi(nuovo); const prima = f.destinatari.length; const dopo = unisci(f.destinatari, ok); upd('destinatari', dopo); setNuovo(scarti.join(', '));
+    toast(ok.length ? `${dopo.length - prima} indirizzi aggiunti${ok.length - (dopo.length - prima) ? `, ${ok.length - (dopo.length - prima)} già presenti` : ''}${scarti.length ? `, ${scarti.length} non validi rimasti nel riquadro` : ''}` : 'Nessun indirizzo valido nel testo', ok.length ? undefined : 'err'); };
   const salva = async () => {
     setBusy(true);
-    try { if (f.id) await api.put(`/liste/${f.id}`, f); else await api.post('/liste', f); toast('Lista salvata'); onSaved(); } catch (e) { toast(e, 'err'); }
+    // gli indirizzi ancora nel riquadro "Aggiungi indirizzi" entrano nella lista anche se non si è premuto Aggiungi
+    const { ok, scarti } = leggi(nuovo);
+    if (scarti.length) { toast(`Indirizzi non validi nel riquadro: ${scarti.slice(0, 3).join(', ')}. Correggili o toglili prima di salvare`, 'err'); setBusy(false); return; }
+    const dati = { ...f, destinatari: unisci(f.destinatari, ok) };
+    try { if (f.id) await api.put(`/liste/${f.id}`, dati); else await api.post('/liste', dati); toast(`Lista salvata: ${dati.destinatari.length} indirizzi${interni ? ` e ${nScelti} persone scelte` : ''}`); onSaved(); } catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
   return <Modal title={f.id ? `Lista: ${lista.nome}` : 'Nuova lista'} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn" disabled={busy} onClick={salva}><Icon name="check" />Salva</button></>}>

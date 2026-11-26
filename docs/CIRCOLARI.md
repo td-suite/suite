@@ -186,3 +186,7 @@ Due correzioni del CEO alle liste della 0.99.4.
 - **Interni**: non più calcolata da una regola. I destinatari **si selezionano dall'elenco del personale** nella finestra della lista (`liste.persone`, migrazione 007; `personaleInterno()` in `lib/distribuzione.js`): dipendenti e liberi professionisti attivi con utente interno attivo, con ricerca per nome, sede, ruolo e indirizzo, "Seleziona tutti" e "Togli tutti" (sui trovati, se c'è una ricerca). Si salva l'id della persona: l'indirizzo è quello di lavoro dell'utente letto a ogni invio, e chi cessa esce da solo. La lista **nasce vuota**: va compilata una volta dopo la pubblicazione. Gli indirizzi aggiunti a mano restano.
 - La lista Service non cambia (Legal entity dei clienti service attivi e sedi SERVICE).
 
+
+## v0.99.8 · Indirizzi incollati come elenco (26/11/2026)
+
+Errore presente dalla prima versione delle liste, segnalato dal CEO: incollando più indirizzi in "Aggiungi indirizzi" e premendo Aggiungi **entrava solo l'ultimo** (ogni aggiunta ripartiva dallo stesso elenco di partenza). Ora entrano tutti in un solo passaggio, senza doppioni, con un messaggio che dice quanti; maiuscole, virgole, punti e virgola, spazi, a capo, `<…>` e `mailto:` sono accettati; gli indirizzi non validi restano nel riquadro per essere corretti. Premendo **Salva** con indirizzi ancora nel riquadro, questi entrano nella lista senza bisogno di premere Aggiungi. Solo interfaccia (`pages/Liste.jsx`).
