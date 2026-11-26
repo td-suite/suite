@@ -20,6 +20,7 @@ const Cockpit = lazy(() => import('./pages/Cockpit.jsx'));
 const CockpitScadenzarioPagina = lazy(() => import('./pages/CockpitScadenzarioPagina.jsx'));
 const Files = lazy(() => import('./pages/Files.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
+const Notifiche = lazy(() => import('./pages/Notifiche.jsx'));
 const Admin = lazy(() => import('./pages/admin/Admin.jsx'));
 const ModuleFrame = lazy(() => import('./components/ModuleFrame.jsx'));
 const FormB2B = lazy(() => import('./pages/FormB2B.jsx'));
@@ -80,6 +81,7 @@ function Gate() {
         <Route path="/cockpit/scadenzario" element={<Guard ok={admin || hasModule(user, 'cockpit')}><CockpitScadenzarioPagina /></Guard>} />
         <Route path="/files" element={<Guard ok={cfg.blobEnabled}><Files /></Guard>} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/notifiche" element={<Notifiche />} />
         <Route path="/admin/*" element={<Guard ok={admin}><Admin /></Guard>} />
         {moduleKeys().map((k) => <Route key={k} path={`/${k}/*`} element={<ModuleFrame moduleKey={k} />} />)}
         <Route path="/error" element={<ErrorPage />} />

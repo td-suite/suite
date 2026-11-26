@@ -10,6 +10,7 @@ import { sendMail, layout } from '../../../lib/mailer.js';
 import { config } from '../config.js';
 import { effectiveOrientation, dataItaliana, firmatariDi } from '../lib/render.js';
 import { personaleFirmatari, risolviFirmatari } from '../lib/firmatari.js';
+import { destinatariLista, testoEmail, compila } from '../lib/distribuzione.js';
 import { produciFile } from '../lib/impagina.js';
 import { cercaDocumentiSgi } from '../lib/allegatiSgi.js';
 import { aggiornaEsiti } from '../lib/ponte.js';
@@ -197,7 +198,7 @@ r.get('/circolari/:id', ah(async (req, res) => {
   if (c.stato === 'BOZZA') c.firmatari = await risolviFirmatari(firmatariDi(c));   // bozza: ruolo e contatti dei firmatari dall'anagrafica
   if (c.news_id) await aggiornaEsiti({ query: (t, p) => q(t, p) }, c.news_id).catch(() => {});
   const invii = await many(`SELECT i.id, i.lista_id, coalesce(l.nome, CASE WHEN i.news_id IS NOT NULL THEN 'Comunicazione: ' || CASE WHEN i.oggetto_email IS NULL THEN 'notifica in app' ELSE 'notifica ed email di avviso' END || ' (segmento Personale)' END) AS lista_nome,
-                                    i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at, i.news_id, i.segmento
+                                    i.n_destinatari, i.n_inviati, i.n_errori, i.oggetto_email, i.inviato_da, i.inviato_at, i.news_id, i.segmento, i.con_conferma, (SELECT count(*)::int FROM invii_destinatari d WHERE d.invio_id = i.id AND d.aperta_at IS NOT NULL) AS n_aperte, (SELECT count(*)::int FROM invii_destinatari d WHERE d.invio_id = i.id AND d.confermata_at IS NOT NULL) AS n_confermate
                                FROM invii i LEFT JOIN liste l ON l.id=i.lista_id WHERE i.circolare_id=$1 OR (i.news_id IS NOT NULL AND i.news_id = $2) ORDER BY i.inviato_at DESC`, [c.id, c.news_id || null]);
   const letture = (await one('SELECT count(*)::int AS n FROM letture WHERE circolare_id=$1', [c.id])).n;
   const presa = await one('SELECT at FROM prese_visione WHERE circolare_id=$1 AND user_id=$2', [c.id, req.user.suite_user_id]);
@@ -358,33 +359,71 @@ r.post('/circolari/:id/invia', ah(async (req, res) => {
   if (!canPublish(req.user)) throw forbidden('L\'invio è riservato al profilo Pubblicazione');
   const cur = await load(req.params.id);
   if (cur.stato !== 'PUBBLICATA') throw bad('Si invia solo una circolare pubblicata');
-  const b = parse(z.object({ lista_id: z.coerce.number().int().optional(), emails: z.array(z.string().trim().toLowerCase().email()).max(500).optional(), oggetto: z.string().trim().max(200).optional(), messaggio: z.string().trim().max(3000).optional() }), req.body || {});
-  let dest = [];
-  let lista = null;
-  if (b.lista_id) { lista = await one('SELECT * FROM liste WHERE id=$1', [b.lista_id]); if (!lista) throw notFound('Lista non trovata'); dest = lista.destinatari || []; }
-  if (b.emails?.length) dest = dest.concat(b.emails.map((email) => ({ email })));
-  const seen = new Set(); dest = dest.filter((d) => d.email && !seen.has(d.email) && seen.add(d.email));
-  if (!dest.length) throw bad('Nessun destinatario');
-  if (dest.length > config.maxEmailBatch) throw bad(`Massimo ${config.maxEmailBatch} destinatari per invio`);
-  const file = await one('SELECT pdf, docx FROM circolari WHERE id=$1', [cur.id]);
-  const subject = b.oggetto || `Circolare ${cur.protocollo}: ${cur.titolo}`;
-  const url = publicUrl(cur);
-  const html = layout(`Circolare ${cur.protocollo}`, `<p>${escapeHtml(b.messaggio || 'Gentile Cliente, in allegato la circolare in oggetto.')}</p><p><b>${escapeHtml(cur.titolo)}</b><br>${escapeHtml(cur.sintesi)}</p><p>Versione digitale sempre aggiornata: <a href="${url}">${url}</a></p><p>Toscana Diagnostica S.r.l.<br>${escapeHtml(cur.firma_nome)}, ${escapeHtml(cur.firma_ruolo)}</p>`);
-  const attachments = file?.pdf ? [{ filename: `${fileBase(cur)}.pdf`, content: file.pdf, contentType: 'application/pdf' }] : file?.docx ? [{ filename: `${fileBase(cur)}.docx`, content: file.docx, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }] : [];
-  const esito = [];
-  for (const d of dest) {
-    try { await sendMail({ to: d.email, subject, html, ref: `circolare:${cur.id}`, attachments }); esito.push({ email: d.email, ok: true }); }
-    catch (e) { esito.push({ email: d.email, ok: false, error: String(e.message || e).slice(0, 200) }); }
+  const b = parse(z.object({ lista_id: z.coerce.number().int().optional(), lista_ids: z.array(z.coerce.number().int()).max(20).optional(), emails: z.array(z.string().trim().toLowerCase().email()).max(500).optional(),
+    oggetto: z.string().trim().max(200).optional(), messaggio: z.string().trim().max(3000).optional(), conferma: z.boolean().optional().default(true) }), req.body || {});
+  // v0.99.4: più liste in un invio (una riga di registro per lista); chi è in più liste riceve una sola email; le liste automatiche
+  // si calcolano adesso dall'anagrafica; ogni destinatario ha un collegamento personale per la conferma di lettura
+  const ids = [...new Set([...(b.lista_ids || []), ...(b.lista_id ? [b.lista_id] : [])])];
+  const gruppi = []; const visti = new Set();
+  for (const id of ids) {
+    const lista = await one('SELECT * FROM liste WHERE id=$1', [id]); if (!lista) throw notFound('Lista non trovata');
+    gruppi.push({ lista, dest: (await destinatariLista(lista)).filter((d) => !visti.has(d.email) && visti.add(d.email)) });
   }
-  const inv = await one('INSERT INTO invii (circolare_id, lista_id, destinatari, n_destinatari, n_inviati, n_errori, esito, oggetto_email, inviato_da) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [cur.id, lista?.id || null, JSON.stringify(dest), dest.length, esito.filter((x) => x.ok).length, esito.filter((x) => !x.ok).length, JSON.stringify(esito), subject, req.user.suite_user_id]);
-  await audit(req, 'CIRCOLARE_INVIATA', { module: KEY, entity: 'circolare', entityId: cur.id, label: `${cur.protocollo} → ${lista?.nome || 'destinatari indicati'}`, data: { n: dest.length, inviati: inv.n_inviati, errori: inv.n_errori } });
-  res.json(inv);
+  if (b.emails?.length) gruppi.push({ lista: null, dest: b.emails.map((email) => ({ email })).filter((d) => !visti.has(d.email) && visti.add(d.email)) });
+  const totale = gruppi.reduce((n, g) => n + g.dest.length, 0);
+  if (!totale) throw bad('Nessun destinatario');
+  if (totale > config.maxEmailBatch) throw bad(`Massimo ${config.maxEmailBatch} destinatari per invio (sono ${totale}): invia una lista per volta`);
+  const file = await one('SELECT pdf, docx FROM circolari WHERE id=$1', [cur.id]);
+  const testo = await testoEmail();
+  const subject = compila(b.oggetto || testo.email_oggetto, cur, dataItaliana(cur.data));
+  const messaggio = compila(b.messaggio || testo.email_testo, cur, dataItaliana(cur.data));
+  const url = publicUrl(cur);
+  const firme = firmatariDi(cur).map((f) => `${escapeHtml(f.nome)}${f.ruolo ? `, ${escapeHtml(f.ruolo)}` : ''}`).join('<br>');
+  const corpo = (codice) => {
+    const mio = codice ? `${url}?d=${codice}` : url;
+    const conferma = codice ? `<p style="margin:18px 0"><a href="${url}/conferma/${codice}" style="background:#1C505E;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Conferma di lettura</a></p><p style="font-size:12px;color:#5b6f75">Il pulsante registra che la circolare è stata letta da questo indirizzo.</p>` : '';
+    return layout(`Circolare ${cur.protocollo}`, `<p>${escapeHtml(messaggio).replace(/\n/g, '<br>')}</p><p><b>${escapeHtml(cur.titolo)}</b><br>${escapeHtml(cur.sintesi)}</p><p>Versione digitale sempre aggiornata: <a href="${mio}">${url}</a></p>${conferma}<p>Toscana Diagnostica S.r.l.${firme ? `<br>${firme}` : ''}</p>`);
+  };
+  const attachments = file?.pdf ? [{ filename: `${fileBase(cur)}.pdf`, content: file.pdf, contentType: 'application/pdf' }] : file?.docx ? [{ filename: `${fileBase(cur)}.docx`, content: file.docx, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }] : [];
+  const invii = [];
+  for (const g of gruppi) {
+    if (!g.dest.length) continue;
+    const esito = []; const righe = [];
+    for (const d of g.dest) {
+      const codice = b.conferma ? newToken() : null;
+      let ok = true;
+      try { await sendMail({ to: d.email, subject, html: corpo(codice), ref: `circolare:${cur.id}`, attachments }); esito.push({ email: d.email, ok: true }); }
+      catch (e) { ok = false; esito.push({ email: d.email, ok: false, error: String(e.message || e).slice(0, 200) }); }
+      if (codice) righe.push({ email: d.email, nome: d.nome || null, codice, ok });
+    }
+    const inv = await one('INSERT INTO invii (circolare_id, lista_id, destinatari, n_destinatari, n_inviati, n_errori, esito, oggetto_email, inviato_da, con_conferma) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [cur.id, g.lista?.id || null, JSON.stringify(g.dest.map(({ email, nome, organizzazione }) => ({ email, nome: nome || '', organizzazione: organizzazione || '' }))), g.dest.length, esito.filter((x) => x.ok).length, esito.filter((x) => !x.ok).length, JSON.stringify(esito), subject, req.user.suite_user_id, b.conferma]);
+    for (const x of righe) await q('INSERT INTO invii_destinatari (invio_id, circolare_id, email, nome, codice, inviata) VALUES ($1,$2,$3,$4,$5,$6)', [inv.id, cur.id, x.email, x.nome, x.codice, x.ok]);
+    await audit(req, 'CIRCOLARE_INVIATA', { module: KEY, entity: 'circolare', entityId: cur.id, label: `${cur.protocollo} → ${g.lista?.nome || 'destinatari indicati'}`, data: { n: g.dest.length, inviati: inv.n_inviati, errori: inv.n_errori } });
+    invii.push(inv);
+  }
+  res.json({ ...invii[0], invii: invii.length, n_destinatari: invii.reduce((n, i) => n + i.n_destinatari, 0), n_inviati: invii.reduce((n, i) => n + i.n_inviati, 0), n_errori: invii.reduce((n, i) => n + i.n_errori, 0) });
+}));
+
+// Anteprima dei destinatari dell'invio: liste scelte (automatiche calcolate adesso) e indirizzi in più, senza doppioni
+r.post('/circolari/:id/invia/anteprima', ah(async (req, res) => {
+  if (!canPublish(req.user)) throw forbidden('L\'invio è riservato al profilo Pubblicazione');
+  const b = parse(z.object({ lista_ids: z.array(z.coerce.number().int()).max(20).optional().default([]), emails: z.array(z.string().trim().toLowerCase().email()).max(500).optional().default([]) }), req.body || {});
+  const visti = new Set(); const liste = [];
+  for (const id of [...new Set(b.lista_ids)]) {
+    const lista = await one('SELECT * FROM liste WHERE id=$1', [id]); if (!lista) continue;
+    const dest = (await destinatariLista(lista)).filter((d) => !visti.has(d.email) && visti.add(d.email));
+    liste.push({ id: lista.id, nome: lista.nome, n: dest.length, destinatari: dest.slice(0, 400) });
+  }
+  const extra = b.emails.filter((e) => !visti.has(e) && visti.add(e));
+  res.json({ totale: visti.size, massimo: config.maxEmailBatch, liste, extra: extra.length });
 }));
 
 r.get('/circolari/:id/invii/:invioId', ah(async (req, res) => {
   const inv = await one('SELECT * FROM invii WHERE id=$1 AND circolare_id=$2', [req.params.invioId, req.params.id]);
   if (!inv) throw notFound('Invio non trovato');
-  res.json(inv);
+  const conferme = await many('SELECT email, nome, inviata, aperta_at, confermata_at FROM invii_destinatari WHERE invio_id=$1 ORDER BY (confermata_at IS NULL), (aperta_at IS NULL), lower(email)', [inv.id]);
+  res.json({ ...inv, conferme });
 }));
 
 export default r;

@@ -16,18 +16,19 @@ export default function Liste() {
   const apri = async (l) => { try { setModal(l ? await api.get(`/liste/${l.id}`) : { ...EMPTY }); } catch (e) { toast(e, 'err'); } };
   return (
     <div className="page">
-      <PageHead title="Liste di distribuzione" icon="users" sub="A chi vanno le circolari: clienti service, punti prelievo, medicina del lavoro, partner, personale. I destinatari si propongono dall'anagrafica unica e si correggono a mano." actions={<button className="btn" onClick={() => apri(null)}><Icon name="plus" />Nuova lista</button>} />
+      <PageHead title="Liste di distribuzione" icon="users" sub="A chi vanno le circolari. Service, Punti Prelievo e Interni sono automatiche: si compilano da sole dall'anagrafica a ogni invio, e in più accettano indirizzi aggiunti a mano. Le altre liste si compilano a mano o con le proposte dell'anagrafica." actions={<button className="btn" onClick={() => apri(null)}><Icon name="plus" />Nuova lista</button>} />
       <Card flush>
         {!data ? <Loading /> : !data.length ? <Empty icon="users" title="Nessuna lista">Crea la prima lista: i destinatari si propongono dall'anagrafica (sedi e organizzazioni con email).</Empty> : (
           <div className="table-wrap"><table className="t">
             <thead><tr><th>Lista</th><th>Segmento</th><th className="num">Destinatari</th><th className="num">Invii</th><th>Aggiornata</th><th></th></tr></thead>
             <tbody>{data.map((l) => <tr key={l.id} className="click" onClick={() => apri(l)}>
-              <td><div className="strong">{l.nome} {!l.attiva && <Badge tone="grey">disattivata</Badge>}</div><div className="small muted">{l.descrizione}</div></td>
-              <td className="small">{SEGMENTO[l.segmento] || l.segmento}</td><td className="num">{l.n_destinatari}</td><td className="num">{l.n_invii}</td><td className="small">{itDateTime(l.updated_at)}</td>
-              <td className="actions"><button className="iconbtn" aria-label="Elimina" onClick={(e) => { e.stopPropagation(); setDel(l); }}><Icon name="trash" /></button></td>
+              <td><div className="strong">{l.nome} {l.automatica && <Badge tone="teal">automatica</Badge>} {!l.attiva && <Badge tone="grey">disattivata</Badge>}</div><div className="small muted">{l.descrizione}</div></td>
+              <td className="small">{SEGMENTO[l.segmento] || l.segmento}</td><td className="num">{l.n_destinatari}{l.automatica && l.n_manuali > 0 && <div className="small muted">{l.n_manuali} aggiunti a mano</div>}</td><td className="num">{l.n_invii}</td><td className="small">{itDateTime(l.updated_at)}</td>
+              <td className="actions">{!l.automatica && <button className="iconbtn" aria-label="Elimina" onClick={(e) => { e.stopPropagation(); setDel(l); }}><Icon name="trash" /></button>}</td>
             </tr>)}</tbody>
           </table></div>)}
       </Card>
+      <TestoEmail />
       {modal && <ListaModal lista={modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); reload(); }} />}
       {del && <ConfirmModal title={`Eliminare la lista "${del.nome}"?`} text="Gli invii già registrati restano in archivio." confirmText="Elimina" danger onClose={() => setDel(null)} onConfirm={async () => { try { await api.del(`/liste/${del.id}`); toast('Lista eliminata'); setDel(null); reload(); } catch (e) { toast(e, 'err'); } }} />}
     </div>
@@ -53,13 +54,17 @@ function ListaModal({ lista, onClose, onSaved }) {
     <div className="circ-form">
       <div className="two">
         <Field label="Nome" required><input value={f.nome} onChange={(e) => upd('nome', e.target.value)} maxLength={120} /></Field>
-        <Field label="Segmento"><select value={f.segmento} onChange={(e) => upd('segmento', e.target.value)}>{Object.entries(SEGMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <Field label="Segmento"><select value={f.segmento} disabled={Boolean(f.automatica)} onChange={(e) => upd('segmento', e.target.value)}>{Object.entries(SEGMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
       </div>
       <Field label="Descrizione"><input value={f.descrizione} onChange={(e) => upd('descrizione', e.target.value)} maxLength={500} /></Field>
       <label className="f inline"><input type="checkbox" checked={f.attiva} onChange={(e) => upd('attiva', e.target.checked)} /> lista attiva</label>
-      <div className="row between"><b>Destinatari ({f.destinatari.length})</b><button className="btn sm ghost" disabled={busy} onClick={proponi}><Icon name="import" />Proponi dall'anagrafica</button></div>
+      {f.automatica && <>
+        <div className="row between"><b>Destinatari automatici ({(lista.automatici || []).length})</b><span className="small muted">calcolati adesso dall'anagrafica, non si modificano qui</span></div>
+        <div className="circ-dest" style={{ maxHeight: 220 }}>{!(lista.automatici || []).length ? <div className="small muted" style={{ padding: 10 }}>Nessun destinatario trovato in anagrafica: mancano le email, oppure gli utenti collegati alle persone.</div> : <table><tbody>{lista.automatici.map((d) => <tr key={d.email}><td style={{ width: '38%' }} className="mono small">{d.email}</td><td className="small">{d.nome}</td><td className="small muted">{d.perche}</td></tr>)}</tbody></table>}</div>
+      </>}
+      <div className="row between"><b>{f.automatica ? 'Indirizzi aggiunti a mano' : 'Destinatari'} ({f.destinatari.length})</b>{!f.automatica && <button className="btn sm ghost" disabled={busy} onClick={proponi}><Icon name="import" />Proponi dall'anagrafica</button>}</div>
       <div className="circ-dest">
-        {!f.destinatari.length ? <div className="small muted" style={{ padding: 10 }}>Nessun destinatario. Proponi dall'anagrafica o incolla gli indirizzi sotto.</div> : <table><tbody>{f.destinatari.map((d, i) => <tr key={d.email}>
+        {!f.destinatari.length ? <div className="small muted" style={{ padding: 10 }}>{f.automatica ? 'Nessun indirizzo aggiunto. Incolla sotto quelli che l\'anagrafica non ha.' : 'Nessun destinatario. Proponi dall\'anagrafica o incolla gli indirizzi sotto.'}</div> : <table><tbody>{f.destinatari.map((d, i) => <tr key={d.email}>
           <td style={{ width: '38%' }} className="mono small">{d.email}</td>
           <td><input type="text" value={d.nome || ''} placeholder="Nome" onChange={(e) => upd('destinatari', f.destinatari.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)))} /></td>
           <td><input type="text" value={d.organizzazione || ''} placeholder="Organizzazione" onChange={(e) => upd('destinatari', f.destinatari.map((x, j) => (j === i ? { ...x, organizzazione: e.target.value } : x)))} /></td>
@@ -69,4 +74,22 @@ function ListaModal({ lista, onClose, onSaved }) {
       <Field label="Aggiungi indirizzi" help="Separati da virgola, spazio o a capo"><div className="row"><textarea style={{ flex: 1 }} rows={2} value={nuovo} onChange={(e) => setNuovo(e.target.value)} /><button className="btn ghost" onClick={incolla}><Icon name="plus" />Aggiungi</button></div></Field>
     </div>
   </Modal>;
+}
+
+// Testo dell'email di invio (v0.99.4): oggetto e messaggio predefiniti di ogni invio, con i segnaposto; nell'invio si possono ritoccare
+function TestoEmail() {
+  const toast = useToast();
+  const { data, reload } = useApi('/email-testo');
+  const [f, setF] = useState(null);
+  const v = f || data;
+  if (!v) return null;
+  const salva = async () => { try { await api.put('/email-testo', { email_oggetto: v.email_oggetto, email_testo: v.email_testo }); toast('Testo dell\'email salvato'); setF(null); reload(); } catch (e) { toast(e, 'err'); } };
+  return (
+    <Card title="Testo dell'email di invio" icon="mail" style={{ marginTop: 16 }} actions={<div className="row" style={{ gap: 6 }}>{f && <button className="btn sm ghost" onClick={() => setF({ ...v, ...data.predefinito })}>Testo predefinito</button>}<button className="btn sm" disabled={!f} onClick={salva}>Salva</button></div>}>
+      <div className="circ-form">
+        <Field label="Oggetto"><input value={v.email_oggetto} maxLength={200} onChange={(e) => setF({ ...v, email_oggetto: e.target.value })} /></Field>
+        <Field label="Messaggio" help={`Segnaposto: ${(data.segnaposto || []).map((x) => `{${x}}`).join(', ')}. Sotto il messaggio l'email porta sempre titolo e sintesi della circolare, il collegamento alla versione digitale, il pulsante di conferma di lettura e le firme.`}><textarea rows={7} value={v.email_testo} maxLength={3000} onChange={(e) => setF({ ...v, email_testo: e.target.value })} /></Field>
+      </div>
+    </Card>
+  );
 }

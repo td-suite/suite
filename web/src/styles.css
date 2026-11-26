@@ -1211,3 +1211,16 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
    Vale per tutti i widget. Class "no-sticky" sulla tabella o sul suo riquadro per escluderla. */
 html body th.th-ferma { position: relative; z-index: 6; background-color: var(--card-2, #fafcfc); box-shadow: 0 1px 0 var(--line, #dbe5e7), 0 6px 10px -8px rgba(8, 37, 46, .35); will-change: transform; }
 @media print { html body th.th-ferma { transform: none !important; box-shadow: none; } }
+
+/* ---------- v0.99.3 · Pagina Notifiche ---------- */
+.notif-giorno { padding: 10px 16px 6px; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 700; background: var(--card-2); border-bottom: 1px solid var(--line-soft); }
+.notif-riga { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); }
+.notif-riga.unread { background: var(--hover); box-shadow: inset 3px 0 0 var(--teal); }
+.notif-corpo { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: flex-start; color: inherit; text-decoration: none; }
+.notif-corpo:hover { text-decoration: none; } .notif-corpo:hover .t { text-decoration: underline; }
+.notif-ico { flex: none; width: 20px; height: 20px; color: var(--teal); margin-top: 2px; } .notif-ico svg { width: 20px; height: 20px; }
+.notif-testo { display: grid; gap: 2px; min-width: 0; }
+.notif-testo .t { font-weight: 650; } .notif-riga:not(.unread) .notif-testo .t { font-weight: 500; }
+.notif-testo .b { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; } .notif-testo .when { color: var(--muted); font-size: 12px; }
+.notif-az { display: flex; gap: 6px; flex: none; }
+@media (max-width: 640px) { .notif-riga { flex-direction: column; align-items: stretch; } .notif-az { justify-content: flex-end; } }

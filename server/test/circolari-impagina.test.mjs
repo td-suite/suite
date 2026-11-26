@@ -101,4 +101,60 @@ describe('Circolari v0.98.0: nella Suite', { skip: !process.env.DATABASE_URL_TES
       assert.ok(xml.includes('Cell. 345 1112223') && xml.includes('dip.firma@azienda.test') && xml.includes('Via del Lavoro 1'), 'contatti di lavoro in fondo alla circolare');
     } finally { await db.end(); }
   });
+
+  test('v0.99.4 · liste automatiche, invio a più liste, conferma di lettura, testo dell\'email', async () => {
+    const pg = (await import('pg')).default; const db = new pg.Client({ connectionString: S.url }); await db.connect();
+    try {
+      const uno = async (t, p) => (await db.query(t, p)).rows[0];
+      const lab = await uno(`INSERT INTO public.sites (code, name, kind, city, email) VALUES ('LAB-D', 'Laboratorio prova', 'LABORATORIO', 'Sesto', NULL) RETURNING id`);
+      const pp = await uno(`INSERT INTO public.sites (code, name, kind, city, email) VALUES ('PP-D', 'Punto prelievi prova', 'PUNTO_PRELIEVI', 'Prato', 'pp.prova@azienda.test') RETURNING id`);
+      await db.query(`INSERT INTO public.sites (code, name, kind, city, email, active) VALUES ('PP-OFF', 'Punto chiuso', 'PUNTO_PRELIEVI', 'Prato', 'chiuso@azienda.test', FALSE)`);
+      await db.query(`INSERT INTO public.sites (code, name, kind, city, email) VALUES ('SV-D', 'Service prova', 'SERVICE', 'Pisa', 'service.prova@cliente.test')`);
+      const persona = async (cognome, kind, site, titolo, email) => {
+        const p = await uno(`INSERT INTO public.people (kind, status, last_name, first_name, email, job_title, site_id) VALUES ($1, 'ATTIVO', $2, 'Prova', 'privata@casa.test', $3, $4) RETURNING id`, [kind, cognome, titolo, site]);
+        if (email) await db.query(`INSERT INTO public.users (email, full_name, status, auth_provider, person_id) VALUES ($1, $2, 'ACTIVE', 'LOCAL', $3)`, [email, cognome, p.id]);
+      };
+      await persona('Tecnico', 'DIPENDENTE', lab.id, 'Tecnico di laboratorio', 'tecnico@azienda.test');
+      await persona('Prelevatore', 'LP', pp.id, 'Infermiere', 'prelevatore@azienda.test');
+      await persona('Flusso', 'DIPENDENTE', null, 'Flow Manager', 'flow@azienda.test');
+      await persona('Contabile', 'DIPENDENTE', null, 'Addetto contabilità', 'contabile@azienda.test');   // fuori dalla regola degli interni
+      await persona('Senzautente', 'DIPENDENTE', lab.id, 'Tecnico', null);
+      const liste = must(await O.get('/api/circolari/liste'), 'liste');
+      const L = Object.fromEntries(liste.filter((l) => l.automatica).map((l) => [l.automatica, l]));
+      assert.deepEqual(Object.keys(L).sort(), ['INTERNI', 'PUNTI_PRELIEVO', 'SERVICE'], 'le tre liste automatiche nascono da sole');
+      const interni = must(await O.get(`/api/circolari/liste/${L.INTERNI.id}`), 'interni').automatici;
+      assert.deepEqual(interni.map((d) => d.email).sort(), ['dip.firma@azienda.test', 'flow@azienda.test', 'prelevatore@azienda.test', 'tecnico@azienda.test'], 'COO (dal test precedente), Laboratorio, Punti Prelievo e ruoli indicati; indirizzo dell\'utente, mai quello della scheda');
+      assert.match(interni.find((d) => d.email === 'flow@azienda.test').perche, /ruolo: Flow Manager/);
+      assert.deepEqual(must(await O.get(`/api/circolari/liste/${L.PUNTI_PRELIEVO.id}`), 'pp').automatici.map((d) => d.email), ['pp.prova@azienda.test'], 'solo i punti attivi');
+      assert.ok(must(await O.get(`/api/circolari/liste/${L.SERVICE.id}`), 'srv').automatici.some((d) => d.email === 'service.prova@cliente.test'));
+      // indirizzi aggiunti a mano su una lista automatica: si sommano, senza doppioni
+      must(await O.put(`/api/circolari/liste/${L.PUNTI_PRELIEVO.id}`, { destinatari: [{ email: 'extra@partner.test' }, { email: 'pp.prova@azienda.test' }] }), 'integrazione');
+      assert.equal(must(await O.get('/api/circolari/liste'), 'liste').find((l) => l.automatica === 'PUNTI_PRELIEVO').n_destinatari, 2);
+      assert.equal((await O.del(`/api/circolari/liste/${L.SERVICE.id}`)).s, 400, 'una lista automatica non si elimina');
+      // testo dell'email nelle impostazioni
+      must(await O.put('/api/circolari/email-testo', { email_oggetto: 'TD · {protocollo} · {titolo}', email_testo: 'Buongiorno,\ncircolare del {data}.' }), 'testo email');
+      // circolare pubblicata e invio a due liste con conferma di lettura
+      const b = must(await O.post('/api/circolari/circolari', { titolo: 'Circolare con invio', corpo: [{ type: 'paragrafo', text: 'Testo.' }] }), 'bozza');
+      const pub = must(await O.post(`/api/circolari/circolari/${b.id}/pubblica`), 'pubblica');
+      const ante = must(await O.post(`/api/circolari/circolari/${b.id}/invia/anteprima`, { lista_ids: [L.INTERNI.id, L.PUNTI_PRELIEVO.id], emails: ['tecnico@azienda.test', 'altro@esterno.test'] }), 'anteprima');
+      assert.deepEqual([ante.totale, ante.liste.map((l) => l.n), ante.extra], [7, [4, 2], 1], 'chi è già in una lista non si ripete');
+      const inv = must(await O.post(`/api/circolari/circolari/${b.id}/invia`, { lista_ids: [L.INTERNI.id, L.PUNTI_PRELIEVO.id], emails: ['altro@esterno.test'] }), 'invio');
+      assert.deepEqual([inv.invii, inv.n_destinatari, inv.n_inviati], [3, 7, 7]);
+      const posta = (await db.query(`SELECT to_addr, subject, body FROM public.email_log WHERE ref = $1 ORDER BY id`, [`circolare:${b.id}`]).catch(() => ({ rows: [] }))).rows;
+      if (posta.length) { assert.equal(posta.length, 7); assert.match(posta[0].subject, new RegExp(`^TD · ${pub.protocollo.replace(/[/]/g, '.')} · Circolare con invio$`)); }
+      const d = await uno(`SELECT codice, email FROM circolari.invii_destinatari WHERE email = 'tecnico@azienda.test'`);
+      const tok = (await uno('SELECT pub_token FROM circolari.circolari WHERE id = $1', [b.id])).pub_token;
+      // pagina di conferma senza sessione: aprirla NON conferma (controlli automatici della posta), il pulsante sì
+      const pagina = await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${d.codice}`); assert.equal(pagina.status, 200); assert.match(await pagina.text(), /Confermo di aver letto la circolare/);
+      let r = await uno('SELECT aperta_at, confermata_at FROM circolari.invii_destinatari WHERE codice = $1', [d.codice]); assert.ok(r.aperta_at && !r.confermata_at);
+      const ok = await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${d.codice}`, { method: 'POST' }); assert.equal(ok.status, 200); assert.match(await ok.text(), /Lettura confermata/);
+      r = await uno('SELECT confermata_at FROM circolari.invii_destinatari WHERE codice = $1', [d.codice]); assert.ok(r.confermata_at);
+      assert.equal((await fetch(`${S.base}/api/circolari/pub/${tok}/conferma/${'0'.repeat(24)}`)).status, 404);
+      const det = must(await O.get(`/api/circolari/circolari/${b.id}`), 'dettaglio');
+      const riga = det.invii.find((i) => i.lista_nome === 'Interni');
+      assert.deepEqual([riga.con_conferma, riga.n_confermate, riga.n_aperte, riga.n_destinatari], [true, 1, 1, 4]);
+      const uni = must(await O.get(`/api/circolari/circolari/${b.id}/invii/${riga.id}`), 'invio');
+      assert.deepEqual(uni.conferme.map((x) => [x.email, Boolean(x.confermata_at)])[0], ['tecnico@azienda.test', true]);
+    } finally { await db.end(); }
+  });
 });

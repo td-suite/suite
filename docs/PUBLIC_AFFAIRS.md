@@ -56,3 +56,7 @@ Limiti: i testi non hanno valore legale e non si aggiornano da soli (data di acq
 ## v0.97.2 · Chi può aggiungere una fonte (CEO, 25/11/2026)
 
 Chiunque abbia il widget (profili Direzione e Visualizzatore) può provare la lettura e aggiungere una fonte (`POST /fonti/prova`, `POST /fonti`). Modifica, sospensione, lettura a mano ed eliminazione restano al profilo Direzione. Quando la aggiunge un Visualizzatore, chi gestisce il widget riceve una notifica; nell'elenco compare "aggiunta da".
+
+## v0.99.3 · Una lettura al giorno (26/11/2026)
+
+Decisione del CEO: le fonti si leggono una volta al giorno, alle 17 (ora di Roma; `ora_lettura`, modificabile nelle Impostazioni), non più ogni 6 ore né prima dell'email. L'email del giorno parte dopo la lettura (migrazione 003: una tantum porta anche `ora_invio` alle 17). Tra una fonte e l'altra passano 4 secondi e le fonti dello stesso sito si leggono di seguito, senza raffiche. "Leggi ora" resta a mano. Il 26/11/2026 le tre fonti di www.regione.toscana.it rispondevano 403 al server della Suite (il sito risponde regolarmente da altri indirizzi): il lettore non si traveste da browser; se il blocco resta va chiesto alla Regione.

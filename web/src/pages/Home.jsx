@@ -149,7 +149,7 @@ function HomeCompleta({ user }) {
           <div className="hero-hint">{external ? 'Puoi chiedere in linguaggio naturale: "quali circolari devo ancora leggere?", "a chi scrivo per una non conformità?"' : 'Puoi chiedere in linguaggio naturale: "quali circolari devo ancora leggere?", "chi è il site manager di Calenzano?"'}</div>
 
           <div className="pulses">
-            <Pulse icon="bell" value={notif.data?.unread} label="notifiche da leggere" to="/community" tone={notif.data?.unread ? 'hot' : ''} loading={notif.loading} />
+            <Pulse icon="bell" value={notif.data?.unread} label="notifiche da leggere" to="/notifiche" tone={notif.data?.unread ? 'hot' : ''} loading={notif.loading} />
             <Pulse icon="news" value={h.circolari_da_leggere?.length} label="circolari da confermare" to="/community/news?kind=CIRCOLARE" tone={h.circolari_da_leggere?.length ? 'hot' : ''} loading={home.loading} />
             <Pulse icon="calendar" value={eventsToday} label={eventsToday === 1 ? 'evento oggi' : 'eventi oggi'} to="/community/calendar" loading={home.loading} />
             <Pulse icon="comment" value={h.posts_nuovi ?? 0} label="novità in bacheca" to="/community" tone={h.posts_nuovi ? 'hot' : ''} loading={home.loading} />

@@ -29,7 +29,7 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 export const CATEGORIE = { BANDI: 'Avvisi e bandi', NORMATIVA_NAZIONALE: 'Normativa nazionale', NORMATIVA_REGIONALE: 'Normativa Regione Toscana', ALTRO: 'Altro' };
 export const LINEE = ['Laboratorio di analisi', 'Diagnostica per immagini', 'Medicina specialistica', 'Medicina del lavoro', 'Accreditamento e autorizzazioni', 'Società e personale'];
 export const PREDEFINITE = {
-  destinatari: '', ora_invio: 8, ore_lettura: 6, invio_attivo: true, soglia_normativa: 'MEDIA', max_novita_fonte: 40,
+  destinatari: '', ora_invio: 17, ora_lettura: 17, ore_lettura: 6, invio_attivo: true, soglia_normativa: 'MEDIA', max_novita_fonte: 40,
   profilo: 'Toscana Diagnostica S.r.l. è una rete sanitaria privata in Toscana (sede a Sesto Fiorentino): laboratorio di analisi con punti prelievo e service di laboratorio per altre strutture, diagnostica per immagini (RM, TC, mammografia, ecografia, MOC, RX), medicina specialistica ambulatoriale, medicina del lavoro. Opera con pazienti privati, imprese e altre strutture sanitarie; sta crescendo per acquisizioni. Le interessano: manifestazioni di interesse, avvisi e accordi contrattuali delle aziende USL per prestazioni di laboratorio, prelievi, diagnostica, specialistica ambulatoriale e screening; accreditamento istituzionale e autorizzazioni sanitarie; tariffari e nomenclatore; requisiti organizzativi, strutturali e di personale delle strutture private; liste di attesa e privato accreditato; sorveglianza sanitaria; privacy e sanità digitale (FSE, referti); pubblicità sanitaria. Non le interessano: farmaci e AIC, veterinaria, alimenti, concorsi e mobilità del personale pubblico, ospedalità, continuità assistenziale, locazioni di immobili, terzo settore.',
 };
 // Fonti proposte. Aperte il 24/11/2026 con un lettore esterno e rispondenti: USL Centro, USL Sud Est, Gazzetta Ufficiale, BURT.
@@ -46,6 +46,7 @@ export const SEME = [
 export async function impostazioni() {
   const s = { ...PREDEFINITE, ...Object.fromEntries((await many('SELECT key, value FROM impostazioni')).map((r) => [r.key, r.value])) };
   s.ora_invio = Math.min(22, Math.max(5, Number(s.ora_invio) || 8)); s.ore_lettura = Math.min(24, Math.max(1, Number(s.ore_lettura) || 6));
+  s.ora_lettura = Math.min(22, Math.max(5, Number(s.ora_lettura) || 17));
   s.max_novita_fonte = Math.min(200, Math.max(5, Number(s.max_novita_fonte) || 40)); s.soglia_normativa = ['ALTA', 'MEDIA', 'BASSA'].includes(s.soglia_normativa) ? s.soglia_normativa : 'MEDIA';
   return s;
 }
@@ -297,12 +298,14 @@ export async function inviaGiornaliera(imp, { adesso = new Date(), forza = false
 export async function giro({ adesso = new Date(), tutte = false, invia = null } = {}) {
   const imp = await impostazioni();
   const out = { lette: 0, nuove: 0, errori: [], prime: 0 };
-  const ora = oraRoma(adesso); const oraMail = ora >= imp.ora_invio && !(await one('SELECT 1 FROM invii WHERE giorno = $1', [oggiRoma(adesso)]));
-  const fonti = await many(`SELECT * FROM fonti WHERE attiva AND ($1 OR letta_at IS NULL OR letta_at < now() - make_interval(hours => $2::int)) ORDER BY id`, [tutte || oraMail, imp.ore_lettura]);
+  const ora = oraRoma(adesso); const oraMail = ora >= Math.max(imp.ora_invio, imp.ora_lettura) && !(await one('SELECT 1 FROM invii WHERE giorno = $1', [oggiRoma(adesso)]));
+  // v0.99.3: UNA lettura al giorno, all'ora di ora_lettura (17): una fonte si legge se non è mai stata letta, oppure se è l'ora e oggi
+  // non è ancora stata letta. Niente più rilettura ogni 6 ore né prima dell'email. "Leggi ora" (tutte) resta a mano.
+  const fonti = await many(`SELECT * FROM fonti WHERE attiva AND ($1 OR letta_at IS NULL OR ($2 AND (letta_at AT TIME ZONE 'Europe/Rome')::date < $3::date)) ORDER BY url, id`, [tutte, ora >= imp.ora_lettura, oggiRoma(adesso)]);
   for (const f of fonti) {
     try { const r = await leggiFonte(f, imp); out.lette++; out.nuove += r.nuove; if (r.prima) out.prime++; if (r.errore) out.errori.push({ fonte: f.nome, errore: r.errore }); }
     catch (e) { out.errori.push({ fonte: f.nome, errore: e.message }); await q('UPDATE fonti SET letta_at = now(), errore = $2, errori_di_fila = errori_di_fila + 1 WHERE id = $1', [f.id, String(e.message).slice(0, 400)]); }
-    await pausa(300);
+    await pausa(process.env.NODE_ENV === 'test' ? 0 : 4000);   // 4 secondi tra una fonte e l'altra: più pagine dello stesso sito non arrivano a raffica
   }
   out.valutazione = await valutaNovita(imp);
   out.archivio = await valutaArchivio(imp, { limite: 60 }).catch(() => null);   // voci dell'archivio ancora senza giudizio

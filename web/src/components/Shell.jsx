@@ -131,6 +131,7 @@ function Notifications() {
             </a>
           ))}
         </div>
+        <div className="hd" style={{ borderTop: '1px solid var(--line)', borderBottom: 'none', justifyContent: 'center' }}><button className="btn sm ghost" onClick={() => { setOpen(false); navigate('/notifiche'); }}>Vedi tutte le notifiche</button></div>
       </Popover>
     </div>
   );

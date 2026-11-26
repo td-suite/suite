@@ -158,13 +158,13 @@ export default function mount(app) {
   }));
   r.put('/impostazioni', gestisce, ah(async (req, res) => {
     const b = req.body || {}; const cambiate = [];
-    for (const k of ['destinatari', 'ora_invio', 'ore_lettura', 'invio_attivo', 'soglia_normativa', 'profilo', 'max_novita_fonte']) {
+    for (const k of ['destinatari', 'ora_invio', 'ora_lettura', 'ore_lettura', 'invio_attivo', 'soglia_normativa', 'profilo', 'max_novita_fonte']) {
       if (b[k] === undefined) continue;
       let v = b[k];
       if (k === 'destinatari') { v = listaEmail(v).join(', '); if (String(b[k]).trim() && !v) throw bad('Indirizzi dei destinatari non validi'); }
       if (k === 'profilo') { v = String(v || '').trim(); if (v.length < 50) throw bad('Il profilo dell\'azienda è troppo breve: è ciò su cui il modello giudica l\'utilità'); v = v.slice(0, 4000); }
       if (k === 'soglia_normativa' && !['ALTA', 'MEDIA', 'BASSA'].includes(v)) throw bad('Soglia non valida');
-      if (['ora_invio', 'ore_lettura', 'max_novita_fonte'].includes(k)) { v = Number(v); if (!Number.isFinite(v)) throw bad('Valore numerico non valido'); }
+      if (['ora_invio', 'ora_lettura', 'ore_lettura', 'max_novita_fonte'].includes(k)) { v = Number(v); if (!Number.isFinite(v)) throw bad('Valore numerico non valido'); }
       if (k === 'invio_attivo') v = Boolean(v);
       await salvaImpostazione(k, v, req.user.id); cambiate.push(k);
     }
@@ -174,7 +174,8 @@ export default function mount(app) {
   r.use((_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
   app.use(`/api/${KEY}`, r);
 
-  // Ogni ora dalle 5 alle 22: legge le fonti scadute, valuta le novità e, all'ora stabilita, invia l'email del giorno (solo se ce ne sono)
+  // Ogni ora dalle 5 alle 22 il giro controlla se è l'ora: le fonti si leggono UNA volta al giorno (ora_lettura, 17), poi le novità si
+  // valutano e parte l'email del giorno (solo se ce ne sono)
   registerJob(`${KEY}:giro`, 60, async () => {
     if ((await getModuleState(KEY)).mode !== 'LIVE') return { saltato: 'modulo non attivo' };
     const h = oraRoma(); if (h < 5 || h > 22) return { saltato: 'fuori orario' };

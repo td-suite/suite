@@ -22,15 +22,15 @@ export default function Impostazioni() {
           <label className="row" style={{ gap: 10, marginBottom: 12 }}><Switch disabled={ro} checked={v.invio_attivo} onChange={(c) => setV({ ...v, invio_attivo: c })} label="Invio attivo" /><span className="small">Una email al giorno, solo se ci sono novità.</span></label>
           <div className="form-grid">
             <Field label="Destinatari" className="span2" help={`Indirizzi separati da virgola. Vuoto: il titolare della Suite. Oggi riceve: ${x.destinatari_effettivi.join(', ') || 'nessuno'}.`}><input disabled={ro} value={v.destinatari || ''} onChange={(e) => setV({ ...v, destinatari: e.target.value })} /></Field>
-            <Field label="Ora di invio (ora di Roma)" help="La Suite rilegge tutte le fonti subito prima dell'invio."><input type="number" min="5" max="22" disabled={ro} value={v.ora_invio} onChange={(e) => setV({ ...v, ora_invio: e.target.value })} /></Field>
+            <Field label="Ora di invio (ora di Roma)" help="Non prima della lettura quotidiana: se è più presto, l'email parte dopo la lettura."><input type="number" min="5" max="22" disabled={ro} value={v.ora_invio} onChange={(e) => setV({ ...v, ora_invio: e.target.value })} /></Field>
             <Field label="Normativa nell'email" help="Avvisi e bandi entrano sempre."><select disabled={ro} value={v.soglia_normativa} onChange={(e) => setV({ ...v, soglia_normativa: e.target.value })}><option value="ALTA">Solo utilità alta</option><option value="MEDIA">Utilità alta e media</option><option value="BASSA">Tutta</option></select></Field>
           </div>
           <p className="small" style={{ marginTop: 10 }}>Posta della Suite: {x.posta.provider === 'graph' ? <Badge tone="green">attiva</Badge> : <Badge tone="red">non attiva su questo server</Badge>} · Modello AI: {x.ai ? <Badge tone="green">attivo</Badge> : <Badge tone="red">non attivo: nessuna sintesi</Badge>}</p>
           {!ro && <button className="btn ghost" disabled={busy} onClick={inviaOra}>Invia ora le novità in attesa</button>}
         </Card>
-        <Card title="Lettura delle fonti" icon="clock" actions={!ro && <button className="btn sm" disabled={busy} onClick={() => salva(['ore_lettura', 'max_novita_fonte'])}>Salva</button>}>
+        <Card title="Lettura delle fonti" icon="clock" actions={!ro && <button className="btn sm" disabled={busy} onClick={() => salva(['ora_lettura', 'max_novita_fonte'])}>Salva</button>}>
           <div className="form-grid">
-            <Field label="Rilettura ogni (ore)" help="Dalle 5 alle 22."><input type="number" min="1" max="24" disabled={ro} value={v.ore_lettura} onChange={(e) => setV({ ...v, ore_lettura: e.target.value })} /></Field>
+            <Field label="Ora della lettura quotidiana (ora di Roma)" help="Le fonti si leggono una volta al giorno a quest'ora. L'email parte dopo la lettura."><input type="number" min="5" max="22" disabled={ro} value={v.ora_lettura} onChange={(e) => setV({ ...v, ora_lettura: e.target.value })} /></Field>
             <Field label="Tetto di novità per lettura di una pagina" help="Oltre questo numero la Suite pensa a un cambio di struttura del sito: registra le voci senza avviso e segnala la fonte."><input type="number" min="5" max="200" disabled={ro} value={v.max_novita_fonte} onChange={(e) => setV({ ...v, max_novita_fonte: e.target.value })} /></Field>
           </div>
         </Card>

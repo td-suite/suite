@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { q, one, many } from '../db.js';
 import { many as suiteMany } from '../../../db.js';
 import { clientiAttivi } from '../../../lib/clienti.js';
-import { ah, parse, audit, notFound, forbidden } from '../../../lib/util.js';
+import { ah, parse, audit, notFound, forbidden, bad } from '../../../lib/util.js';
+import { AUTOMATICHE, destinatariAutomatici, destinatariLista, testoEmail, salvaTestoEmail, SEGNAPOSTO, EMAIL_PREDEFINITA } from '../lib/distribuzione.js';
 
 const r = Router();
 const KEY = 'circolari';
@@ -25,8 +26,25 @@ async function emailClienti(linea) {
 const dedupe = (arr) => { const seen = new Set(); return arr.filter((d) => (seen.has(d.email) ? false : (seen.add(d.email), true))); };
 
 r.get('/liste', ah(async (_req, res) => {
-  const rows = await many(`SELECT id, nome, descrizione, segmento, attiva, jsonb_array_length(destinatari) AS n_destinatari, updated_at, (SELECT count(*)::int FROM invii i WHERE i.lista_id=l.id) AS n_invii FROM liste l ORDER BY lower(nome)`);
-  res.json(rows);
+  const rows = await many(`SELECT id, nome, descrizione, segmento, attiva, automatica, destinatari, updated_at, (SELECT count(*)::int FROM invii i WHERE i.lista_id=l.id) AS n_invii FROM liste l ORDER BY (automatica IS NULL), lower(nome)`);
+  // v0.99.4: per le liste automatiche il numero è quello calcolato adesso dall'anagrafica, più gli indirizzi aggiunti a mano
+  const out = [];
+  for (const l of rows) {
+    const { destinatari, ...resto } = l;
+    const tutti = await destinatariLista(l).catch(() => destinatari || []);
+    out.push({ ...resto, n_destinatari: tutti.length, n_manuali: (destinatari || []).length, n_automatici: tutti.filter((d) => d.origine === 'AUTO').length });
+  }
+  res.json(out);
+}));
+
+// Testo dell'email di invio (oggetto e messaggio predefiniti, con i segnaposto): si legge da tutti i profili, lo cambia chi pubblica
+r.get('/email-testo', ah(async (_req, res) => res.json({ ...(await testoEmail()), segnaposto: SEGNAPOSTO, predefinito: EMAIL_PREDEFINITA })));
+r.put('/email-testo', ah(async (req, res) => {
+  if (!canManage(req.user)) throw forbidden('Il testo dell\'email si cambia con il profilo Pubblicazione');
+  const b = parse(z.object({ email_oggetto: z.string().trim().min(3).max(200), email_testo: z.string().trim().min(3).max(3000) }), req.body);
+  const out = await salvaTestoEmail(b);
+  await audit(req, 'CIRCOLARI_EMAIL_TESTO', { module: KEY, entity: 'impostazioni', label: 'Testo dell\'email di invio' });
+  res.json(out);
 }));
 
 // Proposte di destinatari dall'anagrafica unica, per segmento
@@ -55,7 +73,7 @@ r.get('/liste/proposte', ah(async (req, res) => {
 r.get('/liste/:id', ah(async (req, res) => {
   const l = await one('SELECT * FROM liste WHERE id=$1', [req.params.id]);
   if (!l) throw notFound('Lista non trovata');
-  res.json(l);
+  res.json({ ...l, automatici: l.automatica ? await destinatariAutomatici(l.automatica) : [] });
 }));
 
 r.post('/liste', ah(async (req, res) => {
@@ -78,8 +96,9 @@ r.put('/liste/:id', ah(async (req, res) => {
 
 r.delete('/liste/:id', ah(async (req, res) => {
   if (!canManage(req.user)) throw forbidden('Le liste di distribuzione si gestiscono con il profilo Pubblicazione');
-  const cur = await one('SELECT id, nome FROM liste WHERE id=$1', [req.params.id]);
+  const cur = await one('SELECT id, nome, automatica FROM liste WHERE id=$1', [req.params.id]);
   if (!cur) throw notFound('Lista non trovata');
+  if (cur.automatica) throw bad('Una lista automatica non si elimina: si può disattivare');
   await q('DELETE FROM liste WHERE id=$1', [cur.id]);
   await audit(req, 'CIRCOLARI_LISTA_ELIMINATA', { module: KEY, entity: 'lista', entityId: cur.id, label: cur.nome });
   res.json({ ok: true });

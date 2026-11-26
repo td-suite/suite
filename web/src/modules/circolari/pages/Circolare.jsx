@@ -26,6 +26,7 @@ export default function Circolare() {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(0);
   const [modal, setModal] = useState(null);
+  const [invio, setInvio] = useState(null);
   useEffect(() => { if (c) { setF(pick(c)); setDirty(false); } }, [c]);
   const bozza = c?.stato === 'BOZZA';
   const edit = bozza && canEdit(user);
@@ -170,7 +171,7 @@ export default function Circolare() {
           )}
           {!bozza && (
             <Card title="Invii" icon="mail" flush>
-              {!c.invii?.length ? <div className="bd small muted">Nessun invio registrato.</div> : <table className="t"><tbody>{c.invii.map((i) => <tr key={i.id}><td><div className="strong">{i.lista_nome || 'Destinatari indicati'}</div><div className="small muted">{itDateTime(i.inviato_at)} · {i.inviato_da_name || ''}</div></td><td className="small num">{i.n_inviati}/{i.n_destinatari}{i.n_errori > 0 && <div className="red">{i.n_errori} errori</div>}</td></tr>)}</tbody></table>}
+              {!c.invii?.length ? <div className="bd small muted">Nessun invio registrato.</div> : <table className="t"><tbody>{c.invii.map((i) => <tr key={i.id} className={i.news_id ? '' : 'click'} onClick={() => !i.news_id && setInvio(i)}><td><div className="strong">{i.lista_nome || 'Destinatari indicati'}</div><div className="small muted">{itDateTime(i.inviato_at)} · {i.inviato_da_name || ''}</div></td><td className="small num">{i.n_inviati}/{i.n_destinatari}{i.n_errori > 0 && <div className="red">{i.n_errori} errori</div>}{i.con_conferma && <div className="muted">confermate {i.n_confermate}/{i.n_destinatari}</div>}</td></tr>)}</tbody></table>}
             </Card>
           )}
         </div>
@@ -180,6 +181,7 @@ export default function Circolare() {
       {modal === 'revisione' && <ConfirmModal title="Nuova revisione" text="Viene creata una bozza che eredita tutto il contenuto. Alla sua pubblicazione questa versione passa a Superata e il QR code rimanda alla revisione nuova." confirmText="Crea la bozza" onConfirm={revisione} onClose={() => setModal(null)} />}
       {modal === 'elimina' && <ConfirmModal title="Eliminare la bozza?" text="La bozza viene eliminata definitivamente. Le circolari pubblicate non si eliminano: si annullano." confirmText="Elimina" danger onConfirm={elimina} onClose={() => setModal(null)} />}
       {modal === 'annulla' && <AnnullaModal onConfirm={annulla} onClose={() => setModal(null)} />}
+      {invio && <InvioModal circolareId={c.id} invio={invio} onClose={() => setInvio(null)} />}
       {modal === 'invia' && <InviaModal c={c} onDone={() => { setModal(null); reload(); }} onClose={() => setModal(null)} />}
       {modal === 'struttura' && <StrutturaModal id={id} onApply={(s) => { setF((x) => ({ ...x, titolo: s.titolo || x.titolo, oggetto: s.oggetto || x.oggetto, destinatari: s.destinatari || x.destinatari, decorrenza: s.decorrenza || x.decorrenza, riferimenti: s.riferimenti || x.riferimenti, sintesi: s.sintesi || x.sintesi, tipo: s.tipo || x.tipo, linea: s.linea || x.linea, corpo: s.corpo?.length ? s.corpo : x.corpo })); setDirty(true); setModal(null); }} onClose={() => setModal(null)} />}
     </div>
@@ -197,29 +199,60 @@ function AnnullaModal({ onConfirm, onClose }) {
 function InviaModal({ c, onDone, onClose }) {
   const toast = useToast();
   const liste = useApi('/liste');
-  const [listaId, setListaId] = useState('');
+  const testo = useApi('/email-testo');
+  const [scelte, setScelte] = useState([]);
   const [emails, setEmails] = useState('');
-  const [oggetto, setOggetto] = useState(`Circolare ${c.protocollo}: ${c.titolo}`);
-  const [messaggio, setMessaggio] = useState('Gentile Cliente, in allegato la circolare in oggetto. La versione digitale, sempre aggiornata, è raggiungibile dal collegamento in calce.');
+  const [oggetto, setOggetto] = useState(null);
+  const [messaggio, setMessaggio] = useState(null);
+  const [conferma, setConferma] = useState(true);
+  const [ante, setAnte] = useState(null);
   const [busy, setBusy] = useState(false);
-  const lista = (liste.data || []).find((l) => String(l.id) === listaId);
   const extra = emails.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
-  const n = (lista?.n_destinatari || 0) + extra.length;
+  const chiave = `${scelte.join(',')}|${extra.join(',')}`;
+  // destinatari effettivi (liste automatiche calcolate adesso, senza doppioni tra le liste)
+  useEffect(() => { let vivo = true; if (!scelte.length && !extra.length) { setAnte(null); return undefined; } api.post(`/circolari/${c.id}/invia/anteprima`, { lista_ids: scelte, emails: extra }, { silent: true }).then((r) => vivo && setAnte(r)).catch(() => {}); return () => { vivo = false; }; }, [chiave]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const ogg = oggetto ?? testo.data?.email_oggetto ?? '';
+  const msg = messaggio ?? testo.data?.email_testo ?? '';
+  const n = ante?.totale || 0;
+  const troppi = ante && n > ante.massimo;
   const invia = async () => {
-    if (!n) return toast('Scegli una lista o indica almeno un indirizzo', 'err');
+    if (!n) return toast('Scegli almeno una lista o indica un indirizzo', 'err');
     setBusy(true);
-    try { const r = await api.post(`/circolari/${c.id}/invia`, { lista_id: listaId ? Number(listaId) : undefined, emails: extra, oggetto, messaggio }); toast(`Invio registrato: ${r.n_inviati} su ${r.n_destinatari}${r.n_errori ? `, ${r.n_errori} errori` : ''}`); onDone(); }
+    try { const r = await api.post(`/circolari/${c.id}/invia`, { lista_ids: scelte, emails: extra, oggetto: ogg, messaggio: msg, conferma }); toast(`Invio registrato: ${r.n_inviati} su ${r.n_destinatari}${r.n_errori ? `, ${r.n_errori} errori` : ''}`); onDone(); }
     catch (e) { toast(e, 'err'); }
     setBusy(false);
   };
-  return <Modal title="Invia la circolare" onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn" disabled={busy || !n} onClick={invia}><Icon name="send" />Invia a {n} destinatari</button></>}>
+  const attive = (liste.data || []).filter((l) => l.attiva);
+  return <Modal title="Invia la circolare" onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Chiudi</button><button className="btn" disabled={busy || !n || troppi} onClick={invia}><Icon name="send" />{busy ? 'Invio in corso…' : `Invia a ${n} destinatari`}</button></>}>
     <div className="circ-form">
-      <Field label="Lista di distribuzione"><select value={listaId} onChange={(e) => setListaId(e.target.value)}><option value="">Nessuna lista</option>{(liste.data || []).filter((l) => l.attiva).map((l) => <option key={l.id} value={l.id}>{l.nome} ({l.n_destinatari})</option>)}</select></Field>
+      <Field label="Liste di distribuzione" help="Una o più. Chi è in più liste riceve una sola email. Le liste automatiche si compilano adesso dall'anagrafica.">
+        <div className="circ-liste-scelta">{!liste.data ? <span className="small muted">Carico le liste…</span> : !attive.length ? <span className="small muted">Nessuna lista attiva.</span> : attive.map((l) => <label key={l.id} className="circ-lista-voce"><input type="checkbox" checked={scelte.includes(l.id)} onChange={(e) => setScelte(e.target.checked ? [...scelte, l.id] : scelte.filter((x) => x !== l.id))} /><span><b>{l.nome}</b> <span className="muted">({l.n_destinatari}{l.automatica ? ', automatica' : ''})</span></span></label>)}</div>
+      </Field>
       <Field label="Altri indirizzi" help="Separati da virgola, spazio o a capo"><textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} /></Field>
-      <Field label="Oggetto dell'email"><input value={oggetto} onChange={(e) => setOggetto(e.target.value)} maxLength={200} /></Field>
-      <Field label="Messaggio"><textarea value={messaggio} onChange={(e) => setMessaggio(e.target.value)} maxLength={3000} /></Field>
-      <div className="small muted">In allegato il {c.has_pdf ? 'PDF' : 'Word'} della circolare; nel testo il collegamento alla versione digitale. Mittente: la casella della Suite.</div>
+      {ante && <div className={`small ${troppi ? 'red' : 'muted'}`}>{troppi ? `${n} destinatari: il massimo per invio è ${ante.massimo}. Invia una lista per volta.` : `Destinatari effettivi: ${n}${ante.liste.map((l) => ` · ${l.nome} ${l.n}`).join('')}${ante.extra ? ` · altri ${ante.extra}` : ''}`}</div>}
+      <Field label="Oggetto dell'email"><input value={ogg} onChange={(e) => setOggetto(e.target.value)} maxLength={200} /></Field>
+      <Field label="Messaggio" help="Parte dal testo salvato in Liste di distribuzione; qui lo ritocchi per questo invio. I segnaposto {protocollo}, {titolo}, {data} si compilano da soli."><textarea rows={6} value={msg} onChange={(e) => setMessaggio(e.target.value)} maxLength={3000} /></Field>
+      <label className="f inline"><input type="checkbox" checked={conferma} onChange={(e) => setConferma(e.target.checked)} /> chiedi la conferma di lettura (pulsante nell'email, registrata per ogni destinatario)</label>
+      <div className="small muted">In allegato il {c.has_pdf ? 'PDF' : 'Word'} della circolare; nel testo il collegamento alla versione digitale. Mittente: la casella della Suite. Una riga di registro per ogni lista.</div>
     </div>
+  </Modal>;
+}
+
+// Esito di un invio (v0.99.4): destinatari con invio, apertura del collegamento e conferma di lettura
+function InvioModal({ circolareId, invio, onClose }) {
+  const { data } = useApi(`/circolari/${circolareId}/invii/${invio.id}`);
+  const errori = new Map((data?.esito || []).filter((x) => !x.ok).map((x) => [x.email, x.error]));
+  const righe = data?.conferme?.length ? data.conferme : (data?.destinatari || []).map((d) => ({ email: d.email, nome: d.nome, inviata: !errori.has(d.email) }));
+  return <Modal title={`Invio a ${invio.lista_nome || 'destinatari indicati'}`} onClose={onClose} wide footer={<button className="btn ghost" onClick={onClose}>Chiudi</button>}>
+    {!data ? <div className="small muted">Carico…</div> : <>
+      <div className="small muted" style={{ marginBottom: 8 }}>{itDateTime(data.inviato_at)} · oggetto: {data.oggetto_email}{data.con_conferma ? ` · confermate ${data.conferme.filter((x) => x.confermata_at).length} su ${data.conferme.length}` : ' · senza conferma di lettura'}</div>
+      <div className="table-wrap" style={{ maxHeight: 420 }}><table className="t"><thead><tr><th>Destinatario</th><th>Email</th><th>Collegamento aperto</th><th>Lettura confermata</th></tr></thead>
+        <tbody>{righe.map((d) => <tr key={d.email}><td><span className="mono small">{d.email}</span>{d.nome && <div className="small muted">{d.nome}</div>}</td>
+          <td className="small">{d.inviata === false ? <span className="red">non inviata{errori.get(d.email) ? `: ${errori.get(d.email)}` : ''}</span> : 'inviata'}</td>
+          <td className="small">{d.aperta_at ? itDateTime(d.aperta_at) : <span className="muted">–</span>}</td>
+          <td className="small">{d.confermata_at ? <b>{itDateTime(d.confermata_at)}</b> : <span className="muted">–</span>}</td></tr>)}</tbody></table></div>
+      <div className="small muted" style={{ marginTop: 8 }}>"Collegamento aperto" può scattare anche per i controlli automatici della posta del destinatario; "Lettura confermata" richiede il clic sul pulsante.</div>
+    </>}
   </Modal>;
 }
 

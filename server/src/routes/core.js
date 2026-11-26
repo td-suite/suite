@@ -629,9 +629,12 @@ r.put('/people/:id', ah(async (req, res) => {
 
 // ---- Notifiche
 r.get('/notifications', ah(async (req, res) => {
-  const rows = await many('SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
-  const unread = (await one('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND read_at IS NULL', [req.user.id])).n;
-  res.json({ unread, rows });
+  // v0.99.3: la pagina Notifiche chiede di più (limit fino a 300) e le sole non lette (solo=nonlette); la campanella resta a 50
+  const limit = Math.min(300, Math.max(1, Number(req.query.limit) || 50));
+  const solo = req.query.solo === 'nonlette';
+  const rows = await many(`SELECT n.*, m.name AS module_name FROM notifications n LEFT JOIN modules m ON m.key = n.module_key WHERE n.user_id=$1 ${solo ? 'AND n.read_at IS NULL' : ''} ORDER BY n.created_at DESC LIMIT $2`, [req.user.id, limit]);
+  const c = await one('SELECT count(*)::int AS totale, count(*) FILTER (WHERE read_at IS NULL)::int AS n FROM notifications WHERE user_id=$1', [req.user.id]);
+  res.json({ unread: c.n, totale: c.totale, rows });
 }));
 r.post('/notifications/read', ah(async (req, res) => {
   const b = parse(z.object({ ids: z.array(z.number().int()).optional(), all: z.boolean().optional() }), req.body);

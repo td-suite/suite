@@ -77,3 +77,8 @@
 .circ-sgi-voce { display: flex; justify-content: space-between; gap: 10px; text-align: left; background: none; border: 0; border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13.5px; cursor: pointer; color: inherit; }
 .circ-sgi-voce:hover:not(:disabled) { background: #e6f0f2; } .circ-sgi-voce:disabled { opacity: .55; cursor: default; }
 .circ-rosso { color: #A63A22; }
+
+/* v0.99.4 · scelta delle liste nell'invio */
+.circ-liste-scelta { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; border: 1px solid var(--line, #dbe5e7); border-radius: 10px; padding: 10px 12px; }
+.circ-lista-voce { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; cursor: pointer; }
+.circ-lista-voce input { margin-top: 3px; }
