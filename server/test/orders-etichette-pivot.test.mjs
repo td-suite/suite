@@ -157,11 +157,18 @@ describe('Etichette, migrazione 017, pivot e consumo dai campioni (database, fix
   test('pivot per articolo dai campioni: T.Viola = provette (non esami), etichetta non abbinata a parte; Legal entity = somma dei punti', async () => {
     const ids = await M.sl.productionStrutture(-ID.org);
     assert.deepEqual(ids, [-ID.org, ID.sv]);
+    // v0.99.13: senza il giorno da cui i campioni sono conservati tutti i mesi sono parziali e la media non si dichiara
+    await db.query(`DELETE FROM public.app_settings WHERE key = 'synclab.campioni_dal'`);
+    const p0 = await M.ord.pivotArticoli(ids, 6);
+    assert.deepEqual([p0.parziali, p0.articoli.find((a) => a.article_id === ID.viola).media], [[M0, M1], null]);
+    assert.equal((await M.sl.consumptionByArticle(-ID.org, 3)).fonte, 'ESAMI', 'senza giorno registrato il consumo resta da esami');
+    await db.query(`INSERT INTO public.app_settings (key, value) VALUES ('synclab.campioni_dal', to_jsonb((current_date - 400)::text))`);
     const p = await M.ord.pivotArticoli(ids, 6);
     assert.equal(p.disponibile, true);
+    assert.deepEqual([p.parziali, p.mesi_pieni], [[], [M1]]);
     assert.deepEqual(p.mesi, [M0, M1]);
     const v = p.articoli.find((a) => a.article_id === ID.viola);
-    assert.deepEqual([v.mesi[M1], v.mesi[M0], v.totale, v.media], [2, 1, 3, 1.5], '3 provette viola: R1 (3 esami) conta 1');
+    assert.deepEqual([v.mesi[M1], v.mesi[M0], v.totale, v.media], [2, 1, 3, 2], '3 provette viola: R1 (3 esami) conta 1; media sul solo mese intero');
     assert.deepEqual(p.articoli.find((a) => a.article_id === ID.giallo).mesi, { [M1]: 1 });
     assert.deepEqual([p.non_abbinate.totale, p.non_abbinate.etichette.map((e) => e.etichetta)], [1, ['Urine sterile']]);
     assert.equal(p.campioni, 5);
@@ -174,11 +181,13 @@ describe('Etichette, migrazione 017, pivot e consumo dai campioni (database, fix
     const c = await M.sl.consumptionByArticle(-ID.org, 3);
     assert.equal(c.fonte, 'CAMPIONI');
     const v = c.map.get(ID.viola);
-    assert.deepEqual([v.units, v.packs, v.fonte, v.months], [1.5, 0.02, 'CAMPIONI', 2], '(2 + 1) provette / 2 mesi');
+    assert.deepEqual([v.fonte, v.months], ['CAMPIONI', 2]); assert.ok(v.giorni >= 27 && v.giorni <= 62);
+    const alMese = (n) => Math.round((n / (v.giorni / 30.44)) * 100) / 100;
+    assert.deepEqual([v.units, v.packs], [alMese(3), Math.round((3 / (v.giorni / 30.44) / 100) * 100) / 100], '3 provette nei giorni osservati dal primo campione, riportati al mese');
     // con esami × correlazione sarebbero (E1 2 + E2 1 + E3 1 + E1 1 + E2 1) / 2 = 3: sovrastima
     const ex = await uno(`SELECT sum(p.qty * m.qty_per_exam)::numeric / 2 AS u FROM orders.production p JOIN orders.exam_mappings m ON m.exam_code = p.exam_code AND m.active AND m.article_id = $1 WHERE p.struttura_id = $2`, [ID.viola, ID.sv]);
     assert.equal(Number(ex.u), 3);
-    assert.deepEqual([c.map.get(ID.giallo).units, c.map.get(ID.giallo).fonte], [0.5, 'CAMPIONI']);
+    assert.deepEqual([c.map.get(ID.giallo).units, c.map.get(ID.giallo).fonte], [alMese(1), 'CAMPIONI']);
     // v0.99.1: con i campioni, una correlazione "contenitore" non si conta (vale l'etichetta) ed è dichiarata; segnata "in più" conta esami × unità
     assert.equal(c.map.get(ID.ago), undefined); assert.deepEqual(c.nonContati.find((x) => x.article_id === ID.ago)?.units, 1.5);
     await db.query(`UPDATE orders.exam_mappings SET contenitore = FALSE WHERE article_id = $1`, [ID.ago]);
@@ -195,7 +204,7 @@ describe('Etichette, migrazione 017, pivot e consumo dai campioni (database, fix
     await db.query(`INSERT INTO orders.order_lines (order_id, article_id, qty_requested) VALUES ($1, $2, 1)`, [o.id, ID.viola]);
     await O.enrichLines(o.id, -ID.org, 'SEDE');
     const l = await uno(`SELECT prod_units_avg, prod_packs_avg FROM orders.order_lines WHERE order_id = $1`, [o.id]);
-    assert.deepEqual([Number(l.prod_units_avg), Number(l.prod_packs_avg)], [1.5, 0.02]);
+    assert.deepEqual([Number(l.prod_units_avg), Number(l.prod_packs_avg)], [v.units, v.packs]);
   });
 
   test('migrazione 017: rifonde le coppie per etichetta, tiene l\'articolo più osservato e segnala; idempotente', async () => {

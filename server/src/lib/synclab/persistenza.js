@@ -74,7 +74,11 @@ export async function upsertAggregato(c, { instanceId, dataset, d, revision = nu
       dem_age_years: dec(dem.ageYears), dem_sex: s(dem.sex), dem_city: s(dem.city), dem_province: s(dem.province), dem_postal_code: s(dem.postalCode),
       patient_id: s(pat.id), patient_last_name: s(pat.lastName), patient_first_name: s(pat.firstName), patient_birth_date: pat.birthDate || null, patient_fiscal_code: s(pat.fiscalCode),
       invoice_ids: arr(d.invoiceIds), raw: json(rawTestata) });
-    await togliFigliRichiesta(c, instanceId, id);
+    // v0.99.13: il gestionale non espone più i campioni di un'accettazione chiusa. Se l'aggiornamento arriva senza campioni e la copia
+    // li ha già, si conservano (campioni e legami riga → campione): senza, la produzione misurata dalle etichette perdeva lo storico.
+    const campioniNuovi = Array.isArray(d.samples) ? d.samples : [];
+    const conserva = !campioniNuovi.length && Boolean((await c.query('SELECT 1 FROM synclab.samples WHERE instance_id=$1 AND request_id=$2 LIMIT 1', [instanceId, id])).rows.length);
+    await togliFigliRichiesta(c, instanceId, id, { conservaCampioni: conserva });
     const items = Array.isArray(d.items) ? d.items : [];
     await inserisci(c, 'synclab.request_items', ['instance_id', 'request_id', 'ord', 'id', 'exam_id', 'exam_code', 'description', 'historical_description', 'quantity', 'gross_unit_price_excluding_vat', 'discount_percent', 'net_unit_price_excluding_vat',
       'vat_code', 'vat_rate', 'vat_amount', 'vat_treatment', 'deleted', 'not_performed_code', 'report_ready', 'executed_at_local', 'validated_at_local', 'invoice_ids', 'sample_ids', 'raw'],
@@ -82,8 +86,8 @@ export async function upsertAggregato(c, { instanceId, dataset, d, revision = nu
       quantity: dec(x.quantity), gross_unit_price_excluding_vat: dec(x.grossUnitPriceExcludingVat), discount_percent: dec(x.discountPercent), net_unit_price_excluding_vat: dec(x.netUnitPriceExcludingVat),
       vat_code: s(x.vatCode), vat_rate: dec(x.vatRate), vat_amount: dec(x.vatAmount), vat_treatment: s(x.vatTreatment), deleted: b(x.deleted), not_performed_code: dec(x.notPerformedCode), report_ready: b(x.reportReady),
       executed_at_local: x.executedAtLocal || null, validated_at_local: x.validatedAtLocal || null, invoice_ids: arr(x.invoiceIds), sample_ids: arr(x.sampleIds), raw: json(includePatient ? x : senza(x, ['historicalDescription'])) })));
-    await inserisci(c, 'synclab.samples', ['instance_id', 'request_id', 'ord', 'id', 'barcode', 'material', 'container', 'sample_at_local', 'collected_at_local', 'checked_in_at_local', 'prepared_at_local', 'checked_out_at_local', 'raw'],
-      (Array.isArray(d.samples) ? d.samples : []).map((x, i) => ({ instance_id: instanceId, request_id: id, ord: i, id: s(x.id), barcode: s(x.barcode), material: s(x.material), container: s(x.container), sample_at_local: x.sampleAtLocal || null,
+    if (!conserva) await inserisci(c, 'synclab.samples', ['instance_id', 'request_id', 'ord', 'id', 'barcode', 'material', 'container', 'sample_at_local', 'collected_at_local', 'checked_in_at_local', 'prepared_at_local', 'checked_out_at_local', 'raw'],
+      campioniNuovi.map((x, i) => ({ instance_id: instanceId, request_id: id, ord: i, id: s(x.id), barcode: s(x.barcode), material: s(x.material), container: s(x.container), sample_at_local: x.sampleAtLocal || null,
         collected_at_local: x.collectedAtLocal || null, checked_in_at_local: x.checkedInAtLocal || null, prepared_at_local: x.preparedAtLocal || null, checked_out_at_local: x.checkedOutAtLocal || null, raw: json(x) })));
     // ponti: documenti della richiesta, documenti e campioni delle righe (anche verso record non ancora arrivati)
     await inserisci(c, 'synclab.request_invoices', ['instance_id', 'request_id', 'invoice_id', 'lato'], (arr(d.invoiceIds) || []).map((inv) => ({ instance_id: instanceId, request_id: id, invoice_id: inv, lato: 'REQUEST' })));
@@ -94,7 +98,7 @@ export async function upsertAggregato(c, { instanceId, dataset, d, revision = nu
       for (const smp of arr(x.sampleIds) || []) ris.push({ instance_id: instanceId, request_id: id, item_id: String(x.id), sample_id: smp });
     }
     await inserisci(c, 'synclab.request_item_invoices', ['instance_id', 'request_id', 'item_id', 'invoice_id'], rii);
-    await inserisci(c, 'synclab.request_item_samples', ['instance_id', 'request_id', 'item_id', 'sample_id'], ris);
+    if (!conserva) await inserisci(c, 'synclab.request_item_samples', ['instance_id', 'request_id', 'item_id', 'sample_id'], ris);
     return;
   }
   if (dataset === 'invoices') {
@@ -115,8 +119,8 @@ export async function upsertAggregato(c, { instanceId, dataset, d, revision = nu
   throw new Error(`Insieme di dati sconosciuto: ${dataset}`);
 }
 
-async function togliFigliRichiesta(c, instanceId, id) {
-  for (const t of ['request_items', 'samples', 'request_item_invoices', 'request_item_samples']) await c.query(`DELETE FROM synclab.${t} WHERE instance_id=$1 AND request_id=$2`, [instanceId, id]);
+async function togliFigliRichiesta(c, instanceId, id, { conservaCampioni = false } = {}) {
+  for (const t of conservaCampioni ? ['request_items', 'request_item_invoices'] : ['request_items', 'samples', 'request_item_invoices', 'request_item_samples']) await c.query(`DELETE FROM synclab.${t} WHERE instance_id=$1 AND request_id=$2`, [instanceId, id]);
   await c.query(`DELETE FROM synclab.request_invoices WHERE instance_id=$1 AND request_id=$2 AND lato='REQUEST'`, [instanceId, id]);
 }
 async function togliFigliDocumento(c, instanceId, id) {

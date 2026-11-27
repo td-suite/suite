@@ -174,6 +174,25 @@ describe('Synclab: sincronizzazione con il server finto', { skip: SALTA }, () =>
     assert.equal(dopo[0].query.cursor, s.pagina_in_sospeso.cursor);
   });
 
+  test('accettazione chiusa che torna senza campioni: campioni e legami della copia restano (v0.99.13)', async () => {
+    await nuovo();
+    await M.sync.eseguiCiclo('requests');
+    const base = copia(ESEMPI.optInRequest); delete base.patient;
+    const conta = async () => [Number((await uno('SELECT count(*) FROM synclab.samples WHERE request_id = $1', [String(base.id)])).count), Number((await uno('SELECT count(*) FROM synclab.request_item_samples WHERE request_id = $1', [String(base.id)])).count)];
+    const prima = await conta();
+    assert.ok(prima[0] > 0 && prima[1] > 0, 'la richiesta di esempio ha campioni');
+    const chiusa = copia(base); chiusa.state = 50; chiusa.samples = []; chiusa.items = chiusa.items.map((x) => ({ ...x, sampleIds: [] }));
+    fake.cambia('requests', { id: base.id, revision: 'R2', operation: 'upsert', reason: null, data: chiusa });
+    await M.sync.eseguiCiclo('requests');
+    assert.equal(Number((await uno('SELECT state FROM synclab.requests WHERE id = $1', [String(base.id)])).state), 50);
+    assert.deepEqual(await conta(), prima, 'campioni conservati');
+    // se i campioni arrivano di nuovo (accettazione riaperta e corretta) si sostituiscono
+    const riaperta = copia(base); riaperta.samples = [riaperta.samples[0]]; riaperta.items = riaperta.items.map((x) => ({ ...x, sampleIds: [riaperta.samples[0].id] }));
+    fake.cambia('requests', { id: base.id, revision: 'R3', operation: 'upsert', reason: null, data: riaperta });
+    await M.sync.eseguiCiclo('requests');
+    assert.equal((await conta())[0], 1);
+  });
+
   test('delta: upsert con un figlio modificato e uno rimosso dalla nuova versione (sostituzione, non aggiunta)', async () => {
     await nuovo();
     await M.sync.eseguiCiclo('requests');

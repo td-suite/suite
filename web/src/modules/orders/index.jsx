@@ -16,6 +16,7 @@ import Catalog from './pages/Catalog.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
 import Supplier from './pages/Supplier.jsx';
+import MagazzinoTd from './pages/MagazzinoTd.jsx';
 import Deliveries from './pages/Deliveries.jsx';
 import LoadingPage from './pages/Loading.jsx';
 import Unload from './pages/Unload.jsx';
@@ -44,6 +45,7 @@ function Gate() {
     <Routes>
       <Route index element={<Dashboard />} />
       <Route path="magazzino" element={ops ? <MagazzinoCentrale /> : <Forbidden />} />
+      <Route path="magazzino-td" element={ops ? <MagazzinoTd /> : <Forbidden />} />
       <Route path="dotazione" element={ops ? <Dotazione /> : <Forbidden />} />
       <Route path="dotazione/sedi/:id" element={ops ? <DotazioneSede /> : <Forbidden />} />
       <Route path="catalogo" element={(ops || kind === 'CLIENTE') ? <Catalog /> : <Navigate to={BASE} replace />} />

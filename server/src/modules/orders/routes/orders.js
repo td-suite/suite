@@ -8,6 +8,7 @@ import { emailOrder, pushOrderToSilva, anteprimaSilva, statoOrdineSilva } from '
 import { ORDER_COLS, ORDER_JOINS as JOINS, event, markPicked, markShipped, markDelivered, markStored } from '../lib/orderflow.js';
 import { buildOrderPdf } from '../pdf/order.js';
 import { sendMail, opsEmails } from '../lib/mailer.js';
+import { dividiPerMagazzino, avvisaMagazzinoTd } from '../lib/magazzinoTd.js';
 import { risolviPunto, opzioniPunto, puntoById, puntiAttivi } from '../lib/punti.js';
 
 const r = Router();
@@ -76,6 +77,7 @@ r.get('/', ah(async (req, res) => {
   const where = [isOps(req.user) ? 'TRUE' : `o.struttura_id=${P.add(req.user.struttura_id)}`];
   if (req.query.status) where.push(`o.status = ANY(${P.add(String(req.query.status).split(','))}::text[])`);
   if (req.query.kind) where.push(`o.kind=${P.add(req.query.kind)}`);
+  if (['SILVA', 'TD'].includes(req.query.channel)) where.push(`o.channel=${P.add(req.query.channel)}`);   // v0.99.14: canale di evasione
   if (req.query.struttura_id) where.push(`o.struttura_id=${P.add(Number(req.query.struttura_id))}`);
   // filtro per punto di consegna (archivio ordini): id del punto, oppure "nessuno" = ordini della Legal entity senza punto indicato
   if (req.query.delivery_site_id === 'nessuno') where.push('o.delivery_site_id IS NULL');
@@ -197,19 +199,29 @@ async function approve(req, id) {
   });
   await event(id, req.user.id, 'Approvato dall\'Area Operations: in attesa del magazzino', { packs: n.n });
   await audit(req, 'ORDER_APPROVE', 'order', id);
+  // v0.99.14 · Magazzino TD: gli articoli interni non vanno a Silva. Ordine tutto interno → canale TD; ordine misto → si divide e le
+  // righe interne passano all'ordine figlio <numero>-TD. La parte Silva prosegue come sempre.
+  const div = await dividiPerMagazzino(id, req.user.id);
   // fase 3: trasmissione a Silva all'approvazione (regola del CEO) se l'automatismo è attivo nel connettore (chiave, push_orders e primo
   // invio concordato confermato); altrimenti resta "da trasmettere" con il pulsante nel dettaglio. Errori ritentabili: job orders:silva-push
-  pushOrderToSilva(id, { actor: req.user.full_name }).catch((e) => console.warn('[orders] trasmissione Silva:', e.message));
+  if (div.canale === 'SILVA') pushOrderToSilva(id, { actor: req.user.full_name }).catch((e) => console.warn('[orders] trasmissione Silva:', e.message));
   // PDF archiviato sull'ordine e inviato alla struttura
-  const full = await fullDetail(req, id);
   const company = await companyInfo();
   const cats = await many('SELECT code, name FROM categories');
-  const lines = full.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
-  const pdf = await buildOrderPdf({ order: full, struttura: full.struttura, lines, company, packages: [], events: full.events });
-  await q('UPDATE orders SET pdf=$2 WHERE id=$1', [id, pdf]);
+  const pdfDi = async (oid) => {
+    const f = await fullDetail(req, oid);
+    const lines = f.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));
+    const doc = await buildOrderPdf({ order: f, struttura: f.struttura, lines, company, packages: [], events: f.events });
+    await q('UPDATE orders SET pdf=$2 WHERE id=$1', [oid, doc]);
+    return { full: f, pdf: doc };
+  };
+  const { full, pdf } = await pdfDi(id);
   if (full.struttura.email) await sendMail({ kind: 'ORDINE_APPROVATO', refKey: `APPROVATO:${id}`, to: full.struttura.email, strutturaId: o.struttura_id, subject: `Ordine ${o.number} approvato${full.delivery_site_name ? ` · ${full.delivery_site_name}` : ''}`, title: `Ordine ${o.number} approvato`,
-    body: `L'ordine ${o.number} (${full.struttura_label}) è stato approvato da Toscana Diagnostica ed è in preparazione presso il magazzino.${full.punto_consegna ? ` Consegna a ${full.punto_consegna.name}, ${[full.punto_consegna.address, [full.punto_consegna.zip, full.punto_consegna.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}.` : ''} Riceverete un avviso alla consegna.`, attachment: { filename: `${o.number}.pdf`, content: pdf } });
-  return { ok: true, status: 'APPROVATO' };
+    body: `L'ordine ${o.number} (${full.struttura_label}) è stato approvato da Toscana Diagnostica ed è in preparazione presso il magazzino.${full.punto_consegna ? ` Consegna a ${full.punto_consegna.name}, ${[full.punto_consegna.address, [full.punto_consegna.zip, full.punto_consegna.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}.` : ''} ${div.figlio ? ` Gli articoli del magazzino interno di Toscana Diagnostica viaggiano con l'ordine ${div.figlio.number}.` : ''} Riceverete un avviso alla consegna.`, attachment: { filename: `${o.number}.pdf`, content: pdf } });
+  // l'ordine del Magazzino TD (questo, o il figlio della divisione) parte per email verso il magazzino interno
+  const tdId = div.canale === 'TD' ? id : div.figlio?.id;
+  if (tdId) { const t = tdId === id ? { full, pdf } : await pdfDi(tdId); await avvisaMagazzinoTd(t.full, { pdf: t.pdf, userId: req.user.id }); }
+  return { ok: true, status: 'APPROVATO', canale: div.canale, ordine_td: div.figlio };
 }
 r.post('/:id/approve', requireRole(...OPS_ROLES), ah(async (req, res) => res.json(await approve(req, req.params.id))));
 
@@ -268,6 +280,7 @@ r.post('/:id/silva-stato', requireRole(...OPS_ROLES), ah(async (req, res) => {
 async function emailToSupplier(req, id) {
   const o = await fullDetail(req, id);
   assertStatus(o, 'APPROVATO', 'PRESO_IN_CARICO');
+  if (o.channel === 'TD') throw bad('Ordine del Magazzino TD: non va al fornitore, si reinvia dal Magazzino TD');
   const company = await companyInfo();
   const cats = await many('SELECT code, name FROM categories');
   const lines = o.lines.map((l) => ({ ...l, category_name: cats.find((c) => c.code === l.category_code)?.name }));

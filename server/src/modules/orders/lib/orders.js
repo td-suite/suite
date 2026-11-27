@@ -6,7 +6,7 @@ import { bad, getSetting } from './util.js';
 import { consumptionByArticle } from './studiolab.js';
 import { clausolaVisibilita } from './dotazione.js';
 
-export const ARTICLE_COLS = `a.code AS article_code, a.name AS article_name, a.category_code, a.unit, a.pack_size, a.pack_label, a.color, a.gtin, a.coverage_factor`;
+export const ARTICLE_COLS = `a.code AS article_code, a.name AS article_name, a.category_code, a.unit, a.pack_size, a.pack_label, a.color, a.gtin, a.coverage_factor, a.source AS article_source`;
 
 // Intestazione dei PDF: i dati aziendali della Suite (Amministrazione > Impostazioni > Dati aziendali, docs/IMPOSTAZIONI.md);
 // la tabella company del modulo conserva solo logo e piè di pagina personalizzato, se mai impostati.

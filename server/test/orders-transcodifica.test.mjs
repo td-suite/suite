@@ -58,6 +58,8 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     M.dbm = await import('../src/db.js');
     assert.equal((await M.dbm.one('SELECT current_database() AS d')).d, nomeDb, 'mai il database della Suite');
     await (await import('../src/migrate.js')).migrate();
+    // la migrazione 024 scrive oggi come giorno da cui i campioni sono conservati: per le prove vale da oltre un anno
+    await M.dbm.q(`INSERT INTO public.app_settings (key, value) VALUES ('synclab.campioni_dal', to_jsonb((current_date - 400)::text)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`);
     M.conn = await import('../src/lib/connectors.js'); await M.conn.loadConnectors();
     M.pers = await import('../src/lib/synclab/persistenza.js');
     await (await import('../src/lib/travaso.js')).startFresh('orders', null);
@@ -121,7 +123,10 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     // consumo: stessi numeri della tabella per articolo; le correlazioni contenitore non si sommano
     await M.ord.aggiornaProduzioneSynclab();
     const c = await M.sl.consumptionByArticle(ID.sede, 3);
-    assert.deepEqual([c.map.get(ID.mViola).units, c.map.get(ID.mViola).fonte, c.map.get(ID.mGiallo).units], [2, 'CAMPIONI', 1]);
+    // v0.99.13: media per giorni osservati (dal primo campione, almeno 14) riportati al mese
+    const g = c.map.get(ID.mViola).giorni; assert.ok(g >= 14 && g <= 31);
+    const alMese = (n) => Math.round((n / (g / 30.44)) * 100) / 100;
+    assert.deepEqual([c.map.get(ID.mViola).units, c.map.get(ID.mViola).fonte, c.map.get(ID.mGiallo).units], [alMese(2), 'CAMPIONI', alMese(1)]);
     assert.equal(c.map.get(ID.gViola), undefined, 'il contenitore generico delle correlazioni non compare più');
     assert.ok(c.nonContati.some((x) => x.article_id === ID.gViola), 'ed è dichiarato tra i non contati');
     assert.equal((await M.ord.proponiCorrelazioni()).voci.length, 0, 'l\'etichetta vuota non propone correlazioni');
@@ -151,12 +156,13 @@ describe('Campioni senza etichetta, transcodifica e cliente con due codici (data
     await db.query(`DELETE FROM orders.exam_mappings WHERE exam_code = 'E4'`);
     await db.query(`INSERT INTO orders.exam_mappings (exam_code, article_id, qty_per_exam, contenitore, source) VALUES ('E4', $1, 1, TRUE, 'MANUALE'), ('E4', $2, 2, FALSE, 'MANUALE'), ('E4', $3, 1, FALSE, 'MANUALE')`, [ID.mGiallo, sigillo, tappo]);
     const c = await M.sl.consumptionByArticle(ID.sede, 3);
-    assert.deepEqual([c.map.get(ID.mGiallo).units, c.map.get(ID.mGiallo).fonte], [1, 'CAMPIONI']);
+    const g = c.map.get(ID.mGiallo).giorni; const alMese = (n) => Math.round((n / (g / 30.44)) * 100) / 100;
+    assert.deepEqual([c.map.get(ID.mGiallo).units, c.map.get(ID.mGiallo).fonte], [alMese(1), 'CAMPIONI']);
     assert.deepEqual([c.map.get(sigillo).units, c.map.get(sigillo).packs, c.map.get(sigillo).fonte], [2, 0.2, 'ESAMI'], '1 esame × 2 sigilli');
     assert.deepEqual([c.map.get(tappo).units, c.map.get(tappo).fonte], [1, 'ESAMI']);
     // lo stesso articolo contenitore per un esame e materiale in più per un altro: le due parti si sommano
     await db.query(`INSERT INTO orders.exam_mappings (exam_code, article_id, qty_per_exam, contenitore, source) VALUES ('E1', $1, 1, FALSE, 'MANUALE')`, [ID.mGiallo]);
     const c2 = await M.sl.consumptionByArticle(ID.sede, 3);
-    assert.deepEqual([c2.map.get(ID.mGiallo).units, c2.map.get(ID.mGiallo).fonte], [3, 'CAMPIONI+ESAMI'], '1 campione + 2 esami E1');
+    assert.deepEqual([c2.map.get(ID.mGiallo).units, c2.map.get(ID.mGiallo).fonte], [Math.round((alMese(1) + 2) * 100) / 100, 'CAMPIONI+ESAMI'], '1 campione + 2 esami E1');
   });
 });

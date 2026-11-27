@@ -21,6 +21,7 @@ import stockRoutes from './routes/stock.js';
 import productionRoutes from './routes/production.js';
 import statsRoutes from './routes/stats.js';
 import warehouseRoutes from './routes/warehouse.js';
+import tdRoutes from './routes/td.js';
 import integrationRoutes from './routes/integrations.js';
 import dotazioneRoutes, { badgeDotazione } from './routes/dotazione.js';
 // Importazione del catalogo articoli dall'app originale (Amministrazione > Attivazione moduli > Importa i contenuti)
@@ -86,12 +87,13 @@ export default function mount(app) {
   r.get('/badges', async (req, res, next) => {
     try {
       const { one } = await import('./db.js');
-      const r = await one(`SELECT count(*) FILTER (WHERE status='INVIATO')::int AS verifica FROM orders`);
+      // v0.99.13: un contatore per ogni fase con ordini fermi (verifica, trasmissione al magazzino, consegne): la Home somma queste voci
+      const r = await one(`SELECT count(*) FILTER (WHERE status='INVIATO')::int AS verifica, count(*) FILTER (WHERE status IN ('APPROVATO','PRESO_IN_CARICO') AND channel='SILVA')::int AS trasmissione, count(*) FILTER (WHERE status IN ('APPROVATO','PRESO_IN_CARICO') AND channel='TD')::int AS magazzino_td, count(*) FILTER (WHERE status='SPEDITO')::int AS consegne FROM orders`);
       const d = await one(`SELECT count(*)::int AS n FROM issues WHERE status='APERTA'`).catch(() => ({ n: 0 }));
       // Dotazione di avvio: sedi e Legal entity che aprono entro 60 giorni (o già aperte) senza Giacenza 0 registrata (solo Area Operations)
       // v0.83.0 (richiesta del CEO): nessun contatore sul menu Dotazione di avvio; le strutture da attenzionare restano nella pagina
       const dotazione = 0;
-      res.json({ verifica: r.verifica, difformita: d.n, dotazione });
+      res.json({ verifica: r.verifica, trasmissione: r.trasmissione, magazzino_td: r.magazzino_td, consegne: r.consegne, difformita: d.n, dotazione });
     } catch (e) { next(e); }
   });
   r.get('/state', ah(async (req, res) => {
@@ -109,6 +111,7 @@ export default function mount(app) {
   r.use('/production', productionRoutes);
   r.use('/stats', statsRoutes);
   r.use('/warehouse', warehouseRoutes);
+  r.use('/td', tdRoutes);   // Magazzino TD: articoli interni, giacenza a movimenti, ordini da evadere (v0.99.14)
   r.use('/dotazione', dotazioneRoutes);
   r.post('/alerts/run', requireRole(...OPS_ROLES), ah(async (_req, res) => res.json(await runDailyAlerts({ force: true }))));
   app.use(`/api/${KEY}`, r);

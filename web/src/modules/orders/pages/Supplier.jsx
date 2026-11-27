@@ -10,7 +10,7 @@ import { itDateTime, KIND } from '../format.js';
 export default function Supplier() {
   const nav = useNavigate();
   const toast = useToast();
-  const { data, reload } = useApi('/orders?status=APPROVATO,PRESO_IN_CARICO');
+  const { data, reload } = useApi('/orders?status=APPROVATO,PRESO_IN_CARICO&channel=SILVA');   // gli ordini del Magazzino TD si evadono nella loro pagina
   const settings = useApi('/settings');
   const [ask, setAsk] = useState(null);
   const [err, setErr] = useState(null);

@@ -117,30 +117,34 @@ function PivotArticoli({ piv, exportHref, ops }) {
   const mesi = piv.mesi || [];
   const N = (v) => (v ? Number(v).toLocaleString('it-IT') : <span className="muted">–</span>);
   const totMese = (m) => piv.articoli.reduce((t, a) => t + (a.mesi[m] || 0), 0) + (piv.non_abbinate.mesi[m] || 0);
+  const parziali = new Set(piv.parziali || []);
+  const Media = (v) => (v == null ? <span className="muted">–</span> : dec(v, 1));
+  const dalIt = piv.campioni_dal ? piv.campioni_dal.split('-').reverse().join('/') : null;
   return (<>
+    {parziali.size > 0 && <div className="alert warn" style={{ marginBottom: 10 }}><div><strong>Conteggio incompleto nei mesi segnati "parziale".</strong> Il gestionale toglie i campioni quando l'accettazione viene chiusa e fino {dalIt ? `al ${dalIt}` : 'a oggi'} la copia li perdeva: in quei mesi restano solo i campioni delle accettazioni ancora aperte. {dalIt ? `Dal ${dalIt} i campioni si conservano e il conteggio è completo.` : ''} La media mensile e il consumo usano solo il periodo completo; nel frattempo il consumo resta calcolato da esami × correlazione.</div></div>}
     {piv.unita_con?.length > 0 && <div className="alert info" style={{ marginBottom: 10 }}><div>Stesso cliente con più codici: la produzione è sommata con {piv.unita_con.map((g) => `${g.code} ${g.name}`).join(', ')}.</div></div>}
     <Card flush title={`Campioni per articolo di magazzino (${mesi.length} mesi con dati)`} actions={<a className="btn sm ghost" href={exportHref}><Icon name="download" size={16} />Excel</a>}>
       {!piv.campioni ? <Empty>Nessun campione Synclab per questa struttura negli ultimi mesi: la produzione per esame resta nella scheda "Per esame"</Empty> : (
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Articolo di magazzino</th>{mesi.map((m) => <th key={m} className="num">{monthLabel(m)}</th>)}<th className="num">Totale</th><th className="num">Media mensile</th></tr></thead>
+          <thead><tr><th>Articolo di magazzino</th>{mesi.map((m) => <th key={m} className="num">{monthLabel(m)}{parziali.has(m) && <div className="small muted">parziale</div>}</th>)}<th className="num">Totale</th><th className="num">Media mensile</th></tr></thead>
           <tbody>
             {piv.articoli.map((a) => <tr key={a.article_id}>
               <td><div className="strong">{a.name}</div><div className="small muted">{a.etichette.map((e) => `${e.etichetta || 'etichetta non indicata'} (${e.totale.toLocaleString('it-IT')})`).join(' · ')}{a.pack_label ? ` · ${a.pack_label}` : ''}</div></td>
               {mesi.map((m) => <td key={m} className="num">{N(a.mesi[m])}</td>)}
-              <td className="num strong">{N(a.totale)}</td><td className="num">{dec(a.media, 1)}{a.confezioni_mese != null && <div className="small muted">{dec(a.confezioni_mese, 2)} conf.</div>}</td></tr>)}
+              <td className="num strong">{N(a.totale)}</td><td className="num">{Media(a.media)}{a.confezioni_mese != null && <div className="small muted">{dec(a.confezioni_mese, 2)} conf.</div>}</td></tr>)}
             {piv.non_abbinate.totale > 0 && <tr className="warnrow">
               <td><button className="btn sm link" style={{ padding: 0 }} onClick={() => setAperte(!aperte)}>{aperte ? '▾' : '▸'} Campioni senza articolo ({piv.non_abbinate.etichette.length} voci)</button>{ops && <div className="small muted">Etichette da abbinare a un articolo (Correlazione esami e materiali › Etichette) oppure materiali senza etichetta: manca la riga nella tabella delle provette (Lab Control › Impostazioni)</div>}</td>
               {mesi.map((m) => <td key={m} className="num">{N(piv.non_abbinate.mesi[m])}</td>)}
-              <td className="num strong">{N(piv.non_abbinate.totale)}</td><td className="num">{dec(piv.non_abbinate.media, 1)}</td></tr>}
+              <td className="num strong">{N(piv.non_abbinate.totale)}</td><td className="num">{Media(piv.non_abbinate.media)}</td></tr>}
             {aperte && piv.non_abbinate.etichette.map((e) => <tr key={`n-${e.chiave}`} className="small">
               <td style={{ paddingLeft: 28 }}>{e.etichetta || <span className="muted">{e.derivato ? 'materiale non indicato' : 'etichetta non indicata'}</span>}{e.derivato && <span className="muted"> · materiale senza etichetta: aggiungi la riga nella tabella delle provette</span>}</td>
               {mesi.map((m) => <td key={m} className="num">{N(e.mesi[m])}</td>)}
-              <td className="num">{N(e.totale)}</td><td className="num">{dec(e.media, 1)}</td></tr>)}
+              <td className="num">{N(e.totale)}</td><td className="num">{Media(e.media)}</td></tr>)}
             <tr><td className="strong">Totale campioni</td>{mesi.map((m) => <td key={m} className="num strong">{N(totMese(m))}</td>)}<td className="num strong">{N(piv.campioni)}</td><td /></tr>
           </tbody>
         </table></div>
       )}
-      <div className="small muted" style={{ padding: '8px 12px' }}>Quantità = numero di campioni (provette e contenitori) con quell'etichetta nel mese, dalle accettazioni attive della copia Synclab dei client abbinati alla struttura: un campione conta una volta anche quando serve più esami. Media mensile = totale / mesi con campioni. Sotto ogni articolo le etichette che lo compongono (più etichette portano allo stesso articolo: T.Giallo, T.Giallo Alinity, T.Giallo Elettroforesi). Il gestionale oggi non passa il testo dell'etichetta: il nome viene dalla tabella delle provette di Lab Control (materiale ed esami), la stessa che stampa le etichette.</div>
+      <div className="small muted" style={{ padding: '8px 12px' }}>Quantità = numero di campioni (provette e contenitori) con quell'etichetta nel mese, dalle accettazioni attive della copia Synclab dei client abbinati alla struttura: un campione conta una volta anche quando serve più esami. Media mensile = media dei mesi interi con conteggio completo. Sotto ogni articolo le etichette che lo compongono (più etichette portano allo stesso articolo: T.Giallo, T.Giallo Alinity, T.Giallo Elettroforesi). Il gestionale oggi non passa il testo dell'etichetta: il nome viene dalla tabella delle provette di Lab Control (materiale ed esami), la stessa che stampa le etichette.</div>
     </Card>
   </>);
 }

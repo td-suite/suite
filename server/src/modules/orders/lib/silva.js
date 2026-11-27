@@ -508,6 +508,7 @@ export async function pushOrderToSilva(orderId, { actor = 'sistema', manuale = f
   if (!manuale && !automaticoAttivo(c)) return { ok: false, skipped: motivoNonAutomatico(c) };
   if (manuale && !primoInvioConfermato(c) && !conferma) throw bad('Primo invio a Silva: serve la conferma esplicita (la trasmissione crea un ordine reale in preparazione presso Silva)');
   const { o, s, lines } = await datiOrdineSilva(orderId);
+  if (o.channel === 'TD') return { ok: false, skipped: 'ordine del Magazzino TD: articoli interni, non si trasmette a Silva' };
   if (o.status !== 'APPROVATO') return { ok: false, skipped: `ordine ${o.status}: si trasmette solo un ordine approvato non ancora preso in carico` };
   if (o.silva_send_status === 'INVIATO') return { ok: true, gia: true, stato: 'INVIATO', message: `già ricevuto da Silva${o.silva_reference ? ` (rif. ${o.silva_reference})` : ''}: l'invio è concluso` };
   if (o.silva_error_code === 'immutable_order') {
@@ -607,7 +608,7 @@ export async function pushPendingOrders() {
   if (!automaticoAttivo(c)) return { skipped: motivoNonAutomatico(c) };
   if (!c.settings?.primo_invio_confermato_at) c = await saveConnector('SILVA', { settings: { primo_invio_confermato_at: new Date().toISOString() } }, null);
   const fp = impronta(c.credentials.api_key);
-  const rows = await many(`SELECT id, number FROM orders WHERE status='APPROVATO' AND silva_send_attempts < $1
+  const rows = await many(`SELECT id, number FROM orders WHERE status='APPROVATO' AND channel='SILVA' AND silva_send_attempts < $1
       AND (silva_retry_at IS NULL OR silva_retry_at <= now())
       AND (silva_send_status = 'IN_CODA'
            OR (silva_send_status = 'ERRORE_CHIAVE' AND silva_key_fp IS DISTINCT FROM $2)

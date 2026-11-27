@@ -43,7 +43,7 @@ export default function OrderDetail() {
     try {
       const body = { lines: o.lines.map((l) => ({ id: l.id, qty_approved: Number(val(l, 'qty_approved') || 0), note_ops: val(l, 'note_ops') || null })), ops_notes: opsNotes, approve };
       const r = await api.post(`/orders/${o.id}/verify`, body);
-      if (approve) toast('Approvato: in attesa del magazzino (fase 3)'); else toast('Verifica salvata');
+      if (approve) toast(r?.ordine_td ? `Approvato e diviso: gli articoli interni sono nell'ordine ${r.ordine_td.number} del Magazzino TD` : r?.canale === 'TD' ? 'Approvato: inviato al Magazzino TD' : 'Approvato: in attesa del magazzino (fase 3)'); else toast('Verifica salvata');
       setApproveAsk(false); reload();
     } catch (e) { setErr(e); setApproveAsk(false); }
   };
@@ -113,7 +113,7 @@ export default function OrderDetail() {
               </tr></thead>
               <tbody>{lines.map((l) => (
                 <tr key={l.id}>
-                  <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt icon={iconFor(l.category_code)} color={l.color} size={34} /><div><div className="strong">{l.article_name}</div><div className="small muted">{l.pack_label} · {l.unit}{l.note_client ? ` · ${l.note_client}` : ''}</div></div></div></td>
+                  <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><ProductArt icon={iconFor(l.category_code)} color={l.color} size={34} /><div><div className="strong">{l.article_name}{l.article_source === 'TD' && <> <Badge tone="blue">Magazzino TD</Badge></>}</div><div className="small muted">{l.pack_label} · {l.unit}{l.note_client ? ` · ${l.note_client}` : ''}</div></div></div></td>
                   <td className="num">{canEditDraft ? <input className="qin" inputMode="numeric" value={val(l, 'qty_requested')} onChange={(e) => setVal(l, 'qty_requested', e.target.value.replace(/\D/g, ''))} /> : <span className="strong">{isSystem ? (l.qty_proposed ?? l.qty_requested) : l.qty_requested}</span>}</td>
                   {o.kind !== 'LAB' && <td className="num" title={l.prod_units_avg != null ? `${dec(l.prod_units_avg, 0)} ${l.unit} al mese` : 'Nessuna produzione correlata'}>{l.prod_packs_avg != null ? <>{dec(l.prod_packs_avg, 1)}<div className="small muted">{dec(l.prod_units_avg, 0)} {l.unit.replace('n. ', '')}/mese</div></> : <span className="muted">–</span>}</td>}
                   {o.kind !== 'LAB' && <td className="num">{l.delta_pct != null ? <Badge tone={deltaTone(l.delta_pct)}>{pct(l.delta_pct)}</Badge> : <span className="muted">–</span>}</td>}
@@ -183,7 +183,13 @@ export default function OrderDetail() {
             {o.silva_reference && <div className="small" style={{ marginTop: 8 }}>Riferimento magazzino: <span className="mono">{o.silva_reference}</span></div>}
             {o.ddt_number && <div className="small">DDT: <span className="mono">{o.ddt_number}</span></div>}
           </Card>
-          {ops && !['BOZZA', 'INVIATO'].includes(o.status) && (o.status !== 'ANNULLATO' || o.silva_send_status) && <SilvaCard o={o} onChanged={reload} />}
+          {ops && o.channel === 'TD' && !['BOZZA', 'INVIATO'].includes(o.status) && (
+            <Card title="Magazzino TD">
+              <div className="small">Ordine di articoli interni: non va a Silva. {o.td_email_at ? `Inviato al Magazzino TD il ${itDateTime(o.td_email_at)}.` : 'Email al Magazzino TD non ancora inviata.'} La giacenza scala quando si registra l'uscita verso il destinatario.</div>
+              <div style={{ marginTop: 8 }}><button className="btn sm" onClick={() => nav(`${BASE}/magazzino-td`)}>Apri Magazzino TD</button></div>
+            </Card>
+          )}
+          {ops && o.channel !== 'TD' && !['BOZZA', 'INVIATO'].includes(o.status) && (o.status !== 'ANNULLATO' || o.silva_send_status) && <SilvaCard o={o} onChanged={reload} />}
           <Card title="Difformità" className="mt" actions={(mine || ops) && ['SPEDITO', 'CONSEGNATO', 'IMMAGAZZINATO', 'CHIUSO'].includes(o.status) && <button className="btn sm ghost" onClick={() => setIssue({ kind: 'MANCANTE', description: '' })}>Segnala</button>}>
             {!o.issues.length ? <div className="muted small">Nessuna difformità</div> : o.issues.map((i) => (
               <div key={i.id} className={`msg ${i.status === 'CHIUSA' ? 'CHIUSURA' : ''}`} style={{ marginBottom: 8 }}>
@@ -200,6 +206,7 @@ export default function OrderDetail() {
       {approveAsk && (
         <Modal title="Approvare e trasmettere al fornitore?" onClose={() => setApproveAsk(false)} footer={<><button className="btn ghost" onClick={() => setApproveAsk(false)}>Indietro</button><button className="btn" onClick={() => saveVerify(true)}>Approva</button></>}>
           <p>{totalApproved} confezioni approvate in {lines.filter((l) => Number(val(l, 'qty_approved') || 0) > 0).length} articoli. L'ordine passa alla fase 3: se la trasmissione automatica è attiva nel connettore parte subito verso Silva (POST /api/v1/ordini), altrimenti resta "da trasmettere" con il pulsante nel riquadro Silva; la struttura riceve il PDF per email.</p>
+          {lines.some((l) => l.article_source === 'TD' && Number(val(l, 'qty_approved') || 0) > 0) && <p><b>Articoli interni.</b> {lines.every((l) => l.article_source === 'TD' || !(Number(val(l, 'qty_approved') || 0) > 0)) ? "L'ordine è tutto del Magazzino TD: non va a Silva, parte per email verso il magazzino interno." : `L'ordine si divide: gli articoli interni passano all'ordine ${o.number}-TD del Magazzino TD, il resto va a Silva.`}</p>}
         </Modal>
       )}
       {issue && (

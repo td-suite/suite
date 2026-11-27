@@ -7,6 +7,7 @@ import { Icon, weatherIcon } from '../components/Icons.jsx';
 import Widget, { CONTATORI_INVENTARIO } from '../components/Widget.jsx';
 import { MODULES as MODULI_WEB } from '../modules/registry.js';
 import PiedeSito from '../components/PiedeSito.jsx';
+import { vociConContatore, contatoreDaMenu } from '../lib/contatoriHome.js';
 import Board from '../components/community/Board.jsx';
 import { CircolariCard, NewsCard, CalendarCard, WeatherCard, QuoteCard, FilesCard, PeopleQuick, BirthdaysCard } from '../components/community/Cards.jsx';
 import { greeting, firstName, fmtDateLong, capitalize, SEVERITY, areaColor, AREA_BREVI } from '../format.js';
@@ -83,8 +84,9 @@ function HomeCompleta({ user }) {
   const modules = useApi('/home/modules', [grantKeys, user?.level]);
   const home = useApi('/community/home');
   const notif = useApi('/notifications');
-  const [counters, setCounters] = useState(null);
+  const [countersServer, setCounters] = useState(null);
   const [countersLoading, setCountersLoading] = useState(true);
+  const [menuBadges, setMenuBadges] = useState({});   // contatori dei menu dei widget: { chiave: risposta di /api/<chiave>/badges }
   const [q, setQ] = useState('');
   const mods = useApi('/modules');
   const profileLabels = useMemo(() => {
@@ -100,6 +102,26 @@ function HomeCompleta({ user }) {
     const t = setInterval(load, 5 * 60_000);     // contatori aggiornati ogni 5 minuti: la pagina resta aperta tutto il giorno
     return () => { alive = false; clearInterval(t); };
   }, []);
+
+  // v0.99.13: il numero di ogni widget è la somma dei contatori del suo menu (stessa chiamata del menu), non un conteggio a parte
+  const chiaviConMenu = useMemo(() => (modules.data?.areas || []).flatMap((a) => a.modules).filter((m) => (m.kind === 'NATIVE' || m.inside) && vociConContatore(m.key, user).length).map((m) => m.key), [modules.data, user]);
+  const chiaviTesto = chiaviConMenu.join(',');
+  useEffect(() => {
+    if (!chiaviTesto) return undefined;
+    let alive = true;
+    const load = () => Promise.all(chiaviTesto.split(',').map((k) => api.get(`/${k}/badges`, { silent: true }).then((b) => [k, b || {}]).catch(() => [k, null])))
+      .then((r) => alive && setMenuBadges(Object.fromEntries(r.filter(([, b]) => b))));
+    load();
+    const t = setInterval(load, 5 * 60_000);
+    window.addEventListener('suite:badges', load);
+    return () => { alive = false; clearInterval(t); window.removeEventListener('suite:badges', load); };
+  }, [chiaviTesto]);
+  const counters = useMemo(() => {
+    if (!countersServer) return null;
+    const out = { ...countersServer };
+    for (const k of chiaviConMenu) { const c = contatoreDaMenu(k, user, menuBadges[k]); if (c) out[k] = c; else delete out[k]; }
+    return out;
+  }, [countersServer, menuBadges, chiaviConMenu, user]);
 
   const h = home.data || {};
   // Meteo della sede da cui si apre la Suite: posizione del browser (se concessa) → sede più vicina; altrimenti la sede del profilo

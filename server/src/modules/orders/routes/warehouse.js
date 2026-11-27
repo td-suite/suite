@@ -26,7 +26,7 @@ r.get('/', requireRole(...OPS_ROLES), ah(async (_req, res) => {
       (SELECT min(w.expiry) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS next_expiry,
       (SELECT count(*)::int FROM warehouse_stock w WHERE w.article_id=a.id AND w.current AND w.qty > 0) AS lots,
       (SELECT json_agg(json_build_object('lot', w.lot, 'expiry', w.expiry, 'qty', w.qty, 'barcode', w.barcode) ORDER BY w.expiry NULLS LAST) FROM warehouse_stock w WHERE w.article_id=a.id AND w.current) AS lot_detail
-    FROM articles a JOIN categories c ON c.code=a.category_code WHERE NOT (NOT a.active AND a.source <> 'SILVA') ORDER BY c.sort, a.sort, a.code`);
+    FROM articles a JOIN categories c ON c.code=a.category_code WHERE NOT (NOT a.active AND a.source <> 'SILVA') AND a.source <> 'TD' ORDER BY c.sort, a.sort, a.code`);
   const feeds = await many('SELECT f.*, (SELECT count(*)::int FROM warehouse_stock w WHERE w.feed_id=f.id) AS rows FROM warehouse_feeds f ORDER BY f.received_at DESC LIMIT 20');
   res.json({ rows, feeds, last_feed_at: await getSetting('silva_last_feed_at', null), last_poll_at: await getSetting('silva_last_poll_at', null), silva: await statoCatalogo() });
 }));

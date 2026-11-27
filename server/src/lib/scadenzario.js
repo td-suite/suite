@@ -665,7 +665,9 @@ export async function righeUtente(user, { oggi = oggiRoma() } = {}) {
 export async function contatoreHome(user) {
   if (!puoVedere(user)) return null;
   const rip = riepilogo(await righeUtente(user));
-  return { value: rip.entro_7, label: rip.SCADUTA ? `Entro 7 gg, ${rip.SCADUTA} scadute` : 'Entro 7 giorni' };
+  // v0.99.13: il numero comprende le SCADUTE (prima mostrava solo "entro 7 giorni" e lasciava le scadute nel testo: 6 con 26 scadute)
+  const scadute = Number(rip.SCADUTA) || 0; const entro = Number(rip.entro_7) || 0;
+  return { value: scadute + entro, label: scadute && entro ? `${scadute} scadute, ${entro} entro 7 giorni` : scadute ? (scadute === 1 ? 'scaduta' : 'scadute') : 'entro 7 giorni' };
 }
 
 // ------------------------------------------------------------------ job core:scadenzario (notifica giornaliera)

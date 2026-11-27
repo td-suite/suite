@@ -337,27 +337,57 @@ export function componiPivot(righe) {
     campioni: articoli.reduce((s, a) => s + a.totale, 0) + totNon };
 }
 
+// v0.99.13: i campioni sono completi solo dal giorno in cui la copia ha iniziato a conservarli (impostazione synclab.campioni_dal,
+// scritta dalla migrazione 024): prima di quel giorno il gestionale li toglieva alla chiusura dell'accettazione e la copia li perdeva.
+const GIORNI_MINIMI = 14;
+export async function campioniDal() {
+  const r = await one(`SELECT value FROM public.app_settings WHERE key = 'synclab.campioni_dal'`).catch(() => null);
+  const v = typeof r?.value === 'string' ? r.value : null;
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
 /** Pivot della pagina Produzione per una struttura (ids da productionStrutture) sugli ultimi `months` mesi più il mese in corso. */
 export async function pivotArticoli(ids, months = 6) {
   const disp = await synclabDisponibile();
-  if (!disp.ok) return { disponibile: false, motivo: disp.motivo, ...componiPivot([]) };
+  if (!disp.ok) return { disponibile: false, motivo: disp.motivo, campioni_dal: null, parziali: [], ...componiPivot([]) };
   const dal = (await one(`SELECT (date_trunc('month', now()) - ($1 || ' months')::interval)::date AS d`, [String(months)])).d;
-  return { disponibile: true, motivo: null, ...componiPivot(await campioniStruttura(ids, dal)) };
+  const cd = await campioniDal();
+  const p = componiPivot(await campioniStruttura(ids, dal));
+  // mesi parziali: quelli iniziati prima del giorno da cui i campioni sono conservati (tutti, se il giorno non è registrato)
+  const parziali = p.mesi.filter((m) => !cd || `${m}-01` < cd);
+  // media mensile sui soli mesi interi (non parziali e già conclusi); finché non ce n'è uno la media non si dichiara
+  const corrente = new Date().toISOString().slice(0, 7);
+  const pieni = p.mesi.filter((m) => !parziali.includes(m) && m < corrente);
+  const media = (mesi) => (pieni.length ? r1(pieni.reduce((t, m) => t + (mesi[m] || 0), 0) / pieni.length) : null);
+  for (const a of p.articoli) { a.media = media(a.mesi); a.confezioni_mese = a.media != null && a.pack_size ? Math.round((a.media / a.pack_size) * 100) / 100 : null; }
+  for (const e of p.non_abbinate.etichette) e.media = media(e.mesi);
+  p.non_abbinate.media = media(p.non_abbinate.mesi);
+  return { disponibile: true, motivo: null, campioni_dal: cd, parziali, mesi_pieni: pieni, ...p };
 }
 
 /**
- * Consumo medio mensile per articolo dai campioni (per consumptionByArticle): ultimi `months` mesi con campioni della struttura.
- * Ritorna null se Synclab non è disponibile o la struttura non ha campioni nella copia (si ricade su esami × correlazione); altrimenti
- * { map: article_id → { units, packs, months, fonte: 'CAMPIONI', detail }, months, articoliEtichetta: Set degli articoli abbinati a
- * un'etichetta (per questi il consumo viene SOLO dai campioni) }.
+ * Consumo medio mensile per articolo dai campioni (per consumptionByArticle). v0.99.13: si contano i soli campioni dal giorno da cui la
+ * copia li conserva (campioniDal) e non più indietro di `months` mesi; la media è per GIORNI osservati riportati al mese (30,44), così
+ * il mese in corso non abbassa la media. Ritorna null (si ricade su esami × correlazione) se Synclab non è disponibile, se il giorno non
+ * è registrato, se i giorni osservati sono meno di 14 o se la struttura non ha campioni nel periodo; altrimenti
+ * { map: article_id → { units, packs, months, fonte: 'CAMPIONI', detail }, months, giorni, dal, articoliEtichetta }.
  */
 export async function consumoDaCampioni(ids, months = 3) {
   const disp = await synclabDisponibile();
   if (!disp.ok) return null;
-  const righe = await campioniStruttura(ids, null);
+  const cd = await campioniDal();
+  if (!cd) return null;
+  const W = Math.max(1, Number(months) || 3);
+  const f = await one(`SELECT greatest($1::date, (current_date - ($2::int * 30.44)::int))::text AS dal, (current_date - $1::date + 1)::int AS maturi`, [cd, W]);
+  if (f.maturi < GIORNI_MINIMI) return null;
+  const righe = await campioniStruttura(ids, f.dal);
   if (!righe.length) return null;
-  const mesi = [...new Set(righe.map((x) => x.mese))].sort().reverse().slice(0, Math.max(1, Number(months) || 3));
-  const nM = mesi.length;
+  // giorni osservati: dal primo campione della struttura nel periodo (una sede appena aperta non si diluisce su tre mesi), almeno 14
+  const primo = (await one(`WITH m AS (${M_STRUTTURE}) SELECT min(r.date)::date::text AS d FROM synclab.samples s JOIN synclab.requests r ON r.instance_id = s.instance_id AND r.id = s.request_id
+      JOIN m ON m.instance_id = r.instance_id AND m.client_id = r.client_id WHERE r.disponibilita = 'ATTIVO' AND r.deleted_at IS NULL AND m.sid = ANY($1::int[]) AND r.date >= $2::date AND r.date <= current_date`, [ids.map(Number), f.dal]))?.d || f.dal;
+  f.giorni = Math.max(GIORNI_MINIMI, (await one(`SELECT (current_date - $1::date + 1)::int AS g`, [primo])).g);
+  const mesi = [...new Set(righe.map((x) => x.mese))];
+  const nM = f.giorni / 30.44;
   const map = new Map();
   for (const x of righe) {
     if (!x.articolo_id || !mesi.includes(x.mese)) continue;
@@ -368,11 +398,11 @@ export async function consumoDaCampioni(ids, months = 3) {
   const out = new Map();
   for (const [id, a] of map) {
     const units = a.tot / nM;
-    out.set(id, { units: Math.round(units * 100) / 100, packs: Math.round((units / (a.pack_size || 1)) * 100) / 100, months: nM, fonte: 'CAMPIONI',
+    out.set(id, { units: Math.round(units * 100) / 100, packs: Math.round((units / (a.pack_size || 1)) * 100) / 100, months: Math.max(1, Math.round(nM)), giorni: f.giorni, fonte: 'CAMPIONI',
       detail: a.detail.sort((p, q) => q.month.localeCompare(p.month) || p.etichetta.localeCompare(q.etichetta)) });
   }
   // l'etichetta vuota non è un'etichetta (v0.98.1): contano gli articoli delle etichette vere e quelli ricavati dagli esami dei campioni
   const articoliEtichetta = new Set((await many(`SELECT DISTINCT articolo_id FROM etichette_synclab WHERE articolo_id IS NOT NULL AND chiave <> ''`)).map((x) => x.articolo_id));
 
-  return { map: out, months: nM, articoliEtichetta };
+  return { map: out, months: Math.max(1, Math.round(nM)), giorni: f.giorni, dal: f.dal, articoliEtichetta };
 }

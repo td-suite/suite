@@ -15,13 +15,15 @@ export default {
     { group: 'Set up', profiles: OPS },
     // v0.68.4: una sola voce con due schede, Giacenze Silva e Articoli ordinabili (l'ex Catalogo articoli, /orders/articoli rimanda qui)
     { to: 'magazzino', icon: 'folder', label: 'Magazzino Centrale', profiles: OPS },
+    // v0.99.14: magazzino interno gestito dall'Area Operations (articoli che non passano da Silva); contatore = ordini da evadere
+    { to: 'magazzino-td', icon: 'building', label: 'Magazzino TD', badge: 'magazzino_td', profiles: OPS },
     // Dotazione di avvio delle sedi: modelli per tipologia, sedi e Legal entity con data di apertura e Giacenza 0 (badge: aperture entro 60 giorni senza Giacenza 0)
     { to: 'dotazione', icon: 'building', label: 'Dotazione di avvio', profiles: OPS },
     { group: 'Ordini', profiles: OPS },
     { to: 'catalogo', icon: 'plus', label: '1 · Nuovo ordine per struttura', profiles: OPS },
     { to: 'verifica', icon: 'check', label: '2 · Verifica richieste', badge: 'verifica', profiles: OPS },
-    { to: 'fornitore', icon: 'send', label: '3 · Trasmissione al magazzino', profiles: OPS },
-    { to: 'consegne', icon: 'import', label: '4 · Consegne', profiles: OPS },
+    { to: 'fornitore', icon: 'send', label: '3 · Trasmissione al magazzino', badge: 'trasmissione', profiles: OPS },
+    { to: 'consegne', icon: 'import', label: '4 · Consegne', badge: 'consegne', profiles: OPS },
     { group: 'Giacenze', profiles: OPS },
     { to: 'carico', icon: 'import', label: '5 · Carico materiale', profiles: OPS },
     { to: 'scarico', icon: 'send', label: '6 · Scarico materiale', profiles: OPS },

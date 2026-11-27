@@ -57,6 +57,12 @@ export async function markShipped(order, { ddt, userId, actor = 'Silva', label =
  */
 export async function markDelivered(order, { ddt, lines, userId, actor = 'Silva' } = {}) {
   assertStatus(order, 'APPROVATO', 'PRESO_IN_CARICO', 'SPEDITO');
+  // v0.99.14 · ordine del Magazzino TD: la consegna segue l'uscita (è l'uscita che scala la giacenza) e porta le quantità uscite
+  if (order.channel === 'TD') {
+    if (order.status !== 'SPEDITO') throw bad('Ordine del Magazzino TD: prima va registrata l\'uscita della merce (Magazzino TD › Ordini da evadere)');
+    if (!Array.isArray(lines) || !lines.length) lines = (await many(`SELECT a.code, -sum(m.qty)::int AS n FROM td_stock_movements m JOIN articles a ON a.id=m.article_id WHERE m.order_id=$1 AND m.kind='USCITA' GROUP BY a.code HAVING -sum(m.qty) > 0`, [order.id])).map((x) => ({ codiceArticolo: x.code, confezioni: x.n }));
+    if (actor === 'Silva') actor = 'Magazzino TD';
+  }
   const olines = await many(`SELECT l.id, l.article_id, l.qty_approved, a.code AS article_code, a.silva_code, a.gtin FROM order_lines l JOIN articles a ON a.id=l.article_id WHERE l.order_id=$1`, [order.id]);
   const unknown = [];
   await tx(async (c) => {
