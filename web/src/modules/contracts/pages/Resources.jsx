@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, seesCosts, canWrite } from '../auth.jsx';
+import { useAuth, seesCosts, canWrite, soloLp } from '../auth.jsx';
 import { useApi, Card, Loading, ErrorBox, Empty, Field, KindBadge, StatusBadge, Badge, Modal, useToast } from '../components/ui.jsx';
 import { qs, api, BASE, API_BASE } from '../api.js';
 import { eur, itDate, CONTRACT, LEVEL_LABEL, SEX, PERSON_KIND } from '../format.js';
@@ -33,8 +33,8 @@ export default function Resources({ kind }) {
             <a className="btn ghost" data-testid="cedolini-xlsx" href={`${API_BASE}/stats/cedolini.xlsx`} title="Simulazione dei cedolini del mese in corso: per ogni dipendente netto in busta da pagare e F24 (contributi, IRPEF, addizionali). Stima per la cassa, non sostituisce il consulente del lavoro.">Cedolini del mese · XLSX</a>
             <a className="btn ghost" data-testid="cedolini-pdf" href={`${API_BASE}/stats/cedolini.pdf`} title="La stessa simulazione in PDF">Cedolini del mese · PDF</a>
           </>}
-          {canWrite(user) && kind && kind !== 'TIROCINANTE' && <BulkImport kind={kind} onDone={() => list.reload()} />}
-          {canWrite(user) && <Link className="btn" to={kind === 'TIROCINANTE' ? `${BASE}/tirocinanti/nuovo` : `${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>{kind === 'TIROCINANTE' ? '+ Nuovo tirocinante' : '+ Nuova risorsa'}</Link>}
+          {canWrite(user) && !soloLp(user) && kind && kind !== 'TIROCINANTE' && <BulkImport kind={kind} onDone={() => list.reload()} />}
+          {canWrite(user) && <Link className="btn" to={kind === 'TIROCINANTE' ? `${BASE}/tirocinanti/nuovo` : `${BASE}/risorse/nuova${kind ? `?kind=${kind}` : ''}`}>{kind === 'TIROCINANTE' ? '+ Nuovo tirocinante' : kind === 'LP' ? '+ Nuovo professionista' : '+ Nuova risorsa'}</Link>}
         </div>
       </div>
       <div className="filters">

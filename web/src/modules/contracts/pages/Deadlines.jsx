@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { BASE, api } from '../api.js';
-import { useAuth, canWrite } from '../auth.jsx';
+import { useAuth, canWrite, soloLp } from '../auth.jsx';
 import { useNavigate } from 'react-router-dom';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, Modal, useToast } from '../components/ui.jsx';
 import { itDate, DEADLINE_STATE } from '../format.js';
@@ -10,7 +10,8 @@ const TYPES = { DOCUMENTO: 'Documenti', CONTRATTO: 'Contratti', PROVA: 'Periodo 
 export default function Deadlines() {
   const nav = useNavigate();
   const toast = useToast();
-  const writer = canWrite(useAuth().user);
+  const { user: utente } = useAuth();
+  const writer = canWrite(utente) && !soloLp(utente);   // il profilo LP gestisce i professionisti, non le segnalazioni delle scadenze
   // v0.92.0 · Segnala Scadenza: selezione con il quadratino, prima email e poi sollecito ogni 7 giorni
   const [sel, setSel] = useState(() => new Set());
   const [piano, setPiano] = useState(null);

@@ -17,8 +17,9 @@ export function publicUser(u) {
 }
 
 export const requireRole = (...roles) => (req, _res, next) => (roles.includes(req.user?.role) ? next() : next(forbidden()));
-// ADMIN e HR possono scrivere; VIEWER è in sola lettura
-export const canWrite = (u) => ['ADMIN', 'HR'].includes(u?.role);
+// ADMIN e HR possono scrivere; VIEWER è in sola lettura. Il profilo LP scrive SOLO sui liberi professionisti (v0.99.12): il perimetro
+// lo decide lpGuard, che gira prima di ogni route del modulo, quindi qui basta lasciarlo passare.
+export const canWrite = (u) => ['ADMIN', 'HR', 'LP'].includes(u?.role);
 export const requireWrite = (req, _res, next) => (canWrite(req.user) ? next() : next(forbidden('Profilo in sola lettura')));
 export const isAdmin = (u) => u?.role === 'ADMIN';
 // Casella People: approvano l'upload nel dossier e la chiusura della scadenza il CEO (titolare della Suite, OWNER) e l'HR Manager
@@ -32,16 +33,23 @@ export async function readLog(req, entity, entityId) {
   await suiteReadLog({ user: req.suiteUser || req.user, ip: req.ip }, { module: 'contracts', entity, entityId });
 }
 
-// ---------------------------------------------------------------- profilo LP: sola lettura dei SOLI liberi professionisti
+// ---------------------------------------------------------------- profilo LP: GESTIONE dei SOLI liberi professionisti
 // Decisione del CEO (14/11/2026): chi ha il profilo LP non deve avere "possibilità alcuna" di vedere i dati dei dipendenti. Perciò il
-// controllo è un elenco CHIUSO: tutto ciò che non è qui sotto risponde 403, comprese le route che nasceranno in futuro. Le route con
-// una persona o un documento nell'indirizzo passano solo se la persona è un LP (kind della vista resources_v); gli elenchi e
-// l'estratto sono poi filtrati sugli LP dalle route stesse (soloLp).
+// controllo è un elenco CHIUSO: tutto ciò che non è qui sotto risponde 403, comprese le route che nasceranno in futuro.
+// Decisione del CEO (27/11/2026, v0.99.12): il profilo non è più in sola lettura, è EDITOR dei liberi professionisti: li aggiunge,
+// li corregge, li modifica, li cessa, li riattiva e li elimina, con dossier, scadenze e contratto di incarico ("altrimenti Room
+// Planning non è usabile": i professionisti dei turni vengono da questa anagrafica). Resta chiuso tutto ciò che riguarda dipendenti
+// e tirocinanti. Le route con una persona o un documento nell'indirizzo passano solo se la persona è un LP (kind della vista
+// resources_v); una persona nuova o modificata deve essere, e restare, un LP; elenchi ed estratto sono filtrati dalle route (soloLp).
 export const soloLp = (u) => u?.role === 'LP';
 const LP_LIBERE = [/^\/badges$/, /^\/state$/, /^\/auth\/(me|config)$/, /^\/areas$/, /^\/work-sites$/, /^\/job-roles$/, /^\/resources\/?$/, /^\/stats\/(deadlines|costs\.xlsx)$/];
-const LP_PERSONA = [/^\/resources\/(\d+)$/, /^\/resources\/(\d+)\/attachments\/\d+\/download$/];
-const LP_DOCUMENTO = [/^\/documents\/(\d+)(?:\/download)?$/];
-const NIENTE = 'Il tuo profilo consente la sola consultazione dei liberi professionisti';
+// letture e scritture sulla scheda di una persona: anagrafica, incarico, cessazione e riattivazione, dossier, scadenze, contratto di incarico
+const LP_PERSONA = [/^\/resources\/(\d+)$/, /^\/resources\/(\d+)\/(lp|terminate|reactivate)$/, /^\/resources\/(\d+)\/attachments(?:\/analyze|\/analyze-all|\/\d+(?:\/download|\/analyze)?)?$/,
+  /^\/resources\/(\d+)\/deadlines(?:\/\d+)?$/, /^\/resources\/(\d+)\/documents\/generate$/];
+const LP_DOCUMENTO = [/^\/documents\/(\d+)(?:\/download|\/archive)?$/];
+const LP_NUOVA = [/^\/resources$/, /^\/resources\/parse-document$/];   // POST: nuova persona (solo LP) e lettura del documento da cui precompilarla
+const NIENTE = 'Il tuo profilo gestisce i soli liberi professionisti';
+const tipoHr = (k) => (['DIPENDENTE', 'DIRIGENTE'].includes(k) ? 'DIPENDENTE' : k === 'TIROCINANTE' ? 'TIROCINANTE' : 'LP');   // come hrKind di lib/people.js
 // ---------------------------------------------------------------- profilo MDL: sola lettura delle scadenze di medicina del lavoro
 // Richiesta del CEO (17/11/2026), per il responsabile HQS. Elenco chiuso come per il profilo LP: vede soltanto il calendario della
 // sorveglianza (persona, mansione, sede, ultima visita, prossima visita, visita fissata). Mai il giudizio di idoneità né le prescrizioni,
@@ -56,12 +64,21 @@ export async function lpGuard(req, _res, next) {
       return next(req.method === 'GET' && MDL_LIBERE.some((re) => re.test(path)) ? undefined : forbidden(NIENTE_MDL));
     }
     if (!soloLp(req.user)) return next();
-    if (req.method !== 'GET') return next(forbidden(NIENTE));
     const path = req.path.replace(/\/+$/, '') || '/';
-    if (LP_LIBERE.some((re) => re.test(path))) return next();
+    if (req.method === 'GET' && LP_LIBERE.some((re) => re.test(path))) return next();
+    // nuova persona: deve essere un libero professionista, senza rapporto di lavoro dipendente né tirocinio
+    if (req.method === 'POST' && LP_NUOVA.some((re) => re.test(path))) {
+      if (path === '/resources') { const k = req.body?.person?.kind; if (!k || tipoHr(k) !== 'LP' || req.body?.employment || req.body?.tirocinio) return next(forbidden('Con questo profilo si inseriscono solo liberi professionisti')); }
+      return next();
+    }
     for (const re of LP_PERSONA) {
       const m = path.match(re);
-      if (m) { const r = await one('SELECT kind FROM resources_v WHERE id=$1', [Number(m[1])]); return next(r?.kind === 'LP' ? undefined : forbidden(NIENTE)); }
+      if (!m) continue;
+      const r = await one('SELECT kind FROM resources_v WHERE id=$1', [Number(m[1])]);
+      if (r?.kind !== 'LP') return next(forbidden(NIENTE));
+      // una modifica non può trasformare il professionista in un dipendente o in un tirocinante
+      if (req.method !== 'GET' && req.body?.kind && tipoHr(req.body.kind) !== 'LP') return next(forbidden('Con questo profilo la persona resta un libero professionista'));
+      return next();
     }
     for (const re of LP_DOCUMENTO) {
       const m = path.match(re);

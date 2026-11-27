@@ -40,9 +40,11 @@ export default function Module({ moduleKey, mode, moduleUser }) {
               <Route path="*" element={<Navigate to={`/${moduleKey}/scadenze-mdl`} replace />} />
             </Routes>
           ) : soloLp(user) ? (
-            // profilo LP: solo l'elenco dei liberi professionisti, la loro scheda e le loro scadenze (il server rifiuta tutto il resto)
+            // profilo LP: elenco dei liberi professionisti, nuovo professionista, scheda (modificabile) e scadenze (il server rifiuta tutto il resto)
             <Routes>
               <Route path="lp" element={<Resources key="lp" kind="LP" />} />
+              <Route path="lp/nuovo" element={<NewResource key="lp" kind="LP" />} />
+              <Route path="risorse/nuova" element={<Navigate to={`/${moduleKey}/lp/nuovo`} replace />} />
               <Route path="risorse/:id" element={<ResourceDetail />} />
               <Route path="scadenze" element={<Deadlines />} />
               <Route path="*" element={<Navigate to={`/${moduleKey}/lp`} replace />} />

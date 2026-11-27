@@ -3,7 +3,7 @@
 // HR solo la sezione Casella People. Profilo LP (solo liberi professionisti, sola lettura): vede soltanto Elenco LP e scadenze degli LP. Casella People (documenti da approvare): ADMIN e HR (il titolare della Suite entra come ADMIN).
 // Profilo LP: restano solo "Elenco LP" e il calendario delle scadenze (degli LP); vale anche per un amministratore della Suite con quel profilo
 const nonLp = (u) => u?.grants?.contracts?.profile !== 'LP';
-const PER_LP = ['lp', 'scadenze'];
+const PER_LP = ['lp', 'lp/nuovo', 'scadenze'];
 // Profilo MDL (scadenze di medicina del lavoro, sola lettura, per il responsabile HQS): vede soltanto la sua pagina
 const soloMdl = (u) => u?.grants?.contracts?.profile === 'MDL';
 const nonMdl = (u) => !soloMdl(u);
@@ -31,7 +31,7 @@ export default {
     { to: 'ccnl', icon: 'file', label: 'CCNL di riferimento' },
     { to: 'busta-paga', icon: 'stats', label: 'Simulatore busta paga' },
     { group: 'Liberi professionisti' },
-    { to: 'lp/nuovo', icon: 'plus', label: 'Nuovo professionista', profiles: ['ADMIN', 'HR'] },
+    { to: 'lp/nuovo', icon: 'plus', label: 'Nuovo professionista', profiles: ['ADMIN', 'HR', 'LP'] },
     { to: 'lp', icon: 'user', label: 'Elenco LP', end: true },
     { group: 'Tirocinanti' },
     { to: 'tirocinanti/nuovo', icon: 'plus', label: 'Nuovo tirocinante', profiles: ['ADMIN', 'HR'] },

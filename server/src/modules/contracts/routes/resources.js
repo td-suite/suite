@@ -489,7 +489,8 @@ r.put('/:id/reactivate', requireWrite, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-r.delete('/:id', requireRole('ADMIN'), ah(async (req, res) => {
+// Eliminazione: ADMIN; il profilo LP solo sui liberi professionisti (lo garantisce lpGuard, che gira prima)
+r.delete('/:id', requireRole('ADMIN', 'LP'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const reason = String(req.body?.reason || '').trim();
   if (reason.length < 3) throw bad('Indicare la motivazione');

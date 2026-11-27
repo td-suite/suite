@@ -91,3 +91,12 @@ I destinatari si cambiano in Impostazioni, Casella People, come per gli altri ti
   formazione né riduce il contatore: va registrato dalla sezione Formazione ed ECM.
 - I crediti ECM non sono riconciliati con l'anagrafe Co.Ge.A.P.S.: il contatore conta ciò che viene caricato in Suite.
 - Il trattamento dei giudizi di idoneità va validato con il DPO (base giuridica, tempi di conservazione, registro dei trattamenti).
+
+## v0.99.12 · Profilo "Liberi professionisti (gestione)" (27/11/2026)
+
+Decisione del CEO: il profilo LP di Gestione del Personale **non è più in sola lettura, è editor dei liberi professionisti** ("altrimenti Room Planning non è usabile": i professionisti dei turni vengono da questa anagrafica). Nel catalogo il profilo si chiama ora "Liberi professionisti (gestione)"; la chiave resta `LP`, quindi chi lo aveva lo ha già con i nuovi permessi.
+
+- **Può**: inserire un nuovo professionista (menu "Nuovo professionista"), correggere l'anagrafica, inserire e modificare l'incarico e i compensi, caricare, leggere ed eliminare i documenti del dossier, aggiungere scadenze manuali, generare e archiviare il contratto di incarico, registrare la cessazione, riattivare, **eliminare** (con motivazione).
+- **Non può**, come prima: vedere o toccare dipendenti e tirocinanti in nessuna forma; creare una persona che non sia un libero professionista; trasformare un professionista in dipendente o tirocinante; caricamento massivo da Excel, segnalazioni e solleciti delle scadenze, formazione ed ECM, impostazioni, CCNL, scouting, casella People, benefit.
+- Il controllo resta l'elenco chiuso di `lib/access.js` (`lpGuard`): ogni route non elencata risponde 403, anche quelle future. Le route con una persona nell'indirizzo passano solo se la persona è un LP.
+- Test: `server/test/contracts-profilo-lp.test.mjs` (7 test: ciclo completo su un professionista; nessuna scrittura su dipendenti e tirocinanti).

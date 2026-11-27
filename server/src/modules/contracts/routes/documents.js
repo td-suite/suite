@@ -95,7 +95,7 @@ r.post('/documents/:id/archive', requireWrite, ah(async (req, res) => {
   res.status(201).json({ id: row.id });
 }));
 
-r.delete('/documents/:id', requireRole('ADMIN'), ah(async (req, res) => {
+r.delete('/documents/:id', requireRole('ADMIN', 'LP'), ah(async (req, res) => {
   const d = await one('DELETE FROM generated_documents WHERE id=$1 RETURNING resource_id, title', [Number(req.params.id)]);
   if (!d) throw notFound();
   await audit(req, 'DOCUMENT_DELETE', 'document', req.params.id, d);

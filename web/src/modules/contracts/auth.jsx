@@ -9,9 +9,12 @@ export function AuthProvider({ user, children }) {
 }
 
 export const useAuth = () => useContext(AuthCtx);
-export const canWrite = (u) => ['ADMIN', 'HR'].includes(u?.role);
-export const isAdmin = (u) => u?.role === 'ADMIN';
-// LP = profilo "Solo liberi professionisti": sola lettura dei soli LP, compensi compresi; mai i dipendenti (lo garantisce il server)
+// LP = profilo "Liberi professionisti (gestione)" (v0.99.12): aggiunge, modifica, cessa ed elimina i SOLI liberi professionisti,
+// compensi compresi; mai i dipendenti (lo garantisce il server). canWrite vale quindi anche per lui, ma solo nelle sue pagine.
 export const soloLp = (u) => u?.role === 'LP';
+export const canWrite = (u) => ['ADMIN', 'HR', 'LP'].includes(u?.role);
+export const isAdmin = (u) => u?.role === 'ADMIN';
+// chi può eliminare una persona: l'amministratore; il profilo LP i soli liberi professionisti (gli unici che vede)
+export const canDelete = (u) => isAdmin(u) || soloLp(u);
 export const soloMdl = (u) => u?.role === 'MDL';
 export const seesCosts = (u) => ['ADMIN', 'HR', 'LP'].includes(u?.role);

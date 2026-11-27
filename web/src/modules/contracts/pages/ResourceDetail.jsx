@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, BASE, API_BASE } from '../api.js';
-import { useAuth, canWrite, isAdmin, seesCosts } from '../auth.jsx';
+import { useAuth, canWrite, isAdmin, canDelete, seesCosts } from '../auth.jsx';
 import { useApi, Card, Field, ErrorBox, Loading, Empty, Badge, KindBadge, StatusBadge, Modal, PromptModal, ConfirmModal, useToast, Icon } from '../components/ui.jsx';
 import { PersonForm, EmploymentForm, LpForm } from '../components/forms.jsx';
 import BenefitAuto from '../components/BenefitAuto.jsx';
@@ -111,7 +111,7 @@ export default function ResourceDetail() {
               {r.terminated_at && <button className="btn sm ghost" onClick={async () => { await api.put(`/resources/${id}/reactivate`, {}); toast('Cessazione annullata'); d.reload(); }}>Annulla cessazione</button>}
               {r.status === 'CESSATO' && <button className="btn sm ghost" onClick={() => setStatus('ATTIVO')}>Riattiva</button>}
               {r.status === 'IMPEGNO' && <button className="btn sm" onClick={() => setStatus('ATTIVO')}>Segna come attivo</button>}
-              {isAdmin(user) && <button className="btn sm danger" onClick={() => setModal('delete')}>Elimina</button>}
+              {canDelete(user) && <button className="btn sm danger" onClick={() => setModal('delete')}>Elimina</button>}
             </div>}
           </Card>
           {isTir ? <TirocinioCard id={id} tirocinio={d.data.tirocinio} writer={writer} onChange={d.reload} /> : isEmp ? (
@@ -230,7 +230,7 @@ export default function ResourceDetail() {
                     {doc.has_pdf && <a className="btn sm ghost" href={`${API_BASE}/documents/${doc.id}/download?format=pdf`}>PDF</a>}{' '}
                     <a className="btn sm ghost" href={`${API_BASE}/documents/${doc.id}/download?format=docx`}>DOCX</a>{' '}
                     {writer && <button className="btn sm" onClick={() => archive(doc)}>Archivia nel dossier</button>}{' '}
-                    {isAdmin(user) && <button className="iconbtn" onClick={() => setModal({ delDoc: doc })}><Icon name="trash" /></button>}
+                    {canDelete(user) && <button className="iconbtn" onClick={() => setModal({ delDoc: doc })}><Icon name="trash" /></button>}
                   </td>
                 </tr>))}</tbody>
             </table></div>
