@@ -14,6 +14,10 @@ export function paginePortale(meta, user) {
 }
 
 // Riquadro quadrato di un modulo nella home. counter: { value, label } | undefined (skeleton finché countersLoading)
+// Contatori che sono un INVENTARIO (quanti documenti esistono), non lavoro da fare: nella Home non gridano (numero grigio) e non
+// contano tra le cose "da guardare" dell'area (v0.99.11)
+export const CONTATORI_INVENTARIO = new Set(['sgi', 'service']);
+
 export default function Widget({ module: m, areaColor, areaKey, counter, countersLoading, profileLabel }) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -38,7 +42,7 @@ export default function Widget({ module: m, areaColor, areaKey, counter, counter
       aria-label={`${m.name}. ${m.tagline || ''}${hasCounter ? `. ${counter.value} ${counter.label || ''}` : ''}${legacy ? '. Apre l\'applicazione' : ''}${schedaNuova ? '. Si apre in una scheda nuova' : ''}`} title={[m.name, m.tagline, (profileLabel || m.profile) ? `Profilo: ${profileLabel || m.profile}` : null, schedaNuova ? 'Si apre in una scheda nuova' : legacy ? 'Apre l\'applicazione' : null].filter(Boolean).join(' · ')}>
       <span className="glow" aria-hidden="true" />
       {countersLoading && !counter && <span className="counter sk" aria-hidden="true" />}
-      {hasCounter && <span className={`counter${Number(counter.value) > 0 ? '' : ' zero'}`} title={counter.label}>{counter.value}</span>}
+      {hasCounter && <span className={`counter${Number(counter.value) > 0 ? '' : ' zero'}${CONTATORI_INVENTARIO.has(m.key) ? ' inv' : ''}`} title={counter.label}>{counter.value}</span>}
       <div className="wi"><Icon name={m.icon} /></div>
       <div className="name">{m.name}</div>
       {hasCounter && counter.label ? <div className="tag live">{counter.label}</div> : <div className="tag">{m.module_mode === 'MIRROR' ? 'In collaudo nella Suite' : m.tagline}</div>}

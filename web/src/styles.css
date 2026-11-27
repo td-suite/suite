@@ -481,6 +481,54 @@ html.is-busy .btn:not(.link) { pointer-events: none; opacity: .7; }
 .menu-pop.widget-pop a { font-size: 13px; padding: 9px 14px; }
 .menu-pop.widget-pop a .ext { margin-left: auto; width: 13px; height: 13px; color: var(--faint); }
 .widget.DIREZIONE .counter { color: var(--silk); }
+
+/* ---------- Home a CORSIE ALLINEATE (v0.99.11, scelta del CEO del 27/11/2026 tra cinque alternative: la "C") ----------
+   Una fascia per area: testata piena del colore dell'area a sinistra (nome breve, quanti strumenti, quanti da guardare), strumenti a
+   destra su una griglia a 7 colonne uguale per tutte le fasce, così le colonne restano allineate. Le tessere restano il componente
+   Widget (stessi comportamenti: scheda nuova dei portali, menu "Apri pagina…", contatori), ridisegnate come celle. */
+.dash.corsie { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 8px; }
+.dash.corsie > .empty, .dash.corsie > .tiles { grid-column: 1 / -1; }
+.corsie .area { display: grid; grid-template-columns: 172px minmax(0, 1fr); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.corsie .area-head { flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; margin: 0; padding: 12px 14px; background: var(--area); color: #fff; border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px); }
+.corsie .area-head i { display: none; }
+.corsie .area-head h2 { font-size: 14.5px; text-transform: none; letter-spacing: -.005em; color: inherit; font-weight: 800; line-height: 1.15; }
+.corsie .area-head .meta { font-size: 11.5px; color: inherit; opacity: .82; }
+.corsie .area .tiles { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; }
+.corsie .tiles .widget { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; text-align: center; width: 100%; min-height: 84px; padding: 12px 6px 10px; background: none; border: 0; border-left: 1px solid var(--line-soft); border-radius: 0; box-shadow: none; overflow: visible; }
+.corsie .tiles .widget::before { display: none; }
+.corsie .tiles .widget:hover, .corsie .tiles .widget:focus-visible { transform: none; background: var(--hover); box-shadow: none; border-color: var(--line-soft); }
+.corsie .tiles .widget:focus-visible { box-shadow: inset 0 0 0 2px var(--area); }
+.corsie .tiles > :nth-child(7n) .widget, .corsie .tiles > .widget:nth-child(7n) { border-radius: 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0; }
+.corsie .tiles .widget .wi { width: 30px; height: 30px; border-radius: 0; background: none; margin: 0; }
+.corsie .tiles .widget .wi .ico { width: 28px; height: 28px; }
+.corsie .tiles .widget .name { font-size: 12.5px; font-weight: 650; line-height: 1.2; letter-spacing: 0; }
+.corsie .tiles .widget .counter { position: absolute; top: 6px; left: calc(50% + 12px); right: auto; height: 20px; min-width: 22px; padding: 0 6px; font-size: 11px; }
+.corsie .tiles .widget .counter.inv { background: transparent; color: var(--muted); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); animation: none; }
+.corsie .tiles .widget .counter.sk { min-width: 22px; }
+.corsie .tiles .widget .ext { right: 6px; bottom: 5px; }
+.corsie .widget-pages { top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 8px; }
+.corsie .widget-pages .ico { width: 13px; height: 13px; }
+.corsie .menu-pop.widget-pop { top: 34px; left: 4px; }
+/* tema scuro: i colori delle aree sono chiari e una testata piena abbaglierebbe: fondo velato del colore dell'area, nome nel colore */
+:root[data-theme="dark"] .corsie .area-head { background: color-mix(in srgb, var(--area) 24%, var(--card)); color: var(--ink); }
+:root[data-theme="dark"] .corsie .area-head h2 { color: var(--area); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .corsie .area-head { background: color-mix(in srgb, var(--area) 24%, var(--card)); color: var(--ink); } :root:not([data-theme="light"]) .corsie .area-head h2 { color: var(--area); } }
+:root[data-theme="dark"] .corsie .tiles .widget .counter:not(.inv):not(.sk) { color: #03161d; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .corsie .tiles .widget .counter:not(.inv):not(.sk) { color: #03161d; } }
+/* schermi stretti: la testata passa sopra, le celle si dispongono da sole */
+@media (max-width: 1100px) {
+  .corsie .area { grid-template-columns: 1fr; }
+  .corsie .area-head { flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 10px; padding: 8px 14px; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
+  .corsie .area .tiles { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
+  .corsie .tiles .widget { border-left: 0; border-radius: 0 !important; }
+}
+@media (max-width: 640px) {
+  .corsie .area .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  .corsie .tiles .widget { grid-template-areas: none; row-gap: 6px; padding: 10px 4px 8px; min-height: 78px; }
+  .corsie .tiles .widget .bottom { display: none; }
+  .corsie .tiles .widget .name { font-size: 11.5px; }
+  .corsie .tiles .widget .ext { position: absolute; }
+}
 .section-title { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; }
 .section-title.center { justify-content: center; margin: 10px 0 18px; }
 .section-title h2 { font-size: 20px; letter-spacing: -.02em; }

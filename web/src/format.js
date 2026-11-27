@@ -66,6 +66,8 @@ export const SEVERITY = { INFO: 'Informazione', WARN: 'Attenzione', CRIT: 'Urgen
 
 // Colori d'area come variabili CSS (si adattano al tema scuro); i valori di base coincidono con quelli del server
 export const AREA_COLORS = { DIREZIONE: 'var(--area-DIREZIONE)', FINANCE: 'var(--area-FINANCE)', RETAIL_FLOW: 'var(--area-RETAIL_FLOW)', OPERATIONS: 'var(--area-OPERATIONS)', HQS: 'var(--area-HQS)', PEOPLE: 'var(--area-PEOPLE)' };
+// Nome breve dell'area nella testata della corsia della Home (v0.99.11); le aree non previste tengono il proprio nome
+export const AREA_BREVI = { RETAIL_FLOW: 'Retail e Flow', HQS: 'HQS' };
 export const areaColor = (key, fallback) => AREA_COLORS[key] || fallback || 'var(--teal)';
 export const AREA_NAMES = { DIREZIONE: 'Direzione', FINANCE: 'Finance', RETAIL_FLOW: 'Retail and Flow Management', OPERATIONS: 'Operations', HQS: 'HQS · Qualità, Sicurezza, SGI', PEOPLE: 'People' };
 

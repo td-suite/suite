@@ -4,12 +4,12 @@ import { api } from '../api.js';
 import { useAuth, isExternal, hasModule } from '../auth.jsx';
 import { useApi, Skeleton, Badge, Empty } from '../components/ui.jsx';
 import { Icon, weatherIcon } from '../components/Icons.jsx';
-import Widget from '../components/Widget.jsx';
+import Widget, { CONTATORI_INVENTARIO } from '../components/Widget.jsx';
 import { MODULES as MODULI_WEB } from '../modules/registry.js';
 import PiedeSito from '../components/PiedeSito.jsx';
 import Board from '../components/community/Board.jsx';
 import { CircolariCard, NewsCard, CalendarCard, WeatherCard, QuoteCard, FilesCard, PeopleQuick, BirthdaysCard } from '../components/community/Cards.jsx';
-import { greeting, firstName, fmtDateLong, capitalize, SEVERITY, areaColor } from '../format.js';
+import { greeting, firstName, fmtDateLong, capitalize, SEVERITY, areaColor, AREA_BREVI } from '../format.js';
 
 function NoticeBanner({ n }) {
   const inner = <><Icon name={n.severity === 'CRIT' ? 'alert' : n.severity === 'WARN' ? 'alert' : 'info'} /><div><div className="t">{n.title}</div>{n.body && <div className="b">{n.body}</div>}</div><div className="spacer" /><Badge tone={n.severity === 'CRIT' ? 'red' : n.severity === 'WARN' ? 'amber' : 'blue'}>{SEVERITY[n.severity] || n.severity}</Badge></>;
@@ -120,6 +120,12 @@ function HomeCompleta({ user }) {
   const eventsToday = (h.events || []).filter((e) => String(e.starts_at || '').slice(0, 10) === todayKey).length;
   // moduli riservati al personale (meta.js soloInterni, es. Piano Ferie): mai nella Home di un accesso esterno
   const totalWidgets = (modules.data?.areas || []).reduce((n, a) => n + a.modules.filter((m) => !(external && MODULI_WEB[m.key]?.soloInterni)).length, 0);
+  // Corsie della Home: una per area. Chi ha pochi strumenti (fino a 7, es. partner e clienti) li vede in una corsia sola,
+  // ognuno col colore della propria area: tante corsie da uno strumento sarebbero spazio vuoto.
+  const areeVisibili = (modules.data?.areas || []).map((a) => (external ? { ...a, modules: a.modules.filter((m) => !MODULI_WEB[m.key]?.soloInterni) } : a)).filter((a) => a.modules.length);
+  const corsie = totalWidgets > 0 && totalWidgets <= 7 && areeVisibili.length > 1
+    ? [{ key: 'TUTTI', name: 'I tuoi strumenti', color: 'var(--teal)', modules: areeVisibili.flatMap((a) => a.modules.map((m) => ({ ...m, areaKey: a.key, areaColor: areaColor(a.key, a.color) }))) }]
+    : areeVisibili;
   const submit = (e) => { e.preventDefault(); const s = q.trim(); if (s) navigate(`/search?q=${encodeURIComponent(s)}`); };
 
   return (
@@ -161,18 +167,19 @@ function HomeCompleta({ user }) {
       <div className="page home-body">
         {h.notices?.length > 0 && <div className="notices">{h.notices.map((n) => <NoticeBanner key={n.id} n={n} />)}</div>}
 
-        {/* Sezioni per area su una griglia a 5 colonne: un'area occupa tante colonne quante le sue tessere, così due aree piccole stanno sulla stessa riga */}
-        <section className="dash" aria-label="I tuoi strumenti">
+        {/* CORSIE ALLINEATE (scelta del CEO del 27/11/2026 tra cinque alternative, la "C"): una fascia per area, testata colorata a sinistra,
+            strumenti su una griglia a 7 colonne uguale per tutte le fasce, così le colonne si allineano da un'area all'altra */}
+        <section className="dash corsie" aria-label="I tuoi strumenti">
           {modules.loading && <div className="tiles" aria-busy="true">{Array.from({ length: 10 }).map((_, i) => <div key={i} className="widget" style={{ cursor: 'default' }}><Skeleton block /></div>)}</div>}
           {modules.error && <Empty icon="alert" title="Impossibile caricare i moduli">{modules.error.message}</Empty>}
-          {modules.data?.areas?.map((a) => (external ? { ...a, modules: a.modules.filter((m) => !MODULI_WEB[m.key]?.soloInterni) } : a)).filter((a) => a.modules.length).map((a) => {
+          {corsie.map((a) => {
             const color = areaColor(a.key, a.color);
-            const live = a.modules.reduce((n, m) => n + (Number(counters?.[m.key]?.value) > 0 ? 1 : 0), 0);
+            const live = a.modules.reduce((n, m) => n + (Number(counters?.[m.key]?.value) > 0 && !CONTATORI_INVENTARIO.has(m.key) ? 1 : 0), 0);
             return (
               <section key={a.key} className="area" style={{ '--area': color, '--n': Math.min(a.modules.length, 6) }} aria-label={a.name}>
-                <div className="area-head"><i /><h2>{a.name}</h2><span className="meta">{a.modules.length} {a.modules.length === 1 ? 'strumento' : 'strumenti'}{live ? ` · ${live} con novità` : ''}</span></div>
+                <div className="area-head" title={a.name}><i /><h2>{AREA_BREVI[a.key] || a.name}</h2><span className="meta">{a.modules.length} {a.modules.length === 1 ? 'strumento' : 'strumenti'}{live ? ` · ${live} da guardare` : ''}</span></div>
                 <div className="tiles">
-                  {a.modules.map((m) => <Widget key={m.key} module={m} areaColor={color} areaKey={a.key} counter={counters?.[m.key]} countersLoading={countersLoading} profileLabel={profileLabels[`${m.key}:${m.profile}`]} />)}
+                  {a.modules.map((m) => <Widget key={m.key} module={m} areaColor={m.areaColor || color} areaKey={m.areaKey || a.key} counter={counters?.[m.key]} countersLoading={countersLoading} profileLabel={profileLabels[`${m.key}:${m.profile}`]} />)}
                 </div>
               </section>
             );
